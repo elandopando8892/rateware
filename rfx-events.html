@@ -597,11 +597,13 @@
                   </div>
                   <div class="rfx-outreach-carrier-wave-actions" aria-live="polite">
                     <div>
-                      <strong id="rfx-outreach-carrier-wave-summary">Select compatible carriers to start an invitation wave.</strong>
-                      <small>1. Add them to this RFx. 2. Prepare the selected wave from Message.</small>
+                      <strong id="rfx-outreach-carrier-wave-summary">Select compatible carriers to build the next invitation wave.</strong>
+                      <small>1. Select carriers. 2. Add them to this RFx. 3. Prepare their delivery queue from Message.</small>
                     </div>
                     <div class="action-row">
-                      <button id="rfx-add-outreach-carriers" type="button" disabled>Add to invitation wave</button>
+                      <button id="rfx-select-visible-outreach-carriers" class="secondary" type="button" title="Selects the compatible carriers currently visible in this list. Carriers already handled in this RFx are excluded." disabled>Select visible</button>
+                      <button id="rfx-select-all-outreach-carriers" class="secondary" type="button" title="Selects every carrier matching the current Carrier fit filters. Carriers already handled in this RFx are excluded." disabled>Select all matching</button>
+                      <button id="rfx-add-outreach-carriers" type="button" title="Adds the selected carriers to this RFx and opens Message. Invitation drafts are created from Message, not by this button." disabled>Add to RFx and open Message</button>
                       <button id="rfx-clear-outreach-carrier-selection" class="secondary" type="button" disabled>Clear selection</button>
                     </div>
                   </div>
@@ -632,8 +634,8 @@
                     <small>Only carriers added to this Bid Room appear here. This follows this RFx only; activity from other events is never mixed in.</small>
                   </div>
                   <div class="rfx-outreach-audience-metrics" aria-live="polite">
-                    <span><strong id="rfx-outreach-audience-ready-count">0</strong> to invite</span>
-                    <span><strong id="rfx-outreach-audience-contacted-count">0</strong> delivered</span>
+                    <span><strong id="rfx-outreach-audience-ready-count">0</strong> needs message</span>
+                    <span><strong id="rfx-outreach-audience-contacted-count">0</strong> contacted</span>
                     <span><strong id="rfx-outreach-audience-response-count">0</strong> response</span>
                     <span><strong id="rfx-outreach-audience-attention-count">0</strong> attention</span>
                   </div>
@@ -653,8 +655,10 @@
                     Invitation status
                     <select id="rfx-outreach-audience-status-filter">
                       <option value="all">All carriers in this RFx</option>
+                      <option value="needs_queue">Needs message</option>
                       <option value="ready">Ready to queue</option>
                       <option value="in_delivery">In delivery</option>
+                      <option value="contacted">Contacted / awaiting response</option>
                       <option value="response">Responded / quoted</option>
                       <option value="attention">Needs attention</option>
                       <option value="drafted">Drafted</option>
@@ -723,9 +727,17 @@
                       <p class="eyebrow">Message setup</p>
                       <h4>Compose this invitation</h4>
                       <span>Set one message and one channel for the selected carriers in this RFx. Preparing the queue never sends automatically.</span>
+                      <small id="rfx-message-wave-context" class="rfx-message-wave-context">No carrier wave selected yet.</small>
                     </div>
                     <span id="rfx-message-setup-state" class="status-pill muted">Queue not prepared</span>
                   </div>
+                  <section id="rfx-message-readiness" class="rfx-message-readiness" aria-live="polite">
+                    <div class="rfx-message-readiness-copy">
+                      <span>Delivery check</span>
+                      <strong>Select a carrier wave to prepare this queue.</strong>
+                      <small>Draft preparation never sends a message automatically.</small>
+                    </div>
+                  </section>
                   <form id="rfx-outreach-form" class="rfx-outreach-form" data-unsaved-guard>
                     <label>
                       Wave name
@@ -752,13 +764,16 @@
                         <option value="direct_and_group">Direct + vendor group</option>
                       </select>
                     </label>
-                    <label>
+                    <label id="rfx-outreach-sender-field">
                       Sender
                       <select id="rfx-outreach-sender">
                         <option value="sales@heymarksman.com">sales@heymarksman.com</option>
                       </select>
                     </label>
-                    <button id="create-rfx-outreach-campaign" type="submit" disabled>Prepare delivery queue</button>
+                    <div class="action-row rfx-message-queue-actions">
+                      <button id="create-rfx-outreach-campaign" type="submit" disabled>Prepare delivery queue</button>
+                      <button id="rfx-open-delivery-queue" class="secondary" type="button" disabled>Open delivery queue</button>
+                    </div>
                     <p id="rfx-outreach-status" class="status-message" role="status"></p>
                   </form>
                   <section id="rfx-whatsapp-readiness" class="gmail-sender-note whatsapp-template-readiness">
@@ -767,7 +782,7 @@
                       <span id="rfx-whatsapp-template-readiness-copy">Only applies when the WhatsApp Business channel is selected. Gmail queues do not depend on WhatsApp status. Generate draft queue creates or reuses the Meta notifier automatically.</span>
                     </div>
                   </section>
-                  <section class="gmail-sender-note">
+                  <section id="rfx-gmail-sender-note" class="gmail-sender-note">
                     <strong>Gmail sending model</strong>
                     <span>Launch uses sales@heymarksman.com as the only approved sender. Connect it in Settings before direct Gmail sending.</span>
                   </section>
@@ -822,9 +837,44 @@
                 </div>
                 <div class="rfx-draft-workbench">
                   <div id="rfx-event-delivery-overview" class="rfx-event-delivery-overview" aria-live="polite"></div>
+                  <section id="rfx-delivery-wave-state" class="rfx-delivery-wave-state" aria-live="polite"></section>
+                  <section class="rfx-delivery-participation-panel" aria-label="RFx carrier participation">
+                    <div class="rfx-delivery-participation-heading">
+                      <div>
+                        <p class="eyebrow">RFx participation</p>
+                        <strong>Carrier status for this RFx</strong>
+                        <small id="rfx-delivery-participation-summary">Select an RFx to load carrier participation.</small>
+                      </div>
+                      <span>One carrier across every invited lane.</span>
+                    </div>
+                    <div id="rfx-delivery-participation-filters" class="rfx-delivery-participation-filters" role="group" aria-label="RFx participation filters"></div>
+                    <div class="table-wrap rfx-delivery-participation-table-wrap">
+                      <table class="rfx-delivery-participation-table">
+                        <thead>
+                          <tr>
+                            <th>Carrier</th>
+                            <th>Route coverage</th>
+                            <th>Contact</th>
+                            <th>Status</th>
+                            <th>Next action</th>
+                          </tr>
+                        </thead>
+                        <tbody id="rfx-delivery-participation-list">
+                          <tr><td colspan="5">Select an RFx to review carrier participation.</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div class="rfx-delivery-participation-pager">
+                      <span id="rfx-delivery-participation-page-summary">No carriers loaded.</span>
+                      <div>
+                        <button id="rfx-delivery-participation-previous" type="button" class="secondary small-button">Previous</button>
+                        <button id="rfx-delivery-participation-next" type="button" class="secondary small-button">Next</button>
+                      </div>
+                    </div>
+                  </section>
                   <div class="rfx-draft-filterbar">
                     <label>
-                      <span>Search drafts</span>
+                      <span>Message delivery log</span>
                       <input id="rfx-draft-search" type="search" placeholder="Carrier, email, subject, lane, status..." autocomplete="off" />
                     </label>
                     <button id="rfx-clear-draft-search" type="button" class="secondary small-button">Clear search</button>
@@ -853,7 +903,10 @@
                     <button id="rfx-send-selected-whatsapp-drafts" type="button" class="secondary small-button" data-rfx-draft-action-channel="whatsapp" disabled>Send WhatsApp direct</button>
                     <button id="rfx-mark-selected-whatsapp-groups" type="button" class="secondary small-button" data-rfx-draft-action-channel="whatsapp_group" disabled>Mark groups sent</button>
                     <button id="rfx-archive-selected-drafts" type="button" class="secondary small-button" title="Hides delivery messages from the active queue. It does not remove carriers, bids, replies, or RFx history." disabled>Archive messages</button>
-                    <button id="rfx-delete-selected-drafts" type="button" class="danger small-button" disabled>Delete selected</button>
+                    <details class="rfx-draft-more-actions">
+                      <summary>More</summary>
+                      <button id="rfx-delete-selected-drafts" type="button" class="danger small-button" disabled>Delete selected</button>
+                    </details>
                   </div>
                   <div class="table-wrap rfx-draft-table-wrap">
                     <table class="rfx-draft-table">
@@ -1284,6 +1337,6 @@
       </div>
     </div>
 
-    <script type="module" src="./src/rfx-events.js?v=20260730-outreach-state-fix-v1"></script>
+    <script type="module" src="./src/rfx-events.js?v=20260803-bid-room-context-v1"></script>
   </body>
 </html>

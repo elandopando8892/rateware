@@ -13,18 +13,20 @@ let lastCarrierChat = { rows: [], google_chat_configured: false };
 let lastInvitation = null;
 let lastLiveBoard = {};
 let lastSegmentConfirmations = [];
+let lastBidHistory = [];
 let lastQuickBidSaveStatus = null;
 let lastBidSupportQuestion = "";
 let lastBidSupportResult = null;
 let pendingBidTemplateRows = [];
-let segmentConfirmationsSaving = false;
-let segmentConfirmationSaveTimer = null;
+const segmentConfirmationSaveTimers = new Map();
+const segmentConfirmationSavingTokens = new Set();
 let bidTemplateSubmitting = false;
 let bidFormSubmitting = false;
 let bidSupportSubmitting = false;
 let carrierChatSubmitting = false;
 let privateLaneSwitching = false;
 let selectedBidToolsToken = "";
+const pendingQuickBidDrafts = new Map();
 const quickBidRowMutationKeys = new Set();
 const bidParticipationMutationKeys = new Set();
 const laneAccessRequestMutationKeys = new Set();
@@ -692,6 +694,17 @@ function laneFitLabel(progress = {}) {
     : dualText(`${progress.complete}/${progress.total} confirmed`, `${progress.complete}/${progress.total} confirmados`);
 }
 
+function quickFitActionLabel(progress = {}) {
+  if (!progress.total) return dualText("Fit", "Fit");
+  return dualText(`Fit ${progress.complete}/${progress.total}`, `Fit ${progress.complete}/${progress.total}`);
+}
+
+function quickFitActionTone(progress = {}) {
+  if (progress.disagreements) return "is-review";
+  if (progress.ready) return "is-ready";
+  return "";
+}
+
 function renderMasterPackageRoutes(carrierBook = {}, invitation = {}) {
   const event = invitation.rfx_events || {};
   const packagePayload = masterPackageForCarrier(carrierBook, invitation);
@@ -716,6 +729,12 @@ function renderMasterPackageRoutes(carrierBook = {}, invitation = {}) {
               const isCurrent = invitationToken === currentToken;
               const fit = rowFitProgress(row, packagePayload);
               const status = bookStatus(row);
+              const normalizedStatus = String(status || "").toLowerCase();
+              const canQuote = isBidToolsEligibleRow(row);
+              const hasOutcome = ["awarded", "backup", "not_awarded"].includes(normalizedStatus);
+              const quoteActionLabel = normalizedStatus === "quoted"
+                ? dualText("Update quote", "Actualizar oferta")
+                : dualText("Quote lane", "Cotizar ruta");
               return `
                 <tr class="${isCurrent ? "is-current" : ""}">
                   <td>#${escapeHtml(lane.lane_number || "")}</td>
@@ -726,7 +745,12 @@ function renderMasterPackageRoutes(carrierBook = {}, invitation = {}) {
                   <td><span class="status-pill ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span></td>
                   <td>
                     <div class="lane-row-actions">
-                      <button type="button" class="secondary small-button" data-route-fit-token="${escapeAttribute(invitationToken)}" ${invitationToken ? "" : "disabled"}>${escapeHtml(dualText("Open Bid tools", "Abrir Bid tools"))}</button>
+                      <button type="button" class="secondary small-button" data-route-fit-token="${escapeAttribute(invitationToken)}" ${invitationToken ? "" : "disabled"}>${escapeHtml(dualText("View fit", "Ver fit"))}</button>
+                      ${hasOutcome
+                        ? `<button type="button" class="secondary small-button" data-route-book-filter="${escapeAttribute(normalizedStatus)}" title="${escapeAttribute(dualText("Open this lane result in the private business book.", "Abre el resultado de esta ruta en el libro privado."))}">${escapeHtml(dualText("View outcome", "Ver resultado"))}</button>`
+                        : canQuote
+                          ? `<button type="button" class="primary small-button" data-route-offer-token="${escapeAttribute(invitationToken)}" title="${escapeAttribute(dualText("Open Bid tools for this route without reloading the page.", "Abre Bid tools para esta ruta sin recargar la pagina."))}">${escapeHtml(quoteActionLabel)}</button>`
+                          : ""}
                     </div>
                   </td>
                 </tr>
@@ -751,7 +775,9 @@ function renderSegmentRubricControl(segment = {}, rubric = {}, invitation = last
     <article class="segment-rubric" data-segment-confirmation data-segment-key="${escapeAttribute(segmentKey)}" data-rubric-key="${escapeAttribute(rubricKey)}">
       <div>
         <strong>${escapeHtml(label)}</strong>
-        ${detail ? `<div class="bid-lane-rich-text">${renderLaneDetailValue(detail)}</div>` : `<p class="bid-board-note">${escapeHtml(dualText("No specific detail was loaded for this rubric.", "No se cargo detalle especifico para este rubro."))}</p>`}
+        ${detail
+          ? `<div class="bid-lane-rich-text">${renderLaneDetailValue(detail)}</div>`
+          : `<span class="segment-rubric-empty" title="${escapeAttribute(dualText("No additional route-specific detail was provided for this criterion.", "No se proporciono detalle adicional especifico para esta ruta."))}">${escapeHtml(dualText("No added condition", "Sin condicion adicional"))}</span>`}
       </div>
       <div class="segment-rubric-controls" role="radiogroup" aria-label="${escapeAttribute(label)}">
         ${[
@@ -785,9 +811,13 @@ function renderLaneFitChecklist(lane = {}, invitation = {}, packagePayload = {})
       <summary>
         <div>
           <p class="eyebrow">${escapeHtml(dualText("Operational fit", "Fit operativo"))}</p>
-          <strong>${escapeHtml(dualText("Route conditions", "Condiciones de la ruta"))}</strong>
+          <strong>${escapeHtml(formatLane(lane))}</strong>
+          <small>${escapeHtml([lane.equipment, lane.trailer, lane.config, lane.operation, lane.service].filter(Boolean).join(" / ") || dualText("Route requirements", "Requisitos de ruta"))}</small>
         </div>
-        <span class="master-package-segment-progress ${progress.pending ? "is-pending" : ""}" data-lane-fit-progress>${escapeHtml(laneFitLabel(progress))}</span>
+        <div class="lane-fit-disclosure-summary-meta">
+          <span class="lane-fit-disclosure-trigger">${escapeHtml(dualText("Fit details", "Ver fit"))}</span>
+          <span class="master-package-segment-progress ${progress.pending ? "is-pending" : ""}" data-lane-fit-progress>${escapeHtml(laneFitLabel(progress))}</span>
+        </div>
       </summary>
       <div class="lane-fit-disclosure-body">
         <p class="bid-board-note">${escapeHtml(dualText("Answer only what helps explain this route. Selections save automatically and never stop you from quoting.", "Responde solo lo necesario para explicar esta ruta. Las selecciones se guardan automaticamente y nunca impiden cotizar."))}</p>
@@ -796,7 +826,7 @@ function renderLaneFitChecklist(lane = {}, invitation = {}, packagePayload = {})
         </div>
         <div class="master-package-actions">
           <p data-segment-confirmation-status class="status-message" role="status">${escapeHtml(statusCopy)}</p>
-          <button type="button" class="secondary small-button" data-decline-invitation data-invitation-token="${escapeAttribute(invitation.invitation_token || "")}" ${["declined", "awarded", "not_awarded"].includes(String(invitation.invitation_status || "").toLowerCase()) ? "disabled" : ""}>${escapeHtml(dualText("Reject lane", "Rechazar ruta"))}</button>
+          <button type="button" class="secondary small-button" data-decline-invitation data-invitation-token="${escapeAttribute(invitation.invitation_token || "")}" ${["declined", "awarded", "backup", "not_awarded"].includes(String(invitation.invitation_status || "").toLowerCase()) ? "disabled" : ""}>${escapeHtml(dualText("Reject lane", "Rechazar ruta"))}</button>
         </div>
       </div>
     </details>
@@ -820,9 +850,10 @@ function renderCarrierMasterPackage(carrierBook = {}, invitation = {}) {
       <div class="master-package-statline">
         <article><span>${escapeHtml(t("routeSchedule"))}</span><strong>${formatNumber(packagePayload.lane_count || currentEventBookRows(carrierBook, invitation.rfx_events || {}).length)}</strong><small>lane(s)</small></article>
         <article><span>${escapeHtml(t("segmentChecklist"))}</span><strong>${formatNumber(segments.length)}</strong><small>${escapeHtml(dualText("reference group(s)", "grupo(s) de referencia"))}</small></article>
-        <article><span>${escapeHtml(dualText("Quote enablement", "Habilitacion de puja"))}</span><strong>${formatNumber(MASTER_PACKAGE_RUBRICS.length)}</strong><small>${escapeHtml(dualText("answers per lane", "respuestas por ruta"))}</small></article>
+        <article><span>${escapeHtml(dualText("Fit checklist", "Checklist de fit"))}</span><strong>${formatNumber(MASTER_PACKAGE_RUBRICS.length)}</strong><small>${escapeHtml(dualText("optional answers per route", "respuestas opcionales por ruta"))}</small></article>
       </div>
       <p class="bid-board-note">${escapeHtml(dualText("The master package is informational. Open Bid tools for a lane to confirm its fit, reject it, or submit its offer.", "El paquete maestro es informativo. Abre Bid tools en una ruta para confirmar su fit, rechazarla o enviar su oferta."))}</p>
+      ${commercialModelGuideHtml()}
     </section>
   `;
 }
@@ -883,14 +914,33 @@ function refreshLaneFitUi(section, message = "", tone = "neutral") {
     status.textContent = message || fitStatusCopy(progress);
     status.dataset.tone = tone;
   }
+  const invitationToken = String(section.dataset.invitationToken || "");
+  if (invitationToken) {
+    const action = card.querySelector(`[data-quick-bid-row][data-invitation-token="${CSS.escape(invitationToken)}"] [data-open-quick-lane-fit]`);
+    if (action) {
+      action.textContent = quickFitActionLabel(progress);
+      action.classList.toggle("is-ready", progress.ready);
+      action.classList.toggle("is-review", Boolean(progress.disagreements));
+    }
+  }
 }
 
 async function saveSegmentConfirmations(section) {
-  if (segmentConfirmationsSaving) return;
   if (!section) return;
+  const invitationToken = String(section.dataset.invitationToken || "");
+  const saveKey = invitationToken || String(section.dataset.masterSegmentKey || "default");
+  const pendingTimer = segmentConfirmationSaveTimers.get(saveKey);
+  if (pendingTimer) {
+    window.clearTimeout(pendingTimer);
+    segmentConfirmationSaveTimers.delete(saveKey);
+  }
+  if (segmentConfirmationSavingTokens.has(saveKey)) {
+    section.dataset.savePending = "true";
+    return;
+  }
   const status = section.querySelector("[data-segment-confirmation-status]");
-  const invitationToken = section.dataset.invitationToken || "";
-  segmentConfirmationsSaving = true;
+  segmentConfirmationSavingTokens.add(saveKey);
+  delete section.dataset.savePending;
   section.dataset.saving = "true";
   if (status) {
     status.textContent = dualText("Saving fit checklist...", "Guardando checklist de fit...");
@@ -909,15 +959,27 @@ async function saveSegmentConfirmations(section) {
       status.dataset.tone = "error";
     }
   } finally {
-    segmentConfirmationsSaving = false;
+    segmentConfirmationSavingTokens.delete(saveKey);
     delete section.dataset.saving;
+    if (section.dataset.savePending === "true") {
+      delete section.dataset.savePending;
+      queueSegmentConfirmationSave(section);
+    }
   }
 }
 
 function queueSegmentConfirmationSave(section) {
   if (!section) return;
-  window.clearTimeout(segmentConfirmationSaveTimer);
-  segmentConfirmationSaveTimer = window.setTimeout(() => saveSegmentConfirmations(section), 550);
+  const invitationToken = String(section.dataset.invitationToken || "");
+  const saveKey = invitationToken || String(section.dataset.masterSegmentKey || "default");
+  const existingTimer = segmentConfirmationSaveTimers.get(saveKey);
+  if (existingTimer) window.clearTimeout(existingTimer);
+  section.dataset.savePending = "true";
+  const timer = window.setTimeout(() => {
+    segmentConfirmationSaveTimers.delete(saveKey);
+    saveSegmentConfirmations(section);
+  }, 550);
+  segmentConfirmationSaveTimers.set(saveKey, timer);
 }
 
 function formatMoney(value, currency = "USD") {
@@ -1038,7 +1100,7 @@ function commercialModelLabel(value) {
     },
     es: {
       direct_cost_plus: "Directo / cost-plus",
-      carrier_share: "Carrier invoice share",
+      carrier_share: "Carrier comparte facturacion",
       xbf_buy_sell: "XBF compra-venta"
     }
   };
@@ -1050,6 +1112,8 @@ function commercialStructureConfig(value) {
   const configs = {
     direct_cost_plus: {
       tone: dualText("Cost-plus", "Cost-plus"),
+      rateLabel: dualText("Direct carrier all-in", "All-in directo del carrier"),
+      rateEntryHelp: commercialModelEntryRule("direct_cost_plus"),
       percentageField: "marksman",
       percentageLabel: t("suggestedMargin"),
       percentageTooltip: dualText(
@@ -1057,12 +1121,14 @@ function commercialStructureConfig(value) {
         "Este porcentaje incrementa el precio comparable del board/cliente sobre la tarifa all-in del carrier. La comision calculada se factura cuando pague el cliente."
       ),
       copy: dualText(
-        "Use when the carrier quotes its direct all-in cost and suggests the MARKSMAN margin to add on the Bid Board.",
-        "Usa esto cuando el carrier cotiza su costo directo all-in y sugiere el margen MARKSMAN a sumar en el Bid Board."
+        "Use when the carrier enters its direct cost and suggests the MARKSMAN margin used for the Board price.",
+        "Usa esto cuando el carrier captura su costo directo y sugiere el margen MARKSMAN usado para el precio del Board."
       )
     },
     carrier_share: {
       tone: dualText("Carrier shares", "Carrier comparte"),
+      rateLabel: dualText("All-in you want to keep", "All-in que quieres conservar"),
+      rateEntryHelp: commercialModelEntryRule("carrier_share"),
       percentageField: "carrier",
       percentageLabel: t("carrierShare"),
       percentageTooltip: dualText(
@@ -1070,12 +1136,14 @@ function commercialStructureConfig(value) {
         "Esto no modifica el precio de la puja. Calcula el fee de share factura carrier que se cobrara cuando pague el cliente."
       ),
       copy: dualText(
-        "Use when the carrier keeps the same quoted price but agrees to share a billing percentage after payment.",
-        "Usa esto cuando el carrier conserva la misma tarifa cotizada pero acepta compartir un porcentaje de facturacion despues del pago."
+        "Use when the carrier keeps its rate unchanged and agrees to a billing-share percentage after payment.",
+        "Usa esto cuando el carrier conserva su tarifa sin cambios y acepta un porcentaje de share sobre facturacion despues del pago."
       )
     },
     xbf_buy_sell: {
       tone: dualText("XBF buy-sell", "XBF compra-venta"),
+      rateLabel: dualText("Sell rate to XBF", "Tarifa de venta a XBF"),
+      rateEntryHelp: commercialModelEntryRule("xbf_buy_sell"),
       percentageField: "marksman",
       percentageLabel: dualText("Suggested XBF margin %", "Margen sugerido XBF %"),
       percentageTooltip: dualText(
@@ -1083,8 +1151,8 @@ function commercialStructureConfig(value) {
         "Opcional. Captura un margen sugerido XBF compra-venta de 7.5% a 15%. Si queda vacio, Rateware aplica 12%."
       ),
       copy: dualText(
-        "Use when the carrier submits its sell rate to XBF. The board/customer comparable price uses the suggested buy-sell margin, or 12% by default.",
-        "Usa esto cuando el carrier envia su tarifa de venta a XBF. El precio comparable del board/cliente usa el margen compra-venta sugerido, o 12% por default."
+        "Use when the carrier submits its sell rate to XBF. The Board/customer comparable price uses the suggested buy-sell margin, or 12% by default.",
+        "Usa esto cuando el carrier envia su tarifa de venta a XBF. El precio comparable del Board/cliente usa el margen compra-venta sugerido, o 12% por default."
       )
     }
   };
@@ -1095,22 +1163,61 @@ function commercialModelEffect(value) {
   const model = String(value || "direct_cost_plus").toLowerCase();
   const effects = {
     direct_cost_plus: dualText(
-      "Your all-in is the carrier cost; the suggested margin is added to the board price. The fee is calculated after customer payment.",
-      "Tu all-in es tu costo como carrier; el margen sugerido se suma al precio del board. La comision se calcula despues del pago del cliente."
+      "Your carrier rate is your direct cost; the suggested margin is added to the Board price. The fee is calculated after customer payment.",
+      "Tu tarifa carrier es tu costo directo; el margen sugerido se suma al precio del Board. La comision se calcula despues del pago del cliente."
     ),
     carrier_share: dualText(
-      "Your quoted price does not change. The selected share is calculated as a fee after customer payment.",
-      "Tu tarifa cotizada no cambia. El porcentaje seleccionado se calcula como comision sobre la facturacion despues del pago del cliente."
+      "Your carrier rate does not change. The selected share is calculated as a fee after customer payment.",
+      "Tu tarifa carrier no cambia. El porcentaje seleccionado se calcula como comision sobre la facturacion despues del pago del cliente."
     ),
     xbf_buy_sell: dualText(
-      "Your all-in is your sell rate to XBF. The board price adds the suggested XBF margin, or 12% when blank.",
-      "Tu all-in es tu tarifa de venta a XBF. El precio del board suma el margen XBF sugerido, o 12% si queda vacio."
+      "Your carrier rate is your sell rate to XBF. The Board price adds the suggested XBF margin, or 12% when blank.",
+      "Tu tarifa carrier es tu tarifa de venta a XBF. El precio del Board suma el margen XBF sugerido, o 12% si queda vacio."
     )
   };
   return effects[model] || effects.direct_cost_plus;
 }
 
-function commercialModelGuideHtml() {
+function commercialModelQuickEffect(value) {
+  const model = String(value || "direct_cost_plus").toLowerCase();
+  const effects = {
+    direct_cost_plus: dualText(
+      "Board adds the suggested margin.",
+      "El Board suma el margen sugerido."
+    ),
+    carrier_share: dualText(
+      "Board keeps this rate; the fee follows payment.",
+      "El Board conserva esta tarifa; el fee se cobra despues del pago."
+    ),
+    xbf_buy_sell: dualText(
+      "Board adds the XBF margin.",
+      "El Board suma el margen XBF."
+    )
+  };
+  return effects[model] || effects.direct_cost_plus;
+}
+
+function commercialModelEntryRule(value) {
+  const model = String(value || "direct_cost_plus").toLowerCase();
+  const rules = {
+    direct_cost_plus: dualText(
+      "You enter: your direct carrier cost.",
+      "Capturas: tu costo directo como carrier."
+    ),
+    carrier_share: dualText(
+      "You enter: the all-in you want to keep.",
+      "Capturas: el all-in que quieres conservar."
+    ),
+    xbf_buy_sell: dualText(
+      "You enter: your sell rate to XBF.",
+      "Capturas: tu tarifa de venta a XBF."
+    )
+  };
+  return rules[model] || rules.direct_cost_plus;
+}
+
+function commercialModelGuideHtml(selectedModel = "") {
+  const activeModel = String(selectedModel || "").toLowerCase();
   const models = [
     {
       key: "direct_cost_plus",
@@ -1132,14 +1239,14 @@ function commercialModelGuideHtml() {
     }
   ];
   return `
-    <details class="commercial-model-guide" open>
+    <details class="commercial-model-guide">
       <summary>
-        <span>${escapeHtml(dualText("How your commercial model works", "Como funciona tu modelo comercial"))}</span>
-        <small>${escapeHtml(dualText("Choose one per lane. Your all-in and the board price are not always the same.", "Elige uno por ruta. Tu all-in y el precio del board no siempre son iguales."))}</small>
+        <span>${escapeHtml(dualText("Commercial models", "Modelos comerciales"))}</span>
+        <small>${escapeHtml(dualText("Compare your carrier rate, Board price and fee.", "Compara tu tarifa carrier, precio del Board y fee."))}</small>
       </summary>
       <div class="commercial-model-guide-grid">
         ${models.map((model) => `
-          <article data-commercial-model-guide="${escapeAttribute(model.key)}">
+          <article data-commercial-model-guide="${escapeAttribute(model.key)}" class="${model.key === activeModel ? "is-selected" : ""}" ${model.key === activeModel ? 'aria-current="true"' : ""}>
             <strong>${escapeHtml(model.title)}</strong>
             <span>${escapeHtml(model.effect)}</span>
             <small>${escapeHtml(model.rule)}</small>
@@ -1147,6 +1254,36 @@ function commercialModelGuideHtml() {
         `).join("")}
       </div>
     </details>
+  `;
+}
+
+function commercialModelSelectedContextHtml(selectedModel = "direct_cost_plus") {
+  const model = String(selectedModel || "direct_cost_plus").toLowerCase();
+  const contexts = {
+    direct_cost_plus: {
+      entry: dualText("Direct carrier all-in", "All-in directo del carrier"),
+      board: dualText("Board adds your suggested margin. Blank uses 3%.", "El Board suma tu margen sugerido. Vacio usa 3%."),
+      fee: dualText("The resulting commission is invoiced after customer payment.", "La comision resultante se factura despues del pago del cliente.")
+    },
+    carrier_share: {
+      entry: dualText("The all-in you want to keep", "El all-in que quieres conservar"),
+      board: dualText("Board keeps this rate unchanged. Blank share uses 3%.", "El Board conserva esta tarifa sin cambios. Share vacio usa 3%."),
+      fee: dualText("Your invoice-share fee is calculated after customer payment.", "Tu fee de share se calcula despues del pago del cliente.")
+    },
+    xbf_buy_sell: {
+      entry: dualText("Your sell rate to XBF", "Tu tarifa de venta a XBF"),
+      board: dualText("Board adds the suggested XBF margin. Blank uses 12%.", "El Board suma el margen sugerido XBF. Vacio usa 12%."),
+      fee: dualText("No carrier share applies. Suggested XBF margin range: 7.5-15%.", "No aplica share del carrier. Rango de margen sugerido XBF: 7.5-15%.")
+    }
+  };
+  const context = contexts[model] || contexts.direct_cost_plus;
+  return `
+    <div class="commercial-model-selected-context" data-commercial-model-selected-context role="status" aria-live="polite">
+      <strong>${escapeHtml(commercialModelLabel(model))}</strong>
+      <span title="${escapeAttribute(dualText("What you enter as the carrier", "Lo que capturas como carrier"))}"><b>${escapeHtml(dualText("You enter", "Capturas"))}</b>${escapeHtml(context.entry)}</span>
+      <span title="${escapeAttribute(dualText("How the comparable Board price is calculated", "Como se calcula el precio comparable del Board"))}"><b>${escapeHtml(dualText("Board", "Board"))}</b>${escapeHtml(context.board)}</span>
+      <span title="${escapeAttribute(dualText("When the commercial fee applies", "Cuando aplica el fee comercial"))}"><b>${escapeHtml(dualText("Fee", "Fee"))}</b>${escapeHtml(context.fee)}</span>
+    </div>
   `;
 }
 
@@ -1671,8 +1808,9 @@ function collectBidDraft() {
 }
 
 function validateBidDraft(draft) {
+  const rateLabel = commercialStructureConfig(draft.commercial_model).rateLabel || dualText("Carrier rate", "Tarifa carrier");
   const errors = [
-    validatePositiveNumberIssue(draft.bid_rate, "bid-rate", "All-in rate"),
+    validatePositiveNumberIssue(draft.bid_rate, "bid-rate", rateLabel),
     validatePositiveNumberIssue(draft.weekly_capacity, "bid-capacity", "Weekly capacity", false),
     validatePositiveNumberIssue(draft.transit_days, "bid-transit-days", "Transit days", false)
   ].filter(Boolean);
@@ -1758,7 +1896,14 @@ const BID_TEMPLATE_COLUMNS = [
   { key: "target_currency", label: "Target currency / Moneda objetivo", aliases: ["Target currency", "Moneda objetivo"], width: 18, readonly: true },
   { key: "invitation_token", label: "Invitation token / Token invitacion", aliases: ["Invitation token", "Token invitacion"], width: 28, readonly: true, hidden: true },
   { key: "submit_this_lane", label: "Submit this lane / Enviar esta ruta", aliases: ["Submit this lane", "Enviar esta ruta"], width: 20, validation: "yesNoBlank" },
-  { key: "all_in_rate", label: "All-in rate / Tarifa all-in", aliases: ["All-in rate", "Tarifa all-in"], width: 18, validation: "positiveNumber", required: true },
+  {
+    key: "all_in_rate",
+    label: "Carrier rate / Tarifa carrier",
+    aliases: ["Carrier rate", "Tarifa carrier", "All-in rate", "Tarifa all-in"],
+    width: 18,
+    validation: "positiveNumber",
+    required: true
+  },
   { key: "currency", label: "Currency / Moneda", aliases: ["Currency", "Moneda"], width: 14, validation: "currency", required: true },
   { key: "weekly_capacity", label: "Weekly capacity / Capacidad semanal", aliases: ["Weekly capacity", "Capacidad semanal"], width: 20, validation: "positiveNumberBlank", recommended: true },
   { key: "transit_days", label: "Transit days / Dias transito", aliases: ["Transit days", "Dias transito"], width: 18, validation: "positiveNumberBlank", recommended: true },
@@ -2069,8 +2214,8 @@ function addBidTemplateInstructions(workbook) {
     },
     {
       section: "Required columns",
-      en: "Required to submit: All-in rate, Currency, Commercial model. Commercial percentages are optional; Rateware applies defaults when blank.",
-      es: "Obligatorio para enviar: Tarifa all-in, Moneda, Modelo comercial. Los porcentajes comerciales son opcionales; Rateware aplica defaults si quedan vacios."
+      en: "Required to submit: Carrier rate, Currency, Commercial model. The carrier-rate meaning changes by commercial model; commercial percentages are optional and Rateware applies defaults when blank.",
+      es: "Obligatorio para enviar: Tarifa carrier, Moneda, Modelo comercial. El significado de la tarifa carrier cambia segun el modelo comercial; los porcentajes comerciales son opcionales y Rateware aplica defaults si quedan vacios."
     },
     {
       section: "Recommended columns",
@@ -2084,13 +2229,13 @@ function addBidTemplateInstructions(workbook) {
     },
     {
       section: "Commercial model",
-      en: "Direct / cost-plus uses Suggested margin % between 2 and 5, default 3 if blank. Carrier invoice share uses 2 to 5, default 3 if blank. XBF buy-sell uses Suggested / XBF margin % between 7.5 and 15, default 12 if blank.",
-      es: "Direct / cost-plus usa Margen sugerido % entre 2 y 5, default 3 si queda vacio. Carrier invoice share usa 2 a 5, default 3 si queda vacio. XBF compra-venta usa Margen sugerido / XBF % entre 7.5 y 15, default 12 si queda vacio."
+      en: "Direct / cost-plus: enter your direct carrier cost; Suggested margin is 2-5%, default 3%. Carrier invoice share: enter the all-in price you want to keep; Invoice share is 2-5%, default 3%. XBF buy-sell: enter your sell rate to XBF; Suggested / XBF margin is 7.5-15%, default 12%.",
+      es: "Directo / cost-plus: captura tu costo directo como carrier; Margen sugerido es 2-5%, default 3%. Carrier invoice share: captura el all-in que quieres conservar; Share factura es 2-5%, default 3%. XBF compra-venta: captura tu tarifa de venta a XBF; Margen sugerido / XBF es 7.5-15%, default 12%."
     },
     {
       section: "Rate",
-      en: "All-in rate is required and must be greater than zero. Weekly capacity and transit days are optional, but if entered they must be numeric and greater than zero. Deadhead distance is optional and may be zero or positive.",
-      es: "La tarifa all-in es obligatoria y debe ser mayor a cero. Capacidad semanal y dias de transito son opcionales, pero si se capturan deben ser numericos y mayores a cero. Deadhead/vacio es opcional y puede ser cero o positivo."
+      en: "Carrier rate is required and must be greater than zero. Enter the direct cost, preserved all-in, or sell rate to XBF according to the commercial model. Weekly capacity and transit days are optional, but if entered they must be numeric and greater than zero. Deadhead distance is optional and may be zero or positive.",
+      es: "La tarifa carrier es obligatoria y debe ser mayor a cero. Captura el costo directo, all-in que deseas conservar o tarifa de venta a XBF segun el modelo comercial. Capacidad semanal y dias de transito son opcionales, pero si se capturan deben ser numericos y mayores a cero. Deadhead/vacio es opcional y puede ser cero o positivo."
     },
     {
       section: "Availability",
@@ -2334,26 +2479,54 @@ function renderBidTemplateTools(carrierBook = {}, invitation = {}) {
   const invitedCount = currentEventBookRows(carrierBook, invitation.rfx_events || {})
     .filter((row) => row.is_invited && row.invitation_token).length;
   if (!rows.length && !invitedCount) return "";
+  const activeLaneCount = rows.length || invitedCount;
+  const laneScope = activeLaneCount === 1
+    ? dualText(
+      "1 active invited lane is available. Individual route actions stay in Bid tools.",
+      "1 ruta invitada activa esta disponible. Las acciones individuales por ruta permanecen en Herramientas de puja."
+    )
+    : dualText(
+      `${activeLaneCount} active invited lanes are available. Individual route actions stay in Bid tools.`,
+      `${activeLaneCount} rutas invitadas activas estan disponibles. Las acciones individuales por ruta permanecen en Herramientas de puja.`
+    );
   return `
-    <section class="carrier-bid-template-tools">
-      <div>
-        <p class="eyebrow">${escapeHtml(t("xlsxEyebrow"))}</p>
-        <h3>${escapeHtml(t("xlsxTitle"))}</h3>
-        <p>${escapeHtml(t("xlsxCopy"))}</p>
-      </div>
-      <div class="carrier-bid-template-actions">
-        <button type="button" data-download-bid-template ${rows.length ? "" : "disabled"}>${escapeHtml(t("downloadXlsx"))}</button>
-        <label class="carrier-bid-template-upload">
-          <span>${escapeHtml(t("uploadXlsx"))}</span>
-          <input id="carrier-bid-template-file" type="file" accept=".xlsx,.xls,.csv" ${rows.length ? "" : "disabled"} />
-        </label>
-        <button type="button" data-submit-bid-template disabled>${escapeHtml(t("confirmXlsx"))}</button>
+    <details class="carrier-bid-template-tools" data-bid-template-tools>
+      <summary>
+        <div class="carrier-bid-template-summary-copy">
+          <p class="eyebrow">${escapeHtml(dualText("Batch quote", "Cotizacion masiva"))}</p>
+          <strong>${escapeHtml(t("xlsxTitle"))}</strong>
+          <small>${escapeHtml(laneScope)}</small>
+        </div>
+        <div class="carrier-bid-template-summary-meta">
+          <span class="status-pill muted">${activeLaneCount} XLSX</span>
+          <span class="carrier-bid-template-trigger">${escapeHtml(dualText("Open batch tool", "Abrir herramienta masiva"))}</span>
+        </div>
+      </summary>
+      <div class="carrier-bid-template-tools-body">
+        <div class="carrier-bid-template-copy">
+          <p class="eyebrow">${escapeHtml(t("xlsxEyebrow"))}</p>
+          <p>${escapeHtml(t("xlsxCopy"))}</p>
+          <p class="carrier-bid-template-scope">${escapeHtml(dualText(
+            "The workbook includes active invited lanes only. Existing bids, invitations and history are preserved.",
+            "El archivo incluye solamente rutas invitadas activas. Las pujas, invitaciones e historial existentes se conservan."
+          ))}</p>
+        </div>
+        <div class="carrier-bid-template-workflow">
+          <div class="carrier-bid-template-actions">
+            <button type="button" data-download-bid-template ${rows.length ? "" : "disabled"}>${escapeHtml(t("downloadXlsx"))}</button>
+            <label class="carrier-bid-template-upload">
+              <span>${escapeHtml(t("uploadXlsx"))}</span>
+              <input id="carrier-bid-template-file" type="file" accept=".xlsx,.xls,.csv" ${rows.length ? "" : "disabled"} />
+            </label>
+            <button type="button" data-submit-bid-template disabled>${escapeHtml(t("confirmXlsx"))}</button>
+          </div>
+        </div>
       </div>
       <p id="carrier-bid-template-status" class="status-message" role="status">${escapeHtml(rows.length
         ? dualText("All active invited lanes are included. Fit answers are optional and never overwrite an existing offer.", "Todas las rutas invitadas activas se incluyen. Las respuestas de fit son opcionales y nunca reemplazan una oferta existente.")
         : dualText("No active invited lanes are available for this XLSX template.", "No hay rutas invitadas activas disponibles para este template XLSX."))}</p>
       <div id="carrier-bid-template-preview" class="carrier-bid-template-preview"></div>
-    </section>
+    </details>
   `;
 }
 
@@ -2377,6 +2550,7 @@ function clearBidValidationState() {
 function bidReviewSummaryHtml(draft) {
   const validation = validateBidDraft(draft);
   const warnings = [...validation.errors.map((issue) => issue.message), ...validation.warnings];
+  const commercialConfig = commercialStructureConfig(draft.commercial_model);
   const alternative = draft.best_alternative_offered
     ? [draft.alternative_equipment, draft.alternative_units ? `${draft.alternative_units} unit(s)` : null].filter(Boolean).join(" / ") || "Alternative declared"
     : "No alternative";
@@ -2392,7 +2566,7 @@ function bidReviewSummaryHtml(draft) {
       : "No deadhead details";
   return `
     <div class="bid-review-summary-grid">
-      <article><span>Primary offer</span><strong>${escapeHtml(formatMoney(draft.bid_rate, draft.currency))}</strong><small>${escapeHtml(draft.weekly_capacity || "-")} / wk | ${escapeHtml(draft.transit_days || "-")} day(s) | ${escapeHtml(draft.valid_through || "no validity date")}</small></article>
+      <article title="${escapeAttribute(commercialConfig.rateEntryHelp)}"><span>${escapeHtml(commercialConfig.rateLabel)}</span><strong>${escapeHtml(formatMoney(draft.bid_rate, draft.currency))}</strong><small>${escapeHtml(draft.weekly_capacity || "-")} / wk | ${escapeHtml(draft.transit_days || "-")} day(s) | ${escapeHtml(draft.valid_through || "no validity date")}</small></article>
       <article><span>Commercial model</span><strong>${escapeHtml(commercialModelLabel(draft.commercial_model))}</strong><small>${escapeHtml(commercialFeeSummary(draft))}</small></article>
       <article><span>Alternative</span><strong>${escapeHtml(alternative)}</strong><small>${escapeHtml(draft.alternative_notes || "No alternative notes")}</small></article>
       <article><span>Capacity</span><strong>${escapeHtml(availability)}</strong><small>${escapeHtml([deadhead, draft.mirror_account_enabled ? "Mirror account requested" : draft.unit_details || "No unit details"].filter(Boolean).join(" | "))}</small></article>
@@ -2421,6 +2595,8 @@ function syncCommercialStructureFields({ clearInapplicable = false } = {}) {
   const marksmanLabel = card.querySelector("#bid-marksman-margin-label");
   const helper = card.querySelector("#bid-commercial-helper");
   const activePercent = card.querySelector("#bid-commercial-active-percent");
+  const rateLabel = card.querySelector("#bid-rate-label");
+  const rateEntryHelp = card.querySelector("#bid-rate-entry-help");
 
   marksmanGroup?.classList.toggle("hidden", config.percentageField !== "marksman");
   carrierGroup?.classList.toggle("hidden", config.percentageField !== "carrier");
@@ -2429,6 +2605,8 @@ function syncCommercialStructureFields({ clearInapplicable = false } = {}) {
   if (marksmanInput) marksmanInput.placeholder = model === "xbf_buy_sell" ? "7.5-15 (default 12)" : "2-5 (default 3)";
   if (carrierInput) carrierInput.placeholder = "2-5 (default 3)";
   if (marksmanLabel) marksmanLabel.textContent = config.percentageLabel || t("suggestedMargin");
+  if (rateLabel) rateLabel.textContent = config.rateLabel || t("allInRate");
+  if (rateEntryHelp) rateEntryHelp.textContent = config.rateEntryHelp || commercialModelEntryRule(model);
   if (clearInapplicable) {
     if (config.percentageField !== "marksman" && marksmanInput) marksmanInput.value = "";
     if (config.percentageField !== "carrier" && carrierInput) carrierInput.value = "";
@@ -2535,41 +2713,24 @@ function syncBidFormMode() {
 }
 
 function openBidEditor(options = {}) {
-  const modal = card.querySelector("#bid-editor-modal");
-  if (!modal) return;
-  modal.hidden = false;
-  document.body.classList.add("bid-editor-open");
-  const section = options.section
-    ? card.querySelector(`[data-bid-section="${CSS.escape(options.section)}"]`)
-    : null;
-  const focusTarget = options.focusSelector
-    ? card.querySelector(options.focusSelector)
-    : section?.querySelector("input, select, textarea, button") || card.querySelector("#bid-rate");
-  window.setTimeout(() => {
-    section?.scrollIntoView({ behavior: "smooth", block: "start" });
-    focusTarget?.focus({ preventScroll: true });
-  }, 80);
+  // Legacy entry points now land in the selected lane's inline quick-bid row.
+  const panelBySection = {
+    alternative: "alternative",
+    capacity: "capacity"
+  };
+  const invitationToken = selectedBidToolsToken || String(lastInvitation?.invitation_token || tokenFromUrl() || "");
+  selectBidToolsLane(invitationToken, {
+    panel: panelBySection[options.section] || "",
+    focusQuickBid: !panelBySection[options.section]
+  });
 }
 
 function closeBidEditor() {
-  const modal = card.querySelector("#bid-editor-modal");
-  if (!modal) return;
-  modal.hidden = true;
   document.body.classList.remove("bid-editor-open");
 }
 
 function focusCurrentOfferEditor() {
-  const offer = currentSubmittedOffer();
-  hydrateBidFormFromOffer(offer, lastInvitation || {});
-  const status = card.querySelector("#bid-submit-status");
-  openBidEditor({ section: "primary", focusSelector: "#bid-rate" });
-  if (status) {
-    status.textContent = dualText(
-      "Update the fields you need, confirm terms, then save this revised offer.",
-      "Actualiza los campos necesarios, confirma terminos y guarda esta revision."
-    );
-    status.dataset.tone = "neutral";
-  }
+  openBidEditor({ section: "primary" });
 }
 
 function renderLiveBoard(liveBoard = {}) {
@@ -3264,10 +3425,18 @@ function quickBidRows(carrierBook = {}, invitation = {}) {
     .filter((row) => isBidToolsEligibleRow(row));
 }
 
+function quickBidRowsForSelectedLane(carrierBook = {}, invitation = {}, invitationToken = selectedBidToolsToken) {
+  const rows = quickBidRows(carrierBook, invitation);
+  if (!rows.length) return [];
+  const activeToken = String(invitationToken || invitation.invitation_token || tokenFromUrl() || "");
+  const selected = rows.find((row) => String(row.invitation_token || "") === activeToken);
+  return [selected || rows[0]];
+}
+
 function isBidToolsEligibleRow(row = {}) {
   const status = String(bookStatus(row) || "").toLowerCase();
   return Boolean(row.is_invited && row.invitation_token)
-    && !["declined", "awarded", "not_awarded"].includes(status);
+    && !["declined", "awarded", "backup", "not_awarded"].includes(status);
 }
 
 function quickBidCommercialPercent(row = {}) {
@@ -3283,7 +3452,21 @@ function quickBidCommercialPlaceholder(model) {
   return "2-5";
 }
 
+function quickBidCommercialPercentLabel(model) {
+  const value = String(model || "direct_cost_plus").toLowerCase();
+  const labels = {
+    direct_cost_plus: dualText("Suggested margin %", "Margen sugerido %"),
+    carrier_share: dualText("Invoice share %", "Participacion de factura %"),
+    xbf_buy_sell: dualText("XBF margin %", "Margen XBF %")
+  };
+  return labels[value] || labels.direct_cost_plus;
+}
+
 function quickBidRowStatus(row = {}) {
+  const localDraft = pendingQuickBidDrafts.get(String(row.invitation_token || ""));
+  if (localDraft?.local_only) {
+    return `<span class="status-message quick-bid-local-draft" data-tone="warning" title="${escapeAttribute(dualText("These changes are retained in this browser until you publish the route offer.", "Estos cambios se conservan en este navegador hasta que publiques la oferta de la ruta."))}">${escapeHtml(dualText("Unpublished changes", "Cambios sin publicar"))}</span>`;
+  }
   if (!lastQuickBidSaveStatus || lastQuickBidSaveStatus.token !== row.invitation_token) return "";
   return `<span class="status-message" data-tone="${escapeAttribute(lastQuickBidSaveStatus.tone || "neutral")}">${escapeHtml(lastQuickBidSaveStatus.message || "")}</span>`;
 }
@@ -3291,7 +3474,92 @@ function quickBidRowStatus(row = {}) {
 function renderQuickBidCommercialEffect(model) {
   const config = commercialStructureConfig(model);
   const effect = commercialModelEffect(model);
-  return `<small class="quick-bid-commercial-effect" data-quick-bid-commercial-effect title="${escapeAttribute(effect)}">${escapeHtml(config.tone)}: ${escapeHtml(effect)}</small>`;
+  const quickEffect = commercialModelQuickEffect(model);
+  return `<small class="quick-bid-commercial-effect" data-quick-bid-commercial-effect title="${escapeAttribute(effect)}">${escapeHtml(config.tone)}: ${escapeHtml(quickEffect)}</small>`;
+}
+
+function quickBidCommercialPreview(row = {}) {
+  const details = commercialRateDetails(row);
+  const currency = details.currency || "USD";
+  if (details.carrierRate === null) {
+    const entryRule = commercialModelEntryRule(row.commercial_model);
+    return {
+      state: "empty",
+      text: `${entryRule} ${dualText("Preview the board impact before submitting.", "Revisa el impacto en board antes de enviar.")}`,
+      title: dualText("Board price and fee update before you submit this lane.", "El precio de board y el fee se actualizan antes de enviar esta ruta.")
+    };
+  }
+  if (details.model === "carrier_share") {
+    const fee = formatMoney(details.commissionFee, currency);
+    return {
+      state: "ready",
+      text: dualText(
+        `Carrier / board ${formatMoney(details.carrierRate, currency)} | Fee ${fee}`,
+        `Carrier / board ${formatMoney(details.carrierRate, currency)} | Fee ${fee}`
+      ),
+      title: commercialFeeSummary(row)
+    };
+  }
+  if (details.model === "xbf_buy_sell") {
+    const margin = formatMoney(details.markupFee, currency);
+    return {
+      state: "ready",
+      text: dualText(
+        `Carrier ${formatMoney(details.carrierRate, currency)} | Board ${formatMoney(details.boardRate, currency)} | Margin ${margin}`,
+        `Carrier ${formatMoney(details.carrierRate, currency)} | Board ${formatMoney(details.boardRate, currency)} | Margen ${margin}`
+      ),
+      title: commercialFeeSummary(row)
+    };
+  }
+  const fee = formatMoney(details.commissionFee, currency);
+  return {
+    state: "ready",
+    text: dualText(
+      `Carrier ${formatMoney(details.carrierRate, currency)} | Board ${formatMoney(details.boardRate, currency)} | Fee ${fee}`,
+      `Carrier ${formatMoney(details.carrierRate, currency)} | Board ${formatMoney(details.boardRate, currency)} | Fee ${fee}`
+    ),
+    title: commercialFeeSummary(row)
+  };
+}
+
+function renderQuickBidCommercialPreview(row = {}) {
+  const preview = quickBidCommercialPreview(row);
+  return `<small class="quick-bid-commercial-preview" data-quick-bid-commercial-preview data-preview-state="${escapeAttribute(preview.state)}" title="${escapeAttribute(preview.title)}">${escapeHtml(preview.text)}</small>`;
+}
+
+function syncQuickBidCommercialPresentation(rowElement, { resetPercentage = false } = {}) {
+  if (!rowElement) return;
+  const modelInput = rowElement.querySelector("[data-quick-bid-field='commercial_model']");
+  if (!modelInput) return;
+  const config = commercialStructureConfig(modelInput.value);
+  const rateInput = rowElement.querySelector("[data-quick-bid-field='bid_rate']");
+  if (rateInput) {
+    rateInput.setAttribute("aria-label", config.rateLabel || dualText("Carrier rate", "Tarifa carrier"));
+    rateInput.title = config.rateEntryHelp || commercialModelEntryRule(modelInput.value);
+  }
+  const percentageInput = rowElement.querySelector("[data-quick-bid-field='commercial_pct']");
+  if (percentageInput) {
+    percentageInput.disabled = false;
+    if (resetPercentage) percentageInput.value = "";
+    percentageInput.placeholder = quickBidCommercialPlaceholder(modelInput.value);
+    percentageInput.setAttribute("aria-label", quickBidCommercialPercentLabel(modelInput.value));
+    percentageInput.setAttribute("title", quickBidCommercialPercentLabel(modelInput.value));
+  }
+  const percentageLabel = rowElement.querySelector("[data-quick-bid-commercial-percent-label]");
+  if (percentageLabel) percentageLabel.textContent = quickBidCommercialPercentLabel(modelInput.value);
+  const activeModel = String(modelInput.value || "direct_cost_plus").toLowerCase();
+  card.querySelectorAll("[data-commercial-model-guide]").forEach((guide) => {
+    const isSelected = guide.dataset.commercialModelGuide === activeModel;
+    guide.classList.toggle("is-selected", isSelected);
+    if (isSelected) guide.setAttribute("aria-current", "true");
+    else guide.removeAttribute("aria-current");
+  });
+  const effect = rowElement.querySelector("[data-quick-bid-commercial-effect]");
+  if (effect) effect.outerHTML = renderQuickBidCommercialEffect(modelInput.value);
+  const selectedContext = card.querySelector("[data-commercial-model-selected-context]");
+  if (selectedContext) selectedContext.outerHTML = commercialModelSelectedContextHtml(modelInput.value);
+  const preview = rowElement.querySelector("[data-quick-bid-commercial-preview]");
+  if (preview) preview.outerHTML = renderQuickBidCommercialPreview(quickBidDraftFromRow(rowElement));
 }
 
 function renderQuickBidDetails(row = {}) {
@@ -3306,6 +3574,7 @@ function renderQuickBidDetails(row = {}) {
                 <strong>${escapeHtml(dualText("Best alternative", "Mejor alternativa"))}</strong>
                 <small>${escapeHtml(dualText("Use only when a substitute equipment or capacity model improves the offer.", "Usa esto solo cuando un equipo o modelo de capacidad alternativo mejora la oferta."))}</small>
               </div>
+              <button type="button" class="icon-button quick-bid-panel-close" data-close-quick-bid-panel title="${escapeAttribute(dualText("Close alternative", "Cerrar alternativa"))}" aria-label="${escapeAttribute(dualText("Close alternative", "Cerrar alternativa"))}">x</button>
             </header>
             <div class="quick-bid-extra-grid">
               <label class="quick-bid-check"><input type="checkbox" data-quick-bid-extra-field="best_alternative_offered" ${row.best_alternative_offered ? "checked" : ""} />${escapeHtml(dualText("Include alternative", "Incluir alternativa"))}</label>
@@ -3320,6 +3589,7 @@ function renderQuickBidDetails(row = {}) {
                 <strong>${escapeHtml(dualText("Live capacity", "Capacidad en vivo"))}</strong>
                 <small>${escapeHtml(dualText("Add availability, ETAs and unit context only when they are confirmed.", "Agrega disponibilidad, ETAs y contexto de unidad solo cuando esten confirmados."))}</small>
               </div>
+              <button type="button" class="icon-button quick-bid-panel-close" data-close-quick-bid-panel title="${escapeAttribute(dualText("Close capacity", "Cerrar capacidad"))}" aria-label="${escapeAttribute(dualText("Close capacity", "Cerrar capacidad"))}">x</button>
             </header>
             <div class="quick-bid-extra-grid">
               <label>${escapeHtml(dualText("Equipment available", "Equipo disponible"))}<select data-quick-bid-extra-field="equipment_available"><option value="">${escapeHtml(dualText("Not declared", "No declarado"))}</option><option value="true" ${equipmentAvailable === "true" ? "selected" : ""}>${escapeHtml(dualText("Available", "Disponible"))}</option><option value="false" ${equipmentAvailable === "false" ? "selected" : ""}>${escapeHtml(dualText("Not available", "No disponible"))}</option></select></label>
@@ -3340,62 +3610,71 @@ function renderQuickBidDetails(row = {}) {
   `;
 }
 
-function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
-  const rows = quickBidRows(carrierBook, invitation);
+function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}, options = {}) {
+  const eligibleRows = quickBidRows(carrierBook, invitation);
+  const rows = quickBidRowsForSelectedLane(carrierBook, invitation, options.invitationToken);
   if (!rows.length) return "";
+  const packagePayload = masterPackageForCarrier(carrierBook, invitation);
+  const selectedRow = rows[0];
+  const selectedPosition = Math.max(eligibleRows.findIndex((row) => String(row.invitation_token || "") === String(selectedRow.invitation_token || "")) + 1, 1);
+  const selectedLane = selectedRow.lane || {};
   return `
-    <section id="carrier-quick-bid-grid" class="carrier-quick-bid-grid">
+    <section id="carrier-quick-bid-grid" class="carrier-quick-bid-grid" data-selected-quick-bid-token="${escapeAttribute(selectedRow.invitation_token || "")}">
       <div class="bid-room-section-heading">
         <div>
-          <p class="eyebrow">${escapeHtml(dualText("Quick lane bids", "Pujas rapidas por ruta"))}</p>
-          <h3>${escapeHtml(dualText("Quote or edit every invited lane in rows", "Cotiza o edita cada ruta invitada en filas"))}</h3>
+          <h3>${escapeHtml(dualText("Bid tools", "Herramientas de puja"))}</h3>
         </div>
-        <span class="status-pill neutral">${escapeHtml(dualText(`${rows.length} editable lane(s)`, `${rows.length} ruta(s) editables`))}</span>
+        <span class="status-pill neutral" title="${escapeAttribute(dualText("Use the route selector above to switch lanes without losing your current context.", "Usa el selector de rutas de arriba para cambiar de lane sin perder tu contexto actual."))}">${escapeHtml(dualText(`Route ${selectedPosition} of ${eligibleRows.length}`, `Ruta ${selectedPosition} de ${eligibleRows.length}`))}</span>
       </div>
-      <p class="bid-board-note">${escapeHtml(dualText(
-        "Update the core offer in-row. Expand Best alternative or Live capacity only when this lane needs more detail.",
-        "Actualiza la oferta principal en la fila. Despliega Mejor alternativa o Capacidad en vivo solo cuando esta ruta necesite mas detalle."
-      ))}</p>
-      ${commercialModelGuideHtml()}
+      <div class="quick-bid-context" title="${escapeAttribute(dualText("Use the route selector to move between invited lanes. The XLSX template in the RFx Master Package is for quoting more than one lane at a time.", "Usa el selector de rutas para cambiar entre lanes invitados. El template XLSX en Paquete maestro RFx sirve para cotizar mas de una ruta a la vez."))}">
+        <strong>${escapeHtml(formatLane(selectedLane))}</strong>
+        <span>${escapeHtml(dualText("Select a commercial model, enter your rate, then publish or update this route.", "Selecciona el modelo comercial, captura tu tarifa y publica o actualiza esta ruta."))}</span>
+      </div>
+      ${commercialModelGuideHtml(selectedRow?.commercial_model)}
+      ${commercialModelSelectedContextHtml(selectedRow?.commercial_model)}
       <div class="table-wrap">
         <table class="quick-bid-table">
           <thead>
             <tr>
               <th>Lane</th>
               <th>${escapeHtml(dualText("Equipment", "Equipo"))}</th>
-              <th>${escapeHtml(dualText("All-in", "All-in"))}</th>
+              <th title="${escapeAttribute(dualText("The amount the carrier enters. Its commercial meaning changes with the selected model.", "El importe que captura el carrier. Su significado comercial cambia con el modelo seleccionado."))}">${escapeHtml(dualText("Carrier rate", "Tarifa carrier"))}</th>
               <th>${escapeHtml(dualText("Currency", "Moneda"))}</th>
               <th>${escapeHtml(dualText("Capacity", "Capacidad"))}</th>
               <th>${escapeHtml(dualText("Transit", "Transito"))}</th>
               <th>${escapeHtml(dualText("Valid through", "Vigente hasta"))}</th>
               <th>${escapeHtml(dualText("Commercial", "Comercial"))}</th>
-              <th>${escapeHtml(dualText("%", "%"))}</th>
+              <th title="${escapeAttribute(dualText("The percentage changes meaning by commercial model.", "El porcentaje cambia de significado segun el modelo comercial."))}">${escapeHtml(dualText("Commercial %", "% comercial"))}</th>
               <th>${escapeHtml(dualText("Status", "Estado"))}</th>
               <th>${escapeHtml(dualText("Action", "Accion"))}</th>
             </tr>
           </thead>
           <tbody>
             ${rows.map((row) => {
-              const lane = row.lane || {};
-              const model = String(row.commercial_model || "direct_cost_plus").toLowerCase();
+              const draft = pendingQuickBidDrafts.get(String(row.invitation_token || ""));
+              const displayRow = draft ? { ...row, ...draft } : row;
+              const lane = displayRow.lane || row.lane || {};
+              const model = String(displayRow.commercial_model || "direct_cost_plus").toLowerCase();
+              const fit = rowFitProgress(displayRow, packagePayload);
+              const fitActionLabel = quickFitActionLabel(fit);
               return `
                 <tr
                   data-quick-bid-row
                   data-invitation-token="${escapeAttribute(row.invitation_token || "")}"
-                  data-best-alternative="${escapeAttribute(row.best_alternative_offered ? "true" : "false")}"
-                  data-alternative-equipment="${escapeAttribute(row.alternative_equipment || "")}"
-                  data-alternative-units="${escapeAttribute(row.alternative_units ?? "")}"
-                  data-alternative-notes="${escapeAttribute(row.alternative_notes || "")}"
-                  data-equipment-available="${escapeAttribute(row.equipment_available === true ? "true" : row.equipment_available === false ? "false" : "")}"
-                  data-current-unit-location="${escapeAttribute(row.current_unit_location || "")}"
-                  data-deadhead-distance="${escapeAttribute(row.deadhead_distance ?? "")}"
-                  data-deadhead-unit="${escapeAttribute(row.deadhead_unit || "mi")}"
-                  data-unit-details="${escapeAttribute(row.unit_details || "")}"
-                  data-eta-pickup="${escapeAttribute(row.eta_pickup || "")}"
-                  data-eta-delivery="${escapeAttribute(row.eta_delivery || "")}"
-                  data-mirror-account-enabled="${escapeAttribute(row.mirror_account_enabled ? "true" : "false")}"
-                  data-availability-validation-notes="${escapeAttribute(row.availability_validation_notes || "")}"
-                  data-notes="${escapeAttribute(row.notes || "")}"
+                  data-best-alternative="${escapeAttribute(displayRow.best_alternative_offered ? "true" : "false")}"
+                  data-alternative-equipment="${escapeAttribute(displayRow.alternative_equipment || "")}"
+                  data-alternative-units="${escapeAttribute(displayRow.alternative_units ?? "")}"
+                  data-alternative-notes="${escapeAttribute(displayRow.alternative_notes || "")}"
+                  data-equipment-available="${escapeAttribute(displayRow.equipment_available === true ? "true" : displayRow.equipment_available === false ? "false" : "")}"
+                  data-current-unit-location="${escapeAttribute(displayRow.current_unit_location || "")}"
+                  data-deadhead-distance="${escapeAttribute(displayRow.deadhead_distance ?? "")}"
+                  data-deadhead-unit="${escapeAttribute(displayRow.deadhead_unit || "mi")}"
+                  data-unit-details="${escapeAttribute(displayRow.unit_details || "")}"
+                  data-eta-pickup="${escapeAttribute(displayRow.eta_pickup || "")}"
+                  data-eta-delivery="${escapeAttribute(displayRow.eta_delivery || "")}"
+                  data-mirror-account-enabled="${escapeAttribute(displayRow.mirror_account_enabled ? "true" : "false")}"
+                  data-availability-validation-notes="${escapeAttribute(displayRow.availability_validation_notes || "")}"
+                  data-notes="${escapeAttribute(displayRow.notes || "")}"
                 >
                   <td>
                     <strong>${escapeHtml(laneLabel(lane))}</strong>
@@ -3405,15 +3684,15 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
                     ${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}
                     <small>${escapeHtml([lane.operation, lane.service].filter(Boolean).join(" / ") || "-")}</small>
                   </td>
-                  <td><input data-quick-bid-field="bid_rate" inputmode="decimal" value="${escapeAttribute(row.bid_rate ?? "")}" placeholder="2900" /></td>
+                  <td><input data-quick-bid-field="bid_rate" inputmode="decimal" value="${escapeAttribute(displayRow.bid_rate ?? "")}" placeholder="2900" aria-label="${escapeAttribute(commercialStructureConfig(model).rateLabel)}" title="${escapeAttribute(commercialStructureConfig(model).rateEntryHelp)}" /></td>
                   <td>
                     <select data-quick-bid-field="currency">
-                      ${["USD", "MXN", "CAD"].map((currency) => `<option value="${currency}" ${currency === (row.currency || lane.currency || "USD") ? "selected" : ""}>${currency}</option>`).join("")}
+                      ${["USD", "MXN", "CAD"].map((currency) => `<option value="${currency}" ${currency === (displayRow.currency || lane.currency || "USD") ? "selected" : ""}>${currency}</option>`).join("")}
                     </select>
                   </td>
-                  <td><input data-quick-bid-field="weekly_capacity" inputmode="decimal" value="${escapeAttribute(row.weekly_capacity ?? "")}" placeholder="5" /></td>
-                  <td><input data-quick-bid-field="transit_days" inputmode="decimal" value="${escapeAttribute(row.transit_days ?? "")}" placeholder="2" /></td>
-                  <td><input data-quick-bid-field="valid_through" type="date" value="${escapeAttribute(dateOnlyValue(row.valid_through))}" /></td>
+                  <td><input data-quick-bid-field="weekly_capacity" inputmode="decimal" value="${escapeAttribute(displayRow.weekly_capacity ?? "")}" placeholder="5" /></td>
+                  <td><input data-quick-bid-field="transit_days" inputmode="decimal" value="${escapeAttribute(displayRow.transit_days ?? "")}" placeholder="2" /></td>
+                  <td><input data-quick-bid-field="valid_through" type="date" value="${escapeAttribute(dateOnlyValue(displayRow.valid_through))}" /></td>
                   <td>
                     <select data-quick-bid-field="commercial_model">
                       <option value="direct_cost_plus" ${model === "direct_cost_plus" ? "selected" : ""}>Cost-plus</option>
@@ -3421,21 +3700,26 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}) {
                       <option value="xbf_buy_sell" ${model === "xbf_buy_sell" ? "selected" : ""}>XBF buy-sell</option>
                     </select>
                     ${renderQuickBidCommercialEffect(model)}
+                    ${renderQuickBidCommercialPreview({ ...displayRow, commercial_model: model, currency: displayRow.currency || lane.currency || "USD" })}
                   </td>
-                  <td><input data-quick-bid-field="commercial_pct" inputmode="decimal" value="${escapeAttribute(quickBidCommercialPercent(row))}" placeholder="${escapeAttribute(quickBidCommercialPlaceholder(model))}" /></td>
+                  <td class="quick-bid-commercial-percent-cell">
+                    <input data-quick-bid-field="commercial_pct" inputmode="decimal" value="${escapeAttribute(quickBidCommercialPercent(displayRow))}" placeholder="${escapeAttribute(quickBidCommercialPlaceholder(model))}" aria-label="${escapeAttribute(quickBidCommercialPercentLabel(model))}" title="${escapeAttribute(quickBidCommercialPercentLabel(model))}" />
+                    <small data-quick-bid-commercial-percent-label>${escapeHtml(quickBidCommercialPercentLabel(model))}</small>
+                  </td>
                   <td class="quick-bid-row-status">${quickBidRowStatus(row)}</td>
                   <td>
                     <div class="quick-bid-actions">
-                      <button type="button" class="small-button" data-save-quick-bid>${escapeHtml(row.bid_rate ? dualText("Update", "Actualizar") : dualText("Submit", "Enviar"))}</button>
-                      <button type="button" class="secondary small-button" data-toggle-quick-bid-panel="alternative" title="${escapeAttribute(dualText("Add a compliant equipment or capacity alternative.", "Agrega una alternativa de equipo o capacidad compatible."))}">${escapeHtml(dualText("Alternative", "Alternativa"))}</button>
-                      <button type="button" class="secondary small-button" data-toggle-quick-bid-panel="capacity" title="${escapeAttribute(dualText("Add availability, ETAs and unit details.", "Agrega disponibilidad, ETAs y datos de unidad."))}">${escapeHtml(dualText("Live capacity", "Capacidad"))}</button>
-                      ${row.bid_rate
-                        ? `<button type="button" class="secondary small-button" data-withdraw-quick-bid>${escapeHtml(t("withdrawOffer"))}</button>`
-                        : `<button type="button" class="secondary small-button" data-decline-quick-invitation>${escapeHtml(t("rejectInvitation"))}</button>`}
+                      <button type="button" class="secondary small-button ${quickFitActionTone(fit)}" data-open-quick-lane-fit title="${escapeAttribute(dualText("Review or update the optional operational fit for this route. Selections save automatically.", "Revisa o actualiza el fit operativo opcional de esta ruta. Las selecciones se guardan automaticamente."))}">${escapeHtml(fitActionLabel)}</button>
+                      <button type="button" class="small-button" data-save-quick-bid title="${escapeAttribute(dualText("Publish or update this route offer.", "Publicar o actualizar la oferta de esta ruta."))}">${escapeHtml(displayRow.bid_rate ? dualText("Update", "Actualizar") : dualText("Offer", "Oferta"))}</button>
+                      <button type="button" class="secondary small-button" data-toggle-quick-bid-panel="alternative" aria-expanded="false" title="${escapeAttribute(dualText("Add a compliant equipment or capacity alternative.", "Agrega una alternativa de equipo o capacidad compatible."))}">${escapeHtml(dualText("Alt.", "Alternativa"))}</button>
+                      <button type="button" class="secondary small-button" data-toggle-quick-bid-panel="capacity" aria-expanded="false" title="${escapeAttribute(dualText("Add availability, ETAs and unit details.", "Agrega disponibilidad, ETAs y datos de unidad."))}">${escapeHtml(dualText("Live capacity", "Capacidad"))}</button>
+                      ${displayRow.bid_rate
+                        ? `<button type="button" class="secondary small-button" data-withdraw-quick-bid title="${escapeAttribute(dualText("Remove your current offer for this route.", "Retira tu oferta actual de esta ruta."))}">${escapeHtml(dualText("Withdraw", "Retirar oferta"))}</button>`
+                        : `<button type="button" class="secondary small-button" data-decline-quick-invitation title="${escapeAttribute(dualText("Decline this route when you will not quote it.", "Rechaza esta ruta si no la vas a cotizar."))}">${escapeHtml(dualText("Reject", "Rechazar"))}</button>`}
                     </div>
                   </td>
                 </tr>
-                ${renderQuickBidDetails(row)}
+                ${renderQuickBidDetails(displayRow)}
               `;
             }).join("")}
           </tbody>
@@ -3500,6 +3784,22 @@ function quickBidDraftFromRow(rowElement) {
   };
 }
 
+function capturePendingQuickBidDrafts(scope = card) {
+  scope?.querySelectorAll?.("[data-quick-bid-row]").forEach((rowElement) => {
+    rememberQuickBidDraft(rowElement);
+  });
+}
+
+function rememberQuickBidDraft(rowElement, { localOnly = false } = {}) {
+  const invitationToken = String(rowElement?.dataset?.invitationToken || "").trim();
+  if (!invitationToken) return;
+  const existing = pendingQuickBidDrafts.get(invitationToken);
+  pendingQuickBidDrafts.set(invitationToken, {
+    ...quickBidDraftFromRow(rowElement),
+    local_only: localOnly || existing?.local_only === true
+  });
+}
+
 function toggleQuickBidPanel(rowElement, panelName) {
   const details = rowElement?.nextElementSibling?.matches("[data-quick-bid-details]")
     ? rowElement.nextElementSibling
@@ -3511,16 +3811,45 @@ function toggleQuickBidPanel(rowElement, panelName) {
   details.querySelectorAll("[data-quick-bid-panel]").forEach((candidate) => {
     candidate.hidden = true;
   });
+  rowElement.querySelectorAll("[data-toggle-quick-bid-panel]").forEach((button) => {
+    button.setAttribute("aria-expanded", "false");
+  });
   details.hidden = !opening;
   if (!opening) return;
   panel.hidden = false;
+  rowElement.querySelector(`[data-toggle-quick-bid-panel="${CSS.escape(panelName || "")}"]`)?.setAttribute("aria-expanded", "true");
   panel.querySelector("input, select, textarea")?.focus({ preventScroll: true });
+}
+
+function closeQuickBidPanel(rowElement) {
+  const details = rowElement?.nextElementSibling?.matches("[data-quick-bid-details]")
+    ? rowElement.nextElementSibling
+    : null;
+  if (!details) return;
+  details.querySelectorAll("[data-quick-bid-panel]").forEach((panel) => {
+    panel.hidden = true;
+  });
+  rowElement.querySelectorAll("[data-toggle-quick-bid-panel]").forEach((button) => {
+    button.setAttribute("aria-expanded", "false");
+  });
+  details.hidden = true;
 }
 
 function setQuickBidRowStatus(rowElement, message, tone = "neutral") {
   const status = rowElement.querySelector(".quick-bid-row-status");
   if (!status) return;
   status.innerHTML = `<span class="status-message" data-tone="${escapeAttribute(tone)}">${escapeHtml(message)}</span>`;
+}
+
+function setQuickBidLocalDraftStatus(rowElement) {
+  const status = rowElement?.querySelector(".quick-bid-row-status");
+  if (!status) return;
+  const message = dualText("Unpublished changes", "Cambios sin publicar");
+  const title = dualText(
+    "These changes are retained in this browser until you publish the route offer.",
+    "Estos cambios se conservan en este navegador hasta que publiques la oferta de la ruta."
+  );
+  status.innerHTML = `<span class="status-message quick-bid-local-draft" data-tone="warning" title="${escapeAttribute(title)}">${escapeHtml(message)}</span>`;
 }
 
 function markQuickBidRowInvalid(rowElement, field) {
@@ -3560,6 +3889,7 @@ async function saveQuickBidRow(rowElement, button) {
   setQuickBidRowStatus(rowElement, dualText("Saving lane offer...", "Guardando oferta de la ruta..."), "neutral");
   try {
     await callBidApi("submit_bid", { token: rowToken, ...draft });
+    pendingQuickBidDrafts.delete(String(rowToken));
     markOwnOfferRevisionPending(rowToken);
     lastQuickBidSaveStatus = {
       token: rowToken,
@@ -3609,6 +3939,7 @@ async function updateBidParticipation(action, button, options = {}) {
   }
   try {
     await callBidApi(action, { token: actionToken });
+    pendingQuickBidDrafts.delete(String(actionToken));
     if (rowElement) {
       lastQuickBidSaveStatus = { token: actionToken, tone: "success", message: successText };
     }
@@ -3723,7 +4054,7 @@ function renderBidToolsWorkspace(carrierBook = {}, invitation = {}) {
   return `
     ${renderBidToolsLaneSwitcher(carrierBook, invitation)}
     ${renderSelectedLaneWorkspace(selectedInvitation.rfx_lanes || {}, selectedInvitation, [], false, carrierBook)}
-    ${renderQuickLaneBidGridShell(carrierBook, invitation)}
+    ${renderQuickLaneBidGridShell(carrierBook, invitation, { invitationToken: selectedInvitation.invitation_token })}
   `;
 }
 
@@ -3732,6 +4063,7 @@ function selectBidToolsLane(invitationToken, options = {}) {
   const selected = quickBidRows(lastCarrierBook || {}, lastInvitation || {})
     .find((row) => String(row.invitation_token || "") === nextToken);
   if (!selected) return;
+  capturePendingQuickBidDrafts(card.querySelector('[data-private-workspace-panel="bids"]'));
   selectedBidToolsToken = nextToken;
   setPrivateWorkspace("bids");
   const panel = card.querySelector('[data-private-workspace-panel="bids"]');
@@ -3759,23 +4091,30 @@ function renderBidToolsLaneSwitcher(carrierBook = {}, invitation = {}) {
   const currentToken = String(selectedBidToolsToken || invitation.invitation_token || tokenFromUrl() || "");
   return `
     <section class="bid-tools-lane-switcher" aria-label="${escapeAttribute(dualText("Enabled lanes", "Rutas habilitadas"))}">
-      <div class="bid-room-section-heading">
-        <div>
-          <p class="eyebrow">${escapeHtml(dualText("Quick bids by route", "Pujas rapidas por ruta"))}</p>
-          <h3>${escapeHtml(dualText("Choose the route you want to review or quote", "Elige la ruta que quieres revisar o cotizar"))}</h3>
-        </div>
-        <small>${escapeHtml(dualText("This changes only the route panel below. The package stays in place.", "Esto cambia solo el panel de ruta de abajo. El paquete se mantiene en su lugar."))}</small>
+      <div class="bid-tools-lane-switcher-bar">
+        <strong>${escapeHtml(dualText("Bid tools", "Herramientas de puja"))}</strong>
+        <small>${escapeHtml(dualText("Select a lane to quote. Fit is optional and autosaves.", "Selecciona una ruta para cotizar. El fit es opcional y se guarda automaticamente."))}</small>
       </div>
-      <div class="bid-tools-lane-switcher-list">
+      <div class="bid-tools-lane-switcher-list" role="tablist" aria-label="${escapeAttribute(dualText("Invited routes", "Rutas invitadas"))}">
         ${rows.map((row) => {
           const rowToken = String(row.invitation_token || "");
           const selected = rowToken === currentToken;
           const fit = rowFitProgress(row, masterPackageForCarrier(carrierBook, invitation));
+          const lane = row.lane || {};
+          const status = bookStatus(row);
+          const quoted = Number(row.bid_rate || 0) > 0;
+          const title = [
+            formatLane(lane),
+            [lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / "),
+            [lane.operation, lane.service].filter(Boolean).join(" / "),
+            `${laneFitLabel(fit)} ${dualText("fit context", "fit registrado")}`,
+            quoted ? `${dualText("Offer", "Oferta")}: ${formatMoney(row.bid_rate, row.currency || lane.currency || "USD")}` : dualText("No offer submitted", "Sin oferta enviada")
+          ].filter(Boolean).join(" | ");
           return `
-            <button type="button" class="bid-tools-lane-option ${selected ? "is-selected" : ""}" data-bid-tools-lane-token="${escapeAttribute(rowToken)}" aria-pressed="${selected ? "true" : "false"}">
-              <span>#${escapeHtml(row.lane?.lane_number || "-")}</span>
-              <strong>${escapeHtml(formatLane(row.lane || {}))}</strong>
-              <small>${escapeHtml(laneFitLabel(fit))}</small>
+            <button type="button" class="bid-tools-lane-option ${selected ? "is-selected" : ""}" data-bid-tools-lane-token="${escapeAttribute(rowToken)}" role="tab" aria-selected="${selected ? "true" : "false"}" aria-current="${selected ? "page" : "false"}" title="${escapeAttribute(title)}">
+              <span class="bid-tools-lane-number">#${escapeHtml(lane.lane_number || "-")}</span>
+              <strong>${escapeHtml(formatLane(lane))}</strong>
+              <span class="status-pill ${statusTone(status)}">${escapeHtml(quoted ? dualText("Quoted", "Cotizada") : statusLabel(status))}</span>
             </button>
           `;
         }).join("") || `<p class="bid-board-note">${escapeHtml(dualText("No invited lanes are available for quoting.", "No hay rutas invitadas disponibles para cotizar."))}</p>`}
@@ -3786,24 +4125,10 @@ function renderBidToolsLaneSwitcher(carrierBook = {}, invitation = {}) {
 
 function renderSelectedLaneWorkspace(lane = {}, invitation = {}, _selectedLaneDetails = [], _isBookView = false, carrierBook = {}) {
   const packagePayload = masterPackageForCarrier(carrierBook, invitation);
-  const fit = laneFitProgress(lane, invitation, packagePayload);
   const status = String(invitation.invitation_status || "").toLowerCase();
   return `
     <section class="bid-tools-selected-route">
-      <div class="bid-tools-route-summary">
-        <div>
-          <p class="eyebrow">${escapeHtml(dualText("Selected route", "Ruta seleccionada"))}</p>
-          <h3>${escapeHtml(formatLane(lane))}</h3>
-          <p>${escapeHtml(dualText("Fit notes are optional. Quote directly in the row below and add only the details this route needs.", "Las notas de fit son opcionales. Cotiza directamente en la fila de abajo y agrega solo los detalles que esta ruta necesite."))}</p>
-        </div>
-        <dl class="bid-tools-route-facts">
-          <div><dt>${escapeHtml(dualText("Equipment", "Equipo"))}</dt><dd>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</dd></div>
-          <div><dt>${escapeHtml(dualText("Operation", "Operacion"))}</dt><dd>${escapeHtml(lane.operation || "-")}</dd></div>
-          <div><dt>${escapeHtml(dualText("Service", "Servicio"))}</dt><dd>${escapeHtml(lane.service || "-")}</dd></div>
-          <div><dt>${escapeHtml(dualText("Fit", "Fit"))}</dt><dd><span class="status-pill neutral" title="${escapeAttribute(dualText("Optional route context visible to procurement.", "Contexto opcional de ruta visible para procurement."))}">${escapeHtml(`${fit.complete}/${fit.total}`)}</span></dd></div>
-        </dl>
-      </div>
-      ${["declined", "awarded", "not_awarded"].includes(status)
+      ${["declined", "awarded", "backup", "not_awarded"].includes(status)
         ? `<p class="bid-board-note">${escapeHtml(dualText("This route is no longer available for a new offer.", "Esta ruta ya no esta disponible para una nueva oferta."))}</p>`
         : renderLaneFitChecklist(lane, invitation, packagePayload)}
     </section>
@@ -4010,6 +4335,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
   const deadline = deadlineCopy(event);
   const multiLaneRows = currentEventBookRows(carrierBook, event);
   const bidToolRows = quickBidRows(carrierBook, invitation);
+  const bidCommercialConfig = commercialStructureConfig(invitation.commercial_model || "direct_cost_plus");
   if (!bidToolRows.some((row) => String(row.invitation_token || "") === String(selectedBidToolsToken || ""))) {
     selectedBidToolsToken = String(invitation.invitation_token || bidToolRows[0]?.invitation_token || "");
   }
@@ -4101,7 +4427,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       <p class="status-message">${escapeHtml(t("loadingChat"))}</p>
     </section>
 
-    <div id="bid-editor-modal" class="bid-editor-modal" hidden>
+    <template id="bid-editor-modal" data-retired="inline-quick-bid-replaces-modal" hidden>
       <button class="bid-editor-scrim" type="button" data-close-bid-editor aria-label="Close offer editor"></button>
       <div class="bid-editor-panel" role="dialog" aria-modal="true" aria-labelledby="bid-editor-title">
     <form id="bid-form" class="bid-form">
@@ -4129,8 +4455,9 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
         </div>
         <div class="guided-bid-fields">
           <label>
-            ${escapeHtml(t("allInRate"))}
-            <input id="bid-rate" required inputmode="decimal" value="${escapeHtml(invitation.bid_rate ?? "")}" placeholder="2900" />
+            <span id="bid-rate-label">${escapeHtml(bidCommercialConfig.rateLabel)}</span>
+            <input id="bid-rate" required inputmode="decimal" value="${escapeHtml(invitation.bid_rate ?? "")}" placeholder="2900" aria-describedby="bid-rate-entry-help" />
+            <small id="bid-rate-entry-help" class="commercial-rate-entry-help">${escapeHtml(bidCommercialConfig.rateEntryHelp)}</small>
           </label>
           <label>
             ${escapeHtml(t("currency"))}
@@ -4278,7 +4605,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
       <p id="bid-submit-status" class="status-message" role="status"></p>
     </form>
       </div>
-    </div>
+    </template>
 
     <section data-private-workspace-panel="award" class="private-workspace-section" hidden>
       <section id="carrier-award-outcome" class="carrier-award-outcome"></section>
@@ -4297,7 +4624,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
     </section>
   `;
 
-  card.querySelector("#bid-form").addEventListener("submit", async (event) => {
+  card.querySelector("#bid-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (bidFormSubmitting) return;
     const status = card.querySelector("#bid-submit-status");
@@ -4356,25 +4683,53 @@ async function loadInvitation(options = {}) {
     return;
   }
   try {
-    const data = await callBidApi("get_invitation");
+    const data = await callBidApi("get_invitation", options.refreshOnly
+      ? {
+          refresh_only: true,
+          include_history: options.refreshForm === true || options.refreshQuickGrid === true
+        }
+      : {});
     lastInvitation = data.invitation;
     lastLiveBoard = data.live_board || {};
-    lastSegmentConfirmations = Array.isArray(data.segment_confirmations) ? data.segment_confirmations : [];
-    rememberPublicBoardInvitationAccess(data.invitation || {}, data.carrier_book || {});
-    if (options.refreshOnly && card.querySelector("#bid-form")) {
+    if (Array.isArray(data.segment_confirmations)) lastSegmentConfirmations = data.segment_confirmations;
+    if (Array.isArray(data.bid_history)) lastBidHistory = data.bid_history;
+    if (data.carrier_book) lastCarrierBook = data.carrier_book;
+    if (data.current_book_row && lastCarrierBook) {
+      const invited = Array.isArray(lastCarrierBook.invited) ? [...lastCarrierBook.invited] : [];
+      const rowIndex = invited.findIndex((row) => row.invitation_id === data.current_book_row.invitation_id);
+      if (rowIndex >= 0) invited[rowIndex] = data.current_book_row;
+      else invited.push(data.current_book_row);
+      const quoted = invited.filter((row) => (
+        row.bid_rate !== null && row.bid_rate !== undefined
+      ) || ["quoted", "bid_submitted", "awarded"].includes(String(row.participation_status || "").toLowerCase()));
+      lastCarrierBook = {
+        ...lastCarrierBook,
+        invited,
+        quoted,
+        summary: {
+          ...(lastCarrierBook.summary || {}),
+          invited: invited.length,
+          quoted: quoted.length,
+          awarded: invited.filter((row) => row.award_status === "awarded").length,
+          backup: invited.filter((row) => row.award_status === "backup").length,
+          not_awarded: invited.filter((row) => row.award_status === "not_awarded").length
+        }
+      };
+    }
+    rememberPublicBoardInvitationAccess(data.invitation || {}, lastCarrierBook || {});
+    if (options.refreshOnly && card.querySelector("[data-private-workspace-panel]")) {
       renderLiveBoard(data.live_board);
-      renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
-      renderBidHistory(data.bid_history);
-      renderCarrierBook(data.carrier_book);
+      renderAwardOutcome(data.invitation, lastCarrierBook || {}, data.live_board);
+      renderBidHistory(lastBidHistory);
       if (options.refreshForm) hydrateBidFormFromOffer(currentSubmittedOffer(data.live_board), data.invitation);
       else syncBidFormMode();
       const quickGridHasFocus = Boolean(document.activeElement?.closest?.("#carrier-quick-bid-grid"));
-      if (options.refreshQuickGrid || !quickGridHasFocus) renderQuickLaneBidGrid(data.carrier_book, data.invitation);
+      if (options.refreshQuickGrid || !quickGridHasFocus) renderQuickLaneBidGrid(lastCarrierBook || {}, data.invitation);
     } else {
-      renderInvitation(data.invitation, data.live_board, data.carrier_book);
-      renderAwardOutcome(data.invitation, data.carrier_book, data.live_board);
-      renderBidHistory(data.bid_history);
-      renderCarrierBook(data.carrier_book);
+      renderInvitation(data.invitation, data.live_board, lastCarrierBook || {});
+      renderAwardOutcome(data.invitation, lastCarrierBook || {}, data.live_board);
+      renderBidHistory(lastBidHistory);
+      renderCarrierBook(lastCarrierBook || {});
     }
     detectPrivateBidRoomSignals(data);
     await loadCarrierChat();
@@ -4423,7 +4778,7 @@ document.addEventListener("click", async (event) => {
 
   const bidToolsLaneButton = event.target.closest("[data-bid-tools-lane-token]");
   if (bidToolsLaneButton) {
-    selectBidToolsLane(bidToolsLaneButton.dataset.bidToolsLaneToken || "", { openFit: true });
+    selectBidToolsLane(bidToolsLaneButton.dataset.bidToolsLaneToken || "");
     return;
   }
 
@@ -4504,6 +4859,25 @@ document.addEventListener("click", async (event) => {
     return;
   }
 
+  const closeQuickBidPanelButton = event.target.closest("[data-close-quick-bid-panel]");
+  if (closeQuickBidPanelButton) {
+    const row = closeQuickBidPanelButton.closest("[data-quick-bid-details]")?.previousElementSibling;
+    if (row?.matches("[data-quick-bid-row]")) closeQuickBidPanel(row);
+    return;
+  }
+
+  const openQuickLaneFitButton = event.target.closest("[data-open-quick-lane-fit]");
+  if (openQuickLaneFitButton) {
+    const fit = card.querySelector("#carrier-lane-fit");
+    if (fit) {
+      fit.open = true;
+      fit.classList.add("is-focused");
+      fit.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => fit.classList.remove("is-focused"), 1800);
+    }
+    return;
+  }
+
   const quickBidWithdrawButton = event.target.closest("[data-withdraw-quick-bid]");
   if (quickBidWithdrawButton) {
     const row = quickBidWithdrawButton.closest("[data-quick-bid-row]");
@@ -4550,6 +4924,16 @@ document.addEventListener("click", async (event) => {
   const awardFilterButton = event.target.closest("[data-carrier-award-filter]");
   if (awardFilterButton) {
     bookFilters.view = awardFilterButton.dataset.carrierAwardFilter || "all";
+    setPrivateWorkspace("book");
+    renderCarrierBook(lastCarrierBook || {});
+    card.querySelector("#carrier-business-book")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+
+  const routeBookFilterButton = event.target.closest("[data-route-book-filter]");
+  if (routeBookFilterButton) {
+    bookFilters.view = routeBookFilterButton.dataset.routeBookFilter || "all";
+    setPrivateWorkspace("book");
     renderCarrierBook(lastCarrierBook || {});
     card.querySelector("#carrier-business-book")?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
@@ -4745,6 +5129,15 @@ card.addEventListener("input", (event) => {
     updateBidReviewSummary();
   }
 
+  const quickBidInput = event.target.closest("[data-quick-bid-field], [data-quick-bid-extra-field]");
+  if (quickBidInput) {
+    const row = quickBidInput.closest("[data-quick-bid-row]");
+    syncQuickBidCommercialPresentation(row);
+    rememberQuickBidDraft(row, { localOnly: true });
+    setQuickBidLocalDraftStatus(row);
+    return;
+  }
+
   const search = event.target.closest("[data-book-search]");
   if (!search) return;
   bookFilters.query = search.value;
@@ -4800,23 +5193,39 @@ card.addEventListener("change", async (event) => {
   const quickCommercialModel = event.target.closest("[data-quick-bid-field='commercial_model']");
   if (quickCommercialModel) {
     const row = quickCommercialModel.closest("[data-quick-bid-row]");
-    const pct = row?.querySelector("[data-quick-bid-field='commercial_pct']");
-    const effect = row?.querySelector("[data-quick-bid-commercial-effect]");
-    if (pct) {
-      pct.disabled = false;
-      pct.value = "";
-      pct.placeholder = quickBidCommercialPlaceholder(quickCommercialModel.value);
-    }
-    if (effect) {
-      const config = commercialStructureConfig(quickCommercialModel.value);
-      const copy = commercialModelEffect(quickCommercialModel.value);
-      effect.textContent = `${config.tone}: ${copy}`;
-      effect.title = copy;
-    }
+    syncQuickBidCommercialPresentation(row, { resetPercentage: true });
+    rememberQuickBidDraft(row, { localOnly: true });
+    setQuickBidLocalDraftStatus(row);
+    return;
+  }
+
+  const quickBidChange = event.target.closest("[data-quick-bid-field], [data-quick-bid-extra-field]");
+  if (quickBidChange) {
+    const row = quickBidChange.closest("[data-quick-bid-row]");
+    syncQuickBidCommercialPresentation(row);
+    rememberQuickBidDraft(row, { localOnly: true });
+    setQuickBidLocalDraftStatus(row);
   }
 });
 
 document.addEventListener("keydown", (event) => {
+  const bidToolsTab = event.target.closest?.("[data-bid-tools-lane-token]");
+  if (bidToolsTab && ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+    const tabs = [...bidToolsTab.closest("[role='tablist']")?.querySelectorAll("[data-bid-tools-lane-token]") || []];
+    const index = tabs.indexOf(bidToolsTab);
+    if (tabs.length && index >= 0) {
+      event.preventDefault();
+      const nextIndex = event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? tabs.length - 1
+          : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      const nextToken = tabs[nextIndex]?.dataset.bidToolsLaneToken || "";
+      selectBidToolsLane(nextToken);
+      requestAnimationFrame(() => card.querySelector(`[data-bid-tools-lane-token="${CSS.escape(nextToken)}"]`)?.focus());
+      return;
+    }
+  }
   if (event.key === "Escape" && !card.querySelector("#bid-editor-modal")?.hidden) {
     closeBidEditor();
   }

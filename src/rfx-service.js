@@ -1,7 +1,31 @@
 import { callRatewareApi } from "./rateware-api.js";
 
+const RETRYABLE_RFX_READ_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+function isTransientRfxReadError(error) {
+  const status = Number(error?.status || error?.code);
+  if (RETRYABLE_RFX_READ_STATUSES.has(status)) return true;
+  return /failed to fetch|network ?error|network request failed|timeout|timed out|temporarily unavailable|server error/i.test(
+    String(error?.message || error || "")
+  );
+}
+
+function waitForRfxReadRetry(delayMs = 350) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+async function retryRfxRead(read) {
+  try {
+    return await read();
+  } catch (error) {
+    if (!isTransientRfxReadError(error)) throw error;
+    await waitForRfxReadRetry();
+    return await read();
+  }
+}
+
 export async function fetchRfxEvents() {
-  return (await callRatewareApi("list_rfx_events")).rows;
+  return (await retryRfxRead(() => callRatewareApi("list_rfx_events"))).rows;
 }
 
 export async function createRfxEvent(event) {
@@ -33,7 +57,16 @@ export async function updateRfxLane(id, patch) {
 }
 
 export async function fetchRfxDetail(eventId) {
-  return await callRatewareApi("list_rfx_detail", { event_id: eventId });
+  return await retryRfxRead(() => callRatewareApi("list_rfx_detail", { event_id: eventId }));
+}
+
+export async function fetchRfxResponseVendorIds(eventId) {
+  const result = await retryRfxRead(() => callRatewareApi("list_rfx_response_vendor_ids", { rfx_event_id: eventId }));
+  return Array.isArray(result?.vendor_ids) ? result.vendor_ids : [];
+}
+
+export async function fetchRfxEventContext(eventId) {
+  return await retryRfxRead(() => callRatewareApi("list_rfx_event_context", { rfx_event_id: eventId }));
 }
 
 export async function autoShortlistRfxLane(laneId, limit = 10) {
@@ -86,7 +119,7 @@ export async function archiveRfxLaneVendors(ids = []) {
 }
 
 export async function fetchBidRoomChat(eventId, filters = {}) {
-  return await callRatewareApi("list_bid_room_chat", { rfx_event_id: eventId, ...filters });
+  return await retryRfxRead(() => callRatewareApi("list_bid_room_chat", { rfx_event_id: eventId, ...filters }));
 }
 
 export async function postBidRoomChatMessage(eventId, message) {

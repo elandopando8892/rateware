@@ -12,7 +12,9 @@ import {
   deleteRfxEvent,
   duplicateRfxEvent,
   fetchRfxDetail,
+  fetchRfxEventContext,
   fetchRfxEvents,
+  fetchRfxResponseVendorIds,
   importRfxLanes,
   inviteRfxLaneVendors,
   fetchBidRoomChat,
@@ -25,15 +27,15 @@ import {
   updateRfxLane,
   updateRfxBid,
   rejectRfxBid
-} from "./rfx-service.js";
+} from "./rfx-service.js?v=20260803-bid-room-context-v1";
 import {
   createOutreachCampaign,
   createOutreachTemplate,
   archiveOutreachAudienceSegment,
   deleteOutreachTemplate,
-  fetchContactHistory,
   fetchOutreachAudienceSegments,
   fetchOutreachMessages,
+  fetchOutreachMessage,
   fetchOutreachMessagesPage,
   fetchOutreachTrackingSummary,
   fetchOutreachTemplates,
@@ -49,7 +51,7 @@ import {
   sendWhatsappGroupOutreachMessages,
   syncOutreachWhatsappTemplates,
   updateOutreachTemplate
-} from "./outreach-service.js?v=20260724-outreach-control-v1";
+} from "./outreach-service.js?v=20260801-outreach-read-v1";
 import { fetchCarrierRecommendations } from "./business-intelligence-service.js";
 import { createVendorSegment, deleteVendorSegment, fetchVendorSegments, fetchVendors, updateVendorSegment } from "./vendor-service.js";
 import { fetchShippers } from "./shipper-service.js";
@@ -230,6 +232,7 @@ const rfxWhatsappTargetMode = document.querySelector("#rfx-whatsapp-target-mode"
 const rfxWhatsappTargetModeField = document.querySelector("#rfx-whatsapp-target-mode-field");
 const rfxOutreachSender = document.querySelector("#rfx-outreach-sender");
 const createRfxOutreachCampaignButton = document.querySelector("#create-rfx-outreach-campaign");
+const rfxOpenDeliveryQueueButton = document.querySelector("#rfx-open-delivery-queue");
 const rfxOutreachStatus = document.querySelector("#rfx-outreach-status");
 const rfxOutreachCarrierAdder = document.querySelector("#rfx-outreach-carrier-adder");
 const rfxOutreachCarrierSearch = document.querySelector("#rfx-outreach-carrier-search");
@@ -244,6 +247,8 @@ const rfxOutreachCarrierFit = document.querySelector("#rfx-outreach-carrier-fit"
 const rfxOutreachCarrierLane = document.querySelector("#rfx-outreach-carrier-lane");
 const rfxOutreachCarrierFitSummary = document.querySelector("#rfx-outreach-carrier-fit-summary");
 const rfxRefreshOutreachCarrierFitButton = document.querySelector("#rfx-refresh-outreach-carrier-fit");
+const rfxSelectVisibleOutreachCarriersButton = document.querySelector("#rfx-select-visible-outreach-carriers");
+const rfxSelectAllOutreachCarriersButton = document.querySelector("#rfx-select-all-outreach-carriers");
 const rfxAddOutreachCarriersButton = document.querySelector("#rfx-add-outreach-carriers");
 const rfxClearOutreachCarrierSelectionButton = document.querySelector("#rfx-clear-outreach-carrier-selection");
 const rfxOutreachCarrierWaveSummary = document.querySelector("#rfx-outreach-carrier-wave-summary");
@@ -268,8 +273,19 @@ const rfxOutreachAudienceAttentionCount = document.querySelector("#rfx-outreach-
 const rfxOutreachAudienceList = document.querySelector("#rfx-outreach-audience-list");
 const rfxOutreachAudienceStatus = document.querySelector("#rfx-outreach-audience-status");
 const rfxMessageSetupState = document.querySelector("#rfx-message-setup-state");
+const rfxMessageWaveContext = document.querySelector("#rfx-message-wave-context");
+const rfxMessageReadiness = document.querySelector("#rfx-message-readiness");
+const rfxGmailSenderNote = document.querySelector("#rfx-gmail-sender-note");
+const rfxOutreachSenderField = document.querySelector("#rfx-outreach-sender-field");
 const rfxEventDeliveryContext = document.querySelector("#rfx-event-delivery-context");
 const rfxEventDeliveryOverview = document.querySelector("#rfx-event-delivery-overview");
+const rfxDeliveryWaveState = document.querySelector("#rfx-delivery-wave-state");
+const rfxDeliveryParticipationFilters = document.querySelector("#rfx-delivery-participation-filters");
+const rfxDeliveryParticipationList = document.querySelector("#rfx-delivery-participation-list");
+const rfxDeliveryParticipationSummary = document.querySelector("#rfx-delivery-participation-summary");
+const rfxDeliveryParticipationPageSummary = document.querySelector("#rfx-delivery-participation-page-summary");
+const rfxDeliveryParticipationPrevious = document.querySelector("#rfx-delivery-participation-previous");
+const rfxDeliveryParticipationNext = document.querySelector("#rfx-delivery-participation-next");
 const rfxOutreachPreview = document.querySelector("#rfx-outreach-preview");
 const rfxOutreachPreviewChannel = document.querySelector("#rfx-outreach-preview-channel");
 const rfxWhatsappReadiness = document.querySelector("#rfx-whatsapp-readiness");
@@ -405,6 +421,7 @@ let savedRfxEventViews = readStoredRfxEventViews();
 let selectedRfxEventViewId = "";
 let selectedEventId = requestedRfxEventId || String(storedRfxWorkspaceContext.eventId || "") || null;
 let selectedEvent = null;
+let selectedEventDetailReady = false;
 let rfxLaunchWorkspace = RFX_LAUNCH_WORKSPACE_KEYS.has(storedRfxWorkspaceContext.launchWorkspace)
   ? storedRfxWorkspaceContext.launchWorkspace
   : "carrier";
@@ -425,8 +442,9 @@ let outreachTemplates = [];
 let rfxTemplateEditorTemplateId = null;
 let rfxTemplateEditorDirty = false;
 let rfxTemplateVisualEditing = false;
-let contactHistoryRows = [];
 let outreachMessages = [];
+let rfxResponseVendorIds = new Set();
+const outreachMessageDetailRequests = new Map();
 let bidRoomChatThreads = { rows: [], google_chat_configured: false };
 let bidRoomChatFilter = RFX_CHAT_FILTER_KEYS.has(requestedRfxChatFilter)
   ? requestedRfxChatFilter
@@ -439,8 +457,9 @@ let rfxEventsLoadVersion = 0;
 let rfxEventsLoadRequest = null;
 let rfxDetailLoadVersion = 0;
 const rfxDetailRequests = new Map();
-const rfxContactHistoryRequests = new Map();
+const rfxEventContextRequests = new Map();
 const rfxOutreachMessageRequests = new Map();
+const rfxResponseVendorRequests = new Map();
 const rfxChatRequests = new Map();
 let participantBulkMutationRunning = false;
 let eventLifecycleMutationRunning = false;
@@ -489,6 +508,13 @@ let selectedOutreachAudienceVendorIds = new Set();
 let outreachAudienceLoading = false;
 let outreachAudienceLoadVersion = 0;
 let outreachAudienceSearchTimer = null;
+let deliveryParticipationRows = [];
+let deliveryParticipationCounts = {};
+let deliveryParticipationTotal = 0;
+let deliveryParticipationLoading = false;
+let deliveryParticipationLoadVersion = 0;
+let deliveryParticipationStatus = "all";
+let deliveryParticipationPage = 0;
 let focusedLaneId = null;
 let activeLaneFilter = RFX_LANE_FILTER_KEYS.has(requestedRfxLaneFilter)
   ? requestedRfxLaneFilter
@@ -542,8 +568,6 @@ const DRAFT_TRACKING_STATES = [
   ["manual_sent", "Manual sent"],
   ["delivery_unknown", "Delivery unknown"],
   ["failed", "Failed"],
-  ["replied", "Replied"],
-  ["quoted", "Quoted"],
   ["bounced", "Bounced"],
   ["suppressed", "Suppressed"],
   ["archived", "Archived"]
@@ -552,6 +576,15 @@ if (!DRAFT_TRACKING_STATES.some(([status]) => status === draftQueueTrackingStatu
 const BID_ROOM_PARTICIPANT_BATCH_SIZE = 1000;
 const BID_ROOM_PARTICIPANT_SELECTION_STORAGE_PREFIX = "rateware:bid-room:participant-selection:";
 const DRAFT_QUEUE_SEARCH_DEBOUNCE_MS = 120;
+const DELIVERY_PARTICIPATION_PAGE_SIZE = 50;
+const DELIVERY_PARTICIPATION_FILTERS = [
+  ["all", "All"],
+  ["needs_queue", "Needs message"],
+  ["in_delivery", "In queue"],
+  ["contacted", "Contacted"],
+  ["response", "Response"],
+  ["attention", "Attention"]
+];
 
 function readRfxWorkspaceContext(key) {
   try {
@@ -664,7 +697,11 @@ function activateRfxLaunchWorkspace(workspace, options = {}) {
   });
   if (rfxLaunchWorkspace === "message") renderOutreachPreview();
   if (rfxLaunchWorkspace === "delivery") {
+    renderDeliveryParticipation();
     renderDraftQueue();
+    if (selectedEventId && (refresh || !deliveryParticipationRows.length)) {
+      void loadDeliveryParticipation({ force: refresh });
+    }
     if (selectedEventId && (refresh || !draftQueueRows.length)) {
       void loadDraftQueuePage(selectedEventId, { refreshTracking: true });
     }
@@ -674,6 +711,15 @@ function activateRfxLaunchWorkspace(workspace, options = {}) {
 
 function normalizeRfxOperateWorkspace(value) {
   return RFX_OPERATE_WORKSPACE_KEYS.has(value) ? value : "auction";
+}
+
+function shouldRefreshBidRoomCommunications(eventId = selectedEventId) {
+  return document.visibilityState === "visible"
+    && Boolean(eventId)
+    && selectedEventId === eventId
+    && selectedEventDetailReady
+    && rfxOperateWorkspace === "communications"
+    && rfxWorkbench?.current() === "responses";
 }
 
 function activateRfxOperateWorkspace(workspace, options = {}) {
@@ -688,7 +734,12 @@ function activateRfxOperateWorkspace(workspace, options = {}) {
   rfxOperateWorkspacePanels.forEach((panel) => {
     panel.hidden = panel.dataset.rfxOperateWorkspacePanel !== rfxOperateWorkspace;
   });
-  if (rfxOperateWorkspace === "communications") renderBidRoomChat();
+  if (rfxOperateWorkspace === "communications") {
+    renderBidRoomChat();
+    if (shouldRefreshBidRoomCommunications() && options.refresh !== false) {
+      void loadBidRoomChat({ force: true, syncInbound: false });
+    }
+  }
   if (rfxOperateWorkspace === "auction") renderLiveOfferManager();
   if (rfxOperateWorkspace === "carrier-bids") renderResponseBoard();
   if (persist) persistRfxWorkspaceContext();
@@ -969,11 +1020,39 @@ function rfxEventPayload() {
 }
 
 function updateEventActionState() {
-  const hasSelection = Boolean(selectedEventId);
+  const hasSelection = Boolean(selectedEventId && selectedEventDetailReady);
   [editRfxButton, duplicateRfxButton, openRfxButton, closeRfxButton, archiveRfxButton, deleteRfxButton]
     .forEach((button) => {
       if (button) button.disabled = !hasSelection || eventLifecycleMutationRunning;
     });
+}
+
+function clearBidRoomDetailState({ clearEventSelection = false } = {}) {
+  selectedEventDetailReady = false;
+  selectedEvent = null;
+  currentLanes = [];
+  outreachMessages = [];
+  rfxResponseVendorIds = new Set();
+  bidRoomChatThreads = emptyBidRoomChatThreads();
+  focusedLaneId = null;
+  selectedLaneIds.clear();
+  selectedInvitationIds.clear();
+  selectedChatRecipient = null;
+  if (clearEventSelection) selectedEventId = null;
+  updateLaneImportButton();
+  updateEventActionState();
+}
+
+function renderBidRoomDetailUnavailable(error = null) {
+  renderEvents();
+  renderLanes();
+  renderBidRoomChat();
+  if (error) {
+    lanesBody.innerHTML = tableErrorState(22, error, {
+      title: "Business book lanes could not load",
+      retryAction: "load-rfx-events"
+    });
+  }
 }
 
 function eventLifecycleRiskSummary() {
@@ -1562,13 +1641,15 @@ function updateManualLaneImportButton() {
   if (!importManualLanesButton) return;
   const rows = manualLaneRows.filter(hasManualLaneUserInput);
   const invalidRows = rows.filter((row) => manualLaneIssues(row).length);
-  importManualLanesButton.disabled = !selectedEventId || rfxLaneEntryMode() === "locked" || !rows.length || invalidRows.length > 0;
+  importManualLanesButton.disabled = !selectedEventDetailReady || rfxLaneEntryMode() === "locked" || !rows.length || invalidRows.length > 0;
   if (!rows.length) {
     setStatus(manualLaneStatus, "Add origin and destination for each manual lane.");
   } else if (invalidRows.length) {
     setStatus(manualLaneStatus, `${invalidRows.length} manual row(s) need origin and destination before import.`, "error");
-  } else if (!selectedEventId) {
-    setStatus(manualLaneStatus, `${rows.length} manual lane(s) ready. Select or create a bid event before import.`, "warning");
+  } else if (!selectedEventDetailReady) {
+    setStatus(manualLaneStatus, selectedEventId
+      ? `${rows.length} manual lane(s) ready. Wait for this RFx to finish loading before import.`
+      : `${rows.length} manual lane(s) ready. Select or create a bid event before import.`, "warning");
   } else {
     setStatus(manualLaneStatus, `${rows.length} manual lane(s) ready to import.`, "success");
   }
@@ -1637,6 +1718,7 @@ function updateLaneEntryControls() {
   const mode = rfxLaneEntryMode();
   const isAppend = mode === "append";
   const isLocked = mode === "locked";
+  const canEdit = selectedEventDetailReady && !isLocked;
   if (laneEntryTitle) {
     laneEntryTitle.textContent = isAppend
       ? "Add lanes to the published business book"
@@ -1662,9 +1744,9 @@ function updateLaneEntryControls() {
         ? "This event is closed. New lanes cannot be added."
         : "Upload a completed lane template to preview rows before import.";
   }
-  if (laneTemplateFileInput) laneTemplateFileInput.disabled = isLocked;
-  if (addManualLaneButton) addManualLaneButton.disabled = isLocked;
-  if (clearManualLanesButton) clearManualLanesButton.disabled = isLocked;
+  if (laneTemplateFileInput) laneTemplateFileInput.disabled = !canEdit;
+  if (addManualLaneButton) addManualLaneButton.disabled = !canEdit;
+  if (clearManualLanesButton) clearManualLanesButton.disabled = !canEdit;
 }
 
 function updateLaneImportButton() {
@@ -1672,7 +1754,7 @@ function updateLaneImportButton() {
   const hasTemplateRows = readyLaneTemplateRows().length > 0;
   const mode = rfxLaneEntryMode();
   importLanesButton.textContent = mode === "append" ? "Add lanes" : "Import template";
-  importLanesButton.disabled = !selectedEventId || !hasTemplateRows || mode === "locked";
+  importLanesButton.disabled = !selectedEventDetailReady || !hasTemplateRows || mode === "locked";
   updateLaneEntryControls();
   updateManualLaneImportButton();
 }
@@ -1727,6 +1809,10 @@ function emptyBidRoomChatThreads() {
     google_chat_space_name: "",
     google_chat_space_display_name: ""
   };
+}
+
+function bidRoomHasEventGroupThread(snapshot = bidRoomChatThreads) {
+  return (snapshot?.rows || []).some((thread) => thread?.thread_type === "event_group" && thread?.status !== "archived");
 }
 
 function getSettledValue(result, fallback) {
@@ -2725,8 +2811,8 @@ function targetLaneTableSignature(target) {
 }
 
 function firstOutreachTarget() {
-  return outreachTargetInvitations().find((target) => targetHasChannel(target, selectedOutreachChannel()))
-    || outreachTargetInvitations()[0]
+  return outreachWaveTargets().find((target) => targetHasChannel(target, selectedOutreachChannel()))
+    || outreachWaveTargets()[0]
     || null;
 }
 
@@ -2769,7 +2855,10 @@ function sampleOutreachContext(target, template = selectedOutreachTemplateDraft(
 }
 
 function outreachTargetInvitations() {
-  const selectedIds = selectedInvitationIds.size ? selectedInvitationIds : null;
+  // A Carrier fit wave is an explicit delivery decision. Do not let an older
+  // row or lane selection from another workspace silently narrow that wave.
+  const hasAudienceWave = selectedOutreachAudienceVendorIds.size > 0;
+  const selectedIds = !hasAudienceWave && selectedInvitationIds.size ? selectedInvitationIds : null;
   const selectedLaneSet = !selectedIds && selectedLaneIds.size ? selectedLaneIds : null;
   return allOutreachTargetInvitations()
     .filter(({ lane, invitation }) => {
@@ -2777,6 +2866,14 @@ function outreachTargetInvitations() {
       if (selectedLaneSet) return selectedLaneSet.has(lane.id);
       return true;
     });
+}
+
+function outreachWaveTargets() {
+  // The Message workspace must generate drafts only for the carrier wave the
+  // operator selected in Carrier fit or Invitation status.
+  const targets = outreachTargetInvitations();
+  if (!selectedOutreachAudienceVendorIds.size) return targets;
+  return targets.filter(({ invitation }) => selectedOutreachAudienceVendorIds.has(String(invitation.vendor_id || "")));
 }
 
 function targetHasChannel(target, channel) {
@@ -2792,6 +2889,10 @@ function targetHasChannel(target, channel) {
   if (normalized === "whatsapp_direct_group" || normalized === "whatsapp+group") return hasWhatsapp && hasGroup;
   if (normalized === "email_whatsapp_group" || normalized === "all") return hasEmail && hasWhatsapp && hasGroup;
   return hasEmail;
+}
+
+function carrierCanReceiveOutreachChannel(vendor, channel = selectedOutreachChannel()) {
+  return targetHasChannel({ invitation: { vendors: vendor || {} } }, channel);
 }
 
 function outreachChannelLabel(channel = "") {
@@ -2824,6 +2925,48 @@ function renderOutreachTemplateSelect() {
   }
 }
 
+function renderMessageReadiness({ template, channel, targets, ready, needsCompatibleContact }) {
+  if (!rfxMessageReadiness) return;
+  const selectedWaveCount = selectedOutreachAudienceVendorIds.size;
+  const scopeCount = selectedWaveCount || targets.length;
+  const preflightCount = launchPreflightIssues().length;
+  const hasEvent = Boolean(selectedEventId);
+  const hasTemplate = Boolean(template);
+  const readyTone = hasEvent && hasTemplate && scopeCount && ready && !preflightCount && !needsCompatibleContact
+    ? "success"
+    : hasEvent && hasTemplate && scopeCount
+      ? "warning"
+      : "neutral";
+  const scopeLabel = selectedWaveCount
+    ? "Selected carrier wave"
+    : "Current RFx scope";
+  const channelLabel = outreachChannelLabel(channel).replace(" only", "");
+  const blockerCopy = !hasEvent
+    ? "Select an RFx before preparing a queue."
+    : !hasTemplate
+      ? "Choose a message language before preparing drafts."
+      : !scopeCount
+        ? "Add compatible carriers from Carrier fit before preparing drafts."
+        : preflightCount
+          ? `${formatNumber(preflightCount)} RFx setup check${preflightCount === 1 ? "" : "s"} still need attention.`
+          : needsCompatibleContact
+            ? `${formatNumber(needsCompatibleContact)} carrier${needsCompatibleContact === 1 ? "" : "s"} need a compatible ${channelLabel} contact.`
+            : `${formatNumber(ready)} carrier${ready === 1 ? "" : "s"} are ready for this ${channelLabel} wave.`;
+  rfxMessageReadiness.dataset.tone = readyTone;
+  rfxMessageReadiness.innerHTML = `
+    <div class="rfx-message-readiness-copy">
+      <span>${escapeHtml(scopeLabel)}</span>
+      <strong>${formatNumber(scopeCount)} carrier${scopeCount === 1 ? "" : "s"} in scope</strong>
+      <small>${escapeHtml(blockerCopy)}</small>
+    </div>
+    <div class="rfx-message-readiness-metrics">
+      <span title="Carriers with a compatible contact for the selected channel"><b>${formatNumber(ready)}</b> ready</span>
+      ${needsCompatibleContact ? `<span title="Carriers that need a valid contact before a draft can be created"><b>${formatNumber(needsCompatibleContact)}</b> contact needed</span>` : ""}
+      <span title="Selected delivery channel">${escapeHtml(channelLabel)}</span>
+    </div>
+  `;
+}
+
 function renderOutreachPreview() {
   if (!rfxOutreachPreview) return;
   renderRfxTemplateEditor();
@@ -2831,15 +2974,28 @@ function renderOutreachPreview() {
   const channel = selectedOutreachChannel();
   const targetMode = channel === "whatsapp_group" ? "vendor_group" : "direct_vendor";
   const senderEmail = rfxOutreachSender?.value || APPROVED_GMAIL_SENDER;
-  const targets = outreachTargetInvitations();
+  const targets = outreachWaveTargets();
   const ready = targets.filter((target) => targetHasChannel(target, channel)).length;
+  const needsCompatibleContact = Math.max(targets.length - ready, 0);
   const whatsappDirectReady = targets.filter((target) => targetHasChannel(target, "whatsapp")).length;
   const whatsappGroupReady = targets.filter((target) => targetHasChannel(target, "whatsapp_group")).length;
-  const targetScope = selectedInvitationIds.size
-    ? `${formatNumber(selectedInvitationIds.size)} selected vendor rows`
+  const targetScope = selectedOutreachAudienceVendorIds.size
+    ? `${formatNumber(selectedOutreachAudienceVendorIds.size)} selected carrier${selectedOutreachAudienceVendorIds.size === 1 ? "" : "s"}`
+    : selectedInvitationIds.size
+      ? `${formatNumber(selectedInvitationIds.size)} selected vendor rows`
     : selectedLaneIds.size
       ? `${formatNumber(selectedLaneIds.size)} selected lanes`
       : "All active shortlist";
+  if (rfxMessageWaveContext) {
+    rfxMessageWaveContext.textContent = !selectedEventId
+      ? "Select an RFx before preparing an invitation wave."
+      : selectedOutreachAudienceVendorIds.size
+        ? `This wave contains ${formatNumber(selectedOutreachAudienceVendorIds.size)} selected carrier${selectedOutreachAudienceVendorIds.size === 1 ? "" : "s"}; ${formatNumber(ready)} can receive ${outreachChannelLabel(channel)}.${needsCompatibleContact ? ` ${formatNumber(needsCompatibleContact)} need a compatible contact before they can enter delivery.` : ""}`
+        : targets.length
+          ? `${formatNumber(targets.length)} carrier invitation target${targets.length === 1 ? "" : "s"} are in scope; ${formatNumber(ready)} can receive ${outreachChannelLabel(channel)}.${needsCompatibleContact ? ` ${formatNumber(needsCompatibleContact)} need a compatible contact before they can enter delivery.` : ""} Select a wave in Carrier fit to narrow this queue.`
+          : "No eligible carrier targets are available for this RFx yet.";
+  }
+  renderMessageReadiness({ template, channel, targets, ready, needsCompatibleContact });
   const placeholders = templatePlaceholders(template);
   const previewTarget = firstOutreachTarget();
   const previewContext = sampleOutreachContext(previewTarget, template);
@@ -2918,7 +3074,27 @@ function renderOutreachPreview() {
     `;
   }
   if (createRfxOutreachCampaignButton) {
-    createRfxOutreachCampaignButton.disabled = !selectedEventId || !template || !targets.length || Boolean(launchPreflightIssues().length) || rfxTemplateEditorDirty || rfxTemplateVisualEditing;
+    const selectedWaveCount = selectedOutreachAudienceVendorIds.size;
+    const deliveryLabel = outreachChannelLabel(channel).replace(" only", "");
+    createRfxOutreachCampaignButton.textContent = selectedWaveCount
+      ? ready
+        ? `Prepare ${formatNumber(ready)} ${deliveryLabel} draft${ready === 1 ? "" : "s"}`
+        : "Add a compatible contact"
+      : "Select a carrier wave";
+    createRfxOutreachCampaignButton.title = selectedWaveCount
+      ? ready
+        ? `Create individual ${outreachChannelLabel(channel)} drafts for the ${formatNumber(ready)} selected carrier(s) with a compatible contact.${needsCompatibleContact ? ` ${formatNumber(needsCompatibleContact)} selected carrier(s) require a contact update first.` : ""}`
+        : `Update a compatible ${deliveryLabel} contact in Carrier fit or Carrier CRM before preparing this wave.`
+      : "Use Carrier fit or This RFx to select the carriers for this delivery wave.";
+    createRfxOutreachCampaignButton.disabled = !selectedWaveCount || !selectedEventId || !template || !targets.length || !ready || Boolean(launchPreflightIssues().length) || rfxTemplateEditorDirty || rfxTemplateVisualEditing;
+  }
+  if (rfxOpenDeliveryQueueButton) {
+    rfxOpenDeliveryQueueButton.disabled = !selectedEventId;
+    const selectedWaveCount = selectedOutreachAudienceVendorIds.size;
+    rfxOpenDeliveryQueueButton.textContent = selectedWaveCount ? "Review delivery queue" : "Open delivery queue";
+    rfxOpenDeliveryQueueButton.title = selectedWaveCount
+      ? "Review this selected RFx wave in Delivery queue. Messages remain drafts until you select and send them."
+      : "Open Delivery queue. Messages remain drafts until you select and send them.";
   }
   if (rfxWhatsappReadiness) {
     const groupMode = channel === "whatsapp_group" || channel === "email_whatsapp_group" || targetMode !== "direct_vendor";
@@ -2972,7 +3148,7 @@ function renderOutreachPreview() {
 
 function rfxWizardStats() {
   const invitations = currentLanes.flatMap((lane) => activeInvitations(lane));
-  const targets = outreachTargetInvitations();
+  const targets = outreachWaveTargets();
   const channel = selectedOutreachChannel();
   const readyTargets = targets.filter((target) => targetHasChannel(target, channel));
   const bids = currentLanes.flatMap((lane) => bidInvitations(lane));
@@ -3951,6 +4127,25 @@ function awardNoticeDraftRows() {
   });
 }
 
+async function ensureOutreachMessageDetail(messageId) {
+  const id = String(messageId || "");
+  if (!id) return null;
+  const current = outreachMessages.find((message) => String(message.id) === id)
+    || draftQueueRows.find((message) => String(message.id) === id)
+    || selectedDraftMessageRows.get(id);
+  if (current && Object.prototype.hasOwnProperty.call(current, "html_body")) return current;
+  if (outreachMessageDetailRequests.has(id)) return outreachMessageDetailRequests.get(id);
+  const request = fetchOutreachMessage(id).then((detail) => {
+    if (!detail) return current || null;
+    outreachMessages = outreachMessages.map((message) => String(message.id) === id ? { ...message, ...detail } : message);
+    draftQueueRows = draftQueueRows.map((message) => String(message.id) === id ? { ...message, ...detail } : message);
+    if (selectedDraftMessageRows.has(id)) selectedDraftMessageRows.set(id, { ...selectedDraftMessageRows.get(id), ...detail });
+    return detail;
+  }).finally(() => outreachMessageDetailRequests.delete(id));
+  outreachMessageDetailRequests.set(id, request);
+  return request;
+}
+
 function visibleAwardNoticeRows(rows = awardNoticeDraftRows()) {
   return rows.filter((message) => String(message.channel || "email").toLowerCase() === "email");
 }
@@ -4093,6 +4288,15 @@ function renderAwardNoticePreview(rows = visibleAwardNoticeRows()) {
   if (meta) meta.textContent = recipient + " - " + outcome;
   const body = rfxAwardNoticePreview.querySelector("[data-rfx-award-notice-preview-body]");
   if (!body) return;
+  if (!Object.prototype.hasOwnProperty.call(message, "html_body")) {
+    body.textContent = "Loading email preview...";
+    void ensureOutreachMessageDetail(message.id).then(() => {
+      if (String(awardNoticePreviewId) === String(message.id)) renderAwardNoticePreview();
+    }).catch((error) => {
+      if (String(awardNoticePreviewId) === String(message.id)) body.textContent = `Email preview could not load. ${humanizeError(error)}`;
+    });
+    return;
+  }
   const frame = document.createElement("iframe");
   frame.className = "rfx-award-notice-email-frame";
   frame.title = "Award email preview";
@@ -5300,7 +5504,7 @@ function requestRfxEventResource(requestMap, eventId, loader, { force = false } 
   return promise;
 }
 
-async function loadBidRoomChat({ force = false } = {}) {
+async function loadBidRoomChat({ force = false, syncInbound = false } = {}) {
   const loadVersion = ++bidRoomChatLoadVersion;
   const eventId = selectedEventId;
   if (!eventId) {
@@ -5309,7 +5513,12 @@ async function loadBidRoomChat({ force = false } = {}) {
     return;
   }
   try {
-    const threads = await requestRfxEventResource(rfxChatRequests, eventId, () => fetchBidRoomChat(eventId), { force });
+    const threads = await requestRfxEventResource(
+      rfxChatRequests,
+      eventId,
+      () => fetchBidRoomChat(eventId, { sync_google_chat: syncInbound }),
+      { force }
+    );
     if (loadVersion !== bidRoomChatLoadVersion || selectedEventId !== eventId) return;
     bidRoomChatThreads = threads || emptyBidRoomChatThreads();
     renderBidRoomChat();
@@ -5800,11 +6009,17 @@ function selectedOutreachChannel() {
 
 function syncOutreachChannelUi() {
   const channel = selectedOutreachChannel();
+  const draftChannels = outreachDraftChannels(channel);
+  const emailChannel = draftChannels.includes("email");
+  const whatsappChannel = draftChannels.some((item) => item === "whatsapp" || item === "whatsapp_group");
   if (rfxWhatsappTargetMode) {
     rfxWhatsappTargetMode.value = channel === "whatsapp_group" ? "vendor_group" : "direct_vendor";
     rfxWhatsappTargetMode.disabled = true;
   }
   if (rfxWhatsappTargetModeField) rfxWhatsappTargetModeField.hidden = true;
+  if (rfxOutreachSenderField) rfxOutreachSenderField.hidden = !emailChannel;
+  if (rfxGmailSenderNote) rfxGmailSenderNote.hidden = !emailChannel;
+  if (rfxWhatsappReadiness) rfxWhatsappReadiness.hidden = !whatsappChannel;
   document.querySelectorAll("[data-rfx-draft-action-channel]").forEach((button) => {
     button.hidden = button.dataset.rfxDraftActionChannel !== channel;
   });
@@ -5851,6 +6066,12 @@ function resetDraftQueue({ clearSelection = false } = {}) {
   draftQueueLoading = false;
   draftQueueTrackingSummary = { total: 0, states: {} };
   draftQueueTrackingScopeKey = "";
+  deliveryParticipationRows = [];
+  deliveryParticipationCounts = {};
+  deliveryParticipationTotal = 0;
+  deliveryParticipationLoading = false;
+  deliveryParticipationStatus = "all";
+  deliveryParticipationPage = 0;
   if (clearSelection) clearDraftQueueSelection();
 }
 
@@ -5941,6 +6162,7 @@ async function loadDraftQueueTrackingSummaryRequest(eventId, scopeKey) {
     const result = await fetchOutreachTrackingSummary({
       rfx_event_id: eventId,
       channels: outreachDraftChannels(selectedOutreachChannel()),
+      enforce_rfx_event_scope: true,
       include_archived: true
     });
     if (loadVersion !== draftQueueTrackingLoadVersion || selectedEventId !== eventId || draftTrackingScopeKey(eventId) !== scopeKey) return;
@@ -5967,6 +6189,8 @@ function draftQueuePageQuery(eventId) {
   return {
     rfx_event_id: eventId,
     channels: outreachDraftChannels(selectedOutreachChannel()),
+    enforce_rfx_event_scope: true,
+    compact: true,
     search: draftQueueSearch,
     tracking_status: draftQueueTrackingStatus,
     ...(draftQueueTrackingStatus === "archived" ? { status: "archived", include_archived: true } : {}),
@@ -6044,7 +6268,7 @@ function outreachTrackingState(message = {}) {
     ? ""
     : String(invitation.bid_rate).trim();
   const bidRate = bidText ? decisionNumber(bidText) : null;
-  if (["quoted", "bid_submitted", "awarded", "award_pending"].includes(invitationStatus) || bidRate !== null) return "quoted";
+  if (bidRate !== null && bidRate > 0) return "quoted";
   const signal = [
     message.status,
     message.provider_response_status,
@@ -6057,7 +6281,7 @@ function outreachTrackingState(message = {}) {
   if (/suppressed|do_not_contact|do-not-contact|blocked contact/.test(signal)) return "suppressed";
   if (/bounc|mailer-daemon|undeliverable/.test(signal)) return "bounced";
   if (/failed|error|rejected/.test(signal)) return "failed";
-  if (["replied", "responded"].includes(invitationStatus) || invitation.responded_at || /replied|responded/.test(signal)) return "replied";
+  if (["replied", "responded", "quoted", "bid_submitted", "awarded", "award_pending"].includes(invitationStatus) || invitation.responded_at || /replied|responded/.test(signal)) return "replied";
   if (/manual_sent/.test(signal)) return "manual_sent";
   if (/delivery_unknown/.test(signal)) return "delivery_unknown";
   if (/read/.test(signal)) return "read";
@@ -6230,12 +6454,14 @@ function updateDraftSendControls(rows = []) {
       : "Refresh selected";
   }
   if (draftSendSelectedButton) {
+    draftSendSelectedButton.hidden = activeChannel !== "email";
     draftSendSelectedButton.disabled = draftQueueMutationRunning || !sendableSelectedIds.length;
     draftSendSelectedButton.textContent = sendableSelectedIds.length
       ? `Send ${formatNumber(sendableSelectedIds.length)} email${sendableSelectedIds.length === 1 ? "" : "s"}`
       : "Send selected emails";
   }
   if (draftSendSelectedWhatsappButton) {
+    draftSendSelectedWhatsappButton.hidden = activeChannel !== "whatsapp";
     draftSendSelectedWhatsappButton.disabled = draftQueueMutationRunning || !sendableWhatsappIds.length || !whatsappSendingReady;
     draftSendSelectedWhatsappButton.textContent = sendableWhatsappIds.length
       ? `Send ${formatNumber(sendableWhatsappIds.length)} WhatsApp`
@@ -6243,6 +6469,7 @@ function updateDraftSendControls(rows = []) {
     draftSendSelectedWhatsappButton.title = whatsappSendingReady ? "" : whatsappConnectionReadiness.message;
   }
   if (draftMarkSelectedWhatsappGroupsButton) {
+    draftMarkSelectedWhatsappGroupsButton.hidden = activeChannel !== "whatsapp_group";
     draftMarkSelectedWhatsappGroupsButton.disabled = draftQueueMutationRunning || !markableGroupIds.length;
     draftMarkSelectedWhatsappGroupsButton.textContent = markableGroupIds.length
       ? `Mark ${formatNumber(markableGroupIds.length)} group${markableGroupIds.length === 1 ? "" : "s"} sent`
@@ -6323,13 +6550,214 @@ function eventInvitationNextAction(row = {}, status = eventInvitationStatus(row)
   })[status] || "Review";
 }
 
+function renderDeliveryWaveState() {
+  if (!rfxDeliveryWaveState) return;
+  if (!selectedEventId) {
+    rfxDeliveryWaveState.innerHTML = `
+      <div class="rfx-delivery-wave-copy">
+        <span>Invitation wave</span>
+        <strong>Select an RFx first</strong>
+      </div>
+    `;
+    rfxDeliveryWaveState.dataset.tone = "neutral";
+    return;
+  }
+  const selectedVendorIds = new Set([...selectedOutreachAudienceVendorIds].map((vendorId) => String(vendorId || "")).filter(Boolean));
+  if (!selectedVendorIds.size) {
+    rfxDeliveryWaveState.innerHTML = `
+      <div class="rfx-delivery-wave-copy">
+        <span>Invitation wave</span>
+        <strong>No carrier wave selected</strong>
+        <small>Select compatible carriers in Carrier fit or Invitation status before preparing delivery.</small>
+      </div>
+      <button type="button" class="secondary small-button" data-rfx-open-launch-workspace="carrier">Open Carrier fit</button>
+    `;
+    rfxDeliveryWaveState.dataset.tone = "neutral";
+    return;
+  }
+  const channel = selectedOutreachChannel();
+  const uniqueTargets = new Map();
+  outreachWaveTargets().forEach((target) => {
+    const vendorId = String(target.invitation?.vendor_id || "");
+    if (vendorId && !uniqueTargets.has(vendorId)) uniqueTargets.set(vendorId, target);
+  });
+  const waveTargets = [...uniqueTargets.values()];
+  const ready = waveTargets.filter((target) => targetHasChannel(target, channel)).length;
+  const statusByVendorId = new Map(outreachAudienceRows.map((row) => [String(row.vendor_id || ""), eventInvitationStatus(row)]));
+  const activeDeliveryStatuses = new Set(["drafted", "queued", "sending", "invited", "sent", "delivered", "read", "manual_sent", "delivery_unknown"]);
+  const responseStatuses = new Set(["replied", "quoted"]);
+  const attentionStatuses = new Set(["bounced", "failed", "suppressed", "no_contact"]);
+  const activeDelivery = waveTargets.filter((target) => activeDeliveryStatuses.has(statusByVendorId.get(String(target.invitation?.vendor_id || "")) || "")).length;
+  const responses = waveTargets.filter((target) => responseStatuses.has(statusByVendorId.get(String(target.invitation?.vendor_id || "")) || "")).length;
+  const attention = waveTargets.filter((target) => attentionStatuses.has(statusByVendorId.get(String(target.invitation?.vendor_id || "")) || "")).length;
+  const missingContact = Math.max(selectedVendorIds.size - ready, 0);
+  const tone = attention || missingContact ? "warning" : activeDelivery || responses ? "success" : "neutral";
+  const nextWorkspace = activeDelivery ? "delivery" : ready ? "message" : "carrier";
+  const nextLabel = activeDelivery
+    ? "Review draft queue"
+    : ready
+      ? "Prepare drafts"
+      : "Review contacts";
+  const nextTitle = activeDelivery
+    ? "Review this wave in Delivery queue. Messages remain unsent until you select and send them."
+    : ready
+      ? "Review the invitation message and prepare individual drafts. Nothing sends automatically."
+      : "Review missing carrier contact details before preparing this invitation wave.";
+  rfxDeliveryWaveState.dataset.tone = tone;
+  rfxDeliveryWaveState.innerHTML = `
+    <div class="rfx-delivery-wave-copy">
+      <span>Active invitation wave</span>
+      <strong>${formatNumber(selectedVendorIds.size)} selected for ${escapeHtml(outreachChannelLabel(channel))}</strong>
+      <small>Only this selected wave belongs to this RFx delivery queue. Other event history stays separate.</small>
+    </div>
+    <div class="rfx-delivery-wave-metrics" aria-label="Active invitation wave status">
+      <span title="Selected carriers with a compatible contact for the configured channel"><b>${formatNumber(ready)}</b> ready</span>
+      ${missingContact ? `<span title="Selected carriers that need a compatible contact before delivery"><b>${formatNumber(missingContact)}</b> need contact</span>` : ""}
+      ${activeDelivery ? `<span title="Selected carriers with a draft, queued, or delivered invitation"><b>${formatNumber(activeDelivery)}</b> in delivery</span>` : ""}
+      ${responses ? `<span title="Selected carriers with a reply or quote for this RFx"><b>${formatNumber(responses)}</b> response</span>` : ""}
+      ${attention ? `<span title="Selected carriers with a bounced, failed, suppressed, or missing contact status"><b>${formatNumber(attention)}</b> attention</span>` : ""}
+    </div>
+    <button type="button" class="secondary small-button" data-rfx-open-launch-workspace="${nextWorkspace}" title="${escapeHtml(nextTitle)}">${escapeHtml(nextLabel)}</button>
+  `;
+}
+
+function deliveryParticipationCount(status) {
+  const counts = deliveryParticipationCounts && typeof deliveryParticipationCounts === "object"
+    ? deliveryParticipationCounts
+    : {};
+  if (status === "all") return deliveryParticipationTotal;
+  const matchingStates = {
+    needs_queue: ["not_invited", "ready"],
+    in_delivery: ["drafted", "queued", "sending"],
+    contacted: ["invited", "sent", "delivered", "read", "manual_sent", "delivery_unknown"],
+    response: ["replied", "quoted"],
+    attention: ["bounced", "failed", "suppressed", "no_contact"]
+  };
+  return (matchingStates[status] || [status])
+    .reduce((total, state) => total + Number(counts[state] || 0), 0);
+}
+
+function renderDeliveryParticipation() {
+  if (!rfxDeliveryParticipationList || !rfxDeliveryParticipationSummary) return;
+  const eventLabel = selectedEvent?.rfx_id || selectedEvent?.name || "this RFx";
+  const totalPages = Math.max(1, Math.ceil(deliveryParticipationRows.length / DELIVERY_PARTICIPATION_PAGE_SIZE));
+  if (deliveryParticipationPage >= totalPages) deliveryParticipationPage = totalPages - 1;
+  const start = deliveryParticipationPage * DELIVERY_PARTICIPATION_PAGE_SIZE;
+  const pageRows = deliveryParticipationRows.slice(start, start + DELIVERY_PARTICIPATION_PAGE_SIZE);
+  const first = deliveryParticipationRows.length ? start + 1 : 0;
+  const last = start + pageRows.length;
+
+  if (rfxDeliveryParticipationFilters) {
+    rfxDeliveryParticipationFilters.innerHTML = DELIVERY_PARTICIPATION_FILTERS.map(([status, label]) => `
+      <button type="button" data-rfx-delivery-participation-filter="${escapeHtml(status)}" class="${deliveryParticipationStatus === status ? "is-active" : ""}" aria-pressed="${deliveryParticipationStatus === status}">
+        ${escapeHtml(label)} <span>${formatNumber(deliveryParticipationCount(status))}</span>
+      </button>
+    `).join("");
+  }
+  if (!selectedEventId) {
+    rfxDeliveryParticipationSummary.textContent = "Select an RFx to load carrier participation.";
+    rfxDeliveryParticipationList.innerHTML = '<tr><td colspan="5">Select an RFx to review carrier participation.</td></tr>';
+  } else if (deliveryParticipationLoading) {
+    rfxDeliveryParticipationSummary.textContent = `Loading carrier participation for ${eventLabel}.`;
+    rfxDeliveryParticipationList.innerHTML = '<tr><td colspan="5">Loading carrier participation for this RFx...</td></tr>';
+  } else if (!deliveryParticipationRows.length) {
+    rfxDeliveryParticipationSummary.textContent = `${eventLabel}: no carriers match this participation status.`;
+    rfxDeliveryParticipationList.innerHTML = `
+      <tr>
+        <td colspan="5">
+          No carriers match this participation status for the selected RFx.
+          ${deliveryParticipationStatus !== "all" ? '<button type="button" class="secondary small-button" data-rfx-show-all-delivery-participation>Show all carriers in this RFx</button>' : ""}
+        </td>
+      </tr>
+    `;
+  } else {
+    rfxDeliveryParticipationSummary.textContent = `${eventLabel}: ${formatNumber(deliveryParticipationTotal)} carrier${deliveryParticipationTotal === 1 ? "" : "s"} across every invited lane.`;
+    rfxDeliveryParticipationList.innerHTML = pageRows.map((row) => {
+      const vendorId = String(row.vendor_id || "");
+      const selected = selectedOutreachAudienceVendorIds.has(vendorId);
+      const status = eventInvitationStatus(row);
+      const lanes = Number(row.shortlisted_lane_count || row.lane_count || 0);
+      const eventLanes = Number(row.event_lane_count || lanes);
+      const contact = row.email || row.phone || "No verified contact";
+      const laneLabel = eventLanes > lanes
+        ? `${formatNumber(lanes)} / ${formatNumber(eventLanes)} lanes`
+        : `${formatNumber(lanes)} lane${lanes === 1 ? "" : "s"}`;
+      const canAddToWave = ["not_invited", "ready"].includes(status) && Boolean(vendorId);
+      return `
+        <tr class="${selected ? "is-selected-row" : ""}">
+          <td><strong>${escapeHtml(row.vendor_name || row.vendor_domain || "Carrier")}</strong><small title="${escapeHtml((row.lane_preview || []).join(" | "))}">${row.vendor_domain ? escapeHtml(row.vendor_domain) : ""}</small></td>
+          <td title="${escapeHtml((row.lane_preview || []).join(" | "))}">${escapeHtml(laneLabel)}</td>
+          <td>${escapeHtml(contact)}</td>
+          <td><span class="status-pill ${eventInvitationStatusTone(status)}" title="${escapeHtml(String(row.event_status_reason || row.reason || ""))}">${escapeHtml(eventInvitationStatusLabel(status))}</span></td>
+          <td><span class="rfx-delivery-next-action">${escapeHtml(eventInvitationNextAction(row, status))}</span>${canAddToWave ? `<button type="button" class="secondary small-button" data-rfx-delivery-participation-vendor="${escapeHtml(vendorId)}">${selected ? "Remove from wave" : "Add to wave"}</button>` : ""}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+  if (rfxDeliveryParticipationPageSummary) {
+    rfxDeliveryParticipationPageSummary.textContent = deliveryParticipationLoading
+      ? "Loading carriers..."
+      : `${first}-${last} of ${formatNumber(deliveryParticipationRows.length)} shown`;
+  }
+  if (rfxDeliveryParticipationPrevious) rfxDeliveryParticipationPrevious.disabled = deliveryParticipationLoading || deliveryParticipationPage <= 0;
+  if (rfxDeliveryParticipationNext) rfxDeliveryParticipationNext.disabled = deliveryParticipationLoading || deliveryParticipationPage >= totalPages - 1;
+}
+
+async function loadDeliveryParticipation({ force = false } = {}) {
+  const eventId = selectedEventId;
+  if (!eventId) {
+    deliveryParticipationRows = [];
+    deliveryParticipationCounts = {};
+    deliveryParticipationTotal = 0;
+    renderDeliveryParticipation();
+    renderEventDeliveryOverview();
+    return;
+  }
+  if (!force && deliveryParticipationLoading) return;
+  const loadVersion = ++deliveryParticipationLoadVersion;
+  deliveryParticipationLoading = true;
+  renderDeliveryParticipation();
+  try {
+    const audience = await previewOutreachAudience({
+      rfx_event_id: eventId,
+      channel: selectedOutreachChannel(),
+      status_filter: deliveryParticipationStatus,
+      audience_policy: {
+        mode: "all_eligible",
+        require_contact: false,
+        exclude_previously_contacted: false,
+        exclude_bounced: false
+      }
+    });
+    if (loadVersion !== deliveryParticipationLoadVersion || eventId !== selectedEventId) return;
+    deliveryParticipationRows = Array.isArray(audience?.rows) ? audience.rows : [];
+    deliveryParticipationCounts = audience?.counts && typeof audience.counts === "object" ? audience.counts : {};
+    deliveryParticipationTotal = Number(audience?.total || deliveryParticipationRows.length);
+  } catch (error) {
+    if (loadVersion !== deliveryParticipationLoadVersion || eventId !== selectedEventId) return;
+    deliveryParticipationRows = [];
+    deliveryParticipationCounts = {};
+    deliveryParticipationTotal = 0;
+    setStatus(rfxOutreachAudienceStatus, `Carrier participation could not load. ${humanizeError(error)}`, "error");
+  } finally {
+    if (loadVersion === deliveryParticipationLoadVersion) {
+      deliveryParticipationLoading = false;
+      renderDeliveryParticipation();
+      renderEventDeliveryOverview();
+    }
+  }
+}
+
 function renderEventDeliveryOverview() {
   const eventLabel = selectedEvent?.rfx_id || selectedEvent?.name || "this RFx";
-  const counts = outreachAudienceCounts && typeof outreachAudienceCounts === "object" ? outreachAudienceCounts : {};
+  const counts = Object.keys(deliveryParticipationCounts || {}).length
+    ? deliveryParticipationCounts
+    : outreachAudienceCounts && typeof outreachAudienceCounts === "object" ? outreachAudienceCounts : {};
+  const selectedWaveCount = selectedOutreachAudienceVendorIds.size;
   const count = (values) => values.reduce((total, status) => total + Number(counts[status] || 0), 0);
   const pending = count(["not_invited", "ready"]);
   const queued = count(["drafted", "queued", "sending"]);
-  const delivered = count(["invited", "sent", "delivered", "read", "manual_sent", "delivery_unknown"]);
+  const contacted = count(["invited", "sent", "delivered", "read", "manual_sent", "delivery_unknown"]);
   const response = count(["replied", "quoted"]);
   const attention = count(["bounced", "failed", "suppressed", "no_contact"]);
   if (rfxEventDeliveryContext) {
@@ -6340,6 +6768,8 @@ function renderEventDeliveryOverview() {
   if (rfxMessageSetupState) {
     rfxMessageSetupState.textContent = !selectedEventId
       ? "Select an RFx"
+      : selectedWaveCount
+        ? `${formatNumber(selectedWaveCount)} selected for this wave`
       : pending
         ? `${formatNumber(pending)} ready to queue`
         : queued
@@ -6347,26 +6777,27 @@ function renderEventDeliveryOverview() {
           : response
             ? `${formatNumber(response)} response${response === 1 ? "" : "s"}`
             : "Queue up to date";
-    rfxMessageSetupState.className = `status-pill ${attention ? "warning" : pending || queued || response ? "success" : "muted"}`;
+    rfxMessageSetupState.className = `status-pill ${attention ? "warning" : selectedWaveCount || pending || queued || response ? "success" : "muted"}`;
   }
+  renderDeliveryWaveState();
   if (!rfxEventDeliveryOverview) return;
   if (!selectedEventId) {
     rfxEventDeliveryOverview.innerHTML = '<article><span>Event delivery</span><strong>-</strong><small>Select an RFx first</small></article>';
     return;
   }
   const cards = [
-    ["Not invited", pending, "Add or prepare carriers", "not_invited", pending ? "warning" : "neutral"],
+    ["Needs message", pending, "Not invited or ready to queue", "needs_queue", pending ? "warning" : "neutral"],
     ["In queue", queued, "Drafted, queued, or sending", "in_delivery", queued ? "warning" : "neutral"],
-    ["Delivered", delivered, "Awaiting carrier response", "delivered", delivered ? "success" : "neutral"],
+    ["Contacted", contacted, "Sent or awaiting provider receipt", "contacted", contacted ? "success" : "neutral"],
     ["Response", response, "Reply or quote received", "response", response ? "success" : "neutral"],
     ["Attention", attention, "Bounce, failure, or contact issue", "attention", attention ? "danger" : "neutral"]
   ];
   rfxEventDeliveryOverview.innerHTML = cards.map(([label, value, detail, filter, tone]) => `
-    <article data-tone="${escapeHtml(tone)}" data-rfx-event-status-filter="${escapeHtml(filter)}" title="Filter this RFx by ${escapeHtml(label.toLowerCase())}">
+    <button type="button" data-tone="${escapeHtml(tone)}" data-rfx-event-status-filter="${escapeHtml(filter)}" class="${deliveryParticipationStatus === filter ? "is-active" : ""}" aria-pressed="${deliveryParticipationStatus === filter}" title="Filter this RFx by ${escapeHtml(label.toLowerCase())}">
       <span>${escapeHtml(label)}</span>
       <strong>${formatNumber(value)}</strong>
       <small>${escapeHtml(detail)}</small>
-    </article>
+    </button>
   `).join("");
 }
 
@@ -6438,15 +6869,23 @@ function renderOutreachAudience() {
     ? "Loading this RFx invitation history..."
     : `${formatNumber(selectedCount)} selected for the next queue | ${formatNumber(outreachAudienceTotal)} carrier${outreachAudienceTotal === 1 ? "" : "s"} in this RFx`;
   rfxOutreachAudienceSummary.className = `status-pill ${selectedCount ? "success" : "muted"}`;
+  // Keep the Message workspace truthful when the next delivery wave changes here.
+  if (rfxLaunchWorkspace === "message") renderOutreachPreview();
   if (rfxSaveOutreachAudienceSegmentButton) {
     rfxSaveOutreachAudienceSegmentButton.disabled = !selectedCount || !String(rfxOutreachAudienceSegmentName?.value || "").trim();
   }
-  if (rfxSelectReadyOutreachAudienceButton) rfxSelectReadyOutreachAudienceButton.disabled = outreachAudienceLoading || !readyVendorIds.length;
+  if (rfxSelectReadyOutreachAudienceButton) {
+    rfxSelectReadyOutreachAudienceButton.disabled = outreachAudienceLoading || !readyVendorIds.length;
+    rfxSelectReadyOutreachAudienceButton.textContent = "Select all ready";
+    rfxSelectReadyOutreachAudienceButton.title = "Select every carrier ready for this RFx invitation wave. This does not create or send messages.";
+  }
   if (rfxUseOutreachAudienceInMessageButton) {
     rfxUseOutreachAudienceInMessageButton.disabled = outreachAudienceLoading || !selectedCount;
     rfxUseOutreachAudienceInMessageButton.textContent = selectedCount
-      ? `Prepare ${formatNumber(selectedCount)} selected`
-      : "Prepare selected wave";
+      ? `Continue ${formatNumber(selectedCount)} to Message`
+      : "Continue to Message";
+    rfxUseOutreachAudienceInMessageButton.title =
+      "Continue with the selected carriers to review the invitation and prepare drafts. Nothing sends automatically.";
   }
   if (rfxClearOutreachAudienceSelectionButton) rfxClearOutreachAudienceSelectionButton.disabled = !selectedCount;
   if (!selectedEventId) {
@@ -6606,7 +7045,7 @@ function renderDraftQueue() {
     : draftQueueTotal
       ? `${formatNumber(draftQueueTotal)} ${trackingLabel.toLowerCase()} ${channelLabel} draft rows | showing ${formatNumber(first)}-${formatNumber(last)} | ${formatNumber(actionable.length)} need action on this page${staleRows.length ? ` | ${formatNumber(staleRows.length)} stale` : ""}`
       : selectedEventId
-        ? `No ${trackingLabel.toLowerCase()} ${channelLabel} drafts match this queue filter. Generate this channel or clear the filters.`
+        ? `No ${trackingLabel.toLowerCase()} ${channelLabel} drafts match this queue filter.`
         : "No drafts generated for this bid event.";
   if (draftSearchInput && draftSearchInput.value !== draftQueueSearch) draftSearchInput.value = draftQueueSearch;
   if (draftClearSearchButton) draftClearSearchButton.disabled = !hasSearch;
@@ -6637,7 +7076,15 @@ function renderDraftQueue() {
   }
   if (!rows.length) {
     updateDraftSendControls([]);
-    draftList.innerHTML = `<tr><td colspan="9">No ${escapeHtml(trackingLabel.toLowerCase())} ${escapeHtml(channelLabel)} draft rows match these filters. Clear search or select All.</td></tr>`;
+    const canShowAll = draftQueueTrackingStatus !== "all" || hasSearch;
+    draftList.innerHTML = `
+      <tr>
+        <td colspan="9">
+          No ${escapeHtml(trackingLabel.toLowerCase())} ${escapeHtml(channelLabel)} draft rows match this queue filter.
+          ${canShowAll ? '<button type="button" class="secondary small-button" data-rfx-show-all-draft-queue>Show all messages in this RFx</button>' : "Create drafts from Message to start this delivery wave."}
+        </td>
+      </tr>
+    `;
     return;
   }
   if (!emailSelectable.length && !whatsappSelectable.length && !whatsappGroupSelectable.length && rows.length) {
@@ -7408,39 +7855,13 @@ function activeEventParticipantVendorIds() {
   return ids;
 }
 
-function isCurrentRfxCarrierResponse(row = {}) {
-  const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
-  const direction = String(row.direction || "").trim().toLowerCase();
-  const signal = [
-    row.status,
-    row.event_status,
-    row.provider_response_status,
-    row.delivery_status,
-    row.outcome,
-    metadata.status,
-    metadata.event_status,
-    metadata.provider_response_status,
-    metadata.delivery_status,
-    metadata.outcome,
-    metadata.last_event
-  ]
-    .map((value) => String(value || "").trim().toLowerCase())
-    .join(" ");
-  return direction === "inbound" || /\b(replied|responded|quoted|quote|bid_submitted|declined|rejected|withdrawn)\b/.test(signal);
-}
-
 function currentRfxManagedVendorIds() {
   const ids = activeEventParticipantVendorIds();
+  rfxResponseVendorIds.forEach((vendorId) => ids.add(String(vendorId)));
   // A queued, sent, or archived event message means this carrier has already
   // been handled for this RFx. Never recycle it into Carrier fit by accident.
   outreachMessages.forEach((row) => {
     if (String(row?.rfx_event_id || "") !== String(selectedEventId || "")) return;
-    const vendorId = String(row?.vendor_id || "").trim();
-    if (vendorId) ids.add(vendorId);
-  });
-  contactHistoryRows.forEach((row) => {
-    if (String(row?.rfx_event_id || "") !== String(selectedEventId || "")) return;
-    if (!isCurrentRfxCarrierResponse(row)) return;
     const vendorId = String(row?.vendor_id || "").trim();
     if (vendorId) ids.add(vendorId);
   });
@@ -7472,6 +7893,18 @@ function selectManualVendorIds(ids = []) {
   });
   persistManualParticipantSelection();
   renderManualShortlistControls();
+}
+
+function selectOutreachCarrierCandidates(candidates = []) {
+  const rows = candidates.map(({ vendor }) => vendor).filter(Boolean);
+  rememberSelectedVendorRows(rows);
+  rows.forEach((vendor) => {
+    const vendorId = String(vendor.id || "");
+    if (vendorId) selectedManualVendorIdsState.add(vendorId);
+  });
+  persistManualParticipantSelection();
+  renderManualShortlistControls();
+  return selectedManualVendorIds().length;
 }
 
 function participantTemplatePayload(segment, vendorIds, name) {
@@ -7546,12 +7979,15 @@ function activeOutreachCarrierLanes() {
 }
 
 function rfxCarrierRecommendationConfig() {
-  const lanes = currentLanes || [];
+  // Keep the server-side evidence query aligned with the lane selector shown in Carrier fit.
+  const lanes = activeOutreachCarrierLanes();
   const text = lanes.map((lane) => [lane.origin, lane.destination, lane.equipment, lane.operation, lane.service].filter(Boolean).join(" ")).join(" ").toLowerCase();
   const operationText = lanes.map((lane) => String(lane.operation || "")).join(" ").toLowerCase();
   return {
     limit: 100,
     ranking_mode: "fit",
+    rfx_carrier_fit: true,
+    evidence_timeout_ms: 3500,
     filters: {
       crossborder: /crossborder|border|d2d/.test(text),
       d2d: /d2d|door.?to.?door/.test(operationText),
@@ -7674,6 +8110,8 @@ function fitCarrierToOutreachLanes(vendor) {
     score: 0
   });
   const coverageCount = laneFits.filter((item) => item.matchCount > 0).length;
+  const hasOperationalFit = laneFits.some((item) => item.matches.operation && (item.matches.equipment || item.matches.service));
+  const hasCoverageFit = laneFits.some((item) => item.matchCount >= 2);
   const contactable = Boolean(vendor.primary_email || vendor.whatsapp_phone || (Array.isArray(vendor.secondary_emails) && vendor.secondary_emails.length));
   const score = Math.min(100, bestLaneFit.score + stageBonus + (contactable ? 4 : 0) + Math.round(evidence.score / 12));
   const reasons = [
@@ -7687,6 +8125,7 @@ function fitCarrierToOutreachLanes(vendor) {
   return {
     score,
     hasAnyLaneFit: coverageCount > 0,
+    hasRecommendedFit: hasOperationalFit || hasCoverageFit || (evidence.hasRatewareEvidence && contactable),
     hasRatewareEvidence: evidence.hasRatewareEvidence,
     evidence,
     coverageCount,
@@ -7744,7 +8183,7 @@ function outreachCarrierCandidateRows() {
     .filter((vendor) => !existingParticipantIds.has(String(vendor.id || "")))
     .map((vendor) => ({ vendor, fit: fitCarrierToOutreachLanes(vendor) }))
     .filter(({ fit }) => {
-    if (scope === "recommended" && !fit.hasAnyLaneFit && !fit.hasRatewareEvidence) return false;
+    if (scope === "recommended" && !fit.hasRecommendedFit) return false;
     if (fitFilter === "equipment") return fit.matches.equipment;
     if (fitFilter === "operation") return fit.matches.operation;
     if (fitFilter === "service") return fit.matches.service;
@@ -7767,6 +8206,11 @@ function renderOutreachCarrierAdder() {
   const selectedRows = selectedManualVendorRows();
   const candidates = outreachCarrierCandidateRows();
   const visibleRows = candidates.slice(0, 50);
+  const deliveryChannel = selectedOutreachChannel();
+  const deliveryChannelLabel = outreachChannelLabel(deliveryChannel);
+  const contactReadyCandidates = candidates.filter(({ vendor }) => carrierCanReceiveOutreachChannel(vendor, deliveryChannel));
+  const contactReviewCount = Math.max(candidates.length - contactReadyCandidates.length, 0);
+  const visibleContactReadyRows = visibleRows.filter(({ vendor }) => carrierCanReceiveOutreachChannel(vendor, deliveryChannel));
   const scopeLabel = {
     recommended: "recommended",
     procurement: "procurement/pipeline",
@@ -7814,7 +8258,7 @@ function renderOutreachCarrierAdder() {
     ? '<p class="rfx-outreach-carrier-empty">Loading the first Carrier CRM profiles. Search remains available as soon as the first page arrives.</p>'
     : visibleRows.length
       ? visibleRows.map(({ vendor, fit }) => {
-        const selected = selectedManualVendorIdsState.has(vendor.id);
+        const selected = selectedManualVendorIdsState.has(String(vendor.id || ""));
         const fitCopy = fit.reasons.length ? fit.reasons.join(" | ") : "No equipment, operation, or service coverage declared in Carrier CRM";
         const profileCopy = fit.evidence.profileSignals.length
           ? `Profile: ${fit.evidence.profileSignals.join(" | ")}`
@@ -7826,14 +8270,22 @@ function renderOutreachCarrierAdder() {
             : rfxCarrierFitEvidenceError
               ? "Rateware evidence temporarily unavailable"
             : "Rateware: no linked quote evidence yet";
+        const fitSummary = [
+          fit.label,
+          fit.contactable ? "contact ready" : "no verified contact",
+          fit.hasRatewareEvidence ? "Rateware evidence" : "CRM evidence"
+        ].join(" | ");
         return `
           <article class="rfx-outreach-carrier-row ${selected ? "is-selected" : ""}">
             <div class="rfx-outreach-carrier-row-main">
               <strong>${escapeHtml(vendorDisplayName(vendor))}</strong>
-              <small title="${escapeHtml(`${fitCopy} | ${profileCopy} | ${evidenceCopy}`)}">${escapeHtml(fit.label)} | ${escapeHtml(fitCopy)}</small>
-              <small class="rfx-outreach-fit-detail" title="${escapeHtml(`${profileCopy} | ${evidenceCopy}`)}">${escapeHtml(profileCopy)} | ${escapeHtml(evidenceCopy)}</small>
+              <small class="rfx-outreach-fit-summary" title="${escapeHtml(`${fitCopy} | ${profileCopy} | ${evidenceCopy}`)}">${escapeHtml(fitSummary)}</small>
+              <details class="rfx-outreach-fit-detail">
+                <summary>Why this carrier</summary>
+                <span>${escapeHtml(`${fitCopy} | ${profileCopy} | ${evidenceCopy}`)}</span>
+              </details>
             </div>
-            <button class="secondary small-button" type="button" data-rfx-outreach-add-carrier="${escapeHtml(vendor.id)}" ${selected ? "disabled" : ""}>${selected ? "Added" : "Add"}</button>
+            <button class="secondary small-button" type="button" data-rfx-outreach-add-carrier="${escapeHtml(String(vendor.id || ""))}" ${selected ? "disabled" : ""}>${selected ? "Selected" : "Select"}</button>
           </article>
         `;
       }).join("")
@@ -7850,8 +8302,11 @@ function renderOutreachCarrierAdder() {
       <button class="secondary small-button" type="button" data-rfx-outreach-remove-carrier="${escapeHtml(id)}">Remove</button>
     </article>
   `).join("");
+  const selectedWaveHeader = selectedIds.length
+    ? `<div class="rfx-outreach-carrier-wave-next-step"><strong>Next invitation wave: ${formatNumber(selectedIds.length)} selected</strong><span>Add these carriers to this RFx, then prepare drafts in Message. Nothing sends automatically.</span></div>`
+    : "";
   rfxOutreachCarrierSelected.innerHTML = selectedIds.length
-    ? `${selectedRows.map((vendor) => `
+    ? `${selectedWaveHeader}${selectedRows.map((vendor) => `
       <article class="rfx-outreach-carrier-row is-selected">
         <div class="rfx-outreach-carrier-row-main">
           <strong>${escapeHtml(vendorDisplayName(vendor))}</strong>
@@ -7860,21 +8315,39 @@ function renderOutreachCarrierAdder() {
         <button class="secondary small-button" type="button" data-rfx-outreach-remove-carrier="${escapeHtml(vendor.id)}">Remove</button>
       </article>
     `).join("")}${pendingRows}`
-    : '<p class="rfx-outreach-carrier-empty">Select new carriers here, then add them to the Bid Room. Carriers already in this RFx stay in Delivery queue for follow-up.</p>';
+    : '<p class="rfx-outreach-carrier-empty">Select carriers that fit this RFx, then add them to this RFx. Message prepares drafts next; Delivery queue sends and follows up. Carriers already in this RFx stay in Delivery queue.</p>';
 
   if (rfxAddOutreachCarriersButton) {
     rfxAddOutreachCarriersButton.disabled = participantAddRunning || !selectedEventId || !currentLanes.length || !selectedIds.length;
     rfxAddOutreachCarriersButton.textContent = selectedIds.length
-      ? `Add ${formatNumber(selectedIds.length)} to invitation wave`
-      : "Add to invitation wave";
+      ? `Add ${formatNumber(selectedIds.length)} carrier${selectedIds.length === 1 ? "" : "s"} to this RFx`
+      : "Add selected carriers to this RFx";
+    rfxAddOutreachCarriersButton.title = "Adds the selected carriers to this RFx and starts the next invitation wave. It does not create or send messages.";
+  }
+  if (rfxSelectVisibleOutreachCarriersButton) {
+    rfxSelectVisibleOutreachCarriersButton.disabled = participantAddRunning || !visibleContactReadyRows.length;
+    rfxSelectVisibleOutreachCarriersButton.textContent = visibleContactReadyRows.length
+      ? `Select ${formatNumber(visibleContactReadyRows.length)} visible`
+      : "Select visible";
+    rfxSelectVisibleOutreachCarriersButton.title = `Selects visible carriers that can receive ${deliveryChannelLabel}. Carriers needing contact review remain available for individual correction.`;
+  }
+  if (rfxSelectAllOutreachCarriersButton) {
+    rfxSelectAllOutreachCarriersButton.disabled = participantAddRunning || !contactReadyCandidates.length;
+    rfxSelectAllOutreachCarriersButton.textContent = contactReadyCandidates.length
+      ? `Select all ${formatNumber(contactReadyCandidates.length)} ready`
+      : "Select all matching";
+    rfxSelectAllOutreachCarriersButton.title = `Selects every matching carrier that can receive ${deliveryChannelLabel}. Carriers without a compatible contact remain in Carrier fit for review.`;
   }
   if (rfxClearOutreachCarrierSelectionButton) {
     rfxClearOutreachCarrierSelectionButton.disabled = participantAddRunning || !selectedIds.length;
   }
   if (rfxOutreachCarrierWaveSummary) {
+    rfxOutreachCarrierWaveSummary.title = "Select carriers here, add them to this RFx, then prepare drafts from Message. Sending only happens from Delivery queue.";
     rfxOutreachCarrierWaveSummary.textContent = selectedIds.length
-      ? `${formatNumber(selectedIds.length)} carrier(s) ready for the next invitation wave.`
-      : "Select compatible carriers to start an invitation wave.";
+      ? `${formatNumber(selectedIds.length)} carrier(s) selected. Add them to this RFx, then create their individual invitation drafts in Message.`
+      : contactReviewCount
+        ? `${formatNumber(contactReadyCandidates.length)} matching carrier(s) can receive ${deliveryChannelLabel}. ${formatNumber(contactReviewCount)} need a compatible contact before they can join this wave.`
+        : "Select compatible carriers, add them to this RFx, then prepare their invitation drafts from Message.";
   }
 }
 
@@ -8117,33 +8590,24 @@ async function loadEventsRequest() {
     renderEvents();
     if (selectedEventId) await loadDetail(selectedEventId);
     else {
-      selectedEvent = null;
-      currentLanes = [];
-      contactHistoryRows = [];
-      outreachMessages = [];
-      focusedLaneId = null;
-      updateEventActionState();
-      renderEventDashboard();
-      renderLaneCoverage();
-      renderLaneDecision();
-      renderResponseBoard();
-      renderOutreachLaunchpad();
-      renderLiveOfferManager();
-      renderAwardBoard();
-      renderWizard();
+      clearBidRoomDetailState({ clearEventSelection: true });
+      renderBidRoomDetailUnavailable();
     }
   } catch (error) {
     if (loadVersion !== rfxEventsLoadVersion) return;
+    events = [];
+    clearBidRoomDetailState({ clearEventSelection: true });
+    persistRfxWorkspaceContext();
+    renderBidRoomDetailUnavailable();
     eventList.innerHTML = errorState(error, {
       title: "Bid events could not load",
       retryAction: "load-rfx-events",
       meta: "No Bid Room data was changed."
     });
-    lanesBody.innerHTML = tableErrorState(8, error, {
+    lanesBody.innerHTML = tableErrorState(22, error, {
       title: "Business book lanes could not load",
       retryAction: "load-rfx-events"
     });
-    renderWizard();
   }
 }
 
@@ -8338,6 +8802,7 @@ async function loadDetail(eventId, options = {}) {
     rfxCarrierFitEvidenceLoading = false;
   }
   selectedEventId = eventId;
+  clearBidRoomDetailState();
   persistRfxWorkspaceContext();
   if (unassignedSelection.length) {
     selectedManualVendorIdsState = new Set(unassignedSelection);
@@ -8351,14 +8816,16 @@ async function loadDetail(eventId, options = {}) {
     restoreManualParticipantSelection(eventId);
   }
   if (bidRoomChatRefreshTimer) window.clearInterval(bidRoomChatRefreshTimer);
+  renderBidRoomDetailUnavailable();
   setStatus(actionStatus, "Loading RFx detail...");
   try {
     const detail = await requestRfxDetail(eventId, { force: options?.force === true });
     if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
     selectedEvent = detail.event;
     currentLanes = detail.lanes || [];
-    contactHistoryRows = [];
+    selectedEventDetailReady = true;
     outreachMessages = [];
+    rfxResponseVendorIds = new Set();
     bidRoomChatThreads = emptyBidRoomChatThreads();
     if (!currentLanes.some((lane) => lane.id === focusedLaneId)) focusedLaneId = currentLanes[0]?.id || null;
     detailTitle.textContent = `${selectedEvent.name || selectedEvent.rfx_id} (${selectedEvent.status})`;
@@ -8374,31 +8841,32 @@ async function loadDetail(eventId, options = {}) {
     void loadOutreachAudience({ reloadSegments: eventChanged });
     setStatus(actionStatus, "Bid Room core loaded. Loading outreach and chat context...");
 
-    const forceResources = options?.force === true;
-    const [historyResult, messagesResult, chatResult] = await Promise.allSettled([
-      requestRfxEventResource(rfxContactHistoryRequests, eventId, () => fetchContactHistory({ rfx_event_id: eventId, limit: 1000 }), { force: forceResources }),
-      requestRfxEventResource(rfxOutreachMessageRequests, eventId, () => fetchOutreachMessages({ rfx_event_id: eventId, limit: 1000 }), { force: forceResources }),
-      requestRfxEventResource(rfxChatRequests, eventId, () => fetchBidRoomChat(eventId), { force: forceResources })
-    ]);
+    const context = await requestRfxEventResource(
+      rfxEventContextRequests,
+      eventId,
+      () => fetchRfxEventContext(eventId),
+      { force: options?.force === true }
+    );
     if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
-    contactHistoryRows = getSettledValue(historyResult, []) || [];
-    outreachMessages = getSettledValue(messagesResult, []) || [];
-    bidRoomChatThreads = getSettledValue(chatResult, emptyBidRoomChatThreads()) || emptyBidRoomChatThreads();
-    await loadDraftQueuePage(eventId, { reset: true, render: false, refreshTracking: true });
-    if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
+    rfxResponseVendorIds = new Set(context?.response_vendor_ids || []);
+    outreachMessages = context?.outreach_messages || [];
+    bidRoomChatThreads = context?.chat || emptyBidRoomChatThreads();
     renderEventDashboard();
     renderLanes();
     renderBidRoomChat();
     renderOutreachLaunchpad();
+    if (rfxLaunchWorkspace === "delivery") {
+      void loadDraftQueuePage(eventId, { reset: true, refreshTracking: true });
+    }
 
     bidRoomChatRefreshTimer = window.setInterval(() => {
-      if (selectedEventId === eventId && loadVersion === rfxDetailLoadVersion) loadBidRoomChat();
+      if (shouldRefreshBidRoomCommunications(eventId) && loadVersion === rfxDetailLoadVersion) {
+        loadBidRoomChat({ syncInbound: false });
+      }
     }, 15000);
-    const warnings = [
-      getSettledWarning(historyResult, "Contact history"),
-      getSettledWarning(messagesResult, "Outreach queue"),
-      getSettledWarning(chatResult, "Bid Room chat")
-    ].filter(Boolean);
+    const warnings = Object.entries(context?.warnings || {})
+      .map(([resource, message]) => `${resource}: ${message}`)
+      .filter(Boolean);
     setStatus(
       actionStatus,
       warnings.length
@@ -8406,11 +8874,14 @@ async function loadDetail(eventId, options = {}) {
         : "Bid Room loaded.",
       warnings.length ? "warning" : "success"
     );
-    ensureSelectedEventChatThread(eventId, { silent: true });
+    if (!bidRoomHasEventGroupThread(bidRoomChatThreads)) {
+      void ensureSelectedEventChatThread(eventId, { silent: true });
+    }
   } catch (error) {
     if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
-    setStatus(actionStatus, humanizeError(error), "error");
-    updateEventActionState();
+    clearBidRoomDetailState();
+    renderBidRoomDetailUnavailable(error);
+    setStatus(actionStatus, `Bid Room could not load. ${humanizeError(error)}`, "error");
   }
 }
 
@@ -8420,12 +8891,17 @@ function activateWorkbenchView(view, focusTarget = null) {
 
 async function refreshOutreachStateForEvent(eventId) {
   if (!eventId) return false;
-  const [historyRows, messageRows] = await Promise.all([
-    requestRfxEventResource(rfxContactHistoryRequests, eventId, () => fetchContactHistory({ rfx_event_id: eventId, limit: 1000 }), { force: true }),
-    requestRfxEventResource(rfxOutreachMessageRequests, eventId, () => fetchOutreachMessages({ rfx_event_id: eventId, limit: 1000 }), { force: true })
+  const [responseVendorIds, messageRows] = await Promise.all([
+    requestRfxEventResource(rfxResponseVendorRequests, eventId, () => fetchRfxResponseVendorIds(eventId), { force: true }),
+    requestRfxEventResource(
+      rfxOutreachMessageRequests,
+      eventId,
+      () => fetchOutreachMessages({ rfx_event_id: eventId, view: "event_context" }),
+      { force: true }
+    )
   ]);
   if (selectedEventId !== eventId) return false;
-  contactHistoryRows = historyRows || [];
+  rfxResponseVendorIds = new Set(responseVendorIds || []);
   outreachMessages = messageRows || [];
   await loadDraftQueuePage(eventId, { render: false, refreshTracking: true });
   if (selectedEventId !== eventId) return false;
@@ -8550,7 +9026,11 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   const eventSnapshot = selectedEvent;
   if (blockIfLaunchPreflightFails(statusElement)) return null;
   const template = selectedOutreachTemplate();
-  const targets = outreachTargetInvitations();
+  const targets = outreachWaveTargets();
+  if (!selectedOutreachAudienceVendorIds.size) {
+    setStatus(statusElement, "Select one or more carriers in Carrier fit or This RFx before preparing a delivery queue.", "warning");
+    return null;
+  }
   if (!template) {
     setStatus(statusElement, "Select an outreach template before creating drafts.", "error");
     return null;
@@ -8569,29 +9049,28 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   const audiencePolicy = currentOutreachAudiencePolicy();
   const contactPolicy = currentOutreachContactPolicy();
   const sequencePolicy = currentOutreachSequencePolicy();
-  const savedAudienceVendorIds = audiencePolicy.mode === "saved_segment"
-    ? outreachAudienceRows.map((row) => String(row.vendor_id || "")).filter(Boolean)
-    : [];
-  const audienceVendorIds = audiencePolicy.vendor_ids.length
-    ? audiencePolicy.vendor_ids
-    : savedAudienceVendorIds;
-  const audienceSet = audienceVendorIds.length ? new Set(audienceVendorIds) : null;
-  const scopedTargets = audienceSet
-    ? targets.filter(({ invitation }) => audienceSet.has(String(invitation.vendor_id || "")))
-    : targets;
+  const audienceVendorIds = audiencePolicy.vendor_ids.map((vendorId) => String(vendorId || "")).filter(Boolean);
+  const audienceSet = new Set(audienceVendorIds);
+  const scopedTargets = targets.filter(({ invitation }) => audienceSet.has(String(invitation.vendor_id || "")));
   if (!scopedTargets.length) {
     setStatus(statusElement, audiencePolicy.mode === "saved_segment"
       ? "The saved segment has no shortlisted carriers in this Bid Room. Refresh the audience or adjust the segment."
       : "The selected audience has no shortlisted carriers in this Bid Room.", "warning");
     return null;
   }
-  const draftTargets = selectedInvitationIds.size
-    ? scopedTargets.filter(({ invitation }) => selectedInvitationIds.has(String(invitation.id)))
-    : scopedTargets.filter((target) => !targetHasActiveOutreachDraft(target, requestedDraftChannels));
+  const channelReadyTargets = scopedTargets.filter((target) => targetHasChannel(target, outreachChannel));
+  const contactReviewTargets = scopedTargets.filter((target) => !targetHasChannel(target, outreachChannel));
+  if (!channelReadyTargets.length) {
+    setStatus(
+      statusElement,
+      `No carrier in this wave has a compatible ${outreachChannelLabel(outreachChannel)} contact. Update the carrier contact in Carrier fit or Carrier CRM, then prepare the queue again.`,
+      "warning"
+    );
+    return null;
+  }
+  const draftTargets = channelReadyTargets.filter((target) => !targetHasActiveOutreachDraft(target, requestedDraftChannels));
   if (!draftTargets.length) {
-    setStatus(statusElement, selectedInvitationIds.size
-      ? "No selected participant belongs to the active audience. Adjust the audience or selection."
-      : `All eligible carriers already have active ${requestedDraftChannels.join(" + ")} invitation drafts. Select a specific participant if you need to regenerate one.`, "neutral");
+    setStatus(statusElement, `All selected carriers already have active ${requestedDraftChannels.join(" + ")} invitation drafts. Open Delivery queue to review, resend, or archive their existing event messages.`, "neutral");
     renderOutreachLaunchpad();
     return { generated: 0, skipped: [] };
   }
@@ -8599,7 +9078,10 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   const idempotencyStorageKey = outreachDraftRequestStorageKey(eventId, template.id, outreachChannel, invitationIds);
   const idempotencyKey = outreachDraftIdempotencyKey(idempotencyStorageKey);
   if (createRfxOutreachCampaignButton) createRfxOutreachCampaignButton.disabled = true;
-  setStatus(statusElement, "Creating campaign and generating drafts...");
+  setStatus(
+    statusElement,
+    `Preparing ${formatNumber(channelReadyTargets.length)} ${outreachChannelLabel(outreachChannel)} draft${channelReadyTargets.length === 1 ? "" : "s"}. Nothing will send until you use Delivery queue.`
+  );
   const whatsappTargetMode = includesWhatsappChannel
     ? outreachChannel === "whatsapp_group" ? "vendor_group" : "direct_vendor"
     : "";
@@ -8646,7 +9128,9 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   if (selectedEventId !== eventId) return result;
   await loadDetail(eventId);
   if (selectedEventId !== eventId) return result;
-  draftQueueTrackingStatus = "all";
+  deliveryParticipationStatus = "in_delivery";
+  deliveryParticipationPage = 0;
+  draftQueueTrackingStatus = "drafted";
   draftQueueSearch = "";
   draftQueueOffset = 0;
   activateRfxLaunchWorkspace("delivery", { refresh: true });
@@ -8667,12 +9151,15 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
           : "";
   const hasQueueWarnings = (result.skipped?.length || 0) > 0
     || (isWhatsappQueue && (notifierStatus === "ERROR" || metaNotifierPendingReview(notifierStatus)));
+  const contactReviewCopy = contactReviewTargets.length
+    ? ` ${formatNumber(contactReviewTargets.length)} carrier(s) remain outside this delivery queue until a compatible contact is added.`
+    : "";
   setStatus(
     statusElement,
     channelError
       ? `This channel could not prepare its draft queue. ${humanizeError(channelError)}`
-      : `${outreachDraftQueueSummary(result)}${notifierCopy}`,
-    channelError ? "error" : hasQueueWarnings ? "warning" : "success"
+      : `Drafts ready. ${outreachDraftQueueSummary(result)}${notifierCopy}${contactReviewCopy} Step 3: Delivery queue is filtered to this new draft wave. Review and send only when ready.`,
+    channelError ? "error" : hasQueueWarnings || contactReviewTargets.length ? "warning" : "success"
   );
   return result;
 }
@@ -8786,7 +9273,7 @@ async function closeoutSelectedAwardsToRateware() {
   try {
     const result = await closeoutAwardedRfxToRateware(eventId, { target_status: "approved" });
     if (selectedEventId !== eventId) return;
-    await loadEvents();
+    await loadEvents({ force: true });
     if (selectedEventId !== eventId) return;
     activateWorkbenchView("award");
     setStatus(
@@ -9414,6 +9901,10 @@ activateRfxLaunchWorkspace(rfxLaunchWorkspace, { persist: false });
 activateRfxOperateWorkspace(rfxOperateWorkspace, { persist: false });
 activateRfxCloseWorkspace(rfxCloseWorkspace, { persist: false });
 window.addEventListener("popstate", applyRfxUrlStateFromBrowser);
+document.addEventListener("visibilitychange", () => {
+  if (!shouldRefreshBidRoomCommunications()) return;
+  void loadBidRoomChat({ syncInbound: false });
+});
 requirePrivatePage().then((session) => {
   if (session?.token) {
     loadRfxCustomerOptions();
@@ -9437,6 +9928,9 @@ document.querySelector("[data-workbench-view-button='outreach']")?.addEventListe
   loadCarrierWorkspaceData();
   void loadRfxCarrierFitEvidence();
   activateRfxLaunchWorkspace(rfxLaunchWorkspace, { persist: false });
+});
+document.querySelector("[data-workbench-view-button='responses']")?.addEventListener("click", () => {
+  activateRfxOperateWorkspace(rfxOperateWorkspace, { persist: false });
 });
 rfxLaunchWorkspaceTabs?.addEventListener("click", (event) => {
   const button = event.target instanceof Element
@@ -9464,7 +9958,7 @@ eventForm?.addEventListener("submit", async (event) => {
     selectedEventId = row.id;
     resetRfxEventForm();
     setStatus(eventStatus, isEditing ? "Bid event updated." : "Bid event created.", "success");
-    await loadEvents();
+    await loadEvents({ force: true });
   } catch (error) {
     setStatus(eventStatus, humanizeError(error), "error");
   }
@@ -9638,6 +10132,16 @@ document.addEventListener("click", (event) => {
 });
 
 draftList?.addEventListener("click", async (event) => {
+  const showAllDraftQueueButton = event.target instanceof Element
+    ? event.target.closest("[data-rfx-show-all-draft-queue]")
+    : null;
+  if (showAllDraftQueueButton) {
+    draftQueueTrackingStatus = "all";
+    draftQueueSearch = "";
+    draftQueueOffset = 0;
+    await loadDraftQueuePage(selectedEventId, { refreshTracking: true });
+    return;
+  }
   const refreshDraftButton = event.target.closest("[data-rfx-refresh-draft]");
   if (refreshDraftButton) {
     refreshDraftButton.disabled = true;
@@ -9984,7 +10488,7 @@ importLanesButton?.addEventListener("click", async () => {
     clearLaneTemplateImport({ preserveStatus: true });
     await loadDetail(eventId);
     if (selectedEventId !== eventId) return;
-    await loadEvents();
+    await loadEvents({ force: true });
   } catch (error) {
     if (selectedEventId === eventId) setStatus(laneImportStatus, humanizeError(error), "error");
   } finally {
@@ -10065,7 +10569,7 @@ importManualLanesButton?.addEventListener("click", async () => {
     setStatus(manualLaneStatus, importedMessage, "success");
     await loadDetail(eventId);
     if (selectedEventId !== eventId) return;
-    await loadEvents();
+    await loadEvents({ force: true });
   } catch (error) {
     if (selectedEventId === eventId) setStatus(manualLaneStatus, humanizeError(error), "error");
   } finally {
@@ -10086,7 +10590,7 @@ openRfxButton?.addEventListener("click", async () => {
     await updateRfxEvent(eventId, { status: "open" });
     if (selectedEventId === eventId) {
       setStatus(actionStatus, "Bid event opened.", "success");
-      await loadEvents();
+      await loadEvents({ force: true });
     }
   } catch (error) {
     if (selectedEventId === eventId) setStatus(actionStatus, humanizeError(error), "error");
@@ -10108,7 +10612,7 @@ closeRfxButton?.addEventListener("click", async () => {
     await updateRfxEvent(eventId, { status: "closed" });
     if (selectedEventId === eventId) {
       setStatus(actionStatus, "Bid event closed.", "success");
-      await loadEvents();
+      await loadEvents({ force: true });
     }
   } catch (error) {
     if (selectedEventId === eventId) setStatus(actionStatus, humanizeError(error), "error");
@@ -10137,7 +10641,7 @@ duplicateRfxButton?.addEventListener("click", async () => {
     selectedEventId = result.row?.id || eventId;
     resetRfxEventForm();
     setStatus(actionStatus, `RFx duplicated with ${result.lanes || 0} lane(s).`, "success");
-    await loadEvents();
+    await loadEvents({ force: true });
   } catch (error) {
     if (selectedEventId === eventId) setStatus(actionStatus, humanizeError(error), "error");
   } finally {
@@ -10161,7 +10665,7 @@ archiveRfxButton?.addEventListener("click", async () => {
     selectedEvent = null;
     resetRfxEventForm();
     setStatus(actionStatus, "Bid event archived.", "success");
-    await loadEvents();
+    await loadEvents({ force: true });
   } catch (error) {
     if (selectedEventId === eventId) setStatus(actionStatus, humanizeError(error), "error");
   } finally {
@@ -10185,7 +10689,7 @@ deleteRfxButton?.addEventListener("click", async () => {
     selectedEvent = null;
     resetRfxEventForm();
     setStatus(actionStatus, "Bid event deleted.", "success");
-    await loadEvents();
+    await loadEvents({ force: true });
   } catch (error) {
     if (selectedEventId === eventId) setStatus(actionStatus, humanizeError(error), "error");
   } finally {
@@ -10521,7 +11025,10 @@ rfxOutreachCarrierScope?.addEventListener("change", () => {
   renderOutreachCarrierAdder();
 });
 rfxOutreachCarrierFit?.addEventListener("change", renderOutreachCarrierAdder);
-rfxOutreachCarrierLane?.addEventListener("change", renderOutreachCarrierAdder);
+rfxOutreachCarrierLane?.addEventListener("change", () => {
+  renderOutreachCarrierAdder();
+  void loadRfxCarrierFitEvidence({ force: true });
+});
 rfxOutreachCarrierSegment?.addEventListener("change", async () => {
   const segmentId = String(rfxOutreachCarrierSegment.value || "");
   if (segmentId) {
@@ -10820,7 +11327,7 @@ async function addSelectedManualCarriersToBid(statusElement = manualShortlistSta
       await loadOutreachAudience({ reloadSegments: true });
       if (selectedEventId !== eventId) return inserted;
       activateRfxLaunchWorkspace("message");
-      const message = `${formatNumber(vendorIds.length)} carrier(s) added to this RFx and selected for the next invitation wave. Continue in Message to prepare their delivery queue.`;
+      const message = `${formatNumber(vendorIds.length)} carrier(s) were added to this RFx and selected for the next delivery wave. In Message, choose a template and prepare their drafts. Nothing sends until Delivery queue.`;
       setStatus(statusElement, message, "success");
       setStatus(rfxOutreachStatus, message, "success");
       return inserted;
@@ -10843,6 +11350,34 @@ manualShortlistButton?.addEventListener("click", async () => {
 
 rfxAddOutreachCarriersButton?.addEventListener("click", async () => {
   await addSelectedManualCarriersToBid(rfxOutreachCarrierStatus);
+});
+
+rfxSelectVisibleOutreachCarriersButton?.addEventListener("click", () => {
+  const allVisibleCandidates = outreachCarrierCandidateRows().slice(0, 50);
+  const channel = selectedOutreachChannel();
+  const channelLabel = outreachChannelLabel(channel);
+  const visibleCandidates = allVisibleCandidates.filter(({ vendor }) => carrierCanReceiveOutreachChannel(vendor, channel));
+  const count = selectOutreachCarrierCandidates(visibleCandidates);
+  const needsContact = Math.max(allVisibleCandidates.length - visibleCandidates.length, 0);
+  setStatus(
+    rfxOutreachCarrierStatus,
+    `${formatNumber(count)} carrier(s) ready for ${channelLabel} selected. Add them to this RFx, then open Message to prepare their next delivery queue.${needsContact ? ` ${formatNumber(needsContact)} visible match${needsContact === 1 ? " needs" : "es need"} a compatible contact first.` : ""}`,
+    "success"
+  );
+});
+
+rfxSelectAllOutreachCarriersButton?.addEventListener("click", () => {
+  const allCandidates = outreachCarrierCandidateRows();
+  const channel = selectedOutreachChannel();
+  const channelLabel = outreachChannelLabel(channel);
+  const candidates = allCandidates.filter(({ vendor }) => carrierCanReceiveOutreachChannel(vendor, channel));
+  const count = selectOutreachCarrierCandidates(candidates);
+  const needsContact = Math.max(allCandidates.length - candidates.length, 0);
+  setStatus(
+    rfxOutreachCarrierStatus,
+    `${formatNumber(count)} carrier(s) ready for ${channelLabel} selected. Add them to this RFx, then open Message to prepare their next delivery queue.${needsContact ? ` ${formatNumber(needsContact)} matching carrier${needsContact === 1 ? " needs" : "s need"} a compatible contact first.` : ""}`,
+    "success"
+  );
 });
 
 downloadCarrierTemplateButton?.addEventListener("click", downloadRfxCarrierTemplate);
@@ -10906,7 +11441,7 @@ importCarrierTemplateButton?.addEventListener("click", async () => {
     clearCarrierTemplateImport({ preserveStatus: true });
     await loadDetail(eventId);
     if (selectedEventId !== eventId) return;
-    await loadEvents();
+    await loadEvents({ force: true });
   } catch (error) {
     if (selectedEventId === eventId) setStatus(carrierTemplateStatus, humanizeError(error), "error");
   } finally {
@@ -10948,7 +11483,7 @@ rfxUseOutreachAudienceInMessageButton?.addEventListener("click", () => {
     return;
   }
   activateRfxLaunchWorkspace("message");
-  const message = `${formatNumber(selectedCount)} carrier(s) selected for this RFx invitation wave. Review the message, then prepare the delivery queue.`;
+  const message = `${formatNumber(selectedCount)} carrier(s) selected. Step 2: review the message and prepare drafts. Nothing sends until Delivery queue.`;
   setStatus(rfxOutreachAudienceStatus, message, "success");
   setStatus(rfxOutreachStatus, message, "success");
   renderOutreachPreview();
@@ -10990,9 +11525,64 @@ rfxEventDeliveryOverview?.addEventListener("click", (event) => {
     ? event.target.closest("[data-rfx-event-status-filter]")
     : null;
   const filter = String(card?.dataset.rfxEventStatusFilter || "");
-  if (!filter || !rfxOutreachAudienceStatusFilter) return;
-  rfxOutreachAudienceStatusFilter.value = filter;
-  void loadOutreachAudience();
+  if (!filter) return;
+  deliveryParticipationStatus = filter;
+  deliveryParticipationPage = 0;
+  if (rfxLaunchWorkspace !== "delivery") {
+    activateRfxLaunchWorkspace("delivery");
+    return;
+  }
+  void loadDeliveryParticipation({ force: true });
+});
+rfxDeliveryParticipationFilters?.addEventListener("click", (event) => {
+  const button = event.target instanceof Element
+    ? event.target.closest("[data-rfx-delivery-participation-filter]")
+    : null;
+  const filter = String(button?.dataset.rfxDeliveryParticipationFilter || "");
+  if (!filter || filter === deliveryParticipationStatus) return;
+  deliveryParticipationStatus = filter;
+  deliveryParticipationPage = 0;
+  void loadDeliveryParticipation({ force: true });
+});
+rfxDeliveryParticipationList?.addEventListener("click", (event) => {
+  const resetButton = event.target instanceof Element
+    ? event.target.closest("[data-rfx-show-all-delivery-participation]")
+    : null;
+  if (resetButton) {
+    deliveryParticipationStatus = "all";
+    deliveryParticipationPage = 0;
+    void loadDeliveryParticipation({ force: true });
+    return;
+  }
+  const button = event.target instanceof Element
+    ? event.target.closest("[data-rfx-delivery-participation-vendor]")
+    : null;
+  const vendorId = String(button?.dataset.rfxDeliveryParticipationVendor || "");
+  if (!vendorId) return;
+  if (selectedOutreachAudienceVendorIds.has(vendorId)) selectedOutreachAudienceVendorIds.delete(vendorId);
+  else selectedOutreachAudienceVendorIds.add(vendorId);
+  renderDeliveryParticipation();
+  renderOutreachAudience();
+  renderDeliveryWaveState();
+});
+rfxDeliveryParticipationPrevious?.addEventListener("click", () => {
+  if (deliveryParticipationPage <= 0) return;
+  deliveryParticipationPage -= 1;
+  renderDeliveryParticipation();
+});
+rfxDeliveryParticipationNext?.addEventListener("click", () => {
+  const maxPage = Math.max(0, Math.ceil(deliveryParticipationRows.length / DELIVERY_PARTICIPATION_PAGE_SIZE) - 1);
+  if (deliveryParticipationPage >= maxPage) return;
+  deliveryParticipationPage += 1;
+  renderDeliveryParticipation();
+});
+rfxDeliveryWaveState?.addEventListener("click", (event) => {
+  const button = event.target instanceof Element
+    ? event.target.closest("[data-rfx-open-launch-workspace]")
+    : null;
+  const workspace = normalizeRfxLaunchWorkspace(button?.dataset.rfxOpenLaunchWorkspace || "");
+  if (!button || !workspace) return;
+  activateRfxLaunchWorkspace(workspace, { focus: workspace === "message" });
 });
 rfxSaveOutreachAudienceSegmentButton?.addEventListener("click", () => {
   void saveCurrentOutreachAudienceSegment();
@@ -11015,7 +11605,7 @@ rfxChatMessage?.addEventListener("input", () => {
   if (selectedChatRecipient?.vendorId) bidRoomCarrierMessageRequestKey = newBidRoomCarrierMessageRequestKey();
 });
 rfxChatRecipientClear?.addEventListener("click", () => clearCarrierCommunicationTarget({ focus: true }));
-rfxChatRefresh?.addEventListener("click", loadBidRoomChat);
+rfxChatRefresh?.addEventListener("click", () => loadBidRoomChat({ force: true, syncInbound: true }));
 rfxChatInboxFilters?.addEventListener("click", (event) => {
   const button = event.target.closest("[data-rfx-chat-filter]");
   if (!button) return;
@@ -11374,4 +11964,18 @@ rfxOutreachForm?.addEventListener("submit", async (event) => {
   } finally {
     renderOutreachPreview();
   }
+});
+
+rfxOpenDeliveryQueueButton?.addEventListener("click", () => {
+  if (!selectedEventId) {
+    setStatus(rfxOutreachStatus, "Select an RFx before opening Delivery queue.", "warning");
+    return;
+  }
+  deliveryParticipationStatus = "in_delivery";
+  deliveryParticipationPage = 0;
+  draftQueueTrackingStatus = "drafted";
+  draftQueueSearch = "";
+  draftQueueOffset = 0;
+  activateRfxLaunchWorkspace("delivery", { refresh: true });
+  setStatus(rfxOutreachStatus, "Delivery queue opened for pending drafts. Messages remain unsent until you select and send them.", "neutral");
 });

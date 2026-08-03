@@ -12,6 +12,7 @@ import {
   loadGrowthDashboard,
   previewGrowthSegment,
   recordGrowthResult,
+  refreshGrowthCampaignAudience,
   restoreGrowthSegment,
   runGrowthAiAction,
   saveGrowthCampaign,
@@ -31,8 +32,14 @@ const state = {
   campaigns: [],
   campaignDetail: null,
   campaignStep: 1,
+  campaignMemberFilter: "all",
+  campaignMemberQuery: "",
   currentCampaignId: "",
+  campaignDirty: false,
+  campaignMessagesDirty: false,
   resultCampaignDetail: null,
+  resultMemberQuery: "",
+  resultFilter: "all",
   results: { metrics: {}, rows: [] }
 };
 
@@ -101,6 +108,7 @@ const HEADER_ALIASES = {
 
 const EXPORT_COLUMNS = [
   "campaign_name", "account_name", "domain", "contact_name", "first_name", "last_name", "title", "email", "phone", "linkedin_url", "persona", "logistics_fit",
+  "execution_channel", "execution_destination", "available_delivery_channels",
   "email_1_subject", "email_1_body", "follow_up_1_subject", "follow_up_1_body", "follow_up_2_subject", "follow_up_2_body", "linkedin_note", "call_script", "whatsapp_message"
 ];
 
@@ -112,6 +120,14 @@ const STEP_LABELS = {
   call_script: "Guion de llamada",
   whatsapp_message: "Mensaje de WhatsApp",
   custom: "Mensaje personalizado"
+};
+
+const CAMPAIGN_MEMBER_FILTER_LABELS = {
+  all: "Todos",
+  ready: "Listos",
+  review: "Revisar",
+  blocked: "Bloqueados",
+  history: "Historial"
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -190,6 +206,48 @@ function setCampaignStep(step) {
   $$('[data-campaign-panel]').forEach((panel) => panel.classList.toggle("active", Number(panel.dataset.campaignPanel) === state.campaignStep));
   $("#campaign-back-button").disabled = state.campaignStep === 1;
   $("#campaign-next-button").classList.toggle("hidden", state.campaignStep === 5);
+  renderCampaignProgress();
+}
+
+function campaignDraftState() {
+  const campaign = state.campaignDetail?.campaign || {};
+  const name = clean($("#campaign-name")?.value);
+  const segmentId = $("#campaign-segment")?.value || campaign.segment_id || "";
+  const hasChannels = campaignChannels().length > 0;
+  const saved = Boolean(state.currentCampaignId) && !state.campaignDirty;
+  const messagesSaved = saved && (state.campaignDetail?.messages || []).length > 0 && !state.campaignMessagesDirty;
+  return { name, segmentId, hasChannels, saved, messagesSaved };
+}
+
+function renderCampaignProgress() {
+  const draft = campaignDraftState();
+  const steps = {
+    1: { ready: Boolean(draft.name), enabled: Boolean(draft.name), next: "Continuar a segmento", hint: draft.name ? "Objetivo listo. Selecciona la audiencia guardada." : "Escribe un nombre para identificar esta campaña." },
+    2: { ready: Boolean(draft.segmentId), enabled: Boolean(draft.segmentId), next: "Continuar a oferta", hint: draft.segmentId ? "Audiencia seleccionada. Define la oferta y los canales disponibles." : "Selecciona un segmento listo antes de continuar." },
+    3: { ready: draft.saved && draft.hasChannels, enabled: Boolean(draft.name && draft.segmentId && draft.hasChannels), next: "Guardar campaña y audiencia", hint: draft.saved && draft.hasChannels ? "Campaña guardada. Puedes revisar los mensajes o actualizar la audiencia." : "Guarda la campaña para construir una audiencia auditable." },
+    4: { ready: draft.messagesSaved, enabled: draft.saved, next: "Guardar mensajes y revisar", hint: !draft.saved ? "Guarda primero la campaña para generar los mensajes." : draft.messagesSaved ? "Mensajes guardados. La audiencia está lista para revisión." : "Revisa y guarda los mensajes antes de exportar." },
+    5: { ready: draft.saved, enabled: draft.saved, next: "", hint: !draft.saved ? "Guarda la campaña antes de preparar el archivo de ejecución." : "Revisa la audiencia y exporta solo los contactos listos. Rateware no enviará mensajes." }
+  };
+  $$('[data-campaign-step]').forEach((button) => {
+    const step = Number(button.dataset.campaignStep);
+    const meta = steps[step];
+    button.classList.toggle("is-ready", meta.ready);
+    button.classList.toggle("is-pending", !meta.ready);
+    button.title = meta.hint;
+    button.setAttribute("aria-label", `Paso ${step}: ${button.textContent.trim()}. ${meta.hint}`);
+  });
+  const meta = steps[state.campaignStep] || steps[1];
+  const nextButton = $("#campaign-next-button");
+  const guidance = $("#campaign-step-guidance");
+  nextButton.disabled = !meta.enabled;
+  nextButton.textContent = meta.next || "Continuar";
+  nextButton.title = meta.hint;
+  if (guidance) guidance.textContent = meta.hint;
+}
+
+function markCampaignDirty() {
+  state.campaignDirty = true;
+  renderCampaignProgress();
 }
 
 function parseDelimited(text, delimiter) {
@@ -465,6 +523,7 @@ function describeSegment(segment) {
 function refreshCampaignSegmentSummary() {
   const segment = state.segments.find((item) => item.id === $("#campaign-segment").value);
   $("#campaign-segment-summary").textContent = describeSegment(segment);
+  markCampaignDirty();
 }
 
 function startCampaignFromSegment(segment) {
@@ -477,6 +536,7 @@ function startCampaignFromSegment(segment) {
   $("#campaign-segment").value = segment.id;
   $("#campaign-name").value = `${segment.name} - ${new Date().toLocaleDateString("en-CA")}`;
   refreshCampaignSegmentSummary();
+  renderCampaignProgress();
   $("#campaign-name").focus();
   setGlobalStatus("Segmento seleccionado. Define el objetivo y prepara la campaña; Rateware no enviará mensajes.", "success");
 }
@@ -512,6 +572,10 @@ function campaignChannels() {
 function resetCampaign() {
   state.currentCampaignId = "";
   state.campaignDetail = null;
+  state.campaignMemberFilter = "all";
+  state.campaignMemberQuery = "";
+  state.campaignDirty = false;
+  state.campaignMessagesDirty = false;
   $("#campaign-name").value = "";
   $("#campaign-objective").value = "get_rfqs";
   $("#campaign-segment").value = "";
@@ -520,7 +584,17 @@ function resetCampaign() {
   $("#campaign-segment-summary").textContent = describeSegment(null);
   $("#campaign-messages").innerHTML = '<p class="growth-empty-cell">Guarda primero objetivo, segmento y oferta.</p>';
   $("#campaign-export-summary").innerHTML = "";
+  $("#campaign-next-action").textContent = "Guarda una campaña para ver el siguiente paso.";
   $("#campaign-member-preview").innerHTML = "";
+  $("#campaign-member-count").textContent = "";
+  $("#campaign-member-search").value = "";
+  $("#campaign-member-guidance").textContent = "El CSV de ejecucion solo incluye contactos listos. Los demas quedan en revision o bloqueados.";
+  $$('[data-campaign-member-filter]').forEach((button) => {
+    const bucket = button.dataset.campaignMemberFilter || "all";
+    button.classList.toggle("active", bucket === "all");
+    button.textContent = `${CAMPAIGN_MEMBER_FILTER_LABELS[bucket] || bucket} 0`;
+    button.title = `0 contacto(s) en ${CAMPAIGN_MEMBER_FILTER_LABELS[bucket] || bucket}.`;
+  });
   $("#campaign-save-status").textContent = "Nueva campaña";
   $$(".growth-campaign-item").forEach((item) => item.classList.remove("active"));
   setCampaignStep(1);
@@ -544,6 +618,138 @@ function renderCampaignMessages(messages) {
   root.innerHTML = (messages || []).map((message) => `<div class="growth-message-row" data-message-id="${escapeHtml(message.id || "")}" data-step-type="${escapeHtml(message.step_type)}" data-channel="${escapeHtml(message.channel)}" data-variant="${escapeHtml(message.variant || "A")}"><strong>${escapeHtml(STEP_LABELS[message.step_type] || message.step_type)}</strong><label><span>Asunto</span><input data-message-subject value="${escapeHtml(message.subject || "")}" ${message.channel === "email" ? "" : "disabled"} /></label><label><span>Contenido</span><textarea data-message-body>${escapeHtml(message.body || "")}</textarea></label></div>`).join("") || '<p class="growth-empty-cell">No hay mensajes configurados.</p>';
 }
 
+function campaignMemberBucket(member) {
+  const status = clean(member?.status).toLowerCase();
+  if (status === "ready") return "ready";
+  if (["pending", "needs_review", "invalid"].includes(status)) return "review";
+  if (["unsubscribed", "bounced", "do_not_contact", "excluded"].includes(status)) return "blocked";
+  return "history";
+}
+
+function campaignConfiguredChannels(campaign) {
+  const channels = (campaign?.channels || []).map((channel) => clean(channel).toLowerCase()).filter(Boolean);
+  return channels.length ? channels : ["email"];
+}
+
+function campaignLinkedInUrl(contact) {
+  return clean(contact?.linkedin_url || contact?.contact_linkedin);
+}
+
+function campaignMemberDeliveryPaths(campaign, contact) {
+  const channels = campaignConfiguredChannels(campaign);
+  const paths = [];
+  const email = clean(contact?.email);
+  for (const channel of channels) {
+    if (channel === "email" && clean(contact?.email_quality).toLowerCase() === "valid" && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) paths.push({ channel: "Email", destination: email });
+    if (channel === "linkedin" && /^https?:\/\//i.test(campaignLinkedInUrl(contact))) paths.push({ channel: "LinkedIn", destination: campaignLinkedInUrl(contact) });
+    if (channel === "call" && clean(contact?.phone)) paths.push({ channel: "Call", destination: clean(contact.phone) });
+    if (channel === "whatsapp" && clean(contact?.phone)) paths.push({ channel: "WhatsApp", destination: clean(contact.phone) });
+  }
+  return paths;
+}
+
+function campaignMemberDeliveryChannels(campaign, contact) {
+  return campaignMemberDeliveryPaths(campaign, contact).map((path) => path.channel);
+}
+
+function campaignMemberChannel(member, campaign) {
+  const paths = campaignMemberDeliveryPaths(campaign, member?.contact || {});
+  if (!paths.length) return "Sin canal habilitado";
+  const [primary, ...alternatives] = paths;
+  return `${primary.channel} · ${primary.destination}${alternatives.length ? ` (+${alternatives.length})` : ""}`;
+}
+
+function campaignMemberReason(member, campaign) {
+  const status = clean(member?.status).toLowerCase();
+  const contact = member?.contact || {};
+  const account = member?.account || {};
+  const deliveryChannels = campaignMemberDeliveryChannels(campaign, contact);
+  if (status === "ready") return `Listo para exportar por ${deliveryChannels[0] || "canal"}`;
+  if (status === "pending" || status === "needs_review") {
+    if (clean(account.data_status).toLowerCase() === "excluded") return "Cuenta excluida por regla de segmento";
+    if (!member?.contact_id && !contact?.id) return "La cuenta no tiene contacto vinculado";
+    if (clean(contact.status).toLowerCase() === "inactive") return "Contacto inactivo en Shipper CRM";
+    const requiredChannels = campaignConfiguredChannels(campaign).map((channel) => ({
+      email: "email validado",
+      call: "telefono",
+      whatsapp: "telefono",
+      linkedin: "LinkedIn valido"
+    }[channel] || channel));
+    return `Sin canal habilitado: requiere ${[...new Set(requiredChannels)].join(" o ")}`;
+  }
+  if (status === "bounced") return "Rebote registrado; no exportar";
+  if (status === "unsubscribed") return "Baja solicitada; no contactar";
+  if (status === "do_not_contact") return "Marcado como no contactar";
+  if (status === "excluded") return "Excluido por regla de segmento";
+  if (status === "exported") return "Ya incluido en un archivo exportado";
+  if (status === "contacted") return "Contacto registrado; no reabrir audiencia";
+  if (status === "replied") return "Respuesta registrada; gestionar en Resultados";
+  if (status === "interested") return "Interesado; registrar siguiente acción";
+  if (status === "not_interested") return "No interesado; conservar historial";
+  if (status === "wrong_person") return "Contacto incorrecto; buscar reemplazo en CRM";
+  if (status === "referral") return "Referido registrado; gestionar nuevo contacto";
+  if (status === "send_info") return "Pidió información; registrar seguimiento";
+  if (status === "meeting_booked") return "Reunión registrada; conservar historial";
+  if (status === "rfq") return "RFQ registrado; conservar historial";
+  if (status === "opportunity") return "Oportunidad creada en Shipper CRM";
+  return "Sin accion pendiente";
+}
+
+function updateCampaignAudienceControls(members) {
+  const filter = state.campaignMemberFilter;
+  const counts = members.reduce((result, member) => {
+    result[campaignMemberBucket(member)] += 1;
+    return result;
+  }, { ready: 0, review: 0, blocked: 0, history: 0 });
+  $$('[data-campaign-member-filter]').forEach((button) => {
+    const bucket = button.dataset.campaignMemberFilter || "all";
+    const count = bucket === "all" ? members.length : counts[bucket] || 0;
+    button.classList.toggle("active", bucket === filter);
+    button.textContent = `${CAMPAIGN_MEMBER_FILTER_LABELS[bucket] || bucket} ${count.toLocaleString("es-MX")}`;
+    button.title = `${count.toLocaleString("es-MX")} contacto(s) en ${CAMPAIGN_MEMBER_FILTER_LABELS[bucket] || bucket}.`;
+  });
+  const filtered = members.filter((member) => filter === "all" || campaignMemberBucket(member) === filter);
+  const query = clean(state.campaignMemberQuery).toLowerCase();
+  const queryFiltered = query ? filtered.filter((member) => [
+    member.account?.shipper_name,
+    member.account?.domain,
+    member.contact?.contact_name,
+    member.contact?.email,
+    member.contact?.title
+  ].filter(Boolean).join(" ").toLowerCase().includes(query)) : filtered;
+  $("#campaign-member-count").textContent = query
+    ? `${queryFiltered.length.toLocaleString("es-MX")} coincidencias de ${filtered.length.toLocaleString("es-MX")}`
+    : `${filtered.length.toLocaleString("es-MX")} de ${members.length.toLocaleString("es-MX")} contactos`;
+  const guidance = {
+    all: "El CSV de ejecucion solo incluye contactos listos. Historiales y bloqueados se preservan fuera de la exportacion.",
+    ready: "Estos contactos tienen una ruta de entrega valida y entraran al CSV de ejecucion.",
+    review: "Estos contactos no entraran al CSV hasta corregir o validar su canal de entrega en Shipper CRM.",
+    blocked: "Estos contactos quedan excluidos por rebote, baja o una regla de no contacto.",
+    history: "Estos contactos ya tienen actividad o un resultado registrado. Actualizar CRM no los devuelve a la audiencia."
+  };
+  $("#campaign-member-guidance").textContent = guidance[filter] || guidance.all;
+  return queryFiltered;
+}
+
+function renderCampaignMemberPreview(members) {
+  const filteredMembers = updateCampaignAudienceControls(members);
+  const campaign = state.campaignDetail?.campaign || {};
+  $("#campaign-member-preview").innerHTML = filteredMembers.slice(0, 100).map((member) => `<tr><td><strong>${escapeHtml(member.account?.shipper_name || "-")}</strong><small>${escapeHtml(member.account?.domain || "")}</small></td><td>${escapeHtml(member.contact?.contact_name || "Sin contacto")}</td><td>${escapeHtml(campaignMemberChannel(member, campaign))}</td><td><span class="growth-pill ${escapeHtml(member.status)}">${escapeHtml(member.status)}</span></td><td>${escapeHtml(campaignMemberReason(member, campaign))}</td></tr>`).join("") || '<tr><td colspan="5" class="growth-empty-cell">No hay contactos en este estado.</td></tr>';
+}
+
+function campaignNextAction(campaign, readyMembers, reviewMembers, suppressedMembers, historyMembers) {
+  const status = clean(campaign.status).toLowerCase() || "draft";
+  if (!readyMembers && !reviewMembers && !suppressedMembers && historyMembers > 0 && !["exported", "launched"].includes(status)) {
+    return "La audiencia solo conserva actividad historica. Crea una nueva campaña o ajusta el segmento para encontrar contactos sin gestionar.";
+  }
+  if (status === "launched") return "Siguiente paso: registra las respuestas, rebotes o solicitudes en Resultados. La ejecución externa ya quedó marcada.";
+  if (status === "exported") return "Siguiente paso: ejecuta el CSV fuera de Rateware y, cuando termine la salida, marca la campaña como lanzada.";
+  if (readyMembers > 0) return `${readyMembers.toLocaleString("es-MX")} contacto(s) están listos. Exporta la audiencia CSV para ejecutar la campaña fuera de Rateware.`;
+  if (reviewMembers > 0) return "Actualiza la audiencia desde CRM para revalidar contactos pendientes. Si siguen en revisión, descarga el archivo y corrige sus datos de entrega.";
+  if (suppressedMembers > 0) return "La audiencia quedó bloqueada por bajas, rebotes o reglas de no contacto. Revisa los contactos antes de volver a segmentar.";
+  return "La campaña no tiene contactos exportables. Ajusta el segmento o completa datos de contacto en Shipper CRM.";
+}
+
 function renderCampaignSummary() {
   const detail = state.campaignDetail;
   if (!detail) return;
@@ -558,19 +764,47 @@ function renderCampaignSummary() {
     ["Ejecución", "Exportación CSV manual"]
   ].map(([label, value]) => `<div>${escapeHtml(label)}<strong>${escapeHtml(value)}</strong></div>`).join("");
   const readyMembers = members.filter((member) => member.status === "ready").length;
-  const reviewMembers = members.filter((member) => member.status === "pending").length;
+  const reviewMembers = members.filter((member) => ["pending", "needs_review", "invalid"].includes(member.status)).length;
   const suppressedMembers = members.filter((member) => ["unsubscribed", "bounced", "do_not_contact", "excluded"].includes(member.status)).length;
+  const historyMembers = members.filter((member) => campaignMemberBucket(member) === "history").length;
+  const preferredChannelCounts = members.filter((member) => member.status === "ready").reduce((counts, member) => {
+    const channel = campaignMemberDeliveryPaths(campaign, member.contact || {})[0]?.channel;
+    if (channel) counts[channel] = (counts[channel] || 0) + 1;
+    return counts;
+  }, {});
+  const channelCoverage = Object.entries(preferredChannelCounts).map(([channel, count]) => `${channel} ${count}`).join(" · ") || "Sin ruta valida";
   $("#campaign-export-summary").insertAdjacentHTML("beforeend", [
     ["Listos para exportar", readyMembers.toLocaleString("es-MX")],
+    ["Canal de ejecucion", channelCoverage],
     ["Requieren revisión", reviewMembers.toLocaleString("es-MX")],
     ["Bajas / bloqueados", suppressedMembers.toLocaleString("es-MX")]
   ].map(([label, value]) => `<div>${escapeHtml(label)}<strong>${escapeHtml(value)}</strong></div>`).join(""));
-  $("#campaign-member-preview").innerHTML = members.slice(0, 100).map((member) => `<tr><td><strong>${escapeHtml(member.account?.shipper_name || "-")}</strong><small>${escapeHtml(member.account?.domain || "")}</small></td><td>${escapeHtml(member.contact?.contact_name || "Sin contacto")}</td><td>${escapeHtml(member.contact?.email || "-")}</td><td><span class="growth-pill ${escapeHtml(member.status)}">${escapeHtml(member.status)}</span></td></tr>`).join("") || '<tr><td colspan="4" class="growth-empty-cell">El segmento no produjo miembros.</td></tr>';
-  $("#mark-campaign-launched-button").disabled = campaign.status === "launched";
+  $("#campaign-export-summary").insertAdjacentHTML("beforeend", `<div>Historial protegido<strong>${historyMembers.toLocaleString("es-MX")}</strong></div>`);
+  $("#campaign-next-action").textContent = campaignNextAction(campaign, readyMembers, reviewMembers, suppressedMembers, historyMembers);
+  renderCampaignMemberPreview(members);
+  const campaignStatus = clean(campaign.status).toLowerCase() || "draft";
+  const exportButton = $("#export-campaign-button");
+  const launchedButton = $("#mark-campaign-launched-button");
+  const resultsButton = $("#open-campaign-results-button");
+  const refreshAudienceButton = $("#refresh-campaign-audience-button");
+  exportButton.disabled = readyMembers === 0 || campaignStatus === "launched";
+  exportButton.title = exportButton.disabled ? (campaignStatus === "launched" ? "La campaña ya fue marcada como lanzada." : "No hay contactos listos para exportar.") : "Descarga la audiencia lista para ejecución externa.";
+  launchedButton.disabled = campaignStatus !== "exported";
+  launchedButton.title = launchedButton.disabled ? (campaignStatus === "launched" ? "La campaña ya fue marcada como lanzada." : "Exporta primero la audiencia CSV.") : "Registra que la ejecución externa fue lanzada.";
+  resultsButton.classList.toggle("hidden", campaignStatus !== "launched");
+  resultsButton.disabled = campaignStatus !== "launched";
+  refreshAudienceButton.disabled = !campaign.id;
+  refreshAudienceButton.title = refreshAudienceButton.disabled
+    ? "Guarda una campaña antes de actualizar la audiencia."
+    : "Revalida solo contactos pendientes contra Shipper CRM. No altera exportados, respuestas, bajas ni rebotes.";
 }
 
 async function openCampaign(id) {
   state.currentCampaignId = id;
+  state.campaignMemberFilter = "all";
+  state.campaignMemberQuery = "";
+  state.campaignDirty = false;
+  state.campaignMessagesDirty = false;
   state.campaignDetail = await getGrowthCampaign(id);
   const campaign = state.campaignDetail.campaign || {};
   $("#campaign-name").value = campaign.name || "";
@@ -580,6 +814,7 @@ async function openCampaign(id) {
   $$('.growth-channel-options input').forEach((input) => { input.checked = (campaign.channels || []).includes(input.value); });
   $("#campaign-segment-summary").textContent = campaign.segment ? describeSegment(campaign.segment) : "Segmento no disponible.";
   $("#campaign-save-status").textContent = `Guardada · ${formatDate(campaign.updated_at)}`;
+  $("#campaign-member-search").value = "";
   renderCampaignMessages(state.campaignDetail.messages);
   renderCampaignSummary();
   renderCampaignList();
@@ -601,6 +836,7 @@ async function persistCampaign() {
     status: state.campaignDetail?.campaign?.status || "draft"
   });
   state.currentCampaignId = response.row.id;
+  state.campaignDirty = false;
   await Promise.all([loadCampaigns(), openCampaign(response.row.id)]);
   return response;
 }
@@ -619,6 +855,7 @@ async function persistCampaignMessages() {
     });
   }
   state.campaignDetail = await getGrowthCampaign(state.currentCampaignId);
+  state.campaignMessagesDirty = false;
   renderCampaignMessages(state.campaignDetail.messages);
   renderCampaignSummary();
 }
@@ -678,6 +915,34 @@ function downloadMessageCsv(rows, filename) {
   URL.revokeObjectURL(url);
 }
 
+function downloadCampaignReview() {
+  const campaign = state.campaignDetail?.campaign || {};
+  const rows = (state.campaignDetail?.members || []).filter((member) => ["review", "blocked"].includes(campaignMemberBucket(member))).map((member) => ({
+    campaign_name: campaign.name || "",
+    account_name: member.account?.shipper_name || "",
+    domain: member.account?.domain || "",
+    contact_name: member.contact?.contact_name || "",
+    email: member.contact?.email || "",
+    phone: member.contact?.phone || "",
+    linkedin_url: campaignLinkedInUrl(member.contact),
+    status: member.status || "",
+    reason: campaignMemberReason(member, campaign)
+  }));
+  if (!rows.length) throw new Error("No hay contactos pendientes o bloqueados para descargar.");
+  const columns = ["campaign_name", "account_name", "domain", "contact_name", "email", "phone", "linkedin_url", "status", "reason"];
+  const csv = `\uFEFF${columns.map(csvCell).join(",")}\r\n${rows.map((row) => columns.map((column) => csvCell(row[column])).join(",")).join("\r\n")}`;
+  const slug = clean(campaign.name).replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "growth-campaign";
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${slug}-audience-review.csv`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+  $("#campaign-save-status").textContent = `${rows.length.toLocaleString("es-MX")} contactos descargados para revision; no se envio ningun mensaje`;
+}
+
 async function downloadCampaignMessages() {
   if (!state.currentCampaignId) throw new Error("Guarda una campaña antes de descargar sus mensajes.");
   await persistCampaignMessages();
@@ -695,6 +960,19 @@ async function downloadCampaignMessages() {
   $("#campaign-save-status").textContent = `${rows.length} mensajes descargados; no se envió ningún mensaje`;
 }
 
+async function refreshCampaignAudience() {
+  if (!state.currentCampaignId) throw new Error("Guarda una campaña antes de actualizar su audiencia.");
+  const response = await refreshGrowthCampaignAudience(state.currentCampaignId);
+  state.campaignDetail = await getGrowthCampaign(state.currentCampaignId);
+  renderCampaignSummary();
+  await Promise.all([loadCampaigns(), loadDashboard()]);
+  const updated = Number(response.updated || 0);
+  const ready = Number(response.ready || 0);
+  const review = Number(response.review || 0);
+  const preserved = Number(response.preserved || 0);
+  $("#campaign-save-status").textContent = `Audiencia actualizada: ${ready.toLocaleString("es-MX")} lista(s), ${review.toLocaleString("es-MX")} en revisión y ${preserved.toLocaleString("es-MX")} historial(es) preservado(s)${updated ? `; ${updated.toLocaleString("es-MX")} estado(s) actualizado(s)` : ""}.`;
+}
+
 async function markCampaignLaunched() {
   if (!state.currentCampaignId) throw new Error("Guarda una campaña antes de marcarla como lanzada.");
   const status = state.campaignDetail?.campaign?.status || "draft";
@@ -708,6 +986,16 @@ async function markCampaignLaunched() {
   $("#campaign-save-status").textContent = "Campaña marcada como lanzada; ejecución externa, sin envío automático";
 }
 
+async function openCampaignResults() {
+  if (!state.currentCampaignId) throw new Error("Guarda una campaña antes de registrar resultados.");
+  activateView("results");
+  updateCampaignResultOptions();
+  $("#result-campaign").value = state.currentCampaignId;
+  await loadResultCampaignMembers(state.currentCampaignId);
+  $("#result-member-search").focus();
+  setGlobalStatus("Campaña cargada en Resultados. Busca la cuenta o contacto para registrar su señal.", "success");
+}
+
 async function exportCurrentCampaign() {
   if (!state.currentCampaignId) throw new Error("Guarda una campaña antes de exportarla.");
   await persistCampaignMessages();
@@ -716,6 +1004,7 @@ async function exportCurrentCampaign() {
   const suppressed = Number(response.suppressed_count || 0);
   const review = Number(response.review_count || 0);
   $("#campaign-save-status").textContent = `${Number(response.exported_count || 0).toLocaleString("es-MX")} contactos exportados${suppressed ? `; ${suppressed.toLocaleString("es-MX")} baja(s) o rebote(s) excluidos` : ""}; no se envió ningún mensaje`;
+  if (review) $("#campaign-save-status").textContent = `${Number(response.exported_count || 0).toLocaleString("es-MX")} contactos exportados; ${review.toLocaleString("es-MX")} requieren revisión${suppressed ? `; ${suppressed.toLocaleString("es-MX")} bajas o bloqueos excluidos` : ""}. No se envió ningún mensaje.`;
   await Promise.all([loadCampaigns(), loadDashboard(), loadResults()]);
   state.campaignDetail = await getGrowthCampaign(state.currentCampaignId);
   renderCampaignSummary();
@@ -747,14 +1036,174 @@ function updateCampaignResultOptions() {
 
 async function loadResultCampaignMembers(campaignId) {
   const select = $("#result-member");
+  const search = $("#result-member-search");
+  const count = $("#result-member-count");
+  state.resultMemberQuery = "";
+  if (search) {
+    search.value = "";
+    search.disabled = !campaignId;
+  }
   select.innerHTML = '<option value="">Cargando contactos...</option>';
   if (!campaignId) {
     state.resultCampaignDetail = null;
     select.innerHTML = '<option value="">Selecciona una cuenta o contacto</option>';
+    if (count) count.textContent = "Selecciona una campaña para buscar contactos.";
+    renderResultMemberSummary();
     return;
   }
   state.resultCampaignDetail = await getGrowthCampaign(campaignId);
-  select.innerHTML = '<option value="">Selecciona una cuenta o contacto</option>' + (state.resultCampaignDetail.members || []).map((member) => `<option value="${escapeHtml(member.id)}">${escapeHtml(member.account?.shipper_name || "Cuenta")} · ${escapeHtml(member.contact?.contact_name || member.contact?.email || "Sin contacto")}</option>`).join("");
+  renderResultCampaignMembers();
+}
+
+function resultMemberLabel(member) {
+  return `${member.account?.shipper_name || "Cuenta"} · ${member.contact?.contact_name || member.contact?.email || "Sin contacto"}`;
+}
+
+function renderResultCampaignMembers({ preserveSelection = true } = {}) {
+  const select = $("#result-member");
+  const count = $("#result-member-count");
+  const previousValue = preserveSelection ? select.value : "";
+  const actionableMembers = (state.resultCampaignDetail?.members || []).filter((member) => !["unsubscribed", "bounced", "do_not_contact", "excluded"].includes(member.status));
+  const query = normalize(state.resultMemberQuery);
+  const matches = query ? actionableMembers.filter((member) => normalize([
+    member.account?.shipper_name,
+    member.account?.domain,
+    member.contact?.contact_name,
+    member.contact?.email,
+    member.contact?.title
+  ].filter(Boolean).join(" ")).includes(query)) : actionableMembers;
+  if (!actionableMembers.length) {
+    select.innerHTML = '<option value="">No hay contactos accionables en esta campaña</option>';
+    if (count) count.textContent = "Esta campaña no tiene contactos disponibles para registrar resultados.";
+    renderResultMemberSummary();
+    return;
+  }
+  select.innerHTML = `<option value="">${matches.length ? "Selecciona una cuenta o contacto" : "No hay coincidencias"}</option>` + matches.map((member) => `<option value="${escapeHtml(member.id)}">${escapeHtml(resultMemberLabel(member))}</option>`).join("");
+  if (previousValue && matches.some((member) => member.id === previousValue)) select.value = previousValue;
+  if (count) count.textContent = query
+    ? `${matches.length.toLocaleString("es-MX")} de ${actionableMembers.length.toLocaleString("es-MX")} contactos coinciden.`
+    : `${actionableMembers.length.toLocaleString("es-MX")} contactos disponibles. Busca por cuenta, contacto o correo.`;
+  renderResultMemberSummary();
+}
+
+function renderResultMemberSummary() {
+  const summary = $("#result-member-summary");
+  if (!summary) return;
+  const memberId = $("#result-member")?.value || "";
+  const member = (state.resultCampaignDetail?.members || []).find((item) => item.id === memberId);
+  if (!member) {
+    summary.classList.add("hidden");
+    summary.innerHTML = "";
+    return;
+  }
+
+  const campaign = state.resultCampaignDetail?.campaign || {};
+  const account = member.account || {};
+  const contact = member.contact || {};
+  const delivery = campaignMemberDeliveryPaths(campaign, contact)[0];
+  const signals = (state.results.rows || [])
+    .filter((row) => row.campaign_id === campaign.id && row.campaign_member_id === member.id)
+    .slice()
+    .sort((left, right) => String(right.created_at || "").localeCompare(String(left.created_at || "")));
+  const latest = signals[0];
+  const memberStatus = clean(member.status) || "ready";
+
+  summary.classList.remove("hidden");
+  summary.innerHTML = `
+    <div class="growth-result-member-summary-heading">
+      <div><span>Contacto seleccionado</span><strong>${escapeHtml(account.shipper_name || "Cuenta")}</strong><small>${escapeHtml(contact.contact_name || contact.email || "Sin contacto")}</small></div>
+      <span class="growth-pill">${escapeHtml(memberStatus)}</span>
+    </div>
+    <dl>
+      <div><dt>Canal</dt><dd>${escapeHtml(delivery ? `${delivery.channel} · ${delivery.destination}` : "Sin canal validado")}</dd></div>
+      <div><dt>Señales</dt><dd>${signals.length ? `${signals.length} registrada${signals.length === 1 ? "" : "s"}` : "Sin señales previas"}</dd></div>
+      <div><dt>Última</dt><dd>${escapeHtml(latest ? `${RESULT_LABELS[latest.outcome] || latest.outcome} · ${formatDate(latest.created_at)}` : campaignMemberReason(member, campaign))}</dd></div>
+    </dl>`;
+}
+
+const RESULT_LABELS = {
+  replied: "Respondió",
+  interested: "Interesado",
+  not_interested: "No interesado",
+  wrong_person: "Contacto incorrecto",
+  referral: "Referido",
+  send_info: "Enviar información",
+  meeting_booked: "Reunión agendada",
+  rfq_received: "RFQ recibido",
+  opportunity_created: "Oportunidad creada",
+  no_response: "Sin respuesta",
+  unsubscribe: "Do not contact",
+  bounce: "Rebote"
+};
+
+const RESULT_NEXT_ACTIONS = {
+  replied: "Revisar respuesta y confirmar interés",
+  interested: "Agendar llamada de discovery",
+  not_interested: "Mover a recuperación en 90 días",
+  wrong_person: "Solicitar al contacto responsable",
+  referral: "Agregar y contactar al referido",
+  send_info: "Enviar información y confirmar recepción",
+  meeting_booked: "Preparar la reunión",
+  rfq_received: "Revisar alcance y crear RFQ",
+  no_response: "Reintentar por el canal más relevante",
+  unsubscribe: "No contactar de nuevo",
+  bounce: "Validar o reemplazar el correo"
+};
+
+const CONVERTIBLE_RESULT_OUTCOMES = new Set(["replied", "interested", "referral", "send_info", "meeting_booked", "rfq_received"]);
+const CLOSED_RESULT_OUTCOMES = new Set(["not_interested", "unsubscribe", "bounce"]);
+
+function syncResultNextActionSuggestion({ force = false } = {}) {
+  const outcome = $("#result-outcome")?.value || "";
+  const nextAction = $("#result-next-action");
+  const guide = $("#result-outcome-guide");
+  if (!nextAction || !guide) return;
+
+  const suggestion = RESULT_NEXT_ACTIONS[outcome] || "";
+  const current = clean(nextAction.value);
+  const previousSuggestion = clean(nextAction.dataset.suggestedAction || "");
+  if (force || !current || current === previousSuggestion) nextAction.value = suggestion;
+  nextAction.dataset.suggestedAction = suggestion;
+  nextAction.placeholder = suggestion || "Ej. Agendar discovery call";
+
+  if (outcome === "unsubscribe") {
+    guide.textContent = "Este contacto quedará fuera de nuevas campañas. No se envía nada ni se crea una tarea automáticamente.";
+    return;
+  }
+  if (outcome === "bounce") {
+    guide.textContent = "Sugerencia editable: valida o reemplaza el correo antes de volver a incluir este contacto.";
+    return;
+  }
+  if (outcome === "not_interested") {
+    guide.textContent = "Sugerencia editable: conserva la señal y programa una recuperación solo si corresponde.";
+    return;
+  }
+  guide.textContent = suggestion
+    ? `Sugerencia editable: ${suggestion}. Confírmala o modifícala antes de guardar.`
+    : "Define el siguiente paso antes de guardar.";
+}
+
+function resultBucket(row) {
+  if (CLOSED_RESULT_OUTCOMES.has(row.outcome)) return "closed";
+  if (CONVERTIBLE_RESULT_OUTCOMES.has(row.outcome) && !row.converted_opportunity_id && !row.converted_rfi_id) return "convertible";
+  return "follow_up";
+}
+
+function updateResultControls(rows) {
+  const filtered = state.resultFilter === "all" ? rows : rows.filter((row) => resultBucket(row) === state.resultFilter);
+  const count = $("#results-row-count");
+  if (count) count.textContent = `${filtered.length.toLocaleString("es-MX")} de ${rows.length.toLocaleString("es-MX")} señales`;
+  const guide = $("#results-filter-guide");
+  if (guide) {
+    guide.textContent = {
+      all: "El historial conserva cada señal. Las métricas superiores reflejan el estado más reciente de cada contacto.",
+      follow_up: "Registra el siguiente movimiento sin perder el contexto anterior del contacto.",
+      convertible: "Estas señales pueden abrir una oportunidad o un RFQ en Shipper CRM cuando el usuario confirme.",
+      closed: "Contactos cerrados o suprimidos. No se exportarán en nuevas campañas hasta corregirlos o restaurarlos."
+    }[state.resultFilter] || "";
+  }
+  $$('[data-result-filter]').forEach((button) => button.classList.toggle("active", button.dataset.resultFilter === state.resultFilter));
+  return filtered;
 }
 
 function renderResults() {
@@ -773,11 +1222,11 @@ function renderResults() {
     const element = $(`#result-metric-${key}`);
     if (element) element.textContent = Number(value || 0).toLocaleString("es-MX");
   }
-  const convertible = new Set(["replied", "interested", "referral", "send_info", "meeting_booked", "rfq_received", "opportunity_created"]);
-  $("#results-table-body").innerHTML = (state.results.rows || []).map((row) => {
+  const rows = updateResultControls(state.results.rows || []);
+  $("#results-table-body").innerHTML = rows.map((row) => {
     const converted = row.converted_opportunity_id || row.converted_rfi_id;
-    const actions = `<button class="secondary" type="button" data-follow-up-result="${escapeHtml(row.id)}">Seguimiento</button>${converted ? '<span class="growth-pill launched">Convertido</span>' : convertible.has(row.outcome) ? `<button type="button" data-convert-result="${escapeHtml(row.id)}" data-conversion="opportunity">Oportunidad</button><button class="secondary" type="button" data-convert-result="${escapeHtml(row.id)}" data-conversion="rfq">RFQ</button>` : '<span class="growth-muted">Sin conversión</span>'}`;
-    return `<tr><td><strong>${escapeHtml(row.account?.shipper_name || "-")}</strong><small>${escapeHtml(row.contact?.contact_name || row.contact?.email || "Sin contacto")}</small></td><td>${escapeHtml(row.campaign?.name || "-")}</td><td><span class="growth-pill ${escapeHtml(row.outcome)}">${escapeHtml(row.outcome.replace(/_/g, " "))}</span></td><td>${escapeHtml(row.next_action || "-")}<small>${escapeHtml(row.follow_up_at ? formatDate(row.follow_up_at) : "")}</small></td><td>${escapeHtml(formatDate(row.created_at))}</td><td class="growth-actions-cell">${actions}</td></tr>`;
+    const actions = `<button class="secondary" type="button" data-follow-up-result="${escapeHtml(row.id)}">Seguimiento</button>${converted ? '<span class="growth-pill launched">Convertido</span>' : CONVERTIBLE_RESULT_OUTCOMES.has(row.outcome) ? `<button type="button" data-convert-result="${escapeHtml(row.id)}" data-conversion="opportunity">Oportunidad</button><button class="secondary" type="button" data-convert-result="${escapeHtml(row.id)}" data-conversion="rfq">RFQ</button>` : '<span class="growth-muted">Sin conversión</span>'}`;
+    return `<tr><td><strong>${escapeHtml(row.account?.shipper_name || "-")}</strong><small>${escapeHtml(row.contact?.contact_name || row.contact?.email || "Sin contacto")}</small></td><td>${escapeHtml(row.campaign?.name || "-")}</td><td><span class="growth-pill ${escapeHtml(row.outcome)}">${escapeHtml(RESULT_LABELS[row.outcome] || row.outcome.replace(/_/g, " "))}</span></td><td>${escapeHtml(row.next_action || "-")}<small>${escapeHtml(row.follow_up_at ? formatDate(row.follow_up_at) : "")}</small></td><td>${escapeHtml(formatDate(row.created_at))}</td><td class="growth-actions-cell">${actions}</td></tr>`;
   }).join("") || '<tr><td colspan="6" class="growth-empty-cell">Todavía no hay respuestas registradas.</td></tr>';
   $$('[data-follow-up-result]').forEach((button) => button.addEventListener("click", () => prepareResultFollowUp(button.dataset.followUpResult).catch((error) => setGlobalStatus(errorMessage(error), "error"))));
   $$("[data-convert-result]").forEach((button) => button.addEventListener("click", async () => {
@@ -798,10 +1247,13 @@ async function prepareResultFollowUp(resultId) {
   $("#result-campaign").value = result.campaign_id;
   await loadResultCampaignMembers(result.campaign_id);
   $("#result-member").value = result.campaign_member_id;
+  renderResultMemberSummary();
   $("#result-outcome").value = "replied";
   $("#result-notes").value = "";
   $("#result-next-action").value = result.next_action || "";
+  $("#result-next-action").dataset.suggestedAction = "";
   $("#result-follow-up").value = "";
+  syncResultNextActionSuggestion();
   $("#result-notes").focus();
   $(".growth-result-entry")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   setGlobalStatus("Registrarás un nuevo seguimiento. El resultado anterior se conserva en la bitácora.", "success");
@@ -886,6 +1338,15 @@ function bindEvents() {
   $("#new-campaign-button").addEventListener("click", resetCampaign);
   $("#refresh-campaigns-button").addEventListener("click", (event) => withBusy(event.currentTarget, "Actualizando...", loadCampaigns).catch((error) => setGlobalStatus(errorMessage(error), "error")));
   $("#campaign-segment").addEventListener("change", refreshCampaignSegmentSummary);
+  ["#campaign-name", "#campaign-objective", "#campaign-hook"].forEach((selector) => {
+    $(selector).addEventListener("input", markCampaignDirty);
+    $(selector).addEventListener("change", markCampaignDirty);
+  });
+  $$(".growth-channel-options input").forEach((input) => input.addEventListener("change", markCampaignDirty));
+  $("#campaign-messages").addEventListener("input", () => {
+    state.campaignMessagesDirty = true;
+    renderCampaignProgress();
+  });
   $("#campaign-next-button").addEventListener("click", (event) => withBusy(event.currentTarget, "Guardando...", moveCampaignForward).catch((error) => setGlobalStatus(errorMessage(error), "error")));
   $("#campaign-back-button").addEventListener("click", () => setCampaignStep(state.campaignStep - 1));
   $("#campaign-stepper").addEventListener("click", (event) => {
@@ -896,14 +1357,38 @@ function bindEvents() {
   });
   $("#export-campaign-button").addEventListener("click", (event) => withBusy(event.currentTarget, "Preparando CSV...", exportCurrentCampaign).catch((error) => setGlobalStatus(errorMessage(error), "error")));
   $("#download-campaign-messages-button").addEventListener("click", (event) => withBusy(event.currentTarget, "Preparando...", downloadCampaignMessages).catch((error) => setGlobalStatus(errorMessage(error), "error")));
+  $("#download-campaign-review-button").addEventListener("click", (event) => withBusy(event.currentTarget, "Preparando...", downloadCampaignReview).catch((error) => setGlobalStatus(errorMessage(error), "error")));
+  $("#refresh-campaign-audience-button").addEventListener("click", (event) => withBusy(event.currentTarget, "Revalidando...", refreshCampaignAudience).catch((error) => setGlobalStatus(errorMessage(error), "error")));
   $("#mark-campaign-launched-button").addEventListener("click", (event) => withBusy(event.currentTarget, "Actualizando...", markCampaignLaunched).catch((error) => setGlobalStatus(errorMessage(error), "error")));
+  $("#open-campaign-results-button").addEventListener("click", (event) => withBusy(event.currentTarget, "Abriendo...", openCampaignResults).catch((error) => setGlobalStatus(errorMessage(error), "error")));
+  $$('[data-campaign-member-filter]').forEach((button) => button.addEventListener("click", () => {
+    state.campaignMemberFilter = button.dataset.campaignMemberFilter || "all";
+    renderCampaignMemberPreview(state.campaignDetail?.members || []);
+  }));
+  $("#campaign-member-search").addEventListener("input", (event) => {
+    state.campaignMemberQuery = event.target.value;
+    renderCampaignMemberPreview(state.campaignDetail?.members || []);
+  });
 
   $$('[data-ai-action]').forEach((button) => button.addEventListener("click", () => withBusy(button, "Analizando...", () => runAiAction(button)).catch((error) => setGlobalStatus(errorMessage(error), "error"))));
 
   $("#result-campaign").addEventListener("change", (event) => loadResultCampaignMembers(event.target.value).catch((error) => setGlobalStatus(errorMessage(error), "error")));
+  $("#result-member").addEventListener("change", () => {
+    renderResultMemberSummary();
+    syncResultNextActionSuggestion();
+  });
+  $("#result-outcome").addEventListener("change", () => syncResultNextActionSuggestion());
+  $("#result-member-search").addEventListener("input", (event) => {
+    state.resultMemberQuery = event.target.value;
+    renderResultCampaignMembers();
+  });
   $("#save-result-button").addEventListener("click", (event) => withBusy(event.currentTarget, "Guardando...", saveResult).catch((error) => setGlobalStatus(errorMessage(error), "error")));
   $("#refresh-results-button").addEventListener("click", (event) => withBusy(event.currentTarget, "Actualizando...", () => loadResults()).catch((error) => setGlobalStatus(errorMessage(error), "error")));
   $("#results-campaign-filter").addEventListener("change", (event) => loadResults(event.target.value).catch((error) => setGlobalStatus(errorMessage(error), "error")));
+  $$('[data-result-filter]').forEach((button) => button.addEventListener("click", () => {
+    state.resultFilter = button.dataset.resultFilter || "all";
+    renderResults();
+  }));
 }
 
 async function initialize() {

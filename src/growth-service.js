@@ -18,6 +18,7 @@ export const listGrowthCampaigns = () => callRatewareApi("list_growth_campaigns"
 export const getGrowthCampaign = (id) => callRatewareApi("get_growth_campaign", { id });
 export const saveGrowthCampaign = (campaign) => callRatewareApi("save_growth_campaign", { campaign });
 export const saveGrowthMessage = (message) => callRatewareApi("save_growth_message", { message });
+export const refreshGrowthCampaignAudience = (id) => callRatewareApi("refresh_growth_campaign_audience", { id });
 export const exportGrowthCampaign = (id) => callRatewareApi("export_growth_campaign", { id });
 export const setGrowthCampaignStatus = (id, status) => callRatewareApi("set_growth_campaign_status", { id, status });
 

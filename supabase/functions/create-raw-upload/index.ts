@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
+import { resolveWorkspaceUser, workspaceUserContext } from "../_shared/workspace.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -62,21 +63,20 @@ function normalizeDomain(value: unknown) {
   return domainText.toLowerCase().split(/[\/\s,;]+/)[0].replace(/[^a-z0-9.-]+$/g, "");
 }
 
-function userEmail(payload: Record<string, unknown>) {
-  return cleanText(payload.email || payload.preferred_email || payload["https://kinde.com/email"])?.toLowerCase() || null;
-}
-
 Deno.serve(async (request) => {
   const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
 
   try {
-    const user = await requireKindeUser(request);
-    const ownerEmail = userEmail(user);
+    const identity = await requireKindeUser(request);
 
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       return jsonResponse({ error: "Missing SUPABASE_URL or RATEWARE_SUPABASE_SERVICE_ROLE_KEY." }, 500);
     }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const user = await resolveWorkspaceUser(supabase, workspaceUserContext(identity));
+    const ownerEmail = user.owner_email;
 
     const formData = await request.formData();
     const file = formData.get("file");
@@ -90,7 +90,6 @@ Deno.serve(async (request) => {
     const vendor = String(formData.get("vendor") || "").trim();
     const vendorId = String(formData.get("vendor_id") || "").trim();
     const rfx = String(formData.get("rfx") || "").trim();
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { uploadId, path } = buildStoragePath(file);
     let selectedVendorQuery = vendorId
       ? supabase
@@ -128,6 +127,7 @@ Deno.serve(async (request) => {
       vendor_match_source: resolvedVendorId ? "manual" : null,
       rfx_hint: rfx || null,
       owner_email: ownerEmail,
+      organization_id: user.organization_id,
       status: "uploaded",
       staging_target: "rate_staging"
     };

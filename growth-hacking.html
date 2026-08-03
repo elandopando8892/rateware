@@ -199,6 +199,7 @@
                   <button data-campaign-step="4" type="button"><b>4</b> Mensajes</button>
                   <button data-campaign-step="5" type="button"><b>5</b> Exportar</button>
                 </nav>
+                <p id="campaign-step-guidance" class="growth-step-guidance">Escribe un nombre para identificar esta campaña.</p>
                 <div class="growth-campaign-step active" data-campaign-panel="1">
                   <h3>¿Qué resultado buscas?</h3>
                   <div class="growth-form-grid two">
@@ -223,11 +224,30 @@
                 <div class="growth-campaign-step" data-campaign-panel="5">
                   <div class="growth-export-heading"><div><h3>Archivo de ejecución</h3><p>Una fila por contacto, con mensajes personalizados y sin envío automático.</p></div><span class="growth-neutral-badge">CSV ONLY</span></div>
                   <div id="campaign-export-summary" class="growth-review-grid"></div>
-                  <div class="growth-table-scroll short"><table class="growth-table"><thead><tr><th>Cuenta</th><th>Contacto</th><th>Email</th><th>Estado</th></tr></thead><tbody id="campaign-member-preview"></tbody></table></div>
+                  <p id="campaign-next-action" class="growth-next-action">Guarda una campaña para ver el siguiente paso.</p>
+                  <div class="growth-audience-toolbar" aria-label="Filtro de audiencia de campana">
+                    <div class="growth-audience-filters" role="group" aria-label="Estado de contacto">
+                      <button type="button" class="active" data-campaign-member-filter="all">Todos</button>
+                      <button type="button" data-campaign-member-filter="ready">Listos</button>
+                      <button type="button" data-campaign-member-filter="review">Revisar</button>
+                      <button type="button" data-campaign-member-filter="blocked">Bloqueados</button>
+                      <button type="button" data-campaign-member-filter="history">Historial</button>
+                    </div>
+                    <label class="growth-audience-search">
+                      <span class="sr-only">Buscar en audiencia</span>
+                      <input id="campaign-member-search" type="search" placeholder="Buscar cuenta, contacto o correo" autocomplete="off" />
+                    </label>
+                    <span id="campaign-member-count" class="growth-quiet-copy"></span>
+                  </div>
+                  <p id="campaign-member-guidance" class="growth-audience-guide">El CSV de ejecucion solo incluye contactos listos. Los demas quedan en revision o bloqueados.</p>
+                  <div class="growth-table-scroll short"><table class="growth-table"><thead><tr><th>Cuenta</th><th>Contacto</th><th>Ruta de ejecucion</th><th>Estado</th><th>Motivo</th></tr></thead><tbody id="campaign-member-preview"></tbody></table></div>
                   <div class="growth-export-actions">
                     <button id="download-campaign-messages-button" class="secondary" type="button">Descargar mensajes</button>
+                    <button id="refresh-campaign-audience-button" class="secondary" type="button" title="Revalida contactos pendientes contra Shipper CRM sin modificar historial de envios o rebotes.">Actualizar desde CRM</button>
+                    <button id="download-campaign-review-button" class="secondary" type="button">Descargar revision</button>
                     <button id="mark-campaign-launched-button" class="secondary" type="button">Marcar como lanzada</button>
                     <button id="export-campaign-button" type="button">Exportar audiencia CSV</button>
+                    <button id="open-campaign-results-button" class="secondary hidden" type="button" title="Registra respuestas, rebotes e interes sin modificar el historial de audiencia.">Registrar resultados</button>
                   </div>
                 </div>
                 <footer class="growth-wizard-footer">
@@ -277,17 +297,36 @@
             </section>
             <div class="growth-results-layout">
               <section class="growth-result-entry">
-                <h3>Registrar respuesta</h3>
-                <label><span>Campaña</span><select id="result-campaign"><option value="">Selecciona una campaña</option></select></label>
-                <label><span>Contacto</span><select id="result-member"><option value="">Selecciona una cuenta o contacto</option></select></label>
-                <label><span>Resultado</span><select id="result-outcome"><option value="replied">Respondió</option><option value="interested">Interesado</option><option value="not_interested">No interesado</option><option value="wrong_person">Persona incorrecta</option><option value="referral">Referido</option><option value="send_info">Enviar información</option><option value="meeting_booked">Reunión agendada</option><option value="rfq_received">RFQ recibido</option><option value="opportunity_created">Oportunidad creada</option><option value="no_response">Sin respuesta</option><option value="unsubscribe">Do not contact</option><option value="bounce">Rebote</option></select></label>
+                <header>
+                  <div><p class="eyebrow">Siguiente movimiento</p><h3>Registrar señal</h3></div>
+                </header>
+                <p class="growth-form-guide">Guarda la respuesta o incidencia del contacto. La bitácora se conserva; crear una oportunidad o RFQ ocurre desde el historial.</p>
+                <div class="growth-result-context-grid">
+                  <label><span>Campaña</span><select id="result-campaign"><option value="">Selecciona una campaña</option></select></label>
+                  <label><span>Buscar contacto</span><input id="result-member-search" type="search" placeholder="Cuenta, contacto o correo" disabled /></label>
+                  <label class="growth-result-member-field"><span>Contacto</span><select id="result-member"><option value="">Selecciona una cuenta o contacto</option></select></label>
+                  <p id="result-member-count" class="growth-quiet-copy" aria-live="polite">Selecciona una campaña para buscar contactos.</p>
+                </div>
+                <aside id="result-member-summary" class="growth-result-member-summary hidden" aria-live="polite"></aside>
+                <label><span>Resultado</span><select id="result-outcome"><option value="replied">Respondió</option><option value="interested">Interesado</option><option value="not_interested">No interesado</option><option value="wrong_person">Persona incorrecta</option><option value="referral">Referido</option><option value="send_info">Enviar información</option><option value="meeting_booked">Reunión agendada</option><option value="rfq_received">RFQ recibido</option><option value="no_response">Sin respuesta</option><option value="unsubscribe">Do not contact</option><option value="bounce">Rebote</option></select></label>
                 <label><span>Notas</span><textarea id="result-notes" rows="4" placeholder="Qué respondió y qué contexto debemos conservar..."></textarea></label>
                 <label><span>Siguiente acción</span><input id="result-next-action" placeholder="Ej. Agendar discovery call" /></label>
+                <p id="result-outcome-guide" class="growth-result-outcome-guide" aria-live="polite">Elige un resultado para recibir una sugerencia editable antes de guardar.</p>
                 <label><span>Seguimiento</span><input id="result-follow-up" type="datetime-local" /></label>
                 <button id="save-result-button" type="button">Guardar resultado</button>
               </section>
               <section class="growth-results-table">
-                <header><h3>Historial</h3><select id="results-campaign-filter"><option value="">Todas las campañas</option></select></header>
+                <header><div><p class="eyebrow">Seguimiento comercial</p><h3>Historial</h3></div><select id="results-campaign-filter"><option value="">Todas las campañas</option></select></header>
+                <div class="growth-result-toolbar" aria-label="Filtro de resultados">
+                  <div class="growth-result-filters" role="group" aria-label="Estado del resultado">
+                    <button type="button" class="active" data-result-filter="all">Todos</button>
+                    <button type="button" data-result-filter="follow_up">Seguimiento</button>
+                    <button type="button" data-result-filter="convertible">Crear CRM</button>
+                    <button type="button" data-result-filter="closed">Cerrados</button>
+                  </div>
+                  <span id="results-row-count" class="growth-quiet-copy"></span>
+                </div>
+                <p id="results-filter-guide" class="growth-audience-guide">El historial conserva cada señal. Las métricas superiores reflejan el estado más reciente de cada contacto.</p>
                 <div class="growth-table-scroll"><table class="growth-table"><thead><tr><th>Cuenta / contacto</th><th>Campaña</th><th>Resultado</th><th>Siguiente acción</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody id="results-table-body"></tbody></table></div>
               </section>
             </div>

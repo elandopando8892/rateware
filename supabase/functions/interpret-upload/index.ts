@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
+import { resolveWorkspaceUser, workspaceUserContext, type WorkspaceUser } from "../_shared/workspace.ts";
 
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
@@ -208,15 +209,6 @@ function interpretationErrorMessage(value: unknown, fallback = "Interpretation f
     }
   }
   return fallback;
-}
-
-function userContext(payload: Record<string, unknown>) {
-  const email = cleanText(payload.email || payload.preferred_email || payload["https://kinde.com/email"])?.toLowerCase();
-  const id = cleanText(payload.sub || payload.id || email);
-  return {
-    owner_user_id: id || email || null,
-    owner_email: email || id || null
-  };
 }
 
 function normalizeDomain(value: unknown) {
@@ -775,18 +767,79 @@ function scoreVendorMatch(vendor: Record<string, unknown>, rawUpload: Record<str
     ...(Array.isArray(interpretation.rows) ? interpretation.rows.map((row: Record<string, unknown>) => row.vendor_domain) : [])
   ].map(normalizeMatchText).join(" ");
 
-  const vendorName = normalizeMatchText(vendor.vendor_name);
+  const profile = vendor.profile_data && typeof vendor.profile_data === "object"
+    ? vendor.profile_data as Record<string, unknown>
+    : {};
+  const international = profile.international && typeof profile.international === "object"
+    ? profile.international as Record<string, unknown>
+    : {};
+  const mexico = profile.mexico && typeof profile.mexico === "object"
+    ? profile.mexico as Record<string, unknown>
+    : {};
+  const vendorNames = [
+    vendor.vendor_name,
+    vendor.legal_name,
+    profile.commercial_name,
+    profile.dba_name,
+    profile.trade_name,
+    international.dba_name,
+    mexico.commercial_name
+  ].map(normalizeMatchText).filter(Boolean);
   const domain = normalizeMatchText(vendor.domain);
-  const email = normalizeMatchText(vendor.primary_email);
+  const secondaryEmails = Array.isArray(vendor.secondary_emails) ? vendor.secondary_emails : [];
+  const emails = [vendor.primary_email, ...secondaryEmails].map(normalizeMatchText).filter(Boolean);
 
   let score = 0;
   if (domain && haystack.includes(domain)) score += 70;
-  if (email && haystack.includes(email)) score += 40;
-  if (vendorName && haystack.includes(vendorName)) score += 55;
+  if (emails.some((email) => haystack.includes(email))) score += 40;
+  if (vendorNames.some((vendorName) => haystack.includes(vendorName))) score += 55;
 
-  const words = String(vendor.vendor_name || "").toLowerCase().split(/\s+/).filter((word) => word.length > 3);
+  const words = [vendor.vendor_name, vendor.legal_name, profile.commercial_name, profile.dba_name]
+    .flatMap((value) => String(value || "").toLowerCase().split(/\s+/))
+    .filter((word, index, values) => word.length > 3 && values.indexOf(word) === index);
   score += Math.min(30, words.filter((word) => haystack.includes(normalizeMatchText(word))).length * 10);
   return score;
+}
+
+const VENDOR_MATCH_PAGE_SIZE = 1000;
+const VENDOR_MATCH_MAX_ROWS = 50000;
+const VENDOR_MATCH_SELECT = "id,vendor_name,legal_name,domain,primary_email,secondary_emails,profile_data,status,base_stage";
+
+async function fetchAllActiveVendorMatchRows(
+  supabase: InterpretationSupabaseClient,
+  user: { owner_email: string | null }
+) {
+  if (!user.owner_email) return [] as Record<string, unknown>[];
+
+  const countResult = await supabase
+    .from("vendors")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_email", user.owner_email)
+    .eq("status", "active");
+  if (countResult.error) {
+    console.warn("Vendor catalog is unavailable during interpretation.", countResult.error.message);
+    return [] as Record<string, unknown>[];
+  }
+  if ((countResult.count || 0) > VENDOR_MATCH_MAX_ROWS) {
+    throw new Error(`Vendor catalog exceeded the ${VENDOR_MATCH_MAX_ROWS} row safety limit.`);
+  }
+
+  const rows: Record<string, unknown>[] = [];
+  for (let offset = 0; offset < (countResult.count || 0); offset += VENDOR_MATCH_PAGE_SIZE) {
+    const result = await supabase
+      .from("vendors")
+      .select(VENDOR_MATCH_SELECT)
+      .eq("owner_email", user.owner_email)
+      .eq("status", "active")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + VENDOR_MATCH_PAGE_SIZE - 1);
+    if (result.error) throw result.error;
+    const page = (result.data || []) as Record<string, unknown>[];
+    rows.push(...page);
+    if (page.length < VENDOR_MATCH_PAGE_SIZE) break;
+  }
+  return rows;
 }
 
 async function findBestVendor(
@@ -795,16 +848,18 @@ async function findBestVendor(
   rawUpload: Record<string, string>,
   interpretation: Record<string, unknown>
 ) {
-  let query = supabase.from("vendors").select("id,vendor_name,domain,primary_email,status").eq("status", "active").limit(500);
-  if (user.owner_email) query = query.eq("owner_email", user.owner_email);
-  const result = await query;
-  if (result.error || !result.data?.length) return null;
+  const vendors = await fetchAllActiveVendorMatchRows(supabase, user);
+  if (!vendors.length) return null;
 
-  const ranked = result.data
+  const ranked = vendors
     .map((vendor) => ({ vendor, score: scoreVendorMatch(vendor, rawUpload, interpretation) }))
     .sort((a, b) => b.score - a.score);
 
-  return ranked[0]?.score >= 55 ? ranked[0] : null;
+  const top = ranked[0];
+  const runnerUp = ranked[1];
+  if (!top || top.score < 55) return null;
+  if (runnerUp && runnerUp.score >= top.score - 4) return null;
+  return top;
 }
 
 function buildKeys(row: Record<string, unknown>) {
@@ -2360,9 +2415,10 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "Missing OPENAI_MODEL, OPENAI_API_KEY, SUPABASE_URL, or RATEWARE_SUPABASE_SERVICE_ROLE_KEY." }, 500);
   }
 
-  let user: { owner_user_id: string | null; owner_email: string | null };
+  const supabase = getClient();
+  let user: WorkspaceUser;
   try {
-    user = userContext(await requireKindeUser(request));
+    user = await resolveWorkspaceUser(supabase, workspaceUserContext(await requireKindeUser(request)));
   } catch (error) {
     return jsonResponse({ error: interpretationErrorMessage(error, "Authentication required.") }, 401);
   }
@@ -2371,7 +2427,6 @@ Deno.serve(async (request) => {
   if (!raw_upload_id) return jsonResponse({ error: "raw_upload_id is required." }, 400);
   const correctionNote = cleanText(correction_note) || "";
 
-  const supabase = getClient();
   const job = await supabase.from("interpretation_jobs").insert({
     raw_upload_id,
     model: OPENAI_MODEL,
@@ -2437,7 +2492,11 @@ Deno.serve(async (request) => {
       .filter((row: Record<string, unknown>) => isCarrierRateRow(row))
       .map((row: Record<string, unknown>) => normalizeRow(row, rawUpload, job.data.id, vendorId, vendorDomain, forceVendorDomain)), catalogItems, laneMileage, locations, fuelRegions, fscTrend);
     const normalizedRows = (await enrichRowsWithExternalPostalPrefixes(catalogNormalizedRows, locations))
-      .map((row) => ({ ...addRowAudit(row, rawUpload), owner_email: user.owner_email }));
+      .map((row) => ({
+        ...addRowAudit(row, rawUpload),
+        owner_email: user.owner_email,
+        organization_id: user.organization_id
+      }));
     const rows = mergeConnectedD2DAllInRows(normalizedRows, [
       rawUpload.original_filename,
       rawUpload.vendor_hint,

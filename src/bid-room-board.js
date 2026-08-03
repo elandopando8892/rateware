@@ -32,6 +32,7 @@ const supportFollowup = document.querySelector("#public-board-support-followup")
 let publicBoardLoading = false;
 let publicSupportSubmitting = false;
 let publicSoftLoginSubmitting = false;
+let publicBoardLastFullRefreshAt = 0;
 const publicInviteRequestMutationKeys = new Set();
 const publicPrivateLinkMutationKeys = new Set();
 
@@ -41,6 +42,7 @@ const INVITE_ACCESS_LANES_KEY = "rateware.publicBidBoard.invitedLaneIds";
 const INVITE_ACCESS_EVENTS_KEY = "rateware.publicBidBoard.invitedEventIds";
 const VERIFIED_INVITES_KEY = "rateware.publicBidBoard.verifiedInvitations";
 const PUBLIC_BOARD_SOUND_DEFAULT_VERSION = "2026-07-08-sound-on";
+const PUBLIC_BOARD_FULL_REFRESH_MS = 5 * 60 * 1000;
 if (localStorage.getItem("rateware.publicBidBoard.soundDefault") !== PUBLIC_BOARD_SOUND_DEFAULT_VERSION) {
   localStorage.setItem("rateware.publicBidBoard.sound", "on");
   localStorage.setItem("rateware.publicBidBoard.soundDefault", PUBLIC_BOARD_SOUND_DEFAULT_VERSION);
@@ -106,6 +108,7 @@ const state = {
   summary: {},
   previousRows: new Map(),
   loaded: false,
+  generatedAt: "",
   viewMode: localStorage.getItem("rateware.publicBidBoard.view") || "cards",
   language: localStorage.getItem("rateware.publicBidBoard.language") || "en",
   soundEnabled: localStorage.getItem("rateware.publicBidBoard.sound") !== "off",
@@ -1146,12 +1149,25 @@ async function loadBoard({ announceChanges = true } = {}) {
   refreshButton.disabled = true;
   statusEl.textContent = "Refreshing all public Bid Room opportunities...";
   try {
-    const data = await callPublicBoard({ limit: 1000 });
+    const canCheckIncrementally = state.loaded
+      && state.generatedAt
+      && Date.now() - publicBoardLastFullRefreshAt < PUBLIC_BOARD_FULL_REFRESH_MS;
+    const data = await callPublicBoard({
+      limit: 1000,
+      ...(canCheckIncrementally ? { since: state.generatedAt } : {})
+    });
+    state.generatedAt = data.generated_at || state.generatedAt;
+    if (data.not_modified === true) {
+      updateCountdowns();
+      statusEl.textContent = `${scopedEventLabel() || "Public marketplace"} | Checked ${formatDateTime(data.generated_at)} | ${formatNumber(state.rows.length)} opportunities`;
+      return;
+    }
     if (announceChanges) detectBoardSignals(data.rows || []);
     state.rows = data.rows || [];
     state.summary = data.summary || {};
     rememberRows(state.rows);
     state.loaded = true;
+    publicBoardLastFullRefreshAt = Date.now();
     renderSummary();
     renderBoard();
     statusEl.textContent = `${scopedEventLabel() || "Public marketplace"} | Updated ${formatDateTime(data.generated_at)} | ${formatNumber(state.rows.length)} opportunities`;

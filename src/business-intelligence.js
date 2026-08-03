@@ -350,6 +350,15 @@ function activateBiView(view, options = {}) {
   if (options.focusTarget) {
     window.requestAnimationFrame(() => document.querySelector(options.focusTarget)?.focus());
   }
+  return nextView;
+}
+
+async function loadBiView(view) {
+  if (view === "geo" && !currentGeoDensity && !geoRunning) {
+    await runGeoDensity();
+  } else if (view === "pivots" && !currentPivot && !pivotRunning) {
+    await runPivot();
+  }
 }
 
 function activateViewForTarget(selector) {
@@ -1419,11 +1428,11 @@ async function copySingleAction(index) {
 
 initAuthControls();
 setupPivotControls();
-activateBiView(new URLSearchParams(window.location.search).get("view") || "geo");
+const initialBiView = activateBiView(new URLSearchParams(window.location.search).get("view") || "geo");
 requirePrivatePage()
   .then(async () => {
     await applyPermissionState("#bi-submit-button, #bi-promote-selected, #bi-copy-list, #bi-run-recommendations, #bi-export-recommendations, #bi-run-pivot, #bi-copy-pivot, #bi-export-pivot, #bi-export-drilldown, #bi-run-geo, #bi-export-geo", "business-intelligence:use");
-    await Promise.all([runPivot(), runGeoDensity()]);
+    await loadBiView(initialBiView);
   })
   .catch((error) => setStatus(humanizeError(error), "error"));
 
@@ -1444,12 +1453,13 @@ document.querySelectorAll("[data-bi-brief]").forEach((button) => {
 });
 
 viewButtons.forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
     const view = button.dataset.biViewButton || "geo";
-    activateBiView(view, { focusTarget: button.dataset.biFocusTarget });
+    const activeView = activateBiView(view, { focusTarget: button.dataset.biFocusTarget });
     const url = new URL(window.location.href);
     url.searchParams.set("view", view);
     window.history.replaceState({}, "", url);
+    await loadBiView(activeView);
   });
 });
 

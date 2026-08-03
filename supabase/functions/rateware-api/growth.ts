@@ -20,6 +20,7 @@ const GROWTH_ACTIONS = new Set([
   "get_growth_campaign",
   "save_growth_campaign",
   "save_growth_message",
+  "refresh_growth_campaign_audience",
   "export_growth_campaign",
   "set_growth_campaign_status",
   "list_growth_results",
@@ -640,13 +641,30 @@ async function populateCampaignMembers(supabase: DbClient, user: GrowthUser, cam
   return rows.length;
 }
 
+function growthDeliveryPaths(campaign: GrowthRow, contact: GrowthRow | null): Array<{ channel: string; destination: string }> {
+  if (!contact) return [];
+  const channels = stringList(campaign.channels).map(cleanLower).filter(Boolean);
+  const configuredChannels = channels.length ? channels : ["email"];
+  const paths: Array<{ channel: string; destination: string }> = [];
+  for (const channel of configuredChannels) {
+    if (channel === "email" && cleanLower(contact.email_quality) === "valid" && isValidEmail(contact.email)) {
+      paths.push({ channel: "Email", destination: normalizeEmail(contact.email) });
+    }
+    if (channel === "linkedin" && /^https?:\/\//i.test(cleanText(contact.linkedin_url))) {
+      paths.push({ channel: "LinkedIn", destination: cleanText(contact.linkedin_url) });
+    }
+    if (channel === "call" && cleanText(contact.phone)) {
+      paths.push({ channel: "Call", destination: cleanText(contact.phone) });
+    }
+    if (channel === "whatsapp" && cleanText(contact.phone)) {
+      paths.push({ channel: "WhatsApp", destination: cleanText(contact.phone) });
+    }
+  }
+  return paths;
+}
+
 function hasGrowthDeliveryPath(campaign: GrowthRow, contact: GrowthRow | null): boolean {
-  if (!contact) return false;
-  const channels = new Set(stringList(campaign.channels).map(cleanLower));
-  if (!channels.size) channels.add("email");
-  if (channels.has("email") && contact.email_quality === "valid" && isValidEmail(contact.email)) return true;
-  if ((channels.has("call") || channels.has("whatsapp")) && cleanText(contact.phone)) return true;
-  return channels.has("linkedin") && cleanText(contact.linkedin_url).startsWith("http");
+  return growthDeliveryPaths(campaign, contact).length > 0;
 }
 
 async function listGrowthCampaigns(supabase: DbClient, user: GrowthUser): Promise<GrowthRow> {
@@ -740,7 +758,7 @@ async function getGrowthCampaign(supabase: DbClient, user: GrowthUser, body: Gro
       ? supabase.from("shippers").select("id,shipper_name,legal_name,domain,industry,account_type,data_status,logistics_fit,headquarters_country,headquarters_state,source_list_name").eq("owner_email", owner).in("id", shipperIds)
       : { data: [], error: null },
     contactIds.length
-      ? supabase.from("shipper_contacts").select("id,shipper_id,contact_name,first_name,last_name,title,persona,buying_role,email,email_quality,phone,linkedin_url,data_status").eq("owner_email", owner).in("id", contactIds)
+      ? supabase.from("shipper_contacts").select("id,shipper_id,contact_name,first_name,last_name,title,persona,buying_role,email,email_quality,phone,linkedin_url,status,data_status").eq("owner_email", owner).in("id", contactIds)
       : { data: [], error: null }
   ]);
   if (accountsResult.error) throw accountsResult.error;
@@ -756,6 +774,75 @@ async function getGrowthCampaign(supabase: DbClient, user: GrowthUser, body: Gro
     })),
     messages: messagesResult.data || [],
     sending_enabled: false
+  };
+}
+
+const GROWTH_AUDIENCE_PRESERVED_MEMBER_STATUSES = new Set([
+  "exported", "contacted", "replied", "interested", "not_interested", "wrong_person",
+  "referral", "send_info", "meeting_booked", "rfq", "opportunity",
+  "unsubscribed", "bounced", "do_not_contact", "excluded"
+]);
+
+function revalidatedAudienceStatus(campaign: GrowthRow, member: GrowthRow): string {
+  const currentStatus = cleanLower(member.status);
+  if (GROWTH_AUDIENCE_PRESERVED_MEMBER_STATUSES.has(currentStatus)) return currentStatus;
+  const account = objectRecord(member.account);
+  const contact = member.contact ? objectRecord(member.contact) : null;
+  if (cleanLower(account.data_status) === "excluded") return "pending";
+  if (!contact || cleanLower(contact.status) === "inactive" || cleanLower(contact.data_status) === "excluded") return "pending";
+  return hasGrowthDeliveryPath(campaign, contact) ? "ready" : "pending";
+}
+
+async function refreshGrowthCampaignAudience(supabase: DbClient, user: GrowthUser, body: GrowthRow): Promise<GrowthRow> {
+  const detail = await getGrowthCampaign(supabase, user, body);
+  const campaign = detail.campaign;
+  const owner = requireOwner(user);
+  const updates = new Map<string, string[]>();
+  let ready = 0;
+  let review = 0;
+  let preserved = 0;
+  let unchanged = 0;
+
+  for (const member of detail.members || []) {
+    const currentStatus = cleanLower(member.status);
+    const nextStatus = revalidatedAudienceStatus(campaign, member);
+    if (GROWTH_AUDIENCE_PRESERVED_MEMBER_STATUSES.has(currentStatus)) {
+      preserved += 1;
+      continue;
+    }
+    if (nextStatus === "ready") ready += 1;
+    else review += 1;
+    if (nextStatus === currentStatus) {
+      unchanged += 1;
+      continue;
+    }
+    const ids = updates.get(nextStatus) || [];
+    ids.push(member.id);
+    updates.set(nextStatus, ids);
+  }
+
+  const now = new Date().toISOString();
+  let updated = 0;
+  for (const [status, ids] of updates) {
+    for (let index = 0; index < ids.length; index += 250) {
+      const result = await supabase.from("growth_campaign_members")
+        .update({ status, updated_at: now })
+        .eq("owner_email", owner)
+        .eq("campaign_id", campaign.id)
+        .in("id", ids.slice(index, index + 250));
+      if (result.error) throw result.error;
+      updated += Math.min(250, ids.length - index);
+    }
+  }
+
+  return {
+    campaign_id: campaign.id,
+    ready,
+    review,
+    preserved,
+    unchanged,
+    updated,
+    message: "Audience revalidated from Shipper CRM. Exported contacts, responses, bounces, opt-outs, and exclusions were preserved."
   };
 }
 
@@ -785,14 +872,20 @@ function personalize(value: unknown, context: GrowthRow): string {
   return cleanText(value).replace(/{{\s*([a-z0-9_]+)\s*}}/gi, (_match, key) => cleanText(context[key]) || "");
 }
 
-const GROWTH_NON_EXPORTABLE_MEMBER_STATUSES = new Set(["pending", "unsubscribed", "bounced", "do_not_contact", "excluded"]);
+const GROWTH_NON_EXPORTABLE_MEMBER_STATUSES = new Set([
+  "pending", "needs_review", "invalid", "exported", "contacted", "replied", "interested", "not_interested",
+  "wrong_person", "referral", "send_info", "meeting_booked", "rfq", "opportunity", "unsubscribed", "bounced",
+  "do_not_contact", "excluded"
+]);
 const GROWTH_SUPPRESSED_MEMBER_STATUSES = new Set(["unsubscribed", "bounced", "do_not_contact", "excluded"]);
 
-function isGrowthExportEligible(member: GrowthRow, account: GrowthRow, contact: GrowthRow): boolean {
-  return !GROWTH_NON_EXPORTABLE_MEMBER_STATUSES.has(cleanLower(member.status))
+function isGrowthExportEligible(campaign: GrowthRow, member: GrowthRow, account: GrowthRow, contact: GrowthRow): boolean {
+  return cleanLower(member.status) === "ready"
+    && !GROWTH_NON_EXPORTABLE_MEMBER_STATUSES.has(cleanLower(member.status))
     && cleanLower(account.data_status) !== "excluded"
     && cleanLower(contact.status) !== "inactive"
-    && cleanLower(contact.data_status) !== "excluded";
+    && cleanLower(contact.data_status) !== "excluded"
+    && hasGrowthDeliveryPath(campaign, contact);
 }
 
 async function exportGrowthCampaign(supabase: DbClient, user: GrowthUser, body: GrowthRow): Promise<GrowthRow> {
@@ -818,16 +911,20 @@ async function exportGrowthCampaign(supabase: DbClient, user: GrowthUser, body: 
   const contactMap = new Map(contacts.map((row) => [row.id, row]));
   const messageMap = new Map(detail.messages.map((row: GrowthRow) => [row.step_type, row]));
   const exportableMembers = members.filter((member: GrowthRow) => isGrowthExportEligible(
+    campaign,
     member,
     accountMap.get(member.shipper_id) || {},
     contactMap.get(member.contact_id) || {}
   ));
-  const reviewCount = members.filter((member: GrowthRow) => cleanLower(member.status) === "pending").length;
+  const reviewCount = members.filter((member: GrowthRow) => ["pending", "needs_review", "invalid"].includes(cleanLower(member.status))).length;
   const suppressedCount = members.filter((member: GrowthRow) => GROWTH_SUPPRESSED_MEMBER_STATUSES.has(cleanLower(member.status))).length;
+  const historyCount = members.filter((member: GrowthRow) => GROWTH_AUDIENCE_PRESERVED_MEMBER_STATUSES.has(cleanLower(member.status)) && !GROWTH_SUPPRESSED_MEMBER_STATUSES.has(cleanLower(member.status))).length;
   if (!exportableMembers.length) throw new Error("No campaign members are ready to export. Review pending or excluded contacts first.");
   const rows = exportableMembers.map((member: GrowthRow) => {
     const account = accountMap.get(member.shipper_id) || {};
     const contact = contactMap.get(member.contact_id) || {};
+    const deliveryPaths = growthDeliveryPaths(campaign, contact);
+    const primaryDelivery = deliveryPaths[0] || { channel: "", destination: "" };
     const context = {
       campaign_name: campaign.name,
       account_name: account.shipper_name,
@@ -851,6 +948,9 @@ async function exportGrowthCampaign(supabase: DbClient, user: GrowthUser, body: 
       linkedin_url: contact.linkedin_url || "",
       persona: contact.persona || "",
       logistics_fit: (account.logistics_fit || []).join(" | "),
+      execution_channel: primaryDelivery.channel,
+      execution_destination: primaryDelivery.destination,
+      available_delivery_channels: deliveryPaths.map((path) => `${path.channel}: ${path.destination}`).join(" | "),
       email_1_subject: message("email_1", "subject"),
       email_1_body: message("email_1", "body"),
       follow_up_1_subject: message("follow_up_1", "subject"),
@@ -880,6 +980,7 @@ async function exportGrowthCampaign(supabase: DbClient, user: GrowthUser, body: 
     exported_count: rows.length,
     review_count: reviewCount,
     suppressed_count: suppressedCount,
+    history_count: historyCount,
     sending_enabled: false
   };
 }
@@ -916,7 +1017,15 @@ async function listGrowthResults(supabase: DbClient, user: GrowthUser, body: Gro
   const accountMap = new Map((accountsResult.data || []).map((row: GrowthRow) => [row.id, row]));
   const contactMap = new Map((contactsResult.data || []).map((row: GrowthRow) => [row.id, row]));
   const campaignMap = new Map((campaignsResult.data || []).map((row: GrowthRow) => [row.id, row]));
-  const metrics: GrowthRow = { contacts_exported: 0, responses: rows.length, interested: 0, referrals: 0, meetings: 0, rfqs: 0, opportunities: 0, suppressed: 0 };
+  const latestResultByMember = new Map<string, GrowthRow>();
+  for (const row of rows) {
+    const memberId = cleanText(row.campaign_member_id);
+    const contactId = cleanText(row.contact_id);
+    const key = memberId || (contactId ? `${cleanText(row.campaign_id)}:${contactId}` : row.id);
+    if (!latestResultByMember.has(key)) latestResultByMember.set(key, row);
+  }
+  const latestResults = [...latestResultByMember.values()];
+  const metrics: GrowthRow = { contacts_exported: 0, responses: 0, interested: 0, referrals: 0, meetings: 0, rfqs: 0, opportunities: 0, suppressed: 0 };
   const exported = await countOwned(supabase, "growth_campaign_members", owner, {
     status: [
       "exported",
@@ -936,7 +1045,8 @@ async function listGrowthResults(supabase: DbClient, user: GrowthUser, body: Gro
     ]
   });
   metrics.contacts_exported = exported;
-  for (const row of rows) {
+  for (const row of latestResults) {
+    if (["replied", "interested", "referral", "send_info", "meeting_booked", "rfq_received"].includes(row.outcome)) metrics.responses += 1;
     if (row.outcome === "interested") metrics.interested += 1;
     if (row.outcome === "referral") metrics.referrals += 1;
     if (row.outcome === "meeting_booked") metrics.meetings += 1;
@@ -977,6 +1087,7 @@ async function recordGrowthResult(supabase: DbClient, user: GrowthUser, body: Gr
   const input = objectRecord(body.result || body);
   const outcome = cleanLower(input.outcome);
   if (!RESULT_OUTCOMES.has(outcome)) throw new Error("Select a valid campaign result.");
+  if (outcome === "opportunity_created") throw new Error("Create the opportunity from the result actions so the Shipper CRM record stays linked.");
   const shipperId = cleanText(input.shipper_id);
   if (!shipperId) throw new Error("A Shipper CRM account is required.");
   const now = new Date().toISOString();
@@ -1146,6 +1257,7 @@ export async function handleGrowthAction(supabase: DbClient, user: GrowthUser, b
     case "get_growth_campaign": return await getGrowthCampaign(supabase, user, body);
     case "save_growth_campaign": return await saveGrowthCampaign(supabase, user, body);
     case "save_growth_message": return await saveGrowthMessage(supabase, user, body);
+    case "refresh_growth_campaign_audience": return await refreshGrowthCampaignAudience(supabase, user, body);
     case "export_growth_campaign": return await exportGrowthCampaign(supabase, user, body);
     case "set_growth_campaign_status": return await setGrowthCampaignStatus(supabase, user, body);
     case "list_growth_results": return await listGrowthResults(supabase, user, body);

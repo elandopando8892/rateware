@@ -1817,6 +1817,31 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
   };
 }
 
+async function invitationBidHistory(
+  supabase: RfxBidSupabaseClient,
+  invitation: Record<string, unknown>
+) {
+  const ownerEmail = cleanText(relationRecord(invitation.rfx_events).owner_email);
+  if (!ownerEmail) return [];
+  const historyResult = await supabase
+    .from("contact_history")
+    .select("id,occurred_at,created_at,status,subject,body_preview,channel,direction,metadata")
+    .eq("owner_email", ownerEmail)
+    .eq("rfx_event_id", invitation.rfx_event_id)
+    .eq("vendor_id", invitation.vendor_id)
+    .eq("channel", "portal")
+    .order("occurred_at", { ascending: false })
+    .limit(100);
+  if (historyResult.error) throw historyResult.error;
+  return (historyResult.data || [])
+    .filter((row) => {
+      const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+      return cleanText(metadata.rfx_lane_vendor_id) === cleanText(invitation.id)
+        || cleanText(metadata.rfx_lane_id) === cleanText(invitation.rfx_lane_id);
+    })
+    .slice(0, 25);
+}
+
 const PUBLIC_BOARD_STATUSES = new Set(["all", "live", "closing", "expired", "awarded"]);
 const PUBLIC_BOARD_PAGE_SIZE = 1000;
 const PUBLIC_BOARD_MAX_ROWS = 100000;
@@ -1943,9 +1968,14 @@ function publicBidBoardSummary(rows: Record<string, unknown>[]) {
 }
 
 async function publicBidRoomBoard(supabase: RfxBidSupabaseClient, input: Record<string, unknown>) {
+  const generatedAt = new Date().toISOString();
   const requestedStatus = String(cleanText(input.status) || "all").toLowerCase();
   const statusFilter = PUBLIC_BOARD_STATUSES.has(requestedStatus) ? requestedStatus : "all";
   const eventId = cleanText(input.event_id || input.rfx_event_id);
+  const requestedSince = cleanText(input.since);
+  const since = requestedSince && Number.isFinite(Date.parse(requestedSince))
+    ? new Date(requestedSince).toISOString()
+    : "";
   const limit = Math.min(1000, Math.max(1, Number(input.limit || 1000) || 1000));
   const eventLimit = Math.min(500, Math.max(20, Number(input.event_limit || 250) || 250));
 
@@ -1966,8 +1996,37 @@ async function publicBidRoomBoard(supabase: RfxBidSupabaseClient, input: Record<
       rows: [],
       summary: publicBidBoardSummary([]),
       refresh_seconds: 15,
-      generated_at: new Date().toISOString()
+      generated_at: generatedAt
     };
+  }
+
+  if (since) {
+    const eventChanged = events.some((event) => String(event.updated_at || "") > since);
+    if (!eventChanged) {
+      const [laneChanges, quoteChanges] = await Promise.all([
+        supabase
+          .from("rfx_lanes")
+          .select("id")
+          .in("rfx_event_id", eventIds as string[])
+          .gt("updated_at", since)
+          .limit(1),
+        supabase
+          .from("rfx_lane_vendors")
+          .select("id")
+          .in("rfx_event_id", eventIds as string[])
+          .gt("updated_at", since)
+          .limit(1)
+      ]);
+      if (laneChanges.error) throw laneChanges.error;
+      if (quoteChanges.error) throw quoteChanges.error;
+      if (!(laneChanges.data || []).length && !(quoteChanges.data || []).length) {
+        return {
+          not_modified: true,
+          refresh_seconds: 15,
+          generated_at: generatedAt
+        };
+      }
+    }
   }
 
   const [laneRows, quoteRows] = await Promise.all([
@@ -2043,7 +2102,7 @@ async function publicBidRoomBoard(supabase: RfxBidSupabaseClient, input: Record<
     rows,
     summary: publicBidBoardSummary(rows),
     refresh_seconds: 15,
-    generated_at: new Date().toISOString()
+    generated_at: generatedAt
   };
 }
 
@@ -4756,6 +4815,18 @@ Deno.serve(async (request) => {
 
       const currentEvent = relationRecord(result.data.rfx_events);
       const ownerEmail = cleanText(currentEvent.owner_email);
+      const bidHistory = body.refresh_only !== true || body.include_history === true
+        ? await invitationBidHistory(supabase, result.data)
+        : [];
+      if (body.refresh_only === true) {
+        const currentBook = carrierBusinessBook(result.data, [result.data], []);
+        return jsonResponse({
+          invitation: result.data,
+          live_board: liveBoardFromRows(result.data, peersResult.data || []),
+          current_book_row: currentBook.invited[0] || null,
+          ...(body.include_history === true ? { bid_history: bidHistory } : {})
+        });
+      }
       const invitedResult = ownerEmail
         ? await supabase
             .from("rfx_lane_vendors")
@@ -4848,25 +4919,6 @@ Deno.serve(async (request) => {
             .limit(500)
         : { data: [], error: null };
       if (openLanesResult.error) throw openLanesResult.error;
-      const bidHistoryResult = ownerEmail
-        ? await supabase
-            .from("contact_history")
-            .select("id,occurred_at,created_at,status,subject,body_preview,channel,direction,metadata")
-            .eq("owner_email", ownerEmail)
-            .eq("rfx_event_id", result.data.rfx_event_id)
-            .eq("vendor_id", result.data.vendor_id)
-            .eq("channel", "portal")
-            .order("occurred_at", { ascending: false })
-            .limit(100)
-        : { data: [], error: null };
-      if (bidHistoryResult.error) throw bidHistoryResult.error;
-      const bidHistory = (bidHistoryResult.data || [])
-        .filter((row) => {
-          const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
-          return cleanText(metadata.rfx_lane_vendor_id) === cleanText(result.data.id)
-            || cleanText(metadata.rfx_lane_id) === cleanText(result.data.rfx_lane_id);
-        })
-        .slice(0, 25);
       const invitationIdsForEvent = [
         cleanText(result.data.id),
         ...(invitedResult.data || [])

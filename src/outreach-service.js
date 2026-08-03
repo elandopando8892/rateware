@@ -123,6 +123,10 @@ export async function fetchOutreachMessagesPage(filters = {}) {
   return await callRatewareApi("list_outreach_messages", filters);
 }
 
+export async function fetchOutreachMessage(id) {
+  return (await callRatewareApi("get_outreach_message", { id })).row;
+}
+
 export async function fetchOutreachTrackingSummary(filters = {}) {
   return await callRatewareApi("get_outreach_tracking_summary", filters);
 }
