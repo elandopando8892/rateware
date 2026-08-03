@@ -4839,6 +4839,7 @@ Deno.serve(async (request) => {
               vendor_id,
               invitation_status,
               invitation_token,
+              invitation_token_encrypted,
               invited_at,
               responded_at,
               bid_rate,
@@ -4880,6 +4881,12 @@ Deno.serve(async (request) => {
             .limit(500)
         : { data: [], error: null };
       if (invitedResult.error) throw invitedResult.error;
+      // The private book is scoped to this carrier. Hydrate every lane token so
+      // each active invitation in the same RFx can be opened and quoted in place.
+      const hydratedInvitedRows = await hydrateInvitationTokens(
+        supabase,
+        (invitedResult.data || []) as Record<string, unknown>[]
+      );
 
       const openLanesResult = ownerEmail
         ? await supabase
@@ -4923,7 +4930,7 @@ Deno.serve(async (request) => {
       if (openLanesResult.error) throw openLanesResult.error;
       const invitationIdsForEvent = [
         cleanText(result.data.id),
-        ...(invitedResult.data || [])
+        ...hydratedInvitedRows
           .filter((row) => cleanText(row.rfx_event_id) === cleanText(result.data.rfx_event_id))
           .map((row) => cleanText(row.id))
       ].filter((id): id is string => Boolean(id));
@@ -4932,7 +4939,7 @@ Deno.serve(async (request) => {
       return jsonResponse({
         invitation: result.data,
         live_board: liveBoardFromRows(result.data, peersResult.data || []),
-        carrier_book: carrierBusinessBook(result.data, invitedResult.data || [], openLanesResult.data || []),
+        carrier_book: carrierBusinessBook(result.data, hydratedInvitedRows, openLanesResult.data || []),
         bid_history: bidHistory,
         segment_confirmations: segmentConfirmations
       });

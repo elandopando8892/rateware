@@ -2104,6 +2104,8 @@ assert.match(rfxBidSource, /function eventInvitedLaneRows\(carrierBook = \{\}, i
 assert.match(rfxBidSource, /function currentEventBookRows\(carrierBook = \{\}, event = \{\}\)[\s\S]*row\.event\?\.id[\s\S]*row\.rfx_events\?\.id[\s\S]*row\.rfx_event_id/, "Carrier route matching should accept nested and flattened event identifiers after refresh.");
 assert.match(rfxBidSource, /function isBidToolsEligibleRow\(row = \{\}\)[\s\S]*Boolean\(String\(row\.invitation_token \|\| ""\)\.trim\(\)\)/, "Bid Tools eligibility should be based on a real invitation token, not a stale display flag.");
 assert.match(rfxBidSource, /function renderMasterPackageRoutes[\s\S]*eventInvitedLaneRows\(carrierBook, invitation\)/, "The RFx Master Package should expose the same invited routes that can be quoted in Bid Tools.");
+assert.match(rfxBidSource, /function renderBidToolsLaneSwitcher[\s\S]*eventInvitedLaneRows\(carrierBook, invitation\)/, "Bid Tools lane switching should use the same invited RFx scope as the Master Package.");
+assert.match(rfxBidSource, /function renderBidTemplateTools[\s\S]*eventInvitedLaneRows\(carrierBook, invitation\)/, "The bid XLSX scope should match every invited lane in the active RFx.");
 assert.match(rfxBidSource, /function bidTemplateRows[\s\S]*isBidToolsEligibleRow\(row\)/, "Bid templates should include every eligible invited lane");
 assert.match(rfxBidSource, /function quickBidRows[\s\S]*isBidToolsEligibleRow\(row\)/, "Quick bids should include every eligible invited lane");
 assert.match(rfxBidSource, /function quickBidRowsForSelectedLane[\s\S]*quickBidRows\(carrierBook, invitation\)/, "Bid tools should keep all eligible rows available while rendering one selected lane at a time");
@@ -2352,6 +2354,7 @@ assert.match(rfxBidSource, /const quickBidRowMutationKeys = new Set\(\);/, "Carr
 assert.match(rfxBidSource, /const mutationKey = `quick-bid:\$\{rowToken\}`;[\s\S]+if \(quickBidRowMutationKeys\.has\(mutationKey\)\) return;[\s\S]+quickBidRowMutationKeys\.add\(mutationKey\);[\s\S]+finally \{[\s\S]+quickBidRowMutationKeys\.delete\(mutationKey\);[\s\S]+\}/, "Carrier quick bid rows should ignore duplicate saves for the same invitation token");
 assert.match(rfxBidApiSource, /notes: cleanText\(row\.notes\)/, "Carrier business book API should expose notes so quick row edits can preserve existing bid notes");
 assert.match(rfxBidApiSource, /function carrierBusinessBook[\s\S]*rfx_event_id: cleanText\(row\.rfx_event_id\)[\s\S]*rfx_lane_id: cleanText\(row\.rfx_lane_id\)/, "Carrier business book rows should preserve flattened event and lane identifiers for reliable workspace routing.");
+assert.match(rfxBidApiSource, /invitation_token_encrypted,[\s\S]*const hydratedInvitedRows = await hydrateInvitationTokens[\s\S]*carrier_book: carrierBusinessBook\(result\.data, hydratedInvitedRows/, "Private carrier books must hydrate every lane invitation token before rendering the active RFx book.");
 assert.match(rfxBidSource, /data-decline-invitation/, "Carrier portal should let carriers reject an invited lane before bidding");
 assert.match(rfxBidSource, /data-withdraw-offer/, "Carrier portal should let carriers withdraw an active published offer");
 assert.match(rfxBidSource, /data-decline-quick-invitation/, "Carrier quick bid grid should expose lane-level rejection");

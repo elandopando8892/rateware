@@ -2490,8 +2490,7 @@ async function submitBidTemplateRows() {
 
 function renderBidTemplateTools(carrierBook = {}, invitation = {}) {
   const rows = bidTemplateRows(carrierBook, invitation);
-  const invitedCount = currentEventBookRows(carrierBook, invitation.rfx_events || {})
-    .filter((row) => row.is_invited && row.invitation_token).length;
+  const invitedCount = eventInvitedLaneRows(carrierBook, invitation).length;
   if (!rows.length && !invitedCount) return "";
   const activeLaneCount = rows.length || invitedCount;
   const laneScope = activeLaneCount === 1
@@ -4112,8 +4111,8 @@ async function selectBidToolsLane(invitationToken, options = {}) {
 }
 
 function renderBidToolsLaneSwitcher(carrierBook = {}, invitation = {}) {
-  const event = invitation.rfx_events || {};
-  const rows = currentEventBookRows(carrierBook, event).filter((row) => isBidToolsEligibleRow(row));
+  const rows = eventInvitedLaneRows(carrierBook, invitation)
+    .filter((row) => isBidToolsEligibleRow(row));
   const currentToken = String(selectedBidToolsToken || invitation.invitation_token || tokenFromUrl() || "");
   return `
     <section class="bid-tools-lane-switcher" aria-label="${escapeAttribute(dualText("Enabled lanes", "Rutas habilitadas"))}">
