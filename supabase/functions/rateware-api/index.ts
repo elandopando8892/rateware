@@ -16365,8 +16365,7 @@ async function sendOutreachMessages(
       failures
     };
   }
-  const campaignIds = new Set(messages.map((message) => cleanText(message.campaign_id)).filter(Boolean));
-  if (campaignIds.size > 1) throw new Error("Bulk send must target one outreach campaign at a time.");
+  const campaignIds = [...new Set(messages.map((message) => cleanText(message.campaign_id)).filter(Boolean))];
   const senderCandidates = new Set(messages.map((message) => cleanText(message.sender_email)?.toLowerCase()).filter(Boolean));
   if (senderCandidates.size > 1 && !cleanText(input.sender_email)) throw new Error("Bulk send has multiple sender accounts. Select one sender before sending.");
   const senderEmail = (cleanText(input.sender_email) || cleanText(messages[0].sender_email) || GMAIL_ALLOWED_SENDER).toLowerCase();
@@ -16642,7 +16641,7 @@ async function sendOutreachMessages(
     user,
     "outreach.gmail.bulk_send",
     "outreach_messages",
-    cleanText(messages[0]?.campaign_id) || ids.join(","),
+    campaignIds.join(",") || ids.join(","),
     `Processed ${ids.length} Gmail outreach message(s)`,
     {
       requested: ids.length,
@@ -16650,7 +16649,9 @@ async function sendOutreachMessages(
       failed: failures.length,
       skipped: skipped.length,
       delivery_unknown: deliveryUnknown,
-      sender_email: senderEmail
+      sender_email: senderEmail,
+      campaign_ids: campaignIds,
+      campaign_count: campaignIds.length
     }
   );
   return { sent: sentRows.length, failed: failures.length, skipped: skipped.length, delivery_unknown: deliveryUnknown, rows: sentRows, failures, skipped_rows: skipped };
@@ -17630,6 +17631,7 @@ type ObservabilityEvent = {
   at: string | null;
   source: "rateware_api" | "gmail" | "google_chat" | "whatsapp" | "bid_room";
   severity: "error" | "warning" | "info";
+  incident_state: "active" | "historical";
   title: string;
   detail: string;
   status: string | null;
@@ -17646,6 +17648,7 @@ function observabilityEvent(input: Partial<ObservabilityEvent> & Pick<Observabil
     at: cleanText(input.at) || new Date().toISOString(),
     source: input.source,
     severity: input.severity,
+    incident_state: input.incident_state === "historical" ? "historical" : "active",
     title: cleanText(input.title) || "Operational event",
     detail: cleanText(input.detail) || "",
     status: cleanText(input.status),
@@ -17735,7 +17738,8 @@ function observabilitySummary(events: ObservabilityEvent[]) {
   const sources: ObservabilityEvent["source"][] = ["rateware_api", "gmail", "google_chat", "whatsapp", "bid_room"];
   const bySource = Object.fromEntries(sources.map((source) => [source, { total: 0, error: 0, warning: 0, info: 0 }]));
   const bySeverity = { error: 0, warning: 0, info: 0 };
-  for (const event of events) {
+  const activeEvents = events.filter((event) => event.incident_state === "active");
+  for (const event of activeEvents) {
     bySeverity[event.severity] += 1;
     const sourceBucket = bySource[event.source] || { total: 0, error: 0, warning: 0, info: 0 };
     sourceBucket[event.severity] += 1;
@@ -17744,7 +17748,8 @@ function observabilitySummary(events: ObservabilityEvent[]) {
   }
   return {
     total_logs: events.length,
-    total_incidents: events.filter((event) => event.severity !== "info").length,
+    total_incidents: activeEvents.filter((event) => event.severity !== "info").length,
+    total_history: events.filter((event) => event.incident_state === "historical").length,
     by_source: bySource,
     by_severity: bySeverity
   };
@@ -17782,6 +17787,7 @@ async function buildObservabilityEvents(
       at: cleanText(row.created_at),
       source,
       severity: auditSeverity(row),
+      incident_state: "historical",
       title: cleanText(row.summary) || cleanText(row.action) || "Workspace activity",
       detail: action.endsWith(".error")
         ? observabilityAuditErrorDetail(auditMetadata)
@@ -17969,7 +17975,10 @@ async function buildObservabilityEvents(
   for (const row of chatThreadRows) {
     const syncStatus = cleanText(row.google_chat_sync_status) || "not_configured";
     const communicationStatus = cleanText(row.communication_status) || "open";
-    const needsReply = row.needs_reply === true || cleanText(row.read_status) === "unread" || communicationStatus === "needs_reply";
+    const isResolved = communicationStatus === "resolved";
+    const needsReply = !isResolved && (
+      row.needs_reply === true || cleanText(row.read_status) === "unread" || communicationStatus === "needs_reply"
+    );
     if (syncStatus !== "error" && syncStatus !== "pending" && !needsReply) continue;
     events.push(observabilityEvent({
       id: `bid-room-thread-${row.id}`,

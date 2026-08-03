@@ -2108,12 +2108,14 @@ assert.match(rfxBidSource, /quick-bid-context/, "Bid tools should keep the selec
 assert.match(rfxBidSource, /data-selected-quick-bid-token/, "The quick bid grid should retain the active lane token when the carrier switches routes");
 assert.match(rfxBidSource, /renderQuickLaneBidGridShell\(carrierBook, invitation, \{ invitationToken: selectedInvitation\.invitation_token \}\)/, "Bid tools should scope the quick bid row to the selected invitation");
 assert.match(rfxBidSource, /const pendingQuickBidDrafts = new Map\(\)/, "Bid tools should retain unsaved carrier drafts while switching routes.");
+assert.match(rfxBidSource, /let bidToolsLaneSelectionVersion = 0;/, "Bid tools should guard rapid route changes from rendering stale lane state.");
 assert.match(rfxBidSource, /function capturePendingQuickBidDrafts\(scope = card\)/, "Bid tools should capture visible offer, alternative, and live-capacity inputs before a route change.");
 assert.match(rfxBidSource, /function rememberQuickBidDraft\(rowElement, \{ localOnly = false \} = \{\}\)/, "Every quick-bid row should retain edits locally before a route switch or rerender.");
 assert.match(rfxBidSource, /local_only: localOnly \|\| existing\?\.local_only === true/, "Local quick-bid draft state should survive route changes until the carrier publishes it.");
 assert.match(rfxBidSource, /Unpublished changes/, "The carrier should see a concise state that distinguishes local edits from a published offer.");
 assert.match(rfxBidSource, /setQuickBidLocalDraftStatus\(row\)/, "Quick-bid edits should immediately show their local unpublished status.");
-assert.match(rfxBidSource, /capturePendingQuickBidDrafts\(card\.querySelector\('\[data-private-workspace-panel="bids"\]'\)\)/, "Changing a Bid Tools route should preserve the current local draft.");
+assert.match(rfxBidSource, /const currentPanel = card\.querySelector\('\[data-private-workspace-panel="bids"\]'\);[\s\S]*capturePendingQuickBidDrafts\(currentPanel\);[\s\S]*await flushSegmentConfirmationSave\(currentPanel\?\.querySelector\("\[data-lane-fit-checklist\]"\)\);/, "Changing a Bid Tools route should preserve local drafts and flush pending fit autosave before replacing the lane panel.");
+assert.match(rfxBidSource, /const selectionVersion = \+\+bidToolsLaneSelectionVersion;[\s\S]*if \(selectionVersion !== bidToolsLaneSelectionVersion\) return;/, "The last lane selected should win if the carrier changes routes rapidly.");
 assert.match(rfxBidSource, /\[data-quick-bid-field\], \[data-quick-bid-extra-field\][\s\S]*rememberQuickBidDraft\(row, \{ localOnly: true \}\)/, "Alternative and live-capacity edits should be retained immediately, not only when routes change.");
 assert.match(rfxBidSource, /pendingQuickBidDrafts\.delete\(String\(rowToken\)\)/, "A successful quote save should clear only the saved local draft.");
 assert.match(rfxBidSource, /Fit answers are optional and save automatically/, "Selected route context should clearly communicate advisory fit autosave behavior");
@@ -2445,6 +2447,12 @@ assert.match(settingsHtml, /observability-log-body/, "Settings should render a v
 assert.match(settingsSource, /fetchObservabilityEvents/, "Settings should load operational logs from Rateware API");
 assert.match(settingsServiceSource, /list_observability_events/, "Settings service should call the observability endpoint");
 assert.match(apiSource, /buildObservabilityEvents/, "Rateware API should aggregate operational logs into one observability response");
+assert.match(apiSource, /incident_state: "active" \| "historical"/, "Observability events should distinguish active incidents from immutable history");
+assert.match(apiSource, /const activeEvents = events\.filter\(\(event\) => event\.incident_state === "active"\)/, "Observability summary cards should count active incidents only");
+assert.match(apiSource, /severity: auditSeverity\(row\),[\s\S]{0,120}incident_state: "historical"/, "Past API audit failures should remain visible as history instead of active incidents");
+assert.match(apiSource, /const isResolved = communicationStatus === "resolved";[\s\S]{0,180}const needsReply = !isResolved/, "Resolved Bid Room threads should not remain active incidents only because they are unread");
+assert.match(settingsHtml, /id="observability-state-filter"[\s\S]+value="active"/, "Observability should default to an active-incident view with history available on demand");
+assert.match(settingsSource, /event\.incident_state === stateFilter/, "Observability state filtering should separate active incidents from history");
 for (const tableName of ["saas_audit_log", "outreach_messages", "gmail_mailbox_connections", "google_chat_connections", "bid_room_chat_messages", "bid_room_chat_threads"]) {
   assert.match(apiSource, new RegExp(`\\.from\\("${tableName}"\\)`), `Observability should read ${tableName}`);
 }
@@ -4125,6 +4133,8 @@ assert.match(apiSource, /return explicitlyConfirmed && Boolean\(actionKey\) && a
 assert.match(apiSource, /requires a fresh dry-run preview count before applying changes/, "Large full-dataset actions should require a fresh database preview");
 assert.match(apiSource, /A completed destructive\/provider action must not look failed and become unsafe to retry/, "Audit failures should not make completed destructive or provider actions retryable");
 assert.match(apiSource, /outreach\.gmail\.bulk_send/, "Gmail bulk sends should be audited separately");
+assert.doesNotMatch(apiSource, /Bulk send must target one outreach campaign at a time\./, "Gmail bulk send should process selected drafts across multiple waves instead of rejecting the entire queue");
+assert.match(apiSource, /campaign_ids: campaignIds,[\s\S]{0,120}campaign_count: campaignIds\.length/, "Gmail bulk-send audit should record every campaign included in a multi-wave request");
 assert.match(apiSource, /outreach\.whatsapp\.bulk_send/, "WhatsApp bulk sends should be audited separately");
 assert.match(apiSource, /outreach\.whatsapp_group\.bulk_send/, "Manual WhatsApp group sends should be audited separately");
 assert.match(workspaceRateScopeMigration, /add column if not exists owner_email text/, "Uploads and staged rates should persist workspace ownership");

@@ -48,6 +48,7 @@ const observabilityLogBody = document.querySelector("#observability-log-body");
 const observabilityStatus = document.querySelector("#observability-status");
 const observabilitySourceFilter = document.querySelector("#observability-source-filter");
 const observabilitySeverityFilter = document.querySelector("#observability-severity-filter");
+const observabilityStateFilter = document.querySelector("#observability-state-filter");
 const refreshObservabilityButton = document.querySelector("#refresh-observability-button");
 const gmailConnectionCard = document.querySelector("#gmail-connection-card");
 const gmailConnectionStatus = document.querySelector("#gmail-connection-status");
@@ -281,10 +282,12 @@ function renderObservability(data = currentObservability) {
   const bySource = summary.by_source || {};
   const sourceFilter = observabilitySourceFilter?.value || "";
   const severityFilter = observabilitySeverityFilter?.value || "";
+  const stateFilter = observabilityStateFilter?.value || "";
   const visibleEvents = events.filter((event) => {
     const sourceOk = !sourceFilter || event.source === sourceFilter;
     const severityOk = !severityFilter || event.severity === severityFilter;
-    return sourceOk && severityOk;
+    const stateOk = !stateFilter || event.incident_state === stateFilter;
+    return sourceOk && severityOk && stateOk;
   });
 
   if (observabilitySummary) {
@@ -302,7 +305,7 @@ function renderObservability(data = currentObservability) {
         <article class="${errors ? "has-error" : count ? "has-warning" : ""}">
           <span>${escapeHtml(label)}</span>
           <strong>${count.toLocaleString()}</strong>
-          <small>${errors ? `${errors.toLocaleString()} error(s)` : count ? "needs review" : "healthy"}</small>
+          <small>${errors ? `${errors.toLocaleString()} active error(s)` : count ? "needs review" : "healthy"}</small>
         </article>
       `;
     }).join("");
@@ -310,7 +313,7 @@ function renderObservability(data = currentObservability) {
 
   if (!observabilityLogBody) return;
   if (!visibleEvents.length) {
-    observabilityLogBody.innerHTML = `<tr><td colspan="5">No operational incidents in this view.</td></tr>`;
+    observabilityLogBody.innerHTML = `<tr><td colspan="6">No operational incidents in this view.</td></tr>`;
     setStatus(observabilityStatus, "No incidents match the current filters.", "success");
     return;
   }
@@ -320,6 +323,7 @@ function renderObservability(data = currentObservability) {
       <td>${escapeHtml(event.at ? new Date(event.at).toLocaleString() : "-")}</td>
       <td>${escapeHtml(observabilitySourceLabel(event.source))}</td>
       <td><span class="status-pill ${observabilitySeverityClass(event.severity)}">${escapeHtml(event.severity || "info")}</span></td>
+      <td><span class="status-pill ${event.incident_state === "historical" ? "neutral" : "warning"}">${escapeHtml(event.incident_state === "historical" ? "history" : "active")}</span></td>
       <td>
         <strong>${escapeHtml(event.title || "-")}</strong>
         <small>${escapeHtml(event.detail || event.status || "")}</small>
@@ -329,8 +333,8 @@ function renderObservability(data = currentObservability) {
   `).join("");
   setStatus(
     observabilityStatus,
-    `${visibleEvents.length.toLocaleString()} incident(s) shown from ${events.length.toLocaleString()} recent operational log(s).`,
-    visibleEvents.some((event) => event.severity === "error") ? "warning" : "neutral"
+    `${visibleEvents.length.toLocaleString()} event(s) shown from ${events.length.toLocaleString()} recent operational log(s).`,
+    visibleEvents.some((event) => event.incident_state === "active" && event.severity === "error") ? "warning" : "neutral"
   );
 }
 
@@ -709,7 +713,7 @@ async function loadObservability() {
     if (observabilityLogBody) {
       observabilityLogBody.innerHTML = `
         <tr>
-          <td colspan="5">
+          <td colspan="6">
             <strong>Observability could not load</strong>
             <small>${escapeHtml(humanizeError(error) || "The request could not reach Rateware services.")}</small>
           </td>
@@ -804,6 +808,7 @@ refreshButton?.addEventListener("click", loadSettings);
 refreshObservabilityButton?.addEventListener("click", loadObservability);
 observabilitySourceFilter?.addEventListener("change", () => renderObservability(currentObservability));
 observabilitySeverityFilter?.addEventListener("change", () => renderObservability(currentObservability));
+observabilityStateFilter?.addEventListener("change", () => renderObservability(currentObservability));
 refreshCatalogButton?.addEventListener("click", loadCatalogValues);
 refreshGmailConnectionButton?.addEventListener("click", loadGmailConnections);
 refreshGoogleChatConnectionButton?.addEventListener("click", loadGoogleChatConnections);

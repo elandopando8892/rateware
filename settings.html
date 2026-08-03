@@ -264,6 +264,13 @@
                     <option value="info">Info</option>
                   </select>
                 </label>
+                <label>State
+                  <select id="observability-state-filter">
+                    <option value="active">Active incidents</option>
+                    <option value="historical">History</option>
+                    <option value="">All events</option>
+                  </select>
+                </label>
                 <p id="observability-status" class="status-message" role="status"></p>
               </div>
               <div class="table-wrap">
@@ -273,12 +280,13 @@
                       <th>Time</th>
                       <th>Source</th>
                       <th>Severity</th>
+                      <th>State</th>
                       <th>What happened</th>
                       <th>Next action</th>
                     </tr>
                   </thead>
                   <tbody id="observability-log-body">
-                    <tr><td colspan="5">Loading operational logs...</td></tr>
+                    <tr><td colspan="6">Loading operational logs...</td></tr>
                   </tbody>
                 </table>
               </div>

@@ -26,6 +26,7 @@ let bidSupportSubmitting = false;
 let carrierChatSubmitting = false;
 let privateLaneSwitching = false;
 let selectedBidToolsToken = "";
+let bidToolsLaneSelectionVersion = 0;
 const pendingQuickBidDrafts = new Map();
 const quickBidRowMutationKeys = new Set();
 const bidParticipationMutationKeys = new Set();
@@ -980,6 +981,20 @@ function queueSegmentConfirmationSave(section) {
     saveSegmentConfirmations(section);
   }, 550);
   segmentConfirmationSaveTimers.set(saveKey, timer);
+}
+
+async function flushSegmentConfirmationSave(section) {
+  if (!section) return;
+  const invitationToken = String(section.dataset.invitationToken || "");
+  const saveKey = invitationToken || String(section.dataset.masterSegmentKey || "default");
+  const pendingTimer = segmentConfirmationSaveTimers.get(saveKey);
+  if (pendingTimer) {
+    window.clearTimeout(pendingTimer);
+    segmentConfirmationSaveTimers.delete(saveKey);
+  }
+  if (section.dataset.savePending === "true") {
+    await saveSegmentConfirmations(section);
+  }
 }
 
 function formatMoney(value, currency = "USD") {
@@ -4056,12 +4071,16 @@ function renderBidToolsWorkspace(carrierBook = {}, invitation = {}) {
   `;
 }
 
-function selectBidToolsLane(invitationToken, options = {}) {
+async function selectBidToolsLane(invitationToken, options = {}) {
   const nextToken = String(invitationToken || "").trim();
   const selected = quickBidRows(lastCarrierBook || {}, lastInvitation || {})
     .find((row) => String(row.invitation_token || "") === nextToken);
   if (!selected) return;
-  capturePendingQuickBidDrafts(card.querySelector('[data-private-workspace-panel="bids"]'));
+  const selectionVersion = ++bidToolsLaneSelectionVersion;
+  const currentPanel = card.querySelector('[data-private-workspace-panel="bids"]');
+  capturePendingQuickBidDrafts(currentPanel);
+  await flushSegmentConfirmationSave(currentPanel?.querySelector("[data-lane-fit-checklist]"));
+  if (selectionVersion !== bidToolsLaneSelectionVersion) return;
   selectedBidToolsToken = nextToken;
   setPrivateWorkspace("bids");
   const panel = card.querySelector('[data-private-workspace-panel="bids"]');
