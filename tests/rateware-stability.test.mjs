@@ -2076,6 +2076,7 @@ assert.match(rfxBidSource, /function renderCarrierLaneSwitcher/, "Carrier portal
 assert.match(rfxBidSource, /function laneFitProgress/, "Carrier Bid tools should summarize the selected route fit");
 assert.match(rfxBidSource, /function quickFitActionLabel/, "Quick bid actions should show lane-level fit progress");
 assert.match(rfxBidSource, /quickFitActionTone\(fit\)/, "Quick bid fit actions should distinguish ready and review states");
+assert.match(rfxBidSource, /commercialModelSelectedContextHtml\(selectedRow\?\.commercial_model\)/, "Bid Tools should retain selected commercial-model context without repeating the full guide");
 assert.match(rfxBidSource, /function focusRouteFit/, "Carrier lane navigation should focus the selected route fit before quoting");
 assert.match(rfxBidSource, /carrier-lane-book-table/, "Carrier route schedule should use one compact actionable lane table");
 assert.match(rfxBidSource, /data-route-fit-token/, "Each invited lane should expose its operational fit details");
@@ -2265,7 +2266,7 @@ assert.match(rfxBidSource, /rateEntryHelp\.textContent = config\.rateEntryHelp/,
 assert.match(rfxBidSource, /commercialConfig\.rateLabel/, "The final bid review should identify the carrier-entered rate according to its commercial model");
 assert.match(rfxBidSource, /function commercialModelGuideHtml/, "Carrier portal should show a concise commercial model guide before quick bids");
 assert.match(rfxBidSource, /You enter: the all-in you want to keep/, "Carrier-share quick guidance should explain that the carrier rate is preserved");
-assert.match(rfxBidSource, /\$\{commercialModelGuideHtml\(selectedRow\?\.commercial_model\)\}/, "Quick bid rows should retain an expandable commercial-model guide for the selected lane");
+assert.doesNotMatch(rfxBidSource.match(/function renderQuickLaneBidGridShell[\s\S]*?\n\}/)?.[0] || "", /commercialModelGuideHtml\(selectedRow\?\.commercial_model\)/, "Quick Bid Tools should not repeat the full commercial-model guide from the RFx Master Package");
 assert.match(rfxBidSource, /function commercialModelSelectedContextHtml/, "Quick bids should explain the selected commercial model where the carrier enters the rate");
 assert.match(rfxBidSource, /\$\{commercialModelSelectedContextHtml\(selectedRow\?\.commercial_model\)\}/, "Quick bid rows should render selected-model entry, Board, and fee context");
 assert.match(rfxBidSource, /data-commercial-model-selected-context/, "Changing the quick-bid model should refresh the selected commercial explanation");
@@ -2273,9 +2274,10 @@ assert.match(rfxBidSource, /renderCarrierMasterPackage[\s\S]*?commercialModelGui
 assert.match(rfxBidSource, /function commercialModelGuideHtml\(selectedModel = ""\)/, "Master Package commercial guidance should not preselect a commercial model");
 assert.match(rfxBidSource, /Compare your carrier rate, Board price and fee/, "Carrier portal should explain commercial model consequences in the carrier language");
 assert.match(rfxBidSource, /Your carrier rate does not change/, "Carrier-share guidance should explicitly preserve the carrier quoted price");
-assert.match(rfxBidSource, /data-quick-bid-commercial-effect/, "Each quick bid row should show the selected commercial model effect");
-assert.match(rfxBidSource, /function renderQuickBidCommercialPreview/, "Quick bid rows should calculate a compact commercial preview before the carrier submits");
-assert.match(rfxBidSource, /data-quick-bid-commercial-preview/, "Each quick bid row should render the calculated commercial preview");
+assert.match(rfxBidSource, /title="\$\{escapeAttribute\(commercialModelEffect\(model\)\)\}"/, "Each quick bid commercial selector should retain model guidance in a tooltip");
+assert.match(rfxBidSource, /modelInput\.title = commercialModelEffect\(modelInput\.value\)/, "Changing a quick-bid model should refresh its tooltip guidance");
+assert.match(rfxBidSource, /function renderQuickBidCommercialPreview/, "Commercial preview logic should remain available for detailed offer review");
+assert.doesNotMatch(rfxBidSource.match(/function renderQuickLaneBidGridShell[\s\S]*?\n\}/)?.[0] || "", /data-quick-bid-commercial-preview/, "Quick Bid rows should not repeat Board-price preview text inside the compact route grid");
 assert.match(rfxBidSource, /function syncQuickBidCommercialPresentation/, "Quick bid commercial guidance should update without rerendering the carrier route grid");
 assert.match(rfxBidSource, /const row = quickCommercialModel\.closest\("\[data-quick-bid-row\]"\);[\s\S]*syncQuickBidCommercialPresentation\(row, \{ resetPercentage: true \}\);[\s\S]*rememberQuickBidDraft\(row, \{ localOnly: true \}\);/, "Changing the commercial model should reset only its percentage, refresh the preview, and retain the draft");
 assert.match(rfxBidSource, /function commercialModelQuickEffect/, "Quick bid rows should use a concise commercial model summary while retaining detailed tooltip guidance");
@@ -2366,7 +2368,7 @@ assert.match(rfxBidSource, /ArrowLeft.*ArrowRight.*Home.*End/s, "Bid Tools route
 assert.match(rfxBidSource, /function openBidEditor\(options = \{\}\) \{[\s\S]*?selectBidToolsLane\(invitationToken, \{[\s\S]*?focusQuickBid/, "Legacy offer entry points should redirect to the selected inline lane bid instead of opening a separate workflow.");
 assert.doesNotMatch(rfxBidSource.match(/function openBidEditor[\s\S]*?\n\}/)?.[0] || "", /modal\.hidden\s*=\s*false/, "Legacy offer entry points must not reopen the modal editor.");
 const quickBidGridShell = rfxBidSource.match(/function renderQuickLaneBidGridShell[\s\S]*?\n\}/)?.[0] || "";
-assert.match(quickBidGridShell, /commercialModelGuideHtml\(selectedRow\?\.commercial_model\)/, "Quick bids should keep commercial-model guidance available without adding competing controls.");
+assert.match(quickBidGridShell, /commercialModelSelectedContextHtml\(selectedRow\?\.commercial_model\)/, "Quick bids should keep the selected commercial-model context without repeating the full guide.");
 assert.doesNotMatch(quickBidGridShell, /commercialModelQuickGuideHtml\(/, "Quick bids should use the row selector as the only commercial-model control.");
 assert.match(rfxBidApiSource, /body\.action === "decline_invitation" \|\| body\.action === "withdraw_bid"/, "Carrier portal API should expose separate reject and withdraw actions");
 assert.match(rfxBidApiSource, /invitation_status: "declined"/, "Rejecting an invitation should persist a declined status");

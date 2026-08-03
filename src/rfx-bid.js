@@ -3532,6 +3532,7 @@ function syncQuickBidCommercialPresentation(rowElement, { resetPercentage = fals
   const modelInput = rowElement.querySelector("[data-quick-bid-field='commercial_model']");
   if (!modelInput) return;
   const config = commercialStructureConfig(modelInput.value);
+  modelInput.title = commercialModelEffect(modelInput.value);
   const rateInput = rowElement.querySelector("[data-quick-bid-field='bid_rate']");
   if (rateInput) {
     rateInput.setAttribute("aria-label", config.rateLabel || dualText("Carrier rate", "Tarifa carrier"));
@@ -3630,7 +3631,6 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}, options 
         <strong>${escapeHtml(formatLane(selectedLane))}</strong>
         <span>${escapeHtml(dualText("Select a commercial model, enter your rate, then publish or update this route.", "Selecciona el modelo comercial, captura tu tarifa y publica o actualiza esta ruta."))}</span>
       </div>
-      ${commercialModelGuideHtml(selectedRow?.commercial_model)}
       ${commercialModelSelectedContextHtml(selectedRow?.commercial_model)}
       <div class="table-wrap">
         <table class="quick-bid-table">
@@ -3694,13 +3694,11 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}, options 
                   <td><input data-quick-bid-field="transit_days" inputmode="decimal" value="${escapeAttribute(displayRow.transit_days ?? "")}" placeholder="2" /></td>
                   <td><input data-quick-bid-field="valid_through" type="date" value="${escapeAttribute(dateOnlyValue(displayRow.valid_through))}" /></td>
                   <td>
-                    <select data-quick-bid-field="commercial_model">
+                    <select data-quick-bid-field="commercial_model" title="${escapeAttribute(commercialModelEffect(model))}">
                       <option value="direct_cost_plus" ${model === "direct_cost_plus" ? "selected" : ""}>Cost-plus</option>
                       <option value="carrier_share" ${model === "carrier_share" ? "selected" : ""}>Carrier share</option>
                       <option value="xbf_buy_sell" ${model === "xbf_buy_sell" ? "selected" : ""}>XBF buy-sell</option>
                     </select>
-                    ${renderQuickBidCommercialEffect(model)}
-                    ${renderQuickBidCommercialPreview({ ...displayRow, commercial_model: model, currency: displayRow.currency || lane.currency || "USD" })}
                   </td>
                   <td class="quick-bid-commercial-percent-cell">
                     <input data-quick-bid-field="commercial_pct" inputmode="decimal" value="${escapeAttribute(quickBidCommercialPercent(displayRow))}" placeholder="${escapeAttribute(quickBidCommercialPlaceholder(model))}" aria-label="${escapeAttribute(quickBidCommercialPercentLabel(model))}" title="${escapeAttribute(quickBidCommercialPercentLabel(model))}" />

@@ -6855,6 +6855,14 @@ a {
   color: #96580b;
 }
 
+.quick-bid-table td {
+  vertical-align: middle;
+}
+
+.quick-bid-table td > small {
+  margin-top: 1px;
+}
+
 .quick-bid-details-row td {
   padding: 0;
   white-space: normal;
