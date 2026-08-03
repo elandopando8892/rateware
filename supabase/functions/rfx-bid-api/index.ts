@@ -1733,6 +1733,8 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
     const event = relationRecord(row.rfx_events);
     const economics = commercialRateEconomics(row as Record<string, unknown>);
     return {
+      rfx_event_id: cleanText(row.rfx_event_id),
+      rfx_lane_id: cleanText(row.rfx_lane_id),
       participation_status: cleanText(row.invitation_status) || "drafted",
       business_status: businessBookStatus(row),
       is_invited: true,

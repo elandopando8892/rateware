@@ -707,9 +707,8 @@ function quickFitActionTone(progress = {}) {
 }
 
 function renderMasterPackageRoutes(carrierBook = {}, invitation = {}) {
-  const event = invitation.rfx_events || {};
   const packagePayload = masterPackageForCarrier(carrierBook, invitation);
-  const rows = currentEventBookRows(carrierBook, event);
+  const rows = eventInvitedLaneRows(carrierBook, invitation);
   const currentToken = selectedBidToolsToken || String(invitation.invitation_token || tokenFromUrl() || "");
   return `
     <section class="carrier-lane-switcher carrier-lane-switcher-master" id="carrier-lane-book-overview">
@@ -3435,8 +3434,7 @@ function renderBookFitSummary(row = {}) {
 }
 
 function quickBidRows(carrierBook = {}, invitation = {}) {
-  const event = invitation.rfx_events || {};
-  return currentEventBookRows(carrierBook, event)
+  return eventInvitedLaneRows(carrierBook, invitation)
     .filter((row) => isBidToolsEligibleRow(row));
 }
 
@@ -3450,7 +3448,7 @@ function quickBidRowsForSelectedLane(carrierBook = {}, invitation = {}, invitati
 
 function isBidToolsEligibleRow(row = {}) {
   const status = String(bookStatus(row) || "").toLowerCase();
-  return Boolean(row.is_invited && row.invitation_token)
+  return Boolean(String(row.invitation_token || "").trim())
     && !["declined", "awarded", "backup", "not_awarded"].includes(status);
 }
 
@@ -3981,7 +3979,18 @@ function currentEventBookRows(carrierBook = {}, event = {}) {
   const eventId = String(event.id || "");
   const rows = Array.isArray(carrierBook.invited) ? carrierBook.invited : [];
   if (!eventId) return rows;
-  return rows.filter((row) => String(row.event?.id || "") === eventId);
+  return rows.filter((row) => String(
+    row.event?.id
+      || row.rfx_events?.id
+      || row.rfx_event_id
+      || ""
+  ) === eventId);
+}
+
+function eventInvitedLaneRows(carrierBook = {}, invitation = {}) {
+  const event = invitation.rfx_events || invitation.event || {};
+  return currentEventBookRows(carrierBook, event)
+    .filter((row) => Boolean(String(row.invitation_token || "").trim()));
 }
 
 function renderCarrierLaneSwitcher(carrierBook = {}, invitation = {}) {
