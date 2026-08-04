@@ -10811,6 +10811,81 @@ async function fetchAllOwnedRfxRatebooks(
   throw new Error(`Ratebooks load exceeded ${RFX_EVENT_CHILD_MAX_ROWS} rows for one request.`);
 }
 
+async function fetchOwnedRfxRatebooksForShipper(
+  supabase: RatewareSupabaseClient,
+  ownerEmail: string | null,
+  shipperId: string
+) {
+  if (!ownerEmail) return [] as Record<string, unknown>[];
+  const rows: Record<string, unknown>[] = [];
+  for (let offset = 0; offset < RFX_EVENT_CHILD_MAX_ROWS; offset += RFX_EVENT_CHILD_PAGE_SIZE) {
+    const result = await supabase
+      .from("rfx_ratebooks")
+      .select("*")
+      .eq("owner_email", ownerEmail)
+      .eq("shipper_id", shipperId)
+      .order("updated_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + RFX_EVENT_CHILD_PAGE_SIZE - 1);
+    if (result.error) throw new Error(`Shipper Ratebooks load failed: ${result.error.message}`);
+    const page = (result.data || []) as unknown as Record<string, unknown>[];
+    rows.push(...page);
+    if (page.length < RFX_EVENT_CHILD_PAGE_SIZE) return rows;
+  }
+  throw new Error(`Shipper Ratebooks load exceeded ${RFX_EVENT_CHILD_MAX_ROWS} rows for one request.`);
+}
+
+async function fetchOwnedRfxPackagesForScope(
+  supabase: RatewareSupabaseClient,
+  ownerEmail: string | null,
+  projectIds: string[],
+  packageIds: string[]
+) {
+  if (!ownerEmail) return [] as Record<string, unknown>[];
+  const requests: Promise<Record<string, unknown>[]>[] = [];
+  chunkValues(projectIds, RATEBOOK_PACKAGE_QUERY_CHUNK_SIZE).forEach((projectIdChunk) => {
+    requests.push((async () => {
+      const result = await supabase.from("rfx_packages").select("*")
+        .eq("owner_email", ownerEmail).in("project_id", projectIdChunk);
+      if (result.error) throw new Error(`Shipper RFx packages load failed: ${result.error.message}`);
+      return (result.data || []) as unknown as Record<string, unknown>[];
+    })());
+  });
+  chunkValues(packageIds, RATEBOOK_PACKAGE_QUERY_CHUNK_SIZE).forEach((packageIdChunk) => {
+    requests.push((async () => {
+      const result = await supabase.from("rfx_packages").select("*")
+        .eq("owner_email", ownerEmail).in("id", packageIdChunk);
+      if (result.error) throw new Error(`Linked Shipper RFx packages load failed: ${result.error.message}`);
+      return (result.data || []) as unknown as Record<string, unknown>[];
+    })());
+  });
+  const packageById = new Map<string, Record<string, unknown>>();
+  (await Promise.all(requests)).flat().forEach((pack) => {
+    const packageId = cleanText(pack.id);
+    if (packageId) packageById.set(packageId, pack);
+  });
+  return Array.from(packageById.values());
+}
+
+async function fetchOwnedRfxRatebooksByPackageIds(
+  supabase: RatewareSupabaseClient,
+  ownerEmail: string | null,
+  packageIds: string[]
+) {
+  if (!ownerEmail || !packageIds.length) return [] as Record<string, unknown>[];
+  const batches = await mapWithConcurrency(
+    chunkValues(packageIds, RATEBOOK_PACKAGE_QUERY_CHUNK_SIZE),
+    RATEBOOK_SYNC_CONCURRENCY,
+    async (packageIdChunk) => {
+      const result = await supabase.from("rfx_ratebooks").select("*")
+        .eq("owner_email", ownerEmail).in("rfx_package_id", packageIdChunk);
+      if (result.error) throw new Error(`Linked Shipper Ratebooks load failed: ${result.error.message}`);
+      return (result.data || []) as unknown as Record<string, unknown>[];
+    }
+  );
+  return batches.flat();
+}
+
 async function fetchAllRfxProjectIdsForShipper(
   supabase: RatewareSupabaseClient,
   ownerEmail: string | null,
@@ -21132,26 +21207,39 @@ async function listRatebooks(
   if (input.skip_bid_room_sync !== true) {
     bidRoomSync = await syncBidRoomEventsForRatebookScope(supabase, user, input);
   }
-  let packs = await fetchAllOwnedRfxPackages(supabase, user.owner_email);
+  let packs: Record<string, unknown>[];
   let ownedRatebooksForScope: Record<string, unknown>[] | null = null;
+  if (requestedShipperId) {
+    const [linkedProjects, directlyLinkedRatebooks] = await Promise.all([
+      fetchAllRfxProjectIdsForShipper(supabase, user.owner_email, requestedShipperId),
+      fetchOwnedRfxRatebooksForShipper(supabase, user.owner_email, requestedShipperId)
+    ]);
+    const linkedProjectIds = linkedProjects.map((project) => cleanText(project.id)).filter((id): id is string => Boolean(id));
+    const directlyLinkedPackageIds = directlyLinkedRatebooks
+      .map((ratebook) => cleanText(ratebook.rfx_package_id))
+      .filter((id): id is string => Boolean(id));
+    packs = await fetchOwnedRfxPackagesForScope(
+      supabase,
+      user.owner_email,
+      linkedProjectIds,
+      directlyLinkedPackageIds
+    );
+    const linkedRatebooks = await fetchOwnedRfxRatebooksByPackageIds(
+      supabase,
+      user.owner_email,
+      packs.map((pack) => cleanText(pack.id)).filter((id): id is string => Boolean(id))
+    );
+    const ratebookById = new Map<string, Record<string, unknown>>();
+    [...directlyLinkedRatebooks, ...linkedRatebooks].forEach((ratebook) => {
+      const ratebookId = cleanText(ratebook.id);
+      if (ratebookId) ratebookById.set(ratebookId, ratebook);
+    });
+    ownedRatebooksForScope = Array.from(ratebookById.values());
+  } else {
+    packs = await fetchAllOwnedRfxPackages(supabase, user.owner_email);
+  }
   if (requestedPackageId) packs = packs.filter((pack) => cleanText(pack.id) === requestedPackageId);
   if (requestedProjectId) packs = packs.filter((pack) => cleanText(pack.project_id) === requestedProjectId);
-  if (requestedShipperId) {
-    const [linkedProjects, ownedRatebooks] = await Promise.all([
-      fetchAllRfxProjectIdsForShipper(supabase, user.owner_email, requestedShipperId),
-      fetchAllOwnedRfxRatebooks(supabase, user.owner_email)
-    ]);
-    ownedRatebooksForScope = ownedRatebooks;
-    const linkedProjectIds = new Set(linkedProjects.map((project) => cleanText(project.id)).filter(Boolean));
-    const directlyLinkedPackageIds = new Set(ownedRatebooks
-      .filter((ratebook) => cleanText(ratebook.shipper_id) === requestedShipperId)
-      .map((ratebook) => cleanText(ratebook.rfx_package_id))
-      .filter(Boolean));
-    packs = packs.filter((pack) =>
-      linkedProjectIds.has(cleanText(pack.project_id) || "")
-      || directlyLinkedPackageIds.has(cleanText(pack.id) || "")
-    );
-  }
   if (!packs.length) return {
     rows: [],
     loaded: 0,

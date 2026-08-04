@@ -150,7 +150,8 @@ const materializeRatebooksSource = api.slice(
   api.indexOf("async function materializeRatebooksForProjects"),
   api.indexOf("function ratebookRouteSummary")
 );
-assert.match(listRatebooksSource, /if \(requestedShipperId\)[\s\S]+directlyLinkedPackageIds[\s\S]+packs = packs\.filter/, "Shipper filtering should scope packages before materialization instead of filtering only the final response");
+assert.match(listRatebooksSource, /if \(requestedShipperId\)[\s\S]+fetchOwnedRfxRatebooksForShipper[\s\S]+fetchOwnedRfxPackagesForScope/, "Shipper filtering should query only account-linked Ratebooks and packages before materialization");
+assert.match(listRatebooksSource, /else \{\s*packs = await fetchAllOwnedRfxPackages/, "Only unscoped Ratebook views should load all workspace packages");
 assert.match(listRatebooksSource, /input\.skip_materialization === true \? \[\] : await mapWithConcurrency\(packs/, "Read-only account views should be able to reuse persisted Ratebooks without rewriting every package");
 assert.doesNotMatch(listRatebooksSource, /neq\("status", "archived"\)/);
 assert.doesNotMatch(materializeRatebooksSource, /neq\("status", "archived"\)/);

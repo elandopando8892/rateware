@@ -208,7 +208,8 @@ assert.doesNotMatch(getShipperSource, /ensureRatebookForBidRoomEvent/, "Shipper 
 assert.match(api, /RATEBOOK_SYNC_CONCURRENCY/, "Shipper Ratebook materialization should run in bounded concurrent batches");
 assert.match(api, /details\.ratebook_materialization_failures/, "Shipper profiles should return materialization failures for a safe retry state");
 assert.match(api, /fetchAllRfxProjectIdsForShipper/, "Shipper Ratebook association should page all linked RFx projects");
-assert.match(api, /fetchAllOwnedRfxRatebooks\(supabase, user\.owner_email\)/, "Shipper drawers should page all directly associated Ratebooks before filtering");
+assert.match(api, /fetchOwnedRfxRatebooksForShipper\(supabase, user\.owner_email, requestedShipperId\)/, "Shipper drawers should query directly associated Ratebooks at the database boundary");
+assert.match(api, /fetchOwnedRfxPackagesForScope/, "Shipper drawers should query only account-linked RFx packages");
 assert.match(api, /fetchAllShipperChildRows/, "Shipper child tabs should paginate account records instead of relying on the first Supabase response");
 assert.match(api, /mapWithConcurrency\(entries, RATEBOOK_SYNC_CONCURRENCY/, "Shipper child records should load in bounded concurrent batches");
 assert.match(api, /\.eq\("customer_id", shipperId\)/);
