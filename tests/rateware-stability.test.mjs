@@ -3251,6 +3251,15 @@ assert.match(interpretUploadSource, /const originCountryHint = cleanBoolean\(row
 assert.match(interpretUploadSource, /const destinationCountryHint = cleanBoolean\(row\.destination_match_manual\) \? row\.destination_country : null;/, "interpretation re-normalization must not preserve an automatic wrong destination country");
 assert.match(interpretUploadSource, /async function fetchAllActiveReferenceRows/, "Interpretation should page reference catalogs instead of relying on a fixed sample");
 assert.match(interpretUploadSource, /fetchAllActiveReferenceRows\(supabase, "rateware_locations"/, "Interpretation should load the full location catalog for matching");
+for (const table of ["rateware_fuel_regions", "border_crossing_pairs", "rateware_assumptions", "rateware_factor_items"]) {
+  assert.match(
+    interpretUploadSource,
+    new RegExp(`fetchAllActiveReferenceRows\\(supabase, "${table}"`),
+    `Interpretation should page the complete ${table} reference catalog`
+  );
+}
+assert.doesNotMatch(interpretUploadSource, /rateware_fuel_regions"\)\.select\([^\n]+\)\.eq\("active", true\)\.limit\(200\)/, "Interpretation must not truncate fuel regions after 200 rows");
+assert.doesNotMatch(interpretUploadSource, /border_crossing_pairs"\)\.select\([^\n]+\)\.eq\("active", true\)\.limit\(200\)/, "Interpretation must not truncate border crossings after 200 rows");
 assert.doesNotMatch(interpretUploadSource, /rateware_locations"\)\.select\([^\n]+\)\.eq\("active", true\)\.limit\(20000\)/, "Interpretation must not truncate locations after 20,000 rows");
 assert.doesNotMatch(interpretUploadSource, /rateware_catalog_items"\)\.select\([^\n]+\)\.eq\("active", true\)\.limit\(20000\)/, "Interpretation must not truncate operational catalog values after 20,000 rows");
 assert.match(apiSource, /function profileExplicitCountry/, "API location matching should derive one explicit country guard");

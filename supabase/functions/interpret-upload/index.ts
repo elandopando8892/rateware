@@ -2467,23 +2467,32 @@ Deno.serve(async (request) => {
       || domainFromVendorReference(matchedVendor?.primary_email)
       || domainFromVendorReference(rawUpload.vendor_hint);
     const forceVendorDomain = Boolean(manualVendor && vendorDomain);
-    const [catalogItems, laneMileage, locations, fscTrend] = await Promise.all([
+    const [
+      catalogItems,
+      laneMileage,
+      locations,
+      fscTrend,
+      fuelRegions,
+      borderPairs,
+      assumptions,
+      factors,
+      mxDieselResult,
+      fxResult
+    ] = await Promise.all([
       fetchAllActiveReferenceRows(supabase, "rateware_catalog_items", "category,raw_value,normalized_value,code,metadata"),
       fetchAllActiveReferenceRows(supabase, "rateware_lane_mileage", "source,route_key,miles,km"),
       fetchAllActiveReferenceRows(supabase, "rateware_locations", "source,country,location_key,raw_value,zip_prefix,city,state_code,state_name,metro_city,market,region"),
-      fetchAllActiveReferenceRows(supabase, "rateware_fsc_trend", "source,api_fetch,fuel_region,index_date,diesel_per_gallon,fsc_per_mile", { orderColumn: "index_date", ascending: false })
+      fetchAllActiveReferenceRows(supabase, "rateware_fsc_trend", "source,api_fetch,fuel_region,index_date,diesel_per_gallon,fsc_per_mile", { orderColumn: "index_date", ascending: false }),
+      fetchAllActiveReferenceRows(supabase, "rateware_fuel_regions", "state_code,fuel_region,diesel_per_gallon,fsc_per_mile"),
+      fetchAllActiveReferenceRows(supabase, "border_crossing_pairs", "id,mx_city,mx_state,us_city,us_state,crossing_name,default_rank", { orderColumn: "default_rank", ascending: true }),
+      fetchAllActiveReferenceRows(supabase, "rateware_assumptions", "field,recommended_value,raw_value,unit"),
+      fetchAllActiveReferenceRows(supabase, "rateware_factor_items", "factor_group,factor_name,recommended_value,lookup_key"),
+      supabase.from("rateware_mx_diesel_index").select("source,period_month,market_key,diesel_mxn_per_liter").eq("active", true).order("period_month", { ascending: false }).limit(50),
+      supabase.from("rateware_fx_rates").select("source,period_month,currency_pair,rate").eq("active", true).eq("currency_pair", "MXN/USD").order("period_month", { ascending: false }).limit(50)
     ]);
-    const fuelRegionResult = await supabase.from("rateware_fuel_regions").select("state_code,fuel_region,diesel_per_gallon,fsc_per_mile").eq("active", true).limit(200);
-    const borderPairResult = await supabase.from("border_crossing_pairs").select("id,mx_city,mx_state,us_city,us_state,crossing_name,default_rank").eq("active", true).limit(200);
-    const assumptionsResult = await supabase.from("rateware_assumptions").select("field,recommended_value,raw_value,unit").eq("active", true).limit(500);
-    const factorsResult = await supabase.from("rateware_factor_items").select("factor_group,factor_name,recommended_value,lookup_key").eq("active", true).limit(1000);
-    const mxDieselResult = await supabase.from("rateware_mx_diesel_index").select("source,period_month,market_key,diesel_mxn_per_liter").eq("active", true).order("period_month", { ascending: false }).limit(50);
-    const fxResult = await supabase.from("rateware_fx_rates").select("source,period_month,currency_pair,rate").eq("active", true).eq("currency_pair", "MXN/USD").order("period_month", { ascending: false }).limit(50);
-    const fuelRegions = fuelRegionResult.error ? [] : fuelRegionResult.data || [];
-    const borderPairs = borderPairResult.error ? [] : borderPairResult.data || [];
     const mxFuelContext = buildMxFuelContext({
-      assumptions: assumptionsResult.error ? [] : assumptionsResult.data || [],
-      factors: factorsResult.error ? [] : factorsResult.data || [],
+      assumptions,
+      factors,
       mxDiesel: mxDieselResult.error ? [] : mxDieselResult.data || [],
       fxRates: fxResult.error ? [] : fxResult.data || []
     });
