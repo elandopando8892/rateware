@@ -247,7 +247,8 @@ async function growthDashboard(supabase: DbClient, user: GrowthUser): Promise<Gr
   ]);
   return {
     metrics: { shippers, ready, segments, campaigns, responses, rfqs, opportunities },
-    flow: ["CSV externo", "Shipper CRM", "Segmento", "Campana", "Resultados"],
+    flow: ["Shipper CRM", "Segmento", "Campana", "Resultados"],
+    secondary_source: "CSV new leads -> Shipper CRM",
     sending_enabled: false
   };
 }
@@ -445,6 +446,7 @@ function includesAny(value: unknown, expected: string[]): boolean {
 function segmentCriteria(value: unknown): GrowthRow {
   const input = objectRecord(value);
   return {
+    query: cleanText(input.query || input.search),
     account_types: stringList(input.account_types || input.account_type).map(cleanLower),
     data_statuses: stringList(input.data_statuses || input.data_status).map(cleanLower),
     logistics_fit: stringList(input.logistics_fit).map(cleanLower),
@@ -475,6 +477,29 @@ async function matchedSegmentRows(supabase: DbClient, user: GrowthUser, rawCrite
   const matches: GrowthRow[] = [];
   for (const account of accounts) {
     const accountContacts = contactsByAccount.get(account.id) || [];
+    if (criteria.query) {
+      const searchable = normalizeKey([
+        account.shipper_name,
+        account.legal_name,
+        account.domain,
+        account.website,
+        account.industry,
+        account.headquarters_city,
+        account.headquarters_state,
+        account.headquarters_country,
+        ...(Array.isArray(account.tags) ? account.tags : []),
+        ...accountContacts.flatMap((contact) => [
+          contact.contact_name,
+          contact.first_name,
+          contact.last_name,
+          contact.email,
+          contact.title,
+          contact.persona
+        ])
+      ].filter(Boolean).join(" "));
+      const queryTokens = normalizeKey(criteria.query).split(" ").filter(Boolean);
+      if (!queryTokens.every((token) => searchable.includes(token))) continue;
+    }
     if (criteria.account_types.length && !criteria.account_types.includes(cleanLower(account.account_type))) continue;
     if (criteria.data_statuses.length && !criteria.data_statuses.includes(cleanLower(account.data_status))) continue;
     if (criteria.logistics_fit.length && !criteria.logistics_fit.some((fit: string) => (account.logistics_fit || []).map(cleanLower).includes(fit))) continue;

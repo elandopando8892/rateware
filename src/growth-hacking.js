@@ -409,21 +409,29 @@ async function readSelectedCsv() {
 async function confirmImport() {
   const rows = mappedImportRows();
   if (!rows.length) throw new Error("Mapea al menos una cuenta, dominio, email o ID externo.");
+  const sourceListName = clean($("#growth-source-list").value) || state.csvFile?.name || "Growth import";
   const response = await importGrowthCsv({
     rows,
     sourceFileName: state.csvFile?.name || "growth-import.csv",
-    sourceListName: clean($("#growth-source-list").value) || state.csvFile?.name || "Growth import"
+    sourceListName
   });
   const summary = response.summary || {};
   const result = $("#growth-import-result");
   result.className = "growth-result-banner success";
   const duplicateCount = Number(summary.duplicate_accounts || 0) + Number(summary.duplicate_contacts || 0);
-  result.innerHTML = `<strong>Importación terminada.</strong> ${Number(summary.accounts_imported || 0).toLocaleString("es-MX")} cuentas y ${Number(summary.contacts_imported || 0).toLocaleString("es-MX")} contactos creados; ${duplicateCount.toLocaleString("es-MX")} registros existentes fueron vinculados sin sobrescribir el CRM. ${Number(summary.needs_review || 0).toLocaleString("es-MX")} cuentas requieren revisión.`;
+  result.innerHTML = `<strong>Importación terminada.</strong> ${Number(summary.accounts_imported || 0).toLocaleString("es-MX")} cuentas y ${Number(summary.contacts_imported || 0).toLocaleString("es-MX")} contactos creados; ${duplicateCount.toLocaleString("es-MX")} registros existentes fueron vinculados sin sobrescribir el CRM. ${Number(summary.needs_review || 0).toLocaleString("es-MX")} cuentas requieren revisión. <button type="button" data-use-imported-list>Crear audiencia con esta lista</button>`;
+  result.querySelector("[data-use-imported-list]")?.addEventListener("click", async () => {
+    fillSegmentForm(null);
+    $("#segment-source-list").value = sourceListName;
+    activateView("segments");
+    await previewSegment();
+  });
   await Promise.all([loadDashboard(), loadSegments()]);
 }
 
 function segmentCriteriaFromForm() {
   return {
+    query: clean($("#segment-query").value),
     account_types: splitCriteria($("#segment-account-type").value),
     data_statuses: splitCriteria($("#segment-data-status").value),
     logistics_fit: splitCriteria($("#segment-logistics-fit").value),
@@ -441,6 +449,7 @@ function fillSegmentForm(segment) {
   const criteria = segment?.criteria || {};
   $("#segment-name").value = segment?.name || "";
   $("#segment-status").value = segment?.status === "ready" ? "ready" : "draft";
+  $("#segment-query").value = criteria.query || "";
   $("#segment-account-type").value = criteria.account_types?.[0] || "shipper";
   $("#segment-data-status").value = criteria.data_statuses?.[0] || "ready";
   $("#segment-logistics-fit").value = criteria.logistics_fit?.[0] || "";
@@ -1291,6 +1300,9 @@ function renderDashboard(response) {
   for (const key of ["shippers", "ready", "segments", "campaigns", "responses", "rfqs", "opportunities"]) {
     const element = $(`#growth-metric-${key}`);
     if (element) element.textContent = Number(metrics[key] || 0).toLocaleString("es-MX");
+    $$(`[data-growth-source-metric="${key}"]`).forEach((metric) => {
+      metric.textContent = Number(metrics[key] || 0).toLocaleString("es-MX");
+    });
   }
 }
 
@@ -1304,7 +1316,14 @@ function bindEvents() {
     if (button) activateView(button.dataset.growthView);
   });
   $$('[data-open-view]').forEach((button) => button.addEventListener("click", () => activateView(button.dataset.openView)));
-  for (const selector of ["#open-import-button", "#dashboard-import-button"]) {
+  const openCrmAudience = (button) => withBusy(button, "Consultando...", async () => {
+    activateView("segments");
+    await previewSegment();
+  }).catch((error) => setGlobalStatus(errorMessage(error), "error"));
+  for (const selector of ["#open-crm-audience-button", "#dashboard-crm-audience-button"]) {
+    $(selector)?.addEventListener("click", (event) => openCrmAudience(event.currentTarget));
+  }
+  for (const selector of ["#dashboard-import-button", "#segments-import-button"]) {
     $(selector)?.addEventListener("click", () => {
       activateView("dashboard");
       $("#growth-import-panel").classList.remove("hidden");
@@ -1397,7 +1416,7 @@ async function initialize() {
   resetCampaign();
   activateView(window.location.hash.replace("#", "") || "dashboard");
   await Promise.all([loadDashboard(), loadSegments(), loadCampaigns(), loadResults()]);
-  setGlobalStatus("Growth Hacking listo. La ejecución del MVP es exclusivamente por exportación CSV.", "success");
+  setGlobalStatus("Growth Hacking listo. Shipper CRM es la fuente principal; los CSV nuevos se integran primero al CRM.", "success");
 }
 
 initAuthControls();

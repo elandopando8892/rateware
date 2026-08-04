@@ -25,7 +25,7 @@
             </nav>
           </div>
           <div class="page-header-actions">
-            <button id="open-import-button" class="page-primary-action" type="button">Importar CSV</button>
+            <button id="open-crm-audience-button" class="page-primary-action" type="button">Crear audiencia</button>
             <form id="auth-form" class="auth-strip">
               <button id="auth-button" type="submit">Log in</button>
               <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
@@ -51,7 +51,7 @@
                 <p class="eyebrow">Today</p>
                 <h2>Pipeline comercial</h2>
               </div>
-              <p>Importa, segmenta y prepara campañas sin duplicar el Shipper CRM.</p>
+              <p>Segmenta el Shipper CRM y prepara campañas sin crear una base paralela.</p>
             </div>
 
             <section class="growth-metric-strip" aria-label="Growth metrics">
@@ -66,20 +66,21 @@
 
             <section class="growth-command-band">
               <div class="growth-flow" aria-label="Commercial flow">
-                <span>CSV externo</span><i></i><span>Shipper CRM</span><i></i><span>Segmento</span><i></i><span>Campaña</span><i></i><span>Resultados</span>
+                <span class="growth-flow-source"><b>Shipper CRM</b><small>Fuente principal</small></span><i></i><span>Segmento</span><i></i><span>Campaña</span><i></i><span>Resultados</span>
+                <span class="growth-flow-secondary">CSV nuevos leads → CRM</span>
               </div>
               <div class="growth-command-actions">
-                <button id="dashboard-import-button" type="button">Importar CSV</button>
-                <button type="button" class="secondary" data-open-view="segments">Crear segmento</button>
-                <button type="button" class="secondary" data-open-view="campaigns">Crear campaña</button>
+                <button id="dashboard-crm-audience-button" type="button">Crear audiencia desde CRM</button>
+                <button id="dashboard-import-button" class="secondary" type="button">Importar leads CSV</button>
               </div>
             </section>
 
             <section id="growth-import-panel" class="growth-import-panel hidden" aria-labelledby="growth-import-title">
               <header>
                 <div>
-                  <p class="eyebrow">Generic CSV importer</p>
-                  <h2 id="growth-import-title">Cargar cuentas y contactos al Shipper CRM</h2>
+                  <p class="eyebrow">Fuente secundaria</p>
+                  <h2 id="growth-import-title">Agregar nuevos leads al Shipper CRM</h2>
+                  <p>El archivo se normaliza y deduplica contra el CRM antes de quedar disponible para segmentación.</p>
                 </div>
                 <button id="close-import-button" class="secondary" type="button">Cerrar</button>
               </header>
@@ -145,10 +146,26 @@
               <div><p class="eyebrow">Shipper CRM filters</p><h2>Segmentos</h2></div>
               <p>Las reglas consultan las cuentas y contactos existentes; no crean una base paralela.</p>
             </div>
+            <section class="growth-crm-source" aria-label="Fuente de audiencias">
+              <div>
+                <p class="eyebrow">Fuente principal</p>
+                <strong>Shipper CRM</strong>
+                <span>Las audiencias usan cuentas y contactos vigentes del CRM en tiempo real.</span>
+              </div>
+              <div class="growth-crm-source-metrics">
+                <span><b data-growth-source-metric="shippers">-</b> shippers</span>
+                <span><b data-growth-source-metric="ready">-</b> listos</span>
+              </div>
+              <div class="growth-command-actions">
+                <a class="secondary" href="./shipper-crm.html">Administrar CRM</a>
+                <button id="segments-import-button" class="secondary" type="button">Importar leads CSV</button>
+              </div>
+            </section>
             <div class="growth-segment-layout">
               <section class="growth-filter-workbench">
                 <header><h3>Definir audiencia</h3><button id="clear-segment-filters" class="secondary" type="button">Limpiar</button></header>
                 <div class="growth-filter-grid">
+                  <label class="growth-span-2"><span>Buscar en Shipper CRM</span><input id="segment-query" placeholder="Cuenta, dominio, contacto o email" /></label>
                   <label><span>Tipo de cuenta</span><select id="segment-account-type"><option value="shipper">Shipper</option><option value="unknown">Unknown</option><option value="carrier">Carrier</option><option value="broker_forwarder">Broker / Forwarder</option><option value="vendor">Vendor</option></select></label>
                   <label><span>Estado de datos</span><select id="segment-data-status"><option value="ready">Ready</option><option value="needs_review">Needs Review</option><option value="duplicate">Duplicate</option><option value="excluded">Excluded</option><option value="not_shipper">Not Shipper</option></select></label>
                   <label><span>Logistics fit</span><select id="segment-logistics-fit"><option value="">Todos</option><option value="cross_border">Cross-border</option><option value="intra_mexico">Intra-Mexico</option><option value="drayage_port">Drayage / Port</option><option value="time_critical">Time Critical</option><option value="dedicated">Dedicated</option><option value="refrigerated">Refrigerated</option><option value="flatbed_open_deck">Flatbed / Open Deck</option></select></label>
