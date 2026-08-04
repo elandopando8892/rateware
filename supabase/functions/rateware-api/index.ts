@@ -21138,6 +21138,8 @@ async function listRatebooks(
     rows: [],
     loaded: 0,
     total: 0,
+    route_rows: input.include_routes === true ? [] : undefined,
+    route_total: input.include_routes === true ? 0 : undefined,
     facets: { shippers: [], sources: [], segments: [] },
     sync: bidRoomSync
   };
@@ -21340,10 +21342,14 @@ async function listRatebooks(
   const materializationFailed = materializationOutcomes
     .filter((outcome) => outcome.error)
     .map((outcome) => ({ package_id: outcome.package_id, error: outcome.error }));
+  const routeExport = input.include_routes === true
+    ? await buildRatebookRouteExportRows(supabase, user, rows, input)
+    : null;
   return {
     rows,
     loaded: rows.length,
     total: allRows.length,
+    ...(routeExport ? { route_rows: routeExport.rows, route_total: routeExport.total } : {}),
     facets,
     sync: {
       ...bidRoomSync,
@@ -21354,13 +21360,12 @@ async function listRatebooks(
   };
 }
 
-async function exportRatebookRoutes(
+async function buildRatebookRouteExportRows(
   supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
+  ratebooks: Record<string, unknown>[],
   input: Record<string, unknown>
 ) {
-  const listed = await listRatebooks(supabase, user, input);
-  const ratebooks = (listed.rows || []) as Record<string, unknown>[];
   const packageIds = Array.from(new Set(ratebooks.map((row) => cleanText(row.rfx_package_id)).filter((id): id is string => Boolean(id))));
   if (!packageIds.length) {
     return { rows: [], total: 0, filters: input };
@@ -21488,6 +21493,20 @@ async function exportRatebookRoutes(
       project_id: cleanText(input.project_id)
     }
   };
+}
+
+async function exportRatebookRoutes(
+  supabase: RatewareSupabaseClient,
+  user: { owner_user_id: string | null; owner_email: string | null; organization_id?: string | null },
+  input: Record<string, unknown>
+) {
+  const listed = await listRatebooks(supabase, user, { ...input, include_routes: false });
+  return await buildRatebookRouteExportRows(
+    supabase,
+    user,
+    (listed.rows || []) as Record<string, unknown>[],
+    input
+  );
 }
 
 async function materializeRatebooksForProjects(

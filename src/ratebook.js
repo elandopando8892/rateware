@@ -9,7 +9,6 @@ import {
   fetchRatebookHealth,
   fetchRatebooks,
   exportRatebookRoutes,
-  fetchRatebookRouteLedger,
   archiveRatebook,
   createRatebookRevision,
   publishRatebook,
@@ -1207,15 +1206,14 @@ async function loadRatebooks() {
       source_type: state.sourceType || undefined,
       segment_key: state.segmentKey || undefined,
       project_id: state.projectId || undefined,
+      include_routes: true,
     };
     const result = await fetchRatebooks(filters);
     if (loadVersion !== ratebookListLoadVersion) return;
     state.rows = result.rows || [];
-    const routeLedger = await fetchRatebookRouteLedger({ ...filters, skip_bid_room_sync: true });
-    if (loadVersion !== ratebookListLoadVersion) return;
     if (ledgerLoadVersion === ratebookLedgerLoadVersion) {
-      state.routeLedgerRows = routeLedger.rows || [];
-      state.routeLedgerTotal = routeLedger.total || state.routeLedgerRows.length;
+      state.routeLedgerRows = result.route_rows || [];
+      state.routeLedgerTotal = result.route_total || state.routeLedgerRows.length;
     }
     state.facets = result.facets || { shippers: [], sources: [], segments: [] };
     renderBookFilters();
