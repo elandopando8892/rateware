@@ -333,5 +333,11 @@ assert.match(client, /data-review-ratebook-route/);
 assert.match(client, /Shortlisting keeps the carrier's submitted offer unchanged/);
 assert.match(client, /data-save-ratebook-quote-review/);
 assert.match(client, /updateRatebookQuoteReview/);
+const saveQuoteReviewSource = client.slice(client.indexOf("async function saveRatebookQuoteReview"), client.indexOf("function renderCarrierList"));
+assert.match(saveQuoteReviewSource, /const savedReview = result\?\.review/, "Ratebook quote review should apply the persisted API result locally");
+assert.match(saveQuoteReviewSource, /shortlisted_quote_count/, "Ratebook quote review should update the visible route shortlist count locally");
+assert.match(saveQuoteReviewSource, /void loadRatebookHealth\(\)/, "Ratebook health should refresh without blocking the saved review");
+assert.doesNotMatch(saveQuoteReviewSource, /selectRatebook\(/, "Saving one quote review must not reload the entire Ratebook");
+assert.doesNotMatch(saveQuoteReviewSource, /showRatebookQuoteReview\(/, "Saving one quote review must not refetch every quote on the route");
 
 console.log("ratebook tests passed");

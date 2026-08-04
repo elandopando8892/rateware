@@ -893,7 +893,9 @@ async function saveRatebookQuoteReview(button) {
   const row = button.closest("[data-ratebook-quote-review-row]");
   const quoteId = row?.dataset.quoteId;
   if (!quoteId || !state.activeRatebookId) return;
-  const mutationKey = `${state.activeRatebookId}:${quoteId}`;
+  const ratebookId = state.activeRatebookId;
+  const packageLaneId = state.quoteReviewPackageLaneId;
+  const mutationKey = `${ratebookId}:${quoteId}`;
   if (ratebookQuoteReviewMutationKeys.has(mutationKey)) return;
   const decision = row.querySelector("[data-ratebook-quote-decision]")?.value || "pending";
   const decisionNote = row.querySelector("[data-ratebook-quote-note]")?.value || "";
@@ -902,12 +904,33 @@ async function saveRatebookQuoteReview(button) {
   button.disabled = true;
   button.textContent = "Saving...";
   try {
-    await updateRatebookQuoteReview(state.activeRatebookId, quoteId, {
+    const previousQuote = (state.quoteReview?.quotes || []).find((quote) => String(quote.id) === String(quoteId));
+    const previousDecision = text(previousQuote?.review?.decision, "pending");
+    const result = await updateRatebookQuoteReview(ratebookId, quoteId, {
       decision,
       decision_note: decisionNote,
     });
-    await selectRatebook(state.activeRatebookId, false);
-    await showRatebookQuoteReview(state.quoteReviewPackageLaneId, false);
+    if (state.activeRatebookId !== ratebookId || state.quoteReviewPackageLaneId !== packageLaneId) return;
+    const savedReview = result?.review || { decision, decision_note: decisionNote };
+    const savedDecision = text(savedReview.decision, decision);
+    if (state.quoteReview) {
+      state.quoteReview = {
+        ...state.quoteReview,
+        quotes: (state.quoteReview.quotes || []).map((quote) => String(quote.id) === String(quoteId)
+          ? { ...quote, review: savedReview }
+          : quote),
+      };
+    }
+    if (state.detail && previousDecision !== savedDecision) {
+      const shortlistDelta = (savedDecision === "shortlisted" ? 1 : 0) - (previousDecision === "shortlisted" ? 1 : 0);
+      state.detail.routes = (state.detail.routes || []).map((route) => String(route.package_lane_id) === String(packageLaneId)
+        ? { ...route, shortlisted_quote_count: Math.max(0, Number(route.shortlisted_quote_count || 0) + shortlistDelta) }
+        : route);
+      renderRatebookRouteGrid();
+    }
+    renderRatebookQuoteReview(state.quoteReview);
+    state.health = null;
+    void loadRatebookHealth();
   } catch (error) {
     button.textContent = humanizeError(error);
     window.setTimeout(() => { button.textContent = originalText; }, 2200);
