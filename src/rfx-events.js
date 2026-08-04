@@ -10486,8 +10486,6 @@ importLanesButton?.addEventListener("click", async () => {
     const duplicateNote = skipped ? ` ${skipped} duplicate lane(s) skipped; existing activity was preserved.` : "";
     setStatus(laneImportStatus, `${inserted} lane(s) added.${duplicateNote}`, "success");
     clearLaneTemplateImport({ preserveStatus: true });
-    await loadDetail(eventId);
-    if (selectedEventId !== eventId) return;
     await loadEvents({ force: true });
   } catch (error) {
     if (selectedEventId === eventId) setStatus(laneImportStatus, humanizeError(error), "error");
@@ -10567,8 +10565,6 @@ importManualLanesButton?.addEventListener("click", async () => {
     const importedMessage = `${inserted} manual lane(s) added.${duplicateNote}`;
     resetManualLaneRows({ preserveStatus: true });
     setStatus(manualLaneStatus, importedMessage, "success");
-    await loadDetail(eventId);
-    if (selectedEventId !== eventId) return;
     await loadEvents({ force: true });
   } catch (error) {
     if (selectedEventId === eventId) setStatus(manualLaneStatus, humanizeError(error), "error");
@@ -11439,8 +11435,6 @@ importCarrierTemplateButton?.addEventListener("click", async () => {
     if (selectedEventId !== eventId) return;
     setStatus(carrierTemplateStatus, `${inserted} invitation row(s) created from the CRM participant catalog.`, "success");
     clearCarrierTemplateImport({ preserveStatus: true });
-    await loadDetail(eventId);
-    if (selectedEventId !== eventId) return;
     await loadEvents({ force: true });
   } catch (error) {
     if (selectedEventId === eventId) setStatus(carrierTemplateStatus, humanizeError(error), "error");
