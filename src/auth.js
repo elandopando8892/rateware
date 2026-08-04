@@ -239,15 +239,15 @@ export async function ensureSignedIn() {
     throw new Error("Log in before using Rateware.");
   }
 
+  const token = await getKindeToken();
   return {
-    token: await getKindeToken(),
+    token,
     user: kinde.getUser(),
-    access: await getAccessContext()
+    access: accessContextFromToken(token)
   };
 }
 
-export async function getAccessContext() {
-  const token = await getKindeToken();
+function accessContextFromToken(token) {
   const claims = parseJwt(token);
   const roles = claims.roles || claims["https://kinde.com/roles"] || [];
   const permissions = claims.permissions || claims["https://kinde.com/permissions"] || [];
@@ -257,6 +257,10 @@ export async function getAccessContext() {
     roles: Array.isArray(roles) ? roles : [],
     permissions: Array.isArray(permissions) ? permissions : []
   };
+}
+
+export async function getAccessContext() {
+  return accessContextFromToken(await getKindeToken());
 }
 
 export async function requirePrivatePage() {
