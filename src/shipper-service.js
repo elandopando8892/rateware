@@ -27,11 +27,11 @@ export async function fetchShipperIntelligence(filters = {}) {
 }
 
 export async function fetchShipper(id) {
-  return await callRatewareApi("get_shipper", { id });
+  return await callRatewareFunction(SHIPPER_DIRECTORY_FUNCTION, "get_shipper", { id });
 }
 
 export async function fetchShipperAccountActivity(id) {
-  return await callRatewareApi("shipper_account_activity", { id });
+  return await callRatewareFunction(SHIPPER_DIRECTORY_FUNCTION, "shipper_account_activity", { id });
 }
 
 export async function createShipperProfileRequest(id, options = {}) {

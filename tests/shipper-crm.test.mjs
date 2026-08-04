@@ -37,7 +37,14 @@ assert.match(directoryApi, /requireKindeUser\(request\)/, "The lightweight Shipp
 assert.match(directoryApi, /resolveWorkspaceUser\([\s\S]*persistIdentity: false/, "The lightweight Shipper endpoint must preserve canonical workspace isolation");
 assert.match(directoryApi, /body\.action === "shipper_crm_summary"/);
 assert.match(directoryApi, /body\.action === "list_shippers"/);
+assert.match(directoryApi, /body\.action === "get_shipper"/, "Shipper profile reads should use the lightweight endpoint");
+assert.match(directoryApi, /body\.action === "shipper_account_activity"/, "Shipper activity reads should use the lightweight endpoint");
 assert.match(directoryApi, /shipper_account_actions\(title,status,priority,due_date,created_at\)/, "The lightweight directory endpoint should preserve account action enrichment");
+assert.match(directoryApi, /\.eq\("owner_email", ownerEmail\)\.eq\("id", id\)\.single\(\)/, "Lightweight profile reads must remain workspace scoped");
+assert.match(directoryApi, /\.eq\("owner_email", ownerEmail\)\.eq\("shipper_id", shipperId\)/, "Lightweight child reads must remain Shipper scoped");
+assert.match(directoryApi, /\.eq\("customer_id", shipperId\)/, "Lightweight Ratebook reads should include projects linked to the Shipper account");
+assert.match(service, /fetchShipper\(id\)[\s\S]*callRatewareFunction\(SHIPPER_DIRECTORY_FUNCTION, "get_shipper"/, "The drawer should bypass the monolithic API");
+assert.match(service, /fetchShipperAccountActivity\(id\)[\s\S]*callRatewareFunction\(SHIPPER_DIRECTORY_FUNCTION, "shipper_account_activity"/, "Account activity should bypass the monolithic API");
 
 assert.match(commercialMigration, /add column if not exists rfi_id uuid references public\.shipper_rfis/);
 assert.match(commercialMigration, /shipper_opportunities_owner_rfi_idx/);
