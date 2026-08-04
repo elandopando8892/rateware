@@ -7987,6 +7987,7 @@ function rfxCarrierRecommendationConfig() {
     limit: 100,
     ranking_mode: "fit",
     rfx_carrier_fit: true,
+    rfx_event_id: selectedEventId,
     evidence_timeout_ms: 3500,
     filters: {
       crossborder: /crossborder|border|d2d/.test(text),
@@ -8038,9 +8039,12 @@ function carrierFitEvidence(vendor) {
   const linkedRates = Number(metrics.linked_rates || 0);
   const approvedRates = Number(metrics.approved_rates || 0);
   const bidSignals = Number(metrics.d2d_import_export_rates || metrics.crossborder_rates || 0);
+  const priorRfxLaneBidCount = Number(metrics.prior_rfx_lane_bid_count || 0);
+  const priorRfxBidNoteCount = Number(metrics.prior_rfx_bid_note_count || 0);
   const profileSignals = [
     vendor.coverage_notes ? "declared coverage" : "",
     Array.isArray(vendor.tags) && vendor.tags.length ? `tags: ${vendor.tags.slice(0, 2).join(", ")}` : "",
+    vendor.notes ? "CRM note" : "",
     vendor.primary_email || vendor.whatsapp_phone ? "contact ready" : ""
   ].filter(Boolean);
   const rateSignals = [
@@ -8048,11 +8052,18 @@ function carrierFitEvidence(vendor) {
     linkedRates ? `${linkedRates} linked quote${linkedRates === 1 ? "" : "s"}` : "",
     bidSignals ? `${bidSignals} crossborder signal${bidSignals === 1 ? "" : "s"}` : ""
   ].filter(Boolean);
+  const historicBidSignals = [
+    priorRfxLaneBidCount ? `${priorRfxLaneBidCount} prior matching RFx bid${priorRfxLaneBidCount === 1 ? "" : "s"}` : "",
+    priorRfxBidNoteCount ? `${priorRfxBidNoteCount} prior bid note${priorRfxBidNoteCount === 1 ? "" : "s"}` : ""
+  ].filter(Boolean);
   return {
     recommendation,
     profileSignals,
     rateSignals,
+    historicBidSignals,
     hasRatewareEvidence: rateSignals.length > 0,
+    hasHistoricBidEvidence: historicBidSignals.length > 0,
+    hasEvidence: rateSignals.length > 0 || historicBidSignals.length > 0,
     score: Number(recommendation.fit_score || 0)
   };
 }
@@ -8084,10 +8095,36 @@ function rfxCarrierFieldMatches(haystack, value, type) {
   return rfxCarrierFitTerms(value, type).some((term) => haystack.includes(term));
 }
 
+function rfxCarrierLaneMatchesText(value, lane) {
+  const haystack = normalizeLookupText(value);
+  if (!haystack) return false;
+  return [
+    [lane.origin, "location"],
+    [lane.destination, "location"],
+    [lane.equipment, "equipment"],
+    [lane.trailer, "equipment"],
+    [lane.configuration, "equipment"],
+    [lane.operation, "operation"],
+    [lane.service, "service"]
+  ].some(([field, type]) => rfxCarrierFieldMatches(haystack, field, type));
+}
+
+function rfxCarrierProfileFitSignals(vendor, lanes) {
+  const sources = [
+    { label: "tag", value: Array.isArray(vendor.tags) ? vendor.tags.join(" ") : "" },
+    { label: "declared coverage", value: vendor.coverage_notes || "" },
+    { label: "CRM note", value: vendor.notes || "" }
+  ];
+  return sources
+    .filter((source) => source.value && lanes.some((lane) => rfxCarrierLaneMatchesText(source.value, lane)))
+    .map((source) => `${source.label} matches selected lane`);
+}
+
 function fitCarrierToOutreachLanes(vendor) {
   const haystack = vendorSearchText(vendor);
   const lanes = activeOutreachCarrierLanes();
   const evidence = carrierFitEvidence(vendor);
+  const profileFitSignals = rfxCarrierProfileFitSignals(vendor, lanes);
   const stageBonus = isProcurementCarrier(vendor) ? 12 : vendorStageRank(vendor) < 9 ? 4 : 0;
   const laneFits = lanes.map((lane) => {
     const matches = {
@@ -8113,20 +8150,23 @@ function fitCarrierToOutreachLanes(vendor) {
   const hasOperationalFit = laneFits.some((item) => item.matches.operation && (item.matches.equipment || item.matches.service));
   const hasCoverageFit = laneFits.some((item) => item.matchCount >= 2);
   const contactable = Boolean(vendor.primary_email || vendor.whatsapp_phone || (Array.isArray(vendor.secondary_emails) && vendor.secondary_emails.length));
-  const score = Math.min(100, bestLaneFit.score + stageBonus + (contactable ? 4 : 0) + Math.round(evidence.score / 12));
+  const score = Math.min(100, bestLaneFit.score + stageBonus + (contactable ? 4 : 0) + Math.min(12, profileFitSignals.length * 4) + (evidence.hasHistoricBidEvidence ? 8 : 0) + Math.round(evidence.score / 12));
   const reasons = [
     bestLaneFit.matches.equipment ? `equipment: ${bestLaneFit.lane?.equipment || ""}` : "",
     bestLaneFit.matches.operation ? `operation: ${bestLaneFit.lane?.operation || ""}` : "",
     bestLaneFit.matches.service ? `service: ${bestLaneFit.lane?.service || ""}` : "",
     isProcurementCarrier(vendor) ? "procurement/pipeline" : "",
     contactable ? "contact available" : "",
-    ...evidence.rateSignals.slice(0, 2)
+    ...profileFitSignals,
+    ...evidence.rateSignals.slice(0, 2),
+    ...evidence.historicBidSignals.slice(0, 1)
   ].filter(Boolean);
   return {
     score,
     hasAnyLaneFit: coverageCount > 0,
-    hasRecommendedFit: hasOperationalFit || hasCoverageFit || (evidence.hasRatewareEvidence && contactable),
+    hasRecommendedFit: hasOperationalFit || hasCoverageFit || ((evidence.hasRatewareEvidence || evidence.hasHistoricBidEvidence) && contactable),
     hasRatewareEvidence: evidence.hasRatewareEvidence,
+    hasHistoricBidEvidence: evidence.hasHistoricBidEvidence,
     evidence,
     coverageCount,
     laneCount: lanes.length,
@@ -8135,8 +8175,8 @@ function fitCarrierToOutreachLanes(vendor) {
     reasons,
     label: coverageCount
       ? `${coverageCount}/${lanes.length || 1} lane${lanes.length === 1 ? "" : "s"} matched`
-      : evidence.hasRatewareEvidence
-        ? "Rateware evidence found"
+      : evidence.hasEvidence
+        ? "Rateware or prior bid evidence found"
         : "No declared lane fit"
   };
 }
@@ -8270,19 +8310,22 @@ function renderOutreachCarrierAdder() {
             : rfxCarrierFitEvidenceError
               ? "Rateware evidence temporarily unavailable"
             : "Rateware: no linked quote evidence yet";
+        const priorBidCopy = fit.evidence.historicBidSignals.length
+          ? `Prior RFx: ${fit.evidence.historicBidSignals.join(" | ")}`
+          : "Prior RFx: no comparable bid history yet";
         const fitSummary = [
           fit.label,
           fit.contactable ? "contact ready" : "no verified contact",
-          fit.hasRatewareEvidence ? "Rateware evidence" : "CRM evidence"
+          fit.hasHistoricBidEvidence ? "prior RFx evidence" : fit.hasRatewareEvidence ? "Rateware evidence" : "CRM evidence"
         ].join(" | ");
         return `
           <article class="rfx-outreach-carrier-row ${selected ? "is-selected" : ""}">
             <div class="rfx-outreach-carrier-row-main">
               <strong>${escapeHtml(vendorDisplayName(vendor))}</strong>
-              <small class="rfx-outreach-fit-summary" title="${escapeHtml(`${fitCopy} | ${profileCopy} | ${evidenceCopy}`)}">${escapeHtml(fitSummary)}</small>
+              <small class="rfx-outreach-fit-summary" title="${escapeHtml(`${fitCopy} | ${profileCopy} | ${evidenceCopy} | ${priorBidCopy}`)}">${escapeHtml(fitSummary)}</small>
               <details class="rfx-outreach-fit-detail">
                 <summary>Why this carrier</summary>
-                <span>${escapeHtml(`${fitCopy} | ${profileCopy} | ${evidenceCopy}`)}</span>
+                <span>${escapeHtml(`${fitCopy} | ${profileCopy} | ${evidenceCopy} | ${priorBidCopy}`)}</span>
               </details>
             </div>
             <button class="secondary small-button" type="button" data-rfx-outreach-add-carrier="${escapeHtml(String(vendor.id || ""))}" ${selected ? "disabled" : ""}>${selected ? "Selected" : "Select"}</button>

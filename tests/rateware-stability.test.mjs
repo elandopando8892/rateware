@@ -185,6 +185,9 @@ const marksmanSignatureAsset = new URL("../assets/marksman-email-signature.png",
 
 assert.match(vendorsSource, /let vendorDirectoryLoadVersion = 0/, "Carrier CRM should guard against stale directory responses");
 assert.match(vendorsSource, /let vendorFunnelLoadVersion = 0/, "Carrier CRM should guard against stale funnel responses");
+assert.match(vendorsSource, /function duplicateGroups\(rows = allVendors\)[\s\S]+const queue = \[startId\]/, "Carrier CRM duplicate review should resolve connected duplicate clusters before choosing a record");
+assert.match(vendorsSource, /function duplicateHealthScore\(vendor\)/, "Carrier CRM duplicate review should rank records by health");
+assert.match(vendorsSource, /Keep: highest health/, "Carrier CRM duplicate review should identify the healthy record to retain");
 assert.match(vendorsSource, /function uniqueVendorFunnelRows/, "Procurement Pipeline should de-duplicate vendor cards before rendering counts");
 assert.match(vendorsSource, /numberValue\(bidMetrics\.quoted\)/, "Procurement Pipeline should count Bid Room quotes with Rateware-linked quotes");
 assert.match(vendorsSource, /const stageNumber = funnelStages\(\)\.findIndex/, "Pipeline stage numbering should remain stable when empty stages are hidden");
@@ -1407,7 +1410,18 @@ assert.match(rfxEventsSource, /need a compatible contact before they can enter d
 assert.match(rfxEventsSource, /const channelReadyTargets = scopedTargets\.filter\(\(target\) => targetHasChannel\(target, outreachChannel\)\);/, "Queue preparation should keep only recipients compatible with the selected channel");
 assert.match(rfxEventsSource, /outside this delivery queue until a compatible contact is added/, "Queue preparation should explain which selected carriers remain pending contact correction");
 assert.match(rfxEventsSource, /Add \$\{formatNumber\(selectedIds\.length\)\} carrier/, "The Carrier fit action should clearly distinguish adding the wave from creating its delivery queue");
-assert.match(rfxEventsSource, /hasRecommendedFit: hasOperationalFit \|\| hasCoverageFit \|\| \(evidence\.hasRatewareEvidence && contactable\)/, "Recommended carrier fit should require meaningful lane coverage or contactable Rateware evidence");
+assert.match(rfxEventsSource, /hasRecommendedFit: hasOperationalFit \|\| hasCoverageFit \|\| \(\(evidence\.hasRatewareEvidence \|\| evidence\.hasHistoricBidEvidence\) && contactable\)/, "Recommended carrier fit should require meaningful lane coverage or contactable quote or bid evidence");
+assert.match(rfxEventsSource, /function rfxCarrierProfileFitSignals/, "Carrier Fit should evaluate CRM tags, declared coverage, and CRM notes against selected lanes");
+assert.match(rfxEventsSource, /label: "CRM note", value: vendor\.notes \|\| ""/, "Carrier Fit should evaluate CRM notes as an explicit source of lane fit");
+assert.match(rfxEventsSource, /Prior RFx: \$\{fit\.evidence\.historicBidSignals\.join/, "Carrier Fit should explain matching historical RFx bid evidence in the UI");
+assert.match(rfxEventsSource, /rfx_event_id: selectedEventId/, "Carrier Fit evidence should identify the current RFx so its own activity can be excluded");
+assert.match(apiSource, /async function fetchRfxCarrierFitBidSignals/, "Carrier Fit API should load bounded prior RFx bid evidence");
+assert.match(apiSource, /function canonicalizeVendorRows\(/, "Carrier recommendations should collapse duplicate vendor profiles before ranking");
+assert.match(apiSource, /canonicalizeVendorRows\(vendorsResult\.data \|\| \[\], metricsByVendor, historicalBidResult\.metrics\)/, "Carrier Fit should rank only canonical vendor profiles");
+assert.match(apiSource, /duplicate_profiles_collapsed/, "Carrier Fit should disclose collapsed duplicate profiles without exposing duplicate records as candidates");
+assert.match(apiSource, /bid_source_note/, "Carrier Fit API should use historical bid notes as a signal");
+assert.match(apiSource, /\.neq\("rfx_event_id", eventId\)/, "Carrier Fit API should exclude activity from the current RFx");
+assert.match(apiSource, /prior_rfx_lane_bid_count/, "Carrier Fit API should return a prior matching RFx bid count");
 assert.match(rfxEventsHtml, /sales@heymarksman\.com/, "Bid Room Step 4 should use sales@heymarksman.com as the approved sender");
 assert.doesNotMatch(rfxEventsHtml, /carriers@xbfreight\.com/, "Bid Room Step 4 should not offer legacy sender accounts");
 assert.doesNotMatch(rfxEventsHtml, /Advanced source editor/, "Bid Room Step 4 should not expose the advanced source editor in the main flow");

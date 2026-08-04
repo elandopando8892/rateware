@@ -3743,7 +3743,9 @@ function emptyVendorMetrics() {
     lanes: [],
     equipment: [],
     border_pairs: [],
-    last_quote_date: null
+    last_quote_date: null,
+    prior_rfx_lane_bid_count: 0,
+    prior_rfx_bid_note_count: 0
   };
 }
 
@@ -3769,7 +3771,9 @@ function normalizeVendorMetricRow(row: Record<string, unknown> | undefined) {
     lanes: arrayValues(row.lanes).slice(0, 6),
     equipment: arrayValues(row.equipment).slice(0, 6),
     border_pairs: arrayValues(row.border_pairs).slice(0, 6),
-    last_quote_date: cleanText(row.last_quote_date)
+    last_quote_date: cleanText(row.last_quote_date),
+    prior_rfx_lane_bid_count: Number(row.prior_rfx_lane_bid_count || 0),
+    prior_rfx_bid_note_count: Number(row.prior_rfx_bid_note_count || 0)
   };
 }
 
@@ -3928,6 +3932,7 @@ async function fetchBiVendorMetricsSafe(
 }
 
 const RFX_CARRIER_FIT_METRICS_TIMEOUT_MS = 3500;
+const RFX_CARRIER_FIT_BID_SIGNALS_TIMEOUT_MS = 2500;
 
 async function fetchBiVendorMetricsForRfxCarrierFit(
   supabase: RatewareSupabaseClient,
@@ -3953,6 +3958,97 @@ async function fetchBiVendorMetricsForRfxCarrierFit(
       fetchBiVendorMetricsSafe(supabase, user, filters),
       timeoutResult
     ]);
+  } finally {
+    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+  }
+}
+
+function rfxCarrierFitTextMatches(value: unknown, expected: unknown) {
+  const expectedTerms = (cleanText(expected) || "")
+    .split("|")
+    .map((item) => catalogKey(item))
+    .filter(Boolean);
+  if (!expectedTerms.length) return { active: false, matched: false };
+  const text = catalogKey(value);
+  return { active: true, matched: Boolean(text) && expectedTerms.some((term) => text.includes(term) || term.includes(text)) };
+}
+
+function rfxCarrierFitHistoricalLaneMatches(lane: Record<string, unknown>, filters: Record<string, unknown>) {
+  const groups = [
+    rfxCarrierFitTextMatches([lane.origin, lane.origin_city, lane.origin_state, lane.origin_market, lane.origin_region].filter(Boolean).join(" "), filters.origin),
+    rfxCarrierFitTextMatches([lane.destination, lane.destination_city, lane.destination_state, lane.destination_market, lane.destination_region].filter(Boolean).join(" "), filters.destination),
+    rfxCarrierFitTextMatches([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" "), filters.equipment),
+    rfxCarrierFitTextMatches(lane.operation, filters.operation),
+    rfxCarrierFitTextMatches(lane.service, filters.service)
+  ];
+  const active = groups.filter((group) => group.active);
+  if (!active.length) return true;
+  const routeGroups = groups.slice(0, 2).filter((group) => group.active);
+  if (routeGroups.length === 2 && routeGroups.every((group) => group.matched)) return true;
+  return active.filter((group) => group.matched).length >= Math.min(2, active.length);
+}
+
+async function fetchRfxCarrierFitBidSignals(
+  supabase: RatewareSupabaseClient,
+  user: { owner_email: string | null },
+  vendorIds: unknown,
+  filters: Record<string, unknown> = {},
+  currentRfxEventId: unknown = null,
+  requestedTimeoutMs: unknown = RFX_CARRIER_FIT_BID_SIGNALS_TIMEOUT_MS
+) {
+  const ids = normalizeUuidList(vendorIds);
+  const empty = { metrics: new Map<string, Record<string, unknown>>(), warning: "" };
+  if (!ids.length) return empty;
+  const timeoutMs = Math.min(Math.max(Number(requestedTimeoutMs) || RFX_CARRIER_FIT_BID_SIGNALS_TIMEOUT_MS, 500), RFX_CARRIER_FIT_BID_SIGNALS_TIMEOUT_MS);
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeoutResult = new Promise<typeof empty>((resolve) => {
+    timeoutHandle = setTimeout(() => resolve({
+      metrics: new Map<string, Record<string, unknown>>(),
+      warning: "Prior RFx bid evidence is taking longer than expected. Carrier CRM fit remains available."
+    }), timeoutMs);
+  });
+  const loadSignals = async () => {
+    try {
+      const results = await Promise.all(chunkValues(ids, 150).map(async (chunk) => {
+        let query = supabase
+          .from("rfx_lane_vendors")
+          .select("vendor_id,rfx_event_id,bid_rate,bid_source_note,notes,invitation_status,updated_at,rfx_events!inner(owner_email),rfx_lanes(origin,origin_city,origin_state,origin_market,origin_region,destination,destination_city,destination_state,destination_market,destination_region,equipment,trailer,config,operation,service)")
+          .eq("rfx_events.owner_email", user.owner_email)
+          .in("vendor_id", chunk)
+          .order("updated_at", { ascending: false })
+          .limit(350);
+        const eventId = cleanText(currentRfxEventId);
+        if (eventId) query = query.neq("rfx_event_id", eventId);
+        const result = await query;
+        if (result.error) throw result.error;
+        return result.data || [];
+      }));
+      const metrics = new Map<string, Record<string, unknown>>();
+      for (const row of results.flat()) {
+        const record = objectRecord(row);
+        const vendorId = cleanText(record.vendor_id);
+        const lane = relationRecord(record.rfx_lanes);
+        const status = catalogKey(record.invitation_status);
+        const hasBid = Number.isFinite(Number(record.bid_rate)) || ["quoted", "bid submitted", "awarded", "backup"].includes(status);
+        if (!vendorId || !hasBid || !rfxCarrierFitHistoricalLaneMatches(lane, filters)) continue;
+        const current = metrics.get(vendorId) || { prior_rfx_lane_bid_count: 0, prior_rfx_bid_note_count: 0 };
+        current.prior_rfx_lane_bid_count = Number(current.prior_rfx_lane_bid_count || 0) + 1;
+        if (cleanText(record.bid_source_note) || cleanText(record.notes)) {
+          current.prior_rfx_bid_note_count = Number(current.prior_rfx_bid_note_count || 0) + 1;
+        }
+        metrics.set(vendorId, current);
+      }
+      return { metrics, warning: "" };
+    } catch (error) {
+      console.warn("Prior RFx bid evidence unavailable; continuing with CRM and Rateware signals.", safeOperationalError(error));
+      return {
+        metrics: new Map<string, Record<string, unknown>>(),
+        warning: "Prior RFx bid evidence is temporarily unavailable. Carrier CRM fit remains available."
+      };
+    }
+  };
+  try {
+    return await Promise.race([loadSignals(), timeoutResult]);
   } finally {
     if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
   }
@@ -4014,25 +4110,26 @@ function vendorDuplicateReasons(row: Record<string, unknown>, candidate: Record<
   const reasons: string[] = [];
   const domain = normalizeDomain(row.domain);
   const candidateDomain = normalizeDomain(candidate.domain);
-  const email = normalizeEmail(row.primary_email);
-  const candidateEmail = normalizeEmail(candidate.primary_email);
-  const nameKey = catalogKey(row.vendor_name);
-  const candidateNameKey = catalogKey(candidate.vendor_name);
+  const emails = new Set(vendorEmails(row));
+  const candidateEmails = new Set(vendorEmails(candidate));
+  const nameKeys = [catalogKey(row.vendor_name), catalogKey(row.legal_name)].filter(Boolean);
+  const candidateNameKeys = [catalogKey(candidate.vendor_name), catalogKey(candidate.legal_name)].filter(Boolean);
   if (domain && candidateDomain && domain === candidateDomain) reasons.push("Same domain");
-  if (email && candidateEmail && email === candidateEmail) reasons.push("Same email");
-  if (nameKey && candidateNameKey && nameKey === candidateNameKey) reasons.push("Same name");
-  else if (nameKey && candidateNameKey && (nameKey.includes(candidateNameKey) || candidateNameKey.includes(nameKey))) reasons.push("Similar name");
+  if ([...emails].some((email) => candidateEmails.has(email))) reasons.push("Same email");
+  if (nameKeys.some((nameKey) => candidateNameKeys.includes(nameKey))) reasons.push("Same name");
+  else if (nameKeys.some((nameKey) => candidateNameKeys.some((candidateNameKey) => nameKey.includes(candidateNameKey) || candidateNameKey.includes(nameKey)))) reasons.push("Similar name");
   return reasons;
 }
 
 function vendorDuplicateIndexKeys(vendor: Record<string, unknown>) {
   const keys = new Set<string>();
   const domain = normalizeDomain(vendor.domain);
-  const email = normalizeEmail(vendor.primary_email);
-  const name = catalogKey(vendor.vendor_name);
+  const names = [catalogKey(vendor.vendor_name), catalogKey(vendor.legal_name)].filter(Boolean);
   if (domain && !isGenericEmailDomain(domain)) keys.add(`domain:${domain}`);
-  if (email) keys.add(`email:${email}`);
-  if (name && name.length >= 4) keys.add(`name:${name}`);
+  for (const email of vendorEmails(vendor)) keys.add(`email:${email}`);
+  for (const name of names) {
+    if (name.length >= 4) keys.add(`name:${name}`);
+  }
   return [...keys];
 }
 
@@ -4087,6 +4184,106 @@ function vendorDuplicateMap(vendors: Record<string, unknown>[]) {
     map.set(id, matches.slice(0, 5));
   }
   return map;
+}
+
+function vendorDuplicateClusters(vendors: Record<string, unknown>[]) {
+  const parentById = new Map<string, string>();
+  const indexes = new Map<string, string[]>();
+  const find = (id: string): string => {
+    const parent = parentById.get(id) || id;
+    if (parent === id) return id;
+    const root = find(parent);
+    parentById.set(id, root);
+    return root;
+  };
+  const join = (left: string, right: string) => {
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot !== rightRoot) parentById.set(rightRoot, leftRoot);
+  };
+
+  for (const vendor of vendors) {
+    const id = cleanText(vendor.id);
+    if (!id) continue;
+    parentById.set(id, id);
+    for (const key of vendorDuplicateIndexKeys(vendor)) {
+      const bucket = indexes.get(key) || [];
+      if (bucket.length) join(bucket[0], id);
+      bucket.push(id);
+      indexes.set(key, bucket);
+    }
+  }
+
+  const clusters = new Map<string, string[]>();
+  for (const id of parentById.keys()) {
+    const root = find(id);
+    const bucket = clusters.get(root) || [];
+    bucket.push(id);
+    clusters.set(root, bucket);
+  }
+  return clusters;
+}
+
+function canonicalVendorHealthScore(
+  vendor: Record<string, unknown>,
+  metrics: Record<string, unknown> = {},
+  bidMetrics: Record<string, unknown> = {}
+) {
+  const readiness = vendorReadinessScore(vendor);
+  const quoteScore = Math.min(22, Number(metrics.approved_rates || 0) * 6 + Number(metrics.linked_rates || 0) * 2 + Number(bidMetrics.quoted || 0) * 3);
+  const declared = vendorDeclaredSignals(vendor);
+  const quoted = vendorQuotedSignals(metrics);
+  const alignment = vendorCoverageAlignment(declared, quoted);
+  const alignmentScore = alignment.matched.length ? Math.min(14, alignment.matched.length * 5) : alignment.quoted_only.length ? 8 : 0;
+  const status = cleanText(vendor.status)?.toLowerCase();
+  const statusPenalty = status === "blocked" ? 50 : status === "inactive" || status === "archived" ? 18 : 0;
+  const procurementBonus = cleanText(vendor.base_stage)?.toLowerCase() === "procurement" ? 4 : 0;
+  return Math.max(0, Math.min(100, Math.round(readiness * 0.62 + quoteScore + alignmentScore + procurementBonus - statusPenalty)));
+}
+
+function canonicalizeVendorRows(
+  vendors: Record<string, unknown>[],
+  metricsByVendor: Map<string, Record<string, unknown>> = new Map(),
+  bidMetricsByVendor: Map<string, Record<string, unknown>> = new Map()
+) {
+  const clusters = vendorDuplicateClusters(vendors);
+  const vendorById = new Map(vendors.map((vendor) => [cleanText(vendor.id) || "", vendor]));
+  const canonicalById = new Map<string, { canonical_vendor_id: string; canonical_health_score: number; duplicate_vendor_ids: string[] }>();
+
+  for (const ids of clusters.values()) {
+    const ranked = ids
+      .map((id) => {
+        const vendor = vendorById.get(id) || {};
+        const metrics = normalizeVendorMetricRow(metricsByVendor.get(id));
+        const bidMetrics = normalizeVendorBidMetrics(bidMetricsByVendor.get(id));
+        return {
+          id,
+          health: canonicalVendorHealthScore(vendor, metrics, bidMetrics),
+          procurement: cleanText(vendor.base_stage)?.toLowerCase() === "procurement" ? 1 : 0,
+          updatedAt: String(vendor.updated_at || vendor.created_at || ""),
+          vendor
+        };
+      })
+      .sort((left, right) => right.health - left.health || right.procurement - left.procurement || right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id));
+    const canonical = ranked[0];
+    if (!canonical) continue;
+    const duplicateVendorIds = ranked.filter((row) => row.id !== canonical.id).map((row) => row.id);
+    for (const row of ranked) {
+      canonicalById.set(row.id, {
+        canonical_vendor_id: canonical.id,
+        canonical_health_score: canonical.health,
+        duplicate_vendor_ids: duplicateVendorIds
+      });
+    }
+  }
+
+  return {
+    canonical_by_id: canonicalById,
+    rows: vendors.filter((vendor) => {
+      const id = cleanText(vendor.id);
+      return id && canonicalById.get(id)?.canonical_vendor_id === id;
+    })
+  };
 }
 
 function vendorDeclaredSignals(vendor: Record<string, unknown>) {
@@ -4466,6 +4663,8 @@ function scoreCarrierFit(vendor: Record<string, unknown>, metrics: Record<string
   const crossborderRates = Number(metrics.crossborder_rates || 0);
   const d2dImportExportRates = Number(metrics.d2d_import_export_rates || 0);
   const mexicoRates = Number(metrics.mexico_rates || 0);
+  const priorRfxLaneBidCount = Number(metrics.prior_rfx_lane_bid_count || 0);
+  const priorRfxBidNoteCount = Number(metrics.prior_rfx_bid_note_count || 0);
   if (approvedRates) {
     score += Math.min(24, approvedRates * 4);
     evidence.push(`${approvedRates} approved Rateware row(s)`);
@@ -4474,6 +4673,11 @@ function scoreCarrierFit(vendor: Record<string, unknown>, metrics: Record<string
     evidence.push(`${linkedRates} linked staging/rate row(s)`);
   }
   if (metrics.last_quote_date) evidence.push(`Last quote ${metrics.last_quote_date}`);
+  if (priorRfxLaneBidCount) {
+    score += Math.min(10, priorRfxLaneBidCount * 3);
+    evidence.push(`${priorRfxLaneBidCount} prior matching RFx bid(s)`);
+  }
+  if (priorRfxBidNoteCount) evidence.push(`${priorRfxBidNoteCount} prior bid note(s)`);
   if (Array.isArray(metrics.markets) && metrics.markets.length) evidence.push(`Markets: ${metrics.markets.slice(0, 3).join(", ")}`);
   if (Array.isArray(metrics.equipment) && metrics.equipment.length) evidence.push(`Equipment: ${metrics.equipment.slice(0, 3).join(", ")}`);
   if (intent.border && Array.isArray(metrics.border_pairs) && metrics.border_pairs.length) {
@@ -5239,30 +5443,39 @@ async function buildCarrierRecommendations(supabase: RatewareSupabaseClient, use
   const minTransactions = Math.max(Number(config.min_transactions) || 0, 0);
   const rfxCarrierFitMode = cleanBoolean(config.rfx_carrier_fit);
   const intent = recommendationIntentFromConfig(config);
-  const [vendorsResult, metricResult, summaryResult] = await Promise.all([
-    supabase
-      .from("vendors")
-      .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,status,base_stage,tags,coverage_notes,notes,preferred_channel,created_at")
-      .eq("owner_email", user.owner_email)
-      .limit(1000),
+  const vendorsResult = await supabase
+    .from("vendors")
+    .select("id,vendor_name,legal_name,domain,primary_email,secondary_emails,whatsapp_phone,status,base_stage,tags,coverage_notes,notes,preferred_channel,created_at,updated_at")
+    .eq("owner_email", user.owner_email)
+    .limit(1000);
+  if (vendorsResult.error) throw vendorsResult.error;
+  const vendorIds = (vendorsResult.data || []).map((vendor) => vendor.id);
+  const [metricResult, summaryResult, historicalBidResult] = await Promise.all([
     rfxCarrierFitMode
       ? fetchBiVendorMetricsForRfxCarrierFit(supabase, user, filters, config.evidence_timeout_ms)
       : fetchBiVendorMetricsSafe(supabase, user, filters),
     rfxCarrierFitMode
       ? Promise.resolve({ summary: {} as Record<string, unknown>, warning: "" })
-      : fetchBiSummarySafe(supabase, user, filters)
+      : fetchBiSummarySafe(supabase, user, filters),
+    rfxCarrierFitMode
+      ? fetchRfxCarrierFitBidSignals(supabase, user, vendorIds, filters, config.rfx_event_id, config.evidence_timeout_ms)
+      : Promise.resolve({ metrics: new Map<string, Record<string, unknown>>(), warning: "" })
   ]);
-  if (vendorsResult.error) throw vendorsResult.error;
   const metricsByVendor = metricResult.metrics;
   const summary = summaryResult.summary;
-  const warnings = [metricResult.warning, summaryResult.warning].filter(Boolean);
+  const warnings = [metricResult.warning, summaryResult.warning, historicalBidResult.warning].filter(Boolean);
 
   const vendorTerm = cleanText(filters.vendor);
-  const candidates = (vendorsResult.data || [])
+  const canonicalized = canonicalizeVendorRows(vendorsResult.data || [], metricsByVendor, historicalBidResult.metrics);
+  const candidates = canonicalized.rows
     .filter((vendor) => !vendorTerm || catalogKey(vendorSearchText(vendor)).includes(catalogKey(vendorTerm)))
     .map((vendor) => {
       const vendorId = cleanText(vendor.id);
-      const metrics = normalizeVendorMetricRow(metricsByVendor.get(vendorId || ""));
+      const canonical = canonicalized.canonical_by_id.get(vendorId || "");
+      const metrics = normalizeVendorMetricRow({
+        ...objectRecord(metricsByVendor.get(vendorId || "")),
+        ...objectRecord(historicalBidResult.metrics.get(vendorId || ""))
+      });
       const fit = scoreCarrierFit(vendor, metrics, intent);
       const breakdown = carrierScoreBreakdown(vendor, metrics, intent, filters);
       const score = Math.max(0, Math.min(100, fit.score + Math.round(breakdown.reduce((sum, item) => sum + item.value, 0) / 8)));
@@ -5274,6 +5487,10 @@ async function buildCarrierRecommendations(supabase: RatewareSupabaseClient, use
         primary_email: normalizeEmail(vendor.primary_email),
         base_stage: cleanText(vendor.base_stage),
         status: cleanText(vendor.status),
+        canonical_vendor_id: canonical?.canonical_vendor_id || vendorId,
+        canonical_health_score: canonical?.canonical_health_score || 0,
+        duplicate_profiles_collapsed: canonical?.duplicate_vendor_ids.length || 0,
+        duplicate_vendor_ids: canonical?.duplicate_vendor_ids || [],
         fit_score: score,
         why: fit.evidence.slice(0, 3).join("; "),
         evidence: fit.evidence,
@@ -5317,7 +5534,7 @@ async function buildCarrierRecommendations(supabase: RatewareSupabaseClient, use
   const dataScope = warnings.length
     ? "Carrier CRM recommendation engine. Rateware metrics are temporarily unavailable for this request."
     : rfxCarrierFitMode
-      ? "Carrier CRM fit with bounded Rateware quote evidence for this RFx."
+      ? "Carrier CRM fit with bounded Rateware quote and prior RFx bid evidence for this RFx."
     : "Structured recommendation engine over user vendors and filtered staging/Rateware transactions.";
   const analystLayer = buildAnalystLayerFromSummary(
     `Structured ${rankingMode} recommendation`,
@@ -5330,7 +5547,7 @@ async function buildCarrierRecommendations(supabase: RatewareSupabaseClient, use
   );
 
   return {
-    answer: `${recommendations.length} carrier recommendation(s) ranked by ${rankingMode}.`,
+    answer: `${recommendations.length} unique carrier recommendation(s) ranked by ${rankingMode}. ${Math.max(0, (vendorsResult.data?.length || 0) - canonicalized.rows.length)} duplicate profile(s) were collapsed to the healthiest record.`,
     filters: {
       limit,
       focus: intent.focus,
@@ -5346,7 +5563,9 @@ async function buildCarrierRecommendations(supabase: RatewareSupabaseClient, use
       "Use min transactions to avoid over-ranking carriers with one-off quotes.",
       "Use the pivot drilldown to validate the underlying lanes before RFx outreach."
     ],
-    candidate_count: vendorsResult.data?.length || 0,
+    candidate_count: canonicalized.rows.length,
+    raw_candidate_count: vendorsResult.data?.length || 0,
+    duplicate_profiles_collapsed: Math.max(0, (vendorsResult.data?.length || 0) - canonicalized.rows.length),
     rate_signal_count: summaryCount(summary, "transactions"),
     model_status: "deterministic",
     evidence_mode: rfxCarrierFitMode ? "bounded_rfx_fit" : "full_recommendation"

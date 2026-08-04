@@ -1593,36 +1593,87 @@ function updateVendorMetrics() {
 }
 
 function duplicateGroups(rows = allVendors) {
-  const seen = new Set();
-  return rows
-    .map((vendor) => {
-      if (seen.has(vendor.id)) return null;
-      const matches = rows
-        .filter((candidate) => candidate.id !== vendor.id)
-        .map((candidate) => ({ vendor: candidate, reasons: duplicateReasons(vendor, candidate) }))
-        .filter((match) => match.reasons.length);
-      if (!matches.length) return null;
-      seen.add(vendor.id);
-      matches.forEach((match) => seen.add(match.vendor.id));
+  const rowsById = new Map(rows.filter((vendor) => vendor.id).map((vendor) => [vendor.id, vendor]));
+  const neighbors = new Map([...rowsById.keys()].map((id) => [id, new Set()]));
+
+  [...rowsById.values()].forEach((vendor, index, source) => {
+    source.slice(index + 1).forEach((candidate) => {
+      const reasons = duplicateReasons(vendor, candidate);
+      if (!reasons.length) return;
+      neighbors.get(vendor.id)?.add(candidate.id);
+      neighbors.get(candidate.id)?.add(vendor.id);
+    });
+  });
+
+  const visited = new Set();
+  return [...rowsById.keys()]
+    .map((startId) => {
+      if (visited.has(startId) || !(neighbors.get(startId)?.size)) return null;
+      const queue = [startId];
+      const memberIds = [];
+      visited.add(startId);
+      while (queue.length) {
+        const id = queue.shift();
+        if (!id) continue;
+        memberIds.push(id);
+        neighbors.get(id)?.forEach((neighborId) => {
+          if (visited.has(neighborId)) return;
+          visited.add(neighborId);
+          queue.push(neighborId);
+        });
+      }
+
+      const members = memberIds
+        .map((id) => rowsById.get(id))
+        .filter(Boolean)
+        .sort((left, right) => duplicateHealthScore(right) - duplicateHealthScore(left) || String(right.updated_at || right.created_at || "").localeCompare(String(left.updated_at || left.created_at || "")));
+      const primary = members[0];
+      if (!primary) return null;
+      const matches = members.slice(1).map((candidate) => ({
+        vendor: candidate,
+        reasons: duplicateReasons(primary, candidate)
+      }));
       return {
-        primary: vendor,
+        primary,
         matches,
-        confidence: Math.min(100, Math.max(...matches.map((match) => duplicateConfidence(match.reasons))))
+        confidence: Math.min(100, Math.max(...matches.map((match) => duplicateConfidence(match.reasons.length ? match.reasons : ["Connected duplicate"]))))
       };
     })
     .filter(Boolean);
 }
 
+function duplicateHealthScore(vendor) {
+  const actual = Number(vendor.health_score);
+  if (Number.isFinite(actual)) return actual;
+  let score = 0;
+  if (vendor.vendor_name) score += 15;
+  if (vendor.domain) score += 15;
+  if (vendor.primary_email || vendor.whatsapp_phone) score += 25;
+  if (vendor.preferred_channel) score += 8;
+  if (vendor.coverage_notes) score += 18;
+  if (Array.isArray(vendor.tags) && vendor.tags.length) score += 14;
+  if (vendor.notes) score += 5;
+  if (vendor.base_stage === "procurement") score += 4;
+  if (["blocked", "inactive", "archived"].includes(String(vendor.status || "").toLowerCase())) score -= 18;
+  return Math.max(0, Math.min(100, score));
+}
+
 function duplicateReasons(row, candidate) {
   const reasons = [];
   const domain = String(row.domain || "").toLowerCase();
-  const email = String(row.primary_email || "").toLowerCase();
-  const nameKey = normalizeKey(row.vendor_name);
-  const candidateNameKey = normalizeKey(candidate.vendor_name);
+  const emails = [row.primary_email, ...(Array.isArray(row.secondary_emails) ? row.secondary_emails : String(row.secondary_emails || "").split(/[;,|]/))]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+  const candidateEmails = new Set([candidate.primary_email, ...(Array.isArray(candidate.secondary_emails) ? candidate.secondary_emails : String(candidate.secondary_emails || "").split(/[;,|]/))]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean));
+  const nameKeys = [normalizeKey(row.vendor_name), normalizeKey(row.legal_name)].filter(Boolean);
+  const candidateNameKeys = [normalizeKey(candidate.vendor_name), normalizeKey(candidate.legal_name)].filter(Boolean);
 
   if (domain && String(candidate.domain || "").toLowerCase() === domain) reasons.push("Same domain");
-  if (email && String(candidate.primary_email || "").toLowerCase() === email) reasons.push("Same email");
-  if (nameKey && candidateNameKey && (nameKey.includes(candidateNameKey) || candidateNameKey.includes(nameKey))) reasons.push("Similar name");
+  if (emails.some((email) => candidateEmails.has(email))) reasons.push("Same email");
+  if (nameKeys.some((nameKey) => candidateNameKeys.includes(nameKey))) reasons.push("Same name");
+  else if (nameKeys.some((nameKey) => candidateNameKeys.some((candidateNameKey) => nameKey.includes(candidateNameKey) || candidateNameKey.includes(nameKey)))) reasons.push("Similar name");
   return reasons;
 }
 
@@ -1660,7 +1711,7 @@ function renderDuplicateReview() {
                   <div>
                     <strong>${escapeHtml(vendor.vendor_name)}</strong>
                     <span>${escapeHtml([vendor.domain, vendor.primary_email, vendor.status].filter(Boolean).join(" | "))}</span>
-                    <div class="duplicate-reasons">${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</div>
+                    <div class="duplicate-reasons">${vendorIndex === 0 ? `<span>Keep: highest health ${Math.round(duplicateHealthScore(vendor))}/100</span>` : `<span>Duplicate profile: ${Math.round(duplicateHealthScore(vendor))}/100</span>`}${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</div>
                   </div>
                   <div class="action-row">
                     <button class="small-button" type="button" data-duplicate-open="${escapeHtml(vendor.id)}">Open</button>
