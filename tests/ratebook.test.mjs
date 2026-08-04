@@ -151,6 +151,7 @@ const materializeRatebooksSource = api.slice(
   api.indexOf("function ratebookRouteSummary")
 );
 assert.match(listRatebooksSource, /if \(requestedShipperId\)[\s\S]+directlyLinkedPackageIds[\s\S]+packs = packs\.filter/, "Shipper filtering should scope packages before materialization instead of filtering only the final response");
+assert.match(listRatebooksSource, /input\.skip_materialization === true \? \[\] : await mapWithConcurrency\(packs/, "Read-only account views should be able to reuse persisted Ratebooks without rewriting every package");
 assert.doesNotMatch(listRatebooksSource, /neq\("status", "archived"\)/);
 assert.doesNotMatch(materializeRatebooksSource, /neq\("status", "archived"\)/);
 assert.match(listRatebooksSource, /\[\.\.\.materializedRatebooks, \.\.\.persistedRatebooks\][\s\S]+ratebookById\.set/, "Ratebook consolidation should retain freshly materialized books when persisted reads are temporarily incomplete");

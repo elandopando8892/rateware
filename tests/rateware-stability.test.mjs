@@ -2788,6 +2788,7 @@ assert.match(apiSource, /async function listRatebooks[\s\S]+fetchAllOwnedRfxPack
 assert.match(apiSource, /async function listRatebooks[\s\S]+fetchAllRatebookPackageRows[\s\S]+fetchAllOwnedRfxRatebooks[\s\S]+fetchAllRatebookShares/, "Ratebook consolidation should avoid oversized filters for routes, books, and share counts");
 const getShipperAccountSource = apiSource.slice(apiSource.indexOf('if (body.action === "get_shipper")'), apiSource.indexOf('if (body.action === "create_shipper_profile_request")'));
 assert.match(getShipperAccountSource, /listRatebooks\(supabase, user, \{[\s\S]+shipper_id: shipperId/, "Shipper CRM should reuse the bounded canonical Ratebook synchronization path");
+assert.match(getShipperAccountSource, /skip_bid_room_sync: true[\s\S]+skip_materialization: true/, "Shipper CRM account reads should not rematerialize Ratebooks on every drawer open");
 assert.doesNotMatch(getShipperAccountSource, /mapWithConcurrency\(bidRoomEvents/, "Shipper CRM should not repeat a separate workspace-wide Bid Room synchronization pass");
 assert.match(apiSource, /const eventKeys = \[[\s\S]+catalogKey\(event\.customer\),[\s\S]+catalogKey\(event\.name\)/, "Shipper CRM event matching should inspect both customer and event name");
 assert.match(apiSource, /coverage_sync: \{ inserted: coverageInserted \}/, "RFx detail should report whether lane coverage was repaired");

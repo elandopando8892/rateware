@@ -21197,7 +21197,7 @@ async function listRatebooks(
     rows.push(segment);
     segmentsByPackage.set(key, rows);
   });
-  const materializationOutcomes = await mapWithConcurrency(packs, RATEBOOK_SYNC_CONCURRENCY, async (pack) => {
+  const materializationOutcomes = input.skip_materialization === true ? [] : await mapWithConcurrency(packs, RATEBOOK_SYNC_CONCURRENCY, async (pack) => {
     const projectId = cleanText(pack.project_id);
     const packageId = cleanText(pack.id);
     if (!projectId || !packageId) return { package_id: packageId, ratebook: null as Record<string, unknown> | null, error: null as string | null };
@@ -23899,7 +23899,9 @@ Deno.serve(async (request) => {
       try {
         const listedRatebooks = await listRatebooks(supabase, user, {
           shipper_id: shipperId,
-          include_routes: false
+          include_routes: false,
+          skip_bid_room_sync: true,
+          skip_materialization: true
         });
         const sync = objectRecord(listedRatebooks.sync);
         details.ratebooks = Array.isArray(listedRatebooks.rows) ? listedRatebooks.rows : [];
