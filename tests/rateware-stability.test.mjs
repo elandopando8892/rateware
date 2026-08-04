@@ -138,6 +138,10 @@ const whatsappWebhookSource = readFileSync(new URL("../supabase/functions/whatsa
 const whatsappWebhookRoutingMigration = readFileSync(new URL("../supabase/migrations/20260723005859_whatsapp_webhook_routing_indexes.sql", import.meta.url), "utf8");
 const vendorWorkspaceSearchMigration = readFileSync(new URL("../supabase/migrations/20260723190000_vendor_workspace_search.sql", import.meta.url), "utf8");
 const vendorWorkspaceSearchHardeningMigration = readFileSync(new URL("../supabase/migrations/20260725160000_vendor_workspace_search_hardening.sql", import.meta.url), "utf8");
+const vendorPagePerformanceMigration = readFileSync(new URL("../supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql", import.meta.url), "utf8");
+const operationalPageIndexMigration = readFileSync(new URL("../supabase/migrations/20260804075621_optimize_operational_page_indexes.sql", import.meta.url), "utf8");
+const bidRoomBenchmarkCandidateMigration = readFileSync(new URL("../supabase/migrations/20260804080200_optimize_bid_room_benchmark_candidates.sql", import.meta.url), "utf8");
+const bidRoomBenchmarkTuningMigration = readFileSync(new URL("../supabase/migrations/20260804080455_tune_bid_room_benchmark_candidates.sql", import.meta.url), "utf8");
 const vendorLifecycleUnificationMigration = readFileSync(new URL("../supabase/migrations/20260723225311_vendor_lifecycle_unification.sql", import.meta.url), "utf8");
 const workspaceRateScopeMigration = readFileSync(new URL("../supabase/migrations/20260722120000_scope_uploads_and_rates_by_workspace.sql", import.meta.url), "utf8");
 const workspaceRateFilterValuesMigration = readFileSync(new URL("../supabase/migrations/20260723235900_scope_rate_filter_values_by_workspace.sql", import.meta.url), "utf8");
@@ -1906,6 +1910,10 @@ assert.match(bidRoomE2eSource, /send_outreach_messages/, "Bid Room E2E should co
 assert.match(bidRoomE2eSource, /Refusing to send real Gmail to external recipient/, "Bid Room E2E should block accidental external Gmail sends");
 assert.match(bidRoomE2eSource, /carrier\("get_invitation"/, "Bid Room E2E should validate the carrier portal token flow");
 assert.match(bidRoomE2eSource, /carrier\("submit_bid"/, "Bid Room E2E should submit a bid through the carrier API");
+assert.match(bidRoomE2eSource, /every carrier opens the complete multi-lane portal/, "Bid Room E2E should open the complete route book for every test carrier");
+assert.match(bidRoomE2eSource, /three carriers submit bids on every lane/, "Bid Room E2E should submit competing bids across the complete carrier-lane matrix");
+assert.match(bidRoomE2eSource, /vendors\.length \* 3/, "Bid Room E2E should require three lanes for every test carrier");
+assert.match(bidRoomE2eSource, /Nine competing carrier-lane bids captured in Review Queue/, "Bid Room E2E should retain nine independent historical costs in Review Queue");
 assert.match(bidRoomE2eSource, /post_bid_room_chat_message/, "Bid Room E2E should exercise Bid Room chat");
 assert.match(bidRoomE2eSource, /sync_bid_room_event_thread/, "Bid Room E2E should attempt Google Chat thread sync");
 assert.match(bidRoomE2eSource, /award_rfx_lane_vendor/, "Bid Room E2E should award a primary carrier");
@@ -2499,6 +2507,12 @@ assert.match(rfxEventsSource, /syncBidRoomEventThread/, "Bid Room UI should call
 assert.match(rfxEventsSource, /function bidRoomHasEventGroupThread[\s\S]+thread_type === "event_group"/, "Bid Room should detect an existing event thread from its loaded snapshot");
 assert.match(rfxEventsSource, /if \(!bidRoomHasEventGroupThread\(bidRoomChatThreads\)\)[\s\S]+ensureSelectedEventChatThread\(eventId, \{ silent: true \}\)/, "Bid Room should create an event thread only when the loaded snapshot does not already contain one");
 assert.match(apiSource, /const \[eventLanes, loadedInvitationRows, benchmarkLoad\] = await Promise\.all\(\[[\s\S]+fetchAllRfxLaneRows[\s\S]+fetchAllRfxLaneVendorRows[\s\S]+fetchRfxDetailBenchmarkRates/, "Bid Room detail should load lanes, invitations, and Rateware benchmarks concurrently");
+assert.match(apiSource, /rfx_benchmark_candidate_rate_ids/, "Bid Room detail should request lane-scoped Rateware benchmark candidates");
+assert.match(apiSource, /fetchRateRowsForIds\(supabase, ids, RFX_DETAIL_BENCHMARK_COLUMNS/, "Bid Room detail should load only the selected candidate rows");
+assert.doesNotMatch(apiSource, /RFX_DETAIL_BENCHMARK_RATE_LIMIT = 5000/, "Bid Room detail should not transfer a fixed 5,000-row benchmark sample");
+assert.match(bidRoomBenchmarkCandidateMigration, /function public\.rfx_benchmark_candidate_rate_ids/, "Bid Room benchmark candidate RPC should exist");
+assert.match(bidRoomBenchmarkTuningMigration, /rateware_bi_rate_facts/, "Bid Room benchmark candidates should use the compact BI fact projection");
+assert.match(bidRoomBenchmarkTuningMigration, /drop function if exists public\.rateware_rfx_lane_rate_score/, "The expensive row-by-row benchmark scorer should be removed");
 assert.match(apiSource, /body\.action === "list_rfx_event_context"[\s\S]+listRfxEventContext\(supabase, user, event\)/, "Bid Room should expose one workspace-scoped secondary context action");
 assert.match(apiSource, /const RFX_EVENT_CONTEXT_OUTREACH_LIMIT = 2000;[\s\S]+async function listRfxEventOutreachSnapshot[\s\S]+\.range\(0, RFX_EVENT_CONTEXT_OUTREACH_LIMIT\)/, "Bid Room initial outreach context should have a fixed payload ceiling");
 assert.match(apiSource, /async function listRfxEventContext[\s\S]+Promise\.allSettled\(\[[\s\S]+listRfxResponseVendorIds[\s\S]+listRfxEventOutreachSnapshot[\s\S]+listBidRoomChat/, "Bid Room secondary context should load responses, bounded outreach, and chat concurrently");
@@ -2764,7 +2778,7 @@ assert.match(apiSource, /async function buildVendorValueCurve/, "Vendor CI API s
 assert.match(apiSource, /async function fetchVendorCiSignalRows[\s\S]+for \(let offset = 0; offset < VENDOR_CI_SIGNAL_MAX_ROWS; offset \+= VENDOR_CI_SIGNAL_PAGE_SIZE\)[\s\S]+fetchPage\(offset, VENDOR_CI_SIGNAL_PAGE_SIZE\)/, "Vendor CI signals should page through the full workspace instead of stopping at a fixed sample");
 const vendorValueCurveSource = apiSource.slice(apiSource.indexOf("async function buildVendorValueCurve"), apiSource.indexOf("async function refreshVendorValueCurve"));
 assert.doesNotMatch(vendorValueCurveSource, /\.limit\(10000\)/, "Vendor CI value scoring must not silently cap Bid Room, contact, chat, or CI signals");
-assert.match(apiSource, /fetchVendorRateMetricsSafe\(supabase, user\)/, "Vendor CI value curve should include Rateware quote signals");
+assert.match(vendorValueCurveSource, /fetchVendorRateMetricsSafe\(supabase, user, \{[\s\S]+vendorIds: vendors\.map/, "Vendor CI value curve should include page-scoped Rateware quote signals");
 assert.match(apiSource, /\.from\("rfx_lane_vendors"\)/, "Vendor CI value curve should include Bid Room participation and award signals");
 assert.match(apiSource, /\.from\("contact_history"\)/, "Vendor CI value curve should include support and outreach signals");
 assert.match(apiSource, /\.from\("bid_room_chat_messages"\)/, "Vendor CI value curve should include carrier chat participation signals");
@@ -3505,6 +3519,9 @@ assert.match(
 
 assert.match(ratewarePageIndexMigration, /where status = 'approved'/, "Rateware page index should target approved rows");
 assert.match(ratewarePageIndexMigration, /quote_date desc nulls last, created_at desc, id desc/, "Rateware page index should match default sort order");
+assert.match(operationalPageIndexMigration, /vendors_owner_created_id_idx/, "Carrier CRM pagination should use a workspace-scoped stable index");
+assert.match(operationalPageIndexMigration, /shippers_owner_updated_id_idx/, "Shipper CRM pagination should use a workspace-scoped stable index");
+assert.match(operationalPageIndexMigration, /rate_staging_owner_approved_rateware_page_idx/, "Rateware pagination should lead with workspace ownership");
 
 for (const functionName of [
   "rateware_domain_key",
@@ -3518,10 +3535,11 @@ assert.match(vendorMetricRpcMigration, /rate_staging_vendor_status_idx/, "vendor
 assert.match(vendorMetricRpcMigration, /rate_staging_vendor_domain_status_idx/, "vendor metric RPC should have vendor-domain/status index support");
 assert.match(vendorMetricRpcMigration, /not public\.rateware_is_generic_email_domain/, "vendor metric domain matching should ignore generic email domains");
 assert.match(apiSource, /async function fetchVendorRateMetrics/, "API should fetch vendor metrics through database RPC");
-assert.match(apiSource, /vendor_rate_metrics_for_owner/, "API should call vendor rate metrics RPC");
+assert.match(apiSource, /vendor_rate_metrics_for_owner_ids/, "API should call the page-scoped vendor rate metrics RPC");
 assert.match(apiSource, /async function fetchVendorRateMetricsSafe/, "Vendor metric enrichment should have a safe fallback");
 const vendorBidMetricsSource = apiSource.slice(apiSource.indexOf("async function fetchVendorBidMetrics"), apiSource.indexOf("async function fetchVendorBidMetricsSafe"));
-assert.match(vendorBidMetricsSource, /for \(let offset = 0; offset < maxRows; offset \+= pageSize\)[\s\S]+\.order\("id", \{ ascending: true \}\)[\s\S]+\.range\(offset, offset \+ pageSize - 1\)/, "Bid Room metrics should page all carrier activity with a stable order");
+assert.match(vendorBidMetricsSource, /vendor_bid_metrics_for_owner_ids/, "Bid Room metrics should aggregate only requested vendors in PostgreSQL");
+assert.match(vendorBidMetricsSource, /if \(!vendorIds\.length\) return metrics/, "Bid Room metrics should skip database work when no vendor rows are visible");
 assert.doesNotMatch(vendorBidMetricsSource, /\.limit\(10000\)/, "Bid Room CRM metrics should not silently truncate after 10,000 invitations");
 assert.match(apiSource, /Quote metrics are temporarily unavailable/, "Vendor metric fallback should explain partial CRM loading");
 const listVendorsSource = apiSource.slice(apiSource.indexOf('if (body.action === "list_vendors")'), apiSource.indexOf('if (body.action === "vendor_intelligence")'));
@@ -3546,6 +3564,11 @@ assert.match(vendorWorkspaceSearchHardeningMigration, /v\.name/, "Workspace vend
 assert.match(vendorWorkspaceSearchHardeningMigration, /profile_data::text/, "Workspace vendor search should include structured profile data");
 assert.match(vendorWorkspaceSearchHardeningMigration, /coalesce\(v\.tags/, "Workspace vendor search should include tags");
 assert.match(vendorWorkspaceSearchHardeningMigration, /secondary_email_keys/, "Workspace vendor search should rank exact secondary email matches");
+assert.match(vendorPagePerformanceMigration, /search_document extensions\.gin_trgm_ops/, "Workspace vendor search should use a persisted trigram search document");
+assert.match(vendorPagePerformanceMigration, /vendors_refresh_search_document/, "Vendor mutations should keep the search document synchronized");
+assert.match(vendorPagePerformanceMigration, /vendor_rate_metrics_for_owner_ids/, "Vendor rate enrichment should be scoped to requested CRM rows");
+assert.match(vendorPagePerformanceMigration, /vendor_bid_metrics_for_owner_ids/, "Bid Room enrichment should aggregate requested CRM rows server-side");
+assert.match(listVendorsSource, /const vendorIds = rows\.map\(\(row\) => row\.id\)/, "Carrier CRM should request metrics only for the current page");
 assert.match(rfxEventsSource, /rawTerm\.length >= 2\s*\? segmentRows/, "Bid Room should trust server-side vendor search matches");
 assert.match(vendorImprovementSource, /const matchingRows = rows;/, "Vendor CI should trust server-side vendor search matches");
 assert.match(listVendorsSource, /if \(!lightweight && rows\.length\)/, "Bid Room carrier selector should be able to skip heavy CRM metric enrichment");
@@ -3845,7 +3868,7 @@ assert.match(vendorLifecycleUnificationMigration, /after insert or update of ven
 assert.match(vendorLifecycleUnificationMigration, /for signal_row in[\s\S]*from public\.rfx_lane_vendors/, "Existing Bid Room activity should be reconciled into the CRM lifecycle");
 assert.match(vendorLifecycleUnificationMigration, /for signal_row in[\s\S]*from public\.rate_staging/, "Existing staged-rate links should be reconciled into the CRM lifecycle");
 assert.match(apiSource, /async function fetchVendorBidMetrics/, "CRM services should load Bid Room activity by vendor");
-assert.match(apiSource, /rfx_events!inner\(owner_email\)/, "Bid Room metrics should be scoped through owned RFx events");
+assert.match(vendorPagePerformanceMigration, /join public\.rfx_events events[\s\S]+events\.owner_email/, "Bid Room metrics should be scoped through owned RFx events");
 assert.match(apiSource, /bid_metrics: bidMetrics/, "Vendor Intelligence should expose linked Bid Room activity without replacing rate metrics");
 assert.match(vendorFunnelSource, /fetchVendorBidMetricsSafe/, "Procurement Pipeline should include Bid Room activity when calculating its funnel");
 assert.match(apiSource, /Number\(bidMetrics\.quoted \|\| 0\) > 0/, "A carrier quote in Bid Room should count as nested procurement activity");

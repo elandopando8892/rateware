@@ -3776,10 +3776,13 @@ function normalizeVendorMetricRow(row: Record<string, unknown> | undefined) {
 async function fetchVendorRateMetrics(
   supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
-  options: { baseStage?: string | null } = {}
+  options: { baseStage?: string | null; vendorIds?: unknown } = {}
 ) {
-  const result = await supabase.rpc("vendor_rate_metrics_for_owner", {
+  const vendorIds = normalizeUuidList(options.vendorIds);
+  if (!vendorIds.length) return new Map<string, Record<string, unknown>>();
+  const result = await supabase.rpc("vendor_rate_metrics_for_owner_ids", {
     p_owner_email: user.owner_email,
+    p_vendor_ids: vendorIds,
     p_base_stage: cleanText(options.baseStage) || null
   });
   if (result.error) throw result.error;
@@ -3794,7 +3797,7 @@ async function fetchVendorRateMetrics(
 async function fetchVendorRateMetricsSafe(
   supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
-  options: { baseStage?: string | null } = {}
+  options: { baseStage?: string | null; vendorIds?: unknown } = {}
 ) {
   try {
     return {
@@ -3840,49 +3843,32 @@ function normalizeVendorBidMetrics(row: Record<string, unknown> | undefined) {
 
 async function fetchVendorBidMetrics(
   supabase: RatewareSupabaseClient,
-  user: { owner_email: string | null }
+  user: { owner_email: string | null },
+  options: { vendorIds?: unknown } = {}
 ) {
+  const vendorIds = normalizeUuidList(options.vendorIds);
   const metrics = new Map<string, Record<string, unknown>>();
-  const pageSize = 1000;
-  const maxRows = 100000;
-  for (let offset = 0; offset < maxRows; offset += pageSize) {
-    const result = await supabase
-      .from("rfx_lane_vendors")
-      .select("vendor_id, invitation_status, bid_rate, invited_at, viewed_at, responded_at, awarded_at, updated_at, rfx_events!inner(owner_email)")
-      .eq("rfx_events.owner_email", user.owner_email)
-      .neq("invitation_status", "archived")
-      .order("id", { ascending: true })
-      .range(offset, offset + pageSize - 1);
-    if (result.error) throw result.error;
-    const page = (result.data || []) as Record<string, unknown>[];
-    for (const row of page) {
-      const vendorId = cleanText(row.vendor_id);
-      if (!vendorId) continue;
-      const current = normalizeVendorBidMetrics(metrics.get(vendorId));
-      const status = cleanText(row.invitation_status)?.toLowerCase() || "shortlisted";
-      current.shortlisted += 1;
-      if (status === "drafted") current.drafted += 1;
-      if (["invited", "viewed", "responded", "quoted", "bid_submitted", "awarded"].includes(status)) current.invited += 1;
-      if (["viewed", "responded", "quoted", "bid_submitted", "awarded"].includes(status)) current.viewed += 1;
-      if ((row.bid_rate !== null && row.bid_rate !== undefined) || ["quoted", "bid_submitted", "awarded"].includes(status)) current.quoted += 1;
-      if (status === "awarded") current.awarded += 1;
-      const activity = cleanText(row.awarded_at || row.responded_at || row.viewed_at || row.invited_at || row.updated_at);
-      if (activity && (!current.last_activity_at || new Date(activity).getTime() > new Date(current.last_activity_at).getTime())) {
-        current.last_activity_at = activity;
-      }
-      metrics.set(vendorId, current);
-    }
-    if (page.length < pageSize) return metrics;
+  if (!vendorIds.length) return metrics;
+  const result = await supabase.rpc("vendor_bid_metrics_for_owner_ids", {
+    p_owner_email: user.owner_email,
+    p_vendor_ids: vendorIds
+  });
+  if (result.error) throw result.error;
+  for (const row of result.data || []) {
+    const metricRow = row as Record<string, unknown>;
+    const vendorId = cleanText(metricRow.vendor_id);
+    if (vendorId) metrics.set(vendorId, normalizeVendorBidMetrics(metricRow));
   }
-  throw new Error(`Bid Room vendor metrics exceeded the ${maxRows} row safety limit.`);
+  return metrics;
 }
 
 async function fetchVendorBidMetricsSafe(
   supabase: RatewareSupabaseClient,
-  user: { owner_email: string | null }
+  user: { owner_email: string | null },
+  options: { vendorIds?: unknown } = {}
 ) {
   try {
-    return { metrics: await fetchVendorBidMetrics(supabase, user), warnings: [] as string[] };
+    return { metrics: await fetchVendorBidMetrics(supabase, user, options), warnings: [] as string[] };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error || "Unknown Bid Room metric error");
     console.warn("Vendor Bid Room metrics unavailable; continuing with CRM and Rateware data.", message);
@@ -4339,10 +4325,11 @@ async function buildVendorIntelligence(
   user: { owner_email: string | null },
   options: Record<string, unknown> = {}
 ) {
-  const [vendorPage, metricsResult, bidMetricsResult] = await Promise.all([
-    fetchVendorIntelligenceVendors(supabase, user, options),
-    fetchVendorRateMetricsSafe(supabase, user),
-    fetchVendorBidMetricsSafe(supabase, user)
+  const vendorPage = await fetchVendorIntelligenceVendors(supabase, user, options);
+  const vendorIds = vendorPage.rows.map((row) => row.id).filter(Boolean);
+  const [metricsResult, bidMetricsResult] = await Promise.all([
+    fetchVendorRateMetricsSafe(supabase, user, { vendorIds }),
+    fetchVendorBidMetricsSafe(supabase, user, { vendorIds })
   ]);
   const rows = buildVendorIntelligenceRows(vendorPage.rows, metricsResult.metrics, bidMetricsResult.metrics);
   return {
@@ -4385,8 +4372,12 @@ function daysSince(value: unknown) {
 
 async function buildVendorFunnel(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
   const procurementVendors = await fetchAllCarrierIntelligenceVendors(supabase, user, { base_stage: "procurement" });
+  const vendorIds = procurementVendors.map((row) => row.id).filter(Boolean);
   const [metricsResult, bidMetricsResult] = procurementVendors.length
-    ? await Promise.all([fetchVendorRateMetricsSafe(supabase, user, { baseStage: "procurement" }), fetchVendorBidMetricsSafe(supabase, user)])
+    ? await Promise.all([
+      fetchVendorRateMetricsSafe(supabase, user, { baseStage: "procurement", vendorIds }),
+      fetchVendorBidMetricsSafe(supabase, user, { vendorIds })
+    ])
     : [{ metrics: new Map<string, Record<string, unknown>>(), warnings: [] as string[] }, { metrics: new Map<string, Record<string, unknown>>(), warnings: [] as string[] }];
   const procurementRows: Record<string, unknown>[] = buildVendorIntelligenceRows(procurementVendors, metricsResult.metrics, bidMetricsResult.metrics)
     .map((row: Record<string, unknown>) => {
@@ -8310,7 +8301,7 @@ async function fetchApprovedRateRows(
   throw new Error(`Approved rate load exceeded ${maxRows} rows for one workspace.`);
 }
 
-const RFX_DETAIL_BENCHMARK_RATE_LIMIT = 5000;
+const RFX_DETAIL_BENCHMARK_CANDIDATES_PER_LANE = 1000;
 const RFX_DETAIL_BENCHMARK_COLUMNS = [
   "id",
   "all_in_rate",
@@ -8347,20 +8338,25 @@ const RFX_DETAIL_BENCHMARK_COLUMNS = [
 
 async function fetchRfxDetailBenchmarkRates(
   supabase: RatewareSupabaseClient,
-  user: { owner_email: string | null }
+  user: { owner_email: string | null },
+  eventId: string
 ) {
   if (!user.owner_email) return { rows: [] as Record<string, unknown>[], limited: false };
-  const result = await supabase
-    .from("rate_staging")
-    .select(RFX_DETAIL_BENCHMARK_COLUMNS)
-    .eq("owner_email", user.owner_email)
-    .eq("status", "approved")
-    .order("quote_date", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(RFX_DETAIL_BENCHMARK_RATE_LIMIT);
-  if (result.error) throw new Error(`Rateware benchmark load failed: ${result.error.message}`);
-  const rows = (result.data || []) as unknown as Record<string, unknown>[];
-  return { rows, limited: rows.length >= RFX_DETAIL_BENCHMARK_RATE_LIMIT };
+  const candidates = await supabase.rpc("rfx_benchmark_candidate_rate_ids", {
+    p_owner_email: user.owner_email,
+    p_event_id: eventId,
+    p_per_lane: RFX_DETAIL_BENCHMARK_CANDIDATES_PER_LANE
+  });
+  if (candidates.error) throw new Error(`Rateware benchmark candidate load failed: ${candidates.error.message}`);
+  const candidateRows = (candidates.data || []) as Record<string, unknown>[];
+  const ids = [...new Set(candidateRows.map((row) => cleanText(row.rate_id)).filter((id): id is string => Boolean(id)))];
+  const rows = ids.length
+    ? await fetchRateRowsForIds(supabase, ids, RFX_DETAIL_BENCHMARK_COLUMNS, user.owner_email)
+    : [];
+  return {
+    rows,
+    limited: candidateRows.some((row) => Number(row.candidate_count || 0) > RFX_DETAIL_BENCHMARK_CANDIDATES_PER_LANE)
+  };
 }
 
 async function requireOwnedRfxEvent(supabase: RatewareSupabaseClient, user: { owner_email: string | null }, eventId: unknown) {
@@ -12191,7 +12187,9 @@ async function buildVendorValueCurve(
   const manualRows = await fetchVendorCiManualScorecards(supabase, user, limit);
   const manualByVendor = new Map(manualRows.map((row) => [cleanText(row.vendor_id) || "", row]));
   const warnings: string[] = [];
-  const rateMetrics = await fetchVendorRateMetricsSafe(supabase, user);
+  const rateMetrics = await fetchVendorRateMetricsSafe(supabase, user, {
+    vendorIds: vendors.map((row) => row.id).filter(Boolean)
+  });
   warnings.push(...rateMetrics.warnings);
 
   const [bidRowsResult, contactRowsResult, chatRowsResult, ciCaseRowsResult] = await Promise.all([
@@ -24794,9 +24792,10 @@ Deno.serve(async (request) => {
       let enrichedRows = rows;
       let warnings: string[] = [];
       if (!lightweight && rows.length) {
+        const vendorIds = rows.map((row) => row.id).filter(Boolean);
         const [metricsResult, bidMetricsResult] = await Promise.all([
-          fetchVendorRateMetricsSafe(supabase, user),
-          fetchVendorBidMetricsSafe(supabase, user)
+          fetchVendorRateMetricsSafe(supabase, user, { vendorIds }),
+          fetchVendorBidMetricsSafe(supabase, user, { vendorIds })
         ]);
         warnings = [...metricsResult.warnings, ...bidMetricsResult.warnings];
         const intelligenceRows = buildVendorIntelligenceRows(rows, metricsResult.metrics, bidMetricsResult.metrics);
@@ -25883,7 +25882,7 @@ Deno.serve(async (request) => {
       const [eventLanes, loadedInvitationRows, benchmarkLoad] = await Promise.all([
         fetchAllRfxLaneRows(supabase, event.id, "*"),
         fetchAllRfxLaneVendorRows(supabase, event.id, invitationColumns),
-        fetchRfxDetailBenchmarkRates(supabase, user)
+        fetchRfxDetailBenchmarkRates(supabase, user, event.id)
           .then((value) => ({ value, error: null as unknown }))
           .catch((error) => ({ value: null, error }))
       ]);

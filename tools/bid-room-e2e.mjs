@@ -36,7 +36,8 @@ Optional:
   --app-origin https://rateware.vercel.app
 
 Safe defaults:
-  - Creates a dummy RFx event, three CRM carriers, lanes, invitations, bids, chat, award, backup, no-award and closeout.
+  - Creates a dummy RFx event with three lanes and three CRM carriers.
+  - Exercises the full 3 carrier x 3 lane matrix: nine bids, three primary awards, three backups and three no-awards.
   - Does not send Gmail unless --send-gmail is passed.
   - Does not send final notices unless --send-closeout-email is passed.
   - Always closes awarded carrier costs to pending_review; production approval remains human-only.
@@ -193,14 +194,13 @@ function assertSameIds(actual = [], expected = [], label = "IDs") {
   return actualIds;
 }
 
-function assertOutcomeCounts(result = {}, label = "RFx outcomes") {
+function assertOutcomeCounts(result = {}, expected = {}, label = "RFx outcomes") {
   const counts = result.outcomes?.counts || result.counts || {};
   const actual = {
     awarded: Number(counts.awarded || 0),
     backup: Number(counts.backup || 0),
     not_awarded: Number(counts.not_awarded || 0)
   };
-  const expected = { awarded: 1, backup: 1, not_awarded: 1 };
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(`${label} mismatch. Expected ${JSON.stringify(expected)}; got ${JSON.stringify(actual)}.`);
   }
@@ -244,7 +244,7 @@ try {
   const carrierSpecs = [{
     key: "primary",
     label: "Primary",
-    bid_rate: "2750",
+    bid_rates: ["2750", "3900", "2800"],
     weekly_capacity: "3",
     transit_days: "2",
     commercial_model: "direct_cost_plus",
@@ -253,7 +253,7 @@ try {
   }, {
     key: "backup",
     label: "Backup",
-    bid_rate: "2850",
+    bid_rates: ["2850", "4050", "2950"],
     weekly_capacity: "2",
     transit_days: "2",
     commercial_model: "carrier_share",
@@ -262,7 +262,7 @@ try {
   }, {
     key: "not_awarded",
     label: "No Award",
-    bid_rate: "3100",
+    bid_rates: ["3100", "4400", "3250"],
     weekly_capacity: "1",
     transit_days: "3",
     commercial_model: "xbf_buy_sell",
@@ -440,28 +440,47 @@ try {
     return row;
   });
 
-  const targetInvitations = await step("verify appended lane carrier coverage", async () => {
+  const eventInvitationSets = await step("verify appended lane carrier coverage", async () => {
     const detail = await rateware("list_rfx_detail", { event_id: event.id });
-    const expectedLaneIds = [...initialLanes.map((row) => row.id), appendedLane.id];
-    const targetRows = [];
+    const eventLanes = [...initialLanes, appendedLane];
+    const expectedLaneIds = eventLanes.map((row) => row.id);
+    const invitationSets = [];
     for (const vendor of vendors) {
       const rows = assertCarrierLaneCoverage(detail, vendor.id, expectedLaneIds, `Expanded ${vendor.spec.key} carrier coverage`);
-      const target = rows.find((row) => String(row.rfx_lane_id) === String(lane.id));
-      if (!target) throw new Error(`Target lane invitation is missing for ${vendor.spec.key} carrier.`);
-      targetRows.push({ ...target, vendor, spec: vendor.spec });
+      const invitations = eventLanes.map((eventLane, laneIndex) => {
+        const invitation = rows.find((row) => String(row.rfx_lane_id) === String(eventLane.id));
+        if (!invitation) throw new Error(`Lane ${eventLane.id} invitation is missing for ${vendor.spec.key} carrier.`);
+        return { ...invitation, vendor, spec: vendor.spec, lane: eventLane, lane_index: laneIndex };
+      });
+      invitationSets.push({ vendor, spec: vendor.spec, invitations });
     }
     report.artifacts.covered_rfx_lane_ids = expectedLaneIds;
-    report.artifacts.target_invitation_ids = Object.fromEntries(targetRows.map((row) => [row.spec.key, row.id]));
-    logCheckpoint("Appended lane carrier coverage verified", { carriers: targetRows.length, lanes_per_carrier: expectedLaneIds.length });
-    return targetRows;
+    report.artifacts.invitation_ids_by_carrier_and_lane = Object.fromEntries(invitationSets.map((set) => [
+      set.spec.key,
+      Object.fromEntries(set.invitations.map((row) => [String(row.rfx_lane_id), row.id]))
+    ]));
+    logCheckpoint("Appended lane carrier coverage verified", {
+      carriers: invitationSets.length,
+      lanes_per_carrier: expectedLaneIds.length,
+      carrier_lane_rows: invitationSets.reduce((total, set) => total + set.invitations.length, 0)
+    });
+    return invitationSets;
   });
 
-  const primaryInvitation = targetInvitations.find((row) => row.spec.key === "primary");
-  const backupInvitation = targetInvitations.find((row) => row.spec.key === "backup");
-  const noAwardInvitation = targetInvitations.find((row) => row.spec.key === "not_awarded");
+  const leadInvitations = eventInvitationSets.map((set) => set.invitations[0]);
+  const allLaneInvitations = eventInvitationSets.flatMap((set) => set.invitations);
+  const primaryInvitationSet = eventInvitationSets.find((set) => set.spec.key === "primary");
+  const backupInvitationSet = eventInvitationSets.find((set) => set.spec.key === "backup");
+  const noAwardInvitationSet = eventInvitationSets.find((set) => set.spec.key === "not_awarded");
+  const primaryInvitation = primaryInvitationSet?.invitations[0];
+  const backupInvitation = backupInvitationSet?.invitations[0];
+  const noAwardInvitation = noAwardInvitationSet?.invitations[0];
   requireValue(primaryInvitation?.id, "Primary invitation was not resolved after lane expansion.");
   requireValue(backupInvitation?.id, "Backup invitation was not resolved after lane expansion.");
   requireValue(noAwardInvitation?.id, "No-award invitation was not resolved after lane expansion.");
+  if (allLaneInvitations.length !== vendors.length * 3) {
+    throw new Error(`Expected ${vendors.length * 3} carrier-lane invitations, got ${allLaneInvitations.length}.`);
+  }
   report.artifacts.invitation_token = primaryInvitation.invitation_token;
   report.artifacts.portal_url = `${appOrigin}/rfx-bid.html?token=${primaryInvitation.invitation_token}`;
 
@@ -497,20 +516,20 @@ try {
     const data = await rateware("generate_outreach_drafts", {
       campaign_id: campaign.id,
       template_id: template.id,
-      invitation_ids: targetInvitations.map((row) => row.id),
+      invitation_ids: leadInvitations.map((row) => row.id),
       app_origin: appOrigin,
       sender_email: senderEmail,
       sender_label: senderEmail,
       sender_connection_status: sendGmail ? "oauth_connected" : "draft_only"
     });
-    if (Number(data.generated) !== targetInvitations.length) {
-      throw new Error(`Expected ${targetInvitations.length} outreach drafts, got ${Number(data.generated || 0)}. Skipped: ${JSON.stringify(data.skipped || [])}`);
+    if (Number(data.generated) !== leadInvitations.length) {
+      throw new Error(`Expected ${leadInvitations.length} outreach drafts, got ${Number(data.generated || 0)}. Skipped: ${JSON.stringify(data.skipped || [])}`);
     }
     const emailDrafts = (data.rows || []).filter((row) => row.channel === "email");
-    if (emailDrafts.length !== targetInvitations.length) {
-      throw new Error(`Expected ${targetInvitations.length} email drafts, got ${emailDrafts.length}.`);
+    if (emailDrafts.length !== leadInvitations.length) {
+      throw new Error(`Expected ${leadInvitations.length} email drafts, got ${emailDrafts.length}.`);
     }
-    if (sortedUniqueIds(emailDrafts.map((row) => row.id)).length !== targetInvitations.length) {
+    if (sortedUniqueIds(emailDrafts.map((row) => row.id)).length !== leadInvitations.length) {
       throw new Error("Invitation draft generation returned duplicate message ids.");
     }
     report.artifacts.outreach_message_ids = emailDrafts.map((row) => row.id);
@@ -529,53 +548,56 @@ try {
       logCheckpoint("Gmail invitation sent", { sent: data.sent, failed: data.failed });
       return data;
     });
-  } else {
-    await step("mark invitations launched without Gmail send", async () => {
-      const data = await rateware("invite_rfx_lane_vendors", {
-        ids: targetInvitations.map((row) => row.id),
-        confirmed: true
-      });
-      if (Number(data.updated) !== targetInvitations.length) {
-        throw new Error(`Expected ${targetInvitations.length} invitations marked invited, got ${Number(data.updated || 0)}.`);
-      }
-      logCheckpoint("Invitations marked invited", { updated: data.updated, send_gmail: false });
-      return data;
-    });
   }
 
-  await step("carrier opens complete multi-lane portal", async () => {
-    const data = await carrier("get_invitation", primaryInvitation.invitation_token);
-    if (data.invitation?.id !== primaryInvitation.id) throw new Error("Carrier portal returned a different invitation.");
-    if (!data.live_board) throw new Error("Carrier live board did not load.");
-    const invitedRows = eventInvitedLaneRows(data.carrier_book || {}, data.invitation || {});
-    const expectedLaneIds = [...initialLanes.map((row) => row.id), appendedLane.id].map(String).sort();
-    const portalLaneIds = [...new Set(invitedRows.map((row) => String(row.rfx_lane_id || row.lane?.id || "")))].sort();
-    if (JSON.stringify(portalLaneIds) !== JSON.stringify(expectedLaneIds)) {
-      throw new Error(`Carrier portal lane scope mismatch. Expected ${expectedLaneIds.join(", ")}; got ${portalLaneIds.join(", ") || "none"}.`);
-    }
-    if (invitedRows.length !== expectedLaneIds.length) throw new Error("Carrier portal contains duplicate event lanes.");
-    const xlsxRows = bidTemplateSourceRows(data.carrier_book || {}, data.invitation || {}, invitationStatus);
-    const xlsxLaneIds = xlsxRows.map((row) => String(row.rfx_lane_id || row.lane?.id || "")).sort();
-    if (JSON.stringify(xlsxLaneIds) !== JSON.stringify(expectedLaneIds)) {
-      throw new Error(`Bid Tools/XLSX lane scope mismatch. Expected ${expectedLaneIds.join(", ")}; got ${xlsxLaneIds.join(", ") || "none"}.`);
-    }
-    report.artifacts.portal_lane_ids = portalLaneIds;
-    report.artifacts.bid_tools_xlsx_lane_ids = xlsxLaneIds;
-    logCheckpoint("Complete multi-lane portal loaded", {
-      invitation_status: data.invitation.invitation_status,
-      live_bid_count: data.live_board.bid_count || 0,
-      portal_lane_count: portalLaneIds.length,
-      bid_tools_xlsx_lane_count: xlsxLaneIds.length
+  await step("mark every carrier-lane invitation launched", async () => {
+    const data = await rateware("invite_rfx_lane_vendors", {
+      ids: allLaneInvitations.map((row) => row.id),
+      confirmed: true
     });
+    if (Number(data.updated) !== allLaneInvitations.length) {
+      throw new Error(`Expected ${allLaneInvitations.length} invitations marked invited, got ${Number(data.updated || 0)}.`);
+    }
+    logCheckpoint("Every carrier-lane invitation marked invited", { updated: data.updated, send_gmail: sendGmail });
     return data;
   });
 
-  const stagingIdsByOutcome = await step("three carriers submit competing bids", async () => {
-    const stagingIds = {};
-    for (const invitation of targetInvitations) {
+  await step("every carrier opens the complete multi-lane portal", async () => {
+    const expectedLaneIds = [...initialLanes.map((row) => row.id), appendedLane.id].map(String).sort();
+    const portalScopeByCarrier = {};
+    const xlsxScopeByCarrier = {};
+    for (const invitation of leadInvitations) {
+      const data = await carrier("get_invitation", invitation.invitation_token);
+      if (data.invitation?.id !== invitation.id) throw new Error(`${invitation.spec.label} portal returned a different invitation.`);
+      if (!data.live_board) throw new Error(`${invitation.spec.label} live board did not load.`);
+      const invitedRows = eventInvitedLaneRows(data.carrier_book || {}, data.invitation || {});
+      const portalLaneIds = sortedUniqueIds(invitedRows.map((row) => row.rfx_lane_id || row.lane?.id));
+      assertSameIds(portalLaneIds, expectedLaneIds, `${invitation.spec.label} portal lane scope`);
+      if (invitedRows.length !== expectedLaneIds.length) throw new Error(`${invitation.spec.label} portal contains duplicate event lanes.`);
+      const xlsxRows = bidTemplateSourceRows(data.carrier_book || {}, data.invitation || {}, invitationStatus);
+      const xlsxLaneIds = sortedUniqueIds(xlsxRows.map((row) => row.rfx_lane_id || row.lane?.id));
+      assertSameIds(xlsxLaneIds, expectedLaneIds, `${invitation.spec.label} Bid Tools/XLSX lane scope`);
+      portalScopeByCarrier[invitation.spec.key] = portalLaneIds;
+      xlsxScopeByCarrier[invitation.spec.key] = xlsxLaneIds;
+    }
+    report.artifacts.portal_lane_ids_by_carrier = portalScopeByCarrier;
+    report.artifacts.bid_tools_xlsx_lane_ids_by_carrier = xlsxScopeByCarrier;
+    logCheckpoint("Every carrier loaded the complete multi-lane portal", {
+      carriers: leadInvitations.length,
+      lanes_per_carrier: expectedLaneIds.length,
+      portal_lane_rows_verified: leadInvitations.length * expectedLaneIds.length,
+      xlsx_lane_rows_verified: leadInvitations.length * expectedLaneIds.length
+    });
+    return { portalScopeByCarrier, xlsxScopeByCarrier };
+  });
+
+  const stagingIdsByOutcome = await step("three carriers submit bids on every lane", async () => {
+    const stagingIds = Object.fromEntries(carrierSpecs.map((spec) => [spec.key, []]));
+    const stagingIdsByCarrierAndLane = Object.fromEntries(carrierSpecs.map((spec) => [spec.key, {}]));
+    for (const invitation of allLaneInvitations) {
       const spec = invitation.spec;
       const data = await carrier("submit_bid", invitation.invitation_token, {
-        bid_rate: spec.bid_rate,
+        bid_rate: spec.bid_rates[invitation.lane_index],
         currency: "USD",
         weekly_capacity: spec.weekly_capacity,
         transit_days: spec.transit_days,
@@ -598,20 +620,28 @@ try {
         availability_validation_status: spec.key === "primary" ? "mirror_requested" : "operator_confirmed",
         availability_validation_notes: `E2E ${spec.key} availability validation.`,
         best_final: true,
-        notes: `E2E ${spec.key} bid submitted through carrier portal.`
+        notes: `E2E ${spec.key} bid submitted for lane ${invitation.lane_index + 1} through carrier portal.`
       });
       if (data.row?.invitation_status !== "quoted") {
         throw new Error(`Expected quoted status for ${spec.key}, got ${data.row?.invitation_status}.`);
       }
       const stagingId = data.rateware_capture?.id || data.rateware_capture?.row?.id || data.row?.bid_rate_staging_id;
       requireValue(stagingId, `${spec.label} bid did not create or reuse a Rateware staging row.`);
-      stagingIds[spec.key] = stagingId;
+      stagingIds[spec.key].push(stagingId);
+      stagingIdsByCarrierAndLane[spec.key][String(invitation.rfx_lane_id)] = stagingId;
     }
-    if (sortedUniqueIds(Object.values(stagingIds)).length !== targetInvitations.length) {
-      throw new Error("Each carrier bid must retain its own Rateware staging row.");
+    const allStagingIds = Object.values(stagingIds).flat();
+    if (sortedUniqueIds(allStagingIds).length !== allLaneInvitations.length) {
+      throw new Error("Each carrier-lane bid must retain its own Rateware staging row.");
     }
-    report.artifacts.bid_rate_staging_ids = stagingIds;
-    logCheckpoint("Three competing bids captured in Review Queue", { staging_ids: stagingIds });
+    report.artifacts.bid_rate_staging_ids_by_outcome = stagingIds;
+    report.artifacts.bid_rate_staging_ids_by_carrier_and_lane = stagingIdsByCarrierAndLane;
+    logCheckpoint("Nine competing carrier-lane bids captured in Review Queue", {
+      carriers: vendors.length,
+      lanes: allLaneInvitations.length / vendors.length,
+      bids: allStagingIds.length,
+      staging_ids: stagingIdsByCarrierAndLane
+    });
     return stagingIds;
   });
 
@@ -658,45 +688,70 @@ try {
     return data;
   });
 
-  await step("refresh RFx detail after bids", async () => {
+  await step("refresh RFx detail after all carrier-lane bids", async () => {
     const data = await rateware("list_rfx_detail", { event_id: event.id });
-    const currentLane = (data.lanes || []).find((row) => row.id === lane.id);
-    const currentInvitations = targetInvitations.map((target) => (currentLane?.invitations || []).find((row) => row.id === target.id));
-    if (currentInvitations.some((row) => row?.invitation_status !== "quoted")) {
-      throw new Error(`Detail did not show all three quoted invitations: ${currentInvitations.map((row) => row?.invitation_status || "missing").join(", ")}.`);
+    const expectedLanes = [...initialLanes, appendedLane];
+    let quotedRows = 0;
+    for (const expectedLane of expectedLanes) {
+      const currentLane = (data.lanes || []).find((row) => String(row.id) === String(expectedLane.id));
+      if (!currentLane) throw new Error(`RFx detail is missing lane ${expectedLane.id}.`);
+      const expectedInvitations = allLaneInvitations.filter((row) => String(row.rfx_lane_id) === String(expectedLane.id));
+      const currentInvitations = expectedInvitations.map((target) => (currentLane.invitations || []).find((row) => row.id === target.id));
+      if (currentInvitations.some((row) => row?.invitation_status !== "quoted")) {
+        throw new Error(`Lane ${expectedLane.id} did not show all quoted invitations: ${currentInvitations.map((row) => row?.invitation_status || "missing").join(", ")}.`);
+      }
+      if (Number(currentLane.bid_count || 0) !== vendors.length) {
+        throw new Error(`Expected ${vendors.length} bids on lane ${expectedLane.id}, got ${Number(currentLane.bid_count || 0)}.`);
+      }
+      quotedRows += currentInvitations.length;
     }
-    if (Number(currentLane?.bid_count || 0) !== targetInvitations.length) {
-      throw new Error(`Expected ${targetInvitations.length} bids on the target lane, got ${Number(currentLane?.bid_count || 0)}.`);
+    if (quotedRows !== allLaneInvitations.length) throw new Error(`Expected ${allLaneInvitations.length} quoted carrier-lane rows, got ${quotedRows}.`);
+    logCheckpoint("RFx detail refreshed with bids on every lane", {
+      carriers: vendors.length,
+      lanes: expectedLanes.length,
+      quoted_carrier_lane_rows: quotedRows
+    });
+    return data;
+  });
+
+  await step("award primary carrier on every lane", async () => {
+    const rows = [];
+    for (const invitation of primaryInvitationSet.invitations) {
+      const data = await rateware("award_rfx_lane_vendor", {
+        id: invitation.id,
+        award_role: "primary",
+        award_reason: `E2E primary award for lane ${invitation.lane_index + 1} after successful carrier portal bid.`,
+        award_notes: "Created by production E2E runner."
+      });
+      if (data.row?.award_role !== "primary") throw new Error(`Expected primary award on lane ${invitation.rfx_lane_id}, got ${data.row?.award_role}`);
+      rows.push(data.row);
     }
-    logCheckpoint("RFx detail refreshed with three bids", { bid_count: currentLane.bid_count });
-    return data;
+    logCheckpoint("Primary awards saved on every lane", { awards: rows.length, invitation_ids: rows.map((row) => row.id) });
+    return rows;
   });
 
-  await step("award primary carrier", async () => {
-    const data = await rateware("award_rfx_lane_vendor", {
-      id: primaryInvitation.id,
-      award_role: "primary",
-      award_reason: "E2E primary award after successful carrier portal bid.",
-      award_notes: "Created by production E2E runner."
-    });
-    if (data.row?.award_role !== "primary") throw new Error(`Expected primary award, got ${data.row?.award_role}`);
-    logCheckpoint("Primary award saved", { award_role: data.row.award_role, invitation_status: data.row.invitation_status });
-    return data;
+  await step("assign backup carrier on every lane", async () => {
+    const rows = [];
+    for (const invitation of backupInvitationSet.invitations) {
+      const data = await rateware("award_rfx_lane_vendor", {
+        id: invitation.id,
+        award_role: "backup",
+        award_reason: `E2E backup capacity for lane ${invitation.lane_index + 1} after successful carrier portal bid.`,
+        award_notes: "Created by production E2E runner."
+      });
+      if (data.row?.award_role !== "backup") throw new Error(`Expected backup award on lane ${invitation.rfx_lane_id}, got ${data.row?.award_role}.`);
+      rows.push(data.row);
+    }
+    logCheckpoint("Backup awards saved on every lane", { backups: rows.length, invitation_ids: rows.map((row) => row.id) });
+    return rows;
   });
 
-  await step("assign backup carrier", async () => {
-    const data = await rateware("award_rfx_lane_vendor", {
-      id: backupInvitation.id,
-      award_role: "backup",
-      award_reason: "E2E backup capacity after successful carrier portal bid.",
-      award_notes: "Created by production E2E runner."
-    });
-    if (data.row?.award_role !== "backup") throw new Error(`Expected backup award, got ${data.row?.award_role}.`);
-    logCheckpoint("Backup award saved", { award_role: data.row.award_role, invitation_status: data.row.invitation_status });
-    return data;
-  });
-
-  const expectedStagingIds = Object.values(stagingIdsByOutcome);
+  const expectedStagingIds = Object.values(stagingIdsByOutcome).flat();
+  const expectedOutcomeCounts = {
+    awarded: primaryInvitationSet.invitations.length,
+    backup: backupInvitationSet.invitations.length,
+    not_awarded: noAwardInvitationSet.invitations.length
+  };
   const firstCloseout = await step("closeout decisions to Review Queue", async () => {
     const data = await rateware("closeout_awarded_rfx_to_rateware", {
       event_id: event.id,
@@ -704,7 +759,7 @@ try {
     });
     if (data.target_status !== "pending_review") throw new Error(`Closeout bypassed Review Queue with status ${data.target_status}.`);
     if (Number(data.outcomes?.missing_staging || 0) !== 0) throw new Error("A finalized bid is missing its historical Rateware staging row.");
-    const counts = assertOutcomeCounts(data.outcomes, "First closeout outcomes");
+    const counts = assertOutcomeCounts(data.outcomes, expectedOutcomeCounts, "First closeout outcomes");
     const stagingIds = assertSameIds(data.existing_rate_staging_ids, expectedStagingIds, "First closeout staging ids");
     report.artifacts.rate_staging_ids = stagingIds;
     report.artifacts.raw_upload_id = data.raw_upload_id;
@@ -724,7 +779,7 @@ try {
       target_status: closeoutStatus
     });
     if (data.target_status !== "pending_review") throw new Error(`Retry bypassed Review Queue with status ${data.target_status}.`);
-    assertOutcomeCounts(data.outcomes, "Retry closeout outcomes");
+    assertOutcomeCounts(data.outcomes, expectedOutcomeCounts, "Retry closeout outcomes");
     assertSameIds(data.existing_rate_staging_ids, expectedStagingIds, "Retry closeout staging ids");
     if (Number(data.inserted || 0) !== 0) throw new Error(`Retry inserted ${data.inserted} duplicate Rateware row(s).`);
     logCheckpoint("Closeout retry reused historical staging rows", {
@@ -742,8 +797,8 @@ try {
       sender_email: senderEmail,
       sender_label: senderEmail
     });
-    if (Number(data.generated || 0) !== targetInvitations.length || (data.rows || []).length !== targetInvitations.length) {
-      throw new Error(`Expected ${targetInvitations.length} final notices, got ${Number(data.generated || 0)}.`);
+    if (Number(data.generated || 0) !== leadInvitations.length || (data.rows || []).length !== leadInvitations.length) {
+      throw new Error(`Expected ${leadInvitations.length} final notices, got ${Number(data.generated || 0)}.`);
     }
     const outcomes = (data.rows || []).map(noticeOutcome).sort();
     const expectedOutcomes = ["awarded", "backup", "not_awarded"].sort();
@@ -751,7 +806,7 @@ try {
       throw new Error(`Final notice outcomes mismatch. Expected ${expectedOutcomes.join(", ")}; got ${outcomes.join(", ")}.`);
     }
     const ids = sortedUniqueIds((data.rows || []).map((row) => row.id));
-    if (ids.length !== targetInvitations.length) throw new Error("Final notice generation returned duplicate message ids.");
+    if (ids.length !== leadInvitations.length) throw new Error("Final notice generation returned duplicate message ids.");
     report.artifacts.closeout_notice_ids = ids;
     logCheckpoint("Award, backup and no-award notices generated", { ids, outcomes });
     return data;
@@ -764,7 +819,7 @@ try {
         sender_email: senderEmail,
         confirmed: true
       });
-      if (Number(data.sent || 0) !== targetInvitations.length || Number(data.failed || 0) !== 0) {
+      if (Number(data.sent || 0) !== leadInvitations.length || Number(data.failed || 0) !== 0) {
         throw new Error(`Final notice send mismatch. Sent ${Number(data.sent || 0)}, failed ${Number(data.failed || 0)}.`);
       }
       logCheckpoint("Final carrier notices sent", { sent: data.sent, failed: data.failed });
@@ -799,7 +854,7 @@ try {
     if (data.closeout_staging?.target_status !== "pending_review") {
       throw new Error(`Event close bypassed Review Queue with status ${data.closeout_staging?.target_status || "missing"}.`);
     }
-    assertOutcomeCounts(data.closeout_outcomes, "Closed event outcomes");
+    assertOutcomeCounts(data.closeout_outcomes, expectedOutcomeCounts, "Closed event outcomes");
     assertSameIds(data.closeout_staging?.existing_rate_staging_ids, expectedStagingIds, "Closed event staging ids");
     assertSameIds((data.closeout_notices?.rows || []).map((row) => row.id), report.artifacts.closeout_notice_ids, "Closed event notice ids");
     logCheckpoint("RFx event closed without duplicate rows or notices", {
@@ -812,11 +867,9 @@ try {
 
   await step("verify all bid costs remain in Review Queue", async () => {
     const data = await rateware("list_staging", { status: "pending_review", limit: 1000 });
-    const expectedOutcomeById = new Map([
-      [String(stagingIdsByOutcome.primary), "awarded"],
-      [String(stagingIdsByOutcome.backup), "backup"],
-      [String(stagingIdsByOutcome.not_awarded), "not_awarded"]
-    ]);
+    const expectedOutcomeById = new Map(Object.entries(stagingIdsByOutcome).flatMap(([outcome, ids]) => (
+      ids.map((id) => [String(id), outcome === "primary" ? "awarded" : outcome])
+    )));
     const rows = (data.rows || []).filter((row) => expectedOutcomeById.has(String(row.id)));
     assertSameIds(rows.map((row) => row.id), expectedStagingIds, "Review Queue staging ids");
     for (const row of rows) {
@@ -832,7 +885,8 @@ try {
     report.finished_at = new Date().toISOString();
     logCheckpoint("Review Queue contains all finalized carrier costs", {
       pending_review: rows.length,
-      approved: rows.filter((row) => String(row.status || "").toLowerCase() === "approved").length
+      approved: rows.filter((row) => String(row.status || "").toLowerCase() === "approved").length,
+      expected_outcomes: expectedOutcomeCounts
     });
     return rows;
   });
