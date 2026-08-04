@@ -23037,7 +23037,7 @@ Deno.serve(async (request) => {
       const search = safeShipperSearch(body.search);
       let query = supabase
         .from("shippers")
-        .select("id,shipper_name,legal_name,domain,website,logo_url,industry,status,relationship_stage,segment,revenue_tier,account_owner_email,primary_contact_name,primary_contact_email,primary_contact_phone,headquarters_city,headquarters_state,headquarters_country,tags,notes,source,created_at,updated_at", { count: "exact" })
+        .select("id,shipper_name,legal_name,domain,website,logo_url,industry,status,relationship_stage,segment,revenue_tier,account_owner_email,primary_contact_name,primary_contact_email,primary_contact_phone,headquarters_city,headquarters_state,headquarters_country,tags,notes,source,created_at,updated_at,shipper_account_actions(title,status,priority,due_date,created_at)", { count: "exact" })
         .eq("owner_email", user.owner_email)
         .order(cleanText(body.sort_by) === "shipper_name" ? "shipper_name" : "updated_at", { ascending: cleanText(body.sort_direction)?.toLowerCase() === "asc" })
         .range(offset, offset + limit - 1);
@@ -23048,6 +23048,7 @@ Deno.serve(async (request) => {
       else query = query.neq("status", "archived");
       if (relationshipStage && relationshipStage !== "all") query = query.eq("relationship_stage", relationshipStage);
       if (segment && segment.toLowerCase() !== "all") query = query.eq("segment", segment);
+      query = query.in("shipper_account_actions.status", ["open", "in_progress"]);
       if (search) {
         query = query.or([
           `shipper_name.ilike.%${search}%`,
@@ -23064,41 +23065,25 @@ Deno.serve(async (request) => {
       const result = await query;
       if (result.error) throw result.error;
       const shippers = (result.data || []) as Record<string, unknown>[];
-      const shipperIds = shippers.map((row) => cleanText(row.id)).filter((value): value is string => Boolean(value));
-      if (!shipperIds.length) return jsonResponse({ rows: [], total: result.count || 0, limit, offset });
-
-      const actionRows: Record<string, unknown>[] = [];
-      for (const shipperIdChunk of chunkValues(shipperIds, 250)) {
-        const actions = await supabase
-          .from("shipper_account_actions")
-          .select("shipper_id,title,status,priority,due_date,created_at")
-          .eq("owner_email", user.owner_email)
-          .in("shipper_id", shipperIdChunk)
-          .in("status", ["open", "in_progress"])
-          .order("due_date", { ascending: true, nullsFirst: false })
-          .order("created_at", { ascending: true });
-        if (actions.error) throw actions.error;
-        actionRows.push(...((actions.data || []) as Record<string, unknown>[]));
-      }
-
-      const actionsByShipper = new Map<string, Record<string, unknown>[]>();
-      for (const action of actionRows) {
-        const shipperId = cleanText(action.shipper_id);
-        if (!shipperId) continue;
-        const actions = actionsByShipper.get(shipperId) || [];
-        actions.push(action);
-        actionsByShipper.set(shipperId, actions);
-      }
       const today = new Date().toISOString().slice(0, 10);
       const rows = shippers.map((shipper) => {
-        const actions = actionsByShipper.get(cleanText(shipper.id) || "") || [];
+        const actions = (Array.isArray(shipper.shipper_account_actions)
+          ? shipper.shipper_account_actions as Record<string, unknown>[]
+          : [])
+          .slice()
+          .sort((left, right) => {
+            const dueComparison = (cleanText(left.due_date) || "9999-12-31")
+              .localeCompare(cleanText(right.due_date) || "9999-12-31");
+            return dueComparison || (cleanText(left.created_at) || "").localeCompare(cleanText(right.created_at) || "");
+          });
         const nextAction = actions[0] || null;
         const dueActionCount = actions.filter((action) => {
           const dueDate = cleanText(action.due_date);
           return Boolean(dueDate && dueDate <= today);
         }).length;
+        const { shipper_account_actions: _actions, ...shipperRow } = shipper;
         return {
-          ...shipper,
+          ...shipperRow,
           open_action_count: actions.length,
           due_action_count: dueActionCount,
           next_action: cleanText(nextAction?.title),
