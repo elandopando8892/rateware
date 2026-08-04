@@ -201,7 +201,9 @@ assert.match(api, /event\.customer_id.*shipperId/, "Bid Room events should resol
 assert.match(api, /customer_id: shipperId/, "Ratebook synchronization should persist the event-to-Shipper relationship");
 assert.match(api, /linkRfxProjectToShipper/);
 assert.match(api, /details\.bid_room_events/);
-assert.match(api, /materialized\.rows\.forEach/, "Shipper Ratebook materialization should retain successful packages when one package fails");
+const getShipperSource = api.slice(api.indexOf('if (body.action === "get_shipper")'), api.indexOf('if (body.action === "create_shipper_profile_request")'));
+assert.match(getShipperSource, /listRatebooks\(supabase, user, \{[\s\S]+shipper_id: shipperId[\s\S]+include_routes: false/, "Shipper drawer should reuse the canonical shipper-scoped Ratebook service");
+assert.doesNotMatch(getShipperSource, /ensureRatebookForBidRoomEvent/, "Shipper drawer should not repeat a second custom Bid Room synchronization pass");
 assert.match(api, /RATEBOOK_SYNC_CONCURRENCY/, "Shipper Ratebook materialization should run in bounded concurrent batches");
 assert.match(api, /details\.ratebook_materialization_failures/, "Shipper profiles should return materialization failures for a safe retry state");
 assert.match(api, /fetchAllRfxProjectIdsForShipper/, "Shipper Ratebook association should page all linked RFx projects");
