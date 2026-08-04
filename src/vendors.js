@@ -2215,10 +2215,16 @@ async function applySelectedIntelligenceTags() {
   try {
     await requirePrivatePage();
     const result = await applyVendorIntelligenceTags(ids);
+    const updatedById = new Map((result.rows || []).map((row) => [String(row.id), row]));
+    (result.rows || []).forEach((row) => replaceVendorInState(row));
+    vendorIntelligenceRows = vendorIntelligenceRows.map((row) => {
+      const updated = updatedById.get(String(row.vendor_id || row.id));
+      return updated ? { ...row, ...updated, vendor_id: row.vendor_id || updated.id, suggested_tags: [] } : row;
+    });
     selectedVendorIntelligenceIds = new Set();
+    renderVendorIntelligenceSummary(loadedVendorIntelligenceSummary());
+    renderVendorIntelligence();
     setStatus(vendorIntelligenceStatus, `${result.updated || 0} vendor(s) enriched with suggested tags.`, "success");
-    await loadVendorIntelligence();
-    await loadVendors();
   } catch (error) {
     setStatus(vendorIntelligenceStatus, humanizeError(error), "error");
   } finally {
@@ -2235,10 +2241,13 @@ async function promoteSelectedIntelligenceVendors() {
   try {
     await requirePrivatePage();
     const result = await bulkUpdateVendors(ids, { base_stage: "procurement", status: "active" });
+    (result.rows || []).forEach((row) => {
+      replaceVendorInState(row);
+      applyVendorUpdateToFunnel(row, { render: false });
+    });
     selectedVendorIntelligenceIds = new Set();
     setStatus(vendorIntelligenceStatus, `${result.updated || 0} vendor(s) moved to Procurement Base.`, "success");
-    vendorFunnelRows = [];
-    await loadVendorIntelligence();
+    refreshVendorFunnelLocal({ resetLimits: true });
     resetQuickFilter();
     activateVendorTab("procurement");
   } catch (error) {

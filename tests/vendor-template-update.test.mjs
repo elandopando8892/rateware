@@ -67,6 +67,18 @@ assert.match(vendorsSource, /correo principal/, "Vendor update parser should acc
 assert.match(vendorsSource, /campos a limpiar/, "Vendor update parser should accept Spanish clear-fields headers");
 assert.match(vendorsSource, /update_note/, "Vendor update parser should keep the official update_note column");
 assert.match(vendorsSource, /"emails"/, "Vendor update parser should accept a generic emails header");
+const intelligenceTagStart = vendorsSource.indexOf("async function applySelectedIntelligenceTags");
+const intelligenceTagEnd = vendorsSource.indexOf("async function promoteSelectedIntelligenceVendors", intelligenceTagStart);
+const intelligenceTagSource = vendorsSource.slice(intelligenceTagStart, intelligenceTagEnd);
+assert.match(intelligenceTagSource, /const updatedById = new Map/, "Vendor Intelligence tags should apply returned vendor rows locally");
+assert.match(intelligenceTagSource, /suggested_tags: \[\]/, "Applied intelligence tags should disappear from the local suggestion list");
+assert.doesNotMatch(intelligenceTagSource, /loadVendorIntelligence\(/, "Applying intelligence tags should not refetch the full intelligence page");
+assert.doesNotMatch(intelligenceTagSource, /loadVendors\(/, "Applying intelligence tags should not refetch the hidden directory");
+const intelligencePromoteStart = vendorsSource.indexOf("async function promoteSelectedIntelligenceVendors");
+const intelligencePromoteEnd = vendorsSource.indexOf("function funnelSearchText", intelligencePromoteStart);
+const intelligencePromoteSource = vendorsSource.slice(intelligencePromoteStart, intelligencePromoteEnd);
+assert.match(intelligencePromoteSource, /applyVendorUpdateToFunnel\(row, \{ render: false \}\)/, "Intelligence promotion should update the cached funnel from persisted rows");
+assert.doesNotMatch(intelligencePromoteSource, /loadVendorIntelligence\(/, "Promotion should not refetch Intelligence before opening Procurement");
 
 assert.match(vendorsHtml, /download-vendor-update-template-button/, "Import tab should include CRM update template download");
 assert.match(vendorsHtml, /vendor-update-import/, "Import tab should include CRM update upload");
