@@ -30,6 +30,7 @@ import {
 
 const state = {
   rows: [],
+  directoryReady: false,
   total: 0,
   offset: 0,
   limit: 100,
@@ -740,12 +741,14 @@ async function loadRows({ reset = false } = {}) {
     if (loadVersion !== directoryLoadVersion) return;
     state.rows = result.rows || [];
     state.total = Number(result.total || 0);
+    state.directoryReady = true;
     renderDirectory();
     setStatus(elements.directoryStatus, `${state.total.toLocaleString()} shipper account(s).`, "success");
   } catch (error) {
     if (loadVersion !== directoryLoadVersion) return;
     state.rows = [];
     state.total = 0;
+    state.directoryReady = false;
     renderDirectory();
     setStatus(elements.directoryStatus, humanizeError(error), "error");
   }
@@ -926,6 +929,27 @@ function renderCadence() {
     : `<tr><td colspan="7" class="shipper-commercial-empty">No account actions match the current queue.</td></tr>`;
 }
 
+function cadenceCountContribution(row) {
+  const status = String(row?.status || "").toLowerCase();
+  const dueDate = String(row?.due_date || "");
+  const today = new Date().toISOString().slice(0, 10);
+  const open = ["open", "in_progress"].includes(status);
+  return {
+    open: open ? 1 : 0,
+    today: open && dueDate === today ? 1 : 0,
+    overdue: open && dueDate && dueDate < today ? 1 : 0,
+    done: status === "done" ? 1 : 0
+  };
+}
+
+function updateCadenceCounts(previous, updated) {
+  const before = cadenceCountContribution(previous);
+  const after = cadenceCountContribution(updated);
+  Object.keys(before).forEach((key) => {
+    state.cadenceCounts[key] = Math.max(0, Number(state.cadenceCounts[key] || 0) - before[key] + after[key]);
+  });
+}
+
 async function loadCadence() {
   const loadVersion = ++cadenceLoadVersion;
   state.cadenceLoading = true;
@@ -968,13 +992,14 @@ async function updateCadenceActionStatus(id, status, button) {
   setStatus(elements.cadenceStatus, actionMessage);
   try {
     const updated = await updateShipperAccountActionStatus(id, status);
+    updateCadenceCounts(row, updated);
     state.cadenceRows = state.cadenceRows.map((item) => item.id === id ? { ...item, ...updated } : item);
     if (state.detail?.row?.id === updated.shipper_id) {
       state.detail.actions = (state.detail.actions || []).map((item) => item.id === id ? { ...item, ...updated } : item);
       syncActiveShipperLocally();
     }
-    await Promise.all([loadSummary(), state.intelligenceReady ? loadShipperIntelligence() : Promise.resolve()]);
-    await loadCadence();
+    renderCadence();
+    invalidateWorkspaceViews({ cadence: true, intelligence: true });
     const successMessage = status === "done"
       ? "Account action completed."
       : status === "in_progress"
@@ -1117,11 +1142,9 @@ async function promoteCommercialRfi(rfiId) {
   setStatus(elements.commercialStatus, "Creating commercial deal from the RFI...");
   try {
     const result = await promoteShipperRfiToOpportunity(rfiId);
-    await Promise.all([
-      loadCommercialWork(),
-      loadSummary(),
-      state.pipelineReady ? loadPipeline() : Promise.resolve()
-    ]);
+    invalidateWorkspaceViews({ pipeline: true, intelligence: true });
+    await loadCommercialWork();
+    refreshSummaryInBackground();
     setStatus(elements.commercialStatus, result.created ? "Commercial deal created from the RFI." : "This RFI already has a commercial deal.", "success");
   } catch (error) {
     setStatus(elements.commercialStatus, humanizeError(error), "error");
@@ -1143,7 +1166,9 @@ async function moveCommercialOpportunity(opportunityId, stage) {
     row.stage = updated.stage;
     renderCommercial();
     setStatus(elements.commercialStatus, `${row.opportunity_name} moved to ${humanLabel(updated.stage)}.`, "success");
-    await Promise.all([loadSummary(), state.pipelineReady ? loadPipeline() : Promise.resolve()]);
+    invalidateWorkspaceViews({ pipeline: true, intelligence: true });
+    await loadCommercialWork();
+    refreshSummaryInBackground();
   } catch (error) {
     row.stage = previousStage;
     renderCommercial();
@@ -1317,6 +1342,10 @@ function setActiveView(view) {
   elements.viewSwitcher.querySelectorAll("[data-shipper-view]").forEach((button) => {
     button.classList.toggle("active", button.dataset.shipperView === state.activeView);
   });
+  if (state.activeView === "directory") {
+    if (state.directoryReady) renderDirectory();
+    else loadRows();
+  }
   if (state.activeView === "pipeline") {
     if (state.pipelineReady) renderPipeline();
     else loadPipeline();
@@ -1339,15 +1368,53 @@ function setActiveView(view) {
   }
 }
 
-async function refreshAccountWorkspace({ directory = true, pipeline = true, commercial = true, intelligence = true, duplicates = true } = {}) {
-  const tasks = [loadSummary()];
+function invalidateWorkspaceViews({ directory = false, pipeline = false, commercial = false, cadence = false, intelligence = false, duplicates = false } = {}) {
+  if (directory) state.directoryReady = false;
+  if (pipeline) state.pipelineReady = false;
+  if (commercial) state.commercialReady = false;
+  if (cadence) state.cadenceReady = false;
+  if (intelligence) state.intelligenceReady = false;
+  if (duplicates) state.duplicatesReady = false;
+}
+
+async function refreshAccountWorkspace({ summary = true, directory = true, pipeline = true, commercial = true, cadence = true, intelligence = true, duplicates = true } = {}) {
+  invalidateWorkspaceViews({ directory, pipeline, commercial, cadence, intelligence, duplicates });
+  const tasks = [];
+  if (summary) tasks.push(loadSummary());
   if (directory) tasks.push(loadRows());
-  if (pipeline && (state.activeView === "pipeline" || state.pipelineReady)) tasks.push(loadPipeline());
-  if (commercial && (state.activeView === "commercial" || state.commercialReady)) tasks.push(loadCommercialWork());
-  if (state.activeView === "cadence" || state.cadenceReady) tasks.push(loadCadence());
-  if (intelligence && (state.activeView === "intelligence" || state.intelligenceReady)) tasks.push(loadShipperIntelligence());
-  if (duplicates && (state.activeView === "duplicates" || state.duplicatesReady)) tasks.push(loadShipperDuplicates());
+  if (pipeline && state.activeView === "pipeline") tasks.push(loadPipeline());
+  if (commercial && state.activeView === "commercial") tasks.push(loadCommercialWork());
+  if (cadence && state.activeView === "cadence") tasks.push(loadCadence());
+  if (intelligence && state.activeView === "intelligence") tasks.push(loadShipperIntelligence());
+  if (duplicates && state.activeView === "duplicates") tasks.push(loadShipperDuplicates());
   await Promise.all(tasks);
+}
+
+function refreshSummaryInBackground() {
+  void loadSummary();
+}
+
+function refreshVisibleWorkspaceView(effects = {}) {
+  invalidateWorkspaceViews(effects);
+  if (effects.directory && state.activeView === "directory") return void loadRows();
+  if (effects.pipeline && state.activeView === "pipeline") return void loadPipeline();
+  if (effects.commercial && state.activeView === "commercial") return void loadCommercialWork();
+  if (effects.cadence && state.activeView === "cadence") return void loadCadence();
+  if (effects.intelligence && state.activeView === "intelligence") return void loadShipperIntelligence();
+  if (effects.duplicates && state.activeView === "duplicates") return void loadShipperDuplicates();
+}
+
+function invalidateAfterChildMutation(entity) {
+  const effectsByEntity = {
+    contacts: { pipeline: true, intelligence: true, duplicates: true },
+    locations: { intelligence: true },
+    lanes: { intelligence: true },
+    rfis: { pipeline: true, commercial: true, intelligence: true },
+    opportunities: { pipeline: true, commercial: true, intelligence: true },
+    actions: { pipeline: true, cadence: true, intelligence: true }
+  };
+  refreshVisibleWorkspaceView(effectsByEntity[entity] || { intelligence: true });
+  if (["contacts", "opportunities"].includes(entity)) refreshSummaryInBackground();
 }
 
 function syncActiveShipperLocally() {
@@ -1355,7 +1422,7 @@ function syncActiveShipperLocally() {
   if (!account?.id) return;
   const mergeAccount = (row) => row.id === account.id ? { ...row, ...account } : row;
   state.rows = state.rows.map(mergeAccount);
-  if (state.activeView === "directory") renderRows();
+  if (state.activeView === "directory") renderDirectory();
 
   if (!state.pipelineReady) return;
   const openActions = (state.detail?.actions || [])
@@ -1387,9 +1454,11 @@ async function movePipelineShipper(shipperId, relationshipStage) {
   try {
     const updated = await moveShipperRelationshipStage(shipperId, relationshipStage);
     row.relationship_stage = updated.relationship_stage;
+    state.rows = state.rows.map((item) => item.id === shipperId ? { ...item, relationship_stage: updated.relationship_stage } : item);
+    state.directoryReady = false;
+    state.intelligenceReady = false;
     renderPipeline();
     setStatus(elements.pipelineStatus, `${row.shipper_name} moved to ${humanLabel(updated.relationship_stage)}.`, "success");
-    await Promise.all([loadSummary(), loadRows()]);
   } catch (error) {
     row.relationship_stage = previousStage;
     renderPipeline();
@@ -1710,7 +1779,8 @@ async function saveOverview(form) {
     state.detail.row = row;
     setStatus(status, "Account saved.", "success");
     syncActiveShipperLocally();
-    await loadSummary();
+    refreshVisibleWorkspaceView({ intelligence: true, duplicates: true });
+    refreshSummaryInBackground();
     renderDrawer();
   } catch (error) {
     setStatus(status, humanizeError(error), "error");
@@ -1735,7 +1805,7 @@ async function saveChild(form) {
     state.editingRecordId = null;
     renderDrawer();
     syncActiveShipperLocally();
-    await loadSummary();
+    invalidateAfterChildMutation(entity);
   } catch (error) {
     setStatus(status, humanizeError(error), "error");
   } finally {
@@ -1757,7 +1827,7 @@ async function applyActionPlaybook(playbookKey, button) {
     state.editingRecordId = null;
     renderDrawer();
     syncActiveShipperLocally();
-    await loadSummary();
+    refreshVisibleWorkspaceView({ pipeline: true, cadence: true, intelligence: true });
     const nextStatus = elements.drawerContent.querySelector("#shipper-playbook-status");
     if (nextStatus) {
       setStatus(nextStatus, `${result.playbook?.label || "Playbook"}: ${result.created || 0} action(s) created; ${result.skipped || 0} already open.`, "success");
@@ -1782,7 +1852,9 @@ async function promoteRfiFromDrawer(rfiId) {
     state.activeTab = "opportunities";
     state.editingRecordId = null;
     renderDrawer();
-    await refreshAccountWorkspace({ directory: false });
+    syncActiveShipperLocally();
+    refreshVisibleWorkspaceView({ pipeline: true, commercial: true, intelligence: true });
+    refreshSummaryInBackground();
     setStatus(elements.commercialStatus, result.created ? "Commercial deal created from the RFI." : "This RFI already has a commercial deal.", "success");
   } catch (error) {
     if (status) setStatus(status, humanizeError(error), "error");
@@ -2195,7 +2267,7 @@ elements.drawerContent.addEventListener("click", async (event) => {
     state.detail = await fetchShipper(state.activeShipperId);
     renderDrawer();
     syncActiveShipperLocally();
-    await loadSummary();
+    invalidateAfterChildMutation(state.activeTab);
   } catch (error) {
     const status = elements.drawerContent.querySelector("#shipper-drawer-status");
     if (status) setStatus(status, humanizeError(error), "error");
