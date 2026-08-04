@@ -128,6 +128,7 @@ const rfxTemplateSignatureImageMigration = readFileSync(new URL("../supabase/mig
 const rfxTemplateProfileLinkMigration = readFileSync(new URL("../supabase/migrations/20260708123000_add_profile_update_link_to_rfx_templates.sql", import.meta.url), "utf8");
 const vendorSupportMigration = readFileSync(new URL("../supabase/migrations/20260708143000_vendor_support_tickets.sql", import.meta.url), "utf8");
 const whatsappBusinessMigration = readFileSync(new URL("../supabase/migrations/20260710133000_whatsapp_business_integration.sql", import.meta.url), "utf8");
+const outreachDeliveryStateGuardMigration = readFileSync(new URL("../supabase/migrations/20260804090000_protect_outreach_delivery_state.sql", import.meta.url), "utf8");
 const whatsappWorkspaceMigration = readFileSync(new URL("../supabase/migrations/20260710190000_whatsapp_workspace_connections.sql", import.meta.url), "utf8");
 const whatsappTenantAppMigration = readFileSync(new URL("../supabase/migrations/20260711190000_whatsapp_tenant_app_credentials.sql", import.meta.url), "utf8");
 const whatsappTemplateMappingMigration = readFileSync(new URL("../supabase/migrations/20260711203000_whatsapp_outreach_template_mappings.sql", import.meta.url), "utf8");
@@ -2880,6 +2881,9 @@ assert.match(outreachDeliveryIdempotencyMigration, /add column if not exists ide
 assert.match(outreachDeliveryIdempotencyMigration, /outreach_campaigns_owner_idempotency_unique[\s\S]+owner_email, idempotency_key/, "Outreach campaign retry keys should be unique per workspace owner");
 assert.match(outreachDeliveryIdempotencyMigration, /add column if not exists send_attempt_id uuid/, "Outreach messages should persist an atomic provider-send claim");
 assert.match(outreachDeliveryIdempotencyMigration, /'sending'[\s\S]+'delivery_unknown'/, "Outreach delivery states should distinguish active and uncertain provider attempts");
+assert.match(outreachDeliveryStateGuardMigration, /new\.status = 'drafted'[\s\S]+old\.status in \([\s\S]+'sending'[\s\S]+'sent'[\s\S]+'bounced'[\s\S]+return old/, "Stale draft generation should not overwrite claimed or completed outreach delivery states");
+assert.match(outreachDeliveryStateGuardMigration, /provider = 'gmail'[\s\S]+provider_message_id is not null[\s\S]+send_completed_at is not null[\s\S]+delivery_status = 'sent'/, "Accepted Gmail messages that regressed to draft should be repaired only when durable provider evidence exists");
+assert.match(outreachDeliveryStateGuardMigration, /revoke all on function public\.protect_outreach_delivery_state\(\) from public, anon, authenticated/, "The outreach state guard should not expose direct function execution");
 for (const column of ["gmail_connection_id", "sender_address", "sender_connection_type", "provider_response_status", "provider_thread_id", "send_result"]) {
   assert.match(outreachDeliveryTraceMigration, new RegExp(`add column if not exists ${column}`), `Outreach delivery trace should persist ${column}`);
 }
