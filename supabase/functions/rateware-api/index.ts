@@ -9357,8 +9357,11 @@ async function generateRfxAwardNotices(
     cleanText(event.id) || "",
     "*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,contact_name), rfx_lanes(*)"
   );
-  const activeInvitationRows = invitationRows
-    .filter((row) => cleanText(row.invitation_status)?.toLowerCase() !== "archived")
+  const activeInvitationRows = (await requireHydratedRfxInvitationTokens(
+    supabase,
+    invitationRows.filter((row) => cleanText(row.invitation_status)?.toLowerCase() !== "archived"),
+    "RFx closeout"
+  ))
     .sort((left, right) => String(right.updated_at || "").localeCompare(String(left.updated_at || "")));
 
   const rows = new Map<string, Record<string, unknown>[]>();
@@ -13391,7 +13394,11 @@ function outreachContext(
   const lane = typeof invitation.rfx_lanes === "object" && invitation.rfx_lanes ? invitation.rfx_lanes as Record<string, unknown> : {};
   const event = typeof invitation.rfx_events === "object" && invitation.rfx_events ? invitation.rfx_events as Record<string, unknown> : {};
   const routeRows = eventLaneRows.length ? eventLaneRows : invitationGroup;
-  const bidLink = `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(String(invitation.invitation_token || ""))}${routeRows.length > 1 ? "&view=book" : ""}`;
+  const invitationToken = cleanText(invitation.invitation_token);
+  if (!invitationToken) {
+    throw new Error("Private Bid Room invitation token could not be resolved. Refresh the carrier audience and generate the delivery queue again.");
+  }
+  const bidLink = `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(invitationToken)}${routeRows.length > 1 ? "&view=book" : ""}`;
   const language = outreachTemplateLanguage(template);
   return {
     vendor_name: vendor.vendor_name || vendor.domain || "Carrier",
@@ -15579,6 +15586,18 @@ async function hydrateRfxInvitationTokens(
   return hydrated;
 }
 
+async function requireHydratedRfxInvitationTokens(
+  supabase: RatewareSupabaseClient,
+  rows: Record<string, unknown>[],
+  workflow = "Private Bid Room"
+) {
+  const hydrated = await hydrateRfxInvitationTokens(supabase, rows);
+  if (hydrated.length !== rows.length || hydrated.some((row) => !cleanText(row.invitation_token))) {
+    throw new Error(`${workflow} invitation token could not be resolved. Refresh the carrier audience and generate the delivery queue again.`);
+  }
+  return hydrated;
+}
+
 async function hydrateOutreachInvitationTokens(
   supabase: RatewareSupabaseClient,
   rows: Record<string, unknown>[]
@@ -17495,7 +17514,8 @@ async function sendBidRoomCarrierMessage(
   });
 
   const event = await requireOwnedRfxEvent(supabase, user, input.rfx_event_id || input.event_id);
-  const invitation = await requireOwnedRfxLaneVendor(supabase, user, input.rfx_lane_vendor_id || input.invitation_id);
+  const invitationRow = await requireOwnedRfxLaneVendor(supabase, user, input.rfx_lane_vendor_id || input.invitation_id);
+  const [invitation] = await requireHydratedRfxInvitationTokens(supabase, [invitationRow], "Carrier follow-up");
   if (cleanText(invitation.rfx_event_id) !== cleanText(event.id)) {
     throw new Error("That carrier invitation does not belong to the selected RFx.");
   }
@@ -17530,7 +17550,11 @@ async function sendBidRoomCarrierMessage(
     eventLaneRows,
     [invitation]
   );
-  const bidLink = `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(cleanText(invitation.invitation_token) || "")}${routeBookRows.length > 1 ? "&view=book" : ""}`;
+  const invitationToken = cleanText(invitation.invitation_token);
+  if (!invitationToken) {
+    throw new Error("Carrier follow-up invitation token could not be resolved. Refresh the carrier audience and try again.");
+  }
+  const bidLink = `${appOrigin.replace(/\/$/, "")}/rfx-bid.html?token=${encodeURIComponent(invitationToken)}${routeBookRows.length > 1 ? "&view=book" : ""}`;
   const route = [cleanText(lane.origin), cleanText(lane.destination)].filter(Boolean).join(" -> ") || "this RFx";
   const vendorName = cleanText(vendor.vendor_name || vendor.legal_name || vendor.domain) || "Carrier";
   const campaign = await ensureBidRoomCarrierFollowUpCampaign(supabase, user, event);
@@ -27087,7 +27111,11 @@ Deno.serve(async (request) => {
         }
         return batch;
       });
-      const invitations = invitationBatches.flat() as Record<string, unknown>[];
+      const invitations = await requireHydratedRfxInvitationTokens(
+        supabase,
+        invitationBatches.flat() as Record<string, unknown>[],
+        "Outreach queue"
+      );
       let eventLaneRows: Record<string, unknown>[] = [];
        if (campaign.rfx_event_id) {
          eventLaneRows = await fetchAllRfxLaneRows(supabase, campaign.rfx_event_id, "*");
@@ -27154,7 +27182,12 @@ Deno.serve(async (request) => {
           }
           return batch;
         });
-        for (const invitation of completeBatches.flat()) {
+        const completeInvitations = await requireHydratedRfxInvitationTokens(
+          supabase,
+          completeBatches.flat() as Record<string, unknown>[],
+          "Outreach lane hydration"
+        );
+        for (const invitation of completeInvitations) {
           const key = rfxInvitationVendorGroupKey(invitation);
           if (!key || !requestedGroupKeys.has(key)) continue;
           const bucket = completeInvitationGroups.get(key) || [];

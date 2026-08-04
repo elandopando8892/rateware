@@ -476,6 +476,9 @@ assert.match(rfxInvitationTokenMigration, /rfx_lane_vendors_invitation_token_has
 assert.match(apiSource, /async function newRfxInvitationTokenFields\(\)[\s\S]*invitation_token: null[\s\S]*invitation_token_hash[\s\S]*invitation_token_encrypted/, "New Bid Room invitations must store a hash and ciphertext instead of plaintext");
 assert.doesNotMatch(apiSource, /invitation_token:\s*randomToken\(\)/, "New Bid Room invitations must never persist a raw random token");
 assert.match(apiSource, /async function hydrateRfxInvitationTokens/, "Internal RFx workflows should recover invitation links only server-side");
+assert.match(apiSource, /async function requireHydratedRfxInvitationTokens[\s\S]+hydrated\.length !== rows\.length[\s\S]+invitation token could not be resolved/, "Private Bid Room workflows should fail closed when a stored invitation token cannot be recovered");
+assert.match(apiSource, /function outreachContext[\s\S]+if \(!invitationToken\)[\s\S]+encodeURIComponent\(invitationToken\)/, "Outreach templates must reject an empty private Bid Room token before rendering a link");
+assert.doesNotMatch(apiSource, /rfx-bid\.html\?token=\$\{encodeURIComponent\([^\n]+\|\| ""\)/, "Private Bid Room links must never render an empty-token fallback");
 assert.match(rfxBidApiSource, /async function findInvitationByToken[\s\S]*\.eq\("invitation_token_hash", tokenHash\)/, "Carrier portal access should resolve invitation tokens by hash");
 assert.match(rfxBidApiSource, /async function migrateLegacyInvitationToken/, "Legacy Bid Room links should be migrated after successful use");
 assert.doesNotMatch(rfxBidApiSource, /\.eq\("invitation_token", token\)\.single\(\)/, "Carrier portal actions must not depend on plaintext invitation token lookup");
@@ -2800,6 +2803,8 @@ assert.match(apiSource, /generated: generatedMessages\.length,[\s\S]+rows: \[\]/
 assert.match(apiSource, /function outreachLaneTableSignature/, "Outreach draft generation should fingerprint the current Business Book route table");
 assert.match(apiSource, /lane_table_signature: context\.lane_table_signature/, "Outreach drafts should persist the Business Book route-table signature in metadata");
 assert.match(apiSource, /const completeInvitationGroups = new Map/, "Outreach draft generation should hydrate complete event/vendor lane groups before rendering templates");
+assert.match(apiSource, /const invitations = await requireHydratedRfxInvitationTokens\([\s\S]+invitationBatches\.flat\(\)[\s\S]+"Outreach queue"/, "Outreach draft generation should decrypt selected invitation tokens before grouping carriers");
+assert.match(apiSource, /const completeInvitations = await requireHydratedRfxInvitationTokens\([\s\S]+completeBatches\.flat\(\)[\s\S]+"Outreach lane hydration"/, "Outreach draft generation should decrypt every expanded route-book invitation before rendering the email");
 assert.match(apiSource, /async function ensureRfxEventVendorCoverage/, "Outreach draft generation should complete selected carrier coverage across the event business book");
 assert.match(apiSource, /body\.action === "list_rfx_detail"[\s\S]+ensureRfxEventVendorCoverage/, "Opening an active RFx should repair incomplete carrier lane coverage before rendering the business book");
 assert.match(apiSource, /async function fetchAllRfxLaneRows[\s\S]+fetchAllRfxEventRows\(supabase, "rfx_lanes"/, "RFx lane reads should paginate beyond the Supabase response limit");
@@ -4305,6 +4310,7 @@ assert.match(apiSource, /function bidRoomFollowUpLaneSummaryHtml/, "Targeted car
 assert.match(apiSource, /requireBulkConfirmation\(input, \{[\s\S]{0,180}action: "send_bid_room_carrier_message"/, "Targeted carrier email should require an action-bound confirmation");
 assert.match(apiSource, /contains\("metadata", \{ bid_room_request_key: requestKey \}\)/, "Targeted carrier email should be idempotent");
 assert.match(apiSource, /const routeBookRows = outreachEventLaneRows\(/, "Targeted carrier email should reuse the complete RFx route book");
+assert.match(apiSource, /const \[invitation\] = await requireHydratedRfxInvitationTokens\(supabase, \[invitationRow\], "Carrier follow-up"\)/, "Targeted carrier email should decrypt its private invitation token before building the Bid Room link");
 assert.match(apiSource, /const eventLaneRows = await fetchAllRfxLaneRows\(supabase, cleanText\(event\.id\) \|\| "", "\*"\)/, "Targeted carrier email should load all lanes for the selected RFx");
 assert.match(apiSource, /route_book_lane_count: routeBookRows\.length/, "Targeted carrier email should record the route book scope");
 assert.match(apiSource, /profile_link: profileLink/, "Targeted carrier email should include the carrier profile link");
