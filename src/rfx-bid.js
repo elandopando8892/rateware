@@ -1,6 +1,14 @@
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { SUPABASE_URL } from "./config.js";
 import { apiErrorMessage, humanizeError } from "./error-copy.js";
+import {
+  bidTemplateSourceRows,
+  canonicalLaneStatus,
+  currentEventBookRows,
+  eventInvitedLaneRows,
+  isBidToolsEligibleRow,
+  reconcileBidTemplateUploadRows
+} from "./rfx-bid-lane-scope.js";
 
 const title = document.querySelector("#bid-event-title");
 const card = document.querySelector("#bid-invitation-card");
@@ -18,6 +26,7 @@ let lastQuickBidSaveStatus = null;
 let lastBidSupportQuestion = "";
 let lastBidSupportResult = null;
 let pendingBidTemplateRows = [];
+let pendingBidTemplateCoverage = null;
 const segmentConfirmationSaveTimers = new Map();
 const segmentConfirmationSavingTokens = new Set();
 let bidTemplateSubmitting = false;
@@ -677,7 +686,7 @@ function laneFitProgress(lane = {}, invitation = lastInvitation || {}, packagePa
     exceptions,
     disagreements,
     pending: Math.max(checklist.length - complete, 0),
-    ready: checklist.length > 0 && complete === checklist.length && disagreements === 0,
+    ready: checklist.length > 0 && complete === checklist.length && exceptions === 0 && disagreements === 0,
     segmentKey,
     checklist
   };
@@ -689,7 +698,7 @@ function rowFitProgress(row = {}, packagePayload = {}) {
 
 function laneFitLabel(progress = {}) {
   if (!progress.total) return "-";
-  if (progress.disagreements) return dualText("Needs review", "Requiere revision");
+  if (progress.exceptions || progress.disagreements) return dualText("Needs review", "Requiere revision");
   return progress.ready
     ? dualText("Fit complete", "Fit completo")
     : dualText(`${progress.complete}/${progress.total} confirmed`, `${progress.complete}/${progress.total} confirmados`);
@@ -701,9 +710,14 @@ function quickFitActionLabel(progress = {}) {
 }
 
 function quickFitActionTone(progress = {}) {
-  if (progress.disagreements) return "is-review";
+  if (progress.exceptions || progress.disagreements) return "is-review";
   if (progress.ready) return "is-ready";
   return "";
+}
+
+function portalHelp(text) {
+  const label = escapeAttribute(text || "");
+  return `<span class="field-help portal-help" role="img" tabindex="0" aria-label="${label}" title="${label}">?</span>`;
 }
 
 function renderMasterPackageRoutes(carrierBook = {}, invitation = {}) {
@@ -715,9 +729,9 @@ function renderMasterPackageRoutes(carrierBook = {}, invitation = {}) {
       <div class="bid-room-section-heading carrier-lane-book-heading">
         <div>
           <p class="eyebrow">${escapeHtml(dualText("Invited lane book", "Cedula de rutas invitadas"))}</p>
-          <h3>${escapeHtml(dualText(`${rows.length} lanes in this RFx`, `${rows.length} rutas en este RFx`))}</h3>
+          <h3>${escapeHtml(dualText(`${rows.length} lanes in this RFx`, `${rows.length} rutas en este RFx`))} ${portalHelp(dualText("This is the complete invited route book. Open a lane only when you need to quote or review its recorded outcome.", "Esta es la cedula completa de rutas invitadas. Abre una ruta solo cuando necesites cotizar o revisar su resultado."))}</h3>
         </div>
-        <span class="status-pill neutral">${escapeHtml(dualText("Fit, quote or reject by lane", "Fit, oferta o rechazo por ruta"))}</span>
+        <span class="status-pill neutral">${escapeHtml(dualText("One action per lane", "Una accion por ruta"))}</span>
       </div>
       <div class="master-package-routes">
         <table class="carrier-lane-book-table">
@@ -728,9 +742,9 @@ function renderMasterPackageRoutes(carrierBook = {}, invitation = {}) {
               const invitationToken = String(row.invitation_token || "");
               const isCurrent = invitationToken === currentToken;
               const fit = rowFitProgress(row, packagePayload);
-              const status = bookStatus(row);
+              const status = bookStatus(row, packagePayload);
               const normalizedStatus = String(status || "").toLowerCase();
-              const canQuote = isBidToolsEligibleRow(row);
+              const canQuote = isBidToolsEligibleRow(row, (candidate) => bookStatus(candidate, packagePayload));
               const hasOutcome = ["awarded", "backup", "not_awarded"].includes(normalizedStatus);
               const quoteActionLabel = normalizedStatus === "quoted"
                 ? dualText("Update quote", "Actualizar oferta")
@@ -742,10 +756,9 @@ function renderMasterPackageRoutes(carrierBook = {}, invitation = {}) {
                   <td><strong>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</strong><small>${escapeHtml([lane.operation, lane.service].filter(Boolean).join(" / ") || "-")}</small></td>
                   <td>${escapeHtml(lane.weekly_volume ?? "-")}</td>
                   <td><span class="lane-fit-indicator ${fit.ready ? "is-ready" : ""}" title="${escapeAttribute(dualText("Each route has its own operational fit checklist.", "Cada ruta tiene su propio checklist de fit operativo."))}">${escapeHtml(laneFitLabel(fit))}</span></td>
-                  <td><span class="status-pill ${statusTone(status)}">${escapeHtml(statusLabel(status))}</span></td>
+                  <td><span class="status-pill ${statusTone(status)}" data-lane-lifecycle-status data-lane-lifecycle-token="${escapeAttribute(invitationToken)}" title="${escapeAttribute(laneStatusDescription(status))}">${escapeHtml(statusLabel(status))}</span></td>
                   <td>
                     <div class="lane-row-actions">
-                      <button type="button" class="secondary small-button" data-route-fit-token="${escapeAttribute(invitationToken)}" ${invitationToken ? "" : "disabled"}>${escapeHtml(dualText("View fit", "Ver fit"))}</button>
                       ${hasOutcome
                         ? `<button type="button" class="secondary small-button" data-route-book-filter="${escapeAttribute(normalizedStatus)}" title="${escapeAttribute(dualText("Open this lane result in the private business book.", "Abre el resultado de esta ruta en el libro privado."))}">${escapeHtml(dualText("View outcome", "Ver resultado"))}</button>`
                         : canQuote
@@ -810,23 +823,22 @@ function renderLaneFitChecklist(lane = {}, invitation = {}, packagePayload = {})
     <details id="carrier-lane-fit" class="master-package-segment lane-fit-checklist lane-fit-disclosure" data-lane-fit-checklist data-invitation-token="${escapeAttribute(invitation.invitation_token || "")}" data-master-segment-key="${escapeAttribute(segment.segment_key || "general")}">
       <summary>
         <div>
-          <p class="eyebrow">${escapeHtml(dualText("Operational fit", "Fit operativo"))}</p>
+          <p class="eyebrow">${escapeHtml(dualText("Operational fit", "Fit operativo"))} ${portalHelp(dualText("Optional route context. Every answer autosaves and remains visible to procurement.", "Contexto opcional de la ruta. Cada respuesta se guarda automaticamente y permanece visible para procurement."))}</p>
           <strong>${escapeHtml(formatLane(lane))}</strong>
-          <small>${escapeHtml([lane.equipment, lane.trailer, lane.config, lane.operation, lane.service].filter(Boolean).join(" / ") || dualText("Route requirements", "Requisitos de ruta"))}</small>
         </div>
         <div class="lane-fit-disclosure-summary-meta">
+          <span class="lane-fit-autosave-state" data-lane-fit-autosave-state data-tone="neutral">${escapeHtml(dualText("Autosaved", "Autoguardado"))}</span>
           <span class="lane-fit-disclosure-trigger">${escapeHtml(dualText("Fit details", "Ver fit"))}</span>
           <span class="master-package-segment-progress ${progress.pending ? "is-pending" : ""}" data-lane-fit-progress>${escapeHtml(laneFitLabel(progress))}</span>
         </div>
       </summary>
       <div class="lane-fit-disclosure-body">
-        <p class="bid-board-note">${escapeHtml(dualText("Answer only what helps explain this route. Selections save automatically and never stop you from quoting.", "Responde solo lo necesario para explicar esta ruta. Las selecciones se guardan automaticamente y nunca impiden cotizar."))}</p>
         <div class="segment-rubric-grid">
           ${checklist.map((rubric) => renderSegmentRubricControl(segment, rubric, invitation)).join("")}
         </div>
         <div class="master-package-actions">
           <p data-segment-confirmation-status class="status-message" role="status">${escapeHtml(statusCopy)}</p>
-          <button type="button" class="secondary small-button" data-decline-invitation data-invitation-token="${escapeAttribute(invitation.invitation_token || "")}" ${["declined", "awarded", "backup", "not_awarded"].includes(String(invitation.invitation_status || "").toLowerCase()) ? "disabled" : ""}>${escapeHtml(dualText("Reject lane", "Rechazar ruta"))}</button>
+          <button type="button" class="secondary small-button" data-decline-invitation data-invitation-token="${escapeAttribute(invitation.invitation_token || "")}" ${["declined", "rejected", "awarded", "backup", "not_awarded"].includes(String(invitation.invitation_status || "").toLowerCase()) ? "disabled" : ""}>${escapeHtml(dualText("Reject lane", "Rechazar ruta"))}</button>
         </div>
       </div>
     </details>
@@ -842,17 +854,15 @@ function renderCarrierMasterPackage(carrierBook = {}, invitation = {}) {
       <div class="master-package-header">
         <div>
           <p class="eyebrow">${escapeHtml(t("masterPackageEyebrow"))}</p>
-          <h3>${escapeHtml(packagePayload.package_name || t("masterPackageTitle"))}</h3>
-          <p>${escapeHtml(t("masterPackageCopy"))}</p>
+          <h3>${escapeHtml(packagePayload.package_name || t("masterPackageTitle"))} ${portalHelp(dualText("Review the opportunity once, then open only the route you want to quote. Operational fit is optional and autosaves.", "Revisa la oportunidad una vez y despues abre solo la ruta que quieras cotizar. El fit operativo es opcional y se guarda automaticamente."))}</h3>
         </div>
-        <aside><span>${escapeHtml(dualText("Route-level fit", "Fit por ruta"))}</span><strong>${formatNumber(packagePayload.lane_count || currentEventBookRows(carrierBook, invitation.rfx_events || {}).length)}</strong><small>${escapeHtml(dualText("lanes to review", "rutas por revisar"))}</small></aside>
+        <aside title="${escapeAttribute(dualText("Invited lanes available in this RFx package.", "Rutas invitadas disponibles en este paquete RFx."))}"><span>${escapeHtml(dualText("Lanes", "Rutas"))}</span><strong>${formatNumber(packagePayload.lane_count || currentEventBookRows(carrierBook, invitation.rfx_events || {}).length)}</strong></aside>
       </div>
       <div class="master-package-statline">
-        <article><span>${escapeHtml(t("routeSchedule"))}</span><strong>${formatNumber(packagePayload.lane_count || currentEventBookRows(carrierBook, invitation.rfx_events || {}).length)}</strong><small>lane(s)</small></article>
-        <article><span>${escapeHtml(t("segmentChecklist"))}</span><strong>${formatNumber(segments.length)}</strong><small>${escapeHtml(dualText("reference group(s)", "grupo(s) de referencia"))}</small></article>
-        <article><span>${escapeHtml(dualText("Fit checklist", "Checklist de fit"))}</span><strong>${formatNumber(MASTER_PACKAGE_RUBRICS.length)}</strong><small>${escapeHtml(dualText("optional answers per route", "respuestas opcionales por ruta"))}</small></article>
+        <article title="${escapeAttribute(dualText("Complete invited route schedule.", "Cedula completa de rutas invitadas."))}"><span>${escapeHtml(t("routeSchedule"))}</span><strong>${formatNumber(packagePayload.lane_count || currentEventBookRows(carrierBook, invitation.rfx_events || {}).length)}</strong></article>
+        <article title="${escapeAttribute(dualText("Operational reference groups included in this package.", "Grupos operativos de referencia incluidos en este paquete."))}"><span>${escapeHtml(t("segmentChecklist"))}</span><strong>${formatNumber(segments.length)}</strong></article>
+        <article title="${escapeAttribute(dualText("Optional operational criteria available for each route.", "Criterios operativos opcionales disponibles por ruta."))}"><span>${escapeHtml(dualText("Fit criteria", "Criterios de fit"))}</span><strong>${formatNumber(MASTER_PACKAGE_RUBRICS.length)}</strong></article>
       </div>
-      <p class="bid-board-note">${escapeHtml(dualText("The master package is informational. Open Bid tools for a lane to confirm its fit, reject it, or submit its offer.", "El paquete maestro es informativo. Abre Bid tools en una ruta para confirmar su fit, rechazarla o enviar su oferta."))}</p>
       ${commercialModelGuideHtml()}
     </section>
   `;
@@ -885,19 +895,21 @@ function fitProgressFromSection(section) {
   const rows = collectSegmentConfirmations(section);
   const total = rows.length;
   const complete = rows.filter((row) => row.answer && row.answer !== "pending").length;
+  const exceptions = rows.filter((row) => row.answer === "exception").length;
   const disagreements = rows.filter((row) => row.answer === "disagree").length;
   return {
     total,
     complete,
+    exceptions,
     disagreements,
     pending: Math.max(total - complete, 0),
-    ready: total > 0 && complete === total && disagreements === 0
+    ready: total > 0 && complete === total && exceptions === 0 && disagreements === 0
   };
 }
 
 function fitStatusCopy(progress = {}) {
   if (progress.ready) return dualText("Fit complete. Procurement can see the route context.", "Fit completo. Procurement puede ver el contexto de la ruta.");
-  if (progress.disagreements) return dualText("A disagreement is visible to procurement. You can still quote with conditions or reject this lane.", "El desacuerdo queda visible para procurement. Aun puedes cotizar con condiciones o rechazar esta ruta.");
+  if (progress.exceptions || progress.disagreements) return dualText("The exception is visible to procurement. You can still quote with conditions or reject this lane.", "La excepcion queda visible para procurement. Aun puedes cotizar con condiciones o rechazar esta ruta.");
   return dualText("Fit answers are optional and save automatically. They improve procurement context without blocking a quote.", "Las respuestas de fit son opcionales y se guardan automaticamente. Mejoran el contexto de procurement sin bloquear una cotizacion.");
 }
 
@@ -920,9 +932,37 @@ function refreshLaneFitUi(section, message = "", tone = "neutral") {
     if (action) {
       action.textContent = quickFitActionLabel(progress);
       action.classList.toggle("is-ready", progress.ready);
-      action.classList.toggle("is-review", Boolean(progress.disagreements));
+      action.classList.toggle("is-review", Boolean(progress.exceptions || progress.disagreements));
     }
+    refreshLaneLifecycleStatusUi(invitationToken);
   }
+}
+
+function refreshLaneLifecycleStatusUi(invitationToken) {
+  const row = allBookRows(lastCarrierBook || {}).find((candidate) => String(candidate.invitation_token || "") === String(invitationToken || ""));
+  if (!row) return;
+  const packagePayload = masterPackageForCarrier(lastCarrierBook || {}, lastInvitation || {});
+  const status = bookStatus(row, packagePayload);
+  card.querySelectorAll("[data-lane-lifecycle-status]").forEach((node) => {
+    if (String(node.dataset.laneLifecycleToken || "") !== String(invitationToken || "")) return;
+    node.textContent = statusLabel(status);
+    node.title = laneStatusDescription(status);
+    node.classList.remove("success", "warning", "danger", "neutral", "muted");
+    node.classList.add(statusTone(status));
+  });
+}
+
+function setLaneFitAutosaveState(section, state = "saved") {
+  const node = section?.querySelector?.("[data-lane-fit-autosave-state]");
+  if (!node) return;
+  const labels = {
+    pending: dualText("Unsaved", "Pendiente"),
+    saving: dualText("Saving...", "Guardando..."),
+    saved: dualText("Autosaved", "Autoguardado"),
+    error: dualText("Retry needed", "Reintentar")
+  };
+  node.textContent = labels[state] || labels.saved;
+  node.dataset.tone = state === "error" ? "error" : state === "saved" ? "success" : "neutral";
 }
 
 async function saveSegmentConfirmations(section) {
@@ -942,6 +982,7 @@ async function saveSegmentConfirmations(section) {
   segmentConfirmationSavingTokens.add(saveKey);
   delete section.dataset.savePending;
   section.dataset.saving = "true";
+  setLaneFitAutosaveState(section, "saving");
   if (status) {
     status.textContent = dualText("Saving fit checklist...", "Guardando checklist de fit...");
     status.dataset.tone = "neutral";
@@ -952,8 +993,10 @@ async function saveSegmentConfirmations(section) {
       confirmations: collectSegmentConfirmations(section)
     });
     mergeSegmentConfirmations(result.rows || []);
+    setLaneFitAutosaveState(section, "saved");
     refreshLaneFitUi(section, dualText("Fit saved automatically.", "Fit guardado automaticamente."), "success");
   } catch (error) {
+    setLaneFitAutosaveState(section, "error");
     if (status) {
       status.textContent = humanizeError(error);
       status.dataset.tone = "error";
@@ -975,6 +1018,7 @@ function queueSegmentConfirmationSave(section) {
   const existingTimer = segmentConfirmationSaveTimers.get(saveKey);
   if (existingTimer) window.clearTimeout(existingTimer);
   section.dataset.savePending = "true";
+  setLaneFitAutosaveState(section, "pending");
   const timer = window.setTimeout(() => {
     segmentConfirmationSaveTimers.delete(saveKey);
     saveSegmentConfirmations(section);
@@ -1025,13 +1069,16 @@ function statusLabel(status) {
       invited: "Invited",
       viewed: "Viewed",
       responded: "Responded",
+      agreed: "Agreed",
+      exception: "Exception",
       quoted: "Quoted",
       bid_submitted: "Quoted",
       awarded: "Awarded",
       backup: "Backup",
       not_awarded: "Not awarded",
       pending: "Pending",
-      declined: "Declined",
+      declined: "Rejected",
+      rejected: "Rejected",
       withdrawn: "Withdrawn",
       open: "Open",
       not_invited: "Request invite"
@@ -1041,13 +1088,16 @@ function statusLabel(status) {
       invited: "Invitado",
       viewed: "Visto",
       responded: "Respondido",
+      agreed: "De acuerdo",
+      exception: "Excepcion",
       quoted: "Cotizado",
       bid_submitted: "Cotizado",
       awarded: "Asignado",
       backup: "Backup",
       not_awarded: "No asignado",
       pending: "Pendiente",
-      declined: "Declinado",
+      declined: "Rechazada",
+      rejected: "Rechazada",
       withdrawn: "Retirada",
       open: "Abierto",
       not_invited: "Solicitar invitacion"
@@ -1058,11 +1108,29 @@ function statusLabel(status) {
 
 function statusTone(status) {
   const value = String(status || "").toLowerCase();
-  if (value === "awarded") return "success";
+  if (value === "awarded" || value === "agreed") return "success";
   if (value === "backup" || value === "quoted" || value === "bid_submitted") return "neutral";
-  if (value === "not_awarded" || value === "declined" || value === "withdrawn") return "muted";
-  if (value === "invited" || value === "viewed" || value === "responded") return "warning";
+  if (value === "rejected" || value === "declined") return "danger";
+  if (value === "not_awarded" || value === "withdrawn") return "muted";
+  if (value === "exception" || value === "invited" || value === "viewed" || value === "responded") return "warning";
   return "muted";
+}
+
+function laneStatusDescription(status) {
+  const value = String(status || "invited").toLowerCase();
+  const copy = {
+    invited: dualText("The carrier is invited and has not recorded fit or an offer yet.", "El carrier esta invitado y aun no registra fit ni oferta."),
+    agreed: dualText("All route fit criteria were confirmed without exceptions.", "Todos los criterios de fit de la ruta fueron confirmados sin excepciones."),
+    exception: dualText("The route fit includes an exception or disagreement for procurement review.", "El fit de la ruta incluye una excepcion o desacuerdo para revision de procurement."),
+    rejected: dualText("The carrier rejected this route and it is no longer actionable.", "El carrier rechazo esta ruta y ya no esta habilitada para cotizar."),
+    quoted: dualText("An active carrier offer is recorded for this route.", "Existe una oferta activa del carrier para esta ruta."),
+    withdrawn: dualText("The carrier withdrew the active offer; its history is preserved.", "El carrier retiro la oferta activa; su historial se conserva."),
+    awarded: dualText("This route was awarded to the carrier.", "Esta ruta fue adjudicada al carrier."),
+    backup: dualText("The carrier was selected as backup capacity for this route.", "El carrier fue seleccionado como capacidad backup para esta ruta."),
+    not_awarded: dualText("The event closed without awarding this route to the carrier.", "El evento cerro sin adjudicar esta ruta al carrier."),
+    open: dualText("This route is visible but the carrier has not been invited.", "Esta ruta es visible, pero el carrier no ha sido invitado.")
+  };
+  return copy[value] || statusLabel(value);
 }
 
 function deadlineCopy(event = {}) {
@@ -2012,8 +2080,7 @@ function bidTemplateCommercialModelValue(value) {
 
 function bidTemplateRows(carrierBook = {}, invitation = {}) {
   const event = invitation.rfx_events || {};
-  return currentEventBookRows(carrierBook, event)
-    .filter((row) => isBidToolsEligibleRow(row))
+  return bidTemplateSourceRows(carrierBook, invitation, bookStatus)
     .map((row, index) => {
       const lane = row.lane || {};
       const rowEvent = row.event || event;
@@ -2360,6 +2427,8 @@ function normalizeBidTemplateRow(rawRow = {}, index = 0) {
   row.row_number = index + 2;
   row.submit_this_lane = normalizeTemplateBoolean(row.submit_this_lane);
   row.invitation_token = textValue(row.invitation_token);
+  row.submission_status = "ready";
+  row.submission_error = "";
   row.draft = draftFromBidTemplateRow(row);
   row.validation = validateBidTemplateRow(row);
   return row;
@@ -2368,20 +2437,31 @@ function normalizeBidTemplateRow(rawRow = {}, index = 0) {
 function validateBidTemplateRow(row) {
   if (!row.submit_this_lane) return { errors: [], warnings: [] };
   const validation = validateBidDraft(row.draft);
-  const errors = [...validation.errors];
-  if (!row.invitation_token) errors.unshift(validationIssue("invitation-token", `Row ${row.row_number}: missing invitation token. Download a fresh template.`));
+  const errors = [
+    ...(row.scope_errors || []).map((message) => validationIssue("invitation-token", `Row ${row.row_number}: ${message}`)),
+    ...validation.errors
+  ];
+  if (!row.invitation_token && !(row.scope_errors || []).length) {
+    errors.unshift(validationIssue("invitation-token", `Row ${row.row_number}: missing invitation token. Download a fresh template.`));
+  }
   return { errors, warnings: validation.warnings };
 }
 
-async function parseBidTemplateFile(file) {
+async function parseBidTemplateFile(file, carrierBook = lastCarrierBook || {}, invitation = lastInvitation || {}) {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
   const worksheet = workbook.Sheets["Bid Template"] || workbook.Sheets[workbook.SheetNames[0]];
   if (!worksheet) throw new Error("Workbook does not contain a bid template sheet.");
   const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "", raw: false });
-  return rows
+  const normalizedRows = rows
     .map(normalizeBidTemplateRow)
     .filter((row) => row.invitation_token || row.submit_this_lane || row.all_in_rate || row.weekly_capacity || row.valid_through || row.deadhead_distance || row.current_unit_location);
+  const reconciliation = reconcileBidTemplateUploadRows(normalizedRows, bidTemplateRows(carrierBook, invitation));
+  reconciliation.rows.forEach((row) => {
+    row.draft = draftFromBidTemplateRow(row);
+    row.validation = validateBidTemplateRow(row);
+  });
+  return reconciliation;
 }
 
 function renderBidTemplatePreview(rows = pendingBidTemplateRows) {
@@ -2391,7 +2471,13 @@ function renderBidTemplatePreview(rows = pendingBidTemplateRows) {
   if (!preview || !submitButton) return;
   const selectedRows = rows.filter((row) => row.submit_this_lane);
   const invalidRows = selectedRows.filter((row) => row.validation.errors.length);
-  submitButton.disabled = !selectedRows.length || invalidRows.length > 0;
+  const retryRows = selectedRows.filter((row) => row.submission_status !== "submitted");
+  const failedRows = selectedRows.filter((row) => row.submission_status === "failed");
+  const submittedRows = selectedRows.filter((row) => row.submission_status === "submitted");
+  submitButton.disabled = !retryRows.length || invalidRows.length > 0 || bidTemplateSubmitting;
+  submitButton.textContent = failedRows.length
+    ? dualText(`Retry ${failedRows.length} failed`, `Reintentar ${failedRows.length} fallidas`)
+    : t("confirmXlsx");
   if (!rows.length) {
     preview.innerHTML = "";
     if (status) {
@@ -2403,23 +2489,35 @@ function renderBidTemplatePreview(rows = pendingBidTemplateRows) {
   if (status) {
     status.textContent = invalidRows.length
       ? dualText(`${invalidRows.length} row(s) need correction before submit.`, `${invalidRows.length} fila(s) requieren correccion antes de enviar.`)
+      : failedRows.length
+        ? dualText(`${submittedRows.length} submitted; ${failedRows.length} failed. Retry sends failed rows only.`, `${submittedRows.length} enviadas; ${failedRows.length} fallaron. Reintentar envia solo las filas fallidas.`)
       : dualText(`${selectedRows.length} row(s) ready. Review the preview, then confirm submission.`, `${selectedRows.length} fila(s) listas. Revisa la vista previa y confirma el envio.`);
-    status.dataset.tone = invalidRows.length ? "error" : "success";
+    status.dataset.tone = invalidRows.length || failedRows.length ? "error" : "success";
   }
+  const coverage = pendingBidTemplateCoverage || { active: 0, matched: 0, missing: 0, stale: 0, duplicate: 0 };
+  const displayRows = [...rows]
+    .sort((left, right) => Number(Boolean(right.validation.errors.length)) - Number(Boolean(left.validation.errors.length)) || left.row_number - right.row_number)
+    .slice(0, 50);
   preview.innerHTML = `
     <div class="bid-template-preview-summary">
+      <span>${escapeHtml(dualText(`${coverage.matched}/${coverage.active} active lanes matched`, `${coverage.matched}/${coverage.active} rutas activas conciliadas`))}</span>
       <span>${escapeHtml(t("selectedRows", { count: selectedRows.length }))}</span>
       <span>${escapeHtml(t("errorRows", { count: invalidRows.length }))}</span>
       <span>${escapeHtml(t("skippedRows", { count: rows.length - selectedRows.length }))}</span>
+      ${coverage.missing ? `<span class="status-pill warning">${escapeHtml(dualText(`${coverage.missing} active lane(s) missing from file`, `${coverage.missing} ruta(s) activa(s) faltan en el archivo`))}</span>` : ""}
     </div>
     <div class="table-wrap">
       <table class="bid-template-preview-table">
         <thead><tr><th>${escapeHtml(dualText("Row", "Fila"))}</th><th>Lane</th><th>${escapeHtml(dualText("Rate", "Tarifa"))}</th><th>${escapeHtml(dualText("Capacity", "Capacidad"))}</th><th>${escapeHtml(dualText("Valid through", "Vigente hasta"))}</th><th>Status</th></tr></thead>
         <tbody>
-          ${rows.slice(0, 12).map((row) => {
+          ${displayRows.map((row) => {
             const errors = row.validation.errors.map((issue) => issue.message);
             const lane = [row.origin, row.destination].filter(Boolean).join(" -> ") || row.lane_number || "-";
-            const statusHtml = !row.submit_this_lane
+            const statusHtml = row.submission_status === "submitted"
+              ? `<span class="status-pill success">${escapeHtml(dualText("Submitted", "Enviada"))}</span>`
+              : row.submission_status === "failed"
+                ? `<span class="status-pill danger">${escapeHtml(dualText("Failed", "Fallo"))}</span><small>${escapeHtml(row.submission_error || "")}</small>`
+              : !row.submit_this_lane
               ? `<span class="status-pill muted">${escapeHtml(t("skipped"))}</span>`
               : errors.length
                 ? `<span class="status-pill danger">${escapeHtml(t("fixRequired"))}</span><small>${escapeHtml(errors.join(" | "))}</small>`
@@ -2438,7 +2536,7 @@ function renderBidTemplatePreview(rows = pendingBidTemplateRows) {
         </tbody>
       </table>
     </div>
-    ${rows.length > 12 ? `<p class="bid-board-note">${escapeHtml(dualText(`Previewing first 12 of ${rows.length} rows.`, `Mostrando primeras 12 de ${rows.length} filas.`))}</p>` : ""}
+    ${rows.length > 50 ? `<p class="bid-board-note">${escapeHtml(dualText(`Showing 50 of ${rows.length} rows; rows with errors appear first.`, `Mostrando 50 de ${rows.length} filas; las filas con errores aparecen primero.`))}</p>` : ""}
   `;
 }
 
@@ -2446,7 +2544,7 @@ async function submitBidTemplateRows() {
   if (bidTemplateSubmitting) return;
   const status = card.querySelector("#carrier-bid-template-status");
   const button = card.querySelector("[data-submit-bid-template]");
-  const rows = pendingBidTemplateRows.filter((row) => row.submit_this_lane);
+  const rows = pendingBidTemplateRows.filter((row) => row.submit_this_lane && row.submission_status !== "submitted");
   const invalidRows = rows.filter((row) => row.validation.errors.length);
   if (!rows.length) {
     if (status) {
@@ -2460,31 +2558,46 @@ async function submitBidTemplateRows() {
     return;
   }
   bidTemplateSubmitting = true;
+  let completedAll = false;
   if (button) button.disabled = true;
   if (status) {
     status.textContent = dualText(`Submitting ${rows.length} XLSX bid row(s)...`, `Enviando ${rows.length} fila(s) de puja XLSX...`);
     status.dataset.tone = "neutral";
   }
   try {
-    for (const row of rows) {
-      await callBidApi("submit_bid", { token: row.invitation_token, ...row.draft });
-      markOwnOfferRevisionPending(row.invitation_token);
+    let submitted = 0;
+    let failed = 0;
+    for (const [index, row] of rows.entries()) {
+      row.submission_status = "submitting";
+      row.submission_error = "";
+      if (status) status.textContent = dualText(`Submitting ${index + 1} of ${rows.length}...`, `Enviando ${index + 1} de ${rows.length}...`);
+      try {
+        await callBidApi("submit_bid", { token: row.invitation_token, ...row.draft });
+        row.submission_status = "submitted";
+        markOwnOfferRevisionPending(row.invitation_token);
+        submitted += 1;
+      } catch (error) {
+        row.submission_status = "failed";
+        row.submission_error = humanizeError(error);
+        failed += 1;
+      }
+      renderBidTemplatePreview();
     }
-    pendingBidTemplateRows = [];
-    if (status) {
-      status.textContent = dualText(`${rows.length} bid row(s) submitted. The private book will refresh now.`, `${rows.length} fila(s) enviadas. El libro privado se actualizara ahora.`);
-      status.dataset.tone = "success";
+    if (failed) {
+      if (status) {
+        status.textContent = dualText(`${submitted} submitted; ${failed} failed. Retry sends failed rows only.`, `${submitted} enviadas; ${failed} fallaron. Reintentar envia solo las filas fallidas.`);
+        status.dataset.tone = "error";
+      }
+    } else {
+      pendingBidTemplateRows = [];
+      pendingBidTemplateCoverage = null;
+      queuePrivateBidAlert("bidSubmitted", dualText(`${submitted} bid row(s) submitted from XLSX.`, `${submitted} fila(s) enviadas desde XLSX.`));
+      await loadInvitation();
+      completedAll = true;
     }
-    queuePrivateBidAlert("bidSubmitted", dualText(`${rows.length} bid row(s) submitted from XLSX.`, `${rows.length} fila(s) enviadas desde XLSX.`));
-    await loadInvitation();
-  } catch (error) {
-    if (status) {
-      status.textContent = humanizeError(error);
-      status.dataset.tone = "error";
-    }
-    if (button) button.disabled = false;
   } finally {
     bidTemplateSubmitting = false;
+    if (!completedAll) renderBidTemplatePreview();
   }
 }
 
@@ -2507,21 +2620,18 @@ function renderBidTemplateTools(carrierBook = {}, invitation = {}) {
       <summary>
         <div class="carrier-bid-template-summary-copy">
           <p class="eyebrow">${escapeHtml(dualText("Batch quote", "Cotizacion masiva"))}</p>
-          <strong>${escapeHtml(t("xlsxTitle"))}</strong>
-          <small>${escapeHtml(laneScope)}</small>
+          <strong>${escapeHtml(t("xlsxTitle"))} ${portalHelp(laneScope)}</strong>
         </div>
         <div class="carrier-bid-template-summary-meta">
-          <span class="status-pill muted">${activeLaneCount} XLSX</span>
-          <span class="carrier-bid-template-trigger">${escapeHtml(dualText("Open batch tool", "Abrir herramienta masiva"))}</span>
+          <span class="status-pill muted">${escapeHtml(dualText(`${activeLaneCount} lanes`, `${activeLaneCount} rutas`))}</span>
+          <span class="carrier-bid-template-trigger">${escapeHtml(dualText("Open", "Abrir"))}</span>
         </div>
       </summary>
       <div class="carrier-bid-template-tools-body">
         <div class="carrier-bid-template-copy">
-          <p class="eyebrow">${escapeHtml(t("xlsxEyebrow"))}</p>
-          <p>${escapeHtml(t("xlsxCopy"))}</p>
           <p class="carrier-bid-template-scope">${escapeHtml(dualText(
-            "The workbook includes active invited lanes only. Existing bids, invitations and history are preserved.",
-            "El archivo incluye solamente rutas invitadas activas. Las pujas, invitaciones e historial existentes se conservan."
+            "Download the invited lane book, edit offer fields, then upload it. Unselected lanes and offer history remain unchanged.",
+            "Descarga la cedula invitada, edita los campos de oferta y subela. Las rutas no seleccionadas y el historial no cambian."
           ))}</p>
         </div>
         <div class="carrier-bid-template-workflow">
@@ -2536,7 +2646,7 @@ function renderBidTemplateTools(carrierBook = {}, invitation = {}) {
         </div>
       </div>
       <p id="carrier-bid-template-status" class="status-message" role="status">${escapeHtml(rows.length
-        ? dualText("All active invited lanes are included. Fit answers are optional and never overwrite an existing offer.", "Todas las rutas invitadas activas se incluyen. Las respuestas de fit son opcionales y nunca reemplazan una oferta existente.")
+        ? dualText("All active invited lanes are included. Select only the rows you want to create or update.", "Todas las rutas invitadas activas se incluyen. Selecciona solamente las filas que deseas crear o actualizar.")
         : dualText("No active invited lanes are available for this XLSX template.", "No hay rutas invitadas activas disponibles para este template XLSX."))}</p>
       <div id="carrier-bid-template-preview" class="carrier-bid-template-preview"></div>
     </details>
@@ -2707,7 +2817,7 @@ function syncBidFormMode() {
   if (!form) return;
   const editing = hasSubmittedOffer();
   const participationStatus = String(lastInvitation?.invitation_status || "").toLowerCase();
-  const canReject = !editing && !["declined", "withdrawn", "awarded"].includes(participationStatus);
+  const canReject = !editing && !["declined", "rejected", "withdrawn", "awarded"].includes(participationStatus);
   const canWithdraw = editing && participationStatus !== "awarded";
   form.dataset.editingSubmittedOffer = editing ? "true" : "false";
   const mode = card.querySelector("[data-bid-form-mode]");
@@ -3343,8 +3453,11 @@ function fitTags(row = {}) {
   return [lane.equipment, lane.trailer, lane.operation, lane.service, lane.origin_market, lane.destination_market].filter(Boolean).slice(0, 5);
 }
 
-function bookStatus(row = {}) {
-  return row.award_status || row.business_status || (row.is_invited ? row.participation_status : "open");
+function bookStatus(row = {}, packagePayload = null) {
+  const payload = packagePayload || masterPackageForCarrier(lastCarrierBook || {}, {
+    rfx_events: row.event || row.rfx_events || {}
+  });
+  return canonicalLaneStatus(row, rowFitProgress(row, payload));
 }
 
 function allBookRows(carrierBook = {}) {
@@ -3360,13 +3473,15 @@ function filteredBookRows(carrierBook = {}) {
     const lane = row.lane || {};
     const event = row.event || {};
     const viewMatches = bookFilters.view === "all"
-      || (bookFilters.view === "invited" && row.is_invited && !["quoted", "awarded", "backup", "not_awarded", "declined", "withdrawn"].includes(status))
+      || (bookFilters.view === "invited" && status === "invited")
+      || (bookFilters.view === "agreed" && status === "agreed")
+      || (bookFilters.view === "exception" && status === "exception")
       || (bookFilters.view === "open" && !row.is_invited)
       || (bookFilters.view === "quoted" && status === "quoted")
       || (bookFilters.view === "awarded" && status === "awarded")
       || (bookFilters.view === "backup" && status === "backup")
       || (bookFilters.view === "not_awarded" && status === "not_awarded")
-      || (bookFilters.view === "declined" && status === "declined")
+      || (["rejected", "declined"].includes(bookFilters.view) && status === "rejected")
       || (bookFilters.view === "withdrawn" && status === "withdrawn");
     if (!viewMatches) return false;
     if (!term) return true;
@@ -3397,6 +3512,7 @@ function renderBookRows(rows = []) {
     const action = row.is_invited
       ? `<a class="secondary small-button" href="./rfx-bid.html?token=${encodeURIComponent(row.invitation_token || "")}">${escapeHtml(dualText("Open bid", "Abrir puja"))}</a>`
       : `<button class="secondary small-button" type="button" data-request-lane="${escapeHtml(lane.id || "")}">${escapeHtml(statusLabel("not_invited"))}</button>`;
+    const status = bookStatus(row);
     return `
       <tr>
         <td>
@@ -3410,7 +3526,7 @@ function renderBookRows(rows = []) {
         <td>${escapeHtml([lane.equipment, lane.trailer, lane.config].filter(Boolean).join(" / ") || "-")}</td>
         <td>${escapeHtml([lane.operation, lane.service].filter(Boolean).join(" / ") || "-")}</td>
         <td>${renderBookFitSummary(row)}</td>
-        <td><span class="status-pill ${statusTone(bookStatus(row))}">${escapeHtml(statusLabel(bookStatus(row)))}</span></td>
+        <td><span class="status-pill ${statusTone(status)}" data-lane-lifecycle-status data-lane-lifecycle-token="${escapeAttribute(row.invitation_token || "")}" title="${escapeAttribute(laneStatusDescription(status))}">${escapeHtml(statusLabel(status))}</span></td>
         <td>
           ${amount}
           ${boardAmount && boardAmount !== amount ? `<small>${escapeHtml(dualText(`Board ${boardAmount}`, `Board ${boardAmount}`))}</small>` : ""}
@@ -3433,8 +3549,9 @@ function renderBookFitSummary(row = {}) {
 }
 
 function quickBidRows(carrierBook = {}, invitation = {}) {
+  const packagePayload = masterPackageForCarrier(carrierBook, invitation);
   return eventInvitedLaneRows(carrierBook, invitation)
-    .filter((row) => isBidToolsEligibleRow(row));
+    .filter((row) => isBidToolsEligibleRow(row, (candidate) => bookStatus(candidate, packagePayload)));
 }
 
 function quickBidRowsForSelectedLane(carrierBook = {}, invitation = {}, invitationToken = selectedBidToolsToken) {
@@ -3443,12 +3560,6 @@ function quickBidRowsForSelectedLane(carrierBook = {}, invitation = {}, invitati
   const activeToken = String(invitationToken || invitation.invitation_token || tokenFromUrl() || "");
   const selected = rows.find((row) => String(row.invitation_token || "") === activeToken);
   return [selected || rows[0]];
-}
-
-function isBidToolsEligibleRow(row = {}) {
-  const status = String(bookStatus(row) || "").toLowerCase();
-  return Boolean(String(row.invitation_token || "").trim())
-    && !["declined", "awarded", "backup", "not_awarded"].includes(status);
 }
 
 function quickBidCommercialPercent(row = {}) {
@@ -3633,15 +3744,11 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}, options 
   const selectedLane = selectedRow.lane || {};
   return `
     <section id="carrier-quick-bid-grid" class="carrier-quick-bid-grid" data-selected-quick-bid-token="${escapeAttribute(selectedRow.invitation_token || "")}">
-      <div class="bid-room-section-heading">
-        <div>
-          <h3>${escapeHtml(dualText("Bid tools", "Herramientas de puja"))}</h3>
+      <div class="bid-room-section-heading quick-bid-heading">
+        <div class="quick-bid-heading-copy">
+          <h3>${escapeHtml(formatLane(selectedLane))} ${portalHelp(dualText("Enter the carrier rate, commercial model and core operating commitment for this route. Additional actions are available under More.", "Captura la tarifa carrier, modelo comercial y compromiso operativo principal de esta ruta. Las acciones adicionales estan en Mas."))}</h3>
         </div>
         <span class="status-pill neutral" title="${escapeAttribute(dualText("Use the route selector above to switch lanes without losing your current context.", "Usa el selector de rutas de arriba para cambiar de lane sin perder tu contexto actual."))}">${escapeHtml(dualText(`Route ${selectedPosition} of ${eligibleRows.length}`, `Ruta ${selectedPosition} de ${eligibleRows.length}`))}</span>
-      </div>
-      <div class="quick-bid-context" title="${escapeAttribute(dualText("Use the route selector to move between invited lanes. The XLSX template in the RFx Master Package is for quoting more than one lane at a time.", "Usa el selector de rutas para cambiar entre lanes invitados. El template XLSX en Paquete maestro RFx sirve para cotizar mas de una ruta a la vez."))}">
-        <strong>${escapeHtml(formatLane(selectedLane))}</strong>
-        <span>${escapeHtml(dualText("Select a commercial model, enter your rate, then publish or update this route.", "Selecciona el modelo comercial, captura tu tarifa y publica o actualiza esta ruta."))}</span>
       </div>
       ${commercialModelSelectedContextHtml(selectedRow?.commercial_model)}
       <div class="table-wrap">
@@ -3719,13 +3826,18 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}, options 
                   <td class="quick-bid-row-status">${quickBidRowStatus(row)}</td>
                   <td>
                     <div class="quick-bid-actions">
-                      <button type="button" class="secondary small-button ${quickFitActionTone(fit)}" data-open-quick-lane-fit title="${escapeAttribute(dualText("Review or update the optional operational fit for this route. Selections save automatically.", "Revisa o actualiza el fit operativo opcional de esta ruta. Las selecciones se guardan automaticamente."))}">${escapeHtml(fitActionLabel)}</button>
+                      <button type="button" class="secondary small-button ${quickFitActionTone(fit)}" data-open-quick-lane-fit aria-expanded="false" title="${escapeAttribute(dualText("Review or update the optional operational fit for this route. Selections save automatically.", "Revisa o actualiza el fit operativo opcional de esta ruta. Las selecciones se guardan automaticamente."))}">${escapeHtml(fitActionLabel)}</button>
                       <button type="button" class="small-button" data-save-quick-bid title="${escapeAttribute(dualText("Publish or update this route offer.", "Publicar o actualizar la oferta de esta ruta."))}">${escapeHtml(displayRow.bid_rate ? dualText("Update", "Actualizar") : dualText("Offer", "Oferta"))}</button>
-                      <button type="button" class="secondary small-button" data-toggle-quick-bid-panel="alternative" aria-expanded="false" title="${escapeAttribute(dualText("Add a compliant equipment or capacity alternative.", "Agrega una alternativa de equipo o capacidad compatible."))}">${escapeHtml(dualText("Alt.", "Alternativa"))}</button>
-                      <button type="button" class="secondary small-button" data-toggle-quick-bid-panel="capacity" aria-expanded="false" title="${escapeAttribute(dualText("Add availability, ETAs and unit details.", "Agrega disponibilidad, ETAs y datos de unidad."))}">${escapeHtml(dualText("Live capacity", "Capacidad"))}</button>
-                      ${displayRow.bid_rate
-                        ? `<button type="button" class="secondary small-button" data-withdraw-quick-bid title="${escapeAttribute(dualText("Remove your current offer for this route.", "Retira tu oferta actual de esta ruta."))}">${escapeHtml(dualText("Withdraw", "Retirar oferta"))}</button>`
-                        : `<button type="button" class="secondary small-button" data-decline-quick-invitation title="${escapeAttribute(dualText("Decline this route when you will not quote it.", "Rechaza esta ruta si no la vas a cotizar."))}">${escapeHtml(dualText("Reject", "Rechazar"))}</button>`}
+                      <details class="quick-bid-more-actions">
+                        <summary class="secondary small-button" title="${escapeAttribute(dualText("Alternative offer, live capacity and route participation.", "Oferta alternativa, capacidad en vivo y participacion de la ruta."))}" aria-label="${escapeAttribute(dualText("More route actions", "Mas acciones de ruta"))}"><span aria-hidden="true">...</span><span class="sr-only">${escapeHtml(dualText("More", "Mas"))}</span></summary>
+                        <div class="quick-bid-more-actions-menu">
+                          <button type="button" class="secondary small-button" data-toggle-quick-bid-panel="alternative" aria-expanded="false" title="${escapeAttribute(dualText("Add a compliant equipment or capacity alternative.", "Agrega una alternativa de equipo o capacidad compatible."))}">${escapeHtml(dualText("Alternative", "Alternativa"))}</button>
+                          <button type="button" class="secondary small-button" data-toggle-quick-bid-panel="capacity" aria-expanded="false" title="${escapeAttribute(dualText("Add availability, ETAs and unit details.", "Agrega disponibilidad, ETAs y datos de unidad."))}">${escapeHtml(dualText("Live capacity", "Capacidad en vivo"))}</button>
+                          ${displayRow.bid_rate
+                            ? `<button type="button" class="secondary small-button danger-text" data-withdraw-quick-bid title="${escapeAttribute(dualText("Remove your current offer for this route.", "Retira tu oferta actual de esta ruta."))}">${escapeHtml(dualText("Withdraw offer", "Retirar oferta"))}</button>`
+                            : `<button type="button" class="secondary small-button danger-text" data-decline-quick-invitation title="${escapeAttribute(dualText("Decline this route when you will not quote it.", "Rechaza esta ruta si no la vas a cotizar."))}">${escapeHtml(dualText("Reject lane", "Rechazar ruta"))}</button>`}
+                        </div>
+                      </details>
                     </div>
                   </td>
                 </tr>
@@ -3974,24 +4086,6 @@ async function updateBidParticipation(action, button, options = {}) {
   }
 }
 
-function currentEventBookRows(carrierBook = {}, event = {}) {
-  const eventId = String(event.id || "");
-  const rows = Array.isArray(carrierBook.invited) ? carrierBook.invited : [];
-  if (!eventId) return rows;
-  return rows.filter((row) => String(
-    row.event?.id
-      || row.rfx_events?.id
-      || row.rfx_event_id
-      || ""
-  ) === eventId);
-}
-
-function eventInvitedLaneRows(carrierBook = {}, invitation = {}) {
-  const event = invitation.rfx_events || invitation.event || {};
-  return currentEventBookRows(carrierBook, event)
-    .filter((row) => Boolean(String(row.invitation_token || "").trim()));
-}
-
 function renderCarrierLaneSwitcher(carrierBook = {}, invitation = {}) {
   return renderMasterPackageRoutes(carrierBook, invitation);
 }
@@ -4079,7 +4173,7 @@ function renderBidToolsWorkspace(carrierBook = {}, invitation = {}) {
   `;
 }
 
-async function selectBidToolsLane(invitationToken, options = {}) {
+function selectBidToolsLane(invitationToken, options = {}) {
   const nextToken = String(invitationToken || "").trim();
   const selected = quickBidRows(lastCarrierBook || {}, lastInvitation || {})
     .find((row) => String(row.invitation_token || "") === nextToken);
@@ -4087,7 +4181,8 @@ async function selectBidToolsLane(invitationToken, options = {}) {
   const selectionVersion = ++bidToolsLaneSelectionVersion;
   const currentPanel = card.querySelector('[data-private-workspace-panel="bids"]');
   capturePendingQuickBidDrafts(currentPanel);
-  await flushSegmentConfirmationSave(currentPanel?.querySelector("[data-lane-fit-checklist]"));
+  const pendingFitSave = flushSegmentConfirmationSave(currentPanel?.querySelector("[data-lane-fit-checklist]"));
+  pendingFitSave?.catch?.(() => {});
   if (selectionVersion !== bidToolsLaneSelectionVersion) return;
   selectedBidToolsToken = nextToken;
   setPrivateWorkspace("bids");
@@ -4111,22 +4206,23 @@ async function selectBidToolsLane(invitationToken, options = {}) {
 }
 
 function renderBidToolsLaneSwitcher(carrierBook = {}, invitation = {}) {
+  const packagePayload = masterPackageForCarrier(carrierBook, invitation);
   const rows = eventInvitedLaneRows(carrierBook, invitation)
-    .filter((row) => isBidToolsEligibleRow(row));
+    .filter((row) => isBidToolsEligibleRow(row, (candidate) => bookStatus(candidate, packagePayload)));
   const currentToken = String(selectedBidToolsToken || invitation.invitation_token || tokenFromUrl() || "");
   return `
     <section class="bid-tools-lane-switcher" aria-label="${escapeAttribute(dualText("Enabled lanes", "Rutas habilitadas"))}">
       <div class="bid-tools-lane-switcher-bar">
-        <strong>${escapeHtml(dualText("Bid tools", "Herramientas de puja"))}</strong>
-        <small>${escapeHtml(dualText("Select a lane to quote. Fit is optional and autosaves.", "Selecciona una ruta para cotizar. El fit es opcional y se guarda automaticamente."))}</small>
+        <strong>${escapeHtml(dualText("Routes", "Rutas"))} ${portalHelp(dualText("Switch routes without reloading. Fit is optional and autosaves; offers are submitted only when you press Offer or Update.", "Cambia de ruta sin recargar. El fit es opcional y se autoguarda; las ofertas se envian solo al presionar Oferta o Actualizar."))}</strong>
+        <span class="status-pill muted">${escapeHtml(dualText(`${rows.length} available`, `${rows.length} disponibles`))}</span>
       </div>
       <div class="bid-tools-lane-switcher-list" role="tablist" aria-label="${escapeAttribute(dualText("Invited routes", "Rutas invitadas"))}">
         ${rows.map((row) => {
           const rowToken = String(row.invitation_token || "");
           const selected = rowToken === currentToken;
-          const fit = rowFitProgress(row, masterPackageForCarrier(carrierBook, invitation));
+          const fit = rowFitProgress(row, packagePayload);
           const lane = row.lane || {};
-          const status = bookStatus(row);
+          const status = bookStatus(row, packagePayload);
           const quoted = Number(row.bid_rate || 0) > 0;
           const title = [
             formatLane(lane),
@@ -4139,7 +4235,7 @@ function renderBidToolsLaneSwitcher(carrierBook = {}, invitation = {}) {
             <button type="button" class="bid-tools-lane-option ${selected ? "is-selected" : ""}" data-bid-tools-lane-token="${escapeAttribute(rowToken)}" role="tab" aria-selected="${selected ? "true" : "false"}" aria-current="${selected ? "page" : "false"}" title="${escapeAttribute(title)}">
               <span class="bid-tools-lane-number">#${escapeHtml(lane.lane_number || "-")}</span>
               <strong>${escapeHtml(formatLane(lane))}</strong>
-              <span class="status-pill ${statusTone(status)}">${escapeHtml(quoted ? dualText("Quoted", "Cotizada") : statusLabel(status))}</span>
+              <span class="status-pill ${statusTone(status)}" data-lane-lifecycle-status data-lane-lifecycle-token="${escapeAttribute(rowToken)}" title="${escapeAttribute(laneStatusDescription(status))}">${escapeHtml(statusLabel(status))}</span>
             </button>
           `;
         }).join("") || `<p class="bid-board-note">${escapeHtml(dualText("No invited lanes are available for quoting.", "No hay rutas invitadas disponibles para cotizar."))}</p>`}
@@ -4150,10 +4246,13 @@ function renderBidToolsLaneSwitcher(carrierBook = {}, invitation = {}) {
 
 function renderSelectedLaneWorkspace(lane = {}, invitation = {}, _selectedLaneDetails = [], _isBookView = false, carrierBook = {}) {
   const packagePayload = masterPackageForCarrier(carrierBook, invitation);
-  const status = String(invitation.invitation_status || "").toLowerCase();
+  const currentRow = allBookRows(carrierBook).find((row) => String(row.invitation_token || "") === String(invitation.invitation_token || ""));
+  const status = currentRow
+    ? bookStatus(currentRow, packagePayload)
+    : canonicalLaneStatus({ participation_status: invitation.invitation_status, is_invited: true });
   return `
     <section class="bid-tools-selected-route">
-      ${["declined", "awarded", "backup", "not_awarded"].includes(status)
+      ${["declined", "rejected", "awarded", "backup", "not_awarded"].includes(status)
         ? `<p class="bid-board-note">${escapeHtml(dualText("This route is no longer available for a new offer.", "Esta ruta ya no esta disponible para una nueva oferta."))}</p>`
         : renderLaneFitChecklist(lane, invitation, packagePayload)}
     </section>
@@ -4164,7 +4263,7 @@ function awardNextSteps(status, liveOutcome = {}) {
   if (status === "awarded") {
     return [
       "Confirm capacity and ETA if anything changes.",
-      liveOutcome.rateware_closeout_at ? "Rateware closeout is complete for this lane." : "Procurement is finalizing Rateware closeout.",
+      liveOutcome.rateware_closeout_at ? "The awarded cost is in procurement review." : "Procurement is preparing the awarded cost for review.",
       "Watch Bid Room Chat for execution, onboarding, or document follow-up."
     ];
   }
@@ -4232,15 +4331,17 @@ function renderCarrierBook(carrierBook = {}) {
   const carrier = carrierBook.carrier || {};
   const rows = filteredBookRows(carrierBook);
   const filterButtons = [
-    ["all", "All"],
-    ["invited", "Invited"],
-    ["open", "Open book"],
-    ["quoted", "Quoted"],
-    ["awarded", "Awarded"],
+    ["all", dualText("All", "Todas")],
+    ["invited", dualText("Invited", "Invitadas")],
+    ["agreed", dualText("Agreed", "De acuerdo")],
+    ["exception", dualText("Exception", "Excepcion")],
+    ["open", dualText("Open book", "Libro abierto")],
+    ["quoted", dualText("Quoted", "Cotizadas")],
+    ["awarded", dualText("Awarded", "Adjudicadas")],
     ["backup", "Backup"],
-    ["not_awarded", "Not awarded"],
-    ["declined", "Declined"],
-    ["withdrawn", "Withdrawn"]
+    ["not_awarded", dualText("Not awarded", "No adjudicadas")],
+    ["rejected", dualText("Rejected", "Rechazadas")],
+    ["withdrawn", dualText("Withdrawn", "Retiradas")]
   ];
   book.innerHTML = `
     <div class="bid-room-section-heading">
@@ -4325,9 +4426,9 @@ function renderAwardOutcome(invitation = {}, carrierBook = {}, liveBoard = {}) {
         <small>${escapeHtml(summary.backup || 0)} backup | ${escapeHtml(summary.not_awarded || 0)} not awarded</small>
       </article>
       <article>
-        <span>Rateware closeout</span>
-        <strong>${escapeHtml(liveOutcome.rateware_closeout_at ? "Created" : status === "awarded" ? "Pending" : "-")}</strong>
-        <small>${escapeHtml(liveOutcome.rateware_closeout_at ? new Date(liveOutcome.rateware_closeout_at).toLocaleString() : "Procurement controls final Rateware insert.")}</small>
+        <span>Rate review</span>
+        <strong>${escapeHtml(liveOutcome.rateware_closeout_at ? "In review" : status === "awarded" ? "Pending" : "-")}</strong>
+        <small>${escapeHtml(liveOutcome.rateware_closeout_at ? new Date(liveOutcome.rateware_closeout_at).toLocaleString() : "Procurement approves production rates after review.")}</small>
       </article>
     </div>
     <div class="carrier-award-next">
@@ -4353,6 +4454,7 @@ function renderAwardOutcome(invitation = {}, carrierBook = {}, liveBoard = {}) {
 function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
   lastInvitation = invitation;
   pendingBidTemplateRows = [];
+  pendingBidTemplateCoverage = null;
   activePrivateWorkspace = readPrivateWorkspace();
   const event = invitation.rfx_events || {};
   const lane = invitation.rfx_lanes || {};
@@ -4420,21 +4522,17 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
     </div>
 
     <nav class="bid-private-workspace-tabs" aria-label="Private Bid Room workspaces" role="tablist">
-      <button type="button" role="tab" data-private-workspace-tab="master" aria-selected="true">
-        <strong>1. RFX Master Package</strong>
-        <small>Business context and invited lanes</small>
+      <button type="button" role="tab" data-private-workspace-tab="master" aria-selected="true" title="${escapeAttribute(dualText("Business context, invited lanes and batch XLSX.", "Contexto del negocio, rutas invitadas y XLSX masivo."))}" aria-label="${escapeAttribute(dualText("Workspace 1: RFx Package", "Workspace 1: Paquete RFx"))}">
+        <strong>${escapeHtml(dualText("1. Package", "1. Paquete"))}</strong>
       </button>
-      <button type="button" role="tab" data-private-workspace-tab="bids" aria-selected="false" tabindex="-1">
-        <strong>2. Bid tools</strong>
-        <small>Route fit, live capacity and offers</small>
+      <button type="button" role="tab" data-private-workspace-tab="bids" aria-selected="false" tabindex="-1" title="${escapeAttribute(dualText("Route fit, carrier rate, alternative offers and live capacity.", "Fit por ruta, tarifa carrier, alternativas y capacidad en vivo."))}" aria-label="${escapeAttribute(dualText("Workspace 2: Bid tools", "Workspace 2: Pujas"))}">
+        <strong>${escapeHtml(dualText("2. Bid tools", "2. Pujas"))}</strong>
       </button>
-      <button type="button" role="tab" data-private-workspace-tab="award" aria-selected="false" tabindex="-1">
-        <strong>3. Award Outcome</strong>
-        <small>Live Bid Room and offer history</small>
+      <button type="button" role="tab" data-private-workspace-tab="award" aria-selected="false" tabindex="-1" title="${escapeAttribute(dualText("Live ranking, award outcome and offer revision history.", "Ranking en vivo, resultado y versiones de oferta."))}" aria-label="${escapeAttribute(dualText("Workspace 3: Award outcome", "Workspace 3: Resultado"))}">
+        <strong>${escapeHtml(dualText("3. Outcome", "3. Resultado"))}</strong>
       </button>
-      <button type="button" role="tab" data-private-workspace-tab="book" aria-selected="false" tabindex="-1">
-        <strong>4. Private Business Book</strong>
-        <small>Lane access, bids and closeout status</small>
+      <button type="button" role="tab" data-private-workspace-tab="book" aria-selected="false" tabindex="-1" title="${escapeAttribute(dualText("All invited lane access, submitted bids and closeout status.", "Todos los accesos de ruta, ofertas enviadas y estatus de cierre."))}" aria-label="${escapeAttribute(dualText("Workspace 4: Private Business Book", "Workspace 4: Libro privado"))}">
+        <strong>${escapeHtml(dualText("4. Book", "4. Libro"))}</strong>
       </button>
     </nav>
 
@@ -4879,6 +4977,7 @@ document.addEventListener("click", async (event) => {
 
   const quickBidPanelButton = event.target.closest("[data-toggle-quick-bid-panel]");
   if (quickBidPanelButton) {
+    quickBidPanelButton.closest(".quick-bid-more-actions")?.removeAttribute("open");
     const row = quickBidPanelButton.closest("[data-quick-bid-row]");
     if (row) toggleQuickBidPanel(row, quickBidPanelButton.dataset.toggleQuickBidPanel || "");
     return;
@@ -4895,9 +4994,9 @@ document.addEventListener("click", async (event) => {
   if (openQuickLaneFitButton) {
     const fit = card.querySelector("#carrier-lane-fit");
     if (fit) {
-      fit.open = true;
+      fit.open = !fit.open;
       fit.classList.add("is-focused");
-      fit.scrollIntoView({ behavior: "smooth", block: "start" });
+      openQuickLaneFitButton.setAttribute("aria-expanded", String(fit.open));
       window.setTimeout(() => fit.classList.remove("is-focused"), 1800);
     }
     return;
@@ -4905,6 +5004,7 @@ document.addEventListener("click", async (event) => {
 
   const quickBidWithdrawButton = event.target.closest("[data-withdraw-quick-bid]");
   if (quickBidWithdrawButton) {
+    quickBidWithdrawButton.closest(".quick-bid-more-actions")?.removeAttribute("open");
     const row = quickBidWithdrawButton.closest("[data-quick-bid-row]");
     if (row) await updateBidParticipation("withdraw_bid", quickBidWithdrawButton, { rowElement: row });
     return;
@@ -4912,6 +5012,7 @@ document.addEventListener("click", async (event) => {
 
   const quickBidDeclineButton = event.target.closest("[data-decline-quick-invitation]");
   if (quickBidDeclineButton) {
+    quickBidDeclineButton.closest(".quick-bid-more-actions")?.removeAttribute("open");
     const row = quickBidDeclineButton.closest("[data-quick-bid-row]");
     if (row) await updateBidParticipation("decline_invitation", quickBidDeclineButton, { rowElement: row });
     return;
@@ -5194,10 +5295,13 @@ card.addEventListener("change", async (event) => {
       status.dataset.tone = "neutral";
     }
     try {
-      pendingBidTemplateRows = await parseBidTemplateFile(file);
+      const parsedTemplate = await parseBidTemplateFile(file, lastCarrierBook || {}, lastInvitation || {});
+      pendingBidTemplateRows = parsedTemplate.rows;
+      pendingBidTemplateCoverage = parsedTemplate.coverage;
       renderBidTemplatePreview();
     } catch (error) {
       pendingBidTemplateRows = [];
+      pendingBidTemplateCoverage = null;
       renderBidTemplatePreview();
       if (status) {
         status.textContent = humanizeError(error);

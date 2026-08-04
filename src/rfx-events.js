@@ -1078,7 +1078,7 @@ function eventLifecycleRiskLines(summary = eventLifecycleRiskSummary()) {
     `${formatNumber(summary.participants)} participant row(s)`,
     `${formatNumber(summary.bids)} bid(s)`,
     `${formatNumber(summary.awards)} award decision(s)`,
-    `${formatNumber(summary.ratewareRows)} Rateware closeout row(s)`,
+    `${formatNumber(summary.ratewareRows)} rate review row(s)`,
     `${formatNumber(summary.sentMessages)} sent email(s)`
   ];
 }
@@ -4363,7 +4363,7 @@ function awardPreflightIssues(action = "closeout") {
     });
   }
   if (action === "closeout" && !snapshot.pendingCloseout.length) {
-    issues.push({ key: "closeout", label: "No Rateware closeout pending", detail: "Primary awards already have Rateware rows or no primary awards are available." });
+    issues.push({ key: "closeout", label: "No rate review pending", detail: "Primary awards already have linked Staging rows or no primary awards are available." });
   }
   if (action === "send_notices" && !snapshot.sendable.length) {
     issues.push({
@@ -4411,7 +4411,7 @@ function renderAwardReadiness() {
     <div class="rfx-award-readiness-grid">
       <span data-tone="${decisionTone}"><b>${formatNumber(awardedCount)} / ${formatNumber(lanesCount)}</b> lanes awarded</span>
       <span data-tone="${riskTone}"><b>${formatNumber(snapshot.riskFlags)}</b> top-choice risk flag(s)</span>
-      <span data-tone="${closeoutTone}"><b>${formatNumber(snapshot.pendingCloseout.length)}</b> Rateware closeout pending</span>
+      <span data-tone="${closeoutTone}"><b>${formatNumber(snapshot.pendingCloseout.length)}</b> rate review pending</span>
       <span data-tone="${noticesTone}"><b>${formatNumber(snapshot.sendable.length)}</b> email notice(s) ready</span>
     </div>
     ${snapshot.weakRecommended.length ? `<p>${formatNumber(snapshot.weakRecommended.length)} lane(s) have weak recommended scores. Review before applying awards in bulk.</p>` : ""}
@@ -4469,8 +4469,8 @@ function updateAwardMetrics() {
     const pendingCloseout = primary.filter((item) => !item.rate_staging_id).length;
     rfxCloseoutAwardsButton.disabled = awardMutationRunning || !pendingCloseout || Boolean(awardPreflightIssues("closeout").length);
     rfxCloseoutAwardsButton.textContent = pendingCloseout
-      ? `Approve ${formatNumber(pendingCloseout)} Rateware rate${pendingCloseout === 1 ? "" : "s"}`
-      : "Approve Rateware rates";
+      ? `Send ${formatNumber(pendingCloseout)} rate${pendingCloseout === 1 ? "" : "s"} to review`
+      : "Send to Review Queue";
   }
   renderAwardReadiness();
   updateAwardNoticeControls();
@@ -9262,24 +9262,24 @@ async function closeoutSelectedAwardsToRateware() {
     .flatMap((lane) => activeInvitations(lane))
     .filter((invitation) => invitation.award_role === "primary" && !invitation.rate_staging_id);
   if (!pending.length) {
-    setStatus(rfxAwardStatus, "There are no primary awards pending Rateware approval.", "neutral");
+    setStatus(rfxAwardStatus, "There are no primary awards pending rate review.", "neutral");
     return;
   }
-  if (!window.confirm(`Approve ${pending.length} awarded rate(s) in Rateware? Existing bid staging rows will be approved; only missing rows will be created.`)) return;
+  if (!window.confirm(`Send ${pending.length} awarded rate(s) to Review Queue? Existing Staging history will be reused and only missing rows will be created.`)) return;
   const eventId = selectedEventId;
   awardMutationRunning = true;
   if (rfxCloseoutAwardsButton) rfxCloseoutAwardsButton.disabled = true;
-  setStatus(rfxAwardStatus, "Approving awarded rates in Rateware...");
+  setStatus(rfxAwardStatus, "Preparing awarded rates for Review Queue...");
   try {
-    const result = await closeoutAwardedRfxToRateware(eventId, { target_status: "approved" });
+    const result = await closeoutAwardedRfxToRateware(eventId, { target_status: "pending_review" });
     if (selectedEventId !== eventId) return;
     await loadEvents({ force: true });
     if (selectedEventId !== eventId) return;
     activateWorkbenchView("award");
     setStatus(
       rfxAwardStatus,
-      `${formatNumber(result.linked || result.approved_existing || 0)} existing bid row(s) approved, ${formatNumber(result.inserted || 0)} new row(s) created. ${formatNumber(result.skipped || 0)} skipped.`,
-      result.inserted || result.linked || result.approved_existing ? "success" : "neutral"
+      `${formatNumber(result.queued_for_review || 0)} rate(s) ready in Review Queue; ${formatNumber(result.preserved_approved || 0)} previously approved row(s) preserved.`,
+      result.queued_for_review || result.preserved_approved ? "success" : "neutral"
     );
   } catch (error) {
     if (selectedEventId === eventId) {

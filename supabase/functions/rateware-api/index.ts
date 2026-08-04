@@ -8426,6 +8426,132 @@ async function setRfxBidRateHistoryOutcome(
   return result.data || null;
 }
 
+type RfxFinalBidOutcome = "awarded" | "backup" | "not_awarded";
+
+function rfxFinalBidOutcome(invitation: Record<string, unknown>): RfxFinalBidOutcome {
+  const role = cleanText(invitation.award_role)?.toLowerCase();
+  if (role === "primary") return "awarded";
+  if (role === "backup") return "backup";
+  return "not_awarded";
+}
+
+async function rfxCloseoutDecisionSnapshot(
+  supabase: RatewareSupabaseClient,
+  user: { owner_email: string | null },
+  eventId: unknown
+) {
+  const event = await requireOwnedRfxEvent(supabase, user, eventId);
+  const resolvedEventId = cleanText(event.id) || "";
+  const [lanes, invitationRows] = await Promise.all([
+    fetchAllRfxLaneRows(supabase, resolvedEventId, "id,lane_number,origin,destination"),
+    fetchAllRfxLaneVendorRows(
+      supabase,
+      resolvedEventId,
+      "id,rfx_lane_id,bid_rate,bid_rate_staging_id,rate_staging_id,award_role,invitation_status,created_at"
+    )
+  ]);
+  const invitations = invitationRows.filter((row) => cleanText(row.invitation_status)?.toLowerCase() !== "archived");
+  const bidLaneIds = new Set(
+    invitations
+      .filter((row) => cleanNumber(row.bid_rate) !== null)
+      .map((row) => cleanText(row.rfx_lane_id))
+      .filter(Boolean) as string[]
+  );
+  const primaryLaneIds = new Set(
+    invitations
+      .filter((row) => cleanNumber(row.bid_rate) !== null && cleanText(row.award_role)?.toLowerCase() === "primary")
+      .map((row) => cleanText(row.rfx_lane_id))
+      .filter(Boolean) as string[]
+  );
+  const missingPrimary = lanes.filter((lane) => {
+    const laneId = cleanText(lane.id);
+    return Boolean(laneId && bidLaneIds.has(laneId) && !primaryLaneIds.has(laneId));
+  });
+
+  return {
+    event,
+    lanes,
+    invitations,
+    bid_lane_count: bidLaneIds.size,
+    primary_lane_count: primaryLaneIds.size,
+    missing_primary: missingPrimary
+  };
+}
+
+async function requireCompleteRfxAwardDecisions(
+  supabase: RatewareSupabaseClient,
+  user: { owner_email: string | null },
+  eventId: unknown,
+  options: { requireBids?: boolean } = {}
+) {
+  const snapshot = await rfxCloseoutDecisionSnapshot(supabase, user, eventId);
+  if (options.requireBids && !snapshot.bid_lane_count) {
+    throw new Error("At least one carrier bid is required before Rateware closeout.");
+  }
+  if (snapshot.missing_primary.length) {
+    const laneLabels = snapshot.missing_primary.slice(0, 5).map((lane) => {
+      const route = [cleanText(lane.origin), cleanText(lane.destination)].filter(Boolean).join(" -> ");
+      return `#${cleanText(lane.lane_number) || "?"}${route ? ` ${route}` : ""}`;
+    });
+    const more = snapshot.missing_primary.length > laneLabels.length
+      ? ` and ${snapshot.missing_primary.length - laneLabels.length} more`
+      : "";
+    throw new Error(`Choose a primary award for every lane with bids before closing: ${laneLabels.join(", ")}${more}.`);
+  }
+  return snapshot;
+}
+
+async function finalizeRfxBidOutcomes(
+  supabase: RatewareSupabaseClient,
+  user: { owner_email: string | null },
+  eventId: unknown,
+  invitations?: Record<string, unknown>[]
+) {
+  let rows = invitations;
+  if (!rows) {
+    const result = await supabase
+      .from("rfx_lane_vendors")
+      .select("id,bid_rate,bid_rate_staging_id,award_role,invitation_status")
+      .eq("rfx_event_id", cleanText(eventId))
+      .neq("invitation_status", "archived");
+    if (result.error) throw result.error;
+    rows = (result.data || []) as Record<string, unknown>[];
+  }
+
+  const bidRows = (rows || []).filter((row) => cleanNumber(row.bid_rate) !== null);
+  const counts: Record<RfxFinalBidOutcome, number> = { awarded: 0, backup: 0, not_awarded: 0 };
+  const stagingIds: Record<RfxFinalBidOutcome, string[]> = { awarded: [], backup: [], not_awarded: [] };
+  for (const row of bidRows) {
+    const outcome = rfxFinalBidOutcome(row);
+    counts[outcome] += 1;
+    const stagingId = cleanText(row.bid_rate_staging_id);
+    if (stagingId) stagingIds[outcome].push(stagingId);
+  }
+
+  const now = new Date().toISOString();
+  let updated = 0;
+  for (const outcome of Object.keys(stagingIds) as RfxFinalBidOutcome[]) {
+    for (const ids of chunkValues([...new Set(stagingIds[outcome])], 500)) {
+      if (!ids.length) continue;
+      const result = await supabase
+        .from("rate_staging")
+        .update({ rfx_bid_outcome: outcome, updated_at: now })
+        .in("id", ids)
+        .eq("owner_email", user.owner_email)
+        .select("id");
+      if (result.error) throw result.error;
+      updated += result.data?.length || 0;
+    }
+  }
+
+  return {
+    bid_count: bidRows.length,
+    updated,
+    missing_staging: bidRows.length - Object.values(stagingIds).reduce((sum, ids) => sum + ids.length, 0),
+    counts
+  };
+}
+
 async function archiveOperatorRejectedBidRateStaging(
   supabase: RatewareSupabaseClient,
   invitation: Record<string, unknown>,
@@ -8604,18 +8730,6 @@ async function awardRfxLaneVendor(
 
   await setRfxBidRateHistoryOutcome(supabase, invitation, role === "primary" ? "awarded" : "backup", now);
 
-  if (role === "primary") {
-    const eventId = cleanText(invitation.rfx_event_id);
-    if (eventId) {
-      const eventUpdate = await supabase
-        .from("rfx_events")
-        .update({ status: "awarded", updated_at: now })
-        .eq("id", eventId)
-        .eq("owner_email", user.owner_email);
-      if (eventUpdate.error) throw eventUpdate.error;
-    }
-  }
-
   return { row: result.data, before: invitation, award_role: role };
 }
 
@@ -8739,37 +8853,59 @@ async function closeoutAwardedRfxToRateware(
   input: Record<string, unknown>
 ) {
   const event = await requireOwnedRfxEvent(supabase, user, input.event_id || input.rfx_event_id || input.id);
-  const targetStatus = cleanText(input.target_status) === "pending_review" ? "pending_review" : "approved";
+  const decisionSnapshot = await requireCompleteRfxAwardDecisions(supabase, user, event.id, { requireBids: true });
+  const finalizedOutcomes = await finalizeRfxBidOutcomes(supabase, user, event.id, decisionSnapshot.invitations);
+  const historicalBidStagingIds = decisionSnapshot.invitations
+    .filter((row) => cleanNumber(row.bid_rate) !== null)
+    .map((row) => cleanText(row.bid_rate_staging_id))
+    .filter(Boolean) as string[];
+  // Award is a commercial decision. Production approval remains a separate
+  // human action in Review Queue, regardless of the client request payload.
+  const targetStatus = "pending_review";
   const now = new Date().toISOString();
-  const awardsResult = await supabase
-    .from("rfx_lane_vendors")
-    .select("*, rfx_lanes(*), vendors(id,vendor_name,legal_name,domain,primary_email,base_stage,status)")
-    .eq("rfx_event_id", event.id)
-    .eq("award_role", "primary")
-    .neq("invitation_status", "archived")
-    .order("awarded_at", { ascending: true });
-  if (awardsResult.error) throw awardsResult.error;
-
-  const awards = awardsResult.data || [];
+  const awardRows = await fetchAllRfxLaneVendorRows(
+    supabase,
+    cleanText(event.id) || "",
+    "*, rfx_lanes(*), vendors(id,vendor_name,legal_name,domain,primary_email,base_stage,status)"
+  );
+  const awards = awardRows
+    .filter((row) => cleanText(row.award_role)?.toLowerCase() === "primary")
+    .filter((row) => cleanText(row.invitation_status)?.toLowerCase() !== "archived")
+    .sort((left, right) => String(left.awarded_at || "").localeCompare(String(right.awarded_at || "")));
   const pendingAwards = awards.filter((row) => cleanNumber(row.bid_rate) !== null && !row.rate_staging_id);
-  const skipped = awards.length - pendingAwards.length;
+  const alreadyStaged = awards.length - pendingAwards.length;
   const linkedRows: Record<string, unknown>[] = [];
   const fallbackAwards: Record<string, unknown>[] = [];
+  let preservedApproved = 0;
 
   // Carrier bids already created a historical rate_staging row when they were
-  // submitted. Approve and link that row instead of creating a duplicate
-  // closeout row. Only fall back to a new row when the historical link is no
-  // longer resolvable inside this workspace.
+  // submitted. Link that row to closeout and leave it in Review Queue instead
+  // of creating a duplicate. Only fall back to a new row when the historical
+  // link is no longer resolvable inside this workspace.
   for (const award of pendingAwards) {
     const bidStagingId = cleanText(award.bid_rate_staging_id);
     if (!bidStagingId) {
       fallbackAwards.push(award);
       continue;
     }
+    const current = await supabase
+      .from("rate_staging")
+      .select("id,row_id,status")
+      .eq("id", bidStagingId)
+      .eq("owner_email", user.owner_email)
+      .maybeSingle();
+    if (current.error) throw current.error;
+    if (!current.data) {
+      fallbackAwards.push(award);
+      continue;
+    }
+    const currentStatus = cleanText(current.data.status)?.toLowerCase();
+    const nextStatus = currentStatus === "approved" ? "approved" : targetStatus;
+    if (nextStatus === "approved") preservedApproved += 1;
     const existing = await supabase
       .from("rate_staging")
       .update({
-        status: targetStatus,
+        status: nextStatus,
         source_bid_status: "awarded",
         rfx_bid_outcome: "awarded",
         updated_at: now
@@ -8777,12 +8913,8 @@ async function closeoutAwardedRfxToRateware(
       .eq("id", bidStagingId)
       .eq("owner_email", user.owner_email)
       .select("id,row_id,status")
-      .maybeSingle();
+      .single();
     if (existing.error) throw existing.error;
-    if (!existing.data) {
-      fallbackAwards.push(award);
-      continue;
-    }
     const link = await supabase
       .from("rfx_lane_vendors")
       .update({ rate_staging_id: bidStagingId, rateware_closeout_at: now, updated_at: now })
@@ -8793,7 +8925,7 @@ async function closeoutAwardedRfxToRateware(
       ...existing.data,
       rfx_lane_vendor_id: award.id,
       bid_rate_staging_id: bidStagingId,
-      closeout_mode: "approved_existing_bid_staging"
+      closeout_mode: nextStatus === "approved" ? "preserved_approved_bid_staging" : "linked_existing_bid_staging_for_review"
     });
   }
 
@@ -8807,13 +8939,26 @@ async function closeoutAwardedRfxToRateware(
     return {
       inserted: 0,
       linked: linkedRows.length,
-      approved_existing: linkedRows.length,
-      skipped,
+      queued_for_review: linkedRows.filter((row) => cleanText(row.status)?.toLowerCase() === "pending_review").length,
+      approved_existing: preservedApproved,
+      preserved_approved: preservedApproved,
+      already_staged: alreadyStaged,
+      skipped: alreadyStaged,
       rows: [],
       linked_rows: linkedRows,
+      existing_rate_staging_ids: [...new Set([
+        ...historicalBidStagingIds,
+        ...awards.map((row) => cleanText(row.rate_staging_id)).filter(Boolean),
+        ...linkedRows.map((row) => cleanText(row.id)).filter(Boolean)
+      ])],
       raw_upload_id: null,
       job_id: null,
-      target_status: targetStatus
+      target_status: targetStatus,
+      decisions: {
+        bid_lanes: decisionSnapshot.bid_lane_count,
+        primary_lanes: decisionSnapshot.primary_lane_count
+      },
+      outcomes: finalizedOutcomes
     };
   }
 
@@ -8844,7 +8989,7 @@ async function closeoutAwardedRfxToRateware(
         target_status: targetStatus,
         awarded_rows: fallbackAwards.length,
         linked_existing_rows: linkedRows.length,
-        skipped_rows: skipped
+        skipped_rows: alreadyStaged
       },
       owner_email: user.owner_email
     })
@@ -8930,9 +9075,15 @@ async function closeoutAwardedRfxToRateware(
     if (insert.error) throw insert.error;
     insertedRows.push(insert.data);
 
+    const invitationPatch: Record<string, unknown> = {
+      rate_staging_id: insert.data.id,
+      rateware_closeout_at: now,
+      updated_at: now
+    };
+    if (!cleanText(award.bid_rate_staging_id)) invitationPatch.bid_rate_staging_id = insert.data.id;
     const link = await supabase
       .from("rfx_lane_vendors")
-      .update({ rate_staging_id: insert.data.id, rateware_closeout_at: now, updated_at: now })
+      .update(invitationPatch)
       .eq("id", award.id);
     if (link.error) throw link.error;
   }
@@ -8953,13 +9104,27 @@ async function closeoutAwardedRfxToRateware(
   return {
     inserted: insertedRows.length,
     linked: linkedRows.length,
-    approved_existing: linkedRows.length,
-    skipped,
+    queued_for_review: insertedRows.length + linkedRows.filter((row) => cleanText(row.status)?.toLowerCase() === "pending_review").length,
+    approved_existing: preservedApproved,
+    preserved_approved: preservedApproved,
+    already_staged: alreadyStaged,
+    skipped: alreadyStaged,
     rows: insertedRows,
     linked_rows: linkedRows,
+    existing_rate_staging_ids: [...new Set([
+      ...historicalBidStagingIds,
+      ...awards.map((row) => cleanText(row.rate_staging_id)).filter(Boolean),
+      ...linkedRows.map((row) => cleanText(row.id)).filter(Boolean),
+      ...insertedRows.map((row) => cleanText(row.id)).filter(Boolean)
+    ])],
     raw_upload_id: rawUpload.data.id,
     job_id: job.data.id,
-    target_status: targetStatus
+    target_status: targetStatus,
+    decisions: {
+      bid_lanes: decisionSnapshot.bid_lane_count,
+      primary_lanes: decisionSnapshot.primary_lane_count
+    },
+    outcomes: finalizedOutcomes
   };
 }
 
@@ -9191,17 +9356,18 @@ async function generateRfxAwardNotices(
   const senderEmail = (cleanText(input.sender_email) || GMAIL_ALLOWED_SENDER).toLowerCase();
   const senderLabel = cleanText(input.sender_label) || senderEmail;
   const campaign = await ensureAwardNoticeCampaign(supabase, user, event, senderEmail, senderLabel);
-  const invitationsResult = await supabase
-    .from("rfx_lane_vendors")
-    .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,contact_name), rfx_lanes(*)")
-    .eq("rfx_event_id", event.id)
-    .neq("invitation_status", "archived")
-    .order("updated_at", { ascending: false });
-  if (invitationsResult.error) throw invitationsResult.error;
+  const invitationRows = await fetchAllRfxLaneVendorRows(
+    supabase,
+    cleanText(event.id) || "",
+    "*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,contact_name), rfx_lanes(*)"
+  );
+  const activeInvitationRows = invitationRows
+    .filter((row) => cleanText(row.invitation_status)?.toLowerCase() !== "archived")
+    .sort((left, right) => String(right.updated_at || "").localeCompare(String(left.updated_at || "")));
 
   const rows = new Map<string, Record<string, unknown>[]>();
   const skipped: Record<string, unknown>[] = [];
-  for (const invitation of invitationsResult.data || []) {
+  for (const invitation of activeInvitationRows) {
     const status = cleanText(invitation.invitation_status)?.toLowerCase() || "";
     const hasDecision = Boolean(cleanText(invitation.award_role));
     const hasParticipation = cleanNumber(invitation.bid_rate) !== null || ["invited", "viewed", "responded", "quoted", "bid_submitted", "awarded"].includes(status);
@@ -9223,7 +9389,30 @@ async function generateRfxAwardNotices(
   }
 
   // Award notice contract: channel: "email" and notice_type: "rfx_award_closeout".
+  // A close retry may refresh an editable draft, but it must never reset a
+  // queued, sent, delivered, replied, failed, bounced or archived message.
+  const existingMessages = (await fetchAllOutreachMessagesByCampaignIds(
+    supabase,
+    user.owner_email,
+    [cleanText(campaign.id) || ""],
+    "*, vendors(vendor_name,domain,primary_email,whatsapp_phone), outreach_campaigns(name), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,award_role,bid_rate,currency,responded_at)"
+  ))
+    .filter((message) => cleanText(message.channel)?.toLowerCase() === "email")
+    .sort((left, right) => String(right.updated_at || "").localeCompare(String(left.updated_at || "")));
+  const existingByContactKey = new Map<string, Record<string, unknown>>();
+  for (const message of existingMessages) {
+    const key = cleanText(message.contact_key) || outreachDedupeContactKey({
+      vendor_id: message.vendor_id,
+      recipient_email: message.recipient_email,
+      normalized_recipient_phone: null
+    });
+    if (key && !existingByContactKey.has(key)) existingByContactKey.set(key, message);
+  }
+
   const messageRows: Record<string, unknown>[] = [];
+  const preservedRows: Record<string, unknown>[] = [];
+  const createdContactKeys = new Set<string>();
+  let refreshed = 0;
   const now = new Date().toISOString();
   for (const invitationGroup of rows.values()) {
     const sortedGroup = [...invitationGroup].sort((a, b) => {
@@ -9260,7 +9449,7 @@ async function generateRfxAwardNotices(
     ].filter(Boolean).join("\n");
     const invitationIds = sortedGroup.map((item) => item.id).filter(Boolean);
     const laneIds = sortedGroup.map((item) => item.rfx_lane_id).filter(Boolean);
-    messageRows.push(withOwner({
+    const messageRow = withOwner({
       campaign_id: campaign.id,
       template_id: null,
       rfx_event_id: event.id,
@@ -9298,18 +9487,37 @@ async function generateRfxAwardNotices(
         sender_email: senderEmail,
         sender_label: senderLabel
       }
-    }, user));
+    }, user);
+    const contactKey = cleanText(messageRow.contact_key) || "";
+    const existingMessage = contactKey ? existingByContactKey.get(contactKey) : null;
+    const existingStatus = cleanText(existingMessage?.status)?.toLowerCase();
+    if (existingMessage && existingStatus && existingStatus !== "drafted") {
+      preservedRows.push(existingMessage);
+      continue;
+    }
+    if (existingMessage) {
+      messageRow.rfx_lane_vendor_id = existingMessage.rfx_lane_vendor_id || messageRow.rfx_lane_vendor_id;
+      messageRow.contact_key = existingMessage.contact_key || messageRow.contact_key;
+      refreshed += 1;
+    } else if (contactKey) {
+      createdContactKeys.add(contactKey);
+    }
+    messageRows.push(messageRow);
   }
 
-  if (!messageRows.length) return { generated: 0, rows: [], skipped, campaign_id: campaign.id };
+  let upsertedRows: Record<string, unknown>[] = [];
+  if (messageRows.length) {
+    const result = await supabase
+      .from("outreach_messages")
+      .upsert(messageRows, { onConflict: "campaign_id,rfx_lane_vendor_id,channel,contact_key" })
+      .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone), outreach_campaigns(name), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,award_role,bid_rate,currency,responded_at)");
+    if (result.error) throw result.error;
+    upsertedRows = (result.data || []) as Record<string, unknown>[];
+  }
 
-  const result = await supabase
-    .from("outreach_messages")
-    .upsert(messageRows, { onConflict: "campaign_id,rfx_lane_vendor_id,channel,contact_key" })
-    .select("*, vendors(vendor_name,domain,primary_email,whatsapp_phone), outreach_campaigns(name), rfx_events(rfx_id,name), rfx_lanes(origin,destination,equipment,trailer,operation,service), rfx_lane_vendors(id,invitation_status,award_role,bid_rate,currency,responded_at)");
-  if (result.error) throw result.error;
-
-  const historyRows = (result.data || []).map((message) => withOwner({
+  const historyRows = upsertedRows
+    .filter((message) => createdContactKeys.has(cleanText(message.contact_key) || ""))
+    .map((message) => withOwner({
     outreach_message_id: message.id,
     campaign_id: campaign.id,
     vendor_id: message.vendor_id,
@@ -9325,7 +9533,7 @@ async function generateRfxAwardNotices(
       channel: "email",
       award_summary: objectRecord(message.metadata).award_summary || null
     }
-  }, user));
+    }, user));
   if (historyRows.length) {
     const history = await supabase.from("contact_history").insert(historyRows);
     if (history.error) throw history.error;
@@ -9345,7 +9553,16 @@ async function generateRfxAwardNotices(
     .eq("owner_email", user.owner_email);
   if (campaignUpdate.error) throw campaignUpdate.error;
 
-  return { generated: result.data?.length || 0, rows: result.data || [], skipped, campaign_id: campaign.id, channel: "email" };
+  return {
+    generated: upsertedRows.length,
+    created: createdContactKeys.size,
+    refreshed,
+    preserved: preservedRows.length,
+    rows: [...upsertedRows, ...preservedRows],
+    skipped,
+    campaign_id: campaign.id,
+    channel: "email"
+  };
 }
 
 const BID_ROOM_CHAT_THREAD_TYPES = new Set(["event_group", "lane_group", "carrier_private"]);
@@ -25379,6 +25596,21 @@ Deno.serve(async (request) => {
       if (!eventId) return jsonResponse({ error: "RFx event id is required." }, 400);
       const eventPatch = objectRecord(body.patch || body.event);
       const patch = normalizeRfxEventPatch(eventPatch);
+      const closed = cleanText(patch.status)?.toLowerCase() === "closed";
+      let closeoutStaging = null;
+      let closeoutOutcomes = null;
+      if (closed) {
+        const decisionSnapshot = await requireCompleteRfxAwardDecisions(supabase, user, eventId);
+        if (decisionSnapshot.bid_lane_count) {
+          closeoutStaging = await closeoutAwardedRfxToRateware(supabase, user, {
+            event_id: eventId,
+            target_status: "pending_review"
+          });
+          closeoutOutcomes = closeoutStaging.outcomes;
+        } else {
+          closeoutOutcomes = await finalizeRfxBidOutcomes(supabase, user, eventId, decisionSnapshot.invitations);
+        }
+      }
       const result = await supabase
         .from("rfx_events")
         .update(patch)
@@ -25388,7 +25620,6 @@ Deno.serve(async (request) => {
         .single();
       if (result.error) throw result.error;
       const sync = await ensureRatebookForBidRoomEvent(supabase, user, result.data as Record<string, unknown>, eventPatch);
-      const closed = cleanText(patch.status)?.toLowerCase() === "closed";
       let closeoutNotices = null;
       let closeoutNoticeError = null;
       if (closed) {
@@ -25426,6 +25657,8 @@ Deno.serve(async (request) => {
       return jsonResponse({
         row: sync.event || result.data,
         ratebook_sync: sync,
+        closeout_staging: closeoutStaging,
+        closeout_outcomes: closeoutOutcomes,
         closeout_notices: closeoutNotices,
         closeout_notice_error: closeoutNoticeError
       });
@@ -26062,13 +26295,19 @@ Deno.serve(async (request) => {
         "rfx.award.closeout",
         "rfx_events",
         body.event_id || body.rfx_event_id || body.id,
-        `Created ${result.inserted} Rateware row(s) from RFx primary awards`,
+        `Queued ${result.queued_for_review || 0} RFx award rate(s) for human review`,
         {
           inserted: result.inserted,
+          linked: result.linked,
           skipped: result.skipped,
+          queued_for_review: result.queued_for_review,
+          preserved_approved: result.preserved_approved,
+          already_staged: result.already_staged,
           raw_upload_id: result.raw_upload_id,
           job_id: result.job_id,
-          target_status: result.target_status
+          target_status: result.target_status,
+          decisions: result.decisions,
+          outcomes: result.outcomes
         }
       );
       return jsonResponse(result);
@@ -26082,9 +26321,12 @@ Deno.serve(async (request) => {
         "rfx.award.notices.generate",
         "outreach_messages",
         result.campaign_id || null,
-        `Generated ${result.generated} RFx award notice draft(s)`,
+        `Prepared ${result.generated} RFx award notice(s) without replacing sent history`,
         {
           generated: result.generated,
+          created: result.created,
+          refreshed: result.refreshed,
+          preserved: result.preserved,
           skipped: result.skipped?.length || 0,
           campaign_id: result.campaign_id,
           rfx_event_id: body.event_id || body.rfx_event_id || body.id

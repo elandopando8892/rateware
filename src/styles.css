@@ -7099,6 +7099,21 @@ a {
   min-width: 0;
 }
 
+.lane-fit-autosave-state {
+  color: #62727c;
+  font-size: 0.61rem;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.lane-fit-autosave-state[data-tone="success"] {
+  color: #0d7156;
+}
+
+.lane-fit-autosave-state[data-tone="error"] {
+  color: #b42318;
+}
+
 .lane-fit-disclosure-trigger {
   color: #52626e;
   font-size: 0.65rem;
@@ -36585,5 +36600,242 @@ form[data-unsaved-guard][data-unsaved="true"] {
 
   .bid-room-page .rfx-award-ranking-heading > span {
     text-align: left;
+  }
+}
+
+/* Carrier portal Fleet Rocket-inspired polish: dense, task-first workspaces. */
+.bid-portal-shell {
+  gap: 8px;
+}
+
+.bid-portal-shell .private-workspace-section {
+  gap: 6px;
+}
+
+.bid-portal-shell .bid-private-workspace-tabs {
+  gap: 2px;
+  margin-bottom: 6px;
+  padding: 2px;
+  border-radius: 6px;
+}
+
+.bid-portal-shell .bid-private-workspace-tabs button {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  padding: 4px 8px;
+}
+
+.bid-portal-shell .portal-help {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  margin-left: 3px;
+  place-items: center;
+  border: 1px solid #aebbc8;
+  border-radius: 50%;
+  color: #486175;
+  font-size: 0.56rem;
+  font-weight: 800;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: help;
+}
+
+.bid-portal-shell .portal-help:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.bid-portal-shell .rfx-master-package-card {
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 8px;
+}
+
+.bid-portal-shell .master-package-header {
+  grid-template-columns: minmax(0, 1fr) 72px;
+  gap: 8px;
+  align-items: center;
+}
+
+.bid-portal-shell .master-package-header h3 {
+  margin: 1px 0 0;
+  font-size: 0.88rem;
+}
+
+.bid-portal-shell .master-package-header aside {
+  min-height: 42px;
+  padding: 4px 6px;
+}
+
+.bid-portal-shell .master-package-statline {
+  gap: 4px;
+}
+
+.bid-portal-shell .master-package-statline article {
+  min-height: 34px;
+  padding: 4px 7px;
+}
+
+.bid-portal-shell .master-package-statline article strong {
+  font-size: 0.8rem;
+}
+
+.bid-portal-shell .carrier-lane-switcher-master {
+  margin-bottom: 6px;
+  padding: 6px;
+}
+
+.bid-portal-shell .carrier-lane-book-table th,
+.bid-portal-shell .carrier-lane-book-table td {
+  height: 28px;
+  padding: 3px 5px;
+  vertical-align: middle;
+}
+
+.bid-portal-shell .carrier-lane-book-table th:nth-child(7) {
+  width: 104px;
+}
+
+.bid-portal-shell .lane-fit-indicator {
+  min-height: 20px;
+  padding: 1px 5px;
+}
+
+.bid-portal-shell .bid-tools-lane-switcher,
+.bid-portal-shell .bid-tools-selected-route,
+.bid-portal-shell .carrier-quick-bid-grid {
+  margin-bottom: 6px;
+}
+
+.bid-portal-shell .bid-tools-lane-switcher-bar {
+  min-height: 30px;
+  padding: 4px 7px;
+}
+
+.bid-portal-shell .bid-tools-lane-option {
+  min-height: 30px;
+  padding: 4px 7px;
+}
+
+.bid-portal-shell .lane-fit-disclosure > summary {
+  min-height: 32px;
+  padding: 4px 7px;
+}
+
+.bid-portal-shell .lane-fit-disclosure-body {
+  padding: 5px 7px;
+}
+
+.bid-portal-shell .segment-rubric {
+  gap: 4px;
+  padding: 4px 5px;
+}
+
+.bid-portal-shell .segment-rubric textarea {
+  min-height: 30px;
+}
+
+.bid-portal-shell .carrier-bid-template-tools {
+  margin: 4px 0;
+}
+
+.bid-portal-shell .carrier-bid-template-tools > summary {
+  min-height: 34px;
+  padding: 4px 8px;
+}
+
+.bid-portal-shell .carrier-bid-template-tools-body {
+  grid-template-columns: minmax(220px, 0.65fr) minmax(340px, 1fr);
+  gap: 8px;
+  padding: 6px 8px;
+}
+
+.bid-portal-shell .carrier-bid-template-scope,
+.bid-portal-shell .carrier-bid-template-tools .status-message {
+  margin: 0;
+  font-size: 0.63rem;
+}
+
+.bid-portal-shell .quick-bid-heading {
+  min-height: 30px;
+  margin-bottom: 4px;
+  padding: 4px 7px;
+}
+
+.bid-portal-shell .quick-bid-heading h3 {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.bid-portal-shell .quick-bid-table th,
+.bid-portal-shell .quick-bid-table td {
+  height: 30px;
+  padding: 3px 4px;
+  vertical-align: middle;
+}
+
+.bid-portal-shell .quick-bid-table input,
+.bid-portal-shell .quick-bid-table select {
+  min-height: 24px;
+  padding: 2px 4px;
+}
+
+.bid-portal-shell .quick-bid-actions {
+  display: flex;
+  min-width: max-content;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  gap: 3px;
+}
+
+.bid-portal-shell .quick-bid-more-actions {
+  position: relative;
+}
+
+.bid-portal-shell .quick-bid-more-actions > summary {
+  display: grid;
+  width: 27px;
+  min-height: 24px;
+  padding: 2px 5px;
+  place-items: center;
+  list-style: none;
+  cursor: pointer;
+}
+
+.bid-portal-shell .quick-bid-more-actions > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bid-portal-shell .quick-bid-more-actions-menu {
+  display: grid;
+  min-width: 128px;
+  gap: 3px;
+  margin-top: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+  box-shadow: 0 5px 14px rgba(21, 38, 52, 0.12);
+}
+
+.bid-portal-shell .quick-bid-more-actions-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  white-space: nowrap;
+}
+
+.bid-portal-shell .quick-bid-more-actions-menu .danger-text {
+  color: #a6251b;
+}
+
+@media (max-width: 760px) {
+  .bid-portal-shell .bid-private-workspace-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bid-portal-shell .carrier-bid-template-tools-body {
+    grid-template-columns: 1fr;
   }
 }

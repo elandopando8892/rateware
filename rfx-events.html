@@ -1252,8 +1252,8 @@
                   <span>Decide lanes</span>
                 </button>
                 <button type="button" role="tab" aria-selected="false" data-rfx-close-workspace-tab="rateware">
-                  <strong>Rateware closeout</strong>
-                  <span>Write approved rows</span>
+                  <strong>Rate review</strong>
+                  <span>Send to Review Queue</span>
                 </button>
                 <button type="button" role="tab" aria-selected="false" data-rfx-close-workspace-tab="notices">
                   <strong>Notices</strong>
@@ -1270,7 +1270,7 @@
                       <span title="Lanes with at least one carrier bid"><b id="rfx-award-lanes">0</b> lanes with bids</span>
                       <span title="Primary carrier decisions already assigned"><b id="rfx-award-primary">0</b> primary awards</span>
                       <span title="Backup carrier decisions already assigned"><b id="rfx-award-backup">0</b> backups</span>
-                      <span title="Approved Rateware rows created from awards"><b id="rfx-award-rateware">0</b> Rateware rows</span>
+                      <span title="Staging rows linked to final award decisions"><b id="rfx-award-rateware">0</b> review rows</span>
                     </div>
                     <div id="rfx-award-readiness" class="rfx-award-readiness">
                       Select a bid event to inspect closeout readiness.
@@ -1298,10 +1298,10 @@
               <section class="rfx-close-workspace-panel" data-rfx-close-workspace-panel="rateware" hidden>
                 <article class="bid-room-context-card rfx-close-utility-card">
                   <p class="eyebrow">Closeout</p>
-                  <h4>Approve awarded rates in Rateware</h4>
-                  <p>Approve the carrier bid already captured in staging. A new row is created only when the original bid staging link is unavailable.</p>
+                  <h4>Send awarded rates to Review Queue</h4>
+                  <p>Reuse each carrier bid already captured in Staging and create only missing fallback rows. Production still requires human approval.</p>
                   <div class="action-row">
-                    <button id="rfx-closeout-awards-to-rateware" type="button">Approve Rateware rates</button>
+                    <button id="rfx-closeout-awards-to-rateware" type="button">Send to Review Queue</button>
                     <button id="rfx-refresh-awards" class="secondary" type="button">Refresh</button>
                   </div>
                   <p id="rfx-award-status" class="status-message" role="status"></p>
