@@ -43,6 +43,9 @@ for (const action of ["shipper_relationship_pipeline", "shipper_commercial_work"
   assert.match(directoryApi, new RegExp(`body\\.action === "${action}"`), `${action} should use the lightweight endpoint`);
   assert.match(service, new RegExp(`callRatewareFunction\\(SHIPPER_DIRECTORY_FUNCTION, "${action}"`), `${action} should bypass the monolithic API`);
 }
+assert.match(directoryApi, /body\.action === "shipper_intelligence"/, "Shipper Intelligence should use the lightweight endpoint");
+assert.match(service, /callRatewareFunction\(SHIPPER_DIRECTORY_FUNCTION, "shipper_intelligence"/, "Shipper Intelligence should bypass the monolithic API");
+assert.match(directoryApi, /for \(let offset = 0; offset < DETAIL_MAX_ROWS; offset \+= DETAIL_PAGE_SIZE\)[\s\S]*\.range\(offset, offset \+ DETAIL_PAGE_SIZE - 1\)/, "Intelligence child reads should paginate instead of silently truncating at 1,000 rows");
 assert.match(directoryApi, /shipper_account_actions\(title,status,priority,due_date,created_at\)/, "The lightweight directory endpoint should preserve account action enrichment");
 assert.match(directoryApi, /\.eq\("owner_email", ownerEmail\)\.eq\("id", id\)\.single\(\)/, "Lightweight profile reads must remain workspace scoped");
 assert.match(directoryApi, /\.eq\("owner_email", ownerEmail\)\.eq\("shipper_id", shipperId\)/, "Lightweight child reads must remain Shipper scoped");

@@ -23,7 +23,7 @@ export async function fetchShipperActionQueue(filters = {}) {
 }
 
 export async function fetchShipperIntelligence(filters = {}) {
-  return await callRatewareApi("shipper_intelligence", filters);
+  return await callRatewareFunction(SHIPPER_DIRECTORY_FUNCTION, "shipper_intelligence", filters);
 }
 
 export async function fetchShipper(id) {

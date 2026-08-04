@@ -473,6 +473,191 @@ async function shipperActionQueue(
   return { rows, counts, focus, loaded: rows.length };
 }
 
+async function shipperIntelligence(
+  supabase: ReturnType<typeof getClient>,
+  ownerEmail: string | null,
+  body: Record<string, unknown>
+) {
+  const focus = cleanText(body.focus)?.toLowerCase() || "all";
+  if (!new Set(["all", "ready", "needs_contact", "needs_lane", "due_action", "at_risk"]).has(focus)) {
+    throw new Error("Unknown shipper intelligence focus.");
+  }
+  const limit = Math.min(Math.max(Number(body.limit) || 1000, 1), 1000);
+  const search = safeSearch(body.search).toLowerCase();
+  const shipperResult = await supabase.from("shippers")
+    .select("id,shipper_name,legal_name,domain,industry,status,relationship_stage,primary_contact_name,primary_contact_email,headquarters_city,headquarters_state,headquarters_country,updated_at", { count: "exact" })
+    .eq("owner_email", ownerEmail).neq("status", "archived")
+    .order("updated_at", { ascending: false }).range(0, limit - 1);
+  if (shipperResult.error) throw shipperResult.error;
+  const shippers = (shipperResult.data || []) as Record<string, unknown>[];
+  const shipperIds = shippers.map((row) => cleanText(row.id)).filter((id): id is string => Boolean(id));
+  if (!shipperIds.length) {
+    return {
+      rows: [], total: shipperResult.count || 0, loaded: 0, truncated: false,
+      counts: { ready: 0, needs_data: 0, due_action: 0, open_pipeline_value: 0, open_pipeline_currency: null }
+    };
+  }
+
+  const chunkValues = <T>(values: T[], size: number) => {
+    const chunks: T[][] = [];
+    for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
+    return chunks;
+  };
+  const fetchRows = async (table: string, columns: string) => {
+    const rows: Record<string, unknown>[] = [];
+    for (const ids of chunkValues(shipperIds, 300)) {
+      for (let offset = 0; offset < DETAIL_MAX_ROWS; offset += DETAIL_PAGE_SIZE) {
+        const result = await supabase.from(table).select(columns)
+          .eq("owner_email", ownerEmail).in("shipper_id", ids)
+          .order("id", { ascending: true }).range(offset, offset + DETAIL_PAGE_SIZE - 1);
+        if (result.error) throw result.error;
+        const page = (result.data || []) as unknown as Record<string, unknown>[];
+        rows.push(...page);
+        if (page.length < DETAIL_PAGE_SIZE) break;
+        if (offset + DETAIL_PAGE_SIZE >= DETAIL_MAX_ROWS) throw new Error(`${table} intelligence load exceeded ${DETAIL_MAX_ROWS} rows per account batch.`);
+      }
+    }
+    return rows;
+  };
+  const [contacts, locations, lanes, rfis, opportunities, actions] = await Promise.all([
+    fetchRows("shipper_contacts", "id,shipper_id,contact_name,email,status,updated_at"),
+    fetchRows("shipper_locations", "id,shipper_id,market,region,city,state_code,country_code,updated_at"),
+    fetchRows("shipper_lanes", "id,shipper_id,origin,origin_market,destination,destination_market,status,updated_at"),
+    fetchRows("shipper_rfis", "id,shipper_id,status,due_date,updated_at"),
+    fetchRows("shipper_opportunities", "id,shipper_id,stage,estimated_value,currency,due_date,next_action,updated_at"),
+    fetchRows("shipper_account_actions", "id,shipper_id,title,action_type,status,priority,due_date,notes,updated_at")
+  ]);
+  const groupByShipper = (rows: Record<string, unknown>[]) => {
+    const grouped = new Map<string, Record<string, unknown>[]>();
+    rows.forEach((row) => {
+      const id = cleanText(row.shipper_id);
+      if (id) grouped.set(id, [...(grouped.get(id) || []), row]);
+    });
+    return grouped;
+  };
+  const contactByShipper = groupByShipper(contacts);
+  const locationByShipper = groupByShipper(locations);
+  const laneByShipper = groupByShipper(lanes);
+  const rfiByShipper = groupByShipper(rfis);
+  const opportunityByShipper = groupByShipper(opportunities);
+  const actionByShipper = groupByShipper(actions);
+  const openStages = new Set(["identified", "discovery", "rfi", "rfx", "proposal", "negotiation"]);
+  const activeRfiStatuses = new Set(["draft", "sent", "in_progress", "submitted"]);
+  const dueSoon = new Date();
+  dueSoon.setDate(dueSoon.getDate() + 14);
+  const dueBy = (value: unknown) => {
+    const text = cleanText(value);
+    const date = text ? new Date(text) : null;
+    return Boolean(date && !Number.isNaN(date.getTime()) && date <= dueSoon);
+  };
+  const latestDate = (values: unknown[]) => values.map((value) => {
+    const text = cleanText(value);
+    const timestamp = text ? new Date(text).getTime() : Number.NaN;
+    return { text, timestamp };
+  }).filter((value) => value.text && Number.isFinite(value.timestamp))
+    .sort((left, right) => right.timestamp - left.timestamp)[0]?.text || null;
+  const includesSearch = (values: unknown[]) => !search
+    || values.some((value) => String(value || "").toLowerCase().includes(search));
+
+  const allRows = shippers.map((shipper) => {
+    const id = cleanText(shipper.id) || "";
+    const accountContacts = contactByShipper.get(id) || [];
+    const accountLocations = locationByShipper.get(id) || [];
+    const accountLanes = laneByShipper.get(id) || [];
+    const accountRfis = rfiByShipper.get(id) || [];
+    const accountOpportunities = opportunityByShipper.get(id) || [];
+    const accountActions = actionByShipper.get(id) || [];
+    const activeRfis = accountRfis.filter((row) => activeRfiStatuses.has(cleanText(row.status)?.toLowerCase() || ""));
+    const openOpportunities = accountOpportunities.filter((row) => openStages.has(cleanText(row.stage)?.toLowerCase() || ""));
+    const openActions = accountActions.filter((row) => ["open", "in_progress"].includes(cleanText(row.status)?.toLowerCase() || ""));
+    const dueActions = openActions.filter((row) => dueBy(row.due_date));
+    const hasContact = Boolean(cleanText(shipper.primary_contact_email) || accountContacts.some((row) => cleanText(row.email)));
+    const activeLocations = accountLocations.filter((row) => cleanText(row.country_code) || cleanText(row.city) || cleanText(row.market));
+    const activeLanes = accountLanes.filter((row) => cleanText(row.status)?.toLowerCase() !== "archived");
+    const markets = new Set([
+      ...activeLocations.map((row) => cleanText(row.market)),
+      ...activeLanes.flatMap((row) => [cleanText(row.origin_market), cleanText(row.destination_market)])
+    ].filter(Boolean));
+    const hasProfile = Boolean(cleanText(shipper.domain) || cleanText(shipper.headquarters_city) || cleanText(shipper.industry));
+    const healthScore = Math.min(100,
+      (hasContact ? 28 : 0) + (activeLocations.length ? 24 : 0) + (activeLanes.length ? 24 : 0)
+      + (hasProfile ? 14 : 0) + (activeRfis.length || openOpportunities.length ? 10 : 0)
+    );
+    const accountDue = Boolean(dueActions.length) || [...activeRfis, ...openOpportunities].some((row) => dueBy(row.due_date));
+    const relationshipStage = cleanText(shipper.relationship_stage)?.toLowerCase() || "target";
+    let priority = "complete";
+    let priorityDetail = "Complete profile coverage before outbound work.";
+    if (accountDue) {
+      priority = "due_action";
+      priorityDetail = cleanText(dueActions[0]?.title) ? `Action due: ${cleanText(dueActions[0].title)}.` : "Due date reached or within the next 14 days.";
+    } else if (relationshipStage === "at_risk") {
+      priority = "at_risk";
+      priorityDetail = "Relationship stage needs commercial attention.";
+    } else if (!hasContact) {
+      priority = "needs_contact";
+      priorityDetail = "Add a working primary contact before outreach.";
+    } else if (!activeLanes.length) {
+      priority = "needs_lane";
+      priorityDetail = "Add declared lanes or quoted coverage.";
+    } else if (healthScore >= 60) {
+      priority = "ready";
+      priorityDetail = "Profile, contact, and coverage are ready to engage.";
+    }
+    const currencies = Array.from(new Set(openOpportunities.map((row) => cleanText(row.currency)?.toUpperCase()).filter((value): value is string => Boolean(value))));
+    const pipelineCurrency = currencies.length === 1 ? currencies[0] : currencies.length > 1 ? "mixed" : null;
+    const activity = latestDate([
+      shipper.updated_at,
+      ...accountContacts.map((row) => row.updated_at), ...accountLocations.map((row) => row.updated_at),
+      ...accountLanes.map((row) => row.updated_at), ...accountRfis.map((row) => row.updated_at),
+      ...accountOpportunities.map((row) => row.updated_at), ...accountActions.map((row) => row.updated_at)
+    ]);
+    const searchValues = [
+      shipper.shipper_name, shipper.legal_name, shipper.domain, shipper.primary_contact_name,
+      shipper.primary_contact_email, shipper.headquarters_city, shipper.headquarters_state,
+      ...accountContacts.flatMap((row) => [row.contact_name, row.email]),
+      ...activeLocations.flatMap((row) => [row.market, row.region, row.city, row.state_code]),
+      ...activeLanes.flatMap((row) => [row.origin, row.origin_market, row.destination, row.destination_market]),
+      ...accountActions.flatMap((row) => [row.title, row.action_type, row.notes])
+    ];
+    return {
+      id,
+      shipper_name: cleanText(shipper.shipper_name), legal_name: cleanText(shipper.legal_name), domain: cleanText(shipper.domain),
+      headquarters_city: cleanText(shipper.headquarters_city), headquarters_state: cleanText(shipper.headquarters_state),
+      relationship_stage: relationshipStage,
+      contact_count: accountContacts.length, location_count: activeLocations.length, lane_count: activeLanes.length,
+      market_count: markets.size, active_rfi_count: activeRfis.length, open_opportunity_count: openOpportunities.length,
+      open_action_count: openActions.length, due_action_count: dueActions.length,
+      pipeline_value: pipelineCurrency === "mixed" ? null : openOpportunities.reduce((sum, row) => sum + (Number(row.estimated_value) || 0), 0),
+      pipeline_currency: pipelineCurrency,
+      health_score: healthScore,
+      health_label: healthScore >= 80 ? "Operationally complete" : healthScore >= 60 ? "Ready with minor gaps" : healthScore >= 35 ? "Needs cleanup" : "Profile incomplete",
+      priority, priority_detail: priorityDetail,
+      next_action: cleanText(openActions.find((row) => cleanText(row.title))?.title) || cleanText(openOpportunities.find((row) => cleanText(row.next_action))?.next_action),
+      last_activity_at: activity,
+      _search_values: searchValues,
+      _pipeline_currencies: currencies
+    };
+  }).filter((row) => includesSearch(row._search_values));
+  const currencies = Array.from(new Set(allRows.flatMap((row) => row._pipeline_currencies)));
+  const pipelineCurrency = currencies.length === 1 ? currencies[0] : currencies.length > 1 ? "mixed" : null;
+  const counts = {
+    ready: allRows.filter((row) => row.priority === "ready").length,
+    needs_data: allRows.filter((row) => ["needs_contact", "needs_lane", "complete"].includes(row.priority)).length,
+    due_action: allRows.filter((row) => row.priority === "due_action" || row.priority === "at_risk").length,
+    open_pipeline_value: pipelineCurrency === "mixed" ? null : allRows.reduce((sum, row) => sum + (Number(row.pipeline_value) || 0), 0),
+    open_pipeline_currency: pipelineCurrency
+  };
+  const focusedRows = focus === "all" ? allRows : allRows.filter((row) => row.priority === focus);
+  const rows = focusedRows.map(({ _search_values, _pipeline_currencies, ...row }) => row);
+  return {
+    rows,
+    total: shipperResult.count || 0,
+    loaded: shippers.length,
+    truncated: Number(shipperResult.count || 0) > shippers.length,
+    counts
+  };
+}
+
 async function shipperSummary(supabase: ReturnType<typeof getClient>, ownerEmail: string | null) {
   const scopedCount = (configure: (query: any) => any = (query) => query) => configure(
     supabase.from("shippers").select("id", { count: "exact", head: true }).eq("owner_email", ownerEmail)
@@ -586,6 +771,7 @@ Deno.serve(async (request) => {
     if (body.action === "shipper_relationship_pipeline") return jsonResponse(await shipperRelationshipPipeline(supabase, user.owner_email, body));
     if (body.action === "shipper_commercial_work") return jsonResponse(await shipperCommercialWork(supabase, user.owner_email, body));
     if (body.action === "shipper_action_queue") return jsonResponse(await shipperActionQueue(supabase, user.owner_email, body));
+    if (body.action === "shipper_intelligence") return jsonResponse(await shipperIntelligence(supabase, user.owner_email, body));
     return jsonResponse({ error: "Unknown Shipper directory action." }, 400);
   } catch (error) {
     return jsonResponse({ error: errorMessage(error) }, errorStatus(error));
