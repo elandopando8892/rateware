@@ -2213,5 +2213,8 @@ document.addEventListener("keydown", (event) => {
 
 initAuthControls();
 requirePrivatePage()
-  .then(() => Promise.all([loadRows({ reset: true }), loadSummary()]))
+  .then(async () => {
+    await loadRows({ reset: true });
+    void loadSummary();
+  })
   .catch((error) => setStatus(elements.directoryStatus, humanizeError(error), "error"));

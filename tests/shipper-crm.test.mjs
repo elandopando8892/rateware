@@ -123,6 +123,8 @@ assert.match(api, /Unknown account action queue focus/);
 assert.match(api, /shipper_account_action_status_updated/);
 assert.match(client, /data-shipper-action-status="in_progress"/);
 assert.match(client, /Account action started/);
+assert.match(client, /requirePrivatePage\(\)[\s\S]*await loadRows\(\{ reset: true \}\);[\s\S]*void loadSummary\(\);/, "Shipper CRM should render the directory before loading summary metrics");
+assert.doesNotMatch(client, /\.then\(\(\) => Promise\.all\(\[loadRows\(\{ reset: true \}\), loadSummary\(\)\]\)\)/, "Initial summary loading should not compete with the directory request");
 assert.match(api, /open_action_count: actions\.length/);
 assert.match(api, /next_action_priority: cleanText\(nextAction\?\.priority\)/);
 const listShippersSource = api.slice(api.indexOf('if (body.action === "list_shippers")'), api.indexOf('if (body.action === "shipper_relationship_pipeline")'));
