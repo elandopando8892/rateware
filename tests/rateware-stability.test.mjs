@@ -977,6 +977,9 @@ assert.match(ratewareHtml, /rateware-next-issue/, "Rateware spreadsheet should e
 assert.match(ratewareHtml, /rateware-select-issue-rows/, "Rateware spreadsheet should select visible rows with validation issues");
 assert.match(stagingReviewSource, /function focusNextVisibleIssue/, "Staging should focus the next visible validation issue");
 assert.match(ratewareSource, /function focusNextVisibleIssue/, "Rateware should focus the next visible validation issue");
+assert.match(stagingReviewSource, /function hasLocationCountryConflict[\s\S]+mexicanLocation/, "Staging should flag obvious MX versus US or Canada country conflicts without overwriting manual matches");
+assert.match(stagingReviewSource, /hasLocationCountryConflict\(row\)[\s\S]+Country conflict/, "Staging country conflicts should block approval and remain visible inline");
+assert.match(ratewareSource, /function hasLocationCountryConflict[\s\S]+Location text conflicts with the selected country/, "Rateware should expose country conflicts for approved rows without silently rewriting them");
 assert.match(stagingReviewSource, /rowsWithCriticalValidation\(rows\)/, "Staging bulk save should warn before saving selected rows with critical validation issues");
 assert.match(ratewareSource, /rowsWithCriticalValidation\(rows\)/, "Rateware bulk save should warn before saving selected rows with critical validation issues");
 assert.match(stagingReviewSource, /function locationOptionMatch\(value, \{ allowPartial = false \} = \{\}\)/, "Staging should only normalize an exact catalog location match while the user is editing a cell");

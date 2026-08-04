@@ -771,6 +771,17 @@ function hasCrossingGap(row) {
   return isCrossBorder(row) && (!row.mx_border_crossing_point || !row.us_border_crossing_point);
 }
 
+function hasLocationCountryConflict(row) {
+  const mexicanLocation = /\b(mexico|monterrey|guadalajara|queretaro|puebla|toluca|saltillo|ramos arizpe|nuevo laredo|san luis potosi|leon|silao|irapuato|juarez|hermosillo|tijuana|reynosa)\b|,\s*(df|em|gj|cu|nl|pu|pb|mr|sl|so|tm)\b/i;
+  return ["origin", "destination"].some((prefix) => {
+    const country = String(row[`${prefix}_country`] || "").trim().toUpperCase();
+    const location = String(row[prefix] || row[`normalized_${prefix}`] || "");
+    if (["US", "USA", "CA", "CAN"].includes(country) && mexicanLocation.test(location)) return true;
+    if (country === "MX" && /\b(usa|united states|canada)\b/i.test(location)) return true;
+    return false;
+  });
+}
+
 function locationMatched(row, prefix) {
   return Boolean(row[`${prefix}_market`] || row[`${prefix}_zip_prefix`] || row[`${prefix}_state`] || row[`${prefix}_country`]);
 }
@@ -802,6 +813,10 @@ function rowCellValidationIssues(row) {
   if (hasCrossingGap(row)) {
     if (!row.mx_border_crossing_point) addCellIssue(issues, "mx_border_crossing_point", "danger", "Crossborder lanes need an MX border city.");
     if (!row.us_border_crossing_point) addCellIssue(issues, "us_border_crossing_point", "danger", "Crossborder lanes need a US border city.");
+  }
+  if (hasLocationCountryConflict(row)) {
+    addCellIssue(issues, "origin", "danger", "Location text conflicts with the selected country.");
+    addCellIssue(issues, "destination", "danger", "Location text conflicts with the selected country.");
   }
   if (!row.weekly_capacity) addCellIssue(issues, "weekly_capacity", "warning", "Weekly capacity missing.");
   if (!row.vendor_domain && !row.vendor_id && !row.vendors?.domain) addCellIssue(issues, "vendor_domain", "warning", "Vendor has not been matched to sourcing/procurement base.");

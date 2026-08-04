@@ -993,8 +993,19 @@ function hasCrossingGap(row) {
   return isCrossBorder(row) && (!row.mx_border_crossing_point || !row.us_border_crossing_point);
 }
 
+function hasLocationCountryConflict(row) {
+  const mexicanLocation = /\b(mexico|monterrey|guadalajara|queretaro|puebla|toluca|saltillo|ramos arizpe|nuevo laredo|san luis potosi|leon|silao|irapuato|juarez|hermosillo|tijuana|reynosa)\b|,\s*(df|em|gj|cu|nl|pu|pb|mr|sl|so|tm)\b/i;
+  return ["origin", "destination"].some((prefix) => {
+    const country = String(row[`${prefix}_country`] || "").trim().toUpperCase();
+    const location = String(row[prefix] || row[`normalized_${prefix}`] || "");
+    if (["US", "USA", "CA", "CAN"].includes(country) && mexicanLocation.test(location)) return true;
+    if (country === "MX" && /\b(usa|united states|canada)\b/i.test(location)) return true;
+    return false;
+  });
+}
+
 function hasReviewConflict(row) {
-  return hasAllInText(row) || hasSplitAllInConflict(row) || hasSourceServiceConflict(row) || hasCurrencyGap(row) || hasCrossingGap(row) || !row.operation || !row.service;
+  return hasAllInText(row) || hasSplitAllInConflict(row) || hasSourceServiceConflict(row) || hasCurrencyGap(row) || hasCrossingGap(row) || hasLocationCountryConflict(row) || !row.operation || !row.service;
 }
 
 function hasSourceAuditIssue(row) {
@@ -1016,6 +1027,7 @@ function rowReviewIssues(row) {
   if (hasAllInText(row)) issues.push({ tone: "danger", label: "Rate text" });
   if (hasSplitAllInConflict(row)) issues.push({ tone: "warning", label: "Split mismatch" });
   if (hasSourceServiceConflict(row)) issues.push({ tone: "warning", label: "Service conflict" });
+  if (hasLocationCountryConflict(row)) issues.push({ tone: "danger", label: "Country conflict" });
   if (!row.quote_date) issues.push({ tone: "warning", label: "Needs date" });
   if (!row.weekly_capacity) issues.push({ tone: "muted", label: "No capacity" });
   return issues;
