@@ -217,6 +217,262 @@ async function getShipperActivity(
   return { rows, shipper_id: shipperId, loaded: rows.length };
 }
 
+async function shipperRelationshipPipeline(
+  supabase: ReturnType<typeof getClient>,
+  ownerEmail: string | null,
+  body: Record<string, unknown>
+) {
+  const limit = Math.min(Math.max(Number(body.limit) || 500, 1), 750);
+  const search = safeSearch(body.search);
+  const status = cleanText(body.status)?.toLowerCase();
+  let query = supabase.from("shippers")
+    .select("id,shipper_name,domain,logo_url,industry,status,relationship_stage,primary_contact_name,primary_contact_email,headquarters_city,headquarters_state,headquarters_country,updated_at", { count: "exact" })
+    .eq("owner_email", ownerEmail).neq("status", "archived")
+    .order("updated_at", { ascending: false }).range(0, limit - 1);
+  if (status && status !== "all") query = query.eq("status", status);
+  if (search) {
+    query = query.or([
+      `shipper_name.ilike.%${search}%`, `domain.ilike.%${search}%`, `industry.ilike.%${search}%`,
+      `primary_contact_name.ilike.%${search}%`, `primary_contact_email.ilike.%${search}%`,
+      `headquarters_city.ilike.%${search}%`, `headquarters_state.ilike.%${search}%`
+    ].join(","));
+  }
+  const shipperResult = await query;
+  if (shipperResult.error) throw shipperResult.error;
+  const shippers = (shipperResult.data || []) as Record<string, unknown>[];
+  const shipperIds = shippers.map((row) => cleanText(row.id)).filter((id): id is string => Boolean(id));
+  let opportunities: Record<string, unknown>[] = [];
+  let rfis: Record<string, unknown>[] = [];
+  let actions: Record<string, unknown>[] = [];
+  if (shipperIds.length) {
+    const [opportunityResult, rfiResult, actionResult] = await Promise.all([
+      supabase.from("shipper_opportunities").select("shipper_id,stage,estimated_value,currency,due_date,next_action")
+        .eq("owner_email", ownerEmail).in("shipper_id", shipperIds),
+      supabase.from("shipper_rfis").select("shipper_id,status,due_date")
+        .eq("owner_email", ownerEmail).in("shipper_id", shipperIds),
+      supabase.from("shipper_account_actions").select("shipper_id,title,action_type,status,priority,due_date")
+        .eq("owner_email", ownerEmail).in("shipper_id", shipperIds).in("status", ["open", "in_progress"])
+        .order("due_date", { ascending: true, nullsFirst: false })
+    ]);
+    for (const result of [opportunityResult, rfiResult, actionResult]) if (result.error) throw result.error;
+    opportunities = (opportunityResult.data || []) as Record<string, unknown>[];
+    rfis = (rfiResult.data || []) as Record<string, unknown>[];
+    actions = (actionResult.data || []) as Record<string, unknown>[];
+  }
+  const grouped = (rows: Record<string, unknown>[]) => {
+    const result = new Map<string, Record<string, unknown>[]>();
+    rows.forEach((row) => {
+      const id = cleanText(row.shipper_id);
+      if (id) result.set(id, [...(result.get(id) || []), row]);
+    });
+    return result;
+  };
+  const opportunityByShipper = grouped(opportunities);
+  const rfiByShipper = grouped(rfis);
+  const actionByShipper = grouped(actions);
+  const openStages = new Set(["identified", "discovery", "rfi", "rfx", "proposal", "negotiation"]);
+  const activeRfiStatuses = new Set(["draft", "sent", "in_progress", "submitted"]);
+  const today = new Date().toISOString().slice(0, 10);
+  const rows: Record<string, unknown>[] = shippers.map((shipper): Record<string, unknown> => {
+    const id = cleanText(shipper.id)!;
+    const accountOpportunities = opportunityByShipper.get(id) || [];
+    const accountRfis = rfiByShipper.get(id) || [];
+    const accountActions = actionByShipper.get(id) || [];
+    const openOpportunities = accountOpportunities.filter((row) => openStages.has(cleanText(row.stage)?.toLowerCase() || ""));
+    const activeRfis = accountRfis.filter((row) => activeRfiStatuses.has(cleanText(row.status)?.toLowerCase() || ""));
+    const nextOpportunity = openOpportunities[0] || null;
+    const nextAccountAction = accountActions[0] || null;
+    const currencies = [...new Set(openOpportunities.map((row) => cleanText(row.currency)?.toUpperCase()).filter(Boolean))];
+    const pipelineCurrency = currencies.length === 1 ? currencies[0] : currencies.length ? "mixed" : null;
+    return {
+      ...shipper,
+      open_opportunity_count: openOpportunities.length,
+      active_rfi_count: activeRfis.length,
+      open_action_count: accountActions.length,
+      due_action_count: accountActions.filter((row) => Boolean(cleanText(row.due_date) && cleanText(row.due_date)! <= today)).length,
+      next_action: cleanText(nextAccountAction?.title) || cleanText(nextOpportunity?.next_action),
+      next_due_date: cleanText(nextAccountAction?.due_date) || cleanText(nextOpportunity?.due_date),
+      next_action_priority: cleanText(nextAccountAction?.priority),
+      pipeline_value: pipelineCurrency === "mixed" ? null : openOpportunities.reduce((sum, row) => sum + (Number(row.estimated_value) || 0), 0),
+      pipeline_currency: pipelineCurrency
+    };
+  });
+  const stages = ["target", "qualified", "customer", "at_risk", "inactive"].map((stage) => ({
+    stage, count: rows.filter((row) => cleanText(row.relationship_stage) === stage).length
+  }));
+  return { rows, total: shipperResult.count || 0, loaded: rows.length, limit, stages };
+}
+
+async function shipperCommercialWork(
+  supabase: ReturnType<typeof getClient>,
+  ownerEmail: string | null,
+  body: Record<string, unknown>
+) {
+  const search = safeSearch(body.search).toLowerCase();
+  const focus = cleanText(body.focus)?.toLowerCase() || "all";
+  if (!new Set(["all", "needs_rfi", "rfi_due", "deal_due", "won", "lost"]).has(focus)) {
+    throw new Error("Unknown commercial work focus.");
+  }
+  const limit = Math.min(Math.max(Number(body.limit) || 1000, 1), 1000);
+  const shipperResult = await supabase.from("shippers").select("id,shipper_name,domain,relationship_stage,status")
+    .eq("owner_email", ownerEmail).neq("status", "archived")
+    .order("updated_at", { ascending: false }).range(0, limit - 1);
+  if (shipperResult.error) throw shipperResult.error;
+  const shippers = (shipperResult.data || []) as Record<string, unknown>[];
+  const shipperIds = shippers.map((row) => cleanText(row.id)).filter((id): id is string => Boolean(id));
+  const emptyCounts = { open_rfis: 0, unlinked_rfis: 0, open_opportunities: 0, won_opportunities: 0, lost_opportunities: 0, due_soon: 0 };
+  if (!shipperIds.length) return { rfis: [], opportunities: [], counts: emptyCounts, loaded: 0 };
+  const [rfiResult, opportunityResult] = await Promise.all([
+    supabase.from("shipper_rfis").select("id,shipper_id,rfi_name,external_reference,status,due_date,updated_at")
+      .eq("owner_email", ownerEmail).in("shipper_id", shipperIds).neq("status", "archived")
+      .order("due_date", { ascending: true, nullsFirst: false }),
+    supabase.from("shipper_opportunities").select("id,shipper_id,rfi_id,rfx_project_id,opportunity_name,stage,probability,estimated_value,currency,estimated_weekly_volume,due_date,next_action,updated_at")
+      .eq("owner_email", ownerEmail).in("shipper_id", shipperIds).neq("stage", "archived")
+      .order("due_date", { ascending: true, nullsFirst: false })
+  ]);
+  if (rfiResult.error) throw rfiResult.error;
+  if (opportunityResult.error) throw opportunityResult.error;
+  const shipperById = new Map(shippers.map((row) => [cleanText(row.id), row]));
+  const projectIds = Array.from(new Set((opportunityResult.data || []).map((row) => cleanText(row.rfx_project_id)).filter((id): id is string => Boolean(id))));
+  const projectResult = projectIds.length
+    ? await supabase.from("rfx_projects").select("id,title,status,linked_rfx_event_id,due_date,updated_at")
+      .eq("owner_email", ownerEmail).in("id", projectIds)
+    : { data: [], error: null };
+  if (projectResult.error) throw projectResult.error;
+  const projectById = new Map((projectResult.data || []).map((row) => [cleanText(row.id), row]));
+  const allOpportunities = (opportunityResult.data || []).map((row) => {
+    const shipper = shipperById.get(cleanText(row.shipper_id)) || {};
+    return {
+      ...row,
+      shipper_name: cleanText(shipper.shipper_name),
+      shipper_domain: cleanText(shipper.domain),
+      relationship_stage: cleanText(shipper.relationship_stage),
+      rfx_project: projectById.get(cleanText(row.rfx_project_id)) || null
+    };
+  });
+  const opportunityByRfi = new Map<string, Record<string, unknown>>();
+  allOpportunities.forEach((row) => {
+    const id = cleanText(row.rfi_id);
+    if (id) opportunityByRfi.set(id, row);
+  });
+  const allRfis = (rfiResult.data || []).map((row) => {
+    const shipper = shipperById.get(cleanText(row.shipper_id)) || {};
+    return {
+      ...row,
+      shipper_name: cleanText(shipper.shipper_name),
+      shipper_domain: cleanText(shipper.domain),
+      linked_opportunity: opportunityByRfi.get(cleanText(row.id) || "") || null
+    };
+  });
+  const matches = (row: Record<string, unknown>, fields: string[]) => !search
+    || fields.some((field) => String(row[field] || "").toLowerCase().includes(search));
+  const dueSoon = new Date();
+  dueSoon.setDate(dueSoon.getDate() + 14);
+  const dueBy = (value: unknown) => {
+    const date = value ? new Date(String(value)) : null;
+    return Boolean(date && !Number.isNaN(date.getTime()) && date <= dueSoon);
+  };
+  const openStages = new Set(["identified", "discovery", "rfi", "rfx", "proposal", "negotiation"]);
+  const openOpportunities = allOpportunities.filter((row) => openStages.has(cleanText(row.stage)?.toLowerCase() || ""));
+  const wonOpportunities = allOpportunities.filter((row) => cleanText(row.stage)?.toLowerCase() === "won");
+  const lostOpportunities = allOpportunities.filter((row) => cleanText(row.stage)?.toLowerCase() === "lost");
+  let rfis = allRfis.filter((row) => matches(row, ["shipper_name", "shipper_domain", "rfi_name", "external_reference", "status"]));
+  let opportunities = openOpportunities.filter((row) => matches(row, ["shipper_name", "shipper_domain", "opportunity_name", "stage", "next_action"]));
+  if (focus === "needs_rfi") rfis = rfis.filter((row) => !row.linked_opportunity);
+  if (focus === "rfi_due") rfis = rfis.filter((row) => dueBy(row.due_date));
+  if (focus === "deal_due") opportunities = opportunities.filter((row) => dueBy(row.due_date));
+  if (focus === "won") {
+    rfis = [];
+    opportunities = wonOpportunities.filter((row) => matches(row, ["shipper_name", "shipper_domain", "opportunity_name", "next_action"]));
+  }
+  if (focus === "lost") {
+    rfis = [];
+    opportunities = lostOpportunities.filter((row) => matches(row, ["shipper_name", "shipper_domain", "opportunity_name", "next_action"]));
+  }
+  return {
+    rfis,
+    opportunities,
+    counts: {
+      open_rfis: allRfis.length,
+      unlinked_rfis: allRfis.filter((row) => !row.linked_opportunity).length,
+      open_opportunities: openOpportunities.length,
+      won_opportunities: wonOpportunities.length,
+      lost_opportunities: lostOpportunities.length,
+      due_soon: [...allRfis, ...openOpportunities].filter((row) => dueBy(row.due_date)).length
+    },
+    loaded: shippers.length
+  };
+}
+
+async function fetchAllActionCounts(supabase: ReturnType<typeof getClient>, ownerEmail: string | null) {
+  const rows: Record<string, unknown>[] = [];
+  for (let offset = 0; offset < DETAIL_MAX_ROWS; offset += DETAIL_PAGE_SIZE) {
+    const result = await supabase.from("shipper_account_actions").select("id,status,due_date")
+      .eq("owner_email", ownerEmail).order("id", { ascending: true })
+      .range(offset, offset + DETAIL_PAGE_SIZE - 1);
+    if (result.error) throw result.error;
+    const page = (result.data || []) as Record<string, unknown>[];
+    rows.push(...page);
+    if (page.length < DETAIL_PAGE_SIZE) return rows;
+  }
+  throw new Error(`Shipper account action counts exceeded ${DETAIL_MAX_ROWS} rows.`);
+}
+
+async function shipperActionQueue(
+  supabase: ReturnType<typeof getClient>,
+  ownerEmail: string | null,
+  body: Record<string, unknown>
+) {
+  const focus = cleanText(body.focus)?.toLowerCase() || "open";
+  if (!new Set(["open", "overdue", "today", "upcoming", "done"]).has(focus)) throw new Error("Unknown account action queue focus.");
+  const limit = Math.max(1, Math.min(1000, Number(body.limit) || 250));
+  const today = new Date().toISOString().slice(0, 10);
+  const upcomingDate = new Date();
+  upcomingDate.setUTCDate(upcomingDate.getUTCDate() + 7);
+  const nextWeek = upcomingDate.toISOString().slice(0, 10);
+  let query = supabase.from("shipper_account_actions")
+    .select("id,shipper_id,title,action_type,status,priority,due_date,owner_email_assignee,notes,updated_at")
+    .eq("owner_email", ownerEmail).order("due_date", { ascending: true, nullsFirst: false })
+    .order("updated_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
+  query = focus === "done" ? query.eq("status", "done") : query.in("status", ["open", "in_progress"]);
+  if (focus === "overdue") query = query.lt("due_date", today);
+  if (focus === "today") query = query.eq("due_date", today);
+  if (focus === "upcoming") query = query.gte("due_date", today).lte("due_date", nextWeek);
+  const [actionsResult, countRows] = await Promise.all([query, fetchAllActionCounts(supabase, ownerEmail)]);
+  if (actionsResult.error) throw actionsResult.error;
+  const actions = (actionsResult.data || []) as Record<string, unknown>[];
+  const shipperIds = Array.from(new Set(actions.map((row) => cleanText(row.shipper_id)).filter((id): id is string => Boolean(id))));
+  const accountsResult = shipperIds.length
+    ? await supabase.from("shippers").select("id,shipper_name,domain,primary_contact_email")
+      .eq("owner_email", ownerEmail).in("id", shipperIds)
+    : { data: [], error: null };
+  if (accountsResult.error) throw accountsResult.error;
+  const accountById = new Map((accountsResult.data || []).map((row) => [cleanText(row.id), row]));
+  const search = safeSearch(body.search).toLowerCase();
+  const rows: Record<string, unknown>[] = actions.map((row): Record<string, unknown> => {
+    const account = (accountById.get(cleanText(row.shipper_id)) || {}) as Record<string, unknown>;
+    return {
+      ...row,
+      shipper_name: cleanText(account.shipper_name),
+      shipper_domain: cleanText(account.domain),
+      primary_contact_email: cleanText(account.primary_contact_email)
+    };
+  }).filter((row) => !search || [row.shipper_name, row.shipper_domain, row.primary_contact_email, row.title, row.notes, row.owner_email_assignee]
+    .map(cleanText).filter(Boolean).join(" ").toLowerCase().includes(search));
+  const counts = { open: 0, today: 0, overdue: 0, done: 0 };
+  countRows.forEach((row) => {
+    const status = cleanText(row.status)?.toLowerCase();
+    const dueDate = cleanText(row.due_date);
+    if (["open", "in_progress"].includes(status || "")) {
+      counts.open += 1;
+      if (dueDate === today) counts.today += 1;
+      if (dueDate && dueDate < today) counts.overdue += 1;
+    }
+    if (status === "done") counts.done += 1;
+  });
+  return { rows, counts, focus, loaded: rows.length };
+}
+
 async function shipperSummary(supabase: ReturnType<typeof getClient>, ownerEmail: string | null) {
   const scopedCount = (configure: (query: any) => any = (query) => query) => configure(
     supabase.from("shippers").select("id", { count: "exact", head: true }).eq("owner_email", ownerEmail)
@@ -327,6 +583,9 @@ Deno.serve(async (request) => {
     if (body.action === "list_shippers") return jsonResponse(await listShippers(supabase, user.owner_email, body));
     if (body.action === "get_shipper") return jsonResponse(await getShipper(supabase, user.owner_email, body.id || body.shipper_id));
     if (body.action === "shipper_account_activity") return jsonResponse(await getShipperActivity(supabase, user.owner_email, body.id || body.shipper_id));
+    if (body.action === "shipper_relationship_pipeline") return jsonResponse(await shipperRelationshipPipeline(supabase, user.owner_email, body));
+    if (body.action === "shipper_commercial_work") return jsonResponse(await shipperCommercialWork(supabase, user.owner_email, body));
+    if (body.action === "shipper_action_queue") return jsonResponse(await shipperActionQueue(supabase, user.owner_email, body));
     return jsonResponse({ error: "Unknown Shipper directory action." }, 400);
   } catch (error) {
     return jsonResponse({ error: errorMessage(error) }, errorStatus(error));

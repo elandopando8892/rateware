@@ -39,6 +39,10 @@ assert.match(directoryApi, /body\.action === "shipper_crm_summary"/);
 assert.match(directoryApi, /body\.action === "list_shippers"/);
 assert.match(directoryApi, /body\.action === "get_shipper"/, "Shipper profile reads should use the lightweight endpoint");
 assert.match(directoryApi, /body\.action === "shipper_account_activity"/, "Shipper activity reads should use the lightweight endpoint");
+for (const action of ["shipper_relationship_pipeline", "shipper_commercial_work", "shipper_action_queue"]) {
+  assert.match(directoryApi, new RegExp(`body\\.action === "${action}"`), `${action} should use the lightweight endpoint`);
+  assert.match(service, new RegExp(`callRatewareFunction\\(SHIPPER_DIRECTORY_FUNCTION, "${action}"`), `${action} should bypass the monolithic API`);
+}
 assert.match(directoryApi, /shipper_account_actions\(title,status,priority,due_date,created_at\)/, "The lightweight directory endpoint should preserve account action enrichment");
 assert.match(directoryApi, /\.eq\("owner_email", ownerEmail\)\.eq\("id", id\)\.single\(\)/, "Lightweight profile reads must remain workspace scoped");
 assert.match(directoryApi, /\.eq\("owner_email", ownerEmail\)\.eq\("shipper_id", shipperId\)/, "Lightweight child reads must remain Shipper scoped");

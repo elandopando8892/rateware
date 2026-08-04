@@ -11,15 +11,15 @@ export async function fetchShippers(filters = {}) {
 }
 
 export async function fetchShipperRelationshipPipeline(filters = {}) {
-  return await callRatewareApi("shipper_relationship_pipeline", filters);
+  return await callRatewareFunction(SHIPPER_DIRECTORY_FUNCTION, "shipper_relationship_pipeline", filters);
 }
 
 export async function fetchShipperCommercialWork(filters = {}) {
-  return await callRatewareApi("shipper_commercial_work", filters);
+  return await callRatewareFunction(SHIPPER_DIRECTORY_FUNCTION, "shipper_commercial_work", filters);
 }
 
 export async function fetchShipperActionQueue(filters = {}) {
-  return await callRatewareApi("shipper_action_queue", filters);
+  return await callRatewareFunction(SHIPPER_DIRECTORY_FUNCTION, "shipper_action_queue", filters);
 }
 
 export async function fetchShipperIntelligence(filters = {}) {
