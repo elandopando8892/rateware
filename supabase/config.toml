@@ -420,3 +420,6 @@ verify_jwt = false
 # requireKindeUser against Kinde's issuer and remote JWKS.
 [functions.rateware-api]
 verify_jwt = false
+
+[functions.shipper-directory-api]
+verify_jwt = false

@@ -31,8 +31,8 @@ function apiErrorMessage(data, text, status) {
     || `Rateware API request failed (${status})`;
 }
 
-export async function callRatewareApi(action, payload = {}) {
-  const endpoint = `${SUPABASE_URL}/functions/v1/rateware-api`;
+export async function callRatewareFunction(functionName, action, payload = {}) {
+  const endpoint = `${SUPABASE_URL}/functions/v1/${functionName}`;
   const body = JSON.stringify({ action, ...payload });
   const response = await authenticatedFetch(endpoint, {
     method: "POST",
@@ -62,4 +62,8 @@ export async function callRatewareApi(action, payload = {}) {
     throw error;
   }
   return data;
+}
+
+export async function callRatewareApi(action, payload = {}) {
+  return await callRatewareFunction("rateware-api", action, payload);
 }

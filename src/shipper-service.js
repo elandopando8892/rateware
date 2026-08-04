@@ -1,11 +1,13 @@
-import { callRatewareApi } from "./rateware-api.js";
+import { callRatewareApi, callRatewareFunction } from "./rateware-api.js";
+
+const SHIPPER_DIRECTORY_FUNCTION = "shipper-directory-api";
 
 export async function fetchShipperSummary() {
-  return await callRatewareApi("shipper_crm_summary");
+  return await callRatewareFunction(SHIPPER_DIRECTORY_FUNCTION, "shipper_crm_summary");
 }
 
 export async function fetchShippers(filters = {}) {
-  return await callRatewareApi("list_shippers", filters);
+  return await callRatewareFunction(SHIPPER_DIRECTORY_FUNCTION, "list_shippers", filters);
 }
 
 export async function fetchShipperRelationshipPipeline(filters = {}) {

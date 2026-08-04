@@ -9,6 +9,7 @@ const duplicateMigration = read("../supabase/migrations/20260713190000_shipper_d
 const actionsMigration = read("../supabase/migrations/20260713200000_shipper_account_actions.sql");
 const relationalImportMigration = read("../supabase/migrations/20260713210000_shipper_crm_relational_import.sql");
 const api = read("../supabase/functions/rateware-api/index.ts");
+const directoryApi = read("../supabase/functions/shipper-directory-api/index.ts");
 const service = read("../src/shipper-service.js");
 const rfxService = read("../src/rfx-process-service.js");
 const rfxClient = read("../src/rfx-process.js");
@@ -31,6 +32,12 @@ for (const action of ["shipper_crm_summary", "list_shippers", "list_shipper_dupl
   assert.match(api, new RegExp(`body\\.action === "${action}"`));
   assert.match(service, new RegExp(`"${action}"`));
 }
+assert.match(service, /SHIPPER_DIRECTORY_FUNCTION = "shipper-directory-api"/, "Directory reads should use the lightweight Shipper endpoint");
+assert.match(directoryApi, /requireKindeUser\(request\)/, "The lightweight Shipper endpoint must validate the Kinde bearer token");
+assert.match(directoryApi, /resolveWorkspaceUser\([\s\S]*persistIdentity: false/, "The lightweight Shipper endpoint must preserve canonical workspace isolation");
+assert.match(directoryApi, /body\.action === "shipper_crm_summary"/);
+assert.match(directoryApi, /body\.action === "list_shippers"/);
+assert.match(directoryApi, /shipper_account_actions\(title,status,priority,due_date,created_at\)/, "The lightweight directory endpoint should preserve account action enrichment");
 
 assert.match(commercialMigration, /add column if not exists rfi_id uuid references public\.shipper_rfis/);
 assert.match(commercialMigration, /shipper_opportunities_owner_rfi_idx/);
