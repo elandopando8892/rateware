@@ -21144,6 +21144,11 @@ async function getRatebookShipperContexts(
     ...projects.map((row) => cleanText(row.customer_id))
   ].filter((id): id is string => Boolean(id))));
   const shipperById = new Map<string, Record<string, unknown>>();
+  const unresolvedCustomerKeys = new Set(projects
+    .filter((project) => !cleanText(project.customer_id))
+    .map((project) => businessNameKey(project.customer_name))
+    .filter((key): key is string => Boolean(key)));
+  const uniqueShipperByName = new Map<string, Record<string, unknown> | null>();
   if (shipperIds.length) {
     const shippersResult = await supabase.from("shippers")
       .select("id,shipper_name,legal_name")
@@ -21153,6 +21158,23 @@ async function getRatebookShipperContexts(
     ((shippersResult.data || []) as Record<string, unknown>[]).forEach((shipper) => {
       const shipperId = cleanText(shipper.id);
       if (shipperId) shipperById.set(shipperId, shipper);
+    });
+  }
+  if (unresolvedCustomerKeys.size) {
+    const shippersResult = await supabase.from("shippers")
+      .select("id,shipper_name,legal_name")
+      .eq("owner_email", user.owner_email)
+      .limit(5000);
+    if (shippersResult.error) throw shippersResult.error;
+    ((shippersResult.data || []) as Record<string, unknown>[]).forEach((shipper) => {
+      const keys = new Set([
+        businessNameKey(shipper.shipper_name),
+        businessNameKey(shipper.legal_name)
+      ].filter((key): key is string => Boolean(key) && unresolvedCustomerKeys.has(key)));
+      keys.forEach((key) => {
+        if (!uniqueShipperByName.has(key)) uniqueShipperByName.set(key, shipper);
+        else if (cleanText(uniqueShipperByName.get(key)?.id) !== cleanText(shipper.id)) uniqueShipperByName.set(key, null);
+      });
     });
   }
   opportunities.forEach((opportunity) => {
@@ -21169,8 +21191,14 @@ async function getRatebookShipperContexts(
   projects.forEach((project) => {
     const projectId = cleanText(project.id);
     if (!projectId || contexts.has(projectId)) return;
-    const shipperId = cleanText(project.customer_id);
-    const shipper = shipperId ? shipperById.get(shipperId) || {} : {};
+    const explicitShipperId = cleanText(project.customer_id);
+    const customerKey = businessNameKey(project.customer_name);
+    const shipper = explicitShipperId
+      ? shipperById.get(explicitShipperId) || {}
+      : customerKey
+        ? uniqueShipperByName.get(customerKey) || {}
+        : {};
+    const shipperId = explicitShipperId || cleanText(shipper.id);
     contexts.set(projectId, {
       shipper_id: shipperId,
       shipper_name: firstCleanText(shipper.shipper_name, shipper.legal_name, project.customer_name) || null,
