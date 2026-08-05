@@ -113,6 +113,16 @@ export async function removeVendors(ids) {
   return await callRatewareApi("remove_vendors", { ids, confirmed: true, confirmation_action: "remove_vendors" });
 }
 
+export async function consolidateExactVendorDuplicates({ dryRun = true, previewCount = 0, previewLimit = 1 } = {}) {
+  return await callRatewareApi("consolidate_exact_vendor_duplicates", {
+    dry_run: dryRun,
+    preview_count: previewCount,
+    preview_limit: previewLimit,
+    confirmed: !dryRun,
+    confirmation_action: "consolidate_exact_vendor_duplicates"
+  });
+}
+
 export async function fetchVendorSegments({ segmentType = "" } = {}) {
   const rows = [];
   const pageSize = 1000;

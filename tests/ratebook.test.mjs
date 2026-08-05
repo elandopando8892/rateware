@@ -14,6 +14,7 @@ const service = read("../src/ratebook-service.js");
 const client = read("../src/ratebook.js");
 const page = read("../ratebook.html");
 const carrierAccessApi = read("../supabase/functions/ratebook-carrier-api/index.ts");
+const vendorRelationshipMergeMigration = read("../supabase/migrations/20260805054258_merge_exact_vendor_relationship_collisions.sql");
 const carrierAccessPage = read("../ratebook-carrier.html");
 const carrierAccessClient = read("../src/ratebook-carrier.js");
 const auth = read("../src/auth.js");
@@ -296,11 +297,28 @@ assert.match(carrierAccessApi, /last_accessed_at/);
 assert.match(carrierAccessApi, /access_count/);
 assert.match(carrierAccessApi, /last_quote_at/);
 assert.match(carrierAccessApi, /rfx_ratebook_shares/);
+assert.match(carrierAccessApi, /rfx_ratebook_share_token_aliases/, "Private Ratebook access should preserve pre-merge carrier links through aliases");
+assert.match(carrierAccessApi, /\.eq\("id", aliasedShareId\)[\s\S]+?\.eq\("status", "active"\)/, "Private Ratebook aliases should resolve only to an active canonical share");
 assert.match(carrierAccessApi, /rfx_package_lanes/);
 assert.match(carrierAccessApi, /rfx_ratebook_segments/);
 assert.match(carrierAccessApi, /rfx_ratebook_carrier_quotes/);
 assert.match(carrierAccessApi, /rfx_ratebook_carrier_quote_revisions/);
 assert.match(carrierAccessApi, /vendor_id: share\.vendor_id/);
+assert.match(vendorRelationshipMergeMigration, /create table if not exists public\.rfx_ratebook_share_token_aliases/, "Vendor consolidation should persist aliases for prior private Ratebook links");
+assert.doesNotMatch(vendorRelationshipMergeMigration, /if v_keeper(?:_share)?\.id is not null then/, "Relationship consolidation must not reuse a record value left by a previous loop iteration");
+assert.match(vendorRelationshipMergeMigration, /select t\.\* into v_keeper[\s\S]+?if found then/, "Chat relationship consolidation should branch on the current lookup result");
+assert.match(vendorRelationshipMergeMigration, /select s\.\* into v_keeper_share[\s\S]+?if found then/, "Ratebook share consolidation should branch on the current lookup result");
+assert.match(vendorRelationshipMergeMigration, /perform public\.merge_exact_vendor_relationship_collisions\(v_loser\.winner_id, v_loser\.loser_id\)/, "Exact vendor consolidation should merge collision-prone relationships before generic foreign-key moves");
+for (const relationshipType of [
+  "bid_room_chat_thread",
+  "rfx_ratebook_share",
+  "vendor_value_scorecard",
+  "vendor_whatsapp_contact",
+  "vendor_whatsapp_group",
+  "outreach_contact_suppression"
+]) {
+  assert.match(vendorRelationshipMergeMigration, new RegExp(`'${relationshipType}'`), `Vendor consolidation should audit ${relationshipType} collisions`);
+}
 assert.match(carrierAccessApi, /requiredPositiveNumber\(input\.all_in_rate/);
 assert.doesNotMatch(carrierAccessApi.slice(carrierAccessApi.indexOf("async function submitRatebookQuote")), /rfx_lane_vendors/);
 assert.doesNotMatch(carrierAccessApi.slice(carrierAccessApi.indexOf("async function submitRatebookQuote")), /rate_staging/);

@@ -15112,6 +15112,38 @@ h2 {
   gap: 14px;
 }
 
+.duplicate-safe-toolbar {
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.duplicate-safe-toolbar > div:first-child,
+.duplicate-safe-summary {
+  display: grid;
+  gap: 2px;
+}
+
+.duplicate-safe-toolbar span,
+.duplicate-safe-summary span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.duplicate-safe-samples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.duplicate-safe-samples span {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  padding: 3px 6px;
+  font-size: 0.74rem;
+}
+
 .duplicate-card {
   display: grid;
   gap: 10px;

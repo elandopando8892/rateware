@@ -8,6 +8,7 @@ import {
   createVendorSegment,
   createVendorProfileRequest,
   deleteVendorSegment,
+  consolidateExactVendorDuplicates,
   fetchVendorFunnel,
   fetchVendorIntelligence,
   fetchVendorOnboardingGaps,
@@ -156,6 +157,10 @@ const segmentForm = document.querySelector("#segment-form");
 const segmentStatusMessage = document.querySelector("#segment-status-message");
 const segmentsList = document.querySelector("#segments-list");
 const duplicateReviewList = document.querySelector("#duplicate-review-list");
+const previewExactDuplicatesButton = document.querySelector("#preview-exact-duplicates-button");
+const consolidateExactDuplicatesButton = document.querySelector("#consolidate-exact-duplicates-button");
+const exactDuplicateStatus = document.querySelector("#exact-duplicate-status");
+const exactDuplicatePreview = document.querySelector("#exact-duplicate-preview");
 const drawer = document.querySelector("#vendor-drawer");
 const closeDrawerButton = document.querySelector("#close-vendor-drawer");
 const drawerEditToggle = document.querySelector("#drawer-edit-toggle");
@@ -181,6 +186,9 @@ let selectedVendorIds = new Set();
 let pendingImportRows = [];
 let pendingVendorUpdateRows = [];
 let vendorUpdatePreview = null;
+let exactDuplicateMergePreview = null;
+let exactDuplicateMergeRunning = false;
+const EXACT_VENDOR_CONSOLIDATION_BATCH_SIZE = 1;
 let savedSegments = [];
 let vendorSegmentsLoaded = false;
 let vendorSegmentsLoadPromise = null;
@@ -1626,7 +1634,12 @@ function duplicateGroups(rows = allVendors) {
       const members = memberIds
         .map((id) => rowsById.get(id))
         .filter(Boolean)
-        .sort((left, right) => duplicateHealthScore(right) - duplicateHealthScore(left) || String(right.updated_at || right.created_at || "").localeCompare(String(left.updated_at || left.created_at || "")));
+        .sort((left, right) =>
+          Number(vendorHasApolloSourceId(right)) - Number(vendorHasApolloSourceId(left))
+          || duplicateQuoteEvidence(right) - duplicateQuoteEvidence(left)
+          || duplicateHealthScore(right) - duplicateHealthScore(left)
+          || String(right.updated_at || right.created_at || "").localeCompare(String(left.updated_at || left.created_at || ""))
+        );
       const primary = members[0];
       if (!primary) return null;
       const matches = members.slice(1).map((candidate) => ({
@@ -1640,6 +1653,23 @@ function duplicateGroups(rows = allVendors) {
       };
     })
     .filter(Boolean);
+}
+
+function vendorHasApolloSourceId(vendor) {
+  return /(^|[^a-z0-9])source\s*id\s*:/i.test(String(vendor?.notes || ""));
+}
+
+function duplicateQuoteEvidence(vendor) {
+  const metrics = rateMetrics(vendor);
+  const bidMetrics = vendor?.bid_metrics && typeof vendor.bid_metrics === "object" ? vendor.bid_metrics : {};
+  return numberValue(metrics.approved_rates) + numberValue(metrics.linked_rates) + numberValue(bidMetrics.quoted);
+}
+
+function duplicateWinnerReason(vendor) {
+  if (vendorHasApolloSourceId(vendor)) return "Keep: Apollo Source ID";
+  const quoteEvidence = duplicateQuoteEvidence(vendor);
+  if (quoteEvidence > 0) return `Keep: ${quoteEvidence} linked quote signal${quoteEvidence === 1 ? "" : "s"}`;
+  return `Keep: highest health ${Math.round(duplicateHealthScore(vendor))}/100`;
 }
 
 function duplicateHealthScore(vendor) {
@@ -1711,7 +1741,7 @@ function renderDuplicateReview() {
                   <div>
                     <strong>${escapeHtml(vendor.vendor_name)}</strong>
                     <span>${escapeHtml([vendor.domain, vendor.primary_email, vendor.status].filter(Boolean).join(" | "))}</span>
-                    <div class="duplicate-reasons">${vendorIndex === 0 ? `<span>Keep: highest health ${Math.round(duplicateHealthScore(vendor))}/100</span>` : `<span>Duplicate profile: ${Math.round(duplicateHealthScore(vendor))}/100</span>`}${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</div>
+                    <div class="duplicate-reasons">${vendorIndex === 0 ? `<span>${escapeHtml(duplicateWinnerReason(vendor))}</span>` : `<span>Duplicate profile: ${Math.round(duplicateHealthScore(vendor))}/100</span>`}${reasons.map((reason) => `<span>${escapeHtml(reason)}</span>`).join("")}</div>
                   </div>
                   <div class="action-row">
                     <button class="small-button" type="button" data-duplicate-open="${escapeHtml(vendor.id)}">Open</button>
@@ -1726,6 +1756,92 @@ function renderDuplicateReview() {
       `
     )
     .join("");
+}
+
+function renderExactDuplicatePreview(result = exactDuplicateMergePreview) {
+  if (!exactDuplicatePreview) return;
+  if (!result) {
+    exactDuplicatePreview.innerHTML = '<span class="muted-text">Run preview to calculate exact duplicate groups across the complete workspace.</span>';
+    return;
+  }
+  const groups = numberValue(result.duplicate_groups);
+  const duplicates = numberValue(result.duplicates_to_remove ?? result.duplicates_removed);
+  const previewRows = Array.isArray(result.preview) ? result.preview.slice(0, 10) : [];
+  exactDuplicatePreview.innerHTML = `
+    <div class="duplicate-safe-summary">
+      <strong>${escapeHtml(groups)} exact group${groups === 1 ? "" : "s"}</strong>
+      <span>${escapeHtml(duplicates)} duplicate record${duplicates === 1 ? "" : "s"} will be merged and removed.</span>
+      <span>Winner priority: Apollo Source ID, linked quotation evidence, then health.</span>
+    </div>
+    ${previewRows.length ? `<div class="duplicate-safe-samples">${previewRows.map((row) => `
+      <span title="${escapeHtml(`${row.normalized_name || ""} | ${row.normalized_domain || ""}`)}">
+        ${escapeHtml(row.canonical_vendor_name || row.normalized_name || "Vendor")} keeps ${escapeHtml(row.duplicates_removed || 0)} duplicate${numberValue(row.duplicates_removed) === 1 ? "" : "s"}
+      </span>
+    `).join("")}</div>` : ""}
+  `;
+}
+
+async function previewExactVendorDuplicates() {
+  if (exactDuplicateMergeRunning) return;
+  exactDuplicateMergeRunning = true;
+  exactDuplicateMergePreview = null;
+  previewExactDuplicatesButton.disabled = true;
+  consolidateExactDuplicatesButton.disabled = true;
+  exactDuplicateStatus.textContent = "Checking exact duplicates and linked records...";
+  try {
+    await requirePrivatePage();
+    exactDuplicateMergePreview = await consolidateExactVendorDuplicates({ dryRun: true, previewLimit: EXACT_VENDOR_CONSOLIDATION_BATCH_SIZE });
+    renderExactDuplicatePreview();
+    const duplicates = numberValue(exactDuplicateMergePreview.duplicates_to_remove);
+    exactDuplicateStatus.textContent = duplicates
+      ? "Preview ready. No records have been changed."
+      : "No exact duplicates are eligible for automatic consolidation.";
+    consolidateExactDuplicatesButton.disabled = duplicates === 0;
+  } catch (error) {
+    exactDuplicateStatus.textContent = humanizeError(error);
+    renderExactDuplicatePreview(null);
+  } finally {
+    exactDuplicateMergeRunning = false;
+    previewExactDuplicatesButton.disabled = false;
+  }
+}
+
+async function applyExactVendorConsolidation() {
+  const duplicateCount = numberValue(exactDuplicateMergePreview?.duplicates_to_remove);
+  if (exactDuplicateMergeRunning || !duplicateCount) return;
+  const confirmation = `Consolidate the next exact duplicate vendor group? ${duplicateCount} duplicate record${duplicateCount === 1 ? "" : "s"} remain in the workspace. This run processes one validated group only, preserves linked history, and is audited.`;
+  if (!window.confirm(confirmation)) return;
+  exactDuplicateMergeRunning = true;
+  previewExactDuplicatesButton.disabled = true;
+  consolidateExactDuplicatesButton.disabled = true;
+  exactDuplicateStatus.textContent = "Consolidating exact duplicates and preserving linked history...";
+  try {
+    await requirePrivatePage();
+    const result = await consolidateExactVendorDuplicates({
+      dryRun: false,
+      previewCount: duplicateCount,
+      previewLimit: EXACT_VENDOR_CONSOLIDATION_BATCH_SIZE
+    });
+    const removed = numberValue(result.duplicates_removed);
+    const groups = numberValue(result.duplicate_groups);
+    const remainingDuplicates = numberValue(result.remaining_duplicates);
+    if (removed === 0 || remainingDuplicates >= duplicateCount) {
+      throw new Error("Duplicate consolidation made no progress. Run a fresh preview before retrying.");
+    }
+    exactDuplicateMergePreview = null;
+    renderExactDuplicatePreview(null);
+    exactDuplicateStatus.textContent = `${removed} duplicate vendor record${removed === 1 ? "" : "s"} consolidated from ${groups} exact group${groups === 1 ? "" : "s"}. ${remainingDuplicates} remain; run a fresh preview before the next group.`;
+    await loadVendors({ force: true });
+    if (activeVendorTab === "funnel") await loadVendorFunnel({ force: true });
+    if (activeVendorTab === "intelligence") await loadVendorIntelligence({ force: true });
+    renderDuplicateReview();
+  } catch (error) {
+    exactDuplicateStatus.textContent = humanizeError(error);
+    consolidateExactDuplicatesButton.disabled = false;
+  } finally {
+    exactDuplicateMergeRunning = false;
+    previewExactDuplicatesButton.disabled = false;
+  }
 }
 
 function applyQuickFilter(filter) {
@@ -5144,6 +5260,9 @@ duplicateReviewList.addEventListener("click", async (event) => {
     }
   }
 });
+
+previewExactDuplicatesButton?.addEventListener("click", previewExactVendorDuplicates);
+consolidateExactDuplicatesButton?.addEventListener("click", applyExactVendorConsolidation);
 
 refreshVendorIntelligenceButton?.addEventListener("click", () => loadVendorIntelligence({ force: true }));
 loadMoreVendorIntelligenceButton?.addEventListener("click", () => loadVendorIntelligence({ append: true }));

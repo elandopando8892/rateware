@@ -88,16 +88,38 @@ async function hashAccessToken(token: string) {
   return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+const RATEBOOK_SHARE_ACCESS_SELECT =
+  "id,ratebook_id,vendor_id,status,access_granted_at,last_viewed_at,last_accessed_at,last_quote_at,access_count,metadata,owner_email,organization_id,rfx_ratebooks(*),vendors(id,vendor_name,domain,primary_email)";
+
 async function resolveActiveShare(supabase: RatebookCarrierSupabaseClient, tokenInput: unknown) {
   const token = cleanText(tokenInput);
   if (!token || token.length < 32) throw new Error("This private Ratebook link is invalid or incomplete.");
   const tokenHash = await hashAccessToken(token);
-  const shareResult = await supabase.from("rfx_ratebook_shares")
-    .select("id,ratebook_id,vendor_id,status,access_granted_at,last_viewed_at,last_accessed_at,last_quote_at,access_count,metadata,owner_email,organization_id,rfx_ratebooks(*),vendors(id,vendor_name,domain,primary_email)")
+  let shareResult = await supabase.from("rfx_ratebook_shares")
+    .select(RATEBOOK_SHARE_ACCESS_SELECT)
     .eq("access_token_hash", tokenHash)
     .eq("status", "active")
     .maybeSingle();
   if (shareResult.error) throw shareResult.error;
+
+  if (!shareResult.data) {
+    const aliasResult = await supabase.from("rfx_ratebook_share_token_aliases")
+      .select("ratebook_share_id")
+      .eq("access_token_hash", tokenHash)
+      .maybeSingle();
+    if (aliasResult.error) throw aliasResult.error;
+
+    const aliasedShareId = cleanText((aliasResult.data as Record<string, unknown> | null)?.ratebook_share_id);
+    if (aliasedShareId) {
+      shareResult = await supabase.from("rfx_ratebook_shares")
+        .select(RATEBOOK_SHARE_ACCESS_SELECT)
+        .eq("id", aliasedShareId)
+        .eq("status", "active")
+        .maybeSingle();
+      if (shareResult.error) throw shareResult.error;
+    }
+  }
+
   if (!shareResult.data) throw new Error("This private Ratebook link is unavailable. Ask procurement for a new link.");
   const share = shareResult.data as Record<string, unknown>;
   const ratebook = relationRecord(share.rfx_ratebooks);

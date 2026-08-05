@@ -65,6 +65,7 @@ const META_REDIRECT_URI = (Deno.env.get("META_REDIRECT_URI") || "").trim();
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const BULK_SELECTED_ID_LIMIT = 1000;
 const BULK_SEND_LIMIT = 100;
+const EXACT_VENDOR_CONSOLIDATION_BATCH_LIMIT = 1;
 const OUTREACH_MANUAL_STATUSES = new Set([
   "drafted",
   "queued",
@@ -4241,6 +4242,19 @@ function canonicalVendorHealthScore(
   return Math.max(0, Math.min(100, Math.round(readiness * 0.62 + quoteScore + alignmentScore + procurementBonus - statusPenalty)));
 }
 
+function vendorHasApolloSourceId(vendor: Record<string, unknown>) {
+  return /(^|[^a-z0-9])source\s*id\s*:/i.test(cleanText(vendor.notes) || "");
+}
+
+function canonicalVendorQuoteEvidence(
+  metrics: Record<string, unknown> = {},
+  bidMetrics: Record<string, unknown> = {}
+) {
+  return Math.max(0, Number(metrics.approved_rates || 0))
+    + Math.max(0, Number(metrics.linked_rates || 0))
+    + Math.max(0, Number(bidMetrics.quoted || 0));
+}
+
 function canonicalizeVendorRows(
   vendors: Record<string, unknown>[],
   metricsByVendor: Map<string, Record<string, unknown>> = new Map(),
@@ -4258,13 +4272,20 @@ function canonicalizeVendorRows(
         const bidMetrics = normalizeVendorBidMetrics(bidMetricsByVendor.get(id));
         return {
           id,
+          sourceId: vendorHasApolloSourceId(vendor) ? 1 : 0,
+          quoteEvidence: canonicalVendorQuoteEvidence(metrics, bidMetrics),
           health: canonicalVendorHealthScore(vendor, metrics, bidMetrics),
           procurement: cleanText(vendor.base_stage)?.toLowerCase() === "procurement" ? 1 : 0,
           updatedAt: String(vendor.updated_at || vendor.created_at || ""),
           vendor
         };
       })
-      .sort((left, right) => right.health - left.health || right.procurement - left.procurement || right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id));
+      .sort((left, right) => right.sourceId - left.sourceId
+        || right.quoteEvidence - left.quoteEvidence
+        || right.health - left.health
+        || right.procurement - left.procurement
+        || right.updatedAt.localeCompare(left.updatedAt)
+        || left.id.localeCompare(right.id));
     const canonical = ranked[0];
     if (!canonical) continue;
     const duplicateVendorIds = ranked.filter((row) => row.id !== canonical.id).map((row) => row.id);
@@ -25506,6 +25527,77 @@ Deno.serve(async (request) => {
         updated: updatedRows.length,
         skipped: rawRows.length - updatedRows.length,
         rows: previewRows
+      });
+    }
+
+    if (body.action === "consolidate_exact_vendor_duplicates") {
+      const previewLimit = Math.min(Math.max(Math.trunc(Number(body.preview_limit) || EXACT_VENDOR_CONSOLIDATION_BATCH_LIMIT), 1), EXACT_VENDOR_CONSOLIDATION_BATCH_LIMIT);
+      const previewResult = await supabase.rpc("consolidate_exact_workspace_vendor_duplicates", {
+        p_owner_email: user.owner_email,
+        p_organization_id: user.organization_id,
+        p_dry_run: true,
+        p_preview_limit: previewLimit
+      });
+      if (previewResult.error) throw previewResult.error;
+
+      const preview = objectRecord(previewResult.data);
+      const duplicateCount = Math.max(0, Math.trunc(Number(preview.duplicates_to_remove) || 0));
+      if (body.dry_run !== false || duplicateCount === 0) {
+        return jsonResponse({ ...preview, applied: false });
+      }
+
+      requireBulkConfirmation(body, {
+        action: "consolidate_exact_vendor_duplicates",
+        label: "Exact vendor consolidation",
+        count: duplicateCount,
+        threshold: 1
+      });
+      const previewCount = Math.max(0, Math.trunc(Number(body.preview_count) || 0));
+      if (previewCount !== duplicateCount) {
+        return jsonResponse({
+          error: `The duplicate set changed from ${previewCount} to ${duplicateCount}. Run a fresh preview before consolidating.`
+        }, 409);
+      }
+
+      const consolidationResult = await supabase.rpc("consolidate_exact_workspace_vendor_duplicates", {
+        p_owner_email: user.owner_email,
+        p_organization_id: user.organization_id,
+        p_dry_run: false,
+        p_preview_limit: previewLimit
+      });
+      if (consolidationResult.error) throw consolidationResult.error;
+      const consolidation = objectRecord(consolidationResult.data);
+      const remainingResult = await supabase.rpc("count_exact_workspace_vendor_duplicates", {
+        p_owner_email: user.owner_email,
+        p_organization_id: user.organization_id
+      });
+      if (remainingResult.error) throw remainingResult.error;
+      const remaining = objectRecord(remainingResult.data);
+      const remainingDuplicateGroups = Math.max(0, Math.trunc(Number(remaining.duplicate_groups) || 0));
+      const remainingDuplicates = Math.max(0, Math.trunc(Number(remaining.duplicates_to_remove) || 0));
+      await tryWriteAuditLog(
+        supabase,
+        user,
+        "vendor.exact_duplicates.consolidate",
+        "vendors",
+        "workspace",
+        `Consolidated ${Math.max(0, Number(consolidation.duplicates_removed) || 0)} exact duplicate vendor record(s)`,
+        {
+          duplicate_groups: Math.max(0, Number(consolidation.duplicate_groups) || 0),
+          duplicates_removed: Math.max(0, Number(consolidation.duplicates_removed) || 0),
+          canonical_vendors_kept: Math.max(0, Number(consolidation.canonical_vendors_kept) || 0),
+          remaining_duplicate_groups: remainingDuplicateGroups,
+          remaining_duplicates: remainingDuplicates,
+          match_rule: cleanText(consolidation.match_rule),
+          priority: Array.isArray(consolidation.priority) ? consolidation.priority : []
+        }
+      );
+      return jsonResponse({
+        ...consolidation,
+        applied: true,
+        complete: remainingDuplicates === 0,
+        remaining_duplicate_groups: remainingDuplicateGroups,
+        remaining_duplicates: remainingDuplicates
       });
     }
 

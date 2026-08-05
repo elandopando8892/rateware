@@ -589,6 +589,20 @@
               <p class="eyebrow">Duplicate review</p>
               <h2>Possible duplicate vendors</h2>
             </div>
+            <div class="bulk-toolbar duplicate-safe-toolbar">
+              <div>
+                <strong>Safe exact consolidation</strong>
+                <span>Exact company + corporate domain only. Apollo Source ID wins, followed by linked quotes and health.</span>
+              </div>
+              <div class="action-row">
+                <button id="preview-exact-duplicates-button" class="secondary" type="button">Preview exact duplicates</button>
+                <button id="consolidate-exact-duplicates-button" type="button" disabled>Consolidate exact duplicates</button>
+              </div>
+            </div>
+            <p id="exact-duplicate-status" class="status-message" role="status"></p>
+            <div id="exact-duplicate-preview" class="preview-summary">
+              <span class="muted-text">Run preview to calculate exact duplicate groups across the complete workspace.</span>
+            </div>
             <div id="duplicate-review-list" class="duplicate-list"></div>
           </section>
 
