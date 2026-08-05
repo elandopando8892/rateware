@@ -25567,14 +25567,9 @@ Deno.serve(async (request) => {
       });
       if (consolidationResult.error) throw consolidationResult.error;
       const consolidation = objectRecord(consolidationResult.data);
-      const remainingResult = await supabase.rpc("count_exact_workspace_vendor_duplicates", {
-        p_owner_email: user.owner_email,
-        p_organization_id: user.organization_id
-      });
-      if (remainingResult.error) throw remainingResult.error;
-      const remaining = objectRecord(remainingResult.data);
-      const remainingDuplicateGroups = Math.max(0, Math.trunc(Number(remaining.duplicate_groups) || 0));
-      const remainingDuplicates = Math.max(0, Math.trunc(Number(remaining.duplicates_to_remove) || 0));
+      const removedCount = Math.max(0, Math.trunc(Number(consolidation.duplicates_removed) || 0));
+      const remainingDuplicates = Math.max(0, duplicateCount - removedCount);
+      const remainingDuplicateGroups = remainingDuplicates === 0 ? 0 : null;
       await tryWriteAuditLog(
         supabase,
         user,
@@ -25588,6 +25583,7 @@ Deno.serve(async (request) => {
           canonical_vendors_kept: Math.max(0, Number(consolidation.canonical_vendors_kept) || 0),
           remaining_duplicate_groups: remainingDuplicateGroups,
           remaining_duplicates: remainingDuplicates,
+          remaining_count_source: "confirmed_preview_minus_applied",
           match_rule: cleanText(consolidation.match_rule),
           priority: Array.isArray(consolidation.priority) ? consolidation.priority : []
         }
@@ -25597,7 +25593,9 @@ Deno.serve(async (request) => {
         applied: true,
         complete: remainingDuplicates === 0,
         remaining_duplicate_groups: remainingDuplicateGroups,
-        remaining_duplicates: remainingDuplicates
+        remaining_duplicates: remainingDuplicates,
+        remaining_count_source: "confirmed_preview_minus_applied",
+        next_preview_required: remainingDuplicates > 0
       });
     }
 

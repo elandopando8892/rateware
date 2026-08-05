@@ -1809,7 +1809,7 @@ async function previewExactVendorDuplicates() {
 async function applyExactVendorConsolidation() {
   const duplicateCount = numberValue(exactDuplicateMergePreview?.duplicates_to_remove);
   if (exactDuplicateMergeRunning || !duplicateCount) return;
-  const confirmation = `Consolidate the next exact duplicate vendor group? ${duplicateCount} duplicate record${duplicateCount === 1 ? "" : "s"} remain in the workspace. This run processes one validated group only, preserves linked history, and is audited.`;
+  const confirmation = `Consolidate the next exact duplicate vendor record? ${duplicateCount} duplicate record${duplicateCount === 1 ? "" : "s"} remain in the workspace. This run processes one validated duplicate record only, preserves linked history, and is audited.`;
   if (!window.confirm(confirmation)) return;
   exactDuplicateMergeRunning = true;
   previewExactDuplicatesButton.disabled = true;
@@ -1830,7 +1830,7 @@ async function applyExactVendorConsolidation() {
     }
     exactDuplicateMergePreview = null;
     renderExactDuplicatePreview(null);
-    exactDuplicateStatus.textContent = `${removed} duplicate vendor record${removed === 1 ? "" : "s"} consolidated from ${groups} exact group${groups === 1 ? "" : "s"}. ${remainingDuplicates} remain; run a fresh preview before the next group.`;
+    exactDuplicateStatus.textContent = `${removed} duplicate vendor record${removed === 1 ? "" : "s"} consolidated from ${groups} exact group${groups === 1 ? "" : "s"}. ${remainingDuplicates} remain; run a fresh preview before the next record.`;
     await loadVendors({ force: true });
     if (activeVendorTab === "funnel") await loadVendorFunnel({ force: true });
     if (activeVendorTab === "intelligence") await loadVendorIntelligence({ force: true });

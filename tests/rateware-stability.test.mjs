@@ -145,6 +145,7 @@ const exactVendorConsolidationBooleanFixMigration = readFileSync(new URL("../sup
 const exactVendorConsolidationBatchMigration = readFileSync(new URL("../supabase/migrations/20260805001000_batch_exact_vendor_consolidation.sql", import.meta.url), "utf8");
 const exactVendorConsolidationWalLimitMigration = readFileSync(new URL("../supabase/migrations/20260805052208_limit_vendor_consolidation_wal.sql", import.meta.url), "utf8");
 const exactVendorSingleGroupMigration = readFileSync(new URL("../supabase/migrations/20260805061000_single_group_vendor_consolidation.sql", import.meta.url), "utf8");
+const exactVendorSingleLoserMigration = readFileSync(new URL("../supabase/migrations/20260805063000_single_loser_vendor_consolidation.sql", import.meta.url), "utf8");
 const operationalPageIndexMigration = readFileSync(new URL("../supabase/migrations/20260804075621_optimize_operational_page_indexes.sql", import.meta.url), "utf8");
 const bidRoomBenchmarkCandidateMigration = readFileSync(new URL("../supabase/migrations/20260804080200_optimize_bid_room_benchmark_candidates.sql", import.meta.url), "utf8");
 const bidRoomBenchmarkTuningMigration = readFileSync(new URL("../supabase/migrations/20260804080455_tune_bid_room_benchmark_candidates.sql", import.meta.url), "utf8");
@@ -4258,23 +4259,28 @@ assert.match(apiSource, /campaign_ids: campaignIds,[\s\S]{0,120}campaign_count: 
 assert.match(apiSource, /outreach\.whatsapp\.bulk_send/, "WhatsApp bulk sends should be audited separately");
 assert.match(apiSource, /outreach\.whatsapp_group\.bulk_send/, "Manual WhatsApp group sends should be audited separately");
 assert.match(apiSource, /body\.action === "consolidate_exact_vendor_duplicates"/, "Vendor API should expose the exact duplicate consolidation action");
-assert.match(apiSource, /const EXACT_VENDOR_CONSOLIDATION_BATCH_LIMIT = 1;/, "Vendor consolidation should process one exact group per confirmed request");
+assert.match(apiSource, /const EXACT_VENDOR_CONSOLIDATION_BATCH_LIMIT = 1;/, "Vendor consolidation should process one exact duplicate record per confirmed request");
 assert.match(apiSource, /Number\(body\.preview_limit\)[\s\S]+EXACT_VENDOR_CONSOLIDATION_BATCH_LIMIT\), 1\), EXACT_VENDOR_CONSOLIDATION_BATCH_LIMIT\)/, "Vendor consolidation should enforce its batch limit server-side");
 assert.match(apiSource, /p_dry_run: true/, "Vendor consolidation should always run a fresh database preview first");
 assert.match(apiSource, /requireBulkConfirmation\(body,[\s\S]+action: "consolidate_exact_vendor_duplicates"/, "Vendor consolidation should require an action-bound confirmation");
 assert.match(apiSource, /duplicate set changed[\s\S]+Run a fresh preview before consolidating/, "Vendor consolidation should reject a stale preview before deleting records");
 assert.match(apiSource, /vendor\.exact_duplicates\.consolidate/, "Vendor consolidation should write an explicit audit event");
-assert.match(apiSource, /count_exact_workspace_vendor_duplicates/, "Vendor consolidation should recount the exact duplicate set after every batch");
+const exactVendorConsolidationActionSource = apiSource.slice(
+  apiSource.indexOf('if (body.action === "consolidate_exact_vendor_duplicates")'),
+  apiSource.indexOf('if (body.action === "remove_vendors")')
+);
+assert.doesNotMatch(exactVendorConsolidationActionSource, /count_exact_workspace_vendor_duplicates/, "Vendor consolidation should not rescan the full duplicate set after every record");
+assert.match(exactVendorConsolidationActionSource, /remaining_count_source: "confirmed_preview_minus_applied"/, "Vendor consolidation should identify its bounded remaining-count source");
 assert.match(apiSource, /complete: remainingDuplicates === 0/, "Vendor consolidation should only report complete after the database count reaches zero");
 assert.match(vendorServiceSource, /callRatewareApi\("consolidate_exact_vendor_duplicates"/, "Carrier CRM should call the trusted API for duplicate consolidation");
 assert.match(vendorServiceSource, /confirmed: !dryRun[\s\S]+confirmation_action: "consolidate_exact_vendor_duplicates"/, "Carrier CRM should confirm only the apply pass");
 assert.match(vendorsHtml, /id="preview-exact-duplicates-button"/, "Carrier CRM duplicate review should expose a safe full-workspace preview");
 assert.match(vendorsHtml, /id="consolidate-exact-duplicates-button"[^>]+disabled/, "Carrier CRM duplicate consolidation should remain disabled until previewed");
 assert.match(vendorsSource, /previewExactVendorDuplicates\(\)/, "Carrier CRM should preview exact duplicate consolidation before enabling apply");
-assert.match(vendorsSource, /const EXACT_VENDOR_CONSOLIDATION_BATCH_SIZE = 1;/, "Carrier CRM should request one exact group per confirmation");
+assert.match(vendorsSource, /const EXACT_VENDOR_CONSOLIDATION_BATCH_SIZE = 1;/, "Carrier CRM should request one exact duplicate record per confirmation");
 assert.doesNotMatch(vendorsSource, /while \(remainingDuplicates > 0/, "Carrier CRM should never auto-loop exact duplicate consolidation");
-assert.match(vendorsSource, /This run processes one validated group only/, "Carrier CRM should disclose the one-group safety boundary");
-assert.match(vendorsSource, /run a fresh preview before the next group/, "Carrier CRM should require a fresh preview before another consolidation");
+assert.match(vendorsSource, /This run processes one validated duplicate record only/, "Carrier CRM should disclose the one-record safety boundary");
+assert.match(vendorsSource, /run a fresh preview before the next record/, "Carrier CRM should require a fresh preview before another consolidation");
 assert.match(vendorsSource, /Duplicate consolidation made no progress/, "Carrier CRM should stop a stalled consolidation instead of looping or reporting success");
 assert.match(exactVendorConsolidationMigration, /create table if not exists public\.vendor_merge_audit/, "Vendor consolidation should preserve a durable merge audit");
 assert.match(exactVendorConsolidationMigration, /Exact normalized company name \+ exact non-generic corporate domain \+ workspace/, "Vendor consolidation should document its exact safe match boundary");
@@ -4292,6 +4298,8 @@ assert.match(exactVendorConsolidationWalLimitMigration, /coalesce\(p_preview_lim
 assert.match(exactVendorConsolidationWalLimitMigration, /pg_get_functiondef[\s\S]+execute replace\(v_definition, v_old, v_new\)/, "Vendor consolidation WAL guard should patch the deployed function definition safely");
 assert.match(exactVendorSingleGroupMigration, /v_limit_1 text := \$new\$else 1\$new\$/, "Database hotfix should cap destructive consolidation at one exact group");
 assert.match(exactVendorSingleGroupMigration, /position\(v_limit_10 in v_definition\)[\s\S]+execute replace\(v_definition, v_limit_10, v_limit_1\)/, "Single-group hotfix should patch the prior ten-group definition");
+assert.match(exactVendorSingleLoserMigration, /where r\.priority_rank > 1[\s\S]+p_dry_run[\s\S]+or r\.id = \([\s\S]+select r2\.id[\s\S]+limit 1/, "Single-loser hotfix should preserve complete previews while selecting one loser for destructive work");
+assert.match(exactVendorSingleLoserMigration, /pg_get_functiondef[\s\S]+execute replace\(v_definition, v_old, v_new\)/, "Single-loser hotfix should patch the deployed function definition safely");
 assert.match(exactVendorConsolidationBatchMigration, /create or replace function public\.count_exact_workspace_vendor_duplicates/, "Vendor consolidation should expose a trusted remaining-work counter");
 assert.match(exactVendorConsolidationBatchMigration, /revoke all on function public\.count_exact_workspace_vendor_duplicates[\s\S]+from public;[\s\S]+from anon;[\s\S]+from authenticated;[\s\S]+grant execute[\s\S]+to service_role;/, "The exact duplicate counter should only be callable by the trusted API");
 assert.match(exactVendorConsolidationMigration, /update public\.outreach_messages/, "Vendor consolidation should preserve outreach links");
