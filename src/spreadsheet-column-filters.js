@@ -619,7 +619,7 @@ export function initSpreadsheetColumnFilters({ table, columns = [], getRows, get
       }
       updateSearchAction();
       renderOptionList(activeMenu.search);
-    }, 120);
+    }, 300);
   });
 
   popover.addEventListener("keydown", (event) => {
