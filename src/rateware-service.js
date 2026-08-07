@@ -16,7 +16,7 @@ export async function fetchApprovedRateware({ search = "", operation = "", servi
   return (await fetchApprovedRatewarePage({ search, operation, service, quickFilter, columnFilters, limit, offset })).rows;
 }
 
-const FILTER_VALUE_LIMIT = 5000;
+const FILTER_VALUE_LIMIT = 1000;
 
 export async function fetchRatewareFilterValues({ field, search = "", valueSearch = "", operation = "", service = "", quickFilter = "all", columnFilters = {}, limit = FILTER_VALUE_LIMIT } = {}) {
   const result = await callRatewareApi("list_rateware_filter_values", {
