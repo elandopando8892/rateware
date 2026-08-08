@@ -7120,6 +7120,72 @@ function normalizeVendor(input: Record<string, unknown>, source = "manual") {
   };
 }
 
+// Identifies the same carrier across imports. Name alone is not enough: two
+// divisions of one group can share a name and quote separately (Potosinos has
+// two, on potosinos.com.mx and potosinosespecializados.com.mx), so the domain —
+// or the contact email when there is no domain — is part of the key.
+function vendorNaturalKey(row: Record<string, unknown>) {
+  const name = (cleanText(row.vendor_name) || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!name) return "";
+  const domain = normalizeDomain(row.domain) || "";
+  const email = (cleanText(row.primary_email) || "").toLowerCase();
+  return `${name}|${domain || email}`;
+}
+
+// Procurement owns these in the CRM. A re-import must not reset them just
+// because the spreadsheet has no such column — only apply what the source
+// actually carried.
+const VENDOR_IMPORT_PRESERVED_FIELDS = ["status", "base_stage", "funnel_stage"];
+
+async function resolveVendorImportRows(
+  supabase: RatewareSupabaseClient,
+  user: { owner_email: string | null },
+  incoming: { row: Record<string, unknown>; source: Record<string, unknown> }[]
+) {
+  // Match against every vendor this owner has, not just ones from the same
+  // sheet tab — the same carrier arriving under a second tab is exactly how
+  // the duplicates were created.
+  const existingRows: Record<string, unknown>[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await supabase
+      .from("vendors")
+      .select("id,vendor_name,domain,primary_email,status,base_stage,funnel_stage")
+      .eq("owner_email", user.owner_email)
+      .range(offset, offset + pageSize - 1);
+    if (page.error) throw page.error;
+    const rows = page.data || [];
+    existingRows.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+
+  const existingByKey = new Map<string, Record<string, unknown>>();
+  for (const row of existingRows) {
+    const key = vendorNaturalKey(row);
+    // Keep the first match so repeated imports converge on one record instead
+    // of alternating between existing duplicates.
+    if (key && !existingByKey.has(key)) existingByKey.set(key, row);
+  }
+
+  const payload: Record<string, unknown>[] = [];
+  let matched = 0;
+  for (const { row, source } of incoming) {
+    const existing = existingByKey.get(vendorNaturalKey(row));
+    if (!existing) {
+      payload.push(row);
+      continue;
+    }
+    matched += 1;
+    const merged: Record<string, unknown> = { ...row, id: existing.id };
+    for (const field of VENDOR_IMPORT_PRESERVED_FIELDS) {
+      if (cleanText(source[field]) === null) merged[field] = existing[field];
+    }
+    payload.push(merged);
+  }
+
+  return { payload, matched, created: payload.length - matched };
+}
+
 function normalizeVendorPatch(input: Record<string, unknown>, current: Record<string, unknown> = {}) {
   const patch: Record<string, unknown> = {};
   const now = new Date().toISOString();
@@ -8966,7 +9032,11 @@ async function awardRfxLaneVendor(
 
   await setRfxBidRateHistoryOutcome(supabase, invitation, role === "primary" ? "awarded" : "backup", now);
 
-  return { row: result.data, before: invitation, award_role: role };
+  return {
+    row: withoutRfxInvitationTokenColumns(result.data),
+    before: withoutRfxInvitationTokenColumns(invitation),
+    award_role: role
+  };
 }
 
 async function clearRfxAward(
@@ -9013,7 +9083,10 @@ async function clearRfxAward(
     }
   }
 
-  return { row: result.data, before: invitation };
+  return {
+    row: withoutRfxInvitationTokenColumns(result.data),
+    before: withoutRfxInvitationTokenColumns(invitation)
+  };
 }
 
 function rfxAwardRateInput(invitation: Record<string, unknown>, event: Record<string, unknown>, index: number, targetStatus: string) {
@@ -15746,10 +15819,23 @@ async function decryptRfxMagicLinkToken(value: unknown) {
   return new TextDecoder().decode(plain);
 }
 
-async function rfxInvitationCryptoKey(usages: KeyUsage[]) {
+// The key is derived from a constant, so deriving it per row would make opening
+// a Bid Room pay one SHA-256 plus one importKey for every participant. Memoize
+// per usage set and evict on failure so a transient error is retryable.
+const rfxInvitationCryptoKeyCache = new Map<string, Promise<CryptoKey>>();
+
+function rfxInvitationCryptoKey(usages: KeyUsage[]) {
   if (!RFX_INVITATION_TOKEN_ENCRYPTION_KEY) throw new Error("Bid Room invitation token encryption is not configured.");
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(RFX_INVITATION_TOKEN_ENCRYPTION_KEY));
-  return crypto.subtle.importKey("raw", digest, "AES-GCM", false, usages);
+  const cacheKey = [...usages].sort().join(",");
+  const cached = rfxInvitationCryptoKeyCache.get(cacheKey);
+  if (cached) return cached;
+  const pending = (async () => {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(RFX_INVITATION_TOKEN_ENCRYPTION_KEY));
+    return crypto.subtle.importKey("raw", digest, "AES-GCM", false, usages);
+  })();
+  pending.catch(() => rfxInvitationCryptoKeyCache.delete(cacheKey));
+  rfxInvitationCryptoKeyCache.set(cacheKey, pending);
+  return pending;
 }
 
 async function hashRfxInvitationToken(value: string) {
@@ -15822,6 +15908,82 @@ async function hydrateRfxInvitationTokens(
     if (legacyToken) await migrateLegacyRfxInvitationToken(supabase, row, token);
     const { invitation_token_encrypted: _encrypted, invitation_token_hash: _hash, ...safeRow } = row;
     hydrated.push({ ...safeRow, invitation_token: token });
+  }
+  return hydrated;
+}
+
+// Bid comparison converts every offer with one rate so all carriers are measured
+// on the same yardstick. Uses the newest published rate at or before today, so a
+// weekend or a Mexican bank holiday resolves to the last business day.
+async function loadBidComparisonFxRate(supabase: RatewareSupabaseClient) {
+  // A missing rate must never block the Bid Room — the board falls back to not
+  // ranking across currencies, which is the honest answer when we cannot
+  // convert. The try/catch also covers deploying this function before the
+  // rateware_fx_spot_rates migration has been applied.
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const result = await supabase
+      .from("rateware_fx_spot_rates")
+      .select("rate,rate_date,currency_pair,source")
+      .eq("currency_pair", "USD/MXN")
+      .lte("rate_date", today)
+      .order("rate_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (result.error) {
+      console.error("Bid Room FX rate load failed", result.error.message);
+      return null;
+    }
+    const rate = cleanNumber(result.data?.rate);
+    if (!rate || rate <= 0) return null;
+    return {
+      currency_pair: cleanText(result.data?.currency_pair) || "USD/MXN",
+      rate,
+      rate_date: cleanText(result.data?.rate_date),
+      source: cleanText(result.data?.source)
+    };
+  } catch (error) {
+    console.error("Bid Room FX rate load threw", errorMessage(error, "Unknown error"));
+    return null;
+  }
+}
+
+// `select("*")` on rfx_lane_vendors carries the stored token ciphertext and hash.
+// Neither belongs in an API response, so strip them before anything is returned.
+function withoutRfxInvitationTokenColumns<T>(row: T): T {
+  if (!row || typeof row !== "object") return row;
+  const { invitation_token_encrypted: _encrypted, invitation_token_hash: _hash, ...safeRow } =
+    row as Record<string, unknown>;
+  return safeRow as T;
+}
+
+// The Bid Room board must render every participant, so this variant never drops
+// a row. A token that cannot be resolved degrades that carrier's private link
+// instead of hiding the carrier or failing the whole event load. Encrypted
+// columns are stripped here as well so they never reach the browser.
+async function hydrateRfxBoardInvitationTokens(
+  supabase: RatewareSupabaseClient,
+  rows: Record<string, unknown>[]
+) {
+  const hydrated: Record<string, unknown>[] = [];
+  for (const row of rows) {
+    const legacyToken = cleanText(row.invitation_token);
+    let token = legacyToken;
+    if (legacyToken) {
+      await migrateLegacyRfxInvitationToken(supabase, row, legacyToken);
+    } else {
+      try {
+        token = await decryptRfxInvitationToken(row.invitation_token_encrypted);
+      } catch (error) {
+        console.error(
+          "Bid Room invitation token could not be decrypted",
+          errorMessage(error, "Unknown error")
+        );
+        token = null;
+      }
+    }
+    const { invitation_token_encrypted: _encrypted, invitation_token_hash: _hash, ...safeRow } = row;
+    hydrated.push({ ...safeRow, invitation_token: token || "" });
   }
   return hydrated;
 }
@@ -25188,19 +25350,43 @@ Deno.serve(async (request) => {
     if (body.action === "create_vendor") {
       const row = withOwner(normalizeVendor(objectRecord(body.vendor), "manual"), user);
       const result = await supabase.from("vendors").insert(row).select().single();
-      if (result.error) throw result.error;
+      if (result.error) {
+        // The natural-key index now rejects a carrier that already exists. Point
+        // at the existing record instead of surfacing a raw Postgres error.
+        if (String(result.error.code || "") === "23505") {
+          const existing = await supabase
+            .from("vendors")
+            .select("id,vendor_name,domain,primary_email")
+            .eq("owner_email", user.owner_email)
+            .ilike("vendor_name", cleanText(row.vendor_name) || "")
+            .limit(1)
+            .maybeSingle();
+          return jsonResponse({
+            error: `${row.vendor_name} is already in the Carrier CRM. Open the existing record instead of creating a second one.`,
+            existing_vendor: existing.data || null
+          }, 409);
+        }
+        throw result.error;
+      }
       return jsonResponse({ row: result.data });
     }
 
     if (body.action === "import_vendors") {
       const vendors = Array.isArray(body.vendors) ? body.vendors : [];
-      const rows = vendors.map((vendor: Record<string, unknown>) => withOwner(normalizeVendor(vendor, "import"), user));
-      if (!rows.length) return jsonResponse({ inserted: 0, rows: [] });
+      const incoming = vendors.map((vendor: Record<string, unknown>) => ({
+        row: withOwner(normalizeVendor(vendor, "import"), user),
+        source: objectRecord(vendor)
+      }));
+      if (!incoming.length) return jsonResponse({ inserted: 0, updated: 0, rows: [] });
 
-      const result = await supabase.from("vendors").insert(rows).select();
+      // Upsert on the primary key: matched rows carry their existing id and are
+      // updated in place. A plain insert here re-created every carrier on each
+      // run, which is how the CRM filled with duplicates.
+      const { payload, matched, created } = await resolveVendorImportRows(supabase, user, incoming);
+      const result = await supabase.from("vendors").upsert(payload).select();
 
       if (result.error) throw result.error;
-      return jsonResponse({ inserted: result.data.length, rows: result.data });
+      return jsonResponse({ inserted: created, updated: matched, rows: result.data });
     }
 
     if (body.action === "import_vendors_google_sheet") {
@@ -25209,30 +25395,37 @@ Deno.serve(async (request) => {
       const sheet = await fetchGoogleSheetRows(url);
       const rows = sheet.rows.map((raw: Record<string, unknown>) => {
         const normalized = normalizeImportedVendor(raw, "google_sheet");
-        return withOwner(normalizeVendor({
-          ...normalized,
-          source_spreadsheet_url: url,
-          source_spreadsheet_id: sheet.id,
-          source_sheet_gid: sheet.gid,
-          source_row_number: raw.source_row_number,
-          source_row_hash: JSON.stringify(raw),
-          last_synced_at: new Date().toISOString()
-        }, "google_sheet"), user);
+        return {
+          row: withOwner(normalizeVendor({
+            ...normalized,
+            source_spreadsheet_url: url,
+            source_spreadsheet_id: sheet.id,
+            source_sheet_gid: sheet.gid,
+            source_row_number: raw.source_row_number,
+            source_row_hash: JSON.stringify(raw),
+            last_synced_at: new Date().toISOString()
+          }, "google_sheet"), user),
+          source: objectRecord(normalized)
+        };
       });
-      const validRows = rows.filter((row) => row.vendor_name);
-      if (!validRows.length) return jsonResponse({ inserted: 0, rows: [], total_rows: sheet.rows.length });
+      const validRows = rows.filter((entry) => entry.row.vendor_name);
+      if (!validRows.length) {
+        return jsonResponse({ inserted: 0, updated: 0, rows: [], total_rows: sheet.rows.length });
+      }
 
-      const previous = await supabase
-        .from("vendors")
-        .delete()
-        .eq("owner_email", user.owner_email)
-        .eq("source_spreadsheet_id", sheet.id)
-        .eq("source_sheet_gid", sheet.gid);
-      if (previous.error) throw previous.error;
-
-      const result = await supabase.from("vendors").insert(validRows).select();
+      // This used to delete every vendor from the sheet tab and re-insert them.
+      // vendors has eleven ON DELETE CASCADE children, so each re-sync silently
+      // destroyed those carriers' invitations, bids, quotes and scorecards, and
+      // gave the rebuilt rows new ids. Match and update in place instead.
+      const { payload, matched, created } = await resolveVendorImportRows(supabase, user, validRows);
+      const result = await supabase.from("vendors").upsert(payload).select();
       if (result.error) throw result.error;
-      return jsonResponse({ inserted: result.data.length, rows: result.data, total_rows: sheet.rows.length });
+      return jsonResponse({
+        inserted: created,
+        updated: matched,
+        rows: result.data,
+        total_rows: sheet.rows.length
+      });
     }
 
     if (body.action === "bulk_update_vendors") {
@@ -26240,12 +26433,13 @@ Deno.serve(async (request) => {
       const invitationColumns = "*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)";
       // Benchmarks are independent of the event lanes and invitations. Load all
       // three concurrently so opening a Bid Room pays one database round trip.
-      const [eventLanes, loadedInvitationRows, benchmarkLoad] = await Promise.all([
+      const [eventLanes, loadedInvitationRows, benchmarkLoad, comparisonFx] = await Promise.all([
         fetchAllRfxLaneRows(supabase, event.id, "*"),
         fetchAllRfxLaneVendorRows(supabase, event.id, invitationColumns),
         fetchRfxDetailBenchmarkRates(supabase, user, event.id)
           .then((value) => ({ value, error: null as unknown }))
-          .catch((error) => ({ value: null, error }))
+          .catch((error) => ({ value: null, error })),
+        loadBidComparisonFxRate(supabase)
       ]);
 
       // Benchmarks enrich the lane view but must never make an RFx unavailable.
@@ -26293,6 +26487,10 @@ Deno.serve(async (request) => {
         }
       }
 
+      // Resolve each carrier's private bid link and strip the stored ciphertext.
+      // Without this the board renders every "Open room" action disabled.
+      invitationRows = await hydrateRfxBoardInvitationTokens(supabase, invitationRows);
+
       const invitationsByLane = new Map<string, Record<string, unknown>[]>();
       for (const invitation of invitationRows) {
         const laneId = cleanText(invitation.rfx_lane_id);
@@ -26321,7 +26519,8 @@ Deno.serve(async (request) => {
         lanes,
         coverage_sync: { inserted: coverageInserted },
         coverage_warning: coverageWarning,
-        rateware_benchmark: ratewareBenchmark
+        rateware_benchmark: ratewareBenchmark,
+        comparison_fx: comparisonFx
       });
     }
 

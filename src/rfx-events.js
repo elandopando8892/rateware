@@ -433,6 +433,9 @@ let rfxCloseWorkspace = RFX_CLOSE_WORKSPACE_KEYS.has(storedRfxWorkspaceContext.c
   : "award";
 let editingEventId = null;
 let currentLanes = [];
+// The day's FX rate used to compare offers quoted in different currencies.
+// Null means offers cannot be converted, so cross-currency ranking is suppressed.
+let comparisonFx = null;
 let vendorOptions = [];
 const vendorOptionCache = new Map();
 let vendorSearchRows = [];
@@ -2307,8 +2310,60 @@ function scoreFromRange(value, bestValue, worstValue, maxScore, lowerIsBetter = 
   return clampScore(progress * maxScore, 0, maxScore);
 }
 
+// Every lane is scored in one currency so carriers quoting in pesos and carriers
+// quoting in dollars are measured on the same yardstick. The lane's own currency
+// is that yardstick; the day's Banxico FIX rate does the conversion.
+function laneComparisonCurrency(lane = {}) {
+  return String(lane.currency || "USD").trim().toUpperCase() || "USD";
+}
+
+// Returns null when the offer cannot be converted. Callers must treat null as
+// "not comparable" and leave the offer out of the ranking — never fall back to
+// the raw number, which is exactly the bug this replaces.
+function comparableBidAmount(amount, fromCurrency, toCurrency) {
+  const value = decisionNumber(amount);
+  if (value === null) return null;
+  const from = String(fromCurrency || "").trim().toUpperCase();
+  const to = String(toCurrency || "").trim().toUpperCase();
+  if (!from || !to) return null;
+  if (from === to) return value;
+  const rate = Number(comparisonFx?.rate);
+  if (!Number.isFinite(rate) || rate <= 0) return null;
+  // comparisonFx is USD/MXN: pesos per dollar.
+  if (from === "USD" && to === "MXN") return value * rate;
+  if (from === "MXN" && to === "USD") return value / rate;
+  return null;
+}
+
+// Silence when every offer on every lane is already in the lane's own currency;
+// a note only when a conversion actually decided something.
+function mixedCurrencyNote(boardRows = []) {
+  const mixed = boardRows.some(({ lane, invitation }) => {
+    if (!hasBid(invitation)) return false;
+    const bidCurrency = String(invitation.currency || lane.currency || "USD").trim().toUpperCase();
+    return bidCurrency !== laneComparisonCurrency(lane);
+  });
+  if (!mixed) return "";
+  if (!comparisonFx?.rate) {
+    return "Mixed currencies: no FX rate available, so offers are not ranked across currencies";
+  }
+  const asOf = comparisonFx.rate_date ? ` (${comparisonFx.rate_date})` : "";
+  return `Compared at ${comparisonFx.currency_pair || "USD/MXN"} ${comparisonFx.rate}${asOf}`;
+}
+
+// Cheapest first. Offers that could not be converted sort last instead of
+// interleaving with converted ones on a meaningless raw number.
+function compareBidRows(a, b) {
+  const left = decisionNumber(a?.comparable_amount);
+  const right = decisionNumber(b?.comparable_amount);
+  if (left === null && right === null) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+  return left - right;
+}
+
 function laneDecisionContext(rows = []) {
-  const amounts = rows.map((row) => decisionNumber(row.amount)).filter((value) => value !== null);
+  const amounts = rows.map((row) => decisionNumber(row.comparable_amount)).filter((value) => value !== null);
   const capacities = rows.map((row) => decisionNumber(row.invitation.weekly_capacity)).filter((value) => value !== null);
   const transits = rows.map((row) => decisionNumber(row.invitation.transit_days)).filter((value) => value !== null);
   const pickupEtas = rows
@@ -2349,7 +2404,9 @@ function commercialDecisionScore(invitation = {}) {
 function procurementDecisionForBid(row, laneRows = []) {
   const invitation = row.invitation || {};
   const context = laneDecisionContext(laneRows);
-  const amount = decisionNumber(row.amount);
+  // Scored in the lane's currency. Null means the offer could not be converted,
+  // so it earns no price score rather than being compared as a bare number.
+  const amount = decisionNumber(row.comparable_amount);
   const capacity = decisionNumber(invitation.weekly_capacity);
   const transit = decisionNumber(invitation.transit_days);
   const pickupDate = new Date(invitation.eta_pickup || "");
@@ -2373,6 +2430,9 @@ function procurementDecisionForBid(row, laneRows = []) {
   const commercialScore = commercialDecisionScore(invitation);
   const alternativeScore = invitation.best_alternative_offered ? 5 : 0;
   const riskFlags = [];
+  // Surfaced rather than silent: an offer that cannot be converted is scored
+  // without price, so the buyer has to know why it looks weak.
+  if (amount === null && decisionNumber(row.amount) !== null) riskFlags.push("Currency not comparable");
   if (capacity === null) riskFlags.push("No capacity");
   if (invitation.equipment_available !== true) riskFlags.push("Availability not validated");
   if (invitation.equipment_available === true && pickupEta === null) riskFlags.push("Missing pickup ETA");
@@ -2400,7 +2460,8 @@ function decisionBadgesForBid(row, laneRows = []) {
   const bestScore = decisionRows.length ? Math.max(...decisionRows.map((item) => item.decision.score)) : null;
   const badges = [];
   if (bestScore !== null && procurementDecisionForBid(row, laneRows).score === bestScore) badges.push({ label: "Best overall", tone: "success" });
-  if (decisionNumber(row.amount) === context.lowestAmount) badges.push({ label: "Lowest", tone: "success" });
+  const comparable = decisionNumber(row.comparable_amount);
+  if (comparable !== null && comparable === context.lowestAmount) badges.push({ label: "Lowest", tone: "success" });
   if (row.invitation.equipment_available === true) badges.push({ label: "Available", tone: "success" });
   if (decisionNumber(row.invitation.weekly_capacity) === context.bestCapacity && context.bestCapacity !== null) badges.push({ label: "Best capacity", tone: "neutral" });
   if (decisionNumber(row.invitation.transit_days) === context.fastestTransit && context.fastestTransit !== null) badges.push({ label: "Fastest transit", tone: "neutral" });
@@ -3985,12 +4046,14 @@ function liveOfferRows() {
   return currentLanes.flatMap((lane) => bidInvitations(lane)
     .map((invitation) => {
       const economics = bidCommercialEconomics(invitation);
+      const currency = invitation.currency || lane.currency || "USD";
       return {
         lane,
         invitation,
         amount: Number(economics.board_rate),
         carrier_amount: Number(economics.carrier_rate),
-        currency: invitation.currency || lane.currency || "USD"
+        currency,
+        comparable_amount: comparableBidAmount(economics.board_rate, currency, laneComparisonCurrency(lane))
       };
     })
     .filter((row) => Number.isFinite(row.amount)));
@@ -3998,7 +4061,7 @@ function liveOfferRows() {
 
 function liveOfferCards(limit = 12) {
   return liveOfferRows()
-    .sort((a, b) => a.amount - b.amount)
+    .sort((a, b) => compareBidRows(a, b))
     .slice(0, limit)
     .map((row, index) => `
       <article>
@@ -4028,10 +4091,13 @@ function renderLiveOfferManager() {
       decision: procurementDecisionForBid(row, laneRows),
       decision_badges: decisionBadgesForBid(row, laneRows)
     }));
-    const sorted = scoredRows.sort((a, b) => b.decision.score - a.decision.score || a.amount - b.amount);
+    const sorted = scoredRows.sort((a, b) => b.decision.score - a.decision.score || compareBidRows(a, b));
     const best = sorted[0];
-    const cheapest = [...scoredRows].sort((a, b) => a.amount - b.amount)[0];
-    const amounts = scoredRows.map((row) => row.amount);
+    const cheapest = [...scoredRows].sort((a, b) => compareBidRows(a, b))[0];
+    // Spread only means something between offers expressed in the same currency.
+    const amounts = scoredRows
+      .map((row) => decisionNumber(row.comparable_amount))
+      .filter((value) => value !== null);
     const spread = amounts.length > 1 ? Math.max(...amounts) - Math.min(...amounts) : 0;
     return `
       <section class="live-offer-lane">
@@ -4098,12 +4164,14 @@ function awardLaneRows() {
       const rawBids = bidInvitations(lane)
         .map((invitation) => {
           const economics = bidCommercialEconomics(invitation);
+          const currency = invitation.currency || lane.currency || "USD";
           return {
             lane,
             invitation,
             amount: Number(economics.board_rate),
             carrier_amount: Number(economics.carrier_rate),
-            currency: invitation.currency || lane.currency || "USD"
+            currency,
+            comparable_amount: comparableBidAmount(economics.board_rate, currency, laneComparisonCurrency(lane))
           };
         })
         .filter((row) => Number.isFinite(row.amount));
@@ -4113,7 +4181,7 @@ function awardLaneRows() {
           decision: procurementDecisionForBid(row, rawBids),
           decision_badges: decisionBadgesForBid(row, rawBids)
         }))
-        .sort((a, b) => b.decision.score - a.decision.score || a.amount - b.amount);
+        .sort((a, b) => b.decision.score - a.decision.score || compareBidRows(a, b));
       return { lane, bids };
     })
     .filter((row) => row.bids.length);
@@ -4537,7 +4605,7 @@ function renderAwardBoard() {
     rfxAwardNeedsDecision.innerHTML = lanes.map(({ lane, bids }) => {
       const primary = bids.find((row) => row.invitation.award_role === "primary");
       const backups = bids.filter((row) => row.invitation.award_role === "backup");
-      const cheapest = [...bids].sort((a, b) => a.amount - b.amount)[0];
+      const cheapest = [...bids].sort((a, b) => compareBidRows(a, b))[0];
       const recommended = bids[0];
       return `
         <section class="rfx-award-lane rfx-award-lane-decision" data-rfx-award-lane-id="${escapeHtml(lane.id)}">
@@ -4566,7 +4634,7 @@ function renderAwardBoard() {
   rfxAwardBoard.innerHTML = lanes.map(({ lane, bids }) => {
     const primary = bids.find((row) => row.invitation.award_role === "primary");
     const backups = bids.filter((row) => row.invitation.award_role === "backup");
-    const cheapest = [...bids].sort((a, b) => a.amount - b.amount)[0];
+    const cheapest = [...bids].sort((a, b) => compareBidRows(a, b))[0];
     return `
       <section class="rfx-award-lane rfx-award-lane-ranking" data-rfx-award-lane-id="${escapeHtml(lane.id)}">
         <header>
@@ -4726,10 +4794,17 @@ function bestBidForLane(lane) {
   return bidInvitations(lane)
     .map((item) => {
       const economics = bidCommercialEconomics(item);
-      return { ...item, numeric_bid: Number(economics.board_rate), carrier_bid_rate: economics.carrier_rate, board_rate: economics.board_rate };
+      const currency = item.currency || lane.currency || "USD";
+      return {
+        ...item,
+        numeric_bid: Number(economics.board_rate),
+        carrier_bid_rate: economics.carrier_rate,
+        board_rate: economics.board_rate,
+        comparable_amount: comparableBidAmount(economics.board_rate, currency, laneComparisonCurrency(lane))
+      };
     })
     .filter((item) => Number.isFinite(item.numeric_bid))
-    .sort((a, b) => a.numeric_bid - b.numeric_bid)[0] || null;
+    .sort((a, b) => compareBidRows(a, b))[0] || null;
 }
 
 function laneDecisionStatus(lane) {
@@ -5749,12 +5824,14 @@ function responseBoardRows() {
       const laneRows = bidInvitations(lane)
         .map((bidInvitation) => {
           const economics = bidCommercialEconomics(bidInvitation);
+          const currency = bidInvitation.currency || lane.currency || "USD";
           return {
             lane,
             invitation: bidInvitation,
             amount: Number(economics.board_rate),
             carrier_amount: Number(economics.carrier_rate),
-            currency: bidInvitation.currency || lane.currency || "USD"
+            currency,
+            comparable_amount: comparableBidAmount(economics.board_rate, currency, laneComparisonCurrency(lane))
           };
         })
         .filter((row) => Number.isFinite(row.amount));
@@ -5855,9 +5932,12 @@ function renderResponseBoard() {
   const rows = responseColumnFilters?.apply(allRows) || allRows;
   const bidRows = rows.filter(({ invitation }) => hasBid(invitation));
   const bidCarrierCount = new Set(bidRows.map(({ invitation }) => invitationVendorKey(invitation)).filter(Boolean)).size;
-  responseSummary.textContent = rows.length === allRows.length
+  const countsLine = rows.length === allRows.length
     ? `${formatNumber(bidRows.length)} lane bids / ${formatNumber(bidCarrierCount)} carriers / ${formatNumber(rows.length)} active lane rows`
     : `${formatNumber(bidRows.length)} lane bids / ${formatNumber(bidCarrierCount)} carriers / ${formatNumber(rows.length)} shown of ${formatNumber(allRows.length)} active lane rows`;
+  // Awarding on a converted amount is a commercial decision, so say which rate
+  // did the converting. Only shown when a lane actually mixes currencies.
+  responseSummary.textContent = [countsLine, mixedCurrencyNote(allRows)].filter(Boolean).join(" | ");
   if (!rows.length) {
     responseBody.innerHTML = `<tr><td colspan="13">No carrier responses match these column filters.</td></tr>`;
     return;
@@ -8866,6 +8946,7 @@ async function loadDetail(eventId, options = {}) {
     if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
     selectedEvent = detail.event;
     currentLanes = detail.lanes || [];
+    comparisonFx = detail.comparison_fx || null;
     selectedEventDetailReady = true;
     outreachMessages = [];
     rfxResponseVendorIds = new Set();

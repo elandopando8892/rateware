@@ -5170,7 +5170,16 @@ bulkRemoveVendorsButton?.addEventListener("click", async () => {
     setStatus(bulkStatusMessage, "Select at least one vendor.", "error");
     return;
   }
-  if (!window.confirm(`Remove ${ids.length} vendor(s)? This deletes them from Rateware.`)) return;
+  // Deleting a vendor cascades to eleven child tables — invitations, submitted
+  // bids, ratebook quotes, chat threads, WhatsApp groups and scorecards all go
+  // with it. The old wording ("deletes them from Rateware") did not say so, and
+  // most carriers in the CRM have bid history attached.
+  if (!window.confirm(
+    `Remove ${ids.length} carrier(s)?\n\n`
+    + "This also permanently deletes everything attached to them: bid room invitations, "
+    + "submitted bids, ratebook quotes, message history and scorecards.\n\n"
+    + "This cannot be undone."
+  )) return;
   vendorBulkActionRunning = true;
   updateBulkState();
   setStatus(bulkStatusMessage, "Removing vendors...");

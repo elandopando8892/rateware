@@ -7225,6 +7225,121 @@ a {
   left: auto;
 }
 
+/* Carrier status bar: who is asking, how long is left, how far along you are.
+   Sticky so the deadline stays visible where the carrier actually sets a price. */
+.bid-portal-statusbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+}
+
+.bid-portal-statusbar-id {
+  min-width: 0;
+}
+
+.bid-portal-statusbar-id strong {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-portal-statusbar-id span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.bid-portal-statusbar-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.bid-portal-clock {
+  text-align: right;
+}
+
+.bid-portal-clock strong {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.bid-portal-clock span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.bid-portal-clock[data-tone="danger"] strong {
+  color: var(--danger);
+}
+
+.bid-portal-clock[data-tone="warning"] strong {
+  color: var(--warning);
+}
+
+.bid-portal-clock[data-tone="success"] strong {
+  color: var(--success);
+}
+
+.bid-portal-clock[data-tone="muted"] strong {
+  color: var(--muted);
+}
+
+.bid-portal-progress {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.bid-portal-progress svg {
+  width: 32px;
+  height: 32px;
+  flex: none;
+}
+
+.bid-portal-progress strong {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.bid-portal-progress span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+/* On a phone a sticky bar eats too much of the viewport the carrier needs for
+   the rate fields, so it scrolls away there. */
+@media (max-width: 640px) {
+  .bid-portal-statusbar {
+    position: static;
+  }
+
+  .bid-portal-clock {
+    text-align: left;
+  }
+}
+
 .bid-room-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(330px, 410px);
@@ -30072,7 +30187,10 @@ form[data-unsaved-guard][data-unsaved="true"] {
 /* Keep the private portal decision-first: one compact tab strip, one workspace at a time. */
 .bid-portal-shell .bid-private-workspace-tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Derived from the number of phases rendered, not hardcoded — a pinned column
+     count left a gap when the fourth tab was folded into Result. */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 6px;
   margin: 0 0 8px;
   border: 1px solid var(--line);

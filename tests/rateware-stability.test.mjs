@@ -2163,15 +2163,22 @@ assert.match(rfxBidLaneScopeSource, /function eventInvitedLaneRows\(carrierBook 
 assert.match(rfxBidLaneScopeSource, /row\.event\?\.id[\s\S]*row\.rfx_events\?\.id[\s\S]*row\.rfx_event_id/, "Carrier route matching should accept nested and flattened event identifiers after refresh.");
 assert.match(rfxBidLaneScopeSource, /function isBidToolsEligibleRow\(row = \{\}, statusResolver = \(\) => ""\)[\s\S]*Boolean\(String\(row\.invitation_token \|\| ""\)\.trim\(\)\)/, "Bid Tools eligibility should be based on a real invitation token, not a stale display flag.");
 assert.match(rfxBidSource, /function renderMasterPackageRoutes[\s\S]*eventInvitedLaneRows\(carrierBook, invitation\)/, "The RFx Master Package should expose the same invited routes that can be quoted in Bid Tools.");
-assert.match(rfxBidSource, /function renderBidToolsLaneSwitcher[\s\S]*eventInvitedLaneRows\(carrierBook, invitation\)/, "Bid Tools lane switching should use the same invited RFx scope as the Master Package.");
+// The separate route selector is gone; the quick bid grid is the lane list now,
+// so the scope guarantee moves onto the rows it renders.
+assert.doesNotMatch(rfxBidSource, /renderBidToolsLaneSwitcher/, "The standalone bid tools route selector should not come back alongside the grid");
+assert.match(rfxBidSource, /function quickBidRows[\s\S]*eventInvitedLaneRows\(carrierBook, invitation\)/, "The quick bid grid should use the same invited RFx scope as the Master Package.");
 assert.match(rfxBidSource, /function renderBidTemplateTools[\s\S]*eventInvitedLaneRows\(carrierBook, invitation\)/, "The bid XLSX scope should match every invited lane in the active RFx.");
 assert.match(rfxBidSource, /function bidTemplateRows[\s\S]*bidTemplateSourceRows\(carrierBook, invitation, bookStatus\)/, "Bid templates should include every eligible invited lane");
 assert.match(rfxBidSource, /function quickBidRows[\s\S]*isBidToolsEligibleRow\(row, \(candidate\) => bookStatus\(candidate, packagePayload\)\)/, "Quick bids should include every eligible invited lane with route-level fit context");
-assert.match(rfxBidSource, /function quickBidRowsForSelectedLane[\s\S]*quickBidRows\(carrierBook, invitation\)/, "Bid tools should keep all eligible rows available while rendering one selected lane at a time");
+// Deliberately reversed. Rendering one lane at a time forced a carrier with
+// seven lanes through seven context switches; the grid now prices all of them.
+assert.doesNotMatch(rfxBidSource, /quickBidRowsForSelectedLane/, "The quick bid grid should no longer render a single lane at a time");
+assert.match(rfxBidSource, /function renderQuickLaneBidGridShell[\s\S]*const rows = quickBidRows\(carrierBook, invitation\)/, "The quick bid grid should render every eligible invited lane");
+assert.match(rfxBidSource, /data-open-quick-lane-fit="\$\{escapeAttribute\(row\.invitation_token/, "Each row's Fit button must target its own lane, not whichever lane is selected");
 assert.match(rfxBidSource, /Bid tools/, "Bid tools should clearly identify the quick-bid workspace");
 assert.match(rfxBidSource, /quick-bid-heading-copy/, "Bid tools should keep the selected route context compact and visible in the quick bid heading");
 assert.match(rfxBidSource, /data-selected-quick-bid-token/, "The quick bid grid should retain the active lane token when the carrier switches routes");
-assert.match(rfxBidSource, /renderQuickLaneBidGridShell\(carrierBook, invitation, \{ invitationToken: selectedInvitation\.invitation_token \}\)/, "Bid tools should scope the quick bid row to the selected invitation");
+assert.match(rfxBidSource, /renderQuickLaneBidGridShell\(carrierBook, invitation, \{ invitationToken: selectedInvitation\.invitation_token \}\)/, "The selected invitation should still drive the fit checklist and commercial context above the grid");
 assert.match(rfxBidSource, /const pendingQuickBidDrafts = new Map\(\)/, "Bid tools should retain unsaved carrier drafts while switching routes.");
 assert.match(rfxBidSource, /let bidToolsLaneSelectionVersion = 0;/, "Bid tools should guard rapid route changes from rendering stale lane state.");
 assert.match(rfxBidSource, /function capturePendingQuickBidDrafts\(scope = card\)/, "Bid tools should capture visible offer, alternative, and live-capacity inputs before a route change.");
@@ -2224,6 +2231,49 @@ assert.match(rfxBidSource, /let bidTemplateSubmitting = false;/, "Carrier portal
 assert.match(rfxBidSource, /async function submitBidTemplateRows\(\) \{[\s\S]+if \(bidTemplateSubmitting\) return;[\s\S]+bidTemplateSubmitting = true;[\s\S]+finally \{[\s\S]+bidTemplateSubmitting = false;[\s\S]+\}/, "Carrier portal XLSX submit should ignore duplicate submits and always restore its guard");
 assert.match(rfxBidSource, /const BID_PORTAL_COPY = \{/, "Carrier portal should provide English and Spanish UI copy");
 assert.match(rfxBidSource, /data-private-language-toggle="en"/, "Carrier portal should expose an English/Spanish language toggle");
+
+// Four parallel workspaces named after system nouns gave a carrier no order and
+// no sense of progress. They are now three phases in the order work happens.
+assert.match(rfxBidSource, /PRIVATE_WORKSPACE_VALUES = new Set\(\["master", "bids", "award"\]\)/, "The carrier portal should expose exactly three phases");
+assert.doesNotMatch(rfxBidSource, /data-private-workspace-tab="book"/, "The private book should not be a fourth tab");
+assert.doesNotMatch(rfxBidSource, /setPrivateWorkspace\("book"\)/, "Nothing should navigate to the retired fourth tab");
+// A carrier who left the old tab selected must not land on a panel that is gone.
+assert.match(rfxBidSource, /RETIRED_PRIVATE_WORKSPACES = new Map\(\[\["book", "award"\]\]\)/, "A stored fourth-tab selection must migrate instead of dead-ending");
+assert.match(rfxBidSource, /function resolvePrivateWorkspace/, "Workspace resolution should run through one migration-aware helper");
+assert.match(rfxBidSource, /data-private-workspace-panel="award"[\s\S]{0,900}id="carrier-business-book"/, "The lane book should live inside the Result phase");
+
+// A carrier arriving from an email needs to know who is asking, how long is left,
+// and how far along they are. None of it was answered before.
+assert.match(rfxBidSource, /function renderPortalStatusBar/, "Carrier portal should render a persistent status bar");
+assert.match(rfxBidSource, /function carrierLaneProgress/, "Carrier portal should show how many lanes are already quoted");
+assert.match(rfxBidSource, /class="bid-portal-statusbar"/, "The status bar should be rendered into the portal");
+assert.match(stylesSource, /\.bid-portal-statusbar \{[^}]*position: sticky/, "The status bar should stay on screen while the carrier prices lanes");
+// One toggle, in the status bar. It used to be duplicated in the hero toolbar.
+assert.equal(
+  (rfxBidSource.match(/data-private-language-toggle="en"/g) || []).length,
+  1,
+  "The language toggle should exist exactly once"
+);
+
+// A bare `new Date("YYYY-MM-DDT23:59:59")` resolves to the runtime zone: UTC on
+// the edge function, the device zone in the browser. That once closed bidding at
+// 17:59 Mexico City while the portal still showed "closes today".
+assert.match(rfxBidSource, /BID_DEADLINE_UTC_OFFSET = "-06:00"/, "The portal should pin the deadline zone");
+assert.match(rfxBidApiSource, /BID_DEADLINE_UTC_OFFSET/, "The bid API should pin the deadline zone");
+assert.match(rfxBidSource, /new Date\(`\$\{event\.due_date\}T23:59:59\$\{BID_DEADLINE_UTC_OFFSET\}`\)/, "Portal countdown must use the pinned deadline zone");
+assert.match(rfxBidApiSource, /new Date\(`\$\{due\}T23:59:59\$\{BID_DEADLINE_UTC_OFFSET\}`\)/, "Deadline enforcement must use the pinned deadline zone");
+// Carriers in this Bid Room are mostly Mexican; landing them in English by
+// default made every one of them hunt for the toggle.
+assert.doesNotMatch(rfxBidSource, /language: localStorage\.getItem\("rateware\.privateBidRoom\.language"\) \|\| "en"/,
+  "Carrier portal must not hard-default the portal language to English");
+assert.match(rfxBidSource, /language: storedPortalLanguage\(\) \|\| browserPortalLanguage\(\)/,
+  "Carrier portal should seed language from an explicit choice, then the browser");
+assert.match(rfxBidSource, /function carrierPortalLanguage/,
+  "Carrier portal should derive language from the invitation's own carrier and lane data");
+assert.match(rfxBidSource, /function applyCarrierLanguageDefault[\s\S]*?if \(storedPortalLanguage\(\)\) return false/,
+  "A carrier who picked a language must never be overridden by detection");
+assert.match(rfxBidSource, /lastInvitation = data\.invitation;\s*(?:\/\/[^\n]*\n\s*)*applyCarrierLanguageDefault\(lastInvitation\)/,
+  "Language detection must run before the invitation is first rendered");
 assert.match(rfxBidSource, /function eventMarketplaceUrl/, "Carrier portal should build a contextual public Bid Room board URL");
 assert.match(rfxBidSource, /return "\.\/bid-room-board\.html"/, "Carrier portal should link bid-specific pages to the full public live board");
 assert.match(stylesSource, /\.carrier-bid-template-tools/, "Carrier portal should style the XLSX bid template workflow");
@@ -2287,8 +2337,11 @@ assert.match(rfxBidSource, /bid-alt-enabled/, "Carrier portal should render best
 assert.match(rfxBidSource, /bid-equipment-available/, "Carrier portal should render equipment availability input");
 assert.match(rfxBidSource, /bid-eta-pickup/, "Carrier portal should render pickup ETA input");
 assert.match(rfxBidSource, /Guided bid flow/, "Carrier portal should present the bid form as a guided workflow");
-assert.match(rfxBidSource, /data-bid-section-target="primary"/, "Carrier portal should let carriers jump to primary bid section");
-assert.match(rfxBidSource, /data-bid-section-target="alternative"/, "Carrier portal should let carriers add alternative offers");
+// The modal these used to assert lived in a <template>, so its markup never
+// rendered. Both capabilities now ship in the inline quick-bid row; assert that.
+assert.match(rfxBidSource, /data-quick-bid-field="bid_rate"/, "Carrier portal should let carriers enter the primary rate inline");
+assert.match(rfxBidSource, /data-toggle-quick-bid-panel="alternative"/, "Carrier portal should let carriers add alternative offers");
+assert.match(rfxBidSource, /data-quick-bid-extra-field="best_alternative_offered"/, "Carrier portal should capture the alternative-offer flag");
 assert.match(rfxBidSource, /bid-review-summary/, "Carrier portal should render a pre-submit review summary");
 assert.match(rfxBidSource, /bid-best-final/, "Carrier portal should support best-and-final confirmation");
 assert.match(rfxBidSource, /bid-confirm-review/, "Carrier portal should require capacity and commercial terms confirmation");
@@ -2316,12 +2369,12 @@ assert.match(rfxBidSource, /function validateBidDraft/, "Carrier portal should b
 assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.bid_rate, "bid-rate", rateLabel\)/, "Carrier portal should require the commercial-model-specific carrier rate");
 assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.weekly_capacity, "bid-capacity", "Weekly capacity", false\)/, "Carrier portal should validate capacity only when provided");
 assert.match(rfxBidSource, /validatePositiveNumberIssue\(draft\.transit_days, "bid-transit-days", "Transit days", false\)/, "Carrier portal should validate transit days only when provided");
-assert.match(rfxBidSource, /id="bid-valid-through"/, "Carrier portal should ask carriers for offer validity in the guided bid form");
+assert.match(rfxBidSource, /data-quick-bid-field="valid_through"/, "Carrier portal should ask carriers for offer validity in the inline lane row");
 assert.match(rfxBidSource, /valid_through: card\.querySelector\("#bid-valid-through"\)\?\.value \|\| ""/, "Carrier portal should collect offer validity from the guided bid form");
 assert.match(rfxBidSource, /Valid through \/ Vigente hasta/, "Carrier XLSX bid template should include a bilingual validity column");
 assert.match(rfxBidSource, /valid_through: quickBidField\(rowElement, "valid_through"\)/, "Carrier quick bid rows should save offer validity");
-assert.match(rfxBidSource, /id="bid-current-unit-location"/, "Carrier portal should ask where the available unit is located");
-assert.match(rfxBidSource, /id="bid-deadhead-distance"/, "Carrier portal should ask for empty miles or kilometers to pickup");
+assert.match(rfxBidSource, /data-quick-bid-extra-field="current_unit_location"/, "Carrier portal should ask where the available unit is located");
+assert.match(rfxBidSource, /data-quick-bid-extra-field="deadhead_distance"/, "Carrier portal should ask for empty miles or kilometers to pickup");
 assert.match(rfxBidSource, /deadhead_distance: card\.querySelector\("#bid-deadhead-distance"\)\?\.value \|\| ""/, "Carrier portal should collect deadhead from the guided bid form");
 assert.match(rfxBidSource, /validateNonNegativeNumberIssue\(draft\.deadhead_distance, "bid-deadhead-distance", "Deadhead distance", false\)/, "Carrier portal should validate deadhead as optional non-negative distance");
 assert.match(rfxBidSource, /Current unit location \/ Ubicacion unidad/, "Carrier XLSX bid template should include current unit location");
@@ -2333,7 +2386,7 @@ assert.match(rfxBidSource, /function commercialStructureConfig/, "Carrier portal
 assert.match(rfxBidSource, /rateLabel: dualText\("Direct carrier all-in"/, "Cost-plus should tell carriers to enter their direct all-in price");
 assert.match(rfxBidSource, /rateLabel: dualText\("All-in you want to keep"/, "Carrier-share should tell carriers that their all-in remains theirs");
 assert.match(rfxBidSource, /rateLabel: dualText\("Sell rate to XBF"/, "XBF buy-sell should tell carriers to enter their sell rate to XBF");
-assert.match(rfxBidSource, /id="bid-rate-entry-help"/, "The advanced bid editor should expose the active price-entry rule");
+assert.match(rfxBidSource, /rateInput\.title = config\.rateEntryHelp/, "The inline lane row should expose the active price-entry rule on the rate input");
 assert.match(rfxBidSource, /rateEntryHelp\.textContent = config\.rateEntryHelp/, "The advanced bid editor should update the price-entry rule when the commercial model changes");
 assert.match(rfxBidSource, /commercialConfig\.rateLabel/, "The final bid review should identify the carrier-entered rate according to its commercial model");
 assert.match(rfxBidSource, /function commercialModelGuideHtml/, "Carrier portal should show a concise commercial model guide before quick bids");
@@ -2360,7 +2413,10 @@ assert.match(stylesSource, /commercial-model-selected-context/, "Selected commer
 assert.doesNotMatch(rfxBidSource, /data-select-quick-bid-commercial-model/, "Quick bids should use their row selector as the only commercial-model control");
 assert.match(rfxBidSource, /dualText\("Offer", "Oferta"\)/, "Quick bids should use a direct primary action instead of an abstract guided flow");
 assert.match(rfxBidSource, /dualText\("Reject lane", "Rechazar ruta"\)/, "Quick bids should keep route rejection available in the compact route-actions menu");
-assert.match(rfxBidSource, /Route \$\{selectedPosition\} of \$\{eligibleRows\.length\}/, "Quick bid lane context should show the actual selected route position");
+// "Route 3 of 7" answered "where am I in the carousel". With every lane on
+// screen the useful number is how many still need a price.
+assert.match(rfxBidSource, /Faltan \$\{remaining\} de \$\{rows\.length\} por cotizar/, "The quick bid heading should show how many lanes still need a price");
+assert.match(rfxBidSource, /All \$\{rows\.length\} lanes quoted/, "The quick bid heading should confirm when every lane is priced");
 assert.match(stylesSource, /commercial-model-quick-guide article > button/, "Commercial guide tiles should be accessible interactive buttons");
 assert.match(rfxBidSource, /function commercialModelEntryRule/, "Quick bids should tell carriers which price to enter for each commercial model");
 assert.match(rfxBidSource, /You enter: your sell rate to XBF/, "The buy-sell option should distinguish the carrier sell rate from the board price");
@@ -2395,15 +2451,18 @@ assert.doesNotMatch(rfxEventsHtml, /id="rfx-chat-lane"|id="rfx-chat-vendor"|Carr
 assert.match(rfxBidSource, /Best alternative needs equipment or a positive unit count/, "Carrier portal should validate alternative offers");
 assert.match(rfxBidSource, /Delivery ETA must be after pickup ETA/, "Carrier portal should validate pickup and delivery ETA order");
 assert.match(rfxBidSource, /focusBidValidationField/, "Carrier portal should focus the first invalid field");
-assert.match(rfxBidSource, /clearBidValidationState/, "Carrier portal should clear invalid field markers as the carrier edits");
+assert.match(rfxBidSource, /markQuickBidRowInvalid/, "Carrier portal should mark invalid fields on the inline lane row");
+assert.match(rfxBidSource, /removeAttribute\("aria-invalid"\)/, "Carrier portal should clear invalid field markers as the carrier edits");
 assert.match(rfxBidSource, /function updateBidReviewSummary/, "Carrier portal should update the review summary as carriers edit");
 assert.match(rfxBidSource, /function renderBidHistory/, "Carrier portal should render offer revision history");
 assert.match(rfxBidSource, /carrier-bid-history/, "Carrier portal should include offer history in the bid room");
 assert.match(rfxBidSource, /data-edit-current-offer/, "Carrier portal should let carriers edit their submitted live offer row");
 assert.match(rfxBidSource, /function hydrateBidFormFromOffer/, "Carrier portal should preload the bid form from the current submitted offer");
 assert.match(rfxBidSource, /data-bid-submit-button/, "Carrier portal should relabel submit as update when a published offer exists");
-assert.match(rfxBidSource, /<template id="bid-editor-modal" data-retired="inline-quick-bid-replaces-modal" hidden>/, "The retired guided bid editor must stay inert so carriers use the inline lane flow.");
-assert.doesNotMatch(rfxBidSource, /<div id="bid-editor-modal"/, "The carrier portal must not render the legacy overlay drawer into the active UI.");
+// The retired editor used to ship as an inert <template>. A <template> never
+// renders, so it was pure payload; it is now removed outright.
+assert.doesNotMatch(rfxBidSource, /bid-editor-modal/, "The retired guided bid editor must not ship to carriers at all.");
+assert.doesNotMatch(rfxBidSource, /id="bid-form"/, "The carrier portal must not render the legacy overlay bid form.");
 assert.match(rfxBidSource, /function openBidEditor\(options = \{\}\)[\s\S]*?selectBidToolsLane/, "Legacy offer links should land in the selected inline lane bid.");
 assert.match(rfxBidApiSource, /revisionType = bestFinal \? "best_final" : previousBidRate !== null \? "revision" : "initial"/, "Carrier portal API should classify repeated submitted bids as revisions");
 assert.match(rfxBidSource, /carrier-quick-bid-grid/, "Carrier portal should render an inline editable lane bid grid");
@@ -2538,7 +2597,30 @@ assert.match(rfxEventsHtml, /rfx-chat-start-event-thread/, "Bid Room chat should
 assert.match(rfxEventsSource, /syncBidRoomEventThread/, "Bid Room UI should call the event thread sync action");
 assert.match(rfxEventsSource, /function bidRoomHasEventGroupThread[\s\S]+thread_type === "event_group"/, "Bid Room should detect an existing event thread from its loaded snapshot");
 assert.match(rfxEventsSource, /if \(!bidRoomHasEventGroupThread\(bidRoomChatThreads\)\)[\s\S]+ensureSelectedEventChatThread\(eventId, \{ silent: true \}\)/, "Bid Room should create an event thread only when the loaded snapshot does not already contain one");
-assert.match(apiSource, /const \[eventLanes, loadedInvitationRows, benchmarkLoad\] = await Promise\.all\(\[[\s\S]+fetchAllRfxLaneRows[\s\S]+fetchAllRfxLaneVendorRows[\s\S]+fetchRfxDetailBenchmarkRates/, "Bid Room detail should load lanes, invitations, and Rateware benchmarks concurrently");
+assert.match(apiSource, /const \[eventLanes, loadedInvitationRows, benchmarkLoad, comparisonFx\] = await Promise\.all\(\[[\s\S]+fetchAllRfxLaneRows[\s\S]+fetchAllRfxLaneVendorRows[\s\S]+fetchRfxDetailBenchmarkRates[\s\S]+loadBidComparisonFxRate/, "Bid Room detail should load lanes, invitations, Rateware benchmarks, and the comparison FX rate concurrently");
+
+// The Google Sheet import used to delete every vendor from the sheet tab before
+// re-inserting. vendors has eleven ON DELETE CASCADE children, so each re-sync
+// silently destroyed those carriers' invitations, bids and quotes.
+assert.doesNotMatch(apiSource, /from\("vendors"\)\s*\n\s*\.delete\(\)/, "Vendor import must never delete carriers before re-inserting them");
+assert.match(apiSource, /function vendorNaturalKey/, "Vendor imports should resolve carriers by a stable natural key");
+assert.match(apiSource, /function resolveVendorImportRows/, "Vendor imports should match existing carriers before writing");
+// Name alone would merge distinct divisions that quote separately.
+assert.match(apiSource, /\$\{name\}\|\$\{domain \|\| email\}/, "The carrier key must include domain (or email) so same-named divisions stay separate");
+assert.match(apiSource, /VENDOR_IMPORT_PRESERVED_FIELDS/, "A re-import must not reset CRM workflow fields the spreadsheet does not carry");
+assert.doesNotMatch(apiSource, /const result = await supabase\.from\("vendors"\)\.insert\(rows\)\.select\(\)/, "import_vendors must upsert, not blind-insert");
+
+// Offers quoted in different currencies were once ranked by their bare number,
+// so 3,000 USD beat 53,000 MXN as "lowest". Every cross-row comparison must go
+// through the converted amount.
+assert.match(rfxEventsSource, /function comparableBidAmount/, "Bid Room should convert offers before comparing them");
+assert.match(rfxEventsSource, /function compareBidRows/, "Bid Room should have one currency-aware comparator");
+assert.doesNotMatch(rfxEventsSource, /a\.amount - b\.amount/, "Bid Room must not sort offers by their raw, unconverted amount");
+assert.doesNotMatch(rfxEventsSource, /a\.numeric_bid - b\.numeric_bid/, "Bid Room must not sort lane bids by their raw, unconverted amount");
+assert.match(rfxEventsSource, /const amount = decisionNumber\(row\.comparable_amount\)/, "Bid scoring should price offers from the converted amount");
+assert.match(rfxEventsSource, /comparable !== null && comparable === context\.lowestAmount/, "The Lowest badge should be decided on converted amounts");
+assert.match(rfxEventsSource, /riskFlags\.push\("Currency not comparable"\)/, "An offer that cannot be converted should be flagged, not silently unscored");
+assert.match(apiSource, /\.eq\("currency_pair", "USD\/MXN"\)[\s\S]*?\.lte\("rate_date", today\)[\s\S]*?\.order\("rate_date", \{ ascending: false \}\)/, "Comparison FX should resolve the newest rate at or before today");
 assert.match(apiSource, /rfx_benchmark_candidate_rate_ids/, "Bid Room detail should request lane-scoped Rateware benchmark candidates");
 assert.match(apiSource, /fetchRateRowsForIds\(supabase, ids, RFX_DETAIL_BENCHMARK_COLUMNS/, "Bid Room detail should load only the selected candidate rows");
 assert.doesNotMatch(apiSource, /RFX_DETAIL_BENCHMARK_RATE_LIMIT = 5000/, "Bid Room detail should not transfer a fixed 5,000-row benchmark sample");
@@ -3709,15 +3791,19 @@ assert.match(bidRoomBoardSource, /if \(!publicBiddingAvailable\(row\)\)/, "Publi
 assert.match(rfxBidApiSource, /\.in\("status", \["open", "closed", "awarded"\]\)/, "Public Bid Room should exclude draft events from carrier-facing opportunities");
 assert.match(rfxBidApiSource, /is_bid_available: boardStatus === "live"/, "Public Bid Room API should expose live bidding separately from opportunity status");
 assert.match(rfxBidApiSource, /if \(eventStatus !== "open" \|\| publicBidBoardState\(event\) !== "live"\)/, "Public invitation requests should require an open live event");
-assert.match(rfxBidSource, /const PRIVATE_WORKSPACE_VALUES = new Set\(\["master", "bids", "award", "book"\]\)/, "Private Bid Room should define four carrier workspaces");
-assert.match(rfxBidSource, /data-private-workspace-tab="master"/, "Private Bid Room should expose the RFX Master Package workspace");
-assert.match(rfxBidSource, /data-private-workspace-tab="bids"/, "Private Bid Room should expose the Invited Lane Book workspace");
-assert.match(rfxBidSource, /data-private-workspace-tab="award"/, "Private Bid Room should expose the Award Outcome workspace");
-assert.match(rfxBidSource, /data-private-workspace-tab="book"/, "Private Bid Room should expose the Private Business Book workspace");
-assert.match(rfxBidSource, /data-private-workspace-panel="book"/, "Private Bid Room should render the Private Business Book workspace panel");
-assert.match(rfxBidSource, /data-private-workspace-panel="award"[\s\S]*id="carrier-bid-history"/, "Offer history should live in Award Outcome");
+// Deliberately reversed: the fourth workspace is gone. Four parallel tabs named
+// after system nouns gave the carrier no order and no sense of progress.
+assert.match(rfxBidSource, /data-private-workspace-tab="master"/, "Phase 1 (the business) should exist");
+assert.match(rfxBidSource, /data-private-workspace-tab="bids"/, "Phase 2 (your lanes) should exist");
+assert.match(rfxBidSource, /data-private-workspace-tab="award"/, "Phase 3 (result) should exist");
+assert.match(rfxBidSource, /data-private-workspace-panel="award"[\s\S]*id="carrier-bid-history"/, "Offer history should live in the Result phase");
 assert.match(rfxBidSource, /renderBidSupportAgent\(\);[\s\S]+setPrivateWorkspace\(activePrivateWorkspace\)/, "Private Bid Room should initialize workspace visibility after rendering support");
-assert.match(stylesSource, /\.bid-portal-shell \.bid-private-workspace-tabs \{[\s\S]*grid-template-columns: repeat\(4/, "Private Bid Room workspace tabs should use a compact four-column layout");
+// The column count is now derived from however many phases render — pinning it
+// left an empty column the moment the fourth tab was folded in.
+// [^}]* keeps the match inside this rule; [\s\S]*? would run past the closing
+// brace and hit an unrelated repeat(4) elsewhere in the stylesheet.
+assert.match(stylesSource, /\.bid-portal-shell \.bid-private-workspace-tabs \{[^}]*grid-auto-flow: column/, "Phase tabs should size themselves to the number of phases");
+assert.doesNotMatch(stylesSource, /\.bid-portal-shell \.bid-private-workspace-tabs \{[^}]*grid-template-columns: repeat\(4/, "Phase tabs must not pin a four-column layout");
 const privateWorkspaceTabsStart = rfxBidSource.indexOf('<nav class="bid-private-workspace-tabs"');
 const privateWorkspaceTabsEnd = rfxBidSource.indexOf("</nav>", privateWorkspaceTabsStart);
 const privateWorkspaceTabsSource = rfxBidSource.slice(privateWorkspaceTabsStart, privateWorkspaceTabsEnd);

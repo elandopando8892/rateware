@@ -6,10 +6,19 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_K
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
 const GMAIL_TOKEN_ENCRYPTION_KEY = Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY");
-const RFX_INVITATION_TOKEN_ENCRYPTION_KEY = Deno.env.get("RFX_INVITATION_TOKEN_ENCRYPTION_KEY")
+// Must stay byte-identical to the same constant in rateware-api, which trims.
+// A stray space in the env var would otherwise derive a different AES key here
+// and every carrier link would fail to decrypt.
+const RFX_INVITATION_TOKEN_ENCRYPTION_KEY = (Deno.env.get("RFX_INVITATION_TOKEN_ENCRYPTION_KEY")
   || Deno.env.get("RFX_RFI_LINK_ENCRYPTION_KEY")
-  || GMAIL_TOKEN_ENCRYPTION_KEY;
+  || GMAIL_TOKEN_ENCRYPTION_KEY
+  || "").trim();
 const GMAIL_ALLOWED_SENDER = (Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@heymarksman.com").trim().toLowerCase();
+// A due date is a calendar day, so it needs a zone to become an instant. Mexico
+// City has had no daylight saving since 2022, so a fixed -06:00 is stable.
+// Must stay identical to BID_DEADLINE_UTC_OFFSET in src/rfx-bid.js, or the
+// carrier's countdown would disagree with what the server actually enforces.
+const BID_DEADLINE_UTC_OFFSET = (Deno.env.get("BID_DEADLINE_UTC_OFFSET") || "-06:00").trim();
 const RATEWARE_APP_URL = (Deno.env.get("RATEWARE_APP_URL") || Deno.env.get("RATEWARE_PUBLIC_APP_URL") || "https://rateware.vercel.app").trim();
 const GOOGLE_CHAT_ALLOWED_ACCOUNT = (Deno.env.get("GOOGLE_CHAT_ALLOWED_ACCOUNT") || GMAIL_ALLOWED_SENDER).trim().toLowerCase();
 const GOOGLE_CHAT_WEBHOOK_URL = Deno.env.get("GOOGLE_CHAT_WEBHOOK_URL");
@@ -697,18 +706,71 @@ function bidRoomVisibility(event: Record<string, unknown> = {}) {
   };
 }
 
+// Returns why a carrier may not price this lane right now, or null when the bid
+// is open. `dueState` above is a display heuristic that keeps a day of grace, so
+// enforcement compares the deadline instant directly instead of reusing it.
+function bidSubmissionBlockReason(
+  invitation: Record<string, unknown>,
+  event: Record<string, unknown>,
+  language: unknown
+) {
+  const es = String(cleanText(language) || "").toLowerCase() === "es";
+
+  const eventStatus = String(cleanText(event.status) || "").toLowerCase();
+  if (["closed", "awarded", "archived"].includes(eventStatus)) {
+    return es
+      ? "Esta puja ya cerro. Escribe al equipo de compras si necesitas actualizar tu oferta."
+      : "This bid event is closed. Contact the procurement team if you need to update your offer.";
+  }
+
+  const due = cleanText(event.due_date);
+  if (due) {
+    // The offset is explicit on purpose. Parsed bare, this resolves to the
+    // runtime's zone (UTC on Supabase) and would close bidding at 17:59 Mexico
+    // City time while the carrier's portal still showed "closes today".
+    const deadline = new Date(`${due}T23:59:59${BID_DEADLINE_UTC_OFFSET}`);
+    if (!Number.isNaN(deadline.getTime()) && deadline.getTime() < Date.now()) {
+      return es
+        ? "La fecha limite de esta puja ya paso. Escribe al equipo de compras si necesitas actualizar tu oferta."
+        : "The deadline for this bid event has passed. Contact the procurement team if you need to update your offer.";
+    }
+  }
+
+  const status = String(cleanText(invitation.invitation_status) || "").toLowerCase();
+  if (status === "archived") {
+    return es
+      ? "Esta invitacion ya no esta activa. Escribe al equipo de compras para que te vuelvan a invitar."
+      : "This lane invitation is no longer active. Contact the procurement team to be reinvited.";
+  }
+
+  // An awarded rate is a commitment on both sides. Repricing it has to go through
+  // procurement, not through the portal.
+  const awardRole = String(cleanText(invitation.award_role) || "").toLowerCase();
+  if (status === "awarded" || awardRole === "primary" || awardRole === "backup") {
+    return es
+      ? "Esta ruta ya fue adjudicada. Escribe al equipo de compras para renegociar una tarifa adjudicada."
+      : "This lane is already awarded. Contact the procurement team to renegotiate an awarded rate.";
+  }
+
+  return null;
+}
+
+// Must agree with bidSubmissionBlockReason above, which enforces the same
+// instant. When this said "closing" and the gate had already closed, a carrier
+// was told they still had time and then rejected on submit.
 function dueState(dueDate: unknown) {
   const due = cleanText(dueDate);
   if (!due) return { due_date: null, days_remaining: null, status: "no_deadline" };
-  const dueAt = new Date(`${due}T23:59:59`);
+  const dueAt = new Date(`${due}T23:59:59${BID_DEADLINE_UTC_OFFSET}`);
   if (Number.isNaN(dueAt.getTime())) return { due_date: due, days_remaining: null, status: "unknown" };
-  const now = new Date();
-  const ms = dueAt.getTime() - now.getTime();
+  const ms = dueAt.getTime() - Date.now();
   const days = Math.ceil(ms / 86400000);
   return {
     due_date: due,
     days_remaining: days,
-    status: days < 0 ? "closed" : days <= 1 ? "closing" : "open"
+    // Closed the moment the deadline passes — not a day later. `days` keeps the
+    // rounded-up count for display ("2 days left").
+    status: ms < 0 ? "closed" : days <= 1 ? "closing" : "open"
   };
 }
 
@@ -5187,6 +5249,8 @@ Deno.serve(async (request) => {
           rfx_event_id,
           rfx_lane_id,
           vendor_id,
+          invitation_status,
+          award_role,
           bid_rate,
           currency,
           weekly_capacity,
@@ -5213,10 +5277,21 @@ Deno.serve(async (request) => {
           response_source,
           notes,
           vendors(vendor_name,domain,primary_email),
-          rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer),
+          rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,status,due_date),
           rfx_lanes(*)
         `);
       if (!invitation) return jsonResponse({ error: "Invitation link is invalid or has expired." }, 404);
+
+      // Holding a valid link is not the same as the bid still being open. Without
+      // this gate a carrier can price after the deadline, after the event closes,
+      // after being archived, or after the lane was already awarded to them.
+      const submissionBlock = bidSubmissionBlockReason(
+        invitation,
+        relationRecord(invitation.rfx_events),
+        cleanText(body.language)
+      );
+      if (submissionBlock) return jsonResponse({ error: submissionBlock, bid_window_closed: true }, 409);
+
       const invitationResult = { data: invitation };
       // Route fit answers are advisory context; invitation access is the quote gate.
       const previousBidRate = cleanNumber(invitationResult.data.bid_rate);
