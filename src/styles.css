@@ -7340,43 +7340,80 @@ a {
   }
 }
 
-.bid-room-hero {
+/* The carrier brief. The page heading already names the event and the sticky bar
+   already carries the customer, RFx id, deadline and progress, so this block
+   repeats none of them — it only greets the carrier and says what is expected.
+   Brand-tinted rather than white so the one block that speaks to a person reads
+   softer than the working panels below it. */
+.bid-room-brief {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(330px, 410px);
-  gap: 14px;
-  align-items: stretch;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background:
-    linear-gradient(120deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 250, 0.96)),
-    #fff;
-  padding: 14px;
-  margin-bottom: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(270px, 330px);
+  gap: 18px;
+  align-items: start;
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-card);
+  background: linear-gradient(135deg, var(--brand-tint) 0%, #fbfcff 62%, var(--panel) 100%);
+  padding: 16px 18px;
+  margin-bottom: 14px;
 }
 
-.bid-room-hero h2 {
+.bid-room-greeting {
   margin: 0;
   color: var(--accent-dark);
-  font-size: clamp(1.5rem, 3vw, 2.25rem);
-  line-height: 1.05;
+  font-size: clamp(1.15rem, 2.2vw, 1.5rem);
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  text-wrap: balance;
 }
 
-.bid-room-hero p {
-  max-width: 760px;
-  margin: 8px 0 0;
+.bid-room-invite {
+  max-width: 62ch;
+  margin: 7px 0 0;
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.bid-room-privacy {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 11px 0 0;
   color: var(--muted);
+  font-size: 0.76rem;
 }
 
-.bid-room-hero-actions {
+.bid-room-privacy-badge {
+  border: 1px solid var(--brand-border);
+  border-radius: 999px;
+  background: var(--brand-tint-strong);
+  color: var(--brand-strong);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.bid-room-brief-side {
+  display: grid;
+  gap: 9px;
+}
+
+.bid-room-brief-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 
-.bid-room-hero-actions .small-button {
-  min-height: 30px;
-  border-radius: 6px;
-  padding: 4px 8px;
+.bid-room-brief-actions .small-button,
+.bid-room-brief-actions .bid-room-sound-toggle {
+  min-height: 32px;
+  border-radius: 7px;
+  padding: 5px 8px;
   font-size: 0.7rem;
   font-weight: 900;
   justify-content: center;
@@ -7384,39 +7421,90 @@ a {
   white-space: normal;
 }
 
-.bid-room-hero aside {
-  display: grid;
-  align-content: start;
-  gap: 9px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--soft-panel);
-  padding: 12px;
+/* One column once the side panel can no longer hold three buttons legibly. */
+@media (max-width: 860px) {
+  .bid-room-brief {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 13px;
+  }
 }
 
-.bid-room-hero aside strong {
-  color: var(--text);
-  font-size: 1.1rem;
-}
+/* On a phone the header, the status bar and the brief all stack, so each one
+   costs a fifth of the first screen. Tightened here so the phase tabs — the
+   carrier's actual starting point — stay reachable without scrolling far. */
+@media (max-width: 640px) {
+  .bid-room-brief {
+    gap: 11px;
+    padding: 13px 14px;
+  }
 
-.bid-room-hero aside small {
-  color: var(--muted);
-  font-size: 0.76rem;
-  font-weight: 760;
-}
+  .bid-room-greeting {
+    font-size: 1.05rem;
+  }
 
-.bid-room-deadline-card {
-  display: grid;
-  gap: 4px;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 8px;
-}
+  .bid-room-invite {
+    margin-top: 5px;
+    font-size: 0.86rem;
+    line-height: 1.45;
+  }
 
-.bid-room-hero-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
+  .bid-room-privacy {
+    margin-top: 8px;
+  }
+
+  .bid-room-brief-feed {
+    padding: 7px 8px;
+  }
+
+  /* The label already says how long is left; the exact date is one tap away in
+     the tooltip and repeated on the lane rows. */
+  .bid-portal-clock span {
+    display: none;
+  }
+
+  /* The header laid brand, title and support side by side, which left the event
+     name 111px of a 375px screen and wrapped it over four lines. Brand and
+     support share the first row; the title gets the full width below them. */
+  .bid-portal-header {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .bid-portal-header > div {
+    order: 3;
+    flex: 1 0 100%;
+  }
+
+  .bid-portal-header #bid-support-agent.bid-support-widget {
+    width: auto;
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+
+  /* Clock, progress and the language toggle add up to just over the width the
+     meta group gets from its own content, so the toggle dropped to a line of its
+     own. Given the full row they fit side by side. */
+  .bid-portal-statusbar-id,
+  .bid-portal-statusbar-meta {
+    flex: 1 0 100%;
+  }
+
+  .bid-portal-statusbar-meta {
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  /* Clock + progress + toggle need 301px of the 291px the row actually offers,
+     so the ring gives back the difference rather than letting the toggle wrap. */
+  .bid-portal-progress {
+    gap: 7px;
+  }
+
+  .bid-portal-progress svg {
+    width: 26px;
+    height: 26px;
+  }
 }
 
 .bid-room-language-toggle {
@@ -7479,19 +7567,20 @@ a {
   cursor: wait;
 }
 
-.bid-room-alert-feed {
+.bid-room-brief-feed {
   display: grid;
   gap: 5px;
-  border: 1px solid #dce6ee;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #ffffff;
-  padding: 7px;
+  background: var(--panel);
+  padding: 8px 9px;
 }
 
-.bid-room-alert-feed > span {
+.bid-room-brief-feed > span {
   color: var(--muted);
   font-size: 0.66rem;
   font-weight: 900;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
@@ -7505,27 +7594,6 @@ a {
 .bid-room-section-heading h2,
 .bid-room-section-heading h3 {
   margin: 0;
-}
-
-.bid-context {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.bid-context article {
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--soft-panel);
-  padding: 10px;
-}
-
-.bid-context span {
-  display: block;
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 780;
 }
 
 .rfx-master-package-card {
@@ -11689,15 +11757,15 @@ body.bid-editor-open {
   .outreach-ops-health,
   .outreach-flow-steps,
   .draft-preview-meta,
-  .bid-room-hero,
-  .bid-context,
+  .bid-room-brief,
   .bid-lane-summary dl {
     grid-template-columns: 1fr;
   }
 
-  .bid-room-hero-toolbar,
-  .bid-room-hero-actions {
-    grid-template-columns: 1fr;
+  /* The three brief actions stay side by side on a phone: they are short labels
+     and stacking them pushed the phase tabs off the first screen. */
+  .bid-room-brief-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .rfx-event-form,

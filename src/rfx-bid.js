@@ -147,13 +147,13 @@ const BID_PORTAL_COPY = {
     visibility: "Visibility",
     refresh: "Refresh",
     multimediaAlerts: "Multimedia alerts",
-    rankingMovement: "Ranking, quote and chat movement",
+    rankingMovement: "Live activity",
     enableSound: "Enable sound",
     soundOn: "Sound on",
     soundOff: "Sound off",
     noMovement: "No movement yet. Enable sound to hear ranking, quote, chat, and deadline alerts.",
-    noMovementSoundOn: "No movement yet. Sound is on for ranking, quote, chat, and deadline alerts.",
-    noMovementSoundOff: "No movement yet. Sound is off. Turn it on to hear ranking, quote, chat, and deadline alerts.",
+    noMovementSoundOn: "Nothing has moved yet. Alerts are on.",
+    noMovementSoundOff: "Nothing has moved yet. Turn sound on to be alerted.",
     xlsxEyebrow: "XLSX bid template",
     xlsxTitle: "Quote multiple invited lanes in Excel",
     xlsxCopy: "Download the prefilled bid workbook, edit only the offer columns, upload it here, then confirm after validation.",
@@ -262,13 +262,13 @@ const BID_PORTAL_COPY = {
     visibility: "Visibilidad",
     refresh: "Actualizacion",
     multimediaAlerts: "Alertas multimedia",
-    rankingMovement: "Movimiento de ranking, cotizaciones y chat",
+    rankingMovement: "Actividad en vivo",
     enableSound: "Activar sonido",
     soundOn: "Sonido activo",
     soundOff: "Sonido apagado",
     noMovement: "Sin movimiento todavia. Activa sonido para escuchar ranking, cotizaciones, chat y vencimientos.",
-    noMovementSoundOn: "Sin movimiento todavia. El sonido esta activo para ranking, cotizaciones, chat y vencimientos.",
-    noMovementSoundOff: "Sin movimiento todavia. El sonido esta apagado. Activalo para escuchar ranking, cotizaciones, chat y vencimientos.",
+    noMovementSoundOn: "Nada se ha movido todavia. Las alertas estan activas.",
+    noMovementSoundOff: "Nada se ha movido todavia. Activa el sonido para enterarte.",
     xlsxEyebrow: "Template XLSX de puja",
     xlsxTitle: "Cotiza varias lanes invitadas en Excel",
     xlsxCopy: "Descarga el libro prellenado, edita solo las columnas de oferta, subelo aqui y confirma despues de la validacion.",
@@ -1246,6 +1246,52 @@ function renderPortalStatusBar(event = {}, vendor = {}, progress = { total: 0, q
         </div>
       </div>
     </div>
+  `;
+}
+
+// Replaces the old hero, which restated the event name the page heading already
+// showed and the RFx id, customer and deadline the status bar above already
+// showed. Three headers stacked put the phase tabs 673px down the page, so the
+// carrier scrolled past everything before learning what to do. This block says
+// only what the other two cannot: who is inviting you, and what is expected of
+// you next.
+function renderCarrierBrief(event = {}, vendor = {}, liveBoard = {}, laneCount = 0) {
+  const carrier = vendor.vendor_name || vendor.domain || t("carrier");
+  const customer = event.customer || dualText("Procurement", "Procurement");
+  const lanes = Math.max(1, Number(laneCount) || 1);
+  return `
+    <section class="bid-room-brief">
+      <div class="bid-room-brief-copy">
+        <p class="bid-room-greeting">${escapeHtml(dualText(`Hello, ${carrier}`, `Hola, ${carrier}`))}</p>
+        <p class="bid-room-invite">${escapeHtml(dualText(
+          `${customer} invited you to quote ${lanes} ${lanes === 1 ? "lane" : "lanes"}. Price them one at a time — every row saves on its own, so you can stop and come back.`,
+          `${customer} te invito a cotizar ${lanes} ${lanes === 1 ? "ruta" : "rutas"}. Cotizalas de una en una: cada fila se guarda sola, asi que puedes parar y volver.`
+        ))}</p>
+        <p class="bid-room-privacy">
+          <span class="bid-room-privacy-badge">${escapeHtml(visibilityLabel(liveBoard.visibility || {}))}</span>
+          <span>${escapeHtml(dualText("Only your company sees this room.", "Solo tu empresa ve esta sala."))}</span>
+        </p>
+      </div>
+      <div class="bid-room-brief-side">
+        <div class="bid-room-brief-actions">
+          <button type="button" class="secondary small-button" data-carrier-chat-focus="carrier_private">
+            ${escapeHtml(t("talkToUs"))}
+          </button>
+          <a class="secondary small-button" href="${escapeAttribute(eventMarketplaceUrl(event))}" target="_blank" rel="noreferrer" title="${escapeAttribute(t("publicLiveBoardHelp"))}">
+            ${escapeHtml(t("goMarketplace"))}
+          </a>
+          <button id="private-bid-sound" class="bid-room-sound-toggle" type="button" aria-pressed="${privateAlertState.soundEnabled ? "true" : "false"}">
+            ${escapeHtml(privateAlertState.soundEnabled ? t("soundOn") : t("soundOff"))}
+          </button>
+        </div>
+        <div class="bid-room-brief-feed" title="${escapeAttribute(dualText("Updates every 30 seconds.", "Se actualiza cada 30 segundos."))}">
+          <span>${escapeHtml(t("rankingMovement"))}</span>
+          <div id="private-bid-alerts" class="private-bid-alerts" aria-live="polite">
+            <p>${escapeHtml(privateAlertState.soundEnabled ? t("noMovementSoundOn") : t("noMovementSoundOff"))}</p>
+          </div>
+        </div>
+      </div>
+    </section>
   `;
 }
 
@@ -4525,7 +4571,6 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
   const event = invitation.rfx_events || {};
   const lane = invitation.rfx_lanes || {};
   const vendor = invitation.vendors || {};
-  const deadline = deadlineCopy(event);
   const multiLaneRows = currentEventBookRows(carrierBook, event);
   const bidToolRows = quickBidRows(carrierBook, invitation);
   const bidCommercialConfig = commercialStructureConfig(invitation.commercial_model || "direct_cost_plus");
@@ -4536,46 +4581,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
   title.textContent = event.name || event.rfx_id || "Private Bid Room";
   card.innerHTML = `
     ${renderPortalStatusBar(event, vendor, carrierLaneProgress(carrierBook, event))}
-    <section class="bid-room-hero">
-      <div>
-        <p class="eyebrow">${escapeHtml(t("privateRoom"))}</p>
-        <h2>${escapeHtml(event.name || event.rfx_id || t("requestFallback"))}</h2>
-        <p>${escapeHtml(t("carrierCanReview", {
-          carrier: vendor.vendor_name || vendor.domain || t("carrier"),
-          lane_count: multiLaneRows.length > 1 ? t("invitedLanes", { count: multiLaneRows.length }) : t("selectedLane")
-        }))}</p>
-      </div>
-      <aside class="bid-room-hero-side">
-        <div class="bid-room-deadline-card">
-          <span class="status-pill" data-tone="${deadline.tone}">${escapeHtml(deadline.label)}</span>
-          <strong>${escapeHtml(event.rfx_id || "RFx")}</strong>
-          <small>${escapeHtml(deadline.detail)}</small>
-        </div>
-        <div class="bid-room-hero-toolbar" aria-label="${escapeAttribute(t("multimediaAlerts"))}">
-          <button id="private-bid-sound" class="bid-room-sound-toggle" type="button" aria-pressed="${privateAlertState.soundEnabled ? "true" : "false"}">
-            ${escapeHtml(privateAlertState.soundEnabled ? t("soundOn") : t("soundOff"))}
-          </button>
-        </div>
-        <div class="bid-room-hero-actions">
-          <button type="button" class="secondary small-button" data-carrier-chat-focus="carrier_private">
-            ${escapeHtml(t("talkToUs"))}
-          </button>
-          <a class="secondary small-button" href="${escapeAttribute(eventMarketplaceUrl(event))}" target="_blank" rel="noreferrer" title="${escapeAttribute(t("publicLiveBoardHelp"))}">
-            ${escapeHtml(t("goMarketplace"))}
-          </a>
-        </div>
-        <div class="bid-room-alert-feed" title="${escapeAttribute(dualText("Updates every 30 seconds.", "Se actualiza cada 30 segundos."))}">
-          <span>${escapeHtml(t("rankingMovement"))}</span>
-          <div id="private-bid-alerts" class="private-bid-alerts" aria-live="polite">
-            <p>${escapeHtml(privateAlertState.soundEnabled ? t("noMovementSoundOn") : t("noMovementSoundOff"))}</p>
-          </div>
-        </div>
-      </aside>
-    </section>
-
-    <div class="bid-context">
-      <article><span>${escapeHtml(t("visibility"))}</span><strong>${escapeHtml(visibilityLabel(liveBoard.visibility || {}))}</strong></article>
-    </div>
+    ${renderCarrierBrief(event, vendor, liveBoard, multiLaneRows.length)}
 
     <nav class="bid-private-workspace-tabs" aria-label="${escapeAttribute(dualText("Bid room phases", "Fases de la puja"))}" role="tablist">
       <button type="button" role="tab" data-private-workspace-tab="master" aria-selected="true" title="${escapeAttribute(dualText("Who is asking, what they need, and the rules of this business.", "Quien pide, que necesita, y las reglas de este negocio."))}" aria-label="${escapeAttribute(dualText("Phase 1: The business", "Fase 1: El negocio"))}">

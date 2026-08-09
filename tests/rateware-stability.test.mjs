@@ -2515,7 +2515,9 @@ assert.match(rfxBidWithdrawnStatusMigration, /'withdrawn'/, "Bid Room status con
 assert.match(stylesSource, /quick-bid-actions/, "Carrier portal should keep direct route actions compact and discoverable.");
 assert.match(stylesSource, /\.quick-bid-actions \{[\s\S]*flex-wrap: nowrap/, "Quick bid route actions should stay on one compact row and use the table scroll when needed");
 assert.match(stylesSource, /lane-fit-disclosure/, "Carrier fit should stay inline and collapsible rather than open a separate workflow.");
-assert.match(stylesSource, /bid-room-alert-feed/, "Carrier portal multimedia alerts should have compact hero styling");
+// Renamed from bid-room-alert-feed when the hero was replaced by the carrier
+// brief; the alert feed now lives inside that block.
+assert.match(stylesSource, /bid-room-brief-feed/, "Carrier portal multimedia alerts should have compact styling inside the brief");
 assert.match(stylesSource, /quick-bid-expand-panel/, "Carrier quick bid extras should use compact inline panels");
 assert.match(stylesSource, /quick-bid-panel-close/, "Quick bid extras should expose a compact close control");
 assert.match(stylesSource, /lane-fit-disclosure/, "Carrier route fit should render as a collapsible compact section");
