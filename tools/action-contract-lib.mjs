@@ -90,9 +90,8 @@ function edgeSurface({ functionName, actionName, sourceFile, handler, endpoint, 
   };
 }
 
-function discoverRatewareApi(repoRoot) {
+export function discoverRatewareApiFromText(source, growthSource) {
   const sourceFile = "supabase/functions/rateware-api/index.ts";
-  const source = text(join(repoRoot, sourceFile));
   const raw = matches(/body\.action\s*===\s*["']([^"']+)["']/g, source)
     .filter((match) => !/typeof\s+$/.test(source.slice(Math.max(0, match.index - 24), match.index)));
   const output = [];
@@ -120,7 +119,6 @@ function discoverRatewareApi(repoRoot) {
   });
 
   const growthFile = "supabase/functions/rateware-api/growth.ts";
-  const growthSource = text(join(repoRoot, growthFile));
   for (const match of matches(/case\s+["']([^"']+)["']\s*:\s*return\s+await\s+([A-Za-z_$][\w$]*)\s*\(/g, growthSource)) {
     const handler = match[2];
     output.push(edgeSurface({
@@ -135,6 +133,13 @@ function discoverRatewareApi(repoRoot) {
     }));
   }
   return output;
+}
+
+function discoverRatewareApi(repoRoot) {
+  return discoverRatewareApiFromText(
+    text(join(repoRoot, "supabase/functions/rateware-api/index.ts")),
+    text(join(repoRoot, "supabase/functions/rateware-api/growth.ts"))
+  );
 }
 
 function selectorExposure(functionName, actionName) {
