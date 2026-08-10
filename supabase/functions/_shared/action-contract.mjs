@@ -1,47 +1,723 @@
 /**
- * Phase 0.1 declarative backend action contract.
+ * Phase 0.1 hardened declarative backend action contract.
  * Runtime-neutral: this module is not imported by application or Edge handlers.
- * @typedef {'edge-selector'|'edge-method'|'postgres-function'} SourceKind
- * @typedef {'human'|'external-tokenized'|'public'|'internal/service-role'} Exposure
- * @typedef {'explicitly_allowed'|'explicitly_denied'|'pending_human_approval'|'internal_only'} DecisionStatus
- * @typedef {'active'|'alias'|'deprecated'|'unreachable'|'removed'} Lifecycle
- * @typedef {Object} GovernableSurface
- * @property {string} contractVersion
- * @property {string} canonicalId
- * @property {string} actionName
- * @property {SourceKind} sourceKind
- * @property {string} sourceFile
- * @property {string} handler
- * @property {string} endpoint
- * @property {string} businessModule
- * @property {string} operation
- * @property {string} resource
- * @property {'read'|'write'} access
- * @property {Exposure} exposure
- * @property {'low'|'medium'|'medium-high'|'high'|'critical'} sensitivity
- * @property {'tenant-scoped'|'record-derived'|'platform-scoped'|'mixed'} tenantRelevance
- * @property {string} proposedPermissionKey
- * @property {string} functionalOwner
- * @property {DecisionStatus} decisionStatus
- * @property {Lifecycle} lifecycle
- * @property {string|null} replacementAction
- * @property {string} sourceFingerprint
- * @property {string} notes
+ * reviewedMetadataFingerprints make sensitive metadata changes explicit.
+ * reviewedAuthorizationFingerprints cover each source plus observed local dependencies.
  */
-
-/** @type {{contractVersion:string,methodVersion:string,expectedCounts:Record<string,number>,surfaces:GovernableSurface[],nonGovernableDeclarations:Array<Record<string,unknown>>}} */
 export const ACTION_CONTRACT = {
-  "contractVersion": "1.0.0",
-  "methodVersion": "2026-08-10.phase0.1",
+  "contractVersion": "1.1.0",
+  "methodVersion": "2026-08-10.phase0.1-hardening",
   "expectedCounts": {
-    "governable": 349,
+    "governable": 347,
     "edge": 284,
-    "postgres": 65,
+    "postgres": 63,
     "ratewareApi": 244
+  },
+  "reviewedMetadataFingerprints": {
+    "edge.carrier-profile-api.add_ticket_followup": "3b8649d19b99b77858a6af7e197f7e86f5c5fe93b778736cd531559e61abb9be",
+    "edge.carrier-profile-api.get_profile": "7cabf0c363a8be2490856ba7556d5e543f31cad6df09abab5ba29220a1b5054e",
+    "edge.carrier-profile-api.submit_profile": "20ca96991e1dceed266c0a2b5945d464c8b4fc1b948a64384f45d6c926cb917b",
+    "edge.create-raw-upload.create_raw_upload": "c15dbbfd49edfe445c6fa6b7127d88a9e9cc953a15e6123c66ad5e142049ab74",
+    "edge.gmail-oauth-callback.complete_google_oauth_callback": "cdc7194afbf07ad7079789fecf6aa34cde2858b4632fceacd2144428096befe0",
+    "edge.google-chat-app.handle_chat_event": "803aea159e51799a77656ce009b925e5399a1ea790419eb3589e9d4e1d2bff29",
+    "edge.google-chat-app.health": "2c11ddbf6440b94837eed257665553843034e099ab5538c24f67ffe7918e3bdc",
+    "edge.interpret-upload.interpret_upload": "a84107d450c8430e656dca6a95a401c41f9ba7e6d87d9feb059cc3157696e965",
+    "edge.ratebook-carrier-api.get_ratebook_access": "a481ee8b0a82d34339200fca2a13213fdc69c7bc21e19edb14f192417cf3e4fb",
+    "edge.ratebook-carrier-api.submit_ratebook_quote": "252798292626543a7d424a79800837748c5271e37b0734d018428d68d17157f6",
+    "edge.ratebook-carrier-api.withdraw_ratebook_quote": "7996dbf68d8d13df0e4cb554646c467755be6202de5dde865a8fddc1f179869f",
+    "edge.rateware-api.apply_bid_update_from_chat": "c4da46dbe83d0c8eefed7ef84d04bf61b579fecab0eaffac7e220e406f614ecf",
+    "edge.rateware-api.apply_shipper_action_playbook": "db7bab62b063a52db86af4a3fc683822bb4f68b0ffb83b22a2eefdf24354b962",
+    "edge.rateware-api.apply_vendor_intelligence_tags": "a0b40e406a298436af252f26551681891739aced08fdfa0acdc165c572420074",
+    "edge.rateware-api.apply_vendor_template_updates": "27526627a00d838c3b956ba7e96af586a9f35c9fc30e2fc21fddfcb46f1c2d29",
+    "edge.rateware-api.archive_catalog_value": "bfda8cd6b61fea0b1ff34ae48fa6269ec2edbdca0440e28a2fb700b102a7c842",
+    "edge.rateware-api.archive_growth_segment": "c421c2c87d2a86b39c1c66347bf5b982d02167603040dacfff11a700de67e8aa",
+    "edge.rateware-api.archive_interpretation_memory": "e7671553ab4cf2475f8e3ca205a534db96cfcc01d558f607db5f6112a2a336e7",
+    "edge.rateware-api.archive_location_catalog_value": "02e2dd56a4aa4960ee515a372db22c227fec78ba60fc00f3029d254bbc96cfb9",
+    "edge.rateware-api.archive_outreach_audience_segment": "6c223a6ae40ca82580fafbc8d4871b20316f8a345944a4e47c42e94db381c09c",
+    "edge.rateware-api.archive_outreach_campaign": "4ca85ea50af9ea92c748467409ce1ceb21ec572a2d0c4a0f78dc428eb5b96f22",
+    "edge.rateware-api.archive_outreach_template": "841bc40fbe56f9f26c7d79ec24b665f3b2a1cdbaee201c5178e8ae963d9b6082",
+    "edge.rateware-api.archive_ratebook": "9996f037dd169a656a7ec323ed3a2c12fccd11e5897d1a1d3b016c1e3d40ce85",
+    "edge.rateware-api.archive_rfx_event": "65ba8bd94cd7650022017eb83c00f0df41658442c43cb5efb6ee9e1712ccc779",
+    "edge.rateware-api.archive_rfx_lane_vendors": "315ec6d1e5e6bdc880699cd3b54ef26612748625d162ed272ab143ea9c87cbba",
+    "edge.rateware-api.archive_shippers": "6e483d136c0c865ac8762c90273a0722e9c8bf722e3d901e5de4a6983eff1931",
+    "edge.rateware-api.archive_staging": "4e0fc440dc2595d73a302d617a792924edffa428a6ccc5792949df14aee93cb2",
+    "edge.rateware-api.archive_upload": "66cd760358bdd5c0c78da796e1a335c2d47b7418a5239bd082f9da02b22582b3",
+    "edge.rateware-api.auto_shortlist_rfx_lane": "235be52a44c848c0e2a1ae0cf85fbf0403cbe150702564c51cba446d72508639",
+    "edge.rateware-api.award_rfx_lane_vendor": "1e898e36931c43652a0d24a2836cd30e56612dfdd0a717e91d77c581e6154af1",
+    "edge.rateware-api.book_audit": "45a96513c56bb9986026d1a1b0f52ff3561fa5d11d6a7f2bde1ee0f5cb7201c7",
+    "edge.rateware-api.book_audit_scan": "d2c178843df0b78f3efc203950a79749437244a7e1012964d14b6724e2a245e5",
+    "edge.rateware-api.bulk_import_catalog_values": "a1f33fa17328b63055b416722786fda0ee7acf759e2c82735358d3753ad538af",
+    "edge.rateware-api.bulk_import_upload_template": "0b315563942d5d44f09c817e5e7b5d3bab4c390df18fa591f81ed55a7292f4ec",
+    "edge.rateware-api.bulk_rate_rows_by_filter": "124846b1e1c8a7f48fcc32211c7649c81ca28841d568740588e6cc8d467e0997",
+    "edge.rateware-api.bulk_update_rate_rows_by_filter": "d65a1e1a29e7545aab0450a06f248421a91b7e1ab2a16e49d0053f2fa33fdee9",
+    "edge.rateware-api.bulk_update_rateware": "2f3df60f1ca502136fa8c0fffdbf564566fcbd932c2ad241bb9c5cae194cc7c9",
+    "edge.rateware-api.bulk_update_staging": "d7cbfd63b79a6105a7107a8c14300079df8dcb7d076cec516ae7aff083f4edf4",
+    "edge.rateware-api.bulk_update_vendors": "ec1b72fea4fc62476fda31df3add396854a9a3bfbd5a5e3d0e632ef489a72299",
+    "edge.rateware-api.business_intelligence_drilldown": "c18038eeb20e297793a2fd1b70cc8f88a7a3db557f2b587c1791f8681f342653",
+    "edge.rateware-api.business_intelligence_geo_density": "22d2f0a88e6c6f2d6e3a99ff2b6a172447ae4d5317ce25e8ad1afd086aa9d259",
+    "edge.rateware-api.business_intelligence_pivot": "e3ed1be6ec21708f860ea92e232bbfe16cf78da0bb395bb47902b2012d4b0a5f",
+    "edge.rateware-api.carrier_intelligence_chat": "71583c24cf23b71636383a28f01b3ccae6e5d0aed6cc377b36a5927505487838",
+    "edge.rateware-api.carrier_recommendations": "c54acff1e4843b33c3599c68d1e23650a6133b702949112ccbe07566c2bce050",
+    "edge.rateware-api.clear_rfx_award": "6b7851376e95269815cf3c5d0fcb1667da49dfb119a110f762b7ce5ebbf8ffe3",
+    "edge.rateware-api.closeout_awarded_rfx_to_rateware": "8563aac494a9a8f388a2ec03febbd53fad26c232884e918391ccd58183b15259",
+    "edge.rateware-api.complete_whatsapp_business_connection": "b18d25ba37bd72cc0e94d9706e2ed49ffdb4d62beb0c4f7d2f4b60d8d3480a18",
+    "edge.rateware-api.consolidate_exact_vendor_duplicates": "429fd91e370ec225f9b46b49ab13db8ede16cf4a713eafe7551b1530f7dda0d3",
+    "edge.rateware-api.convert_growth_result": "b375cd2d34b8135cc4c812721788b827783d3f1e61dbd93828de729e8fb4d207",
+    "edge.rateware-api.create_interpretation_memory": "e8cabed0f8f5b6ded10ad04a500a9fe6c5ea1505c2074c2952252b2957d2d21f",
+    "edge.rateware-api.create_outreach_campaign": "f86b9b2304bc6068ec9eb7d455eac0022cd2caef5c9ec365da7908a705e658bc",
+    "edge.rateware-api.create_outreach_template": "5389b50649bfae9867c47c01b6aa427adbbdfe6b7958cacdd0a8a9c824e51a9c",
+    "edge.rateware-api.create_ratebook_revision": "c8e2f9e386342037226912a54deafb644e5f207491e5891af9bde57e87207d5d",
+    "edge.rateware-api.create_rateware_version": "9735b39547e5ed688ce0930f2b1d9d2f6bd7f2d17562367cd2c506f315fe1041",
+    "edge.rateware-api.create_rfx_award_package": "787bb73ebbd843cd88bd708ebdb7651f27526c3b6838b183bf00480218084265",
+    "edge.rateware-api.create_rfx_demand_snapshot": "f93cba2ee72168e400c6e6b57e09d16e24b6e7be5a90953c6e5218b6d4fd7d7d",
+    "edge.rateware-api.create_rfx_event": "ee477fbca8b111ccb5d31ca073068c39d7527e0a4c7255c97b9395e57901a3e9",
+    "edge.rateware-api.create_rfx_package": "d52c0911328aa7c7f51c39845afb244cce0a4af49e75ef25b574ec0b0e127f1b",
+    "edge.rateware-api.create_rfx_process_project": "9c4fc085ef07f45b3d191ae6f8af12f75e60f0c6438f014be5b7f52318d64ffb",
+    "edge.rateware-api.create_rfx_rfi_magic_link": "fd97397632d0fe4d5a0787e3467de3e0cbaa9f40786378aeea1f9aa6d9135e91",
+    "edge.rateware-api.create_shipper": "194a68fc5e53bb5d607754825b147a3b3226d631237c98c024717351548a3761",
+    "edge.rateware-api.create_shipper_profile_request": "aed52f9e06162004e84ccb2f5e948acc1f257ba13f3c6f8532f353898f55a20d",
+    "edge.rateware-api.create_vendor": "a99b46759daf85cf787065a760534f562f28b32ac2fd5895776bf9ddbf33ada7",
+    "edge.rateware-api.create_vendor_improvement_case": "1a432d6e5e2de30864be77e7aa5919b192e7a771f78cfafd2cf15c8ec01fbc1c",
+    "edge.rateware-api.create_vendor_profile_request": "ab9257f683b82114cb5563a62a8808d5c5fc2c625d22cf81a255b47e10ca53c6",
+    "edge.rateware-api.create_vendor_segment": "0ef1c463a19373b455b4bb72fe48f755da21c8996017df86149be995b98e635b",
+    "edge.rateware-api.dashboard_summary": "013bcbab9b383f98762d4ffa12041d566111b1623724c6f85b44d7ba34aaa02b",
+    "edge.rateware-api.delete_outreach_campaign": "3d33c91cfe3ce6e1c75e4a2fd1891e577c1ebd53acdd3d3f97f7b19b10a5b79e",
+    "edge.rateware-api.delete_outreach_messages": "36cff87ec4008ff629825c5f170c0087f407ad23d30979a663e6585c1f4e233c",
+    "edge.rateware-api.delete_outreach_template": "af59ecf9e9fd7b30d84b370cf24c245fce694cbe9ce76c35ed47c0ae69b07e15",
+    "edge.rateware-api.delete_rfx_event": "2006011fd3dd84ab40e8cb2700a2c3dd942607d75a840ea489de6aeab662d76c",
+    "edge.rateware-api.delete_shipper_record": "fb287a5526c542d24aac9b1453eb1adeaa6b826dc645e78368f8ba6b783fc0db",
+    "edge.rateware-api.delete_vendor_segment": "ffb814187a4eb8a0d3b06fcd78f5f13fc46e7fe6766adb75fb89a7e546bb3832",
+    "edge.rateware-api.disconnect_gmail_connection": "9aa922a0065ef8d2562d3feb2e136713f448f1b5fcd3d0322e76210c8815d802",
+    "edge.rateware-api.disconnect_google_chat_connection": "79febfb7cceaf1bbfb1a331cfb7b066891f1ed08ebb495618e7c3dc199f388a2",
+    "edge.rateware-api.disconnect_whatsapp_business_connection": "bda4b2bdae87ee183b2c04b38be195de25fa0ea148090665197c09c5d96e8694",
+    "edge.rateware-api.duplicate_outreach_campaign": "514bc84296f2f430ffd94d5131e00d988cb5780c7fa741b1ddb83c04ec2c1cd2",
+    "edge.rateware-api.duplicate_outreach_template": "28efa5e8ddf8ebb2140c8a2675a303862326c3ba56d51d893b978c84b164da1c",
+    "edge.rateware-api.duplicate_rfx_event": "4377da483169296ea016dd49f5a21d2e9d633c4c08072d1386f409648e112561",
+    "edge.rateware-api.enrich_missing_location_zips": "b6b5096c0a65212613624758fbdc2c02c21b34af4c130ccb6643d7ce2827a40f",
+    "edge.rateware-api.export_growth_campaign": "8e660d4b3d45417e353206044453e6f8934919087bbf52ef4f8db24caaab63de",
+    "edge.rateware-api.export_ratebook_routes": "3e77f4b39bca1ad2d543f5b4a23965180ba51f36d84eaeedb9aa062db99ad03a",
+    "edge.rateware-api.generate_outreach_drafts": "7cfba68854f03efa40f547a28ab727dc459b06ae04e30761cced19be852c9970",
+    "edge.rateware-api.generate_rfx_award_notices": "bb4467f7a82074a07fcffacc6cf9fe98279ffc5567359788fabbfb62b2f36410",
+    "edge.rateware-api.get_growth_campaign": "4ee54b725601ae15cb68b96949eeb6c3279a6eced512ec06524a77b9b695256b",
+    "edge.rateware-api.get_outreach_message": "78dc9a98367ec6834cd33f8d9f1a89a2cf05d93e9c85b7246398eb04a86ec9ad",
+    "edge.rateware-api.get_outreach_tracking_summary": "7ea217ea5530f0aa3733d7f0d542e1daaf1ac028fa395dbdd216f0979fa1ead5",
+    "edge.rateware-api.get_rate_row_detail": "d2d7192b49d78c1d3c0b9111bf6d866ed93bbe00786d684e01949eaad14b6cd2",
+    "edge.rateware-api.get_ratebook": "1176232e78a4653682abcc5f1e3fdb23473739f5929dec1edd46dc98119e7dec",
+    "edge.rateware-api.get_ratebook_audit": "79e897fdb55180fc75cd082c994f6e4609945f8f9b4b29ec0066f0d10e750cd6",
+    "edge.rateware-api.get_ratebook_health": "f05e180b1ab0e5877095b751c09f9d96a4288d0f4ac023686e6140a20bd827f6",
+    "edge.rateware-api.get_ratebook_route_detail": "b8598f87e2ed528512309982ba470f98013b2cc8959367d636e32288eeaf4742",
+    "edge.rateware-api.get_ratebook_route_quotes": "2086e60b4718ee58bea88aa89b52b0b32cc323f07129f9b5e0eea76cf9839694",
+    "edge.rateware-api.get_rateware_version": "eec4b1d76120440255aca1cabd2d82c1d4dee3b894e53f4041bd9409f1465be3",
+    "edge.rateware-api.get_rfx_process_project": "22169ade939b7d4c6db9ee457f1e47236333b4ffbdd93ac829dceb0755cc7240",
+    "edge.rateware-api.get_saas_settings": "171076acc9bc3bc0d80bded1bfb05af4c83606b22a143ffc41b9242700bdc5ff",
+    "edge.rateware-api.get_shipper": "0d480a701c4bed34e1220f9ccce076f91c30794cfb24c3425511fb26b275ffdf",
+    "edge.rateware-api.get_upload_source_url": "cf9f33070794e52973f56ae503b983bd3983c0cba30687d56aecc5e8fc064afb",
+    "edge.rateware-api.get_vendor_relationship_activity": "1099aadfb006ddb1439896e75aa337045a44aaee6f5e99a289b6f0362152d931",
+    "edge.rateware-api.get_whatsapp_connection_status": "7729489da9b16c851cb632d11a805c9704b7122080590476cee3b3c88762718d",
+    "edge.rateware-api.growth_ai_action": "8ecdab41cb2ae67871728091d2bbe2f6c36a1b5eb431d660a7eb5fb7d301963d",
+    "edge.rateware-api.growth_dashboard": "6df0499aa5eddb726c8fb4e5fe9da552ee3dd49353ca7d03624dd79dde652259",
+    "edge.rateware-api.import_growth_csv": "6ce8a31c00d8951cad3afeecb491033d4f2b136359f0f4afcfdb852ca6f9e791",
+    "edge.rateware-api.import_rfx_lanes": "ac13a4d7af4f767e63d03f87630e442c773f26adf2f4bc2f3596ccce53c046a2",
+    "edge.rateware-api.import_shipper_crm_workbook": "5c70d50d30dc0f52fdaa90fc2ef71e34d0f364e57cb966179daac545751f2e47",
+    "edge.rateware-api.import_shippers": "fcfccee336baad628148daee92556556c31e90ac3ea13cb3d994e6f2bdb01eaf",
+    "edge.rateware-api.import_vendor_onboarding_corrections": "caad1f9bac0971c0aee3a9d6d40e4b502362250cf63784386f21878f4e55625c",
+    "edge.rateware-api.import_vendors": "6863b12bf0864ec185118f8b76a7e6b11fb852963c25dce493e5cbff0afe7d44",
+    "edge.rateware-api.import_vendors_google_sheet": "266b514413cfa49652f33f33b5bf43d6b2f8fc839de06018f86ebe477f03dfdc",
+    "edge.rateware-api.invite_rfx_lane_vendors": "0c4e13d66607e0e98837b816dda8333ecfd885047a7cfdfab447c16acbe66534",
+    "edge.rateware-api.launch_rfx_package_to_bid_room": "062dde878e04b4bc6b0e0611d5d22aa8dc4384504e73e7d9015268791cc7d114",
+    "edge.rateware-api.launch_shipper_opportunity_rfx": "d045f03d8660ab41797a1a4ded27aaf88cf4de5e683f370e6a2b2b957759266e",
+    "edge.rateware-api.list_bid_room_chat": "9d1feadded527f4c5ae122d61ebaea4e5d03514642efb389ebae02c8098a2249",
+    "edge.rateware-api.list_catalog_values": "43cc3ad2c7db19eebb35171dc53972a3e46ee71c83287b4f82d887ea9a7913fa",
+    "edge.rateware-api.list_contact_history": "86048fb8cd02ab914333a2babf97fe27e956c7d9522e2e9c89c972639f140b4b",
+    "edge.rateware-api.list_gmail_connections": "ec47c6574e8031a0a6a772e4d104a8214344dfbc489cd32c41eec67433350910",
+    "edge.rateware-api.list_google_chat_connections": "be0bf73f9d1a77160d7b06b8a9aa69fb92461b9b2910ddb075d2b543922b0621",
+    "edge.rateware-api.list_google_chat_spaces": "9363a3f9d13f83415176daaec13a8c6613c4b861e4f07a6cbcd9f3e5bb4051fa",
+    "edge.rateware-api.list_growth_campaigns": "dd095c238a6d64e4070644adff77e03207a1d154e3539b56479a5b9cb0c3d9f8",
+    "edge.rateware-api.list_growth_results": "240429f218202db9ef3052d7559c4af749b19174c31961baf0f99e2f8e8e5837",
+    "edge.rateware-api.list_growth_segments": "870d86e56771694788a5abd500a787536ad184b4c2b2402a9916454b3b5bc05a",
+    "edge.rateware-api.list_interpretation_memory": "34ee08c4a77a18038289876d1cf0056f58e0fb379491db6515073c344c2b41ce",
+    "edge.rateware-api.list_interpretation_memory_audit": "44f491fb0bdf43a408083f8ac1c59caad0a9da8710210c0a037a995552ae0acd",
+    "edge.rateware-api.list_location_catalog_values": "ed76da2f36162b3a32f89ffa4db9820a6b0b7d2cc48429474cd1108400e81aca",
+    "edge.rateware-api.list_observability_events": "feebe323e42cf5978931c5f0e9e4e91dabf56a29a1f3b3639709f8c185c0ece4",
+    "edge.rateware-api.list_outreach_audience_segments": "c555d07339b4f73b3f9f6ed428dec04a0cfc2d81aee96e8b4c34738b32a39713",
+    "edge.rateware-api.list_outreach_campaigns": "06be7d079bc21ac6a4411332491547e1028a35d91e04c95d80ad93a60da63531",
+    "edge.rateware-api.list_outreach_messages": "e82255a9885b6e0a7c1908e72574b27958aab11b213a388bc191b862bebf3fa4",
+    "edge.rateware-api.list_outreach_templates": "282e3eed1ebb636f597776137f4af54fd2db846cdab5a2944a4d697288b5932a",
+    "edge.rateware-api.list_ratebook_carriers": "40f634bd49b9bd19777f0d9b502261d5ac1c4bd8a079a53524377706e3905a1d",
+    "edge.rateware-api.list_ratebooks": "bc478cf6951ba5fa151de6c14f1635bcd70d341188589781be57df5c5eb2a98b",
+    "edge.rateware-api.list_rateware": "aab1d8251958c877dfebd407bd1ea0c8599fc42d74a0d52cd61b836a2ddab21a",
+    "edge.rateware-api.list_rateware_audit": "41cc59e3224839b96a5e9290b9b68d7cecb73aa043af6fe391aca42ae0ec072f",
+    "edge.rateware-api.list_rateware_filter_values": "ff966389369cc827fedf51583adbc9f7f5513c10421b001ba6ccb88aea3888cc",
+    "edge.rateware-api.list_rateware_rows_by_ids": "2bc794f90d933869dc77c19061946877b705a0d6cc73b2e19b7e8188ea16cc6b",
+    "edge.rateware-api.list_rateware_versions": "1dfbdd613687b344c57da7e586882ac831c3d7299b109442b51d9d2e042932de",
+    "edge.rateware-api.list_rfx_detail": "4296446ebb26e761a3449515ca7bfdd9c392b0d38ada9ecb4c74260a6a4fcfb5",
+    "edge.rateware-api.list_rfx_event_context": "b7c3f435a8fabc06ef9d7aa84009bb04f9167ed5d2435d4eb0b094e65b318064",
+    "edge.rateware-api.list_rfx_events": "17d548841dcebc6ec366e526d80df64c2ff6db3086adfb2ea0d44516d37fcb9e",
+    "edge.rateware-api.list_rfx_process_projects": "21bf4150167cd99eb8ee6d41198e5c8d7c45e50ef702984a50e2719196825918",
+    "edge.rateware-api.list_rfx_response_vendor_ids": "b379ba729a3abbb9ab9a30debe403de28fb7e24adae438b9f265883a7d31d587",
+    "edge.rateware-api.list_saas_audit_log": "9bb8449ab0a8f2d43dc8a090feb4248b7b00b9e94c3849b9b0fe03066c7326be",
+    "edge.rateware-api.list_shipper_duplicates": "c72e359dc8f77e17bb1e487857d620ef78ee4757b3d6fec6b64aa45b2d55889f",
+    "edge.rateware-api.list_shippers": "7809de710164e2da85d4c21eea7b7950fb327edc46e1c50c7130678a28480b7c",
+    "edge.rateware-api.list_staging": "a06898dba3cb3fca26b7b9a53fea050a896ab69e990134631c4bfa3be0d9246d",
+    "edge.rateware-api.list_staging_filter_values": "ec9a5ac74c47eb313d7f3bbc9201014dc8778e19acdd83e7002734c38cb1dcd1",
+    "edge.rateware-api.list_staging_options": "cf9de47a80068fb465fcd82c41a1be4fd699167014a71e47a2cacb90a05698a0",
+    "edge.rateware-api.list_upload_staged_rows": "a7b60ee055562a57416e7af8146108ea10d7581804747f63ab6e5c8a60eea2f6",
+    "edge.rateware-api.list_uploads": "5bebd4b3e2af6cc875ebea214936c4f5d2a6962b0cd002dc364cce0168690023",
+    "edge.rateware-api.list_vendor_improvement_cases": "d451e2da28ac1a445a6ad592b81921e64f94650b1bd5241bc7db33d295d5aa5a",
+    "edge.rateware-api.list_vendor_segments": "7b4732d609f86bf3e54036394f241a8e1fb31b9f3f0f0ad9cb0b95750d5dbc9b",
+    "edge.rateware-api.list_vendor_support_tickets": "073318364c8fed4870ec3e6664d05d169f03b72edc3b8b39af8823cef0dfe08e",
+    "edge.rateware-api.list_vendor_unmatched_ids": "1231e4108c978e448c0c3595caa321980cff0d2c8f97479cf34eb5b4db2f4ace",
+    "edge.rateware-api.list_vendors": "3b04e77e6be25cd7d6da1ef850d63c218dd922d26b3400d82bdedba6908cfd36",
+    "edge.rateware-api.list_whatsapp_connections": "cbe37ae03bd2b90fe5ed288ef7e28819defec923b3308c003fa3bdb6971a0b99",
+    "edge.rateware-api.list_whatsapp_phone_numbers": "01af70a0cfdc06a6b153a114be4274d0150a8d7384998a9ad8393be82da534f7",
+    "edge.rateware-api.list_whatsapp_templates": "f42f047eb89788cde03df9ab2d4d4234a66231ca178f615dc0ebadbc78930ee0",
+    "edge.rateware-api.mark_outreach_messages": "fd1d1a0586fba69bf922ac98cc14213a38e11269838de9235a3e03fb27158d3b",
+    "edge.rateware-api.mark_rfx_award_package_implementation_ready": "336a17954c99697e08e5f11216f7a3effd1b9f526c989e2c5a65316ef5dcb4ae",
+    "edge.rateware-api.mark_whatsapp_group_message_manually_sent": "caaefcd010d0b7f7b08269d1254e80f71c0594b881f0b4f37981b87dae01822d",
+    "edge.rateware-api.match_rate_vendors": "53d3484c70141de69883fbdeda1c17737715da15e9a1402fb238fa65ee8ba047",
+    "edge.rateware-api.match_rate_vendors_by_filter": "cc3b4ef9ea6922eaa90c831297a34679655f6621d30d4809c4c90a4753973bd7",
+    "edge.rateware-api.merge_shipper_accounts": "89cc87194282bf948e002a60bdcf18889d7ee56d25068b2017e44c5e642f7358",
+    "edge.rateware-api.move_shipper_opportunity_stage": "0f1fc7a87b0e3dbc22f924e0c87b220626ca56dedd8b88ebbe0367e37a134b15",
+    "edge.rateware-api.move_shipper_relationship_stage": "a7f927e762fd2a939602905c7f33bec10ed6e5a962d5a39589b24448cb43d5d2",
+    "edge.rateware-api.post_bid_room_chat_message": "798c13e5681c6f6bf11c09c9d3961fa1b5c6f374db925ecd136a945f542c62d9",
+    "edge.rateware-api.preview_growth_segment": "d9b71ccf2830bf105f4344dd020a0bb92b92843ebeb73c1e712b9961b392e915",
+    "edge.rateware-api.preview_outreach_audience": "81634f879a17ec003ae0328c648f17207813ac4b6b4c108f44aa1336b3c2ad58",
+    "edge.rateware-api.process_vendor_ci_reminders": "363f691dc0f64f4532762d0358f0afb5818f55a404dc2adad50ad8afbf07321c",
+    "edge.rateware-api.promote_shipper_rfi_to_opportunity": "355952cde7bc631240c0a52d19b42cf94ab52d47315fd9d2ba684c74747f1fcb",
+    "edge.rateware-api.publish_outreach_template_to_whatsapp": "24883208c8ec179506b8b1b3bb5b2e60087b52cde4a171d5e64fbf7863605588",
+    "edge.rateware-api.publish_ratebook": "a327e135845e5deca58f78ee959b8d5fafd47e001650f2da3572d8584be293d2",
+    "edge.rateware-api.queue_ratebook_distribution": "05464bdf20234a567fbd1b5b99543883f031dca666ada3583715b32f77c3a88a",
+    "edge.rateware-api.record_growth_result": "a0de22797607298833737964bf537912fe3eebcf19d9527a1f70fd82edea306b",
+    "edge.rateware-api.record_vendor_improvement_response": "316f02d6599fbce84fa474a10cf5afaa9416776d0a6dfc759ceb62c0744a5df8",
+    "edge.rateware-api.refresh_growth_campaign_audience": "192df70f1b907efc3d7ade6a507790a5f226a067e4099939accc623fb75f80f0",
+    "edge.rateware-api.refresh_vendor_value_curve": "8fa4c54a448b18fc5eddaf4f1dc0c37a1dec2a5cbae1fc14e1b23c91960dfa0b",
+    "edge.rateware-api.reject_rfx_bid": "c9a0cfef353262c5df4b50158de032cc8cfc0c933212bcdc1434214d682adfcb",
+    "edge.rateware-api.remove_staging": "22bdf6331443dffe3e49df1e053916b67b6c00b04acddd2dc0f5e4fc4de6de0e",
+    "edge.rateware-api.remove_upload": "8487df7c1b666321beb881b57ab4d3b485cb7356a1de69537f97d2e668656f4f",
+    "edge.rateware-api.remove_vendors": "40729490b1692817ea5430bde68ec3cb292544d0aa3baa03e032a4ec1d33f31b",
+    "edge.rateware-api.renormalize_rate_rows": "d9c88891c26a05f171661a0d571640dae5457d10850e3feb39a4cb025e08e6ac",
+    "edge.rateware-api.reopen_rfx_rfi": "0f4ef810ee6d0ca001804b16d2b69f92869125f2c7ed6c7749830c39fae5987f",
+    "edge.rateware-api.replace_bounced_vendor_email": "09ce26bae38bcf86002ec0a483c64f03260acce7543f19bda0010027507e52e2",
+    "edge.rateware-api.resolve_vendor_improvement_case": "7ba0565bd31ef3d94db7c9ae3342ad12fc17337edcafc1f5f43767827b2b2b00",
+    "edge.rateware-api.restore_growth_segment": "9a44bfacec6dde59b15253c893926e0baf1819d6fbde53436c10f3561b96911a",
+    "edge.rateware-api.retry_google_chat_sync": "b6df0f95483a0338342f84deb2ccdee3b4e5928007d96adbd159947dd3390b63",
+    "edge.rateware-api.return_rateware_to_staging": "1c4c38ba580b65582770b2287a980cfd177e8b5a1c23d2db6fbc8bf5a37cd53f",
+    "edge.rateware-api.revoke_rfx_rfi_magic_link": "71e39fa893385a739a5c0b1e67e5b5b3f2796f04f4704e6ac1a49438adb22f02",
+    "edge.rateware-api.revoke_shipper_profile_request": "18b8019d9c3909955535bfbaba354a46bbb290b6cc8c2cacfe166acc4e113020",
+    "edge.rateware-api.save_catalog_value": "334da389a6a869546b942ba9197d6e48236cd4d3129c25d5967dff351eede9c9",
+    "edge.rateware-api.save_google_chat_settings": "35e34de7410cc95bfe86795aa2ee5ed98fdc493e3b2368262e0d38682f1c93d9",
+    "edge.rateware-api.save_growth_campaign": "003f7c30a8c4086b902fca675096e76133623b7399bc2f3e87be0e0f82bf2d59",
+    "edge.rateware-api.save_growth_message": "f248933bfc0ee6160f5444c42f79b29bca0ae6644b3a36a968672561e49356da",
+    "edge.rateware-api.save_growth_segment": "c4cde3e278449ffb0c25199877ea6524e1b15903623e5b0b3ccffa5dc9975a1a",
+    "edge.rateware-api.save_location_alias": "2380d5cd8678955e8c56d87c79cd6863b8c0d74acc08e632bbf421b8538ab00e",
+    "edge.rateware-api.save_location_catalog_value": "dcf5f562deae4bb3d9ebd77873d4e82cec2960fa4865a7980b76636e8c1c1055",
+    "edge.rateware-api.save_outreach_audience_segment": "1499ecd48d6940b3c99c3a89ed2286b7fa71f9cc30886066923a92e5c398b905",
+    "edge.rateware-api.save_rfx_process_rfi": "166561a5fc61cc036eb78fa6d8f408316b656097bceb831aee617346e9f0bd92",
+    "edge.rateware-api.save_shipper_record": "712a721a7e52edfd3f6a7c3275e39e9f2fa04284969b5a222c490722a3e6f93c",
+    "edge.rateware-api.save_whatsapp_business_connection": "1453d861ada305e4b0c1576390d8abc9ca5a0832f905ad30d713e6b678e9759d",
+    "edge.rateware-api.search_staging_locations": "efd9bbc6c3d8ffab6836ccd32161608a68a23672af6cab30773315749ffccdc1",
+    "edge.rateware-api.select_whatsapp_sender": "95a1c5eaf48cf4d4f5ba7781dbf4411ec61df8cf12ead87bc8745dd2b7dac8e5",
+    "edge.rateware-api.send_bid_room_carrier_message": "7146523c0ca49e94471533d8ab74dd9a906b48ab711100ef3d0e5d27389508f5",
+    "edge.rateware-api.send_outreach_messages": "9304ca3f8efbd410db73da4076761f4197498ae78609b1c9fce242b15488e4c3",
+    "edge.rateware-api.send_ratebook_distribution": "c7b713a3c7f1a025ef91a200227bd954d6b832a0b8ff074d911f68b1230a8cb1",
+    "edge.rateware-api.send_whatsapp_group_outreach_messages": "1e4e7004eb5fe56047278941542efa3be5b4ebaba336ee5c819b7743d3eaf4ac",
+    "edge.rateware-api.send_whatsapp_outreach_messages": "1ee7c98784f23ea6c9d72ebf5057398426a752d5b5d99149d1c8467ee23662c3",
+    "edge.rateware-api.set_growth_campaign_status": "a23f6a8a7f5177d3ecb98d9ea9458626f22eeec93a8fcddfb0eba354016aa4e6",
+    "edge.rateware-api.share_ratebook_with_carriers": "2ee1b49b57231c058b5ad8217cf36311ec8b9cd7d8a14e70d037bbb160f7fec5",
+    "edge.rateware-api.shipper_account_activity": "009a2e94e17df7d7fc35afac77382944451a0260ac23b5b8abbc4d86c0ef756c",
+    "edge.rateware-api.shipper_action_queue": "86a8a343565ac0c378422a200926a5a988d2670a7d6fd0257c12ed464c0e7197",
+    "edge.rateware-api.shipper_commercial_work": "87f2a2c83dea4459a0ee70fa92b0ac88c8cb2096cac475e1be2f538b1e3d8b5d",
+    "edge.rateware-api.shipper_crm_summary": "6e0cadf2549cc2919853f7c46aad4633f4aa6b35cbcc9930c70fc1fa1dc40ffa",
+    "edge.rateware-api.shipper_intelligence": "f8ed454437e78638310953a0c921b598c627ddeaf221434598618ffdb55e7301",
+    "edge.rateware-api.shipper_relationship_pipeline": "9669bed622fb618a16d2c5c6561be2c60393e7e8f80266b86f35ed67eb868c63",
+    "edge.rateware-api.shortlist_rfx_lane_vendors": "af7f2ac1582390c399b6deac20661074ab28cb0598547175f8c0651c81bdf0fc",
+    "edge.rateware-api.simulate_interpretation_memory": "174e00504d3dd3fad9628241174ab15f704329d3d21d4a3abedd4a8568f51454",
+    "edge.rateware-api.start_gmail_oauth": "fc3af54ab704e870b31a0d5deddfb1e7c146c4288a649e74c4bd0f6a2c7bb086",
+    "edge.rateware-api.start_google_chat_oauth": "610799598502bf42228519af01f9c741fd300bc34b8334f67a15ec04706d9884",
+    "edge.rateware-api.start_whatsapp_business_connection": "10120e4eacb6d1f6cf026033d6c2899087a6fae05bf50c88da41533db275efb1",
+    "edge.rateware-api.submit_vendor_improvement_case": "bcf658d8ce8e70b9d4eae1a027a8235f7d2e35f0ee1dc7a26513e25f0b88c557",
+    "edge.rateware-api.supersede_ratebook": "88ee77776d0a4086c1897b098b112cc4d531bc6e9f0bdc95cf8f7df3619c9f52",
+    "edge.rateware-api.suppress_outreach_contact": "889e121469ddc0b033ccf99f8ee32b47f0f75da8f62164bd037a810126a65c64",
+    "edge.rateware-api.sync_bid_room_event_thread": "c2897712dec34421df801bdacc0d0550acc96e70b081eb158482e66b14bda157",
+    "edge.rateware-api.sync_gmail_bounces": "f3569ace90de9d51bc349844d45eb791e46a007301638c0602f259b2344230eb",
+    "edge.rateware-api.sync_whatsapp_templates": "d49243e5e220d9b5abc71bce6654a2f49e75bbc0e3e4585d3f2c3c02b3631ca2",
+    "edge.rateware-api.test_whatsapp_business_connection": "07ae600619fb0a68da3f66c9528ab10f25ff35b46f2929c16192b89d920de7fd",
+    "edge.rateware-api.update_bid_room_chat_thread": "6577e61f6b551fababba47629f04887e4b652ccd9dbb32d4564d7783d75fb0d5",
+    "edge.rateware-api.update_interpretation_memory": "d1e6216ea802c67cef7a35be1a4941b76af8c44ad701394c6362b9d92597e15e",
+    "edge.rateware-api.update_onboarding_task": "5fbf2513488407ac6fef757dc57ddfefe07f69a8280c5ca83ba823c6a674ff80",
+    "edge.rateware-api.update_outreach_campaign": "56630a9a9a1066a6d1fb4cf30c97152856f1e11e123e062d532c64972415b280",
+    "edge.rateware-api.update_outreach_template": "0032a22ee3fb9fbc0b8f10e05585b8fd3b4073474197a600ba3ccd2cf3faa5fb",
+    "edge.rateware-api.update_ratebook_quote_review": "818a8e9011206e9a5fc683e627bb8a3b2c099c466da25346042926884919c763",
+    "edge.rateware-api.update_rateware": "f47083b1a21c78f2ec5b0d726246e9646a29dac68943979e12826e0d7659b261",
+    "edge.rateware-api.update_rfx_bid": "9ce7dba9b140a3edb103ac856cd51329451bb5776ac17201582654cfba6d8362",
+    "edge.rateware-api.update_rfx_event": "89e6e3d27da91e1953ddf794d7cd05227cf239a3a8c0c517d4b3960220af1456",
+    "edge.rateware-api.update_rfx_lane": "1542be5b8e697b6837cad43289cce44b5e1355f43049d108cb42e57f8ec8c392",
+    "edge.rateware-api.update_rfx_process_project": "fa03edc3b62d9c172532c54e519ed06b5a8c4a693f06316f27ad733ff7a82e1c",
+    "edge.rateware-api.update_saas_organization": "89f249f57f65ab5322dacce222bb6562eccb120175dd1ae59043b15257e0ffce",
+    "edge.rateware-api.update_saas_profile": "df86511fa3d9e2902f3569da911372564d00b33e13dab94b9780a89ffb47bdb3",
+    "edge.rateware-api.update_shipper": "44408d63a8e7a05321b2479fe49bcc32ccc6057f5fcb678fa47453fe8359ad97",
+    "edge.rateware-api.update_shipper_account_action_status": "8a4f9e7050803f69459a40da1fa16838a4011b62f95274a325fff2a98038497f",
+    "edge.rateware-api.update_staging": "bdd0a00dada3a6be027a4551ffe8c45a3e3759452103302851ee2ca5994245dc",
+    "edge.rateware-api.update_vendor": "df32fbf0fe830fc8506e7103f680249a7d4be5ea50a167c2384307d86a57af74",
+    "edge.rateware-api.update_vendor_improvement_case": "01b7febcced16b30452c7c07fa240f2cd32a32aed466c027542eececfaee0ec5",
+    "edge.rateware-api.update_vendor_segment": "5f9281657191ffcfbb47a9942f3e4d2ee9e5602bb245743770c7f1fa652c6f03",
+    "edge.rateware-api.update_vendor_support_ticket": "f09e44a4bee5bc9048d624ee268f59e19f755825b367898152645f745348deb4",
+    "edge.rateware-api.upload_vendor_logo": "4a3201b0882933fa38c150ab334012a876b7fae217bdc5bad5554e83fc5dfb96",
+    "edge.rateware-api.upsert_vendor_value_scorecard": "7eb59e62ecf4b58237f5b241ed3be9080c2b0d1ced995004ab0c42142ec3e690",
+    "edge.rateware-api.vendor_funnel": "34441855adb77949587daeb076f7898be77ea1d0419f814d70c8fd7e52cb42f9",
+    "edge.rateware-api.vendor_intelligence": "d19c00be12800777bf87ee0368630f0e8574954618de4061b9aa4632dc805550",
+    "edge.rateware-api.vendor_onboarding_gaps": "21e2d7daaf954057faccb6143381c07d0195f5b136241a9142115fe28b654b3a",
+    "edge.rateware-api.verify_vendor_whatsapp_group": "6f7dc89bc284cf21ff48a671522bc7d2188fdbb2cd15b2d131603ca9b510f297",
+    "edge.rateware-api.verify_whatsapp_webhook": "fe84775f1b69b52b4d637a8180a37d1ccb66cdf1ce9c7d559c47e3a13e46b74c",
+    "edge.rfx-bid-api.bid_support_reply": "6390529f1fdad28b56f2f496b180ae6fe6fe28176df08331492eccd134cc1092",
+    "edge.rfx-bid-api.decline_invitation": "9955d594451d5a9aeded4c24ad47d65d239799319049f8c39a2569ac06bc8406",
+    "edge.rfx-bid-api.get_customer_rfi": "de2f6afd7a01d9f703825b25ac20dc37b6079d028111d41e32ce3d805ff017cb",
+    "edge.rfx-bid-api.get_invitation": "bb2ba76e49706050ef737b1bb504a741de1ff7796f1a490a38909eb26a883c3f",
+    "edge.rfx-bid-api.list_bid_room_chat": "889955a47a5d4d4390db001674a457d4a8c260b33c643ef3cb57316b60030ff6",
+    "edge.rfx-bid-api.post_bid_room_chat_message": "f85479d5e02907611eb8052a7e755dc509fecd1a3c7ce134723ddbdd50d9f841",
+    "edge.rfx-bid-api.public_bid_room_board": "393f71459406fd449aedc64e567b521c3d1293d65a13a8eb8029f86a04e69ea4",
+    "edge.rfx-bid-api.public_bid_room_find_invitations": "856303c5275afce8c4fd01d706a3a1f92d2e5b7bfe540b01396eda52b31d8a10",
+    "edge.rfx-bid-api.public_bid_room_request_invite": "b4fefa905380cab7ca85948ea6d2336a1f9cb7f59086970006be90c85cdf3ea0",
+    "edge.rfx-bid-api.request_lane_access": "6e347f474149d0e77cc36bd4b56ea2c8363b6b3656072af3f9c76b0f2b946f8b",
+    "edge.rfx-bid-api.save_customer_rfi": "99426e242b85da00806324e0838204cdfe4f9636488b595d4b99d4450a68deb7",
+    "edge.rfx-bid-api.save_segment_confirmations": "10a137d5bed8340518bfe7203be4202f95e5af2bcbe8f06a055cbdabfcfaf8ae",
+    "edge.rfx-bid-api.submit_bid": "40e82d3e13abcad57e3f518f735b1e0f19383a3a2ec9e2620ac910483e0ca5ff",
+    "edge.rfx-bid-api.submit_customer_rfi": "84e1972fe36b69feec0da875b086521a030ec503573fae6495ed90a5ead26c36",
+    "edge.rfx-bid-api.withdraw_bid": "fff3073d32e2286164cb504e0d2eaa7371f353e7e681b31b9221e186aa7bcf9c",
+    "edge.shipper-directory-api.get_shipper": "1194110e62446be029d166999379c3df13fae68b9eca2dde39a1c776fdbc286d",
+    "edge.shipper-directory-api.list_shippers": "2686920470cab71e0c04945892682b0ef608f2f84cf622e6efcd25be2069d56a",
+    "edge.shipper-directory-api.shipper_account_activity": "690923be659901bd8d263450fb4a96ae63fc7944473854daddf9a0b3b0ccea4c",
+    "edge.shipper-directory-api.shipper_action_queue": "0e0461990e6947fbdd72b7ce576c12b87d0c2ed9ff3bbef2804aaacf2e1d59ed",
+    "edge.shipper-directory-api.shipper_commercial_work": "a4c1e70e69d34d7e58bd3dc6da3e9207ce10fc075a91f179b013f274e0c778b6",
+    "edge.shipper-directory-api.shipper_crm_summary": "29a29a401edebd300fd98357edd80a653fbb6a89d0362468625dc53546869047",
+    "edge.shipper-directory-api.shipper_intelligence": "5fe360b6c27230d74455e975b71f09396ac68667e6a695ba169d88ab3f47a0f3",
+    "edge.shipper-directory-api.shipper_relationship_pipeline": "2750c41e8d6a5a0c79ef363f4ee3665c9843b8792336a5cd2b3384e9567ca294",
+    "edge.shipper-profile-api.get_profile": "7d86323c66c245b421742cd3e34f87df78cf72376e729e454ca81419a84f18a3",
+    "edge.shipper-profile-api.submit_profile": "f5122defc5ed343c0ab9aa4cb2f8f286e4fe4570bdf02fb3a20d32590e838c2b",
+    "edge.sync-banxico-fx.sync_banxico_fx": "b8aae9072e5b55af5ccc1017c486cd5ae6c8f9fdf147411e442741ee0cad1cfe",
+    "edge.sync-rateware-catalog.sync_rateware_catalog": "ad7c37a070afa8080cc95fa97754f48ffb4f83cfd910b8743ec8bae6d7c9842e",
+    "edge.whatsapp-webhook.ingest_webhook": "415cb4d6047e48e745eb72c3948a895f49714dcfcb9232b6f4de8cd529e7b613",
+    "edge.whatsapp-webhook.verify_webhook": "66dd6c9ea5cc12e44ed13c81b3e57e79b7943c9abe3c11132ad6dba07d82ed1d",
+    "rpc.public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)": "782c6d641379d498601eeb63738801bd31ea38b9414e72cadefc6d71008d1a64",
+    "rpc.public.count_exact_workspace_vendor_duplicates(text,text)": "e27632888bda04f742913e9040fd11467b825b94b2776741e9fee9cad1d3656b",
+    "rpc.public.merge_exact_vendor_relationship_collisions(uuid,uuid)": "4fbc6c5cd7af527dc21d05f2926bd8e57fd943d52bfa48680fd930a7610c0f5b",
+    "rpc.public.protect_outreach_delivery_state()": "d25a05324c7368b21ce24118f950be90538cd64fbb31201846f8f6278f703ea6",
+    "rpc.public.rateware_assert_vendor_workspace_link()": "f8451d39064d3b42d30307921dce2fd2c9e97afac7653f8ea2b71b0d31c05113",
+    "rpc.public.rateware_bi_aggregate_value(text,text,bigint,bigint,numeric,numeric,numeric,numeric)": "cfc8c75207e1085bcbb527d6a70916896a1f2762f9359d596c59fa7080a18076",
+    "rpc.public.rateware_bi_dimension_value(public.rate_staging,public.vendors,text)": "5bf2f0b218e0a292870aeaee415d2dee0852dc83a23288301c33b1579223ac1f",
+    "rpc.public.rateware_bi_drilldown_for_owner(text,text[],text[],text[],text,jsonb,integer)": "a1defdc69cf88b93bcae0a303343aa39851d5e200abba11535acfcfb45cdf8ae",
+    "rpc.public.rateware_bi_fact_dimensions(public.rate_staging,public.vendors)": "47d3f29e75acfdbd68d27669383337be29f2a66d57b3927b3b31783b51e4c59d",
+    "rpc.public.rateware_bi_fact_matches_filters(public.rateware_bi_rate_facts,jsonb)": "4529aa6faf5168546259f71da773355794c2feaecd9b6018af0ad1872bd90667",
+    "rpc.public.rateware_bi_fact_search_text(public.rate_staging,public.vendors)": "d70d3facefc9baa7509cb5633e71643094fb37e99161776fd60d78d8193a06a0",
+    "rpc.public.rateware_bi_geo_density_for_owner(text,text,text,text,jsonb,integer)": "31eb0005d5a9cf34e91a13088d7e2fe6c40f56deca52a55c892684ba1866bbb2",
+    "rpc.public.rateware_bi_metric_value(public.rate_staging,text)": "282015b63ea617894a1af787a4efb1de483a8122726b43008a125116dd779854",
+    "rpc.public.rateware_bi_pivot_for_owner(text,text[],text[],text,text,jsonb,integer,integer)": "bd8c7b083d77c20c4c16a85ae562c691400d0fe5fd8b73787dbbc2dac2ecad45",
+    "rpc.public.rateware_bi_rate_matches_filters(public.rate_staging,public.vendors,text,jsonb)": "666e9f31ecc3169139bae3747dc2d0c475090974a4b298925c15a9672aac23f2",
+    "rpc.public.rateware_bi_row_text(public.rate_staging,public.vendors)": "f1c26c178e78c8951bdc58746392572da968e74302ec5d537af57ffad86d5efe",
+    "rpc.public.rateware_bi_summary_for_owner(text,jsonb)": "907daabfa29af93f71607e8ba542faea557757be676130fa129b985daed5332d",
+    "rpc.public.rateware_bi_value_filter_match(jsonb,text,text)": "b4a0e550a74c490d2cd17999c53dbde22a5d46cb5b64f7b6f28d9ea29655f73d",
+    "rpc.public.rateware_bi_vendor_metrics_for_owner(text,jsonb)": "257c560cb234ac7337ce39af0d7e0c845a21e33ac940eaf14715c53ccbfb9822",
+    "rpc.public.rateware_bid_room_chat_snapshot(text,uuid,text,uuid,uuid,integer,text)": "e6e33d8cdf4fc36aa9e2d1535a7304b655b719dc54bdbc38d2a6543c4f1ab742",
+    "rpc.public.rateware_bool_filter_match(jsonb,text,boolean)": "2f44c3a03f211f9af5062ff0c9e4a3746caf9c7adce0abc013259703c2a74f5c",
+    "rpc.public.rateware_clean_rate_number(text)": "53dae765246bb5d7498955119334719a9ddf016a51a9ba1566bddd9c03d76581",
+    "rpc.public.rateware_domain_key(text)": "d23f9881a69adfaa5a2b47058a8f79d8aa1709dc92773e923d130e8a542c201a",
+    "rpc.public.rateware_filter_values_for_field(public.rate_staging,public.vendors,text)": "1e918c75b690968cdd4ed687a0797cefe758963187ca955810c92e05478b6154",
+    "rpc.public.rateware_filtered_rate_ids(text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer)": "99e6e1170cca797cbe1c332d13ea752acb693ad73f8dd3a61de83adb1b98b993",
+    "rpc.public.rateware_filtered_rate_values(text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer)": "0f4cad4a94884a8c69c4ba53a83cbd9759ee818694a42cbaf204b2e882e7a531",
+    "rpc.public.rateware_has_numeric_rate(text)": "4192c42eb185322be1e107000e7fdafcebfe60f7fe771df1b94b3942d2268faa",
+    "rpc.public.rateware_inherit_rate_owner()": "2b3ed69e5ea1fc9d60a339c9f020ed16ff3388b49a99f6dcabbd89f4b7a11d64",
+    "rpc.public.rateware_is_generic_email_domain(text)": "4ba7ce2ca9e115c6706769a7af27470950133b64be83eb075adbf2cd008a6041",
+    "rpc.public.rateware_json_filter_values(jsonb,text)": "c32b82170e1d62ec6ebc3504f365a45d125dc840986aa8db3d4401915e882052",
+    "rpc.public.rateware_normalize_vendor_lifecycle()": "13af960e2d0b7db613e8f0d9d7e2ad0db5c7be4ef1c2e6e6e42260e8cf922a78",
+    "rpc.public.rateware_outreach_tracking_page(text,uuid,text[],text,text[],boolean,boolean,integer,integer)": "6446a726d0790b9b815d5222c783c642da8233d7a9e315a4d14af30c5a83a83d",
+    "rpc.public.rateware_outreach_tracking_state_sql(text,text,text,jsonb,text,numeric,timestamptz)": "9d710416dcfef2848574155aaa95ae6816fe3bf6cd751909dd924185e79205f1",
+    "rpc.public.rateware_outreach_tracking_summary(text,uuid,text[],boolean,boolean)": "c45667db78d77b2eae626d4765ae03dc4c1377b91d653f6e239f254500d4336a",
+    "rpc.public.rateware_promote_vendor_lifecycle(uuid,text)": "3d2cdf8fb01348599982fbed0f135c0526d537576a9616b25f1b2be0e32f22a1",
+    "rpc.public.rateware_rate_matches_filters(public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean)": "40f61ef2436854175f295fb07d1a2675506a59db767b1044e069ed28f5e149bd",
+    "rpc.public.rateware_refresh_vendor_search_document()": "caa8b7fa5f9eb03add90f98a6893eac5c8d039377e39f117ea1e54f1bd8c1c53",
+    "rpc.public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)": "dcdc04f8ca3d1fea118dbfd03f8b8d8e33f74cb02ddeaf1b971f6b5daf221c6d",
+    "rpc.public.rateware_rfx_text_match_score(text,text,integer)": "89b27a63e1bc08617712a5e73c2df3de9988c64ae557ea6bca29518b6abbe868",
+    "rpc.public.rateware_row_conflict(public.rate_staging)": "4eb69bdc3af6c37113d327e77a33626a267c4d6159e865bd60193acba038fad8",
+    "rpc.public.rateware_row_cross_border(public.rate_staging)": "ddc7652ed3b8bae47e4fa4b7bca8481346eed7dc60d792f6e8d16453220a400e",
+    "rpc.public.rateware_row_currency_gap(public.rate_staging)": "e98d34fef7ec9172b1a55cf37377f9d39e618014ccb54159274cad62bada6dda",
+    "rpc.public.rateware_row_has_all_in_text(public.rate_staging)": "6dc52e0f1e6bf154d2f1bce5e58607d687c9fc148fbf0b156fe044fb50950ee2",
+    "rpc.public.rateware_row_has_split(public.rate_staging)": "e8ecb396f6e6d43888a4dbd29daa46d6aa928ab7110b58eb9c6a247d7c73849c",
+    "rpc.public.rateware_row_location_gap(public.rate_staging)": "8a3024b9c31078071b07ad2db0ba61f1ff09c0be258162c3f3c6799765dca684",
+    "rpc.public.rateware_row_needs_rate(public.rate_staging)": "685a68bc7cd67df25d98cdc712d6355ee2250cdff15967cac874fd6ad5a1c7e9",
+    "rpc.public.rateware_row_ready(public.rate_staging)": "ad911bf33bcaa932259ef14c6b8518d55c13e1790bd460b95e53f216a884db54",
+    "rpc.public.rateware_row_service_conflict(public.rate_staging)": "f6dd9e68b5c9dfc39a06cc472b489ed83d5b76d5494bbe2abf5697ff59896d9d",
+    "rpc.public.rateware_row_source_audit(public.rate_staging)": "464907e18ebb8815095298d4a21411f86ca551993679785626dbbc846f59ee89",
+    "rpc.public.rateware_row_split_conflict(public.rate_staging)": "1d58cc0d0448cabca30b097992b7764167d2ce75f9b88aa35c94c184e1dbb768",
+    "rpc.public.rateware_service_mode_key(text)": "ef2e4d81dd7eb0fda0b46a4dbb7543a867aaad639a8f71791cb8375e47468f95",
+    "rpc.public.rateware_set_bi_fact_vendor_reference()": "d2ff31db6bd7f2d4bca07309c8932f3801c5be55c4f6892cd21551ce8d5a242d",
+    "rpc.public.rateware_sync_bi_rate_fact()": "ff8148f0771a4dae1432453b0e3975888c737093f07176264f93143d7d1ce3e8",
+    "rpc.public.rateware_sync_bi_vendor_facts()": "01dc862753adb418bd0aed494a5126207395ba618d41e026b766f827f6b6ecd6",
+    "rpc.public.rateware_sync_vendor_lifecycle_from_rate_staging()": "4720f7fa773d4055894e4cd63ae25818933273cfe88c1f0c94a69f5fa2e33359",
+    "rpc.public.rateware_sync_vendor_lifecycle_from_rfx_lane_vendor()": "cb8fbfecfc4faf38878b127b7e8a8b0221a696217656ad0cc5c856f58b2f0869",
+    "rpc.public.rateware_text_filter_match(jsonb,text,text)": "6a8ca521d081fd25b599758602eba41473e578c60a4b0cc66a21f72e10d11d08",
+    "rpc.public.rateware_values_filter_match(jsonb,text,text[])": "005b8965bf3b3c947e12bdd89de648e8e14cab3f831457741b05e77769a2d502",
+    "rpc.public.rateware_vendor_funnel_stage_rank(text)": "2f5778861fc1237a1f2db4b82e32520df0743d0a82ec60aa069fcfcbdd5d5a24",
+    "rpc.public.rateware_vendor_search_key(text)": "930b6b1ef2752a21ae48d1035e107d77a2d8d63da9400b38a6d2d508c52cbbb4",
+    "rpc.public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)": "3e7c5ab6b1d2041128366e474b74fec3fd8158a5164d49f3f9d6420226226e93",
+    "rpc.public.search_workspace_vendors(text,text,integer,integer)": "954e31af9ccf39f91395b6afb0546603dab6070db9c718727811b2d0114e52fa",
+    "rpc.public.vendor_bid_metrics_for_owner_ids(text,uuid[])": "0840c8a6876ebd6f645c448fa31832190fab3e47a1462bbdbb0932dcf561439a",
+    "rpc.public.vendor_rate_metrics_for_owner_ids(text,uuid[],text)": "3b8e59190c4e40b6d1de74892295caa090ca0bd41ad23fe7587f9af560735f75",
+    "rpc.public.vendor_rate_metrics_for_owner(text,text)": "e352a0810353d67ea92c0bf050fbb3f221c0dd02c79f4af2868a43c5ffa1ff5d"
+  },
+  "reviewedAuthorizationFingerprints": {
+    "edge.carrier-profile-api.add_ticket_followup": "8118aab42ba52b03b46cdf4ebff1fade9c07e4ec9dafd86be96c79baf1cc7955",
+    "edge.carrier-profile-api.get_profile": "8118aab42ba52b03b46cdf4ebff1fade9c07e4ec9dafd86be96c79baf1cc7955",
+    "edge.carrier-profile-api.submit_profile": "8118aab42ba52b03b46cdf4ebff1fade9c07e4ec9dafd86be96c79baf1cc7955",
+    "edge.create-raw-upload.create_raw_upload": "40e4c7a0aa15ea578d2062790657ddbe5b5796355dad5503d6b2dda73333fe51",
+    "edge.gmail-oauth-callback.complete_google_oauth_callback": "cacd4d985cc054d7f9647e3f95aeb74c95c4e131c72be1916286ca5514799206",
+    "edge.google-chat-app.handle_chat_event": "834ac56f1dc136b87a315148cfe24b4186d496fb97699ec379b54b4489301267",
+    "edge.google-chat-app.health": "834ac56f1dc136b87a315148cfe24b4186d496fb97699ec379b54b4489301267",
+    "edge.interpret-upload.interpret_upload": "0094289ce510f07788ffba1df716da785f090219d663a73c4e48213877f7c35d",
+    "edge.ratebook-carrier-api.get_ratebook_access": "3fa4ebe4e282c037f6335ccdc34a1238683be260d636c996fd0406e8112cdfb9",
+    "edge.ratebook-carrier-api.submit_ratebook_quote": "3fa4ebe4e282c037f6335ccdc34a1238683be260d636c996fd0406e8112cdfb9",
+    "edge.ratebook-carrier-api.withdraw_ratebook_quote": "3fa4ebe4e282c037f6335ccdc34a1238683be260d636c996fd0406e8112cdfb9",
+    "edge.rateware-api.apply_bid_update_from_chat": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.apply_shipper_action_playbook": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.apply_vendor_intelligence_tags": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.apply_vendor_template_updates": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.archive_catalog_value": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.archive_growth_segment": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.archive_interpretation_memory": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.archive_location_catalog_value": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.archive_outreach_audience_segment": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.archive_outreach_campaign": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.archive_outreach_template": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.archive_ratebook": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.archive_rfx_event": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.archive_rfx_lane_vendors": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.archive_shippers": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.archive_staging": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.archive_upload": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.auto_shortlist_rfx_lane": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.award_rfx_lane_vendor": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.book_audit": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.book_audit_scan": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.bulk_import_catalog_values": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.bulk_import_upload_template": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.bulk_rate_rows_by_filter": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.bulk_update_rate_rows_by_filter": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.bulk_update_rateware": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.bulk_update_staging": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.bulk_update_vendors": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.business_intelligence_drilldown": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.business_intelligence_geo_density": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.business_intelligence_pivot": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.carrier_intelligence_chat": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.carrier_recommendations": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.clear_rfx_award": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.closeout_awarded_rfx_to_rateware": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.complete_whatsapp_business_connection": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.consolidate_exact_vendor_duplicates": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.convert_growth_result": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_interpretation_memory": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_outreach_campaign": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_outreach_template": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_ratebook_revision": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_rateware_version": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_rfx_award_package": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_rfx_demand_snapshot": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_rfx_event": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_rfx_package": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_rfx_process_project": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_rfx_rfi_magic_link": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_shipper": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_shipper_profile_request": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_vendor": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_vendor_improvement_case": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_vendor_profile_request": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.create_vendor_segment": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.dashboard_summary": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.delete_outreach_campaign": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.delete_outreach_messages": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.delete_outreach_template": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.delete_rfx_event": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.delete_shipper_record": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.delete_vendor_segment": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.disconnect_gmail_connection": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.disconnect_google_chat_connection": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.disconnect_whatsapp_business_connection": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.duplicate_outreach_campaign": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.duplicate_outreach_template": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.duplicate_rfx_event": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.enrich_missing_location_zips": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.export_growth_campaign": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.export_ratebook_routes": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.generate_outreach_drafts": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.generate_rfx_award_notices": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_growth_campaign": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_outreach_message": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_outreach_tracking_summary": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_rate_row_detail": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_ratebook": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_ratebook_audit": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_ratebook_health": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_ratebook_route_detail": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_ratebook_route_quotes": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_rateware_version": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_rfx_process_project": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_saas_settings": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_shipper": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_upload_source_url": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_vendor_relationship_activity": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.get_whatsapp_connection_status": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.growth_ai_action": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.growth_dashboard": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.import_growth_csv": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.import_rfx_lanes": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.import_shipper_crm_workbook": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.import_shippers": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.import_vendor_onboarding_corrections": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.import_vendors": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.import_vendors_google_sheet": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.invite_rfx_lane_vendors": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.launch_rfx_package_to_bid_room": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.launch_shipper_opportunity_rfx": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_bid_room_chat": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_catalog_values": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_contact_history": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_gmail_connections": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_google_chat_connections": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_google_chat_spaces": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_growth_campaigns": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_growth_results": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_growth_segments": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_interpretation_memory": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_interpretation_memory_audit": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_location_catalog_values": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_observability_events": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_outreach_audience_segments": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_outreach_campaigns": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_outreach_messages": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_outreach_templates": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_ratebook_carriers": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_ratebooks": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_rateware": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_rateware_audit": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_rateware_filter_values": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_rateware_rows_by_ids": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_rateware_versions": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_rfx_detail": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_rfx_event_context": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_rfx_events": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_rfx_process_projects": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_rfx_response_vendor_ids": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_saas_audit_log": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_shipper_duplicates": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_shippers": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_staging": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_staging_filter_values": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_staging_options": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_upload_staged_rows": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_uploads": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_vendor_improvement_cases": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_vendor_segments": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_vendor_support_tickets": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_vendor_unmatched_ids": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_vendors": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_whatsapp_connections": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_whatsapp_phone_numbers": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.list_whatsapp_templates": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.mark_outreach_messages": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.mark_rfx_award_package_implementation_ready": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.mark_whatsapp_group_message_manually_sent": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.match_rate_vendors": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.match_rate_vendors_by_filter": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.merge_shipper_accounts": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.move_shipper_opportunity_stage": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.move_shipper_relationship_stage": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.post_bid_room_chat_message": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.preview_growth_segment": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.preview_outreach_audience": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.process_vendor_ci_reminders": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.promote_shipper_rfi_to_opportunity": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.publish_outreach_template_to_whatsapp": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.publish_ratebook": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.queue_ratebook_distribution": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.record_growth_result": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.record_vendor_improvement_response": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.refresh_growth_campaign_audience": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.refresh_vendor_value_curve": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.reject_rfx_bid": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.remove_staging": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.remove_upload": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.remove_vendors": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.renormalize_rate_rows": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.reopen_rfx_rfi": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.replace_bounced_vendor_email": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.resolve_vendor_improvement_case": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.restore_growth_segment": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.retry_google_chat_sync": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.return_rateware_to_staging": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.revoke_rfx_rfi_magic_link": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.revoke_shipper_profile_request": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.save_catalog_value": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.save_google_chat_settings": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.save_growth_campaign": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.save_growth_message": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.save_growth_segment": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.save_location_alias": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.save_location_catalog_value": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.save_outreach_audience_segment": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.save_rfx_process_rfi": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.save_shipper_record": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.save_whatsapp_business_connection": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.search_staging_locations": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.select_whatsapp_sender": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.send_bid_room_carrier_message": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.send_outreach_messages": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.send_ratebook_distribution": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.send_whatsapp_group_outreach_messages": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.send_whatsapp_outreach_messages": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.set_growth_campaign_status": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.share_ratebook_with_carriers": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.shipper_account_activity": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.shipper_action_queue": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.shipper_commercial_work": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.shipper_crm_summary": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.shipper_intelligence": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.shipper_relationship_pipeline": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.shortlist_rfx_lane_vendors": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.simulate_interpretation_memory": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.start_gmail_oauth": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.start_google_chat_oauth": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.start_whatsapp_business_connection": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.submit_vendor_improvement_case": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.supersede_ratebook": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.suppress_outreach_contact": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.sync_bid_room_event_thread": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.sync_gmail_bounces": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.sync_whatsapp_templates": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.test_whatsapp_business_connection": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_bid_room_chat_thread": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_interpretation_memory": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_onboarding_task": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_outreach_campaign": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_outreach_template": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_ratebook_quote_review": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_rateware": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_rfx_bid": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_rfx_event": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_rfx_lane": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_rfx_process_project": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_saas_organization": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_saas_profile": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_shipper": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_shipper_account_action_status": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_staging": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_vendor": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_vendor_improvement_case": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_vendor_segment": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.update_vendor_support_ticket": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.upload_vendor_logo": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.upsert_vendor_value_scorecard": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.vendor_funnel": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.vendor_intelligence": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.vendor_onboarding_gaps": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.verify_vendor_whatsapp_group": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rateware-api.verify_whatsapp_webhook": "e20b14c009e47c82ce6aa21819167b0ffbaba9b4ca5ef034df44e8c4d0289ac0",
+    "edge.rfx-bid-api.bid_support_reply": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.decline_invitation": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.get_customer_rfi": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.get_invitation": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.list_bid_room_chat": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.post_bid_room_chat_message": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.public_bid_room_board": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.public_bid_room_find_invitations": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.public_bid_room_request_invite": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.request_lane_access": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.save_customer_rfi": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.save_segment_confirmations": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.submit_bid": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.submit_customer_rfi": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.rfx-bid-api.withdraw_bid": "e251344d45a375f16b8d8f4a095a4e06b1dad6db62978b86e075dd889c09a3fc",
+    "edge.shipper-directory-api.get_shipper": "77f5c88cceb8444f324dded7deacf432578c1d5c1e1ab973af70261973269067",
+    "edge.shipper-directory-api.list_shippers": "77f5c88cceb8444f324dded7deacf432578c1d5c1e1ab973af70261973269067",
+    "edge.shipper-directory-api.shipper_account_activity": "77f5c88cceb8444f324dded7deacf432578c1d5c1e1ab973af70261973269067",
+    "edge.shipper-directory-api.shipper_action_queue": "77f5c88cceb8444f324dded7deacf432578c1d5c1e1ab973af70261973269067",
+    "edge.shipper-directory-api.shipper_commercial_work": "77f5c88cceb8444f324dded7deacf432578c1d5c1e1ab973af70261973269067",
+    "edge.shipper-directory-api.shipper_crm_summary": "77f5c88cceb8444f324dded7deacf432578c1d5c1e1ab973af70261973269067",
+    "edge.shipper-directory-api.shipper_intelligence": "77f5c88cceb8444f324dded7deacf432578c1d5c1e1ab973af70261973269067",
+    "edge.shipper-directory-api.shipper_relationship_pipeline": "77f5c88cceb8444f324dded7deacf432578c1d5c1e1ab973af70261973269067",
+    "edge.shipper-profile-api.get_profile": "44630f7fccfd7a27fce72e48db845197ee91ff4e02ab887080d84ec59fb4e6f9",
+    "edge.shipper-profile-api.submit_profile": "44630f7fccfd7a27fce72e48db845197ee91ff4e02ab887080d84ec59fb4e6f9",
+    "edge.sync-banxico-fx.sync_banxico_fx": "039aea73a21ac67bc2376749e81c6a9121653b6aad3c2fe49d091cf954aba41a",
+    "edge.sync-rateware-catalog.sync_rateware_catalog": "a22146b2b855bcfc56322a333900ad0f41b84efb00a9bce0254c13a1b416c4f2",
+    "edge.whatsapp-webhook.ingest_webhook": "da104018fc4c61afe42c4858af004547e722b582d951f2c4d7aaf5d54f8a0398",
+    "edge.whatsapp-webhook.verify_webhook": "da104018fc4c61afe42c4858af004547e722b582d951f2c4d7aaf5d54f8a0398",
+    "rpc.public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)": "d7a79317b40e6f7a5fe131226bb03ddc4e51d6ceb2165fd9d26c16c5eb450443",
+    "rpc.public.count_exact_workspace_vendor_duplicates(text,text)": "d78c6a847831276b1126b9ca45d30542905e6567ac4ec3457817e89688281ea3",
+    "rpc.public.merge_exact_vendor_relationship_collisions(uuid,uuid)": "e25fc4ba875efb46acabbe5eecaaf20fa21faf46ed2e88fd4c2d134b6c450c94",
+    "rpc.public.protect_outreach_delivery_state()": "ffcbf6588871f833608603afc6b9ad6f98ce0dcff7ae988fd4f3e76aedac63ae",
+    "rpc.public.rateware_assert_vendor_workspace_link()": "93d96d17fc5d7288b65ae4a2bd4f063c88ad4a1937f4260bd66ead22617fbfeb",
+    "rpc.public.rateware_bi_aggregate_value(text,text,bigint,bigint,numeric,numeric,numeric,numeric)": "a3cabb680b575274977c404c03439c8a9750c4a50b87d4125284cda6b4e53a23",
+    "rpc.public.rateware_bi_dimension_value(public.rate_staging,public.vendors,text)": "2b0f7817e34050b29021458bacbc7875ad69ba9bd242f9a258bc008aaa314cb7",
+    "rpc.public.rateware_bi_drilldown_for_owner(text,text[],text[],text[],text,jsonb,integer)": "e915e2eca39e45c711068ffd19bdd04f648072f60bb5dfe939be144deec6b5f9",
+    "rpc.public.rateware_bi_fact_dimensions(public.rate_staging,public.vendors)": "faff3ea03efeebbe474e0c0f00ee84fadb768443823b494f63caf51177dc05b8",
+    "rpc.public.rateware_bi_fact_matches_filters(public.rateware_bi_rate_facts,jsonb)": "9c6eab772b698a99c6472d49894feb159e0c23086654f20a392f477cf414aa85",
+    "rpc.public.rateware_bi_fact_search_text(public.rate_staging,public.vendors)": "9e76e373ef147a81fb2e06285388ce999ceeacb842e53c534daccb3e211c3709",
+    "rpc.public.rateware_bi_geo_density_for_owner(text,text,text,text,jsonb,integer)": "a9be56a6598630b2382405f018d657e78a6c46bf7c51aec6d2722a782dbf7863",
+    "rpc.public.rateware_bi_metric_value(public.rate_staging,text)": "7926fa114710e2ecaa3963af862cf22e24652f6c3673d41651db35873bc99385",
+    "rpc.public.rateware_bi_pivot_for_owner(text,text[],text[],text,text,jsonb,integer,integer)": "397593be7e9d4d10d3faae5ec573487617f6eabadb4be70fa7630bf614ac9436",
+    "rpc.public.rateware_bi_rate_matches_filters(public.rate_staging,public.vendors,text,jsonb)": "73ba5fa7308e879b8edfbfcda7a60f91bf042a10a59cb00b34b35f434820bfe6",
+    "rpc.public.rateware_bi_row_text(public.rate_staging,public.vendors)": "4a903178483f44766ba09045e9c0189b2f38bca86c16088f2449b74e5f5ee40e",
+    "rpc.public.rateware_bi_summary_for_owner(text,jsonb)": "90da0cf7013b78cd8373240b798bf7dbc1d6641b5039bd2045e38b3541b8ba69",
+    "rpc.public.rateware_bi_value_filter_match(jsonb,text,text)": "6289882e926e2a6b369332d82ac179dd695998a06f2c2492da7e5074faa5272e",
+    "rpc.public.rateware_bi_vendor_metrics_for_owner(text,jsonb)": "bab291c292f89bf45e3211a9a626b2677556011aa3e462be83f9c7f1ea1aa7a0",
+    "rpc.public.rateware_bid_room_chat_snapshot(text,uuid,text,uuid,uuid,integer,text)": "9305eeacea7c1e542670a65500c656aaddd9b606ff8144f15a0c04fcdbcb5e07",
+    "rpc.public.rateware_bool_filter_match(jsonb,text,boolean)": "f3fc6b08bda2deba2e34268f19ed126fb3e6f33b1c8f1a18e1c91ea67e27c0e8",
+    "rpc.public.rateware_clean_rate_number(text)": "9bfdfc868724cf52e125a452d036d14caff892cf98e95c887755d14756e8cf1e",
+    "rpc.public.rateware_domain_key(text)": "77b9b7743305327cd8075a46440804c480a418818008567df1a1468c51b2869d",
+    "rpc.public.rateware_filter_values_for_field(public.rate_staging,public.vendors,text)": "07ef98e1391121f75ec639ec493d986dcf0278fc4f8ca1cc023b2becaacf28c2",
+    "rpc.public.rateware_filtered_rate_ids(text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer)": "e270edc4dae3b0ac412d209bbb356ca437d1de03142c509e326d35237c26638e",
+    "rpc.public.rateware_filtered_rate_values(text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer)": "ff262a40e35f7ecdbaad611264a3ff2bcf793fa2ee7b4b3e540ee930ee602ae3",
+    "rpc.public.rateware_has_numeric_rate(text)": "e4c44ed108b3c1412f25874af0365e49ca8d5ae4c38f980334f87700e4566776",
+    "rpc.public.rateware_inherit_rate_owner()": "a0393abf50fcda277ea6850d7d3c4190f79ad2f5d43d543b51fb94a04974053d",
+    "rpc.public.rateware_is_generic_email_domain(text)": "04f4e04d3717bfe3b251bc5aba60460cd4ef89ac20695a01ad339f7358871286",
+    "rpc.public.rateware_json_filter_values(jsonb,text)": "95b9e92dd759e164d61790397e83790e53a554f8db37f0828f0d786a3c425919",
+    "rpc.public.rateware_normalize_vendor_lifecycle()": "457df62160afe2ec54287514d242a1d20ef5de9bd1e298dcd17ed31a30a6a997",
+    "rpc.public.rateware_outreach_tracking_page(text,uuid,text[],text,text[],boolean,boolean,integer,integer)": "c6020b7541f6d6906cb4b33812d76bd5da59197955ff69781c02241c8f173cf9",
+    "rpc.public.rateware_outreach_tracking_state_sql(text,text,text,jsonb,text,numeric,timestamptz)": "cd2454e6db858228c3459a7505907c32bc72b9b9c881e3fb6c31df729010b60d",
+    "rpc.public.rateware_outreach_tracking_summary(text,uuid,text[],boolean,boolean)": "eb27f861015fa89990716809baab0dbbfbb745245a6593cd40161b30f96a7297",
+    "rpc.public.rateware_promote_vendor_lifecycle(uuid,text)": "04f73a8436bcb973a6237fa088f6499cd7e1a143970d2f8282121ea3c698e829",
+    "rpc.public.rateware_rate_matches_filters(public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean)": "9010e77d4d3d8db54dc89a3fc2bec99704a765976a211b581d8e1e6a80f79ada",
+    "rpc.public.rateware_refresh_vendor_search_document()": "1f09c4be75c6c5045f15550f4f97aec9f8cbd7f0cce1f33a39db0cae631bf1da",
+    "rpc.public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)": "3cebc56b09755f9fd8fe09a17674e987b0826df59b8c0859566d67dde6fd017f",
+    "rpc.public.rateware_rfx_text_match_score(text,text,integer)": "754520bafd29dd263e072e555a95940214d5577b9a11cdce7150a7207777ffb1",
+    "rpc.public.rateware_row_conflict(public.rate_staging)": "a8d06bebac9e017eba20add6be0a496d381671e2bc34f8e83283c8bef3666204",
+    "rpc.public.rateware_row_cross_border(public.rate_staging)": "ccfc273f92fa3d1ab6e237851e575cf16a6838447cf1708eb95f5d59f57bdca9",
+    "rpc.public.rateware_row_currency_gap(public.rate_staging)": "fc3cbb162d4032935cecd17c12eea5ccdfbc6cb4321aa611facde068a9079f85",
+    "rpc.public.rateware_row_has_all_in_text(public.rate_staging)": "3ade7db107ff364b76970e7e084cb4361412c21a9e42e5ad9c377d1385c73593",
+    "rpc.public.rateware_row_has_split(public.rate_staging)": "7a5d4a0796772b38164c305637345036adfbfe56869a1bf2a231aa4f4fde6811",
+    "rpc.public.rateware_row_location_gap(public.rate_staging)": "5ae52c615e218d53df814498b89e1044a87c47567404e09563d54bf27e540edd",
+    "rpc.public.rateware_row_needs_rate(public.rate_staging)": "53bd5712c45d2fc1e351d244476c950d2d71590ff9c6bf7a61df6222e22b387d",
+    "rpc.public.rateware_row_ready(public.rate_staging)": "d7444199c2c1b3dbc217f0d1b623ff107eeeed5295e0185f4509739f10e410c1",
+    "rpc.public.rateware_row_service_conflict(public.rate_staging)": "b54fdac837c350cf6a810df704e11072464e5001d48457aa1529ee5e961be315",
+    "rpc.public.rateware_row_source_audit(public.rate_staging)": "88ba5b71dc7b675ed830241a678a2da538e161d6de43fdc4a3863d68ecbe8879",
+    "rpc.public.rateware_row_split_conflict(public.rate_staging)": "7d2cae2e6b125b4e54eda38f2a59babade77e2d5befb7a49a2c83349a2ff0aae",
+    "rpc.public.rateware_service_mode_key(text)": "5915f60fd3bd55b53dcc133e7953c2d0e8dc71c071604c75e0b583e2aa643492",
+    "rpc.public.rateware_set_bi_fact_vendor_reference()": "7dcbf6360c721f1917ab0d631f48c78581266b87cfa5bf7f73f08aa6a4ac1b3b",
+    "rpc.public.rateware_sync_bi_rate_fact()": "ba0ad053a1ea968a7f9324d13e1a65f81c2a898bbb55dcb9dd95ccd058e5f141",
+    "rpc.public.rateware_sync_bi_vendor_facts()": "5316f8be2ca1bee8e25386310d2468cc6309b48d73238feeadeeadff586fa63b",
+    "rpc.public.rateware_sync_vendor_lifecycle_from_rate_staging()": "b5c6efc4d4d2d613691b9bf28bf9fc0c3d895e010c98f92abbfd02b0ac0653a2",
+    "rpc.public.rateware_sync_vendor_lifecycle_from_rfx_lane_vendor()": "a7d24350cb7543dc0c82c509947d23a0e49440b2531f32ecefe86e26b8769723",
+    "rpc.public.rateware_text_filter_match(jsonb,text,text)": "0b69e412babf2d78721ed1392101abaed4734f28bee97e0f32cc37638d545fe4",
+    "rpc.public.rateware_values_filter_match(jsonb,text,text[])": "87336a3d78af03c14c031bb0091de0a67580e532664a7d9d13912e41e72e3e9e",
+    "rpc.public.rateware_vendor_funnel_stage_rank(text)": "8e05332c7a8dd5bd6ecc43aa2cd677f816aeae484c99d0b95ee9efe73b3083f6",
+    "rpc.public.rateware_vendor_search_key(text)": "30eb13d0c89264e4326be03f7d0b575d01f1d9073972840446acd1be91386794",
+    "rpc.public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)": "0b6bf828d56e63951e38bb204c3877e8bd9c053dcc12b5df3b1907a8d4a16e25",
+    "rpc.public.search_workspace_vendors(text,text,integer,integer)": "1cd2c028da3d18f5de76db2530a3f8e5e9fc2ce3a4d77b81fd1574d71e197361",
+    "rpc.public.vendor_bid_metrics_for_owner_ids(text,uuid[])": "bc1d70f7662bfb6e163a16eb6e9605a680888ea0e881f78f92da84c1e8aaf27c",
+    "rpc.public.vendor_rate_metrics_for_owner_ids(text,uuid[],text)": "5868180eeda1efe7e8dd77c44d6054fde74048fa46459dde2068b501862567f5",
+    "rpc.public.vendor_rate_metrics_for_owner(text,text)": "9a3e78a14e9ad1fc38d6f3248353b550da5c87580ab66d7f3f5e895b71ded571"
   },
   "surfaces": [
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.carrier-profile-api.add_ticket_followup",
       "actionName": "add_ticket_followup",
       "sourceKind": "edge-selector",
@@ -60,11 +736,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "7ddc5c730f2e6caaca365a14bdb17038ed846a804c8674c4112de78a3d13529d",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "cb812d45ddacfeade671d2060189bd965897ade79f8e0f46b603e6467ded17fa",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/carrier-profile-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.carrier-profile-api.get_profile",
       "actionName": "get_profile",
       "sourceKind": "edge-selector",
@@ -83,11 +765,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "7ddc5c730f2e6caaca365a14bdb17038ed846a804c8674c4112de78a3d13529d",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "cb812d45ddacfeade671d2060189bd965897ade79f8e0f46b603e6467ded17fa",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/carrier-profile-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.carrier-profile-api.submit_profile",
       "actionName": "submit_profile",
       "sourceKind": "edge-selector",
@@ -106,11 +794,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "7ddc5c730f2e6caaca365a14bdb17038ed846a804c8674c4112de78a3d13529d",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "cb812d45ddacfeade671d2060189bd965897ade79f8e0f46b603e6467ded17fa",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/carrier-profile-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.create-raw-upload.create_raw_upload",
       "actionName": "create_raw_upload",
       "sourceKind": "edge-method",
@@ -129,11 +823,18 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "cdbb0af161fbe75576b00352f6e51dc6edc149c71083ab84587f798399d7484f",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "90e7f3ab9d8bec4262d74d5426b3f28ce98c5ebcfd0013c06423482038c0a12e",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/create-raw-upload/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.gmail-oauth-callback.complete_google_oauth_callback",
       "actionName": "complete_google_oauth_callback",
       "sourceKind": "edge-method",
@@ -152,11 +853,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "c59c46768a1721c0e4a9c8c0bff06f4f433ce51e56796dd53e844ea0a6c1e141",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "dae2e5298892b83d41b6525841f6566fe44de4f1ab28163f258e2e69787953c4",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/gmail-oauth-callback/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.google-chat-app.handle_chat_event",
       "actionName": "handle_chat_event",
       "sourceKind": "edge-method",
@@ -175,11 +882,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "abd5198125992b2ea06bf4336e3e4e1f7e3e233f3a3ac2b8f1acc1ce86ccf42c",
-      "notes": "no frontend literal found; dead/admin/indirect candidate; provider event authentication absent in static handler Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "778f1ee9d0b8599f2848147e59fcc567e77593dd4cee5d45958488fdc8e9cb83",
+      "notes": "no frontend literal found; dead/admin/indirect candidate; provider event authentication absent in static handler Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/google-chat-app/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.google-chat-app.health",
       "actionName": "health",
       "sourceKind": "edge-method",
@@ -198,11 +911,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "abd5198125992b2ea06bf4336e3e4e1f7e3e233f3a3ac2b8f1acc1ce86ccf42c",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "778f1ee9d0b8599f2848147e59fcc567e77593dd4cee5d45958488fdc8e9cb83",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/google-chat-app/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.interpret-upload.interpret_upload",
       "actionName": "interpret_upload",
       "sourceKind": "edge-method",
@@ -221,11 +940,18 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "19d1979c666ac0a0715522ab5d9a4e5fea9c889ad18365a0dcd860d9bb608e48",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "b23f3762629f58b40c0f8d449dad3fb30df9a3ec5df798ec00390212b59a2f57",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/interpret-upload/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.ratebook-carrier-api.get_ratebook_access",
       "actionName": "get_ratebook_access",
       "sourceKind": "edge-selector",
@@ -244,11 +970,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "5b20ad6139e115143e1e6b672d2167fb78aa4829607fc4b703f4abca9dd3b178",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "0324b9bd68e89f47fe11c527656da2b9f0e7e68d1489f3369b21149c3ea21dec",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/ratebook-carrier-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.ratebook-carrier-api.submit_ratebook_quote",
       "actionName": "submit_ratebook_quote",
       "sourceKind": "edge-selector",
@@ -267,11 +999,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "a48956340723f99fb0d7ab59fb826dfa71adeac711cbc5c31fca8b76dc65af04",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "e57d70ed9001ba07f28ee4379cdb3fab1d574a7185f3531facc67ef62229ac65",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/ratebook-carrier-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.ratebook-carrier-api.withdraw_ratebook_quote",
       "actionName": "withdraw_ratebook_quote",
       "sourceKind": "edge-selector",
@@ -290,11 +1028,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "0df387a2dd5c4a1a9cf5c0327dd50a8bdcbd175a37ca85dc846fcc7383c2fbdd",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "40dbcbee8f1bea78cd01ea8432f93eeda1a6d0638f31a2721c68375e0316ec62",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/ratebook-carrier-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.apply_bid_update_from_chat",
       "actionName": "apply_bid_update_from_chat",
       "sourceKind": "edge-selector",
@@ -313,11 +1057,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "86a91ec86072d36d0361ef21de67d1b2f461eba3ff8ad623d9424ee80afde3c9",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1e42a1816a91c7369fbeab30a6b78cfa9b6f5766aa35837b79e558d4bcfab460",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.apply_shipper_action_playbook",
       "actionName": "apply_shipper_action_playbook",
       "sourceKind": "edge-selector",
@@ -336,11 +1088,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "986285583780f44b7703b311671391f8e01a582b4bdcc3da9f50103245beb2d0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "781f670ae06f5a98b11a0de9d5236c2fb1783bdabe0dc1b46733c114516a0338",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.apply_vendor_intelligence_tags",
       "actionName": "apply_vendor_intelligence_tags",
       "sourceKind": "edge-selector",
@@ -359,11 +1119,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "52df202e8bd314b1f5a86d3391bbb8e18c9c48bc8e3210a4f7b556db4babd971",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "d542a3475e67496c2b3f23fd74603230a01fb2653e5e72842d6eb5e36a6e634c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.apply_vendor_template_updates",
       "actionName": "apply_vendor_template_updates",
       "sourceKind": "edge-selector",
@@ -382,11 +1150,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "2a76bf63cf0a6692d1019a2be0b744a92949192aa13942e3d3c7ba230066ae3d",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "2b4c4ff13c4f6273ed565676e5da9a0a2ab9f01ac767a957a26030c685a0494b",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.archive_catalog_value",
       "actionName": "archive_catalog_value",
       "sourceKind": "edge-selector",
@@ -405,11 +1181,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f7295ffc49d9bba98590aaa4131f982757fbf51e11695e66bc2a7e0365938f05",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1c5a2270605597a2a7ef9e7988c3c62799f43ca0c15ed2ada8a16d2f8f1af96a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.archive_growth_segment",
       "actionName": "archive_growth_segment",
       "sourceKind": "edge-selector",
@@ -428,11 +1212,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ce6a7a1d08fdaf8f4fca97053592de49f92ce0a6017e817accafbcf2d0996286",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "d357f1361b76ba80db09651e0efbefe3bb4c6a1d606f3cbe6eb48dfeedb26fe0",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.archive_interpretation_memory",
       "actionName": "archive_interpretation_memory",
       "sourceKind": "edge-selector",
@@ -451,11 +1243,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.archive_location_catalog_value",
       "actionName": "archive_location_catalog_value",
       "sourceKind": "edge-selector",
@@ -474,11 +1274,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f7295ffc49d9bba98590aaa4131f982757fbf51e11695e66bc2a7e0365938f05",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1c5a2270605597a2a7ef9e7988c3c62799f43ca0c15ed2ada8a16d2f8f1af96a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.archive_outreach_audience_segment",
       "actionName": "archive_outreach_audience_segment",
       "sourceKind": "edge-selector",
@@ -497,11 +1305,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "3f3d7676a0bd95f683bb5adaac8cf10f5532b525e74465204733d7133f5024c6",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "4391dec38f9844863ec4001785913c76a5741583fcbada6368f9b8a858880f2f",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.archive_outreach_campaign",
       "actionName": "archive_outreach_campaign",
       "sourceKind": "edge-selector",
@@ -520,11 +1336,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.archive_outreach_template",
       "actionName": "archive_outreach_template",
       "sourceKind": "edge-selector",
@@ -543,11 +1367,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.archive_ratebook",
       "actionName": "archive_ratebook",
       "sourceKind": "edge-selector",
@@ -566,11 +1398,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "3a4247a06cd593f506ca7ba270d705fe7f2222224d2c9eba8eedd82bfb58edbd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "8441b509048ad9ab9323ac69f6abb6557ff8799136230eae3f6e7c37a7617ecc",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.archive_rfx_event",
       "actionName": "archive_rfx_event",
       "sourceKind": "edge-selector",
@@ -589,11 +1429,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.archive_rfx_lane_vendors",
       "actionName": "archive_rfx_lane_vendors",
       "sourceKind": "edge-selector",
@@ -612,11 +1460,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.archive_shippers",
       "actionName": "archive_shippers",
       "sourceKind": "edge-selector",
@@ -635,11 +1491,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.archive_staging",
       "actionName": "archive_staging",
       "sourceKind": "edge-selector",
@@ -658,11 +1522,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.archive_upload",
       "actionName": "archive_upload",
       "sourceKind": "edge-selector",
@@ -681,11 +1553,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.auto_shortlist_rfx_lane",
       "actionName": "auto_shortlist_rfx_lane",
       "sourceKind": "edge-selector",
@@ -704,11 +1584,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "e937790d0a1b7578b0d7a4c6cf46a4c06168054be6aac5118bfbeeb90bbd815a",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "93d37f03e0db24a9ba1e9a5a491da5534a330e368c0c02ea4f3e5fb6addda8e1",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.award_rfx_lane_vendor",
       "actionName": "award_rfx_lane_vendor",
       "sourceKind": "edge-selector",
@@ -727,11 +1615,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "9657eda51019904b0e807bdcc9d02175bb1ea925725ed76235edcd1a2077ddbd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "80b222f9225cf992b19bcc18ca232ae3dff2a4cdfc88b280bd615d517373ba34",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.book_audit",
       "actionName": "book_audit",
       "sourceKind": "edge-selector",
@@ -750,11 +1646,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "fab014c1f4758efa756268308d6c32f3a3202a15dda659acbbd39e3f81f734d5",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "d128ea4249b7bd3bb5682520f93bf0492b53eb3be843056d02c885659e466d4c",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.book_audit_scan",
       "actionName": "book_audit_scan",
       "sourceKind": "edge-selector",
@@ -773,11 +1677,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "168886b342cfcdf0fd752c4c78f6b8c9bb944573beaf085d21f6a36f85237b13",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "f5988a32d7f24abdd3a708c8659c21c624eb70d5b39f19251ceeb6b93aaf515e",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.bulk_import_catalog_values",
       "actionName": "bulk_import_catalog_values",
       "sourceKind": "edge-selector",
@@ -796,11 +1708,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f562bf2cbb49c70d3366131b9bbc0b89dc769341286882b9d5d7fe0b91c5fbaa",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "0a9f1cd5718ad7fcbea18f04d52f494fc4e5fe842e9c5271d73d6addae1e0f16",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.bulk_import_upload_template",
       "actionName": "bulk_import_upload_template",
       "sourceKind": "edge-selector",
@@ -819,11 +1739,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "9833dca12f32777ee2e1e1a275aad2c0d57230f419c938b1950eb54b7545d53f",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "6db44da9ca63d613a2ad0aa014d16ef25f6ac5d21f9c7475470762880cd94a1f",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.bulk_rate_rows_by_filter",
       "actionName": "bulk_rate_rows_by_filter",
       "sourceKind": "edge-selector",
@@ -842,11 +1770,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "28c21bfc44a9f0e6b16232c6c382e50dccaa5df3db69f0a00a26a3c77d6a9bda",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "b0c2157e03391e0ae843e416276e1f9eb581f79d7b19a1c148cff27301fc6164",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.bulk_update_rate_rows_by_filter",
       "actionName": "bulk_update_rate_rows_by_filter",
       "sourceKind": "edge-selector",
@@ -865,11 +1801,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "28c21bfc44a9f0e6b16232c6c382e50dccaa5df3db69f0a00a26a3c77d6a9bda",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "b0c2157e03391e0ae843e416276e1f9eb581f79d7b19a1c148cff27301fc6164",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.bulk_update_rateware",
       "actionName": "bulk_update_rateware",
       "sourceKind": "edge-selector",
@@ -888,11 +1832,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f3dc62421e6cc33ec293d974807f6365a57511c38edf11154937bcd18b6a1efa",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "28da5f3e2b656f746173395715c06a73f6fe64532e42700086ded17d7ee519ce",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.bulk_update_staging",
       "actionName": "bulk_update_staging",
       "sourceKind": "edge-selector",
@@ -911,11 +1863,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f3dc62421e6cc33ec293d974807f6365a57511c38edf11154937bcd18b6a1efa",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "28da5f3e2b656f746173395715c06a73f6fe64532e42700086ded17d7ee519ce",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.bulk_update_vendors",
       "actionName": "bulk_update_vendors",
       "sourceKind": "edge-selector",
@@ -934,11 +1894,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "c3380f02324e72ddcf134b0bd36f08e44ffd1df8f900eefa8ffde4f90681ff65",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "87405e51f980d4a003fc923e0f35024bfeb8f4f67692c77becff586fe148c8f2",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.business_intelligence_drilldown",
       "actionName": "business_intelligence_drilldown",
       "sourceKind": "edge-selector",
@@ -957,11 +1925,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "4686e9e1637e2360ae7ee83381f736698c67ecfb1fe653a8138a7c43287b252e",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "6f82ee05f8f42342762fe3636a29ece62f9c8a37aee8cfc0928865a701b63865",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.business_intelligence_geo_density",
       "actionName": "business_intelligence_geo_density",
       "sourceKind": "edge-selector",
@@ -980,11 +1956,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f568ed4ffed09abbbfb4a0316bbcb5623df1e2f66bf50cae0eb9c014941cc991",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "ef021078da03e5633c3ca2ce8e58cee9d3d83d5d069be688c97406bd1d832a1f",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.business_intelligence_pivot",
       "actionName": "business_intelligence_pivot",
       "sourceKind": "edge-selector",
@@ -1003,11 +1987,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "721e049fcea84e2273407034594f42fb5e7bec15c33465b8849c7414e71268fc",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1b24d30306284b874d81f4358b2cc308cc1b3d86a13c0f9d2a14b31bbea860e5",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.carrier_intelligence_chat",
       "actionName": "carrier_intelligence_chat",
       "sourceKind": "edge-selector",
@@ -1026,11 +2018,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "a3566ae968c757ab07c5bfc8a30d0b0eeb78e27aeed6befae38658b714480c2a",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "cec2b3e0c80432330d15136d9dc70dd8986d0cfcaabfe6e6f8416e565ecfd7ca",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.carrier_recommendations",
       "actionName": "carrier_recommendations",
       "sourceKind": "edge-selector",
@@ -1049,11 +2049,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "cda84257dce4197d652c0c0314ea350a7862ea7f0941be0588c91ff0d04ee1b4",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "eef838aba2ff6d91af0f0754ffb0c9f32a99d602f4359298c995df650908f527",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.clear_rfx_award",
       "actionName": "clear_rfx_award",
       "sourceKind": "edge-selector",
@@ -1072,11 +2080,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "208685a05fb90938a4160d5916356502f696736eb580c89f2f40149e54178f29",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "85f58568cbbe336330aa407a5818d7fe89960f297c91197ddfdca0aab99f2270",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.closeout_awarded_rfx_to_rateware",
       "actionName": "closeout_awarded_rfx_to_rateware",
       "sourceKind": "edge-selector",
@@ -1095,11 +2111,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "2e660ed842d88a59757b95885557dcbafc2f7a3a66f1afb84f61de7db526cc6f",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "da34e375ec5465bc433bdf45d2491172d297e0a4fc7b20b64a6357814f875442",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.complete_whatsapp_business_connection",
       "actionName": "complete_whatsapp_business_connection",
       "sourceKind": "edge-selector",
@@ -1118,11 +2142,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "aac55710fb1f3aeb3cf6fb92a112a2a77b9dbcc9fde75a8ec2db823989e3ba77",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "684ad95f8819b907f2d5bfcaf5cc9d5e7d76965285b3bf3ee481f91724e07a90",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.consolidate_exact_vendor_duplicates",
       "actionName": "consolidate_exact_vendor_duplicates",
       "sourceKind": "edge-selector",
@@ -1141,11 +2173,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.convert_growth_result",
       "actionName": "convert_growth_result",
       "sourceKind": "edge-selector",
@@ -1164,11 +2204,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "966ec993910373fa9f438dc102ac550b0b06c736359eacfee58b6a59ab3e0f82",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "189e14d588be68fb7feca88035a662a52d60692f3ed85d69cdf13b7559104096",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_interpretation_memory",
       "actionName": "create_interpretation_memory",
       "sourceKind": "edge-selector",
@@ -1187,11 +2235,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f7295ffc49d9bba98590aaa4131f982757fbf51e11695e66bc2a7e0365938f05",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1c5a2270605597a2a7ef9e7988c3c62799f43ca0c15ed2ada8a16d2f8f1af96a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_outreach_campaign",
       "actionName": "create_outreach_campaign",
       "sourceKind": "edge-selector",
@@ -1210,11 +2266,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d9652f6359ca5f911e2ef118234f1d9a8ed063548745fec9222a9f8895dfa9bd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "c6b4950fee46e7e0ecf2c7a9bc990e2087798e6d95cf048379d148e48be7e12f",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_outreach_template",
       "actionName": "create_outreach_template",
       "sourceKind": "edge-selector",
@@ -1233,11 +2297,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f220c5293b62bdb41c8207599a08e3395a7636b48ccbd169bdb74ceda9a18c53",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "5a5ead81720a25314cb0d9d45d53c257fdf009116f7a75362552dfb561d28932",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_ratebook_revision",
       "actionName": "create_ratebook_revision",
       "sourceKind": "edge-selector",
@@ -1256,11 +2328,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "53454ae6b69d0d8f7f56d39f00f6f79ae041c4411a7f57f6c2bc4a024743bb52",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "02c09b694b5f621c789056b38ef5516ae11413734ec504bfa6a15e9159f7513b",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_rateware_version",
       "actionName": "create_rateware_version",
       "sourceKind": "edge-selector",
@@ -1279,11 +2359,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "28c21bfc44a9f0e6b16232c6c382e50dccaa5df3db69f0a00a26a3c77d6a9bda",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "b0c2157e03391e0ae843e416276e1f9eb581f79d7b19a1c148cff27301fc6164",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_rfx_award_package",
       "actionName": "create_rfx_award_package",
       "sourceKind": "edge-selector",
@@ -1302,11 +2390,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "8986f1cb297abadaca0b0d6233b533d45520d42742573b06cc8139294178dd3b",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "378f73423f4726da85dfc4c453be98f50d3f86c7da6a9f3af9a68267441fe4d6",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_rfx_demand_snapshot",
       "actionName": "create_rfx_demand_snapshot",
       "sourceKind": "edge-selector",
@@ -1325,11 +2421,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ad31b3b82dfd383292b3e5fd35e7855df21d9dcde351d6b3e02b4a551870ff1b",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "0004b0fe6d9342e4f4325da996195574f59f730f0a20026e2dc47d10752b2341",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_rfx_event",
       "actionName": "create_rfx_event",
       "sourceKind": "edge-selector",
@@ -1348,11 +2452,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "51d8024e32f0bd7d8994297d81277e7e6cc79a69ad93d77f6acddfaa14ad3217",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "238b0c1348eaecc3dbbe4430f1cf6472efbfef595ec9bdb803b83bf76624de65",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_rfx_package",
       "actionName": "create_rfx_package",
       "sourceKind": "edge-selector",
@@ -1371,11 +2483,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "895a9e4d32692e3c51ea88c7156dc2a83e4aeb6f31059ce3a15149511ea69e7e",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "e1d4c6e7470c150500e2ad8eb6db93c4143dcceb2ae92ad68693243743ee1775",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_rfx_process_project",
       "actionName": "create_rfx_process_project",
       "sourceKind": "edge-selector",
@@ -1394,11 +2514,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "27e1c53351ba9ed4ba511ebc347880f8f60472a3f741184ad03db5398d65bffd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "5bcb1677a8c990f6c6deb8fbdc9a3e15a552647f984eb0700d9db611fd2fadc8",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_rfx_rfi_magic_link",
       "actionName": "create_rfx_rfi_magic_link",
       "sourceKind": "edge-selector",
@@ -1417,11 +2545,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "b9eabec5abab0ab41402d4bd43e7539fd800d523cc84a7af32534a255be89026",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "d47438584a7f425649d7a98123281a82c73c5c23a28f7b30662f10e66723aea2",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_shipper",
       "actionName": "create_shipper",
       "sourceKind": "edge-selector",
@@ -1440,11 +2576,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f7295ffc49d9bba98590aaa4131f982757fbf51e11695e66bc2a7e0365938f05",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1c5a2270605597a2a7ef9e7988c3c62799f43ca0c15ed2ada8a16d2f8f1af96a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_shipper_profile_request",
       "actionName": "create_shipper_profile_request",
       "sourceKind": "edge-selector",
@@ -1463,11 +2607,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "986285583780f44b7703b311671391f8e01a582b4bdcc3da9f50103245beb2d0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "781f670ae06f5a98b11a0de9d5236c2fb1783bdabe0dc1b46733c114516a0338",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_vendor",
       "actionName": "create_vendor",
       "sourceKind": "edge-selector",
@@ -1486,11 +2638,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f73b006c861e4c82bfc1e152c42d672cd43cd26d61e4ac0f490234f4ee1aff5e",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "000f497998262552059497eda7c6875c878f2be7dce4cfda65385f26b2f28193",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_vendor_improvement_case",
       "actionName": "create_vendor_improvement_case",
       "sourceKind": "edge-selector",
@@ -1509,11 +2669,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d383d5d6ceb0e9e4d1d2579bb8310ba472daeb7f5bd3a9c835afceded6af8b88",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "e75c595a61d2d0418090c2fc28d73a95fb7de674055a4e951f88d2bc5ce226d7",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_vendor_profile_request",
       "actionName": "create_vendor_profile_request",
       "sourceKind": "edge-selector",
@@ -1532,11 +2700,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "c149f627f3b4e8abd4af27960dba63f7376e298afe7429b28d83f764537924af",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "45f838161d58ecfc1b436badf394ff33a65ba0a59baf86c55bf5e1b37c47c187",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.create_vendor_segment",
       "actionName": "create_vendor_segment",
       "sourceKind": "edge-selector",
@@ -1555,11 +2731,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "16cee428ad154068c82bff60cade6863b30cb3c420ca3ec7d42f3912d468e264",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "ee6455dd915aff70a429dd283a50ca32f2a51d381d461393bd77f402beef7f16",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.dashboard_summary",
       "actionName": "dashboard_summary",
       "sourceKind": "edge-selector",
@@ -1578,11 +2762,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ba5c1281d39253eaac6327fb3cc5638b97d052fd8b3b3ed809e83a3490d37cd4",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "bbbf27fe241ac6fc9627711f37c8c8e823783024d56774e8916e43b3fdc1d7f5",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.delete_outreach_campaign",
       "actionName": "delete_outreach_campaign",
       "sourceKind": "edge-selector",
@@ -1601,11 +2793,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.delete_outreach_messages",
       "actionName": "delete_outreach_messages",
       "sourceKind": "edge-selector",
@@ -1624,11 +2824,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.delete_outreach_template",
       "actionName": "delete_outreach_template",
       "sourceKind": "edge-selector",
@@ -1647,11 +2855,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.delete_rfx_event",
       "actionName": "delete_rfx_event",
       "sourceKind": "edge-selector",
@@ -1670,11 +2886,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.delete_shipper_record",
       "actionName": "delete_shipper_record",
       "sourceKind": "edge-selector",
@@ -1693,11 +2917,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "986285583780f44b7703b311671391f8e01a582b4bdcc3da9f50103245beb2d0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "781f670ae06f5a98b11a0de9d5236c2fb1783bdabe0dc1b46733c114516a0338",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.delete_vendor_segment",
       "actionName": "delete_vendor_segment",
       "sourceKind": "edge-selector",
@@ -1716,11 +2948,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.disconnect_gmail_connection",
       "actionName": "disconnect_gmail_connection",
       "sourceKind": "edge-selector",
@@ -1739,11 +2979,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "9452df42ee2822967cf50d44190196f4f87fe44ee889ffac03dd9772e49460ef",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "e74b745535c450b9be332a7baaa05d55477f8647584c3e93c9baa2ebfe846be0",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.disconnect_google_chat_connection",
       "actionName": "disconnect_google_chat_connection",
       "sourceKind": "edge-selector",
@@ -1762,11 +3010,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "b9380c8a32a71c68043514ca97c1909ced28909d2cb786478b8d2feda7bff31a",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "42754cacd7d09f43e96a4ee59c61774b081c683f05022720f834daaddaa4c4cf",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.disconnect_whatsapp_business_connection",
       "actionName": "disconnect_whatsapp_business_connection",
       "sourceKind": "edge-selector",
@@ -1785,11 +3041,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "efe767efaba9b1a6e18452f8db483ea64c3db7cd31ea71010e9ffa27ef10dc6d",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "15515a2fb8e2a2d6b01661ecdd57cbc14f195ebf32407ff54e02d08b512e5129",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.duplicate_outreach_campaign",
       "actionName": "duplicate_outreach_campaign",
       "sourceKind": "edge-selector",
@@ -1808,11 +3072,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "bf7d645d67d06f2e52d960f67c62f028cc17ef937f7e2ba1fc3d21b2e5fbe0d6",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "2d21c325d50217c9b5ebaf39e6305db900c2d5c9a0aa9e73b68260a88ccbbcfb",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.duplicate_outreach_template",
       "actionName": "duplicate_outreach_template",
       "sourceKind": "edge-selector",
@@ -1831,11 +3103,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "8bf8c16a115922e98d41dd1371298d20cc7c94981c1d5a637d347eccc118000b",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "7ff9f78c9be3d45e9cacfdf61044fd93ba07d9bd52da710bafec96baff3cf5d1",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.duplicate_rfx_event",
       "actionName": "duplicate_rfx_event",
       "sourceKind": "edge-selector",
@@ -1854,11 +3134,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d9652f6359ca5f911e2ef118234f1d9a8ed063548745fec9222a9f8895dfa9bd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "c6b4950fee46e7e0ecf2c7a9bc990e2087798e6d95cf048379d148e48be7e12f",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.enrich_missing_location_zips",
       "actionName": "enrich_missing_location_zips",
       "sourceKind": "edge-selector",
@@ -1877,11 +3165,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "164d01fcaa6b131a6cd1f0ead546567652255e12398049ef8f69bb52b923a539",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "af2f65d343df12708104487549803ac67b3583288a834551b6ae0133bb9eb253",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.export_growth_campaign",
       "actionName": "export_growth_campaign",
       "sourceKind": "edge-selector",
@@ -1900,11 +3196,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "b5a837b9bc554f5985be5f7d936407232d589a77e255f2be7b1e1a8a455703e0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "86ad5e7662adb68895d65cf597b729b5b9ce5d23b59a555d523c8297f26b6e99",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.export_ratebook_routes",
       "actionName": "export_ratebook_routes",
       "sourceKind": "edge-selector",
@@ -1923,11 +3227,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "1ab116ee24ec93e878053e776c279ed526f84928b6694ed6c60c8585190cfc33",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "8ebeb8b9bd8f48ae1c9a9bf5556582c88da3ddf87035e04a735abe0fbc03d573",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.generate_outreach_drafts",
       "actionName": "generate_outreach_drafts",
       "sourceKind": "edge-selector",
@@ -1946,11 +3258,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "bf7d645d67d06f2e52d960f67c62f028cc17ef937f7e2ba1fc3d21b2e5fbe0d6",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "2d21c325d50217c9b5ebaf39e6305db900c2d5c9a0aa9e73b68260a88ccbbcfb",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.generate_rfx_award_notices",
       "actionName": "generate_rfx_award_notices",
       "sourceKind": "edge-selector",
@@ -1969,11 +3289,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "5de272d36453b7a4f99abbf174d78806cfd2c1cc5c71516fe586e652b0418f16",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "6b5429f51b9f9359f086fdf8870dd8778fcda555b7df7a6bd571ea1e9ae7b735",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_growth_campaign",
       "actionName": "get_growth_campaign",
       "sourceKind": "edge-selector",
@@ -1992,11 +3320,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "5da5ee73b48a903a6adbcada00234c57ab1ec181d8900ec99eea231c29f7c480",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "89d15e482f719288b4c1933e3e4c7fc51b04847c53151f122ab480a334c47579",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_outreach_message",
       "actionName": "get_outreach_message",
       "sourceKind": "edge-selector",
@@ -2015,11 +3351,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "bee2a5d4be842acb72c04978d4eddc09a0087fb06e18d786903ddc51e1ce34c4",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "3ba36f63534a6e2d9face437b946f59cb4ad911a6d14017c40901eefbd79e993",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_outreach_tracking_summary",
       "actionName": "get_outreach_tracking_summary",
       "sourceKind": "edge-selector",
@@ -2038,11 +3382,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f72d3ea48f94ceeb15307bb343cb1db8486d2e469190ba37752efa25d78511e4",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "5b32243dec451e590369f812c0e8afee6697f1551ce6170481a547b835cb2279",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_rate_row_detail",
       "actionName": "get_rate_row_detail",
       "sourceKind": "edge-selector",
@@ -2061,11 +3413,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "70e608a403e4f8d647c0e3a16d1649f115b5d15cef4ee8c60067452739b17c1b",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "4d20ec0375e45f9f91832f8d166e9cb9d6f64eabb80b30162b890b02020bc116",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_ratebook",
       "actionName": "get_ratebook",
       "sourceKind": "edge-selector",
@@ -2084,11 +3444,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "a2c3b3797aaf964909b1158ac89b8a57cfa6fccdc3fd598a109a5cd3d2fe4367",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "8a2363b473a911799d9fe5086c22ee5468762d8e726543dcfebb8a1ecfd244f5",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_ratebook_audit",
       "actionName": "get_ratebook_audit",
       "sourceKind": "edge-selector",
@@ -2107,11 +3475,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "185116c4b8c3add7741855986cbc57f37f201c3a8d71b9f9ab089a77e9a7497a",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "bf1464494d979cc66bc3a8a327b9f05fb7c587b74a94d54a27b40112615455c2",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_ratebook_health",
       "actionName": "get_ratebook_health",
       "sourceKind": "edge-selector",
@@ -2130,11 +3506,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ba4f433779b21d204f8952b06ec8ed525d1457eaa44f9b908eea2271005a6337",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1106b0788b003c83d76f562ed7ee76488bc765a1e3ae61b2330366f7c17b717c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_ratebook_route_detail",
       "actionName": "get_ratebook_route_detail",
       "sourceKind": "edge-selector",
@@ -2153,11 +3537,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "20eaff24dc391a8afef097cd92bccf19e11beed0d991955cc0b769006f8a6fd7",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "9952acee59dcfbdda64954195dec5c40b3c68a41c85588aa90506a976a95a435",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_ratebook_route_quotes",
       "actionName": "get_ratebook_route_quotes",
       "sourceKind": "edge-selector",
@@ -2176,11 +3568,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f5c99b279ac74b59c768dcfa99107833a3ec9ca81c285f57d712e86916615c40",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "0d4ab97ae2214df69824d238f749da4f6044c7ec2bddd2aca77894dfb939042e",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_rateware_version",
       "actionName": "get_rateware_version",
       "sourceKind": "edge-selector",
@@ -2199,11 +3599,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "edf0d196efa23ff3b335e91fe2fc827a6b43e9213c1ef7cd4ba7349b00bc0656",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "0f57a1c669532c018f46394847de28d60f4b3ba9bba6fa6625b4a11122e18c14",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_rfx_process_project",
       "actionName": "get_rfx_process_project",
       "sourceKind": "edge-selector",
@@ -2222,11 +3630,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "fd9f97bbfca4fa9d8293a316a331ade76eeadd22156594b4e5bd5d2d5c526217",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "57eb4b3fdc07dd6e70eef4af8726a582e1b241e6ff03b66a2fc08a106cc95ef7",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_saas_settings",
       "actionName": "get_saas_settings",
       "sourceKind": "edge-selector",
@@ -2245,11 +3661,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "a59fe2fe6de998b5c3b7d91a3664b4def108081afcb24a8bced3bcffc6008641",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "2d34c1279b6e611e9814395908deeee62bb5fa9423f91d11ed93412fe86d9937",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_shipper",
       "actionName": "get_shipper",
       "sourceKind": "edge-selector",
@@ -2268,11 +3692,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "986285583780f44b7703b311671391f8e01a582b4bdcc3da9f50103245beb2d0",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "781f670ae06f5a98b11a0de9d5236c2fb1783bdabe0dc1b46733c114516a0338",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_upload_source_url",
       "actionName": "get_upload_source_url",
       "sourceKind": "edge-selector",
@@ -2291,11 +3723,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d168c8cf4d8a0d4553bff3a42765a5a276a6912800f6e24f8da394ced1c63ec1",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1649992f4a250a2887b826ef9f216b496bfdbf65599f81790947508e54a40151",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_vendor_relationship_activity",
       "actionName": "get_vendor_relationship_activity",
       "sourceKind": "edge-selector",
@@ -2314,11 +3754,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ae1e4c9666f1a426fda2385a57b0f3010a8db978364ca1a48404cf8dbd4cfc51",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "836a87eb56c96853e141df2390007538b0009f0e38a81f154d7312888694eb89",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.get_whatsapp_connection_status",
       "actionName": "get_whatsapp_connection_status",
       "sourceKind": "edge-selector",
@@ -2337,11 +3785,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "02648dad2d8dac2cb5ebc2e1befc6e8c1dffe5309ac405119dfca3c7996b7c48",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "fe80f75188374954f19255cd33393c53942644a91ed84d5f336570f1e8a6f3af",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.growth_ai_action",
       "actionName": "growth_ai_action",
       "sourceKind": "edge-selector",
@@ -2360,11 +3816,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "97412d47ec6500f842d6cdfa8054bb3e2a8125bf23fad50ccc3954b482a17bd0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "ac97a52caf66666de3670efa970149b7712900ed76b25c40b4c6742f83386bfd",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.growth_dashboard",
       "actionName": "growth_dashboard",
       "sourceKind": "edge-selector",
@@ -2383,11 +3847,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "c924895c0d2d6f6462bdee4c8d8ac63682dc5ac68247da9e7501144c3db21df8",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "2aab98693f963cf5de630e6661df27600b16ab077014eb537653db377b09e32f",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.import_growth_csv",
       "actionName": "import_growth_csv",
       "sourceKind": "edge-selector",
@@ -2406,11 +3878,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "b905d109349450f9bf8f389bff290ccc258e1db00406eaa3b71dc0f589d3f4a3",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "5ba83859008aebf75b509c7d1874ac07a19388b35e860aae986ee84d8b5dbbb6",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.import_rfx_lanes",
       "actionName": "import_rfx_lanes",
       "sourceKind": "edge-selector",
@@ -2429,11 +3909,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d9652f6359ca5f911e2ef118234f1d9a8ed063548745fec9222a9f8895dfa9bd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "c6b4950fee46e7e0ecf2c7a9bc990e2087798e6d95cf048379d148e48be7e12f",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.import_shipper_crm_workbook",
       "actionName": "import_shipper_crm_workbook",
       "sourceKind": "edge-selector",
@@ -2452,11 +3940,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f7295ffc49d9bba98590aaa4131f982757fbf51e11695e66bc2a7e0365938f05",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1c5a2270605597a2a7ef9e7988c3c62799f43ca0c15ed2ada8a16d2f8f1af96a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.import_shippers",
       "actionName": "import_shippers",
       "sourceKind": "edge-selector",
@@ -2475,11 +3971,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f7295ffc49d9bba98590aaa4131f982757fbf51e11695e66bc2a7e0365938f05",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1c5a2270605597a2a7ef9e7988c3c62799f43ca0c15ed2ada8a16d2f8f1af96a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.import_vendor_onboarding_corrections",
       "actionName": "import_vendor_onboarding_corrections",
       "sourceKind": "edge-selector",
@@ -2498,11 +4002,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "5bec03d5971b2245132bb9418489e91f0892a74f11f4eed3bdf9f8d2d3dc4ce4",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "82c5cad55600a0e85f2f03a6f0a4128b23d17e6bfdd0f42d932134fdc4fcbc1a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.import_vendors",
       "actionName": "import_vendors",
       "sourceKind": "edge-selector",
@@ -2521,11 +4033,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "e3943898896872bec46c435cdb2e63742b474e1a9bc406f35482bb38041296a1",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "ffc80de1ebc3b3812c1b8eb859d70ba5d906cc16670a65a3f52a94cd3c99b47e",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.import_vendors_google_sheet",
       "actionName": "import_vendors_google_sheet",
       "sourceKind": "edge-selector",
@@ -2544,11 +4064,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "92712da414e2845dc18f0393103d9df6f111f06abc5b586b3e60052f45f6dc7b",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1049852d76d5cca1fb9d1621135481f0e64bd85f720e15c99678d0d3a8a99086",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.invite_rfx_lane_vendors",
       "actionName": "invite_rfx_lane_vendors",
       "sourceKind": "edge-selector",
@@ -2567,11 +4095,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.launch_rfx_package_to_bid_room",
       "actionName": "launch_rfx_package_to_bid_room",
       "sourceKind": "edge-selector",
@@ -2590,11 +4126,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "4a0bcde8eef45ffc8b06ddece6c891cfe0b4d43ae03bf255066106f5c3bdd1e0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "2284326e467e1418688d24cbf04ca1297c362662ee81ed37459164d5c8a038f2",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.launch_shipper_opportunity_rfx",
       "actionName": "launch_shipper_opportunity_rfx",
       "sourceKind": "edge-selector",
@@ -2613,11 +4157,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "986285583780f44b7703b311671391f8e01a582b4bdcc3da9f50103245beb2d0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "781f670ae06f5a98b11a0de9d5236c2fb1783bdabe0dc1b46733c114516a0338",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_bid_room_chat",
       "actionName": "list_bid_room_chat",
       "sourceKind": "edge-selector",
@@ -2636,11 +4188,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "a0c83ee586bc76717180132352c9ec14ddab59390166038bebf43aed186d9626",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1ef2fe604d53df3758e6d2554e9456b132d9bcb111521ac2054b210b4b8b0771",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_catalog_values",
       "actionName": "list_catalog_values",
       "sourceKind": "edge-selector",
@@ -2659,11 +4219,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "094d79beb2d9311fc7ca5adb7b6740af5ff8995ce64551401115cebaf1e236f2",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "3eda7f7fcf6032e8cb379623f7794242b61863b6167d513b58a1002c65385bb3",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_contact_history",
       "actionName": "list_contact_history",
       "sourceKind": "edge-selector",
@@ -2682,11 +4250,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "20360e44db87e084b6240fa28bd32f96f675b3cf1000812fcd67672e10c75589",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "e0dc5b150443f7a0e824c48735afab40f6b55ad2e16057487d17560c244e8ce0",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_gmail_connections",
       "actionName": "list_gmail_connections",
       "sourceKind": "edge-selector",
@@ -2705,11 +4281,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "6ccb02c73ef04e9f936da83df23357082eef662ef923b62270ae276140e763d1",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "d8454f943811e87327b60a35f6e95ad11d37d614ba0bb02b3add9d3733269ca1",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_google_chat_connections",
       "actionName": "list_google_chat_connections",
       "sourceKind": "edge-selector",
@@ -2728,11 +4312,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "35b55ec218d32d8e81ceaf4c789334e1bf0b8bfe43a97d9bda8789ee42bb5ff8",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "0571b7cee24d5c63c93d51b0768218c3559aa2bd6c7eb177cbbed33b99cf34d4",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_google_chat_spaces",
       "actionName": "list_google_chat_spaces",
       "sourceKind": "edge-selector",
@@ -2751,11 +4343,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "408898791cfe5e5bf7e3928c50ce0747ab41bd0cd71fbaf9ed86db13fbfa3177",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "c35e90fee0fff8d9586d86161ee2a4a1bd1c6cdac56a664a6e2f79d996ceb502",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_growth_campaigns",
       "actionName": "list_growth_campaigns",
       "sourceKind": "edge-selector",
@@ -2774,11 +4374,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "bafe053b510388a7be59718adb7c08b5826220acb0bcdccc6d98fdb07fa67bc6",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "eb32f9bc456002dac5df48f41c880daaa75f5b063d64d266851e649cb4b943b2",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_growth_results",
       "actionName": "list_growth_results",
       "sourceKind": "edge-selector",
@@ -2797,11 +4405,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "5b64a000a72f1b87c8c16845c81e7bed17dc4f011e3d6f08017b0d1d616b9c21",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "aac28931084116ed0c81239fb72617b340901c0d4e5f6b698cf36e85aaf844aa",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_growth_segments",
       "actionName": "list_growth_segments",
       "sourceKind": "edge-selector",
@@ -2820,11 +4436,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "52cfc30f6b8cc4b8fc98677006462dc9d4c444c1cfef9a354a323c24b378438d",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "7046286be3002475879d8ddf168e10c3ad6f8a8caeea654107918023fa7fb9e5",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_interpretation_memory",
       "actionName": "list_interpretation_memory",
       "sourceKind": "edge-selector",
@@ -2843,11 +4467,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d6e4400df6d2b23c30ea89ba77664fb4f0c0164765260f37315f38615a236c53",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "b7ced053b47534f45fa0845f00d976216bedd2e7fa15d61e18c4368e407371db",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_interpretation_memory_audit",
       "actionName": "list_interpretation_memory_audit",
       "sourceKind": "edge-selector",
@@ -2866,11 +4498,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "67841ed8165627809611f5ae28035919f535ef70ae5268f8de70d58c8fa795f0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "065fbfdcf7709358a86bd6230cbd2fe4f82073e6260ae06a1f0936ba490c977c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_location_catalog_values",
       "actionName": "list_location_catalog_values",
       "sourceKind": "edge-selector",
@@ -2889,11 +4529,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "1e919a022e11ebc50922199e7165b22231321201288baaf11fc4c42c939aab89",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "9e3415c3039409939e4db13e8aab8789355f24d91fabd49530f30cc9dc3265b3",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_observability_events",
       "actionName": "list_observability_events",
       "sourceKind": "edge-selector",
@@ -2912,11 +4560,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "05fc8bd68615ffbb319d32a7b42ab1a377fd922ac85c071d779e343a8274f432",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "2d017e371fd46732492274229bf55130a32353e0bdec87ec2379140f7b46eccf",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_outreach_audience_segments",
       "actionName": "list_outreach_audience_segments",
       "sourceKind": "edge-selector",
@@ -2935,11 +4591,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "6e1dd11fd36ec31be0f189b93aaab91c5e3b3659dc6ee0723e27321c34ebe3ed",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "5b6e19269eccdfb9457a660650e529c906196920e098bef7fa0e244acf0218e1",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_outreach_campaigns",
       "actionName": "list_outreach_campaigns",
       "sourceKind": "edge-selector",
@@ -2958,11 +4622,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "650b73bf54123ef5c2b408ab05ee831c801884e00ee730a4aed06eb081023474",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "36fc942e6debc514ac235cb812845696dab41a6af8f0654640d9934da2b01d9c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_outreach_messages",
       "actionName": "list_outreach_messages",
       "sourceKind": "edge-selector",
@@ -2981,11 +4653,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "bee2a5d4be842acb72c04978d4eddc09a0087fb06e18d786903ddc51e1ce34c4",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "3ba36f63534a6e2d9face437b946f59cb4ad911a6d14017c40901eefbd79e993",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_outreach_templates",
       "actionName": "list_outreach_templates",
       "sourceKind": "edge-selector",
@@ -3004,11 +4684,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "10c4573453cf6428c7758b6fab1b15c956ba288be1503967c33a34aff627e3b1",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "177c75ef61b828b2fcb7a1fbbb97c34f689c2f0561322497e66e215343d86904",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_ratebook_carriers",
       "actionName": "list_ratebook_carriers",
       "sourceKind": "edge-selector",
@@ -3027,11 +4715,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ba815ea3a45b9f9cef4bfd700f5ff9ff6d3f5f8c6eab6d5757893a9bd455556d",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "b9b9dce829c5735e95a9ef7029d204ab17943d7990edade37c60169a73e21323",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_ratebooks",
       "actionName": "list_ratebooks",
       "sourceKind": "edge-selector",
@@ -3050,11 +4746,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "be1cfb242994542838aab14af2e5db5c97e42afe2b1c72e3e68096ca21d2f29e",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "36934d7027ef72859295682a096f6f3620a09e1a6b2eb52250891e0d04c58d7a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_rateware",
       "actionName": "list_rateware",
       "sourceKind": "edge-selector",
@@ -3073,11 +4777,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "28c21bfc44a9f0e6b16232c6c382e50dccaa5df3db69f0a00a26a3c77d6a9bda",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "b0c2157e03391e0ae843e416276e1f9eb581f79d7b19a1c148cff27301fc6164",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_rateware_audit",
       "actionName": "list_rateware_audit",
       "sourceKind": "edge-selector",
@@ -3096,11 +4808,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "1883c2e2013d7281f3009f7b5d0e54b0b412ba4d36ec6e52d524779583737ca8",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "e0064aff50155bb08e314b500ccb84f173e16f0faa76f2e2c256aad54170785e",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_rateware_filter_values",
       "actionName": "list_rateware_filter_values",
       "sourceKind": "edge-selector",
@@ -3119,11 +4839,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ee89eb79b346abada11fcb3531d09418f4fb750f519113c1ff0d7f5efeec94b5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "fc3b8327605d6e4f5a385da787a0346c08748bd59ec088c79648fc11a68df830",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_rateware_rows_by_ids",
       "actionName": "list_rateware_rows_by_ids",
       "sourceKind": "edge-selector",
@@ -3142,11 +4870,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f3dc62421e6cc33ec293d974807f6365a57511c38edf11154937bcd18b6a1efa",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "28da5f3e2b656f746173395715c06a73f6fe64532e42700086ded17d7ee519ce",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_rateware_versions",
       "actionName": "list_rateware_versions",
       "sourceKind": "edge-selector",
@@ -3165,11 +4901,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "eae951784b1cbccb39793db25b2b4632a52ec36714ef87eba72d1e6ad79b5e1c",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "f66722a05602d2bcc82fb04353bc3b77059261d96a9d94f54c0352908b507050",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_rfx_detail",
       "actionName": "list_rfx_detail",
       "sourceKind": "edge-selector",
@@ -3188,16 +4932,24 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d9652f6359ca5f911e2ef118234f1d9a8ed063548745fec9222a9f8895dfa9bd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "c6b4950fee46e7e0ecf2c7a9bc990e2087798e6d95cf048379d148e48be7e12f",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_rfx_event_context",
       "actionName": "list_rfx_event_context",
       "sourceKind": "edge-selector",
       "sourceFile": "supabase/functions/rateware-api/index.ts",
-      "handler": "requireOwnedRfxEvent",
+      "handler": "listRfxEventContext",
       "endpoint": "POST /functions/v1/rateware-api body.action",
       "businessModule": "Procurement",
       "operation": "read",
@@ -3211,11 +4963,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d9652f6359ca5f911e2ef118234f1d9a8ed063548745fec9222a9f8895dfa9bd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "9b0a11652bf0ddbdecbf5117f03cb267d9b490aad8da8f7247871e7b3f3ee908",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_rfx_events",
       "actionName": "list_rfx_events",
       "sourceKind": "edge-selector",
@@ -3234,11 +4994,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "51ed7639c6a7756702e7dcf4c5d91f413246df56a18e89766b5323cd45fd67b2",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "5cdd0f6728160aadae40ca844e1bb2d512588c773adb068b90d53ae2ebf2f706",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_rfx_process_projects",
       "actionName": "list_rfx_process_projects",
       "sourceKind": "edge-selector",
@@ -3257,16 +5025,24 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "0f025784ea5d509a54530bc6807b091abcd8f1b30f06b4aa5f0d125bc349047c",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "9d99ee14e3b5a8767f6e1c6a781bc3a6186070e5d622587b2e4cae1a01c4fa72",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_rfx_response_vendor_ids",
       "actionName": "list_rfx_response_vendor_ids",
       "sourceKind": "edge-selector",
       "sourceFile": "supabase/functions/rateware-api/index.ts",
-      "handler": "requireOwnedRfxEvent",
+      "handler": "listRfxResponseVendorIds",
       "endpoint": "POST /functions/v1/rateware-api body.action",
       "businessModule": "Procurement",
       "operation": "read",
@@ -3280,11 +5056,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d9652f6359ca5f911e2ef118234f1d9a8ed063548745fec9222a9f8895dfa9bd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "79770d411bf8e8717a584f383d5b8d3442d5c741c6f3de1d122aa1834e277c35",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_saas_audit_log",
       "actionName": "list_saas_audit_log",
       "sourceKind": "edge-selector",
@@ -3303,11 +5087,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "dcb4e0472b6006f96c8efb9903930fcd28746b6d73d4114990988156f2b676ec",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1bb10d32e56485865d2ad6056adaecb97859cc46e6954c6b7832160b85798281",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_shipper_duplicates",
       "actionName": "list_shipper_duplicates",
       "sourceKind": "edge-selector",
@@ -3326,11 +5118,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "9d9ee7ffd100bf405288b9e0621f00b40d492cf5853ec726f5bd29c533f2a7a6",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "2378d808fec6cef946d0967b09ab76baf19b35497ea662d8458f761c90ba2269",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_shippers",
       "actionName": "list_shippers",
       "sourceKind": "edge-selector",
@@ -3349,11 +5149,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "072901309b51ad1a22f5ad44dd82d867bac1222dfc5a0841a90fb14492583157",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "93e0ba3d60cdbcf122797d90c874d98d916d9ff9aca92a174c86f5600b0d3d95",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_staging",
       "actionName": "list_staging",
       "sourceKind": "edge-selector",
@@ -3372,11 +5180,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "28c21bfc44a9f0e6b16232c6c382e50dccaa5df3db69f0a00a26a3c77d6a9bda",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "b0c2157e03391e0ae843e416276e1f9eb581f79d7b19a1c148cff27301fc6164",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_staging_filter_values",
       "actionName": "list_staging_filter_values",
       "sourceKind": "edge-selector",
@@ -3395,11 +5211,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ee89eb79b346abada11fcb3531d09418f4fb750f519113c1ff0d7f5efeec94b5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "fc3b8327605d6e4f5a385da787a0346c08748bd59ec088c79648fc11a68df830",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_staging_options",
       "actionName": "list_staging_options",
       "sourceKind": "edge-selector",
@@ -3418,11 +5242,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "bdc62b1eaefb9d39137a4fb1cf489a7bf348a16b41fb36ed2262b25ac4c7ce72",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "33b83805d4a75125f6d1f582f6019c21117202855b2fea14ba6023a966e5bc8e",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_upload_staged_rows",
       "actionName": "list_upload_staged_rows",
       "sourceKind": "edge-selector",
@@ -3441,11 +5273,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f3c8b1f9c4e8d518365f8bcf9e389ff21c0cd79b12f708143dd74e7f6ee01507",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "6c03415baf2371a9e528154f35f4e4ce96fd3b52ab338136d0315e3c7a9e4c14",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_uploads",
       "actionName": "list_uploads",
       "sourceKind": "edge-selector",
@@ -3464,11 +5304,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "a37aa625fd205868479c74e28539fcfa1524bad8f7e29380c17e9b95ccde58e1",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "54d311c2ca438fba13c96ca23232fed48c07991d46719e38c968f5eafc6865e9",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_vendor_improvement_cases",
       "actionName": "list_vendor_improvement_cases",
       "sourceKind": "edge-selector",
@@ -3487,11 +5335,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f4c667fd337680e144bacc7737a627637873a093b010a19a52fcbea0ccd32bf0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "91a87d8ff604a1ea0389e948cb165d658a35c574e2d29511fa943d5f21ef853e",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_vendor_segments",
       "actionName": "list_vendor_segments",
       "sourceKind": "edge-selector",
@@ -3510,11 +5366,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "38dae8a107b4ddef81fa28a413f4368d8745450f2de13fb971fd661e08d609f0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1093979c55199405e60ac5db38010a058c99960ed2feebd1525d751d6ce341d0",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_vendor_support_tickets",
       "actionName": "list_vendor_support_tickets",
       "sourceKind": "edge-selector",
@@ -3533,11 +5397,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "6c7e3bc317249a9b05b75ef41099a2b264645db1195430dc105fd564b155aa5b",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "ba3821df8ec51787dc82bb3e3f4bdaeccbcfb7701f72e71fbdcab261750cc668",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_vendor_unmatched_ids",
       "actionName": "list_vendor_unmatched_ids",
       "sourceKind": "edge-selector",
@@ -3556,11 +5428,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "7001e4f3a93eef04a0bc6dd5351e77c5828bb7257846ccaf7c2047065821ef8a",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "e6d8631676f702632ae572e83612f15704fc37afef2f60f7ff995456c391849a",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_vendors",
       "actionName": "list_vendors",
       "sourceKind": "edge-selector",
@@ -3579,11 +5459,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "63ead3043f22bdbad1af7dcb088cf2c21c32361f80530c18d7d0db8e79cc9a74",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "28b3fb144260e3f0fd95dc16f8382cf28471f2611b2ac99e911f9b6d68b39dba",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_whatsapp_connections",
       "actionName": "list_whatsapp_connections",
       "sourceKind": "edge-selector",
@@ -3602,11 +5490,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "02648dad2d8dac2cb5ebc2e1befc6e8c1dffe5309ac405119dfca3c7996b7c48",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "fe80f75188374954f19255cd33393c53942644a91ed84d5f336570f1e8a6f3af",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_whatsapp_phone_numbers",
       "actionName": "list_whatsapp_phone_numbers",
       "sourceKind": "edge-selector",
@@ -3625,11 +5521,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "0dda46e148373810184a93a8b9df006d83e824063bc10cea5bd3124cb68e6ebc",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "f9097502046d9d62fda24c9cf3b537086e4089c1432702f2e2f23584257c468d",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.list_whatsapp_templates",
       "actionName": "list_whatsapp_templates",
       "sourceKind": "edge-selector",
@@ -3648,11 +5552,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "0a7b4871b5a9032cf16932fe8cc89cd9bee8bdc63225f1b289b1c02652448546",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "14d32864fa7cf7ba425f5a42115f5e938e98000347b0a83de52096d135cf5480",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.mark_outreach_messages",
       "actionName": "mark_outreach_messages",
       "sourceKind": "edge-selector",
@@ -3671,11 +5583,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.mark_rfx_award_package_implementation_ready",
       "actionName": "mark_rfx_award_package_implementation_ready",
       "sourceKind": "edge-selector",
@@ -3694,11 +5614,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f28c858679dcf6a87240a6259c43cc42af69fddf90ca0a4a12b69104bc118559",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1879857d8c078d12dfb939effaad6c686280067e61ec16fedf7b16d76116cf3a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.mark_whatsapp_group_message_manually_sent",
       "actionName": "mark_whatsapp_group_message_manually_sent",
       "sourceKind": "edge-selector",
@@ -3717,11 +5645,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f5f2630439d9415db2a62d568d616def1a18189203427166053f91a68904a99d",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "15aa96c797db4b7b23e9b455b57cf93bf551971a47b950085de3d125d5d60f68",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.match_rate_vendors",
       "actionName": "match_rate_vendors",
       "sourceKind": "edge-selector",
@@ -3740,11 +5676,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "95b52591eeefcdd6ce0f3c315e7db50573a7c730af9cfe034f69beb9cbbc0d8b",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "90b8872b611d5757377c91f1b6b1b2d224d807c3e8b440d5f24cfc4d19d29486",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.match_rate_vendors_by_filter",
       "actionName": "match_rate_vendors_by_filter",
       "sourceKind": "edge-selector",
@@ -3763,11 +5707,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "28c21bfc44a9f0e6b16232c6c382e50dccaa5df3db69f0a00a26a3c77d6a9bda",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "b0c2157e03391e0ae843e416276e1f9eb581f79d7b19a1c148cff27301fc6164",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.merge_shipper_accounts",
       "actionName": "merge_shipper_accounts",
       "sourceKind": "edge-selector",
@@ -3786,11 +5738,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f7295ffc49d9bba98590aaa4131f982757fbf51e11695e66bc2a7e0365938f05",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1c5a2270605597a2a7ef9e7988c3c62799f43ca0c15ed2ada8a16d2f8f1af96a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.move_shipper_opportunity_stage",
       "actionName": "move_shipper_opportunity_stage",
       "sourceKind": "edge-selector",
@@ -3809,11 +5769,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "986285583780f44b7703b311671391f8e01a582b4bdcc3da9f50103245beb2d0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "781f670ae06f5a98b11a0de9d5236c2fb1783bdabe0dc1b46733c114516a0338",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.move_shipper_relationship_stage",
       "actionName": "move_shipper_relationship_stage",
       "sourceKind": "edge-selector",
@@ -3832,11 +5800,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "986285583780f44b7703b311671391f8e01a582b4bdcc3da9f50103245beb2d0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "781f670ae06f5a98b11a0de9d5236c2fb1783bdabe0dc1b46733c114516a0338",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.post_bid_room_chat_message",
       "actionName": "post_bid_room_chat_message",
       "sourceKind": "edge-selector",
@@ -3855,11 +5831,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "916e401cff95ded4b8031a8870abae476abf7764065e7f67e06ce26bcc5676e2",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "41bfec5514dfa47ec5e36657b62911570a7e4d1ccde4720ec83977b4c2e12152",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.preview_growth_segment",
       "actionName": "preview_growth_segment",
       "sourceKind": "edge-selector",
@@ -3878,11 +5862,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f18cfb031f875d2784a938b5a8b6ecbfc38664f18894880f95ddded5d290dea7",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "c9b1057a132c87a0a0e67f8cae1f033ce62e2d0ef0b398492eb3b6a5df681464",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.preview_outreach_audience",
       "actionName": "preview_outreach_audience",
       "sourceKind": "edge-selector",
@@ -3901,11 +5893,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d9652f6359ca5f911e2ef118234f1d9a8ed063548745fec9222a9f8895dfa9bd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "c6b4950fee46e7e0ecf2c7a9bc990e2087798e6d95cf048379d148e48be7e12f",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.process_vendor_ci_reminders",
       "actionName": "process_vendor_ci_reminders",
       "sourceKind": "edge-selector",
@@ -3924,11 +5924,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "1d61d35ef1f4e214affdffc071fce6955f0198c69f310f712839660c12e7f287",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "38c856a60cfb9c6ba3781203b16d64cc4f2f3c45a6c8eb0f645d456e302a8914",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.promote_shipper_rfi_to_opportunity",
       "actionName": "promote_shipper_rfi_to_opportunity",
       "sourceKind": "edge-selector",
@@ -3947,11 +5955,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "986285583780f44b7703b311671391f8e01a582b4bdcc3da9f50103245beb2d0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "781f670ae06f5a98b11a0de9d5236c2fb1783bdabe0dc1b46733c114516a0338",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.publish_outreach_template_to_whatsapp",
       "actionName": "publish_outreach_template_to_whatsapp",
       "sourceKind": "edge-selector",
@@ -3970,11 +5986,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "9114d9a73f87a57f4f01d5d059e856b8682eee1cbe919805ada993df22bdb360",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "33feaecb6ae12ef118408a1a3da8e0dad8f8d1188661bb3cccc7a8f1963ae3ae",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.publish_ratebook",
       "actionName": "publish_ratebook",
       "sourceKind": "edge-selector",
@@ -3993,11 +6017,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "3a4247a06cd593f506ca7ba270d705fe7f2222224d2c9eba8eedd82bfb58edbd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "8441b509048ad9ab9323ac69f6abb6557ff8799136230eae3f6e7c37a7617ecc",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.queue_ratebook_distribution",
       "actionName": "queue_ratebook_distribution",
       "sourceKind": "edge-selector",
@@ -4016,11 +6048,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "7fdd204eab594da39873f9b815f91cd7038863cbd4493c20087c72565d39fc8b",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "207c4b666a11a3d2ee467e1f6b7cb1585904d23160a69d572f5e9d7a13ed3c51",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.record_growth_result",
       "actionName": "record_growth_result",
       "sourceKind": "edge-selector",
@@ -4039,11 +6079,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "eca046d0c1d18ba6d440beafa79c34f2d0163dca4339df483681a72aa01810a9",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "e835dbb7090f87a2741c4b42155d1b88f0f7b1ad48af89a463520bbb5c91824e",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.record_vendor_improvement_response",
       "actionName": "record_vendor_improvement_response",
       "sourceKind": "edge-selector",
@@ -4062,11 +6110,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "eb5128b0ba01e93a3324494172d5097acee5e576b20d14c3707ff7a47f20013e",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "d91f760b02dac988af916a5cd5e9c4310fab45713b708514f589888308cac8b2",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.refresh_growth_campaign_audience",
       "actionName": "refresh_growth_campaign_audience",
       "sourceKind": "edge-selector",
@@ -4085,11 +6141,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "562aa2e30bfe8f7a07ac0e4703e81cc64b424b05cd278e0c5a3e757d60b3711c",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "13f46c5ea5c7bb29acf865e78eee73f8a116e153a1d15ee1f328c3fe79b44e3e",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.refresh_vendor_value_curve",
       "actionName": "refresh_vendor_value_curve",
       "sourceKind": "edge-selector",
@@ -4108,11 +6172,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "dc689d69afffa6248ea191436f651cd6a2391a42a53926740d104076f40d29b6",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "d4b384da6d313d09fc096456416cd4a9c5aba657b92bb903072fde3d796b36ff",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.reject_rfx_bid",
       "actionName": "reject_rfx_bid",
       "sourceKind": "edge-selector",
@@ -4131,11 +6203,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "066659a27395fd1e00b7a760f098e58db47a391f5610da4b789c8ede59550c13",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "80606c497830bd02591903a02b9958942b63c702cba7dc014c6490e320d3c1a3",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.remove_staging",
       "actionName": "remove_staging",
       "sourceKind": "edge-selector",
@@ -4154,11 +6234,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.remove_upload",
       "actionName": "remove_upload",
       "sourceKind": "edge-selector",
@@ -4177,11 +6265,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.remove_vendors",
       "actionName": "remove_vendors",
       "sourceKind": "edge-selector",
@@ -4200,11 +6296,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.renormalize_rate_rows",
       "actionName": "renormalize_rate_rows",
       "sourceKind": "edge-selector",
@@ -4223,11 +6327,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "2e6c89c912d8147ffdcf019af05acd567585654e050836b27d3ac063f27fdcee",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "e601671c2ac212bb0266cbbd110ffd60f5ebd425e51dc9314e32adccf8c9d54e",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.reopen_rfx_rfi",
       "actionName": "reopen_rfx_rfi",
       "sourceKind": "edge-selector",
@@ -4246,11 +6358,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "178425f5753c976afb7d3be18d4a4b0eab82ebf9ef55bda86876f753bcae1af0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "ee0c96d214b731d5b77e592c2fbceae748a74b7e62261f956fa5ff01a2e3bd82",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.replace_bounced_vendor_email",
       "actionName": "replace_bounced_vendor_email",
       "sourceKind": "edge-selector",
@@ -4269,11 +6389,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.resolve_vendor_improvement_case",
       "actionName": "resolve_vendor_improvement_case",
       "sourceKind": "edge-selector",
@@ -4292,11 +6420,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "1611e16d87b3e4abb682d78400e703f6108d1cde7aca29c58509fd3d75505372",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "64e324e39e77530291136aa68fc41ca175c3bc78273b97c735fe84bc2a9d60f3",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.restore_growth_segment",
       "actionName": "restore_growth_segment",
       "sourceKind": "edge-selector",
@@ -4315,11 +6451,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "65cee9cad2c05cfa800bf1bccecf856620dc00439c1f18d43a330941551f5e5a",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "7b6e508c9d5ad88f1ab861696a93a7fe2a474c8194fbbdd462ecabc88ea56229",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.retry_google_chat_sync",
       "actionName": "retry_google_chat_sync",
       "sourceKind": "edge-selector",
@@ -4338,11 +6482,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "fc2fe97e3c45b10bb51808f21af74c7f75612f46946cc3f930c77800a12a60aa",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "5b18626ab78070051c8cd0ac4dfe7bdca56f9a41a4b87259bba5b8590e7a52cd",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.return_rateware_to_staging",
       "actionName": "return_rateware_to_staging",
       "sourceKind": "edge-selector",
@@ -4361,11 +6513,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.revoke_rfx_rfi_magic_link",
       "actionName": "revoke_rfx_rfi_magic_link",
       "sourceKind": "edge-selector",
@@ -4384,11 +6544,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "27e1c53351ba9ed4ba511ebc347880f8f60472a3f741184ad03db5398d65bffd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "5bcb1677a8c990f6c6deb8fbdc9a3e15a552647f984eb0700d9db611fd2fadc8",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.revoke_shipper_profile_request",
       "actionName": "revoke_shipper_profile_request",
       "sourceKind": "edge-selector",
@@ -4407,11 +6575,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "986285583780f44b7703b311671391f8e01a582b4bdcc3da9f50103245beb2d0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "781f670ae06f5a98b11a0de9d5236c2fb1783bdabe0dc1b46733c114516a0338",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.save_catalog_value",
       "actionName": "save_catalog_value",
       "sourceKind": "edge-selector",
@@ -4430,11 +6606,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f7295ffc49d9bba98590aaa4131f982757fbf51e11695e66bc2a7e0365938f05",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1c5a2270605597a2a7ef9e7988c3c62799f43ca0c15ed2ada8a16d2f8f1af96a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.save_google_chat_settings",
       "actionName": "save_google_chat_settings",
       "sourceKind": "edge-selector",
@@ -4453,11 +6637,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "7026d92017e69fac5bb480dabe030789bf4e5a5c9bd0b192892d4581390fed67",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1caedf6c289eeb8f4c31e42b1a035984ceb62a96d65a73dd62ae94ffd45dd94a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.save_growth_campaign",
       "actionName": "save_growth_campaign",
       "sourceKind": "edge-selector",
@@ -4476,11 +6668,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "4ddbfae8de658d5172b74386302c5477781960a23ced687c1a80157fa3fdff33",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "4bb4c93e50264bda9fb41fce68087ee2d299b15f092801d48fc3af13d0c5fe6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.save_growth_message",
       "actionName": "save_growth_message",
       "sourceKind": "edge-selector",
@@ -4499,11 +6699,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "03a831dfafd8f4483f70ceaf669d8db0e45679466d7c657fc87b85d1ed70afe9",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "51ddfd4f08572940dd57e9a87a23b1179bcfb8e6837bb0d365a94395b8bb1bb0",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.save_growth_segment",
       "actionName": "save_growth_segment",
       "sourceKind": "edge-selector",
@@ -4522,11 +6730,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "4dd195c59b1bc5e714ddca804eeac27cd22d7fec2a1d8c24397b03f5955bc3be",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "35e75fc0e912ad4c875140441d6402f320204ccda4f7c8373ae26ddf934984d0",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.save_location_alias",
       "actionName": "save_location_alias",
       "sourceKind": "edge-selector",
@@ -4545,11 +6761,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "a1258cd4fb350c681596771d566ef42ac4267cdccd3a688dbe81653e177040dc",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "8011c941eb3894f00d519a9cbd221b321540ec1e68226feccc4b4c849306ade1",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.save_location_catalog_value",
       "actionName": "save_location_catalog_value",
       "sourceKind": "edge-selector",
@@ -4568,11 +6792,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f7295ffc49d9bba98590aaa4131f982757fbf51e11695e66bc2a7e0365938f05",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1c5a2270605597a2a7ef9e7988c3c62799f43ca0c15ed2ada8a16d2f8f1af96a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.save_outreach_audience_segment",
       "actionName": "save_outreach_audience_segment",
       "sourceKind": "edge-selector",
@@ -4591,11 +6823,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d9652f6359ca5f911e2ef118234f1d9a8ed063548745fec9222a9f8895dfa9bd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "c6b4950fee46e7e0ecf2c7a9bc990e2087798e6d95cf048379d148e48be7e12f",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.save_rfx_process_rfi",
       "actionName": "save_rfx_process_rfi",
       "sourceKind": "edge-selector",
@@ -4614,11 +6854,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "050ed3521d0ab569b0fa4b7da53e15c520b4225044414bb05415d4d777db98a1",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "a1f361a8fa3d247aea956e1a10fc36927444ab296c00542738234a9dffb6d499",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.save_shipper_record",
       "actionName": "save_shipper_record",
       "sourceKind": "edge-selector",
@@ -4637,11 +6885,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "986285583780f44b7703b311671391f8e01a582b4bdcc3da9f50103245beb2d0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "781f670ae06f5a98b11a0de9d5236c2fb1783bdabe0dc1b46733c114516a0338",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.save_whatsapp_business_connection",
       "actionName": "save_whatsapp_business_connection",
       "sourceKind": "edge-selector",
@@ -4660,11 +6916,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "30c5620fcfa6c04986e4b3db20bbaccdc9481b545ae5d832ccfe2018538c1d0f",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "dd0806b55a4901b272fc39f277aeb86b07d68bce917ea2aa1079bbbf5e1443f0",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.search_staging_locations",
       "actionName": "search_staging_locations",
       "sourceKind": "edge-selector",
@@ -4683,11 +6947,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "c8f8532221f659147beed3b21e12a03d6e57d1bd5f48b6ef915e06251929a2d5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "f9e80de523baf40c07dd251e1ae62644d372275b87b0e1ebca7c6b5ff47992f8",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.select_whatsapp_sender",
       "actionName": "select_whatsapp_sender",
       "sourceKind": "edge-selector",
@@ -4706,11 +6978,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "4122f418c0592126b4a38beb9f766b48dd21e4b690999aa1c1addc07f26f18d2",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "ccc7343b3ca8cccbf9b0e1eed56c300ea9b6896b70e1781e2ec3a3250fc3a7b5",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.send_bid_room_carrier_message",
       "actionName": "send_bid_room_carrier_message",
       "sourceKind": "edge-selector",
@@ -4729,11 +7009,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "198658c423ef0ec92d60e1227a68f1e7c631bfba2d54228f11aee1e8093f1a70",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "751e1613d51b0a08cadd8f09e8cfa3862e7df2d79d77dc27be0980f7db552a6a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.send_outreach_messages",
       "actionName": "send_outreach_messages",
       "sourceKind": "edge-selector",
@@ -4752,11 +7040,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "a531e4d53f01bcb80d367c2d115a1be7b1fea0870b2b8c9a52a058662bec9294",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "49bbee5181c1f11ca0b34ba0c951bde274b7a96df9ee8e116b0ae0ae561815d2",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.send_ratebook_distribution",
       "actionName": "send_ratebook_distribution",
       "sourceKind": "edge-selector",
@@ -4775,11 +7071,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "2f0f5d0b50cc7d4bb02a1258e645c86d09c378595800aacf09b85de8d5167010",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1adf84b5ffaa9637eb975be82e0bb6bfae424becc05a55e5d246b72ef17d3dcf",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.send_whatsapp_group_outreach_messages",
       "actionName": "send_whatsapp_group_outreach_messages",
       "sourceKind": "edge-selector",
@@ -4798,11 +7102,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d5164b2a45e60fdc02cd85d2f36b023e686dec88a0eace9dfb360e5b36546527",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "e0cf06bc6ddffb9bbfc90b42af897e770efd3d97ea7013c35854c43f2b4c1b63",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.send_whatsapp_outreach_messages",
       "actionName": "send_whatsapp_outreach_messages",
       "sourceKind": "edge-selector",
@@ -4821,11 +7133,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "42b6c83d605dda6aa481a94697f7146f0f42d06cbcce57ef50b058a59486ef4b",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "4ba33a83e5f6579d9b3884bada3dd0eaf62590f41b0f2239c49d90a71c7a1114",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.set_growth_campaign_status",
       "actionName": "set_growth_campaign_status",
       "sourceKind": "edge-selector",
@@ -4844,11 +7164,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "9613c8df99f0c4a93b32e273edb0cdbbe84b7b3eb02a39487d84acf47c7aa202",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "ee83264688c3c650339aced286c1e128948fd173ef373e86367419891bd467ab",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.share_ratebook_with_carriers",
       "actionName": "share_ratebook_with_carriers",
       "sourceKind": "edge-selector",
@@ -4867,11 +7195,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "2f47591b8c019869bad47e2a1e1bdcb856ee7546b53a38b6a64e44451f2c86f5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "9c266d55a7ae21ba906d939a598f1e9dbeac87c79037dec6193106848d2947c4",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.shipper_account_activity",
       "actionName": "shipper_account_activity",
       "sourceKind": "edge-selector",
@@ -4890,11 +7226,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "986285583780f44b7703b311671391f8e01a582b4bdcc3da9f50103245beb2d0",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "781f670ae06f5a98b11a0de9d5236c2fb1783bdabe0dc1b46733c114516a0338",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.shipper_action_queue",
       "actionName": "shipper_action_queue",
       "sourceKind": "edge-selector",
@@ -4913,11 +7257,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "7a588052360b35f8626677bf89808e3cca814ca22fa7b5b95a146ef3b03a67e9",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "005d94ca030106b6c5964ebeeb293dbf79ee839d78ff4f11c20b23d92dc8eb4f",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.shipper_commercial_work",
       "actionName": "shipper_commercial_work",
       "sourceKind": "edge-selector",
@@ -4936,11 +7288,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "cc051142c0ec885a7140159eac5130f613f421061662cbcccac8b28eabd4c78a",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "777531a8749e16db122e2b1194e7e01aedd42806a1d6ce755b26c668e3c49178",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.shipper_crm_summary",
       "actionName": "shipper_crm_summary",
       "sourceKind": "edge-selector",
@@ -4959,11 +7319,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "aa1e9ff6394fbad0cd7e058dff2eaba7e6ae3ed6b002644492488a9419b0da72",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "d76e1ffa411f30fdf8ded2d4216f4b4719f13ba01a1e20ad93de1b4f2478d254",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.shipper_intelligence",
       "actionName": "shipper_intelligence",
       "sourceKind": "edge-selector",
@@ -4982,11 +7350,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "af605ff8d4385923171c75a97dfd0b77556d87502057fa896a468fa4fa79e2d1",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "0676979894707266c7ad842ca2142966b9b572d1a4d807731264c90b174dab17",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.shipper_relationship_pipeline",
       "actionName": "shipper_relationship_pipeline",
       "sourceKind": "edge-selector",
@@ -5005,11 +7381,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "c433d9e75184fb0ac732bdaf33d969a42dd7b3d251d525d844bfdf2702a55134",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "697b6760c40e87b7c7111577979b20f7315af97a5b5df288d75fe22881a594f6",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.shortlist_rfx_lane_vendors",
       "actionName": "shortlist_rfx_lane_vendors",
       "sourceKind": "edge-selector",
@@ -5028,11 +7412,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "e937790d0a1b7578b0d7a4c6cf46a4c06168054be6aac5118bfbeeb90bbd815a",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "93d37f03e0db24a9ba1e9a5a491da5534a330e368c0c02ea4f3e5fb6addda8e1",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.simulate_interpretation_memory",
       "actionName": "simulate_interpretation_memory",
       "sourceKind": "edge-selector",
@@ -5051,11 +7443,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "c03bc664064445a6997f7d579db903ee79d4306b0276e5ac0f754f495130d633",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "13b1fdf7957c9a10e66e3076b30cb70cd9fe1efe68cec1d08974da6433da6f33",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.start_gmail_oauth",
       "actionName": "start_gmail_oauth",
       "sourceKind": "edge-selector",
@@ -5074,11 +7474,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "83552b1beb46ee543cb2170b20001bb7f846ec2fc38d8ce2c11a87e43bb49ea9",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "493a2cf385e60682a086ada26debfe588c6ecccc1de433476b6507a306e19c29",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.start_google_chat_oauth",
       "actionName": "start_google_chat_oauth",
       "sourceKind": "edge-selector",
@@ -5097,11 +7505,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "b3dbfa7255b91723ea4694e8abc437c6dbc6f94856c31aa82fd20988d3ca5b2f",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "2516e8c22870ec885d1202d97be7102a0169235970ad19267c1997e9ab4d9a9b",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.start_whatsapp_business_connection",
       "actionName": "start_whatsapp_business_connection",
       "sourceKind": "edge-selector",
@@ -5120,11 +7536,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "2141d37cc4ceacbbe106a35d75f9fd854d37004188b5994c52efbb6a70aaa9c9",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "c754e51e3d9499d4f04656b2900b03f8e88e8947761639d5d7e3c465005bb3c2",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.submit_vendor_improvement_case",
       "actionName": "submit_vendor_improvement_case",
       "sourceKind": "edge-selector",
@@ -5143,11 +7567,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "6356fa4f0df7274596e45b7763b8e4d6431c691b723249898e7961c9966a1c99",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "274124b8a586d67bb142b6c4eb23e30a9d1ae7bbee06922425c77c90ecc07ae3",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.supersede_ratebook",
       "actionName": "supersede_ratebook",
       "sourceKind": "edge-selector",
@@ -5166,11 +7598,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "3a4247a06cd593f506ca7ba270d705fe7f2222224d2c9eba8eedd82bfb58edbd",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "8441b509048ad9ab9323ac69f6abb6557ff8799136230eae3f6e7c37a7617ecc",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.suppress_outreach_contact",
       "actionName": "suppress_outreach_contact",
       "sourceKind": "edge-selector",
@@ -5189,11 +7629,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "b46195426d691e531021191d61ee1c707ec590c6e44d7ff1ccc7a79e07444091",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "b99b2b7ff0c054542490b5f9197ab5ed68d300864213b7eacc99b28360288e17",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.sync_bid_room_event_thread",
       "actionName": "sync_bid_room_event_thread",
       "sourceKind": "edge-selector",
@@ -5212,11 +7660,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "084f01f7e56c264d7bbee9eacce4741fb147015354788a53e36d118679df28c1",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "8913bfad7d24baa405b988e75ade80611388569eead23e19e2d4398da6724ae1",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.sync_gmail_bounces",
       "actionName": "sync_gmail_bounces",
       "sourceKind": "edge-selector",
@@ -5235,11 +7691,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "734ea6bd62328c4a32395c892b979fcdbf8e3f4ca93eb4288f9ddd3c81c4b024",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "aadc9cdb9d23f3b3ceb624af8b04c98b01ef1f29a014b2d1e0a5472a9633ffb5",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.sync_whatsapp_templates",
       "actionName": "sync_whatsapp_templates",
       "sourceKind": "edge-selector",
@@ -5258,11 +7722,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "fc6eddb483981bda25291310ca48e6b27d1efb34a406f0d110d1a80d0abe50da",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "e63d1c2d2580f74717d6d023d7c4eb46594d67d0417de904c6bf86c55b0cc90c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.test_whatsapp_business_connection",
       "actionName": "test_whatsapp_business_connection",
       "sourceKind": "edge-selector",
@@ -5281,11 +7753,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "e534455e21457e54c500bed24e52ba77cd7ed6d60305dabf93d797d05244f40e",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "b85cda774a0caf08aae6701866394d748d8b145f85ab83065a7cdf7e78a3002f",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_bid_room_chat_thread",
       "actionName": "update_bid_room_chat_thread",
       "sourceKind": "edge-selector",
@@ -5304,11 +7784,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "2236bb3439ab907c43d14d77fe094a0832a445b9e062f06842b585272537d39b",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "856f839ed68fba3ae41dd241ab304d3d0a6f16779c2343e05afe4f435f13c67d",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_interpretation_memory",
       "actionName": "update_interpretation_memory",
       "sourceKind": "edge-selector",
@@ -5327,11 +7815,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f7295ffc49d9bba98590aaa4131f982757fbf51e11695e66bc2a7e0365938f05",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1c5a2270605597a2a7ef9e7988c3c62799f43ca0c15ed2ada8a16d2f8f1af96a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_onboarding_task",
       "actionName": "update_onboarding_task",
       "sourceKind": "edge-selector",
@@ -5350,11 +7846,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f7295ffc49d9bba98590aaa4131f982757fbf51e11695e66bc2a7e0365938f05",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1c5a2270605597a2a7ef9e7988c3c62799f43ca0c15ed2ada8a16d2f8f1af96a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_outreach_campaign",
       "actionName": "update_outreach_campaign",
       "sourceKind": "edge-selector",
@@ -5373,11 +7877,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d9652f6359ca5f911e2ef118234f1d9a8ed063548745fec9222a9f8895dfa9bd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "c6b4950fee46e7e0ecf2c7a9bc990e2087798e6d95cf048379d148e48be7e12f",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_outreach_template",
       "actionName": "update_outreach_template",
       "sourceKind": "edge-selector",
@@ -5396,11 +7908,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "4983f31e399ef4b3abb87981d019e320e90452d58dacd4089a6e44b17a3405d8",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "d5629b3909b4e7fa16eb4d389c7eda6b75b988e4d4527013354401c2280a1223",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_ratebook_quote_review",
       "actionName": "update_ratebook_quote_review",
       "sourceKind": "edge-selector",
@@ -5419,11 +7939,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "5d424fec1da532f11f9b42190a037f2867b66839666fd2951360384e24f96531",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "4190002664d4463c9468a9679ba7a51ea7bdc3906e397dd80b42a0679757a0cd",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_rateware",
       "actionName": "update_rateware",
       "sourceKind": "edge-selector",
@@ -5442,11 +7970,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "8339a99148a742cb293556d3ef214bd89b43fab5a3d146300069574bc6f5acfe",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "409b9da93665c54aca99c8ccf5acaadf2e3db8b3ffd1444f420e096a8f48c20e",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_rfx_bid",
       "actionName": "update_rfx_bid",
       "sourceKind": "edge-selector",
@@ -5465,11 +8001,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "47c72eef69d565ce491e91239a7d57421f4f472285b740010626999a99293af5",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "093c6a7791bbdcf7fe2011d664849c774488a9c1ad7db456aaf03a20a0af8c6c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_rfx_event",
       "actionName": "update_rfx_event",
       "sourceKind": "edge-selector",
@@ -5488,11 +8032,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "6ecde548d71307461713aefbf6f96c303c5df2b0fb5a6a66afa6f953eed7e6b6",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "d74b44a019dea45864bffbb43268b43e9b6de575b228fd7c07c69cc7e5ea1ae5",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_rfx_lane",
       "actionName": "update_rfx_lane",
       "sourceKind": "edge-selector",
@@ -5511,11 +8063,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d9652f6359ca5f911e2ef118234f1d9a8ed063548745fec9222a9f8895dfa9bd",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "c6b4950fee46e7e0ecf2c7a9bc990e2087798e6d95cf048379d148e48be7e12f",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_rfx_process_project",
       "actionName": "update_rfx_process_project",
       "sourceKind": "edge-selector",
@@ -5534,11 +8094,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "178425f5753c976afb7d3be18d4a4b0eab82ebf9ef55bda86876f753bcae1af0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "ee0c96d214b731d5b77e592c2fbceae748a74b7e62261f956fa5ff01a2e3bd82",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_saas_organization",
       "actionName": "update_saas_organization",
       "sourceKind": "edge-selector",
@@ -5557,11 +8125,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f78db42d7019452aed7428fad407757559d91c794464a674cc047f59a69a69b2",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "29704cb81dc195a17e8640eba4a3f55b2edd1b42592902e6ab886faa5ca1d3c6",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_saas_profile",
       "actionName": "update_saas_profile",
       "sourceKind": "edge-selector",
@@ -5580,11 +8156,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "6b09897cf7f23ae5dd8a7bcb37cb00cfaa6140d9d226f3145adb7c0e75a1a64e",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "0879e85d2a4c9421c875a3976e49e5f666635603d889f7c514ceec237c9cdf11",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_shipper",
       "actionName": "update_shipper",
       "sourceKind": "edge-selector",
@@ -5603,11 +8187,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "986285583780f44b7703b311671391f8e01a582b4bdcc3da9f50103245beb2d0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "781f670ae06f5a98b11a0de9d5236c2fb1783bdabe0dc1b46733c114516a0338",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_shipper_account_action_status",
       "actionName": "update_shipper_account_action_status",
       "sourceKind": "edge-selector",
@@ -5626,11 +8218,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "986285583780f44b7703b311671391f8e01a582b4bdcc3da9f50103245beb2d0",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "781f670ae06f5a98b11a0de9d5236c2fb1783bdabe0dc1b46733c114516a0338",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_staging",
       "actionName": "update_staging",
       "sourceKind": "edge-selector",
@@ -5649,11 +8249,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "8339a99148a742cb293556d3ef214bd89b43fab5a3d146300069574bc6f5acfe",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "409b9da93665c54aca99c8ccf5acaadf2e3db8b3ffd1444f420e096a8f48c20e",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_vendor",
       "actionName": "update_vendor",
       "sourceKind": "edge-selector",
@@ -5672,11 +8280,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "9f5c3a5b5e31d7cbfcc8cffa75ed6606bb63545f38ff7c92430dd8b71b49f92a",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "715b610f4d9b05b26817eb76623bf74eb8c99df73749d1d4564329e38dbf3704",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_vendor_improvement_case",
       "actionName": "update_vendor_improvement_case",
       "sourceKind": "edge-selector",
@@ -5695,11 +8311,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d1a4ad22fb1a220ca9a6e058774baadda8bd897f32496016ce57d6704d292c06",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "07e8c8ed89d7157fabb8187c4651f44b832ceeec63c18ec897b31edc5574b3b7",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_vendor_segment",
       "actionName": "update_vendor_segment",
       "sourceKind": "edge-selector",
@@ -5718,11 +8342,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "16cee428ad154068c82bff60cade6863b30cb3c420ca3ec7d42f3912d468e264",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "ee6455dd915aff70a429dd283a50ca32f2a51d381d461393bd77f402beef7f16",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.update_vendor_support_ticket",
       "actionName": "update_vendor_support_ticket",
       "sourceKind": "edge-selector",
@@ -5741,11 +8373,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "3db38086a6f000e53d25df4ad5e0b6c0e52f94c5cce8842940eec39d60cfd759",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "3772d3e8c3e539495fd36ee88f81b970613e1ff4d5491b92addeeb36b0dd3cd4",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.upload_vendor_logo",
       "actionName": "upload_vendor_logo",
       "sourceKind": "edge-selector",
@@ -5764,11 +8404,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f7295ffc49d9bba98590aaa4131f982757fbf51e11695e66bc2a7e0365938f05",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "1c5a2270605597a2a7ef9e7988c3c62799f43ca0c15ed2ada8a16d2f8f1af96a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.upsert_vendor_value_scorecard",
       "actionName": "upsert_vendor_value_scorecard",
       "sourceKind": "edge-selector",
@@ -5787,11 +8435,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "34299d170cb4791d2e36013442c587ca8b09469cce8e821415207146b22ba04d",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "f482763e3b15600b4330ce7dd660279ac630aa2067979fdd1f5388ba198ba27b",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.vendor_funnel",
       "actionName": "vendor_funnel",
       "sourceKind": "edge-selector",
@@ -5810,11 +8466,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ef412a3e6652af99711907828339e3216eac86adfb9acbbff311c86fccb9f6e6",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "dd1f14aaf6ec3b138b61f0035f66bd399b617d450300d2cd18aa647fa37eec1a",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.vendor_intelligence",
       "actionName": "vendor_intelligence",
       "sourceKind": "edge-selector",
@@ -5833,11 +8497,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "52df202e8bd314b1f5a86d3391bbb8e18c9c48bc8e3210a4f7b556db4babd971",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "d542a3475e67496c2b3f23fd74603230a01fb2653e5e72842d6eb5e36a6e634c",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.vendor_onboarding_gaps",
       "actionName": "vendor_onboarding_gaps",
       "sourceKind": "edge-selector",
@@ -5856,11 +8528,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "43471c5a75952275cec9e0e5d6e1f10fa2e8b5fee01f8a7a2c207e25b82fbef7",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "ec19a4cb8211a73f651d0ccd8f00181b8ea0f984307dd3402c98283f494d7284",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.verify_vendor_whatsapp_group",
       "actionName": "verify_vendor_whatsapp_group",
       "sourceKind": "edge-selector",
@@ -5879,11 +8559,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "3cf863d10ff7c950bd59af49e6d9ce247397568f96f42e34b5f4b247836c10b0",
-      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "99992b1839be55b223aca4d5997b432ef7bff31ca1b5a6f4c543f974c317c6be",
+      "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rateware-api.verify_whatsapp_webhook",
       "actionName": "verify_whatsapp_webhook",
       "sourceKind": "edge-selector",
@@ -5902,11 +8590,19 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "67819fb5e448656340ba939cde82764123abd22aa4538f4a6bec345db3a034b4",
-      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "0ff87a148b97d2d4058450ad7fa4c48d8bc044bf879d682fce14941da22c0f23",
+      "notes": "frontend literal found Permission and final ownership remain PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/rateware-api/growth.ts",
+        "supabase/functions/rateware-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.bid_support_reply",
       "actionName": "bid_support_reply",
       "sourceKind": "edge-selector",
@@ -5925,16 +8621,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "bc4c69c599c87fde6a2d1e18a0b6ae2a90bbf8dd3b9e9d7a22d2d0a42945876f",
-      "notes": "frontend literal found"
+      "sourceFingerprint": "594c15fc12d4cbbc147ef07d35f04777c588d227e405651f0277c122189cfcb5",
+      "notes": "frontend literal found",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.decline_invitation",
       "actionName": "decline_invitation",
       "sourceKind": "edge-selector",
       "sourceFile": "supabase/functions/rfx-bid-api/index.ts",
-      "handler": "inline",
+      "handler": "findInvitationByToken",
       "endpoint": "POST /functions/v1/rfx-bid-api body.action",
       "businessModule": "Procurement",
       "operation": "restrict",
@@ -5948,11 +8650,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "0f22b16053bad68f9c12c2fd9d5e2ab57c8aebeed34a284f78edc65a88fdcaeb",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "b7cc69f1b4c8d8f732f58ec85d4459d95e4c144400f73635b478194de33e615e",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.get_customer_rfi",
       "actionName": "get_customer_rfi",
       "sourceKind": "edge-selector",
@@ -5971,11 +8679,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "4c290f4d1b3b959681861208666b1593d1fb466751b4e58032ad62b1b45bcc31",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "b92b24070a984be0f37f3466af3ebe7b283bc197f5584bccaec63bd1ef956861",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.get_invitation",
       "actionName": "get_invitation",
       "sourceKind": "edge-selector",
@@ -5994,16 +8708,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "caa8d0c7f4d1fac2858f98800e449648f93649978c327cb373910d976c7b7b8e",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "b7cc69f1b4c8d8f732f58ec85d4459d95e4c144400f73635b478194de33e615e",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.list_bid_room_chat",
       "actionName": "list_bid_room_chat",
       "sourceKind": "edge-selector",
       "sourceFile": "supabase/functions/rfx-bid-api/index.ts",
-      "handler": "currentInvitationContext",
+      "handler": "listCarrierBidRoomChat",
       "endpoint": "POST /functions/v1/rfx-bid-api body.action",
       "businessModule": "Procurement",
       "operation": "read",
@@ -6017,16 +8737,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "4fcda0a15223f53a6f9654a227d8eb54c9ff7180ec2ab01e2ca44fb66f5e81cd",
-      "notes": "frontend literal found"
+      "sourceFingerprint": "b96676b82c52a0dd6a2ae73737803d953c8aec4bbf4ec11486bbc004bc567f5e",
+      "notes": "frontend literal found",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.post_bid_room_chat_message",
       "actionName": "post_bid_room_chat_message",
       "sourceKind": "edge-selector",
       "sourceFile": "supabase/functions/rfx-bid-api/index.ts",
-      "handler": "currentInvitationContext",
+      "handler": "postCarrierBidRoomChatMessage",
       "endpoint": "POST /functions/v1/rfx-bid-api body.action",
       "businessModule": "Procurement",
       "operation": "communicate",
@@ -6040,11 +8766,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "4fcda0a15223f53a6f9654a227d8eb54c9ff7180ec2ab01e2ca44fb66f5e81cd",
-      "notes": "frontend literal found"
+      "sourceFingerprint": "587be8d2ec3cd4fd3a0f69266c1282e8da25e7fee3be6de6dbae11d6845eea89",
+      "notes": "frontend literal found",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.public_bid_room_board",
       "actionName": "public_bid_room_board",
       "sourceKind": "edge-selector",
@@ -6063,11 +8795,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "3255b1c688beb2ed33fa7bc19cb469bc798edfb831a1dcc2036a1c168e2f7e08",
-      "notes": "Methodology correction: public RFx flow uses a public.rfx permission namespace distinct from tokenized invitation actions."
+      "sourceFingerprint": "63137ffbf51378c5ab10cf72a844912224f0e0e122bdb83b8e27c4eb1b71d959",
+      "notes": "Methodology correction: public RFx flow uses a public.rfx permission namespace distinct from tokenized invitation actions.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.public_bid_room_find_invitations",
       "actionName": "public_bid_room_find_invitations",
       "sourceKind": "edge-selector",
@@ -6086,11 +8824,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ac573db29c976e615a8b7985a818ab2dab6d06b2f5d9e9acdde714554d660ae2",
-      "notes": "Methodology correction: public RFx flow uses a public.rfx permission namespace distinct from tokenized invitation actions."
+      "sourceFingerprint": "4c436a709d50f8d1d8c5a02c5c3d4195242560e2fd1628c46e3c82541c017b4e",
+      "notes": "Methodology correction: public RFx flow uses a public.rfx permission namespace distinct from tokenized invitation actions.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.public_bid_room_request_invite",
       "actionName": "public_bid_room_request_invite",
       "sourceKind": "edge-selector",
@@ -6109,11 +8853,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "eb9e625ac868fe6f25a8b333ddd73f5d7c8bafdc14887b67d82d5899913c36cb",
-      "notes": "Methodology correction: public RFx flow uses a public.rfx permission namespace distinct from tokenized invitation actions."
+      "sourceFingerprint": "ddb1660a014190b7708505d9add019aefed3a76b2d98b4dcb1e55d9f9ed4d074",
+      "notes": "Methodology correction: public RFx flow uses a public.rfx permission namespace distinct from tokenized invitation actions.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.request_lane_access",
       "actionName": "request_lane_access",
       "sourceKind": "edge-selector",
@@ -6132,11 +8882,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "caa8d0c7f4d1fac2858f98800e449648f93649978c327cb373910d976c7b7b8e",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "b7cc69f1b4c8d8f732f58ec85d4459d95e4c144400f73635b478194de33e615e",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.save_customer_rfi",
       "actionName": "save_customer_rfi",
       "sourceKind": "edge-selector",
@@ -6155,11 +8911,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "36eb47e2f551b5a2d9082edd1b5165a95ac20d363f454142fdf46103859da70b",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "6abe0d7c75b46d09643d9d961c2d964da98c13a23acdf3b2c46e2e2ad9d27c86",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.save_segment_confirmations",
       "actionName": "save_segment_confirmations",
       "sourceKind": "edge-selector",
@@ -6178,11 +8940,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "0b2f1434b5989629080d548b6ca38e1865afaa0dc939d91c06edbe20784eaa12",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "7a99b89f6bce325547a38bb42356f75fda2e729ab301a98aff3292fcd9954ae3",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.submit_bid",
       "actionName": "submit_bid",
       "sourceKind": "edge-selector",
@@ -6201,11 +8969,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "caa8d0c7f4d1fac2858f98800e449648f93649978c327cb373910d976c7b7b8e",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "b7cc69f1b4c8d8f732f58ec85d4459d95e4c144400f73635b478194de33e615e",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.submit_customer_rfi",
       "actionName": "submit_customer_rfi",
       "sourceKind": "edge-selector",
@@ -6224,11 +8998,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "36eb47e2f551b5a2d9082edd1b5165a95ac20d363f454142fdf46103859da70b",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "6abe0d7c75b46d09643d9d961c2d964da98c13a23acdf3b2c46e2e2ad9d27c86",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.rfx-bid-api.withdraw_bid",
       "actionName": "withdraw_bid",
       "sourceKind": "edge-selector",
@@ -6247,11 +9027,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "caa8d0c7f4d1fac2858f98800e449648f93649978c327cb373910d976c7b7b8e",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "b7cc69f1b4c8d8f732f58ec85d4459d95e4c144400f73635b478194de33e615e",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/rfx-bid-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.shipper-directory-api.get_shipper",
       "actionName": "get_shipper",
       "sourceKind": "edge-selector",
@@ -6270,11 +9056,18 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "8f107f09687a3b03889e2341f76dc3a23cfe99ffe57f60594b80d992f1111e3e",
-      "notes": "Duplicate surface candidate of edge.rateware-api.get_shipper; disposition PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "5089258613201a2575fcbd7c2ca083f12c0936500a2900e1c6c918a3368e1eb9",
+      "notes": "Duplicate surface candidate of edge.rateware-api.get_shipper; disposition PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/shipper-directory-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.shipper-directory-api.list_shippers",
       "actionName": "list_shippers",
       "sourceKind": "edge-selector",
@@ -6293,11 +9086,18 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d3c8fb7c28cac2d7a7677fd37099eaf508a60e88d4da3363dde82c6df7fe55e4",
-      "notes": "Duplicate surface candidate of edge.rateware-api.list_shippers; disposition PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "d802893664f9ba5e67034495ff2ef224c99e7539d8e6b890d7299ee7a8e2f098",
+      "notes": "Duplicate surface candidate of edge.rateware-api.list_shippers; disposition PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/shipper-directory-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.shipper-directory-api.shipper_account_activity",
       "actionName": "shipper_account_activity",
       "sourceKind": "edge-selector",
@@ -6316,11 +9116,18 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "b8eee78bdaea9df9b55f2ce6e3c04e1ec67bf8939c64d168ba7ddbf0af1fb6c9",
-      "notes": "Duplicate surface candidate of edge.rateware-api.shipper_account_activity; disposition PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "646e1d54dbbb19e2b3881fa046e8aaa7f08df532c43bba57088e9edb32f65521",
+      "notes": "Duplicate surface candidate of edge.rateware-api.shipper_account_activity; disposition PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/shipper-directory-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.shipper-directory-api.shipper_action_queue",
       "actionName": "shipper_action_queue",
       "sourceKind": "edge-selector",
@@ -6339,11 +9146,18 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "7febd10f091bc8787df5507848c7f17dec7532eb9e4007698ac91764b76ffced",
-      "notes": "Duplicate surface candidate of edge.rateware-api.shipper_action_queue; disposition PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "4c46d865765e35c4ca1a74ed59c055a54280f160f9f19e3652cce38b1a3cdba6",
+      "notes": "Duplicate surface candidate of edge.rateware-api.shipper_action_queue; disposition PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/shipper-directory-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.shipper-directory-api.shipper_commercial_work",
       "actionName": "shipper_commercial_work",
       "sourceKind": "edge-selector",
@@ -6362,11 +9176,18 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "92d4f47f9f4d85ab1b53c8b1752c70bec40c9c87da11ebf259152582c3c6b053",
-      "notes": "Duplicate surface candidate of edge.rateware-api.shipper_commercial_work; disposition PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "5853a14762de934236aa59172086365335149dbc63e81c4408d67fff030331a2",
+      "notes": "Duplicate surface candidate of edge.rateware-api.shipper_commercial_work; disposition PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/shipper-directory-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.shipper-directory-api.shipper_crm_summary",
       "actionName": "shipper_crm_summary",
       "sourceKind": "edge-selector",
@@ -6385,11 +9206,18 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "023d576b6dd5bc2e37d414ae7da8992fbb20e96e5362f4755285d9bc379f37f1",
-      "notes": "Duplicate surface candidate of edge.rateware-api.shipper_crm_summary; disposition PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "9e4ef3a78976ab808f76f664de317fba012d7eeb114a6015204da21e252333b8",
+      "notes": "Duplicate surface candidate of edge.rateware-api.shipper_crm_summary; disposition PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/shipper-directory-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.shipper-directory-api.shipper_intelligence",
       "actionName": "shipper_intelligence",
       "sourceKind": "edge-selector",
@@ -6408,11 +9236,18 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "235182764445886c28d14d569f36c56ff8fe1fdddb1833d6e59d83e6ad608934",
-      "notes": "Duplicate surface candidate of edge.rateware-api.shipper_intelligence; disposition PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "9e459e99f6aa3e21323d6e2019fcae650f50ffd7ade7d7b188c1b0721e553378",
+      "notes": "Duplicate surface candidate of edge.rateware-api.shipper_intelligence; disposition PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/shipper-directory-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.shipper-directory-api.shipper_relationship_pipeline",
       "actionName": "shipper_relationship_pipeline",
       "sourceKind": "edge-selector",
@@ -6431,11 +9266,18 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "fd62083fee3a45681dd9fe35ca10ba9b679d77af30991c0fe1556062f59bf608",
-      "notes": "Duplicate surface candidate of edge.rateware-api.shipper_relationship_pipeline; disposition PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "75fba41191976395cd292669f559a65d0ae41da3ecbc703cbb2a6d79b1648273",
+      "notes": "Duplicate surface candidate of edge.rateware-api.shipper_relationship_pipeline; disposition PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/_shared/workspace.ts",
+        "supabase/functions/shipper-directory-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.shipper-profile-api.get_profile",
       "actionName": "get_profile",
       "sourceKind": "edge-selector",
@@ -6454,11 +9296,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "86448be3a7f2e98542315706680c73cbd0c3e32ecb8df3461cc2edc1bc21789b",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "1c3b7ca3668e59fbf7f01bc9d74a606528f09b1b43f10145b2df7b5b138854eb",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/shipper-profile-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.shipper-profile-api.submit_profile",
       "actionName": "submit_profile",
       "sourceKind": "edge-selector",
@@ -6477,11 +9325,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "86448be3a7f2e98542315706680c73cbd0c3e32ecb8df3461cc2edc1bc21789b",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "1c3b7ca3668e59fbf7f01bc9d74a606528f09b1b43f10145b2df7b5b138854eb",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/shipper-profile-api/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.sync-banxico-fx.sync_banxico_fx",
       "actionName": "sync_banxico_fx",
       "sourceKind": "edge-method",
@@ -6500,11 +9354,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "5dd4927a43e7cacc218583694854c69ebbde26529a545a4d7dff18afbd02c6b7",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "4d6fae7848b1901289c9e421aa2cbca18d0d053ba6c5bf334929019407783241",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/sync-banxico-fx/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.sync-rateware-catalog.sync_rateware_catalog",
       "actionName": "sync_rateware_catalog",
       "sourceKind": "edge-method",
@@ -6523,11 +9383,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "82797d91b7e50a8aed0f3555aed890e40027e9a13734ccd86584e0713f788182",
-      "notes": "Methodology correction: catalog sync is classified as catalog.execute with mixed tenant relevance; permission remains PENDING HUMAN APPROVAL."
+      "sourceFingerprint": "b26fc909f6fe109619597e3377baf28043e6ec02ad428b616a3429b4750f4f6e",
+      "notes": "Methodology correction: catalog sync is classified as catalog.execute with mixed tenant relevance; permission remains PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/sync-rateware-catalog/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.whatsapp-webhook.ingest_webhook",
       "actionName": "ingest_webhook",
       "sourceKind": "edge-method",
@@ -6546,11 +9412,17 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "9d52a86e1e4faf96b7a65dde6f5e9f8d8b8b3526b3ece17eb459091f289a473e",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "e2d250f06d99d714e968ea34dde0bbd74ed445216e1f95028c057609da46d4fc",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/whatsapp-webhook/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
+      "contractVersion": "1.1.0",
       "canonicalId": "edge.whatsapp-webhook.verify_webhook",
       "actionName": "verify_webhook",
       "sourceKind": "edge-method",
@@ -6569,17 +9441,23 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "explicitly_allowed",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "9d52a86e1e4faf96b7a65dde6f5e9f8d8b8b3526b3ece17eb459091f289a473e",
-      "notes": "no frontend literal found; dead/admin/indirect candidate"
+      "sourceFingerprint": "e2d250f06d99d714e968ea34dde0bbd74ed445216e1f95028c057609da46d4fc",
+      "notes": "no frontend literal found; dead/admin/indirect candidate",
+      "analysisCoverage": "shared-observed",
+      "dependencyFiles": [
+        "supabase/functions/_shared/kinde.ts",
+        "supabase/functions/whatsapp-webhook/index.ts"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.consolidate_exact_workspace_vendor_duplicates",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)",
       "actionName": "public.consolidate_exact_workspace_vendor_duplicates",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260804234412_consolidate_exact_vendor_duplicates.sql",
-      "handler": "public.consolidate_exact_workspace_vendor_duplicates",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "vendors",
@@ -6592,17 +9470,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "411855421287ddd91a383e888da3b349208c5791a3342e0d5aa3e748d8ee7bfb",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "d7a79317b40e6f7a5fe131226bb03ddc4e51d6ceb2165fd9d26c16c5eb450443",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260804234412_consolidate_exact_vendor_duplicates.sql"
+      ],
+      "rpcSignature": "text,text,boolean,integer"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.count_exact_workspace_vendor_duplicates",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.count_exact_workspace_vendor_duplicates(text,text)",
       "actionName": "public.count_exact_workspace_vendor_duplicates",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260805001000_batch_exact_vendor_consolidation.sql",
-      "handler": "public.count_exact_workspace_vendor_duplicates",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.count_exact_workspace_vendor_duplicates(text,text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.count_exact_workspace_vendor_duplicates(text,text)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "vendors",
@@ -6615,17 +9498,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "2c7e265b603c1259ec5e81de7dc29445d6e6491f34252c00e416760de8f6758f",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "d78c6a847831276b1126b9ca45d30542905e6567ac4ec3457817e89688281ea3",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260805001000_batch_exact_vendor_consolidation.sql"
+      ],
+      "rpcSignature": "text,text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.merge_exact_vendor_relationship_collisions",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.merge_exact_vendor_relationship_collisions(uuid,uuid)",
       "actionName": "public.merge_exact_vendor_relationship_collisions",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260805054258_merge_exact_vendor_relationship_collisions.sql",
-      "handler": "public.merge_exact_vendor_relationship_collisions",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.merge_exact_vendor_relationship_collisions(uuid,uuid)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.merge_exact_vendor_relationship_collisions(uuid,uuid)",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "vendors",
@@ -6638,17 +9526,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "8bb6b98ac9bb2747d00ebbdd74cb7bfab40f5158f6ec11920cd6cdf5f5563875",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "e25fc4ba875efb46acabbe5eecaaf20fa21faf46ed2e88fd4c2d134b6c450c94",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260805054258_merge_exact_vendor_relationship_collisions.sql"
+      ],
+      "rpcSignature": "uuid,uuid"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.protect_outreach_delivery_state",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.protect_outreach_delivery_state()",
       "actionName": "public.protect_outreach_delivery_state",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260804082758_protect_outreach_delivery_state.sql",
-      "handler": "public.protect_outreach_delivery_state",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.protect_outreach_delivery_state()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.protect_outreach_delivery_state()",
       "businessModule": "Commercial",
       "operation": "execute",
       "resource": "integrations-outreach",
@@ -6661,17 +9554,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "14c66f343ccb3d24646ef743f45542a41ccbe300daec4674806d111476bb4ccf",
-      "notes": "trigger/internal function; not a user action"
+      "sourceFingerprint": "ffcbf6588871f833608603afc6b9ad6f98ce0dcff7ae988fd4f3e76aedac63ae",
+      "notes": "trigger/internal function; not a user action",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260804082758_protect_outreach_delivery_state.sql"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_assert_vendor_workspace_link",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_assert_vendor_workspace_link()",
       "actionName": "public.rateware_assert_vendor_workspace_link",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260801070829_canonical_workspace_identity.sql",
-      "handler": "public.rateware_assert_vendor_workspace_link",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_assert_vendor_workspace_link()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_assert_vendor_workspace_link()",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "vendors",
@@ -6684,17 +9582,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "87ba05f9185383ce75c0e72ffd05bec5e4f1f51e6685c86664bd8010325b1e58",
-      "notes": "trigger/internal function; not a user action"
+      "sourceFingerprint": "93d96d17fc5d7288b65ae4a2bd4f063c88ad4a1937f4260bd66ead22617fbfeb",
+      "notes": "trigger/internal function; not a user action",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260801070829_canonical_workspace_identity.sql"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_aggregate_value",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_aggregate_value(text,text,bigint,bigint,numeric,numeric,numeric,numeric)",
       "actionName": "public.rateware_bi_aggregate_value",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626183000_bi_aggregation_rpc.sql",
-      "handler": "public.rateware_bi_aggregate_value",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_aggregate_value(text,text,bigint,bigint,numeric,numeric,numeric,numeric)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_aggregate_value(text,text,bigint,bigint,numeric,numeric,numeric,numeric)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -6707,17 +9610,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "23678a643034ca7d900924aa9b5435ce24ba5eea620a3caf71d77d1d7f9d0258",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "a3cabb680b575274977c404c03439c8a9750c4a50b87d4125284cda6b4e53a23",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626183000_bi_aggregation_rpc.sql"
+      ],
+      "rpcSignature": "text,text,bigint,bigint,numeric,numeric,numeric,numeric"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_dimension_value",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_dimension_value(public.rate_staging,public.vendors,text)",
       "actionName": "public.rateware_bi_dimension_value",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626191000_bi_generic_domain_labels.sql",
-      "handler": "public.rateware_bi_dimension_value",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_dimension_value(public.rate_staging,public.vendors,text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_dimension_value(public.rate_staging,public.vendors,text)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -6730,17 +9638,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "9636f4475b360cbde1a4510c4a780f1ee4e1cccce2138aea1f5c8608b6658ab6",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "2b0f7817e34050b29021458bacbc7875ad69ba9bd242f9a258bc008aaa314cb7",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626191000_bi_generic_domain_labels.sql"
+      ],
+      "rpcSignature": "public.rate_staging,public.vendors,text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_drilldown_for_owner",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_drilldown_for_owner(text,text[],text[],text[],text,jsonb,integer)",
       "actionName": "public.rateware_bi_drilldown_for_owner",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260801081904_tune_bi_fact_projections.sql",
-      "handler": "public.rateware_bi_drilldown_for_owner",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_drilldown_for_owner(text,text[],text[],text[],text,jsonb,integer)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_drilldown_for_owner(text,text[],text[],text[],text,jsonb,integer)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -6753,17 +9666,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "0e2e9aa9c56737080a2e48ab7aecaedaf228d6c633a0990be0c3ad9e8a9d3e1d",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "e915e2eca39e45c711068ffd19bdd04f648072f60bb5dfe939be144deec6b5f9",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260801081904_tune_bi_fact_projections.sql"
+      ],
+      "rpcSignature": "text,text[],text[],text[],text,jsonb,integer"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_fact_dimensions",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_fact_dimensions(public.rate_staging,public.vendors)",
       "actionName": "public.rateware_bi_fact_dimensions",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260801080326_create_bi_rate_facts.sql",
-      "handler": "public.rateware_bi_fact_dimensions",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_fact_dimensions(public.rate_staging,public.vendors)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_fact_dimensions(public.rate_staging,public.vendors)",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "rates",
@@ -6776,17 +9694,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d1b151dec72e88e3471dd9a9ed484530617a4363c79e170b99b2a89b199ae0c2",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "faff3ea03efeebbe474e0c0f00ee84fadb768443823b494f63caf51177dc05b8",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260801080326_create_bi_rate_facts.sql"
+      ],
+      "rpcSignature": "public.rate_staging,public.vendors"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_fact_matches_filters",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_fact_matches_filters(public.rateware_bi_rate_facts,jsonb)",
       "actionName": "public.rateware_bi_fact_matches_filters",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260801080326_create_bi_rate_facts.sql",
-      "handler": "public.rateware_bi_fact_matches_filters",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_fact_matches_filters(public.rateware_bi_rate_facts,jsonb)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_fact_matches_filters(public.rateware_bi_rate_facts,jsonb)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -6799,17 +9722,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "126ba0f7c9cb4690fee0c71fab0d49bcecbbfbb9fc22ac06606aed1efc0cf446",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "9c6eab772b698a99c6472d49894feb159e0c23086654f20a392f477cf414aa85",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260801080326_create_bi_rate_facts.sql"
+      ],
+      "rpcSignature": "public.rateware_bi_rate_facts,jsonb"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_fact_search_text",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_fact_search_text(public.rate_staging,public.vendors)",
       "actionName": "public.rateware_bi_fact_search_text",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260801080326_create_bi_rate_facts.sql",
-      "handler": "public.rateware_bi_fact_search_text",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_fact_search_text(public.rate_staging,public.vendors)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_fact_search_text(public.rate_staging,public.vendors)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -6822,17 +9750,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "274cc13aed1071303aebd7d1aa4da7884dd4ff000a9dd457cb3b213a327ca7df",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "9e76e373ef147a81fb2e06285388ce999ceeacb842e53c534daccb3e211c3709",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260801080326_create_bi_rate_facts.sql"
+      ],
+      "rpcSignature": "public.rate_staging,public.vendors"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_geo_density_for_owner",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_geo_density_for_owner(text,text,text,text,jsonb,integer)",
       "actionName": "public.rateware_bi_geo_density_for_owner",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260802042015_optimize_bi_geo_projection.sql",
-      "handler": "public.rateware_bi_geo_density_for_owner",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_geo_density_for_owner(text,text,text,text,jsonb,integer)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_geo_density_for_owner(text,text,text,text,jsonb,integer)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -6845,17 +9778,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ce2d4accf4256e4752eed2750baa667d0062c0a23de428a3e00783a96dadc789",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "a9be56a6598630b2382405f018d657e78a6c46bf7c51aec6d2722a782dbf7863",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260802042015_optimize_bi_geo_projection.sql"
+      ],
+      "rpcSignature": "text,text,text,text,jsonb,integer"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_metric_value",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_metric_value(public.rate_staging,text)",
       "actionName": "public.rateware_bi_metric_value",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626183000_bi_aggregation_rpc.sql",
-      "handler": "public.rateware_bi_metric_value",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_metric_value(public.rate_staging,text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_metric_value(public.rate_staging,text)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -6868,17 +9806,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "9ea51bac2673132f8a02e2244e6618fa4653ca9b28f2d8e4a9a65272086da6ab",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "7926fa114710e2ecaa3963af862cf22e24652f6c3673d41651db35873bc99385",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626183000_bi_aggregation_rpc.sql"
+      ],
+      "rpcSignature": "public.rate_staging,text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_pivot_for_owner",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_pivot_for_owner(text,text[],text[],text,text,jsonb,integer,integer)",
       "actionName": "public.rateware_bi_pivot_for_owner",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260801082717_optimize_bi_pivot_cells.sql",
-      "handler": "public.rateware_bi_pivot_for_owner",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_pivot_for_owner(text,text[],text[],text,text,jsonb,integer,integer)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_pivot_for_owner(text,text[],text[],text,text,jsonb,integer,integer)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -6891,17 +9834,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "420282e2c925a3059a5814f01ba21a9a150f884fa948a8a34b0be23111e8478b",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "397593be7e9d4d10d3faae5ec573487617f6eabadb4be70fa7630bf614ac9436",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260801082717_optimize_bi_pivot_cells.sql"
+      ],
+      "rpcSignature": "text,text[],text[],text,text,jsonb,integer,integer"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_rate_matches_filters",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_rate_matches_filters(public.rate_staging,public.vendors,text,jsonb)",
       "actionName": "public.rateware_bi_rate_matches_filters",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260801073452_optimize_bi_filter_execution.sql",
-      "handler": "public.rateware_bi_rate_matches_filters",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_rate_matches_filters(public.rate_staging,public.vendors,text,jsonb)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_rate_matches_filters(public.rate_staging,public.vendors,text,jsonb)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -6914,17 +9862,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "c6ddb17549b60d353eea949e9997a7ce6d079c6eb0210433902b5fdfb95c5848",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "73ba5fa7308e879b8edfbfcda7a60f91bf042a10a59cb00b34b35f434820bfe6",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260801073452_optimize_bi_filter_execution.sql"
+      ],
+      "rpcSignature": "public.rate_staging,public.vendors,text,jsonb"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_row_text",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_row_text(public.rate_staging,public.vendors)",
       "actionName": "public.rateware_bi_row_text",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626183000_bi_aggregation_rpc.sql",
-      "handler": "public.rateware_bi_row_text",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_row_text(public.rate_staging,public.vendors)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_row_text(public.rate_staging,public.vendors)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -6937,17 +9890,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "697c7689fe95c6720372ecdb6ad19b44593fee4ea01e704a69f79c33d4028c7b",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "4a903178483f44766ba09045e9c0189b2f38bca86c16088f2449b74e5f5ee40e",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626183000_bi_aggregation_rpc.sql"
+      ],
+      "rpcSignature": "public.rate_staging,public.vendors"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_summary_for_owner",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_summary_for_owner(text,jsonb)",
       "actionName": "public.rateware_bi_summary_for_owner",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260801185055_optimize_bi_summary_vendor_metrics.sql",
-      "handler": "public.rateware_bi_summary_for_owner",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_summary_for_owner(text,jsonb)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_summary_for_owner(text,jsonb)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -6960,17 +9918,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "440fc2fa222469e2cc2890185e5d8fbf54e2a03138c0e562373fdc795f74f1ca",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "90da0cf7013b78cd8373240b798bf7dbc1d6641b5039bd2045e38b3541b8ba69",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260801185055_optimize_bi_summary_vendor_metrics.sql"
+      ],
+      "rpcSignature": "text,jsonb"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_value_filter_match",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_value_filter_match(jsonb,text,text)",
       "actionName": "public.rateware_bi_value_filter_match",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626183000_bi_aggregation_rpc.sql",
-      "handler": "public.rateware_bi_value_filter_match",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_value_filter_match(jsonb,text,text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_value_filter_match(jsonb,text,text)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -6983,17 +9946,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "b263e144aa4fecc45ff61e649952d3c0b8db4e1501b0c15da36f6c9dc21ab166",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "6289882e926e2a6b369332d82ac179dd695998a06f2c2492da7e5074faa5272e",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626183000_bi_aggregation_rpc.sql"
+      ],
+      "rpcSignature": "jsonb,text,text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bi_vendor_metrics_for_owner",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bi_vendor_metrics_for_owner(text,jsonb)",
       "actionName": "public.rateware_bi_vendor_metrics_for_owner",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260801185055_optimize_bi_summary_vendor_metrics.sql",
-      "handler": "public.rateware_bi_vendor_metrics_for_owner",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bi_vendor_metrics_for_owner(text,jsonb)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_vendor_metrics_for_owner(text,jsonb)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "vendors",
@@ -7006,17 +9974,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "1ff44dcc75dc93447893660cc332300eef5277afea33f20d302dfc5f2a2a3114",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "bab291c292f89bf45e3211a9a626b2677556011aa3e462be83f9c7f1ea1aa7a0",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260801185055_optimize_bi_summary_vendor_metrics.sql"
+      ],
+      "rpcSignature": "text,jsonb"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bid_room_chat_snapshot",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bid_room_chat_snapshot(text,uuid,text,uuid,uuid,integer,text)",
       "actionName": "public.rateware_bid_room_chat_snapshot",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260803070837_optimize_bid_room_chat_snapshot.sql",
-      "handler": "public.rateware_bid_room_chat_snapshot",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bid_room_chat_snapshot(text,uuid,text,uuid,uuid,integer,text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bid_room_chat_snapshot(text,uuid,text,uuid,uuid,integer,text)",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "rfx",
@@ -7029,17 +10002,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "5dd5fac3db49b6604c09cbe4e8b443b09f40d108e8e1243f1cca95defd2886cb",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "9305eeacea7c1e542670a65500c656aaddd9b606ff8144f15a0c04fcdbcb5e07",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260803070837_optimize_bid_room_chat_snapshot.sql"
+      ],
+      "rpcSignature": "text,uuid,text,uuid,uuid,integer,text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_bool_filter_match",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_bool_filter_match(jsonb,text,boolean)",
       "actionName": "public.rateware_bool_filter_match",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_bool_filter_match",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_bool_filter_match(jsonb,text,boolean)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bool_filter_match(jsonb,text,boolean)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7052,17 +10030,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "b2d7dad0f736631cd94f89a06c29139008270ae9ceb0fe3a0631a1f71d45ff7d",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "f3fc6b08bda2deba2e34268f19ed126fb3e6f33b1c8f1a18e1c91ea67e27c0e8",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "jsonb,text,boolean"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_clean_rate_number",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_clean_rate_number(text)",
       "actionName": "public.rateware_clean_rate_number",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_clean_rate_number",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_clean_rate_number(text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_clean_rate_number(text)",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "rates",
@@ -7075,17 +10058,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "2c3d34ec6452d3961e6fb73990af165a1940a3f5315b882ff3e05c7b3338f3a5",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "9bfdfc868724cf52e125a452d036d14caff892cf98e95c887755d14756e8cf1e",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_domain_key",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_domain_key(text)",
       "actionName": "public.rateware_domain_key",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626171000_vendor_metric_rpc.sql",
-      "handler": "public.rateware_domain_key",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_domain_key(text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_domain_key(text)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7098,17 +10086,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "06b9351ff84ce21c7790929986e8d0aaebf341d2338b3d871735b3fddb1d31bf",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "77b9b7743305327cd8075a46440804c480a418818008567df1a1468c51b2869d",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626171000_vendor_metric_rpc.sql"
+      ],
+      "rpcSignature": "text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_filter_values_for_field",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_filter_values_for_field(public.rate_staging,public.vendors,text)",
       "actionName": "public.rateware_filter_values_for_field",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260628123000_add_shipment_id_rate_filters.sql",
-      "handler": "public.rateware_filter_values_for_field",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_filter_values_for_field(public.rate_staging,public.vendors,text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_filter_values_for_field(public.rate_staging,public.vendors,text)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7121,17 +10114,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "0b82311437dcb3a94bdabff3a90aaa683033dd8ebdaecb6bc53c58461713a647",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "07ef98e1391121f75ec639ec493d986dcf0278fc4f8ca1cc023b2becaacf28c2",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260628123000_add_shipment_id_rate_filters.sql"
+      ],
+      "rpcSignature": "public.rate_staging,public.vendors,text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_filtered_rate_ids",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_filtered_rate_ids(text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer)",
       "actionName": "public.rateware_filtered_rate_ids",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260722120000_scope_uploads_and_rates_by_workspace.sql",
-      "handler": "public.rateware_filtered_rate_ids",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_filtered_rate_ids(text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_filtered_rate_ids(text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7144,17 +10142,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d7bd193879570ba933f642396e8a5b56cb8904988a433bcfd4e3e12e5e3aff82",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "e270edc4dae3b0ac412d209bbb356ca437d1de03142c509e326d35237c26638e",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260722120000_scope_uploads_and_rates_by_workspace.sql"
+      ],
+      "rpcSignature": "text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_filtered_rate_values",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_filtered_rate_values(text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer)",
       "actionName": "public.rateware_filtered_rate_values",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260723235900_scope_rate_filter_values_by_workspace.sql",
-      "handler": "public.rateware_filtered_rate_values",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_filtered_rate_values(text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_filtered_rate_values(text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7167,17 +10170,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d95433ad2a3871d980bb3d1c183c68f923bcd8d9e60cf8e5bc3d7db31bce9216",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "ff262a40e35f7ecdbaad611264a3ff2bcf793fa2ee7b4b3e540ee930ee602ae3",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260723235900_scope_rate_filter_values_by_workspace.sql"
+      ],
+      "rpcSignature": "text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_has_numeric_rate",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_has_numeric_rate(text)",
       "actionName": "public.rateware_has_numeric_rate",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_has_numeric_rate",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_has_numeric_rate(text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_has_numeric_rate(text)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7190,17 +10198,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ce0e2f568773a128f4d411413299139f5e3ce5897aaa89881a7fdc9d318f9d70",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "e4c44ed108b3c1412f25874af0365e49ca8d5ae4c38f980334f87700e4566776",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_inherit_rate_owner",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_inherit_rate_owner()",
       "actionName": "public.rateware_inherit_rate_owner",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260722120000_scope_uploads_and_rates_by_workspace.sql",
-      "handler": "public.rateware_inherit_rate_owner",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_inherit_rate_owner()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_inherit_rate_owner()",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "rates",
@@ -7213,17 +10226,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "1209d22ca3602a94552e08747aa6e193928541ededf96f3be0502cbba1675b92",
-      "notes": "trigger/internal function; not a user action"
+      "sourceFingerprint": "a0393abf50fcda277ea6850d7d3c4190f79ad2f5d43d543b51fb94a04974053d",
+      "notes": "trigger/internal function; not a user action",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260722120000_scope_uploads_and_rates_by_workspace.sql"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_is_generic_email_domain",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_is_generic_email_domain(text)",
       "actionName": "public.rateware_is_generic_email_domain",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626171000_vendor_metric_rpc.sql",
-      "handler": "public.rateware_is_generic_email_domain",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_is_generic_email_domain(text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_is_generic_email_domain(text)",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "rates",
@@ -7236,17 +10254,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "9f85297ae676ddff63c58a1921dfe62f90caccf5c5c477303ec012bed4f55982",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "04f4e04d3717bfe3b251bc5aba60460cd4ef89ac20695a01ad339f7358871286",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626171000_vendor_metric_rpc.sql"
+      ],
+      "rpcSignature": "text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_json_filter_values",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_json_filter_values(jsonb,text)",
       "actionName": "public.rateware_json_filter_values",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_json_filter_values",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_json_filter_values(jsonb,text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_json_filter_values(jsonb,text)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7259,17 +10282,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "413c76974455293aa48162601eda7153aac59b6d41a16d8ca274b7ce956d86b6",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "95b9e92dd759e164d61790397e83790e53a554f8db37f0828f0d786a3c425919",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "jsonb,text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_normalize_vendor_lifecycle",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_normalize_vendor_lifecycle()",
       "actionName": "public.rateware_normalize_vendor_lifecycle",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260723225311_vendor_lifecycle_unification.sql",
-      "handler": "public.rateware_normalize_vendor_lifecycle",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_normalize_vendor_lifecycle()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_normalize_vendor_lifecycle()",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "vendors",
@@ -7282,17 +10310,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "2cfa2a230cc4cf6ed749607ad565225992837eceabaeedbcaec8bb444abbae8f",
-      "notes": "trigger/internal function; not a user action"
+      "sourceFingerprint": "457df62160afe2ec54287514d242a1d20ef5de9bd1e298dcd17ed31a30a6a997",
+      "notes": "trigger/internal function; not a user action",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260723225311_vendor_lifecycle_unification.sql"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_outreach_tracking_page",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_outreach_tracking_page(text,uuid,text[],text,text[],boolean,boolean,integer,integer)",
       "actionName": "public.rateware_outreach_tracking_page",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260803013648_optimize_outreach_tracking_scope_arrays.sql",
-      "handler": "public.rateware_outreach_tracking_page",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_outreach_tracking_page(text,uuid,text[],text,text[],boolean,boolean,integer,integer)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_outreach_tracking_page(text,uuid,text[],text,text[],boolean,boolean,integer,integer)",
       "businessModule": "Commercial",
       "operation": "execute",
       "resource": "integrations-outreach",
@@ -7305,17 +10338,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "03424391c02aa7337cbc6ac9ba3c6996b47b5de3f93f91060d5ea9acb880f61a",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "c6020b7541f6d6906cb4b33812d76bd5da59197955ff69781c02241c8f173cf9",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260803013648_optimize_outreach_tracking_scope_arrays.sql"
+      ],
+      "rpcSignature": "text,uuid,text[],text,text[],boolean,boolean,integer,integer"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_outreach_tracking_state_sql",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_outreach_tracking_state_sql(text,text,text,jsonb,text,numeric,timestamptz)",
       "actionName": "public.rateware_outreach_tracking_state_sql",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260803013322_optimize_outreach_tracking_queries.sql",
-      "handler": "public.rateware_outreach_tracking_state_sql",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_outreach_tracking_state_sql(text,text,text,jsonb,text,numeric,timestamptz)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_outreach_tracking_state_sql(text,text,text,jsonb,text,numeric,timestamptz)",
       "businessModule": "Commercial",
       "operation": "execute",
       "resource": "integrations-outreach",
@@ -7328,17 +10366,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "1547d41321832dda780c3dd46877a39f20ee3111ac001fbcb279c517d480d58c",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "cd2454e6db858228c3459a7505907c32bc72b9b9c881e3fb6c31df729010b60d",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260803013322_optimize_outreach_tracking_queries.sql"
+      ],
+      "rpcSignature": "text,text,text,jsonb,text,numeric,timestamptz"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_outreach_tracking_summary",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_outreach_tracking_summary(text,uuid,text[],boolean,boolean)",
       "actionName": "public.rateware_outreach_tracking_summary",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260803013918_optimize_outreach_tracking_summary_scope.sql",
-      "handler": "public.rateware_outreach_tracking_summary",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_outreach_tracking_summary(text,uuid,text[],boolean,boolean)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_outreach_tracking_summary(text,uuid,text[],boolean,boolean)",
       "businessModule": "Commercial",
       "operation": "read",
       "resource": "integrations-outreach",
@@ -7351,17 +10394,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f18ec9f7f746f92449146aa0f1759166c4337fb62070e05cb6ae70b9bef66fa6",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "eb27f861015fa89990716809baab0dbbfbb745245a6593cd40161b30f96a7297",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260803013918_optimize_outreach_tracking_summary_scope.sql"
+      ],
+      "rpcSignature": "text,uuid,text[],boolean,boolean"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_promote_vendor_lifecycle",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_promote_vendor_lifecycle(uuid,text)",
       "actionName": "public.rateware_promote_vendor_lifecycle",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260723225311_vendor_lifecycle_unification.sql",
-      "handler": "public.rateware_promote_vendor_lifecycle",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_promote_vendor_lifecycle(uuid,text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_promote_vendor_lifecycle(uuid,text)",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "vendors",
@@ -7374,17 +10422,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "b1e0b57d5076c8edb27e7e1228604c8675b5a14004cb62901b68c20106f5c432",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "04f73a8436bcb973a6237fa088f6499cd7e1a143970d2f8282121ea3c698e829",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260723225311_vendor_lifecycle_unification.sql"
+      ],
+      "rpcSignature": "uuid,text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_rate_matches_filters",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_rate_matches_filters(public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean)",
       "actionName": "public.rateware_rate_matches_filters",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260628123000_add_shipment_id_rate_filters.sql",
-      "handler": "public.rateware_rate_matches_filters",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_rate_matches_filters(public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_rate_matches_filters(public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7397,17 +10450,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "3c6c87264eeb20932b4c02997c7aab5b430a0f0ef88baf52d44ad9a4a15b70a4",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "9010e77d4d3d8db54dc89a3fc2bec99704a765976a211b581d8e1e6a80f79ada",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260628123000_add_shipment_id_rate_filters.sql"
+      ],
+      "rpcSignature": "public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_refresh_vendor_search_document",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_refresh_vendor_search_document()",
       "actionName": "public.rateware_refresh_vendor_search_document",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql",
-      "handler": "public.rateware_refresh_vendor_search_document",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_refresh_vendor_search_document()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_refresh_vendor_search_document()",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "vendors",
@@ -7420,17 +10478,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "56f7cecbab517cb3b2a278a810706925c55e0d937841a33c652fc23ba717029d",
-      "notes": "trigger/internal function; not a user action"
+      "sourceFingerprint": "1f09c4be75c6c5045f15550f4f97aec9f8cbd7f0cce1f33a39db0cae631bf1da",
+      "notes": "trigger/internal function; not a user action",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_rfx_lane_rate_score",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)",
       "actionName": "public.rateware_rfx_lane_rate_score",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260804080200_optimize_bid_room_benchmark_candidates.sql",
-      "handler": "public.rateware_rfx_lane_rate_score",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rfx",
@@ -7444,16 +10507,21 @@ export const ACTION_CONTRACT = {
       "lifecycle": "active",
       "replacementAction": null,
       "sourceFingerprint": "3cebc56b09755f9fd8fe09a17674e987b0826df59b8c0859566d67dde6fd017f",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate Observed DROP in committed migrations; lifecycle disposition remains PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260804080200_optimize_bid_room_benchmark_candidates.sql"
+      ],
+      "rpcSignature": "public.rfx_lanes,public.rate_staging"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_rfx_text_match_score",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_rfx_text_match_score(text,text,integer)",
       "actionName": "public.rateware_rfx_text_match_score",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260804080200_optimize_bid_room_benchmark_candidates.sql",
-      "handler": "public.rateware_rfx_text_match_score",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_rfx_text_match_score(text,text,integer)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_rfx_text_match_score(text,text,integer)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rfx",
@@ -7467,16 +10535,21 @@ export const ACTION_CONTRACT = {
       "lifecycle": "active",
       "replacementAction": null,
       "sourceFingerprint": "754520bafd29dd263e072e555a95940214d5577b9a11cdce7150a7207777ffb1",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate Observed DROP in committed migrations; lifecycle disposition remains PENDING HUMAN APPROVAL.",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260804080200_optimize_bid_room_benchmark_candidates.sql"
+      ],
+      "rpcSignature": "text,text,integer"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_row_conflict",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_row_conflict(public.rate_staging)",
       "actionName": "public.rateware_row_conflict",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_row_conflict",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_row_conflict(public.rate_staging)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_row_conflict(public.rate_staging)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7489,17 +10562,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ddcbefd7962b9464df6481e586e83c2c2d3b59227acbf4e419edbdc73d3f04cd",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "a8d06bebac9e017eba20add6be0a496d381671e2bc34f8e83283c8bef3666204",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "public.rate_staging"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_row_cross_border",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_row_cross_border(public.rate_staging)",
       "actionName": "public.rateware_row_cross_border",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_row_cross_border",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_row_cross_border(public.rate_staging)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_row_cross_border(public.rate_staging)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7512,17 +10590,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ff51081b5d6e72169e8e2898e77858b70cdb95df0c15787858ff0d628bd321ec",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "ccfc273f92fa3d1ab6e237851e575cf16a6838447cf1708eb95f5d59f57bdca9",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "public.rate_staging"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_row_currency_gap",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_row_currency_gap(public.rate_staging)",
       "actionName": "public.rateware_row_currency_gap",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_row_currency_gap",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_row_currency_gap(public.rate_staging)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_row_currency_gap(public.rate_staging)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7535,17 +10618,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "0ce7abc56226f101ede4249e1b4fb79b4531b6dda12b918b59b59baf15550680",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "fc3cbb162d4032935cecd17c12eea5ccdfbc6cb4321aa611facde068a9079f85",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "public.rate_staging"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_row_has_all_in_text",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_row_has_all_in_text(public.rate_staging)",
       "actionName": "public.rateware_row_has_all_in_text",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_row_has_all_in_text",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_row_has_all_in_text(public.rate_staging)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_row_has_all_in_text(public.rate_staging)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7558,17 +10646,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "75d1a3e923b1cad9837a0ab7bd6d137e23703265388cb382861a562213bafa51",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "3ade7db107ff364b76970e7e084cb4361412c21a9e42e5ad9c377d1385c73593",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "public.rate_staging"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_row_has_split",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_row_has_split(public.rate_staging)",
       "actionName": "public.rateware_row_has_split",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_row_has_split",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_row_has_split(public.rate_staging)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_row_has_split(public.rate_staging)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7581,17 +10674,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "853ad2f596191aa1e3fb441a4745f8cbd089f376b7b4b4f7744e2e8537b94a0a",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "7a5d4a0796772b38164c305637345036adfbfe56869a1bf2a231aa4f4fde6811",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "public.rate_staging"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_row_location_gap",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_row_location_gap(public.rate_staging)",
       "actionName": "public.rateware_row_location_gap",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_row_location_gap",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_row_location_gap(public.rate_staging)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_row_location_gap(public.rate_staging)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7604,17 +10702,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "3b872a691178f834f8c491cb31f8c6948be2c9fd911edc36065ccf4701aef271",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "5ae52c615e218d53df814498b89e1044a87c47567404e09563d54bf27e540edd",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "public.rate_staging"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_row_needs_rate",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_row_needs_rate(public.rate_staging)",
       "actionName": "public.rateware_row_needs_rate",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_row_needs_rate",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_row_needs_rate(public.rate_staging)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_row_needs_rate(public.rate_staging)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7627,17 +10730,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "8b16cb7059b81b8fca932c3e3b973c8ae9c080d8e2ce1652963bc82885f25962",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "53bd5712c45d2fc1e351d244476c950d2d71590ff9c6bf7a61df6222e22b387d",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "public.rate_staging"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_row_ready",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_row_ready(public.rate_staging)",
       "actionName": "public.rateware_row_ready",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_row_ready",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_row_ready(public.rate_staging)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_row_ready(public.rate_staging)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7650,17 +10758,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ea93b245744dcd4983223981f1efe3bbf490912122124ca0b420c68aa4312907",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "d7444199c2c1b3dbc217f0d1b623ff107eeeed5295e0185f4509739f10e410c1",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "public.rate_staging"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_row_service_conflict",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_row_service_conflict(public.rate_staging)",
       "actionName": "public.rateware_row_service_conflict",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_row_service_conflict",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_row_service_conflict(public.rate_staging)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_row_service_conflict(public.rate_staging)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7673,17 +10786,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "79059047e1c6c742148d439678a0fee2f785680a83a39cecc90c565ee57f6e07",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "b54fdac837c350cf6a810df704e11072464e5001d48457aa1529ee5e961be315",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "public.rate_staging"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_row_source_audit",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_row_source_audit(public.rate_staging)",
       "actionName": "public.rateware_row_source_audit",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_row_source_audit",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_row_source_audit(public.rate_staging)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_row_source_audit(public.rate_staging)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7696,17 +10814,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "b64bc2db8dbd9b0d307d553b525b89f5bd3941e07db77e875b193bab91ff0c99",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "88ba5b71dc7b675ed830241a678a2da538e161d6de43fdc4a3863d68ecbe8879",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "public.rate_staging"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_row_split_conflict",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_row_split_conflict(public.rate_staging)",
       "actionName": "public.rateware_row_split_conflict",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_row_split_conflict",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_row_split_conflict(public.rate_staging)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_row_split_conflict(public.rate_staging)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7719,17 +10842,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "c72647c5da3dbef91d4ea04172f64794ddb6ae2c46d5a1152e630944ea5d0fde",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "7d2cae2e6b125b4e54eda38f2a59babade77e2d5befb7a49a2c83349a2ff0aae",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "public.rate_staging"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_service_mode_key",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_service_mode_key(text)",
       "actionName": "public.rateware_service_mode_key",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_service_mode_key",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_service_mode_key(text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_service_mode_key(text)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7742,17 +10870,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "5eeb09c624404fc7177bad9895ae928651e08d466d6e04e08cf91c05fd235019",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "5915f60fd3bd55b53dcc133e7953c2d0e8dc71c071604c75e0b583e2aa643492",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_set_bi_fact_vendor_reference",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_set_bi_fact_vendor_reference()",
       "actionName": "public.rateware_set_bi_fact_vendor_reference",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260801082236_cache_bi_component_metrics.sql",
-      "handler": "public.rateware_set_bi_fact_vendor_reference",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_set_bi_fact_vendor_reference()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_set_bi_fact_vendor_reference()",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "vendors",
@@ -7765,17 +10898,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "1bd52c499aa239b46b4533d0755a5cada7dc4d46e363b61c1e316f32a7129d8c",
-      "notes": "trigger/internal function; not a user action"
+      "sourceFingerprint": "7dcbf6360c721f1917ab0d631f48c78581266b87cfa5bf7f73f08aa6a4ac1b3b",
+      "notes": "trigger/internal function; not a user action",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260801082236_cache_bi_component_metrics.sql"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_sync_bi_rate_fact",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_sync_bi_rate_fact()",
       "actionName": "public.rateware_sync_bi_rate_fact",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260801080326_create_bi_rate_facts.sql",
-      "handler": "public.rateware_sync_bi_rate_fact",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_sync_bi_rate_fact()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_sync_bi_rate_fact()",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "rates",
@@ -7788,17 +10926,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "f63fdf2de19d52c90e60a9843333df9f1d6a99c185132bb7d051200efda0bda6",
-      "notes": "trigger/internal function; not a user action"
+      "sourceFingerprint": "ba0ad053a1ea968a7f9324d13e1a65f81c2a898bbb55dcb9dd95ccd058e5f141",
+      "notes": "trigger/internal function; not a user action",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260801080326_create_bi_rate_facts.sql"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_sync_bi_vendor_facts",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_sync_bi_vendor_facts()",
       "actionName": "public.rateware_sync_bi_vendor_facts",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260801080326_create_bi_rate_facts.sql",
-      "handler": "public.rateware_sync_bi_vendor_facts",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_sync_bi_vendor_facts()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_sync_bi_vendor_facts()",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "vendors",
@@ -7811,17 +10954,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "6dbb701e31271ccb7e6a9c7b0ccff887272a7c00981e2b1c4c00e9bd6c81eb63",
-      "notes": "trigger/internal function; not a user action"
+      "sourceFingerprint": "5316f8be2ca1bee8e25386310d2468cc6309b48d73238feeadeeadff586fa63b",
+      "notes": "trigger/internal function; not a user action",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260801080326_create_bi_rate_facts.sql"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_sync_vendor_lifecycle_from_rate_staging",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_sync_vendor_lifecycle_from_rate_staging()",
       "actionName": "public.rateware_sync_vendor_lifecycle_from_rate_staging",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260723225311_vendor_lifecycle_unification.sql",
-      "handler": "public.rateware_sync_vendor_lifecycle_from_rate_staging",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_sync_vendor_lifecycle_from_rate_staging()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_sync_vendor_lifecycle_from_rate_staging()",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "vendors",
@@ -7834,17 +10982,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "6a82c087a89b6e75afc82f55941ab20073abef80fba42c35f117f57769da1fac",
-      "notes": "trigger/internal function; not a user action"
+      "sourceFingerprint": "b5c6efc4d4d2d613691b9bf28bf9fc0c3d895e010c98f92abbfd02b0ac0653a2",
+      "notes": "trigger/internal function; not a user action",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260723225311_vendor_lifecycle_unification.sql"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_sync_vendor_lifecycle_from_rfx_lane_vendor",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_sync_vendor_lifecycle_from_rfx_lane_vendor()",
       "actionName": "public.rateware_sync_vendor_lifecycle_from_rfx_lane_vendor",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260723225311_vendor_lifecycle_unification.sql",
-      "handler": "public.rateware_sync_vendor_lifecycle_from_rfx_lane_vendor",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_sync_vendor_lifecycle_from_rfx_lane_vendor()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_sync_vendor_lifecycle_from_rfx_lane_vendor()",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "rfx",
@@ -7857,17 +11010,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "4afad83a4369eea9043b28b503b75cf3f7bee28aa654b2e2c7967dc2dc1b0496",
-      "notes": "trigger/internal function; not a user action"
+      "sourceFingerprint": "a7d24350cb7543dc0c82c509947d23a0e49440b2531f32ecefe86e26b8769723",
+      "notes": "trigger/internal function; not a user action",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260723225311_vendor_lifecycle_unification.sql"
+      ],
+      "rpcSignature": null
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_text_filter_match",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_text_filter_match(jsonb,text,text)",
       "actionName": "public.rateware_text_filter_match",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626143000_rate_filter_rpc.sql",
-      "handler": "public.rateware_text_filter_match",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_text_filter_match(jsonb,text,text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_text_filter_match(jsonb,text,text)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7880,17 +11038,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d278f38b9e68c2899c3166425267f106e8e44491cb12fe062b641a381230cc49",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "0b69e412babf2d78721ed1392101abaed4734f28bee97e0f32cc37638d545fe4",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626143000_rate_filter_rpc.sql"
+      ],
+      "rpcSignature": "jsonb,text,text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_values_filter_match",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_values_filter_match(jsonb,text,text[])",
       "actionName": "public.rateware_values_filter_match",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260626154500_optimize_composite_filter_values.sql",
-      "handler": "public.rateware_values_filter_match",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_values_filter_match(jsonb,text,text[])",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_values_filter_match(jsonb,text,text[])",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rates",
@@ -7903,17 +11066,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "3c57e7bd9f56941f5409a26d4af8e9a415c87c67859a6e8c9b38fb6946bf9c0d",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "87336a3d78af03c14c031bb0091de0a67580e532664a7d9d13912e41e72e3e9e",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626154500_optimize_composite_filter_values.sql"
+      ],
+      "rpcSignature": "jsonb,text,text[]"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_vendor_funnel_stage_rank",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_vendor_funnel_stage_rank(text)",
       "actionName": "public.rateware_vendor_funnel_stage_rank",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260723225311_vendor_lifecycle_unification.sql",
-      "handler": "public.rateware_vendor_funnel_stage_rank",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_vendor_funnel_stage_rank(text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_vendor_funnel_stage_rank(text)",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "vendors",
@@ -7926,17 +11094,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "5f6538e05454162e9b54e061204cbc76cc76c829f630e4cdaa7d589c804aa6c3",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "8e05332c7a8dd5bd6ecc43aa2cd677f816aeae484c99d0b95ee9efe73b3083f6",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260723225311_vendor_lifecycle_unification.sql"
+      ],
+      "rpcSignature": "text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rateware_vendor_search_key",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rateware_vendor_search_key(text)",
       "actionName": "public.rateware_vendor_search_key",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260723190000_vendor_workspace_search.sql",
-      "handler": "public.rateware_vendor_search_key",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rateware_vendor_search_key(text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_vendor_search_key(text)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "vendors",
@@ -7949,17 +11122,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "cf383122629faddee4f8efad16787271b0ce12ed9dac461fe6334e1de145679e",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
+      "sourceFingerprint": "30eb13d0c89264e4326be03f7d0b575d01f1d9073972840446acd1be91386794",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260723190000_vendor_workspace_search.sql"
+      ],
+      "rpcSignature": "text"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.rfx_benchmark_candidate_rate_ids",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)",
       "actionName": "public.rfx_benchmark_candidate_rate_ids",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260804080455_tune_bid_room_benchmark_candidates.sql",
-      "handler": "public.rfx_benchmark_candidate_rate_ids",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)",
       "businessModule": "Procurement",
       "operation": "execute",
       "resource": "rfx",
@@ -7972,17 +11150,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "b5e714bb1579d935444c3e8489d7a9fa6f5e7fa64d68abfd8b0e85439a99de22",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "0b6bf828d56e63951e38bb204c3877e8bd9c053dcc12b5df3b1907a8d4a16e25",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260804080455_tune_bid_room_benchmark_candidates.sql"
+      ],
+      "rpcSignature": "text,uuid,integer"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.search_workspace_vendors",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.search_workspace_vendors(text,text,integer,integer)",
       "actionName": "public.search_workspace_vendors",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql",
-      "handler": "public.search_workspace_vendors",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.search_workspace_vendors(text,text,integer,integer)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.search_workspace_vendors(text,text,integer,integer)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "vendors",
@@ -7995,17 +11178,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "6f48fe369aed665d9eee60cfd2166ad1a5a1bece957c4601d9a7104a88f9ec53",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "1cd2c028da3d18f5de76db2530a3f8e5e9fc2ce3a4d77b81fd1574d71e197361",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql"
+      ],
+      "rpcSignature": "text,text,integer,integer"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.vendor_bid_metrics_for_owner_ids",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.vendor_bid_metrics_for_owner_ids(text,uuid[])",
       "actionName": "public.vendor_bid_metrics_for_owner_ids",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql",
-      "handler": "public.vendor_bid_metrics_for_owner_ids",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.vendor_bid_metrics_for_owner_ids(text,uuid[])",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.vendor_bid_metrics_for_owner_ids(text,uuid[])",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "rfx",
@@ -8018,40 +11206,22 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "7e339a0d2b04396d01d8d81b46ae0b02ed73dfb0670f0d3d0e1f4ff8a56771a1",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "bc1d70f7662bfb6e163a16eb6e9605a680888ea0e881f78f92da84c1e8aaf27c",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql"
+      ],
+      "rpcSignature": "text,uuid[]"
     },
     {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.vendor_rate_metrics_for_owner",
-      "actionName": "public.vendor_rate_metrics_for_owner",
-      "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260626171000_vendor_metric_rpc.sql",
-      "handler": "public.vendor_rate_metrics_for_owner",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
-      "businessModule": "Procurement",
-      "operation": "read",
-      "resource": "vendors",
-      "access": "read",
-      "exposure": "internal/service-role",
-      "sensitivity": "high",
-      "tenantRelevance": "mixed",
-      "proposedPermissionKey": "internal.rpc.vendor_rate_metrics_for_owner",
-      "functionalOwner": "Procurement",
-      "decisionStatus": "internal_only",
-      "lifecycle": "active",
-      "replacementAction": null,
-      "sourceFingerprint": "1449fe473f9b105ef9c893c56b5b7a9e32fd0a9cbaf20cf9d2aba7370eb40b9b",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate"
-    },
-    {
-      "contractVersion": "1.0.0",
-      "canonicalId": "rpc.public.vendor_rate_metrics_for_owner_ids",
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.vendor_rate_metrics_for_owner_ids(text,uuid[],text)",
       "actionName": "public.vendor_rate_metrics_for_owner_ids",
       "sourceKind": "postgres-function",
       "sourceFile": "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql",
-      "handler": "public.vendor_rate_metrics_for_owner_ids",
-      "endpoint": "PostgreSQL function / PostgREST RPC surface",
+      "handler": "public.vendor_rate_metrics_for_owner_ids(text,uuid[],text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.vendor_rate_metrics_for_owner_ids(text,uuid[],text)",
       "businessModule": "Procurement",
       "operation": "read",
       "resource": "vendors",
@@ -8064,8 +11234,41 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "64975e98e77ea7f969a74cfb5e86600b120c510ffe77fd41dd03ad9e35960bc6",
-      "notes": "called by Edge via .rpc()"
+      "sourceFingerprint": "5868180eeda1efe7e8dd77c44d6054fde74048fa46459dde2068b501862567f5",
+      "notes": "called by Edge via .rpc()",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql"
+      ],
+      "rpcSignature": "text,uuid[],text"
+    },
+    {
+      "contractVersion": "1.1.0",
+      "canonicalId": "rpc.public.vendor_rate_metrics_for_owner(text,text)",
+      "actionName": "public.vendor_rate_metrics_for_owner",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20260626171000_vendor_metric_rpc.sql",
+      "handler": "public.vendor_rate_metrics_for_owner(text,text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.vendor_rate_metrics_for_owner(text,text)",
+      "businessModule": "Procurement",
+      "operation": "read",
+      "resource": "vendors",
+      "access": "read",
+      "exposure": "internal/service-role",
+      "sensitivity": "high",
+      "tenantRelevance": "mixed",
+      "proposedPermissionKey": "internal.rpc.vendor_rate_metrics_for_owner",
+      "functionalOwner": "Procurement",
+      "decisionStatus": "internal_only",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "9a3e78a14e9ad1fc38d6f3248353b550da5c87580ab66d7f3f5e895b71ded571",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260626171000_vendor_metric_rpc.sql"
+      ],
+      "rpcSignature": "text,text"
     }
   ],
   "nonGovernableDeclarations": [
@@ -8075,7 +11278,7 @@ export const ACTION_CONTRACT = {
       "lifecycle": "unreachable",
       "expectedHandlerAbsent": true,
       "decisionStatus": "pending_human_approval",
-      "notes": "Directory exists without index.ts and is excluded from governable totals. Disposition remains PENDING HUMAN APPROVAL."
+      "notes": "No committed index.ts exists and the declaration is excluded from active counts. Disposition remains PENDING HUMAN APPROVAL."
     }
   ]
 };

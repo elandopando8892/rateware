@@ -1,73 +1,93 @@
 # Backend Action Contract
 
-## Purpose and scope
+## Purpose and boundary
 
-Phase 0.1 records every governable backend surface in a canonical, versioned contract. It detects additions, removals, renames, duplicate IDs, incompatible permission metadata and source/classification drift without connecting to Supabase, Kinde or any other service.
+Phase 0.1 records governable backend surfaces in a canonical, versioned contract and blocks unreviewed source, metadata, dependency, lifecycle, and inventory drift. It is a static developer control only.
 
-This contract **does not perform authorization enforcement**. It is not imported by the application, frontend or Edge runtime, does not change `full-access`, and is not a security certification.
+The contract **does not perform authorization enforcement**. It is not imported by the application, frontend, or Edge runtime; it does not change authentication, tenant resolution, data access, endpoint responses, full-access, RLS, shadow evaluation, pilot behavior, or permissions.
 
-## Sources and discovery
+## Repository-driven discovery
 
-The validator reads the repository as text:
+Discovery starts from the committed repository structure:
 
-- literal Edge action selectors after `Deno.serve`;
-- delegated Growth action cases;
-- fixed HTTP-method operations declared by the inventory method;
-- unique schema-qualified PostgreSQL function names declared by migrations.
+1. enumerate every directory under supabase/functions, excluding only _shared;
+2. treat each tracked index.ts as an Edge entrypoint candidate;
+3. recognize literal comparisons, switch cases, object handler registries, Map registries, and reviewed fixed HTTP-method endpoints;
+4. emit a blocking candidate when an entrypoint or dynamic dispatch cannot be resolved safely;
+5. record directories without index.ts separately and require an explicit non-governable disposition;
+6. replay migration DDL in filename order for CREATE FUNCTION, CREATE OR REPLACE FUNCTION, and DROP FUNCTION.
 
-`OPTIONS`, helper functions and the `typeof body.action === "string"` type guard are excluded. PostgreSQL overloads are governed by stable schema-qualified name in 0.1; signature-level grants remain a later database verification concern.
+This is conservative static analysis, not a universal JavaScript/TypeScript/SQL parser. Recognized structures are inventoried; ambiguous structures block; no dynamic surface is reported as verified merely because a regex returned no rows.
 
-`supabase/functions/whatsapp-healthcheck` is recorded separately as a non-governable, unreachable declaration because it has no `index.ts`. It is not counted among the 349 surfaces.
+## Handler states
 
-## Canonical IDs
+- inline-real: the dispatch branch itself demonstrably returns or performs the operation.
+- named-existing: dispatch names a function whose declaration is present.
+- named-missing: dispatch names a function whose declaration is absent; validation fails.
+- undetermined: static structure cannot establish a handler; validation fails.
 
-- Edge selector or method: `edge.<edge-function>.<stable-action-name>`
-- PostgreSQL function: `rpc.<schema>.<function-name>`
-- Non-governable declaration: `declaration.edge.<directory-name>`
+Inline is never used as a fallback for a missing named function.
 
-IDs never contain line numbers, array positions or source hashes. Reformatting, comments and file order do not change identity. A source fingerprint is separate from the ID and forces deliberate review when implementation changes.
+## Canonical identity
 
-## Lifecycle
+- Edge: edge.<edge-function>.<stable-action-name>
+- PostgreSQL: rpc.<schema>.<function>(<input-type-signature>)
+- Non-governable declaration: declaration.edge.<directory-name>
 
-- `active`: current governable surface.
-- `alias`: current compatibility name pointing to `replacementAction`.
-- `deprecated`: still present but scheduled for retirement.
-- `unreachable`: declared but not callable.
-- `removed`: intentionally absent and retained as history.
+RPC signatures distinguish overloads. Argument names, defaults, comments, line positions, and irrelevant formatting are excluded from signature identity. A DROP FUNCTION removes only its exact active signature from discovery.
 
-Rename: add the new ID, retain the old ID as `alias` or `deprecated`, set `replacementAction`, and document compatibility.
+A potential rename is not silently treated as unrelated deletion/addition: matching source/handler evidence emits RENAME_REQUIRES_DISPOSITION. Rename, alias, split, merge, deprecation, and removal still require explicit human disposition.
 
-Split: add each new ID; deprecate the old ID and document all replacements in notes. Merge: add/identify the merged ID and deprecate each old ID. Removal: change lifecycle to `removed` before deleting the source and retain the disposition. New action: run the validator, add metadata with `pending_human_approval`, and obtain owner review before any future enforcement.
+## Sensitive metadata review
 
-Changes from public to authenticated, read to write, tenant-scoped to platform-scoped, or internal to externally exposed require a deliberate contract diff, security/business review and refreshed source fingerprint. They are never inferred as permission grants.
+Each surface has a reviewed metadata fingerprint covering action name, source kind/file, handler, endpoint, module, operation, resource, read/write access, exposure, sensitivity, tenant relevance, proposed permission, functional owner, decision status, lifecycle, replacement, analysis coverage, and RPC signature.
 
-## Decision statuses
+Changing any covered field without deliberately refreshing its reviewed fingerprint blocks validation. The fingerprint is evidence of an explicit contract diff, not proof that the new classification has been approved.
 
-- `explicitly_allowed`: the reviewed contract recognizes an existing scoped public/token/state/signature flow. It does not grant runtime access.
-- `explicitly_denied`: reserved for a reviewed surface that must not be enabled.
-- `pending_human_approval`: classification exists, but permission/owner decisions are not approved. The 256 pending surfaces remain pending.
-- `internal_only`: service-role/internal surface; never a human permission.
+## Source and authorization fingerprints
+
+Direct source fingerprints use lexical tokens that ignore comments and formatting while preserving strings and code tokens.
+
+Authorization envelope fingerprints include the complete Edge source and recursively observed local imports. They therefore detect changes to dispatch, wrappers, authentication helpers, tenant/service-role guards, and other shared local dependencies. Coverage is classified as direct, shared-observed, dependency-undetermined, or dynamic.
+
+An unresolved local dependency or dynamic dispatch is a blocking error. The mechanism does not claim semantic certainty for remote modules, runtime reflection, generated code, or provider behavior.
+
+## Counts after hardening
+
+Committed-source discovery produces:
+
+- 284 active Edge operations;
+- 63 active PostgreSQL/RPC signatures;
+- 347 active discovered surfaces;
+- 244 rateware-api actions.
+
+The contract retains 349 rows because two historically counted RPCs are now proven absent after committed DROP FUNCTION statements:
+
+- public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging);
+- public.rateware_rfx_text_match_score(text,text,integer).
+
+They remain active contract records with REMOVED_WITHOUT_DISPOSITION errors until H07 receives human approval. Counts were not forced back to 349.
+
+## Decision and lifecycle boundary
+
+The contract preserves 256 pending_human_approval, 27 explicitly_allowed, and 66 internal_only rows. No pending surface is converted to allowed.
+
+H07 remains **PENDING HUMAN APPROVAL**. Duplicate names, dead candidates, aliases, removals, replacements, merges, and retirements are not decided by this hardening. Consequently Phase 0.1 is technically hardened but not complete.
+
+whatsapp-healthcheck has no committed index.ts, is not an active surface, and remains a non-governable declaration pending disposition.
 
 ## Workflow
 
-Add or change an action:
+1. Change real source in an isolated branch.
+2. Run npm run validate:action-contract; new or ambiguous surfaces must fail.
+3. Classify the difference without changing counts mechanically.
+4. Update the contract row and reviewed fingerprints in a visible diff.
+5. For rename/removal/alias/deprecation, obtain the required human disposition.
+6. Run npm run test:action-contract.
+7. Review source, metadata, dependency, lifecycle, and count changes independently.
 
-1. change the real source;
-2. run `npm run validate:action-contract` and observe the blocking difference;
-3. add or update the contract entry without changing its ID unless identity truly changed;
-4. set new human-facing decisions to `pending_human_approval`;
-5. review exposure, read/write, tenant relevance, sensitivity, permission and owner;
-6. run `npm run test:action-contract` and the affected static tests;
-7. review the contract diff and evidence.
+Warnings and informational findings remain visible. Errors always produce a non-zero validator exit.
 
-Resolve differences by classifying them as real code change, methodology difference, alias, duplicate, non-governable surface, new surface, false positive or not determinable. Do not manipulate counts to match a baseline.
+## Later increments
 
-## Validation levels
-
-Errors block: unregistered or missing active surfaces, duplicate IDs, invalid metadata/status, missing source/handler, invalid/circular aliases, incompatible permission reuse, unreviewed exposure/source/fingerprint changes, write without sensitivity and service-role exposure contradictions.
-
-Warnings require review but do not fail. Informational findings document non-governable declarations. Output is sorted and excludes notes or source contents so it does not reproduce secrets.
-
-## Relationship to later increments
-
-0.2–0.10 may consume the contract only after separate authorization and human decisions. 0.1 introduces no tenant model, memberships, persistent roles/permissions, RLS, shadow mode, pilot or enforcement. Process ownership remains `PENDING HUMAN APPROVAL`.
+Phase 0.2–0.10 may consume this contract only after separate authorization. This hardening adds no tenant model, persistent roles/permissions, authorization engine, CI platform, data change, shadow mode, pilot, or enforcement. H10 and process ownership remain **PENDING HUMAN APPROVAL**.

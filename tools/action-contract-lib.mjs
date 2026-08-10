@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 
 export const CONTRACT_VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 export const SOURCE_KINDS = new Set(["edge-selector", "edge-method", "postgres-function"]);
@@ -10,233 +10,498 @@ export const LIFECYCLES = new Set(["active", "alias", "deprecated", "unreachable
 export const ACCESS_KINDS = new Set(["read", "write"]);
 export const SENSITIVITIES = new Set(["low", "medium", "medium-high", "high", "critical"]);
 export const TENANT_RELEVANCE = new Set(["tenant-scoped", "record-derived", "platform-scoped", "mixed"]);
+export const ANALYSIS_COVERAGE = new Set(["direct", "shared-observed", "dependency-undetermined", "dynamic"]);
 
-const SELECTOR_SPECS = [
-  ["rfx-bid-api", /body\.action\s*===\s*["']([^"']+)["']/g],
-  ["shipper-directory-api", /body\.action\s*===\s*["']([^"']+)["']/g],
-  ["carrier-profile-api", /\baction\s*===\s*["']([^"']+)["']/g],
-  ["ratebook-carrier-api", /\baction\s*===\s*["']([^"']+)["']/g],
-  ["shipper-profile-api", /\baction\s*===\s*["']([^"']+)["']/g]
+const FIXED_EDGE_OPERATIONS = new Map([
+  ["create-raw-upload", [["create_raw_upload", "POST multipart /functions/v1/create-raw-upload", "human"]]],
+  ["gmail-oauth-callback", [["complete_google_oauth_callback", "GET /functions/v1/gmail-oauth-callback?code&state", "external-tokenized"]]],
+  ["google-chat-app", [["health", "GET /functions/v1/google-chat-app", "public"], ["handle_chat_event", "POST /functions/v1/google-chat-app provider event", "public"]]],
+  ["interpret-upload", [["interpret_upload", "POST /functions/v1/interpret-upload", "human"]]],
+  ["sync-banxico-fx", [["sync_banxico_fx", "POST /functions/v1/sync-banxico-fx x-cron-secret", "internal/service-role"]]],
+  ["sync-rateware-catalog", [["sync_rateware_catalog", "POST /functions/v1/sync-rateware-catalog", "human"]]],
+  ["whatsapp-webhook", [["verify_webhook", "GET /functions/v1/whatsapp-webhook hub challenge", "external-tokenized"], ["ingest_webhook", "POST /functions/v1/whatsapp-webhook signed event", "external-tokenized"]]]
+]);
+
+const METADATA_FIELDS = [
+  "actionName", "sourceKind", "sourceFile", "handler", "endpoint", "businessModule", "operation", "resource",
+  "access", "exposure", "sensitivity", "tenantRelevance", "proposedPermissionKey", "functionalOwner",
+  "decisionStatus", "lifecycle", "replacementAction", "analysisCoverage", "rpcSignature"
 ];
 
-const FIXED_EDGE_OPERATIONS = [
-  ["create-raw-upload", "create_raw_upload", "POST multipart /functions/v1/create-raw-upload", "human"],
-  ["gmail-oauth-callback", "complete_google_oauth_callback", "GET /functions/v1/gmail-oauth-callback?code&state", "external-tokenized"],
-  ["google-chat-app", "health", "GET /functions/v1/google-chat-app", "public"],
-  ["google-chat-app", "handle_chat_event", "POST /functions/v1/google-chat-app provider event", "public"],
-  ["interpret-upload", "interpret_upload", "POST /functions/v1/interpret-upload", "human"],
-  ["sync-banxico-fx", "sync_banxico_fx", "POST /functions/v1/sync-banxico-fx x-cron-secret", "internal/service-role"],
-  ["sync-rateware-catalog", "sync_rateware_catalog", "POST /functions/v1/sync-rateware-catalog", "human"],
-  ["whatsapp-webhook", "verify_webhook", "GET /functions/v1/whatsapp-webhook hub challenge", "external-tokenized"],
-  ["whatsapp-webhook", "ingest_webhook", "POST /functions/v1/whatsapp-webhook signed event", "external-tokenized"]
-];
+function slash(value) { return value.split(sep).join("/"); }
+function text(path) { return readFileSync(path, "utf8"); }
+function hash(value) { return createHash("sha256").update(value).digest("hex"); }
 
-function slash(value) {
-  return value.split(sep).join("/");
+// Format/comment-insensitive lexical tokens. This is intentionally not a semantic parser.
+export function semanticTokens(value, { sql = false } = {}) {
+  const out = [];
+  let i = 0;
+  while (i < value.length) {
+    const c = value[i];
+    const n = value[i + 1];
+    if (/\s/.test(c)) { i += 1; continue; }
+    if ((c === "/" && n === "/") || (sql && c === "-" && n === "-")) {
+      const end = value.indexOf("\n", i + 2);
+      if (end < 0) break;
+      i = end + 1;
+      continue;
+    }
+    if (c === "/" && n === "*") {
+      const end = value.indexOf("*/", i + 2);
+      i = end < 0 ? value.length : end + 2;
+      continue;
+    }
+    if (c === "'" || c === "\"" || c === "`") {
+      const quote = c;
+      let token = c;
+      i += 1;
+      while (i < value.length) {
+        const current = value[i];
+        token += current;
+        i += 1;
+        if (current === "\\" && i < value.length) { token += value[i]; i += 1; continue; }
+        if (current === quote) {
+          if (value[i] === quote && quote !== "`") { token += value[i]; i += 1; continue; }
+          break;
+        }
+      }
+      out.push("s:" + token + ";");
+      continue;
+    }
+    if (/[A-Za-z0-9_$]/.test(c)) {
+      let token = c;
+      i += 1;
+      while (i < value.length && /[A-Za-z0-9_$]/.test(value[i])) { token += value[i]; i += 1; }
+      out.push("w:" + token + ";");
+      continue;
+    }
+    out.push("p:" + c + ";");
+    i += 1;
+  }
+  return out.join("");
 }
 
-function text(path) {
-  return readFileSync(path, "utf8");
+export function fingerprint(value, options) { return hash(semanticTokens(value, options)); }
+export function metadataFingerprint(entry) {
+  return hash(JSON.stringify(METADATA_FIELDS.map((field) => [field, entry?.[field] ?? null])));
 }
 
-function normalizedSource(value) {
-  return value.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-}
-
-function fingerprint(value) {
-  return createHash("sha256").update(normalizedSource(value)).digest("hex");
-}
-
-function lineNumber(value, index) {
-  return value.slice(0, index).split("\n").length;
-}
-
-function matches(regex, value, minimumIndex = 0) {
+function allMatches(regex, value, minimumIndex = 0) {
   regex.lastIndex = 0;
-  const output = [];
+  const out = [];
   let match;
   while ((match = regex.exec(value))) {
-    if (match.index >= minimumIndex) output.push(match);
+    if (match.index >= minimumIndex) out.push(match);
+    if (!match[0]) regex.lastIndex += 1;
   }
-  return output;
+  return out;
+}
+
+function closingDelimiter(source, start, open, close) {
+  let depth = 0;
+  let quote = null;
+  for (let i = start; i < source.length; i += 1) {
+    const c = source[i];
+    if (quote) {
+      if (c === "\\") { i += 1; continue; }
+      if (c === quote) {
+        if (source[i + 1] === quote && quote !== "`") { i += 1; continue; }
+        quote = null;
+      }
+      continue;
+    }
+    if (c === "'" || c === "\"" || c === "`") { quote = c; continue; }
+    if (source.startsWith("//", i) || source.startsWith("--", i)) {
+      const end = source.indexOf("\n", i + 2);
+      if (end < 0) return source.length - 1;
+      i = end;
+      continue;
+    }
+    if (source.startsWith("/*", i)) {
+      const end = source.indexOf("*/", i + 2);
+      if (end < 0) return source.length - 1;
+      i = end + 1;
+      continue;
+    }
+    if (c === open) depth += 1;
+    if (c === close && --depth === 0) return i;
+  }
+  return -1;
 }
 
 function functionSegment(source, handler) {
-  if (!handler || handler === "inline" || handler === "Deno.serve") return null;
-  const escaped = handler.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const startPattern = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${escaped}\\s*\\(|(?:const|let)\\s+${escaped}\\s*=`, "m");
-  const start = startPattern.exec(source);
+  if (!handler || ["inline", "undetermined", "Deno.serve"].includes(handler)) return null;
+  const escaped = handler.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp("(?:export\\s+)?(?:async\\s+)?function\\s+" + escaped + "\\s*\\(|(?:const|let)\\s+" + escaped + "\\s*=", "m");
+  const start = regex.exec(source);
   if (!start) return null;
-  const tail = source.slice(start.index + start[0].length);
-  const next = /^(?:export\s+)?(?:async\s+)?function\s+[A-Za-z_$]|^(?:export\s+)?(?:const|let)\s+[A-Za-z_$][\w$]*\s*=/m.exec(tail);
-  return source.slice(start.index, next ? start.index + start[0].length + next.index : source.length);
+  const brace = source.indexOf("{", start.index + start[0].length);
+  const end = brace >= 0 ? closingDelimiter(source, brace, "{", "}") : -1;
+  return source.slice(start.index, end >= 0 ? end + 1 : source.length);
 }
 
-function dispatchHandler(segment) {
-  const match = /(?:return\s+jsonResponse\(\s*)?await\s+([A-Za-z_$][\w$]*)\s*\(/.exec(segment);
-  return match?.[1] || "inline";
+function handlerAnalysis(dispatch, source, handlerHint = null) {
+  const ignored = new Set(["jsonResponse", "Response", "cleanText", "String", "Number", "Boolean", "Object", "Array", "Date", "Set", "Map"]);
+  const returned = /return\s+(?:jsonResponse\s*\(\s*)?(?:await\s+)?([A-Za-z_$][\w$]*)\s*\(/.exec(dispatch)?.[1] || null;
+  const explicit = handlerHint || (returned && !ignored.has(returned) ? returned : null);
+  if (explicit) {
+    const segment = functionSegment(source, explicit);
+    if (segment) return { handler: explicit, handlerStatus: "named-existing", sourceSegment: segment };
+    return { handler: explicit, handlerStatus: "named-missing", sourceSegment: dispatch };
+  }
+  for (const match of allMatches(/\bawait\s+([A-Za-z_$][\w$]*)\s*\(/g, dispatch)) {
+    const segment = functionSegment(source, match[1]);
+    if (segment) return { handler: match[1], handlerStatus: "named-existing", sourceSegment: segment };
+  }
+  if (/\breturn\b|\.from\s*\(|jsonResponse\s*\(|new\s+Response\s*\(/.test(dispatch)) {
+    return { handler: "inline", handlerStatus: "inline-real", sourceSegment: dispatch };
+  }
+  return { handler: "undetermined", handlerStatus: "undetermined", sourceSegment: dispatch };
 }
 
-function edgeSurface({ functionName, actionName, sourceFile, handler, endpoint, sourceKind, sourceSegment, exposureHint }) {
+function dispatchSegment(source, item, fallbackEnd) {
+  if (item.discoveryKind === "literal-comparison") {
+    const ifStart = source.lastIndexOf("if", item.index);
+    if (ifStart >= 0 && item.index - ifStart < 96) {
+      const open = source.indexOf("(", ifStart);
+      const close = open >= 0 ? closingDelimiter(source, open, "(", ")") : -1;
+      const brace = close >= 0 ? source.indexOf("{", close) : -1;
+      const end = brace >= 0 ? closingDelimiter(source, brace, "{", "}") : -1;
+      if (end >= 0 && item.index < close) return source.slice(ifStart, end + 1);
+    }
+  }
+  return source.slice(item.index, fallbackEnd);
+}
+
+function localCandidate(path) {
+  const options = extname(path) ? [path] : [path, path + ".ts", path + ".mjs", path + ".js", join(path, "index.ts")];
+  return options.find((item) => existsSync(item) && statSync(item).isFile()) || null;
+}
+
+function dependencyEnvelope(repoRoot, initialFiles, overrides = new Map()) {
+  const root = resolve(repoRoot);
+  const queue = [...initialFiles];
+  const visited = new Set();
+  const unresolved = [];
+  const parts = [];
+  while (queue.length) {
+    const sourceFile = slash(queue.shift());
+    if (visited.has(sourceFile)) continue;
+    visited.add(sourceFile);
+    const absolute = join(root, sourceFile);
+    const source = overrides.get(sourceFile) ?? (existsSync(absolute) ? text(absolute) : null);
+    if (source === null) { unresolved.push(sourceFile); continue; }
+    parts.push(sourceFile + "\n" + semanticTokens(source));
+    for (const match of allMatches(/(?:from\s*|import\s*\()\s*["'](\.[^"']+)["']/g, source)) {
+      const requested = resolve(dirname(absolute), match[1]);
+      const found = localCandidate(requested);
+      if (!found) { unresolved.push(slash(relative(root, requested))); continue; }
+      const relativeFile = slash(relative(root, found));
+      if (!relativeFile.startsWith("../") && !visited.has(relativeFile)) queue.push(relativeFile);
+    }
+  }
+  const files = [...visited].sort();
   return {
-    canonicalId: `edge.${functionName}.${actionName}`,
-    actionName,
-    sourceKind,
-    sourceFile,
-    handler,
-    endpoint,
-    exposureHint,
-    sourceFingerprint: fingerprint(sourceSegment)
+    authorizationFingerprint: hash(parts.sort().join("\n--dependency--\n")),
+    dependencyFiles: files,
+    unresolvedDependencies: [...new Set(unresolved)].sort(),
+    analysisCoverage: unresolved.length ? "dependency-undetermined" : files.length > 1 ? "shared-observed" : "direct"
   };
 }
 
-export function discoverRatewareApiFromText(source, growthSource) {
-  const sourceFile = "supabase/functions/rateware-api/index.ts";
-  const raw = matches(/body\.action\s*===\s*["']([^"']+)["']/g, source)
-    .filter((match) => !/typeof\s+$/.test(source.slice(Math.max(0, match.index - 24), match.index)));
-  const output = [];
-  const seen = new Set();
-  raw.forEach((match, index) => {
-    const actionName = match[1];
-    if (seen.has(actionName)) return;
-    seen.add(actionName);
-    const end = raw[index + 1]?.index ?? source.length;
-    const dispatch = source.slice(match.index, end);
-    const detectedHandler = dispatchHandler(dispatch);
-    const declaredHandlerSource = functionSegment(source, detectedHandler);
-    const handler = detectedHandler === "inline" || declaredHandlerSource ? detectedHandler : "inline";
-    const handlerSource = declaredHandlerSource || dispatch;
-    output.push(edgeSurface({
-      functionName: "rateware-api",
-      actionName,
-      sourceFile,
-      handler,
-      endpoint: "POST /functions/v1/rateware-api body.action",
-      sourceKind: "edge-selector",
-      sourceSegment: handlerSource,
-      exposureHint: "human"
-    }));
-  });
-
-  const growthFile = "supabase/functions/rateware-api/growth.ts";
-  for (const match of matches(/case\s+["']([^"']+)["']\s*:\s*return\s+await\s+([A-Za-z_$][\w$]*)\s*\(/g, growthSource)) {
-    const handler = match[2];
-    output.push(edgeSurface({
-      functionName: "rateware-api",
-      actionName: match[1],
-      sourceFile: growthFile,
-      handler,
-      endpoint: "POST /functions/v1/rateware-api body.action via growth dispatcher",
-      sourceKind: "edge-selector",
-      sourceSegment: functionSegment(growthSource, handler) || match[0],
-      exposureHint: "human"
-    }));
-  }
-  return output;
-}
-
-function discoverRatewareApi(repoRoot) {
-  return discoverRatewareApiFromText(
-    text(join(repoRoot, "supabase/functions/rateware-api/index.ts")),
-    text(join(repoRoot, "supabase/functions/rateware-api/growth.ts"))
-  );
-}
-
 function selectorExposure(functionName, actionName) {
-  if (functionName === "shipper-directory-api") return "human";
+  if (functionName === "shipper-directory-api" || functionName === "rateware-api") return "human";
   if (functionName === "rfx-bid-api" && actionName.startsWith("public_")) return "public";
   return "external-tokenized";
 }
 
-export function discoverSelectorSurfacesFromText(functionName, sourceFile, source, regex) {
-  const output = [];
-  const start = source.indexOf("Deno.serve");
-  const raw = matches(regex, source, start);
+function edgeSurface(functionName, actionName, sourceFile, handlerInfo, endpoint, sourceKind, envelope, discoveryKind) {
+  return {
+    canonicalId: "edge." + functionName + "." + actionName,
+    actionName, sourceKind, sourceFile,
+    handler: handlerInfo.handler,
+    handlerStatus: handlerInfo.handlerStatus,
+    endpoint,
+    exposureHint: selectorExposure(functionName, actionName),
+    sourceFingerprint: fingerprint(handlerInfo.sourceSegment),
+    authorizationFingerprint: envelope.authorizationFingerprint,
+    dependencyFiles: envelope.dependencyFiles,
+    unresolvedDependencies: envelope.unresolvedDependencies,
+    analysisCoverage: envelope.analysisCoverage,
+    discoveryKind
+  };
+}
+
+function equalityActions(source, minimum) {
+  const out = [];
+  for (const regex of [/\b(?:body\.)?action\s*===?\s*["']([^"']+)["']/g, /["']([^"']+)["']\s*===?\s*\b(?:body\.)?action\b/g]) {
+    for (const match of allMatches(regex, source, minimum)) {
+      if (!/typeof\s+$/.test(source.slice(Math.max(0, match.index - 24), match.index))) {
+        out.push({ actionName: match[1], index: match.index, discoveryKind: "literal-comparison", handlerHint: null });
+      }
+    }
+  }
+  return out;
+}
+
+function switchActions(source, minimum) {
+  const out = [];
+  for (const match of allMatches(/switch\s*\(/g, source, minimum)) {
+    const open = source.indexOf("(", match.index);
+    const close = closingDelimiter(source, open, "(", ")");
+    if (close < 0 || !/\baction\b/.test(source.slice(open + 1, close))) continue;
+    const start = source.indexOf("{", close);
+    if (start < 0) continue;
+    const end = closingDelimiter(source, start, "{", "}");
+    if (end < 0) continue;
+    const block = source.slice(start + 1, end);
+    for (const item of allMatches(/case\s+["']([^"']+)["']\s*:/g, block)) {
+      const tail = block.slice(item.index + item[0].length);
+      const hint = /(?:return\s+)?(?:await\s+)?([A-Za-z_$][\w$]*)\s*\(/.exec(tail)?.[1] || null;
+      out.push({ actionName: item[1], index: start + 1 + item.index, discoveryKind: "switch-case", handlerHint: hint });
+    }
+  }
+  return out;
+}
+
+function mapActions(source, minimum) {
+  const out = [];
+  for (const match of allMatches(/(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*\{/g, source, 0)) {
+    const start = source.indexOf("{", match.index);
+    const end = closingDelimiter(source, start, "{", "}");
+    if (end < 0) continue;
+    const escaped = match[1].replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
+    const usage = source.slice(Math.max(end + 1, minimum));
+    if (!new RegExp(escaped + "\\s*(?:\\[\\s*(?:body\\.)?action\\s*\\]|\\.get\\(\\s*(?:body\\.)?action)").test(usage)) continue;
+    const block = source.slice(start + 1, end);
+    for (const item of allMatches(/(?:["']([^"']+)["']|([A-Za-z_$][\w$]*))\s*:\s*([A-Za-z_$][\w$]*)/g, block)) {
+      out.push({ actionName: item[1] || item[2], index: start + 1 + item.index, discoveryKind: "handler-object-map", handlerHint: item[3] });
+    }
+  }
+  for (const match of allMatches(/(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*new\s+Map\s*\(\s*\[/g, source, 0)) {
+    const start = source.indexOf("[", match.index);
+    const end = closingDelimiter(source, start, "[", "]");
+    if (end < 0) continue;
+    const escaped = match[1].replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
+    if (!new RegExp(escaped + "\\.get\\(\\s*(?:body\\.)?action").test(source.slice(Math.max(end + 1, minimum)))) continue;
+    const block = source.slice(start + 1, end);
+    for (const item of allMatches(/\[\s*["']([^"']+)["']\s*,\s*([A-Za-z_$][\w$]*)\s*\]/g, block)) {
+      out.push({ actionName: item[1], index: start + 1 + item.index, discoveryKind: "handler-map", handlerHint: item[2] });
+    }
+  }
+  return out;
+}
+
+function dispatchMatches(source, minimum = 0) {
+  const combined = [...equalityActions(source, minimum), ...switchActions(source, minimum), ...mapActions(source, minimum)]
+    .sort((a, b) => a.index - b.index || a.actionName.localeCompare(b.actionName));
   const seen = new Set();
-  raw.forEach((match, index) => {
-    const actionName = match[1];
-    if (seen.has(actionName)) return;
-    seen.add(actionName);
-    const end = raw.slice(index + 1).find((candidate) => !seen.has(candidate[1]))?.index ?? source.length;
-    const dispatch = source.slice(match.index, end);
-    const detectedHandler = dispatchHandler(dispatch);
-    const declaredHandlerSource = functionSegment(source, detectedHandler);
-    const handler = detectedHandler === "inline" || declaredHandlerSource ? detectedHandler : "inline";
-    output.push(edgeSurface({
-      functionName,
-      actionName,
-      sourceFile,
-      handler,
-      endpoint: `POST /functions/v1/${functionName} body.action`,
-      sourceKind: "edge-selector",
-      sourceSegment: declaredHandlerSource || dispatch,
-      exposureHint: selectorExposure(functionName, actionName)
-    }));
+  return combined.filter((item) => seen.has(item.actionName) ? false : (seen.add(item.actionName), true));
+}
+
+function hasUnresolvedDynamicDispatch(source, minimum, found) {
+  const body = source.slice(minimum);
+  const kinds = new Set(found.map((item) => item.discoveryKind));
+  const unresolvedLookup = /\[\s*(?:body\.)?action\s*\]|\.get\s*\(\s*(?:body\.)?action\s*\)/.test(body) && !kinds.has("handler-object-map") && !kinds.has("handler-map");
+  const unresolvedSwitch = /switch\s*\([^)]*action/.test(body) && !kinds.has("switch-case");
+  return /\baction\b/.test(body) && (unresolvedLookup || unresolvedSwitch || found.length === 0);
+}
+
+export function discoverSelectorSurfacesFromText(functionName, sourceFile, source, _legacyRegex, options = {}) {
+  const minimum = Math.max(0, source.indexOf("Deno.serve"));
+  const found = dispatchMatches(source, minimum);
+  const envelope = options.envelope || { authorizationFingerprint: fingerprint(source), dependencyFiles: [sourceFile], unresolvedDependencies: [], analysisCoverage: "direct" };
+  const surfaces = found.map((item, index) => {
+    const dispatch = dispatchSegment(source, item, found[index + 1]?.index ?? source.length);
+    return edgeSurface(functionName, item.actionName, sourceFile, handlerAnalysis(dispatch, source, item.handlerHint), "POST /functions/v1/" + functionName + " body.action", "edge-selector", envelope, item.discoveryKind);
   });
-  return output;
+  surfaces.dynamicDispatch = hasUnresolvedDynamicDispatch(source, minimum, found);
+  return surfaces;
 }
 
-function discoverSelectorApis(repoRoot) {
-  return SELECTOR_SPECS.flatMap(([functionName, regex]) => {
-    const sourceFile = `supabase/functions/${functionName}/index.ts`;
-    return discoverSelectorSurfacesFromText(functionName, sourceFile, text(join(repoRoot, sourceFile)), regex);
+export function discoverRatewareApiFromText(source, growthSource, options = {}) {
+  const mainFile = "supabase/functions/rateware-api/index.ts";
+  const growthFile = "supabase/functions/rateware-api/growth.ts";
+  const envelope = options.envelope || { authorizationFingerprint: fingerprint(source + "\n" + growthSource), dependencyFiles: [mainFile, growthFile], unresolvedDependencies: [], analysisCoverage: "shared-observed" };
+  const main = discoverSelectorSurfacesFromText("rateware-api", mainFile, source, null, { envelope });
+  const growthMatches = switchActions(growthSource, 0);
+  const growth = growthMatches.map((item, index) => {
+    const dispatch = growthSource.slice(item.index, growthMatches[index + 1]?.index ?? growthSource.length);
+    return edgeSurface("rateware-api", item.actionName, growthFile, handlerAnalysis(dispatch, growthSource, item.handlerHint), "POST /functions/v1/rateware-api body.action via growth dispatcher", "edge-selector", envelope, item.discoveryKind);
+  });
+  growth.dynamicDispatch = growthMatches.length === 0 && hasUnresolvedDynamicDispatch(growthSource, 0, growthMatches);
+  const seen = new Set();
+  const surfaces = [...main, ...growth].filter((item) => {
+    if (seen.has(item.canonicalId)) return false;
+    seen.add(item.canonicalId);
+    if (item.sourceFile === growthFile) item.endpoint = "POST /functions/v1/rateware-api body.action via growth dispatcher";
+    return true;
+  });
+  surfaces.dynamicDispatch = Boolean(main.dynamicDispatch || growth.dynamicDispatch);
+  return surfaces;
+}
+
+function discoverFixedApis(repoRoot, functionName, sourceFile, source) {
+  const envelope = dependencyEnvelope(repoRoot, [sourceFile]);
+  return (FIXED_EDGE_OPERATIONS.get(functionName) || []).map(([actionName, endpoint, exposureHint]) => {
+    const info = { handler: "Deno.serve", handlerStatus: "named-existing", sourceSegment: source };
+    const surface = edgeSurface(functionName, actionName, sourceFile, info, endpoint, "edge-method", envelope, "fixed-http-method");
+    surface.exposureHint = exposureHint;
+    return surface;
   });
 }
 
-function discoverFixedApis(repoRoot) {
-  return FIXED_EDGE_OPERATIONS.map(([functionName, actionName, endpoint, exposureHint]) => {
-    const sourceFile = `supabase/functions/${functionName}/index.ts`;
-    const source = text(join(repoRoot, sourceFile));
-    return edgeSurface({
-      functionName,
-      actionName,
-      sourceFile,
-      handler: "Deno.serve",
-      endpoint,
-      sourceKind: "edge-method",
-      sourceSegment: source,
-      exposureHint
-    });
-  });
+function unquoteIdentifier(value) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) return "\"" + trimmed.slice(1, -1).replace(/""/g, "\"") + "\"";
+  return trimmed.toLowerCase();
 }
 
-function migrationFiles(directory) {
-  return readdirSync(directory).filter((name) => name.endsWith(".sql")).sort();
+function qualifiedName(value) {
+  const parts = value.split(/\s*\.\s*/).map(unquoteIdentifier);
+  return parts.length === 1 ? { schema: "public", name: parts[0] } : { schema: parts.at(-2), name: parts.at(-1) };
 }
 
-function discoverPostgresFunctions(repoRoot) {
-  const directory = join(repoRoot, "supabase/migrations");
-  const latest = new Map();
-  for (const name of migrationFiles(directory)) {
-    const sourceFile = `supabase/migrations/${name}`;
-    const source = text(join(directory, name));
-    const found = matches(/create\s+(?:or\s+replace\s+)?function\s+((?:[A-Za-z_][\w]*\.)?[A-Za-z_][\w]*)\s*\(/gi, source);
-    found.forEach((match, index) => {
-      const functionName = match[1].toLowerCase();
-      const end = found[index + 1]?.index ?? source.length;
-      latest.set(functionName, {
-        canonicalId: `rpc.${functionName}`,
-        actionName: functionName,
+function splitArguments(value) {
+  const out = [];
+  let start = 0;
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < value.length; i += 1) {
+    const c = value[i];
+    if (quote) {
+      if (c === quote) {
+        if (value[i + 1] === quote) { i += 1; continue; }
+        quote = null;
+      } else if (c === "\\") i += 1;
+      continue;
+    }
+    if (c === "'" || c === "\"") quote = c;
+    else if (c === "(" || c === "[") depth += 1;
+    else if (c === ")" || c === "]") depth -= 1;
+    else if (c === "," && depth === 0) { out.push(value.slice(start, i)); start = i + 1; }
+  }
+  if (value.slice(start).trim()) out.push(value.slice(start));
+  return out;
+}
+
+const TYPE_START = /^(?:smallint|integer|int|bigint|decimal|numeric|real|double|money|character|varchar|text|bytea|timestamp|date|time|interval|boolean|bool|enum|point|line|json|jsonb|uuid|xml|inet|cidr|macaddr|bit|varbit|record|void|any|pg_catalog\.|public\.|auth\.|storage\.|\")/i;
+
+function argumentType(argument) {
+  let value = argument.trim().replace(/\s+(?:default\s+|=)[\s\S]*$/i, "").trim();
+  const mode = /^(inout|in\s+out|in|out|variadic)\s+/i.exec(value);
+  if (mode) {
+    if (/^out$/i.test(mode[1])) return null;
+    value = value.slice(mode[0].length).trim();
+  }
+  const tokens = value.match(/"(?:[^"]|"")*"|[^\s]+/g) || [];
+  if (tokens.length > 1 && !TYPE_START.test(tokens[0])) tokens.shift();
+  return semanticTokens(tokens.join(" "), { sql: true }).replace(/[wps]:|;/g, "").toLowerCase();
+}
+
+function canonicalSignature(argumentsText) {
+  return splitArguments(argumentsText).map(argumentType).filter((item) => item !== null && item !== "").join(",");
+}
+
+function ddlEvents(source) {
+  const clean = source
+    .replace(/\/\*[\s\S]*?\*\//g, (match) => " ".repeat(match.length))
+    .replace(/--[^\n]*/g, (match) => " ".repeat(match.length));
+  const name = '((?:"(?:[^"]|"")+"|[A-Za-z_][\\w$]*)(?:\\s*\\.\\s*(?:"(?:[^"]|"")+"|[A-Za-z_][\\w$]*))?)';
+  const regex = new RegExp("\\b(create\\s+(?:or\\s+replace\\s+)?function|drop\\s+function(?:\\s+if\\s+exists)?)\\s+" + name + "\\s*\\(", "gi");
+  return allMatches(regex, clean).map((match) => {
+    const open = clean.indexOf("(", match.index + match[0].length - 1);
+    const close = closingDelimiter(clean, open, "(", ")");
+    if (close < 0) return null;
+    return {
+      kind: /^create/i.test(match[1]) ? "create" : "drop",
+      ...qualifiedName(match[2]),
+      signature: canonicalSignature(source.slice(open + 1, close)),
+      index: match.index,
+      end: close + 1
+    };
+  }).filter(Boolean);
+}
+
+export function discoverPostgresFunctionsFromSources(sources) {
+  const active = new Map();
+  for (const { sourceFile, source } of [...sources].sort((a, b) => a.sourceFile.localeCompare(b.sourceFile))) {
+    const events = ddlEvents(source);
+    events.forEach((event, index) => {
+      const identity = event.schema + "." + event.name + "(" + event.signature + ")";
+      if (event.kind === "drop") { active.delete(identity); return; }
+      const segment = source.slice(event.index, events[index + 1]?.index ?? source.length);
+      active.set(identity, {
+        canonicalId: "rpc." + identity,
+        actionName: event.schema + "." + event.name,
         sourceKind: "postgres-function",
         sourceFile,
-        handler: functionName,
-        endpoint: "PostgreSQL function / PostgREST RPC surface",
+        handler: identity,
+        handlerStatus: "named-existing",
+        endpoint: "PostgreSQL function / PostgREST RPC surface " + identity,
         exposureHint: "internal/service-role",
-        sourceFingerprint: fingerprint(source.slice(match.index, end))
+        sourceFingerprint: fingerprint(segment, { sql: true }),
+        authorizationFingerprint: fingerprint(segment, { sql: true }),
+        dependencyFiles: [sourceFile],
+        unresolvedDependencies: [],
+        analysisCoverage: "direct",
+        discoveryKind: "postgres-ddl",
+        rpcSignature: event.signature
       });
     });
   }
-  return [...latest.values()];
+  return [...active.values()].sort((a, b) => a.canonicalId.localeCompare(b.canonicalId));
+}
+
+function migrationSources(repoRoot) {
+  const directory = join(repoRoot, "supabase/migrations");
+  return readdirSync(directory).filter((name) => name.endsWith(".sql")).sort()
+    .map((name) => ({ sourceFile: "supabase/migrations/" + name, source: text(join(directory, name)) }));
+}
+
+export function discoverGovernableInventory(repoRoot) {
+  const root = resolve(repoRoot);
+  const functionsDirectory = join(root, "supabase/functions");
+  const surfaces = [];
+  const candidates = [];
+  const declarations = [];
+  for (const functionName of readdirSync(functionsDirectory).sort()) {
+    const directory = join(functionsDirectory, functionName);
+    if (!statSync(directory).isDirectory() || functionName === "_shared") continue;
+    const sourceFile = "supabase/functions/" + functionName + "/index.ts";
+    const path = join(root, sourceFile);
+    if (!existsSync(path)) {
+      declarations.push({ canonicalId: "declaration.edge." + functionName, sourcePath: "supabase/functions/" + functionName, expectedHandlerAbsent: true });
+      continue;
+    }
+    const source = text(path);
+    if (FIXED_EDGE_OPERATIONS.has(functionName)) {
+      surfaces.push(...discoverFixedApis(root, functionName, sourceFile, source));
+      continue;
+    }
+    if (functionName === "rateware-api") {
+      const growthFile = "supabase/functions/rateware-api/growth.ts";
+      const growth = text(join(root, growthFile));
+      const found = discoverRatewareApiFromText(source, growth, { envelope: dependencyEnvelope(root, [sourceFile, growthFile]) });
+      surfaces.push(...found);
+      if (found.dynamicDispatch) candidates.push({ code: "DYNAMIC_DISPATCH_REQUIRES_REVIEW", functionName, sourceFile });
+      continue;
+    }
+    const found = discoverSelectorSurfacesFromText(functionName, sourceFile, source, null, { envelope: dependencyEnvelope(root, [sourceFile]) });
+    surfaces.push(...found);
+    if (found.dynamicDispatch) candidates.push({ code: "DYNAMIC_DISPATCH_REQUIRES_REVIEW", functionName, sourceFile });
+    else if (found.length === 0) candidates.push({ code: "UNREGISTERED_EDGE_ENTRYPOINT", functionName, sourceFile });
+  }
+  surfaces.push(...discoverPostgresFunctionsFromSources(migrationSources(root)));
+  surfaces.sort((a, b) => a.canonicalId.localeCompare(b.canonicalId));
+  return { surfaces, candidates, declarations };
 }
 
 export function discoverGovernableSurfaces(repoRoot) {
-  const root = resolve(repoRoot);
-  return [
-    ...discoverRatewareApi(root),
-    ...discoverSelectorApis(root),
-    ...discoverFixedApis(root),
-    ...discoverPostgresFunctions(root)
-  ].sort((left, right) => left.canonicalId.localeCompare(right.canonicalId));
+  const inventory = discoverGovernableInventory(repoRoot);
+  inventory.surfaces.discoveryCandidates = inventory.candidates;
+  inventory.surfaces.discoveredDeclarations = inventory.declarations;
+  return inventory.surfaces;
 }
 
 function issue(level, code, canonicalId, message) {
@@ -245,12 +510,19 @@ function issue(level, code, canonicalId, message) {
 
 function validateEntry(entry, issues) {
   const id = entry?.canonicalId || "-";
-  const required = ["canonicalId", "actionName", "sourceKind", "sourceFile", "handler", "endpoint", "businessModule", "operation", "resource", "access", "exposure", "sensitivity", "tenantRelevance", "proposedPermissionKey", "functionalOwner", "decisionStatus", "lifecycle", "sourceFingerprint"];
+  const required = [
+    "canonicalId", "actionName", "sourceKind", "sourceFile", "handler", "endpoint", "businessModule", "operation",
+    "resource", "access", "exposure", "sensitivity", "tenantRelevance", "proposedPermissionKey", "functionalOwner",
+    "decisionStatus", "lifecycle", "sourceFingerprint", "analysisCoverage"
+  ];
   for (const key of required) {
-    if (entry?.[key] === undefined || entry?.[key] === null || entry?.[key] === "") issues.push(issue("error", "MISSING_METADATA", id, `Missing required field ${key}.`));
+    if (entry?.[key] === undefined || entry?.[key] === null || entry?.[key] === "") issues.push(issue("error", "MISSING_METADATA", id, "Missing required field " + key + "."));
   }
-  if (!/^(?:edge\.[a-z0-9-]+\.[a-z0-9_]+|rpc\.[a-z0-9_]+\.[a-z0-9_]+)$/.test(entry.canonicalId || "")) issues.push(issue("error", "INVALID_CANONICAL_ID", id, "Canonical ID does not match the stable naming convention."));
+  const edgeId = /^edge\.[a-z0-9-]+\.[a-z0-9_]+$/;
+  const rpcId = /^rpc\.(?:"[^"]+"|[a-z_][a-z0-9_$]*)\.(?:"[^"]+"|[a-z_][a-z0-9_$]*)\([^)]*\)$/;
+  if (!(edgeId.test(entry.canonicalId || "") || rpcId.test(entry.canonicalId || ""))) issues.push(issue("error", "INVALID_CANONICAL_ID", id, "Canonical ID does not match the stable naming convention."));
   if (!/^[a-z][a-z0-9_.-]*$/.test(entry.proposedPermissionKey || "")) issues.push(issue("error", "INVALID_PERMISSION_KEY", id, "Permission key is not stable lower-case notation."));
+  if (!/^[0-9a-f]{64}$/.test(entry.sourceFingerprint || "")) issues.push(issue("error", "INVALID_SOURCE_FINGERPRINT", id, "sourceFingerprint must be lower-case SHA-256."));
   if (!SOURCE_KINDS.has(entry.sourceKind)) issues.push(issue("error", "INVALID_SOURCE_KIND", id, "Invalid sourceKind."));
   if (!EXPOSURES.has(entry.exposure)) issues.push(issue("error", "INVALID_EXPOSURE", id, "Invalid exposure."));
   if (!DECISION_STATUSES.has(entry.decisionStatus)) issues.push(issue("error", "INVALID_DECISION_STATUS", id, "Invalid decisionStatus."));
@@ -258,6 +530,7 @@ function validateEntry(entry, issues) {
   if (!ACCESS_KINDS.has(entry.access)) issues.push(issue("error", "INVALID_ACCESS", id, "Invalid access."));
   if (!SENSITIVITIES.has(entry.sensitivity)) issues.push(issue("error", "INVALID_SENSITIVITY", id, "Invalid sensitivity."));
   if (!TENANT_RELEVANCE.has(entry.tenantRelevance)) issues.push(issue("error", "INVALID_TENANT_RELEVANCE", id, "Invalid tenantRelevance."));
+  if (!ANALYSIS_COVERAGE.has(entry.analysisCoverage)) issues.push(issue("error", "INVALID_ANALYSIS_COVERAGE", id, "Invalid analysisCoverage."));
   if (entry.access === "write" && !entry.sensitivity) issues.push(issue("error", "WRITE_WITHOUT_SENSITIVITY", id, "Write action requires sensitivity."));
   if (entry.exposure !== "internal/service-role" && entry.decisionStatus === "internal_only") issues.push(issue("error", "HUMAN_INTERNAL_ONLY", id, "Externally reachable surface cannot be internal_only."));
   if (entry.exposure === "internal/service-role" && entry.decisionStatus !== "internal_only") issues.push(issue("error", "INTERNAL_EXPOSURE_CONTRADICTION", id, "Internal/service-role surface must be internal_only."));
@@ -297,7 +570,20 @@ function permissionIssues(entries) {
   }
   for (const [key, values] of groups) {
     const signatures = new Set(values.map((entry) => [entry.resource, entry.operation, entry.access, entry.exposure, entry.tenantRelevance].join("|")));
-    if (signatures.size > 1) issues.push(issue("error", "INCOMPATIBLE_PERMISSION_REUSE", values[0].canonicalId, `Permission key ${key} has incompatible metadata.`));
+    if (signatures.size > 1) issues.push(issue("error", "INCOMPATIBLE_PERMISSION_REUSE", values[0].canonicalId, "Permission key " + key + " has incompatible metadata."));
+  }
+  return issues;
+}
+
+function renameIssues(entries, discovered) {
+  const issues = [];
+  const actualIds = new Set(discovered.map((item) => item.canonicalId));
+  const contractIds = new Set(entries.map((item) => item.canonicalId));
+  const removed = entries.filter((item) => !actualIds.has(item.canonicalId) && item.lifecycle === "active");
+  const added = discovered.filter((item) => !contractIds.has(item.canonicalId));
+  for (const oldEntry of removed) {
+    const candidate = added.find((item) => item.sourceFile === oldEntry.sourceFile && (item.handler === oldEntry.handler || item.sourceFingerprint === oldEntry.sourceFingerprint));
+    if (candidate) issues.push(issue("error", "RENAME_REQUIRES_DISPOSITION", candidate.canonicalId, "Possible rename from " + oldEntry.canonicalId + " requires alias/deprecation disposition."));
   }
   return issues;
 }
@@ -307,77 +593,88 @@ export function validateActionContract(contract, discovered, { repoRoot } = {}) 
   if (!CONTRACT_VERSION_PATTERN.test(contract?.contractVersion || "")) issues.push(issue("error", "INVALID_CONTRACT_VERSION", "-", "contractVersion must use semver."));
   const entries = Array.isArray(contract?.surfaces) ? contract.surfaces : [];
   if (!Array.isArray(contract?.surfaces)) issues.push(issue("error", "MISSING_SURFACES", "-", "surfaces must be an array."));
+  const reviewedMetadata = contract?.reviewedMetadataFingerprints || {};
+  const reviewedAuthorization = contract?.reviewedAuthorizationFingerprints || {};
   const idGroups = new Map();
   const nameGroups = new Map();
   for (const entry of entries) {
     validateEntry(entry, issues);
-    const values = idGroups.get(entry.canonicalId) || [];
-    values.push(entry);
-    idGroups.set(entry.canonicalId, values);
+    const ids = idGroups.get(entry.canonicalId) || [];
+    ids.push(entry);
+    idGroups.set(entry.canonicalId, ids);
     const names = nameGroups.get(entry.actionName) || [];
     names.push(entry);
     nameGroups.set(entry.actionName, names);
     if (entry.contractVersion !== contract.contractVersion) issues.push(issue("error", "ENTRY_VERSION_MISMATCH", entry.canonicalId, "Entry contractVersion differs from the contract."));
+    if (!reviewedMetadata[entry.canonicalId]) issues.push(issue("error", "METADATA_REVIEW_MISSING", entry.canonicalId, "Sensitive metadata has no reviewed fingerprint."));
+    else if (reviewedMetadata[entry.canonicalId] !== metadataFingerprint(entry)) issues.push(issue("error", "SENSITIVE_METADATA_CHANGED", entry.canonicalId, "Sensitive metadata changed without reviewed fingerprint refresh."));
+    if (!reviewedAuthorization[entry.canonicalId]) issues.push(issue("error", "AUTHORIZATION_FINGERPRINT_MISSING", entry.canonicalId, "Authorization dependency envelope has no reviewed fingerprint."));
   }
   for (const [id, values] of idGroups) if (values.length > 1) issues.push(issue("error", "DUPLICATE_CANONICAL_ID", id, "Canonical ID occurs more than once."));
-  for (const [name, values] of nameGroups) {
-    if (values.length > 1) issues.push(issue("info", "DUPLICATE_ACTION_NAME", values[0].canonicalId, `Action name ${name} occurs on ${values.length} governed surfaces.`));
+  for (const [name, values] of nameGroups) if (values.length > 1) issues.push(issue("info", "DUPLICATE_ACTION_NAME", values[0].canonicalId, "Action name " + name + " occurs on " + values.length + " governed surfaces."));
+  for (const candidate of discovered.discoveryCandidates || []) {
+    issues.push(issue("error", candidate.code, "edge." + candidate.functionName + ".__candidate__", "Edge entrypoint or dynamic dispatch requires explicit review and registration."));
   }
   const expected = contract?.expectedCounts || {};
-  const actualExpectedCounts = {
-    governable: entries.length,
+  const actualCounts = {
+    governable: discovered.length,
     edge: discovered.filter((entry) => entry.canonicalId.startsWith("edge.")).length,
     postgres: discovered.filter((entry) => entry.canonicalId.startsWith("rpc.")).length,
     ratewareApi: discovered.filter((entry) => entry.canonicalId.startsWith("edge.rateware-api.")).length
   };
   for (const key of ["governable", "edge", "postgres", "ratewareApi"]) {
-    if (expected[key] !== actualExpectedCounts[key]) issues.push(issue("error", "EXPECTED_COUNT_MISMATCH", "-", `${key} expected count differs from the reproducible inventory.`));
+    if (expected[key] !== actualCounts[key]) issues.push(issue("error", "EXPECTED_COUNT_MISMATCH", "-", key + " expected count differs from the reproducible inventory."));
   }
-  issues.push(...aliasIssues(entries), ...permissionIssues(entries));
+  issues.push(...aliasIssues(entries), ...permissionIssues(entries), ...renameIssues(entries, discovered));
 
   const contractById = new Map(entries.map((entry) => [entry.canonicalId, entry]));
   const actualById = new Map(discovered.map((entry) => [entry.canonicalId, entry]));
   for (const actual of discovered) {
-    const expected = contractById.get(actual.canonicalId);
-    if (!expected) {
-      issues.push(issue("error", "UNREGISTERED_SURFACE", actual.canonicalId, "Governable surface is not registered."));
-      continue;
+    const expectedEntry = contractById.get(actual.canonicalId);
+    if (!expectedEntry) { issues.push(issue("error", "UNREGISTERED_SURFACE", actual.canonicalId, "Governable surface is not registered.")); continue; }
+    if (actual.handlerStatus === "named-missing") issues.push(issue("error", "HANDLER_MISSING", actual.canonicalId, "Named handler referenced by dispatch does not exist."));
+    if (actual.handlerStatus === "undetermined") issues.push(issue("error", "HANDLER_UNDETERMINED", actual.canonicalId, "Handler structure is not statically determinable."));
+    if (actual.analysisCoverage === "dependency-undetermined" || actual.unresolvedDependencies?.length) {
+      issues.push(issue("error", "AUTHORIZATION_DEPENDENCY_UNDETERMINED", actual.canonicalId, "Authorization-relevant local dependency could not be resolved."));
     }
-    for (const key of ["sourceKind", "sourceFile", "handler", "endpoint"]) {
-      if (expected[key] !== actual[key]) issues.push(issue("error", "SENSITIVE_SOURCE_CHANGE", actual.canonicalId, `${key} differs from the contract.`));
+    for (const key of ["actionName", "sourceKind", "sourceFile", "handler", "endpoint", "analysisCoverage"]) {
+      if (expectedEntry[key] !== actual[key]) issues.push(issue("error", "SENSITIVE_SOURCE_CHANGE", actual.canonicalId, key + " differs from the contract."));
     }
-    if (expected.exposure !== actual.exposureHint) issues.push(issue("error", "EXPOSURE_CHANGED", actual.canonicalId, "Observed exposure class differs from the contract."));
-    if (expected.sourceFingerprint !== actual.sourceFingerprint) issues.push(issue("error", "SOURCE_FINGERPRINT_CHANGED", actual.canonicalId, "Normalized source fingerprint changed; review and refresh deliberately."));
+    if ((expectedEntry.rpcSignature || "") !== (actual.rpcSignature || "")) issues.push(issue("error", "RPC_SIGNATURE_CHANGED", actual.canonicalId, "RPC signature differs from the contract."));
+    if (expectedEntry.exposure !== actual.exposureHint) issues.push(issue("error", "EXPOSURE_CHANGED", actual.canonicalId, "Observed exposure class differs from the contract."));
+    if (expectedEntry.sourceFingerprint !== actual.sourceFingerprint) issues.push(issue("error", "SOURCE_FINGERPRINT_CHANGED", actual.canonicalId, "Direct source fingerprint changed; review and refresh deliberately."));
+    if (reviewedAuthorization[actual.canonicalId] !== actual.authorizationFingerprint) issues.push(issue("error", "AUTHORIZATION_ENVELOPE_CHANGED", actual.canonicalId, "Authorization/shared dependency envelope changed; review and refresh deliberately."));
   }
   for (const entry of entries) {
     if (actualById.has(entry.canonicalId)) {
       if (["removed", "unreachable"].includes(entry.lifecycle)) issues.push(issue("error", "DISPOSED_SURFACE_STILL_PRESENT", entry.canonicalId, "Removed/unreachable surface is still present in source."));
-      continue;
+    } else if (!["removed", "unreachable"].includes(entry.lifecycle)) {
+      issues.push(issue("error", "REMOVED_WITHOUT_DISPOSITION", entry.canonicalId, "Contract surface is absent from source without removed/unreachable lifecycle."));
     }
-    if (!["removed", "unreachable"].includes(entry.lifecycle)) issues.push(issue("error", "REMOVED_WITHOUT_DISPOSITION", entry.canonicalId, "Contract surface is absent from source without removed/unreachable lifecycle."));
   }
 
   if (repoRoot) {
     for (const entry of entries) {
       const path = join(repoRoot, entry.sourceFile);
-      if (!existsSync(path)) {
-        issues.push(issue("error", "SOURCE_PATH_MISSING", entry.canonicalId, "Source path does not exist."));
-        continue;
+      if (!existsSync(path)) { issues.push(issue("error", "SOURCE_PATH_MISSING", entry.canonicalId, "Source path does not exist.")); continue; }
+      if (!["inline", "undetermined", "Deno.serve"].includes(entry.handler) && entry.sourceKind !== "postgres-function" && !functionSegment(text(path), entry.handler)) {
+        issues.push(issue("error", "HANDLER_MISSING", entry.canonicalId, "Named handler does not exist in source."));
       }
-      if (entry.handler !== "inline" && entry.handler !== "Deno.serve" && entry.sourceKind !== "postgres-function") {
-        const source = text(path);
-        if (!functionSegment(source, entry.handler)) issues.push(issue("error", "HANDLER_MISSING", entry.canonicalId, "Named handler does not exist in source."));
-      }
+    }
+    const foundDeclarations = new Map((discovered.discoveredDeclarations || []).map((item) => [item.canonicalId, item]));
+    const contractDeclarations = new Map((contract.nonGovernableDeclarations || []).map((item) => [item.canonicalId, item]));
+    for (const declaration of discovered.discoveredDeclarations || []) {
+      if (!contractDeclarations.has(declaration.canonicalId)) issues.push(issue("error", "UNREGISTERED_NON_GOVERNABLE_DECLARATION", declaration.canonicalId, "Directory without entrypoint requires explicit contract disposition."));
     }
     for (const declaration of contract.nonGovernableDeclarations || []) {
       const path = join(repoRoot, declaration.sourcePath);
       if (!existsSync(path)) issues.push(issue("warning", "DECLARATION_PATH_MISSING", declaration.canonicalId, "Declaration path no longer exists."));
       if (declaration.expectedHandlerAbsent && existsSync(join(path, "index.ts"))) issues.push(issue("error", "UNREACHABLE_BECAME_REACHABLE", declaration.canonicalId, "Previously unreachable declaration now has an index.ts handler."));
-      if (existsSync(path) && declaration.expectedHandlerAbsent && !existsSync(join(path, "index.ts"))) issues.push(issue("info", "NON_GOVERNABLE_DECLARATION", declaration.canonicalId, "Declaration remains unreachable and excluded from governable totals."));
+      if (foundDeclarations.has(declaration.canonicalId) && declaration.expectedHandlerAbsent) issues.push(issue("info", "NON_GOVERNABLE_DECLARATION", declaration.canonicalId, "Declaration remains unreachable and excluded from governable totals."));
     }
   }
 
-  const sorted = issues.sort((left, right) => [left.level, left.code, left.canonicalId].join("|").localeCompare([right.level, right.code, right.canonicalId].join("|")));
+  const sorted = issues.sort((a, b) => [a.level, a.code, a.canonicalId].join("|").localeCompare([b.level, b.code, b.canonicalId].join("|")));
   return {
     ok: !sorted.some((entry) => entry.level === "error"),
     counts: {
@@ -395,12 +692,16 @@ export function validateActionContract(contract, discovered, { repoRoot } = {}) 
 
 export function formatValidationResult(result) {
   const lines = [
-    `Action contract validation: ${result.ok ? "PASS" : "FAIL"}`,
-    `contract=${result.counts.contract} discovered=${result.counts.discovered} edge=${result.counts.edge} postgres=${result.counts.postgres}`,
-    `errors=${result.counts.errors} warnings=${result.counts.warnings} info=${result.counts.info}`
+    "Action contract validation: " + (result.ok ? "PASS" : "FAIL"),
+    "contract=" + result.counts.contract + " discovered=" + result.counts.discovered + " edge=" + result.counts.edge + " postgres=" + result.counts.postgres,
+    "errors=" + result.counts.errors + " warnings=" + result.counts.warnings + " info=" + result.counts.info
   ];
-  for (const item of result.issues) lines.push(`${item.level.toUpperCase()} ${item.code} ${item.canonicalId} ${item.message}`);
-  return `${lines.join("\n")}\n`;
+  for (const item of result.issues) lines.push(item.level.toUpperCase() + " " + item.code + " " + item.canonicalId + " " + item.message);
+  return lines.join("\n") + "\n";
+}
+
+export function validationExitCode(result) {
+  return result.ok ? 0 : 1;
 }
 
 export function repoRootFrom(start) {
@@ -418,6 +719,8 @@ export function inventoryRows(contract, discovered) {
   return contract.surfaces.map((entry) => ({
     ...entry,
     discovered: actual.has(entry.canonicalId) ? "yes" : "no",
-    fingerprintMatches: actual.get(entry.canonicalId)?.sourceFingerprint === entry.sourceFingerprint ? "yes" : "no"
+    fingerprintMatches: actual.get(entry.canonicalId)?.sourceFingerprint === entry.sourceFingerprint ? "yes" : "no",
+    authorizationFingerprintMatches: actual.get(entry.canonicalId)?.authorizationFingerprint === contract.reviewedAuthorizationFingerprints?.[entry.canonicalId] ? "yes" : "no",
+    metadataFingerprintMatches: metadataFingerprint(entry) === contract.reviewedMetadataFingerprints?.[entry.canonicalId] ? "yes" : "no"
   }));
 }

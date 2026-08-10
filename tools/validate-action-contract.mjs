@@ -1,5 +1,5 @@
 import { ACTION_CONTRACT } from "../supabase/functions/_shared/action-contract.mjs";
-import { discoverGovernableSurfaces, formatValidationResult, repoRootFrom, validateActionContract } from "./action-contract-lib.mjs";
+import { discoverGovernableSurfaces, formatValidationResult, repoRootFrom, validateActionContract, validationExitCode } from "./action-contract-lib.mjs";
 
 const repoRoot = repoRootFrom(process.cwd());
 const discovered = discoverGovernableSurfaces(repoRoot);
@@ -11,4 +11,4 @@ if (process.argv.includes("--json")) {
   process.stdout.write(formatValidationResult(result));
 }
 
-if (!result.ok) process.exitCode = 1;
+process.exitCode = validationExitCode(result);
