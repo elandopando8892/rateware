@@ -25,7 +25,7 @@ const FIXED_EDGE_OPERATIONS = new Map([
 const METADATA_FIELDS = [
   "actionName", "sourceKind", "sourceFile", "handler", "endpoint", "businessModule", "operation", "resource",
   "access", "exposure", "sensitivity", "tenantRelevance", "proposedPermissionKey", "functionalOwner",
-  "decisionStatus", "lifecycle", "replacementAction", "analysisCoverage", "rpcSignature"
+  "decisionStatus", "lifecycle", "replacementAction", "analysisCoverage", "coverageSignals", "rpcSignature"
 ];
 
 function slash(value) { return value.split(sep).join("/"); }
@@ -140,22 +140,88 @@ function functionSegment(source, handler) {
   return source.slice(start.index, end >= 0 ? end + 1 : source.length);
 }
 
-function handlerAnalysis(dispatch, source, handlerHint = null) {
+function importedBinding(source, localName) {
+  for (const match of allMatches(/import\s*\{([\s\S]*?)\}\s*from\s*["']([^"']+)["']/g, source)) {
+    for (const item of match[1].split(",")) {
+      const binding = /^\s*([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?\s*$/.exec(item);
+      if (binding && (binding[2] || binding[1]) === localName) return { importedName: binding[1], specifier: match[2] };
+    }
+  }
+  for (const match of allMatches(/import\s+([A-Za-z_$][\w$]*)\s+from\s*["']([^"']+)["']/g, source)) {
+    if (match[1] === localName) return { importedName: "default", specifier: match[2] };
+  }
+  return null;
+}
+
+function exportedHandlerSegment(envelope, sourceFile, exportName, seen = new Set()) {
+  const key = sourceFile + "#" + exportName;
+  if (seen.has(key)) return { status: "ambiguous", reason: "handler-reexport-cycle" };
+  seen.add(key);
+  const source = envelope?.moduleSources?.get(sourceFile);
+  if (!source) return { status: "missing", reason: "handler-module-unavailable" };
+  if (exportName === "default") {
+    const match = /export\s+default\s+(?:async\s+)?function\s*([A-Za-z_$][\w$]*)?\s*\(/.exec(source);
+    if (match) {
+      const segment = match[1] ? functionSegment(source, match[1]) : source.slice(match.index);
+      return { status: "resolved", segment: segment || source.slice(match.index), exportedName: "default" };
+    }
+  }
+  const direct = functionSegment(source, exportName);
+  if (direct && new RegExp("export\\s+(?:(?:async|const|let|function)\\s+)*" + exportName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(direct)) {
+    return { status: "resolved", segment: direct, exportedName: exportName };
+  }
+  for (const match of allMatches(/export\s*\{([\s\S]*?)\}(?:\s*from\s*["']([^"']+)["'])?/g, source)) {
+    for (const item of match[1].split(",")) {
+      const binding = /^\s*([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?\s*$/.exec(item);
+      if (!binding || (binding[2] || binding[1]) !== exportName) continue;
+      if (!match[2]) {
+        const local = functionSegment(source, binding[1]);
+        return local ? { status: "resolved", segment: local, exportedName: exportName } : { status: "missing", reason: "local-reexport-target-missing" };
+      }
+      const link = envelope.resolvedImports?.find((entry) => entry.sourceFile === sourceFile && entry.specifier === match[2]);
+      if (!link) return { status: "missing", reason: "reexport-target-unresolved" };
+      return exportedHandlerSegment(envelope, link.targetFile, binding[1], seen);
+    }
+  }
+  if (/export\s*\*\s*from\s*["']/.test(source)) return { status: "ambiguous", reason: "star-reexport-not-determinable" };
+  return { status: "missing", reason: "exported-handler-not-found" };
+}
+
+function resolveImportedHandler(source, sourceFile, handler, envelope) {
+  const binding = importedBinding(source, handler);
+  if (!binding) return null;
+  const link = envelope?.resolvedImports?.find((entry) => entry.sourceFile === sourceFile && entry.specifier === binding.specifier);
+  if (!link) return { status: "missing", reason: "handler-import-target-unresolved" };
+  return exportedHandlerSegment(envelope, link.targetFile, binding.importedName);
+}
+
+function handlerAnalysis(dispatch, source, handlerHint = null, options = {}) {
   const ignored = new Set(["jsonResponse", "Response", "cleanText", "String", "Number", "Boolean", "Object", "Array", "Date", "Set", "Map"]);
   const returned = /return\s+(?:jsonResponse\s*\(\s*)?(?:await\s+)?([A-Za-z_$][\w$]*)\s*\(/.exec(dispatch)?.[1] || null;
-  const explicit = handlerHint || (returned && !ignored.has(returned) ? returned : null);
+  const assignedReturn = /const\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+([A-Za-z_$][\w$]*)\s*\([\s\S]*?return\s+jsonResponse\s*\(\s*\1\s*\)/.exec(dispatch)?.[2] || null;
+  const explicit = handlerHint || assignedReturn || (returned && !ignored.has(returned) ? returned : null);
   if (explicit) {
     const segment = functionSegment(source, explicit);
     if (segment) return { handler: explicit, handlerStatus: "named-existing", sourceSegment: segment };
+    const imported = resolveImportedHandler(source, options.sourceFile, explicit, options.envelope);
+    if (imported?.status === "resolved") return { handler: explicit, handlerStatus: "named-existing", sourceSegment: imported.segment, handlerResolution: "imported-static" };
+    if (imported?.status === "ambiguous") return { handler: explicit, handlerStatus: "undetermined", sourceSegment: dispatch, handlerResolution: imported.reason };
     return { handler: explicit, handlerStatus: "named-missing", sourceSegment: dispatch };
   }
+  const plausible = [];
   for (const match of allMatches(/\bawait\s+([A-Za-z_$][\w$]*)\s*\(/g, dispatch)) {
     const segment = functionSegment(source, match[1]);
-    if (segment) return { handler: match[1], handlerStatus: "named-existing", sourceSegment: segment };
+    const imported = segment ? null : resolveImportedHandler(source, options.sourceFile, match[1], options.envelope);
+    if (segment || imported?.status === "resolved") plausible.push({ handler: match[1], sourceSegment: segment || imported.segment });
+    else if (imported?.status === "ambiguous") return { handler: "undetermined", handlerStatus: "undetermined", sourceSegment: dispatch, handlerResolution: imported.reason };
   }
-  if (/\breturn\b|\.from\s*\(|jsonResponse\s*\(|new\s+Response\s*\(/.test(dispatch)) {
+  if (plausible.length === 1 && !/\.(?:from|insert|update|upsert|delete)\s*\(/.test(dispatch)) {
+    return { ...plausible[0], handlerStatus: "named-existing", handlerResolution: "single-plausible-call" };
+  }
+  if (/\.(?:from|insert|update|upsert|delete)\s*\(|jsonResponse\s*\(|new\s+Response\s*\(/.test(dispatch)) {
     return { handler: "inline", handlerStatus: "inline-real", sourceSegment: dispatch };
   }
+  if (plausible.length > 1) return { handler: "undetermined", handlerStatus: "undetermined", sourceSegment: dispatch, handlerResolution: "multiple-plausible-operations" };
   return { handler: "undetermined", handlerStatus: "undetermined", sourceSegment: dispatch };
 }
 
@@ -178,11 +244,36 @@ function localCandidate(path) {
   return options.find((item) => existsSync(item) && statSync(item).isFile()) || null;
 }
 
+function importReferences(source) {
+  const staticReferences = [];
+  const dynamicReferences = [];
+  for (const match of allMatches(/(?:from\s*)["']([^"']+)["']/g, source)) {
+    staticReferences.push({ specifier: match[1], kind: "static" });
+  }
+  for (const match of allMatches(/\bimport\s*\(/g, source)) {
+    const open = source.indexOf("(", match.index);
+    const close = closingDelimiter(source, open, "(", ")");
+    if (close < 0) {
+      dynamicReferences.push({ expression: source.slice(open + 1), reason: "unterminated-dynamic-import" });
+      continue;
+    }
+    const expression = source.slice(open + 1, close).trim();
+    const literal = /^(?:["']([^"']+)["']|`([^`${}]*)`)$/.exec(expression);
+    if (literal) staticReferences.push({ specifier: literal[1] ?? literal[2], kind: "dynamic-literal" });
+    else dynamicReferences.push({ expression: semanticTokens(expression), reason: "nonliteral-dynamic-import" });
+  }
+  return { staticReferences, dynamicReferences };
+}
+
 function dependencyEnvelope(repoRoot, initialFiles, overrides = new Map()) {
   const root = resolve(repoRoot);
   const queue = [...initialFiles];
   const visited = new Set();
   const unresolved = [];
+  const dynamicDependencies = [];
+  const externalDependencies = [];
+  const resolvedImports = [];
+  const moduleSources = new Map();
   const parts = [];
   while (queue.length) {
     const sourceFile = slash(queue.shift());
@@ -191,21 +282,38 @@ function dependencyEnvelope(repoRoot, initialFiles, overrides = new Map()) {
     const absolute = join(root, sourceFile);
     const source = overrides.get(sourceFile) ?? (existsSync(absolute) ? text(absolute) : null);
     if (source === null) { unresolved.push(sourceFile); continue; }
+    moduleSources.set(sourceFile, source);
     parts.push(sourceFile + "\n" + semanticTokens(source));
-    for (const match of allMatches(/(?:from\s*|import\s*\()\s*["'](\.[^"']+)["']/g, source)) {
-      const requested = resolve(dirname(absolute), match[1]);
+    const references = importReferences(source);
+    for (const item of references.dynamicReferences) dynamicDependencies.push({ sourceFile, ...item });
+    for (const reference of references.staticReferences) {
+      if (!reference.specifier.startsWith(".")) {
+        externalDependencies.push({ sourceFile, specifier: reference.specifier, kind: reference.kind });
+        continue;
+      }
+      const requested = resolve(dirname(absolute), reference.specifier);
       const found = localCandidate(requested);
       if (!found) { unresolved.push(slash(relative(root, requested))); continue; }
       const relativeFile = slash(relative(root, found));
+      resolvedImports.push({ sourceFile, specifier: reference.specifier, targetFile: relativeFile, kind: reference.kind });
       if (!relativeFile.startsWith("../") && !visited.has(relativeFile)) queue.push(relativeFile);
     }
   }
   const files = [...visited].sort();
+  const coverageSignals = [files.length > 1 ? "shared_dependency_observed" : "direct"];
+  if (externalDependencies.length) coverageSignals.push("external_dependency");
+  if (unresolved.length) coverageSignals.push("unresolved_local_dependency", "coverage_not_determinable");
+  if (dynamicDependencies.length) coverageSignals.push("dynamic_dependency", "coverage_not_determinable");
   return {
     authorizationFingerprint: hash(parts.sort().join("\n--dependency--\n")),
     dependencyFiles: files,
     unresolvedDependencies: [...new Set(unresolved)].sort(),
-    analysisCoverage: unresolved.length ? "dependency-undetermined" : files.length > 1 ? "shared-observed" : "direct"
+    dynamicDependencies,
+    externalDependencies,
+    coverageSignals: [...new Set(coverageSignals)],
+    analysisCoverage: unresolved.length || dynamicDependencies.length ? "dependency-undetermined" : files.length > 1 ? "shared-observed" : "direct",
+    resolvedImports,
+    moduleSources
   };
 }
 
@@ -227,95 +335,139 @@ function edgeSurface(functionName, actionName, sourceFile, handlerInfo, endpoint
     authorizationFingerprint: envelope.authorizationFingerprint,
     dependencyFiles: envelope.dependencyFiles,
     unresolvedDependencies: envelope.unresolvedDependencies,
+    dynamicDependencies: envelope.dynamicDependencies || [],
+    externalDependencies: envelope.externalDependencies || [],
+    coverageSignals: envelope.coverageSignals || [envelope.analysisCoverage === "shared-observed" ? "shared_dependency_observed" : "direct"],
     analysisCoverage: envelope.analysisCoverage,
-    discoveryKind
+    discoveryKind,
+    handlerResolution: handlerInfo.handlerResolution || null
   };
 }
 
-function equalityActions(source, minimum) {
+function actionAliases(source, minimum, trustedAliases = []) {
+  const aliases = new Set(["body.action", ...trustedAliases]);
+  const body = source.slice(minimum);
+  const directAlias = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*body\.action\s*(?:;|\n)/g;
+  const sanitizedAlias = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(?:cleanText|text)\s*\(\s*body\.action(?:\s*,\s*[^;\r\n)]*)?\s*\)\s*(?:;|\n)/g;
+  for (const match of allMatches(directAlias, body)) aliases.add(match[1]);
+  for (const match of allMatches(sanitizedAlias, body)) aliases.add(match[1]);
+  return aliases;
+}
+
+function actionExpressionPattern(aliases) {
+  return [...aliases].map((item) => item === "body.action" ? "body\\.action" : item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+}
+
+function equalityActions(source, minimum, aliases = actionAliases(source, minimum)) {
   const out = [];
-  for (const regex of [/\b(?:body\.)?action\s*===?\s*["']([^"']+)["']/g, /["']([^"']+)["']\s*===?\s*\b(?:body\.)?action\b/g]) {
+  const expression = actionExpressionPattern(aliases);
+  for (const regex of [new RegExp("\\b(?:" + expression + ")\\b\\s*={2,3}\\s*(?:[\"']([^\"']+)[\"']|`([^`$]*)`)", "g"), new RegExp("(?:[\"']([^\"']+)[\"']|`([^`$]*)`)\\s*={2,3}\\s*\\b(?:" + expression + ")\\b", "g")]) {
     for (const match of allMatches(regex, source, minimum)) {
       if (!/typeof\s+$/.test(source.slice(Math.max(0, match.index - 24), match.index))) {
-        out.push({ actionName: match[1], index: match.index, discoveryKind: "literal-comparison", handlerHint: null });
+        out.push({ actionName: match[1] || match[2], index: match.index, discoveryKind: match[2] ? "static-template-comparison" : "literal-comparison", handlerHint: null });
       }
     }
   }
   return out;
 }
 
-function switchActions(source, minimum) {
+function switchActions(source, minimum, aliases = actionAliases(source, minimum)) {
   const out = [];
   for (const match of allMatches(/switch\s*\(/g, source, minimum)) {
     const open = source.indexOf("(", match.index);
     const close = closingDelimiter(source, open, "(", ")");
-    if (close < 0 || !/\baction\b/.test(source.slice(open + 1, close))) continue;
+    const expression = source.slice(open + 1, close);
+    if (close < 0 || ![...aliases].some((alias) => expression.includes(alias))) continue;
     const start = source.indexOf("{", close);
     if (start < 0) continue;
     const end = closingDelimiter(source, start, "{", "}");
     if (end < 0) continue;
     const block = source.slice(start + 1, end);
-    for (const item of allMatches(/case\s+["']([^"']+)["']\s*:/g, block)) {
+    for (const item of allMatches(/case\s+(?:["']([^"']+)["']|`([^`$]*)`)\s*:/g, block)) {
       const tail = block.slice(item.index + item[0].length);
       const hint = /(?:return\s+)?(?:await\s+)?([A-Za-z_$][\w$]*)\s*\(/.exec(tail)?.[1] || null;
-      out.push({ actionName: item[1], index: start + 1 + item.index, discoveryKind: "switch-case", handlerHint: hint });
+      out.push({ actionName: item[1] || item[2], index: start + 1 + item.index, discoveryKind: "switch-case", handlerHint: hint });
     }
   }
   return out;
 }
 
-function mapActions(source, minimum) {
+function mapActions(source, minimum, aliases = actionAliases(source, minimum)) {
   const out = [];
+  const registries = new Map();
+  const expression = actionExpressionPattern(aliases);
   for (const match of allMatches(/(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*\{/g, source, 0)) {
     const start = source.indexOf("{", match.index);
     const end = closingDelimiter(source, start, "{", "}");
     if (end < 0) continue;
     const escaped = match[1].replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
     const usage = source.slice(Math.max(end + 1, minimum));
-    if (!new RegExp(escaped + "\\s*(?:\\[\\s*(?:body\\.)?action\\s*\\]|\\.get\\(\\s*(?:body\\.)?action)").test(usage)) continue;
+    if (!new RegExp(escaped + "\\s*(?:\\[\\s*(?:" + expression + ")\\s*\\]|\\.get\\(\\s*(?:" + expression + "))").test(usage)) continue;
     const block = source.slice(start + 1, end);
-    for (const item of allMatches(/(?:["']([^"']+)["']|([A-Za-z_$][\w$]*))\s*:\s*([A-Za-z_$][\w$]*)/g, block)) {
-      out.push({ actionName: item[1] || item[2], index: start + 1 + item.index, discoveryKind: "handler-object-map", handlerHint: item[3] });
+    const recognized = [];
+    for (const item of allMatches(/(?:["']([^"']+)["']|`([^`$]*)`|([A-Za-z_$][\w$]*)|\[\s*(?:["']([^"']+)["']|`([^`$]*)`)\s*\])\s*:\s*([A-Za-z_$][\w$]*)/g, block)) {
+      out.push({ actionName: item[1] || item[2] || item[3] || item[4] || item[5], index: start + 1 + item.index, discoveryKind: "handler-object-map", handlerHint: item[6], registryName: match[1] });
+      recognized.push([item.index, item.index + item[0].length]);
     }
+    const remainder = [...block].map((char, index) => recognized.some(([a, b]) => index >= a && index < b) ? " " : char).join("").replace(/[\s,;]+/g, "");
+    registries.set(match[1], { kind: "object", deterministic: remainder === "", remainder: semanticTokens(remainder) });
   }
   for (const match of allMatches(/(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*new\s+Map\s*\(\s*\[/g, source, 0)) {
     const start = source.indexOf("[", match.index);
     const end = closingDelimiter(source, start, "[", "]");
     if (end < 0) continue;
     const escaped = match[1].replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
-    if (!new RegExp(escaped + "\\.get\\(\\s*(?:body\\.)?action").test(source.slice(Math.max(end + 1, minimum)))) continue;
+    if (!new RegExp(escaped + "\\.get\\(\\s*(?:" + expression + ")").test(source.slice(Math.max(end + 1, minimum)))) continue;
     const block = source.slice(start + 1, end);
-    for (const item of allMatches(/\[\s*["']([^"']+)["']\s*,\s*([A-Za-z_$][\w$]*)\s*\]/g, block)) {
-      out.push({ actionName: item[1], index: start + 1 + item.index, discoveryKind: "handler-map", handlerHint: item[2] });
+    const recognized = [];
+    for (const item of allMatches(/\[\s*(?:["']([^"']+)["']|`([^`$]*)`)\s*,\s*([A-Za-z_$][\w$]*)\s*\]/g, block)) {
+      out.push({ actionName: item[1] || item[2], index: start + 1 + item.index, discoveryKind: "handler-map", handlerHint: item[3], registryName: match[1] });
+      recognized.push([item.index, item.index + item[0].length]);
     }
+    const remainder = [...block].map((char, index) => recognized.some(([a, b]) => index >= a && index < b) ? " " : char).join("").replace(/[\s,;]+/g, "");
+    registries.set(match[1], { kind: "map", deterministic: remainder === "", remainder: semanticTokens(remainder) });
   }
+  out.registries = registries;
   return out;
 }
 
-function dispatchMatches(source, minimum = 0) {
-  const combined = [...equalityActions(source, minimum), ...switchActions(source, minimum), ...mapActions(source, minimum)]
+function dispatchAnalysis(source, minimum = 0, trustedAliases = []) {
+  const aliases = actionAliases(source, minimum, trustedAliases);
+  const maps = mapActions(source, minimum, aliases);
+  const combined = [...equalityActions(source, minimum, aliases), ...switchActions(source, minimum, aliases), ...maps]
     .sort((a, b) => a.index - b.index || a.actionName.localeCompare(b.actionName));
   const seen = new Set();
-  return combined.filter((item) => seen.has(item.actionName) ? false : (seen.add(item.actionName), true));
-}
-
-function hasUnresolvedDynamicDispatch(source, minimum, found) {
+  const items = combined.filter((item) => seen.has(item.actionName) ? false : (seen.add(item.actionName), true));
+  const candidates = [];
   const body = source.slice(minimum);
-  const kinds = new Set(found.map((item) => item.discoveryKind));
-  const unresolvedLookup = /\[\s*(?:body\.)?action\s*\]|\.get\s*\(\s*(?:body\.)?action\s*\)/.test(body) && !kinds.has("handler-object-map") && !kinds.has("handler-map");
-  const unresolvedSwitch = /switch\s*\([^)]*action/.test(body) && !kinds.has("switch-case");
-  return /\baction\b/.test(body) && (unresolvedLookup || unresolvedSwitch || found.length === 0);
+  const expression = actionExpressionPattern(aliases);
+  for (const match of allMatches(new RegExp("([A-Za-z_$][\\w$]*)\\s*(?:\\[\\s*(?:" + expression + ")\\s*\\]|\\.get\\s*\\(\\s*(?:" + expression + ")\\s*\\))", "g"), body)) {
+    const registry = maps.registries.get(match[1]);
+    if (!registry) candidates.push({ code: "UNRESOLVED_DISPATCH_REGISTRY", detail: match[1] });
+    else if (!registry.deterministic) candidates.push({ code: "NONDETERMINISTIC_DISPATCH_REGISTRY", detail: match[1] + ":" + registry.remainder });
+    const tail = body.slice(match.index + match[0].length, match.index + match[0].length + 24);
+    if (/^\s*(?:\|\||\?\?)/.test(tail)) candidates.push({ code: "AMBIGUOUS_DISPATCH_FALLBACK", detail: match[1] });
+  }
+  if (new RegExp("(?:" + expression + ")\\s*={2,3}\\s*`[^`]*\\$\\{").test(body) || new RegExp("`[^`]*\\$\\{[^`]*`\\s*={2,3}\\s*(?:" + expression + ")").test(body)) {
+    candidates.push({ code: "DYNAMIC_TEMPLATE_ACTION", detail: "template-literal-action" });
+  }
+  if (/\b(?:let|var)\s+[A-Za-z_$][\w$]*\s*=\s*(?:cleanText\s*\(\s*)?body\.action/.test(body)) candidates.push({ code: "MUTABLE_ACTION_ALIAS", detail: "mutable-alias" });
+  if ((body.match(/\bDeno\.serve\s*\(/g) || []).length > 1) candidates.push({ code: "MULTIPLE_EDGE_DISPATCHERS", detail: "multiple-Deno.serve" });
+  if (/\baction\b/.test(body) && items.length === 0) candidates.push({ code: "DISPATCH_NOT_DETERMINED", detail: "no-positive-surface-extraction" });
+  return { items, candidates };
 }
 
 export function discoverSelectorSurfacesFromText(functionName, sourceFile, source, _legacyRegex, options = {}) {
   const minimum = Math.max(0, source.indexOf("Deno.serve"));
-  const found = dispatchMatches(source, minimum);
+  const dispatch = dispatchAnalysis(source, minimum);
+  const found = dispatch.items;
   const envelope = options.envelope || { authorizationFingerprint: fingerprint(source), dependencyFiles: [sourceFile], unresolvedDependencies: [], analysisCoverage: "direct" };
   const surfaces = found.map((item, index) => {
-    const dispatch = dispatchSegment(source, item, found[index + 1]?.index ?? source.length);
-    return edgeSurface(functionName, item.actionName, sourceFile, handlerAnalysis(dispatch, source, item.handlerHint), "POST /functions/v1/" + functionName + " body.action", "edge-selector", envelope, item.discoveryKind);
+    const segment = dispatchSegment(source, item, found[index + 1]?.index ?? source.length);
+    return edgeSurface(functionName, item.actionName, sourceFile, handlerAnalysis(segment, source, item.handlerHint, { sourceFile, envelope }), "POST /functions/v1/" + functionName + " body.action", "edge-selector", envelope, item.discoveryKind);
   });
-  surfaces.dynamicDispatch = hasUnresolvedDynamicDispatch(source, minimum, found);
+  surfaces.dispatchCandidates = dispatch.candidates;
+  surfaces.dynamicDispatch = dispatch.candidates.length > 0;
   return surfaces;
 }
 
@@ -324,12 +476,14 @@ export function discoverRatewareApiFromText(source, growthSource, options = {}) 
   const growthFile = "supabase/functions/rateware-api/growth.ts";
   const envelope = options.envelope || { authorizationFingerprint: fingerprint(source + "\n" + growthSource), dependencyFiles: [mainFile, growthFile], unresolvedDependencies: [], analysisCoverage: "shared-observed" };
   const main = discoverSelectorSurfacesFromText("rateware-api", mainFile, source, null, { envelope });
-  const growthMatches = switchActions(growthSource, 0);
+  const growthAnalysis = dispatchAnalysis(growthSource, 0, ["action"]);
+  const growthMatches = growthAnalysis.items.filter((item) => item.discoveryKind === "switch-case");
   const growth = growthMatches.map((item, index) => {
     const dispatch = growthSource.slice(item.index, growthMatches[index + 1]?.index ?? growthSource.length);
-    return edgeSurface("rateware-api", item.actionName, growthFile, handlerAnalysis(dispatch, growthSource, item.handlerHint), "POST /functions/v1/rateware-api body.action via growth dispatcher", "edge-selector", envelope, item.discoveryKind);
+    return edgeSurface("rateware-api", item.actionName, growthFile, handlerAnalysis(dispatch, growthSource, item.handlerHint, { sourceFile: growthFile, envelope }), "POST /functions/v1/rateware-api body.action via growth dispatcher", "edge-selector", envelope, item.discoveryKind);
   });
-  growth.dynamicDispatch = growthMatches.length === 0 && hasUnresolvedDynamicDispatch(growthSource, 0, growthMatches);
+  growth.dispatchCandidates = growthAnalysis.candidates;
+  growth.dynamicDispatch = growthAnalysis.candidates.length > 0;
   const seen = new Set();
   const surfaces = [...main, ...growth].filter((item) => {
     if (seen.has(item.canonicalId)) return false;
@@ -337,7 +491,8 @@ export function discoverRatewareApiFromText(source, growthSource, options = {}) 
     if (item.sourceFile === growthFile) item.endpoint = "POST /functions/v1/rateware-api body.action via growth dispatcher";
     return true;
   });
-  surfaces.dynamicDispatch = Boolean(main.dynamicDispatch || growth.dynamicDispatch);
+  surfaces.dispatchCandidates = [...(main.dispatchCandidates || []), ...(growth.dispatchCandidates || [])];
+  surfaces.dynamicDispatch = surfaces.dispatchCandidates.length > 0;
   return surfaces;
 }
 
@@ -403,34 +558,106 @@ function canonicalSignature(argumentsText) {
   return splitArguments(argumentsText).map(argumentType).filter((item) => item !== null && item !== "").join(",");
 }
 
+function sqlStatements(source) {
+  const statements = [];
+  let start = 0;
+  let quote = null;
+  let dollarTag = null;
+  let lineComment = false;
+  let blockDepth = 0;
+  for (let i = 0; i < source.length; i += 1) {
+    const c = source[i];
+    const n = source[i + 1];
+    if (lineComment) { if (c === "\n") lineComment = false; continue; }
+    if (blockDepth) {
+      if (c === "/" && n === "*") { blockDepth += 1; i += 1; }
+      else if (c === "*" && n === "/") { blockDepth -= 1; i += 1; }
+      continue;
+    }
+    if (dollarTag) {
+      if (source.startsWith(dollarTag, i)) { i += dollarTag.length - 1; dollarTag = null; }
+      continue;
+    }
+    if (quote) {
+      if (c === quote) {
+        if (source[i + 1] === quote) i += 1;
+        else quote = null;
+      } else if (c === "\\") i += 1;
+      continue;
+    }
+    if (c === "-" && n === "-") { lineComment = true; i += 1; continue; }
+    if (c === "/" && n === "*") { blockDepth = 1; i += 1; continue; }
+    if (c === "'" || c === "\"") { quote = c; continue; }
+    if (c === "$") {
+      const tag = /^\$[A-Za-z_0-9]*\$/.exec(source.slice(i))?.[0];
+      if (tag) { dollarTag = tag; i += tag.length - 1; continue; }
+    }
+    if (c === ";") {
+      statements.push({ source: source.slice(start, i + 1), index: start, end: i + 1 });
+      start = i + 1;
+    }
+  }
+  if (source.slice(start).trim()) statements.push({ source: source.slice(start), index: start, end: source.length });
+  return statements;
+}
+
+function stripLeadingSqlTrivia(value) {
+  let out = value;
+  while (true) {
+    const next = out.replace(/^\s+/, "").replace(/^--[^\n]*(?:\n|$)/, "").replace(/^\/\*[\s\S]*?\*\//, "");
+    if (next === out) return out.trim();
+    out = next;
+  }
+}
+
+const SQL_QUALIFIED_NAME = '((?:"(?:[^"]|"")+"|[A-Za-z_][\\w$]*)(?:\\s*\\.\\s*(?:"(?:[^"]|"")+"|[A-Za-z_][\\w$]*))?)';
+
 function ddlEvents(source) {
-  const clean = source
-    .replace(/\/\*[\s\S]*?\*\//g, (match) => " ".repeat(match.length))
-    .replace(/--[^\n]*/g, (match) => " ".repeat(match.length));
-  const name = '((?:"(?:[^"]|"")+"|[A-Za-z_][\\w$]*)(?:\\s*\\.\\s*(?:"(?:[^"]|"")+"|[A-Za-z_][\\w$]*))?)';
-  const regex = new RegExp("\\b(create\\s+(?:or\\s+replace\\s+)?function|drop\\s+function(?:\\s+if\\s+exists)?)\\s+" + name + "\\s*\\(", "gi");
-  return allMatches(regex, clean).map((match) => {
-    const open = clean.indexOf("(", match.index + match[0].length - 1);
-    const close = closingDelimiter(clean, open, "(", ")");
-    if (close < 0) return null;
-    return {
-      kind: /^create/i.test(match[1]) ? "create" : "drop",
-      ...qualifiedName(match[2]),
-      signature: canonicalSignature(source.slice(open + 1, close)),
-      index: match.index,
-      end: close + 1
-    };
-  }).filter(Boolean);
+  const events = [];
+  const candidates = [];
+  for (const statement of sqlStatements(source)) {
+    const sql = stripLeadingSqlTrivia(statement.source).replace(/;\s*$/, "").trim();
+    if (!/^(?:create\s+(?:or\s+replace\s+)?function|drop\s+function)\b/i.test(sql)) continue;
+    const create = new RegExp("^create\\s+(?:or\\s+replace\\s+)?function\\s+" + SQL_QUALIFIED_NAME + "\\s*\\(", "i").exec(sql);
+    if (create) {
+      const open = sql.indexOf("(", create.index + create[0].length - 1);
+      const close = closingDelimiter(sql, open, "(", ")");
+      if (close < 0) { candidates.push({ code: "RPC_DDL_NOT_DETERMINED", detail: "create-signature-unclosed", index: statement.index }); continue; }
+      events.push({ kind: "create", ...qualifiedName(create[1]), signature: canonicalSignature(sql.slice(open + 1, close)), index: statement.index, end: statement.end, segment: statement.source });
+      continue;
+    }
+    const drop = /^drop\s+function(?:\s+if\s+exists)?\s+([\s\S]+?)(?:\s+(cascade|restrict))?$/i.exec(sql);
+    if (!drop) { candidates.push({ code: "RPC_DDL_NOT_DETERMINED", detail: "drop-header-unrecognized", index: statement.index }); continue; }
+    const targets = splitArguments(drop[1]);
+    if (!targets.length) { candidates.push({ code: "RPC_DDL_NOT_DETERMINED", detail: "drop-target-missing", index: statement.index }); continue; }
+    for (const rawTarget of targets) {
+      const target = rawTarget.trim();
+      const match = new RegExp("^" + SQL_QUALIFIED_NAME + "(?:\\s*\\(([\\s\\S]*)\\))?$", "i").exec(target);
+      if (!match) { candidates.push({ code: "RPC_DDL_NOT_DETERMINED", detail: "drop-target-unrecognized", index: statement.index }); continue; }
+      events.push({ kind: "drop", ...qualifiedName(match[1]), signature: match[2] === undefined ? null : canonicalSignature(match[2]), index: statement.index, end: statement.end, segment: statement.source });
+    }
+  }
+  events.candidates = candidates;
+  return events;
 }
 
 export function discoverPostgresFunctionsFromSources(sources) {
   const active = new Map();
+  const candidates = [];
   for (const { sourceFile, source } of [...sources].sort((a, b) => a.sourceFile.localeCompare(b.sourceFile))) {
     const events = ddlEvents(source);
-    events.forEach((event, index) => {
-      const identity = event.schema + "." + event.name + "(" + event.signature + ")";
+    for (const candidate of events.candidates || []) candidates.push({ ...candidate, sourceFile, canonicalId: "rpc.__ddl_candidate__." + sourceFile + ":" + candidate.index, message: "RPC DDL could not be classified safely." });
+    events.forEach((event, eventIndex) => {
+      const prefix = event.schema + "." + event.name + "(";
+      if (event.kind === "drop" && event.signature === null) {
+        const matches = [...active.keys()].filter((identity) => identity.startsWith(prefix));
+        if (matches.length === 1) active.delete(matches[0]);
+        else if (matches.length > 1) candidates.push({ code: "AMBIGUOUS_RPC_DROP", sourceFile, canonicalId: "rpc." + event.schema + "." + event.name + "(?)", message: "DROP FUNCTION without signature matches multiple active overloads." });
+        return;
+      }
+      const identity = prefix + event.signature + ")";
       if (event.kind === "drop") { active.delete(identity); return; }
-      const segment = source.slice(event.index, events[index + 1]?.index ?? source.length);
+      const segment = source.slice(event.index, events[eventIndex + 1]?.index ?? source.length);
       active.set(identity, {
         canonicalId: "rpc." + identity,
         actionName: event.schema + "." + event.name,
@@ -444,13 +671,18 @@ export function discoverPostgresFunctionsFromSources(sources) {
         authorizationFingerprint: fingerprint(segment, { sql: true }),
         dependencyFiles: [sourceFile],
         unresolvedDependencies: [],
+        dynamicDependencies: [],
+        externalDependencies: [],
+        coverageSignals: ["direct"],
         analysisCoverage: "direct",
         discoveryKind: "postgres-ddl",
         rpcSignature: event.signature
       });
     });
   }
-  return [...active.values()].sort((a, b) => a.canonicalId.localeCompare(b.canonicalId));
+  const surfaces = [...active.values()].sort((a, b) => a.canonicalId.localeCompare(b.canonicalId));
+  surfaces.ddlCandidates = candidates;
+  return surfaces;
 }
 
 function migrationSources(repoRoot) {
@@ -484,15 +716,18 @@ export function discoverGovernableInventory(repoRoot) {
       const growth = text(join(root, growthFile));
       const found = discoverRatewareApiFromText(source, growth, { envelope: dependencyEnvelope(root, [sourceFile, growthFile]) });
       surfaces.push(...found);
-      if (found.dynamicDispatch) candidates.push({ code: "DYNAMIC_DISPATCH_REQUIRES_REVIEW", functionName, sourceFile });
+      for (const candidate of found.dispatchCandidates || []) candidates.push({ ...candidate, functionName, sourceFile });
       continue;
     }
     const found = discoverSelectorSurfacesFromText(functionName, sourceFile, source, null, { envelope: dependencyEnvelope(root, [sourceFile]) });
     surfaces.push(...found);
-    if (found.dynamicDispatch) candidates.push({ code: "DYNAMIC_DISPATCH_REQUIRES_REVIEW", functionName, sourceFile });
-    else if (found.length === 0) candidates.push({ code: "UNREGISTERED_EDGE_ENTRYPOINT", functionName, sourceFile });
+    if (found.dispatchCandidates?.length) {
+      for (const candidate of found.dispatchCandidates) candidates.push({ ...candidate, functionName, sourceFile });
+    } else if (found.length === 0) candidates.push({ code: "UNREGISTERED_EDGE_ENTRYPOINT", functionName, sourceFile });
   }
-  surfaces.push(...discoverPostgresFunctionsFromSources(migrationSources(root)));
+  const postgres = discoverPostgresFunctionsFromSources(migrationSources(root));
+  surfaces.push(...postgres);
+  candidates.push(...(postgres.ddlCandidates || []));
   surfaces.sort((a, b) => a.canonicalId.localeCompare(b.canonicalId));
   return { surfaces, candidates, declarations };
 }
@@ -613,7 +848,7 @@ export function validateActionContract(contract, discovered, { repoRoot } = {}) 
   for (const [id, values] of idGroups) if (values.length > 1) issues.push(issue("error", "DUPLICATE_CANONICAL_ID", id, "Canonical ID occurs more than once."));
   for (const [name, values] of nameGroups) if (values.length > 1) issues.push(issue("info", "DUPLICATE_ACTION_NAME", values[0].canonicalId, "Action name " + name + " occurs on " + values.length + " governed surfaces."));
   for (const candidate of discovered.discoveryCandidates || []) {
-    issues.push(issue("error", candidate.code, "edge." + candidate.functionName + ".__candidate__", "Edge entrypoint or dynamic dispatch requires explicit review and registration."));
+    issues.push(issue("error", candidate.code, candidate.canonicalId || ("edge." + candidate.functionName + ".__candidate__"), candidate.message || "Entrypoint, dispatch, dependency, or DDL requires explicit review and registration."));
   }
   const expected = contract?.expectedCounts || {};
   const actualCounts = {
@@ -634,12 +869,13 @@ export function validateActionContract(contract, discovered, { repoRoot } = {}) 
     if (!expectedEntry) { issues.push(issue("error", "UNREGISTERED_SURFACE", actual.canonicalId, "Governable surface is not registered.")); continue; }
     if (actual.handlerStatus === "named-missing") issues.push(issue("error", "HANDLER_MISSING", actual.canonicalId, "Named handler referenced by dispatch does not exist."));
     if (actual.handlerStatus === "undetermined") issues.push(issue("error", "HANDLER_UNDETERMINED", actual.canonicalId, "Handler structure is not statically determinable."));
-    if (actual.analysisCoverage === "dependency-undetermined" || actual.unresolvedDependencies?.length) {
+    if (actual.analysisCoverage === "dependency-undetermined" || actual.unresolvedDependencies?.length || actual.dynamicDependencies?.length || actual.coverageSignals?.includes("coverage_not_determinable")) {
       issues.push(issue("error", "AUTHORIZATION_DEPENDENCY_UNDETERMINED", actual.canonicalId, "Authorization-relevant local dependency could not be resolved."));
     }
     for (const key of ["actionName", "sourceKind", "sourceFile", "handler", "endpoint", "analysisCoverage"]) {
       if (expectedEntry[key] !== actual[key]) issues.push(issue("error", "SENSITIVE_SOURCE_CHANGE", actual.canonicalId, key + " differs from the contract."));
     }
+    if (JSON.stringify(expectedEntry.coverageSignals || []) !== JSON.stringify(actual.coverageSignals || [])) issues.push(issue("error", "DEPENDENCY_COVERAGE_CHANGED", actual.canonicalId, "Dependency coverage classification differs from the contract."));
     if ((expectedEntry.rpcSignature || "") !== (actual.rpcSignature || "")) issues.push(issue("error", "RPC_SIGNATURE_CHANGED", actual.canonicalId, "RPC signature differs from the contract."));
     if (expectedEntry.exposure !== actual.exposureHint) issues.push(issue("error", "EXPOSURE_CHANGED", actual.canonicalId, "Observed exposure class differs from the contract."));
     if (expectedEntry.sourceFingerprint !== actual.sourceFingerprint) issues.push(issue("error", "SOURCE_FINGERPRINT_CHANGED", actual.canonicalId, "Direct source fingerprint changed; review and refresh deliberately."));
