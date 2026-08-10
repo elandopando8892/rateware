@@ -63,7 +63,7 @@ import { initWorkbenchTabs } from "./workbench-tabs.js";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 
 const DEFAULT_COMMERCIAL_SHARE_PCT = 3;
-const XBF_BUY_SELL_DEFAULT_MARKUP_PCT = 12;
+const XBF_BUY_SELL_DEFAULT_MARKUP_PCT = 15;
 const XBF_BUY_SELL_MIN_MARKUP_PCT = 7.5;
 const XBF_BUY_SELL_MAX_MARKUP_PCT = 15;
 const CRM_VENDOR_INITIAL_PAGE_SIZE = 200;

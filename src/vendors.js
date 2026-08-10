@@ -22,6 +22,7 @@ import {
   matchVendorRateRowsByScope,
   removeVendors,
   replaceBouncedVendorEmail,
+  reviewMarkosProfileUpdate,
   updateVendor,
   updateVendorSupportTicket,
   uploadVendorLogo
@@ -4335,7 +4336,9 @@ function relationshipTypeLabel(type) {
   return {
     support: "Support",
     improvement: "Vendor CI",
-    chat: "Bid Room chat"
+    chat: "Bid Room chat",
+    markos_call: "MarkOS call",
+    markos_profile: "MarkOS profile"
   }[type] || "Activity";
 }
 
@@ -4349,16 +4352,143 @@ function relationshipDate(value) {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function markosProfileFieldLabel(field) {
+  return {
+    "contact.contact_name": "Contact name",
+    "contact.primary_email": "Primary email",
+    "contact.whatsapp_phone": "WhatsApp phone",
+    "contact.preferred_channel": "Preferred channel",
+    coverage_notes: "Coverage notes",
+    "general.full_name": "Full name",
+    "general.mobile_number": "Mobile number",
+    "general.company_type": "Company type",
+    "general.operating_country": "Operating country",
+    "international.dba_name": "DBA name",
+    "international.legal_name": "International legal name",
+    "international.usdot_number": "USDOT number",
+    "international.mc_number": "MC number",
+    "international.scac_code": "SCAC code",
+    "international.payment_terms": "International payment terms",
+    "mexico.commercial_name": "Mexico commercial name",
+    "mexico.legal_name": "Mexico legal name",
+    "mexico.caat_code": "CAAT code",
+    "mexico.payment_terms": "Mexico payment terms",
+    "carrier_profile.geographic_scope": "Geographic scope",
+    "carrier_profile.service_scope": "Service scope",
+    "carrier_profile.regional_coverage": "Regional coverage",
+    "carrier_profile.border_crossings": "Border crossings",
+    "carrier_profile.mexican_ports": "Mexican ports",
+    "carrier_profile.value_added_services": "Value-added services",
+    "carrier_profile.additional_capabilities": "Additional capabilities",
+    "carrier_profile.interchange_agreements": "Interchange agreements",
+    "carrier_profile.certifications": "Certifications",
+    "insurance_infrastructure.coverage_amounts": "Insurance coverage",
+    "insurance_infrastructure.mexico_terminal_zips": "Mexico terminal ZIPs",
+    "insurance_infrastructure.us_ca_terminal_zips": "US/Canada terminal ZIPs",
+    "insurance_infrastructure.equipment_types": "Equipment types",
+    "insurance_infrastructure.equipment_notes": "Equipment notes",
+    "key_contacts.general_manager": "General manager",
+    "key_contacts.operations_manager": "Operations manager",
+    "key_contacts.safety_manager": "Safety manager",
+    "key_contacts.finance_manager": "Finance manager",
+    "key_contacts.commercial_manager": "Commercial manager",
+    "key_contacts.key_account_manager": "Key account manager",
+    "key_contacts.other_contacts": "Other contacts"
+  }[field] || String(field || "Profile field").replaceAll("_", " ").replaceAll(".", " / ");
+}
+
+function renderMarkosProfileUpdates(rows = []) {
+  if (!rows.length) return "";
+  const sortedRows = [...rows].sort((left, right) => {
+    const pendingOrder = Number(right.review_status === "pending") - Number(left.review_status === "pending");
+    return pendingOrder || Date.parse(right.occurred_at || 0) - Date.parse(left.occurred_at || 0);
+  });
+  return `
+    <section class="markos-relationship-section" aria-label="MarkOS carrier profile updates">
+      <div class="markos-section-heading">
+        <strong>MarkOS profile updates</strong>
+        <span>AI proposes; your team approves.</span>
+      </div>
+      <div class="markos-review-list">
+        ${sortedRows.slice(0, 6).map((row) => {
+          const pending = row.review_status === "pending";
+          return `
+            <article class="markos-review-card ${pending ? "is-pending" : ""}" data-markos-profile-request="${escapeHtml(row.id)}">
+              <div class="markos-review-heading">
+                <div>
+                  <strong>${pending ? "Awaiting review" : relationshipStatusLabel(row.review_status)}</strong>
+                  <small>${escapeHtml(relationshipDate(row.reviewed_at || row.occurred_at))}${row.reviewed_by ? ` · ${escapeHtml(row.reviewed_by)}` : ""}</small>
+                </div>
+                <span class="status-pill ${pending ? "warning" : row.review_status === "approved" ? "success" : "neutral"}">${escapeHtml(relationshipStatusLabel(row.review_status))}</span>
+              </div>
+              <div class="markos-change-grid">
+                ${(row.changes || []).map((change) => `
+                  <label>
+                    <span>${escapeHtml(markosProfileFieldLabel(change.field))}</span>
+                    ${pending
+                      ? `<input type="text" value="${escapeHtml(change.value)}" data-markos-change-field="${escapeHtml(change.field)}" maxlength="2000">`
+                      : `<strong>${escapeHtml(change.value)}</strong>`}
+                  </label>
+                `).join("")}
+              </div>
+              ${pending ? `
+                <label class="markos-review-note">
+                  <span>Review note (optional)</span>
+                  <textarea rows="2" maxlength="1200" data-markos-review-note placeholder="Why was this accepted or rejected?"></textarea>
+                </label>
+                <div class="action-row markos-review-actions">
+                  <button class="small-button secondary" type="button" data-markos-review="rejected">Reject</button>
+                  <button class="small-button" type="button" data-markos-review="approved">Approve changes</button>
+                </div>
+                <p class="status-message" data-markos-review-status aria-live="polite"></p>
+              ` : row.review_note ? `<p class="markos-review-result">${escapeHtml(row.review_note)}</p>` : ""}
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderMarkosConversations(rows = []) {
+  if (!rows.length) return "";
+  return `
+    <section class="markos-relationship-section" aria-label="Recent MarkOS conversations">
+      <div class="markos-section-heading">
+        <strong>Recent MarkOS conversations</strong>
+        <span>Voice context retained in Carrier CRM.</span>
+      </div>
+      <div class="markos-conversation-list">
+        ${rows.slice(0, 4).map((row) => `
+          <article>
+            <div>
+              <strong>${escapeHtml(row.subject || "MarkOS carrier conversation")}</strong>
+              <small>${escapeHtml(relationshipDate(row.occurred_at))} · ${escapeHtml(relationshipStatusLabel(row.outcome || "completed"))}</small>
+            </div>
+            <p>${escapeHtml(row.body_preview || "No carrier statement was captured.")}</p>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderDrawerVendorRelationship(result = {}) {
   if (!drawerVendorRelationship) return;
   const summary = result.summary || {};
   const timeline = result.timeline || [];
+  const profileUpdates = result.markos_profile_updates || [];
+  const conversations = result.markos_conversations || [];
   drawerVendorRelationship.innerHTML = `
     <div class="vendor-relationship-summary" aria-label="Carrier relationship summary">
       <span><strong>${Number(summary.open_support_tickets || 0)}</strong> support</span>
       <span><strong>${Number(summary.active_improvement_cases || 0)}</strong> CI cases</span>
       <span><strong>${Number(summary.bid_room_threads || 0)}</strong> chats</span>
+      <span><strong>${Number(summary.markos_conversations || 0)}</strong> MarkOS calls</span>
+      <span class="${Number(summary.pending_markos_profile_updates || 0) ? "has-pending" : ""}"><strong>${Number(summary.pending_markos_profile_updates || 0)}</strong> profile reviews</span>
     </div>
+    ${renderMarkosProfileUpdates(profileUpdates)}
+    ${renderMarkosConversations(conversations)}
     ${timeline.length ? `
       <div class="vendor-relationship-list">
         ${timeline.slice(0, 6).map((item) => `
@@ -4378,7 +4508,7 @@ function renderDrawerVendorRelationship(result = {}) {
     ` : `
       <div class="empty-state compact-empty">
         <strong>No linked activity</strong>
-        <span>Tickets, CI cases, and Bid Room chats will stay connected to this carrier here.</span>
+        <span>Tickets, CI cases, Bid Room chats, and MarkOS calls will stay connected to this carrier here.</span>
       </div>
     `}
   `;
@@ -5604,6 +5734,51 @@ drawer.addEventListener("click", (event) => {
   const profileLinkButton = event.target.closest("[data-copy-profile-link]");
   if (profileLinkButton) {
     copyVendorProfileLink(profileLinkButton.dataset.copyProfileLink);
+    return;
+  }
+  const markosReviewButton = event.target.closest("[data-markos-review]");
+  if (markosReviewButton) {
+    const card = markosReviewButton.closest("[data-markos-profile-request]");
+    const requestId = card?.dataset.markosProfileRequest;
+    const decision = markosReviewButton.dataset.markosReview;
+    const vendorId = activeDrawerVendorId;
+    const contextVersion = vendorDrawerContextVersion;
+    const reviewStatus = card?.querySelector("[data-markos-review-status]");
+    const controls = card ? [...card.querySelectorAll("[data-markos-review], [data-markos-change-field], [data-markos-review-note]")] : [];
+    if (!requestId || !decision || !vendorId || !card) return;
+    const changes = [...card.querySelectorAll("[data-markos-change-field]")].map((input) => ({
+      field: input.dataset.markosChangeField,
+      value: input.value.trim()
+    }));
+    const note = card.querySelector("[data-markos-review-note]")?.value?.trim() || "";
+    if (decision === "approved" && changes.some((change) => !change.value)) {
+      if (reviewStatus) reviewStatus.textContent = "Every approved field needs a value.";
+      return;
+    }
+    controls.forEach((control) => { control.disabled = true; });
+    if (reviewStatus) reviewStatus.textContent = decision === "approved" ? "Approving profile changes..." : "Rejecting profile changes...";
+    requirePrivatePage()
+      .then(() => reviewMarkosProfileUpdate(requestId, { decision, changes, note }))
+      .then((result) => {
+        if (activeDrawerVendorId !== vendorId || vendorDrawerContextVersion !== contextVersion) return;
+        if (result.vendor?.id) {
+          replaceVendorInState(result.vendor);
+          applyVendorUpdateToFunnel(result.vendor);
+          renderVendors(currentVendors);
+        }
+        openVendorDrawer(vendorId);
+        setStatus(
+          drawerEditStatus,
+          decision === "approved" ? "MarkOS changes approved and saved to the carrier profile." : "MarkOS changes rejected; the carrier profile was not changed.",
+          "success"
+        );
+      })
+      .catch((error) => {
+        if (activeDrawerVendorId === vendorId && vendorDrawerContextVersion === contextVersion) {
+          controls.forEach((control) => { control.disabled = false; });
+          if (reviewStatus) reviewStatus.textContent = humanizeError(error);
+        }
+      });
     return;
   }
   const supportButton = event.target.closest("[data-drawer-support-status]");

@@ -200,3 +200,7 @@ export async function fetchContactHistory(filters = {}) {
   }
   throw new Error(`Contact history exceeds the ${maxRows} row safety limit.`);
 }
+
+export async function fetchContactHistoryPage(filters = {}) {
+  return await callRatewareApi("list_contact_history", filters);
+}

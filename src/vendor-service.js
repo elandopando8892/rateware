@@ -164,6 +164,15 @@ export async function fetchVendorRelationshipActivity(vendorId, { limit = 20 } =
   return await callRatewareApi("get_vendor_relationship_activity", { vendor_id: vendorId, limit });
 }
 
+export async function reviewMarkosProfileUpdate(requestId, { decision, changes, note = "" } = {}) {
+  return await callRatewareApi("review_markos_profile_update", {
+    request_id: requestId,
+    decision,
+    changes,
+    note
+  });
+}
+
 export async function updateVendorSupportTicket(id, patch = {}) {
   return (await callRatewareApi("update_vendor_support_ticket", { id, ...patch })).row;
 }

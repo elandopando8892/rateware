@@ -11887,7 +11887,7 @@ async function getVendorRelationshipActivity(
   const vendorId = cleanText(vendor.id);
   const limit = Math.min(Math.max(Number(input.limit || 20) || 20, 1), 100);
 
-  const [support, improvementResult, chatResult] = await Promise.all([
+  const [support, improvementResult, chatResult, markosHistoryResult] = await Promise.all([
     listVendorSupportTickets(supabase, user, { vendor_id: vendorId, limit }),
     supabase
       .from("vendor_improvement_cases")
@@ -11903,10 +11903,20 @@ async function getVendorRelationshipActivity(
       .eq("vendor_id", vendorId)
       .neq("status", "archived")
       .order("updated_at", { ascending: false })
-      .limit(limit)
+      .limit(limit),
+    supabase
+      .from("contact_history")
+      .select("id,vendor_id,rfx_event_id,channel,direction,status,subject,body_preview,occurred_at,created_at,metadata")
+      .eq("owner_email", user.owner_email)
+      .eq("vendor_id", vendorId)
+      .eq("channel", "phone")
+      .contains("metadata", { source: "markos_voice" })
+      .order("occurred_at", { ascending: false })
+      .limit(Math.max(limit * 3, 50))
   ]);
   if (improvementResult.error) throw improvementResult.error;
   if (chatResult.error) throw chatResult.error;
+  if (markosHistoryResult.error) throw markosHistoryResult.error;
 
   const improvementCases = (improvementResult.data || []).map((row) => ({
     id: row.id,
@@ -11937,6 +11947,9 @@ async function getVendorRelationshipActivity(
       updated_at: cleanText(row.updated_at)
     };
   });
+  const markosHistory = (markosHistoryResult.data || []).map(serializeMarkosHistoryRow);
+  const markosProfileUpdates = markosHistory.filter((row) => row.kind === "profile_update");
+  const markosConversations = markosHistory.filter((row) => row.kind === "conversation");
   const timeline = [
     ...(support.rows || []).map((row) => ({
       type: "support",
@@ -11964,6 +11977,24 @@ async function getVendorRelationshipActivity(
       status: row.status,
       severity: "normal",
       activity_at: row.updated_at || row.created_at
+    })),
+    ...markosConversations.map((row) => ({
+      type: "markos_call",
+      id: row.id,
+      title: row.subject || "MarkOS carrier conversation",
+      detail: row.body_preview || "Conversation captured",
+      status: row.outcome || "completed",
+      severity: "normal",
+      activity_at: row.occurred_at
+    })),
+    ...markosProfileUpdates.map((row) => ({
+      type: "markos_profile",
+      id: row.id,
+      title: "Carrier profile update",
+      detail: `${row.changes.length} proposed change${row.changes.length === 1 ? "" : "s"}`,
+      status: row.review_status,
+      severity: row.review_status === "pending" ? "high" : "normal",
+      activity_at: row.reviewed_at || row.occurred_at
     }))
   ]
     .sort((left, right) => Date.parse(String(right.activity_at || "")) - Date.parse(String(left.activity_at || "")))
@@ -11975,12 +12006,203 @@ async function getVendorRelationshipActivity(
       open_support_tickets: (support.rows || []).filter((row) => !["resolved", "archived"].includes(cleanText(row.support_status) || "open")).length,
       active_improvement_cases: improvementCases.filter((row) => !["resolved", "archived"].includes(row.status)).length,
       bid_room_threads: chatThreads.length,
-      synced_chat_threads: chatThreads.filter((row) => row.google_chat_sync_status === "synced").length
+      synced_chat_threads: chatThreads.filter((row) => row.google_chat_sync_status === "synced").length,
+      markos_conversations: markosConversations.length,
+      pending_markos_profile_updates: markosProfileUpdates.filter((row) => row.review_status === "pending").length
     },
     tickets: support.rows || [],
     improvement_cases: improvementCases,
     chat_threads: chatThreads,
+    markos_conversations: markosConversations,
+    markos_profile_updates: markosProfileUpdates,
     timeline
+  };
+}
+
+const MARKOS_PROFILE_SECTIONS: Record<string, string[]> = {
+  general: ["full_name", "mobile_number", "company_type", "operating_country"],
+  international: ["dba_name", "legal_name", "usdot_number", "mc_number", "scac_code", "payment_terms"],
+  mexico: ["commercial_name", "legal_name", "caat_code", "payment_terms"],
+  carrier_profile: [
+    "geographic_scope", "service_scope", "regional_coverage", "border_crossings", "mexican_ports",
+    "value_added_services", "additional_capabilities", "interchange_agreements", "certifications"
+  ],
+  insurance_infrastructure: [
+    "coverage_amounts", "mexico_terminal_zips", "us_ca_terminal_zips", "equipment_types", "equipment_notes"
+  ],
+  key_contacts: [
+    "general_manager", "operations_manager", "safety_manager", "finance_manager", "commercial_manager",
+    "key_account_manager", "other_contacts"
+  ]
+};
+
+const MARKOS_PROFILE_DIRECT_FIELDS: Record<string, string> = {
+  "contact.contact_name": "contact_name",
+  "contact.primary_email": "primary_email",
+  "contact.whatsapp_phone": "whatsapp_phone",
+  "contact.preferred_channel": "preferred_channel",
+  coverage_notes: "coverage_notes"
+};
+
+const MARKOS_PROFILE_ALLOWED_FIELDS = new Set([
+  ...Object.keys(MARKOS_PROFILE_DIRECT_FIELDS),
+  ...Object.entries(MARKOS_PROFILE_SECTIONS).flatMap(([section, fields]) => fields.map((field) => `${section}.${field}`))
+]);
+
+function normalizeMarkosProfileChanges(value: unknown) {
+  const rows = Array.isArray(value) ? value : [];
+  if (!rows.length) throw new Error("At least one MarkOS profile change is required.");
+  return rows.slice(0, 30).map((item) => {
+    const row = objectRecord(item);
+    const field = cleanText(row.field)?.toLowerCase();
+    const nextValue = cleanText(row.value)?.slice(0, 2000);
+    if (!field || !MARKOS_PROFILE_ALLOWED_FIELDS.has(field)) throw new Error("MarkOS profile field is not allowed.");
+    if (!nextValue) throw new Error(`A value is required for ${field}.`);
+    if (field === "contact.preferred_channel" && !["email", "whatsapp", "whatsapp_group", "multi", "portal"].includes(nextValue.toLowerCase())) {
+      throw new Error("Unsupported preferred contact channel.");
+    }
+    return { field, value: nextValue };
+  });
+}
+
+function serializeMarkosHistoryRow(row: Record<string, unknown>) {
+  const metadata = objectRecord(row.metadata);
+  const status = cleanText(row.status) || "";
+  const isProfileUpdate = status === "profile_update_requested";
+  const appliedChanges = Array.isArray(metadata.applied_changes) && metadata.applied_changes.length
+    ? metadata.applied_changes
+    : metadata.changes;
+  const changes = isProfileUpdate
+    ? normalizeMarkosProfileChanges(appliedChanges)
+    : [];
+  return {
+    id: cleanText(row.id),
+    kind: isProfileUpdate ? "profile_update" : "conversation",
+    occurred_at: cleanText(row.occurred_at || row.created_at),
+    status,
+    outcome: status.startsWith("markos_call_") ? status.slice("markos_call_".length) : null,
+    subject: cleanText(row.subject)?.slice(0, 300) || null,
+    body_preview: cleanText(row.body_preview)?.slice(0, 1200) || null,
+    review_status: isProfileUpdate ? cleanText(metadata.review_status)?.toLowerCase() || "pending" : null,
+    review_note: isProfileUpdate ? cleanText(metadata.review_note)?.slice(0, 1200) || null : null,
+    reviewed_at: isProfileUpdate ? cleanText(metadata.reviewed_at) : null,
+    reviewed_by: isProfileUpdate ? cleanText(metadata.reviewed_by) : null,
+    changes,
+    user_statements: Array.isArray(metadata.user_statements)
+      ? metadata.user_statements.map((item) => cleanText(item)?.slice(0, 500)).filter(Boolean).slice(-12)
+      : []
+  };
+}
+
+function markosVendorValue(vendor: Record<string, unknown>, field: string) {
+  const directField = MARKOS_PROFILE_DIRECT_FIELDS[field];
+  if (directField) return vendor[directField] ?? null;
+  const [section, profileField] = field.split(".");
+  return objectRecord(objectRecord(vendor.profile_data)[section])[profileField] ?? null;
+}
+
+function markosVendorPatch(vendor: Record<string, unknown>, changes: { field: string; value: string }[]) {
+  const input: Record<string, unknown> = {};
+  const profilePatch: Record<string, Record<string, unknown>> = {};
+  for (const change of changes) {
+    const directField = MARKOS_PROFILE_DIRECT_FIELDS[change.field];
+    if (directField) {
+      input[directField] = change.field === "contact.preferred_channel" ? change.value.toLowerCase() : change.value;
+      continue;
+    }
+    const [section, field] = change.field.split(".");
+    profilePatch[section] ||= {};
+    profilePatch[section][field] = VENDOR_PROFILE_CHECK_FIELDS.has(field) ? splitProfileList(change.value) : change.value;
+  }
+  if (Object.keys(profilePatch).length) input.profile_data_patch = profilePatch;
+  return normalizeVendorPatch(input, vendor);
+}
+
+async function reviewMarkosProfileUpdate(
+  supabase: RatewareSupabaseClient,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>
+) {
+  const requestId = cleanText(input.id || input.request_id);
+  if (!requestId) throw new Error("MarkOS profile update request id is required.");
+  const decision = cleanText(input.decision)?.toLowerCase();
+  if (!decision || !["approved", "rejected"].includes(decision)) throw new Error("Review decision must be approved or rejected.");
+
+  const existing = await supabase
+    .from("contact_history")
+    .select("id,vendor_id,rfx_event_id,channel,direction,status,subject,body_preview,occurred_at,created_at,metadata")
+    .eq("id", requestId)
+    .eq("owner_email", user.owner_email)
+    .eq("status", "profile_update_requested")
+    .single();
+  if (existing.error) throw existing.error;
+  const metadata = objectRecord(existing.data.metadata);
+  if (cleanText(metadata.source) !== "markos_voice" || metadata.review_required !== true) {
+    throw new Error("This history item is not a MarkOS profile update request.");
+  }
+  const vendor = await requireOwnedVendorForCi(supabase, user, existing.data.vendor_id);
+  const currentStatus = cleanText(metadata.review_status)?.toLowerCase() || "pending";
+  if (currentStatus !== "pending") {
+    if (currentStatus !== decision) throw new Error(`This MarkOS request was already ${currentStatus}.`);
+    return { duplicate: true, request: serializeMarkosHistoryRow(existing.data), vendor };
+  }
+
+  const originalChanges = normalizeMarkosProfileChanges(metadata.changes);
+  const changes = decision === "approved"
+    ? normalizeMarkosProfileChanges(input.changes === undefined ? originalChanges : input.changes)
+    : originalChanges;
+  const reviewNote = cleanText(input.note)?.slice(0, 1200) || null;
+  const now = new Date().toISOString();
+  let updatedVendor = vendor;
+  let previousValues: Record<string, unknown> = {};
+
+  if (decision === "approved") {
+    previousValues = Object.fromEntries(changes.map((change) => [change.field, markosVendorValue(vendor, change.field)]));
+    const patch = markosVendorPatch(vendor, changes);
+    const vendorResult = await supabase
+      .from("vendors")
+      .update(patch)
+      .eq("id", vendor.id)
+      .eq("owner_email", user.owner_email)
+      .select("*")
+      .single();
+    if (vendorResult.error) throw vendorResult.error;
+    updatedVendor = vendorResult.data as Record<string, unknown>;
+  }
+
+  const nextMetadata = {
+    ...metadata,
+    review_status: decision,
+    reviewed_at: now,
+    reviewed_by: user.owner_email,
+    review_note: reviewNote,
+    original_changes: originalChanges,
+    applied_changes: decision === "approved" ? changes : [],
+    previous_values: previousValues
+  };
+  const historyResult = await supabase
+    .from("contact_history")
+    .update({ metadata: nextMetadata })
+    .eq("id", requestId)
+    .eq("owner_email", user.owner_email)
+    .select("id,vendor_id,rfx_event_id,channel,direction,status,subject,body_preview,occurred_at,created_at,metadata")
+    .single();
+  if (historyResult.error) throw historyResult.error;
+
+  await tryWriteAuditLog(
+    supabase,
+    user,
+    `vendor.markos_profile_update.${decision === "approved" ? "approve" : "reject"}`,
+    "vendor",
+    vendor.id,
+    `${decision === "approved" ? "Approved" : "Rejected"} MarkOS carrier profile update`,
+    { request_id: requestId, fields: changes.map((change) => change.field), previous_values: previousValues, applied_changes: decision === "approved" ? changes : [] }
+  );
+
+  return {
+    duplicate: false,
+    request: serializeMarkosHistoryRow(historyResult.data as Record<string, unknown>),
+    vendor: updatedVendor
   };
 }
 
@@ -12247,7 +12469,7 @@ async function requireOwnedVendorForCi(
   if (!id) throw new Error("Vendor is required.");
   const result = await supabase
     .from("vendors")
-    .select("id,vendor_name,name,legal_name,domain,primary_email,whatsapp_phone,base_stage,status,coverage_notes,notes,tags")
+    .select("id,vendor_name,name,legal_name,domain,contact_name,primary_email,whatsapp_phone,preferred_channel,base_stage,status,coverage_notes,notes,tags,profile_data,updated_at")
     .eq("id", id)
     .eq("owner_email", user.owner_email)
     .single();
@@ -14428,7 +14650,22 @@ async function whatsappGraphFetch(
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = cleanText(data?.error?.message) || `Meta WhatsApp request failed (${response.status}).`;
+    const providerError = objectRecord(data?.error);
+    const providerErrorData = objectRecord(providerError.error_data);
+    const headline = cleanText(providerError.message) || `Meta WhatsApp request failed (${response.status}).`;
+    const detail = cleanText(
+      providerErrorData.details
+      || providerError.error_user_msg
+      || providerError.error_user_title
+    );
+    const providerCode = cleanText(providerError.code);
+    const providerSubcode = cleanText(providerError.error_subcode);
+    const diagnosticCode = [providerCode, providerSubcode].filter(Boolean).join("/");
+    const message = [
+      headline,
+      detail && detail !== headline ? detail : "",
+      diagnosticCode ? `(Meta ${diagnosticCode})` : ""
+    ].filter(Boolean).join(" ");
     const responseError = new Error(message);
     (responseError as Error & { deliveryUncertain?: boolean }).deliveryUncertain =
       options.method === "POST" && (response.status === 408 || response.status >= 500);
@@ -14894,24 +15131,26 @@ function whatsappStableRfxTemplate(language: string) {
 function whatsappBidRoomFollowUpTemplate(language: string) {
   if (language === "es_MX") {
     return {
-      name: "rateware_bid_room_follow_up_es",
+      name: "rateware_bid_room_follow_up_es_v2",
       language: "es_MX",
       body: [
         "Hola {{1}},",
         "El equipo de procurement tiene una consulta sobre {{2}}:",
         "{{3}}",
-        "Responde o actualiza tu puja aqui: {{4}}"
+        "Responde o actualiza tu puja aqui: {{4}}",
+        "Si necesitas ayuda, responde a este mensaje."
       ].join("\n")
     };
   }
   return {
-    name: "rateware_bid_room_follow_up_en",
-    language: "en",
+    name: "rateware_bid_room_follow_up_en_v2",
+    language: "en_US",
     body: [
       "Hello {{1}},",
       "The procurement team has a question about {{2}}:",
       "{{3}}",
-      "Reply or update your bid here: {{4}}"
+      "Reply or update your bid here: {{4}}",
+      "If you need help, reply to this message."
     ].join("\n")
   };
 }
@@ -15298,30 +15537,26 @@ async function ensureBidRoomWhatsappFollowUpTemplate(
     ? catalog.data.data as Record<string, unknown>[]
     : [];
   let template = selectWhatsappMetaTemplate(templates, definition.name, definition.language).row;
+  let placeholders: readonly string[] = WHATSAPP_BID_ROOM_FOLLOW_UP_PLACEHOLDERS;
+  let fallbackTemplate = false;
+  // The dedicated follow-up template can appear approved in the WABA catalog
+  // while Meta's send endpoint still returns #132001 for its translation.
+  // Prefer the already proven RFx notifier until the dedicated template has a
+  // successful provider acceptance, not merely an APPROVED catalog label.
+  const stableDefinition = whatsappStableRfxTemplate(language === "es_MX" ? "es_MX" : "en_US");
+  const stableTemplate = selectWhatsappMetaTemplate(templates, stableDefinition.name, stableDefinition.language).row;
+  if (stableTemplate && whatsappTemplateStatusFromRow(stableTemplate) === "APPROVED" && cleanText(input.due_date)) {
+    template = stableTemplate;
+    placeholders = WHATSAPP_RFX_NOTIFICATION_PLACEHOLDERS;
+    fallbackTemplate = true;
+  }
   if (!template) {
-    const created = await whatsappTemplateGraphFetch(supabase, connection, "", {
-      method: "POST",
-      body: JSON.stringify({
-        name: definition.name,
-        language: definition.language,
-        category: "UTILITY",
-        allow_category_change: true,
-        components: [{
-          type: "BODY",
-          text: definition.body,
-          example: {
-            body_text: [WHATSAPP_BID_ROOM_FOLLOW_UP_PLACEHOLDERS.map(whatsappPlaceholderExample)]
-          }
-        }]
-      })
-    });
     template = {
-      id: cleanText(created.data.id),
-      name: cleanText(created.data.name) || definition.name,
-      language: cleanText(created.data.language) || definition.language,
-      status: cleanText(created.data.status) || "PENDING",
-      category: cleanText(created.data.category) || "UTILITY",
-      components: created.data.components || []
+      name: definition.name,
+      language: definition.language,
+      status: "NOT_FOUND",
+      category: "UTILITY",
+      components: []
     };
   }
   return {
@@ -15329,7 +15564,8 @@ async function ensureBidRoomWhatsappFollowUpTemplate(
     name: cleanText(template.name) || definition.name,
     language: cleanText(template.language) || definition.language,
     status: whatsappTemplateStatusFromRow(template),
-    parameters: WHATSAPP_BID_ROOM_FOLLOW_UP_PLACEHOLDERS.map((key) => ({
+    fallback_template: fallbackTemplate,
+    parameters: placeholders.map((key) => ({
       key,
       value: cleanText(input[key]) || "-"
     }))
@@ -17216,6 +17452,7 @@ async function sendOutreachMessages(
         status: "sent",
         delivery_status: "sent",
         sent_at: now,
+        failed_at: null,
         send_completed_at: now,
         last_contacted_at: now,
         sender_email: senderEmail,
@@ -17496,7 +17733,7 @@ async function sendWhatsappOutreachMessages(
   });
   const messagesResult = await supabase
     .from("outreach_messages")
-    .select("*, vendors(id,vendor_name,domain,whatsapp_do_not_contact,whatsapp_permission_basis)")
+    .select("*, vendors(id,vendor_name,domain,whatsapp_do_not_contact,whatsapp_permission_basis), rfx_events(rfx_id,name,due_date)")
     .eq("owner_email", user.owner_email)
     .in("id", ids)
     .order("created_at", { ascending: true });
@@ -17567,10 +17804,15 @@ async function sendWhatsappOutreachMessages(
           }
         };
       } else if (cleanText(objectRecord(message.metadata).whatsapp_template_source) === "bid_room_follow_up") {
+        const event = typeof message.rfx_events === "object" && message.rfx_events
+          ? message.rfx_events as Record<string, unknown>
+          : {};
         const followUp = await ensureBidRoomWhatsappFollowUpTemplate(supabase, user, {
           language: cleanText(message.whatsapp_template_language) || "en",
           vendor_name: cleanText(vendor.vendor_name || vendor.domain) || "Carrier",
           event_name: cleanText(objectRecord(message.metadata).event_name) || "RFx opportunity",
+          lane_count: "1",
+          due_date: cleanText(event.due_date),
           question: cleanText(message.whatsapp_text || message.text_body),
           bid_link: cleanText(objectRecord(message.metadata).bid_link)
         });
@@ -17583,6 +17825,7 @@ async function sendWhatsappOutreachMessages(
             ...objectRecord(message.metadata),
             whatsapp_template_status: followUp.status,
             whatsapp_template_parameters: followUp.parameters,
+            whatsapp_template_fallback: followUp.fallback_template === true,
             whatsapp_template_auto_checked_at: now
           }
         };
@@ -17626,6 +17869,7 @@ async function sendWhatsappOutreachMessages(
         status: "sent",
         delivery_status: "sent",
         sent_at: now,
+        failed_at: null,
         send_completed_at: now,
         last_contacted_at: now,
         provider: "meta",
@@ -23444,6 +23688,85 @@ async function markRfxAwardPackageImplementationReady(
   return { row: awardUpdate.data, project_id: project.id, shipper_opportunity: shipperOpportunity };
 }
 
+function isServiceRoleRequest(request: Request) {
+  if (!SUPABASE_SERVICE_ROLE_KEY) return false;
+  const authorization = cleanText(request.headers.get("authorization")) || "";
+  return authorization === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
+}
+
+async function sendMarkosConfirmedFollowUp(
+  supabase: RatewareSupabaseClient,
+  input: Record<string, unknown>
+) {
+  const ids = normalizeBulkIds(input.ids, { label: "MarkOS follow-up message ids", limit: 2 });
+  const sessionId = cleanText(input.session_id)?.slice(0, 160);
+  if (!ids.length || !sessionId) throw new Error("MarkOS follow-up ids and session id are required.");
+
+  const messagesResult = await supabase
+    .from("outreach_messages")
+    .select("id,owner_user_id,owner_email,organization_id,channel,status,metadata")
+    .in("id", ids);
+  if (messagesResult.error) throw messagesResult.error;
+  const messages = (messagesResult.data || []) as Record<string, unknown>[];
+  if (messages.length !== ids.length) throw new Error("One or more MarkOS follow-up messages were not found.");
+
+  const first = messages[0];
+  const user: RatewareUser = {
+    owner_user_id: cleanText(first.owner_user_id),
+    owner_email: cleanText(first.owner_email),
+    organization_id: cleanText(first.organization_id)
+  };
+  if (!user.owner_email) throw new Error("MarkOS follow-up owner is missing.");
+
+  for (const message of messages) {
+    const metadata = objectRecord(message.metadata);
+    const carrierConfirmed = metadata.carrier_confirmed === true;
+    const governedOutcomeSupport = metadata.campaign_outcome_policy === true
+      && cleanText(metadata.followup_kind) === "outcome_support";
+    if (
+      cleanText(message.owner_email) !== user.owner_email
+      || cleanText(metadata.source) !== "markos_voice"
+      || cleanText(metadata.markos_session_id) !== sessionId
+      || (!carrierConfirmed && !governedOutcomeSupport)
+    ) throw new Error("MarkOS follow-up authorization does not match the stored carrier confirmation.");
+  }
+
+  const emailIds = messages.filter((row) => cleanText(row.channel) === "email").map((row) => row.id);
+  const whatsappIds = messages.filter((row) => cleanText(row.channel) === "whatsapp").map((row) => row.id);
+  const results: Record<string, unknown> = {};
+  if (emailIds.length) {
+    results.email = await sendOutreachMessages(supabase, user, {
+      ids: emailIds,
+      channel: "email",
+      provider: "gmail",
+      confirmed: true,
+      confirmation_action: "send_outreach_messages"
+    });
+  }
+  if (whatsappIds.length) {
+    results.whatsapp = await sendWhatsappOutreachMessages(supabase, user, {
+      ids: whatsappIds,
+      confirmed: true,
+      confirmation_action: "send_whatsapp_outreach_messages"
+    });
+  }
+
+  const channelResults = Object.values(results).map((value) => objectRecord(value));
+  const sent = channelResults.reduce((sum, row) => sum + Number(row.sent || 0), 0);
+  const failed = channelResults.reduce((sum, row) => sum + Number(row.failed || 0), 0);
+  const deliveryUnknown = channelResults.reduce((sum, row) => sum + Number(row.delivery_unknown || 0), 0);
+  return {
+    submitted: true,
+    review_required: false,
+    sent,
+    failed,
+    delivery_unknown: deliveryUnknown,
+    channels: messages.map((row) => cleanText(row.channel)).filter(Boolean),
+    message_ids: ids,
+    results
+  };
+}
+
 Deno.serve(async (request) => {
   const requestStartedAt = performance.now();
   const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
@@ -23456,6 +23779,11 @@ Deno.serve(async (request) => {
   try {
     const supabase = getClient();
     auditSupabase = supabase;
+    const internalBody = objectRecord(await request.clone().json().catch(() => ({})));
+    if (internalBody.action === "send_markos_confirmed_followup") {
+      if (!isServiceRoleRequest(request)) return jsonResponse({ error: "Unauthorized internal MarkOS action." }, 401);
+      return jsonResponse(await sendMarkosConfirmedFollowUp(supabase, internalBody));
+    }
     const authenticationStartedAt = performance.now();
     const user = await resolveWorkspaceUser(
       supabase,
@@ -28836,6 +29164,10 @@ Deno.serve(async (request) => {
 
     if (body.action === "get_vendor_relationship_activity") {
       return jsonResponse(await getVendorRelationshipActivity(supabase, user, body));
+    }
+
+    if (body.action === "review_markos_profile_update") {
+      return jsonResponse(await reviewMarkosProfileUpdate(supabase, user, body));
     }
 
     if (body.action === "update_vendor_support_ticket") {

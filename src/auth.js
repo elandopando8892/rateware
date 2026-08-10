@@ -330,7 +330,8 @@ const SHELL_NAV_GROUPS = [
     title: "Analyze",
     items: [
       { id: "analyze", code: "AN", label: "Analyze", href: "./business-intelligence.html" },
-      { id: "growth-hacking", code: "GH", label: "Growth Hacking", href: "./growth-hacking.html" }
+      { id: "growth-hacking", code: "GH", label: "Growth Hacking", href: "./growth-hacking.html" },
+      { id: "markos", code: "MK", label: "Agentic MarkOS", href: "./markos.html" }
     ]
   },
   {
@@ -404,6 +405,14 @@ const PAGE_META = {
     crumbs: [
       { label: "Analyze", href: "./business-intelligence.html" },
       { label: "Growth Hacking" }
+    ]
+  },
+  markos: {
+    title: "Agentic MarkOS",
+    eyebrow: "Conversational campaign execution",
+    crumbs: [
+      { label: "Analyze", href: "./business-intelligence.html" },
+      { label: "Agentic MarkOS" }
     ]
   },
   vendors: {

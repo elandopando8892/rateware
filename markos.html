@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Agentic MarkOS</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/markos.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav class="nav-groups"></nav>
+      </aside>
+
+      <div class="page-frame markos-page">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Conversational campaign execution</p>
+            <h1>Agentic MarkOS</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./business-intelligence.html">Analyze</a>
+              <span>Agentic MarkOS</span>
+            </nav>
+          </div>
+          <div class="page-header-actions">
+            <a class="secondary button" href="./growth-hacking.html#campaigns">Nueva campaña de clientes</a>
+            <a class="page-primary-action" href="./rfx-events.html">Abrir Bid Room</a>
+            <form id="auth-form" class="auth-strip">
+              <button id="auth-button" type="submit">Log in</button>
+              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+              <p id="auth-status" role="status"></p>
+            </form>
+          </div>
+        </header>
+
+        <main class="markos-workspace">
+          <section class="markos-command-band" aria-labelledby="markos-command-title">
+            <div>
+              <p class="eyebrow">Centro de ejecución</p>
+              <h2 id="markos-command-title">Una operación conversacional, dos tipos de relación</h2>
+              <p>MarkOS conversa, detecta intención y coordina el siguiente paso. Los perfiles y resultados permanecen separados en el CRM de clientes y el CRM de proveedores.</p>
+            </div>
+            <div class="markos-scope-switch" role="group" aria-label="Filtrar tipo de relación">
+              <button type="button" class="is-active" data-markos-scope="all">Todo</button>
+              <button type="button" data-markos-scope="customer">Clientes</button>
+              <button type="button" data-markos-scope="provider">Proveedores</button>
+            </div>
+          </section>
+
+          <div id="markos-status" class="markos-status" role="status">Cargando operación...</div>
+
+          <section class="markos-flow" aria-label="Flujo de Agentic MarkOS">
+            <a href="./growth-hacking.html">
+              <span>Origen comercial</span>
+              <strong>Growth Hacking</strong>
+              <small>Segmento, objetivo y oferta</small>
+            </a>
+            <a href="./rfx-events.html">
+              <span>Origen procurement</span>
+              <strong>Bid Room</strong>
+              <small>Oportunidad e invitación</small>
+            </a>
+            <article class="is-primary">
+              <span>Conversación</span>
+              <strong>Agentic MarkOS</strong>
+              <small>Voz, correo, WhatsApp y transferencia</small>
+            </article>
+            <a href="./outreach.html">
+              <span>Entrega y control</span>
+              <strong>Outreach</strong>
+              <small>Colas, consentimiento y auditoría</small>
+            </a>
+            <article>
+              <span>Memoria aprobada</span>
+              <strong>CRM + resultados</strong>
+              <small>El AI propone; el equipo confirma</small>
+            </article>
+          </section>
+
+          <section class="markos-metrics" aria-label="Resumen de MarkOS">
+            <button type="button" data-markos-jump="campaigns"><span>Campañas visibles</span><strong id="markos-metric-campaigns">-</strong><small>Clientes y proveedores</small></button>
+            <button type="button" data-markos-jump="campaigns"><span>Personas en audiencia</span><strong id="markos-metric-audience">-</strong><small>Sin duplicar los CRM</small></button>
+            <button type="button" data-markos-jump="activity"><span>Conversaciones recientes</span><strong id="markos-metric-conversations">-</strong><small>En la ventana cargada</small></button>
+            <a href="./vendors.html"><span>Cambios por revisar</span><strong id="markos-metric-reviews">-</strong><small>Antes de actualizar perfiles</small></a>
+          </section>
+
+          <section id="markos-campaigns" class="markos-panel">
+            <header class="markos-panel-heading">
+              <div>
+                <p class="eyebrow">Campañas</p>
+                <h2>Qué debe avanzar ahora</h2>
+              </div>
+              <div class="markos-panel-actions">
+                <label>
+                  <span>Buscar</span>
+                  <input id="markos-campaign-search" type="search" placeholder="Campaña, oportunidad o cliente" />
+                </label>
+                <button id="markos-refresh" class="secondary" type="button">Actualizar</button>
+              </div>
+            </header>
+            <div class="markos-table-wrap">
+              <table class="markos-table">
+                <thead><tr><th>Relación</th><th>Campaña / oportunidad</th><th>Objetivo</th><th>Canales</th><th>Audiencia</th><th>Estado</th><th>Siguiente paso</th></tr></thead>
+                <tbody id="markos-campaign-rows"></tbody>
+              </table>
+            </div>
+            <div id="markos-campaign-empty" class="markos-empty" hidden>
+              <strong>No hay campañas para este filtro.</strong>
+              <span>Crea campañas de clientes en Growth Hacking o prepara invitaciones de proveedores desde Bid Room.</span>
+            </div>
+          </section>
+
+          <section class="markos-operating-grid">
+            <section id="markos-activity" class="markos-panel">
+              <header class="markos-panel-heading">
+                <div><p class="eyebrow">Actividad</p><h2>Conversaciones y acciones recientes</h2></div>
+                <a href="./outreach.html">Ver entrega y auditoría</a>
+              </header>
+              <div id="markos-activity-list" class="markos-activity-list"></div>
+            </section>
+
+            <section class="markos-panel">
+              <header class="markos-panel-heading">
+                <div><p class="eyebrow">Control humano</p><h2>Qué puede hacer MarkOS</h2></div>
+              </header>
+              <div class="markos-permission-list">
+                <article><span class="is-live">Activo</span><strong>Conversar y recomendar</strong><p>Puede explicar oportunidades, manejar objeciones y calcular escenarios en tiempo real.</p></article>
+                <article><span class="is-live">Con confirmación</span><strong>Enviar y transferir</strong><p>Correo, WhatsApp, callback o transferencia sólo cuando la persona lo solicita o el playbook lo autoriza.</p></article>
+                <article><span class="is-review">Revisión requerida</span><strong>Actualizar CRM</strong><p>Notas y cambios de perfil quedan propuestos en el CRM correcto antes de modificar el registro maestro.</p></article>
+              </div>
+              <div class="markos-crm-links">
+                <a href="./shipper-crm.html"><strong>CRM de clientes</strong><span>Leads, oportunidades y RFQs</span></a>
+                <a href="./vendors.html"><strong>CRM de proveedores</strong><span>Perfil, cobertura y notas</span></a>
+              </div>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/markos.js"></script>
+  </body>
+</html>

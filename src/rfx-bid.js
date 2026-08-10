@@ -128,7 +128,7 @@ if (localStorage.getItem("rateware.privateBidRoom.soundDefault") !== PRIVATE_BID
 }
 let excelJsModule = null;
 const DEFAULT_COMMERCIAL_SHARE_PCT = 3;
-const XBF_BUY_SELL_DEFAULT_MARKUP_PCT = 12;
+const XBF_BUY_SELL_DEFAULT_MARKUP_PCT = 15;
 const XBF_BUY_SELL_MIN_MARKUP_PCT = 7.5;
 const XBF_BUY_SELL_MAX_MARKUP_PCT = 15;
 const BID_PORTAL_COPY = {
@@ -1394,12 +1394,12 @@ function commercialStructureConfig(value) {
       percentageField: "marksman",
       percentageLabel: dualText("Suggested XBF margin %", "Margen sugerido XBF %"),
       percentageTooltip: dualText(
-        "Optional. Enter a suggested XBF buy-sell margin from 7.5% to 15%. If blank, Rateware applies 12%.",
-        "Opcional. Captura un margen sugerido XBF compra-venta de 7.5% a 15%. Si queda vacio, Rateware aplica 12%."
+        "Optional. Enter a suggested XBF buy-sell margin from 7.5% to 15%. If blank, Rateware applies the 15% target.",
+        "Opcional. Captura un margen sugerido XBF compra-venta de 7.5% a 15%. Si queda vacio, Rateware aplica el objetivo de 15%."
       ),
       copy: dualText(
-        "Use when the carrier submits its sell rate to XBF. The Board/customer comparable price uses the suggested buy-sell margin, or 12% by default.",
-        "Usa esto cuando el carrier envia su tarifa de venta a XBF. El precio comparable del Board/cliente usa el margen compra-venta sugerido, o 12% por default."
+        "Use when the carrier submits its sell rate to XBF. The Board/customer comparable price uses the suggested buy-sell margin, with a 15% target and default.",
+        "Usa esto cuando el carrier envia su tarifa de venta a XBF. El precio comparable del Board/cliente usa el margen compra-venta sugerido, con objetivo y default de 15%."
       )
     }
   };
@@ -1418,8 +1418,8 @@ function commercialModelEffect(value) {
       "Tu tarifa carrier no cambia. El porcentaje seleccionado se calcula como comision sobre la facturacion despues del pago del cliente."
     ),
     xbf_buy_sell: dualText(
-      "Your carrier rate is your sell rate to XBF. The Board price adds the suggested XBF margin, or 12% when blank.",
-      "Tu tarifa carrier es tu tarifa de venta a XBF. El precio del Board suma el margen XBF sugerido, o 12% si queda vacio."
+      "Your carrier rate is your sell rate to XBF. The Board price adds the suggested XBF margin, or the 15% target when blank.",
+      "Tu tarifa carrier es tu tarifa de venta a XBF. El precio del Board suma el margen XBF sugerido, o el objetivo de 15% si queda vacio."
     )
   };
   return effects[model] || effects.direct_cost_plus;
@@ -1481,7 +1481,7 @@ function commercialModelGuideHtml(selectedModel = "") {
     {
       key: "xbf_buy_sell",
       title: dualText("XBF buy-sell", "XBF compra-venta"),
-      rule: dualText("Suggested XBF margin: 7.5-15%. Blank = 12%.", "Margen sugerido XBF: 7.5-15%. Vacio = 12%."),
+      rule: dualText("Suggested XBF margin: 7.5-15%. Blank = 15% target.", "Margen sugerido XBF: 7.5-15%. Vacio = objetivo 15%."),
       effect: commercialModelEffect("xbf_buy_sell")
     }
   ];
@@ -1519,7 +1519,7 @@ function commercialModelSelectedContextHtml(selectedModel = "direct_cost_plus") 
     },
     xbf_buy_sell: {
       entry: dualText("Your sell rate to XBF", "Tu tarifa de venta a XBF"),
-      board: dualText("Board adds the suggested XBF margin. Blank uses 12%.", "El Board suma el margen sugerido XBF. Vacio usa 12%."),
+      board: dualText("Board adds the suggested XBF margin. Blank uses the 15% target.", "El Board suma el margen sugerido XBF. Vacio usa el objetivo de 15%."),
       fee: dualText("No carrier share applies. Suggested XBF margin range: 7.5-15%.", "No aplica share del carrier. Rango de margen sugerido XBF: 7.5-15%.")
     }
   };
@@ -2156,7 +2156,7 @@ const BID_TEMPLATE_COLUMNS = [
   { key: "transit_days", label: "Transit days / Dias transito", aliases: ["Transit days", "Dias transito"], width: 18, validation: "positiveNumberBlank", recommended: true },
   { key: "valid_through", label: "Valid through / Vigente hasta", aliases: ["Valid through", "Vigente hasta", "Offer valid through", "Vigencia"], width: 20, validation: "dateBlank", recommended: true },
   { key: "commercial_model", label: "Commercial model / Modelo comercial", aliases: ["Commercial model", "Modelo comercial"], width: 28, validation: "commercialModel", required: true },
-  { key: "suggested_margin_pct", label: "Suggested / XBF margin % / Margen sugerido XBF %", aliases: ["Suggested margin %", "XBF margin %", "Margen sugerido %", "Margen XBF %"], width: 30, validation: "percent2to15Blank", conditional: "Optional. Direct/cost-plus defaults to 3%; XBF buy-sell defaults to 12%. / Opcional. Direct/cost-plus default 3%; XBF compra-venta default 12%." },
+  { key: "suggested_margin_pct", label: "Suggested / XBF margin % / Margen sugerido XBF %", aliases: ["Suggested margin %", "XBF margin %", "Margen sugerido %", "Margen XBF %"], width: 30, validation: "percent2to15Blank", conditional: "Optional. Direct/cost-plus defaults to 3%; XBF buy-sell targets and defaults to 15%. / Opcional. Direct/cost-plus default 3%; XBF compra-venta busca y aplica 15% por default." },
   { key: "carrier_invoice_share_pct", label: "Carrier invoice share % / Share factura carrier %", aliases: ["Carrier invoice share %", "Share factura carrier %"], width: 28, validation: "percent2to5", conditional: "Optional. Defaults to 3% for Carrier invoice share. / Opcional. Default 3% para Carrier invoice share." },
   { key: "best_alternative", label: "Best alternative / Mejor alternativa", aliases: ["Best alternative", "Mejor alternativa"], width: 22, validation: "yesNoBlank" },
   { key: "alternative_equipment", label: "Alternative equipment / Equipo alternativo", aliases: ["Alternative equipment", "Equipo alternativo"], width: 26 },
@@ -2475,8 +2475,8 @@ function addBidTemplateInstructions(workbook) {
     },
     {
       section: "Commercial model",
-      en: "Direct / cost-plus: enter your direct carrier cost; Suggested margin is 2-5%, default 3%. Carrier invoice share: enter the all-in price you want to keep; Invoice share is 2-5%, default 3%. XBF buy-sell: enter your sell rate to XBF; Suggested / XBF margin is 7.5-15%, default 12%.",
-      es: "Directo / cost-plus: captura tu costo directo como carrier; Margen sugerido es 2-5%, default 3%. Carrier invoice share: captura el all-in que quieres conservar; Share factura es 2-5%, default 3%. XBF compra-venta: captura tu tarifa de venta a XBF; Margen sugerido / XBF es 7.5-15%, default 12%."
+      en: "Direct / cost-plus: enter your direct carrier cost; Suggested margin is 2-5%, default 3%. Carrier invoice share: enter the all-in price you want to keep; Invoice share is 2-5%, default 3%. XBF buy-sell: enter your sell rate to XBF; Suggested / XBF margin is 7.5-15%, target and default 15%.",
+      es: "Directo / cost-plus: captura tu costo directo como carrier; Margen sugerido es 2-5%, default 3%. Carrier invoice share: captura el all-in que quieres conservar; Share factura es 2-5%, default 3%. XBF compra-venta: captura tu tarifa de venta a XBF; Margen sugerido / XBF es 7.5-15%, objetivo y default 15%."
     },
     {
       section: "Rate",
@@ -2886,7 +2886,7 @@ function syncCommercialStructureFields({ clearInapplicable = false } = {}) {
   carrierGroup?.classList.toggle("hidden", config.percentageField !== "carrier");
   if (marksmanInput) marksmanInput.disabled = config.percentageField !== "marksman";
   if (carrierInput) carrierInput.disabled = config.percentageField !== "carrier";
-  if (marksmanInput) marksmanInput.placeholder = model === "xbf_buy_sell" ? "7.5-15 (default 12)" : "2-5 (default 3)";
+  if (marksmanInput) marksmanInput.placeholder = model === "xbf_buy_sell" ? "7.5-15 (target/default 15)" : "2-5 (default 3)";
   if (carrierInput) carrierInput.placeholder = "2-5 (default 3)";
   if (marksmanLabel) marksmanLabel.textContent = config.percentageLabel || t("suggestedMargin");
   if (rateLabel) rateLabel.textContent = config.rateLabel || t("allInRate");

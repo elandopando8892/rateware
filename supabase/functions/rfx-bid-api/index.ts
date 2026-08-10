@@ -25,7 +25,7 @@ const GOOGLE_CHAT_WEBHOOK_URL = Deno.env.get("GOOGLE_CHAT_WEBHOOK_URL");
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const DEFAULT_COMMERCIAL_SHARE_PCT = 3;
-const XBF_BUY_SELL_DEFAULT_MARKUP_PCT = 12;
+const XBF_BUY_SELL_DEFAULT_MARKUP_PCT = 15;
 const XBF_BUY_SELL_MIN_MARKUP_PCT = 7.5;
 const XBF_BUY_SELL_MAX_MARKUP_PCT = 15;
 const GENERIC_EMAIL_DOMAINS = new Set([
@@ -1201,8 +1201,8 @@ async function currentInvitationContext(supabase: RfxBidSupabaseClient, token: s
       current_unit_location,
       deadhead_distance,
       deadhead_unit,
-      vendors(id,vendor_name,domain,primary_email),
-      rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
+      vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,status,whatsapp_permission_basis,whatsapp_do_not_contact,whatsapp_opt_in_status),
+      rfx_events(id,owner_user_id,owner_email,organization_id,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
       rfx_lanes(*)
     `);
   if (!invitation) throw new Error("Invitation link is invalid or has expired.");
@@ -1880,6 +1880,1068 @@ function carrierBusinessBook(currentInvitation: Record<string, unknown>, invited
     quoted
   };
 }
+
+const CARRIER_PROFILE_SECTIONS: Record<string, string[]> = {
+  general: ["full_name", "mobile_number", "company_type", "operating_country"],
+  international: ["dba_name", "legal_name", "usdot_number", "mc_number", "scac_code", "payment_terms"],
+  mexico: ["commercial_name", "legal_name", "caat_code", "payment_terms"],
+  carrier_profile: [
+    "geographic_scope",
+    "service_scope",
+    "regional_coverage",
+    "border_crossings",
+    "mexican_ports",
+    "value_added_services",
+    "additional_capabilities",
+    "interchange_agreements",
+    "certifications"
+  ],
+  insurance_infrastructure: [
+    "coverage_amounts",
+    "mexico_terminal_zips",
+    "us_ca_terminal_zips",
+    "equipment_types",
+    "equipment_notes"
+  ],
+  key_contacts: [
+    "general_manager",
+    "operations_manager",
+    "safety_manager",
+    "finance_manager",
+    "commercial_manager",
+    "key_account_manager",
+    "other_contacts"
+  ]
+};
+
+const REQUIRED_CARRIER_PROFILE_FIELDS = [
+  "contact.primary_email",
+  "carrier_profile.geographic_scope",
+  "carrier_profile.service_scope",
+  "carrier_profile.regional_coverage",
+  "insurance_infrastructure.equipment_types"
+];
+
+function safeProfileValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => cleanText(item)).filter(Boolean).slice(0, 40);
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return cleanText(value)?.slice(0, 2000) || null;
+  }
+  return null;
+}
+
+function carrierProfileMemory(vendorValue: unknown) {
+  const vendor = relationRecord(vendorValue);
+  const sourceProfile = objectRecord(vendor.profile_data);
+  const profile: Record<string, Record<string, unknown>> = {};
+  for (const [section, fields] of Object.entries(CARRIER_PROFILE_SECTIONS)) {
+    const sourceSection = objectRecord(sourceProfile[section]);
+    const projected = Object.fromEntries(fields
+      .map((field) => [field, safeProfileValue(sourceSection[field])] as const)
+      .filter(([, value]) => value !== null && (!Array.isArray(value) || value.length > 0)));
+    if (Object.keys(projected).length) profile[section] = projected;
+  }
+
+  const contact = {
+    name: cleanText(vendor.contact_name),
+    primary_email: cleanEmail(vendor.primary_email),
+    whatsapp_phone: cleanText(vendor.whatsapp_phone),
+    preferred_channel: cleanText(vendor.preferred_channel)
+  };
+  const missingFields = REQUIRED_CARRIER_PROFILE_FIELDS.filter((path) => {
+    const [section, field] = path.split(".");
+    const value = section === "contact"
+      ? (contact as Record<string, unknown>)[field]
+      : profile[section]?.[field];
+    return value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0);
+  });
+
+  return {
+    identity: {
+      vendor_name: cleanText(vendor.vendor_name || vendor.domain) || "Carrier",
+      legal_name: cleanText(vendor.legal_name),
+      domain: normalizeDomain(vendor.domain),
+      status: cleanText(vendor.status)
+    },
+    contact,
+    coverage_notes: cleanText(vendor.coverage_notes)?.slice(0, 3000) || null,
+    tags: Array.isArray(vendor.tags)
+      ? vendor.tags.map((item) => cleanText(item)).filter(Boolean).slice(0, 40)
+      : String(vendor.tags || "").split(/[,;|]/).map((item) => cleanText(item)).filter(Boolean).slice(0, 40),
+    profile,
+    missing_fields: missingFields,
+    updated_at: vendor.updated_at || null,
+    privacy_note: "Banking, tax identifiers, account numbers and internal procurement notes are never exposed to the voice agent."
+  };
+}
+
+async function carrierConversationMemory(
+  supabase: RfxBidSupabaseClient,
+  invitation: Record<string, unknown>
+) {
+  const ownerEmail = cleanText(relationRecord(invitation.rfx_events).owner_email);
+  const vendorId = cleanText(invitation.vendor_id);
+  if (!ownerEmail || !vendorId) return [];
+  const historyResult = await supabase
+    .from("contact_history")
+    .select("id,occurred_at,created_at,status,subject,body_preview,channel,direction,metadata,rfx_event_id")
+    .eq("owner_email", ownerEmail)
+    .eq("vendor_id", vendorId)
+    .neq("direction", "internal")
+    .order("occurred_at", { ascending: false })
+    .limit(50);
+  if (historyResult.error) throw historyResult.error;
+  return (historyResult.data || []).slice(0, 20).map((row) => ({
+    id: row.id,
+    occurred_at: row.occurred_at || row.created_at,
+    status: cleanText(row.status),
+    subject: cleanText(row.subject)?.slice(0, 300) || null,
+    body_preview: cleanText(row.body_preview)?.slice(0, 1200) || null,
+    channel: cleanText(row.channel),
+    direction: cleanText(row.direction),
+    rfx_event_id: row.rfx_event_id || null,
+    source: cleanText(objectRecord(row.metadata).source)
+  }));
+}
+
+const CARRIER_PROFILE_UPDATE_FIELDS = new Set([
+  "contact.contact_name",
+  "contact.primary_email",
+  "contact.whatsapp_phone",
+  "contact.preferred_channel",
+  "coverage_notes",
+  ...Object.entries(CARRIER_PROFILE_SECTIONS).flatMap(([section, fields]) => fields.map((field) => `${section}.${field}`))
+]);
+
+function normalizeCarrierProfileUpdateChanges(value: unknown) {
+  const rows = Array.isArray(value) ? value : [];
+  if (!rows.length) throw new Error("At least one carrier profile change is required.");
+  return rows.slice(0, 30).map((item) => {
+    const row = objectRecord(item);
+    const field = cleanText(row.field)?.toLowerCase();
+    const nextValue = cleanText(row.value)?.slice(0, 2000);
+    if (!field || !CARRIER_PROFILE_UPDATE_FIELDS.has(field)) throw new Error("Carrier profile field is not allowed.");
+    if (!nextValue) throw new Error(`A value is required for ${field}.`);
+    return { field, value: nextValue };
+  });
+}
+
+const MARKOS_FOLLOW_UP_CHANNELS = new Set(["email", "whatsapp"]);
+
+function normalizeMarkosFollowUpChannels(value: unknown) {
+  const requested = Array.isArray(value) ? value : [value];
+  const channels = requested
+    .map((item) => cleanText(item)?.toLowerCase())
+    .filter((item): item is string => Boolean(item))
+    .filter((item) => MARKOS_FOLLOW_UP_CHANNELS.has(item));
+  return [...new Set(channels)].slice(0, 2);
+}
+
+function normalizeMarkosFollowUpLanguage(value: unknown) {
+  const language = (cleanText(value) || "es_MX").trim().replace(/-/g, "_").toLowerCase();
+  return language.startsWith("en") ? "en_US" : "es_MX";
+}
+
+function markosFollowUpBody(input: {
+  carrierName: string;
+  eventName: string;
+  route: string;
+  purpose: string;
+  bidLink: string;
+  profileLink: string;
+}) {
+  const routeLine = input.route ? ` Ruta: ${input.route}.` : "";
+  return `Hola ${input.carrierName}, le compartimos el soporte de la conversación con MarkOS sobre ${input.eventName}.${routeLine} ${input.purpose} Puede revisar la oportunidad aquí: ${input.bidLink} También le pedimos revisar y actualizar su perfil del Carrier CRM: ${input.profileLink}`.slice(0, 4000);
+}
+
+async function hashMarkosCarrierProfileToken(token: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function createMarkosCarrierProfileLink(
+  supabase: RfxBidSupabaseClient,
+  invitation: Record<string, unknown>,
+  event: Record<string, unknown>
+) {
+  const requestToken = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "").slice(0, 48);
+  const created = await supabase.from("vendor_profile_requests").insert({
+    owner_user_id: event.owner_user_id || null,
+    owner_email: cleanText(event.owner_email),
+    vendor_id: invitation.vendor_id,
+    request_token: null,
+    request_token_hash: await hashMarkosCarrierProfileToken(requestToken),
+    status: "active",
+    expires_at: new Date(Date.now() + 90 * 86400000).toISOString(),
+    metadata: {
+      source: "markos_voice",
+      generated_from: "markos_outcome_support",
+      rfx_lane_vendor_id: invitation.id,
+      expires_in_days: 90
+    }
+  }).select("id").single();
+  if (created.error) throw created.error;
+  return `${RATEWARE_APP_URL.replace(/\/$/, "")}/carrier-profile.html?token=${encodeURIComponent(requestToken)}`;
+}
+
+async function resolveMarkosCarrierProfileLink(
+  supabase: RfxBidSupabaseClient,
+  invitation: Record<string, unknown>,
+  event: Record<string, unknown>,
+  candidate: unknown
+) {
+  const candidateLink = cleanText(candidate);
+  if (candidateLink) {
+    try {
+      const requestToken = new URL(candidateLink).searchParams.get("token") || "";
+      if (requestToken) {
+        const existing = await supabase
+          .from("vendor_profile_requests")
+          .select("id")
+          .eq("vendor_id", invitation.vendor_id)
+          .eq("request_token_hash", await hashMarkosCarrierProfileToken(requestToken))
+          .in("status", ["active", "viewed", "submitted"])
+          .gt("expires_at", new Date().toISOString())
+          .limit(1)
+          .maybeSingle();
+        if (existing.error) throw existing.error;
+        if (existing.data) return candidateLink;
+      }
+    } catch {
+      // A malformed, expired or unresolvable link is replaced with a fresh private request.
+    }
+  }
+  return createMarkosCarrierProfileLink(supabase, invitation, event);
+}
+
+function markosBidRoomLaneTableHtml(rows: Record<string, unknown>[], language: string) {
+  const spanish = language !== "en_US";
+  const labels = spanish
+    ? ["Ruta", "Origen", "Destino", "Equipo", "Operacion", "Servicio", "Volumen semanal"]
+    : ["Lane", "Origin", "Destination", "Equipment", "Operation", "Service", "Weekly volume"];
+  const headerStyle = "background:#1f4e79;color:#fff;border:1px solid #b7c9d9;padding:6px 8px;text-align:left;vertical-align:top;white-space:nowrap";
+  const cellStyle = "border:1px solid #d0d7de;padding:6px 8px;vertical-align:top";
+  const body = rows.map((row, index) => {
+    const lane = relationRecord(row.rfx_lanes);
+    const equipment = [lane.equipment, lane.trailer, lane.config].map(cleanText).filter(Boolean).join(" / ") || "-";
+    return `<tr>
+      <td style="${cellStyle};text-align:center">${escapeHtmlText(index + 1)}</td>
+      <td style="${cellStyle}">${escapeHtmlText(cleanText(lane.origin || lane.origin_city) || "-")}</td>
+      <td style="${cellStyle}">${escapeHtmlText(cleanText(lane.destination || lane.destination_city) || "-")}</td>
+      <td style="${cellStyle}">${escapeHtmlText(equipment)}</td>
+      <td style="${cellStyle}">${escapeHtmlText(cleanText(lane.operation) || "-")}</td>
+      <td style="${cellStyle}">${escapeHtmlText(cleanText(lane.service) || "-")}</td>
+      <td style="${cellStyle};text-align:center">${escapeHtmlText(cleanText(lane.weekly_volume) || "-")}</td>
+    </tr>`;
+  }).join("");
+  return `<table style="color:#1f2937;font-family:Arial,sans-serif;border-collapse:collapse;width:auto;max-width:100%;font-size:12px;margin-bottom:14px">
+    <thead><tr>${labels.map((label) => `<th style="${headerStyle}">${escapeHtmlText(label)}</th>`).join("")}</tr></thead>
+    <tbody>${body}</tbody>
+  </table>`;
+}
+
+function renderMarkosBidRoomTemplate(template: unknown, context: Record<string, unknown>) {
+  return String(template || "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_match, key) => String(context[key] ?? ""));
+}
+
+function addMarkosFollowUpPanel(html: string, purpose: string, language: string) {
+  const spanish = language !== "en_US";
+  const title = spanish ? "Seguimiento acordado durante la llamada" : "Follow-up agreed during the call";
+  const explanation = spanish
+    ? "Este correo fue solicitado durante la conversacion con MarkOS y conserva la informacion oficial del Bid Room."
+    : "This email was requested during the MarkOS conversation and preserves the official Bid Room information.";
+  const panel = `<div style="border:1px solid #b7c9d9;border-left:4px solid #1f4e79;border-radius:5px;padding:12px 14px;margin:0 0 18px;background:#f5f9fc;font-family:Arial,sans-serif;color:#1f2937">
+    <p style="margin:0 0 6px;font-size:14px"><strong>${escapeHtmlText(title)}</strong></p>
+    <p style="margin:0 0 6px;font-size:13px">${escapeHtmlText(explanation)}</p>
+    <p style="margin:0;font-size:13px">${escapeHtmlText(purpose)}</p>
+  </div>`;
+  const root = html.match(/<div\b[^>]*>/i);
+  return root ? html.replace(root[0], `${root[0]}${panel}`) : `${panel}${html}`;
+}
+
+function addCarrierProfileUpdatePanel(html: string, profileLink: string, language: string) {
+  const spanish = language !== "en_US";
+  const title = spanish ? "Mantenga actualizado su perfil de transportista" : "Keep your carrier profile current";
+  const explanation = spanish
+    ? "Le pedimos revisar cobertura, servicios, capacidad, equipo, certificaciones y contactos en el Carrier CRM."
+    : "Please review coverage, services, capacity, equipment, certifications, and contacts in Carrier CRM.";
+  const button = spanish ? "Revisar y actualizar perfil" : "Review and update profile";
+  const panel = `<div style="border:1px solid #b7c9d9;border-radius:5px;padding:14px;margin:0 0 18px;background:#ffffff;font-family:Arial,sans-serif;color:#1f2937">
+    <p style="margin:0 0 6px;font-size:14px"><strong>${escapeHtmlText(title)}</strong></p>
+    <p style="margin:0 0 12px;font-size:13px">${escapeHtmlText(explanation)}</p>
+    <p style="margin:0"><a href="${escapeHtmlText(profileLink)}" style="display:inline-block;background:#1f4e79;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:4px;font-size:13px;font-weight:bold">${escapeHtmlText(button)}</a></p>
+  </div>`;
+  const root = html.match(/<div\b[^>]*>/i);
+  return root ? html.replace(root[0], `${root[0]}${panel}`) : `${panel}${html}`;
+}
+
+async function markosBidRoomEmailRender(
+  supabase: RfxBidSupabaseClient,
+  invitation: Record<string, unknown>,
+  event: Record<string, unknown>,
+  vendor: Record<string, unknown>,
+  bidLink: string,
+  purpose: string,
+  language: string
+) {
+  const ownerEmail = cleanText(event.owner_email);
+  const templateName = language === "en_US"
+    ? "RFx carrier invitation - English"
+    : "RFx carrier invitation - Spanish";
+  const source = await supabase
+    .from("outreach_messages")
+    .select("id,template_id,subject,html_body,metadata,outreach_templates!inner(id,name,subject,html_body,placeholders)")
+    .eq("owner_email", ownerEmail)
+    .eq("rfx_event_id", invitation.rfx_event_id)
+    .eq("vendor_id", invitation.vendor_id)
+    .eq("channel", "email")
+    .eq("outreach_templates.name", templateName)
+    .not("html_body", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (source.error) throw source.error;
+
+  // Never use a previous MarkOS follow-up as the visual source. Doing so would
+  // recursively add another follow-up panel and another subject prefix on each
+  // later call. The source must remain an official Bid Room invitation snapshot.
+  const sourceRow = objectRecord((source.data || []).find((candidate) => {
+    const row = objectRecord(candidate);
+    const metadata = objectRecord(row.metadata);
+    const html = cleanText(row.html_body) || "";
+    return cleanText(metadata.source) !== "markos_voice"
+      && html.includes("marksman-email-signature.png")
+      && /<table\b/i.test(html);
+  }));
+  const sourceTemplate = relationRecord(sourceRow.outreach_templates);
+  const sourceMetadata = objectRecord(sourceRow.metadata);
+  const sourceHtml = cleanText(sourceRow.html_body);
+  const profileLink = await resolveMarkosCarrierProfileLink(supabase, invitation, event, sourceMetadata.profile_link);
+  if (sourceHtml && sourceHtml.includes("marksman-email-signature.png") && /<table\b/i.test(sourceHtml)) {
+    const previousBidLink = cleanText(sourceMetadata.bid_link);
+    let refreshedHtml = sourceHtml;
+    if (previousBidLink && previousBidLink !== bidLink) {
+      refreshedHtml = refreshedHtml
+        .split(previousBidLink).join(bidLink)
+        .split(escapeHtmlText(previousBidLink)).join(escapeHtmlText(bidLink));
+    }
+    const followUpLabel = language === "en_US" ? "Follow-up" : "Seguimiento";
+    const sourceSubject = (cleanText(sourceRow.subject) || cleanText(event.rfx_id || event.name) || "Bid Room")
+      .replace(/^(?:Seguimiento|Follow-up)\s*\|\s*/i, "");
+    return {
+      templateId: cleanText(sourceRow.template_id || sourceTemplate.id),
+      sourceMessageId: cleanText(sourceRow.id),
+      renderMode: "bid_room_rendered_snapshot",
+      subject: `${followUpLabel} | ${sourceSubject}`.slice(0, 300),
+      htmlBody: addMarkosFollowUpPanel(addCarrierProfileUpdatePanel(refreshedHtml, profileLink, language), purpose, language),
+      profileLink
+    };
+  }
+
+  let template = sourceTemplate;
+  if (!cleanText(template.html_body)) {
+    const owned = await supabase
+      .from("outreach_templates")
+      .select("id,name,subject,html_body,placeholders")
+      .eq("owner_email", ownerEmail)
+      .eq("name", templateName)
+      .eq("active", true)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (owned.error) throw owned.error;
+    template = objectRecord(owned.data);
+  }
+  if (!cleanText(template.html_body)) {
+    const global = await supabase
+      .from("outreach_templates")
+      .select("id,name,subject,html_body,placeholders")
+      .is("owner_email", null)
+      .eq("name", templateName)
+      .eq("active", true)
+      .order("is_default", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (global.error) throw global.error;
+    template = objectRecord(global.data);
+  }
+  if (!cleanText(template.html_body)) throw new Error("The official Bid Room Gmail HTML template is not available.");
+
+  const bookResult = await supabase
+    .from("rfx_lane_vendors")
+    .select("id,rfx_lane_id,rfx_lanes(*)")
+    .eq("rfx_event_id", invitation.rfx_event_id)
+    .eq("vendor_id", invitation.vendor_id)
+    .neq("invitation_status", "archived")
+    .order("created_at", { ascending: true });
+  if (bookResult.error) throw bookResult.error;
+  const routeBook = (bookResult.data || []).length ? (bookResult.data || []) : [invitation];
+  const lane = relationRecord(invitation.rfx_lanes);
+  const templateHtml = cleanText(template.html_body) || "";
+  const htmlContext: Record<string, unknown> = {
+    vendor_name: escapeHtmlText(cleanText(vendor.vendor_name || vendor.domain) || "Carrier"),
+    contact_name: escapeHtmlText(cleanText(vendor.contact_name || vendor.vendor_name) || "team"),
+    vendor_domain: escapeHtmlText(cleanText(vendor.domain)),
+    vendor_email: escapeHtmlText(cleanText(vendor.primary_email)),
+    rfx_id: escapeHtmlText(cleanText(event.rfx_id)),
+    event_name: escapeHtmlText(cleanText(event.name || event.rfx_id)),
+    customer: escapeHtmlText(cleanText(event.customer)),
+    due_date: escapeHtmlText(cleanText(event.due_date)),
+    equipment: escapeHtmlText(cleanText(lane.equipment)),
+    trailer: escapeHtmlText(cleanText(lane.trailer)),
+    config: escapeHtmlText(cleanText(lane.config)),
+    operation: escapeHtmlText(cleanText(lane.operation)),
+    service: escapeHtmlText(cleanText(lane.service)),
+    lane_count: escapeHtmlText(routeBook.length),
+    lane_table: markosBidRoomLaneTableHtml(routeBook, language),
+    lane_rows_text: escapeHtmlText(routeBook.map((row) => {
+      const rowLane = relationRecord(row.rfx_lanes);
+      return `${cleanText(rowLane.origin || rowLane.origin_city) || "-"} -> ${cleanText(rowLane.destination || rowLane.destination_city) || "-"}`;
+    }).join("; ")),
+    bid_link: escapeHtmlText(bidLink),
+    profile_link: escapeHtmlText(profileLink)
+  };
+  const subjectContext = Object.fromEntries(Object.entries(htmlContext).map(([key, value]) => [key, key === "lane_table" ? "" : cleanText(value)]));
+  const rendered = renderMarkosBidRoomTemplate(templateHtml, htmlContext);
+  return {
+    templateId: cleanText(template.id),
+    sourceMessageId: null,
+    renderMode: "bid_room_template_render",
+    subject: `${language === "en_US" ? "Follow-up" : "Seguimiento"} | ${renderMarkosBidRoomTemplate(template.subject || event.rfx_id || event.name, subjectContext)}`.slice(0, 300),
+    htmlBody: addMarkosFollowUpPanel(addCarrierProfileUpdatePanel(rendered, profileLink, language), purpose, language),
+    profileLink
+  };
+}
+
+async function dispatchMarkosConfirmedFollowUp(messageIds: string[], sessionId: string) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error("Rateware internal delivery is not configured.");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000);
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/rateware-api`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        action: "send_markos_confirmed_followup",
+        ids: messageIds,
+        session_id: sessionId
+      }),
+      signal: controller.signal
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result?.error) throw new Error(publicErrorMessage(result?.error || result, `MarkOS delivery failed (${response.status}).`));
+    return objectRecord(result);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function requestMarkosFollowUp(
+  supabase: RfxBidSupabaseClient,
+  invitation: Record<string, unknown>,
+  token: string,
+  body: Record<string, unknown>
+) {
+  const event = relationRecord(invitation.rfx_events);
+  const lane = relationRecord(invitation.rfx_lanes);
+  const vendor = relationRecord(invitation.vendors);
+  const ownerEmail = cleanText(event.owner_email);
+  if (!ownerEmail) throw new Error("Invitation owner is not available.");
+
+  const sessionId = cleanText(body.session_id)?.slice(0, 160);
+  if (!sessionId) throw new Error("MarkOS session id is required.");
+  const followUpKind = cleanText(body.followup_kind)?.toLowerCase() === "outcome_support"
+    ? "outcome_support"
+    : "requested_information";
+  const channels = normalizeMarkosFollowUpChannels(body.channels);
+  if (!channels.length) throw new Error("At least one valid follow-up channel is required.");
+  const purpose = cleanText(body.purpose)?.slice(0, 800);
+  if (!purpose) throw new Error("A follow-up purpose is required.");
+  const followUpLanguage = normalizeMarkosFollowUpLanguage(body.language);
+
+  const duplicate = await supabase
+    .from("outreach_messages")
+    .select("id,channel,status")
+    .eq("owner_email", ownerEmail)
+    .eq("vendor_id", invitation.vendor_id)
+    .contains("metadata", { source: "markos_voice", markos_session_id: sessionId, followup_kind: followUpKind })
+    .limit(10);
+  if (duplicate.error) throw duplicate.error;
+  const existingChannels = new Set((duplicate.data || []).map((row) => cleanText(row.channel)).filter(Boolean));
+  const retryFailed = cleanBoolean(body.retry_failed) === true;
+
+  const email = cleanEmail(vendor.primary_email);
+  const whatsappPhone = cleanText(vendor.whatsapp_phone);
+  const whatsappBlocked = cleanBoolean(vendor.whatsapp_do_not_contact) === true
+    || cleanText(vendor.whatsapp_opt_in_status)?.toLowerCase() === "opted_out";
+  const unavailable: Record<string, string> = {};
+  if (channels.includes("email") && !email) unavailable.email = "Carrier has no valid email on file.";
+  if (channels.includes("whatsapp") && !whatsappPhone) unavailable.whatsapp = "Carrier has no WhatsApp number on file.";
+  if (channels.includes("whatsapp") && whatsappBlocked) unavailable.whatsapp = "Carrier is marked do-not-contact or opted out of WhatsApp.";
+
+  const eligible = channels.filter((channel) => !unavailable[channel] && !existingChannels.has(channel));
+  if (!eligible.length) {
+    const dispatchable = (duplicate.data || []).filter((row) => {
+      const status = cleanText(row.status);
+      return channels.includes(cleanText(row.channel) || "")
+        && (status === "drafted" || (retryFailed && status === "failed"));
+    });
+    if (dispatchable.length) {
+      const delivery = await dispatchMarkosConfirmedFollowUp(dispatchable.map((row) => row.id), sessionId);
+      return {
+        ...delivery,
+        duplicate: true,
+        manual_retry: retryFailed,
+        unavailable,
+        message: Number(delivery.sent || 0) > 0
+          ? "The previously created carrier-confirmed follow-up was sent."
+          : "The previously created follow-up could not be delivered."
+      };
+    }
+    return {
+      submitted: false,
+      duplicate: existingChannels.size > 0,
+      review_required: false,
+      unavailable,
+      message_ids: (duplicate.data || []).map((row) => row.id),
+      sent: (duplicate.data || []).filter((row) => cleanText(row.status) === "sent").length,
+      failed: (duplicate.data || []).filter((row) => cleanText(row.status) === "failed").length,
+      delivery_unknown: (duplicate.data || []).filter((row) => cleanText(row.status) === "delivery_unknown").length,
+      message: "No new follow-up was sent because these channels already have a terminal or uncertain delivery state."
+    };
+  }
+
+  // A MarkOS follow-up is scoped to one call/session. Reusing a single event-level
+  // campaign makes a later, separately confirmed follow-up collide with the
+  // outreach de-duplication index even though the session is new.
+  const campaignSessionKey = sessionId.replace(/[^a-z0-9]+/gi, "").slice(-16) || "session";
+  const campaignName = `MarkOS follow-up · ${cleanText(event.rfx_id || event.name) || invitation.rfx_event_id} · ${campaignSessionKey} · ${followUpKind}`.slice(0, 250);
+  let campaignResult = await supabase
+    .from("outreach_campaigns")
+    .select("id")
+    .eq("owner_email", ownerEmail)
+    .eq("rfx_event_id", invitation.rfx_event_id)
+    .eq("name", campaignName)
+    .limit(1)
+    .maybeSingle();
+  if (campaignResult.error) throw campaignResult.error;
+  if (!campaignResult.data) {
+    campaignResult = await supabase.from("outreach_campaigns").insert({
+      owner_user_id: event.owner_user_id || null,
+      owner_email: ownerEmail,
+      organization_id: event.organization_id || null,
+      rfx_event_id: invitation.rfx_event_id,
+      name: campaignName,
+      channel: "multi",
+      status: "draft",
+      notes: "Carrier-confirmed follow-up requests captured and delivered by MarkOS through Rateware Outreach."
+    }).select("id").single();
+    if (campaignResult.error) throw campaignResult.error;
+  }
+
+  const carrierName = cleanText(vendor.vendor_name || vendor.domain) || "transportista";
+  const eventName = cleanText(event.rfx_id || event.name) || "la oportunidad del Bid Room";
+  const route = [cleanText(lane.origin || lane.origin_city), cleanText(lane.destination || lane.destination_city)]
+    .filter(Boolean).join(" → ");
+  const bidLink = privateBidLink(token);
+  const emailRender = eligible.includes("email")
+    ? await markosBidRoomEmailRender(supabase, invitation, event, vendor, bidLink, purpose, followUpLanguage)
+    : null;
+  const profileLink = emailRender?.profileLink || await createMarkosCarrierProfileLink(supabase, invitation, event);
+  const messageBody = markosFollowUpBody({ carrierName, eventName, route, purpose, bidLink, profileLink });
+  const now = new Date().toISOString();
+  const messageRows = eligible.map((channel) => {
+    const recipient = channel === "email" ? email : whatsappPhone;
+    return {
+      owner_user_id: event.owner_user_id || null,
+      owner_email: ownerEmail,
+      organization_id: event.organization_id || null,
+      campaign_id: campaignResult.data!.id,
+      template_id: channel === "email" ? emailRender?.templateId || null : null,
+      rfx_event_id: invitation.rfx_event_id,
+      rfx_lane_id: invitation.rfx_lane_id,
+      rfx_lane_vendor_id: invitation.id,
+      vendor_id: invitation.vendor_id,
+      channel,
+      recipient_email: channel === "email" ? email : null,
+      recipient_phone: channel === "whatsapp" ? whatsappPhone : null,
+      subject: channel === "email" ? emailRender?.subject || `Seguimiento ${eventName}`.slice(0, 300) : null,
+      html_body: channel === "email" ? emailRender?.htmlBody : null,
+      text_body: channel === "email" ? messageBody : null,
+      whatsapp_text: channel === "whatsapp" ? messageBody : null,
+      whatsapp_template_language: channel === "whatsapp" ? followUpLanguage : null,
+      whatsapp_target_mode: channel === "whatsapp" ? "direct_vendor" : null,
+      provider: channel === "whatsapp" ? "meta" : "gmail",
+      status: "drafted",
+      contact_key: `vendor:${invitation.vendor_id}|${channel}:${cleanText(recipient)?.toLowerCase()}`,
+      next_action: "Review and send",
+      metadata: {
+        source: "markos_voice",
+        markos_session_id: sessionId,
+        followup_kind: followUpKind,
+        carrier_confirmed: followUpKind === "requested_information",
+        campaign_outcome_policy: followUpKind === "outcome_support",
+        review_required: false,
+        review_status: "carrier_confirmed",
+        requested_at: now,
+        purpose,
+        event_name: eventName,
+        bid_link: bidLink,
+        profile_link: profileLink,
+        ...(channel === "email" ? {
+          email_template_source: "bid_room_official_html",
+          email_template_id: emailRender?.templateId || null,
+          email_template_source_message_id: emailRender?.sourceMessageId || null,
+          email_render_mode: emailRender?.renderMode || null
+        } : {}),
+        ...(channel === "whatsapp" ? {
+          whatsapp_template_source: "bid_room_follow_up",
+          whatsapp_follow_up_language: followUpLanguage,
+          whatsapp_permission_basis: cleanText(vendor.whatsapp_permission_basis),
+          consent_source: followUpKind === "outcome_support" ? "campaign_outcome_support_policy" : "carrier_confirmed_during_markos_call"
+        } : {})
+      }
+    };
+  });
+  const created = await supabase.from("outreach_messages").insert(messageRows).select("id,channel,status");
+  if (created.error) throw created.error;
+
+  const historyRows = (created.data || []).map((message) => ({
+    owner_user_id: event.owner_user_id || null,
+    owner_email: ownerEmail,
+    organization_id: event.organization_id || null,
+    outreach_message_id: message.id,
+    campaign_id: campaignResult.data!.id,
+    vendor_id: invitation.vendor_id,
+    rfx_event_id: invitation.rfx_event_id,
+    channel: message.channel,
+    direction: "inbound",
+    status: "markos_followup_requested",
+    subject: "Carrier-confirmed MarkOS follow-up request",
+    body_preview: purpose,
+    occurred_at: now,
+    metadata: {
+      source: "markos_voice",
+      markos_session_id: sessionId,
+      carrier_confirmed: true,
+      review_required: false,
+      outreach_message_status: "drafted"
+    }
+  }));
+  if (historyRows.length) {
+    const history = await supabase.from("contact_history").insert(historyRows);
+    if (history.error) throw history.error;
+  }
+  const messageIds = (created.data || []).map((row) => row.id);
+  try {
+    const delivery = await dispatchMarkosConfirmedFollowUp(messageIds, sessionId);
+    return {
+      ...delivery,
+      unavailable,
+      message: Number(delivery.sent || 0) > 0
+        ? "The carrier-confirmed follow-up was sent through the available channels."
+        : "The follow-up was created but could not be delivered through the requested channels."
+    };
+  } catch (error) {
+    const deliveryError = publicErrorMessage(error);
+    await supabase
+      .from("outreach_messages")
+      .update({
+        status: "delivery_unknown",
+        delivery_status: "delivery_unknown",
+        delivery_error: deliveryError,
+        provider_response_status: "delivery_unknown",
+        updated_at: new Date().toISOString()
+      })
+      .in("id", messageIds)
+      .eq("status", "drafted");
+    return {
+      submitted: true,
+      review_required: false,
+      sent: 0,
+      failed: 0,
+      delivery_unknown: messageIds.length,
+      channels: (created.data || []).map((row) => row.channel),
+      message_ids: messageIds,
+      unavailable,
+      message: `Delivery could not be confirmed and will not be retried automatically: ${deliveryError}`
+    };
+  }
+}
+
+function markosFollowUpProviderState(rows: Record<string, unknown>[]) {
+  const statuses = rows.map((row) => cleanText(row.delivery_status || row.status)?.toLowerCase()).filter(Boolean);
+  if (statuses.includes("delivery_unknown")) return "delivery_unknown";
+  if (statuses.includes("failed") && statuses.some((status) => status !== "failed")) return "partial_failure";
+  if (statuses.length && statuses.every((status) => status === "failed")) return "failed";
+  for (const status of ["read", "delivered", "sent", "sending", "queued", "delivery_unknown", "failed", "drafted"]) {
+    if (statuses.includes(status)) return status;
+  }
+  return "unknown";
+}
+
+async function confirmMarkosFollowUpReceipt(
+  supabase: RfxBidSupabaseClient,
+  invitation: Record<string, unknown>,
+  body: Record<string, unknown>
+) {
+  const event = relationRecord(invitation.rfx_events);
+  const ownerEmail = cleanText(event.owner_email);
+  if (!ownerEmail) throw new Error("Invitation owner is not available.");
+  const sessionId = cleanText(body.session_id)?.slice(0, 160);
+  if (!sessionId) throw new Error("MarkOS session id is required.");
+  const receiptStatus = cleanText(body.receipt_status)?.toLowerCase();
+  if (!receiptStatus || !["awaiting_receipt", "received", "not_received"].includes(receiptStatus)) {
+    throw new Error("A valid MarkOS follow-up receipt status is required.");
+  }
+  const userStatement = cleanText(body.user_statement)?.slice(0, 500) || null;
+
+  const messagesResult = await supabase
+    .from("outreach_messages")
+    .select("id,channel,status,delivery_status,provider_response_status,sent_at,delivered_at,read_at,failed_at")
+    .eq("owner_email", ownerEmail)
+    .eq("vendor_id", invitation.vendor_id)
+    .contains("metadata", { source: "markos_voice", markos_session_id: sessionId })
+    .in("channel", ["email", "whatsapp"])
+    .order("created_at", { ascending: true })
+    .limit(2);
+  if (messagesResult.error) throw messagesResult.error;
+  const messages = (messagesResult.data || []) as Record<string, unknown>[];
+  if (!messages.length) {
+    return { found: false, recorded: false, receipt_status: receiptStatus, provider_state: "not_found", channels: [], delivery: [] };
+  }
+
+  const providerState = markosFollowUpProviderState(messages);
+  const delivery = messages.map((row) => ({
+    message_id: row.id,
+    channel: cleanText(row.channel),
+    status: cleanText(row.status),
+    delivery_status: cleanText(row.delivery_status),
+    provider_response_status: cleanText(row.provider_response_status),
+    sent_at: row.sent_at || null,
+    delivered_at: row.delivered_at || null,
+    read_at: row.read_at || null,
+    failed_at: row.failed_at || null
+  }));
+  let recorded = false;
+  let duplicate = false;
+  if (["received", "not_received"].includes(receiptStatus)) {
+    const historyStatus = receiptStatus === "received" ? "markos_followup_received" : "markos_followup_not_received";
+    const existing = await supabase
+      .from("contact_history")
+      .select("id,metadata")
+      .eq("owner_email", ownerEmail)
+      .eq("vendor_id", invitation.vendor_id)
+      .eq("status", historyStatus)
+      .contains("metadata", { source: "markos_voice", markos_session_id: sessionId })
+      .limit(1)
+      .maybeSingle();
+    if (existing.error) throw existing.error;
+    if (existing.data) {
+      duplicate = true;
+      const refreshed = await supabase
+        .from("contact_history")
+        .update({
+          metadata: {
+            ...relationRecord(existing.data.metadata),
+            provider_state: providerState,
+            delivery,
+            provider_checked_at: new Date().toISOString()
+          }
+        })
+        .eq("id", existing.data.id)
+        .eq("owner_email", ownerEmail);
+      if (refreshed.error) throw refreshed.error;
+    } else {
+      const history = await supabase.from("contact_history").insert({
+        owner_user_id: event.owner_user_id || null,
+        owner_email: ownerEmail,
+        organization_id: event.organization_id || null,
+        vendor_id: invitation.vendor_id,
+        rfx_event_id: invitation.rfx_event_id,
+        channel: "phone",
+        direction: "inbound",
+        status: historyStatus,
+        subject: receiptStatus === "received" ? "Carrier confirmed MarkOS follow-up receipt" : "Carrier reported MarkOS follow-up not received",
+        body_preview: userStatement || (receiptStatus === "received" ? "Carrier confirmed receipt during the live call." : "Carrier reported no receipt during the live call."),
+        occurred_at: new Date().toISOString(),
+        metadata: {
+          source: "markos_voice",
+          interaction: "follow_up_receipt",
+          markos_session_id: sessionId,
+          receipt_status: receiptStatus,
+          provider_state: providerState,
+          message_ids: messages.map((row) => row.id),
+          channels: messages.map((row) => row.channel),
+          delivery
+        }
+      }).select("id").single();
+      if (history.error) throw history.error;
+      recorded = true;
+    }
+  }
+
+  return {
+    found: true,
+    recorded,
+    duplicate,
+    receipt_status: receiptStatus,
+    provider_state: providerState,
+    channels: messages.map((row) => row.channel),
+    delivery,
+    message: receiptStatus === "received"
+      ? "Carrier receipt was confirmed and the Bid Room can now be guided live."
+      : receiptStatus === "not_received"
+        ? "The carrier has not received it yet. Do not retry automatically; remain on the call and offer another confirmed channel if needed."
+        : "The provider state was checked; explicit carrier receipt is still pending."
+  };
+}
+
+function markosCallbackLocalMinute(epochMs: number, timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(new Date(epochMs));
+  const values = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
+}
+
+function normalizeMarkosCallbackSchedule(body: Record<string, unknown>) {
+  const scheduledAt = cleanText(body.scheduled_at);
+  const scheduledMs = Date.parse(scheduledAt || "");
+  const localDatetime = cleanText(body.local_datetime);
+  const timezone = cleanText(body.timezone);
+  if (!Number.isFinite(scheduledMs)) throw new Error("A valid callback timestamp is required.");
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(localDatetime || "")) throw new Error("A valid callback local date and time is required.");
+  if (!timezone) throw new Error("A callback timezone is required.");
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(0);
+  } catch {
+    throw new Error("The callback timezone is invalid.");
+  }
+  if (markosCallbackLocalMinute(scheduledMs, timezone) !== localDatetime) {
+    throw new Error("The callback UTC timestamp does not match the confirmed local date, time and timezone.");
+  }
+  const now = Date.now();
+  if (scheduledMs <= now + 60_000) throw new Error("The callback must be scheduled at least two minutes in the future.");
+  if (scheduledMs > now + 90 * 24 * 60 * 60 * 1000) throw new Error("The callback cannot be scheduled more than 90 days ahead.");
+  return {
+    scheduledAt: new Date(scheduledMs).toISOString(),
+    localDatetime,
+    timezone,
+    requestedExpression: cleanText(body.requested_expression)?.slice(0, 240) || null,
+    purpose: cleanText(body.purpose)?.slice(0, 800)
+  };
+}
+
+async function requestMarkosCallback(
+  supabase: RfxBidSupabaseClient,
+  invitation: Record<string, unknown>,
+  body: Record<string, unknown>
+) {
+  const event = relationRecord(invitation.rfx_events);
+  const vendor = relationRecord(invitation.vendors);
+  const ownerEmail = cleanText(event.owner_email);
+  const sessionId = cleanText(body.session_id)?.slice(0, 160);
+  if (!ownerEmail) throw new Error("Invitation owner is not available.");
+  if (!sessionId) throw new Error("MarkOS session id is required.");
+  if (cleanText(vendor.status)?.toLowerCase() === "blocked") throw new Error("The carrier is blocked and cannot receive a scheduled callback.");
+  const recipientPhone = cleanText(vendor.whatsapp_phone);
+  if (!/^\+[1-9]\d{7,14}$/.test(recipientPhone || "")) throw new Error("Carrier has no valid E.164 callback phone on file.");
+  const schedule = normalizeMarkosCallbackSchedule(body);
+  if (!schedule.purpose) throw new Error("A callback purpose is required.");
+
+  const activeStatuses = ["scheduled", "dispatching", "queued", "initiated", "ringing", "in_progress"];
+  const existing = await supabase
+    .from("markos_callback_jobs")
+    .select("id,status,scheduled_at")
+    .eq("source_session_id", sessionId)
+    .eq("rfx_lane_vendor_id", invitation.id)
+    .in("status", activeStatuses)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+
+  let callbackResult;
+  let rescheduled = false;
+  if (existing.data) {
+    if (cleanText(existing.data.status) !== "scheduled") {
+      throw new Error("The previous callback is already being dispatched and cannot be changed automatically.");
+    }
+    if (Date.parse(existing.data.scheduled_at) === Date.parse(schedule.scheduledAt)) {
+      return {
+        submitted: false,
+        duplicate: true,
+        callback_id: existing.data.id,
+        status: existing.data.status,
+        scheduled_at: schedule.scheduledAt,
+        local_datetime: schedule.localDatetime,
+        timezone: schedule.timezone
+      };
+    }
+    callbackResult = await supabase
+      .from("markos_callback_jobs")
+      .update({
+        scheduled_at: schedule.scheduledAt,
+        scheduled_local: `${schedule.localDatetime}:00`,
+        timezone: schedule.timezone,
+        recipient_phone: recipientPhone,
+        requested_expression: schedule.requestedExpression,
+        purpose: schedule.purpose,
+        consent_confirmed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        metadata: { source: "markos_voice", carrier_confirmed: true, rescheduled_during_same_call: true }
+      })
+      .eq("id", existing.data.id)
+      .eq("status", "scheduled")
+      .select("id,status,scheduled_at,scheduled_local,timezone")
+      .single();
+    rescheduled = true;
+  } else {
+    callbackResult = await supabase
+      .from("markos_callback_jobs")
+      .insert({
+        organization_id: event.organization_id || null,
+        owner_user_id: event.owner_user_id || null,
+        owner_email: ownerEmail,
+        vendor_id: invitation.vendor_id,
+        rfx_event_id: invitation.rfx_event_id,
+        rfx_lane_id: invitation.rfx_lane_id,
+        rfx_lane_vendor_id: invitation.id,
+        source_session_id: sessionId,
+        recipient_phone: recipientPhone,
+        scheduled_at: schedule.scheduledAt,
+        scheduled_local: `${schedule.localDatetime}:00`,
+        timezone: schedule.timezone,
+        requested_expression: schedule.requestedExpression,
+        purpose: schedule.purpose,
+        status: "scheduled",
+        consent_confirmed_at: new Date().toISOString(),
+        metadata: { source: "markos_voice", carrier_confirmed: true, review_required: false }
+      })
+      .select("id,status,scheduled_at,scheduled_local,timezone")
+      .single();
+  }
+  if (callbackResult.error) throw callbackResult.error;
+
+  const history = await supabase.from("contact_history").insert({
+    owner_user_id: event.owner_user_id || null,
+    owner_email: ownerEmail,
+    organization_id: event.organization_id || null,
+    vendor_id: invitation.vendor_id,
+    rfx_event_id: invitation.rfx_event_id,
+    channel: "phone",
+    direction: "inbound",
+    status: rescheduled ? "markos_callback_rescheduled" : "markos_callback_scheduled",
+    subject: rescheduled ? "Carrier rescheduled MarkOS callback" : "Carrier scheduled MarkOS callback",
+    body_preview: `${schedule.localDatetime} ${schedule.timezone} · ${schedule.purpose}`.slice(0, 1200),
+    occurred_at: new Date().toISOString(),
+    metadata: {
+      source: "markos_voice",
+      markos_session_id: sessionId,
+      callback_id: callbackResult.data.id,
+      carrier_confirmed: true,
+      scheduled_at: schedule.scheduledAt,
+      timezone: schedule.timezone
+    }
+  });
+  if (history.error) throw history.error;
+
+  return {
+    submitted: true,
+    duplicate: false,
+    rescheduled,
+    callback_id: callbackResult.data.id,
+    status: callbackResult.data.status,
+    scheduled_at: callbackResult.data.scheduled_at,
+    local_datetime: schedule.localDatetime,
+    timezone: callbackResult.data.timezone
+  };
+}
+
+const MARKOS_CALLBACK_STATUSES = new Set([
+  "queued", "initiated", "ringing", "in_progress", "completed", "no_answer", "busy", "failed", "canceled", "needs_review"
+]);
+
+async function updateMarkosCallbackStatus(
+  supabase: RfxBidSupabaseClient,
+  invitation: Record<string, unknown>,
+  body: Record<string, unknown>
+) {
+  const callbackId = cleanText(body.callback_id);
+  const requestedStatus = cleanText(body.status)?.toLowerCase().replace(/-/g, "_");
+  if (!callbackId) throw new Error("Callback id is required.");
+  if (!requestedStatus || !MARKOS_CALLBACK_STATUSES.has(requestedStatus)) throw new Error("Callback status is not allowed.");
+  const patch: Record<string, unknown> = {
+    status: requestedStatus,
+    updated_at: new Date().toISOString(),
+    lease_until: null
+  };
+  const callSid = cleanText(body.call_sid)?.slice(0, 80);
+  const voiceSessionId = cleanText(body.voice_session_id)?.slice(0, 160);
+  const error = cleanText(body.error)?.slice(0, 1000);
+  if (callSid) patch.twilio_call_sid = callSid;
+  if (voiceSessionId) patch.markos_voice_session_id = voiceSessionId;
+  if (error) patch.last_error = error;
+  if (["queued", "initiated", "ringing", "in_progress"].includes(requestedStatus)) patch.dispatched_at = new Date().toISOString();
+  if (["completed", "no_answer", "busy", "failed", "canceled"].includes(requestedStatus)) patch.completed_at = new Date().toISOString();
+
+  const result = await supabase
+    .from("markos_callback_jobs")
+    .update(patch)
+    .eq("id", callbackId)
+    .eq("rfx_lane_vendor_id", invitation.id)
+    .select("id,status,scheduled_at,timezone,twilio_call_sid,markos_voice_session_id")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  if (!result.data) throw new Error("Callback job was not found for this invitation.");
+  return { updated: true, callback: result.data };
+}
+
+function normalizeMarkosStatements(value: unknown) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => cleanText(item)?.slice(0, 500))
+    .filter((item): item is string => Boolean(item))
+    .slice(-12);
+}
+
+function markosOutcomeSupportPurpose(outcome: string, dialogueValue: unknown, statements: string[]) {
+  const dialogue = objectRecord(dialogueValue);
+  const candidate = cleanText(dialogue.outcome_candidate)?.toLowerCase();
+  const labels: Record<string, string> = {
+    bid_submitted: "puja presentada",
+    declined: "invitación rechazada con motivo",
+    follow_up: "seguimiento acordado",
+    callback_scheduled: "devolución de llamada programada",
+    transferred: "transferencia a un especialista",
+    not_interested: "carrier no interesado",
+    completed: "conversación finalizada",
+    busy: "línea ocupada",
+    no_answer: "llamada sin respuesta",
+    failed: "llamada no completada",
+    canceled: "llamada cancelada",
+    stream_closed: "conversación interrumpida"
+  };
+  const resultLabel = labels[candidate || ""] || labels[outcome] || "conversación finalizada";
+  const support = statements.slice(-4).join(" | ");
+  return [
+    `Resultado: ${resultLabel}.`,
+    support ? `Soporte de la conversación: ${support}.` : "No se capturaron acuerdos adicionales durante la conversación.",
+    "Siguiente paso: revise la oportunidad en el Bid Room y mantenga actualizado su perfil del Carrier CRM."
+  ].join(" ").slice(0, 800);
+}
+
+const MARKOS_CALL_OUTCOMES = new Set(["completed", "busy", "failed", "no_answer", "canceled", "stream_closed"]);
 
 async function invitationBidHistory(
   supabase: RfxBidSupabaseClient,
@@ -2733,8 +3795,8 @@ function supportCommercialModelCopy(question: string, language: string) {
   const lower = question.toLowerCase();
   if (!/(commercial|cost|share|margin|markup|modelo|comercial|margen|facturacion|facturación|compra|venta|xbf)/i.test(lower)) return null;
   return language === "es"
-    ? "Estructura comercial: Cost-plus usa margen sugerido sobre tu costo all-in, default 3% si lo omites; Carrier invoice share mantiene tu tarifa y calcula share de factura, default 3% si lo omites; XBF Buy-Sell usa margen sugerido de compra-venta entre 7.5% y 15%, default 12% si lo omites."
-    : "Commercial structure: Cost-plus uses suggested margin over your all-in cost, default 3% if blank; Carrier invoice share keeps your rate and calculates invoice share, default 3% if blank; XBF Buy-Sell uses a suggested buy-sell margin from 7.5% to 15%, default 12% if blank.";
+    ? "Estructura comercial: Cost-plus usa margen sugerido sobre tu costo all-in, default 3% si lo omites; Carrier invoice share mantiene tu tarifa y calcula share de factura, default 3% si lo omites; XBF Buy-Sell usa margen sugerido de compra-venta entre 7.5% y 15%, con objetivo y default de 15%."
+    : "Commercial structure: Cost-plus uses suggested margin over your all-in cost, default 3% if blank; Carrier invoice share keeps your rate and calculates invoice share, default 3% if blank; XBF Buy-Sell uses a suggested buy-sell margin from 7.5% to 15%, with a 15% target and default.";
 }
 
 function supportBestPracticeCopy(question: string, language: string) {
@@ -3053,8 +4115,8 @@ function supportNextSteps(input: {
       es: ["Revisa modelo logistico.", "Valida reglas de operacion y notas.", "Puja solo si tu operacion cumple."]
     },
     commercial: {
-      en: ["Choose the structure that matches billing.", "Leave cost-plus or invoice share blank to use 3%.", "Use XBF Buy-Sell with 7.5%-15% suggested margin, or blank for 12%."],
-      es: ["Elige la estructura que coincide con facturacion.", "Deja cost-plus o invoice share vacio para usar 3%.", "Usa XBF Buy-Sell con margen sugerido 7.5%-15%, o vacio para 12%."]
+      en: ["Choose the structure that matches billing.", "Leave cost-plus or invoice share blank to use 3%.", "Use XBF Buy-Sell with 7.5%-15% suggested margin; the target and blank default are 15%."],
+      es: ["Elige la estructura que coincide con facturacion.", "Deja cost-plus o invoice share vacio para usar 3%.", "Usa XBF Buy-Sell con margen sugerido 7.5%-15%; el objetivo y default en vacio son 15%."]
     },
     ranking: {
       en: ["Improve price first if capacity is equal.", "Confirm real weekly capacity.", "Add ETA and availability to reduce risk."],
@@ -3559,8 +4621,8 @@ function bidSupportAnswerFromOpportunityContext(
       : `Your visible rank is ${liveBoard.current_rank ? `#${liveBoard.current_rank}` : "not available yet"}. To improve it, update all-in rate, capacity, ETA, and real availability.`;
   } else if (/(commercial|cost|share|margin|markup|modelo|comercial|margen|facturacion|facturacion|compra|venta|xbf)/i.test(question)) {
     answer = language === "es"
-      ? "Cost-plus usa margen sugerido sobre tu all-in y default 3% si queda vacio. Carrier invoice share mantiene tu tarifa y default 3% si queda vacio. XBF Buy-Sell usa margen 7.5%-15%; si queda vacio aplica 12%."
-      : "Cost-plus uses suggested margin over your all-in and defaults to 3% if blank. Carrier invoice share keeps your rate and defaults to 3% if blank. XBF Buy-Sell uses 7.5%-15%; if blank it applies 12%.";
+      ? "Cost-plus usa margen sugerido sobre tu all-in y default 3% si queda vacio. Carrier invoice share mantiene tu tarifa y default 3% si queda vacio. XBF Buy-Sell usa margen 7.5%-15%; si queda vacio aplica el objetivo de 15%."
+      : "Cost-plus uses suggested margin over your all-in and defaults to 3% if blank. Carrier invoice share keeps your rate and defaults to 3% if blank. XBF Buy-Sell uses 7.5%-15%; if blank it applies the 15% target.";
   } else if (/(alternative|alternativa|alternativas|equipo|equipment|\bunidad(?:es)?\b|\bunit(?:s)?\b|\beta\b)/i.test(question)) {
     answer = language === "es"
       ? "Puedes proponer una alternativa si cambia equipo, unidades o capacidad. Indica unidades, restricciones, ETA y si la tarifa aplica al sustituto."
@@ -4850,7 +5912,7 @@ Deno.serve(async (request) => {
           awarded_at,
           rate_staging_id,
           rateware_closeout_at,
-          vendors(vendor_name,domain,primary_email),
+          vendors(vendor_name,legal_name,domain,contact_name,primary_email,whatsapp_phone,preferred_channel,status,tags,coverage_notes,profile_data,updated_at),
           rfx_events(id,owner_user_id,owner_email,rfx_id,name,customer,event_type,status,due_date,bid_visibility_mode,notes,source_rfx_process_project_id,source_rfx_package_id,source_rfx_package_name,rfx_master_package),
       rfx_lanes(*)
         `);
@@ -4882,13 +5944,24 @@ Deno.serve(async (request) => {
       const bidHistory = body.refresh_only !== true || body.include_history === true
         ? await invitationBidHistory(supabase, result.data)
         : [];
+      const carrierHistory = body.include_history === true
+        ? await carrierConversationMemory(supabase, result.data)
+        : [];
+      const carrierMemory = body.include_history === true
+        ? {
+            profile: carrierProfileMemory(result.data.vendors),
+            conversations: carrierHistory,
+            history_count: carrierHistory.length,
+            history_truncated: carrierHistory.length >= 20
+          }
+        : null;
       if (body.refresh_only === true) {
         const currentBook = carrierBusinessBook(result.data, [result.data], []);
         return jsonResponse({
           invitation: result.data,
           live_board: liveBoardFromRows(result.data, peersResult.data || []),
           current_book_row: currentBook.invited[0] || null,
-          ...(body.include_history === true ? { bid_history: bidHistory } : {})
+          ...(body.include_history === true ? { bid_history: bidHistory, carrier_memory: carrierMemory } : {})
         });
       }
       const invitedResult = ownerEmail
@@ -5003,7 +6076,147 @@ Deno.serve(async (request) => {
         live_board: liveBoardFromRows(result.data, peersResult.data || []),
         carrier_book: carrierBusinessBook(result.data, hydratedInvitedRows, openLanesResult.data || []),
         bid_history: bidHistory,
-        segment_confirmations: segmentConfirmations
+        segment_confirmations: segmentConfirmations,
+        ...(body.include_history === true ? { carrier_memory: carrierMemory } : {})
+      });
+    }
+
+    if (body.action === "request_carrier_profile_update") {
+      const invitation = await currentInvitationContext(supabase, token);
+      const changes = normalizeCarrierProfileUpdateChanges(body.changes);
+      const event = relationRecord(invitation.rfx_events);
+      const vendor = relationRecord(invitation.vendors);
+      const ownerEmail = cleanText(event.owner_email);
+      if (!ownerEmail) return jsonResponse({ error: "Invitation owner is not available." }, 409);
+      const sessionId = cleanText(body.session_id)?.slice(0, 160) || null;
+      if (sessionId) {
+        const existing = await supabase
+          .from("contact_history")
+          .select("id")
+          .eq("owner_email", ownerEmail)
+          .eq("vendor_id", invitation.vendor_id)
+          .eq("status", "profile_update_requested")
+          .contains("metadata", { source: "markos_voice", markos_session_id: sessionId })
+          .limit(1)
+          .maybeSingle();
+        if (existing.error) throw existing.error;
+        if (existing.data) {
+          return jsonResponse({ submitted: false, duplicate: true, review_required: true, request_id: existing.data.id });
+        }
+      }
+      const history = await supabase.from("contact_history").insert({
+        owner_user_id: event.owner_user_id || null,
+        owner_email: ownerEmail,
+        vendor_id: invitation.vendor_id,
+        rfx_event_id: invitation.rfx_event_id,
+        channel: "phone",
+        direction: "inbound",
+        status: "profile_update_requested",
+        subject: "MarkOS carrier profile update request",
+        body_preview: changes.map((item) => `${item.field}: ${item.value}`).join(" | ").slice(0, 4000),
+        metadata: {
+          source: "markos_voice",
+          review_required: true,
+          review_status: "pending",
+          rfx_lane_vendor_id: invitation.id,
+          markos_session_id: sessionId,
+          carrier: cleanText(vendor.vendor_name || vendor.domain) || "Carrier",
+          changes
+        }
+      }).select("id,occurred_at").single();
+      if (history.error) throw history.error;
+      return jsonResponse({
+        submitted: true,
+        review_required: true,
+        request_id: history.data?.id || null,
+        message: "Carrier profile changes were submitted for human review; the official profile was not overwritten."
+      });
+    }
+
+    if (body.action === "request_markos_followup") {
+      const invitation = await currentInvitationContext(supabase, token);
+      return jsonResponse(await requestMarkosFollowUp(supabase, invitation, token, body));
+    }
+
+    if (body.action === "confirm_markos_followup_receipt") {
+      const invitation = await currentInvitationContext(supabase, token);
+      return jsonResponse(await confirmMarkosFollowUpReceipt(supabase, invitation, body));
+    }
+
+    if (body.action === "request_markos_callback") {
+      const invitation = await currentInvitationContext(supabase, token);
+      return jsonResponse(await requestMarkosCallback(supabase, invitation, body));
+    }
+
+    if (body.action === "update_markos_callback_status") {
+      const invitation = await currentInvitationContext(supabase, token);
+      return jsonResponse(await updateMarkosCallbackStatus(supabase, invitation, body));
+    }
+
+    if (body.action === "record_markos_conversation") {
+      const invitation = await currentInvitationContext(supabase, token);
+      const event = relationRecord(invitation.rfx_events);
+      const ownerEmail = cleanText(event.owner_email);
+      if (!ownerEmail) return jsonResponse({ error: "Invitation owner is not available." }, 409);
+      const sessionId = cleanText(body.session_id)?.slice(0, 160);
+      if (!sessionId) return jsonResponse({ error: "MarkOS session id is required." }, 400);
+      const existing = await supabase
+        .from("contact_history")
+        .select("id")
+        .eq("owner_email", ownerEmail)
+        .eq("vendor_id", invitation.vendor_id)
+        .eq("channel", "phone")
+        .like("status", "markos_call_%")
+        .contains("metadata", { source: "markos_voice", markos_session_id: sessionId })
+        .limit(1)
+        .maybeSingle();
+      if (existing.error) throw existing.error;
+      if (existing.data) return jsonResponse({ recorded: false, duplicate: true, history_id: existing.data.id });
+
+      const statements = normalizeMarkosStatements(body.user_statements);
+      const durationSeconds = Math.max(0, Math.min(24 * 60 * 60, Number(body.duration_seconds) || 0));
+      const requestedOutcome = cleanText(body.outcome)?.toLowerCase() || "completed";
+      const outcome = MARKOS_CALL_OUTCOMES.has(requestedOutcome) ? requestedOutcome : "completed";
+      const history = await supabase.from("contact_history").insert({
+        owner_user_id: event.owner_user_id || null,
+        owner_email: ownerEmail,
+        vendor_id: invitation.vendor_id,
+        rfx_event_id: invitation.rfx_event_id,
+        channel: "phone",
+        direction: "inbound",
+        status: `markos_call_${outcome}`,
+        subject: "MarkOS carrier conversation",
+        body_preview: (statements.join(" | ") || "No carrier statement was captured.").slice(0, 4000),
+        metadata: {
+          source: "markos_voice",
+          markos_session_id: sessionId,
+          duration_seconds: durationSeconds,
+          user_statements: statements,
+          dialogue: objectRecord(body.dialogue)
+        }
+      }).select("id,occurred_at").single();
+      if (history.error) throw history.error;
+      let outcomeSupport: Record<string, unknown>;
+      try {
+        outcomeSupport = objectRecord(await requestMarkosFollowUp(supabase, invitation, token, {
+          session_id: sessionId,
+          channels: ["email", "whatsapp"],
+          language: "es_MX",
+          followup_kind: "outcome_support",
+          purpose: markosOutcomeSupportPurpose(outcome, body.dialogue, statements)
+        }));
+      } catch (error) {
+        outcomeSupport = {
+          submitted: false,
+          sent: 0,
+          error: publicErrorMessage(error, "Outcome support could not be delivered."),
+          manual_review_required: true
+        };
+      }
+      return jsonResponse({
+        recorded: true,
+        history_id: history.data?.id || null,
+        outcome_support: outcomeSupport
       });
     }
 
@@ -5100,6 +6313,10 @@ Deno.serve(async (request) => {
       const currentStatus = String(cleanText(invitationResult.data.invitation_status) || "").toLowerCase();
       const currentRate = cleanNumber(invitationResult.data.bid_rate);
       const reason = cleanText(body.reason);
+      const markosSource = cleanText(body.source)?.toLowerCase() === "markos_voice";
+      const responseSource = markosSource ? "markos_voice" : "carrier_portal";
+      const sourceChannel = markosSource ? "phone" : "portal";
+      const markosSessionId = markosSource ? cleanText(body.session_id)?.slice(0, 160) || null : null;
       const rfxEvent = relationRecord(invitationResult.data.rfx_events);
       const vendor = relationRecord(invitationResult.data.vendors);
       const lane = relationRecord(invitationResult.data.rfx_lanes);
@@ -5113,7 +6330,7 @@ Deno.serve(async (request) => {
           .update({
             invitation_status: "declined",
             notes: reason || cleanText(invitationResult.data.notes),
-            response_source: "carrier_portal",
+            response_source: responseSource,
             responded_at: now,
             updated_at: now
           })
@@ -5128,7 +6345,7 @@ Deno.serve(async (request) => {
             owner_email: rfxEvent.owner_email || null,
             vendor_id: invitationResult.data.vendor_id,
             rfx_event_id: invitationResult.data.rfx_event_id,
-            channel: "portal",
+            channel: sourceChannel,
             direction: "inbound",
             status: "declined",
             subject: `${rfxEvent.rfx_id || "RFx"} invitation declined`,
@@ -5138,7 +6355,8 @@ Deno.serve(async (request) => {
               reason ? `reason: ${reason}` : null
             ].filter(Boolean).join(" | "),
             metadata: {
-              source: "rfx_bid_portal",
+              source: responseSource,
+              markos_session_id: markosSessionId,
               rfx_lane_vendor_id: invitationResult.data.id,
               rfx_lane_id: invitationResult.data.rfx_lane_id,
               previous_status: currentStatus || null,
