@@ -316,6 +316,8 @@ try {
   let inventory = discoverFixture();
   assert.equal(inventory.surfaces[0].handlerStatus, "named-existing");
   assert.equal(inventory.surfaces[0].handlerResolution, "imported-static");
+  inventory.surfaces.discoveryCandidates = inventory.candidates;
+  assert.equal(validationExitCode(validateActionContract(contractFor([entryFrom(inventory.surfaces[0])], inventory.surfaces), inventory.surfaces, { repoRoot: advancedRoot })), 0);
 
   writeFileSync(join(functionRoot, "index.ts"), 'import { missingHandler } from "./missing.ts"; Deno.serve(async()=>{const body={};if(body.action==="missing_import")return await missingHandler();});\n');
   inventory = discoverFixture();
@@ -328,6 +330,8 @@ try {
   inventory = discoverFixture();
   assert.equal(inventory.surfaces[0].handlerStatus, "named-existing");
   assert.equal(inventory.surfaces[0].handlerResolution, "imported-static");
+  inventory.surfaces.discoveryCandidates = inventory.candidates;
+  assert.equal(validationExitCode(validateActionContract(contractFor([entryFrom(inventory.surfaces[0])], inventory.surfaces), inventory.surfaces, { repoRoot: advancedRoot })), 0);
 
   writeFileSync(join(functionRoot, "barrel.ts"), 'export * from "./handler.ts";\n');
   inventory = discoverFixture();
@@ -364,6 +368,23 @@ try {
   inventory = discoverFixture();
   assert.equal(inventory.surfaces[0].coverageSignals.includes("external_dependency"), true);
   assert.equal(inventory.surfaces[0].coverageSignals.includes("coverage_not_determinable"), false);
+
+  writeFileSync(join(functionRoot, "guard.ts"), 'globalThis.guardPolicy = "a";\n');
+  writeFileSync(join(functionRoot, "index.ts"), 'import "./guard.ts"; Deno.serve(async()=>{const body={};if(body.action==="side_effect")return new Response("ok");});\n');
+  inventory = discoverFixture();
+  const sideEffectFingerprint = inventory.surfaces[0].authorizationFingerprint;
+  assert.equal(inventory.surfaces[0].dependencyFiles.includes("supabase/functions/fixture-api/guard.ts"), true);
+  assert.equal(inventory.surfaces[0].analysisCoverage, "shared-observed");
+  writeFileSync(join(functionRoot, "guard.ts"), 'globalThis.guardPolicy = "b";\n');
+  assert.notEqual(discoverFixture().surfaces[0].authorizationFingerprint, sideEffectFingerprint);
+
+  writeFileSync(join(functionRoot, "index.ts"), 'import { guard } from "@/guard.ts"; Deno.serve(async()=>{const body={};if(body.action==="alias_import")return new Response(String(guard()));});\n');
+  inventory = discoverFixture();
+  inventory.surfaces.discoveryCandidates = inventory.candidates;
+  assert.equal(inventory.surfaces[0].analysisCoverage, "dependency-undetermined");
+  assert.equal(inventory.surfaces[0].coverageSignals.includes("unresolved_local_dependency"), true);
+  assert.equal(inventory.surfaces[0].externalDependencies.some((entry) => entry.specifier === "@/guard.ts"), false);
+  assert.ok(codes(validateActionContract(contractFor([entryFrom(inventory.surfaces[0])], inventory.surfaces), inventory.surfaces)).includes("AUTHORIZATION_DEPENDENCY_UNDETERMINED"));
 } finally {
   rmSync(advancedRoot, { recursive: true, force: true });
 }
@@ -390,6 +411,26 @@ assert.equal(rpc('-- drop function public.a(integer);\ncreate function public.a(
 assert.equal(rpc('create function "Ops"."Score"(value integer) returns integer language sql as $$select value$$;')[0].canonicalId, 'rpc."Ops"."Score"(integer)');
 const typed = rpc('create function public.typed(p_value integer default 1, p_ids uuid[], p_row public.rate_staging, variadic p_labels text[]) returns integer language sql as $$select 1$$;');
 assert.equal(typed[0].rpcSignature, "integer,uuid[],public.rate_staging,text[]");
+
+// Step 7J independent regressions from the third review.
+const conflictingRegistries = selectorWithCandidates('async function alpha(){return {}} async function beta(){return {}} const first={same:alpha}; const second={same:beta}; Deno.serve(async()=>{const body={};return (body.flag?first[body.action]:second[body.action])();});');
+assertCandidateBlocks(conflictingRegistries, "AMBIGUOUS_ACTION_ATTRIBUTION");
+
+const bracketAlias = selectorWithCandidates(edgeSource('if(body.action==="known")return new Response("ok"); const hidden=body["action"]; if(hidden==="hidden")return new Response("hidden");'));
+assert.deepEqual(bracketAlias.map((entry) => entry.actionName), ["known", "hidden"]);
+assert.equal(validationExitCode(validateActionContract(contractFor(bracketAlias.map((entry) => entryFrom(entry)), bracketAlias), bracketAlias)), 0);
+
+const dynamicSwitch = selectorWithCandidates(edgeSource('switch(body.action){case "known":return knownHandler();case `dynamic_${suffix}`:return dynamicHandler();}', 'function knownHandler(){return {}}\nfunction dynamicHandler(){return {}}'));
+assertCandidateBlocks(dynamicSwitch, "DYNAMIC_TEMPLATE_ACTION");
+
+const callbackTerminal = selectorWithCandidates(edgeSource('const chosen=body.action;if(chosen==="wrapped")return await withAuth({required:true},()=>business());', 'async function withAuth(_options,cb){return cb()}\nasync function business(){return {}}'));
+assert.equal(callbackTerminal[0].handlerStatus, "undetermined");
+assert.equal(callbackTerminal[0].handlerResolution, "callback-wrapper-terminal-undetermined");
+assert.ok(codes(validateActionContract(contractFor(callbackTerminal.map((entry) => entryFrom(entry)), callbackTerminal), callbackTerminal)).includes("HANDLER_UNDETERMINED"));
+
+const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
+assert.equal(nestedLeadingComment.length, 1);
+assert.equal(nestedLeadingComment[0].canonicalId, "rpc.public.outer()");
 
 // Step 7H scenarios 38-46: exits, determinism, snapshot, H07 and no silent candidate omission.
 const countContract = contractFor([entryFrom(inlineActual[0])], inlineActual);
