@@ -260,10 +260,23 @@ function jsLexicalSignals(source) {
   return { identifiers, hasInlineFunction };
 }
 
-function jsStructureTokens(source) {
+function jsStructureTokens(source, { detailed = false } = {}) {
   const tokens = [];
   let index = 0;
   let canStartRegex = true;
+  let nextScopeId = 1;
+  const scope = [];
+  const braceKinds = [];
+  const add = (value, tokenIndex) => {
+    tokens.push({ value, index: tokenIndex, scope: [...scope] });
+    if (value === "{") {
+      const previous = tokens.at(-2)?.value;
+      const objectLike = ["=", ":", "(", "[", ",", "const", "let", "var"].includes(previous);
+      braceKinds.push(objectLike ? "object" : "scope");
+      if (!objectLike) scope.push(nextScopeId++);
+    }
+    if (value === "}" && braceKinds.pop() === "scope") scope.pop();
+  };
   while (index < source.length) {
     const c = source[index];
     const n = source[index + 1];
@@ -278,7 +291,7 @@ function jsStructureTokens(source) {
         if (source[index] === quote) { index += 1; break; }
         index += 1;
       }
-      tokens.push("<string>");
+      add("<string>", index);
       canStartRegex = false;
       continue;
     }
@@ -293,7 +306,7 @@ function jsStructureTokens(source) {
         if (source[index] === "\n" || source[index] === "\r") break;
         index += 1;
       }
-      tokens.push("<regex>");
+      add("<regex>", index);
       canStartRegex = false;
       continue;
     }
@@ -301,21 +314,21 @@ function jsStructureTokens(source) {
       let token = c;
       index += 1;
       while (index < source.length && /[A-Za-z0-9_$]/.test(source[index])) { token += source[index]; index += 1; }
-      tokens.push(token);
+      add(token, index - token.length);
       canStartRegex = ["return", "throw", "case", "delete", "void", "typeof", "instanceof", "in", "of", "new", "await", "yield"].includes(token);
       continue;
     }
     if (/[0-9]/.test(c)) {
       while (index < source.length && /[A-Za-z0-9_.]/.test(source[index])) index += 1;
-      tokens.push("<number>");
+      add("<number>", index);
       canStartRegex = false;
       continue;
     }
-    tokens.push(c);
+    add(c, index);
     canStartRegex = ![")", "]", "}"].includes(c);
     index += 1;
   }
-  return tokens;
+  return detailed ? tokens : tokens.map((token) => token.value);
 }
 
 function arrayInitializer(tokens, equalIndex) {
@@ -337,36 +350,90 @@ function objectArrayProperty(tokens, equalIndex, property) {
   return false;
 }
 
-function latestReceiverArrayEvidence(source, receiver) {
-  const tokens = jsStructureTokens(source);
-  const root = receiver[0];
-  let evidence = null;
-  for (let index = 0; index < tokens.length; index += 1) {
-    const declaration = ["const", "let", "var"].includes(tokens[index]) && tokens[index + 1] === root;
-    const assignment = tokens[index] === root && tokens[index + 1] === "=" && tokens[index - 1] !== ".";
-    if (!declaration && !assignment) continue;
-    let equalIndex = declaration ? index + 2 : index + 1;
-    if (declaration) {
-      let squareDepth = 0;
-      while (equalIndex < tokens.length) {
-        if (tokens[equalIndex] === "[") squareDepth += 1;
-        if (tokens[equalIndex] === "]") squareDepth = Math.max(0, squareDepth - 1);
-        if (tokens[equalIndex] === "=" && squareDepth === 0) break;
-        if ([";", ","].includes(tokens[equalIndex]) && squareDepth === 0) break;
-        equalIndex += 1;
+function latestReceiverArrayEvidence(source, receiver, calleeText) {
+  const detailed = jsStructureTokens(source, { detailed: true });
+  const callIndex = source.lastIndexOf(calleeText);
+  const callToken = [...detailed].reverse().find((token) => token.index <= callIndex);
+  const callScope = callToken?.scope || [];
+  const inCallScope = (token) => token.scope.every((scopeId, index) => callScope[index] === scopeId);
+  const beforeCall = detailed.filter((token) => token.index < callIndex && inCallScope(token));
+  const tokens = beforeCall.map((token) => token.value);
+  const bindings = new Map();
+  const descriptorAt = (equalIndex) => {
+    if (arrayInitializer(tokens, equalIndex)) return { kind: "array" };
+    if (/^[A-Za-z_$][\w$]*$/.test(tokens[equalIndex + 1] || "")) return bindings.get(tokens[equalIndex + 1]) || { kind: "other" };
+    if (tokens[equalIndex + 1] === "{") {
+      const props = new Map();
+      let depth = 0;
+      for (let index = equalIndex + 1; index < tokens.length; index += 1) {
+        if (tokens[index] === "{") { depth += 1; continue; }
+        if (tokens[index] === "}") { depth -= 1; if (depth === 0) break; continue; }
+        if (depth === 1 && /^[A-Za-z_$][\w$]*$/.test(tokens[index]) && tokens[index + 1] === ":") {
+          const syntheticEqual = index + 1;
+          props.set(tokens[index], arrayInitializer(tokens, syntheticEqual) ? { kind: "array" } : { kind: "other" });
+        }
       }
+      return { kind: "object", props };
     }
-    if (tokens[equalIndex] !== "=") continue;
-    evidence = receiver.length === 1 ? arrayInitializer(tokens, equalIndex) : receiver.length === 2 ? objectArrayProperty(tokens, equalIndex, receiver[1]) : false;
+    return { kind: "other" };
+  };
+  const exactEqual = (index) => tokens[index] === "=" && tokens[index - 1] !== "=" && !["=", ">"].includes(tokens[index + 1]);
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (["const", "let", "var"].includes(tokens[index])) {
+      if (tokens[index + 1] === "[") {
+        const close = tokens.indexOf("]", index + 2);
+        const equal = tokens.indexOf("=", close + 1);
+        if (close > 0 && exactEqual(equal) && arrayInitializer(tokens, equal)) {
+          for (let item = index + 2; item < close; item += 1) if (tokens[item - 1] === "." && tokens[item - 2] === ".") bindings.set(tokens[item], { kind: "array" });
+        }
+        continue;
+      }
+      if (tokens[index + 1] === "{") {
+        const close = tokens.indexOf("}", index + 2);
+        const equal = tokens.indexOf("=", close + 1);
+        const sourceBinding = exactEqual(equal) ? bindings.get(tokens[equal + 1]) : null;
+        if (close > 0 && sourceBinding?.kind === "object") {
+          for (let item = index + 2; item < close; item += 1) if (/^[A-Za-z_$][\w$]*$/.test(tokens[item])) bindings.set(tokens[item], sourceBinding.props.get(tokens[item]) || { kind: "other" });
+        }
+        continue;
+      }
+      const name = tokens[index + 1];
+      if (!/^[A-Za-z_$][\w$]*$/.test(name || "")) continue;
+      let equal = index + 2;
+      let squareDepth = 0;
+      while (equal < tokens.length) {
+        if (tokens[equal] === "[") squareDepth += 1;
+        if (tokens[equal] === "]") squareDepth = Math.max(0, squareDepth - 1);
+        if (tokens[equal] === "=" && squareDepth === 0) break;
+        if ([";", ","].includes(tokens[equal]) && squareDepth === 0) break;
+        equal += 1;
+      }
+      if (exactEqual(equal)) bindings.set(name, descriptorAt(equal));
+      continue;
+    }
+    const name = tokens[index];
+    if (!/^[A-Za-z_$][\w$]*$/.test(name || "") || ["const", "let", "var"].includes(tokens[index - 1])) continue;
+    if (exactEqual(index + 1)) {
+      bindings.set(name, descriptorAt(index + 1));
+      continue;
+    }
+    if (tokens[index + 1] === "." && /^[A-Za-z_$][\w$]*$/.test(tokens[index + 2] || "") && exactEqual(index + 3)) {
+      const current = bindings.get(name);
+      const props = new Map(current?.props || []);
+      props.set(tokens[index + 2], descriptorAt(index + 3));
+      bindings.set(name, { kind: "object", props });
+    }
   }
-  return evidence === true;
+  let descriptor = bindings.get(receiver[0]);
+  for (const property of receiver.slice(1)) descriptor = descriptor?.kind === "object" ? descriptor.props.get(property) : null;
+  return descriptor?.kind === "array";
 }
 
 function provenLocalArrayTransform(call, source) {
   const transforms = new Set(["map", "filter", "reduce", "reduceRight", "flatMap", "forEach", "some", "every", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted", "toReversed", "toSpliced", "with"]);
   if (!call?.terminal || !transforms.has(call.terminal)) return false;
   if (call.calleeText.trimStart().startsWith("[")) return true;
-  return latestReceiverArrayEvidence(source, call.receiver);
+  return latestReceiverArrayEvidence(source, call.receiver, call.calleeText);
 }
 
 function returnedInlineCallbackCall(dispatch, source = dispatch) {

@@ -510,6 +510,34 @@ for (const [declarations, prefix] of [
   assert.equal(validationExitCode(validateActionContract(contractFor(unprovenDataTransform.map((entry) => entryFrom(entry)), unprovenDataTransform), unprovenDataTransform)), 1);
 }
 
+for (const [declarations, prefix] of [
+  ['const wrappers={map:async cb=>cb()};const state={items:[]};state.items=wrappers', ''],
+  ['const wrappers={map:async cb=>cb()};const state={items:[]}', 'state.items=wrappers;']
+]) {
+  const reassignedProperty = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="reassigned_property"){${prefix}return jsonResponse(await state.items.map(async()=>new Response("ok")));}`, `${declarations}\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}`));
+  assert.equal(reassignedProperty[0].handlerStatus, "undetermined");
+  assert.equal(validationExitCode(validateActionContract(contractFor(reassignedProperty.map((entry) => entryFrom(entry)), reassignedProperty), reassignedProperty)), 1);
+}
+
+for (const [declarations, prefix, expression] of [
+  ['const wrappers={};const items=[1]', '{const items=wrappers;}', 'items.map(x=>x)'],
+  ['const wrappers={};let items=[1];function mutate(){items=wrappers}', '', 'items.map(x=>x)'],
+  ['const wrappers={};const items=[1];const same=items==wrappers', '', 'items.map(x=>x)'],
+  ['const wrappers={};const items=[1];const same=items===wrappers', '', 'items.map(x=>x)'],
+  ['const items=[1];const identity=items=>items', '', 'items.map(x=>x)'],
+  ['const items=[1];const alias=items', '', 'alias.map(x=>x)'],
+  ['', 'const [head,...items]=[0,1,2];', 'items.map(x=>x)'],
+  ['const state={items:[1]}', 'const {items}=state;', 'items.map(x=>x)']
+]) {
+  const scopedDataTransform = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="scoped_data_transform"){${prefix}return jsonResponse(${expression});}`, `${declarations}\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}`));
+  assert.equal(scopedDataTransform[0].handlerStatus, "inline-real", expression);
+  assert.equal(validationExitCode(validateActionContract(contractFor(scopedDataTransform.map((entry) => entryFrom(entry)), scopedDataTransform), scopedDataTransform)), 0, expression);
+}
+
+const assignmentAfterUse = selectorWithCandidates(edgeSource('const chosen=body.action;if(chosen==="assignment_after_use"){return jsonResponse(items.map(x=>x));items=wrappers;}', 'const wrappers={}\nlet items=[1]\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}'));
+assert.equal(assignmentAfterUse[0].handlerStatus, "inline-real");
+assert.equal(validationExitCode(validateActionContract(contractFor(assignmentAfterUse.map((entry) => entryFrom(entry)), assignmentAfterUse), assignmentAfterUse)), 0);
+
 const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
 assert.equal(nestedLeadingComment.length, 1);
 assert.equal(nestedLeadingComment[0].canonicalId, "rpc.public.outer()");
