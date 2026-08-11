@@ -635,21 +635,32 @@ const OTHER_VALUE = Object.freeze({ kind: "other" });
 const UNKNOWN_VALUE = Object.freeze({ kind: "unknown" });
 const ARRAY_VALUE = Object.freeze({ kind: "array" });
 const SUPABASE_CLIENT_VALUE = Object.freeze({ kind: "supabase-client" });
+const BUILTIN_PROMISE_VALUE = Object.freeze({ kind: "builtin-promise" });
+const BUILTIN_OBJECT_VALUE = Object.freeze({ kind: "builtin-object" });
+const BUILTIN_ARRAY_VALUE = Object.freeze({ kind: "builtin-array" });
 function astTypeContainsArray(node) {
   if (!node?.type) return false;
   if (["TSArrayType", "TSTupleType"].includes(node.type)) return true;
   return astChildren(node).some(astTypeContainsArray);
 }
-function functionReturnsSupabaseClient(node) {
-  let found = false;
-  walkAst(node?.body, (child) => {
-    if (child.type !== "ReturnStatement") return;
-    const returned = unwrapAst(child.argument);
-    if (["CallExpression", "OptionalCallExpression"].includes(returned?.type) && astPropertyName(unwrapAst(returned.callee)) === "createClient") found = true;
-  });
-  return found;
+function typedArrayReturnsAreSafe(node) {
+  let sawReturn = false;
+  let safe = true;
+  const visit = (current) => {
+    if (!current?.type || !safe) return;
+    if (current !== node && ["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "ObjectMethod", "ClassMethod"].includes(current.type)) return;
+    if (current.type === "ReturnStatement") {
+      sawReturn = true;
+      const returned = unwrapAst(current.argument);
+      if (!["ArrayExpression", "CallExpression", "OptionalCallExpression"].includes(returned?.type)) safe = false;
+      return;
+    }
+    for (const child of astChildren(current)) visit(child);
+  };
+  visit(node?.body);
+  return sawReturn && safe;
 }
-function functionValue(node, scope) { return { kind: "function", node, scope, returnsArray: astTypeContainsArray(node.returnType), returnsSupabaseClient: functionReturnsSupabaseClient(node) }; }
+function functionValue(node, scope) { return { kind: "function", node, scope, returnsArray: astTypeContainsArray(node.returnType), typedArrayReturnsSafe: typedArrayReturnsAreSafe(node) }; }
 function arrayValue(elements = null) { return elements ? { kind: "array", elements } : ARRAY_VALUE; }
 function queryRowsValue(single = false, selected = true) {
   return { kind: "object", queryRows: true, querySelected: selected, unknownProps: false, props: new Map([["data", selected ? (single ? OTHER_VALUE : ARRAY_VALUE) : UNKNOWN_VALUE], ["error", OTHER_VALUE], ["count", OTHER_VALUE]]) };
@@ -745,6 +756,8 @@ function executeAstAlternatives(scope, state, alternatives, includeBase = false)
     results.push(captureAstScopes(scope));
   }
   joinAstScopeSnapshots(base, results.length ? results : [base]);
+  const labeled = completions.find((completion) => completion.startsWith?.("break:") || completion.startsWith?.("continue:"));
+  if (labeled) return labeled;
   const first = completions[0] || "normal";
   return completions.length && completions.every((completion) => completion === first) ? first : "normal";
 }
@@ -807,11 +820,21 @@ function evaluateAstValue(value, scope, state) {
     if (value.type === "TemplateLiteral" && value.expressions.length) return OTHER_VALUE;
     return { kind: "string", value: value.type === "StringLiteral" ? value.value : value.quasis[0]?.value?.cooked };
   }
-  if (value.type === "Identifier") return scope.get(value.name) || UNKNOWN_VALUE;
+  if (value.type === "Identifier") {
+    const binding = scope.get(value.name);
+    if (binding) return binding;
+    if (value.name === "Promise") return BUILTIN_PROMISE_VALUE;
+    if (value.name === "Object") return BUILTIN_OBJECT_VALUE;
+    if (value.name === "Array") return BUILTIN_ARRAY_VALUE;
+    return UNKNOWN_VALUE;
+  }
   if (value.type === "ObjectExpression") return evaluateObject(value, scope);
   if (value.type === "LogicalExpression") {
     const left = evaluateAst(value.left, scope, state);
+    if (value.operator === "||" && ["array", "object", "function", "supabase-client"].includes(left?.kind)) return left;
+    if (value.operator === "??" && !["unknown", "other", "null"].includes(left?.kind)) return left;
     const right = evaluateAst(value.right, scope, state);
+    if (value.operator === "&&" && ["array", "object", "function", "supabase-client"].includes(left?.kind)) return right;
     return left?.kind === "array" && right?.kind === "array" ? ARRAY_VALUE : (left?.kind === "unknown" || right?.kind === "unknown" ? UNKNOWN_VALUE : OTHER_VALUE);
   }
   if (value.type === "ConditionalExpression") {
@@ -824,9 +847,9 @@ function evaluateAstValue(value, scope, state) {
   if (value.type === "AssignmentExpression") return applyAstAssignment(value, scope, state);
   if (["CallExpression", "OptionalCallExpression"].includes(value.type)) {
     if (["MemberExpression", "OptionalMemberExpression"].includes(value.callee?.type)) {
-      const ownerName = astPropertyName(value.callee.object);
       const method = value.callee.computed ? astPropertyName(value.callee.property, scope) : astPropertyName(value.callee.property);
-      if (ownerName === "Object" && method === "assign") {
+      const receiver = evaluateAst(value.callee.object, scope, state);
+      if (receiver?.kind === "builtin-object" && method === "assign") {
         const target = evaluateAst(value.arguments[0], scope, state);
         if (target?.kind !== "object") return UNKNOWN_VALUE;
         for (const argument of value.arguments.slice(1)) {
@@ -841,12 +864,11 @@ function evaluateAstValue(value, scope, state) {
         }
         return target;
       }
-      if (ownerName === "Promise" && ["all", "allSettled"].includes(method)) {
+      if (receiver?.kind === "builtin-promise" && ["all", "allSettled"].includes(method)) {
         const collection = evaluateAst(value.arguments[0], scope, state);
         return collection?.kind === "array" ? collection : ARRAY_VALUE;
       }
-      if ((ownerName === "Array" && method === "from") || (ownerName === "Object" && ["entries", "keys", "values"].includes(method))) return ARRAY_VALUE;
-      const receiver = evaluateAst(value.callee.object, scope, state);
+      if ((receiver?.kind === "builtin-array" && method === "from") || (receiver?.kind === "builtin-object" && ["entries", "keys", "values"].includes(method))) return ARRAY_VALUE;
       if (receiver?.kind === "supabase-client" && method === "from") return queryRowsValue(false, false);
       if (receiver?.queryRows) {
         if (method === "select") return queryRowsValue(false, true);
@@ -856,12 +878,11 @@ function evaluateAstValue(value, scope, state) {
       if (receiver?.kind === "array" && new Set([...ARRAY_CALLBACK_METHODS, "slice", "concat", "flat"]).has(method)) return ARRAY_VALUE;
     }
     const callee = unwrapAst(value.callee);
-    if (callee?.type === "Identifier" && callee.name === "createClient") return SUPABASE_CLIENT_VALUE;
+    if (callee?.type === "Identifier" && ((callee.name === "createClient" && !scope.cell(callee.name)) || scope.get(callee.name)?.kind === "supabase-create-client")) return SUPABASE_CLIENT_VALUE;
     const fn = ["FunctionExpression", "ArrowFunctionExpression"].includes(callee?.type) ? functionValue(callee, scope) : evaluateAst(callee, scope, state);
     const result = evaluateAstFunctionResult(fn, value.arguments, { ...(state || {}), scope });
     if (result) return result;
-    if (fn?.returnsSupabaseClient) return SUPABASE_CLIENT_VALUE;
-    if (fn?.returnsArray) return ARRAY_VALUE;
+    if (fn?.returnsArray && fn.typedArrayReturnsSafe) return ARRAY_VALUE;
     return UNKNOWN_VALUE;
   }
   return OTHER_VALUE;
@@ -946,7 +967,14 @@ function evaluateAstFunctionResult(fnValue, args, state) {
   for (let index = 0; index < (fnValue.node.params || []).length; index += 1) declareAstPattern(fnValue.node.params[index], evaluateAst(args?.[index], state?.scope || fnValue.scope, state), functionScope);
   if (fnValue.node.body?.type !== "BlockStatement") return evaluateAst(fnValue.node.body, functionScope, state);
   const statements = (fnValue.node.body.body || []).filter((statement) => statement.type !== "EmptyStatement");
-  return statements.length === 1 && statements[0].type === "ReturnStatement" ? evaluateAst(statements[0].argument, functionScope, state) : null;
+  const finalReturn = statements.at(-1);
+  if (finalReturn?.type !== "ReturnStatement") return null;
+  if (statements.slice(0, -1).every((statement) => statement.type === "VariableDeclaration")) {
+    for (const statement of statements.slice(0, -1)) executeAstStatement(statement, functionScope, state);
+    return evaluateAst(finalReturn.argument, functionScope, state);
+  }
+  const direct = evaluateAst(finalReturn.argument, functionScope, state);
+  return direct?.kind === "supabase-client" && statements.slice(0, -1).every((statement) => statement.type === "IfStatement") ? direct : null;
 }
 function executeAstCall(node, scope, state) {
   const callee = unwrapAst(node.callee);
@@ -967,6 +995,15 @@ function executeAstStatement(node, scope, state) {
   }
   if (node.type === "VariableDeclaration") {
     for (const declaration of node.declarations) declareAstPattern(declaration.id, evaluateAst(declaration.init, scope, state), scope);
+    return "normal";
+  }
+  if (node.type === "ImportDeclaration") {
+    const source = String(node.source?.value || "");
+    for (const specifier of node.specifiers || []) {
+      const imported = specifier.imported?.name || specifier.imported?.value || (specifier.type === "ImportDefaultSpecifier" ? "default" : "*");
+      const binding = source.includes("@supabase/supabase-js") && imported === "createClient" ? { kind: "supabase-create-client" } : { kind: "import", source, imported };
+      scope.declare(specifier.local?.name, binding);
+    }
     return "normal";
   }
   if (node.type === "FunctionDeclaration") { scope.declare(node.id?.name, functionValue(node, scope)); return "normal"; }
@@ -1001,6 +1038,12 @@ function executeAstStatement(node, scope, state) {
     });
     return executeAstAlternatives(scope, state, alternatives, !(node.cases || []).some((entry) => entry.test == null));
   }
+  if (node.type === "LabeledStatement") {
+    const completion = executeAstStatement(node.body, new AstScope(scope), state);
+    if (completion === `break:${node.label?.name}`) return "normal";
+    if (completion === `continue:${node.label?.name}` && ["ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement", "DoWhileStatement"].includes(node.body?.type)) return "normal";
+    return completion;
+  }
   if (["ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement"].includes(node.type)) { executeAstAlternatives(scope, state, [() => executeAstStatement(node.body, new AstScope(scope), state)], true); return "normal"; }
   if (node.type === "DoWhileStatement") {
     const first = executeAstStatement(node.body, new AstScope(scope), state);
@@ -1011,8 +1054,8 @@ function executeAstStatement(node, scope, state) {
   }
   if (node.type === "ReturnStatement") { evaluateAst(node.argument, scope, state); return "return"; }
   if (node.type === "ThrowStatement") { evaluateAst(node.argument, scope, state); return "throw"; }
-  if (node.type === "BreakStatement") return "break";
-  if (node.type === "ContinueStatement") return "continue";
+  if (node.type === "BreakStatement") return node.label?.name ? `break:${node.label.name}` : "break";
+  if (node.type === "ContinueStatement") return node.label?.name ? `continue:${node.label.name}` : "continue";
   for (const child of astChildren(node)) {
     const completion = executeAstStatement(child, scope, state);
     if (completion !== "normal") return completion;

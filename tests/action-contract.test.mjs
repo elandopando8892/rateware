@@ -634,6 +634,37 @@ for (const [declarations, branch, expected] of [
   assert.equal(validationExitCode(validateActionContract(contractFor(conservativeUnknownFlow.map((entry) => entryFrom(entry)), conservativeUnknownFlow), conservativeUnknownFlow)), expected === "undetermined" ? 1 : 0, `${declarations} ${branch}`);
 }
 
+// Step 7I scenarios 34-37: labeled completion, short-circuit values and trusted bindings.
+for (const [declarations, branch, expected] of [
+  ['const wrappers={map:async cb=>cb()};let items=[1];', 'switch(body.kind){case "wrapper":items=wrappers;case "array":items=[];break;default:items=[]}return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};let items=wrappers;', 'switch(body.kind){case "array":items=[];break}return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['let items=[1];', 'switch(body.kind){case "a":items=[2];break;default:items=[];break;case "b":items=[3]}return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};let items=[1];', 'outer:{switch(body.kind){case "wrapper":items=wrappers;break outer;default:items=[]}items=[]}return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};let items=[1];', 'outer:for(let i=0;i<1;i++){items=wrappers;continue outer;items=[]}return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};let items=[1];function mutate(){items=wrappers;throw new Error("x");items=[]}', 'try{mutate()}catch{}return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};let items=wrappers;function mutate(){try{return}finally{items=[]}}', 'mutate();return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const items=[]||wrappers;', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const items=[]??wrappers;', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const unknown=body.value;const key=body.key;const state={items:[],...unknown,[key]:wrappers};Object.assign(state,unknown);', 'return jsonResponse(await state.items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const state={items:[1]};state.self=state;const alias=state.self;', 'return jsonResponse(alias.items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const state={items:[1]};state.self=state;const alias=state.self;alias.items=wrappers;', 'return jsonResponse(await state.items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const [items]=await Promise.all([[1]]);', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const [items]=await Promise.all([wrappers]);', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const P=Promise;const [items]=await P.all([[1]]);', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const Promise={all:async()=>[wrappers]};const [items]=await Promise.all([[1]]);', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const supabase=createClient("url","key");const {data}=await supabase.from("rows").select();', 'return jsonResponse(data.map(x=>x));', 'inline-real'],
+  ['import {createClient as makeClient} from "https://esm.sh/@supabase/supabase-js@2";const supabase=makeClient("url","key");const {data}=await supabase.from("rows").select();', 'return jsonResponse(data.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};function createClient(){return {from(){return {select(){return {data:wrappers}}}}}}const supabase=createClient();const {data}=await supabase.from("rows").select();', 'return jsonResponse(await data.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};function createClient(){return wrappers}function getClient(){return createClient()}const supabase=getClient();const {data}=await supabase.from("rows").select();', 'return jsonResponse(await data.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};const fake={from(){return {select(){return {data:wrappers}}}}};const {data}=await fake.from("rows").select();', 'return jsonResponse(await data.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};function getItems():unknown[]{const value=wrappers;return value as unknown as unknown[]}const items=getItems();', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const broken=;const items=[1];', 'return jsonResponse(items.map(x=>x));', 'undetermined']
+]) {
+  const trustedBindingFlow = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="trusted_binding_flow"){${branch}}`, `${declarations}\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}`));
+  assert.equal(trustedBindingFlow[0].handlerStatus, expected, `${declarations} ${branch}`);
+  assert.equal(validationExitCode(validateActionContract(contractFor(trustedBindingFlow.map((entry) => entryFrom(entry)), trustedBindingFlow), trustedBindingFlow)), expected === "undetermined" ? 1 : 0, `${declarations} ${branch}`);
+}
+
 const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
 assert.equal(nestedLeadingComment.length, 1);
 assert.equal(nestedLeadingComment[0].canonicalId, "rpc.public.outer()");
