@@ -197,8 +197,19 @@ function resolveImportedHandler(source, sourceFile, handler, envelope) {
 
 function handlerAnalysis(dispatch, source, handlerHint = null, options = {}) {
   const ignored = new Set(["jsonResponse", "Response", "cleanText", "String", "Number", "Boolean", "Object", "Array", "Date", "Set", "Map"]);
-  const returned = /return\s+(?:jsonResponse\s*\(\s*)?(?:await\s+)?([A-Za-z_$][\w$]*)\s*\(/.exec(dispatch)?.[1] || null;
+  const returnedMatch = /return\s+(?:jsonResponse\s*\(\s*)?(?:await\s+)?([A-Za-z_$][\w$]*)\s*\(/.exec(dispatch);
+  const returned = returnedMatch?.[1] || null;
   const assignedReturn = /const\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+([A-Za-z_$][\w$]*)\s*\([\s\S]*?return\s+jsonResponse\s*\(\s*\1\s*\)/.exec(dispatch)?.[2] || null;
+  let callbackWrapper = null;
+  if (returnedMatch) {
+    const open = returnedMatch.index + returnedMatch[0].lastIndexOf("(");
+    const close = closingDelimiter(dispatch, open, "(", ")");
+    const argumentsText = close >= 0 ? dispatch.slice(open + 1, close) : dispatch.slice(open + 1);
+    if (/=>|\bfunction\b/.test(argumentsText)) callbackWrapper = returned;
+  }
+  if (callbackWrapper && !ignored.has(callbackWrapper)) {
+    return { handler: "undetermined", handlerStatus: "undetermined", sourceSegment: dispatch, handlerResolution: "callback-wrapper-terminal-undetermined" };
+  }
   const explicit = handlerHint || assignedReturn || (returned && !ignored.has(returned) ? returned : null);
   if (explicit) {
     const segment = functionSegment(source, explicit);
@@ -231,7 +242,9 @@ function dispatchSegment(source, item, fallbackEnd) {
     if (ifStart >= 0 && item.index - ifStart < 96) {
       const open = source.indexOf("(", ifStart);
       const close = open >= 0 ? closingDelimiter(source, open, "(", ")") : -1;
-      const brace = close >= 0 ? source.indexOf("{", close) : -1;
+      let branchStart = close + 1;
+      while (branchStart > 0 && branchStart < source.length && /\s/.test(source[branchStart])) branchStart += 1;
+      const brace = close >= 0 && source[branchStart] === "{" ? branchStart : -1;
       const end = brace >= 0 ? closingDelimiter(source, brace, "{", "}") : -1;
       if (end >= 0 && item.index < close) return source.slice(ifStart, end + 1);
     }
@@ -249,6 +262,9 @@ function importReferences(source) {
   const dynamicReferences = [];
   for (const match of allMatches(/(?:from\s*)["']([^"']+)["']/g, source)) {
     staticReferences.push({ specifier: match[1], kind: "static" });
+  }
+  for (const match of allMatches(/\bimport\s*["']([^"']+)["']/g, source)) {
+    staticReferences.push({ specifier: match[1], kind: "static-side-effect" });
   }
   for (const match of allMatches(/\bimport\s*\(/g, source)) {
     const open = source.indexOf("(", match.index);
@@ -288,6 +304,10 @@ function dependencyEnvelope(repoRoot, initialFiles, overrides = new Map()) {
     for (const item of references.dynamicReferences) dynamicDependencies.push({ sourceFile, ...item });
     for (const reference of references.staticReferences) {
       if (!reference.specifier.startsWith(".")) {
+        if (/^(?:@|~|#)\//.test(reference.specifier)) {
+          unresolved.push(sourceFile + "::" + reference.specifier);
+          continue;
+        }
         externalDependencies.push({ sourceFile, specifier: reference.specifier, kind: reference.kind });
         continue;
       }
@@ -347,21 +367,24 @@ function edgeSurface(functionName, actionName, sourceFile, handlerInfo, endpoint
 function actionAliases(source, minimum, trustedAliases = []) {
   const aliases = new Set(["body.action", ...trustedAliases]);
   const body = source.slice(minimum);
-  const directAlias = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*body\.action\s*(?:;|\n)/g;
-  const sanitizedAlias = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(?:cleanText|text)\s*\(\s*body\.action(?:\s*,\s*[^;\r\n)]*)?\s*\)\s*(?:;|\n)/g;
+  const actionSource = 'body(?:\\.action|\\s*\\[\\s*["\']action["\']\\s*\\])';
+  const directAlias = new RegExp("\\bconst\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*" + actionSource + "\\s*(?:;|\\n)", "g");
+  const sanitizedAlias = new RegExp("\\bconst\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*(?:cleanText|text)\\s*\\(\\s*" + actionSource + "(?:\\s*,\\s*[^;\\r\\n)]*)?\\s*\\)\\s*(?:;|\\n)", "g");
   for (const match of allMatches(directAlias, body)) aliases.add(match[1]);
   for (const match of allMatches(sanitizedAlias, body)) aliases.add(match[1]);
   return aliases;
 }
 
 function actionExpressionPattern(aliases) {
-  return [...aliases].map((item) => item === "body.action" ? "body\\.action" : item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  return [...aliases].map((item) => item === "body.action"
+    ? '\\bbody(?:\\.action|\\s*\\[\\s*["\']action["\']\\s*\\])(?![\\w$])'
+    : "\\b" + item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").join("|");
 }
 
 function equalityActions(source, minimum, aliases = actionAliases(source, minimum)) {
   const out = [];
   const expression = actionExpressionPattern(aliases);
-  for (const regex of [new RegExp("\\b(?:" + expression + ")\\b\\s*={2,3}\\s*(?:[\"']([^\"']+)[\"']|`([^`$]*)`)", "g"), new RegExp("(?:[\"']([^\"']+)[\"']|`([^`$]*)`)\\s*={2,3}\\s*\\b(?:" + expression + ")\\b", "g")]) {
+  for (const regex of [new RegExp("(?:" + expression + ")\\s*={2,3}\\s*(?:[\"']([^\"']+)[\"']|`([^`$]*)`)", "g"), new RegExp("(?:[\"']([^\"']+)[\"']|`([^`$]*)`)\\s*={2,3}\\s*(?:" + expression + ")", "g")]) {
     for (const match of allMatches(regex, source, minimum)) {
       if (!/typeof\s+$/.test(source.slice(Math.max(0, match.index - 24), match.index))) {
         out.push({ actionName: match[1] || match[2], index: match.index, discoveryKind: match[2] ? "static-template-comparison" : "literal-comparison", handlerHint: null });
@@ -373,11 +396,13 @@ function equalityActions(source, minimum, aliases = actionAliases(source, minimu
 
 function switchActions(source, minimum, aliases = actionAliases(source, minimum)) {
   const out = [];
+  const candidates = [];
+  const actionExpression = new RegExp(actionExpressionPattern(aliases));
   for (const match of allMatches(/switch\s*\(/g, source, minimum)) {
     const open = source.indexOf("(", match.index);
     const close = closingDelimiter(source, open, "(", ")");
     const expression = source.slice(open + 1, close);
-    if (close < 0 || ![...aliases].some((alias) => expression.includes(alias))) continue;
+    if (close < 0 || !actionExpression.test(expression)) continue;
     const start = source.indexOf("{", close);
     if (start < 0) continue;
     const end = closingDelimiter(source, start, "{", "}");
@@ -388,7 +413,9 @@ function switchActions(source, minimum, aliases = actionAliases(source, minimum)
       const hint = /(?:return\s+)?(?:await\s+)?([A-Za-z_$][\w$]*)\s*\(/.exec(tail)?.[1] || null;
       out.push({ actionName: item[1] || item[2], index: start + 1 + item.index, discoveryKind: "switch-case", handlerHint: hint });
     }
+    if (/case\s+`[^`]*\$\{/.test(block)) candidates.push({ code: "DYNAMIC_TEMPLATE_ACTION", detail: "dynamic-switch-case" });
   }
+  out.candidates = candidates;
   return out;
 }
 
@@ -434,11 +461,18 @@ function mapActions(source, minimum, aliases = actionAliases(source, minimum)) {
 function dispatchAnalysis(source, minimum = 0, trustedAliases = []) {
   const aliases = actionAliases(source, minimum, trustedAliases);
   const maps = mapActions(source, minimum, aliases);
-  const combined = [...equalityActions(source, minimum, aliases), ...switchActions(source, minimum, aliases), ...maps]
+  const switches = switchActions(source, minimum, aliases);
+  const combined = [...equalityActions(source, minimum, aliases), ...switches, ...maps]
     .sort((a, b) => a.index - b.index || a.actionName.localeCompare(b.actionName));
+  const candidates = [...(switches.candidates || [])];
+  const actionGroups = new Map();
+  for (const item of combined) actionGroups.set(item.actionName, [...(actionGroups.get(item.actionName) || []), item]);
+  for (const [actionName, group] of actionGroups) {
+    const registryHandlers = new Set(group.filter((item) => item.registryName).map((item) => item.handlerHint).filter(Boolean));
+    if (registryHandlers.size > 1) candidates.push({ code: "AMBIGUOUS_ACTION_ATTRIBUTION", detail: actionName + ":conflicting-registry-handlers" });
+  }
   const seen = new Set();
   const items = combined.filter((item) => seen.has(item.actionName) ? false : (seen.add(item.actionName), true));
-  const candidates = [];
   const body = source.slice(minimum);
   const expression = actionExpressionPattern(aliases);
   for (const match of allMatches(new RegExp("([A-Za-z_$][\\w$]*)\\s*(?:\\[\\s*(?:" + expression + ")\\s*\\]|\\.get\\s*\\(\\s*(?:" + expression + ")\\s*\\))", "g"), body)) {
@@ -451,7 +485,7 @@ function dispatchAnalysis(source, minimum = 0, trustedAliases = []) {
   if (new RegExp("(?:" + expression + ")\\s*={2,3}\\s*`[^`]*\\$\\{").test(body) || new RegExp("`[^`]*\\$\\{[^`]*`\\s*={2,3}\\s*(?:" + expression + ")").test(body)) {
     candidates.push({ code: "DYNAMIC_TEMPLATE_ACTION", detail: "template-literal-action" });
   }
-  if (/\b(?:let|var)\s+[A-Za-z_$][\w$]*\s*=\s*(?:cleanText\s*\(\s*)?body\.action/.test(body)) candidates.push({ code: "MUTABLE_ACTION_ALIAS", detail: "mutable-alias" });
+  if (/\b(?:let|var)\s+[A-Za-z_$][\w$]*\s*=\s*(?:cleanText\s*\(\s*)?body(?:\.action|\s*\[\s*["']action["']\s*\])/.test(body)) candidates.push({ code: "MUTABLE_ACTION_ALIAS", detail: "mutable-alias" });
   if ((body.match(/\bDeno\.serve\s*\(/g) || []).length > 1) candidates.push({ code: "MULTIPLE_EDGE_DISPATCHERS", detail: "multiple-Deno.serve" });
   if (/\baction\b/.test(body) && items.length === 0) candidates.push({ code: "DISPATCH_NOT_DETERMINED", detail: "no-positive-surface-extraction" });
   return { items, candidates };
@@ -602,12 +636,27 @@ function sqlStatements(source) {
 }
 
 function stripLeadingSqlTrivia(value) {
-  let out = value;
-  while (true) {
-    const next = out.replace(/^\s+/, "").replace(/^--[^\n]*(?:\n|$)/, "").replace(/^\/\*[\s\S]*?\*\//, "");
-    if (next === out) return out.trim();
-    out = next;
+  let index = 0;
+  while (index < value.length) {
+    while (index < value.length && /\s/.test(value[index])) index += 1;
+    if (value.startsWith("--", index)) {
+      const end = value.indexOf("\n", index + 2);
+      index = end < 0 ? value.length : end + 1;
+      continue;
+    }
+    if (value.startsWith("/*", index)) {
+      let depth = 1;
+      index += 2;
+      while (index < value.length && depth > 0) {
+        if (value.startsWith("/*", index)) { depth += 1; index += 2; continue; }
+        if (value.startsWith("*/", index)) { depth -= 1; index += 2; continue; }
+        index += 1;
+      }
+      continue;
+    }
+    break;
   }
+  return value.slice(index).trim();
 }
 
 const SQL_QUALIFIED_NAME = '((?:"(?:[^"]|"")+"|[A-Za-z_][\\w$]*)(?:\\s*\\.\\s*(?:"(?:[^"]|"")+"|[A-Za-z_][\\w$]*))?)';
@@ -893,7 +942,8 @@ export function validateActionContract(contract, discovered, { repoRoot } = {}) 
     for (const entry of entries) {
       const path = join(repoRoot, entry.sourceFile);
       if (!existsSync(path)) { issues.push(issue("error", "SOURCE_PATH_MISSING", entry.canonicalId, "Source path does not exist.")); continue; }
-      if (!["inline", "undetermined", "Deno.serve"].includes(entry.handler) && entry.sourceKind !== "postgres-function" && !functionSegment(text(path), entry.handler)) {
+      const actual = actualById.get(entry.canonicalId);
+      if (!["inline", "undetermined", "Deno.serve"].includes(entry.handler) && entry.sourceKind !== "postgres-function" && actual?.handlerResolution !== "imported-static" && !functionSegment(text(path), entry.handler)) {
         issues.push(issue("error", "HANDLER_MISSING", entry.canonicalId, "Named handler does not exist in source."));
       }
     }
