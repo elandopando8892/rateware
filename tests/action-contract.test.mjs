@@ -579,6 +579,35 @@ for (const [declarations, branch, expected] of [
   assert.equal(validationExitCode(validateActionContract(contractFor(astReceiverFlow.map((entry) => entryFrom(entry)), astReceiverFlow), astReceiverFlow)), expected === "undetermined" ? 1 : 0, branch);
 }
 
+// Step 7I scenarios 27-29: conservative AST path joins, mutations, returns and parse failures.
+for (const [declarations, branch, expected] of [
+  ['const wrappers={map:async cb=>cb()};let items=[1];const flag=body.flag;', 'if(flag){items=wrappers}else{items=[]}return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['let items=[1];const flag=body.flag;', 'if(flag){items=[2]}else{items=[]}return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};let items=[1];', 'try{items=wrappers}catch{items=[]}return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['let items=[1];', 'try{items=[2]}catch{items=[]}return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};let items=wrappers;', 'while(false){items=[]}return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['let items=[1];', 'while(body.more){items=[]}return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const items=wrappers||[];', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};let items=[];({items}={items:wrappers});', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};const state={items:[]};const alias=state;Object.assign(alias,{items:wrappers});', 'return jsonResponse(await state.items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const state={items:[]};const alias=state;Object.assign(alias,{items:[2]});', 'return jsonResponse(state.items.map(x=>x));', 'inline-real'],
+  ['function getItems(){return [1]};const items=getItems();', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const items=(()=>[1])();', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};', 'return jsonResponse(await wrappers?.map?.(async()=>new Response("ok")));', 'undetermined'],
+  ['const items=[1];', 'return jsonResponse(items?.map?.(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const key="it\\u0065ms";const state={items:[]};const alias=state;alias[key]=wrappers;', 'return jsonResponse(await state.items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const key="items";const state={items:[1]};const {[key]:rows}=state;', 'return jsonResponse(rows.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};let items=[1];', 'items.map(async()=>new Response("ok"));items=wrappers;return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};let items=[1];const helper={mutate(){items=wrappers}};', 'helper.mutate();return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};let items=[1];const helper={mutate(){items=wrappers}};', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['@sealed class Example{};const wrappers={map:async cb=>cb()};const state={items:[]};state["it\\u0065ms"]=wrappers;', 'return jsonResponse(await state.items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const items=do{[1]};', 'return jsonResponse(items.map(x=>x));', 'undetermined']
+]) {
+  const conservativeAstFlow = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="conservative_ast_flow"){${branch}}`, `${declarations}\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}`));
+  assert.equal(conservativeAstFlow[0].handlerStatus, expected, `${declarations} ${branch}`);
+  assert.equal(validationExitCode(validateActionContract(contractFor(conservativeAstFlow.map((entry) => entryFrom(entry)), conservativeAstFlow), conservativeAstFlow)), expected === "undetermined" ? 1 : 0, `${declarations} ${branch}`);
+}
+
 const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
 assert.equal(nestedLeadingComment.length, 1);
 assert.equal(nestedLeadingComment[0].canonicalId, "rpc.public.outer()");

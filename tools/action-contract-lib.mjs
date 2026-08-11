@@ -552,7 +552,7 @@ function actionAst(source) {
       allowAwaitOutsideFunction: true,
       allowReturnOutsideFunction: true,
       errorRecovery: true,
-      plugins: ["typescript", "importAttributes", "explicitResourceManagement"]
+      plugins: ["decorators-legacy", "typescript", "importAttributes", "explicitResourceManagement"]
     });
   } catch {}
   actionAstCache.set(source, ast);
@@ -640,6 +640,87 @@ function astTypeContainsArray(node) {
 }
 function functionValue(node, scope) { return { kind: "function", node, scope, returnsArray: astTypeContainsArray(node.returnType) }; }
 
+function cloneAstValue(value, memo = new Map()) {
+  if (!value || value === OTHER_VALUE || value === ARRAY_VALUE || value.kind !== "object") return value;
+  if (memo.has(value)) return memo.get(value);
+  const copy = { kind: "object", props: new Map() };
+  memo.set(value, copy);
+  for (const [key, child] of value.props) copy.props.set(key, cloneAstValue(child, memo));
+  return copy;
+}
+
+function astValuesEquivalent(left, right, seen = new Map()) {
+  if (left === right) return true;
+  if (!left || !right || left.kind !== right.kind) return false;
+  if (left.kind === "array" || left.kind === "other") return true;
+  if (left.kind === "string") return left.value === right.value;
+  if (left.kind === "function") return left.node === right.node;
+  if (left.kind !== "object" || left.props.size !== right.props.size) return false;
+  if (seen.get(left)?.has(right)) return true;
+  if (!seen.has(left)) seen.set(left, new Set());
+  seen.get(left).add(right);
+  for (const [key, value] of left.props) if (!right.props.has(key) || !astValuesEquivalent(value, right.props.get(key), seen)) return false;
+  return true;
+}
+
+function joinAstValues(values, memo = [], depth = 0) {
+  if (!values.length) return OTHER_VALUE;
+  if (depth > 1) return OTHER_VALUE;
+  if (values.every((value) => value?.kind === "object")) {
+    const existing = memo.find((entry) => entry.values.length === values.length && entry.values.every((value, index) => value === values[index]));
+    if (existing) return existing.result;
+    const common = [...values[0].props.keys()].filter((key) => values.every((value) => value.props.has(key)));
+    const joined = { kind: "object", props: new Map() };
+    memo.push({ values: [...values], result: joined });
+    for (const key of common) joined.props.set(key, joinAstValues(values.map((value) => value.props.get(key)), memo, depth + 1));
+    return joined;
+  }
+  if (values.every((value) => astValuesEquivalent(value, values[0]))) return cloneAstValue(values[0]);
+  if (values.every((value) => value?.kind === "array")) return ARRAY_VALUE;
+  return OTHER_VALUE;
+}
+
+function astScopeChain(scope) {
+  const scopes = [];
+  for (let current = scope; current; current = current.parent) scopes.unshift(current);
+  return scopes;
+}
+
+function captureAstScopes(scope) {
+  const memo = new Map();
+  return astScopeChain(scope).map((current) => ({ scope: current, bindings: new Map([...current.bindings].map(([key, value]) => [key, cloneAstValue(value, memo)])) }));
+}
+
+function restoreAstScopes(snapshot) {
+  const memo = new Map();
+  for (const entry of snapshot) entry.scope.bindings = new Map([...entry.bindings].map(([key, value]) => [key, cloneAstValue(value, memo)]));
+}
+
+function joinAstScopeSnapshots(base, alternatives) {
+  const joined = [];
+  for (let index = 0; index < base.length; index += 1) {
+    const keys = new Set(base[index].bindings.keys());
+    for (const alternative of alternatives) for (const key of alternative[index].bindings.keys()) keys.add(key);
+    const memo = [];
+    joined.push({
+      scope: base[index].scope,
+      bindings: new Map([...keys].map((key) => [key, joinAstValues(alternatives.map((alternative) => alternative[index].bindings.get(key) || OTHER_VALUE), memo)]))
+    });
+  }
+  restoreAstScopes(joined);
+}
+
+function executeAstAlternatives(scope, state, alternatives, includeBase = false) {
+  const base = captureAstScopes(scope);
+  const results = includeBase ? [base] : [];
+  for (const execute of alternatives) {
+    restoreAstScopes(base);
+    execute();
+    results.push(captureAstScopes(scope));
+  }
+  joinAstScopeSnapshots(base, results.length ? results : [base]);
+}
+
 function memberValue(node, scope) {
   const member = unwrapAst(node);
   if (!["MemberExpression", "OptionalMemberExpression"].includes(member?.type)) return OTHER_VALUE;
@@ -667,6 +748,18 @@ function evaluateObject(node, scope) {
 function evaluateAst(node, scope, state = null) {
   const value = unwrapAst(node);
   if (!value) return OTHER_VALUE;
+  const evaluationState = state || {};
+  if (!evaluationState.activeExpressions) evaluationState.activeExpressions = new Set();
+  if (evaluationState.activeExpressions.has(value)) return OTHER_VALUE;
+  evaluationState.activeExpressions.add(value);
+  try {
+    return evaluateAstValue(value, scope, evaluationState);
+  } finally {
+    evaluationState.activeExpressions.delete(value);
+  }
+}
+
+function evaluateAstValue(value, scope, state) {
   if (value.type === "ArrayExpression") return ARRAY_VALUE;
   if (["StringLiteral", "TemplateLiteral"].includes(value.type)) {
     if (value.type === "TemplateLiteral" && value.expressions.length) return OTHER_VALUE;
@@ -677,7 +770,8 @@ function evaluateAst(node, scope, state = null) {
   if (value.type === "LogicalExpression") {
     const left = evaluateAst(value.left, scope, state);
     const right = evaluateAst(value.right, scope, state);
-    return right?.kind === "array" || left?.kind === "array" ? ARRAY_VALUE : OTHER_VALUE;
+    const alternatives = [left, right];
+    return alternatives.some((entry) => entry?.kind === "array") && alternatives.every((entry) => ["array", "other"].includes(entry?.kind)) ? ARRAY_VALUE : OTHER_VALUE;
   }
   if (value.type === "ConditionalExpression") {
     const consequent = evaluateAst(value.consequent, scope, state);
@@ -691,6 +785,16 @@ function evaluateAst(node, scope, state = null) {
     if (["MemberExpression", "OptionalMemberExpression"].includes(value.callee?.type)) {
       const ownerName = astPropertyName(value.callee.object);
       const method = value.callee.computed ? astPropertyName(value.callee.property, scope) : astPropertyName(value.callee.property);
+      if (ownerName === "Object" && method === "assign") {
+        const target = evaluateAst(value.arguments[0], scope, state);
+        if (target?.kind !== "object") return OTHER_VALUE;
+        for (const argument of value.arguments.slice(1)) {
+          const source = evaluateAst(argument, scope, state);
+          if (source?.kind !== "object") return OTHER_VALUE;
+          for (const [key, child] of source.props) target.props.set(key, child);
+        }
+        return target;
+      }
       if ((ownerName === "Array" && method === "from") || (["Object", "Promise"].includes(ownerName) && ["entries", "keys", "values", "all", "allSettled"].includes(method))) return ARRAY_VALUE;
       const receiver = evaluateAst(value.callee.object, scope, state);
       if (receiver?.kind === "array" && new Set([...ARRAY_CALLBACK_METHODS, "slice", "concat", "flat"]).has(method)) return ARRAY_VALUE;
@@ -698,6 +802,8 @@ function evaluateAst(node, scope, state = null) {
     const callee = unwrapAst(value.callee);
     const fn = ["FunctionExpression", "ArrowFunctionExpression"].includes(callee?.type) ? functionValue(callee, scope) : evaluateAst(callee, scope, state);
     if (fn?.returnsArray) return ARRAY_VALUE;
+    const result = evaluateAstFunctionResult(fn, value.arguments, { ...(state || {}), scope });
+    if (result) return result;
   }
   return OTHER_VALUE;
 }
@@ -724,12 +830,32 @@ function declareAstPattern(pattern, value, scope) {
 function assignAstTarget(targetNode, value, scope, state) {
   const target = unwrapAst(targetNode);
   if (target?.type === "Identifier") { scope.assign(target.name, value); return; }
+  if (["ObjectPattern", "ArrayPattern", "AssignmentPattern", "RestElement"].includes(target?.type)) { assignAstPattern(target, value, scope, state); return; }
   if (!["MemberExpression", "OptionalMemberExpression"].includes(target?.type)) return;
   const object = evaluateAst(target.object, scope, state);
   if (object?.kind !== "object") return;
   const property = target.computed ? astPropertyName(target.property, scope) : astPropertyName(target.property);
   if (property == null) for (const key of object.props.keys()) object.props.set(key, OTHER_VALUE);
   else object.props.set(property, value);
+}
+
+function assignAstPattern(pattern, value, scope, state) {
+  const target = unwrapAst(pattern);
+  if (!target) return;
+  if (target.type === "Identifier") { scope.assign(target.name, value); return; }
+  if (target.type === "AssignmentPattern") { assignAstPattern(target.left, value, scope, state); return; }
+  if (target.type === "RestElement") { assignAstPattern(target.argument, value, scope, state); return; }
+  if (target.type === "ArrayPattern") {
+    for (const element of target.elements || []) if (element) assignAstPattern(element, element.type === "RestElement" ? ARRAY_VALUE : OTHER_VALUE, scope, state);
+    return;
+  }
+  if (target.type === "ObjectPattern") {
+    for (const property of target.properties || []) {
+      if (property.type === "RestElement") { assignAstPattern(property.argument, value?.kind === "object" ? value : OTHER_VALUE, scope, state); continue; }
+      const key = property.computed ? astPropertyName(property.key, scope) : astPropertyName(property.key);
+      assignAstPattern(property.value, value?.kind === "object" && key != null ? value.props.get(key) || OTHER_VALUE : OTHER_VALUE, scope, state);
+    }
+  }
 }
 function applyAstAssignment(node, scope, state) {
   const value = evaluateAst(node.right, scope, state);
@@ -746,10 +872,19 @@ function executeAstFunction(fnValue, args, state, target = null) {
   state?.activeFunctions?.delete(fnValue.node);
   return result;
 }
+function evaluateAstFunctionResult(fnValue, args, state) {
+  if (fnValue?.kind !== "function" || state?.activeFunctions?.has(fnValue.node)) return null;
+  const functionScope = new AstScope(fnValue.scope);
+  for (let index = 0; index < (fnValue.node.params || []).length; index += 1) declareAstPattern(fnValue.node.params[index], evaluateAst(args?.[index], state?.scope || fnValue.scope, state), functionScope);
+  if (fnValue.node.body?.type !== "BlockStatement") return evaluateAst(fnValue.node.body, functionScope, state);
+  const statements = (fnValue.node.body.body || []).filter((statement) => statement.type !== "EmptyStatement");
+  return statements.length === 1 && statements[0].type === "ReturnStatement" ? evaluateAst(statements[0].argument, functionScope, state) : null;
+}
 function executeAstCall(node, scope, state) {
   const callee = unwrapAst(node.callee);
   const fn = ["FunctionExpression", "ArrowFunctionExpression"].includes(callee?.type) ? functionValue(callee, scope) : evaluateAst(callee, scope, state);
-  return executeAstFunction(fn, node.arguments, { ...(state || {}), scope }, null);
+  if (fn?.kind === "function") return executeAstFunction(fn, node.arguments, { ...(state || {}), scope }, null);
+  return evaluateAst(node, scope, state);
 }
 
 function executeAstStatement(node, scope, state) {
@@ -771,17 +906,16 @@ function executeAstStatement(node, scope, state) {
     return;
   }
   if (node.type === "IfStatement") {
-    executeAstStatement(node.consequent, new AstScope(scope), state);
-    if (node.alternate) executeAstStatement(node.alternate, new AstScope(scope), state);
+    executeAstAlternatives(scope, state, [() => executeAstStatement(node.consequent, new AstScope(scope), state), ...(node.alternate ? [() => executeAstStatement(node.alternate, new AstScope(scope), state)] : [])], !node.alternate);
     return;
   }
   if (node.type === "TryStatement") {
-    executeAstStatement(node.block, new AstScope(scope), state);
-    if (node.handler) executeAstStatement(node.handler.body, new AstScope(scope), state);
+    executeAstAlternatives(scope, state, [() => executeAstStatement(node.block, new AstScope(scope), state), ...(node.handler ? [() => executeAstStatement(node.handler.body, new AstScope(scope), state)] : [])], !node.handler);
     if (node.finalizer) executeAstStatement(node.finalizer, new AstScope(scope), state);
     return;
   }
-  if (["ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement", "DoWhileStatement"].includes(node.type)) { executeAstStatement(node.body, new AstScope(scope), state); return; }
+  if (["ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement"].includes(node.type)) { executeAstAlternatives(scope, state, [() => executeAstStatement(node.body, new AstScope(scope), state)], true); return; }
+  if (node.type === "DoWhileStatement") { executeAstStatement(node.body, new AstScope(scope), state); executeAstAlternatives(scope, state, [() => executeAstStatement(node.body, new AstScope(scope), state)], true); return; }
   if (node.type === "ReturnStatement") { evaluateAst(node.argument, scope, state); return; }
   for (const child of astChildren(node)) executeAstStatement(child, scope, state);
 }
@@ -856,7 +990,7 @@ function handlerAnalysis(dispatch, source, handlerHint = null, options = {}) {
   const returned = returnedCallee && /^[A-Za-z_$][\w$]*$/.test(returnedCallee) ? returnedCallee : null;
   const assignedReturn = /const\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+([A-Za-z_$][\w$]*)\s*\([\s\S]*?return\s+jsonResponse\s*\(\s*\1\s*\)/.exec(dispatch)?.[2] || null;
   const astCallback = returnedInlineCallbackAst(dispatch, source);
-  const callbackWrapper = astCallback.parsed ? (astCallback.wrapper ? { root: "ast-undetermined" } : null) : returnedInlineCallbackCall(dispatch, source, Math.max(0, source.indexOf(dispatch)));
+  const callbackWrapper = astCallback.parsed ? (astCallback.wrapper ? { root: "ast-undetermined" } : null) : { root: "ast-parse-failure" };
   if (callbackWrapper && !ignored.has(callbackWrapper.root)) {
     return { handler: "undetermined", handlerStatus: "undetermined", sourceSegment: dispatch, handlerResolution: "callback-wrapper-terminal-undetermined" };
   }
