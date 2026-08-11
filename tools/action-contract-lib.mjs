@@ -830,6 +830,12 @@ function evaluateAstValue(value, scope, state) {
   if (value.type === "NullLiteral") return NULL_VALUE;
   if (value.type === "BooleanLiteral") return { kind: "scalar", truthy: value.value, nullish: false };
   if (value.type === "NumericLiteral") return { kind: "scalar", truthy: Boolean(value.value), nullish: false };
+  if (value.type === "BigIntLiteral") return { kind: "scalar", truthy: value.value !== "0", nullish: false };
+  if (value.type === "UnaryExpression") {
+    const argument = evaluateAst(value.argument, scope, state);
+    if (["+", "-"].includes(value.operator) && argument?.kind === "scalar") return argument;
+    if (value.operator === "!") return { kind: "scalar", truthy: !argument?.truthy, nullish: false };
+  }
   if (["StringLiteral", "TemplateLiteral"].includes(value.type)) {
     if (value.type === "TemplateLiteral" && value.expressions.length) return OTHER_VALUE;
     return { kind: "string", value: value.type === "StringLiteral" ? value.value : value.quasis[0]?.value?.cooked };
@@ -839,6 +845,7 @@ function evaluateAstValue(value, scope, state) {
     if (binding) return binding;
     if (value.name === "undefined") return NULL_VALUE;
     if (value.name === "NaN") return { kind: "scalar", truthy: false, nullish: false };
+    if (value.name === "Infinity") return { kind: "scalar", truthy: true, nullish: false };
     if (value.name === "Promise") return BUILTIN_PROMISE_VALUE;
     if (value.name === "Object") return BUILTIN_OBJECT_VALUE;
     if (value.name === "Array") return BUILTIN_ARRAY_VALUE;
@@ -1018,7 +1025,7 @@ function evaluateAstFunctionResult(fnValue, args, state) {
     else if (statement.type === "ReturnStatement") return joinAstValues([...alternativeReturns, evaluateAst(statement.argument, functionScope, state)]);
     else return null;
   }
-  return alternativeReturns.length ? joinAstValues(alternativeReturns) : null;
+  return alternativeReturns.length ? UNKNOWN_VALUE : null;
 }
 function executeAstCall(node, scope, state) {
   const callee = unwrapAst(node.callee);
