@@ -21,11 +21,12 @@ begin
     elsif old.status <> 'active' and new.status = 'active' then
       fresh_activation := new.reviewed_at is not null
         and new.reviewed_at is distinct from old.reviewed_at
-        and nullif(btrim(new.reviewed_by_user_id), '') is not null
-        and (
-          tg_table_name <> 'external_organization_links'
-          or nullif(btrim(new.review_note), '') is not null
-        );
+        and nullif(btrim(new.reviewed_by_user_id), '') is not null;
+
+      if tg_table_name = 'external_organization_links' then
+        fresh_activation := fresh_activation
+          and nullif(btrim(new.review_note), '') is not null;
+      end if;
 
       if not fresh_activation then
         new.status := 'needs_review';

@@ -172,4 +172,11 @@ test("Phase 0.2A remains additive and performs no heuristic activation", () => {
   assert.match(reactivationMigration, /new\.reviewed_at is distinct from old\.reviewed_at/);
   assert.match(reactivationMigration, /external_identities_invalidate_status_review/);
   assert.match(reactivationMigration, /external_organization_links_invalidate_status_review/);
+
+  const tableFieldFixMigration = readFileSync(
+    new URL("../supabase/migrations/20260811204142_phase0_fix_status_review_table_fields.sql", import.meta.url),
+    "utf8"
+  );
+  assert.match(tableFieldFixMigration, /if tg_table_name = 'external_organization_links' then[\s\S]+new\.review_note/);
+  assert.doesNotMatch(tableFieldFixMigration, /tg_table_name <> 'external_organization_links'[\s\S]+new\.review_note/);
 });
