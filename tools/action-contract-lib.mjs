@@ -638,6 +638,7 @@ const SUPABASE_CLIENT_VALUE = Object.freeze({ kind: "supabase-client" });
 const BUILTIN_PROMISE_VALUE = Object.freeze({ kind: "builtin-promise" });
 const BUILTIN_OBJECT_VALUE = Object.freeze({ kind: "builtin-object" });
 const BUILTIN_ARRAY_VALUE = Object.freeze({ kind: "builtin-array" });
+const NULL_VALUE = Object.freeze({ kind: "scalar", truthy: false, nullish: true });
 function astTypeContainsArray(node) {
   if (!node?.type) return false;
   if (["TSArrayType", "TSTupleType"].includes(node.type)) return true;
@@ -816,6 +817,9 @@ function evaluateAst(node, scope, state = null) {
 
 function evaluateAstValue(value, scope, state) {
   if (value.type === "ArrayExpression") return arrayValue((value.elements || []).map((element) => element ? evaluateAst(element, scope, state) : OTHER_VALUE));
+  if (value.type === "NullLiteral") return NULL_VALUE;
+  if (value.type === "BooleanLiteral") return { kind: "scalar", truthy: value.value, nullish: false };
+  if (value.type === "NumericLiteral") return { kind: "scalar", truthy: Boolean(value.value), nullish: false };
   if (["StringLiteral", "TemplateLiteral"].includes(value.type)) {
     if (value.type === "TemplateLiteral" && value.expressions.length) return OTHER_VALUE;
     return { kind: "string", value: value.type === "StringLiteral" ? value.value : value.quasis[0]?.value?.cooked };
@@ -832,6 +836,8 @@ function evaluateAstValue(value, scope, state) {
   if (value.type === "LogicalExpression") {
     const left = evaluateAst(value.left, scope, state);
     if (value.operator === "||" && ["array", "object", "function", "supabase-client"].includes(left?.kind)) return left;
+    if (value.operator === "||" && ((left?.kind === "scalar" && !left.truthy) || (left?.kind === "string" && !left.value))) return evaluateAst(value.right, scope, state);
+    if (value.operator === "??" && left?.nullish) return evaluateAst(value.right, scope, state);
     if (value.operator === "??" && !["unknown", "other", "null"].includes(left?.kind)) return left;
     const right = evaluateAst(value.right, scope, state);
     if (value.operator === "&&" && ["array", "object", "function", "supabase-client"].includes(left?.kind)) return right;
@@ -880,6 +886,7 @@ function evaluateAstValue(value, scope, state) {
     const callee = unwrapAst(value.callee);
     if (callee?.type === "Identifier" && ((callee.name === "createClient" && !scope.cell(callee.name)) || scope.get(callee.name)?.kind === "supabase-create-client")) return SUPABASE_CLIENT_VALUE;
     const fn = ["FunctionExpression", "ArrowFunctionExpression"].includes(callee?.type) ? functionValue(callee, scope) : evaluateAst(callee, scope, state);
+    if (fn?.kind === "supabase-create-client") return SUPABASE_CLIENT_VALUE;
     const result = evaluateAstFunctionResult(fn, value.arguments, { ...(state || {}), scope });
     if (result) return result;
     if (fn?.returnsArray && fn.typedArrayReturnsSafe) return ARRAY_VALUE;
@@ -961,6 +968,20 @@ function executeAstFunction(fnValue, args, state, target = null) {
   state?.activeFunctions?.delete(fnValue.node);
   return result;
 }
+function evaluateDirectBranchReturns(node, scope, state) {
+  if (!node) return [];
+  if (node.type === "ReturnStatement") return [evaluateAst(node.argument, scope, state)];
+  if (node.type === "IfStatement") return [...evaluateDirectBranchReturns(node.consequent, new AstScope(scope), state), ...evaluateDirectBranchReturns(node.alternate, new AstScope(scope), state)];
+  if (node.type !== "BlockStatement") return [];
+  const blockScope = new AstScope(scope);
+  const values = [];
+  for (const statement of node.body || []) {
+    if (["VariableDeclaration", "FunctionDeclaration"].includes(statement.type)) executeAstStatement(statement, blockScope, state);
+    else if (statement.type === "ReturnStatement") { values.push(evaluateAst(statement.argument, blockScope, state)); break; }
+    else if (statement.type === "IfStatement") values.push(...evaluateDirectBranchReturns(statement, blockScope, state));
+  }
+  return values;
+}
 function evaluateAstFunctionResult(fnValue, args, state) {
   if (fnValue?.kind !== "function" || state?.activeFunctions?.has(fnValue.node)) return null;
   const functionScope = new AstScope(fnValue.scope);
@@ -969,12 +990,13 @@ function evaluateAstFunctionResult(fnValue, args, state) {
   const statements = (fnValue.node.body.body || []).filter((statement) => statement.type !== "EmptyStatement");
   const finalReturn = statements.at(-1);
   if (finalReturn?.type !== "ReturnStatement") return null;
-  if (statements.slice(0, -1).every((statement) => statement.type === "VariableDeclaration")) {
-    for (const statement of statements.slice(0, -1)) executeAstStatement(statement, functionScope, state);
-    return evaluateAst(finalReturn.argument, functionScope, state);
+  const alternativeReturns = [];
+  for (const statement of statements.slice(0, -1)) {
+    if (["VariableDeclaration", "FunctionDeclaration"].includes(statement.type)) executeAstStatement(statement, functionScope, state);
+    else if (statement.type === "IfStatement") alternativeReturns.push(...evaluateDirectBranchReturns(statement, functionScope, state));
+    else return null;
   }
-  const direct = evaluateAst(finalReturn.argument, functionScope, state);
-  return direct?.kind === "supabase-client" && statements.slice(0, -1).every((statement) => statement.type === "IfStatement") ? direct : null;
+  return joinAstValues([...alternativeReturns, evaluateAst(finalReturn.argument, functionScope, state)]);
 }
 function executeAstCall(node, scope, state) {
   const callee = unwrapAst(node.callee);
@@ -1001,7 +1023,9 @@ function executeAstStatement(node, scope, state) {
     const source = String(node.source?.value || "");
     for (const specifier of node.specifiers || []) {
       const imported = specifier.imported?.name || specifier.imported?.value || (specifier.type === "ImportDefaultSpecifier" ? "default" : "*");
-      const binding = source.includes("@supabase/supabase-js") && imported === "createClient" ? { kind: "supabase-create-client" } : { kind: "import", source, imported };
+      let binding = { kind: "import", source, imported };
+      if (source.includes("@supabase/supabase-js") && imported === "createClient") binding = { kind: "supabase-create-client" };
+      else if (source.includes("@supabase/supabase-js") && specifier.type === "ImportNamespaceSpecifier") binding = { kind: "object", props: new Map([["createClient", { kind: "supabase-create-client" }]]), unknownProps: true };
       scope.declare(specifier.local?.name, binding);
     }
     return "normal";
@@ -1044,13 +1068,16 @@ function executeAstStatement(node, scope, state) {
     if (completion === `continue:${node.label?.name}` && ["ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement", "DoWhileStatement"].includes(node.body?.type)) return "normal";
     return completion;
   }
-  if (["ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement"].includes(node.type)) { executeAstAlternatives(scope, state, [() => executeAstStatement(node.body, new AstScope(scope), state)], true); return "normal"; }
+  if (["ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement"].includes(node.type)) {
+    const completion = executeAstAlternatives(scope, state, [() => executeAstStatement(node.body, new AstScope(scope), state)], true);
+    return completion.startsWith?.("break:") || completion.startsWith?.("continue:") ? completion : "normal";
+  }
   if (node.type === "DoWhileStatement") {
     const first = executeAstStatement(node.body, new AstScope(scope), state);
     if (first === "return" || first === "throw") return first;
     if (first === "break") return "normal";
-    executeAstAlternatives(scope, state, [() => executeAstStatement(node.body, new AstScope(scope), state)], true);
-    return "normal";
+    const completion = executeAstAlternatives(scope, state, [() => executeAstStatement(node.body, new AstScope(scope), state)], true);
+    return completion.startsWith?.("break:") || completion.startsWith?.("continue:") ? completion : "normal";
   }
   if (node.type === "ReturnStatement") { evaluateAst(node.argument, scope, state); return "return"; }
   if (node.type === "ThrowStatement") { evaluateAst(node.argument, scope, state); return "throw"; }

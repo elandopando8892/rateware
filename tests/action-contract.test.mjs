@@ -665,6 +665,40 @@ for (const [declarations, branch, expected] of [
   assert.equal(validationExitCode(validateActionContract(contractFor(trustedBindingFlow.map((entry) => entryFrom(entry)), trustedBindingFlow), trustedBindingFlow)), expected === "undetermined" ? 1 : 0, `${declarations} ${branch}`);
 }
 
+// Step 7I scenarios 38-42: nested labels, primitive short-circuit and imported namespaces.
+for (const [declarations, branch, expected] of [
+  ['const wrappers={map:async cb=>cb()};let items=[1];', 'outer:for(let i=0;i<1;i++){switch(body.kind){case "bad":items=wrappers;break outer;default:items=[]}items=[]}return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};let items=[1];', 'outer:{inner:{items=wrappers;break inner;items=[]}items=[]}return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};let items=[1];', 'outer:for(let i=0;i<1;i++){inner:for(let j=0;j<1;j++){items=wrappers;continue outer;items=[]}items=[]}return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};const items=[]||wrappers;', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const items=[]??wrappers;', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const items=[]&&wrappers;', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const items=false||[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const items=""||[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const items=null??[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const P=Promise;const [items]=await P.all([[1]]);', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const Promise={all:async()=>[wrappers]};const P=Promise;const [items]=await P.all([[1]]);', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const A=Array;const items=A.from([1]);', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const Array={from(){return wrappers}};const A=Array;const items=A.from([1]);', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const O=Object;const items=O.values({a:1});', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const Object={values(){return wrappers}};const O=Object;const items=O.values({a:1});', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['import {createClient as makeClient} from "https://esm.sh/@supabase/supabase-js@2";const supabase=makeClient("url","key");const {data}=await supabase.from("rows").select();', 'return jsonResponse(data.map(x=>x));', 'inline-real'],
+  ['import * as sb from "https://esm.sh/@supabase/supabase-js@2";const supabase=sb.createClient("url","key");const {data}=await supabase.from("rows").select();', 'return jsonResponse(data.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};import createClient from "https://esm.sh/@supabase/supabase-js@2";const supabase=createClient();const {data}=await supabase.from("rows").select();', 'return jsonResponse(await data.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};function createClient(){return {from(){return {select(){return {data:wrappers}}}}}}const supabase=createClient();const {data}=await supabase.from("rows").select();', 'return jsonResponse(await data.map(async()=>new Response("ok")));', 'undetermined'],
+  ['import {createClient as makeClient} from "https://esm.sh/@supabase/supabase-js@2";function getClient(){if(body.cached)return makeClient("u","k");return makeClient("u","k")}const supabase=getClient();const {data}=await supabase.from("rows").select();', 'return jsonResponse(data.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};import {createClient as makeClient} from "https://esm.sh/@supabase/supabase-js@2";const fake={from(){return {select(){return {data:wrappers}}}}};function getClient(){if(body.fake)return fake;return makeClient("u","k")}const supabase=getClient();const {data}=await supabase.from("rows").select();', 'return jsonResponse(await data.map(async()=>new Response("ok")));', 'undetermined'],
+  ['type Rows=unknown[];function getItems():Rows{const value=[1] as Rows;return value}const items=getItems();', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};type Rows=unknown[];function getItems():Rows{const value=wrappers;return value as unknown as Rows}const items=getItems();', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['type Rows=unknown[];function getItems():Rows{function hidden(){return body.value}const value=[1];return value}const items=getItems();', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const broken=;const items=[1];', 'return jsonResponse(items.map(x=>x));', 'undetermined'],
+  ['const state={items:[1]};state.self=state;const a=state.self;const b=a.self;', 'return jsonResponse(b.items.map(x=>x));', 'inline-real']
+]) {
+  const nestedBindingFlow = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="nested_binding_flow"){${branch}}`, `${declarations}\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}`));
+  assert.equal(nestedBindingFlow[0].handlerStatus, expected, `${declarations} ${branch}`);
+  assert.equal(validationExitCode(validateActionContract(contractFor(nestedBindingFlow.map((entry) => entryFrom(entry)), nestedBindingFlow), nestedBindingFlow)), expected === "undetermined" ? 1 : 0, `${declarations} ${branch}`);
+}
+
 const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
 assert.equal(nestedLeadingComment.length, 1);
 assert.equal(nestedLeadingComment[0].canonicalId, "rpc.public.outer()");
