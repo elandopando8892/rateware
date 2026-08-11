@@ -666,6 +666,16 @@ function arrayValue(elements = null) { return elements ? { kind: "array", elemen
 function queryRowsValue(single = false, selected = true) {
   return { kind: "object", queryRows: true, querySelected: selected, unknownProps: false, props: new Map([["data", selected ? (single ? OTHER_VALUE : ARRAY_VALUE) : UNKNOWN_VALUE], ["error", OTHER_VALUE], ["count", OTHER_VALUE]]) };
 }
+function trustedSupabaseModule(source) {
+  const value = String(source || "");
+  if (/^(?:npm:)?@supabase\/supabase-js(?:@[^/]+)?$/.test(value)) return true;
+  try {
+    const url = new URL(value);
+    return url.hostname === "esm.sh" && /^\/@supabase\/supabase-js(?:@[^/]+)?\/?$/.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
 
 function cloneAstValue(value, memo = new Map()) {
   if (!value || value === OTHER_VALUE || value === UNKNOWN_VALUE || value === ARRAY_VALUE) return value;
@@ -827,6 +837,8 @@ function evaluateAstValue(value, scope, state) {
   if (value.type === "Identifier") {
     const binding = scope.get(value.name);
     if (binding) return binding;
+    if (value.name === "undefined") return NULL_VALUE;
+    if (value.name === "NaN") return { kind: "scalar", truthy: false, nullish: false };
     if (value.name === "Promise") return BUILTIN_PROMISE_VALUE;
     if (value.name === "Object") return BUILTIN_OBJECT_VALUE;
     if (value.name === "Array") return BUILTIN_ARRAY_VALUE;
@@ -841,6 +853,7 @@ function evaluateAstValue(value, scope, state) {
     if (value.operator === "??" && !["unknown", "other", "null"].includes(left?.kind)) return left;
     const right = evaluateAst(value.right, scope, state);
     if (value.operator === "&&" && ["array", "object", "function", "supabase-client"].includes(left?.kind)) return right;
+    if (value.operator === "&&" && ((left?.kind === "scalar" && left.truthy) || (left?.kind === "string" && left.value))) return right;
     return left?.kind === "array" && right?.kind === "array" ? ARRAY_VALUE : (left?.kind === "unknown" || right?.kind === "unknown" ? UNKNOWN_VALUE : OTHER_VALUE);
   }
   if (value.type === "ConditionalExpression") {
@@ -982,21 +995,30 @@ function evaluateDirectBranchReturns(node, scope, state) {
   }
   return values;
 }
+function astAlwaysReturns(node) {
+  if (!node) return false;
+  if (node.type === "ReturnStatement" || node.type === "ThrowStatement") return true;
+  if (node.type === "IfStatement") return Boolean(node.alternate) && astAlwaysReturns(node.consequent) && astAlwaysReturns(node.alternate);
+  if (node.type === "BlockStatement") return (node.body || []).some((statement) => astAlwaysReturns(statement));
+  return false;
+}
 function evaluateAstFunctionResult(fnValue, args, state) {
   if (fnValue?.kind !== "function" || state?.activeFunctions?.has(fnValue.node)) return null;
   const functionScope = new AstScope(fnValue.scope);
   for (let index = 0; index < (fnValue.node.params || []).length; index += 1) declareAstPattern(fnValue.node.params[index], evaluateAst(args?.[index], state?.scope || fnValue.scope, state), functionScope);
   if (fnValue.node.body?.type !== "BlockStatement") return evaluateAst(fnValue.node.body, functionScope, state);
   const statements = (fnValue.node.body.body || []).filter((statement) => statement.type !== "EmptyStatement");
-  const finalReturn = statements.at(-1);
-  if (finalReturn?.type !== "ReturnStatement") return null;
   const alternativeReturns = [];
-  for (const statement of statements.slice(0, -1)) {
+  for (const statement of statements) {
     if (["VariableDeclaration", "FunctionDeclaration"].includes(statement.type)) executeAstStatement(statement, functionScope, state);
-    else if (statement.type === "IfStatement") alternativeReturns.push(...evaluateDirectBranchReturns(statement, functionScope, state));
+    else if (statement.type === "IfStatement") {
+      alternativeReturns.push(...evaluateDirectBranchReturns(statement, functionScope, state));
+      if (astAlwaysReturns(statement)) return joinAstValues(alternativeReturns);
+    }
+    else if (statement.type === "ReturnStatement") return joinAstValues([...alternativeReturns, evaluateAst(statement.argument, functionScope, state)]);
     else return null;
   }
-  return joinAstValues([...alternativeReturns, evaluateAst(finalReturn.argument, functionScope, state)]);
+  return alternativeReturns.length ? joinAstValues(alternativeReturns) : null;
 }
 function executeAstCall(node, scope, state) {
   const callee = unwrapAst(node.callee);
@@ -1024,8 +1046,8 @@ function executeAstStatement(node, scope, state) {
     for (const specifier of node.specifiers || []) {
       const imported = specifier.imported?.name || specifier.imported?.value || (specifier.type === "ImportDefaultSpecifier" ? "default" : "*");
       let binding = { kind: "import", source, imported };
-      if (source.includes("@supabase/supabase-js") && imported === "createClient") binding = { kind: "supabase-create-client" };
-      else if (source.includes("@supabase/supabase-js") && specifier.type === "ImportNamespaceSpecifier") binding = { kind: "object", props: new Map([["createClient", { kind: "supabase-create-client" }]]), unknownProps: true };
+      if (trustedSupabaseModule(source) && imported === "createClient") binding = { kind: "supabase-create-client" };
+      else if (trustedSupabaseModule(source) && specifier.type === "ImportNamespaceSpecifier") binding = { kind: "object", props: new Map([["createClient", { kind: "supabase-create-client" }]]), unknownProps: true };
       scope.declare(specifier.local?.name, binding);
     }
     return "normal";
