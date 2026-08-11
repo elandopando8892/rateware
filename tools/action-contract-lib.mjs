@@ -199,6 +199,7 @@ function jsLexicalSignals(source) {
   const identifiers = [];
   let hasInlineFunction = false;
   let index = 0;
+  let canStartRegex = true;
   while (index < source.length) {
     const c = source[index];
     const n = source[index + 1];
@@ -221,6 +222,25 @@ function jsLexicalSignals(source) {
         if (source[index] === quote) { index += 1; break; }
         index += 1;
       }
+      canStartRegex = false;
+      continue;
+    }
+    if (c === "/" && canStartRegex) {
+      let inClass = false;
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === "\\") { index += 2; continue; }
+        if (source[index] === "[") { inClass = true; index += 1; continue; }
+        if (source[index] === "]") { inClass = false; index += 1; continue; }
+        if (source[index] === "/" && !inClass) {
+          index += 1;
+          while (index < source.length && /[A-Za-z]/.test(source[index])) index += 1;
+          break;
+        }
+        if (source[index] === "\n" || source[index] === "\r") break;
+        index += 1;
+      }
+      canStartRegex = false;
       continue;
     }
     if (c === "=" && n === ">") { hasInlineFunction = true; index += 2; continue; }
@@ -230,8 +250,11 @@ function jsLexicalSignals(source) {
       while (index < source.length && /[A-Za-z0-9_$]/.test(source[index])) { identifier += source[index]; index += 1; }
       identifiers.push(identifier);
       if (identifier === "function") hasInlineFunction = true;
+      canStartRegex = ["return", "throw", "case", "delete", "void", "typeof", "instanceof", "in", "of", "new", "await", "yield"].includes(identifier);
       continue;
     }
+    if (/[0-9]/.test(c) || c === ")" || c === "]" || c === "}") canStartRegex = false;
+    else if (!/\s/.test(c)) canStartRegex = true;
     index += 1;
   }
   return { identifiers, hasInlineFunction };
@@ -242,13 +265,6 @@ function returnedInlineCallbackCall(dispatch) {
   if (!returned) return null;
   let start = skipJsTrivia(dispatch, returned.index + returned[0].length);
   if (/^await\b/.test(dispatch.slice(start))) start = skipJsTrivia(dispatch, start + 5);
-  if (/^jsonResponse\b/.test(dispatch.slice(start))) {
-    const wrapperOpen = skipJsTrivia(dispatch, start + "jsonResponse".length);
-    if (dispatch[wrapperOpen] === "(") {
-      start = skipJsTrivia(dispatch, wrapperOpen + 1);
-      if (/^await\b/.test(dispatch.slice(start))) start = skipJsTrivia(dispatch, start + 5);
-    }
-  }
   let squareDepth = 0;
   let braceDepth = 0;
   for (let index = start; index < dispatch.length; index += 1) {
@@ -281,8 +297,15 @@ function returnedInlineCallbackCall(dispatch) {
     const argumentSignals = jsLexicalSignals(argumentsText);
     if (argumentSignals.hasInlineFunction) {
       const calleeSignals = jsLexicalSignals(dispatch.slice(start, index));
-      const root = calleeSignals.identifiers.find((item) => !["await", "new"].includes(item)) || null;
-      return { root };
+      const calleeIdentifiers = calleeSignals.identifiers.filter((item) => !["await", "new"].includes(item));
+      const root = calleeIdentifiers[0] || null;
+      const terminal = calleeIdentifiers.at(-1) || null;
+      if (root === "jsonResponse") {
+        const nested = returnedInlineCallbackCall("return " + argumentsText);
+        const transforms = new Set(["map", "filter", "reduce", "reduceRight", "flatMap", "forEach", "some", "every", "find", "findIndex", "sort", "stringify"]);
+        if (nested && !transforms.has(nested.terminal)) return nested;
+      }
+      return { root, terminal };
     }
     index = close;
   }

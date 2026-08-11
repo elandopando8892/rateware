@@ -461,6 +461,20 @@ for (const returnedCall of ['wrappers /*comment*/ ["run"](async()=>business())',
 const responseWithNestedCallback = selectorWithCandidates(edgeSource('const chosen=body.action;if(chosen==="response_map")return new Response(JSON.stringify([1].map(value=>value)));'));
 assert.equal(responseWithNestedCallback[0].handlerStatus, "inline-real");
 
+for (const regexArgument of ['/=>/', '/function/', '/[=>/]+/g']) {
+  const regexHandler = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="regex_handler")return await businessHandler(${regexArgument});`, 'async function businessHandler(_pattern){return {}}'));
+  assert.equal(regexHandler[0].handlerStatus, "named-existing", regexArgument);
+  assert.equal(validationExitCode(validateActionContract(contractFor(regexHandler.map((entry) => entryFrom(entry)), regexHandler), regexHandler)), 0, regexArgument);
+}
+
+const jsonResponseMap = selectorWithCandidates(edgeSource('const chosen=body.action;if(chosen==="json_map")return jsonResponse(items.map(value=>value));', 'const items=[1]\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}'));
+assert.equal(jsonResponseMap[0].handlerStatus, "inline-real");
+assert.equal(validationExitCode(validateActionContract(contractFor(jsonResponseMap.map((entry) => entryFrom(entry)), jsonResponseMap), jsonResponseMap)), 0);
+
+const jsonResponseWrapper = selectorWithCandidates(edgeSource('const chosen=body.action;if(chosen==="json_wrapped")return jsonResponse(await wrappers.run(async()=>business()));', 'const wrappers={run:async(cb)=>cb()}\nasync function business(){return {}}\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}'));
+assert.equal(jsonResponseWrapper[0].handlerStatus, "undetermined");
+assert.equal(validationExitCode(validateActionContract(contractFor(jsonResponseWrapper.map((entry) => entryFrom(entry)), jsonResponseWrapper), jsonResponseWrapper)), 1);
+
 const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
 assert.equal(nestedLeadingComment.length, 1);
 assert.equal(nestedLeadingComment[0].canonicalId, "rpc.public.outer()");
