@@ -12,11 +12,6 @@ CREATE INDEX IF NOT EXISTS outreach_campaigns_ratebook_id_fk_idx ON public.outre
 CREATE INDEX IF NOT EXISTS outreach_campaigns_whatsapp_connection_id_fk_idx ON public.outreach_campaigns (whatsapp_connection_id);
 CREATE INDEX IF NOT EXISTS outreach_contact_suppressions_vendor_id_fk_idx ON public.outreach_contact_suppressions (vendor_id);
 CREATE INDEX IF NOT EXISTS outreach_messages_ratebook_share_id_fk_idx ON public.outreach_messages (ratebook_share_id);
-CREATE INDEX IF NOT EXISTS rate_accessorials_rate_id_fk_idx ON public.rate_accessorials (rate_id);
-CREATE INDEX IF NOT EXISTS rates_import_batch_id_fk_idx ON public.rates (import_batch_id);
-CREATE INDEX IF NOT EXISTS rates_lane_id_fk_idx ON public.rates (lane_id);
-CREATE INDEX IF NOT EXISTS rates_rfx_id_fk_idx ON public.rates (rfx_id);
-CREATE INDEX IF NOT EXISTS rates_vendor_id_fk_idx ON public.rates (vendor_id);
 CREATE INDEX IF NOT EXISTS rfx_award_package_lanes_award_package_id_fk_idx ON public.rfx_award_package_lanes (award_package_id);
 CREATE INDEX IF NOT EXISTS rfx_award_package_lanes_awarded_carrier_id_fk_idx ON public.rfx_award_package_lanes (awarded_carrier_id);
 CREATE INDEX IF NOT EXISTS rfx_award_package_lanes_backup_carrier_id_fk_idx ON public.rfx_award_package_lanes (backup_carrier_id);

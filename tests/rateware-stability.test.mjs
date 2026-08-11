@@ -161,6 +161,7 @@ const functionSearchPathMigration = readFileSync(new URL("../supabase/migrations
 const permissiveRlsRemovalMigration = readFileSync(new URL("../supabase/migrations/20260803043030_remove_permissive_browser_rls_policies.sql", import.meta.url), "utf8");
 const vendorLogoListingMigration = readFileSync(new URL("../supabase/migrations/20260803054359_remove_public_vendor_logo_listing_policy.sql", import.meta.url), "utf8");
 const duplicateIndexMigration = readFileSync(new URL("../supabase/migrations/20260803055103_remove_duplicate_rate_and_whatsapp_indexes.sql", import.meta.url), "utf8");
+const missingForeignKeyIndexMigration = readFileSync(new URL("../supabase/migrations/20260807064922_add_missing_foreign_key_indexes.sql", import.meta.url), "utf8");
 const criticalForeignKeyIndexMigration = readFileSync(new URL("../supabase/migrations/20260803055952_index_critical_active_foreign_keys.sql", import.meta.url), "utf8");
 const operationalForeignKeyIndexMigration = readFileSync(new URL("../supabase/migrations/20260803060845_index_active_operational_foreign_keys.sql", import.meta.url), "utf8");
 const rfxRatebookForeignKeyIndexMigration = readFileSync(new URL("../supabase/migrations/20260803062045_index_rfx_ratebook_pipeline_foreign_keys.sql", import.meta.url), "utf8");
@@ -4542,6 +4543,8 @@ assert.match(duplicateIndexMigration, /Canonical rate staging vendor index is mi
 assert.doesNotMatch(duplicateIndexMigration, /drop index public\.rate_staging_vendor_domain_idx/, "Duplicate-index cleanup must preserve the migration-owned rate index");
 assert.doesNotMatch(duplicateIndexMigration, /drop index public\.whatsapp_business_connections_owner_email_provider_connecti_key/, "Duplicate-index cleanup must preserve the constraint-owned WhatsApp index");
 assert.match(duplicateIndexMigration, /raise exception 'A duplicate index remains after cleanup'/, "Duplicate-index cleanup should fail closed if either redundant index remains");
+assert.doesNotMatch(missingForeignKeyIndexMigration, /public\.(?:rate_accessorials|rates)\b/, "Clean replay FK indexing must not reference unversioned legacy rate tables");
+assert.match(missingForeignKeyIndexMigration, /public\.growth_campaign_members \(contact_id\)/, "Clean replay should retain indexes for versioned foreign-key tables");
 assert.match(criticalForeignKeyIndexMigration, /matched_constraint_count <> 5/, "Critical FK indexing should fail if the expected constraint set drifts");
 assert.match(criticalForeignKeyIndexMigration, /create index rate_staging_interpretation_job_idx[\s\S]+rate_staging \(interpretation_job_id\)/, "Rate staging should index its populated interpretation-job foreign key");
 for (const [indexName, columnName] of [
