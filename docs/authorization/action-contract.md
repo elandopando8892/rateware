@@ -13,7 +13,7 @@ Discovery starts from the committed repository structure:
 1. enumerate every directory under `supabase/functions`, excluding only `_shared`;
 2. treat each tracked `index.ts` as an Edge entrypoint candidate;
 3. recognize literal comparisons, static template literals, switch cases, deterministic object handler registries, deterministic `new Map` registries, direct or safely sanitized aliases of `body.action` (including literal bracket access), and reviewed fixed HTTP-method endpoints;
-4. emit a blocking candidate for nonliteral templates in comparisons or switch cases, spreads or computed registry keys, callback wrappers, conflicting handler attribution across registries, ambiguous fallbacks, unresolved registries, multiple dispatchers, mutable aliases, and entrypoints whose dispatch cannot be resolved safely;
+4. emit a blocking candidate for nonliteral templates in comparisons or switch cases (including comment-separated cases), spreads or computed registry keys, callback wrappers, conflicting handler attribution across registries, ambiguous fallbacks, unresolved registries, multiple dispatchers, mutable aliases, and entrypoints whose dispatch cannot be resolved safely;
 5. record directories without `index.ts` separately and require an explicit non-governable disposition;
 6. scan migration statements while respecting comments, strings, quoted identifiers, and dollar-quoted bodies, then replay `CREATE FUNCTION`, `CREATE OR REPLACE FUNCTION`, and `DROP FUNCTION` in filename and statement order.
 
@@ -26,7 +26,7 @@ This is conservative static analysis, not a universal JavaScript, TypeScript, or
 - `named-missing`: dispatch names a function whose declaration is absent; validation fails.
 - `undetermined`: static structure cannot establish a handler; validation fails.
 
-Inline is never used as a fallback for a missing named function. A preliminary guard or lookup is not selected merely because it is the first call in a branch. Multiple plausible operations remain `undetermined` and block validation. A generic function that receives an inline callback is treated as a wrapper, not asserted as the terminal business handler. Deterministically imported or re-exported handlers remain valid during the repository-backed validation pass.
+Inline is never used as a fallback for a missing named function. A preliminary guard or lookup is not selected merely because it is the first call in a branch. Multiple plausible operations remain `undetermined` and block validation. A generic function or member call that receives an inline callback is treated as a wrapper, not asserted as the terminal business handler. Deterministically imported or re-exported handlers remain valid during the repository-backed validation pass.
 
 ## Canonical identity
 
@@ -48,7 +48,7 @@ Changing any covered field without deliberately refreshing its reviewed fingerpr
 
 Direct source fingerprints use lexical tokens that ignore comments and formatting while preserving strings and code tokens.
 
-Authorization envelope fingerprints include the complete Edge source and recursively observed local static imports, side-effect-only imports, and literal dynamic imports. Deterministic local re-exports used for handler attribution are followed. The fingerprint therefore changes with observed dispatch, wrappers, authentication helpers, tenant/service-role guards, and other determinable shared local dependencies.
+Authorization envelope fingerprints include the complete Edge source and recursively observed local static imports, side-effect-only imports, and literal dynamic imports. Legal comments between import tokens and module specifiers do not remove a dependency from the envelope. Deterministic local re-exports used for handler attribution are followed. The fingerprint therefore changes with observed dispatch, wrappers, authentication helpers, tenant/service-role guards, and other determinable shared local dependencies.
 
 Coverage is recorded with explicit signals: `direct`, `shared_dependency_observed`, `unresolved_local_dependency`, `dynamic_dependency`, `external_dependency`, and `coverage_not_determinable`. External imports are identified but their semantics are not claimed as locally covered. Nonliteral dynamic imports and unresolved local imports produce `coverage_not_determinable` and block validation; they are never silently downgraded to direct coverage. Import cycles terminate through a visited-file set.
 

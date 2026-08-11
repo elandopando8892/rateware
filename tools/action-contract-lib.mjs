@@ -197,15 +197,16 @@ function resolveImportedHandler(source, sourceFile, handler, envelope) {
 
 function handlerAnalysis(dispatch, source, handlerHint = null, options = {}) {
   const ignored = new Set(["jsonResponse", "Response", "cleanText", "String", "Number", "Boolean", "Object", "Array", "Date", "Set", "Map"]);
-  const returnedMatch = /return\s+(?:jsonResponse\s*\(\s*)?(?:await\s+)?([A-Za-z_$][\w$]*)\s*\(/.exec(dispatch);
-  const returned = returnedMatch?.[1] || null;
+  const returnedMatch = /return\s+(?:jsonResponse\s*\(\s*)?(?:await\s+)?([A-Za-z_$][\w$]*(?:\s*(?:\.|\?\.)\s*[A-Za-z_$][\w$]*)*)\s*\(/.exec(dispatch);
+  const returnedCallee = returnedMatch?.[1]?.replace(/\s+/g, "") || null;
+  const returned = returnedCallee && /^[A-Za-z_$][\w$]*$/.test(returnedCallee) ? returnedCallee : null;
   const assignedReturn = /const\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+([A-Za-z_$][\w$]*)\s*\([\s\S]*?return\s+jsonResponse\s*\(\s*\1\s*\)/.exec(dispatch)?.[2] || null;
   let callbackWrapper = null;
   if (returnedMatch) {
     const open = returnedMatch.index + returnedMatch[0].lastIndexOf("(");
     const close = closingDelimiter(dispatch, open, "(", ")");
     const argumentsText = close >= 0 ? dispatch.slice(open + 1, close) : dispatch.slice(open + 1);
-    if (/=>|\bfunction\b/.test(argumentsText)) callbackWrapper = returned;
+    if (/=>|\bfunction\b/.test(argumentsText)) callbackWrapper = returnedCallee;
   }
   if (callbackWrapper && !ignored.has(callbackWrapper)) {
     return { handler: "undetermined", handlerStatus: "undetermined", sourceSegment: dispatch, handlerResolution: "callback-wrapper-terminal-undetermined" };
@@ -260,11 +261,15 @@ function localCandidate(path) {
 function importReferences(source) {
   const staticReferences = [];
   const dynamicReferences = [];
-  for (const match of allMatches(/(?:from\s*)["']([^"']+)["']/g, source)) {
-    staticReferences.push({ specifier: match[1], kind: "static" });
+  for (const match of allMatches(/\bfrom\b/g, source)) {
+    const quote = skipJsTrivia(source, match.index + match[0].length);
+    const literal = /^(["'])([^"']+)\1/.exec(source.slice(quote));
+    if (literal) staticReferences.push({ specifier: literal[2], kind: "static" });
   }
-  for (const match of allMatches(/\bimport\s*["']([^"']+)["']/g, source)) {
-    staticReferences.push({ specifier: match[1], kind: "static-side-effect" });
+  for (const match of allMatches(/\bimport\b/g, source)) {
+    const quote = skipJsTrivia(source, match.index + match[0].length);
+    const literal = /^(["'])([^"']+)\1/.exec(source.slice(quote));
+    if (literal) staticReferences.push({ specifier: literal[2], kind: "static-side-effect" });
   }
   for (const match of allMatches(/\bimport\s*\(/g, source)) {
     const open = source.indexOf("(", match.index);
@@ -413,10 +418,35 @@ function switchActions(source, minimum, aliases = actionAliases(source, minimum)
       const hint = /(?:return\s+)?(?:await\s+)?([A-Za-z_$][\w$]*)\s*\(/.exec(tail)?.[1] || null;
       out.push({ actionName: item[1] || item[2], index: start + 1 + item.index, discoveryKind: "switch-case", handlerHint: hint });
     }
-    if (/case\s+`[^`]*\$\{/.test(block)) candidates.push({ code: "DYNAMIC_TEMPLATE_ACTION", detail: "dynamic-switch-case" });
+    for (const item of allMatches(/\bcase\b/g, block)) {
+      const expressionStart = skipJsTrivia(block, item.index + item[0].length);
+      if (/^`[^`]*\$\{/.test(block.slice(expressionStart))) {
+        candidates.push({ code: "DYNAMIC_TEMPLATE_ACTION", detail: "dynamic-switch-case" });
+        break;
+      }
+    }
   }
   out.candidates = candidates;
   return out;
+}
+
+function skipJsTrivia(source, start) {
+  let index = start;
+  while (index < source.length) {
+    if (/\s/.test(source[index])) { index += 1; continue; }
+    if (source[index] === "/" && source[index + 1] === "/") {
+      const end = source.indexOf("\n", index + 2);
+      index = end < 0 ? source.length : end + 1;
+      continue;
+    }
+    if (source[index] === "/" && source[index + 1] === "*") {
+      const end = source.indexOf("*/", index + 2);
+      index = end < 0 ? source.length : end + 2;
+      continue;
+    }
+    break;
+  }
+  return index;
 }
 
 function mapActions(source, minimum, aliases = actionAliases(source, minimum)) {

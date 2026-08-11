@@ -378,6 +378,14 @@ try {
   writeFileSync(join(functionRoot, "guard.ts"), 'globalThis.guardPolicy = "b";\n');
   assert.notEqual(discoverFixture().surfaces[0].authorizationFingerprint, sideEffectFingerprint);
 
+  writeFileSync(join(functionRoot, "guard.ts"), 'globalThis.guardPolicy = "comment-a";\n');
+  writeFileSync(join(functionRoot, "index.ts"), 'import /* authorization guard */ "./guard.ts"; Deno.serve(async()=>{const body={};if(body.action==="commented_side_effect")return new Response("ok");});\n');
+  inventory = discoverFixture();
+  const commentedSideEffectFingerprint = inventory.surfaces[0].authorizationFingerprint;
+  assert.equal(inventory.surfaces[0].dependencyFiles.includes("supabase/functions/fixture-api/guard.ts"), true);
+  writeFileSync(join(functionRoot, "guard.ts"), 'globalThis.guardPolicy = "comment-b";\n');
+  assert.notEqual(discoverFixture().surfaces[0].authorizationFingerprint, commentedSideEffectFingerprint);
+
   writeFileSync(join(functionRoot, "index.ts"), 'import { guard } from "@/guard.ts"; Deno.serve(async()=>{const body={};if(body.action==="alias_import")return new Response(String(guard()));});\n');
   inventory = discoverFixture();
   inventory.surfaces.discoveryCandidates = inventory.candidates;
@@ -423,10 +431,18 @@ assert.equal(validationExitCode(validateActionContract(contractFor(bracketAlias.
 const dynamicSwitch = selectorWithCandidates(edgeSource('switch(body.action){case "known":return knownHandler();case `dynamic_${suffix}`:return dynamicHandler();}', 'function knownHandler(){return {}}\nfunction dynamicHandler(){return {}}'));
 assertCandidateBlocks(dynamicSwitch, "DYNAMIC_TEMPLATE_ACTION");
 
+const commentedDynamicSwitch = selectorWithCandidates(edgeSource('switch(body.action){case "known":return knownHandler();case /* computed */ `dynamic_${suffix}`:return dynamicHandler();}', 'function knownHandler(){return {}}\nfunction dynamicHandler(){return {}}'));
+assertCandidateBlocks(commentedDynamicSwitch, "DYNAMIC_TEMPLATE_ACTION");
+
 const callbackTerminal = selectorWithCandidates(edgeSource('const chosen=body.action;if(chosen==="wrapped")return await withAuth({required:true},()=>business());', 'async function withAuth(_options,cb){return cb()}\nasync function business(){return {}}'));
 assert.equal(callbackTerminal[0].handlerStatus, "undetermined");
 assert.equal(callbackTerminal[0].handlerResolution, "callback-wrapper-terminal-undetermined");
 assert.ok(codes(validateActionContract(contractFor(callbackTerminal.map((entry) => entryFrom(entry)), callbackTerminal), callbackTerminal)).includes("HANDLER_UNDETERMINED"));
+
+const memberCallbackTerminal = selectorWithCandidates(edgeSource('const chosen=body.action;if(chosen==="member_wrapped")return wrappers.run(async()=>business());', 'const wrappers={run:async(cb)=>cb()}\nasync function business(){return {}}'));
+assert.equal(memberCallbackTerminal[0].handlerStatus, "undetermined");
+assert.equal(memberCallbackTerminal[0].handlerResolution, "callback-wrapper-terminal-undetermined");
+assert.equal(validationExitCode(validateActionContract(contractFor(memberCallbackTerminal.map((entry) => entryFrom(entry)), memberCallbackTerminal), memberCallbackTerminal)), 1);
 
 const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
 assert.equal(nestedLeadingComment.length, 1);
