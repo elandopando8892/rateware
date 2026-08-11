@@ -260,7 +260,14 @@ function jsLexicalSignals(source) {
   return { identifiers, hasInlineFunction };
 }
 
-function returnedInlineCallbackCall(dispatch) {
+function provenLocalArrayTransform(call, source) {
+  const transforms = new Set(["map", "filter", "reduce", "reduceRight", "flatMap", "forEach", "some", "every", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted", "toReversed", "toSpliced", "with"]);
+  if (!call?.root || !transforms.has(call.terminal)) return false;
+  const escaped = call.root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp("(?:const|let|var)\\s+" + escaped + "\\s*=\\s*\\[").test(source);
+}
+
+function returnedInlineCallbackCall(dispatch, source = dispatch) {
   const returned = /\breturn\b/.exec(dispatch);
   if (!returned) return null;
   let start = skipJsTrivia(dispatch, returned.index + returned[0].length);
@@ -301,9 +308,8 @@ function returnedInlineCallbackCall(dispatch) {
       const root = calleeIdentifiers[0] || null;
       const terminal = calleeIdentifiers.at(-1) || null;
       if (root === "jsonResponse") {
-        const nested = returnedInlineCallbackCall("return " + argumentsText);
-        const transforms = new Set(["map", "filter", "reduce", "reduceRight", "flatMap", "forEach", "some", "every", "find", "findIndex", "sort", "stringify"]);
-        if (nested && !transforms.has(nested.terminal)) return nested;
+        const nested = returnedInlineCallbackCall("return " + argumentsText, source);
+        if (nested && !provenLocalArrayTransform(nested, source)) return nested;
       }
       return { root, terminal };
     }
@@ -318,7 +324,7 @@ function handlerAnalysis(dispatch, source, handlerHint = null, options = {}) {
   const returnedCallee = returnedMatch?.[1]?.replace(/\s+/g, "") || null;
   const returned = returnedCallee && /^[A-Za-z_$][\w$]*$/.test(returnedCallee) ? returnedCallee : null;
   const assignedReturn = /const\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+([A-Za-z_$][\w$]*)\s*\([\s\S]*?return\s+jsonResponse\s*\(\s*\1\s*\)/.exec(dispatch)?.[2] || null;
-  const callbackWrapper = returnedInlineCallbackCall(dispatch);
+  const callbackWrapper = returnedInlineCallbackCall(dispatch, source);
   if (callbackWrapper && !ignored.has(callbackWrapper.root)) {
     return { handler: "undetermined", handlerStatus: "undetermined", sourceSegment: dispatch, handlerResolution: "callback-wrapper-terminal-undetermined" };
   }

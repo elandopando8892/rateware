@@ -475,6 +475,16 @@ const jsonResponseWrapper = selectorWithCandidates(edgeSource('const chosen=body
 assert.equal(jsonResponseWrapper[0].handlerStatus, "undetermined");
 assert.equal(validationExitCode(validateActionContract(contractFor(jsonResponseWrapper.map((entry) => entryFrom(entry)), jsonResponseWrapper), jsonResponseWrapper)), 1);
 
+for (const returnedCall of ['wrappers.map(async()=>business())', 'wrappers.filter(async()=>business())', 'map(async()=>business())']) {
+  const namedTransformWrapper = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="named_transform_wrapper")return jsonResponse(await ${returnedCall});`, 'const wrappers={map:async(cb)=>cb(),filter:async(cb)=>cb()}\nasync function map(cb){return cb()}\nasync function business(){return {}}\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}'));
+  assert.equal(namedTransformWrapper[0].handlerStatus, "undetermined", returnedCall);
+  assert.equal(validationExitCode(validateActionContract(contractFor(namedTransformWrapper.map((entry) => entryFrom(entry)), namedTransformWrapper), namedTransformWrapper)), 1, returnedCall);
+}
+
+const jsonResponseSorted = selectorWithCandidates(edgeSource('const chosen=body.action;if(chosen==="json_sorted")return jsonResponse(items.toSorted((a,b)=>a-b));', 'const items=[2,1]\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}'));
+assert.equal(jsonResponseSorted[0].handlerStatus, "inline-real");
+assert.equal(validationExitCode(validateActionContract(contractFor(jsonResponseSorted.map((entry) => entryFrom(entry)), jsonResponseSorted), jsonResponseSorted)), 0);
+
 const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
 assert.equal(nestedLeadingComment.length, 1);
 assert.equal(nestedLeadingComment[0].canonicalId, "rpc.public.outer()");
