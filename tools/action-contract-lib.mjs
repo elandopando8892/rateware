@@ -834,7 +834,12 @@ function evaluateAstValue(value, scope, state) {
   if (value.type === "UnaryExpression") {
     const argument = evaluateAst(value.argument, scope, state);
     if (["+", "-"].includes(value.operator) && argument?.kind === "scalar") return argument;
-    if (value.operator === "!") return { kind: "scalar", truthy: !argument?.truthy, nullish: false };
+    if (value.operator === "typeof") return { kind: "string", value: "known-type" };
+    if (value.operator === "void") return NULL_VALUE;
+    if (value.operator === "!" && argument?.kind === "scalar") return { kind: "scalar", truthy: !argument.truthy, nullish: false };
+    if (value.operator === "!" && argument?.kind === "string") return { kind: "scalar", truthy: !argument.value, nullish: false };
+    if (value.operator === "!" && ["array", "object", "function", "supabase-client", "builtin-promise", "builtin-object", "builtin-array"].includes(argument?.kind)) return { kind: "scalar", truthy: false, nullish: false };
+    return UNKNOWN_VALUE;
   }
   if (["StringLiteral", "TemplateLiteral"].includes(value.type)) {
     if (value.type === "TemplateLiteral" && value.expressions.length) return OTHER_VALUE;

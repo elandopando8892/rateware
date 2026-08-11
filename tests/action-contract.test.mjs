@@ -665,7 +665,7 @@ for (const [declarations, branch, expected] of [
   assert.equal(validationExitCode(validateActionContract(contractFor(trustedBindingFlow.map((entry) => entryFrom(entry)), trustedBindingFlow), trustedBindingFlow)), expected === "undetermined" ? 1 : 0, `${declarations} ${branch}`);
 }
 
-// Step 7I scenarios 38-47: nested labels, primitive short-circuit, imports and exhaustive returns.
+// Step 7I scenarios 38-49: nested labels, primitive short-circuit, imports and exhaustive returns.
 for (const [declarations, branch, expected] of [
   ['const wrappers={map:async cb=>cb()};let items=[1];', 'outer:for(let i=0;i<1;i++){switch(body.kind){case "bad":items=wrappers;break outer;default:items=[]}items=[]}return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
   ['const wrappers={map:async cb=>cb()};let items=[1];', 'outer:{inner:{items=wrappers;break inner;items=[]}items=[]}return jsonResponse(items.map(x=>x));', 'inline-real'],
@@ -683,6 +683,9 @@ for (const [declarations, branch, expected] of [
   ['const items=Infinity&&[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
   ['const items=(-1)&&[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
   ['const items=0n||[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const items=(!body.flag)&&[];', 'return jsonResponse(items.map(x=>x));', 'undetermined'],
+  ['const items=(typeof body.flag)&&[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const items=(void body.flag)??[];', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
   ['const P=Promise;const [items]=await P.all([[1]]);', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
   ['const wrappers={map:async cb=>cb()};const Promise={all:async()=>[wrappers]};const P=Promise;const [items]=await P.all([[1]]);', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
   ['const A=Array;const items=A.from([1]);', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
