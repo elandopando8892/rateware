@@ -195,20 +195,108 @@ function resolveImportedHandler(source, sourceFile, handler, envelope) {
   return exportedHandlerSegment(envelope, link.targetFile, binding.importedName);
 }
 
+function jsLexicalSignals(source) {
+  const identifiers = [];
+  let hasInlineFunction = false;
+  let index = 0;
+  while (index < source.length) {
+    const c = source[index];
+    const n = source[index + 1];
+    if (/\s/.test(c)) { index += 1; continue; }
+    if (c === "/" && n === "/") {
+      const end = source.indexOf("\n", index + 2);
+      index = end < 0 ? source.length : end + 1;
+      continue;
+    }
+    if (c === "/" && n === "*") {
+      const end = source.indexOf("*/", index + 2);
+      index = end < 0 ? source.length : end + 2;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === "`") {
+      const quote = c;
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === "\\") { index += 2; continue; }
+        if (source[index] === quote) { index += 1; break; }
+        index += 1;
+      }
+      continue;
+    }
+    if (c === "=" && n === ">") { hasInlineFunction = true; index += 2; continue; }
+    if (/[A-Za-z_$]/.test(c)) {
+      let identifier = c;
+      index += 1;
+      while (index < source.length && /[A-Za-z0-9_$]/.test(source[index])) { identifier += source[index]; index += 1; }
+      identifiers.push(identifier);
+      if (identifier === "function") hasInlineFunction = true;
+      continue;
+    }
+    index += 1;
+  }
+  return { identifiers, hasInlineFunction };
+}
+
+function returnedInlineCallbackCall(dispatch) {
+  const returned = /\breturn\b/.exec(dispatch);
+  if (!returned) return null;
+  let start = skipJsTrivia(dispatch, returned.index + returned[0].length);
+  if (/^await\b/.test(dispatch.slice(start))) start = skipJsTrivia(dispatch, start + 5);
+  if (/^jsonResponse\b/.test(dispatch.slice(start))) {
+    const wrapperOpen = skipJsTrivia(dispatch, start + "jsonResponse".length);
+    if (dispatch[wrapperOpen] === "(") {
+      start = skipJsTrivia(dispatch, wrapperOpen + 1);
+      if (/^await\b/.test(dispatch.slice(start))) start = skipJsTrivia(dispatch, start + 5);
+    }
+  }
+  let squareDepth = 0;
+  let braceDepth = 0;
+  for (let index = start; index < dispatch.length; index += 1) {
+    const next = skipJsTrivia(dispatch, index);
+    if (next !== index) { index = next - 1; continue; }
+    const c = dispatch[index];
+    if (c === "'" || c === '"' || c === "`") {
+      const quote = c;
+      index += 1;
+      while (index < dispatch.length) {
+        if (dispatch[index] === "\\") { index += 2; continue; }
+        if (dispatch[index] === quote) break;
+        index += 1;
+      }
+      continue;
+    }
+    if (c === "[") { squareDepth += 1; continue; }
+    if (c === "]") { squareDepth = Math.max(0, squareDepth - 1); continue; }
+    if (c === "{") { braceDepth += 1; continue; }
+    if (c === "}") {
+      if (braceDepth === 0 && squareDepth === 0) break;
+      braceDepth = Math.max(0, braceDepth - 1);
+      continue;
+    }
+    if (c === ";" && squareDepth === 0 && braceDepth === 0) break;
+    if (c !== "(" || squareDepth !== 0 || braceDepth !== 0) continue;
+    const close = closingDelimiter(dispatch, index, "(", ")");
+    if (close < 0) break;
+    const argumentsText = dispatch.slice(index + 1, close);
+    const argumentSignals = jsLexicalSignals(argumentsText);
+    if (argumentSignals.hasInlineFunction) {
+      const calleeSignals = jsLexicalSignals(dispatch.slice(start, index));
+      const root = calleeSignals.identifiers.find((item) => !["await", "new"].includes(item)) || null;
+      return { root };
+    }
+    index = close;
+  }
+  return null;
+}
+
 function handlerAnalysis(dispatch, source, handlerHint = null, options = {}) {
   const ignored = new Set(["jsonResponse", "Response", "cleanText", "String", "Number", "Boolean", "Object", "Array", "Date", "Set", "Map"]);
   const returnedMatch = /return\s+(?:jsonResponse\s*\(\s*)?(?:await\s+)?([A-Za-z_$][\w$]*(?:(?:\s*(?:\.|\?\.)\s*[A-Za-z_$][\w$]*)|(?:\s*(?:\?\.)?\s*\[\s*[^\]\r\n]+\s*\]))*)\s*(?:\?\.)?\s*\(/.exec(dispatch);
   const returnedCallee = returnedMatch?.[1]?.replace(/\s+/g, "") || null;
   const returned = returnedCallee && /^[A-Za-z_$][\w$]*$/.test(returnedCallee) ? returnedCallee : null;
   const assignedReturn = /const\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+([A-Za-z_$][\w$]*)\s*\([\s\S]*?return\s+jsonResponse\s*\(\s*\1\s*\)/.exec(dispatch)?.[2] || null;
-  let callbackWrapper = null;
-  if (returnedMatch) {
-    const open = returnedMatch.index + returnedMatch[0].lastIndexOf("(");
-    const close = closingDelimiter(dispatch, open, "(", ")");
-    const argumentsText = close >= 0 ? dispatch.slice(open + 1, close) : dispatch.slice(open + 1);
-    if (/=>|\bfunction\b/.test(argumentsText)) callbackWrapper = returnedCallee;
-  }
-  if (callbackWrapper && !ignored.has(callbackWrapper)) {
+  const callbackWrapper = returnedInlineCallbackCall(dispatch);
+  if (callbackWrapper && !ignored.has(callbackWrapper.root)) {
     return { handler: "undetermined", handlerStatus: "undetermined", sourceSegment: dispatch, handlerResolution: "callback-wrapper-terminal-undetermined" };
   }
   const explicit = handlerHint || assignedReturn || (returned && !ignored.has(returned) ? returned : null);

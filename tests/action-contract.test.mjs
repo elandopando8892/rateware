@@ -451,6 +451,16 @@ for (const returnedCall of ['wrappers["run"](async()=>business())', 'wrappers?.[
   assert.equal(validationExitCode(validateActionContract(contractFor(computedCallbackTerminal.map((entry) => entryFrom(entry)), computedCallbackTerminal), computedCallbackTerminal)), 1, returnedCall);
 }
 
+for (const returnedCall of ['wrappers /*comment*/ ["run"](async()=>business())', 'wrappers./*comment*/run(async()=>business())', 'wrappers.run /*comment*/ (async()=>business())', 'wrappers.run /*comment*/ ?.(async()=>business())', 'wrappers[methods[0]](async()=>business())']) {
+  const triviaCallbackTerminal = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="trivia_wrapped")return ${returnedCall};`, 'const methods=["run"]\nconst wrappers={run:async(cb)=>cb()}\nasync function business(){return {}}'));
+  assert.equal(triviaCallbackTerminal[0].handlerStatus, "undetermined", returnedCall);
+  assert.equal(triviaCallbackTerminal[0].handlerResolution, "callback-wrapper-terminal-undetermined", returnedCall);
+  assert.equal(validationExitCode(validateActionContract(contractFor(triviaCallbackTerminal.map((entry) => entryFrom(entry)), triviaCallbackTerminal), triviaCallbackTerminal)), 1, returnedCall);
+}
+
+const responseWithNestedCallback = selectorWithCandidates(edgeSource('const chosen=body.action;if(chosen==="response_map")return new Response(JSON.stringify([1].map(value=>value)));'));
+assert.equal(responseWithNestedCallback[0].handlerStatus, "inline-real");
+
 const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
 assert.equal(nestedLeadingComment.length, 1);
 assert.equal(nestedLeadingComment[0].canonicalId, "rpc.public.outer()");
