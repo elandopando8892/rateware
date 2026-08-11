@@ -608,6 +608,32 @@ for (const [declarations, branch, expected] of [
   assert.equal(validationExitCode(validateActionContract(contractFor(conservativeAstFlow.map((entry) => entryFrom(entry)), conservativeAstFlow), conservativeAstFlow)), expected === "undetermined" ? 1 : 0, `${declarations} ${branch}`);
 }
 
+// Step 7I scenarios 30-33: abrupt completion, unknown values and nested path joins.
+for (const [declarations, branch, expected] of [
+  ['const wrappers={map:async cb=>cb()};let items=[1];', 'switch(body.kind){case "wrapper":items=wrappers;break;default:items=[]}return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['let items=[1];', 'switch(body.kind){case "a":items=[2];break;default:items=[]}return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};let items=[1];', 'try{items=wrappers}finally{if(body.reset){items=[]}}return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};let items=wrappers;', 'try{items=wrappers}finally{items=[]}return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};let items=wrappers;', 'do{break;items=[]}while(false);return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};let items=[1];function mutate(){items=wrappers;return;items=[]}', 'mutate();return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['function getItems(){return body.value};const items=getItems()||[];', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['function getItems(){return body.value};const items=getItems()??[];', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const state={deep:{items:[1]}};', 'if(body.flag){state.deep.items=[2]}else{state.deep.items=[]}return jsonResponse(state.deep.items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};const state={deep:{items:[1]}};', 'if(body.flag){state.deep.items=wrappers}else{state.deep.items=[]}return jsonResponse(await state.deep.items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};const key="items";let rows=[];({[key]:rows}={items:wrappers});', 'return jsonResponse(await rows.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const state={items:[]};const unknown=body.value;Object.assign(state,unknown);', 'return jsonResponse(await state.items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const unknown=body.value;const state={items:[],...unknown};', 'return jsonResponse(await state.items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};const key=body.key;const state={items:[],[key]:wrappers};', 'return jsonResponse(await state.items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};function getItems(): unknown[]{return wrappers as unknown as unknown[]};const items=getItems();', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const fake={from(){return this},select(){return this},map:async cb=>cb()};const items=fake.from("rows").select("*");', 'return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['function identity(x){return x};const items=identity([1]);', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const broken = ;const items=[1];', 'return jsonResponse(items.map(x=>x));', 'undetermined']
+]) {
+  const conservativeUnknownFlow = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="conservative_unknown_flow"){${branch}}`, `${declarations}\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}`));
+  assert.equal(conservativeUnknownFlow[0].handlerStatus, expected, `${declarations} ${branch}`);
+  assert.equal(validationExitCode(validateActionContract(contractFor(conservativeUnknownFlow.map((entry) => entryFrom(entry)), conservativeUnknownFlow), conservativeUnknownFlow)), expected === "undetermined" ? 1 : 0, `${declarations} ${branch}`);
+}
+
 const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
 assert.equal(nestedLeadingComment.length, 1);
 assert.equal(nestedLeadingComment[0].canonicalId, "rpc.public.outer()");
