@@ -444,6 +444,13 @@ assert.equal(memberCallbackTerminal[0].handlerStatus, "undetermined");
 assert.equal(memberCallbackTerminal[0].handlerResolution, "callback-wrapper-terminal-undetermined");
 assert.equal(validationExitCode(validateActionContract(contractFor(memberCallbackTerminal.map((entry) => entryFrom(entry)), memberCallbackTerminal), memberCallbackTerminal)), 1);
 
+for (const returnedCall of ['wrappers["run"](async()=>business())', 'wrappers?.["run"](async()=>business())', 'wrappers.run?.(async()=>business())', 'wrappers[method](async()=>business())']) {
+  const computedCallbackTerminal = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="computed_wrapped")return ${returnedCall};`, 'const method="run"\nconst wrappers={run:async(cb)=>cb()}\nasync function business(){return {}}'));
+  assert.equal(computedCallbackTerminal[0].handlerStatus, "undetermined", returnedCall);
+  assert.equal(computedCallbackTerminal[0].handlerResolution, "callback-wrapper-terminal-undetermined", returnedCall);
+  assert.equal(validationExitCode(validateActionContract(contractFor(computedCallbackTerminal.map((entry) => entryFrom(entry)), computedCallbackTerminal), computedCallbackTerminal)), 1, returnedCall);
+}
+
 const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
 assert.equal(nestedLeadingComment.length, 1);
 assert.equal(nestedLeadingComment[0].canonicalId, "rpc.public.outer()");
