@@ -60,6 +60,21 @@ test("nested equivalent organization claims remain deterministic", () => {
   assert.equal(result.externalOrganizationId, "org_verified");
 });
 
+test("rejects non-textual identity and organization claims instead of coercing them", () => {
+  for (const sub of [["kp_subject"], 42, { value: "kp_subject" }]) {
+    assert.equal(
+      errorCode(() => normalizeVerifiedKindeIdentity(claims({ sub }))),
+      "IDENTITY_SUBJECT_REQUIRED"
+    );
+  }
+  for (const org_code of [["org_verified"], 42, { value: "org_verified" }]) {
+    assert.equal(
+      errorCode(() => normalizeVerifiedKindeIdentity(claims({ org_code }))),
+      "IDENTITY_ORGANIZATION_REQUIRED"
+    );
+  }
+});
+
 test("resolver returns a canonical tenant only when all reviewed mappings agree", async () => {
   const client = fakeClient({
     external_identities: [{ id: IDENTITY_ID, status: "active" }],
@@ -129,4 +144,13 @@ test("Phase 0.2A remains additive and performs no heuristic activation", () => {
   assert.match(migration, /revoke all on table public\.external_organization_links from public, anon, authenticated/);
   assert.doesNotMatch(migration, /insert\s+into\s+public\.(external_identities|external_organization_links)/i);
   assert.doesNotMatch(resolver, /\.(insert|upsert|update|delete)\s*\(/);
+
+  const invalidationMigration = readFileSync(
+    new URL("../supabase/migrations/20260811200618_phase0_invalidate_changed_identity_reviews.sql", import.meta.url),
+    "utf8"
+  );
+  assert.match(invalidationMigration, /new\.status := 'needs_review'/);
+  assert.match(invalidationMigration, /new\.reviewed_at := null/);
+  assert.match(invalidationMigration, /before update of provider, external_subject/);
+  assert.match(invalidationMigration, /before update of provider, external_organization_id, organization_id/);
 });

@@ -22,6 +22,7 @@ The read-only baseline observed on 2026-08-11 contained four organizations, one 
 - the resolver reads only and never inserts, upserts or activates a mapping;
 - browser roles have no table privileges; only `service_role` can manage the new objects;
 - an active row requires reviewer identity and review timestamp; active organization links also require a review note.
+- changing a reviewed subject, provider, external organization or canonical tenant resets the row to `needs_review` and clears the previous approval.
 
 ## Deferred work
 

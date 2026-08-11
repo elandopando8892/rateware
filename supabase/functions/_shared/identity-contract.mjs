@@ -9,8 +9,8 @@ export class IdentityContractError extends Error {
 }
 
 function cleanClaim(value) {
-  if (value === null || value === undefined) return null;
-  const text = String(value).trim();
+  if (typeof value !== "string") return null;
+  const text = value.trim();
   return text || null;
 }
 
