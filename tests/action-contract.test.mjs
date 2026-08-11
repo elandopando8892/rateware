@@ -232,10 +232,10 @@ assert.equal(baseline.some((entry) => entry.canonicalId.includes("whatsapp-healt
 assert.equal(ACTION_CONTRACT.nonGovernableDeclarations.some((entry) => entry.canonicalId === "declaration.edge.whatsapp-healthcheck"), true);
 assert.deepEqual(
   baselineResult.issues.filter((entry) => entry.level === "error").map((entry) => entry.code),
-  ["REMOVED_WITHOUT_DISPOSITION", "REMOVED_WITHOUT_DISPOSITION"],
+  [],
   formatValidationResult(baselineResult)
 );
-assert.equal(validationExitCode(baselineResult), 1, "unresolved H07 dispositions must remain non-zero");
+assert.equal(validationExitCode(baselineResult), 0, "approved H07 retirements must leave the committed contract valid");
 
 const divergence = validateActionContract(deterministicContract, [inlineActual[0], extra]);
 assert.ok(codes(divergence).includes("UNREGISTERED_SURFACE"));
@@ -730,7 +730,7 @@ assert.equal(formatValidationResult(validateActionContract(deterministicContract
 const finalBaseline = discoverGovernableSurfaces(process.cwd());
 const finalBaselineResult = validateActionContract(ACTION_CONTRACT, finalBaseline, { repoRoot: process.cwd() });
 assert.deepEqual({ total: finalBaseline.length, edge: finalBaseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, rpc: finalBaseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length }, { total: 347, edge: 284, rpc: 63 });
-assert.deepEqual(finalBaselineResult.issues.filter((entry) => entry.level === "error").map((entry) => entry.code), ["REMOVED_WITHOUT_DISPOSITION", "REMOVED_WITHOUT_DISPOSITION"]);
+assert.deepEqual(finalBaselineResult.issues.filter((entry) => entry.level === "error").map((entry) => entry.code), []);
 assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 256);
 assert.equal(ACTION_CONTRACT.nonGovernableDeclarations.some((entry) => entry.canonicalId === "declaration.edge.whatsapp-healthcheck" && entry.decisionStatus === "pending_human_approval"), true);
 for (const actual of [dynamicTemplate, spreadRegistry, computedDynamic, callbackWrapper, multipleRegistries, multipleDispatchers, fallbackDispatch]) {

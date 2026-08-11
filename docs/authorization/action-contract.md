@@ -68,13 +68,13 @@ The contract retains 349 rows because two historically counted RPCs are now prov
 - `public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)`;
 - `public.rateware_rfx_text_match_score(text,text,integer)`.
 
-They remain active contract records with `REMOVED_WITHOUT_DISPOSITION` errors until H07 receives human approval. Counts were not forced back to 349.
+H07 records both signatures as intentionally `removed`, with `public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)` as their functional replacement. The repository history, current API call, stability guard, and a read-only production catalog probe confirm that the old signatures are absent while the service-role-only replacement remains active. Historical rows remain in the 349-record contract; active discovery remains 347.
 
 ## Decision and lifecycle boundary
 
 The contract preserves 256 `pending_human_approval`, 27 `explicitly_allowed`, and 66 `internal_only` rows. No pending surface is converted to allowed.
 
-H07 remains **PENDING HUMAN APPROVAL**. Duplicate names, dead candidates, aliases, removals, replacements, merges, and retirements are not decided by this hardening. Consequently Phase 0.1 is technically hardened but not complete.
+H07 is approved as an intentional retirement with functional replacement. This disposition changes lifecycle metadata only; it does not restore or drop database functions, modify grants, or alter runtime behavior.
 
 `whatsapp-healthcheck` has no committed `index.ts`, is not an active surface, and remains a historical non-governable declaration pending disposition.
 

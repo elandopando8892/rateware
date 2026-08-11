@@ -335,8 +335,8 @@ export const ACTION_CONTRACT = {
     "rpc.public.rateware_promote_vendor_lifecycle(uuid,text)": "af79b94c6b065aff8bfcc9ae2c123329f1f055969a6bdf4b48c8b4d66e31cfc9",
     "rpc.public.rateware_rate_matches_filters(public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean)": "34d04ab8db6166aa0fc9d4abec5231957789ed5292eb34f27f03ebcdf105b982",
     "rpc.public.rateware_refresh_vendor_search_document()": "1aad0bdc6aeb5b1df1c23a235b4c65f4a2915d10738d500fef03397dadf19e9e",
-    "rpc.public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)": "65b3815644df4cce214daa3f4cc56c38e7fc606d2af98900a99e9b9bbd71e3e5",
-    "rpc.public.rateware_rfx_text_match_score(text,text,integer)": "e5792624db2c4f0b77b1a5f01a8adb8d109b7750f4859600d4e39a5f09b2af67",
+    "rpc.public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)": "71c4907ed93d4a38d0dae561e9fb32f3dd79fcfc476c8b2ccea54605b3502e29",
+    "rpc.public.rateware_rfx_text_match_score(text,text,integer)": "0d77c457c1376039ef08b57d930411cc016459d9afb027d79b6ddc470d0169ee",
     "rpc.public.rateware_row_conflict(public.rate_staging)": "959c7c4a9e7706a64221fe73cf2cd855f36e7b294efa3e33e9f2f50e3fb7636e",
     "rpc.public.rateware_row_cross_border(public.rate_staging)": "6553c4eb93dca9e81137cbe1dd9a50e9741547ca3fa7c6e869293a4fedb33456",
     "rpc.public.rateware_row_currency_gap(public.rate_staging)": "610972845fc53c1749e4c10527540f4e092ce06dc94061adacc2cc7f0f20d010",
@@ -11751,10 +11751,10 @@ export const ACTION_CONTRACT = {
       "proposedPermissionKey": "internal.rpc.rateware_rfx_lane_rate_score",
       "functionalOwner": "Procurement",
       "decisionStatus": "internal_only",
-      "lifecycle": "active",
-      "replacementAction": null,
+      "lifecycle": "removed",
+      "replacementAction": "rpc.public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)",
       "sourceFingerprint": "3cebc56b09755f9fd8fe09a17674e987b0826df59b8c0859566d67dde6fd017f",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate Observed DROP in committed migrations; lifecycle disposition remains PENDING HUMAN APPROVAL.",
+      "notes": "Intentionally retired after its row-by-row scoring was folded into rpc.public.rfx_benchmark_candidate_rate_ids(text,uuid,integer); production catalog confirms the old signature is absent.",
       "analysisCoverage": "direct",
       "dependencyFiles": [
         "supabase/migrations/20260804080200_optimize_bid_room_benchmark_candidates.sql"
@@ -11779,10 +11779,10 @@ export const ACTION_CONTRACT = {
       "proposedPermissionKey": "internal.rpc.rateware_rfx_text_match_score",
       "functionalOwner": "Procurement",
       "decisionStatus": "internal_only",
-      "lifecycle": "active",
-      "replacementAction": null,
+      "lifecycle": "removed",
+      "replacementAction": "rpc.public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)",
       "sourceFingerprint": "754520bafd29dd263e072e555a95940214d5577b9a11cdce7150a7207777ffb1",
-      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate Observed DROP in committed migrations; lifecycle disposition remains PENDING HUMAN APPROVAL.",
+      "notes": "Intentionally retired after its text scoring was folded into rpc.public.rfx_benchmark_candidate_rate_ids(text,uuid,integer); production catalog confirms the old signature is absent.",
       "analysisCoverage": "direct",
       "dependencyFiles": [
         "supabase/migrations/20260804080200_optimize_bid_room_benchmark_candidates.sql"
