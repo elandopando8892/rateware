@@ -8,9 +8,9 @@ export const ACTION_CONTRACT = {
   "contractVersion": "1.2.0",
   "methodVersion": "2026-08-10.phase0.1-second-hardening",
   "expectedCounts": {
-    "governable": 351,
+    "governable": 352,
     "edge": 284,
-    "postgres": 67,
+    "postgres": 68,
     "ratewareApi": 244
   },
   "reviewedMetadataFingerprints": {
@@ -301,6 +301,7 @@ export const ACTION_CONTRACT = {
     "rpc.public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)": "669afa1e7eed1753a7cdf72b6176b92a22755454947f1e2ae7f0e43e1e60a1a6",
     "rpc.public.count_exact_workspace_vendor_duplicates(text,text)": "33d718081ec03f9bd5b55e08367e96f588a18228560b6de666e2539602013411",
     "rpc.public.merge_exact_vendor_relationship_collisions(uuid,uuid)": "cf03746c0a712f76f2e1a9902fd9a54b404a7271f3b8b2bfd6e69bb78361837b",
+    "rpc.public.phase0_invalidate_changed_mapping_review()": "ba9780e0057deab0948c0e55b5f9071ad88ab9ed6a0a4141be7b311c6607fca1",
     "rpc.public.protect_outreach_delivery_state()": "18c933f3e1e6778b69b2d96eec503896bc2dd001356e8015354403e02eb3b3dc",
     "rpc.public.rateware_assert_vendor_workspace_link()": "b3a61d99e12327762b6a71570065c3368e41d4432bd4d621491dbfc3b411c872",
     "rpc.public.rateware_bi_aggregate_value(text,text,bigint,bigint,numeric,numeric,numeric,numeric)": "4275c4b04cbbecfb567ce142a4ab5ef79db7e391aa8185965a73443e04f52521",
@@ -656,6 +657,7 @@ export const ACTION_CONTRACT = {
     "rpc.public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)": "4097f77b50900155f6e8c705dc98afd8acb18b28fac9e41b571105044e298eda",
     "rpc.public.count_exact_workspace_vendor_duplicates(text,text)": "d78c6a847831276b1126b9ca45d30542905e6567ac4ec3457817e89688281ea3",
     "rpc.public.merge_exact_vendor_relationship_collisions(uuid,uuid)": "e25fc4ba875efb46acabbe5eecaaf20fa21faf46ed2e88fd4c2d134b6c450c94",
+    "rpc.public.phase0_invalidate_changed_mapping_review()": "0e86554e5778e5b6a4568bc439232aae297703e613c70d35b01e79f2003fd94e",
     "rpc.public.protect_outreach_delivery_state()": "ffcbf6588871f833608603afc6b9ad6f98ce0dcff7ae988fd4f3e76aedac63ae",
     "rpc.public.rateware_assert_vendor_workspace_link()": "93d96d17fc5d7288b65ae4a2bd4f063c88ad4a1937f4260bd66ead22617fbfeb",
     "rpc.public.rateware_bi_aggregate_value(text,text,bigint,bigint,numeric,numeric,numeric,numeric)": "a3cabb680b575274977c404c03439c8a9750c4a50b87d4125284cda6b4e53a23",
@@ -10683,6 +10685,37 @@ export const ACTION_CONTRACT = {
         "supabase/migrations/20260805054258_merge_exact_vendor_relationship_collisions.sql"
       ],
       "rpcSignature": "uuid,uuid",
+      "coverageSignals": [
+        "direct"
+      ]
+    },
+    {
+      "contractVersion": "1.2.0",
+      "canonicalId": "rpc.public.phase0_invalidate_changed_mapping_review()",
+      "actionName": "public.phase0_invalidate_changed_mapping_review",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20260811204142_phase0_fix_status_review_table_fields.sql",
+      "handler": "public.phase0_invalidate_changed_mapping_review()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.phase0_invalidate_changed_mapping_review()",
+      "businessModule": "Authorization",
+      "operation": "execute",
+      "resource": "identity_mappings",
+      "access": "write",
+      "exposure": "internal/service-role",
+      "sensitivity": "critical",
+      "tenantRelevance": "tenant-scoped",
+      "proposedPermissionKey": "internal.rpc.phase0_invalidate_changed_mapping_review",
+      "functionalOwner": "Security",
+      "decisionStatus": "internal_only",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "0e86554e5778e5b6a4568bc439232aae297703e613c70d35b01e79f2003fd94e",
+      "notes": "trigger/internal function; invalidates review when identity, tenant mapping or approval lifecycle changes",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260811204142_phase0_fix_status_review_table_fields.sql"
+      ],
+      "rpcSignature": "",
       "coverageSignals": [
         "direct"
       ]
