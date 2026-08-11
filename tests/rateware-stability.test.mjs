@@ -4503,6 +4503,11 @@ assert.doesNotMatch(rlsInitplanMigration, /create policy[\s\S]+using \(true\)/i,
 for (const functionName of ["rateware_inherit_rate_owner", "rls_auto_enable"]) {
   assert.match(
     internalTriggerPermissionsMigration,
+    new RegExp(`to_regprocedure\\('public\\.${functionName}\\(\\)'\\) is not null`),
+    `${functionName} permission hardening should tolerate clean histories where the helper is absent`
+  );
+  assert.match(
+    internalTriggerPermissionsMigration,
     new RegExp(`revoke all on function public\\.${functionName}\\(\\)[\\s\\S]+?from public, anon, authenticated, service_role`),
     `${functionName} must not be callable as a Data API RPC`
   );
