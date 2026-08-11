@@ -4536,6 +4536,9 @@ assert.match(duplicateIndexMigration, /keeper\.indkey = duplicate\.indkey/, "Dup
 assert.match(duplicateIndexMigration, /conindid = to_regclass\('public\.whatsapp_business_connections_owner_email_provider_connecti_key'\)/, "Duplicate-index cleanup should preserve the index backing the WhatsApp UNIQUE constraint");
 assert.match(duplicateIndexMigration, /drop index public\.idx_rate_staging_vendor/, "Duplicate-index cleanup should remove the unversioned rate staging duplicate");
 assert.match(duplicateIndexMigration, /drop index public\.whatsapp_business_connections_unique_idx/, "Duplicate-index cleanup should remove the redundant explicit WhatsApp index");
+assert.match(duplicateIndexMigration, /if to_regclass\('public\.idx_rate_staging_vendor'\) is not null/, "Duplicate-index cleanup should tolerate a clean history without the unversioned rate index");
+assert.match(duplicateIndexMigration, /if to_regclass\('public\.whatsapp_business_connections_unique_idx'\) is not null/, "Duplicate-index cleanup should be replay-safe after the redundant WhatsApp index is absent");
+assert.match(duplicateIndexMigration, /Canonical rate staging vendor index is missing/, "Duplicate-index cleanup should still fail when the canonical rate index is absent");
 assert.doesNotMatch(duplicateIndexMigration, /drop index public\.rate_staging_vendor_domain_idx/, "Duplicate-index cleanup must preserve the migration-owned rate index");
 assert.doesNotMatch(duplicateIndexMigration, /drop index public\.whatsapp_business_connections_owner_email_provider_connecti_key/, "Duplicate-index cleanup must preserve the constraint-owned WhatsApp index");
 assert.match(duplicateIndexMigration, /raise exception 'A duplicate index remains after cleanup'/, "Duplicate-index cleanup should fail closed if either redundant index remains");
