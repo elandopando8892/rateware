@@ -538,6 +538,34 @@ const assignmentAfterUse = selectorWithCandidates(edgeSource('const chosen=body.
 assert.equal(assignmentAfterUse[0].handlerStatus, "inline-real");
 assert.equal(validationExitCode(validateActionContract(contractFor(assignmentAfterUse.map((entry) => entryFrom(entry)), assignmentAfterUse), assignmentAfterUse)), 0);
 
+for (const declarations of [
+  'const wrappers={map:async cb=>cb()};const state={items:[]};state["items"]=wrappers',
+  'const wrappers={map:async cb=>cb()};const state={items:[]};const alias=state;alias.items=wrappers',
+  'const wrappers={map:async cb=>cb()};let items=[1];if(true){items=wrappers}',
+  'const wrappers={map:async cb=>cb()};let items=[1];try{items=wrappers}catch{}',
+  'const wrappers={map:async cb=>cb()};const key="items";const state={items:[]};state[key]=wrappers'
+]) {
+  const computedWrite = selectorWithCandidates(edgeSource('const chosen=body.action;if(chosen==="computed_write")return jsonResponse(await ' + (declarations.includes('state=') ? 'state.items' : 'items') + '.map(async()=>new Response("ok")));', `${declarations}\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}`));
+  assert.equal(computedWrite[0].handlerStatus, "undetermined", declarations);
+  assert.equal(validationExitCode(validateActionContract(contractFor(computedWrite.map((entry) => entryFrom(entry)), computedWrite), computedWrite)), 1, declarations);
+}
+
+for (const [declarations, expression] of [
+  ['const state={["items"]:[1]}', 'state.items.map(x=>x)'],
+  ['const state={"items":[1]}', 'state.items.map(x=>x)'],
+  ['const state={items:[1]};const {items:rows}=state', 'rows.map(x=>x)'],
+  ['const source=[1,2];const [head,...items]=source', 'items.map(x=>x)'],
+  ['const state={items:[1],other:2};const {other,...rest}=state', 'rest.items.map(x=>x)']
+]) {
+  const structuredRead = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="structured_read")return jsonResponse(${expression});`, `${declarations}\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}`));
+  assert.equal(structuredRead[0].handlerStatus, "inline-real", expression);
+  assert.equal(validationExitCode(validateActionContract(contractFor(structuredRead.map((entry) => entryFrom(entry)), structuredRead), structuredRead)), 0, expression);
+}
+
+const duplicateCalleeActions = selectorWithCandidates('function jsonResponse(x){return new Response(JSON.stringify(x))}\nconst wrappers={map:async cb=>cb()};\nDeno.serve(async()=>{const body={};if(body.action==="duplicate_array"){const items=[1];return jsonResponse(items.map(x=>x));}if(body.action==="duplicate_wrapper"){const items=wrappers;return jsonResponse(items.map(x=>x));}});');
+assert.equal(duplicateCalleeActions.find((entry) => entry.actionName === "duplicate_array").handlerStatus, "inline-real");
+assert.equal(duplicateCalleeActions.find((entry) => entry.actionName === "duplicate_wrapper").handlerStatus, "undetermined");
+
 const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
 assert.equal(nestedLeadingComment.length, 1);
 assert.equal(nestedLeadingComment[0].canonicalId, "rpc.public.outer()");

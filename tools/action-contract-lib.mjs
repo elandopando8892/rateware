@@ -267,13 +267,19 @@ function jsStructureTokens(source, { detailed = false } = {}) {
   let nextScopeId = 1;
   const scope = [];
   const braceKinds = [];
+  const functionScopeIds = new Set();
   const add = (value, tokenIndex) => {
-    tokens.push({ value, index: tokenIndex, scope: [...scope] });
+    tokens.push({ value, index: tokenIndex, scope: [...scope], functionScopes: scope.filter((id) => functionScopeIds.has(id)) });
     if (value === "{") {
       const previous = tokens.at(-2)?.value;
       const objectLike = ["=", ":", "(", "[", ",", "const", "let", "var"].includes(previous);
       braceKinds.push(objectLike ? "object" : "scope");
-      if (!objectLike) scope.push(nextScopeId++);
+      if (!objectLike) {
+        const scopeId = nextScopeId++;
+        const boundary = tokens.findLastIndex((token, index) => index < tokens.length - 1 && [";", "{", "}"].includes(token.value));
+        if (tokens.slice(boundary + 1, -1).some((token) => token.value === "function")) functionScopeIds.add(scopeId);
+        scope.push(scopeId);
+      }
     }
     if (value === "}" && braceKinds.pop() === "scope") scope.pop();
   };
@@ -285,13 +291,15 @@ function jsStructureTokens(source, { detailed = false } = {}) {
     if (c === "/" && n === "*") { const end = source.indexOf("*/", index + 2); index = end < 0 ? source.length : end + 2; continue; }
     if (c === "'" || c === '"' || c === "`") {
       const quote = c;
+      const literalStart = index;
       index += 1;
       while (index < source.length) {
         if (source[index] === "\\") { index += 2; continue; }
         if (source[index] === quote) { index += 1; break; }
         index += 1;
       }
-      add("<string>", index);
+      const literal = quote === "`" ? "<string>" : "str:" + source.slice(literalStart + 1, Math.max(literalStart + 1, index - 1));
+      add(literal, literalStart);
       canStartRegex = false;
       continue;
     }
@@ -350,17 +358,20 @@ function objectArrayProperty(tokens, equalIndex, property) {
   return false;
 }
 
-function latestReceiverArrayEvidence(source, receiver, calleeText) {
+function latestReceiverArrayEvidence(source, receiver, calleeText, searchStart = 0) {
   const detailed = jsStructureTokens(source, { detailed: true });
-  const callIndex = source.lastIndexOf(calleeText);
+  const callIndex = source.indexOf(calleeText, Math.max(0, searchStart));
   const callToken = [...detailed].reverse().find((token) => token.index <= callIndex);
   const callScope = callToken?.scope || [];
+  const callFunctionScopes = new Set(callToken?.functionScopes || []);
   const inCallScope = (token) => token.scope.every((scopeId, index) => callScope[index] === scopeId);
-  const beforeCall = detailed.filter((token) => token.index < callIndex && inCallScope(token));
+  const executableForCall = (token) => token.functionScopes.every((scopeId) => callFunctionScopes.has(scopeId));
+  const beforeCall = detailed.filter((token) => token.index < callIndex);
   const tokens = beforeCall.map((token) => token.value);
   const bindings = new Map();
   const descriptorAt = (equalIndex) => {
     if (arrayInitializer(tokens, equalIndex)) return { kind: "array" };
+    if ((tokens[equalIndex + 1] || "").startsWith("str:")) return { kind: "string", value: tokens[equalIndex + 1].slice(4) };
     if (/^[A-Za-z_$][\w$]*$/.test(tokens[equalIndex + 1] || "")) return bindings.get(tokens[equalIndex + 1]) || { kind: "other" };
     if (tokens[equalIndex + 1] === "{") {
       const props = new Map();
@@ -368,9 +379,17 @@ function latestReceiverArrayEvidence(source, receiver, calleeText) {
       for (let index = equalIndex + 1; index < tokens.length; index += 1) {
         if (tokens[index] === "{") { depth += 1; continue; }
         if (tokens[index] === "}") { depth -= 1; if (depth === 0) break; continue; }
-        if (depth === 1 && /^[A-Za-z_$][\w$]*$/.test(tokens[index]) && tokens[index + 1] === ":") {
-          const syntheticEqual = index + 1;
-          props.set(tokens[index], arrayInitializer(tokens, syntheticEqual) ? { kind: "array" } : { kind: "other" });
+        let property = null;
+        let colon = -1;
+        if (depth === 1 && (/^[A-Za-z_$][\w$]*$/.test(tokens[index]) || tokens[index]?.startsWith("str:")) && tokens[index + 1] === ":") {
+          property = tokens[index].startsWith("str:") ? tokens[index].slice(4) : tokens[index];
+          colon = index + 1;
+        } else if (depth === 1 && tokens[index] === "[" && tokens[index + 1]?.startsWith("str:") && tokens[index + 2] === "]" && tokens[index + 3] === ":") {
+          property = tokens[index + 1].slice(4);
+          colon = index + 3;
+        }
+        if (property) {
+          props.set(property, descriptorAt(colon));
         }
       }
       return { kind: "object", props };
@@ -380,10 +399,15 @@ function latestReceiverArrayEvidence(source, receiver, calleeText) {
   const exactEqual = (index) => tokens[index] === "=" && tokens[index - 1] !== "=" && !["=", ">"].includes(tokens[index + 1]);
   for (let index = 0; index < tokens.length; index += 1) {
     if (["const", "let", "var"].includes(tokens[index])) {
+      if (!inCallScope(beforeCall[index])) {
+        while (index < tokens.length && tokens[index] !== ";") index += 1;
+        continue;
+      }
       if (tokens[index + 1] === "[") {
         const close = tokens.indexOf("]", index + 2);
         const equal = tokens.indexOf("=", close + 1);
-        if (close > 0 && exactEqual(equal) && arrayInitializer(tokens, equal)) {
+        const sourceDescriptor = exactEqual(equal) ? descriptorAt(equal) : null;
+        if (close > 0 && sourceDescriptor?.kind === "array") {
           for (let item = index + 2; item < close; item += 1) if (tokens[item - 1] === "." && tokens[item - 2] === ".") bindings.set(tokens[item], { kind: "array" });
         }
         continue;
@@ -393,7 +417,16 @@ function latestReceiverArrayEvidence(source, receiver, calleeText) {
         const equal = tokens.indexOf("=", close + 1);
         const sourceBinding = exactEqual(equal) ? bindings.get(tokens[equal + 1]) : null;
         if (close > 0 && sourceBinding?.kind === "object") {
-          for (let item = index + 2; item < close; item += 1) if (/^[A-Za-z_$][\w$]*$/.test(tokens[item])) bindings.set(tokens[item], sourceBinding.props.get(tokens[item]) || { kind: "other" });
+          for (let item = index + 2; item < close; item += 1) {
+            if (tokens[item] === "." && tokens[item + 1] === "." && tokens[item + 2] === "." && /^[A-Za-z_$][\w$]*$/.test(tokens[item + 3] || "")) {
+              bindings.set(tokens[item + 3], sourceBinding);
+              item += 3;
+            } else if (/^[A-Za-z_$][\w$]*$/.test(tokens[item])) {
+              const local = tokens[item + 1] === ":" && /^[A-Za-z_$][\w$]*$/.test(tokens[item + 2] || "") ? tokens[item + 2] : tokens[item];
+              bindings.set(local, sourceBinding.props.get(tokens[item]) || { kind: "other" });
+              if (local !== tokens[item]) item += 2;
+            }
+          }
         }
         continue;
       }
@@ -413,15 +446,32 @@ function latestReceiverArrayEvidence(source, receiver, calleeText) {
     }
     const name = tokens[index];
     if (!/^[A-Za-z_$][\w$]*$/.test(name || "") || ["const", "let", "var"].includes(tokens[index - 1])) continue;
+    if (!executableForCall(beforeCall[index])) continue;
     if (exactEqual(index + 1)) {
       bindings.set(name, descriptorAt(index + 1));
       continue;
     }
+    let property = null;
+    let equalIndex = -1;
     if (tokens[index + 1] === "." && /^[A-Za-z_$][\w$]*$/.test(tokens[index + 2] || "") && exactEqual(index + 3)) {
+      property = tokens[index + 2];
+      equalIndex = index + 3;
+    } else if (tokens[index + 1] === "[") {
+      const close = tokens.indexOf("]", index + 2);
+      if (close > 0 && exactEqual(close + 1)) {
+        const keyToken = tokens[index + 2];
+        property = keyToken?.startsWith("str:") ? keyToken.slice(4) : bindings.get(keyToken)?.kind === "string" ? bindings.get(keyToken).value : null;
+        equalIndex = close + 1;
+      }
+    }
+    if (equalIndex >= 0) {
       const current = bindings.get(name);
-      const props = new Map(current?.props || []);
-      props.set(tokens[index + 2], descriptorAt(index + 3));
-      bindings.set(name, { kind: "object", props });
+      if (current?.kind === "object") {
+        if (property) current.props.set(property, descriptorAt(equalIndex));
+        else for (const key of current.props.keys()) current.props.set(key, { kind: "other" });
+      } else {
+        bindings.set(name, { kind: "other" });
+      }
     }
   }
   let descriptor = bindings.get(receiver[0]);
@@ -429,14 +479,14 @@ function latestReceiverArrayEvidence(source, receiver, calleeText) {
   return descriptor?.kind === "array";
 }
 
-function provenLocalArrayTransform(call, source) {
+function provenLocalArrayTransform(call, source, searchStart = 0) {
   const transforms = new Set(["map", "filter", "reduce", "reduceRight", "flatMap", "forEach", "some", "every", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted", "toReversed", "toSpliced", "with"]);
   if (!call?.terminal || !transforms.has(call.terminal)) return false;
   if (call.calleeText.trimStart().startsWith("[")) return true;
-  return latestReceiverArrayEvidence(source, call.receiver, call.calleeText);
+  return latestReceiverArrayEvidence(source, call.receiver, call.calleeText, searchStart);
 }
 
-function returnedInlineCallbackCall(dispatch, source = dispatch) {
+function returnedInlineCallbackCall(dispatch, source = dispatch, searchStart = 0) {
   const returned = /\breturn\b/.exec(dispatch);
   if (!returned) return null;
   let start = skipJsTrivia(dispatch, returned.index + returned[0].length);
@@ -479,8 +529,8 @@ function returnedInlineCallbackCall(dispatch, source = dispatch) {
       const receiver = calleeIdentifiers.slice(0, -1);
       const calleeText = dispatch.slice(start, index);
       if (root === "jsonResponse") {
-        const nested = returnedInlineCallbackCall("return " + argumentsText, source);
-        if (nested && !provenLocalArrayTransform(nested, source)) return nested;
+        const nested = returnedInlineCallbackCall("return " + argumentsText, source, searchStart);
+        if (nested && !provenLocalArrayTransform(nested, source, searchStart)) return nested;
       }
       return { root, terminal, receiver, calleeText };
     }
@@ -495,7 +545,7 @@ function handlerAnalysis(dispatch, source, handlerHint = null, options = {}) {
   const returnedCallee = returnedMatch?.[1]?.replace(/\s+/g, "") || null;
   const returned = returnedCallee && /^[A-Za-z_$][\w$]*$/.test(returnedCallee) ? returnedCallee : null;
   const assignedReturn = /const\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+([A-Za-z_$][\w$]*)\s*\([\s\S]*?return\s+jsonResponse\s*\(\s*\1\s*\)/.exec(dispatch)?.[2] || null;
-  const callbackWrapper = returnedInlineCallbackCall(dispatch, source);
+  const callbackWrapper = returnedInlineCallbackCall(dispatch, source, Math.max(0, source.indexOf(dispatch)));
   if (callbackWrapper && !ignored.has(callbackWrapper.root)) {
     return { handler: "undetermined", handlerStatus: "undetermined", sourceSegment: dispatch, handlerResolution: "callback-wrapper-terminal-undetermined" };
   }
