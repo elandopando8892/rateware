@@ -260,11 +260,113 @@ function jsLexicalSignals(source) {
   return { identifiers, hasInlineFunction };
 }
 
+function jsStructureTokens(source) {
+  const tokens = [];
+  let index = 0;
+  let canStartRegex = true;
+  while (index < source.length) {
+    const c = source[index];
+    const n = source[index + 1];
+    if (/\s/.test(c)) { index += 1; continue; }
+    if (c === "/" && n === "/") { const end = source.indexOf("\n", index + 2); index = end < 0 ? source.length : end + 1; continue; }
+    if (c === "/" && n === "*") { const end = source.indexOf("*/", index + 2); index = end < 0 ? source.length : end + 2; continue; }
+    if (c === "'" || c === '"' || c === "`") {
+      const quote = c;
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === "\\") { index += 2; continue; }
+        if (source[index] === quote) { index += 1; break; }
+        index += 1;
+      }
+      tokens.push("<string>");
+      canStartRegex = false;
+      continue;
+    }
+    if (c === "/" && canStartRegex) {
+      let inClass = false;
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === "\\") { index += 2; continue; }
+        if (source[index] === "[") { inClass = true; index += 1; continue; }
+        if (source[index] === "]") { inClass = false; index += 1; continue; }
+        if (source[index] === "/" && !inClass) { index += 1; while (index < source.length && /[A-Za-z]/.test(source[index])) index += 1; break; }
+        if (source[index] === "\n" || source[index] === "\r") break;
+        index += 1;
+      }
+      tokens.push("<regex>");
+      canStartRegex = false;
+      continue;
+    }
+    if (/[A-Za-z_$]/.test(c)) {
+      let token = c;
+      index += 1;
+      while (index < source.length && /[A-Za-z0-9_$]/.test(source[index])) { token += source[index]; index += 1; }
+      tokens.push(token);
+      canStartRegex = ["return", "throw", "case", "delete", "void", "typeof", "instanceof", "in", "of", "new", "await", "yield"].includes(token);
+      continue;
+    }
+    if (/[0-9]/.test(c)) {
+      while (index < source.length && /[A-Za-z0-9_.]/.test(source[index])) index += 1;
+      tokens.push("<number>");
+      canStartRegex = false;
+      continue;
+    }
+    tokens.push(c);
+    canStartRegex = ![")", "]", "}"].includes(c);
+    index += 1;
+  }
+  return tokens;
+}
+
+function arrayInitializer(tokens, equalIndex) {
+  const first = tokens[equalIndex + 1];
+  if (first === "[") return true;
+  return first === "Array" && tokens[equalIndex + 2] === "." && tokens[equalIndex + 3] === "from" && tokens[equalIndex + 4] === "(";
+}
+
+function objectArrayProperty(tokens, equalIndex, property) {
+  if (tokens[equalIndex + 1] !== "{") return false;
+  let depth = 0;
+  for (let index = equalIndex + 1; index < tokens.length; index += 1) {
+    if (tokens[index] === "{") { depth += 1; continue; }
+    if (tokens[index] === "}") { depth -= 1; if (depth === 0) break; continue; }
+    if (depth === 1 && tokens[index] === property && tokens[index + 1] === ":") {
+      return tokens[index + 2] === "[" || (tokens[index + 2] === "Array" && tokens[index + 3] === "." && tokens[index + 4] === "from");
+    }
+  }
+  return false;
+}
+
+function latestReceiverArrayEvidence(source, receiver) {
+  const tokens = jsStructureTokens(source);
+  const root = receiver[0];
+  let evidence = null;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const declaration = ["const", "let", "var"].includes(tokens[index]) && tokens[index + 1] === root;
+    const assignment = tokens[index] === root && tokens[index + 1] === "=" && tokens[index - 1] !== ".";
+    if (!declaration && !assignment) continue;
+    let equalIndex = declaration ? index + 2 : index + 1;
+    if (declaration) {
+      let squareDepth = 0;
+      while (equalIndex < tokens.length) {
+        if (tokens[equalIndex] === "[") squareDepth += 1;
+        if (tokens[equalIndex] === "]") squareDepth = Math.max(0, squareDepth - 1);
+        if (tokens[equalIndex] === "=" && squareDepth === 0) break;
+        if ([";", ","].includes(tokens[equalIndex]) && squareDepth === 0) break;
+        equalIndex += 1;
+      }
+    }
+    if (tokens[equalIndex] !== "=") continue;
+    evidence = receiver.length === 1 ? arrayInitializer(tokens, equalIndex) : receiver.length === 2 ? objectArrayProperty(tokens, equalIndex, receiver[1]) : false;
+  }
+  return evidence === true;
+}
+
 function provenLocalArrayTransform(call, source) {
   const transforms = new Set(["map", "filter", "reduce", "reduceRight", "flatMap", "forEach", "some", "every", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted", "toReversed", "toSpliced", "with"]);
-  if (!call?.root || !transforms.has(call.terminal)) return false;
-  const escaped = call.root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp("(?:const|let|var)\\s+" + escaped + "\\s*=\\s*\\[").test(source);
+  if (!call?.terminal || !transforms.has(call.terminal)) return false;
+  if (call.calleeText.trimStart().startsWith("[")) return true;
+  return latestReceiverArrayEvidence(source, call.receiver);
 }
 
 function returnedInlineCallbackCall(dispatch, source = dispatch) {
@@ -307,11 +409,13 @@ function returnedInlineCallbackCall(dispatch, source = dispatch) {
       const calleeIdentifiers = calleeSignals.identifiers.filter((item) => !["await", "new"].includes(item));
       const root = calleeIdentifiers[0] || null;
       const terminal = calleeIdentifiers.at(-1) || null;
+      const receiver = calleeIdentifiers.slice(0, -1);
+      const calleeText = dispatch.slice(start, index);
       if (root === "jsonResponse") {
         const nested = returnedInlineCallbackCall("return " + argumentsText, source);
         if (nested && !provenLocalArrayTransform(nested, source)) return nested;
       }
-      return { root, terminal };
+      return { root, terminal, receiver, calleeText };
     }
     index = close;
   }

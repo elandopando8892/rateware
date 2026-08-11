@@ -485,6 +485,31 @@ const jsonResponseSorted = selectorWithCandidates(edgeSource('const chosen=body.
 assert.equal(jsonResponseSorted[0].handlerStatus, "inline-real");
 assert.equal(validationExitCode(validateActionContract(contractFor(jsonResponseSorted.map((entry) => entryFrom(entry)), jsonResponseSorted), jsonResponseSorted)), 0);
 
+for (const [declarations, expression] of [
+  ['let items=[1,2]', 'items.filter(x=>x)'],
+  ['var items=[2,1]', 'items.toSorted((a,b)=>a-b)'],
+  ['const items /* list */ =[1]', 'items.map(x=>x)'],
+  ['const items: number[]=[1]', 'items.map(x=>x)'],
+  ['', '[1,2].map(x=>x)'],
+  ['const state={items:[1]}', 'state.items.map(x=>x)'],
+  ['const items=Array.from([1])', 'items.map(x=>x)']
+]) {
+  const provenDataTransform = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="proven_data_transform")return jsonResponse(${expression});`, `${declarations}\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}`));
+  assert.equal(provenDataTransform[0].handlerStatus, "inline-real", expression);
+  assert.equal(validationExitCode(validateActionContract(contractFor(provenDataTransform.map((entry) => entryFrom(entry)), provenDataTransform), provenDataTransform)), 0, expression);
+}
+
+for (const [declarations, prefix] of [
+  ['const wrappers={map:async cb=>cb()};let items=[];items=wrappers', ''],
+  ['const wrappers={map:async cb=>cb()};const items=[]', 'const items=wrappers;'],
+  ['const wrappers={map:async cb=>cb()};/* const items=[]; */const items=wrappers', ''],
+  ['const wrappers={map:async cb=>cb()};const marker="const items=[";const items=wrappers', '']
+]) {
+  const unprovenDataTransform = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="unproven_data_transform"){${prefix}return jsonResponse(await items.map(async()=>new Response("ok")));}`, `${declarations}\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}`));
+  assert.equal(unprovenDataTransform[0].handlerStatus, "undetermined");
+  assert.equal(validationExitCode(validateActionContract(contractFor(unprovenDataTransform.map((entry) => entryFrom(entry)), unprovenDataTransform), unprovenDataTransform)), 1);
+}
+
 const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
 assert.equal(nestedLeadingComment.length, 1);
 assert.equal(nestedLeadingComment[0].canonicalId, "rpc.public.outer()");
