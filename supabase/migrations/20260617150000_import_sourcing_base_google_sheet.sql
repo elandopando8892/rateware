@@ -26678,6 +26678,7 @@ values
   '{"source_row_number":1277,"ID":"V0393","Carrier":"VICSA LOGISTICS LLC - VICTOR MANUEL SALINAS VELASCO","País":"USA","Tipo":"Asset (s/v)","Email":"victor_salinas11@hotmail.com","Teléfono":"8991137578","Web":null,"HQ Ciudad":"Reynosa, TM","Terminales":"México + Laredo TX","DOT / MC":null,"Servicios":"FTL","Cobertura":"México | USA | Cross-border","Flota":null,"Equipo":null,"Cross-Border":"Desconocido","Certs":null,"Año Fund.":null,"Especialidad":"Empresa MX sin verificar","Confianza":"Baja","!":null,"Enriquecimiento":"Insuficiente","Notas":"VICSA LOGISTICS LLC - VICTOR MANUEL SALINAS VELASCO | Empresa MX (capacidad fronteriza NO verificada) sin web"}',
   now()
 )
+-- vendors_name_or_domain_unique is the conflict arbiter available at this point in history.
 on conflict (vendor_name, domain) do update set
   vendor_name = excluded.vendor_name,
   legal_name = excluded.legal_name,
