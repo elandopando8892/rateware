@@ -23,6 +23,7 @@ The read-only baseline observed on 2026-08-11 contained four organizations, one 
 - browser roles have no table privileges; only `service_role` can manage the new objects;
 - an active row requires reviewer identity and review timestamp; active organization links also require a review note.
 - changing a reviewed subject, provider, external organization or canonical tenant resets the row to `needs_review` and clears the previous approval.
+- leaving `active` clears approval metadata; returning to `active` requires a new review timestamp in the same update and cannot reuse a revoked, suspended or rejected approval.
 
 ## Deferred work
 

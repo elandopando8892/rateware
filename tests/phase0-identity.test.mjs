@@ -16,6 +16,11 @@ function claims(overrides = {}) {
 
 function fakeClient(rowsByTable) {
   const reads = [];
+  const defaults = {
+    external_identities: { provider: "kinde", external_subject: "kp_subject" },
+    external_organization_links: { provider: "kinde", external_organization_id: "org_verified" },
+    workspace_registry: { organization_id: "org_verified" }
+  };
   return {
     reads,
     from(table) {
@@ -25,7 +30,11 @@ function fakeClient(rowsByTable) {
         eq(column, value) { filters.push([column, value]); return builder; },
         async limit() {
           reads.push({ table, filters });
-          return { data: rowsByTable[table] || [], error: null };
+          const rows = (rowsByTable[table] || []).map((row) => ({ ...defaults[table], ...row }));
+          return {
+            data: rows.filter((row) => filters.every(([column, value]) => row[column] === value)),
+            error: null
+          };
         }
       };
       return builder;
@@ -85,10 +94,10 @@ test("resolver returns a canonical tenant only when all reviewed mappings agree"
   assert.equal(context.identityId, IDENTITY_ID);
   assert.equal(context.canonicalTenantId, TENANT_ID);
   assert.equal(context.canonicalOwnerKey, "org:org_verified");
-  assert.deepEqual(client.reads.map((entry) => entry.table), [
-    "external_identities",
-    "external_organization_links",
-    "workspace_registry"
+  assert.deepEqual(client.reads, [
+    { table: "external_identities", filters: [["provider", "kinde"], ["external_subject", "kp_subject"]] },
+    { table: "external_organization_links", filters: [["provider", "kinde"], ["external_organization_id", "org_verified"]] },
+    { table: "workspace_registry", filters: [["organization_id", "org_verified"]] }
   ]);
 });
 
@@ -153,4 +162,14 @@ test("Phase 0.2A remains additive and performs no heuristic activation", () => {
   assert.match(invalidationMigration, /new\.reviewed_at := null/);
   assert.match(invalidationMigration, /before update of provider, external_subject/);
   assert.match(invalidationMigration, /before update of provider, external_organization_id, organization_id/);
+
+  const reactivationMigration = readFileSync(
+    new URL("../supabase/migrations/20260811203237_phase0_invalidate_reactivated_identity_reviews.sql", import.meta.url),
+    "utf8"
+  );
+  assert.match(reactivationMigration, /old\.status = 'active' and new\.status <> 'active'/);
+  assert.match(reactivationMigration, /old\.status <> 'active' and new\.status = 'active'/);
+  assert.match(reactivationMigration, /new\.reviewed_at is distinct from old\.reviewed_at/);
+  assert.match(reactivationMigration, /external_identities_invalidate_status_review/);
+  assert.match(reactivationMigration, /external_organization_links_invalidate_status_review/);
 });
