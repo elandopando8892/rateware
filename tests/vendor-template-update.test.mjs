@@ -7,6 +7,12 @@ const apiSource = readFileSync(resolve(root, "supabase/functions/rateware-api/in
 const vendorServiceSource = readFileSync(resolve(root, "src/vendor-service.js"), "utf8");
 const vendorsSource = readFileSync(resolve(root, "src/vendors.js"), "utf8");
 const vendorsHtml = readFileSync(resolve(root, "vendors.html"), "utf8");
+const vendorSeedMigration = readFileSync(resolve(root, "supabase/migrations/20260617150000_import_sourcing_base_google_sheet.sql"), "utf8");
+const vendorSeedGenerator = readFileSync(resolve(root, "tools/generate-vendor-sheet-migration.mjs"), "utf8");
+
+assert.match(vendorSeedMigration, /on conflict \(vendor_name, domain\) do update set/, "Vendor seed replay should target the historical composite unique constraint");
+assert.match(vendorSeedGenerator, /on conflict \(vendor_name, domain\) do update set/, "Vendor seed generator should preserve the replay-safe conflict target");
+assert.doesNotMatch(vendorSeedMigration, /on conflict \(domain\) do update set/, "Vendor seed replay must not require a missing domain-only unique constraint");
 
 assert.match(vendorServiceSource, /applyVendorTemplateUpdates/, "Vendor service should expose template update action");
 assert.match(vendorServiceSource, /apply_vendor_template_updates/, "Vendor service should call apply_vendor_template_updates");
