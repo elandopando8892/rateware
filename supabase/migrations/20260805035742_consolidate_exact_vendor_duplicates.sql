@@ -80,7 +80,7 @@ begin
         or v.organization_id is null
       )
   ),
-  duplicate_keys_all as (
+  duplicate_keys as (
     select
       owner_email,
       coalesce(organization_id, nullif(btrim(p_organization_id), ''), '') as organization_key,
@@ -96,15 +96,6 @@ begin
       )
     group by owner_email, coalesce(organization_id, nullif(btrim(p_organization_id), ''), ''), normalized_name, normalized_domain
     having count(*) > 1
-  ),
-  duplicate_keys as (
-    select *
-    from duplicate_keys_all
-    order by organization_key, normalized_name, normalized_domain
-    limit case
-      when p_dry_run then 2147483647
-      else greatest(1, least(coalesce(p_preview_limit, 50), 100))
-    end
   ),
   candidate_ids as (
     select s.id
@@ -633,11 +624,7 @@ begin
             alternative_equipment = coalesce(nullif(keeper.alternative_equipment, ''), v_lane_vendor.alternative_equipment),
             alternative_units = coalesce(keeper.alternative_units, v_lane_vendor.alternative_units),
             alternative_notes = coalesce(nullif(keeper.alternative_notes, ''), v_lane_vendor.alternative_notes),
-            equipment_available = case
-              when keeper.equipment_available is true or v_lane_vendor.equipment_available is true then true
-              when keeper.equipment_available is false or v_lane_vendor.equipment_available is false then false
-              else null
-            end,
+            equipment_available = coalesce(nullif(keeper.equipment_available, ''), v_lane_vendor.equipment_available),
             unit_details = coalesce(nullif(keeper.unit_details, ''), v_lane_vendor.unit_details),
             eta_pickup = coalesce(keeper.eta_pickup, v_lane_vendor.eta_pickup),
             eta_delivery = coalesce(keeper.eta_delivery, v_lane_vendor.eta_delivery),

@@ -267,7 +267,8 @@ insert into public.vendors (
 )
 values
 ${values.join(",\n")}
-on conflict (domain) do update set
+-- vendors_name_or_domain_unique is the conflict arbiter available at this point in history.
+on conflict (vendor_name, domain) do update set
   vendor_name = excluded.vendor_name,
   legal_name = excluded.legal_name,
   primary_email = excluded.primary_email,

@@ -38,16 +38,14 @@ begin
         'yahoo.com.mx','live.com','icloud.com','prodigy.net.mx','yopmail.com'
       )
   )
-  insert into public.vendors (domain, vendor_name, name, owner_email, base_stage, source, status, active)
+  insert into public.vendors (domain, vendor_name, owner_email, base_stage, source, status)
   select
     c.domain,
-    initcap(split_part(c.domain, '.', 1)),
     initcap(split_part(c.domain, '.', 1)),
     v_owner,
     'sourcing',
     'domain_backfill_2026_07_03',
-    'active',
-    true
+    'active'
   from candidates c
   where not exists (
     select 1 from public.vendors v

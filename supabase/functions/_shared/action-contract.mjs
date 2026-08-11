@@ -8,9 +8,9 @@ export const ACTION_CONTRACT = {
   "contractVersion": "1.2.0",
   "methodVersion": "2026-08-10.phase0.1-second-hardening",
   "expectedCounts": {
-    "governable": 347,
+    "governable": 351,
     "edge": 284,
-    "postgres": 63,
+    "postgres": 67,
     "ratewareApi": 244
   },
   "reviewedMetadataFingerprints": {
@@ -298,8 +298,8 @@ export const ACTION_CONTRACT = {
     "edge.sync-rateware-catalog.sync_rateware_catalog": "fb7e1d6937d5c3c0ec6eac3e18195382badfdd7cab4446935fa8e841e6f289fe",
     "edge.whatsapp-webhook.ingest_webhook": "c2c6baa4374c7cb52bbabd30067b6a4befcc9e26aadabd4ca68950069997818e",
     "edge.whatsapp-webhook.verify_webhook": "915ce2592efc7085554fcc587168ab486ee30449a25a39466b88ad4f98cd69ba",
-    "rpc.public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)": "c771e7b3a2902f1fb81efa8b0e7ab28601b43654334998a122871d913726e800",
-    "rpc.public.count_exact_workspace_vendor_duplicates(text,text)": "e6be841c453488d4e0f72f09977f4093f670e2e16fb783ace85179b8e38f2774",
+    "rpc.public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)": "669afa1e7eed1753a7cdf72b6176b92a22755454947f1e2ae7f0e43e1e60a1a6",
+    "rpc.public.count_exact_workspace_vendor_duplicates(text,text)": "33d718081ec03f9bd5b55e08367e96f588a18228560b6de666e2539602013411",
     "rpc.public.merge_exact_vendor_relationship_collisions(uuid,uuid)": "cf03746c0a712f76f2e1a9902fd9a54b404a7271f3b8b2bfd6e69bb78361837b",
     "rpc.public.protect_outreach_delivery_state()": "18c933f3e1e6778b69b2d96eec503896bc2dd001356e8015354403e02eb3b3dc",
     "rpc.public.rateware_assert_vendor_workspace_link()": "b3a61d99e12327762b6a71570065c3368e41d4432bd4d621491dbfc3b411c872",
@@ -309,7 +309,7 @@ export const ACTION_CONTRACT = {
     "rpc.public.rateware_bi_fact_dimensions(public.rate_staging,public.vendors)": "592ab0890e1e85af0cc20bf471eb0f9863df6b1050c33198f28dc410c3eb664a",
     "rpc.public.rateware_bi_fact_matches_filters(public.rateware_bi_rate_facts,jsonb)": "148aafb5283907a300ec750c320f5fdd438e4c65d5d9fa59be7f814fdb089e42",
     "rpc.public.rateware_bi_fact_search_text(public.rate_staging,public.vendors)": "6dac24a2c36559f37a818fa9adee1d9f5b5badb7d557500944f51e8a24949d28",
-    "rpc.public.rateware_bi_geo_density_for_owner(text,text,text,text,jsonb,integer)": "465cc2eebad74f354e80605c6ea9697d66ee7a00c6689bac9d1b80e4aa66f8e2",
+    "rpc.public.rateware_bi_geo_density_for_owner(text,text,text,text,jsonb,integer)": "6e0d55015eb4fa8e9c77d9b6eb79a6472b88932f7f6dd9658651185bd2466956",
     "rpc.public.rateware_bi_metric_value(public.rate_staging,text)": "117df4da5d685dbc4063c6a99b26c4c97a66068d919aa6f9e8c8be40675909f3",
     "rpc.public.rateware_bi_pivot_for_owner(text,text[],text[],text,text,jsonb,integer,integer)": "0b8775199b2939077c08996f2870140f3c32604b78bd1b77f9468e3e43cb4f76",
     "rpc.public.rateware_bi_rate_matches_filters(public.rate_staging,public.vendors,text,jsonb)": "b866530b647c7ba6d66bb9c834e4899967ce95719106ac8d26c9a570040f4852",
@@ -322,8 +322,8 @@ export const ACTION_CONTRACT = {
     "rpc.public.rateware_clean_rate_number(text)": "6609d2043f70581a92fdb5a78e8de46fb781fec17d878d4d679ef8ddd2ce4f81",
     "rpc.public.rateware_domain_key(text)": "0d2d378c70c739aff683fae8f4672f3c4a54c2cd687f475bb05d36554b480e2a",
     "rpc.public.rateware_filter_values_for_field(public.rate_staging,public.vendors,text)": "0c2f45114bb6658e40d17723747c895ed93483a5774563900fec019aa2339663",
-    "rpc.public.rateware_filtered_rate_ids(text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer)": "2aa4c493b6c556881ad08dd6ae2545086ccef30f6e500a005c3cbb0dc071d21e",
-    "rpc.public.rateware_filtered_rate_values(text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer)": "794f19e236e55bc997fd8a8954d4099e0ae5d050f0f91307ebe0a385c654bc97",
+    "rpc.public.rateware_filtered_rate_ids(text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer)": "5c518b98c403b0c5e2cb7a09327c1930cc88ba28f8e81a6e0288cbb6ab3b1db7",
+    "rpc.public.rateware_filtered_rate_values(text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer)": "15d370b35c5a7a1b81bd1b4873807c56348d6d7418bb2df33d9f86f098c830ab",
     "rpc.public.rateware_has_numeric_rate(text)": "59f52b786062d258aa3bdec536c2509c53466b4bbbc1feafa3b1d93ca22e8688",
     "rpc.public.rateware_inherit_rate_owner()": "97d56a9a214098121e3c34e9b10e3c7500544012c8c6f983fa254051e9aee72d",
     "rpc.public.rateware_is_generic_email_domain(text)": "d01c09e76ae6d613bde4cc6babfa9bde55c920dcd8a032cba79079e36e904516",
@@ -333,10 +333,10 @@ export const ACTION_CONTRACT = {
     "rpc.public.rateware_outreach_tracking_state_sql(text,text,text,jsonb,text,numeric,timestamptz)": "f426147b5fef052c37b6f4092a3e6a63da5a6462e4b91dba8bd7d1ae0d925b1d",
     "rpc.public.rateware_outreach_tracking_summary(text,uuid,text[],boolean,boolean)": "b01f82af3a294189f809b5429aa87705e7c607703c837ba7457264f4109fd392",
     "rpc.public.rateware_promote_vendor_lifecycle(uuid,text)": "af79b94c6b065aff8bfcc9ae2c123329f1f055969a6bdf4b48c8b4d66e31cfc9",
-    "rpc.public.rateware_rate_matches_filters(public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean)": "34d04ab8db6166aa0fc9d4abec5231957789ed5292eb34f27f03ebcdf105b982",
-    "rpc.public.rateware_refresh_vendor_search_document()": "1aad0bdc6aeb5b1df1c23a235b4c65f4a2915d10738d500fef03397dadf19e9e",
-    "rpc.public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)": "71c4907ed93d4a38d0dae561e9fb32f3dd79fcfc476c8b2ccea54605b3502e29",
-    "rpc.public.rateware_rfx_text_match_score(text,text,integer)": "0d77c457c1376039ef08b57d930411cc016459d9afb027d79b6ddc470d0169ee",
+    "rpc.public.rateware_rate_matches_filters(public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean)": "f6c206a2b8546cc8bef1392c6b753b6da6f5d22d9648afac6aebd5161a556aab",
+    "rpc.public.rateware_refresh_vendor_search_document()": "5c6a361b1c0c06d06f3f29419651272b0fffa05fd34033635909c78e6f18c6fe",
+    "rpc.public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)": "148219e7a54388440cd42d55b018381e43ebf909b4180732d81b3b37d917b741",
+    "rpc.public.rateware_rfx_text_match_score(text,text,integer)": "190d8b593f7fd35a741dba1edf5c73fe5da543062118b558de1868badbe3330b",
     "rpc.public.rateware_row_conflict(public.rate_staging)": "959c7c4a9e7706a64221fe73cf2cd855f36e7b294efa3e33e9f2f50e3fb7636e",
     "rpc.public.rateware_row_cross_border(public.rate_staging)": "6553c4eb93dca9e81137cbe1dd9a50e9741547ca3fa7c6e869293a4fedb33456",
     "rpc.public.rateware_row_currency_gap(public.rate_staging)": "610972845fc53c1749e4c10527540f4e092ce06dc94061adacc2cc7f0f20d010",
@@ -358,11 +358,15 @@ export const ACTION_CONTRACT = {
     "rpc.public.rateware_values_filter_match(jsonb,text,text[])": "8c8a36208893a76eafe0475d4e86bacb2c1d4acb43e8ccc8f2566dc7b2b10f5d",
     "rpc.public.rateware_vendor_funnel_stage_rank(text)": "2d2dee3b1ac4ca97cce55904085ac70b6030cf8587798d4986b5aed69b0ad5b8",
     "rpc.public.rateware_vendor_search_key(text)": "7803e9399637841c5fc44e221f5129dfd9e762c74154361bbb959c55db0dc9d0",
-    "rpc.public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)": "d0cd195350d4deb1f127ebc25c9f63422b13f294a4a7bc9069219b9a2b429135",
-    "rpc.public.search_workspace_vendors(text,text,integer,integer)": "b09b1f8873a217cd2fdbd5a392209864fcd1169576b80480d6060f2b129875ad",
-    "rpc.public.vendor_bid_metrics_for_owner_ids(text,uuid[])": "b06987770191304f35298179ff35d0e0690e66ea1b8ccd711eedc368cae78cfc",
-    "rpc.public.vendor_rate_metrics_for_owner_ids(text,uuid[],text)": "e08c78807d6c0085114236fe0624a42df9f399a5c34677df546b809602f012da",
-    "rpc.public.vendor_rate_metrics_for_owner(text,text)": "27cdcb5b928774d0c18a54ced45f0a4d562fd2dcf2611393f80c4a8a34f0d7e6"
+    "rpc.public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)": "eaeb46050209ea69d9805c088bfe57d14dfee13da4cf88fdae0dd44ed76f0a93",
+    "rpc.public.search_workspace_vendors(text,text,integer,integer)": "b875e95ee56a70a624037cb0cddc29482b6efe2d9440e476be9ec6bf02af6fc3",
+    "rpc.public.vendor_bid_metrics_for_owner_ids(text,uuid[])": "bb695cd6305d2064841587c8b6d5ff28d9ac915ec915c3a1fb0bb06fcad593ac",
+    "rpc.public.vendor_rate_metrics_for_owner_ids(text,uuid[],text)": "a2cca73bd01a7beaeae83902e097a4f4720243bb2f99cbc16ceff5d24576eb29",
+    "rpc.public.vendor_rate_metrics_for_owner(text,text)": "27cdcb5b928774d0c18a54ced45f0a4d562fd2dcf2611393f80c4a8a34f0d7e6",
+    "rpc.public.rateware_bi_geo_density_market_fast(text,text,text,integer)": "dac14051e74e8b57c674335347e7c8f439bdfaebf2df303b364d9e8970435182",
+    "rpc.public.rateware_bi_vendor_metrics_for_owner_v2(text,jsonb)": "188a228266e370cd0b36d8008ec24211fd01d658af134cf4c2f988638fbedd51",
+    "rpc.public.rateware_column_filters_match(public.rate_staging,public.vendors,jsonb)": "345ec59f522a5fee10de79dd4a5fedf83516d5bcfd401fb1ea64075442e0eeb1",
+    "rpc.public.rateware_sync_bi_vendor_dimensions()": "2c0b76c7cda0c3e068347c400dda8eaa01bcc4fa26e847cb7f6a9fa47a603754"
   },
   "reviewedAuthorizationFingerprints": {
     "edge.carrier-profile-api.add_ticket_followup": "8118aab42ba52b03b46cdf4ebff1fade9c07e4ec9dafd86be96c79baf1cc7955",
@@ -649,7 +653,7 @@ export const ACTION_CONTRACT = {
     "edge.sync-rateware-catalog.sync_rateware_catalog": "a22146b2b855bcfc56322a333900ad0f41b84efb00a9bce0254c13a1b416c4f2",
     "edge.whatsapp-webhook.ingest_webhook": "da104018fc4c61afe42c4858af004547e722b582d951f2c4d7aaf5d54f8a0398",
     "edge.whatsapp-webhook.verify_webhook": "da104018fc4c61afe42c4858af004547e722b582d951f2c4d7aaf5d54f8a0398",
-    "rpc.public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)": "d7a79317b40e6f7a5fe131226bb03ddc4e51d6ceb2165fd9d26c16c5eb450443",
+    "rpc.public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)": "4097f77b50900155f6e8c705dc98afd8acb18b28fac9e41b571105044e298eda",
     "rpc.public.count_exact_workspace_vendor_duplicates(text,text)": "d78c6a847831276b1126b9ca45d30542905e6567ac4ec3457817e89688281ea3",
     "rpc.public.merge_exact_vendor_relationship_collisions(uuid,uuid)": "e25fc4ba875efb46acabbe5eecaaf20fa21faf46ed2e88fd4c2d134b6c450c94",
     "rpc.public.protect_outreach_delivery_state()": "ffcbf6588871f833608603afc6b9ad6f98ce0dcff7ae988fd4f3e76aedac63ae",
@@ -660,7 +664,7 @@ export const ACTION_CONTRACT = {
     "rpc.public.rateware_bi_fact_dimensions(public.rate_staging,public.vendors)": "faff3ea03efeebbe474e0c0f00ee84fadb768443823b494f63caf51177dc05b8",
     "rpc.public.rateware_bi_fact_matches_filters(public.rateware_bi_rate_facts,jsonb)": "9c6eab772b698a99c6472d49894feb159e0c23086654f20a392f477cf414aa85",
     "rpc.public.rateware_bi_fact_search_text(public.rate_staging,public.vendors)": "9e76e373ef147a81fb2e06285388ce999ceeacb842e53c534daccb3e211c3709",
-    "rpc.public.rateware_bi_geo_density_for_owner(text,text,text,text,jsonb,integer)": "a9be56a6598630b2382405f018d657e78a6c46bf7c51aec6d2722a782dbf7863",
+    "rpc.public.rateware_bi_geo_density_for_owner(text,text,text,text,jsonb,integer)": "42b1d5c76b7f6f5de21773252758af35c2e7889b0f87630cc0f3bbfc161fb239",
     "rpc.public.rateware_bi_metric_value(public.rate_staging,text)": "7926fa114710e2ecaa3963af862cf22e24652f6c3673d41651db35873bc99385",
     "rpc.public.rateware_bi_pivot_for_owner(text,text[],text[],text,text,jsonb,integer,integer)": "397593be7e9d4d10d3faae5ec573487617f6eabadb4be70fa7630bf614ac9436",
     "rpc.public.rateware_bi_rate_matches_filters(public.rate_staging,public.vendors,text,jsonb)": "73ba5fa7308e879b8edfbfcda7a60f91bf042a10a59cb00b34b35f434820bfe6",
@@ -673,8 +677,8 @@ export const ACTION_CONTRACT = {
     "rpc.public.rateware_clean_rate_number(text)": "9bfdfc868724cf52e125a452d036d14caff892cf98e95c887755d14756e8cf1e",
     "rpc.public.rateware_domain_key(text)": "77b9b7743305327cd8075a46440804c480a418818008567df1a1468c51b2869d",
     "rpc.public.rateware_filter_values_for_field(public.rate_staging,public.vendors,text)": "07ef98e1391121f75ec639ec493d986dcf0278fc4f8ca1cc023b2becaacf28c2",
-    "rpc.public.rateware_filtered_rate_ids(text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer)": "e270edc4dae3b0ac412d209bbb356ca437d1de03142c509e326d35237c26638e",
-    "rpc.public.rateware_filtered_rate_values(text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer)": "ff262a40e35f7ecdbaad611264a3ff2bcf793fa2ee7b4b3e540ee930ee602ae3",
+    "rpc.public.rateware_filtered_rate_ids(text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer)": "9cba0bfca2d9d7f4f72a9476106cb50327004b339d811ff80f2fe9d514213ba4",
+    "rpc.public.rateware_filtered_rate_values(text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer)": "5dcdfe1be2b2b801741eb916891b0691dd369d6481728836d930f7ef2cf83621",
     "rpc.public.rateware_has_numeric_rate(text)": "e4c44ed108b3c1412f25874af0365e49ca8d5ae4c38f980334f87700e4566776",
     "rpc.public.rateware_inherit_rate_owner()": "a0393abf50fcda277ea6850d7d3c4190f79ad2f5d43d543b51fb94a04974053d",
     "rpc.public.rateware_is_generic_email_domain(text)": "04f4e04d3717bfe3b251bc5aba60460cd4ef89ac20695a01ad339f7358871286",
@@ -684,7 +688,7 @@ export const ACTION_CONTRACT = {
     "rpc.public.rateware_outreach_tracking_state_sql(text,text,text,jsonb,text,numeric,timestamptz)": "cd2454e6db858228c3459a7505907c32bc72b9b9c881e3fb6c31df729010b60d",
     "rpc.public.rateware_outreach_tracking_summary(text,uuid,text[],boolean,boolean)": "eb27f861015fa89990716809baab0dbbfbb745245a6593cd40161b30f96a7297",
     "rpc.public.rateware_promote_vendor_lifecycle(uuid,text)": "04f73a8436bcb973a6237fa088f6499cd7e1a143970d2f8282121ea3c698e829",
-    "rpc.public.rateware_rate_matches_filters(public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean)": "9010e77d4d3d8db54dc89a3fc2bec99704a765976a211b581d8e1e6a80f79ada",
+    "rpc.public.rateware_rate_matches_filters(public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean)": "81111982f2de97de775c3b84e87a3c88b9817828c042468080c76c2fabde8968",
     "rpc.public.rateware_refresh_vendor_search_document()": "1f09c4be75c6c5045f15550f4f97aec9f8cbd7f0cce1f33a39db0cae631bf1da",
     "rpc.public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)": "3cebc56b09755f9fd8fe09a17674e987b0826df59b8c0859566d67dde6fd017f",
     "rpc.public.rateware_rfx_text_match_score(text,text,integer)": "754520bafd29dd263e072e555a95940214d5577b9a11cdce7150a7207777ffb1",
@@ -713,7 +717,11 @@ export const ACTION_CONTRACT = {
     "rpc.public.search_workspace_vendors(text,text,integer,integer)": "1cd2c028da3d18f5de76db2530a3f8e5e9fc2ce3a4d77b81fd1574d71e197361",
     "rpc.public.vendor_bid_metrics_for_owner_ids(text,uuid[])": "bc1d70f7662bfb6e163a16eb6e9605a680888ea0e881f78f92da84c1e8aaf27c",
     "rpc.public.vendor_rate_metrics_for_owner_ids(text,uuid[],text)": "5868180eeda1efe7e8dd77c44d6054fde74048fa46459dde2068b501862567f5",
-    "rpc.public.vendor_rate_metrics_for_owner(text,text)": "9a3e78a14e9ad1fc38d6f3248353b550da5c87580ab66d7f3f5e895b71ded571"
+    "rpc.public.vendor_rate_metrics_for_owner(text,text)": "9a3e78a14e9ad1fc38d6f3248353b550da5c87580ab66d7f3f5e895b71ded571",
+    "rpc.public.rateware_bi_geo_density_market_fast(text,text,text,integer)": "0d2774b651aa0bda958e46b0b1cea38f3fc96583ef599023a549040449d5ac23",
+    "rpc.public.rateware_bi_vendor_metrics_for_owner_v2(text,jsonb)": "2fe4ee906e96c49fd89f05ff86157156dd3b247f8b3e2b6e903e704bde766082",
+    "rpc.public.rateware_column_filters_match(public.rate_staging,public.vendors,jsonb)": "f6e24753348a5b5fdacea06c4ec05d70fa16e1ba3c4f7b15e8006177e334f9c9",
+    "rpc.public.rateware_sync_bi_vendor_dimensions()": "7b57aec044f71f93bd57844db687c146f3879dd8a63f4bb2e9f79a1bbda2cf7c"
   },
   "surfaces": [
     {
@@ -10591,7 +10599,7 @@ export const ACTION_CONTRACT = {
       "canonicalId": "rpc.public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)",
       "actionName": "public.consolidate_exact_workspace_vendor_duplicates",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260804234412_consolidate_exact_vendor_duplicates.sql",
+      "sourceFile": "supabase/migrations/20260805035742_consolidate_exact_vendor_duplicates.sql",
       "handler": "public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)",
       "businessModule": "Procurement",
@@ -10606,11 +10614,11 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "d7a79317b40e6f7a5fe131226bb03ddc4e51d6ceb2165fd9d26c16c5eb450443",
+      "sourceFingerprint": "4097f77b50900155f6e8c705dc98afd8acb18b28fac9e41b571105044e298eda",
       "notes": "called by Edge via .rpc()",
       "analysisCoverage": "direct",
       "dependencyFiles": [
-        "supabase/migrations/20260804234412_consolidate_exact_vendor_duplicates.sql"
+        "supabase/migrations/20260805035742_consolidate_exact_vendor_duplicates.sql"
       ],
       "rpcSignature": "text,text,boolean,integer",
       "coverageSignals": [
@@ -10622,7 +10630,7 @@ export const ACTION_CONTRACT = {
       "canonicalId": "rpc.public.count_exact_workspace_vendor_duplicates(text,text)",
       "actionName": "public.count_exact_workspace_vendor_duplicates",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260805001000_batch_exact_vendor_consolidation.sql",
+      "sourceFile": "supabase/migrations/20260805044343_batch_exact_vendor_consolidation.sql",
       "handler": "public.count_exact_workspace_vendor_duplicates(text,text)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.count_exact_workspace_vendor_duplicates(text,text)",
       "businessModule": "Procurement",
@@ -10641,7 +10649,7 @@ export const ACTION_CONTRACT = {
       "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
       "analysisCoverage": "direct",
       "dependencyFiles": [
-        "supabase/migrations/20260805001000_batch_exact_vendor_consolidation.sql"
+        "supabase/migrations/20260805044343_batch_exact_vendor_consolidation.sql"
       ],
       "rpcSignature": "text,text",
       "coverageSignals": [
@@ -10932,7 +10940,7 @@ export const ACTION_CONTRACT = {
       "canonicalId": "rpc.public.rateware_bi_geo_density_for_owner(text,text,text,text,jsonb,integer)",
       "actionName": "public.rateware_bi_geo_density_for_owner",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260802042015_optimize_bi_geo_projection.sql",
+      "sourceFile": "supabase/migrations/20260807070515_optimize_rateware_bi_market_geo.sql",
       "handler": "public.rateware_bi_geo_density_for_owner(text,text,text,text,jsonb,integer)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_geo_density_for_owner(text,text,text,text,jsonb,integer)",
       "businessModule": "Procurement",
@@ -10947,11 +10955,11 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "a9be56a6598630b2382405f018d657e78a6c46bf7c51aec6d2722a782dbf7863",
+      "sourceFingerprint": "42b1d5c76b7f6f5de21773252758af35c2e7889b0f87630cc0f3bbfc161fb239",
       "notes": "called by Edge via .rpc()",
       "analysisCoverage": "direct",
       "dependencyFiles": [
-        "supabase/migrations/20260802042015_optimize_bi_geo_projection.sql"
+        "supabase/migrations/20260807070515_optimize_rateware_bi_market_geo.sql"
       ],
       "rpcSignature": "text,text,text,text,jsonb,integer",
       "coverageSignals": [
@@ -11335,7 +11343,7 @@ export const ACTION_CONTRACT = {
       "canonicalId": "rpc.public.rateware_filtered_rate_ids(text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer)",
       "actionName": "public.rateware_filtered_rate_ids",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260722120000_scope_uploads_and_rates_by_workspace.sql",
+      "sourceFile": "supabase/migrations/20260807070238_fix_rateware_filter_count.sql",
       "handler": "public.rateware_filtered_rate_ids(text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_filtered_rate_ids(text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer)",
       "businessModule": "Procurement",
@@ -11350,11 +11358,11 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "e270edc4dae3b0ac412d209bbb356ca437d1de03142c509e326d35237c26638e",
+      "sourceFingerprint": "9cba0bfca2d9d7f4f72a9476106cb50327004b339d811ff80f2fe9d514213ba4",
       "notes": "called by Edge via .rpc()",
       "analysisCoverage": "direct",
       "dependencyFiles": [
-        "supabase/migrations/20260722120000_scope_uploads_and_rates_by_workspace.sql"
+        "supabase/migrations/20260807070238_fix_rateware_filter_count.sql"
       ],
       "rpcSignature": "text,text,text,text,text,text,text,text,jsonb,boolean,text,integer,integer",
       "coverageSignals": [
@@ -11366,7 +11374,7 @@ export const ACTION_CONTRACT = {
       "canonicalId": "rpc.public.rateware_filtered_rate_values(text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer)",
       "actionName": "public.rateware_filtered_rate_values",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260723235900_scope_rate_filter_values_by_workspace.sql",
+      "sourceFile": "supabase/migrations/20260807070148_index_and_fast_path_rateware_origin_destination.sql",
       "handler": "public.rateware_filtered_rate_values(text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_filtered_rate_values(text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer)",
       "businessModule": "Procurement",
@@ -11381,11 +11389,11 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "ff262a40e35f7ecdbaad611264a3ff2bcf793fa2ee7b4b3e540ee930ee602ae3",
+      "sourceFingerprint": "5dcdfe1be2b2b801741eb916891b0691dd369d6481728836d930f7ef2cf83621",
       "notes": "called by Edge via .rpc()",
       "analysisCoverage": "direct",
       "dependencyFiles": [
-        "supabase/migrations/20260723235900_scope_rate_filter_values_by_workspace.sql"
+        "supabase/migrations/20260807070148_index_and_fast_path_rateware_origin_destination.sql"
       ],
       "rpcSignature": "text,text,text,text,text,text,text,text,text,jsonb,boolean,text,text,integer",
       "coverageSignals": [
@@ -11676,7 +11684,7 @@ export const ACTION_CONTRACT = {
       "canonicalId": "rpc.public.rateware_rate_matches_filters(public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean)",
       "actionName": "public.rateware_rate_matches_filters",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260628123000_add_shipment_id_rate_filters.sql",
+      "sourceFile": "supabase/migrations/20260807065655_optimize_rateware_filter_engine.sql",
       "handler": "public.rateware_rate_matches_filters(public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_rate_matches_filters(public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean)",
       "businessModule": "Procurement",
@@ -11691,11 +11699,11 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "9010e77d4d3d8db54dc89a3fc2bec99704a765976a211b581d8e1e6a80f79ada",
+      "sourceFingerprint": "81111982f2de97de775c3b84e87a3c88b9817828c042468080c76c2fabde8968",
       "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
       "analysisCoverage": "direct",
       "dependencyFiles": [
-        "supabase/migrations/20260628123000_add_shipment_id_rate_filters.sql"
+        "supabase/migrations/20260807065655_optimize_rateware_filter_engine.sql"
       ],
       "rpcSignature": "public.rate_staging,public.vendors,text,text,text,text,text,text,text,text,jsonb,boolean",
       "coverageSignals": [
@@ -11707,7 +11715,7 @@ export const ACTION_CONTRACT = {
       "canonicalId": "rpc.public.rateware_refresh_vendor_search_document()",
       "actionName": "public.rateware_refresh_vendor_search_document",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql",
+      "sourceFile": "supabase/migrations/20260804075304_optimize_vendor_search_page_metrics.sql",
       "handler": "public.rateware_refresh_vendor_search_document()",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_refresh_vendor_search_document()",
       "businessModule": "Procurement",
@@ -11726,7 +11734,7 @@ export const ACTION_CONTRACT = {
       "notes": "trigger/internal function; not a user action",
       "analysisCoverage": "direct",
       "dependencyFiles": [
-        "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql"
+        "supabase/migrations/20260804075304_optimize_vendor_search_page_metrics.sql"
       ],
       "rpcSignature": "",
       "coverageSignals": [
@@ -11738,7 +11746,7 @@ export const ACTION_CONTRACT = {
       "canonicalId": "rpc.public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)",
       "actionName": "public.rateware_rfx_lane_rate_score",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260804080200_optimize_bid_room_benchmark_candidates.sql",
+      "sourceFile": "supabase/migrations/20260804080309_optimize_bid_room_benchmark_candidates.sql",
       "handler": "public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)",
       "businessModule": "Procurement",
@@ -11757,7 +11765,7 @@ export const ACTION_CONTRACT = {
       "notes": "Intentionally retired after its row-by-row scoring was folded into rpc.public.rfx_benchmark_candidate_rate_ids(text,uuid,integer); production catalog confirms the old signature is absent.",
       "analysisCoverage": "direct",
       "dependencyFiles": [
-        "supabase/migrations/20260804080200_optimize_bid_room_benchmark_candidates.sql"
+        "supabase/migrations/20260804080309_optimize_bid_room_benchmark_candidates.sql"
       ],
       "rpcSignature": "public.rfx_lanes,public.rate_staging"
     },
@@ -11766,7 +11774,7 @@ export const ACTION_CONTRACT = {
       "canonicalId": "rpc.public.rateware_rfx_text_match_score(text,text,integer)",
       "actionName": "public.rateware_rfx_text_match_score",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260804080200_optimize_bid_room_benchmark_candidates.sql",
+      "sourceFile": "supabase/migrations/20260804080309_optimize_bid_room_benchmark_candidates.sql",
       "handler": "public.rateware_rfx_text_match_score(text,text,integer)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_rfx_text_match_score(text,text,integer)",
       "businessModule": "Procurement",
@@ -11785,7 +11793,7 @@ export const ACTION_CONTRACT = {
       "notes": "Intentionally retired after its text scoring was folded into rpc.public.rfx_benchmark_candidate_rate_ids(text,uuid,integer); production catalog confirms the old signature is absent.",
       "analysisCoverage": "direct",
       "dependencyFiles": [
-        "supabase/migrations/20260804080200_optimize_bid_room_benchmark_candidates.sql"
+        "supabase/migrations/20260804080309_optimize_bid_room_benchmark_candidates.sql"
       ],
       "rpcSignature": "text,text,integer"
     },
@@ -12445,7 +12453,7 @@ export const ACTION_CONTRACT = {
       "canonicalId": "rpc.public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)",
       "actionName": "public.rfx_benchmark_candidate_rate_ids",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260804080455_tune_bid_room_benchmark_candidates.sql",
+      "sourceFile": "supabase/migrations/20260804080554_tune_bid_room_benchmark_candidates.sql",
       "handler": "public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)",
       "businessModule": "Procurement",
@@ -12464,7 +12472,7 @@ export const ACTION_CONTRACT = {
       "notes": "called by Edge via .rpc()",
       "analysisCoverage": "direct",
       "dependencyFiles": [
-        "supabase/migrations/20260804080455_tune_bid_room_benchmark_candidates.sql"
+        "supabase/migrations/20260804080554_tune_bid_room_benchmark_candidates.sql"
       ],
       "rpcSignature": "text,uuid,integer",
       "coverageSignals": [
@@ -12476,7 +12484,7 @@ export const ACTION_CONTRACT = {
       "canonicalId": "rpc.public.search_workspace_vendors(text,text,integer,integer)",
       "actionName": "public.search_workspace_vendors",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql",
+      "sourceFile": "supabase/migrations/20260804075304_optimize_vendor_search_page_metrics.sql",
       "handler": "public.search_workspace_vendors(text,text,integer,integer)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.search_workspace_vendors(text,text,integer,integer)",
       "businessModule": "Procurement",
@@ -12495,7 +12503,7 @@ export const ACTION_CONTRACT = {
       "notes": "called by Edge via .rpc()",
       "analysisCoverage": "direct",
       "dependencyFiles": [
-        "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql"
+        "supabase/migrations/20260804075304_optimize_vendor_search_page_metrics.sql"
       ],
       "rpcSignature": "text,text,integer,integer",
       "coverageSignals": [
@@ -12507,7 +12515,7 @@ export const ACTION_CONTRACT = {
       "canonicalId": "rpc.public.vendor_bid_metrics_for_owner_ids(text,uuid[])",
       "actionName": "public.vendor_bid_metrics_for_owner_ids",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql",
+      "sourceFile": "supabase/migrations/20260804075304_optimize_vendor_search_page_metrics.sql",
       "handler": "public.vendor_bid_metrics_for_owner_ids(text,uuid[])",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.vendor_bid_metrics_for_owner_ids(text,uuid[])",
       "businessModule": "Procurement",
@@ -12526,7 +12534,7 @@ export const ACTION_CONTRACT = {
       "notes": "called by Edge via .rpc()",
       "analysisCoverage": "direct",
       "dependencyFiles": [
-        "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql"
+        "supabase/migrations/20260804075304_optimize_vendor_search_page_metrics.sql"
       ],
       "rpcSignature": "text,uuid[]",
       "coverageSignals": [
@@ -12538,7 +12546,7 @@ export const ACTION_CONTRACT = {
       "canonicalId": "rpc.public.vendor_rate_metrics_for_owner_ids(text,uuid[],text)",
       "actionName": "public.vendor_rate_metrics_for_owner_ids",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql",
+      "sourceFile": "supabase/migrations/20260804075304_optimize_vendor_search_page_metrics.sql",
       "handler": "public.vendor_rate_metrics_for_owner_ids(text,uuid[],text)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface public.vendor_rate_metrics_for_owner_ids(text,uuid[],text)",
       "businessModule": "Procurement",
@@ -12557,7 +12565,7 @@ export const ACTION_CONTRACT = {
       "notes": "called by Edge via .rpc()",
       "analysisCoverage": "direct",
       "dependencyFiles": [
-        "supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql"
+        "supabase/migrations/20260804075304_optimize_vendor_search_page_metrics.sql"
       ],
       "rpcSignature": "text,uuid[],text",
       "coverageSignals": [
@@ -12591,6 +12599,130 @@ export const ACTION_CONTRACT = {
         "supabase/migrations/20260626171000_vendor_metric_rpc.sql"
       ],
       "rpcSignature": "text,text",
+      "coverageSignals": [
+        "direct"
+      ]
+    },
+    {
+      "contractVersion": "1.2.0",
+      "canonicalId": "rpc.public.rateware_bi_geo_density_market_fast(text,text,text,integer)",
+      "actionName": "public.rateware_bi_geo_density_market_fast",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20260807070515_optimize_rateware_bi_market_geo.sql",
+      "handler": "public.rateware_bi_geo_density_market_fast(text,text,text,integer)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_geo_density_market_fast(text,text,text,integer)",
+      "businessModule": "Procurement",
+      "operation": "read",
+      "resource": "rates",
+      "access": "read",
+      "exposure": "internal/service-role",
+      "sensitivity": "high",
+      "tenantRelevance": "mixed",
+      "proposedPermissionKey": "internal.rpc.rateware_bi_geo_density_market_fast",
+      "functionalOwner": "Procurement",
+      "decisionStatus": "internal_only",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "0d2774b651aa0bda958e46b0b1cea38f3fc96583ef599023a549040449d5ac23",
+      "notes": "internal helper; no Edge .rpc() literal or trigger reference",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260807070515_optimize_rateware_bi_market_geo.sql"
+      ],
+      "rpcSignature": "text,text,text,integer",
+      "coverageSignals": [
+        "direct"
+      ]
+    },
+    {
+      "contractVersion": "1.2.0",
+      "canonicalId": "rpc.public.rateware_bi_vendor_metrics_for_owner_v2(text,jsonb)",
+      "actionName": "public.rateware_bi_vendor_metrics_for_owner_v2",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20260807073652_add_internal_vendor_metrics_v2.sql",
+      "handler": "public.rateware_bi_vendor_metrics_for_owner_v2(text,jsonb)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_bi_vendor_metrics_for_owner_v2(text,jsonb)",
+      "businessModule": "Procurement",
+      "operation": "read",
+      "resource": "vendors",
+      "access": "read",
+      "exposure": "internal/service-role",
+      "sensitivity": "high",
+      "tenantRelevance": "mixed",
+      "proposedPermissionKey": "internal.rpc.rateware_bi_vendor_metrics_for_owner_v2",
+      "functionalOwner": "Procurement",
+      "decisionStatus": "internal_only",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "2fe4ee906e96c49fd89f05ff86157156dd3b247f8b3e2b6e903e704bde766082",
+      "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260807073652_add_internal_vendor_metrics_v2.sql"
+      ],
+      "rpcSignature": "text,jsonb",
+      "coverageSignals": [
+        "direct"
+      ]
+    },
+    {
+      "contractVersion": "1.2.0",
+      "canonicalId": "rpc.public.rateware_column_filters_match(public.rate_staging,public.vendors,jsonb)",
+      "actionName": "public.rateware_column_filters_match",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20260807065655_optimize_rateware_filter_engine.sql",
+      "handler": "public.rateware_column_filters_match(public.rate_staging,public.vendors,jsonb)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_column_filters_match(public.rate_staging,public.vendors,jsonb)",
+      "businessModule": "Procurement",
+      "operation": "read",
+      "resource": "rates",
+      "access": "read",
+      "exposure": "internal/service-role",
+      "sensitivity": "high",
+      "tenantRelevance": "mixed",
+      "proposedPermissionKey": "internal.rpc.rateware_column_filters_match",
+      "functionalOwner": "Procurement",
+      "decisionStatus": "internal_only",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "f6e24753348a5b5fdacea06c4ec05d70fa16e1ba3c4f7b15e8006177e334f9c9",
+      "notes": "internal SQL helper; no Edge .rpc() literal or trigger reference",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260807065655_optimize_rateware_filter_engine.sql"
+      ],
+      "rpcSignature": "public.rate_staging,public.vendors,jsonb",
+      "coverageSignals": [
+        "direct"
+      ]
+    },
+    {
+      "contractVersion": "1.2.0",
+      "canonicalId": "rpc.public.rateware_sync_bi_vendor_dimensions()",
+      "actionName": "public.rateware_sync_bi_vendor_dimensions",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20260807073252_split_vendor_bi_sync_by_change_type.sql",
+      "handler": "public.rateware_sync_bi_vendor_dimensions()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface public.rateware_sync_bi_vendor_dimensions()",
+      "businessModule": "Procurement",
+      "operation": "execute",
+      "resource": "vendors",
+      "access": "write",
+      "exposure": "internal/service-role",
+      "sensitivity": "high",
+      "tenantRelevance": "mixed",
+      "proposedPermissionKey": "internal.rpc.rateware_sync_bi_vendor_dimensions",
+      "functionalOwner": "Procurement",
+      "decisionStatus": "internal_only",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "7b57aec044f71f93bd57844db687c146f3879dd8a63f4bb2e9f79a1bbda2cf7c",
+      "notes": "trigger/internal function; not a user action",
+      "analysisCoverage": "direct",
+      "dependencyFiles": [
+        "supabase/migrations/20260807073252_split_vendor_bi_sync_by_change_type.sql"
+      ],
+      "rpcSignature": "",
       "coverageSignals": [
         "direct"
       ]

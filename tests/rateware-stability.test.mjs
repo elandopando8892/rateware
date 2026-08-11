@@ -139,16 +139,16 @@ const whatsappWebhookSource = readFileSync(new URL("../supabase/functions/whatsa
 const whatsappWebhookRoutingMigration = readFileSync(new URL("../supabase/migrations/20260723005859_whatsapp_webhook_routing_indexes.sql", import.meta.url), "utf8");
 const vendorWorkspaceSearchMigration = readFileSync(new URL("../supabase/migrations/20260723190000_vendor_workspace_search.sql", import.meta.url), "utf8");
 const vendorWorkspaceSearchHardeningMigration = readFileSync(new URL("../supabase/migrations/20260725160000_vendor_workspace_search_hardening.sql", import.meta.url), "utf8");
-const vendorPagePerformanceMigration = readFileSync(new URL("../supabase/migrations/20260804074843_optimize_vendor_search_page_metrics.sql", import.meta.url), "utf8");
-const exactVendorConsolidationMigration = readFileSync(new URL("../supabase/migrations/20260804234412_consolidate_exact_vendor_duplicates.sql", import.meta.url), "utf8");
-const exactVendorConsolidationBooleanFixMigration = readFileSync(new URL("../supabase/migrations/20260805000000_fix_vendor_consolidation_equipment_available.sql", import.meta.url), "utf8");
-const exactVendorConsolidationBatchMigration = readFileSync(new URL("../supabase/migrations/20260805001000_batch_exact_vendor_consolidation.sql", import.meta.url), "utf8");
+const vendorPagePerformanceMigration = readFileSync(new URL("../supabase/migrations/20260804075304_optimize_vendor_search_page_metrics.sql", import.meta.url), "utf8");
+const exactVendorConsolidationMigration = readFileSync(new URL("../supabase/migrations/20260805035742_consolidate_exact_vendor_duplicates.sql", import.meta.url), "utf8");
+const exactVendorConsolidationBooleanFixMigration = readFileSync(new URL("../supabase/migrations/20260805041201_fix_vendor_consolidation_equipment_available.sql", import.meta.url), "utf8");
+const exactVendorConsolidationBatchMigration = readFileSync(new URL("../supabase/migrations/20260805044343_batch_exact_vendor_consolidation.sql", import.meta.url), "utf8");
 const exactVendorConsolidationWalLimitMigration = readFileSync(new URL("../supabase/migrations/20260805052208_limit_vendor_consolidation_wal.sql", import.meta.url), "utf8");
 const exactVendorSingleGroupMigration = readFileSync(new URL("../supabase/migrations/20260805061000_single_group_vendor_consolidation.sql", import.meta.url), "utf8");
 const exactVendorSingleLoserMigration = readFileSync(new URL("../supabase/migrations/20260805063000_single_loser_vendor_consolidation.sql", import.meta.url), "utf8");
-const operationalPageIndexMigration = readFileSync(new URL("../supabase/migrations/20260804075621_optimize_operational_page_indexes.sql", import.meta.url), "utf8");
-const bidRoomBenchmarkCandidateMigration = readFileSync(new URL("../supabase/migrations/20260804080200_optimize_bid_room_benchmark_candidates.sql", import.meta.url), "utf8");
-const bidRoomBenchmarkTuningMigration = readFileSync(new URL("../supabase/migrations/20260804080455_tune_bid_room_benchmark_candidates.sql", import.meta.url), "utf8");
+const operationalPageIndexMigration = readFileSync(new URL("../supabase/migrations/20260804075700_optimize_operational_page_indexes.sql", import.meta.url), "utf8");
+const bidRoomBenchmarkCandidateMigration = readFileSync(new URL("../supabase/migrations/20260804080309_optimize_bid_room_benchmark_candidates.sql", import.meta.url), "utf8");
+const bidRoomBenchmarkTuningMigration = readFileSync(new URL("../supabase/migrations/20260804080554_tune_bid_room_benchmark_candidates.sql", import.meta.url), "utf8");
 const vendorLifecycleUnificationMigration = readFileSync(new URL("../supabase/migrations/20260723225311_vendor_lifecycle_unification.sql", import.meta.url), "utf8");
 const workspaceRateScopeMigration = readFileSync(new URL("../supabase/migrations/20260722120000_scope_uploads_and_rates_by_workspace.sql", import.meta.url), "utf8");
 const workspaceRateFilterValuesMigration = readFileSync(new URL("../supabase/migrations/20260723235900_scope_rate_filter_values_by_workspace.sql", import.meta.url), "utf8");
@@ -161,6 +161,7 @@ const functionSearchPathMigration = readFileSync(new URL("../supabase/migrations
 const permissiveRlsRemovalMigration = readFileSync(new URL("../supabase/migrations/20260803043030_remove_permissive_browser_rls_policies.sql", import.meta.url), "utf8");
 const vendorLogoListingMigration = readFileSync(new URL("../supabase/migrations/20260803054359_remove_public_vendor_logo_listing_policy.sql", import.meta.url), "utf8");
 const duplicateIndexMigration = readFileSync(new URL("../supabase/migrations/20260803055103_remove_duplicate_rate_and_whatsapp_indexes.sql", import.meta.url), "utf8");
+const missingForeignKeyIndexMigration = readFileSync(new URL("../supabase/migrations/20260807064922_add_missing_foreign_key_indexes.sql", import.meta.url), "utf8");
 const criticalForeignKeyIndexMigration = readFileSync(new URL("../supabase/migrations/20260803055952_index_critical_active_foreign_keys.sql", import.meta.url), "utf8");
 const operationalForeignKeyIndexMigration = readFileSync(new URL("../supabase/migrations/20260803060845_index_active_operational_foreign_keys.sql", import.meta.url), "utf8");
 const rfxRatebookForeignKeyIndexMigration = readFileSync(new URL("../supabase/migrations/20260803062045_index_rfx_ratebook_pipeline_foreign_keys.sql", import.meta.url), "utf8");
@@ -4378,7 +4379,7 @@ assert.match(exactVendorConsolidationMigration, /if p_dry_run then[\s\S]+return 
 assert.match(exactVendorConsolidationMigration, /update public\.rates/, "Vendor consolidation should preserve Rateware links");
 assert.match(exactVendorConsolidationMigration, /update public\.rate_staging/, "Vendor consolidation should preserve staging links");
 assert.match(exactVendorConsolidationMigration, /update public\.rfx_lane_vendors/, "Vendor consolidation should preserve RFx lane links");
-assert.match(exactVendorConsolidationMigration, /equipment_available\s*=\s*case[\s\S]+keeper\.equipment_available is true[\s\S]+v_lane_vendor\.equipment_available is false[\s\S]+else null[\s\S]+end/, "Vendor consolidation should merge nullable equipment availability without coercing empty text to boolean");
+assert.match(exactVendorConsolidationBooleanFixMigration, /equipment_available\s*=\s*case[\s\S]+keeper\.equipment_available is true[\s\S]+v_lane_vendor\.equipment_available is false[\s\S]+else null[\s\S]+end/, "The dedicated vendor consolidation fix should merge nullable equipment availability without coercing empty text to boolean");
 assert.match(exactVendorConsolidationBooleanFixMigration, /pg_get_functiondef[\s\S]+position\(v_old in v_definition\)[\s\S]+execute replace\(v_definition, v_old, v_new\)/, "Deployed vendor consolidation functions should receive the nullable equipment availability hotfix");
 assert.match(exactVendorConsolidationBatchMigration, /when p_dry_run then 2147483647[\s\S]+else greatest\(1, least\(coalesce\(p_preview_limit, 50\), 100\)\)/, "Vendor consolidation should preserve a complete preview while batching destructive work");
 assert.match(exactVendorConsolidationWalLimitMigration, /coalesce\(p_preview_limit, 50\), 100/, "Vendor consolidation WAL guard should recognize the previously deployed batch expression");
@@ -4503,6 +4504,11 @@ assert.doesNotMatch(rlsInitplanMigration, /create policy[\s\S]+using \(true\)/i,
 for (const functionName of ["rateware_inherit_rate_owner", "rls_auto_enable"]) {
   assert.match(
     internalTriggerPermissionsMigration,
+    new RegExp(`to_regprocedure\\('public\\.${functionName}\\(\\)'\\) is not null`),
+    `${functionName} permission hardening should tolerate clean histories where the helper is absent`
+  );
+  assert.match(
+    internalTriggerPermissionsMigration,
     new RegExp(`revoke all on function public\\.${functionName}\\(\\)[\\s\\S]+?from public, anon, authenticated, service_role`),
     `${functionName} must not be callable as a Data API RPC`
   );
@@ -4511,7 +4517,8 @@ assert.match(internalTriggerPermissionsMigration, /alter default privileges in s
 assert.match(functionSearchPathMigration, /set search_path to pg_catalog, public, pg_temp/, "Legacy functions should resolve objects only through pinned trusted schemas");
 assert.match(functionSearchPathMigration, /revoke all on function %I\.%I\(%s\) from public, anon, authenticated/, "Legacy helpers should not remain public Data API RPCs");
 assert.match(functionSearchPathMigration, /grant execute on function %I\.%I\(%s\) to service_role/, "The trusted API should retain helper execution");
-assert.match(functionSearchPathMigration, /updated_count <> 31/, "Search-path hardening should fail if any expected function is missing");
+assert.match(functionSearchPathMigration, /updated_count <> 30/, "Search-path hardening should fail if any expected versioned function is missing");
+assert.doesNotMatch(functionSearchPathMigration, /'approve_rate_staging'/, "Search-path hardening should not require the unversioned legacy approval helper during clean replay");
 assert.match(permissiveRlsRemovalMigration, /matched_count <> 34/, "RLS hardening should fail if the expected permissive browser policy set drifts");
 assert.match(permissiveRlsRemovalMigration, /drop policy %I on public\.%I/, "RLS hardening should remove unrestricted browser write policies from public tables");
 assert.match(permissiveRlsRemovalMigration, /cmd <> 'SELECT'/, "RLS hardening should preserve intentionally public read-only policies");
@@ -4530,9 +4537,14 @@ assert.match(duplicateIndexMigration, /keeper\.indkey = duplicate\.indkey/, "Dup
 assert.match(duplicateIndexMigration, /conindid = to_regclass\('public\.whatsapp_business_connections_owner_email_provider_connecti_key'\)/, "Duplicate-index cleanup should preserve the index backing the WhatsApp UNIQUE constraint");
 assert.match(duplicateIndexMigration, /drop index public\.idx_rate_staging_vendor/, "Duplicate-index cleanup should remove the unversioned rate staging duplicate");
 assert.match(duplicateIndexMigration, /drop index public\.whatsapp_business_connections_unique_idx/, "Duplicate-index cleanup should remove the redundant explicit WhatsApp index");
+assert.match(duplicateIndexMigration, /if to_regclass\('public\.idx_rate_staging_vendor'\) is not null/, "Duplicate-index cleanup should tolerate a clean history without the unversioned rate index");
+assert.match(duplicateIndexMigration, /if to_regclass\('public\.whatsapp_business_connections_unique_idx'\) is not null/, "Duplicate-index cleanup should be replay-safe after the redundant WhatsApp index is absent");
+assert.match(duplicateIndexMigration, /Canonical rate staging vendor index is missing/, "Duplicate-index cleanup should still fail when the canonical rate index is absent");
 assert.doesNotMatch(duplicateIndexMigration, /drop index public\.rate_staging_vendor_domain_idx/, "Duplicate-index cleanup must preserve the migration-owned rate index");
 assert.doesNotMatch(duplicateIndexMigration, /drop index public\.whatsapp_business_connections_owner_email_provider_connecti_key/, "Duplicate-index cleanup must preserve the constraint-owned WhatsApp index");
 assert.match(duplicateIndexMigration, /raise exception 'A duplicate index remains after cleanup'/, "Duplicate-index cleanup should fail closed if either redundant index remains");
+assert.doesNotMatch(missingForeignKeyIndexMigration, /public\.(?:rate_accessorials|rates)\b/, "Clean replay FK indexing must not reference unversioned legacy rate tables");
+assert.match(missingForeignKeyIndexMigration, /public\.growth_campaign_members \(contact_id\)/, "Clean replay should retain indexes for versioned foreign-key tables");
 assert.match(criticalForeignKeyIndexMigration, /matched_constraint_count <> 5/, "Critical FK indexing should fail if the expected constraint set drifts");
 assert.match(criticalForeignKeyIndexMigration, /create index rate_staging_interpretation_job_idx[\s\S]+rate_staging \(interpretation_job_id\)/, "Rate staging should index its populated interpretation-job foreign key");
 for (const [indexName, columnName] of [
