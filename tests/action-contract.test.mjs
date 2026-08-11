@@ -566,6 +566,19 @@ const duplicateCalleeActions = selectorWithCandidates('function jsonResponse(x){
 assert.equal(duplicateCalleeActions.find((entry) => entry.actionName === "duplicate_array").handlerStatus, "inline-real");
 assert.equal(duplicateCalleeActions.find((entry) => entry.actionName === "duplicate_wrapper").handlerStatus, "undetermined");
 
+for (const [declarations, branch, expected] of [
+  ['const wrappers={map:async cb=>cb()};const state={items:[]};state["it\\u0065ms"]=wrappers', 'return jsonResponse(await state.items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const key="items";const state={[key]:[1]}', 'return jsonResponse(state.items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};let items=[1];const mutate=()=>{items=wrappers}', 'return jsonResponse(items.map(x=>x));', 'inline-real'],
+  ['const wrappers={map:async cb=>cb()};let items=[1];function mutate(){items=wrappers}', 'mutate();return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};let items=[1]', 'items.map(async()=>new Response("ok"));items=wrappers;return jsonResponse(await items.map(async()=>new Response("ok")));', 'undetermined'],
+  ['const wrappers={map:async cb=>cb()};let items=wrappers', 'items.map(async()=>new Response("ok"));items=[1];return jsonResponse(items.map(async()=>new Response("ok")));', 'inline-real']
+]) {
+  const astReceiverFlow = selectorWithCandidates(edgeSource(`const chosen=body.action;if(chosen==="ast_receiver_flow"){${branch}}`, `${declarations}\nfunction jsonResponse(value){return new Response(JSON.stringify(value))}`));
+  assert.equal(astReceiverFlow[0].handlerStatus, expected, branch);
+  assert.equal(validationExitCode(validateActionContract(contractFor(astReceiverFlow.map((entry) => entryFrom(entry)), astReceiverFlow), astReceiverFlow)), expected === "undetermined" ? 1 : 0, branch);
+}
+
 const nestedLeadingComment = rpc('/* outer /* nested drop function public.fake(); */ outer */ create function public.outer() returns void language plpgsql as $$begin perform 1; end$$;');
 assert.equal(nestedLeadingComment.length, 1);
 assert.equal(nestedLeadingComment[0].canonicalId, "rpc.public.outer()");

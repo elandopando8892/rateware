@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
+import { parse } from "@babel/parser";
 
 export const CONTRACT_VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 export const SOURCE_KINDS = new Set(["edge-selector", "edge-method", "postgres-function"]);
@@ -539,13 +540,323 @@ function returnedInlineCallbackCall(dispatch, source = dispatch, searchStart = 0
   return null;
 }
 
+const actionAstCache = new Map();
+const ARRAY_CALLBACK_METHODS = new Set(["map", "filter", "reduce", "reduceRight", "flatMap", "forEach", "some", "every", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted", "toReversed", "toSpliced", "with"]);
+
+function actionAst(source) {
+  if (actionAstCache.has(source)) return actionAstCache.get(source);
+  let ast = null;
+  try {
+    ast = parse(source, {
+      sourceType: "module",
+      allowAwaitOutsideFunction: true,
+      allowReturnOutsideFunction: true,
+      errorRecovery: true,
+      plugins: ["typescript", "importAttributes", "explicitResourceManagement"]
+    });
+  } catch {}
+  actionAstCache.set(source, ast);
+  if (actionAstCache.size > 64) actionAstCache.delete(actionAstCache.keys().next().value);
+  return ast;
+}
+
+function astChildren(node) {
+  const out = [];
+  if (!node || typeof node !== "object") return out;
+  for (const [key, value] of Object.entries(node)) {
+    if (["loc", "start", "end", "extra", "errors", "comments", "tokens"].includes(key)) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) if (item?.type) out.push(item);
+    } else if (value?.type) out.push(value);
+  }
+  return out;
+}
+
+function walkAst(node, visitor) {
+  if (!node?.type) return;
+  visitor(node);
+  for (const child of astChildren(node)) walkAst(child, visitor);
+}
+
+function astContains(node, position) { return Number.isInteger(node?.start) && Number.isInteger(node?.end) && node.start <= position && position < node.end; }
+function unwrapAst(node) {
+  let current = node;
+  while (["AwaitExpression", "TSAsExpression", "TSTypeAssertion", "TSNonNullExpression", "ParenthesizedExpression", "ChainExpression"].includes(current?.type)) current = current.argument || current.expression;
+  return current;
+}
+function astPropertyName(node, scope = null) {
+  const value = unwrapAst(node);
+  if (scope && value?.type === "Identifier") return scope.get(value.name)?.kind === "string" ? scope.get(value.name).value : null;
+  if (["Identifier", "PrivateName"].includes(value?.type)) return value.name || value.id?.name || null;
+  if (["StringLiteral", "NumericLiteral", "BooleanLiteral"].includes(value?.type)) return String(value.value);
+  if (value?.type === "TemplateLiteral" && value.expressions.length === 0) return value.quasis[0]?.value?.cooked ?? null;
+  return null;
+}
+function directInlineCallback(call) {
+  return ["CallExpression", "OptionalCallExpression"].includes(call?.type) && call.arguments.some((argument) => ["ArrowFunctionExpression", "FunctionExpression"].includes(unwrapAst(argument)?.type));
+}
+function nestedInlineCallbackCall(node) {
+  const value = unwrapAst(node);
+  if (!value?.type) return null;
+  if (directInlineCallback(value)) return value;
+  for (const child of astChildren(value)) {
+    if (["ArrowFunctionExpression", "FunctionExpression", "ObjectMethod", "ClassMethod"].includes(child.type)) continue;
+    const found = nestedInlineCallbackCall(child);
+    if (found) return found;
+  }
+  return null;
+}
+function returnedCallbackCall(returnNode) {
+  const outer = unwrapAst(returnNode?.argument);
+  if (!outer) return null;
+  if (outer.type === "NewExpression" && astPropertyName(outer.callee) === "Response") return null;
+  if (!["CallExpression", "OptionalCallExpression"].includes(outer.type)) return nestedInlineCallbackCall(outer);
+  const outerName = astPropertyName(outer.callee);
+  if (outerName === "Response") return null;
+  if (outerName === "jsonResponse") {
+    for (const argument of outer.arguments) {
+      const found = nestedInlineCallbackCall(argument);
+      if (found) return found;
+    }
+    return null;
+  }
+  return directInlineCallback(outer) ? outer : nestedInlineCallbackCall(outer);
+}
+
+class AstScope {
+  constructor(parent = null) { this.parent = parent; this.bindings = new Map(); }
+  declare(name, value) { if (name) this.bindings.set(name, value); }
+  cell(name) { return this.bindings.has(name) ? this : this.parent?.cell(name) || null; }
+  get(name) { return this.cell(name)?.bindings.get(name) || null; }
+  assign(name, value) { const target = this.cell(name) || this; target.bindings.set(name, value); }
+}
+
+const OTHER_VALUE = Object.freeze({ kind: "other" });
+const ARRAY_VALUE = Object.freeze({ kind: "array" });
+function astTypeContainsArray(node) {
+  if (!node?.type) return false;
+  if (["TSArrayType", "TSTupleType"].includes(node.type)) return true;
+  return astChildren(node).some(astTypeContainsArray);
+}
+function functionValue(node, scope) { return { kind: "function", node, scope, returnsArray: astTypeContainsArray(node.returnType) }; }
+
+function memberValue(node, scope) {
+  const member = unwrapAst(node);
+  if (!["MemberExpression", "OptionalMemberExpression"].includes(member?.type)) return OTHER_VALUE;
+  const object = evaluateAst(member.object, scope);
+  const property = member.computed ? astPropertyName(member.property, scope) : astPropertyName(member.property);
+  return object?.kind === "object" && property != null ? object.props.get(property) || OTHER_VALUE : OTHER_VALUE;
+}
+
+function evaluateObject(node, scope) {
+  const props = new Map();
+  for (const property of node.properties || []) {
+    if (property.type === "SpreadElement") {
+      const spread = evaluateAst(property.argument, scope);
+      if (spread?.kind === "object") for (const [key, value] of spread.props) props.set(key, value);
+      continue;
+    }
+    const key = property.computed ? astPropertyName(property.key, scope) : astPropertyName(property.key);
+    if (key == null) continue;
+    if (["ObjectMethod"].includes(property.type)) props.set(key, functionValue(property, scope));
+    else props.set(key, evaluateAst(property.value, scope));
+  }
+  return { kind: "object", props };
+}
+
+function evaluateAst(node, scope, state = null) {
+  const value = unwrapAst(node);
+  if (!value) return OTHER_VALUE;
+  if (value.type === "ArrayExpression") return ARRAY_VALUE;
+  if (["StringLiteral", "TemplateLiteral"].includes(value.type)) {
+    if (value.type === "TemplateLiteral" && value.expressions.length) return OTHER_VALUE;
+    return { kind: "string", value: value.type === "StringLiteral" ? value.value : value.quasis[0]?.value?.cooked };
+  }
+  if (value.type === "Identifier") return scope.get(value.name) || OTHER_VALUE;
+  if (value.type === "ObjectExpression") return evaluateObject(value, scope);
+  if (value.type === "LogicalExpression") {
+    const left = evaluateAst(value.left, scope, state);
+    const right = evaluateAst(value.right, scope, state);
+    return right?.kind === "array" || left?.kind === "array" ? ARRAY_VALUE : OTHER_VALUE;
+  }
+  if (value.type === "ConditionalExpression") {
+    const consequent = evaluateAst(value.consequent, scope, state);
+    const alternate = evaluateAst(value.alternate, scope, state);
+    return consequent?.kind === "array" && alternate?.kind === "array" ? ARRAY_VALUE : OTHER_VALUE;
+  }
+  if (["FunctionExpression", "ArrowFunctionExpression"].includes(value.type)) return functionValue(value, scope);
+  if (["MemberExpression", "OptionalMemberExpression"].includes(value.type)) return memberValue(value, scope);
+  if (value.type === "AssignmentExpression") return applyAstAssignment(value, scope, state);
+  if (["CallExpression", "OptionalCallExpression"].includes(value.type)) {
+    if (["MemberExpression", "OptionalMemberExpression"].includes(value.callee?.type)) {
+      const ownerName = astPropertyName(value.callee.object);
+      const method = value.callee.computed ? astPropertyName(value.callee.property, scope) : astPropertyName(value.callee.property);
+      if ((ownerName === "Array" && method === "from") || (["Object", "Promise"].includes(ownerName) && ["entries", "keys", "values", "all", "allSettled"].includes(method))) return ARRAY_VALUE;
+      const receiver = evaluateAst(value.callee.object, scope, state);
+      if (receiver?.kind === "array" && new Set([...ARRAY_CALLBACK_METHODS, "slice", "concat", "flat"]).has(method)) return ARRAY_VALUE;
+    }
+    const callee = unwrapAst(value.callee);
+    const fn = ["FunctionExpression", "ArrowFunctionExpression"].includes(callee?.type) ? functionValue(callee, scope) : evaluateAst(callee, scope, state);
+    if (fn?.returnsArray) return ARRAY_VALUE;
+  }
+  return OTHER_VALUE;
+}
+
+function declareAstPattern(pattern, value, scope) {
+  const target = unwrapAst(pattern);
+  if (!target) return;
+  if (target.type === "Identifier") { scope.declare(target.name, value); return; }
+  if (target.type === "RestElement") { declareAstPattern(target.argument, value?.kind === "object" ? value : ARRAY_VALUE, scope); return; }
+  if (target.type === "AssignmentPattern") { declareAstPattern(target.left, value, scope); return; }
+  if (target.type === "ArrayPattern") {
+    for (const element of target.elements || []) if (element) declareAstPattern(element, element.type === "RestElement" ? ARRAY_VALUE : OTHER_VALUE, scope);
+    return;
+  }
+  if (target.type === "ObjectPattern") {
+    for (const property of target.properties || []) {
+      if (property.type === "RestElement") { declareAstPattern(property.argument, value?.kind === "object" ? value : OTHER_VALUE, scope); continue; }
+      const key = property.computed ? astPropertyName(property.key, scope) : astPropertyName(property.key);
+      declareAstPattern(property.value, value?.kind === "object" && key != null ? value.props.get(key) || OTHER_VALUE : OTHER_VALUE, scope);
+    }
+  }
+}
+
+function assignAstTarget(targetNode, value, scope, state) {
+  const target = unwrapAst(targetNode);
+  if (target?.type === "Identifier") { scope.assign(target.name, value); return; }
+  if (!["MemberExpression", "OptionalMemberExpression"].includes(target?.type)) return;
+  const object = evaluateAst(target.object, scope, state);
+  if (object?.kind !== "object") return;
+  const property = target.computed ? astPropertyName(target.property, scope) : astPropertyName(target.property);
+  if (property == null) for (const key of object.props.keys()) object.props.set(key, OTHER_VALUE);
+  else object.props.set(property, value);
+}
+function applyAstAssignment(node, scope, state) {
+  const value = evaluateAst(node.right, scope, state);
+  assignAstTarget(node.left, value, scope, state);
+  return value;
+}
+
+function executeAstFunction(fnValue, args, state, target = null) {
+  if (fnValue?.kind !== "function" || state?.activeFunctions?.has(fnValue.node)) return null;
+  const functionScope = new AstScope(fnValue.scope);
+  for (let index = 0; index < (fnValue.node.params || []).length; index += 1) declareAstPattern(fnValue.node.params[index], evaluateAst(args?.[index], state?.scope || fnValue.scope, state), functionScope);
+  state?.activeFunctions?.add(fnValue.node);
+  const result = target ? executeAstToward(fnValue.node.body, functionScope, target, state) : executeAstStatement(fnValue.node.body, functionScope, state);
+  state?.activeFunctions?.delete(fnValue.node);
+  return result;
+}
+function executeAstCall(node, scope, state) {
+  const callee = unwrapAst(node.callee);
+  const fn = ["FunctionExpression", "ArrowFunctionExpression"].includes(callee?.type) ? functionValue(callee, scope) : evaluateAst(callee, scope, state);
+  return executeAstFunction(fn, node.arguments, { ...(state || {}), scope }, null);
+}
+
+function executeAstStatement(node, scope, state) {
+  if (!node) return;
+  if (node.type === "Program" || node.type === "BlockStatement") {
+    const blockScope = node.type === "BlockStatement" ? new AstScope(scope) : scope;
+    for (const statement of node.body || []) executeAstStatement(statement, blockScope, state);
+    return;
+  }
+  if (node.type === "VariableDeclaration") {
+    for (const declaration of node.declarations) declareAstPattern(declaration.id, evaluateAst(declaration.init, scope, state), scope);
+    return;
+  }
+  if (node.type === "FunctionDeclaration") { scope.declare(node.id?.name, functionValue(node, scope)); return; }
+  if (node.type === "ExpressionStatement") {
+    const expression = unwrapAst(node.expression);
+    if (["CallExpression", "OptionalCallExpression"].includes(expression?.type)) executeAstCall(expression, scope, state);
+    else evaluateAst(expression, scope, state);
+    return;
+  }
+  if (node.type === "IfStatement") {
+    executeAstStatement(node.consequent, new AstScope(scope), state);
+    if (node.alternate) executeAstStatement(node.alternate, new AstScope(scope), state);
+    return;
+  }
+  if (node.type === "TryStatement") {
+    executeAstStatement(node.block, new AstScope(scope), state);
+    if (node.handler) executeAstStatement(node.handler.body, new AstScope(scope), state);
+    if (node.finalizer) executeAstStatement(node.finalizer, new AstScope(scope), state);
+    return;
+  }
+  if (["ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement", "DoWhileStatement"].includes(node.type)) { executeAstStatement(node.body, new AstScope(scope), state); return; }
+  if (node.type === "ReturnStatement") { evaluateAst(node.argument, scope, state); return; }
+  for (const child of astChildren(node)) executeAstStatement(child, scope, state);
+}
+
+function executeAstToward(node, scope, target, state) {
+  if (!astContains(node, target.start)) return null;
+  if (node.type === "Program" || node.type === "BlockStatement") {
+    const blockScope = node.type === "BlockStatement" ? new AstScope(scope) : scope;
+    for (const statement of node.body || []) {
+      if (statement.end <= target.start) executeAstStatement(statement, blockScope, state);
+      else if (astContains(statement, target.start)) return executeAstToward(statement, blockScope, target, state);
+      else break;
+    }
+    return blockScope;
+  }
+  if (node.type === "ReturnStatement") return scope;
+  if (node.type === "IfStatement") {
+    if (astContains(node.consequent, target.start)) return executeAstToward(node.consequent, new AstScope(scope), target, state);
+    if (node.alternate && astContains(node.alternate, target.start)) return executeAstToward(node.alternate, new AstScope(scope), target, state);
+  }
+  if (node.type === "TryStatement") {
+    for (const part of [node.block, node.handler?.body, node.finalizer]) if (part && astContains(part, target.start)) return executeAstToward(part, new AstScope(scope), target, state);
+  }
+  if (["ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement", "DoWhileStatement"].includes(node.type) && astContains(node.body, target.start)) return executeAstToward(node.body, new AstScope(scope), target, state);
+  if (node.type === "ExpressionStatement") {
+    let containingFunction = null;
+    walkAst(node.expression, (child) => { if (!containingFunction && ["FunctionExpression", "ArrowFunctionExpression"].includes(child.type) && astContains(child.body, target.start)) containingFunction = child; });
+    if (containingFunction) return executeAstFunction(functionValue(containingFunction, scope), [], state, target);
+  }
+  for (const child of astChildren(node)) if (astContains(child, target.start)) return executeAstToward(child, scope, target, state);
+  return scope;
+}
+
+function returnedInlineCallbackAst(dispatch, source) {
+  const ast = actionAst(source);
+  if (!ast) return { parsed: false, wrapper: false };
+  const dispatchStart = source.indexOf(dispatch);
+  const dispatchEnd = dispatchStart + dispatch.length;
+  let targetReturn = null;
+  let targetCall = null;
+  const returns = [];
+  const visit = (node, functionDepth = 0) => {
+    if (!node?.type || node.end < dispatchStart || node.start > dispatchEnd) return;
+    if (node.type === "ReturnStatement" && node.start >= dispatchStart && node.end <= dispatchEnd) returns.push({ node, functionDepth });
+    for (const child of astChildren(node)) {
+      const nestedFunction = ["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "ObjectMethod", "ClassMethod"].includes(child.type);
+      visit(child, functionDepth + (nestedFunction ? 1 : 0));
+    }
+  };
+  visit(ast.program);
+  const minimumFunctionDepth = Math.min(...returns.map((entry) => entry.functionDepth));
+  for (const entry of returns) {
+    if (entry.functionDepth !== minimumFunctionDepth) continue;
+    const call = returnedCallbackCall(entry.node);
+    if (call) { targetReturn = entry.node; targetCall = call; break; }
+  }
+  if (!targetCall) return { parsed: true, wrapper: false };
+  const rootScope = new AstScope();
+  const state = { activeFunctions: new Set(), scope: rootScope };
+  const callScope = executeAstToward(ast.program, rootScope, targetReturn, state) || rootScope;
+  const callee = unwrapAst(targetCall.callee);
+  if (!["MemberExpression", "OptionalMemberExpression"].includes(callee?.type)) return { parsed: true, wrapper: true };
+  const method = callee.computed ? astPropertyName(callee.property, callScope) : astPropertyName(callee.property);
+  const receiver = evaluateAst(callee.object, callScope, state);
+  return { parsed: true, wrapper: !(receiver?.kind === "array" && ARRAY_CALLBACK_METHODS.has(method)) };
+}
+
 function handlerAnalysis(dispatch, source, handlerHint = null, options = {}) {
   const ignored = new Set(["jsonResponse", "Response", "cleanText", "String", "Number", "Boolean", "Object", "Array", "Date", "Set", "Map"]);
   const returnedMatch = /return\s+(?:jsonResponse\s*\(\s*)?(?:await\s+)?([A-Za-z_$][\w$]*(?:(?:\s*(?:\.|\?\.)\s*[A-Za-z_$][\w$]*)|(?:\s*(?:\?\.)?\s*\[\s*[^\]\r\n]+\s*\]))*)\s*(?:\?\.)?\s*\(/.exec(dispatch);
   const returnedCallee = returnedMatch?.[1]?.replace(/\s+/g, "") || null;
   const returned = returnedCallee && /^[A-Za-z_$][\w$]*$/.test(returnedCallee) ? returnedCallee : null;
   const assignedReturn = /const\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+([A-Za-z_$][\w$]*)\s*\([\s\S]*?return\s+jsonResponse\s*\(\s*\1\s*\)/.exec(dispatch)?.[2] || null;
-  const callbackWrapper = returnedInlineCallbackCall(dispatch, source, Math.max(0, source.indexOf(dispatch)));
+  const astCallback = returnedInlineCallbackAst(dispatch, source);
+  const callbackWrapper = astCallback.parsed ? (astCallback.wrapper ? { root: "ast-undetermined" } : null) : returnedInlineCallbackCall(dispatch, source, Math.max(0, source.indexOf(dispatch)));
   if (callbackWrapper && !ignored.has(callbackWrapper.root)) {
     return { handler: "undetermined", handlerStatus: "undetermined", sourceSegment: dispatch, handlerResolution: "callback-wrapper-terminal-undetermined" };
   }

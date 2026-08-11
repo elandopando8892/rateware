@@ -26,7 +26,7 @@ This is conservative static analysis, not a universal JavaScript, TypeScript, or
 - `named-missing`: dispatch names a function whose declaration is absent; validation fails.
 - `undetermined`: static structure cannot establish a handler; validation fails.
 
-Inline is never used as a fallback for a missing named function. A preliminary guard or lookup is not selected merely because it is the first call in a branch. Multiple plausible operations remain `undetermined` and block validation. A generic function or member call that receives an inline callback is treated as a wrapper, not asserted as the terminal business handler; JavaScript trivia and balanced computed members do not change that classification. Deterministically imported or re-exported handlers remain valid during the repository-backed validation pass.
+Inline is never used as a fallback for a missing named function. A preliminary guard or lookup is not selected merely because it is the first call in a branch. Multiple plausible operations remain `undetermined` and block validation. A generic function or member call that receives an inline callback is treated as a wrapper, not asserted as the terminal business handler. Babel AST identity, lexical bindings, invoked local functions, computed properties, aliases, destructuring, and receiver state determine that classification. If AST parsing is unavailable, the conservative lexical fallback remains blocking. Deterministically imported or re-exported handlers remain valid during the repository-backed validation pass.
 
 ## Canonical identity
 
