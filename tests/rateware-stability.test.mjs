@@ -4516,7 +4516,8 @@ assert.match(internalTriggerPermissionsMigration, /alter default privileges in s
 assert.match(functionSearchPathMigration, /set search_path to pg_catalog, public, pg_temp/, "Legacy functions should resolve objects only through pinned trusted schemas");
 assert.match(functionSearchPathMigration, /revoke all on function %I\.%I\(%s\) from public, anon, authenticated/, "Legacy helpers should not remain public Data API RPCs");
 assert.match(functionSearchPathMigration, /grant execute on function %I\.%I\(%s\) to service_role/, "The trusted API should retain helper execution");
-assert.match(functionSearchPathMigration, /updated_count <> 31/, "Search-path hardening should fail if any expected function is missing");
+assert.match(functionSearchPathMigration, /updated_count <> 30/, "Search-path hardening should fail if any expected versioned function is missing");
+assert.doesNotMatch(functionSearchPathMigration, /'approve_rate_staging'/, "Search-path hardening should not require the unversioned legacy approval helper during clean replay");
 assert.match(permissiveRlsRemovalMigration, /matched_count <> 34/, "RLS hardening should fail if the expected permissive browser policy set drifts");
 assert.match(permissiveRlsRemovalMigration, /drop policy %I on public\.%I/, "RLS hardening should remove unrestricted browser write policies from public tables");
 assert.match(permissiveRlsRemovalMigration, /cmd <> 'SELECT'/, "RLS hardening should preserve intentionally public read-only policies");

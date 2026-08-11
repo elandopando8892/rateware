@@ -3,7 +3,6 @@
 do $migration$
 declare
   target_names constant text[] := array[
-    'approve_rate_staging',
     'rateware_bi_aggregate_value',
     'rateware_bi_dimension_value',
     'rateware_bi_metric_value',
@@ -70,8 +69,8 @@ begin
     updated_count := updated_count + 1;
   end loop;
 
-  if updated_count <> 31 then
-    raise exception 'Expected to secure 31 mutable-search-path functions, secured %', updated_count;
+  if updated_count <> 30 then
+    raise exception 'Expected to secure 30 mutable-search-path functions, secured %', updated_count;
   end if;
 end;
 $migration$;
