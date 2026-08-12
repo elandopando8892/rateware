@@ -377,7 +377,7 @@ export const ACTION_CONTRACT = {
     "edge.gmail-oauth-callback.complete_google_oauth_callback": "cacd4d985cc054d7f9647e3f95aeb74c95c4e131c72be1916286ca5514799206",
     "edge.google-chat-app.handle_chat_event": "834ac56f1dc136b87a315148cfe24b4186d496fb97699ec379b54b4489301267",
     "edge.google-chat-app.health": "834ac56f1dc136b87a315148cfe24b4186d496fb97699ec379b54b4489301267",
-    "edge.interpret-upload.interpret_upload": "feda7da16c532932a23a325bbbf10265ccd49c378ab34d42a6ea0218aea2dc58",
+    "edge.interpret-upload.interpret_upload": "c774fec86f1e1c4c827292eac210f1b6ef94ac75ed9b008ea8f51ccb0563171f",
     "edge.ratebook-carrier-api.get_ratebook_access": "3fa4ebe4e282c037f6335ccdc34a1238683be260d636c996fd0406e8112cdfb9",
     "edge.ratebook-carrier-api.submit_ratebook_quote": "3fa4ebe4e282c037f6335ccdc34a1238683be260d636c996fd0406e8112cdfb9",
     "edge.ratebook-carrier-api.withdraw_ratebook_quote": "3fa4ebe4e282c037f6335ccdc34a1238683be260d636c996fd0406e8112cdfb9",
@@ -978,7 +978,7 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "pending_human_approval",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "c7e7fb927aa6c6b3b84b047c962513519f1f7207d1b0d259f73eaf9c843b18e4",
+      "sourceFingerprint": "2e9d668a97727c41696ff4a5adb28065f2ffe957b637c6f392462cf86b87e780",
       "notes": "no frontend literal found; dead/admin/indirect candidate Permission and final ownership remain PENDING HUMAN APPROVAL.",
       "analysisCoverage": "shared-observed",
       "dependencyFiles": [

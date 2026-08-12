@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
-import { serviceFromNormalizedText } from "../_shared/service-normalization.mjs";
+import { decideServiceFromResolution, resolveServiceEvidence } from "../_shared/service-normalization.mjs";
 
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
@@ -294,42 +294,49 @@ function hasCatalogToken(value: unknown, token: string) {
   return new RegExp(`(^| )${lookup}( |$)`).test(key);
 }
 
-function serviceFromText(value: unknown) {
-  const key = rawKey(value);
-  return serviceFromNormalizedText(key);
+function serviceResolutionFromRow(row: Record<string, unknown>) {
+  const payload = row.extracted_payload && typeof row.extracted_payload === "object"
+    ? row.extracted_payload as Record<string, unknown>
+    : {};
+  const rowWarnings = Array.isArray(row.extraction_warnings) ? row.extraction_warnings : [row.extraction_warnings];
+  const payloadWarnings = Array.isArray(payload.extraction_warnings) ? payload.extraction_warnings : [payload.extraction_warnings];
+  return resolveServiceEvidence({
+    sourceMarkers: [row.source_service_marker, payload.source_service_marker],
+    narrativeParts: [
+      row.notes,
+      row.accessorials,
+      ...rowWarnings,
+      payload.notes,
+      payload.accessorials,
+      ...payloadWarnings
+    ]
+  });
 }
 
 function serviceEvidenceFromRow(row: Record<string, unknown>) {
-  return serviceFromText([
-    row.source_service_marker,
-    row.notes,
-    row.accessorials,
-    Array.isArray(row.extraction_warnings) ? row.extraction_warnings.join(" ") : row.extraction_warnings,
-    row.extracted_payload && typeof row.extracted_payload === "object"
-      ? [
-        (row.extracted_payload as Record<string, unknown>).source_service_marker,
-        (row.extracted_payload as Record<string, unknown>).notes,
-        (row.extracted_payload as Record<string, unknown>).accessorials,
-        Array.isArray((row.extracted_payload as Record<string, unknown>).extraction_warnings)
-          ? ((row.extracted_payload as Record<string, unknown>).extraction_warnings as unknown[]).join(" ")
-          : (row.extracted_payload as Record<string, unknown>).extraction_warnings
-      ].filter(Boolean).join(" ")
-      : null
-  ].filter(Boolean).join(" "));
+  const resolution = serviceResolutionFromRow(row);
+  return resolution.state === "resolved" ? resolution.service : null;
 }
 
-function normalizeServiceSafety(row: Record<string, unknown>) {
-  const explicit = serviceEvidenceFromRow(row);
-  if (explicit) return { ...row, service: explicit, normalized_service: explicit };
-
-  const serviceKey = rawKey(row.service || row.normalized_service);
+function normalizeServiceSafety(row: Record<string, unknown>): Record<string, unknown> {
+  const resolution = serviceResolutionFromRow(row);
   const operationKey = rawKey(row.operation || row.normalized_operation);
-  const hasOneDirection = operationKey.includes("D2D") || operationKey.includes("NORTHBOUND") || operationKey.includes("SOUTHBOUND");
-  if (serviceKey.includes("ROUNDTRIP") || serviceKey.includes("ROUND TRIP")) {
+  const decision = decideServiceFromResolution(resolution, {
+    currentService: row.service || row.normalized_service,
+    oneDirection: operationKey.includes("D2D") || operationKey.includes("NORTHBOUND") || operationKey.includes("SOUTHBOUND"),
+    priced: hasRateAmount(row)
+  });
+  if (decision.state === "resolved") {
+    return { ...row, service: decision.service, normalized_service: decision.service };
+  }
+  if (decision.state === "blocked") {
+    return { ...row, service: null, normalized_service: null };
+  }
+  if (decision.state === "corrected") {
     return {
       ...row,
-      service: "One Way",
-      normalized_service: "One Way",
+      service: decision.service,
+      normalized_service: decision.service,
       notes: [
         row.notes,
         "Service corrected to One Way because no explicit RT/Round Trip marker was found in the carrier quote."
@@ -337,11 +344,11 @@ function normalizeServiceSafety(row: Record<string, unknown>) {
     };
   }
 
-  if (!serviceKey && (hasOneDirection || hasRateAmount(row))) {
+  if (decision.state === "defaulted") {
     return {
       ...row,
-      service: "One Way",
-      normalized_service: "One Way",
+      service: decision.service,
+      normalized_service: decision.service,
       notes: [
         row.notes,
         "Service defaulted to One Way because the carrier provided a priced lane without an explicit RT/Round Trip marker."
@@ -355,8 +362,6 @@ function normalizeRatewareAliases(row: Record<string, unknown>) {
   const normalized = { ...row };
   const equipmentText = [normalized.equipment, normalized.trailer, normalized.config, normalized.notes, normalized.accessorials].filter(Boolean).join(" ");
   const operationText = [normalized.operation, normalized.notes].filter(Boolean).join(" ");
-  const serviceText = [normalized.service, normalized.operation, normalized.notes].filter(Boolean).join(" ");
-  const resolvedService = serviceFromText(serviceText);
   if (includesAny(equipmentText, ["hazmat", "hazardous"])) normalized.hazmat = true;
   if (includesAny(equipmentText, ["reefer", "refrigerated", "temperature controlled", "temp controlled"])) normalized.temperature_controlled = true;
 
@@ -375,8 +380,6 @@ function normalizeRatewareAliases(row: Record<string, unknown>) {
   } else if (includesAny(operationText, ["OW Expo", "OW Export", "Export"])) {
     normalized.operation = "D2D Export";
   }
-
-  if (resolvedService) normalized.service = resolvedService;
 
   if (includesAny(operationText, ["Cross-border", "Cross border", "Crossborder"]) && !includesAny(normalized.operation, ["D2D", "Northbound", "Southbound"])) {
     normalized.operation = "D2D Import";
@@ -935,6 +938,7 @@ function rateMode(row: Record<string, unknown>) {
 
 function rowAuditFlags(row: Record<string, unknown>) {
   const flags: string[] = [];
+  const serviceResolution = serviceResolutionFromRow(row);
   const requiredTextFields = [
     ["vendor_domain", "missing_vendor"],
     ["rfx_id", "missing_rfx"],
@@ -960,6 +964,12 @@ function rowAuditFlags(row: Record<string, unknown>) {
   if (rateMode(row) === "split_without_total") flags.push("split_without_all_in_total");
   if (hasNonNumericRateText(extractedPayloadValue(row, "all_in_rate"))) flags.push("all_in_text_cleaned");
   if (rawKey(row.service || row.normalized_service).includes("ROUNDTRIP") && !serviceEvidenceFromRow(row)) flags.push("roundtrip_without_source_marker");
+  if (serviceResolution.state === "invalid") {
+    flags.push(serviceResolution.tier === "structured" ? "invalid_source_service_marker" : "invalid_narrative_service_evidence");
+  }
+  if (serviceResolution.state === "conflict") {
+    flags.push(serviceResolution.tier === "structured" ? "conflicting_source_service_markers" : "conflicting_narrative_service_evidence");
+  }
   if (clampConfidence(row.confidence, 0) < 0.7) flags.push("low_row_confidence");
   if (Array.isArray(row.extraction_warnings) && row.extraction_warnings.length) flags.push("has_extraction_warnings");
 
@@ -985,6 +995,10 @@ const DERIVED_ROW_AUDIT_FLAGS = new Set([
   "split_without_all_in_total",
   "all_in_text_cleaned",
   "roundtrip_without_source_marker",
+  "invalid_source_service_marker",
+  "invalid_narrative_service_evidence",
+  "conflicting_source_service_markers",
+  "conflicting_narrative_service_evidence",
   "low_row_confidence",
   "has_extraction_warnings"
 ]);
@@ -1024,6 +1038,7 @@ function fieldConfidence(row: Record<string, unknown>) {
 
 function sourceEvidence(rawUpload: Record<string, unknown>, row: Record<string, unknown>) {
   const warnings = Array.isArray(row.extraction_warnings) ? row.extraction_warnings.map(String) : [];
+  const serviceResolution = serviceResolutionFromRow(row);
   return {
     source_filename: rawUpload.original_filename || null,
     document_type: rawUpload.document_type || null,
@@ -1036,8 +1051,12 @@ function sourceEvidence(rawUpload: Record<string, unknown>, row: Record<string, 
     split_rate_present: hasSplitRateAmount(row),
     rate_mode: rateMode(row),
     source_service_marker: cleanText(row.source_service_marker) || cleanText(extractedPayloadValue(row, "source_service_marker")),
-    service_marker: serviceEvidenceFromRow(row),
-    roundtrip_explicit: serviceEvidenceFromRow(row) === "Roundtrip",
+    service_marker: serviceResolution.state === "resolved" ? serviceResolution.service : null,
+    service_evidence_state: serviceResolution.state,
+    service_evidence_tier: "tier" in serviceResolution ? serviceResolution.tier : null,
+    service_evidence_reason: "reason" in serviceResolution ? serviceResolution.reason : null,
+    service_evidence_conflicts: "services" in serviceResolution ? serviceResolution.services : [],
+    roundtrip_explicit: serviceResolution.state === "resolved" && serviceResolution.service === "Roundtrip",
     notes: cleanText(row.notes),
     warnings
   };
@@ -1097,7 +1116,7 @@ function normalizeRow(
   vendorDomain: string | null = null,
   forceVendorDomain = false
 ) {
-  const interpreted = normalizeRatewareAliases(row);
+  const interpreted = normalizeServiceSafety(normalizeRatewareAliases(row));
   const hazmat = cleanBoolean(interpreted.hazmat);
   const temperatureControlled = cleanBoolean(interpreted.temperature_controlled);
   const trailer = trailerWithFlags(cleanText(interpreted.trailer), hazmat, temperatureControlled);
