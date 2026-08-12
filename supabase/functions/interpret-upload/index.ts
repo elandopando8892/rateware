@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
-import { resolveWorkspaceUser, workspaceUserContext, type WorkspaceUser } from "../_shared/workspace.ts";
+import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
@@ -2416,11 +2416,11 @@ Deno.serve(async (request) => {
   }
 
   const supabase = getClient();
-  let user: WorkspaceUser;
+  let user: RuntimeWorkspaceUser;
   try {
-    user = await resolveWorkspaceUser(supabase, workspaceUserContext(await requireKindeUser(request)));
+    user = await resolveRuntimeWorkspaceUser(supabase, await requireKindeUser(request));
   } catch (error) {
-    return jsonResponse({ error: interpretationErrorMessage(error, "Authentication required.") }, 401);
+    return jsonResponse({ error: interpretationErrorMessage(error, "Authentication required.") }, runtimeIdentityStatus(error) === 403 ? 403 : 401);
   }
 
   const { raw_upload_id, correction_note = "" } = await request.json();
