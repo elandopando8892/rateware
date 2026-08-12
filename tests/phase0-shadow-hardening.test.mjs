@@ -7,6 +7,11 @@ assert.equal(serviceFromNormalizedText("One Way per rule: single price without R
 assert.equal(serviceFromNormalizedText("no explicit Round Trip marker; use One Way"), "One Way");
 assert.equal(serviceFromNormalizedText("RT marker visible"), "Roundtrip");
 assert.equal(serviceFromNormalizedText("Round Trip explicitly quoted"), "Roundtrip");
+assert.equal(serviceFromNormalizedText("Round Trip explicitly quoted; no RT surcharge"), "Roundtrip");
+assert.equal(serviceFromNormalizedText("RT marker visible; no RT accessorial"), "Roundtrip");
+assert.equal(serviceFromNormalizedText("RT marker visible; One Way note says without RT marker"), "Roundtrip");
+assert.equal(serviceFromNormalizedText("One Way; without RT surcharge"), "One Way");
+assert.equal(serviceFromNormalizedText("One Way; without RT accessorial"), "One Way");
 assert.equal(serviceFromNormalizedText("Backhaul"), "Backhaul");
 
 const operations = [
