@@ -10,6 +10,7 @@
     "validate:action-contract": "node tools/validate-action-contract.mjs",
     "test:action-contract": "node tests/action-contract.test.mjs",
     "test:identity-contract": "node --test tests/phase0-identity.test.mjs",
+    "test:shadow-hardening": "node tests/phase0-shadow-hardening.test.mjs",
     "test": "node tests/upload-center.test.mjs && node tests/commercial-model-compat.test.mjs && node tests/rateware-stability.test.mjs && node tests/rfx-multilane-e2e.test.mjs && node tests/vendor-template-update.test.mjs && node tests/customer-rfi.test.mjs && node tests/shipper-crm.test.mjs && node tests/shipper-profile.test.mjs && node tests/ratebook.test.mjs && node tests/growth-hacking.test.mjs && node tests/action-contract.test.mjs && node --test tests/phase0-identity.test.mjs && node --test tests/phase0-runtime-enforcement.test.mjs"
   },
   "devDependencies": {

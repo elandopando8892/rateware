@@ -27,6 +27,7 @@ const statusFilter = document.querySelector("#catalog-status-filter");
 const viewModeSelect = document.querySelector("#catalog-view-mode");
 const searchInput = document.querySelector("#catalog-search");
 const refreshButton = document.querySelector("#refresh-catalog-workbench");
+const previewSyncButton = document.querySelector("#preview-sync-catalog-button");
 const syncButton = document.querySelector("#sync-catalog-button");
 const catalogValueForm = document.querySelector("#catalog-value-form");
 const catalogImportFileInput = document.querySelector("#catalog-import-file");
@@ -1401,21 +1402,43 @@ async function loadWorkbench() {
   }
 }
 
+async function previewCatalogSync() {
+  if (catalogSyncRunning) return;
+  catalogSyncRunning = true;
+  syncButton.disabled = true;
+  if (previewSyncButton) previewSyncButton.disabled = true;
+  setStatus("Previewing catalog sync...");
+  try {
+    const result = await syncRatewareCatalog("core", { dryRun: true });
+    const summary = `${result.catalog_items || 0} catalog items, ${result.locations || 0} locations, ${result.fuel_regions || 0} fuel regions`;
+    setStatus(`Catalog preview ready: ${summary}. No rows were written.`, "success");
+  } catch (error) {
+    setStatus(humanizeError(error), "error");
+  } finally {
+    catalogSyncRunning = false;
+    syncButton.disabled = false;
+    if (previewSyncButton) previewSyncButton.disabled = false;
+  }
+}
+
 async function syncCatalog() {
   if (catalogSyncRunning) return;
   catalogSyncRunning = true;
   syncButton.disabled = true;
+  if (previewSyncButton) previewSyncButton.disabled = true;
   setStatus("Syncing catalog...");
   try {
-    const result = await syncRatewareCatalog("core");
+    const result = await syncRatewareCatalog("core", { dryRun: false });
+    const summary = `${result.catalog_items || 0} catalog items, ${result.locations || 0} locations, ${result.fuel_regions || 0} fuel regions`;
     invalidateCatalogCaches();
-    setStatus(`Catalog synced. ${result.inserted || 0} inserted, ${result.updated || 0} updated.`, "success");
+    setStatus(`Catalog synced: ${summary}.`, "success");
     if (catalogWorkbenchLoaded) await loadWorkbench();
   } catch (error) {
     setStatus(humanizeError(error), "error");
   } finally {
     catalogSyncRunning = false;
     syncButton.disabled = false;
+    if (previewSyncButton) previewSyncButton.disabled = false;
   }
 }
 
@@ -1439,6 +1462,7 @@ document.querySelector("[data-workbench-view-button='locations']")?.addEventList
 });
 
 refreshButton?.addEventListener("click", loadWorkbench);
+previewSyncButton?.addEventListener("click", previewCatalogSync);
 syncButton?.addEventListener("click", syncCatalog);
 catalogImportTypeSelect?.addEventListener("change", () => {
   renderImportMapping();

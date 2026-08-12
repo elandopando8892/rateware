@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
+import { serviceFromNormalizedText } from "../_shared/service-normalization.mjs";
 
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
@@ -295,12 +296,7 @@ function hasCatalogToken(value: unknown, token: string) {
 
 function serviceFromText(value: unknown) {
   const key = rawKey(value);
-  if (!key) return null;
-  if (key.includes("NO EXPLICIT") || key.includes("CORRECTED TO ONE WAY")) return null;
-  if (hasCatalogToken(key, "RT") || key.includes("ROUND TRIP") || key.includes("ROUNDTRIP") || key.includes("ROUND TRIP")) return "Roundtrip";
-  if (key.includes("BACKHAUL")) return "Backhaul";
-  if (hasCatalogToken(key, "OW") || key.includes("ONE WAY") || key.includes("ONEWAY")) return "One Way";
-  return null;
+  return serviceFromNormalizedText(key);
 }
 
 function serviceEvidenceFromRow(row: Record<string, unknown>) {
