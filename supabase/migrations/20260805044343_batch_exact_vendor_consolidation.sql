@@ -2,21 +2,47 @@ do $$
 declare
   function_definition text;
   updated_definition text;
+  duplicate_key_cte_matches integer;
+  candidate_boundary_matches integer;
 begin
   select pg_get_functiondef(
     'public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)'::regprocedure
   ) into function_definition;
 
   if position('duplicate_keys_all as (' in function_definition) = 0 then
-    updated_definition := replace(
+    select count(*)
+    into duplicate_key_cte_matches
+    from regexp_matches(
       function_definition,
-      E'  duplicate_keys as (\n',
-      E'  duplicate_keys_all as (\n'
+      '(^|[[:space:]])duplicate_keys[[:space:]]+as[[:space:]]*\(',
+      'gi'
     );
 
-    updated_definition := replace(
+    select count(*)
+    into candidate_boundary_matches
+    from regexp_matches(
+      function_definition,
+      'having[[:space:]]+count[[:space:]]*\([[:space:]]*\*[[:space:]]*\)[[:space:]]*>[[:space:]]*1[[:space:]]*\)[[:space:]]*,[[:space:]]*candidate_ids[[:space:]]+as[[:space:]]*\(',
+      'gi'
+    );
+
+    if duplicate_key_cte_matches <> 1 or candidate_boundary_matches <> 1 then
+      raise exception
+        'Could not identify one bounded batching insertion point (duplicate_keys=%, candidate_boundary=%).',
+        duplicate_key_cte_matches,
+        candidate_boundary_matches;
+    end if;
+
+    updated_definition := regexp_replace(
+      function_definition,
+      '(^|[[:space:]])duplicate_keys[[:space:]]+as[[:space:]]*\(',
+      E'\\1duplicate_keys_all as (',
+      'i'
+    );
+
+    updated_definition := regexp_replace(
       updated_definition,
-      E'    having count(*) > 1\n  ),\n  candidate_ids as (',
+      'having[[:space:]]+count[[:space:]]*\([[:space:]]*\*[[:space:]]*\)[[:space:]]*>[[:space:]]*1[[:space:]]*\)[[:space:]]*,[[:space:]]*candidate_ids[[:space:]]+as[[:space:]]*\(',
       E'    having count(*) > 1\n'
         || E'  ),\n'
         || E'  duplicate_keys as (\n'
@@ -28,7 +54,8 @@ begin
         || E'      else greatest(1, least(coalesce(p_preview_limit, 50), 100))\n'
         || E'    end\n'
         || E'  ),\n'
-        || E'  candidate_ids as ('
+        || E'  candidate_ids as (',
+      'i'
     );
 
     if updated_definition = function_definition
