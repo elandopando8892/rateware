@@ -2327,12 +2327,12 @@ assert.match(rfxBidApiSource, /DEFAULT_COMMERCIAL_SHARE_PCT = 3/, "Carrier porta
 assert.match(rfxBidApiSource, /XBF_BUY_SELL_DEFAULT_MARKUP_PCT = 12/, "Carrier portal API should default XBF buy-sell markup to 12 percent");
 assert.match(rfxBidApiSource, /strictOptionalPercentWithDefault\(body\.marksman_margin_pct, "Suggested margin to share", 2, 5, DEFAULT_COMMERCIAL_SHARE_PCT\)/, "Carrier portal API should allow blank cost-plus percentage and default it");
 assert.match(rfxBidApiSource, /strictOptionalPercentWithDefault\(body\.carrier_share_pct, "Carrier invoice share", 2, 5, DEFAULT_COMMERCIAL_SHARE_PCT\)/, "Carrier portal API should allow blank carrier-share percentage and default it");
-assert.match(rfxBidApiSource, /commercialModel === "direct_cost_plus"[\s\S]*: null/, "Carrier portal API should clear inapplicable commercial percentages by model");
+assert.match(rfxBidApiSource, /legacyModel === "direct_cost_plus"[\s\S]*: null/, "Carrier portal API should preserve legacy percentage semantics while writing canonical commercial models");
 assert.match(rfxBidApiSource, /strictCurrencyCode\(body\.currency\)/, "Carrier portal API should reject invalid currency codes");
 assert.match(rfxBidApiSource, /commercial_model: commercialModel/, "Carrier portal API should write normalized commercial model");
 assert.match(rfxBidApiSource, /best_alternative_offered: cleanBoolean\(body\.best_alternative_offered\) === true/, "Carrier portal API should write best-alternative flag");
 assert.match(rfxBidApiSource, /eta_pickup: cleanTimestamp\(body\.eta_pickup\)/, "Carrier portal API should write pickup ETA");
-assert.match(apiSource, /commercial_model = normalizeCommercialModel|patch\.commercial_model = normalizeCommercialModel/, "Internal API should accept commercial model bid updates");
+assert.match(apiSource, /patch\.commercial_model = normalizeCommercialModelForUpdate/, "Internal API should canonicalize commercial model updates without rewriting legacy Fee-Plus rows");
 assert.match(rfxBidSource, /bid-commercial-model/, "Carrier portal should render commercial model input");
 assert.match(rfxBidSource, /bid-alt-enabled/, "Carrier portal should render best-alternative input");
 assert.match(rfxBidSource, /bid-equipment-available/, "Carrier portal should render equipment availability input");
