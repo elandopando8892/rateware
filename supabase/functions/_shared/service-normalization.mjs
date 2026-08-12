@@ -3,33 +3,19 @@ export function serviceFromNormalizedText(value) {
   if (!key) return null;
 
   const hasOneWay = /(^| )OW( |$)/.test(key) || key.includes("ONE WAY") || key.includes("ONEWAY");
-  const negativeMarkerPatterns = [
-    /\b(?:NO|NOT|WITHOUT)\s+(?:AN?\s+)?(?:EXPLICIT\s+)?(?:RT|ROUND\s*TRIP)\s+(?:MARKER|SERVICE|QUOTE|RATE)(?:\s+(?:IS\s+)?(?:VISIBLE|PRESENT|SHOWN|PROVIDED|INCLUDED|APPLICABLE|AVAILABLE))?/g,
-    /\b(?:NO|NOT|WITHOUT)\s+(?:AN?\s+)?(?:EXPLICIT\s+)?(?:RT|ROUND\s*TRIP)(?=\s*$|\s*[.;,|)])/g,
-    /\b(?:NO|NOT|WITHOUT)\s+(?:AN?\s+)?(?:RT|ROUND\s*TRIP)\s+EXPLICITLY\s+(?:QUOTED|STATED|SHOWN|INCLUDED)\b/g,
-    /\b(?:RT|ROUND\s*TRIP)\s+EXPLICITLY\s+NOT\s+(?:QUOTED|STATED|SHOWN|INCLUDED)\b/g,
-    /\b(?:RT|ROUND\s*TRIP)\s+(?:(?:MARKER|SERVICE|QUOTE|RATE)\s+)?(?:IS\s+)?(?:ABSENT|MISSING|UNAVAILABLE|NOT\s+(?:PROVIDED|SHOWN|VISIBLE|PRESENT|INCLUDED|APPLICABLE|AVAILABLE|QUOTED|STATED))\b/g,
-    /\bCORRECTED\s+TO\s+ONE\s+WAY\b/g
-  ];
-  const chargeContextPatterns = [
-    /\b(?:NO|NOT|WITHOUT)\s+(?:AN?\s+)?(?:RT|ROUND\s*TRIP)\s+(?:SURCHARGE|ACCESSORIAL|FEE|CHARGE)\b/g,
-    /\b(?:RT|ROUND\s*TRIP)\s+(?:SURCHARGE|ACCESSORIAL|FEE|CHARGE)(?:\s+(?:IS\s+)?(?:WAIVED|ABSENT|MISSING|NOT\s+(?:APPLICABLE|CHARGED|INCLUDED)))?\b/g
-  ];
-  const deniesRoundtrip = negativeMarkerPatterns.some((pattern) => new RegExp(pattern.source).test(key));
-  const serviceEvidence = [...negativeMarkerPatterns, ...chargeContextPatterns]
-    .reduce((text, pattern) => text.replace(pattern, " "), key)
-    .replace(/\s+/g, " ")
-    .trim();
+  if (/\bCORRECTED\s+TO\s+ONE\s+WAY\b/.test(key)) return "One Way";
+
+  const exactService = key.replace(/[.;,|:()]+$/g, "").trim();
+  if (["RT", "ROUND TRIP", "ROUNDTRIP"].includes(exactService)) return "Roundtrip";
   const confirmsRoundtrip = [
-    /\b(?:RT|ROUND\s*TRIP)\s+(?:MARKER\s+)?(?:IS\s+)?(?:VISIBLE|EXPLICIT|SHOWN|PRESENT)\b/,
-    /\b(?:RT|ROUND\s*TRIP)\s+(?:IS\s+)?EXPLICITLY\s+(?:QUOTED|STATED|SHOWN)\b/
-  ].some((pattern) => pattern.test(serviceEvidence));
+    /(?<!NO )(?<!NOT )(?<!WITHOUT )\b(?:RT|ROUND\s*TRIP)\s+(?:SERVICE\s+)?MARKER\s+(?:IS\s+)?(?:VISIBLE|EXPLICIT|SHOWN|PRESENT|TRUE)\b(?!\s*[:=]\s*FALSE)/,
+    /\b(?:VISIBLE|EXPLICIT|SHOWN|PRESENT)\s+(?:SERVICE\s+)?MARKER\s+(?:IS\s+)?(?:RT|ROUND\s*TRIP)\b/,
+    /\bVISIBLE\s+SERVICE\s+MARKER\s+(?:IS\s+)?(?:RT|ROUND\s*TRIP)\b/,
+    /(?<!NO )(?<!NOT )(?<!WITHOUT )\b(?:RT|ROUND\s*TRIP)\s+(?:IS\s+)?EXPLICITLY\s+(?:QUOTED|STATED|SHOWN|INCLUDED)\b(?!\s*[:=]\s*FALSE)/
+  ].some((pattern) => pattern.test(key));
 
   if (confirmsRoundtrip) return "Roundtrip";
   if (key.includes("BACKHAUL")) return "Backhaul";
-  if (hasOneWay && deniesRoundtrip) return "One Way";
-  if (deniesRoundtrip) return null;
   if (hasOneWay) return "One Way";
-  if (/(^| )RT( |$)/.test(serviceEvidence) || serviceEvidence.includes("ROUND TRIP") || serviceEvidence.includes("ROUNDTRIP")) return "Roundtrip";
   return null;
 }

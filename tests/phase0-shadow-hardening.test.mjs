@@ -32,6 +32,22 @@ assert.equal(serviceFromNormalizedText("no Round Trip explicitly quoted"), null)
 assert.equal(serviceFromNormalizedText("without Round Trip explicitly stated"), null);
 assert.equal(serviceFromNormalizedText("Backhaul; no RT marker"), "Backhaul");
 assert.equal(serviceFromNormalizedText("Backhaul | RT marker absent"), "Backhaul");
+assert.equal(serviceFromNormalizedText("RT markers not visible"), null);
+assert.equal(serviceFromNormalizedText("RT services not included"), null);
+assert.equal(serviceFromNormalizedText("RT quotes unavailable"), null);
+assert.equal(serviceFromNormalizedText("RT rates not applicable"), null);
+assert.equal(serviceFromNormalizedText("RT fees waived"), null);
+assert.equal(serviceFromNormalizedText("RT charges not included"), null);
+assert.equal(serviceFromNormalizedText("RT surcharges absent"), null);
+assert.equal(serviceFromNormalizedText("RT accessorials not included"), null);
+assert.equal(serviceFromNormalizedText("no surcharge for RT"), null);
+assert.equal(serviceFromNormalizedText("fees for RT waived"), null);
+assert.equal(serviceFromNormalizedText("RT-related surcharge"), null);
+assert.equal(serviceFromNormalizedText("RT marker visible: false"), null);
+assert.equal(serviceFromNormalizedText("Round Trip explicitly quoted: false"), null);
+assert.equal(serviceFromNormalizedText("Backhaul corrected to One Way"), "One Way");
+assert.equal(serviceFromNormalizedText("Service Backhaul | corrected to One Way"), "One Way");
+assert.equal(serviceFromNormalizedText("Backhaul; no RT marker; corrected to One Way"), "One Way");
 assert.equal(serviceFromNormalizedText("Backhaul"), "Backhaul");
 
 const operations = [
