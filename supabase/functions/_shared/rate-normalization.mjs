@@ -16,6 +16,6 @@ export function normalizedAllInFromFuel({
     return allIn;
   }
 
-  if (normalizedFscTotal === null || (linehaul === 0 && borderFee === 0)) return null;
+  if (normalizedFscTotal === null || linehaul <= 0) return null;
   return roundedAmount(linehaul + borderFee + normalizedFscTotal);
 }

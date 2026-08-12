@@ -377,7 +377,7 @@ export const ACTION_CONTRACT = {
     "edge.gmail-oauth-callback.complete_google_oauth_callback": "cacd4d985cc054d7f9647e3f95aeb74c95c4e131c72be1916286ca5514799206",
     "edge.google-chat-app.handle_chat_event": "834ac56f1dc136b87a315148cfe24b4186d496fb97699ec379b54b4489301267",
     "edge.google-chat-app.health": "834ac56f1dc136b87a315148cfe24b4186d496fb97699ec379b54b4489301267",
-    "edge.interpret-upload.interpret_upload": "1c1ec36f7eb87ef642821ca329ae692ef3bb5103b8a4fe07732c1862ae908f24",
+    "edge.interpret-upload.interpret_upload": "8a4d07f5b17175028deef77e02f4a34e309195200c6276a8387f55aca14a92d0",
     "edge.ratebook-carrier-api.get_ratebook_access": "3fa4ebe4e282c037f6335ccdc34a1238683be260d636c996fd0406e8112cdfb9",
     "edge.ratebook-carrier-api.submit_ratebook_quote": "3fa4ebe4e282c037f6335ccdc34a1238683be260d636c996fd0406e8112cdfb9",
     "edge.ratebook-carrier-api.withdraw_ratebook_quote": "3fa4ebe4e282c037f6335ccdc34a1238683be260d636c996fd0406e8112cdfb9",

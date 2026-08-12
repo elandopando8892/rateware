@@ -35,6 +35,14 @@ assert.equal(normalizedAllInFromFuel({
 }), null, "FSC alone must not be promoted to an all-in rate");
 
 assert.equal(normalizedAllInFromFuel({
+  allIn: null,
+  carrierFscTotal: null,
+  normalizedFscTotal: 343.65,
+  linehaul: 0,
+  borderFee: 100
+}), null, "a border fee without linehaul must not be promoted to an all-in rate");
+
+assert.equal(normalizedAllInFromFuel({
   allIn: 2500,
   carrierFscTotal: null,
   normalizedFscTotal: null,
