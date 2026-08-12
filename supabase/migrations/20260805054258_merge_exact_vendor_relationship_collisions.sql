@@ -595,6 +595,10 @@ begin
     'public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)'::regprocedure
   ) into v_definition;
 
+  -- Function bodies can retain CRLF when a migration is pushed from Windows.
+  -- Normalize before applying the audited LF-delimited structural anchors.
+  v_definition := replace(v_definition, E'\r\n', E'\n');
+
   v_conflict_start := strpos(
     v_definition,
     E'  select count(*) into v_conflict_count\n  from (\n    select m.winner_id, t.rfx_event_id'
