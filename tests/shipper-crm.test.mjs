@@ -34,7 +34,7 @@ for (const action of ["shipper_crm_summary", "list_shippers", "list_shipper_dupl
 }
 assert.match(service, /SHIPPER_DIRECTORY_FUNCTION = "shipper-directory-api"/, "Directory reads should use the lightweight Shipper endpoint");
 assert.match(directoryApi, /requireKindeUser\(request\)/, "The lightweight Shipper endpoint must validate the Kinde bearer token");
-assert.match(directoryApi, /resolveWorkspaceUser\([\s\S]*persistIdentity: false/, "The lightweight Shipper endpoint must preserve canonical workspace isolation");
+assert.match(directoryApi, /resolveRuntimeWorkspaceUser\([\s\S]*supabase,[\s\S]*identity as Record/, "The lightweight Shipper endpoint must enforce the reviewed tenant identity");
 assert.match(directoryApi, /body\.action === "shipper_crm_summary"/);
 assert.match(directoryApi, /body\.action === "list_shippers"/);
 assert.match(directoryApi, /body\.action === "get_shipper"/, "Shipper profile reads should use the lightweight endpoint");
