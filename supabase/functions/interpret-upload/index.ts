@@ -3,6 +3,7 @@ import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import { decideServiceFromResolution, resolveServiceEvidence } from "../_shared/service-normalization.mjs";
+import { normalizedAllInFromFuel } from "../_shared/rate-normalization.mjs";
 
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
@@ -78,6 +79,7 @@ const RATEWARE_SCHEMA = {
           "vendor_domain",
           "rfx_id",
           "quote_date",
+          "valid_through",
           "row_id",
           "origin",
           "destination",
@@ -111,6 +113,7 @@ const RATEWARE_SCHEMA = {
           vendor_domain: { type: ["string", "null"] },
           rfx_id: { type: ["string", "null"] },
           quote_date: { type: ["string", "null"] },
+          valid_through: { type: ["string", "null"] },
           row_id: { type: ["string", "null"] },
           origin: { type: ["string", "null"] },
           destination: { type: ["string", "null"] },
@@ -1129,6 +1132,7 @@ function normalizeRow(
     vendor_reference: resolveRowVendorReference(interpreted.vendor_domain, vendorDomain),
     rfx_id: cleanText(interpreted.rfx_id),
     quote_date: cleanDate(interpreted.quote_date),
+    valid_through: cleanDate(interpreted.valid_through),
     row_id: cleanText(interpreted.row_id),
     origin: cleanText(interpreted.origin),
     destination: cleanText(interpreted.destination),
@@ -1471,11 +1475,13 @@ function addFuelAudit(row: Record<string, unknown>, fuelRegionItems: Record<stri
   const borderFee = cleanNumber(row.border_crossing_fee) || 0;
   const normalizedFscTotal = usMiles ? Number((usMiles * normalizedFsc).toFixed(2)) : null;
   const carrierFscTotal = usMiles && carrierFsc !== null ? Number((usMiles * carrierFsc).toFixed(2)) : null;
-  const normalizedAllIn = allIn !== null && carrierFscTotal !== null && normalizedFscTotal !== null
-    ? Number((allIn - carrierFscTotal + normalizedFscTotal).toFixed(2))
-    : normalizedFscTotal !== null
-      ? Number((linehaul + borderFee + normalizedFscTotal).toFixed(2))
-      : allIn;
+  const normalizedAllIn = normalizedAllInFromFuel({
+    allIn,
+    carrierFscTotal,
+    normalizedFscTotal,
+    linehaul,
+    borderFee
+  });
 
   return {
     ...row,
@@ -2195,6 +2201,7 @@ async function interpretWithModel(rawUpload: Record<string, string>, file: Blob,
     "Do not replace a visible destination with another city from the state. If the table says Canton, MS, do not output Tupelo, MS. If the table says Smyrna, TN, do not output Nashville, TN as destination; Nashville may only be market metadata.",
     "Detect vendor, RFx, quotation date, origin, destination, equipment, operation, service, linehaul, border fee, FSC, all-in rate, and weekly capacity.",
     "Set quote_date to the carrier quotation date, bid date, offer date, email sent date, or document issue date when explicitly present. Use YYYY-MM-DD when possible.",
+    "Set valid_through to the carrier's explicit quote expiration, validity, or valid-through date. Use YYYY-MM-DD when possible and null when absent.",
     "Never use Tier 1, Tier 2, or Tier 3 as carrier rates.",
     "Ignore X, N/A, and Please Estimate as rates.",
     "Ignore Marksman, heymarksman.com, or marksmanxbf.com template/layout/proposal rows. Those are the shipper's requested template, not the carrier response.",
