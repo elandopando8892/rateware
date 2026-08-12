@@ -12,6 +12,15 @@ assert.equal(serviceFromNormalizedText("RT marker visible; no RT accessorial"), 
 assert.equal(serviceFromNormalizedText("RT marker visible; One Way note says without RT marker"), "Roundtrip");
 assert.equal(serviceFromNormalizedText("One Way; without RT surcharge"), "One Way");
 assert.equal(serviceFromNormalizedText("One Way; without RT accessorial"), "One Way");
+assert.equal(serviceFromNormalizedText("RT marker not visible"), null);
+assert.equal(serviceFromNormalizedText("no RT marker visible"), null);
+assert.equal(serviceFromNormalizedText("One Way; no RT marker visible"), "One Way");
+assert.equal(serviceFromNormalizedText("no RT surcharge"), null);
+assert.equal(serviceFromNormalizedText("without RT accessorial"), null);
+assert.equal(serviceFromNormalizedText("no RT fee"), null);
+assert.equal(serviceFromNormalizedText("not RT charge"), null);
+assert.equal(serviceFromNormalizedText("RT surcharge waived"), null);
+assert.equal(serviceFromNormalizedText("Round Trip service not shown"), null);
 assert.equal(serviceFromNormalizedText("Backhaul"), "Backhaul");
 
 const operations = [
