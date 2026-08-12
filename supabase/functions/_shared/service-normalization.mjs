@@ -4,9 +4,11 @@ export function serviceFromNormalizedText(value) {
 
   const hasOneWay = /(^| )OW( |$)/.test(key) || key.includes("ONE WAY") || key.includes("ONEWAY");
   const negativeMarkerPatterns = [
-    /\b(?:NO|NOT|WITHOUT)\s+(?:AN?\s+)?(?:EXPLICIT\s+)?(?:RT|ROUND\s*TRIP)\s+(?:MARKER|SERVICE|QUOTE|RATE)(?:\s+(?:IS\s+)?(?:VISIBLE|PRESENT|SHOWN|PROVIDED))?/g,
+    /\b(?:NO|NOT|WITHOUT)\s+(?:AN?\s+)?(?:EXPLICIT\s+)?(?:RT|ROUND\s*TRIP)\s+(?:MARKER|SERVICE|QUOTE|RATE)(?:\s+(?:IS\s+)?(?:VISIBLE|PRESENT|SHOWN|PROVIDED|INCLUDED|APPLICABLE|AVAILABLE))?/g,
     /\b(?:NO|NOT|WITHOUT)\s+(?:AN?\s+)?(?:EXPLICIT\s+)?(?:RT|ROUND\s*TRIP)(?=\s*$|\s*[.;,|)])/g,
-    /\b(?:RT|ROUND\s*TRIP)\s+(?:(?:MARKER|SERVICE|QUOTE|RATE)\s+)?(?:IS\s+)?(?:ABSENT|MISSING|NOT\s+(?:PROVIDED|SHOWN|VISIBLE|PRESENT))\b/g,
+    /\b(?:NO|NOT|WITHOUT)\s+(?:AN?\s+)?(?:RT|ROUND\s*TRIP)\s+EXPLICITLY\s+(?:QUOTED|STATED|SHOWN|INCLUDED)\b/g,
+    /\b(?:RT|ROUND\s*TRIP)\s+EXPLICITLY\s+NOT\s+(?:QUOTED|STATED|SHOWN|INCLUDED)\b/g,
+    /\b(?:RT|ROUND\s*TRIP)\s+(?:(?:MARKER|SERVICE|QUOTE|RATE)\s+)?(?:IS\s+)?(?:ABSENT|MISSING|UNAVAILABLE|NOT\s+(?:PROVIDED|SHOWN|VISIBLE|PRESENT|INCLUDED|APPLICABLE|AVAILABLE|QUOTED|STATED))\b/g,
     /\bCORRECTED\s+TO\s+ONE\s+WAY\b/g
   ];
   const chargeContextPatterns = [
@@ -24,9 +26,9 @@ export function serviceFromNormalizedText(value) {
   ].some((pattern) => pattern.test(serviceEvidence));
 
   if (confirmsRoundtrip) return "Roundtrip";
+  if (key.includes("BACKHAUL")) return "Backhaul";
   if (hasOneWay && deniesRoundtrip) return "One Way";
   if (deniesRoundtrip) return null;
-  if (key.includes("BACKHAUL")) return "Backhaul";
   if (hasOneWay) return "One Way";
   if (/(^| )RT( |$)/.test(serviceEvidence) || serviceEvidence.includes("ROUND TRIP") || serviceEvidence.includes("ROUNDTRIP")) return "Roundtrip";
   return null;
