@@ -2102,18 +2102,32 @@ function statusChip(status) {
   return `<span class="status-pill" data-tone="${statusTone(value)}">${escapeHtml(statusLabel(value))}</span>`;
 }
 
+function legacyCommercialModel(value, fallback = "direct_cost_plus") {
+  const text = String(value || "").toLowerCase().replace(/[\s-]+/g, "_");
+  const aliases = {
+    fee_plus: "direct_cost_plus",
+    cost_plus: "direct_cost_plus",
+    direct_cost_plus: "direct_cost_plus",
+    sell_share: "carrier_share",
+    carrier_share: "carrier_share",
+    brokerage: "xbf_buy_sell",
+    xbf_buy_sell: "xbf_buy_sell"
+  };
+  return aliases[text] || fallback;
+}
+
 function commercialModelLabel(value) {
   const labels = {
     direct_cost_plus: "Direct / cost-plus",
     carrier_share: "Carrier share",
     xbf_buy_sell: "XBF buy-sell"
   };
-  return labels[String(value || "").toLowerCase()] || "Not declared";
+  return labels[legacyCommercialModel(value, "")] || "Not declared";
 }
 
 function bidCommercialEconomics(invitation = {}) {
   const carrierRate = decisionNumber(invitation.bid_rate);
-  const model = String(invitation.commercial_model || "direct_cost_plus").toLowerCase();
+  const model = legacyCommercialModel(invitation.commercial_model);
   const marginPct = decisionNumber(invitation.marksman_margin_pct) ?? (model === "xbf_buy_sell" ? XBF_BUY_SELL_DEFAULT_MARKUP_PCT : DEFAULT_COMMERCIAL_SHARE_PCT);
   const sharePct = decisionNumber(invitation.carrier_share_pct) ?? DEFAULT_COMMERCIAL_SHARE_PCT;
   const currency = invitation.currency || "USD";
@@ -2183,7 +2197,7 @@ function offerCommercialSummary(invitation = {}) {
   const economics = bidCommercialEconomics(invitation);
   const parts = [commercialModelLabel(invitation.commercial_model)];
   if (invitation.marksman_margin_pct !== null && invitation.marksman_margin_pct !== undefined) {
-    parts.push(String(invitation.commercial_model).toLowerCase() === "xbf_buy_sell" ? `${invitation.marksman_margin_pct}% XBF margin` : `${invitation.marksman_margin_pct}% MARKSMAN`);
+    parts.push(legacyCommercialModel(invitation.commercial_model) === "xbf_buy_sell" ? `${invitation.marksman_margin_pct}% XBF margin` : `${invitation.marksman_margin_pct}% MARKSMAN`);
   }
   if (invitation.carrier_share_pct !== null && invitation.carrier_share_pct !== undefined) parts.push(`${invitation.carrier_share_pct}% share`);
   if (economics.board_rate !== null && economics.carrier_rate !== null && economics.board_rate !== economics.carrier_rate) parts.push(`Board ${formatMoney(economics.board_rate, economics.currency)}`);
@@ -2263,8 +2277,9 @@ function openManualBidDrawer(invitationId, laneId) {
   if (rfxManualBidContext) rfxManualBidContext.textContent = `${vendorLabel(invitation)} | ${laneLabel}. Captured by the procurement operator from an outside-system quote.`;
   if (rfxManualBidRate) rfxManualBidRate.value = invitation.bid_rate ?? "";
   if (rfxManualBidCurrency) rfxManualBidCurrency.value = invitation.currency || lane.currency || "USD";
-  if (rfxManualBidCommercialModel) rfxManualBidCommercialModel.value = invitation.commercial_model || "direct_cost_plus";
-  if (rfxManualBidCommercialPct) rfxManualBidCommercialPct.value = invitation.commercial_model === "carrier_share"
+  const commercialModel = legacyCommercialModel(invitation.commercial_model);
+  if (rfxManualBidCommercialModel) rfxManualBidCommercialModel.value = commercialModel;
+  if (rfxManualBidCommercialPct) rfxManualBidCommercialPct.value = commercialModel === "carrier_share"
     ? invitation.carrier_share_pct ?? ""
     : invitation.marksman_margin_pct ?? "";
   if (rfxManualBidCapacity) rfxManualBidCapacity.value = invitation.weekly_capacity ?? "";
@@ -2385,7 +2400,7 @@ function laneDecisionContext(rows = []) {
 }
 
 function commercialDecisionScore(invitation = {}) {
-  const model = String(invitation.commercial_model || "").toLowerCase();
+  const model = legacyCommercialModel(invitation.commercial_model, "");
   const marksmanMargin = decisionNumber(invitation.marksman_margin_pct) ?? DEFAULT_COMMERCIAL_SHARE_PCT;
   const carrierShare = decisionNumber(invitation.carrier_share_pct) ?? DEFAULT_COMMERCIAL_SHARE_PCT;
   let score = 0;

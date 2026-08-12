@@ -1338,6 +1338,20 @@ function visibilityLabel(visibility = {}) {
   return (labels[portalLanguage()] || labels.en)[visibility.mode] || labels[portalLanguage()].private;
 }
 
+function legacyCommercialModel(value, fallback = "direct_cost_plus") {
+  const text = String(value || "").toLowerCase().replace(/[\s-]+/g, "_");
+  const aliases = {
+    fee_plus: "direct_cost_plus",
+    cost_plus: "direct_cost_plus",
+    direct_cost_plus: "direct_cost_plus",
+    sell_share: "carrier_share",
+    carrier_share: "carrier_share",
+    brokerage: "xbf_buy_sell",
+    xbf_buy_sell: "xbf_buy_sell"
+  };
+  return aliases[text] || fallback;
+}
+
 function commercialModelLabel(value) {
   const labels = {
     en: {
@@ -1351,11 +1365,11 @@ function commercialModelLabel(value) {
       xbf_buy_sell: "XBF compra-venta"
     }
   };
-  return (labels[portalLanguage()] || labels.en)[String(value || "").toLowerCase()] || t("notDeclared");
+  return (labels[portalLanguage()] || labels.en)[legacyCommercialModel(value, "")] || t("notDeclared");
 }
 
 function commercialStructureConfig(value) {
-  const model = String(value || "direct_cost_plus").toLowerCase();
+  const model = legacyCommercialModel(value);
   const configs = {
     direct_cost_plus: {
       tone: dualText("Cost-plus", "Cost-plus"),
@@ -1407,7 +1421,7 @@ function commercialStructureConfig(value) {
 }
 
 function commercialModelEffect(value) {
-  const model = String(value || "direct_cost_plus").toLowerCase();
+  const model = legacyCommercialModel(value);
   const effects = {
     direct_cost_plus: dualText(
       "Your carrier rate is your direct cost; the suggested margin is added to the Board price. The fee is calculated after customer payment.",
@@ -1426,7 +1440,7 @@ function commercialModelEffect(value) {
 }
 
 function commercialModelQuickEffect(value) {
-  const model = String(value || "direct_cost_plus").toLowerCase();
+  const model = legacyCommercialModel(value);
   const effects = {
     direct_cost_plus: dualText(
       "Board adds the suggested margin.",
@@ -1445,7 +1459,7 @@ function commercialModelQuickEffect(value) {
 }
 
 function commercialModelEntryRule(value) {
-  const model = String(value || "direct_cost_plus").toLowerCase();
+  const model = legacyCommercialModel(value);
   const rules = {
     direct_cost_plus: dualText(
       "You enter: your direct carrier cost.",
@@ -1464,7 +1478,7 @@ function commercialModelEntryRule(value) {
 }
 
 function commercialModelGuideHtml(selectedModel = "") {
-  const activeModel = String(selectedModel || "").toLowerCase();
+  const activeModel = legacyCommercialModel(selectedModel, "");
   const models = [
     {
       key: "direct_cost_plus",
@@ -1505,7 +1519,7 @@ function commercialModelGuideHtml(selectedModel = "") {
 }
 
 function commercialModelSelectedContextHtml(selectedModel = "direct_cost_plus") {
-  const model = String(selectedModel || "direct_cost_plus").toLowerCase();
+  const model = legacyCommercialModel(selectedModel);
   const contexts = {
     direct_cost_plus: {
       entry: dualText("Direct carrier all-in", "All-in directo del carrier"),
@@ -1536,7 +1550,7 @@ function commercialModelSelectedContextHtml(selectedModel = "direct_cost_plus") 
 
 function commercialPercentSummary(draft = {}) {
   const config = commercialStructureConfig(draft.commercial_model);
-  if (draft.commercial_model === "xbf_buy_sell") return dualText(`${draft.marksman_margin_pct || XBF_BUY_SELL_DEFAULT_MARKUP_PCT}% XBF buy-sell margin`, `${draft.marksman_margin_pct || XBF_BUY_SELL_DEFAULT_MARKUP_PCT}% margen XBF compra-venta`);
+  if (legacyCommercialModel(draft.commercial_model) === "xbf_buy_sell") return dualText(`${draft.marksman_margin_pct || XBF_BUY_SELL_DEFAULT_MARKUP_PCT}% XBF buy-sell margin`, `${draft.marksman_margin_pct || XBF_BUY_SELL_DEFAULT_MARKUP_PCT}% margen XBF compra-venta`);
   if (config.percentageField === "marksman") return dualText(`${draft.marksman_margin_pct || DEFAULT_COMMERCIAL_SHARE_PCT}% suggested margin`, `${draft.marksman_margin_pct || DEFAULT_COMMERCIAL_SHARE_PCT}% margen sugerido`);
   if (config.percentageField === "carrier" && draft.carrier_share_pct) return dualText(`${draft.carrier_share_pct}% invoice share`, `${draft.carrier_share_pct}% share factura`);
   if (config.percentageField === "carrier") return dualText(`${DEFAULT_COMMERCIAL_SHARE_PCT}% invoice share`, `${DEFAULT_COMMERCIAL_SHARE_PCT}% share factura`);
@@ -1544,7 +1558,7 @@ function commercialPercentSummary(draft = {}) {
 }
 
 function commercialRateDetails(row = {}) {
-  const model = String(row.commercial_model || "direct_cost_plus").toLowerCase();
+  const model = legacyCommercialModel(row.commercial_model);
   const carrierRate = numberOrNull(row.carrier_bid_rate ?? row.bid_rate ?? row.amount);
   let boardRate = numberOrNull(row.board_rate ?? row.rate_visibility ?? row.amount);
   let commissionFee = numberOrNull(row.commission_fee);
@@ -1912,7 +1926,7 @@ function commercialSummary(row = {}) {
   const parts = [commercialModelLabel(row.commercial_model)];
   const config = commercialStructureConfig(row.commercial_model);
   if (config.percentageField === "marksman" && row.marksman_margin_pct !== null && row.marksman_margin_pct !== undefined) {
-    parts.push(String(row.commercial_model).toLowerCase() === "xbf_buy_sell" ? `${row.marksman_margin_pct}% XBF margin` : `${row.marksman_margin_pct}% suggested margin`);
+    parts.push(legacyCommercialModel(row.commercial_model) === "xbf_buy_sell" ? `${row.marksman_margin_pct}% XBF margin` : `${row.marksman_margin_pct}% suggested margin`);
   }
   if (config.percentageField === "carrier" && row.carrier_share_pct !== null && row.carrier_share_pct !== undefined) parts.push(`${row.carrier_share_pct}% invoice share`);
   if (row.board_rate !== null && row.board_rate !== undefined && row.carrier_bid_rate !== null && row.carrier_bid_rate !== undefined && Number(row.board_rate) !== Number(row.carrier_bid_rate)) {
@@ -2056,6 +2070,7 @@ function collectBidDraft() {
 
 function validateBidDraft(draft) {
   const rateLabel = commercialStructureConfig(draft.commercial_model).rateLabel || dualText("Carrier rate", "Tarifa carrier");
+  const commercialModel = legacyCommercialModel(draft.commercial_model);
   const errors = [
     validatePositiveNumberIssue(draft.bid_rate, "bid-rate", rateLabel),
     validatePositiveNumberIssue(draft.weekly_capacity, "bid-capacity", "Weekly capacity", false),
@@ -2066,17 +2081,17 @@ function validateBidDraft(draft) {
     errors.push(validationIssue("bid-currency", "Currency must be USD, MXN, CAD, or another 3-letter code."));
   }
 
-  if (draft.commercial_model === "direct_cost_plus") {
+  if (commercialModel === "direct_cost_plus") {
     const marginIssue = validatePercentIssue(draft.marksman_margin_pct, "bid-marksman-margin", "Suggested margin to share %", { required: false, procurementRange: true });
     if (marginIssue) errors.push(marginIssue);
   }
 
-  if (draft.commercial_model === "carrier_share") {
+  if (commercialModel === "carrier_share") {
     const shareIssue = validatePercentIssue(draft.carrier_share_pct, "bid-carrier-share", "Carrier invoice share %", { required: false, procurementRange: true });
     if (shareIssue) errors.push(shareIssue);
   }
 
-  if (draft.commercial_model === "xbf_buy_sell") {
+  if (commercialModel === "xbf_buy_sell") {
     const markupIssue = validatePercentIssue(draft.marksman_margin_pct, "bid-marksman-margin", "Suggested XBF margin %", { required: false, min: XBF_BUY_SELL_MIN_MARKUP_PCT, max: XBF_BUY_SELL_MAX_MARKUP_PCT });
     if (markupIssue) errors.push(markupIssue);
   }
@@ -2237,7 +2252,7 @@ function normalizeTemplateCurrency(value, fallback = "USD") {
 }
 
 function bidTemplateCommercialModelValue(value) {
-  const model = String(value || "direct_cost_plus").toLowerCase();
+  const model = legacyCommercialModel(value);
   if (model === "carrier_share") return "Carrier invoice share";
   if (model === "xbf_buy_sell") return "XBF buy-sell";
   return "Direct / cost-plus";
@@ -2944,7 +2959,7 @@ function hydrateBidFormFromOffer(offer = currentSubmittedOffer(), invitation = l
   setFormValue("#bid-capacity", firstDefined(source.weekly_capacity, invitation.weekly_capacity, ""));
   setFormValue("#bid-transit-days", firstDefined(source.transit_days, invitation.transit_days, ""));
   setFormValue("#bid-valid-through", dateOnlyValue(firstDefined(source.valid_through, invitation.valid_through, "")));
-  setFormValue("#bid-commercial-model", firstDefined(source.commercial_model, invitation.commercial_model, "direct_cost_plus"));
+  setFormValue("#bid-commercial-model", legacyCommercialModel(firstDefined(source.commercial_model, invitation.commercial_model, "direct_cost_plus")));
   setFormValue("#bid-marksman-margin", firstDefined(source.marksman_margin_pct, invitation.marksman_margin_pct, ""));
   setFormValue("#bid-carrier-share", firstDefined(source.carrier_share_pct, invitation.carrier_share_pct, ""));
   setFormChecked("#bid-alt-enabled", firstDefined(source.best_alternative_offered, invitation.best_alternative_offered, false) === true);
@@ -3149,7 +3164,7 @@ function bidHistoryDeltaHtml(metadata = {}) {
     before.valid_through !== after.valid_through && after.valid_through !== undefined
       ? `Valid through ${after.valid_through || "-"}`
       : null,
-    before.commercial_model !== after.commercial_model && after.commercial_model
+    legacyCommercialModel(before.commercial_model, "") !== legacyCommercialModel(after.commercial_model, "") && after.commercial_model
       ? commercialModelLabel(after.commercial_model)
       : null,
     after.bid_rate !== undefined && after.commercial_model
@@ -3712,20 +3727,20 @@ function quickBidRows(carrierBook = {}, invitation = {}) {
 }
 
 function quickBidCommercialPercent(row = {}) {
-  const model = String(row.commercial_model || "direct_cost_plus").toLowerCase();
+  const model = legacyCommercialModel(row.commercial_model);
   if (model === "carrier_share") return row.carrier_share_pct ?? "";
   if (model === "direct_cost_plus" || model === "xbf_buy_sell") return row.marksman_margin_pct ?? "";
   return "";
 }
 
 function quickBidCommercialPlaceholder(model) {
-  const value = String(model || "direct_cost_plus").toLowerCase();
+  const value = legacyCommercialModel(model);
   if (value === "xbf_buy_sell") return "7.5-15";
   return "2-5";
 }
 
 function quickBidCommercialPercentLabel(model) {
-  const value = String(model || "direct_cost_plus").toLowerCase();
+  const value = legacyCommercialModel(model);
   const labels = {
     direct_cost_plus: dualText("Suggested margin %", "Margen sugerido %"),
     carrier_share: dualText("Invoice share %", "Participacion de factura %"),
@@ -3927,7 +3942,7 @@ function renderQuickLaneBidGridShell(carrierBook = {}, invitation = {}, options 
               const draft = pendingQuickBidDrafts.get(String(row.invitation_token || ""));
               const displayRow = draft ? { ...row, ...draft } : row;
               const lane = displayRow.lane || row.lane || {};
-              const model = String(displayRow.commercial_model || "direct_cost_plus").toLowerCase();
+              const model = legacyCommercialModel(displayRow.commercial_model);
               const fit = rowFitProgress(displayRow, packagePayload);
               const fitActionLabel = quickFitActionLabel(fit);
               return `

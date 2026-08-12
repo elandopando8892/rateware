@@ -188,19 +188,38 @@ function normalizeCommercialModel(value: unknown) {
   const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
   if (!text) return null;
   const aliases: Record<string, string> = {
-    direct: "direct_cost_plus",
-    direct_carrier: "direct_cost_plus",
-    cost_plus: "direct_cost_plus",
-    direct_cost_plus: "direct_cost_plus",
-    carrier_share: "carrier_share",
-    shared_margin: "carrier_share",
-    share: "carrier_share",
-    xbf: "xbf_buy_sell",
-    buy_sell: "xbf_buy_sell",
-    xbf_buy_sell: "xbf_buy_sell"
+    direct: "cost_plus",
+    direct_carrier: "cost_plus",
+    direct_cost_plus: "cost_plus",
+    cost_plus: "cost_plus",
+    fee_plus: "fee_plus",
+    carrier_share: "sell_share",
+    shared_margin: "sell_share",
+    share: "sell_share",
+    sell_share: "sell_share",
+    xbf: "brokerage",
+    buy_sell: "brokerage",
+    xbf_buy_sell: "brokerage",
+    brokerage: "brokerage"
   };
   const normalized = aliases[text] || text;
-  return ["direct_cost_plus", "carrier_share", "xbf_buy_sell"].includes(normalized) ? normalized : null;
+  return ["fee_plus", "cost_plus", "sell_share", "brokerage"].includes(normalized) ? normalized : null;
+}
+
+function legacyCommercialModel(value: unknown) {
+  const canonical = normalizeCommercialModel(value);
+  if (canonical === "sell_share") return "carrier_share";
+  if (canonical === "brokerage") return "xbf_buy_sell";
+  return canonical ? "direct_cost_plus" : null;
+}
+
+function normalizeCommercialModelForUpdate(value: unknown, currentValue: unknown) {
+  const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
+  const current = normalizeCommercialModel(currentValue);
+  if (current === "fee_plus" && ["direct", "direct_carrier", "direct_cost_plus"].includes(text || "")) {
+    return "fee_plus";
+  }
+  return normalizeCommercialModel(value);
 }
 
 function roundMoney(value: number | null) {
@@ -209,7 +228,7 @@ function roundMoney(value: number | null) {
 
 function commercialRateEconomics(row: Record<string, unknown>) {
   const carrierRate = cleanNumber(row.bid_rate);
-  const commercialModel = normalizeCommercialModel(row.commercial_model) || "direct_cost_plus";
+  const commercialModel = legacyCommercialModel(row.commercial_model) || "direct_cost_plus";
   const marksmanMarginPct = cleanNumber(row.marksman_margin_pct) ?? (commercialModel === "xbf_buy_sell" ? XBF_BUY_SELL_DEFAULT_MARKUP_PCT : DEFAULT_COMMERCIAL_SHARE_PCT);
   const carrierSharePct = cleanNumber(row.carrier_share_pct) ?? DEFAULT_COMMERCIAL_SHARE_PCT;
   const currency = cleanText(row.currency) || "USD";
@@ -1458,7 +1477,7 @@ function timestampValue(value: unknown) {
 }
 
 function commercialModelScore(row: Record<string, unknown>) {
-  const model = cleanText(row.commercial_model);
+  const model = legacyCommercialModel(row.commercial_model);
   const marksmanMargin = cleanNumber(row.marksman_margin_pct) ?? DEFAULT_COMMERCIAL_SHARE_PCT;
   const carrierShare = cleanNumber(row.carrier_share_pct) ?? DEFAULT_COMMERCIAL_SHARE_PCT;
   if (model === "direct_cost_plus") {
@@ -5296,13 +5315,14 @@ Deno.serve(async (request) => {
       // Route fit answers are advisory context; invitation access is the quote gate.
       const previousBidRate = cleanNumber(invitationResult.data.bid_rate);
       const revisionType = bestFinal ? "best_final" : previousBidRate !== null ? "revision" : "initial";
-      const commercialModel = normalizeCommercialModel(body.commercial_model) || "direct_cost_plus";
-      const marksmanMarginPct = commercialModel === "direct_cost_plus"
+      const commercialModel = normalizeCommercialModelForUpdate(body.commercial_model, invitationResult.data.commercial_model) || "cost_plus";
+      const legacyModel = legacyCommercialModel(commercialModel) || "direct_cost_plus";
+      const marksmanMarginPct = legacyModel === "direct_cost_plus"
         ? strictOptionalPercentWithDefault(body.marksman_margin_pct, "Suggested margin to share", 2, 5, DEFAULT_COMMERCIAL_SHARE_PCT)
-        : commercialModel === "xbf_buy_sell"
+        : legacyModel === "xbf_buy_sell"
           ? strictOptionalPercentWithDefault(body.marksman_margin_pct, "Suggested XBF buy-sell margin", XBF_BUY_SELL_MIN_MARKUP_PCT, XBF_BUY_SELL_MAX_MARKUP_PCT, XBF_BUY_SELL_DEFAULT_MARKUP_PCT)
-        : null;
-      const carrierSharePct = commercialModel === "carrier_share"
+          : null;
+      const carrierSharePct = legacyModel === "carrier_share"
         ? strictOptionalPercentWithDefault(body.carrier_share_pct, "Carrier invoice share", 2, 5, DEFAULT_COMMERCIAL_SHARE_PCT)
         : null;
       const revisionLabel = revisionType === "best_final"

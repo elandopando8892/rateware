@@ -7414,19 +7414,31 @@ function normalizeCommercialModel(value: unknown) {
   const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
   if (!text) return null;
   const aliases: Record<string, string> = {
-    direct: "direct_cost_plus",
-    direct_carrier: "direct_cost_plus",
-    cost_plus: "direct_cost_plus",
-    direct_cost_plus: "direct_cost_plus",
-    carrier_share: "carrier_share",
-    shared_margin: "carrier_share",
-    share: "carrier_share",
-    xbf: "xbf_buy_sell",
-    buy_sell: "xbf_buy_sell",
-    xbf_buy_sell: "xbf_buy_sell"
+    direct: "cost_plus",
+    direct_carrier: "cost_plus",
+    direct_cost_plus: "cost_plus",
+    cost_plus: "cost_plus",
+    fee_plus: "fee_plus",
+    carrier_share: "sell_share",
+    shared_margin: "sell_share",
+    share: "sell_share",
+    sell_share: "sell_share",
+    xbf: "brokerage",
+    buy_sell: "brokerage",
+    xbf_buy_sell: "brokerage",
+    brokerage: "brokerage"
   };
   const normalized = aliases[text] || text;
-  return ["direct_cost_plus", "carrier_share", "xbf_buy_sell"].includes(normalized) ? normalized : null;
+  return ["fee_plus", "cost_plus", "sell_share", "brokerage"].includes(normalized) ? normalized : null;
+}
+
+function normalizeCommercialModelForUpdate(value: unknown, currentValue: unknown) {
+  const text = cleanText(value)?.toLowerCase().replace(/[\s-]+/g, "_");
+  const current = normalizeCommercialModel(currentValue);
+  if (current === "fee_plus" && ["direct", "direct_carrier", "direct_cost_plus"].includes(text || "")) {
+    return "fee_plus";
+  }
+  return normalizeCommercialModel(value);
 }
 
 function availabilityValidationStatus(value: unknown, mirrorEnabled: boolean) {
@@ -10683,7 +10695,7 @@ async function applyBidUpdateFromChat(
     updated_at: now
   };
   const mirrorEnabled = cleanOptionalBoolean(input.mirror_account_enabled);
-  if (input.commercial_model !== undefined) patch.commercial_model = normalizeCommercialModel(input.commercial_model);
+  if (input.commercial_model !== undefined) patch.commercial_model = normalizeCommercialModelForUpdate(input.commercial_model, before.commercial_model);
   if (input.marksman_margin_pct !== undefined) patch.marksman_margin_pct = strictPercentNumber(input.marksman_margin_pct, "MARKSMAN margin");
   if (input.carrier_share_pct !== undefined) patch.carrier_share_pct = strictPercentNumber(input.carrier_share_pct, "Carrier share");
   if (input.best_alternative_offered !== undefined) patch.best_alternative_offered = cleanOptionalBoolean(input.best_alternative_offered) === true;
@@ -26723,7 +26735,7 @@ Deno.serve(async (request) => {
       if (!id) return jsonResponse({ error: "RFx invitation id is required." }, 400);
       const ownedResult = await supabase
         .from("rfx_lane_vendors")
-        .select("id,rfx_event_id,rfx_lane_id,vendor_id,rfx_events!inner(owner_email),vendors(vendor_name,domain)")
+        .select("id,rfx_event_id,rfx_lane_id,vendor_id,commercial_model,rfx_events!inner(owner_email),vendors(vendor_name,domain)")
         .eq("id", id)
         .eq("rfx_events.owner_email", user.owner_email)
         .single();
@@ -26747,7 +26759,7 @@ Deno.serve(async (request) => {
       if ("valid_through" in patchInput) patch.valid_through = strictDateOnly(patchInput.valid_through, "Valid through");
       if (manualCapture && sourceNote) patch.bid_source_note = sourceNote.slice(0, 2000);
       const mirrorEnabled = cleanOptionalBoolean(patchInput.mirror_account_enabled);
-      if (patchInput.commercial_model !== undefined) patch.commercial_model = normalizeCommercialModel(patchInput.commercial_model);
+      if (patchInput.commercial_model !== undefined) patch.commercial_model = normalizeCommercialModelForUpdate(patchInput.commercial_model, ownedResult.data.commercial_model);
       if (patchInput.marksman_margin_pct !== undefined) patch.marksman_margin_pct = strictPercentNumber(patchInput.marksman_margin_pct, "MARKSMAN margin");
       if (patchInput.carrier_share_pct !== undefined) patch.carrier_share_pct = strictPercentNumber(patchInput.carrier_share_pct, "Carrier share");
       if (patchInput.best_alternative_offered !== undefined) patch.best_alternative_offered = cleanOptionalBoolean(patchInput.best_alternative_offered) === true;
