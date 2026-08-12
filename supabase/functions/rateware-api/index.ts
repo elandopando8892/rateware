@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
-import { resolveWorkspaceUser, workspaceUserContext, type WorkspaceUser } from "../_shared/workspace.ts";
+import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
+import type { WorkspaceUser } from "../_shared/workspace.ts";
 import { handleGrowthAction, isGrowthAction } from "./growth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -23469,10 +23470,10 @@ Deno.serve(async (request) => {
     const supabase = getClient();
     auditSupabase = supabase;
     const authenticationStartedAt = performance.now();
-    const user = await resolveWorkspaceUser(
+    const user: RuntimeWorkspaceUser = await resolveRuntimeWorkspaceUser(
       supabase,
-      workspaceUserContext(await requireKindeUser(request)),
-      { persistIdentity: false }
+      await requireKindeUser(request),
+      { persistLegacyIdentity: false }
     );
     const authenticationCompletedAt = performance.now();
     auditUser = user;
@@ -30873,7 +30874,8 @@ Deno.serve(async (request) => {
     const errorCause = errorCauseChain.find((value) => value !== errorMessage) || null;
     const incidentId = crypto.randomUUID();
     const failedApiAction = cleanText(body.action) || "unknown";
-    const errorStatus = apiErrorStatus(errorInfo);
+    const identityStatus = runtimeIdentityStatus(error);
+    const errorStatus = identityStatus === 403 ? 403 : apiErrorStatus(errorInfo);
     console.error(JSON.stringify({
       event: "rateware_api.error",
       incident_id: incidentId,

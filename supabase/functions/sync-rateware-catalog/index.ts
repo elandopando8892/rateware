@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
+import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from "../_shared/runtime-identity.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -689,12 +690,13 @@ Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
 
   try {
-    await requireKindeUser(request);
+    const identity = await requireKindeUser(request);
     const body = await request.json().catch(() => ({}));
     const sheetId = cleanText(body.sheet_id) || Deno.env.get("RATEWARE_CATALOG_SHEET_ID") || DEFAULT_SHEET_ID;
     const mode = cleanText(body.mode) || "core";
     const includeLaneMileage = mode === "full" || body.include_lane_mileage === true;
     const supabase = getClient();
+    await resolveRuntimeWorkspaceUser(supabase, identity, { persistLegacyIdentity: false });
 
     const [cusCatalog, usaFuel, usaFSCtrend, usaFSCindex, assumptionsSheet, factorsSheet] = await Promise.all([
       fetchOptionalSheet(sheetId, "cusCatalog"),
@@ -758,6 +760,9 @@ Deno.serve(async (request) => {
       factors: factors.length
     });
   } catch (error) {
-    return jsonResponse({ error: error instanceof Error ? error.message : "Catalog sync failed." }, 500);
+    return jsonResponse(
+      { error: error instanceof Error ? error.message : "Catalog sync failed." },
+      runtimeIdentityStatus(error)
+    );
   }
 });
