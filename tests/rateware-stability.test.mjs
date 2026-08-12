@@ -144,9 +144,11 @@ const exactVendorConsolidationMigration = readFileSync(new URL("../supabase/migr
 const exactVendorConsolidationBooleanFixMigration = readFileSync(new URL("../supabase/migrations/20260805041201_fix_vendor_consolidation_equipment_available.sql", import.meta.url), "utf8");
 const exactVendorConsolidationBatchMigration = readFileSync(new URL("../supabase/migrations/20260805044343_batch_exact_vendor_consolidation.sql", import.meta.url), "utf8");
 const exactVendorConsolidationWalLimitMigration = readFileSync(new URL("../supabase/migrations/20260805052208_limit_vendor_consolidation_wal.sql", import.meta.url), "utf8");
+const vendorRelationshipMergeMigration = readFileSync(new URL("../supabase/migrations/20260805054258_merge_exact_vendor_relationship_collisions.sql", import.meta.url), "utf8");
 const exactVendorSingleGroupMigration = readFileSync(new URL("../supabase/migrations/20260805061000_single_group_vendor_consolidation.sql", import.meta.url), "utf8");
 const exactVendorSingleLoserMigration = readFileSync(new URL("../supabase/migrations/20260805063000_single_loser_vendor_consolidation.sql", import.meta.url), "utf8");
 const operationalPageIndexMigration = readFileSync(new URL("../supabase/migrations/20260804075700_optimize_operational_page_indexes.sql", import.meta.url), "utf8");
+const ratewareOriginDestinationIndexMigration = readFileSync(new URL("../supabase/migrations/20260807070148_index_and_fast_path_rateware_origin_destination.sql", import.meta.url), "utf8");
 const bidRoomBenchmarkCandidateMigration = readFileSync(new URL("../supabase/migrations/20260804080309_optimize_bid_room_benchmark_candidates.sql", import.meta.url), "utf8");
 const bidRoomBenchmarkTuningMigration = readFileSync(new URL("../supabase/migrations/20260804080554_tune_bid_room_benchmark_candidates.sql", import.meta.url), "utf8");
 const vendorLifecycleUnificationMigration = readFileSync(new URL("../supabase/migrations/20260723225311_vendor_lifecycle_unification.sql", import.meta.url), "utf8");
@@ -3687,6 +3689,7 @@ assert.match(vendorWorkspaceSearchHardeningMigration, /profile_data::text/, "Wor
 assert.match(vendorWorkspaceSearchHardeningMigration, /coalesce\(v\.tags/, "Workspace vendor search should include tags");
 assert.match(vendorWorkspaceSearchHardeningMigration, /secondary_email_keys/, "Workspace vendor search should rank exact secondary email matches");
 assert.match(vendorPagePerformanceMigration, /search_document extensions\.gin_trgm_ops/, "Workspace vendor search should use a persisted trigram search document");
+assert.equal((ratewareOriginDestinationIndexMigration.match(/extensions\.gin_trgm_ops/g) || []).length, 2, "Clean replay should resolve both trigram operator classes from the extensions schema");
 assert.match(vendorPagePerformanceMigration, /vendors_refresh_search_document/, "Vendor mutations should keep the search document synchronized");
 assert.match(vendorPagePerformanceMigration, /vendor_rate_metrics_for_owner_ids/, "Vendor rate enrichment should be scoped to requested CRM rows");
 assert.match(vendorPagePerformanceMigration, /vendor_bid_metrics_for_owner_ids/, "Bid Room enrichment should aggregate requested CRM rows server-side");
@@ -4387,6 +4390,7 @@ assert.doesNotMatch(exactVendorConsolidationBatchMigration, /updated_definition\
 assert.match(exactVendorConsolidationWalLimitMigration, /coalesce\(p_preview_limit, 50\), 100/, "Vendor consolidation WAL guard should recognize the previously deployed batch expression");
 assert.match(exactVendorConsolidationWalLimitMigration, /coalesce\(p_preview_limit, 10\), 10/, "Vendor consolidation WAL guard should cap destructive transactions at ten exact groups");
 assert.match(exactVendorConsolidationWalLimitMigration, /pg_get_functiondef[\s\S]+execute replace\(v_definition, v_old, v_new\)/, "Vendor consolidation WAL guard should patch the deployed function definition safely");
+assert.match(vendorRelationshipMergeMigration, /v_definition\s*:=\s*replace\(v_definition, E'\\r\\n', E'\\n'\)[\s\S]+v_conflict_start\s*:=\s*strpos/, "Vendor collision patch should normalize CRLF before matching function-body anchors during clean replay");
 assert.match(exactVendorSingleGroupMigration, /v_limit_1 text := \$new\$else 1\$new\$/, "Database hotfix should cap destructive consolidation at one exact group");
 assert.match(exactVendorSingleGroupMigration, /position\(v_limit_10 in v_definition\)[\s\S]+execute replace\(v_definition, v_limit_10, v_limit_1\)/, "Single-group hotfix should patch the prior ten-group definition");
 assert.match(exactVendorSingleLoserMigration, /where r\.priority_rank > 1[\s\S]+p_dry_run[\s\S]+or r\.id = \([\s\S]+select r2\.id[\s\S]+limit 1/, "Single-loser hotfix should preserve complete previews while selecting one loser for destructive work");

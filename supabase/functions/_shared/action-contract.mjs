@@ -656,7 +656,7 @@ export const ACTION_CONTRACT = {
     "edge.whatsapp-webhook.verify_webhook": "da104018fc4c61afe42c4858af004547e722b582d951f2c4d7aaf5d54f8a0398",
     "rpc.public.consolidate_exact_workspace_vendor_duplicates(text,text,boolean,integer)": "4097f77b50900155f6e8c705dc98afd8acb18b28fac9e41b571105044e298eda",
     "rpc.public.count_exact_workspace_vendor_duplicates(text,text)": "d78c6a847831276b1126b9ca45d30542905e6567ac4ec3457817e89688281ea3",
-    "rpc.public.merge_exact_vendor_relationship_collisions(uuid,uuid)": "e25fc4ba875efb46acabbe5eecaaf20fa21faf46ed2e88fd4c2d134b6c450c94",
+    "rpc.public.merge_exact_vendor_relationship_collisions(uuid,uuid)": "a41889f989379f0ca15f7600bf3fcaf7f0934117dd6042cc713d87d3a81de184",
     "rpc.public.phase0_invalidate_changed_mapping_review()": "0e86554e5778e5b6a4568bc439232aae297703e613c70d35b01e79f2003fd94e",
     "rpc.public.protect_outreach_delivery_state()": "ffcbf6588871f833608603afc6b9ad6f98ce0dcff7ae988fd4f3e76aedac63ae",
     "rpc.public.rateware_assert_vendor_workspace_link()": "93d96d17fc5d7288b65ae4a2bd4f063c88ad4a1937f4260bd66ead22617fbfeb",
@@ -10678,7 +10678,7 @@ export const ACTION_CONTRACT = {
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "e25fc4ba875efb46acabbe5eecaaf20fa21faf46ed2e88fd4c2d134b6c450c94",
+      "sourceFingerprint": "a41889f989379f0ca15f7600bf3fcaf7f0934117dd6042cc713d87d3a81de184",
       "notes": "no Edge .rpc() literal or trigger reference; service-only/dead candidate",
       "analysisCoverage": "direct",
       "dependencyFiles": [

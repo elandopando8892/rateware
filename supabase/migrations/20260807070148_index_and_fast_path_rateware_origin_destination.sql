@@ -11,7 +11,7 @@ ON public.rate_staging USING gin (
     coalesce(origin_city,'') || ' ' || coalesce(origin_state,'') || ' ' ||
     coalesce(origin_zip_prefix,'') || ' ' || coalesce(origin_market,'') || ' ' ||
     coalesce(origin_region,'') || ' ' || coalesce(origin_country,'')
-  )) gin_trgm_ops
+  )) extensions.gin_trgm_ops
 );
 
 CREATE INDEX IF NOT EXISTS rate_staging_destination_filter_trgm_idx
@@ -21,7 +21,7 @@ ON public.rate_staging USING gin (
     coalesce(destination_city,'') || ' ' || coalesce(destination_state,'') || ' ' ||
     coalesce(destination_zip_prefix,'') || ' ' || coalesce(destination_market,'') || ' ' ||
     coalesce(destination_region,'') || ' ' || coalesce(destination_country,'')
-  )) gin_trgm_ops
+  )) extensions.gin_trgm_ops
 );
 
 CREATE OR REPLACE FUNCTION public.rateware_filtered_rate_ids(
