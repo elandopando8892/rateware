@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from "../_shared/runtime-identity.ts";
+import { executeCatalogSyncPlan } from "../_shared/catalog-sync-plan.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -694,6 +695,7 @@ Deno.serve(async (request) => {
     const body = await request.json().catch(() => ({}));
     const sheetId = cleanText(body.sheet_id) || Deno.env.get("RATEWARE_CATALOG_SHEET_ID") || DEFAULT_SHEET_ID;
     const mode = cleanText(body.mode) || "core";
+    const dryRun = body.dry_run === true;
     const includeLaneMileage = mode === "full" || body.include_lane_mileage === true;
     const supabase = getClient();
     await resolveRuntimeWorkspaceUser(supabase, identity, { persistLegacyIdentity: false });
@@ -726,28 +728,34 @@ Deno.serve(async (request) => {
       ...parseProd(mexLaneProd, "mexLaneProd", "mx")
     ] as Record<string, unknown>[];
 
-    await upsertInBatches(supabase, "rateware_catalog_items", uniqueCatalogItems, "source,category,raw_value,normalized_value");
-    await upsertInBatches(supabase, "rateware_locations", uniqueLocations, "source,location_key");
-    if (includeLaneMileage) {
-      await upsertInBatches(supabase, "rateware_lane_mileage", laneMileage, "source,route_key");
-    }
     const fuelRegions = parseFuelRegions(usaFuel) as Record<string, unknown>[];
     const fscTrend = parseFscTrend(usaFSCtrend) as Record<string, unknown>[];
     const fscIndex = parseFscIndex(usaFSCindex) as Record<string, unknown>[];
     const assumptions = parseAssumptions(assumptionsSheet);
     const factors = parseFactors(factorsSheet);
 
-    await upsertInBatches(supabase, "rateware_fuel_regions", fuelRegions, "state_code,source");
-    await upsertInBatches(supabase, "rateware_fsc_trend", fscTrend, "source,fuel_region,index_date,api_fetch");
-    await upsertInBatches(supabase, "rateware_fsc_index", fscIndex, "source,diesel_from,diesel_to");
-    await upsertInBatches(supabase, "rateware_assumptions", assumptions.assumptions, "source,field");
-    await upsertInBatches(supabase, "rateware_mx_diesel_index", assumptions.mxDieselIndex, "source,period_month,market_key");
-    await upsertInBatches(supabase, "rateware_fx_rates", assumptions.fxRates, "source,period_month,currency_pair");
-    await upsertInBatches(supabase, "rateware_factor_items", factors, "source,lookup_key");
+    const syncPlan = await executeCatalogSyncPlan({
+      dryRun,
+      operations: [
+        { table: "rateware_catalog_items", rows: uniqueCatalogItems, onConflict: "source,category,raw_value,normalized_value" },
+        { table: "rateware_locations", rows: uniqueLocations, onConflict: "source,location_key" },
+        { table: "rateware_lane_mileage", rows: laneMileage, onConflict: "source,route_key", enabled: includeLaneMileage },
+        { table: "rateware_fuel_regions", rows: fuelRegions, onConflict: "state_code,source" },
+        { table: "rateware_fsc_trend", rows: fscTrend, onConflict: "source,fuel_region,index_date,api_fetch" },
+        { table: "rateware_fsc_index", rows: fscIndex, onConflict: "source,diesel_from,diesel_to" },
+        { table: "rateware_assumptions", rows: assumptions.assumptions, onConflict: "source,field" },
+        { table: "rateware_mx_diesel_index", rows: assumptions.mxDieselIndex, onConflict: "source,period_month,market_key" },
+        { table: "rateware_fx_rates", rows: assumptions.fxRates, onConflict: "source,period_month,currency_pair" },
+        { table: "rateware_factor_items", rows: factors, onConflict: "source,lookup_key" }
+      ],
+      upsert: (table: string, rows: Record<string, unknown>[], onConflict: string) => upsertInBatches(supabase, table as CatalogSyncTable, rows, onConflict)
+    });
 
     return jsonResponse({
       sheet_id: sheetId,
       mode,
+      dry_run: dryRun,
+      ...syncPlan,
       catalog_items: uniqueCatalogItems.length,
       locations: uniqueLocations.length,
       lane_mileage: laneMileage.length,

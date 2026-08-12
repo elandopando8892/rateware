@@ -3,13 +3,13 @@ import { SUPABASE_URL } from "./config.js";
 import { callRatewareApi } from "./rateware-api.js";
 import { apiErrorMessage } from "./error-copy.js";
 
-export async function syncRatewareCatalog(mode = "core") {
+export async function syncRatewareCatalog(mode = "core", { dryRun = false } = {}) {
   const response = await authenticatedFetch(`${SUPABASE_URL}/functions/v1/sync-rateware-catalog`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ mode })
+    body: JSON.stringify({ mode, dry_run: dryRun })
   });
 
   const text = await response.text();
