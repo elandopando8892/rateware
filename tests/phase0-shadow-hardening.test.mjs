@@ -431,7 +431,16 @@ for (const value of [
   "Awarded services: RT and Backhaul.",
   "Finalized service alternatives are One Way versus RT.",
   "Carrier verified Roundtrip and Backhaul.",
-  "Carrier quoted One Way, Backhaul, and Round Trip."
+  "Carrier quoted One Way, Backhaul, and Round Trip.",
+  "Carrier quoted both One Way and Backhaul.",
+  "Carrier quoted One Way together with Backhaul.",
+  "Carrier listed both One Way and Backhaul.",
+  "The carrier priced both RT and OW.",
+  "Carrier offers both Backhaul and Round Trip.",
+  "Carrier submitted both One Way versus Backhaul.",
+  "The final quote includes both Round Trip and Backhaul service.",
+  "Carrier verified both OW and Backhaul.",
+  "Carrier quoted \"One Way\" and \"Backhaul\"."
 ]) {
   const resolution = resolveServiceEvidence({ narrativeParts: [value] });
   assert.equal(resolution.state, "conflict", `carrier alternatives must fail closed: ${value}`);
@@ -466,6 +475,45 @@ for (const value of [
 ]) {
   assert.equal(serviceFromNormalizedText(value), null, `charge-only RT text must not determine service: ${value}`);
 }
+
+for (const value of [
+  "Could the carrier quote both One Way and Backhaul?",
+  "Please confirm whether both RT and OW are available.",
+  "Carrier may quote both Backhaul and One Way after approval.",
+  "If selected, carrier will quote both RT and Backhaul.",
+  "Carrier apparently quoted both One Way and Round Trip.",
+  "Carrier quoted both One Way and Backhaul; that quote was later voided.",
+  "Carrier quoted both Backhaul and One Way; both options were withdrawn.",
+  "Round Trip and Backhaul appear only in the FSC comparison table.",
+  "Carrier compared One Way and Backhaul detention charges, not service."
+]) {
+  assert.equal(serviceFromNormalizedText(value), null, `non-final, revoked, or charge-only alternatives must stay absent: ${value}`);
+}
+assert.equal(
+  serviceFromNormalizedText("Carrier quoted both RT and OW; carrier ultimately selected Backhaul."),
+  "Backhaul",
+  "a final carrier selection must supersede earlier alternatives"
+);
+assert.deepEqual(resolveServiceEvidence({ sourceMarkers: ["RT", "OW"], narrativeParts: ["Carrier quoted Backhaul."] }), {
+  state: "conflict",
+  tier: "structured",
+  services: ["One Way", "Roundtrip"]
+});
+assert.deepEqual(resolveServiceEvidence({ sourceMarkers: ["{}"], narrativeParts: ["Carrier quoted One Way."] }), {
+  state: "invalid",
+  tier: "structured",
+  reason: "unrecognized_marker"
+});
+assert.deepEqual(resolveServiceEvidence({ sourceMarkers: ["SERVICE MARKER IS OW"], narrativeParts: ["Carrier quoted Backhaul."] }), {
+  state: "resolved",
+  service: "One Way",
+  tier: "structured"
+});
+assert.deepEqual(resolveServiceEvidence({ sourceMarkers: [false], narrativeParts: ["Carrier quoted One Way."] }), {
+  state: "invalid",
+  tier: "structured",
+  reason: "non_string_marker"
+});
 
 const operations = [
   { table: "a", rows: [{ id: 1 }], onConflict: "id" },

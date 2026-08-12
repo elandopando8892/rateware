@@ -131,6 +131,9 @@ function isNonFinalClause(rawClause, clause) {
 function transitionObservations(value) {
   const key = normalizedServiceText(value);
   if (isNonFinalClause(value, key)) return [];
+  const explicitFinal = key.match(new RegExp(`\\bCARRIER\\s+(?:FINALLY|LATER|NOW|ULTIMATELY)\\s+(?:ACCEPTED|APPROVED|CONFIRMED|SELECTED)\\s+(${SERVICE_PATTERN})\\b`));
+  const explicitFinalService = explicitFinal ? serviceFromCaptured(explicitFinal[1]) : null;
+  if (explicitFinalService) return [{ service: explicitFinalService, tier: 4 }];
   /** @type {RegExp[]} */
   const patterns = [
     new RegExp(`\\b(?:CORRECTED|CORRECTION)\\s+FROM\\s+(${SERVICE_PATTERN})\\s+TO\\s+(${SERVICE_PATTERN})\\b`),
@@ -171,7 +174,7 @@ function alternativeObservations(rawClause, clause) {
     new RegExp(`^CARRIER\\s+PRICED\\s+${SERVICE_TOKEN}\\s+ALONGSIDE\\s+${SERVICE_TOKEN}$`),
     new RegExp(`^(?:THE\\s+)?SIGNED\\s+SHEET\\s+CONTAINS\\s+${SERVICE_TOKEN}\\s+COMPARED\\s+AGAINST\\s+${SERVICE_TOKEN}$`),
     new RegExp(`^CARRIER\\s+CONFIRMED\\s+${SERVICE_TOKEN}\\s+AS\\s+AN\\s+ALTERNATIVE\\s+TO\\s+${SERVICE_TOKEN}$`),
-    new RegExp(`^(?:THE\\s+)?FINAL\\s+QUOTE\\s+INCLUDES\\s+${SERVICE_TOKEN}\\s+OR\\s+${SERVICE_TOKEN}\\s+SERVICE$`),
+    new RegExp(`^(?:THE\\s+)?FINAL\\s+QUOTE\\s+INCLUDES\\s+(?:BOTH\\s+)?${SERVICE_TOKEN}\\s+(?:AND|OR)\\s+${SERVICE_TOKEN}\\s+SERVICE$`),
     new RegExp(`^CARRIER\\s+CONFIRMED\\s+SERVICES\\s+${SERVICE_TOKEN}\\s+AND\\s+${SERVICE_TOKEN}$`),
     new RegExp(`^CARRIER\\s+ACCEPTANCE\\s+NAMES\\s+${SERVICE_TOKEN}\\s+OR\\s+${SERVICE_TOKEN}$`),
     new RegExp(`^OPERATIONAL\\s+SERVICES\\s+ARE\\s+${SERVICE_TOKEN}\\s+AND\\s+${SERVICE_TOKEN}$`),
@@ -190,7 +193,7 @@ function alternativeObservations(rawClause, clause) {
   }
   if (isNonFinalClause(rawClause, clause)) return [];
   const patterns = [
-    new RegExp(`^(?:SIGNED\\s+QUOTE\\s+SPECIFIES|(?:THE\\s+)?CARRIER\\s+(?:CONFIRMED|QUOTED|STATED)|(?:THE\\s+)?(?:SERVICE|QUOTE)\\s+IS|CONFIRMED)\\s+(${SERVICE_PATTERN})\\s+(?:AND|OR|PLUS|VERSUS)\\s+(${SERVICE_PATTERN})$`),
+    new RegExp(`^(?:SIGNED\\s+QUOTE\\s+SPECIFIES|(?:THE\\s+)?CARRIER\\s+(?:CONFIRMED|LISTED|OFFERS?|PRICED|QUOTED|STATED|SUBMITTED|VERIFIED)|(?:THE\\s+)?(?:SERVICE|QUOTE)\\s+IS|CONFIRMED)\\s+(?:BOTH\\s+)?(${SERVICE_PATTERN})\\s+(?:ALONGSIDE|AND|OR|PLUS|TOGETHER\\s+WITH|VERSUS)\\s+(${SERVICE_PATTERN})$`),
     new RegExp(`^(${SERVICE_PATTERN})\\s+(?:AND|OR|PLUS|VERSUS|VS|V)\\s+(${SERVICE_PATTERN})$`),
     new RegExp(`^(${SERVICE_PATTERN})\\s+(?:ALONGSIDE|AS\\s+AN\\s+ALTERNATIVE\\s+TO|COMPARED\\s+AGAINST|OR\\s+POTENTIALLY)\\s+(${SERVICE_PATTERN})$`)
   ];
