@@ -3577,9 +3577,9 @@ assert.match(workspaceIdentitySource, /WORKSPACE_IDENTITY_CACHE_TTL_MS = 5 \* 60
 assert.match(workspaceIdentitySource, /identityKeys\.every\(\(identityKey\) => cachedWorkspace\.identity_keys\.has\(identityKey\)\)/, "Workspace cache hits should avoid database work only when every authenticated identity is registered");
 assert.match(workspaceIdentitySource, /from\("workspace_registry"\)[\s\S]+\.select\("organization_id,canonical_owner_key"\)[\s\S]+if \(registryRow\)/, "Cold workspace resolution should read the registry before attempting a write");
 assert.match(workspaceIdentitySource, /const missingIdentityKeys = uncachedIdentityKeys\.filter/, "Workspace resolution should write only aliases that do not already exist");
-assert.match(apiSource, /resolveWorkspaceUser\([\s\S]+?workspaceUserContext/, "Rateware API should canonicalize the workspace before action routing");
+assert.match(apiSource, /resolveRuntimeWorkspaceUser\([\s\S]+?requireKindeUser/, "Rateware API should enforce the reviewed tenant identity before action routing");
 assert.match(workspaceIdentitySource, /if \(options\.persistIdentity === false\)[\s\S]+owner_email: canonicalOwnerKey/, "Read-heavy APIs should derive the canonical organization owner without database identity writes");
-assert.match(apiSource, /resolveWorkspaceUser\([\s\S]+workspaceUserContext\(await requireKindeUser\(request\)\)[\s\S]+\{ persistIdentity: false \}/, "Rateware API polling should not read or write workspace identity tables on every request");
+assert.match(apiSource, /resolveRuntimeWorkspaceUser\([\s\S]+await requireKindeUser\(request\)/, "Rateware API polling should use the staged runtime tenant resolver");
 assert.match(apiSource, /supabase\.rpc\("rateware_bid_room_chat_snapshot"/, "Bid Room polling should load its database snapshot through one backend RPC");
 assert.match(apiSource, /if \(input\.sync_google_chat === true\) return listBidRoomChatLegacy/, "Explicit Google Chat inbound sync should retain its external synchronization path");
 assert.match(apiSource, /isMissingBidRoomChatSnapshotRpc/, "Bid Room polling should fall back safely during a staged database deployment");
@@ -3590,8 +3590,8 @@ assert.match(bidRoomChatSnapshotMigration, /message_row\.owner_email = p_owner_e
 assert.match(bidRoomChatSnapshotMigration, /vendor_row\.owner_email = p_owner_email/, "Bid Room snapshot vendor relations should not cross workspace boundaries");
 assert.match(bidRoomChatSnapshotMigration, /security invoker[\s\S]+set search_path = pg_catalog, public, pg_temp/, "Bid Room snapshot should use caller privileges and pin its search path");
 assert.match(bidRoomChatSnapshotMigration, /revoke all on function public\.rateware_bid_room_chat_snapshot[\s\S]+from public, anon, authenticated/, "Bid Room snapshot RPC should remain backend-only");
-assert.match(createRawUploadSource, /resolveWorkspaceUser\(supabase, workspaceUserContext/, "Upload creation should use the canonical workspace");
-assert.match(interpretUploadSource, /resolveWorkspaceUser\(supabase, workspaceUserContext/, "Interpretation should use the canonical workspace");
+assert.match(createRawUploadSource, /resolveRuntimeWorkspaceUser\(supabase, identity\)/, "Upload creation should enforce the reviewed tenant identity");
+assert.match(interpretUploadSource, /resolveRuntimeWorkspaceUser\(supabase, await requireKindeUser/, "Interpretation should enforce the reviewed tenant identity");
 assert.match(canonicalWorkspaceMigration, /create table if not exists public\.workspace_registry/, "Canonical workspace ownership should be persisted");
 assert.match(canonicalWorkspaceMigration, /with recursive owner_edges as/, "Legacy owners should be discovered through existing vendor-rate relationships");
 assert.match(canonicalWorkspaceMigration, /rate_staging_vendor_workspace_guard/, "Staged rates should reject cross-workspace vendor links");

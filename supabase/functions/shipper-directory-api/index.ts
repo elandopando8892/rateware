@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
-import { resolveWorkspaceUser, workspaceUserContext } from "../_shared/workspace.ts";
+import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from "../_shared/runtime-identity.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -758,10 +758,10 @@ Deno.serve(async (request) => {
   try {
     const supabase = getClient();
     const identity = await requireKindeUser(request);
-    const user = await resolveWorkspaceUser(
+    const user = await resolveRuntimeWorkspaceUser(
       supabase,
-      workspaceUserContext(identity as Record<string, unknown>),
-      { persistIdentity: false }
+      identity as Record<string, unknown>,
+      { persistLegacyIdentity: false }
     );
     const body = await request.json() as Record<string, unknown>;
     if (body.action === "shipper_crm_summary") return jsonResponse(await shipperSummary(supabase, user.owner_email));
@@ -774,6 +774,7 @@ Deno.serve(async (request) => {
     if (body.action === "shipper_intelligence") return jsonResponse(await shipperIntelligence(supabase, user.owner_email, body));
     return jsonResponse({ error: "Unknown Shipper directory action." }, 400);
   } catch (error) {
-    return jsonResponse({ error: errorMessage(error) }, errorStatus(error));
+    const identityStatus = runtimeIdentityStatus(error);
+    return jsonResponse({ error: errorMessage(error) }, identityStatus === 403 ? 403 : errorStatus(error));
   }
 });
