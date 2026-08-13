@@ -1,1 +1,0 @@
--- Provider Service Build 2 evidence rule.
