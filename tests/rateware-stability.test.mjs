@@ -36,6 +36,7 @@ const vendorImprovementSource = readFileSync(new URL("../src/vendor-improvement.
 const vendorImprovementServiceSource = readFileSync(new URL("../src/vendor-improvement-service.js", import.meta.url), "utf8");
 const vendorImprovementHtml = readFileSync(new URL("../vendor-improvement.html", import.meta.url), "utf8");
 const shippersSource = readFileSync(new URL("../src/shippers.js", import.meta.url), "utf8");
+const shipperCrmHtml = readFileSync(new URL("../shipper-crm.html", import.meta.url), "utf8");
 const carrierProfileSource = readFileSync(new URL("../src/carrier-profile.js", import.meta.url), "utf8");
 const carrierProfileHtml = readFileSync(new URL("../carrier-profile.html", import.meta.url), "utf8");
 const catalogWorkbenchHtml = readFileSync(new URL("../catalog-workbench.html", import.meta.url), "utf8");
@@ -4243,6 +4244,11 @@ assert.match(shippersSource, /const shipperPipelineMutationKeys = new Set\(\);/,
 assert.match(shippersSource, /if \(shipperPipelineMutationKeys\.has\(shipperId\)\) return;/, "Shipper pipeline moves should ignore duplicate move requests");
 assert.match(shippersSource, /const shipperCommercialMutationKeys = new Set\(\);/, "Shipper commercial actions should be protected by mutation keys");
 assert.match(shippersSource, /shipperCommercialMutationKeys\.delete\(mutationKey\);/, "Shipper commercial action locks should be released in finally blocks");
+assert.match(shippersSource, /const TERMINAL_COMMERCIAL_STAGES = new Set\(\["won", "lost"\]\);/, "Terminal commercial stages should be identified explicitly");
+assert.match(shippersSource, /function requestCommercialOpportunityStage\(control\)/, "Commercial terminal stages should require an explicit human decision");
+assert.match(shippersSource, /It does not approve rates, send communications, create an RFx workspace, or make a customer commitment\./, "Commercial stage confirmation should disclose what it does not do");
+assert.match(shippersSource, /control\.value = row\.stage \|\| "identified";/, "Cancelling a terminal commercial change should restore the original stage");
+assert.match(shipperCrmHtml, /shipper-commercial-governance/, "Shipper commercial workspace should disclose its governed stage boundary");
 assert.match(shippersSource, /let shipperDrawerSaveRunning = false;/, "Shipper profile drawer save should have a running guard");
 assert.match(shippersSource, /if \(shipperDrawerSaveRunning\) return;/, "Shipper profile drawer save should ignore duplicate submits");
 assert.match(shippersSource, /const shipperDrawerRecordMutationKeys = new Set\(\);/, "Shipper drawer child record mutations should be protected by keys");
