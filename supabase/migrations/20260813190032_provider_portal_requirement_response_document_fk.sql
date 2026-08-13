@@ -1,0 +1,5 @@
+alter table public.provider_portal_requirement_responses
+  add constraint provider_portal_requirement_responses_document_fkey
+  foreign key (organization_id,document_version_id,provider_relationship_id,legal_entity_id)
+  references public.provider_document_versions(organization_id,id,provider_relationship_id,legal_entity_id)
+  on delete restrict;
