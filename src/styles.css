@@ -33428,6 +33428,36 @@ form[data-unsaved-guard][data-unsaved="true"] {
 
 /* Mobile shell: keep navigation and primary actions in the first viewport. */
 @media (max-width: 760px) {
+  /* Shared-shell containment: content may wrap or scroll inside its own panel,
+     but no shell child may widen the document on a phone viewport. */
+  .shell-layout,
+  .shell-layout > *,
+  .page-frame,
+  .page-header,
+  .page-header > *,
+  .dashboard-layout,
+  .dashboard-layout > *,
+  .dashboard-layout > .next-best-action-card > div,
+  .dashboard-workflow-panel--progress .section-heading,
+  .dashboard-workflow-panel--progress .section-heading > * {
+    min-width: 0;
+  }
+
+  .dashboard-workflow-panel--progress .section-heading {
+    flex-wrap: wrap;
+  }
+
+  .dashboard-workflow-panel--progress .section-caption {
+    flex: 1 1 100%;
+    max-width: none;
+    text-align: left;
+  }
+
+  .dashboard-layout > .next-best-action-card h2,
+  .dashboard-layout > .next-best-action-card p:not(.eyebrow) {
+    overflow-wrap: anywhere;
+  }
+
   .side-nav {
     display: flex;
     align-items: center;

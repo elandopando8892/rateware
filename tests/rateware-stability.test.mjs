@@ -4087,6 +4087,8 @@ assert.match(stylesSource, /\.bi-drilldown-panel > \.table-wrap[\s\S]*?overflow-
 assert.match(stylesSource, /Mobile shell: keep navigation and primary actions in the first viewport/, "The mobile shell should have one compact navigation treatment");
 assert.match(stylesSource, /\.side-nav nav \{[\s\S]*?overflow-x: auto/, "Mobile navigation should scroll horizontally inside the shell");
 assert.match(stylesSource, /\.page-header \{[\s\S]*?flex-direction: row[\s\S]*?align-items: center/, "Mobile page headers should keep title and actions on one compact row");
+assert.match(stylesSource, /Shared-shell containment:[\s\S]*?\.shell-layout > \*[\s\S]*?\.dashboard-layout > \*[\s\S]*?min-width: 0/, "Mobile shared-shell children should not widen the document");
+assert.match(stylesSource, /\.dashboard-workflow-panel--progress \.section-heading \{[\s\S]*?flex-wrap: wrap/, "Mobile workflow headers should wrap supporting copy instead of overflowing");
 assert.match(stylesSource, /\.bi-workbench-nav,[\s\S]*?\.module-workbench-nav \{[\s\S]*?grid-template-columns: repeat\(2/, "Narrow Analyze and workbench navigation should avoid four full-width rows");
 assert.match(stylesSource, /\.dashboard-priority-panel \.priority-queue > \.ui-state[\s\S]*?grid-column: 1 \/ -1/, "Dashboard loading and error states should span the full priority queue");
 assert.match(spreadsheetGridSource, /navigator\.clipboard\?\.writeText/, "Spreadsheet copy should use the modern clipboard API when available");
