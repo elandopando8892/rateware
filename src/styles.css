@@ -29185,6 +29185,53 @@ form[data-unsaved-guard][data-unsaved="true"] {
   font-size: 0.9rem;
 }
 
+.rfx-award-preflight {
+  display: grid;
+  gap: 5px;
+  margin-top: 2px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+
+.rfx-award-preflight .eyebrow,
+.rfx-award-preflight-note {
+  margin: 0;
+}
+
+.rfx-award-preflight ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rfx-award-preflight li {
+  display: grid;
+  gap: 1px;
+  border-left: 3px solid #c7d0d8;
+  padding-left: 6px;
+  color: #52616d;
+  line-height: 1.3;
+}
+
+.rfx-award-preflight li[data-tone="success"] {
+  border-color: #5da979;
+}
+
+.rfx-award-preflight li[data-tone="warning"] {
+  border-color: #d7a52d;
+}
+
+.rfx-award-preflight li b {
+  color: var(--ink);
+}
+
+.rfx-award-preflight-note {
+  color: #52616d;
+  font-weight: 700;
+}
+
 .rfx-award-notice-queue {
   max-height: 560px;
   min-width: 0;

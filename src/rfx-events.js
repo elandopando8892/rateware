@@ -4484,6 +4484,33 @@ function renderAwardReadiness() {
   const riskTone = snapshot.weakRecommended.length || snapshot.riskFlags ? "warning" : "success";
   const closeoutTone = snapshot.pendingCloseout.length ? "warning" : snapshot.primary.length ? "success" : "neutral";
   const noticesTone = snapshot.sendable.length ? "warning" : snapshot.noticeRows.length ? "success" : "neutral";
+  const decisionChecklist = [
+    {
+      tone: decisionTone,
+      label: "Award decision",
+      detail: lanesCount
+        ? snapshot.missingPrimary.length
+          ? `${formatNumber(snapshot.missingPrimary.length)} lane(s) still need a primary carrier decision.`
+          : "Every lane with bids has a primary carrier decision."
+        : "Capture carrier bids before choosing an award."
+    },
+    {
+      tone: closeoutTone,
+      label: "Rate Matrix review",
+      detail: snapshot.pendingCloseout.length
+        ? `${formatNumber(snapshot.pendingCloseout.length)} awarded rate(s) can be sent to Review Queue; this does not approve them for production.`
+        : snapshot.primary.length
+          ? "No awarded rate is waiting to enter Review Queue."
+          : "A primary award is required before a rate can enter Review Queue."
+    },
+    {
+      tone: noticesTone,
+      label: "Agreement and notice",
+      detail: snapshot.noticeRows.length
+        ? `${formatNumber(snapshot.noticeRows.length)} email draft(s) exist; review each recipient and message before any send.`
+        : "No carrier notice draft has been generated."
+    }
+  ];
   if (rfxApplyRecommendedAwardsButton) {
     rfxApplyRecommendedAwardsButton.disabled = awardMutationRunning || !snapshot.recommendations.length;
     rfxApplyRecommendedAwardsButton.textContent = snapshot.recommendations.length
@@ -4498,6 +4525,13 @@ function renderAwardReadiness() {
       <span data-tone="${noticesTone}"><b>${formatNumber(snapshot.sendable.length)}</b> email notice(s) ready</span>
     </div>
     ${snapshot.weakRecommended.length ? `<p>${formatNumber(snapshot.weakRecommended.length)} lane(s) have weak recommended scores. Review before applying awards in bulk.</p>` : ""}
+    <section class="rfx-award-preflight" aria-label="Award decision checklist">
+      <p class="eyebrow">Before the next human action</p>
+      <ul>
+        ${decisionChecklist.map(({ tone, label, detail }) => `<li data-tone="${tone}"><b>${label}</b><span>${detail}</span></li>`).join("")}
+      </ul>
+      <p class="rfx-award-preflight-note">Production approval remains a separate human decision.</p>
+    </section>
   `;
 }
 
