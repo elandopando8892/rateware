@@ -8,6 +8,9 @@ const commands = [
   '../supabase/migrations/20260813132000_provider_service_activation_guards.sql',
   '../supabase/migrations/20260813132100_provider_service_activation_commands.sql',
   '../supabase/migrations/20260813132200_provider_service_activation_exception_commands.sql',
+  '../supabase/migrations/20260813132510_provider_service_template_immutability_patch.sql',
+  '../supabase/migrations/20260813132600_provider_service_requirement_state_command.sql',
+  '../supabase/migrations/20260813132610_provider_service_exception_approval.sql',
 ].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n');
 const security = readFileSync(new URL('../supabase/migrations/20260813133000_provider_service_activation_security.sql', import.meta.url), 'utf8');
 
@@ -53,6 +56,9 @@ test('requires explicit expiring exceptions and blocks direct activation shortcu
   assert.match(commands, /readiness_row\.readiness_state <> 'ready'/);
   assert.match(commands, /Provider relationship cannot activate/);
   assert.match(commands, /provider_service_activate_relationship/);
+  assert.match(commands, /Required evidence must be linked before/);
+  assert.match(commands, /old_template_status is not null and old_template_status <> 'draft'/);
+  assert.match(commands, /exception requester cannot approve the same exception/);
 });
 
 test('keeps events append-only and browser writes closed', () => {
