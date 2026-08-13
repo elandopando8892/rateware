@@ -145,6 +145,8 @@ create table if not exists public.provider_document_extractions (
   completed_at timestamptz,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
+  constraint provider_document_extractions_org_id_unique
+    unique (organization_id, id),
   constraint provider_document_extractions_version_fkey
     foreign key (organization_id, document_version_id)
     references public.provider_document_versions(organization_id, id)
@@ -174,6 +176,8 @@ create table if not exists public.provider_document_reviews (
   decision_note text,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
+  constraint provider_document_reviews_org_id_unique
+    unique (organization_id, id),
   constraint provider_document_reviews_version_fkey
     foreign key (organization_id, document_version_id)
     references public.provider_document_versions(organization_id, id)
@@ -210,6 +214,8 @@ create table if not exists public.provider_document_requirement_links (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  constraint provider_document_requirement_links_org_id_unique
+    unique (organization_id, id),
   constraint provider_document_requirement_links_activation_fkey
     foreign key (
       organization_id,
