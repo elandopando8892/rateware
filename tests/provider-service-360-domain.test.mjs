@@ -1,0 +1,7 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {deriveProviderRelationshipAttention,groupProviderRequirements,summarizeProvider360} from '../src/provider-service-360-domain.js';
+
+test('attention states',()=>{assert.equal(deriveProviderRelationshipAttention({}).level,'not_configured');assert.equal(deriveProviderRelationshipAttention({provider_relationship_id:'r',primary_blocker:'credit'}).level,'critical');assert.equal(deriveProviderRelationshipAttention({provider_relationship_id:'r',compliance_status:'compliant',needs_reply_count:1}).level,'attention');assert.equal(deriveProviderRelationshipAttention({provider_relationship_id:'r',compliance_status:'compliant'}).level,'healthy');});
+test('requirement grouping',()=>{const g=groupProviderRequirements([{track_code:'provider_readiness',sequence_number:20,state:'pending'},{track_code:'provider_readiness',sequence_number:10,state:'passed'}]);assert.equal(g[0].items[0].sequence_number,10);assert.equal(g[0].passed,1);});
+test('summary counts',()=>{const s=summarizeProvider360({relationships:[{provider_relationship_id:'r1',compliance_status:'compliant',open_case_count:2},{provider_relationship_id:'r2',primary_blocker:'credit'}],requirements:[{is_required:true,state:'passed'},{is_required:true,is_blocking:true,state:'failed'}],activity:[{}]});assert.equal(s.relationshipCount,2);assert.equal(s.criticalRelationshipCount,1);assert.equal(s.openCaseCount,2);assert.equal(s.blockerRequirementCount,1);});
