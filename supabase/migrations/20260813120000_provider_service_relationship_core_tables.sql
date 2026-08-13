@@ -1,5 +1,15 @@
 -- Provider Service Build 1: relationship core tables and indexes.
--- Expand-only; no backfill and no change to public.vendors.
+-- Expand-only; no backfill and no mutation of existing vendor rows.
+
+-- These composite keys let Provider Service enforce tenant scope with foreign
+-- keys instead of inferring it from owner email or relying on a privileged trigger.
+alter table public.workspace_registry
+  add constraint workspace_registry_external_canonical_unique
+  unique (organization_id, organization_uuid);
+
+alter table public.vendors
+  add constraint vendors_id_organization_id_unique
+  unique (id, organization_id);
 
 create table if not exists public.legal_entities (
   id uuid primary key default gen_random_uuid(),
@@ -14,6 +24,7 @@ create table if not exists public.legal_entities (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint legal_entities_organization_id_id_unique unique (organization_id, id),
+  constraint legal_entities_organization_id_id_code_unique unique (organization_id, id, entity_code),
   constraint legal_entities_organization_code_unique unique (organization_id, entity_code),
   constraint legal_entities_entity_code_check check (entity_code ~ '^[A-Z0-9]{2,16}$'),
   constraint legal_entities_legal_name_not_blank check (btrim(legal_name) <> ''),
@@ -24,26 +35,17 @@ create table if not exists public.legal_entities (
   constraint legal_entities_status_check check (status in ('draft', 'active', 'inactive'))
 );
 
-create table if not exists public.provider_vendor_code_counters (
-  organization_id uuid not null references public.organizations(id) on delete restrict,
-  legal_entity_id uuid not null,
-  next_value bigint not null default 1,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  primary key (organization_id, legal_entity_id),
-  constraint provider_vendor_code_counters_entity_fkey
-    foreign key (organization_id, legal_entity_id)
-    references public.legal_entities(organization_id, id)
-    on delete restrict,
-  constraint provider_vendor_code_counters_next_value_check check (next_value > 0)
-);
-
 create table if not exists public.provider_relationships (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete restrict,
-  vendor_id uuid not null references public.vendors(id) on delete restrict,
+  vendor_id uuid not null,
+  vendor_workspace_id text not null,
   legal_entity_id uuid not null,
-  vendor_code text not null,
+  legal_entity_code text not null,
+  vendor_number bigint generated always as identity,
+  vendor_code text generated always as (
+    'VND-' || legal_entity_code || '-' || lpad(vendor_number::text, 6, '0')
+  ) stored,
   lifecycle_status text not null default 'identified',
   activation_status text not null default 'not_started',
   risk_tier text not null default 'unrated',
@@ -56,16 +58,24 @@ create table if not exists public.provider_relationships (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint provider_relationships_organization_id_id_unique unique (organization_id, id),
+  constraint provider_relationships_vendor_workspace_fkey
+    foreign key (vendor_id, vendor_workspace_id)
+    references public.vendors(id, organization_id)
+    on delete restrict,
+  constraint provider_relationships_workspace_tenant_fkey
+    foreign key (vendor_workspace_id, organization_id)
+    references public.workspace_registry(organization_id, organization_uuid)
+    on delete restrict,
   constraint provider_relationships_entity_fkey
-    foreign key (organization_id, legal_entity_id)
-    references public.legal_entities(organization_id, id)
+    foreign key (organization_id, legal_entity_id, legal_entity_code)
+    references public.legal_entities(organization_id, id, entity_code)
     on delete restrict,
   constraint provider_relationships_vendor_entity_unique
     unique (organization_id, vendor_id, legal_entity_id),
   constraint provider_relationships_vendor_code_unique
     unique (organization_id, vendor_code),
-  constraint provider_relationships_vendor_code_check
-    check (vendor_code ~ '^VND-[A-Z0-9]{2,16}-[0-9]{6,}$'),
+  constraint provider_relationships_legal_entity_code_check
+    check (legal_entity_code ~ '^[A-Z0-9]{2,16}$'),
   constraint provider_relationships_lifecycle_status_check check (
     lifecycle_status in (
       'identified',
