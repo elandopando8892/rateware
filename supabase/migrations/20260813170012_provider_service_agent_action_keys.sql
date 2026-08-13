@@ -1,0 +1,4 @@
+alter table public.provider_agent_action_proposals add constraint provider_agent_action_proposals_org_id_unique unique (organization_id,id);
+alter table public.provider_agent_action_proposals add constraint provider_agent_action_proposals_org_fkey foreign key (organization_id) references public.organizations(id) on delete restrict;
+alter table public.provider_agent_action_proposals add constraint provider_agent_action_proposals_run_fkey foreign key (organization_id,agent_run_id) references public.provider_agent_runs(organization_id,id) on delete cascade;
+alter table public.provider_agent_action_proposals add constraint provider_agent_action_proposals_sequence_unique unique (organization_id,agent_run_id,sequence_number);
