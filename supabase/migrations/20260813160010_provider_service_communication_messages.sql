@@ -1,0 +1,26 @@
+-- Provider Service Build 5 communication messages.
+create table if not exists public.provider_communication_messages (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null,
+  thread_id uuid not null,
+  channel text not null default 'email',
+  mailbox_reference text not null,
+  external_message_id text not null,
+  internet_message_id text,
+  direction text not null,
+  sender_name text,
+  sender_email text,
+  to_emails text[] not null default '{}',
+  cc_emails text[] not null default '{}',
+  subject text,
+  body_text text,
+  content_sha256 text,
+  sensitivity text not null default 'internal',
+  message_at timestamptz not null,
+  received_at timestamptz not null default now(),
+  processing_status text not null default 'received',
+  processing_error text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
