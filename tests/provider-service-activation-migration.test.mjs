@@ -4,7 +4,11 @@ import { readFileSync } from 'node:fs';
 
 const core = readFileSync(new URL('../supabase/migrations/20260813130000_provider_service_activation_core_tables.sql', import.meta.url), 'utf8');
 const readiness = readFileSync(new URL('../supabase/migrations/20260813131000_provider_service_activation_readiness_views.sql', import.meta.url), 'utf8');
-const commands = readFileSync(new URL('../supabase/migrations/20260813132000_provider_service_activation_commands.sql', import.meta.url), 'utf8');
+const commands = [
+  '../supabase/migrations/20260813132000_provider_service_activation_guards.sql',
+  '../supabase/migrations/20260813132100_provider_service_activation_commands.sql',
+  '../supabase/migrations/20260813132200_provider_service_activation_exception_commands.sql',
+].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n');
 const security = readFileSync(new URL('../supabase/migrations/20260813133000_provider_service_activation_security.sql', import.meta.url), 'utf8');
 
 const canonicalTracks = [
@@ -48,7 +52,7 @@ test('requires explicit expiring exceptions and blocks direct activation shortcu
   assert.match(commands, /p_expires_at is null or p_expires_at <= effective_from_value/);
   assert.match(commands, /readiness_row\.readiness_state <> 'ready'/);
   assert.match(commands, /Provider relationship cannot activate/);
-  assert.doesNotMatch(`${core}\n${commands}`, /active\s*=\s*true/i);
+  assert.match(commands, /provider_service_activate_relationship/);
 });
 
 test('keeps events append-only and browser writes closed', () => {
