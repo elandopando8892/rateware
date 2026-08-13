@@ -4091,6 +4091,11 @@ assert.match(stylesSource, /Shared-shell containment:[\s\S]*?\.shell-layout > \*
 assert.match(stylesSource, /\.dashboard-workflow-panel--progress \.section-heading \{[\s\S]*?flex-wrap: wrap/, "Mobile workflow headers should wrap supporting copy instead of overflowing");
 assert.match(stylesSource, /\.bi-workbench-nav,[\s\S]*?\.module-workbench-nav \{[\s\S]*?grid-template-columns: repeat\(2/, "Narrow Analyze and workbench navigation should avoid four full-width rows");
 assert.match(stylesSource, /\.dashboard-priority-panel \.priority-queue > \.ui-state[\s\S]*?grid-column: 1 \/ -1/, "Dashboard loading and error states should span the full priority queue");
+assert.match(appHtml, /id="my-work-list"/, "Command Center should expose a dedicated My Work queue");
+assert.match(dashboardSource, /function renderMyWork\(summary\)/, "Command Center should render My Work from the workspace-scoped dashboard summary");
+assert.match(dashboardSource, /buildActionList\(summary\)\.slice\(0, 6\)/, "My Work should present a bounded ordered operator queue");
+assert.match(dashboardSource, /Could not load your work/, "My Work should expose a retryable error state instead of stale work");
+assert.match(stylesSource, /\.my-work-item \{[\s\S]*?grid-template-columns: 24px minmax\(0, 1fr\) auto/, "My Work rows should preserve a flexible central copy column");
 assert.match(spreadsheetGridSource, /navigator\.clipboard\?\.writeText/, "Spreadsheet copy should use the modern clipboard API when available");
 assert.match(spreadsheetGridSource, /document\.execCommand\?\.\("copy"\)/, "Spreadsheet copy should keep a browser fallback when clipboard permissions are unavailable");
 assert.match(spreadsheetGridSource, /fallback\.remove\(\)/, "Spreadsheet copy fallback should clean up its temporary textarea");
