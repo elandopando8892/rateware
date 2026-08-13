@@ -1,0 +1,6 @@
+alter table public.provider_portal_profile_proposals add constraint provider_portal_profile_proposals_field_check check (field_code ~ '^[a-z][a-z0-9_]{1,127}$');
+alter table public.provider_portal_profile_proposals add constraint provider_portal_profile_proposals_revision_check check (revision > 0);
+alter table public.provider_portal_profile_proposals add constraint provider_portal_profile_proposals_status_check check (status in ('submitted','under_review','accepted','rejected','correction_required','applied'));
+alter table public.provider_portal_profile_proposals add constraint provider_portal_profile_proposals_review_check check (status not in ('accepted','rejected','correction_required','applied') or (reviewed_at is not null and nullif(btrim(coalesce(reviewed_by_user_id,'')),'') is not null));
+alter table public.provider_portal_profile_proposals add constraint provider_portal_profile_proposals_note_check check (status not in ('rejected','correction_required') or nullif(btrim(coalesce(review_note,'')),'') is not null);
+alter table public.provider_portal_profile_proposals add constraint provider_portal_profile_proposals_applied_check check (status <> 'applied' or nullif(btrim(coalesce(applied_reference,'')),'') is not null);
