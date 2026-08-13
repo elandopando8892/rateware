@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <base href="/">
+    <link rel="stylesheet" href="/src/styles.css">
+    <title>Staging approval QA preview</title>
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-hidden="true"></aside>
+      <div class="page-frame">
+        <main class="history-layout">
+          <section class="workspace-panel spreadsheet-workbench review-queue-workspace">
+            <div class="workbench-header">
+              <div><p class="eyebrow">Human approval required</p><h2>Staging Review</h2></div>
+            </div>
+            <section class="staging-approval-brief" aria-labelledby="qa-approval-brief-title">
+              <div class="staging-approval-brief-copy">
+                <p class="eyebrow">Approval gate</p>
+                <h3 id="qa-approval-brief-title">Human review keeps source evidence in control</h3>
+                <p>2 selected rows are ready for human approval. Review source evidence before approving.</p>
+                <div class="staging-approval-actions"><button class="secondary small-button" type="button">Review ready rows</button><a class="secondary-link" href="#">Open source files</a></div>
+              </div>
+              <div class="staging-approval-metrics" aria-label="Approval gate summary">
+                <article><span>Source evidence</span><strong>12</strong></article>
+                <article class="is-ready"><span>Ready to approve</span><strong>8</strong></article>
+                <article class="is-blocked"><span>Needs correction</span><strong>4</strong></article>
+                <article><span>Selected now</span><strong>2</strong></article>
+              </div>
+            </section>
+          </section>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

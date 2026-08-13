@@ -57,6 +57,12 @@ const stagingMetricLocation = document.querySelector("#staging-metric-location")
 const stagingMetricRate = document.querySelector("#staging-metric-rate");
 const stagingMetricValidation = document.querySelector("#staging-metric-validation");
 const stagingMetricSelected = document.querySelector("#staging-metric-selected");
+const stagingBriefSource = document.querySelector("#staging-brief-source");
+const stagingBriefReady = document.querySelector("#staging-brief-ready");
+const stagingBriefBlocked = document.querySelector("#staging-brief-blocked");
+const stagingBriefSelected = document.querySelector("#staging-brief-selected");
+const stagingBriefMessage = document.querySelector("#staging-approval-brief-message");
+const stagingBriefReadyButton = document.querySelector("[data-staging-brief-filter=\"ready\"]");
 const reviewFilterButtons = document.querySelectorAll("[data-staging-filter]");
 const uploadScopeBanner = document.querySelector("#staging-upload-scope");
 const gridSelectionStatus = document.querySelector("#staging-grid-selection");
@@ -1505,6 +1511,50 @@ function updateReviewMetrics() {
   if (stagingMetricRate) stagingMetricRate.textContent = String(scopedRows.filter(needsNumericRate).length);
   setStagingValidationMetric(validation);
   if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedRowIds.size);
+  updateApprovalBrief(scopedRows);
+}
+
+function hasPreservedSourceEvidence(row) {
+  const evidence = sourceEvidence(row);
+  return Boolean(row.raw_upload_id || evidence.source_filename || evidence.source_file || evidence.email_from || evidence.row_id);
+}
+
+function updateApprovalBrief(scopedRows = scopedStagingRows(loadedRows)) {
+  const rows = Array.isArray(scopedRows) ? scopedRows : [];
+  const readyRows = rows.filter(isReadyForApproval);
+  const selectedCount = selectedRowIds.size;
+  const selectedRowsInScope = rows.filter((row) => selectedRowIds.has(row.id));
+  const selectedReady = selectedRowsInScope.filter(isReadyForApproval).length;
+  const selectedBlocked = selectedRowsInScope.length - selectedReady;
+  const selectedElsewhere = Math.max(0, selectedCount - selectedRowsInScope.length);
+
+  if (stagingBriefSource) stagingBriefSource.textContent = String(rows.filter(hasPreservedSourceEvidence).length);
+  if (stagingBriefReady) stagingBriefReady.textContent = String(readyRows.length);
+  if (stagingBriefBlocked) stagingBriefBlocked.textContent = String(Math.max(0, rows.length - readyRows.length));
+  if (stagingBriefSelected) stagingBriefSelected.textContent = String(selectedCount);
+  if (!stagingBriefMessage) return;
+
+  if (!rows.length) {
+    stagingBriefMessage.textContent = selectedCount
+      ? `${selectedCount} selected row(s) are retained outside this visible scope. Clear filters or open their page before reviewing approval readiness.`
+      : "No rows are visible in this scope. Clear filters or open a source upload to continue review.";
+    return;
+  }
+  if (!selectedCount) {
+    stagingBriefMessage.textContent = `${readyRows.length} visible row(s) can be reviewed for approval. Approval remains an explicit human action.`;
+    return;
+  }
+  if (!selectedRowsInScope.length) {
+    stagingBriefMessage.textContent = `${selectedCount} selected row(s) are retained on other pages. Open their page before reviewing approval readiness.`;
+    return;
+  }
+  if (selectedElsewhere) {
+    stagingBriefMessage.textContent = `${selectedReady} visible selected row(s) are ready; ${selectedBlocked} need correction. ${selectedElsewhere} selected row(s) are retained on other pages and need their own review.`;
+    return;
+  }
+  stagingBriefMessage.textContent = selectedBlocked
+    ? `${selectedReady} selected row(s) are ready; ${selectedBlocked} need correction before any approval can proceed.`
+    : `${selectedReady} selected row(s) are ready for human approval. Review source evidence before approving.`;
 }
 
 function updateUploadScopeBanner() {
@@ -2999,6 +3049,9 @@ selectAllCheckbox?.addEventListener("change", () => {
 });
 selectStagingPageButton?.addEventListener("click", () => setVisibleStagingSelection(true));
 clearStagingSelectionButton?.addEventListener("click", () => clearStagingSelection());
+stagingBriefReadyButton?.addEventListener("click", () => {
+  document.querySelector('[data-staging-filter="ready"]')?.click();
+});
 stagingNextIssueButton?.addEventListener("click", focusNextVisibleIssue);
 stagingSelectIssueRowsButton?.addEventListener("click", selectVisibleIssueRows);
 bulkSaveButton?.addEventListener("click", () => runBulkAction());

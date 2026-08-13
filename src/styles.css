@@ -23125,6 +23125,75 @@ tbody tr:hover {
   line-height: 1;
 }
 
+.staging-approval-brief {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.35fr);
+  align-items: center;
+  gap: 14px;
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: #f8fbfd;
+  padding: 12px;
+}
+
+.staging-approval-brief-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.staging-approval-brief-copy h3 {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.staging-approval-brief-copy p:not(.eyebrow) {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.staging-approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.staging-approval-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(82px, 1fr));
+  gap: 6px;
+}
+
+.staging-approval-metrics article {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #ffffff;
+  padding: 7px 8px;
+}
+
+.staging-approval-metrics article.is-ready { border-top: 2px solid var(--success); }
+.staging-approval-metrics article.is-blocked { border-top: 2px solid var(--warning); }
+
+.staging-approval-metrics span {
+  color: var(--muted);
+  font-size: 0.61rem;
+  font-weight: 840;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.staging-approval-metrics strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
 .spreadsheet-workbench .saved-view-strip {
   flex-wrap: nowrap;
   overflow-x: auto;
@@ -24406,6 +24475,7 @@ tbody tr:hover {
 
   .source-summary-strip,
   .source-files-toolbar,
+  .staging-approval-brief,
   .staging-summary-strip,
   .rateware-summary-strip,
   .catalog-rule-strip,
@@ -24786,6 +24856,10 @@ tbody tr:hover {
     grid-template-columns: repeat(5, minmax(64px, 1fr));
     gap: 4px;
     width: min(520px, 48vw);
+  }
+
+  .staging-approval-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .staging-summary-strip article,
@@ -37171,5 +37245,13 @@ form[data-unsaved-guard][data-unsaved="true"] {
 
   .bid-portal-shell .carrier-bid-template-tools-body {
     grid-template-columns: 1fr;
+  }
+
+  .staging-approval-brief {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .staging-approval-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

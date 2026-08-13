@@ -91,6 +91,35 @@
                 </article>
               </div>
             </div>
+            <section class="staging-approval-brief" aria-labelledby="staging-approval-brief-title">
+              <div class="staging-approval-brief-copy">
+                <p class="eyebrow">Approval gate</p>
+                <h3 id="staging-approval-brief-title">Human review keeps source evidence in control</h3>
+                <p id="staging-approval-brief-message" role="status">Loading the visible review scope.</p>
+                <div class="staging-approval-actions">
+                  <button type="button" class="secondary small-button" data-staging-brief-filter="ready">Review ready rows</button>
+                  <a class="secondary-link" href="./upload-history.html">Open source files</a>
+                </div>
+              </div>
+              <div class="staging-approval-metrics" aria-label="Approval gate summary">
+                <article>
+                  <span>Source evidence</span>
+                  <strong id="staging-brief-source">0</strong>
+                </article>
+                <article class="is-ready">
+                  <span>Ready to approve</span>
+                  <strong id="staging-brief-ready">0</strong>
+                </article>
+                <article class="is-blocked">
+                  <span>Needs correction</span>
+                  <strong id="staging-brief-blocked">0</strong>
+                </article>
+                <article>
+                  <span>Selected now</span>
+                  <strong id="staging-brief-selected">0</strong>
+                </article>
+              </div>
+            </section>
             <div id="staging-upload-scope" class="scope-banner hidden"></div>
             <div class="sheet-command-bar review-queue-command-bar">
               <div class="review-filter-row compact-filter-row review-mode-tabs" aria-label="Staging review views">
