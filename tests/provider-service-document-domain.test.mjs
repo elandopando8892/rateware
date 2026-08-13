@@ -18,7 +18,7 @@ const TODAY = '2026-08-13';
 
 test('normalizes document identity without inventing business semantics', () => {
   assert.equal(normalizeProviderDocumentType(' W-9 '), 'w_9');
-  assert.equal(normalizeProviderDocumentKey('2026 Primary'), 'primary_2026_primary'.replace('primary_', ''));
+  assert.equal(normalizeProviderDocumentKey('Primary 2026'), 'primary_2026');
   assert.throws(() => normalizeProviderDocumentType('1'), /snake_case/);
 });
 
