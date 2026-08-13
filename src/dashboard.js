@@ -30,6 +30,7 @@ const workflowRfx = document.querySelector("#workflow-rfx");
 const workflowUploads = document.querySelector("#workflow-uploads");
 const workflowVendors = document.querySelector("#workflow-vendors");
 const priorityQueue = document.querySelector("#priority-queue");
+const myWorkList = document.querySelector("#my-work-list");
 const progressUpload = document.querySelector("#progress-upload");
 const progressInterpret = document.querySelector("#progress-interpret");
 const progressReview = document.querySelector("#progress-review");
@@ -223,6 +224,44 @@ function renderPriorityQueue(summary) {
     .join("");
 }
 
+function workToneLabel(severity) {
+  if (severity === "critical") return "Urgent";
+  if (severity === "warning") return "Review";
+  if (severity === "success") return "Ready";
+  return "Next";
+}
+
+function renderMyWork(summary) {
+  if (!myWorkList) return;
+  const items = buildActionList(summary).slice(0, 6);
+
+  if (!items.length) {
+    myWorkList.innerHTML = stateBlock({
+      tone: "success",
+      eyebrow: "Clear",
+      title: "No queued work",
+      detail: "There are no operator actions requiring attention in this workspace."
+    });
+    return;
+  }
+
+  myWorkList.innerHTML = items
+    .map(
+      (item, index) => `
+        <a class="my-work-item ${item.severity}" href="${item.href}">
+          <span class="my-work-order" aria-hidden="true">${index + 1}</span>
+          <span class="my-work-copy">
+            <small>${workToneLabel(item.severity)}</small>
+            <strong>${escapeHtml(item.title)}</strong>
+            <em>${escapeHtml(item.detail)}</em>
+          </span>
+          <b>${item.count ? formatCount(item.count) : escapeHtml(item.action)}</b>
+        </a>
+      `
+    )
+    .join("");
+}
+
 function renderRateBookHealth(summary) {
   if (!rateBookHealthPanel) return;
   const freshness = rateBookFreshness(summary);
@@ -278,6 +317,7 @@ function renderSummary(summary) {
   renderRateBookHealth(summary);
   renderNextBestAction(summary);
   renderPriorityQueue(summary);
+  renderMyWork(summary);
 }
 
 function renderDashboardLoading() {
@@ -296,6 +336,12 @@ function renderDashboardLoading() {
     priorityQueue.innerHTML = loadingState({
       title: "Loading priorities",
       detail: "Checking staging, failed uploads, Bid Room, and vendor readiness."
+    });
+  }
+  if (myWorkList) {
+    myWorkList.innerHTML = loadingState({
+      title: "Loading your work",
+      detail: "Checking the current queue for this workspace."
     });
   }
 }
@@ -324,6 +370,15 @@ function renderLoadError(error) {
       tone: "danger",
       eyebrow: "Needs attention",
       title: "Could not load today's queue",
+      detail: message,
+      actionButton: '<button class="secondary small-button" type="button" data-retry-action="load-dashboard">Retry dashboard</button>'
+    });
+  }
+  if (myWorkList) {
+    myWorkList.innerHTML = stateBlock({
+      tone: "danger",
+      eyebrow: "Needs attention",
+      title: "Could not load your work",
       detail: message,
       actionButton: '<button class="secondary small-button" type="button" data-retry-action="load-dashboard">Retry dashboard</button>'
     });

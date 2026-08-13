@@ -18874,6 +18874,86 @@ button.location-chip:focus-visible {
   padding: 10px 0 0;
 }
 
+.dashboard-layout > .dashboard-my-work-panel {
+  grid-column: span 7;
+  min-width: 0;
+  border: 0;
+  border-top: 2px solid var(--accent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 10px 0 0;
+}
+
+.my-work-list {
+  display: grid;
+  gap: 5px;
+}
+
+.my-work-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: 4px;
+  background: #ffffff;
+  padding: 7px 9px;
+}
+
+.my-work-item.critical { border-left-color: var(--danger); }
+.my-work-item.warning { border-left-color: var(--warning); }
+.my-work-item.success { border-left-color: var(--success); }
+.my-work-item.info { border-left-color: var(--accent); }
+
+.my-work-order {
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 850;
+}
+
+.my-work-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.my-work-copy small {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.my-work-copy strong {
+  color: var(--text);
+  font-size: 0.76rem;
+}
+
+.my-work-copy em {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.67rem;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.my-work-item > b {
+  color: var(--accent-dark);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
 .dashboard-priority-panel .section-heading,
 .dashboard-workflow-panel--progress .section-heading,
 .dashboard-metrics-panel .section-heading,
@@ -19034,6 +19114,7 @@ button.location-chip:focus-visible {
 
 @media (max-width: 1040px) and (min-width: 761px) {
   .dashboard-layout > .dashboard-priority-panel,
+  .dashboard-layout > .dashboard-my-work-panel,
   .dashboard-layout > .dashboard-workflow-panel--progress {
     grid-column: 1 / -1;
   }
@@ -19055,6 +19136,7 @@ button.location-chip:focus-visible {
 
   .dashboard-layout > .next-best-action-card,
   .dashboard-layout > .dashboard-priority-panel,
+  .dashboard-layout > .dashboard-my-work-panel,
   .dashboard-layout > .dashboard-workflow-panel--progress,
   .dashboard-layout > .rate-book-health-panel,
   .dashboard-layout > .dashboard-metrics-panel,
@@ -19076,6 +19158,10 @@ button.location-chip:focus-visible {
   .dashboard-priority-panel .priority-queue,
   .dashboard-workflow-panel--progress .workflow-progress-panel {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .my-work-copy em {
+    white-space: normal;
   }
 
   .dashboard-metrics-panel .metric-grid,
