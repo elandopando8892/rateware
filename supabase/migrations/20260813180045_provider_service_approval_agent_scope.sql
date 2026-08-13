@@ -1,0 +1,6 @@
+alter table public.provider_agent_runs add constraint provider_agent_runs_org_id_entity_unique unique (organization_id,id,legal_entity_id);
+alter table public.provider_agent_action_proposals add constraint provider_agent_action_proposals_org_id_run_unique unique (organization_id,id,agent_run_id);
+alter table public.provider_approval_requests add column agent_run_id uuid;
+alter table public.provider_approval_requests add constraint provider_approval_requests_agent_run_entity_fkey foreign key (organization_id,agent_run_id,legal_entity_id) references public.provider_agent_runs(organization_id,id,legal_entity_id) on delete restrict;
+alter table public.provider_approval_requests add constraint provider_approval_requests_action_run_fkey foreign key (organization_id,action_proposal_id,agent_run_id) references public.provider_agent_action_proposals(organization_id,id,agent_run_id) on delete restrict;
+alter table public.provider_approval_requests add constraint provider_approval_requests_action_run_required_check check (action_proposal_id is null or agent_run_id is not null);
