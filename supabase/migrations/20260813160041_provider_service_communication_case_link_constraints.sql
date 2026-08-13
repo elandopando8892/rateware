@@ -1,0 +1,9 @@
+alter table public.provider_communication_case_links add constraint provider_communication_case_links_org_fkey foreign key (organization_id) references public.organizations(id) on delete restrict;
+alter table public.provider_communication_case_links add constraint provider_communication_case_links_org_id_unique unique (organization_id, id);
+alter table public.provider_communication_case_links add constraint provider_communication_case_links_thread_fkey foreign key (organization_id, thread_id, provider_relationship_id, legal_entity_id) references public.provider_communication_threads(organization_id, id, provider_relationship_id, legal_entity_id) on delete cascade;
+alter table public.provider_communication_case_links add constraint provider_communication_case_links_case_fkey foreign key (organization_id, case_id, provider_relationship_id, legal_entity_id) references public.provider_service_cases(organization_id, id, provider_relationship_id, legal_entity_id) on delete cascade;
+alter table public.provider_communication_case_links add constraint provider_communication_case_links_unique unique (organization_id, thread_id, case_id, link_role);
+alter table public.provider_communication_case_links add constraint provider_communication_case_links_role_check check (link_role in ('source','related','primary','follow_up'));
+alter table public.provider_communication_case_links add constraint provider_communication_case_links_status_check check (status in ('active','revoked','superseded'));
+create index if not exists provider_communication_case_links_thread_idx on public.provider_communication_case_links (thread_id, status, created_at desc);
+create index if not exists provider_communication_case_links_case_idx on public.provider_communication_case_links (case_id, status, created_at desc);
