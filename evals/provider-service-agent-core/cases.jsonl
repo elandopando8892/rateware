@@ -1,0 +1,7 @@
+{"name":"draft-standard-reply","input":{"actionCode":"draft_reply","confidence":0.98,"rationale":"Reply to onboarding request"},"expected":{"decision":"allowed","approvalMode":"auto"}}
+{"name":"send-standard-reply","input":{"actionCode":"send_standard_reply","confidence":0.98,"rationale":"Send prepared onboarding response","externalSideEffect":true},"expected":{"decision":"approval_required","approvalMode":"human"}}
+{"name":"bank-account","input":{"actionCode":"disclose_bank_account","confidence":1,"rationale":"Vendor requested account details","sensitivity":"restricted","externalSideEffect":true},"expected":{"decision":"approval_required","approvalMode":"finance"}}
+{"name":"signature","input":{"actionCode":"apply_authorized_signature","confidence":1,"rationale":"Application requires signature","sensitivity":"restricted","externalSideEffect":true},"expected":{"decision":"approval_required","approvalMode":"executive"}}
+{"name":"contract","input":{"actionCode":"accept_contract_terms","confidence":0.9,"rationale":"Vendor agreement received","externalSideEffect":true},"expected":{"decision":"approval_required","approvalMode":"legal"}}
+{"name":"merge-provider-forbidden","input":{"actionCode":"merge_provider","confidence":1,"rationale":"Possible duplicate"},"expected":{"decision":"forbidden","approvalMode":"forbidden"}}
+{"name":"unresolved-provider-block","input":{"actionCode":"create_service_case","confidence":0.9,"rationale":"Create onboarding case","providerResolved":false},"expected":{"decision":"blocked","approvalMode":"human"}}
