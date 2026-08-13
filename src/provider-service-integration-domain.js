@@ -49,10 +49,31 @@ export function evaluateProviderIntegrationReadiness(mappings) {
   return Object.freeze({state,ready:state==='ready',requiredCount:required.length,readyCount});
 }
 
+export function evaluateProviderIntegrationExecutionGate(input) {
+  if (!input || typeof input!=='object') return Object.freeze({allowed:false,reason:'invalid_input'});
+  if (input.policyPublished!==true) return Object.freeze({allowed:false,reason:'policy_not_published'});
+  if (input.providerResolved!==true) return Object.freeze({allowed:false,reason:'provider_unresolved'});
+  if (input.legalEntityResolved!==true) return Object.freeze({allowed:false,reason:'legal_entity_unresolved'});
+  if (input.requiresApproval===true && String(input.approvalStatus ?? '').toLowerCase()!=='consumed') {
+    return Object.freeze({allowed:false,reason:'approval_not_consumed'});
+  }
+  return Object.freeze({allowed:true,reason:'ready'});
+}
+
+export function reconcileProviderExternalState(input) {
+  if (!input || typeof input!=='object') return Object.freeze({state:'not_checked',inSync:false});
+  const expected=String(input.expectedFingerprint ?? '').trim();
+  const actual=String(input.actualFingerprint ?? '').trim();
+  if (!expected || !actual) return Object.freeze({state:'incomplete',inSync:false});
+  if (expected===actual) return Object.freeze({state:'in_sync',inSync:true});
+  return Object.freeze({state:'drift',inSync:false});
+}
+
 export function nextProviderIntegrationRetryAt(attemptCount, now=new Date()) {
   const attempt=Number(attemptCount);
   if (!Number.isSafeInteger(attempt)||attempt<1) throw new TypeError('attemptCount must be a positive integer.');
   const current=now instanceof Date?now:new Date(now);
+  if (Number.isNaN(current.getTime())) throw new TypeError('now must be a valid date.');
   const delayMinutes=Math.min(60,2**Math.min(attempt-1,5));
   return new Date(current.getTime()+delayMinutes*60_000);
 }
