@@ -1,0 +1,4 @@
+alter table public.provider_portal_profile_proposals add constraint provider_portal_profile_proposals_org_id_unique unique (organization_id,id);
+alter table public.provider_portal_profile_proposals add constraint provider_portal_profile_proposals_org_fkey foreign key (organization_id) references public.organizations(id) on delete restrict;
+alter table public.provider_portal_profile_proposals add constraint provider_portal_profile_proposals_invitation_fkey foreign key (organization_id,invitation_id,provider_relationship_id,legal_entity_id) references public.provider_portal_invitations(organization_id,id,provider_relationship_id,legal_entity_id) on delete cascade;
+alter table public.provider_portal_profile_proposals add constraint provider_portal_profile_proposals_revision_unique unique (organization_id,invitation_id,field_code,revision);
