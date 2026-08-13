@@ -1522,22 +1522,34 @@ function hasPreservedSourceEvidence(row) {
 function updateApprovalBrief(scopedRows = scopedStagingRows(loadedRows)) {
   const rows = Array.isArray(scopedRows) ? scopedRows : [];
   const readyRows = rows.filter(isReadyForApproval);
+  const selectedCount = selectedRowIds.size;
   const selectedRowsInScope = rows.filter((row) => selectedRowIds.has(row.id));
   const selectedReady = selectedRowsInScope.filter(isReadyForApproval).length;
   const selectedBlocked = selectedRowsInScope.length - selectedReady;
+  const selectedElsewhere = Math.max(0, selectedCount - selectedRowsInScope.length);
 
   if (stagingBriefSource) stagingBriefSource.textContent = String(rows.filter(hasPreservedSourceEvidence).length);
   if (stagingBriefReady) stagingBriefReady.textContent = String(readyRows.length);
   if (stagingBriefBlocked) stagingBriefBlocked.textContent = String(Math.max(0, rows.length - readyRows.length));
-  if (stagingBriefSelected) stagingBriefSelected.textContent = String(selectedRowIds.size);
+  if (stagingBriefSelected) stagingBriefSelected.textContent = String(selectedCount);
   if (!stagingBriefMessage) return;
 
   if (!rows.length) {
-    stagingBriefMessage.textContent = "No rows are visible in this scope. Clear filters or open a source upload to continue review.";
+    stagingBriefMessage.textContent = selectedCount
+      ? `${selectedCount} selected row(s) are retained outside this visible scope. Clear filters or open their page before reviewing approval readiness.`
+      : "No rows are visible in this scope. Clear filters or open a source upload to continue review.";
+    return;
+  }
+  if (!selectedCount) {
+    stagingBriefMessage.textContent = `${readyRows.length} visible row(s) can be reviewed for approval. Approval remains an explicit human action.`;
     return;
   }
   if (!selectedRowsInScope.length) {
-    stagingBriefMessage.textContent = `${readyRows.length} visible row(s) can be reviewed for approval. Approval remains an explicit human action.`;
+    stagingBriefMessage.textContent = `${selectedCount} selected row(s) are retained on other pages. Open their page before reviewing approval readiness.`;
+    return;
+  }
+  if (selectedElsewhere) {
+    stagingBriefMessage.textContent = `${selectedReady} visible selected row(s) are ready; ${selectedBlocked} need correction. ${selectedElsewhere} selected row(s) are retained on other pages and need their own review.`;
     return;
   }
   stagingBriefMessage.textContent = selectedBlocked

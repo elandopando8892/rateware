@@ -4106,6 +4106,8 @@ assert.match(readFileSync(new URL("../output/qa-staging-approval-preview.html", 
 assert.match(stagingReviewHtml, /id="staging-brief-source"/, "Staging should make preserved source evidence visible in the approval gate");
 assert.match(stagingReviewSource, /function updateApprovalBrief\(scopedRows = scopedStagingRows\(loadedRows\)\)/, "Staging should derive approval guidance from the current review scope");
 assert.match(stagingReviewSource, /Approval remains an explicit human action/, "Staging approval guidance must not imply automatic publication");
+assert.match(stagingReviewSource, /selected row\(s\) are retained on other pages/, "Staging approval guidance should disclose selected rows retained across pages before approval");
+assert.match(stagingReviewSource, /const selectedElsewhere = Math\.max\(0, selectedCount - selectedRowsInScope\.length\)/, "Staging approval guidance should distinguish visible selections from selections retained on other pages");
 assert.match(stagingReviewSource, /data-staging-filter="ready".*?\.click\(\)/, "The approval brief should reuse the existing Ready filter instead of creating a new backend path");
 assert.match(stylesSource, /\.staging-approval-brief \{[\s\S]*?grid-template-columns: minmax\(220px, 0\.9fr\) minmax\(0, 1\.35fr\)/, "The approval brief should keep its copy and metrics readable on wide screens");
 assert.match(sheetUiSource, /Changes auto-save in this browser/, "Column layout storage should be explicit to operators");
