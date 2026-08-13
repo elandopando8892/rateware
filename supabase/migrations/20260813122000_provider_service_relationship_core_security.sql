@@ -7,20 +7,71 @@ alter table public.provider_relationship_contacts enable row level security;
 alter table public.provider_external_references enable row level security;
 alter table public.provider_relationship_events enable row level security;
 
-revoke all on table public.legal_entities from public, anon, authenticated;
-revoke all on table public.provider_relationships from public, anon, authenticated;
-revoke all on table public.provider_relationship_roles from public, anon, authenticated;
-revoke all on table public.provider_relationship_contacts from public, anon, authenticated;
-revoke all on table public.provider_external_references from public, anon, authenticated;
-revoke all on table public.provider_relationship_events from public, anon, authenticated;
+revoke all on table public.legal_entities from public, anon, authenticated, service_role;
+revoke all on table public.provider_relationships from public, anon, authenticated, service_role;
+revoke all on table public.provider_relationship_roles from public, anon, authenticated, service_role;
+revoke all on table public.provider_relationship_contacts from public, anon, authenticated, service_role;
+revoke all on table public.provider_external_references from public, anon, authenticated, service_role;
+revoke all on table public.provider_relationship_events from public, anon, authenticated, service_role;
 
-revoke all on sequence public.provider_relationships_vendor_number_seq from public, anon, authenticated;
+revoke all on sequence public.provider_relationships_vendor_number_seq
+  from public, anon, authenticated, service_role;
 
-grant select, insert, update on table public.legal_entities to service_role;
-grant select, insert, update on table public.provider_relationships to service_role;
-grant select, insert, update on table public.provider_relationship_roles to service_role;
-grant select, insert, update on table public.provider_relationship_contacts to service_role;
-grant select, insert, update on table public.provider_external_references to service_role;
+-- Identity and tenant keys are immutable through the runtime role. Build 2 will
+-- expose audited commands instead of allowing generic record replacement.
+grant select, insert on table public.legal_entities to service_role;
+grant update (
+  legal_name,
+  tax_identifier,
+  default_currency,
+  status,
+  metadata,
+  updated_at
+) on table public.legal_entities to service_role;
+
+grant select, insert on table public.provider_relationships to service_role;
+grant update (
+  lifecycle_status,
+  activation_status,
+  risk_tier,
+  assigned_owner_user_id,
+  primary_blocker,
+  activated_at,
+  suspended_at,
+  metadata,
+  updated_at
+) on table public.provider_relationships to service_role;
+
+grant select, insert on table public.provider_relationship_roles to service_role;
+grant update (
+  status,
+  effective_to,
+  metadata,
+  updated_at
+) on table public.provider_relationship_roles to service_role;
+
+grant select, insert on table public.provider_relationship_contacts to service_role;
+grant update (
+  contact_name,
+  job_title,
+  email,
+  phone,
+  contact_role,
+  preferred_channel,
+  is_primary,
+  status,
+  metadata,
+  updated_at
+) on table public.provider_relationship_contacts to service_role;
+
+grant select, insert on table public.provider_external_references to service_role;
+grant update (
+  is_primary,
+  status,
+  metadata,
+  updated_at
+) on table public.provider_external_references to service_role;
+
 grant select, insert on table public.provider_relationship_events to service_role;
 grant usage, select on sequence public.provider_relationships_vendor_number_seq to service_role;
 
