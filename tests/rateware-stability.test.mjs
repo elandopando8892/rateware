@@ -2299,6 +2299,9 @@ assert.match(rfxEventsSource, /Best overall score/, "Bid Room award reasons shou
 assert.match(rfxEventsSource, /function awardReadinessSnapshot/, "Bid Room should calculate award closeout readiness");
 assert.match(rfxEventsSource, /function awardPreflightIssues/, "Bid Room award closeout should classify blocking award readiness issues");
 assert.match(rfxEventsSource, /function blockIfAwardPreflightFails/, "Bid Room award closeout should block unsafe Rateware or Gmail actions");
+assert.match(rfxEventsSource, /const decisionChecklist = \[/, "Bid Room should summarize decision prerequisites before an award action");
+assert.match(rfxEventsSource, /Production approval remains a separate human decision\./, "Bid Room award guidance must keep production approval human-controlled");
+assert.match(rfxEventsSource, /can be sent to Review Queue; this does not approve them for production/, "Award guidance must distinguish Review Queue from production approval");
 assert.match(rfxEventsSource, /blockIfAwardPreflightFails\("closeout"\)/, "Bid Room should guard Rateware closeout with award preflight checks");
 assert.match(rfxEventsSource, /blockIfAwardPreflightFails\("generate_notices"\)/, "Bid Room should guard award notice generation with award preflight checks");
 assert.match(rfxEventsSource, /blockIfAwardPreflightFails\("send_notices"\)/, "Bid Room should guard award notice sending with award preflight checks");
@@ -2308,6 +2311,7 @@ assert.match(rfxEventsSource, /data-rfx-mark-award-notice/, "Bid Room should upd
 assert.match(stylesSource, /rfx-decision-scorecards/, "Bid Room decision view should style scorecards");
 assert.match(stylesSource, /rfx-decision-badge/, "Bid Room decision view should style badges");
 assert.match(stylesSource, /rfx-award-readiness-grid/, "Bid Room award readiness should have compact styling");
+assert.match(stylesSource, /rfx-award-preflight/, "Bid Room should style the human award decision checklist");
 assert.match(stylesSource, /rfx-award-notice-queue/, "Bid Room award notice queue should have compact styling");
 assert.match(rfxEventsSource, /generateAwardNoticeDrafts/, "Bid Room should generate award notices from Step 6");
 assert.match(rfxEventsSource, /sendAwardNoticeDrafts/, "Bid Room should send generated award notices from Step 6");
