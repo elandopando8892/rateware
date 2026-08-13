@@ -5,6 +5,7 @@ import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
 import { humanizeError } from "./error-copy.js";
+import { buildFinanceHandoff } from "./finance-handoff.js";
 import { tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
 const body = document.querySelector("#rateware-body");
@@ -26,6 +27,7 @@ const enrichSelectedZipsButton = document.querySelector("#enrich-selected-zips-r
 const renormalizeSelectedButton = document.querySelector("#renormalize-selected-rateware");
 const returnSelectedButton = document.querySelector("#return-selected-button");
 const exportSelectedButton = document.querySelector("#export-selected-button");
+const prepareFinanceHandoffButton = document.querySelector("#prepare-finance-handoff");
 const exportVisibleButton = document.querySelector("#export-visible-button");
 const exportClientVisibleButton = document.querySelector("#export-client-visible-button");
 const exportRfxVisibleButton = document.querySelector("#export-rfx-visible-button");
@@ -1743,6 +1745,7 @@ function updateBulkControls() {
   if (renormalizeSelectedButton) renormalizeSelectedButton.disabled = mutationRunning || selectedCount === 0;
   returnSelectedButton.disabled = mutationRunning || selectedCount === 0;
   if (exportSelectedButton) exportSelectedButton.disabled = selectedCount === 0;
+  if (prepareFinanceHandoffButton) prepareFinanceHandoffButton.disabled = selectedCount === 0;
   if (exportVisibleButton) exportVisibleButton.disabled = currentRows.length === 0;
   if (exportClientVisibleButton) exportClientVisibleButton.disabled = currentRows.length === 0;
   if (exportRfxVisibleButton) exportRfxVisibleButton.disabled = currentRows.length === 0;
@@ -2185,6 +2188,35 @@ async function exportSelectedCsv() {
     await requirePrivatePage();
     const rows = await fetchRatewareRowsByIds(ids);
     exportRowsCsv(rows, "selected", { mode: "rateware" });
+  } catch (error) {
+    setActionStatus(humanizeError(error), "error");
+  }
+}
+
+function downloadFinanceHandoff(handoff) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(handoff, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `marksman-finance-handoff-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function prepareFinanceHandoff() {
+  const ids = selectedRatewareIds();
+  if (!ids.length) return;
+  setActionStatus(`Preparing ${ids.length.toLocaleString()} selected approved rate(s) for the MARKSMAN handoff...`);
+  try {
+    const rows = await fetchSelectedRatewareRows();
+    const handoff = buildFinanceHandoff(rows, { expectedIds: ids });
+    downloadFinanceHandoff(handoff);
+    const blocked = handoff.summary.blocked_rates;
+    setActionStatus(
+      blocked
+        ? `Downloaded blocked MARKSMAN handoff: ${blocked.toLocaleString()} rate(s) need manual completion. No financial record was created.`
+        : `Downloaded ${handoff.summary.ready_rates.toLocaleString()} ready MARKSMAN handoff rate(s). Manual entry and approval are still required.`,
+      blocked ? "warning" : "success"
+    );
   } catch (error) {
     setActionStatus(humanizeError(error), "error");
   }
@@ -3084,6 +3116,7 @@ matchSelectedVendorsButton?.addEventListener("click", matchSelectedRatewareVendo
 enrichSelectedZipsButton?.addEventListener("click", enrichSelectedRatewareZips);
 renormalizeSelectedButton?.addEventListener("click", renormalizeSelectedRateware);
 exportSelectedButton?.addEventListener("click", exportSelectedCsv);
+prepareFinanceHandoffButton?.addEventListener("click", prepareFinanceHandoff);
 exportVisibleButton?.addEventListener("click", exportVisibleCsv);
 exportClientVisibleButton?.addEventListener("click", exportVisibleClientCsv);
 exportRfxVisibleButton?.addEventListener("click", exportVisibleRfxCsv);
