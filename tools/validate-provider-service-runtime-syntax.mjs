@@ -12,6 +12,7 @@ const files = [
   'supabase/functions/_shared/provider-gmail.ts',
   'supabase/functions/_shared/provider-entity-upload.ts',
   'supabase/functions/_shared/provider-entity-document-processor.ts',
+  'supabase/functions/_shared/provider-entity-review-commands.ts',
   'supabase/functions/_shared/provider-gmail-sync.ts',
   'supabase/functions/_shared/provider-pubsub-auth.ts',
   'supabase/functions/provider-gmail-intake-api/index.ts',
