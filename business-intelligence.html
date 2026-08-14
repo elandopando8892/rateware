@@ -71,7 +71,61 @@
             <button type="button" role="tab" aria-selected="false" data-bi-view-button="pivots">Pivot Builder</button>
             <button type="button" role="tab" aria-selected="false" data-bi-view-button="copilot">AI Copilot</button>
             <button type="button" role="tab" aria-selected="false" data-bi-view-button="ranking">Carrier Ranking</button>
+            <button type="button" role="tab" aria-selected="false" data-bi-view-button="brief">Decision brief</button>
           </nav>
+
+          <section id="bi-brief-panel" class="workspace-panel bi-analyst-panel bi-view-panel" data-bi-view-panel="brief" hidden>
+            <div class="section-heading compact split-heading">
+              <div>
+                <p class="eyebrow">Observation-only intelligence</p>
+                <h2>Decision brief</h2>
+              </div>
+              <div class="action-row">
+                <span id="bi-brief-state" class="status-pill muted">No result</span>
+                <button id="bi-refresh-brief" type="button" class="secondary">Refresh brief</button>
+                <button id="bi-download-brief" type="button" class="secondary" disabled>Download JSON</button>
+              </div>
+            </div>
+            <p id="bi-brief-status" class="status-message" role="status">Run Geo, Pivot, Copilot, or Ranking, then return here. This view does not load or write data.</p>
+
+            <div class="review-insight-grid bi-metrics" aria-label="Decision brief evidence summary">
+              <article><span>Source view</span><strong id="bi-brief-source">-</strong></article>
+              <article><span>Data as of</span><strong id="bi-brief-as-of">Missing</strong></article>
+              <article><span>Sample</span><strong id="bi-brief-sample">-</strong></article>
+              <article><span>Currency</span><strong id="bi-brief-currency">-</strong></article>
+            </div>
+
+            <div class="bi-analyst-grid">
+              <section>
+                <h3>Evidence gaps</h3>
+                <div id="bi-brief-gaps" class="bi-analyst-list">
+                  <article class="bi-empty-card"><p>No brief generated yet.</p></article>
+                </div>
+              </section>
+              <section>
+                <h3>Proposals</h3>
+                <div id="bi-brief-proposals" class="bi-analyst-list">
+                  <article class="bi-empty-card"><p>No proposals loaded.</p></article>
+                </div>
+              </section>
+              <section>
+                <h3>Lineage</h3>
+                <div id="bi-brief-lineage" class="bi-analyst-list">
+                  <article class="bi-empty-card"><p>No source references loaded.</p></article>
+                </div>
+              </section>
+              <section>
+                <h3>Execution boundary</h3>
+                <div class="bi-analyst-list">
+                  <article>
+                    <strong>Human decision required</strong>
+                    <p>The artifact cannot send outreach, invite carriers, dispatch freight, approve rates, or write back to Rateware, CRM, ERP, or TMS.</p>
+                    <em>Local export only</em>
+                  </article>
+                </div>
+              </section>
+            </div>
+          </section>
 
           <section class="workspace-panel bi-copilot-brief bi-view-panel" data-bi-view-panel="copilot" hidden>
             <div class="section-heading compact split-heading">
