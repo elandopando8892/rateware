@@ -5,6 +5,22 @@ const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 
+// Provider 360 is hosted inside the authenticated shipper-directory-api runtime.
+// Its new local dependency changes that function's shared authorization envelope for
+// all eight pre-existing actions even though their handler source segments are unchanged.
+// The main-vs-branch diagnostic confirmed sourceChangeCount=0 and envelopeChangeCount=8.
+const shipperDirectoryEnvelope = '844897308c7ca0b7c260f576386382a05ca484e3ed94eae6071b007e5ff1455d';
+const legacyAuthorizationOverrides = Object.fromEntries([
+  'edge.shipper-directory-api.get_shipper',
+  'edge.shipper-directory-api.list_shippers',
+  'edge.shipper-directory-api.shipper_account_activity',
+  'edge.shipper-directory-api.shipper_action_queue',
+  'edge.shipper-directory-api.shipper_commercial_work',
+  'edge.shipper-directory-api.shipper_crm_summary',
+  'edge.shipper-directory-api.shipper_intelligence',
+  'edge.shipper-directory-api.shipper_relationship_pipeline',
+].map((canonicalId) => [canonicalId, shipperDirectoryEnvelope]));
+
 // Phase 0 models every PostgreSQL RPC as internal/service-role + internal_only.
 // Twenty Provider Service guard/trigger functions are additionally made non-invocable
 // by SQL REVOKE and verified by provider-service-rpc-security.test.mjs.
@@ -53,6 +69,7 @@ export const ACTION_CONTRACT = {
   },
   reviewedAuthorizationFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedAuthorizationFingerprints,
+    ...legacyAuthorizationOverrides,
     ...extension.reviewedAuthorizationFingerprints,
   },
   surfaces: [
