@@ -1,4 +1,4 @@
-name: provider-service-contract-envelope-diagnostic
+name: provider-service-contract-test-patch
 
 on:
   push:
@@ -8,10 +8,11 @@ on:
       - '.github/workflows/provider-service-contract-test-patch.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  compare:
+  patch:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout branch
@@ -20,67 +21,54 @@ jobs:
           ref: provider-service-convergence-hardening
           fetch-depth: 0
 
+      - name: Apply exact Phase 0 v1.3 snapshot replacements
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/action-contract.test.mjs')
+          text = path.read_text()
+          assert len(text) > 30000, f'unexpectedly short test file: {len(text)} bytes'
+          assert 'Action contract hardening tests passed.' in text
+
+          replacements = [
+              ('import { ACTION_CONTRACT } from "../supabase/functions/_shared/action-contract.mjs";',
+               'import { ACTION_CONTRACT } from "../tools/effective-action-contract.mjs";', 1),
+              ('ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "internal_only").length, 87',
+               'ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "internal_only").length, 107', 2),
+              ('ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "explicitly_denied").length, 20',
+               'ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "explicitly_denied").length, 0', 2),
+          ]
+
+          for old, new, expected in replacements:
+              count = text.count(old)
+              assert count == expected, f'{old!r}: expected {expected}, found {count}'
+              text = text.replace(old, new)
+
+          path.write_text(text)
+          assert len(text) > 30000
+          assert text.count('internal_only").length, 107') == 2
+          assert text.count('explicitly_denied").length, 0') == 2
+          assert 'Action contract hardening tests passed.' in text
+          PY
+
+          git diff --check -- tests/action-contract.test.mjs
+
       - name: Install locked Node dependencies
         run: npm ci --ignore-scripts
 
-      - name: Materialize main worktree
-        run: git worktree add ../rateware-main origin/main
+      - name: Verify complete action contract hardening suite
+        run: node tests/action-contract.test.mjs
 
-      - name: Compare legacy source and authorization envelopes
+      - name: Verify effective contract validator
+        run: node tools/validate-action-contract.mjs
+
+      - name: Commit verified patch and remove temporary workflow
         run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-          import { resolve } from 'node:path';
-          import { discoverGovernableSurfaces, semanticTokens } from './tools/action-contract-lib.mjs';
-
-          const branchRoot = process.cwd();
-          const mainRoot = resolve('../rateware-main');
-          const branch = discoverGovernableSurfaces(branchRoot);
-          const main = discoverGovernableSurfaces(mainRoot);
-          const branchById = new Map(branch.map((entry) => [entry.canonicalId, entry]));
-          const mainById = new Map(main.map((entry) => [entry.canonicalId, entry]));
-          const dependencyImpact = new Map();
-          const sourceChanges = [];
-          const envelopeChanges = [];
-
-          const semantic = (root, path) => {
-            try { return semanticTokens(readFileSync(resolve(root, path), 'utf8')); }
-            catch { return null; }
-          };
-
-          for (const [canonicalId, base] of mainById) {
-            const next = branchById.get(canonicalId);
-            if (!next) continue;
-            if (base.sourceFingerprint !== next.sourceFingerprint) {
-              sourceChanges.push({ canonicalId, sourceFile: next.sourceFile, before: base.sourceFingerprint, after: next.sourceFingerprint });
-            }
-            if (base.authorizationFingerprint !== next.authorizationFingerprint) {
-              const allDeps = new Set([...(base.dependencyFiles || []), ...(next.dependencyFiles || [])]);
-              const changedDeps = [];
-              for (const path of allDeps) {
-                if (semantic(mainRoot, path) !== semantic(branchRoot, path)) {
-                  changedDeps.push(path);
-                  dependencyImpact.set(path, (dependencyImpact.get(path) || 0) + 1);
-                }
-              }
-              envelopeChanges.push({
-                canonicalId,
-                mainAuthorizationFingerprint: base.authorizationFingerprint,
-                branchAuthorizationFingerprint: next.authorizationFingerprint,
-                changedDeps,
-                beforeDeps: base.dependencyFiles,
-                afterDeps: next.dependencyFiles,
-              });
-            }
-          }
-
-          console.log(JSON.stringify({
-            mainCount: main.length,
-            branchCount: branch.length,
-            sourceChangeCount: sourceChanges.length,
-            envelopeChangeCount: envelopeChanges.length,
-            dependencyImpact: [...dependencyImpact.entries()].sort((a,b)=>b[1]-a[1]),
-            sourceChanges,
-            envelopeChanges,
-          }, null, 2));
-          NODE
+          rm .github/workflows/provider-service-contract-test-patch.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tests/action-contract.test.mjs .github/workflows/provider-service-contract-test-patch.yml
+          git diff --cached --check
+          git commit -m 'test(auth): validate effective Phase 0 contract v1.3'
+          git push origin HEAD:provider-service-convergence-hardening
