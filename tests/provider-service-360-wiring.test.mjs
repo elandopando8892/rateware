@@ -35,7 +35,19 @@ test('Vendor CRM bootstraps lazy Provider 360 drawer mounting', async () => {
   const vendorService = await read('src/vendor-service.js');
   const mount = await read('src/provider-service-360-mount.js');
   assert.match(vendorService, /import "\.\/provider-service-360-mount\.js"/);
-  assert.match(mount, /mountProviderService360/);
+  assert.match(mount, /loadProviderService360/);
+  assert.match(mount, /renderProviderService360/);
   assert.match(mount, /drawer-vendor-relationship/);
   assert.match(mount, /data-vendor-id/);
+});
+
+test('Provider 360 stale responses are discarded before rendering', async () => {
+  const mount = await read('src/provider-service-360-mount.js');
+  const loadIndex = mount.indexOf('const payload = await loadProviderService360(vendorId)');
+  const guardIndex = mount.indexOf('if (version !== loadVersion || activeVendorId !== vendorId) return;', loadIndex);
+  const renderIndex = mount.indexOf('renderProviderService360(host, payload)', loadIndex);
+  assert.ok(loadIndex >= 0);
+  assert.ok(guardIndex > loadIndex);
+  assert.ok(renderIndex > guardIndex);
+  assert.match(mount, /catch \(error\)[\s\S]*version !== loadVersion[\s\S]*renderError/);
 });
