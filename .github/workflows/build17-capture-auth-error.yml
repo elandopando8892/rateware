@@ -19,7 +19,7 @@ jobs:
           ref: provider-service-build17-pubsub-inbound
           fetch-depth: 0
       - run: npm ci --ignore-scripts
-      - name: Capture no-regression output
+      - name: Capture no-regression output and metadata hash
         run: |
           git fetch origin main:refs/remotes/origin/main
           rm -rf /tmp/rateware-main
@@ -28,6 +28,17 @@ jobs:
           node tools/validate-action-contract-no-regression.mjs --baseline-root /tmp/rateware-main > build17-auth-diagnostic.txt 2>&1
           code=$?
           set -e
+          node --input-type=module <<'NODE' >> build17-auth-diagnostic.txt
+          import { ACTION_CONTRACT } from './tools/effective-action-contract.mjs';
+          import { metadataFingerprint } from './tools/action-contract-lib.mjs';
+          const id = 'rpc.public.provider_service_guard_exception_approval()';
+          const entry = ACTION_CONTRACT.surfaces.find((item) => item.canonicalId === id);
+          console.log('metadata_diagnostic=' + JSON.stringify({
+            reviewed: ACTION_CONTRACT.reviewedMetadataFingerprints[id],
+            computed: entry ? metadataFingerprint(entry) : null,
+            entry,
+          }));
+          NODE
           printf '\nexit_code=%s\n' "$code" >> build17-auth-diagnostic.txt
           cat build17-auth-diagnostic.txt
       - name: Commit diagnostic output
@@ -35,5 +46,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add build17-auth-diagnostic.txt
-          git commit -m "chore(build17): record authorization diagnostic"
+          git commit -m "chore(build17): refresh authorization diagnostic"
           git push origin HEAD:provider-service-build17-pubsub-inbound
