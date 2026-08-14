@@ -1,4 +1,8 @@
 -- Every message inherits the immutable XBF legal entity of its thread.
+alter table public.provider_communication_threads
+  add constraint provider_communication_threads_org_id_entity_unique
+  unique (organization_id, id, legal_entity_id);
+
 alter table public.provider_communication_messages
   add column legal_entity_id uuid not null;
 
