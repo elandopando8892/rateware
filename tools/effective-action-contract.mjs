@@ -54,10 +54,10 @@ const providerSurfaces = extension.surfaces.map((entry) => ({
 }));
 
 const gmailAuthorizationFingerprints = {
-  'edge.provider-gmail-intake-api.provider_gmail_status': 'a4fdbe2fb1c5dd6ef98c3ecee3adc7647adf6f93b80cd41513556d17928398a0',
-  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': 'a4fdbe2fb1c5dd6ef98c3ecee3adc7647adf6f93b80cd41513556d17928398a0',
-  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': 'a4fdbe2fb1c5dd6ef98c3ecee3adc7647adf6f93b80cd41513556d17928398a0',
-  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': 'a4fdbe2fb1c5dd6ef98c3ecee3adc7647adf6f93b80cd41513556d17928398a0',
+  'edge.provider-gmail-intake-api.provider_gmail_status': '0904678ec741f0bc1b55e879460df454062962fed509697def51956256419d6d',
+  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': '0904678ec741f0bc1b55e879460df454062962fed509697def51956256419d6d',
+  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '0904678ec741f0bc1b55e879460df454062962fed509697def51956256419d6d',
+  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '0904678ec741f0bc1b55e879460df454062962fed509697def51956256419d6d',
   'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': '61a4d760bc3bc7157e0abcebf08818cd4e84841f6ec35f7c406475e28df53a3b',
 };
 
@@ -112,7 +112,7 @@ const gmailSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.gmail.watch.manage',
-    sourceFingerprint: '67761c9b68ae30456e1b0bbcb1debb4006a41f7d82b67a4f8b8172838334f084',
+    sourceFingerprint: 'fdf4ab17fe36808d55a8727793548621ba41e4f5f702673565628136096d52df',
     ...gmailSharedMetadata,
   },
   {
@@ -144,7 +144,7 @@ const gmailSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.gmail.sync.manage',
-    sourceFingerprint: '7970654d18bbb644da7516abf657918fbdbc7549aa196e71ac1003d6370c2388',
+    sourceFingerprint: 'e2300162682d8793edb5f9971366baf9d1afad4f27ec84f3c0a1d350b797e464',
     ...gmailSharedMetadata,
   },
   {
