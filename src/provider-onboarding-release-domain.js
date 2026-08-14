@@ -25,6 +25,6 @@ export function assertSyntheticPilotFixture(fixture={}){
  if(fixture.synthetic!==true)reasons.push('fixture_not_synthetic');
  if(!text(fixture.mailbox).endsWith('.invalid')||!text(fixture.recipient).endsWith('.invalid'))reasons.push('non_reserved_email_domain');
  if(!/^[0-9a-f]{64}$/.test(text(fixture.document_sha256))||!/^[0-9a-f]{64}$/.test(text(fixture.manifest_sha256)))reasons.push('invalid_hash_shape');
- if(/xbfreight|gonzalez|perales|bank|rfc|ein|signature/i.test(serialized))reasons.push('sensitive_marker_detected');
+ if(/xbfreight|gonzalez|perales|jagp|carriers@|@[a-z0-9.-]+\\.(com|mx|us)/i.test(serialized))reasons.push('sensitive_marker_detected');
  return Object.freeze({valid:reasons.length===0,reasons:Object.freeze(reasons)});
 }
