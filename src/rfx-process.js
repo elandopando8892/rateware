@@ -1,5 +1,6 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
+import { buildOperationsHandoffPreview, buildOperationsHandoffPreviews } from "./operations-handoff.js";
 import {
   createRfxAwardPackage,
   createRfxDemandSnapshot,
@@ -1389,6 +1390,64 @@ function awardPanel() {
   `;
 }
 
+function operationsHandoffPanel() {
+  const previews = buildOperationsHandoffPreviews(state.detail);
+  if (!previews.length) {
+    return `
+      <section class="rfx-process-card rfx-operations-handoff-panel" data-state="blocked">
+        <div class="split-heading compact">
+          <div><p class="eyebrow">Fleet Rocket handoff</p><h3>Operations readiness</h3></div>
+          <span class="status-pill warning">Blocked</span>
+        </div>
+        <p>No award package is available. Complete and approve the commercial award before preparing an operations handoff.</p>
+        <p class="rfx-process-hint">Rateware does not create shipments, dispatch carriers, start tracking, or write to Fleet Rocket.</p>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="rfx-process-card rfx-operations-handoff-panel">
+      <div class="split-heading compact">
+        <div><p class="eyebrow">Fleet Rocket handoff</p><h3>Operations readiness</h3></div>
+        <span class="status-pill neutral">Observation only</span>
+      </div>
+      <p>Review a canonical Rateware handoff before manual entry in Fleet Rocket. This preview does not call an integration or authorize execution.</p>
+      <div class="rfx-operations-handoff-list">
+        ${previews.map((preview) => {
+          const blocked = preview.readiness.status === "blocked";
+          const missing = preview.readiness.missing_fields;
+          const award = preview.payload.award;
+          return `
+            <article class="rfx-operations-handoff-card" data-state="${blocked ? "blocked" : "ready"}">
+              <div class="split-heading compact">
+                <div><h4>${escapeHtml(award.scenario_name || "Award package")}</h4><p>${escapeHtml(preview.payload.references.award_package_id || "Missing award reference")}</p></div>
+                <span class="status-pill ${blocked ? "warning" : "success"}">${blocked ? "Blocked" : "Ready"}</span>
+              </div>
+              <div class="rfx-operations-handoff-metrics">
+                <span><b>${preview.payload.lanes.length}</b> awarded lane(s)</span>
+                <span><b>${missing.length}</b> missing field(s)</span>
+                <span><b>Fleet Rocket</b> system of record</span>
+              </div>
+              ${blocked ? `
+                <div class="rfx-operations-handoff-missing">
+                  <strong>Resolve before handoff</strong>
+                  <ul>${missing.map((field) => `<li><code>${escapeHtml(field)}</code></li>`).join("")}</ul>
+                </div>
+              ` : `<p class="rfx-process-hint">Ready for reviewed manual entry. Dispatch authority remains false.</p>`}
+              <div class="rfx-operations-handoff-actions">
+                <button type="button" class="secondary small-button" data-rfx-handoff-preview="${escapeHtml(preview.award_package_id)}">Preview JSON</button>
+                <button type="button" class="small-button" data-rfx-handoff-download="${escapeHtml(preview.award_package_id)}" ${blocked ? "disabled" : ""}>Download JSON</button>
+              </div>
+              <pre class="rfx-operations-handoff-json" data-rfx-handoff-json="${escapeHtml(preview.award_package_id)}" hidden></pre>
+            </article>
+          `;
+        }).join("")}
+      </div>
+      <p class="rfx-process-hint">The download is a Rateware handoff contract for human review and manual entry. It is not a verified Fleet Rocket API payload.</p>
+    </section>
+  `;
+}
+
 function auditPanel() {
   return `
     <section class="rfx-process-panel active">
@@ -1410,8 +1469,19 @@ function renderPanels() {
       ${rfiPanel()}
       <section class="rfx-process-section-heading"><p class="eyebrow">RFx Design</p><h2>Package and public marketplace preview</h2><span>Confirm the golden package before launching the Bid Room.</span></section>
       ${designPanel()}
+      <section class="rfx-process-section-heading"><p class="eyebrow">Operations handoff</p><h2>Reviewed award package for Fleet Rocket</h2><span>Preview operational data without creating a shipment or dispatch.</span></section>
+      ${operationsHandoffPanel()}
     </div>
   `;
+}
+
+function downloadOperationsHandoff(preview) {
+  const url = URL.createObjectURL(new Blob([`${JSON.stringify(preview.payload, null, 2)}\n`], { type: "application/json;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = preview.filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 async function loadProjects() {
@@ -1658,6 +1728,36 @@ function initEvents() {
     renderPanels();
   });
   els.panels?.addEventListener("click", (event) => {
+    const previewButton = event.target.closest("[data-rfx-handoff-preview]");
+    if (previewButton) {
+      try {
+        const awardId = previewButton.dataset.rfxHandoffPreview;
+        const preview = buildOperationsHandoffPreview(state.detail, awardId);
+        const output = [...els.panels.querySelectorAll("[data-rfx-handoff-json]")]
+          .find((item) => item.dataset.rfxHandoffJson === awardId);
+        if (!output) throw new Error("Operations handoff preview target is unavailable.");
+        const willOpen = output.hidden;
+        output.textContent = willOpen ? JSON.stringify(preview.payload, null, 2) : "";
+        output.hidden = !willOpen;
+        previewButton.textContent = willOpen ? "Hide JSON" : "Preview JSON";
+        setStatus(willOpen ? "Operations handoff preview generated locally. No data was sent." : "Operations handoff preview closed.");
+      } catch (error) {
+        setStatus(error, "error");
+      }
+      return;
+    }
+    const downloadButton = event.target.closest("[data-rfx-handoff-download]");
+    if (downloadButton) {
+      try {
+        const preview = buildOperationsHandoffPreview(state.detail, downloadButton.dataset.rfxHandoffDownload);
+        if (preview.readiness.status !== "ready") throw new Error("Resolve all missing fields before downloading the operations handoff.");
+        downloadOperationsHandoff(preview);
+        setStatus("Operations handoff JSON downloaded locally. No shipment or dispatch was created.");
+      } catch (error) {
+        setStatus(error, "error");
+      }
+      return;
+    }
     const segmentTab = event.target.closest("[data-rfx-segment-tab]");
     if (segmentTab) {
       state.rfiActiveSegmentKey = segmentTab.dataset.rfxSegmentTab || "crossborder";
