@@ -9,6 +9,7 @@ const api = read('../supabase/functions/provider-gmail-intake-api/index.ts');
 const callback = read('../supabase/functions/provider-gmail-oauth-callback/index.ts');
 const page = read('../provider-gmail.html');
 const controller = read('../src/provider-gmail-page.js');
+const supabaseConfig = read('../supabase/config.toml');
 
 test('Provider Gmail storage is purpose-bound, tenant/entity scoped, and service-role only', () => {
   assert.match(migration, /create table if not exists public\.provider_gmail_connections/);
@@ -70,6 +71,13 @@ test('watch registration is INBOX-only and stores returned history/expiration', 
   assert.match(api, /labelFilterBehavior: 'INCLUDE'/);
   assert.match(api, /history_id: historyId/);
   assert.match(api, /watch_expiration_at: watchExpirationAt/);
+});
+
+test('Provider Gmail Edge functions bypass only the Supabase JWT gateway and keep runtime auth', () => {
+  assert.match(supabaseConfig, /\[functions\.provider-gmail-intake-api\]\s+verify_jwt = false/);
+  assert.match(supabaseConfig, /\[functions\.provider-gmail-oauth-callback\]\s+verify_jwt = false/);
+  assert.match(api, /requireKindeUser\(request\)/);
+  assert.match(callback, /provider_gmail_oauth_states/);
 });
 
 test('Provider Gmail UI is private and cannot expose outbound controls', () => {
