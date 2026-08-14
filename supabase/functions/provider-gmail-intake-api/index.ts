@@ -592,13 +592,13 @@ Deno.serve(async (request) => {
     const identity = await requireKindeUser(request);
     const user = await resolveRuntimeWorkspaceUser(supabase, identity as Record<string, unknown>, { persistLegacyIdentity: false });
     const body = await request.json() as Record<string, unknown>;
-    const action = cleanProviderGmailText(body.action);
-    if (!action || !ACTIONS.has(action)) return jsonResponse({ error: 'Unknown Provider Gmail action.' }, 400);
+    if (typeof body.action !== 'string' || !ACTIONS.has(body.action)) return jsonResponse({ error: 'Unknown Provider Gmail action.' }, 400);
     const { organizationUuid } = await resolveScope(supabase, user as Record<string, unknown>);
-    if (action === 'provider_gmail_status') return jsonResponse(await listSafeStatus(supabase, organizationUuid));
-    if (action === 'start_provider_gmail_oauth') return jsonResponse(await startOauth(supabase, user as Record<string, unknown>, organizationUuid, body));
-    if (action === 'sync_provider_gmail_inbox') return jsonResponse(await syncInbox(supabase, organizationUuid, body));
-    return jsonResponse(await renewWatch(supabase, organizationUuid, body));
+    if (body.action === 'provider_gmail_status') return jsonResponse(await listSafeStatus(supabase, organizationUuid));
+    if (body.action === 'start_provider_gmail_oauth') return jsonResponse(await startOauth(supabase, user as Record<string, unknown>, organizationUuid, body));
+    if (body.action === 'sync_provider_gmail_inbox') return jsonResponse(await syncInbox(supabase, organizationUuid, body));
+    if (body.action === 'renew_provider_gmail_watch') return jsonResponse(await renewWatch(supabase, organizationUuid, body));
+    return jsonResponse({ error: 'Unknown Provider Gmail action.' }, 400);
   } catch (error) {
     const identityStatus = runtimeIdentityStatus(error);
     return jsonResponse({ error: errorMessage(error) }, identityStatus === 403 ? 403 : errorStatus(error));
