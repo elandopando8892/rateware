@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const migration = read('../supabase/migrations/20260814030000_provider_gmail_intake.sql');
 const shared = read('../supabase/functions/_shared/provider-gmail.ts');
+const sync = read('../supabase/functions/_shared/provider-gmail-sync.ts');
 const api = read('../supabase/functions/provider-gmail-intake-api/index.ts');
 const callback = read('../supabase/functions/provider-gmail-oauth-callback/index.ts');
 const page = read('../provider-gmail.html');
@@ -48,21 +49,23 @@ test('intake API exposes only status, OAuth, sync, and watch operations', () => 
   assert.match(api, /PROVIDER_GMAIL_READONLY_SCOPE/);
   assert.match(api, /openid email/);
   assert.match(api, /login_hint/);
+  assert.match(api, /syncProviderGmailConnection/);
   assert.doesNotMatch(api, /gmail\.send|gmail\.compose|gmail\.modify|\/messages\/send|\/drafts\/send/i);
 });
 
-test('Gmail sync is bounded, idempotent, confidential, and uses incremental history', () => {
-  assert.match(api, /clampInteger\(body\.limit, 25, 1, 100\)/);
-  assert.match(api, /startHistoryId/);
-  assert.match(api, /historyTypes: 'messageAdded'/);
-  assert.match(api, /labelId: 'INBOX'/);
-  assert.match(api, /newer_than:7d/);
-  assert.match(api, /\.status !== 404/);
-  assert.match(api, /external_message_id/);
-  assert.match(api, /processing_status: 'processed'/);
-  assert.match(api, /sensitivity: 'confidential'/);
-  assert.match(api, /needs_reply: message\.direction === 'inbound'/);
-  assert.match(api, /onConflict: 'organization_id,message_id,external_attachment_id'/);
+test('shared Gmail sync remains bounded, idempotent, confidential, and incremental', () => {
+  assert.match(api, /clampProviderGmailInteger\(body\.limit, 25, 1, 100\)/);
+  assert.match(sync, /startHistoryId/);
+  assert.match(sync, /historyTypes: 'messageAdded'/);
+  assert.match(sync, /labelId: 'INBOX'/);
+  assert.match(sync, /newer_than:7d/);
+  assert.match(sync, /\.status !== 404/);
+  assert.match(sync, /external_message_id/);
+  assert.match(sync, /processing_status: 'processed'/);
+  assert.match(sync, /sensitivity: 'confidential'/);
+  assert.match(sync, /needs_reply: message\.direction === 'inbound'/);
+  assert.match(sync, /onConflict: 'organization_id,message_id,external_attachment_id'/);
+  assert.match(sync, /run_id: run\.data\.id/);
 });
 
 test('watch registration is INBOX-only and stores returned history/expiration', () => {
