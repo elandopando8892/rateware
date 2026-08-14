@@ -33,7 +33,7 @@ const providerMetadataOverrides = {
   'rpc.public.provider_service_guard_compliance_result_snapshot()': '4aa616038c8e977571e0cdc87042b7fb6e771103fe0fb26c7d9b813a5451566e',
   'rpc.public.provider_service_guard_document_identity()': 'fef124ad7986438cb0f0ac9ca28d2d12fb4a2df1f546f2c9399de03721079c59',
   'rpc.public.provider_service_guard_document_version_file_identity()': '3871def4bc08d309527bf806cc56b61d5b896042efe1d69fc6f956213c9166b2',
-  'rpc.public.provider_service_guard_exception_approval()': '2cb4e8a111bba4768005da2a4b36a1868b4fbe32f2be389f5bdaf2020a5e591b',
+  'rpc.public.provider_service_guard_exception_approval()': '2cb4e8a111bba4768005da2a4b36a1868b4fbe32f2be589f5bdaf2020a5e591b',
   'rpc.public.provider_service_guard_extraction_terminal_state()': '7de91a81e01796f49fe8d3603c6cd49bd29d5e91b3e95a773dbfd6bb3b4c882a',
   'rpc.public.provider_service_guard_requirement_link_identity()': 'bfaff15e08aa6f9fb60c3fcbcef4607ff4b049be6ba09a940cf6a062140efbb7',
   'rpc.public.provider_service_guard_requirement_snapshot()': '7cbc1ea78f970dd1e3c557264c3b0d0f0febfa9a2515ef62e4630139ad57b70f',
@@ -59,6 +59,7 @@ const gmailAuthorizationFingerprints = {
   'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '0904678ec741f0bc1b55e879460df454062962fed509697def51956256419d6d',
   'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '0904678ec741f0bc1b55e879460df454062962fed509697def51956256419d6d',
   'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': '61a4d760bc3bc7157e0abcebf08818cd4e84841f6ec35f7c406475e28df53a3b',
+  'edge.provider-gmail-push.receive_provider_gmail_push': '2b47e441fa85e227109954422c6d5cbcb6b8018926b92cc8e7b7a5376ec08818',
 };
 
 const gmailMetadataFingerprints = {
@@ -67,6 +68,7 @@ const gmailMetadataFingerprints = {
   'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '6a8207af747fc37ccf2739c8a7ca721248323c430fa8aeafe305430bfe862ae1',
   'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': 'aedaa25ab711b311445d607f04c9f828ef869dc560fb6ded3b45782baaa64186',
   'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': 'fec0d1b03b9b6b246c34ad98931f83368d586bd2322bddbbaa43e26c13b9c4e7',
+  'edge.provider-gmail-push.receive_provider_gmail_push': '5e5b7e00fa5ae1111ad73f71d2a7c7165f0342b41868b0050cb49cc88f560f8a',
 };
 
 const gmailSharedMetadata = {
@@ -163,15 +165,31 @@ const gmailSurfaces = [
     sourceFingerprint: '09dd452318873b80f980665981dc0b9abfe5898b9c7716eb3a2c917d875b3f7e',
     ...gmailSharedMetadata,
   },
+  {
+    canonicalId: 'edge.provider-gmail-push.receive_provider_gmail_push',
+    actionName: 'receive_provider_gmail_push',
+    sourceKind: 'edge-method',
+    sourceFile: 'supabase/functions/provider-gmail-push/index.ts',
+    handler: 'Deno.serve',
+    endpoint: 'POST /functions/v1/provider-gmail-push',
+    operation: 'manage',
+    resource: 'provider-gmail-intake',
+    access: 'write',
+    sensitivity: 'critical',
+    tenantRelevance: 'record-derived',
+    proposedPermissionKey: 'external.provider-gmail-push.manage',
+    sourceFingerprint: '6d02841bcd28f4801e600fc41912a148ce7b44c3bd1f31b14eb8e72fa40e8d25',
+    ...gmailSharedMetadata,
+  },
 ];
 
 export const ACTION_CONTRACT = {
   ...BASE_ACTION_CONTRACT,
   contractVersion,
-  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake`,
+  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 5,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 5,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi,
   },
