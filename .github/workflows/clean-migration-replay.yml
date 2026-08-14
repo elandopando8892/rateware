@@ -11,6 +11,7 @@ on:
       - 'src/vendor-service.js'
       - 'tests/provider-service-*.test.mjs'
       - 'tools/verify-migration-history.mjs'
+      - 'tools/validate-provider-service-runtime-syntax.mjs'
       - '.github/workflows/clean-migration-replay.yml'
   workflow_dispatch:
 
@@ -34,11 +35,20 @@ jobs:
           node --version
           docker --version
 
+      - name: Install locked Node dependencies
+        run: npm ci --ignore-scripts
+
       - name: Validate migration history
         run: node tools/verify-migration-history.mjs
 
+      - name: Validate Provider Service runtime syntax
+        run: node tools/validate-provider-service-runtime-syntax.mjs
+
       - name: Run full Provider Service test suite
         run: node --test tests/provider-service-*.test.mjs
+
+      - name: Run existing Rateware regression suite
+        run: npm test
 
       - name: Start clean local Supabase database
         run: supabase db start
