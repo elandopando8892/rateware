@@ -14,6 +14,8 @@ const migration = read('../supabase/migrations/20260814010000_provider_service_c
 const api = read('../supabase/functions/shipper-directory-api/provider-service.ts');
 const page = read('../provider-service.html');
 const controller = read('../src/provider-service-page.js');
+const commandCenterPage = read('../app.html');
+const vendorCrmPage = read('../vendors.html');
 
 test('normalizes command center queues without inventing queue names', () => {
   assert.equal(normalizeProviderServiceQueue('CRITICAL'), 'critical');
@@ -77,4 +79,10 @@ test('Provider Service page is wired to command center and existing Provider 360
   assert.match(controller, /list_provider_service_command_center/);
   assert.match(controller, /loadProviderService360/);
   assert.match(controller, /renderProviderService360/);
+});
+
+test('Provider Service is discoverable from Command Center and Carrier CRM navigation', () => {
+  for (const source of [commandCenterPage, vendorCrmPage]) {
+    assert.match(source, /href="\.\/provider-service\.html"[^>]*data-nav-code="PS">Provider Service<\/a>/);
+  }
 });
