@@ -1,7 +1,7 @@
 diff --git a/supabase/migrations/20260813132100_provider_service_activation_commands.sql b/supabase/migrations/20260813132100_provider_service_activation_commands.sql
 --- a/supabase/migrations/20260813132100_provider_service_activation_commands.sql
 +++ b/supabase/migrations/20260813132100_provider_service_activation_commands.sql
-@@ -449,9 +449,17 @@ begin
+@@ -449,10 +449,14 @@
 -  select requirement, activation.status
 -    into requirement_row, activation_status
 +  select requirement.*
@@ -15,13 +15,10 @@ diff --git a/supabase/migrations/20260813132100_provider_service_activation_comm
 -  for update of requirement, activation;
 +  for update;
 +
-+  if not found then
-+    raise exception 'Provider Service requirement not found.' using errcode = 'P0002';
-+  end if;
-+
 +  select activation.status
 +    into activation_status
 +  from public.provider_activations activation
 +  where activation.organization_id = p_organization_id
 +    and activation.id = requirement_row.activation_id
 +  for update;
+ 
