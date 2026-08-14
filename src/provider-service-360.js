@@ -1,4 +1,4 @@
-import { callRatewareApi } from './rateware-api.js';
+import { callRatewareFunction } from './rateware-api.js';
 import { deriveProviderRelationshipAttention, groupProviderRequirements, summarizeProvider360 } from './provider-service-360-domain.js';
 
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
@@ -33,7 +33,7 @@ function renderActivity(rows) {
 }
 
 export async function loadProviderService360(vendorId, legalEntityId=null) {
-  const response=await callRatewareApi('get_provider_360',{vendor_id:vendorId,legal_entity_id:legalEntityId||undefined});
+  const response=await callRatewareFunction('shipper-directory-api','get_provider_360',{vendor_id:vendorId,legal_entity_id:legalEntityId||undefined});
   return response?.data || response || {};
 }
 
