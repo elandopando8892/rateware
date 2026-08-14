@@ -55,12 +55,13 @@ test('summarizes global server metrics and exposes actionable signals', () => {
   );
 });
 
-test('command center SQL remains sanitized and service-role only', () => {
+test('command center SQL remains sanitized, canonical, and service-role only', () => {
   assert.match(migration, /create or replace view public\.provider_service_command_center/);
   assert.match(migration, /join public\.workspace_registry/);
   assert.match(migration, /join public\.vendors/);
   assert.match(migration, /revoke all on table public\.provider_service_command_center from public, anon, authenticated, service_role/);
   assert.match(migration, /grant select on table public\.provider_service_command_center to service_role/);
+  assert.doesNotMatch(migration, /vendor\.segment/);
   assert.doesNotMatch(migration, /tax_identifier|token_hash|storage_path|file_sha256|body_text|body_html|account_number/i);
 });
 
