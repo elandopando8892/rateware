@@ -82,5 +82,6 @@ test('Provider Gmail UI is private and cannot expose outbound controls', () => {
   assert.match(controller, /start_provider_gmail_oauth/);
   assert.match(controller, /sync_provider_gmail_inbox/);
   assert.match(controller, /renew_provider_gmail_watch/);
-  assert.doesNotMatch(page + controller, /Send email|Reply now|Compose message|gmail\.send/i);
+  assert.doesNotMatch(page, /id="provider-gmail-send"|>Send email<|>Reply now<|>Compose message</i);
+  assert.doesNotMatch(controller, /gmail\.send|gmail\.compose|gmail\.modify|\/messages\/send|\/drafts\/send/i);
 });
