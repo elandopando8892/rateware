@@ -2172,6 +2172,80 @@ a {
   font-size: 0.8rem;
 }
 
+.rfx-operations-handoff-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.rfx-operations-handoff-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #d5e0e7;
+  border-left: 4px solid #8093a0;
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.rfx-operations-handoff-card[data-state="ready"] {
+  border-left-color: #1f8a5b;
+}
+
+.rfx-operations-handoff-card[data-state="blocked"] {
+  border-left-color: #c88919;
+}
+
+.rfx-operations-handoff-card h4,
+.rfx-operations-handoff-card p {
+  margin: 0;
+}
+
+.rfx-operations-handoff-metrics,
+.rfx-operations-handoff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.rfx-operations-handoff-metrics span {
+  padding: 5px 7px;
+  border: 1px solid #d8e3ea;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #526372;
+  font-size: 0.72rem;
+}
+
+.rfx-operations-handoff-missing {
+  margin-top: 9px;
+  padding: 8px;
+  border-radius: 6px;
+  background: #fff8e8;
+  color: #5f4616;
+  font-size: 0.74rem;
+}
+
+.rfx-operations-handoff-missing ul {
+  display: grid;
+  gap: 3px;
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.rfx-operations-handoff-json {
+  max-height: 360px;
+  margin: 9px 0 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 6px;
+  background: #13222d;
+  color: #e8f2f7;
+  font: 0.72rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .rfx-process-flow,
 .rfx-process-grid {
   display: grid;
@@ -8883,6 +8957,17 @@ a {
 .shipper-commercial-summary strong {
   color: #152a36;
   font-size: 1rem;
+}
+
+.shipper-commercial-governance {
+  margin: 0;
+  border-left: 3px solid #5a8aa0;
+  background: #f3f8fa;
+  padding: 6px 8px;
+  color: #465d69;
+  font-size: .7rem;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .shipper-commercial-grid {
