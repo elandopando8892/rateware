@@ -4087,6 +4087,9 @@ assert.doesNotMatch(carrierIntelligenceSource, /\.from\("rate_staging"\)/, "AI A
 assert.doesNotMatch(carrierIntelligenceSource, /\.limit\(1500\)/, "AI Analyst should not rely on a 1500-row rate sample");
 assert.match(stylesSource, /\.bulk-action-bar \{[\s\S]*?overflow-x: auto/, "Spreadsheet bulk actions should scroll inside their own toolbar on narrow laptop layouts");
 assert.match(stylesSource, /\.bulk-action-bar:has\(\.sheet-more-actions\[open\]\)[\s\S]*?overflow: visible/, "The More actions menu should not be clipped by the compact toolbar");
+assert.match(stylesSource, /Mobile Rateware actions:[\s\S]*?\.rateware-command-bar \.bulk-action-bar \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)[\s\S]*?overflow: visible/, "Mobile Rateware actions should remain inside a two-column first-viewport grid");
+assert.match(stylesSource, /\.rateware-command-bar \.bulk-scope-strip \{[\s\S]*?width: 100%[\s\S]*?overflow-x: auto/, "Mobile Rateware scope controls should scroll within their own full-width row");
+assert.match(stylesSource, /\.rateware-command-bar \.sheet-more-actions > div \{[\s\S]*?width: min\(260px, calc\(100vw - 32px\)\)[\s\S]*?overflow-y: auto/, "Mobile Rateware More actions should fit within the viewport and scroll vertically when needed");
 assert.match(stylesSource, /\.bi-layout > \.workspace-panel[\s\S]*?\.bi-drilldown-panel > \.table-wrap[\s\S]*?min-width: 0/, "Analyze tables should stay inside their panel on narrow laptop layouts");
 assert.match(stylesSource, /\.bi-drilldown-panel > \.table-wrap[\s\S]*?overflow-x: auto/, "Analyze drilldown should scroll internally instead of expanding the page");
 assert.match(stylesSource, /Mobile shell: keep navigation and primary actions in the first viewport/, "The mobile shell should have one compact navigation treatment");
