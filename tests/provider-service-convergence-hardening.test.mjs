@@ -20,6 +20,8 @@ test('approval requests are bounded, scoped and service-role-only', () => {
   assert.match(approval, /proposal\.approval_mode/);
   assert.match(approval, /relationship\.id=p_provider_relationship_id/);
   assert.match(approval, /relationship\.legal_entity_id=p_legal_entity_id/);
+  assert.match(approval, /p_agent_run_id is not null and p_action_proposal_id is null/);
+  assert.match(approval, /run_row\.provider_relationship_id is distinct from p_provider_relationship_id/);
   assert.match(approval, /status in \('requested','approved'\)/);
   assert.match(approval, /approval_requested/);
   assert.match(approval, /proposal_state='awaiting_approval'/);
@@ -43,6 +45,8 @@ test('integration enqueue is idempotent, policy-gated and approval-consuming', (
   assert.match(sync, /provider_integration_action_policies/);
   assert.match(sync, /status='published'/);
   assert.match(sync, /policy_row\.requires_approval/);
+  assert.match(sync, /approval_row\.action_payload_snapshot is distinct from body/);
+  assert.match(sync, /approval payload does not match the command payload/i);
   assert.match(sync, /approval_row\.status<>'approved'/);
   assert.match(sync, /provider_service_consume_approval/);
   assert.match(sync, /insert into public\.provider_sync_commands/);
