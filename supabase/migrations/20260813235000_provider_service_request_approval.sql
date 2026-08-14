@@ -69,6 +69,18 @@ begin
     raise exception 'Provider relationship does not belong to the legal entity.' using errcode='23514';
   end if;
 
+  if p_agent_run_id is not null and p_action_proposal_id is null then
+    select agent_run.* into run_row
+    from public.provider_agent_runs agent_run
+    where agent_run.organization_id=p_organization_id and agent_run.id=p_agent_run_id
+    for update;
+    if not found then raise exception 'Agent run not found.' using errcode='P0002'; end if;
+    if run_row.legal_entity_id <> p_legal_entity_id
+       or run_row.provider_relationship_id is distinct from p_provider_relationship_id then
+      raise exception 'Approval scope does not match the direct agent run.' using errcode='23514';
+    end if;
+  end if;
+
   if p_action_proposal_id is not null then
     select action_proposal.* into proposal
     from public.provider_agent_action_proposals action_proposal
