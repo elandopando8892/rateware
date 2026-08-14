@@ -5,6 +5,7 @@ import {
   normalizeProviderServiceQueue,
   providerServiceAttentionRank,
   providerServiceRowSignals,
+  shouldReplaceProviderServiceMetrics,
   sortProviderServiceRows,
   summarizeProviderServiceRows,
 } from '../src/provider-service-page-domain.js';
@@ -55,6 +56,13 @@ test('summarizes global server metrics and exposes actionable signals', () => {
   );
 });
 
+test('preserves the last global metric snapshot when a filtered queue is empty', () => {
+  const currentMetrics = { relationships: 20, critical: 2 };
+  assert.equal(shouldReplaceProviderServiceMetrics({ queue: 'critical', metrics: { relationships: 0 }, currentMetrics }), false);
+  assert.equal(shouldReplaceProviderServiceMetrics({ queue: 'all', search: '', metrics: { relationships: 0 }, currentMetrics }), true);
+  assert.equal(shouldReplaceProviderServiceMetrics({ queue: 'critical', metrics: { relationships: 20 }, currentMetrics }), true);
+});
+
 test('command center SQL remains sanitized, canonical, and service-role only', () => {
   assert.match(migration, /create or replace view public\.provider_service_command_center/);
   assert.match(migration, /join public\.workspace_registry/);
@@ -80,6 +88,7 @@ test('Provider Service page is wired to command center and existing Provider 360
   assert.match(controller, /list_provider_service_command_center/);
   assert.match(controller, /loadProviderService360/);
   assert.match(controller, /renderProviderService360/);
+  assert.match(controller, /shouldReplaceProviderServiceMetrics/);
 });
 
 test('Provider Service is discoverable from Command Center and Carrier CRM navigation', () => {
