@@ -4,7 +4,12 @@ on:
   pull_request:
     paths:
       - 'supabase/migrations/**'
+      - 'supabase/functions/shipper-directory-api/**'
       - 'supabase/config.toml'
+      - 'src/provider-service-360*.js'
+      - 'src/provider-service-360.css'
+      - 'src/vendor-service.js'
+      - 'tests/provider-service-360-wiring.test.mjs'
       - 'tools/verify-migration-history.mjs'
       - 'tools/provider-service-replay-fixes.patch'
       - '.github/workflows/clean-migration-replay.yml'
@@ -26,6 +31,9 @@ jobs:
 
       - name: Validate migration history
         run: node tools/verify-migration-history.mjs
+
+      - name: Verify Provider 360 wiring
+        run: node --test tests/provider-service-360-wiring.test.mjs
 
       - name: Apply convergence replay patches
         run: |
