@@ -3,12 +3,15 @@ import { parse } from '@babel/parser';
 
 const srcEntries = await readdir(new URL('../src/', import.meta.url));
 const providerBrowserFiles = srcEntries
-  .filter((name) => /^provider-service-.*\.js$/.test(name))
+  .filter((name) => /^provider-(?:service|communications|gmail)-.*\.js$/.test(name))
   .map((name) => `src/${name}`);
 
 const files = [
   ...providerBrowserFiles,
   'src/vendor-service.js',
+  'supabase/functions/_shared/provider-gmail.ts',
+  'supabase/functions/provider-gmail-intake-api/index.ts',
+  'supabase/functions/provider-gmail-oauth-callback/index.ts',
   'supabase/functions/shipper-directory-api/index.ts',
   'supabase/functions/shipper-directory-api/provider-service.ts',
 ];
