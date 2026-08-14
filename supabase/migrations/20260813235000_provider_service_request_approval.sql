@@ -22,7 +22,7 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
-  entity_code text;
+  v_entity_code text;
   normalized_action text := lower(btrim(coalesce(p_action_code,'')));
   normalized_mode text := lower(btrim(coalesce(p_approval_mode,'')));
   normalized_actor text := lower(btrim(coalesce(p_requested_by_actor_type,'user')));
@@ -53,22 +53,26 @@ begin
     raise exception 'Approval expiry must be in the future.' using errcode='22023';
   end if;
 
-  select entity_code into entity_code
-  from public.legal_entities
-  where organization_id=p_organization_id and id=p_legal_entity_id and status='active';
+  select legal_entity.entity_code into v_entity_code
+  from public.legal_entities legal_entity
+  where legal_entity.organization_id=p_organization_id
+    and legal_entity.id=p_legal_entity_id
+    and legal_entity.status='active';
   if not found then raise exception 'Active legal entity not found.' using errcode='P0002'; end if;
 
   if p_provider_relationship_id is not null and not exists (
-    select 1 from public.provider_relationships
-    where organization_id=p_organization_id and id=p_provider_relationship_id and legal_entity_id=p_legal_entity_id
+    select 1 from public.provider_relationships relationship
+    where relationship.organization_id=p_organization_id
+      and relationship.id=p_provider_relationship_id
+      and relationship.legal_entity_id=p_legal_entity_id
   ) then
     raise exception 'Provider relationship does not belong to the legal entity.' using errcode='23514';
   end if;
 
   if p_action_proposal_id is not null then
-    select * into proposal
-    from public.provider_agent_action_proposals
-    where organization_id=p_organization_id and id=p_action_proposal_id
+    select action_proposal.* into proposal
+    from public.provider_agent_action_proposals action_proposal
+    where action_proposal.organization_id=p_organization_id and action_proposal.id=p_action_proposal_id
     for update;
     if not found then raise exception 'Agent action proposal not found.' using errcode='P0002'; end if;
 
@@ -82,9 +86,9 @@ begin
       raise exception 'Agent run does not match the action proposal.' using errcode='23514';
     end if;
 
-    select * into run_row
-    from public.provider_agent_runs
-    where organization_id=p_organization_id and id=proposal.agent_run_id
+    select agent_run.* into run_row
+    from public.provider_agent_runs agent_run
+    where agent_run.organization_id=p_organization_id and agent_run.id=proposal.agent_run_id
     for update;
     if not found or run_row.legal_entity_id <> p_legal_entity_id then
       raise exception 'Agent run is outside the approval legal entity.' using errcode='23514';
@@ -93,13 +97,13 @@ begin
       raise exception 'Approval relationship does not match the agent run.' using errcode='23514';
     end if;
 
-    select id into approval_id
-    from public.provider_approval_requests
-    where organization_id=p_organization_id
-      and action_proposal_id=p_action_proposal_id
-      and status in ('requested','approved')
-      and (expires_at is null or expires_at>now())
-    order by requested_at desc,id desc
+    select request.id into approval_id
+    from public.provider_approval_requests request
+    where request.organization_id=p_organization_id
+      and request.action_proposal_id=p_action_proposal_id
+      and request.status in ('requested','approved')
+      and (request.expires_at is null or request.expires_at>now())
+    order by request.requested_at desc,request.id desc
     limit 1;
     if approval_id is not null then return approval_id; end if;
 
@@ -115,7 +119,7 @@ begin
     action_payload_snapshot,sensitivity,requested_by_actor_type,requested_by_user_id,
     expires_at,metadata
   ) values (
-    p_organization_id,p_legal_entity_id,entity_code,p_provider_relationship_id,p_case_id,
+    p_organization_id,p_legal_entity_id,v_entity_code,p_provider_relationship_id,p_case_id,
     coalesce(p_agent_run_id,proposal.agent_run_id),p_action_proposal_id,p_document_version_id,
     normalized_mode,normalized_action,canonical_payload,canonical_sensitivity,normalized_actor,
     nullif(btrim(coalesce(p_requested_by_user_id,'')),''),p_expires_at,coalesce(p_metadata,'{}'::jsonb)
