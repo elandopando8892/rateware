@@ -44,7 +44,7 @@ test('intake API exposes only status, OAuth, sync, and watch operations', () => 
   }
   assert.match(api, /requireKindeUser\(request\)/);
   assert.match(api, /resolveRuntimeWorkspaceUser/);
-  assert.match(api, /gmail\.readonly/);
+  assert.match(api, /PROVIDER_GMAIL_READONLY_SCOPE/);
   assert.match(api, /openid email/);
   assert.match(api, /login_hint/);
   assert.doesNotMatch(api, /gmail\.send|gmail\.compose|gmail\.modify|\/messages\/send|\/drafts\/send/i);
@@ -56,7 +56,7 @@ test('Gmail sync is bounded, idempotent, confidential, and uses incremental hist
   assert.match(api, /historyTypes: 'messageAdded'/);
   assert.match(api, /labelId: 'INBOX'/);
   assert.match(api, /newer_than:7d/);
-  assert.match(api, /status\) !== 404/);
+  assert.match(api, /\.status !== 404/);
   assert.match(api, /external_message_id/);
   assert.match(api, /processing_status: 'processed'/);
   assert.match(api, /sensitivity: 'confidential'/);
