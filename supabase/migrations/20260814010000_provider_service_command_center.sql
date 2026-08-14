@@ -14,7 +14,6 @@ with base as (
     vendor.vendor_name,
     vendor.legal_name as vendor_legal_name,
     vendor.status as vendor_status,
-    vendor.segment as vendor_segment,
     summary.legal_entity_name,
     summary.country_code,
     summary.default_currency,
