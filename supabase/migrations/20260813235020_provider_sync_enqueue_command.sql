@@ -38,6 +38,7 @@ begin
     select * into approval_row from public.provider_approval_requests x where x.organization_id=p_organization_id and x.id=p_approval_request_id for update;
     if not found then raise exception 'Integration approval not found.' using errcode='P0002'; end if;
     if approval_row.provider_relationship_id<>p_provider_relationship_id or approval_row.legal_entity_id<>p_legal_entity_id or approval_row.action_code<>a then raise exception 'Integration approval scope does not match the command.' using errcode='23514'; end if;
+    if approval_row.action_payload_snapshot is distinct from body then raise exception 'Integration approval payload does not match the command payload.' using errcode='23514'; end if;
     if approval_row.status<>'approved' then raise exception 'Integration approval is not approved.' using errcode='23514'; end if;
     if approval_row.expires_at is not null and approval_row.expires_at<=now() then raise exception 'Integration approval has expired.' using errcode='23514'; end if;
   elsif p_approval_request_id is not null then
