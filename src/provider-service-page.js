@@ -4,6 +4,7 @@ import {
   normalizeProviderServiceQueue,
   providerServiceHealthLabel,
   providerServiceRowSignals,
+  shouldReplaceProviderServiceMetrics,
   sortProviderServiceRows,
   summarizeProviderServiceRows,
 } from './provider-service-page-domain.js';
@@ -123,7 +124,14 @@ async function loadCommandCenter({ preserveSelection = false } = {}) {
     if (requestId !== state.requestId) return;
     const data = response?.data || {};
     state.rows = Array.isArray(data.rows) ? data.rows : [];
-    state.metrics = data.metrics || {};
+    if (shouldReplaceProviderServiceMetrics({
+      queue: state.queue,
+      search: state.search,
+      metrics: data.metrics,
+      currentMetrics: state.metrics,
+    })) {
+      state.metrics = data.metrics || {};
+    }
     state.total = number(data.total);
     if (!preserveSelection && !state.rows.some((row) => row.vendor_id === state.selectedVendorId && row.legal_entity_id === state.selectedLegalEntityId)) {
       state.selectedVendorId = null;
