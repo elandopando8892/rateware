@@ -18,7 +18,8 @@ test('approval requests are bounded, scoped and service-role-only', () => {
   assert.match(approval, /provider_service_request_approval/);
   assert.match(approval, /proposal\.policy_decision <> 'approval_required'/);
   assert.match(approval, /proposal\.approval_mode/);
-  assert.match(approval, /provider_relationship_id=p_provider_relationship_id/);
+  assert.match(approval, /relationship\.id=p_provider_relationship_id/);
+  assert.match(approval, /relationship\.legal_entity_id=p_legal_entity_id/);
   assert.match(approval, /status in \('requested','approved'\)/);
   assert.match(approval, /approval_requested/);
   assert.match(approval, /proposal_state='awaiting_approval'/);
