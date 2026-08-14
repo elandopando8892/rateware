@@ -1,0 +1,127 @@
+.provider-gmail-layout {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+}
+
+.provider-gmail-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.provider-gmail-hero h2 {
+  margin: 4px 0 8px;
+  max-width: 760px;
+}
+
+.provider-gmail-hero p:last-child {
+  margin: 0;
+}
+
+.provider-gmail-safety {
+  display: grid;
+  gap: 5px;
+  min-width: 220px;
+  padding: 14px;
+  border: 1px solid rgba(127, 127, 127, .3);
+  border-radius: 12px;
+}
+
+.provider-gmail-safety span {
+  font-size: 12px;
+  opacity: .75;
+}
+
+.provider-gmail-controls {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) repeat(3, auto);
+  gap: 10px;
+  align-items: end;
+}
+
+.provider-gmail-controls label {
+  display: grid;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.provider-gmail-controls select {
+  min-height: 42px;
+}
+
+.provider-gmail-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.provider-gmail-status-grid article {
+  display: grid;
+  gap: 5px;
+}
+
+.provider-gmail-status-grid span {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.provider-gmail-status-grid strong {
+  font-size: 20px;
+}
+
+.provider-gmail-status-grid small {
+  opacity: .7;
+}
+
+.provider-gmail-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.provider-gmail-flow article {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid rgba(127, 127, 127, .25);
+  border-radius: 10px;
+}
+
+.provider-gmail-flow b {
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+}
+
+.provider-gmail-flow span {
+  font-size: 12px;
+  opacity: .72;
+}
+
+@media (max-width: 1050px) {
+  .provider-gmail-controls {
+    grid-template-columns: 1fr 1fr;
+  }
+  .provider-gmail-status-grid,
+  .provider-gmail-flow {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .provider-gmail-layout { padding: 16px; }
+  .provider-gmail-hero { display: grid; }
+  .provider-gmail-controls,
+  .provider-gmail-status-grid,
+  .provider-gmail-flow { grid-template-columns: 1fr; }
+}

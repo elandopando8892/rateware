@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Provider Gmail Intake</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/provider-gmail.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav class="nav-groups">
+          <section class="nav-group"><p>Operate</p><a href="./app.html" data-nav-code="CC">Command Center</a><a href="./rateware.html" data-nav-code="RW">Rateware</a></section>
+          <section class="nav-group"><p>Source</p><a href="./vendors.html" data-nav-code="CM">Carrier CRM</a><a aria-current="page" href="./provider-service.html" data-nav-code="PS">Provider Service</a><a href="./rfx-process.html" data-nav-code="RP">RFx Process</a><a href="./rfx-events.html" data-nav-code="BR">Bid Room</a></section>
+          <section class="nav-group"><p>Admin</p><a href="./settings.html" data-nav-code="ST">Settings</a></section>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Provider Service integration</p>
+            <h1>Gmail Intake</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./provider-service.html">Provider Service</a>
+              <a href="./provider-communications.html">Communications Inbox</a>
+              <span>Gmail Intake</span>
+            </nav>
+          </div>
+          <div class="page-header-actions">
+            <a class="secondary-link" href="./provider-communications.html">Open Communications Inbox</a>
+            <form id="auth-form" class="auth-strip">
+              <button id="auth-button" type="submit">Log in</button>
+              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+              <p id="auth-status" role="status"></p>
+            </form>
+          </div>
+        </header>
+
+        <main class="provider-gmail-layout">
+          <section class="workspace-panel provider-gmail-hero wide-section">
+            <div>
+              <p class="eyebrow">Inbound only</p>
+              <h2>Connect the provider onboarding mailbox without granting send authority.</h2>
+              <p id="provider-gmail-mailbox">Expected mailbox: —</p>
+            </div>
+            <div class="provider-gmail-safety">
+              <strong>Read-only contract</strong>
+              <span>gmail.readonly only</span>
+              <span>No compose</span>
+              <span>No send</span>
+              <span>No delete</span>
+            </div>
+          </section>
+
+          <section class="workspace-panel wide-section">
+            <div class="section-heading compact split-heading">
+              <div>
+                <p class="eyebrow">Connection scope</p>
+                <h2>Legal entity + mailbox</h2>
+              </div>
+              <button id="provider-gmail-refresh" class="secondary" type="button">Refresh status</button>
+            </div>
+            <div class="provider-gmail-controls">
+              <label>
+                Legal entity
+                <select id="provider-gmail-entity"><option value="">Select legal entity</option></select>
+              </label>
+              <button id="provider-gmail-connect" type="button" disabled>Connect Gmail</button>
+              <button id="provider-gmail-sync" class="secondary" type="button" disabled>Sync inbox</button>
+              <button id="provider-gmail-watch" class="secondary" type="button" disabled>Start / renew watch</button>
+            </div>
+            <p id="provider-gmail-status-message" class="status-message" role="status"></p>
+          </section>
+
+          <section class="provider-gmail-status-grid wide-section" aria-label="Gmail intake status">
+            <article class="workspace-panel"><span>Connection</span><strong id="provider-gmail-connection-state">Not connected</strong><small id="provider-gmail-token-state">—</small></article>
+            <article class="workspace-panel"><span>Watch</span><strong id="provider-gmail-watch-state">Inactive</strong><small id="provider-gmail-watch-expiration">—</small></article>
+            <article class="workspace-panel"><span>Last sync</span><strong id="provider-gmail-last-sync">Never</strong><small id="provider-gmail-history">No history ID</small></article>
+            <article class="workspace-panel"><span>Outbound</span><strong>Disabled</strong><small>Build 16 cannot send email</small></article>
+          </section>
+
+          <section class="workspace-panel wide-section">
+            <div class="section-heading compact"><p class="eyebrow">Ingestion path</p><h2>What happens when you sync</h2></div>
+            <div class="provider-gmail-flow">
+              <article><b>1</b><strong>Read INBOX</strong><span>Recent or incremental Gmail history.</span></article>
+              <article><b>2</b><strong>Deduplicate</strong><span>Gmail message and thread IDs remain idempotent.</span></article>
+              <article><b>3</b><strong>Store thread</strong><span>Provider Service communication thread + confidential body.</span></article>
+              <article><b>4</b><strong>Queue work</strong><span>Inbound threads enter unmatched / reply-due triage.</span></article>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module">
+      import { initAuthControls } from './src/auth.js';
+      initAuthControls();
+    </script>
+    <script type="module" src="./src/provider-gmail-page.js"></script>
+  </body>
+</html>
