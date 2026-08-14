@@ -29,15 +29,19 @@ begin
     raise exception 'Unsupported Provider Service actor type.' using errcode = '22023';
   end if;
 
-  select requirement, activation.status
-    into requirement_row, activation_status
+  select requirement.*
+    into requirement_row
   from public.provider_activation_requirements requirement
-  join public.provider_activations activation
-    on activation.organization_id = requirement.organization_id
-   and activation.id = requirement.activation_id
   where requirement.organization_id = p_organization_id
     and requirement.id = p_activation_requirement_id
-  for update of requirement, activation;
+  for update;
+
+  select activation.status
+    into activation_status
+  from public.provider_activations activation
+  where activation.organization_id = p_organization_id
+    and activation.id = requirement_row.activation_id
+  for update;
 
   if not found then
     raise exception 'Provider Service requirement not found.' using errcode = 'P0002';
