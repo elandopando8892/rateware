@@ -1,4 +1,4 @@
-import { ACTION_CONTRACT } from '../supabase/functions/_shared/action-contract.mjs';
+import { ACTION_CONTRACT } from './effective-action-contract.mjs';
 import { discoverGovernableSurfaces, repoRootFrom } from './action-contract-lib.mjs';
 
 const repoRoot = repoRootFrom(process.cwd());
@@ -15,12 +15,7 @@ const fields = [
   'sourceFile',
   'handler',
   'endpoint',
-  'operation',
-  'resource',
-  'access',
-  'exposure',
-  'sensitivity',
-  'tenantRelevance',
+  'exposureHint',
   'rpcSignature',
   'sourceFingerprint',
   'authorizationFingerprint',
