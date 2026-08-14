@@ -21,8 +21,8 @@ test('manifest is deterministic and contains references and hashes',()=>{
   assert.match(commands,/evidence_snapshot_sha256/);
   assert.match(commands,/source_document_asset_id/);
   assert.match(commands,/evidence_sha256/);
-  assert.doesNotMatch(commands,/select\\([^)]*(?:^|,)fact_value(?:,|\\))/);
-  assert.doesNotMatch(commands,/download\\(|storage\\.from/);
+  assert.doesNotMatch(commands,/select\([^)]*(?:^|,)fact_value(?:,|\))/);
+  assert.doesNotMatch(commands,/download\(|storage\.from/);
 });
 test('restricted evidence cannot be fully disclosed',()=>{
   assert.match(migration,/provider_release_package_items_restricted_check/);
