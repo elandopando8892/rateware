@@ -1,4 +1,4 @@
-import { mountProviderService360 } from './provider-service-360.js';
+import { loadProviderService360, renderProviderService360 } from './provider-service-360.js';
 
 const HOST_ID = 'drawer-provider-service-360';
 let loadVersion = 0;
@@ -50,6 +50,13 @@ function triggerVendorId(target) {
     || null;
 }
 
+function renderError(host, message) {
+  const error = document.createElement('div');
+  error.className = 'provider360-error';
+  error.textContent = message || 'Provider Service 360 could not be loaded.';
+  host.replaceChildren(error);
+}
+
 async function loadVendor(vendorId) {
   if (!vendorId) return;
   const version = ++loadVersion;
@@ -57,9 +64,17 @@ async function loadVendor(vendorId) {
   ensureStylesheet();
   const host = ensureHost();
   if (!host) return;
-  await mountProviderService360(host, { vendorId });
-  if (version !== loadVersion || activeVendorId !== vendorId) return;
-  host.dataset.vendorId = vendorId;
+  host.innerHTML = '<div class="provider360-loading">Loading Provider Service 360…</div>';
+
+  try {
+    const payload = await loadProviderService360(vendorId);
+    if (version !== loadVersion || activeVendorId !== vendorId) return;
+    renderProviderService360(host, payload);
+    host.dataset.vendorId = vendorId;
+  } catch (error) {
+    if (version !== loadVersion || activeVendorId !== vendorId) return;
+    renderError(host, error?.message || 'Provider Service 360 could not be loaded.');
+  }
 }
 
 document.addEventListener('click', (event) => {
