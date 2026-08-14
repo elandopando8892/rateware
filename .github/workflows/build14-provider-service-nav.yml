@@ -1,0 +1,55 @@
+name: build14-provider-service-nav
+
+on:
+  push:
+    branches:
+      - provider-service-build14-rateware-ui
+    paths:
+      - .github/workflows/build14-provider-service-nav.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Build 14
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: provider-service-build14-rateware-ui
+          fetch-depth: 0
+      - name: Insert Provider Service nav entry exactly after Carrier CRM
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const targets = ['app.html','vendors.html','vendor-support.html','vendor-improvement.html','rfx-process.html','rfx-events.html'];
+          const anchor = '<a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>';
+          const insertion = `${anchor}\n            <a href="./provider-service.html" data-nav-code="PS">Provider Service</a>`;
+          let changed = 0;
+          for (const path of targets) {
+            if (!fs.existsSync(path)) continue;
+            let source = fs.readFileSync(path, 'utf8');
+            if (source.includes('href="./provider-service.html"')) continue;
+            const count = source.split(anchor).length - 1;
+            if (count === 1) {
+              source = source.replace(anchor, insertion);
+              fs.writeFileSync(path, source);
+              changed += 1;
+            }
+          }
+          for (const required of ['app.html','vendors.html']) {
+            const source = fs.readFileSync(required, 'utf8');
+            if (!source.includes('href="./provider-service.html"')) throw new Error(`${required} did not receive Provider Service navigation.`);
+          }
+          if (changed < 2) throw new Error(`Expected at least two navigation files to change, changed ${changed}.`);
+          console.log(`Provider Service navigation added to ${changed} files.`);
+          NODE
+      - name: Commit navigation integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.html vendors.html vendor-support.html vendor-improvement.html rfx-process.html rfx-events.html
+          git diff --cached --check
+          git commit -m "feat(build14): add Provider Service to Rateware source navigation"
+          git push origin HEAD:provider-service-build14-rateware-ui
