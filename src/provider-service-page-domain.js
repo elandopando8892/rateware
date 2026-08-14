@@ -21,6 +21,12 @@ export function providerServiceHealthLabel(row = {}) {
   return text(row.attention_state).toLowerCase() || 'unknown';
 }
 
+export function shouldReplaceProviderServiceMetrics({ queue = 'all', search = '', metrics = {}, currentMetrics = {} } = {}) {
+  if (normalizeProviderServiceQueue(queue) === 'all' && !text(search)) return true;
+  if (number(metrics?.relationships) > 0) return true;
+  return number(currentMetrics?.relationships) === 0;
+}
+
 export function summarizeProviderServiceRows(rows = [], serverMetrics = null) {
   if (serverMetrics && typeof serverMetrics === 'object') {
     return Object.freeze({
