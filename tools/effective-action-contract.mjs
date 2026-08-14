@@ -8,9 +8,9 @@ const delta = extension.expectedCountsDelta;
 // Provider Service is hosted inside the authenticated shipper-directory-api runtime.
 // Its local dependency changes that function's shared authorization envelope for
 // all eight pre-existing actions even though their handler source segments are unchanged.
-// Build 15 adds two bounded read-only communications actions under the same canonical
+// Build 30 adds two sanitized, read-only onboarding actions under the same canonical
 // Kinde -> workspace -> tenant resolver and does not add a new externally discovered action.
-const shipperDirectoryEnvelope = '08c65fd8cda5dcf4b4bca5dae412fb1e0f4c5ed2726e3d205cc09a38f3c43bd8';
+const shipperDirectoryEnvelope = 'cf049f85a1664a9df2663c3683ad72b6a249900debb1b97b9b641ac927081338';
 const legacyAuthorizationOverrides = Object.fromEntries([
   'edge.shipper-directory-api.get_shipper',
   'edge.shipper-directory-api.list_shippers',

@@ -4,6 +4,8 @@ const PROVIDER_SERVICE_ACTIONS = new Set([
   "list_provider_service_command_center",
   "list_provider_communications_inbox",
   "get_provider_communication_thread",
+  "list_provider_onboarding_workspace",
+  "get_provider_onboarding_case",
 ]);
 const COMMAND_CENTER_QUEUES = new Set(["all", "critical", "attention", "watch", "healthy", "needs_reply", "approvals", "blocked"]);
 const COMMUNICATION_INBOX_QUEUES = new Set([
@@ -17,6 +19,7 @@ const COMMUNICATION_INBOX_QUEUES = new Set([
   "active",
   "resolved",
 ]);
+const ONBOARDING_QUEUES = new Set(["all", "draft", "evidence_collection", "blocked", "ready_for_approval", "closed", "overdue"]);
 const REDACTED_MESSAGE_SENSITIVITIES = new Set(["restricted", "highly_restricted"]);
 
 function cleanText(value: unknown) {
@@ -298,6 +301,129 @@ async function getProviderCommunicationThread(
   };
 }
 
+
+async function listProviderOnboardingWorkspace(
+  supabase: any,
+  organizationUuid: string,
+  body: Record<string, unknown>,
+) {
+  const queue = cleanText(body.queue)?.toLowerCase() || "all";
+  if (!ONBOARDING_QUEUES.has(queue)) throw new Error("Unsupported onboarding queue.");
+  const limit = clampInteger(body.limit, 40, 10, 100);
+  const offset = clampInteger(body.offset, 0, 0, 100000);
+  const search = safeSearch(body.search);
+
+  let query = supabase
+    .from("provider_onboarding_workspace")
+    .select("*", { count: "exact" })
+    .eq("organization_id", organizationUuid)
+    .order("overdue_task_count", { ascending: false })
+    .order("blocking_task_count", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (queue === "overdue") query = query.gt("overdue_task_count", 0);
+  else if (queue !== "all") query = query.eq("case_status", queue);
+  if (search) {
+    query = query.or([
+      `program_code.ilike.%${search}%`,
+      `jurisdiction_code.ilike.%${search}%`,
+      `legal_entity_kind.ilike.%${search}%`,
+    ].join(","));
+  }
+
+  const result = await query;
+  if (result.error) throw result.error;
+  const rows = (result.data || []) as Record<string, unknown>[];
+  const first = rows[0] || {};
+  return {
+    data: {
+      rows,
+      total: result.count || 0,
+      limit,
+      offset,
+      queue,
+      metrics: {
+        total: Number(first.total_cases || 0),
+        blocked: Number(first.blocked_cases || 0),
+        approval: Number(first.approval_cases || 0),
+        overdue: Number(first.overdue_cases || 0),
+      },
+    },
+  };
+}
+
+async function getProviderOnboardingCase(
+  supabase: any,
+  organizationUuid: string,
+  body: Record<string, unknown>,
+) {
+  const caseId = requireUuid(body.case_id, "case_id");
+  const workspace = await supabase
+    .from("provider_onboarding_workspace")
+    .select("*")
+    .eq("organization_id", organizationUuid)
+    .eq("id", caseId)
+    .maybeSingle();
+  if (workspace.error) throw workspace.error;
+  if (!workspace.data) {
+    const error = new Error("Onboarding case not found in this workspace.");
+    (error as Error & { status?: number }).status = 404;
+    throw error;
+  }
+
+  const [tasks, packages, assemblies, messages, events] = await Promise.all([
+    supabase.from("provider_onboarding_case_tasks")
+      .select("id,task_type,task_status,requirement_code,assigned_user_id,blocking,created_at,started_at,completed_at,due_at,updated_at")
+      .eq("organization_id", organizationUuid).eq("case_id", caseId)
+      .in("task_status", ["open", "in_progress"])
+      .order("blocking", { ascending: false }).order("due_at", { ascending: true, nullsFirst: false }).limit(100),
+    supabase.from("provider_onboarding_release_packages")
+      .select("id,package_version,package_status,revision,purpose_code,required_approval_count,requested_at,approved_at,expires_at,revoked_at,created_at,updated_at")
+      .eq("organization_id", organizationUuid).eq("case_id", caseId)
+      .order("package_version", { ascending: false }).limit(20),
+    supabase.from("provider_onboarding_form_assemblies")
+      .select("id,package_id,assembly_status,requested_at,started_at,completed_at,failed_at,last_error_code")
+      .eq("organization_id", organizationUuid)
+      .in("package_id", [workspace.data.latest_package_id].filter(Boolean))
+      .order("requested_at", { ascending: false }).limit(20),
+    supabase.from("provider_onboarding_outbound_messages")
+      .select("id,package_id,assembly_id,message_status,revision,followup_number,scheduled_at,sent_at,next_followup_at,send_attempts,last_error_code,created_at,updated_at")
+      .eq("organization_id", organizationUuid).eq("case_id", caseId)
+      .order("created_at", { ascending: false }).limit(50),
+    supabase.from("provider_onboarding_case_events")
+      .select("id,event_type,previous_revision,revision,occurred_at")
+      .eq("organization_id", organizationUuid).eq("case_id", caseId)
+      .order("occurred_at", { ascending: false }).limit(100),
+  ]);
+  for (const result of [tasks, packages, assemblies, messages, events]) if (result.error) throw result.error;
+
+  const packageRows = (packages.data || []) as Record<string, unknown>[];
+  const packageIds = packageRows.map((row) => cleanText(row.id)).filter((value): value is string => Boolean(value));
+  const approvals = packageIds.length
+    ? await supabase.from("provider_onboarding_release_package_approvals")
+      .select("package_id,decision")
+      .eq("organization_id", organizationUuid).in("package_id", packageIds)
+    : { data: [], error: null };
+  if (approvals.error) throw approvals.error;
+  const approvalCounts = new Map<string, number>();
+  for (const row of approvals.data || []) {
+    if (row.decision !== "approved") continue;
+    const packageId = cleanText(row.package_id);
+    if (packageId) approvalCounts.set(packageId, (approvalCounts.get(packageId) || 0) + 1);
+  }
+
+  return {
+    data: {
+      case: workspace.data,
+      tasks: tasks.data || [],
+      packages: packageRows.map((row) => ({ ...row, approval_count: approvalCounts.get(String(row.id)) || 0 })),
+      assemblies: assemblies.data || [],
+      messages: messages.data || [],
+      events: events.data || [],
+    },
+  };
+}
+
 async function getProvider360(
   supabase: any,
   workspaceId: string,
@@ -400,6 +526,12 @@ export async function handleProviderServiceAction(
   }
   if (action === "get_provider_communication_thread") {
     return await getProviderCommunicationThread(supabase, organizationUuid, body);
+  }
+  if (action === "list_provider_onboarding_workspace") {
+    return await listProviderOnboardingWorkspace(supabase, organizationUuid, body);
+  }
+  if (action === "get_provider_onboarding_case") {
+    return await getProviderOnboardingCase(supabase, organizationUuid, body);
   }
   return await getProvider360(supabase, workspaceId, organizationUuid, body);
 }

@@ -3,7 +3,7 @@ import { parse } from '@babel/parser';
 
 const srcEntries = await readdir(new URL('../src/', import.meta.url));
 const providerBrowserFiles = srcEntries
-  .filter((name) => /^provider-(?:service|communications|gmail)-.*\.js$/.test(name))
+  .filter((name) => /^provider-(?:service|communications|gmail|onboarding)-.*\.js$/.test(name))
   .map((name) => `src/${name}`);
 
 const files = [
