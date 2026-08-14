@@ -19,27 +19,7 @@ jobs:
           ref: provider-service-build17-pubsub-inbound
           fetch-depth: 0
       - run: npm ci --ignore-scripts
-      - name: Apply exact discovered fingerprints
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const path = 'tools/effective-action-contract.mjs';
-          let source = fs.readFileSync(path, 'utf8');
-          const replacements = new Map([
-            ['0904678ec741f0bc1b55e879460df454062962fed509697def51956256419d6d', '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41'],
-            ['2b47e441fa85e227109954422c6d5cbcb6b8018926b92cc8e7b7a5376ec08818', '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f'],
-            ['fdf4ab17fe36808d55a8727793548621ba41e4f5f702673565628136096d52df', 'fdf4ab91c410e8257a263debc1b4239442bfdc4351fec42c7bc90ccf01ac4873'],
-            ['e2300162682d8793edb5f9971366baf9d1afad4f27ec84f3c0a1d350b797e464', 'e230016c68593f77f0c194d48dfb131cdef6ce5d74be7a9e0f7373a4e7e09d86'],
-            ['6d02841bcd28f4801e600fc41912a148ce7b44c3bd1f31b14eb8e72fa40e8d25', '6d02841bfab871b000375f4b174a96cd125218692fcfba97edea65fa7a3ee146'],
-          ]);
-          for (const [from, to] of replacements) {
-            const count = source.split(from).length - 1;
-            if (count < 1) throw new Error(`Expected fingerprint ${from} to occur at least once.`);
-            source = source.split(from).join(to);
-          }
-          fs.writeFileSync(path, source);
-          NODE
-      - name: Capture in-process validation state
+      - name: Capture duplicate guard metadata state
         run: |
           git fetch origin main:refs/remotes/origin/main
           rm -rf /tmp/rateware-main
@@ -52,20 +32,15 @@ jobs:
           const baselineUrl = pathToFileURL(resolve('/tmp/rateware-main/supabase/functions/_shared/action-contract.mjs')).href;
           const { ACTION_CONTRACT: BASELINE } = await import(`${baselineUrl}?diag=${Date.now()}`);
           const id = 'rpc.public.provider_service_guard_exception_approval()';
-          const currentEntry = () => CURRENT.surfaces.find((item) => item.canonicalId === id);
-          const snapshot = (stage) => console.log(stage + '=' + JSON.stringify({
-            reviewed: CURRENT.reviewedMetadataFingerprints[id],
-            computed: metadataFingerprint(currentEntry()),
-            entry: currentEntry(),
-          }));
-          snapshot('before_baseline');
+          const matches = () => CURRENT.surfaces.filter((item) => item.canonicalId === id).map((entry, index) => ({ index, hash: metadataFingerprint(entry), entry }));
+          console.log('reviewed=' + CURRENT.reviewedMetadataFingerprints[id]);
+          console.log('before=' + JSON.stringify(matches()));
           const baselineResult = validateActionContract(BASELINE, discoverGovernableSurfaces('/tmp/rateware-main'), { repoRoot: '/tmp/rateware-main' });
-          snapshot('after_baseline');
-          const currentDiscovered = discoverGovernableSurfaces(process.cwd());
-          const currentResult = validateActionContract(CURRENT, currentDiscovered, { repoRoot: process.cwd() });
-          snapshot('after_current');
-          console.log('guard_issue=' + JSON.stringify(currentResult.issues.filter((issue) => issue.canonicalId === id)));
-          console.log('current_errors=' + JSON.stringify(currentResult.issues.filter((issue) => issue.level === 'error').map((issue) => `${issue.code}\t${issue.canonicalId}`)));
+          console.log('after_baseline=' + JSON.stringify(matches()));
+          const currentResult = validateActionContract(CURRENT, discoverGovernableSurfaces(process.cwd()), { repoRoot: process.cwd() });
+          console.log('after_current=' + JSON.stringify(matches()));
+          console.log('guard_issues=' + JSON.stringify(currentResult.issues.filter((issue) => issue.canonicalId === id)));
+          console.log('duplicate_issues=' + JSON.stringify(currentResult.issues.filter((issue) => issue.code === 'DUPLICATE_CANONICAL_ID' && issue.canonicalId === id)));
           console.log(`baseline_errors=${baselineResult.issues.filter((issue) => issue.level === 'error').length}`);
           NODE
           set +e
@@ -74,11 +49,10 @@ jobs:
           set -e
           printf '\nexit_code=%s\n' "$code" >> build17-auth-diagnostic.txt
           cat build17-auth-diagnostic.txt
-      - name: Commit corrected fingerprints and diagnostic
+      - name: Commit diagnostic output
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tools/effective-action-contract.mjs build17-auth-diagnostic.txt
-          git diff --cached --check
-          git commit -m "chore(build17): apply exact reviewed authorization fingerprints"
+          git add build17-auth-diagnostic.txt
+          git commit -m "chore(build17): refresh guard authorization diagnostic"
           git push origin HEAD:provider-service-build17-pubsub-inbound
