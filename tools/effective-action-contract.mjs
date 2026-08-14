@@ -5,11 +5,12 @@ const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 
-// Provider 360 is hosted inside the authenticated shipper-directory-api runtime.
-// Its new local dependency changes that function's shared authorization envelope for
+// Provider Service is hosted inside the authenticated shipper-directory-api runtime.
+// Its local dependency changes that function's shared authorization envelope for
 // all eight pre-existing actions even though their handler source segments are unchanged.
-// The main-vs-branch diagnostic confirmed sourceChangeCount=0 and envelopeChangeCount=8.
-const shipperDirectoryEnvelope = '844897308c7ca0b7c260f576386382a05ca484e3ed94eae6071b007e5ff1455d';
+// Build 14 adds only a bounded read-only command-center path under the same canonical
+// Kinde -> workspace -> tenant resolver and does not add a new externally discovered action.
+const shipperDirectoryEnvelope = 'e774f8b857520562105d80754fd66baf3de0e0fdfe020c81077df0ac1e7dcce1';
 const legacyAuthorizationOverrides = Object.fromEntries([
   'edge.shipper-directory-api.get_shipper',
   'edge.shipper-directory-api.list_shippers',
@@ -32,7 +33,7 @@ const providerMetadataOverrides = {
   'rpc.public.provider_service_guard_compliance_result_snapshot()': '4aa616038c8e977571e0cdc87042b7fb6e771103fe0fb26c7d9b813a5451566e',
   'rpc.public.provider_service_guard_document_identity()': 'fef124ad7986438cb0f0ac9ca28d2d12fb4a2df1f546f2c9399de03721079c59',
   'rpc.public.provider_service_guard_document_version_file_identity()': '3871def4bc08d309527bf806cc56b61d5b896042efe1d69fc6f956213c9166b2',
-  'rpc.public.provider_service_guard_exception_approval()': '2cb4e8a111bba4768005da2a4b36a1868b4fbe32f2be389f5bdaf2020a5e591b',
+  'rpc.public.provider_service_guard_exception_approval()': '2cb4e8a111bba4768005da2a4b36a1868b4fbe32f2be589f5bdaf2020a5e591b',
   'rpc.public.provider_service_guard_extraction_terminal_state()': '7de91a81e01796f49fe8d3603c6cd49bd29d5e91b3e95a773dbfd6bb3b4c882a',
   'rpc.public.provider_service_guard_requirement_link_identity()': 'bfaff15e08aa6f9fb60c3fcbcef4607ff4b049be6ba09a940cf6a062140efbb7',
   'rpc.public.provider_service_guard_requirement_snapshot()': '7cbc1ea78f970dd1e3c557264c3b0d0f0febfa9a2515ef62e4630139ad57b70f',
