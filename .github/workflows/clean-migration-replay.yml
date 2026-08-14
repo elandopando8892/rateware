@@ -11,7 +11,6 @@ on:
       - 'src/vendor-service.js'
       - 'tests/provider-service-360-wiring.test.mjs'
       - 'tools/verify-migration-history.mjs'
-      - 'tools/provider-service-replay-fixes.patch'
       - '.github/workflows/clean-migration-replay.yml'
   workflow_dispatch:
 
@@ -34,12 +33,6 @@ jobs:
 
       - name: Verify Provider 360 wiring
         run: node --test tests/provider-service-360-wiring.test.mjs
-
-      - name: Apply convergence replay patches
-        run: |
-          git apply --check tools/provider-service-replay-fixes.patch
-          git apply tools/provider-service-replay-fixes.patch
-          echo 'Applied explicit convergence-only replay patches.'
 
       - name: Start clean local Supabase database
         run: supabase db start
