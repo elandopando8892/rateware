@@ -4,10 +4,22 @@ import { readFile } from 'node:fs/promises';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-const [approval, portal, sync, activationInitial, activationFinal, messageScope, communicationMatches] = await Promise.all([
+const [
+  approval,
+  portal,
+  sync,
+  relationshipWrites,
+  activityRedaction,
+  activationInitial,
+  activationFinal,
+  messageScope,
+  communicationMatches,
+] = await Promise.all([
   read('supabase/migrations/20260813235000_provider_service_request_approval.sql'),
   read('supabase/migrations/20260813235010_provider_portal_terminal_security.sql'),
   read('supabase/migrations/20260813235020_provider_sync_enqueue_command.sql'),
+  read('supabase/migrations/20260813235030_provider_relationship_runtime_write_hardening.sql'),
+  read('supabase/migrations/20260813235040_provider_360_activity_redaction.sql'),
   read('supabase/migrations/20260813132100_provider_service_activation_commands.sql'),
   read('supabase/migrations/20260813132600_provider_service_requirement_state_command.sql'),
   read('supabase/migrations/20260813160013_provider_service_communication_message_entity_scope.sql'),
@@ -51,6 +63,46 @@ test('integration enqueue is idempotent, policy-gated and approval-consuming', (
   assert.match(sync, /provider_service_consume_approval/);
   assert.match(sync, /insert into public\.provider_sync_commands/);
   assert.match(sync, /grant execute on function public\.provider_service_enqueue_sync_command[\s\S]*to service_role/);
+});
+
+test('relationship creation cannot inject activation state and generic state updates stay revoked', () => {
+  assert.match(relationshipWrites, /revoke insert, update on table public\.provider_relationships from service_role/);
+  const insertGrant = relationshipWrites.match(/grant insert \(([\s\S]*?)\) on table public\.provider_relationships to service_role/)?.[1] || '';
+  assert.match(insertGrant, /organization_id/);
+  assert.match(insertGrant, /vendor_id/);
+  assert.doesNotMatch(insertGrant, /lifecycle_status/);
+  assert.doesNotMatch(insertGrant, /activation_status/);
+  assert.doesNotMatch(insertGrant, /activated_at/);
+  assert.doesNotMatch(insertGrant, /suspended_at/);
+
+  const updateGrant = relationshipWrites.match(/grant update \(([\s\S]*?)\) on table public\.provider_relationships to service_role/)?.[1] || '';
+  assert.match(updateGrant, /risk_tier/);
+  assert.match(updateGrant, /assigned_owner_user_id/);
+  assert.doesNotMatch(updateGrant, /lifecycle_status/);
+  assert.doesNotMatch(updateGrant, /activation_status/);
+  assert.doesNotMatch(updateGrant, /primary_blocker/);
+  assert.doesNotMatch(updateGrant, /activated_at/);
+  assert.doesNotMatch(updateGrant, /suspended_at/);
+});
+
+test('ordinary lifecycle transitions are audited while operational terminal states require dedicated commands', () => {
+  assert.match(relationshipWrites, /provider_service_set_relationship_lifecycle/);
+  assert.match(relationshipWrites, /provider_service_lifecycle_transition_allowed/);
+  assert.match(relationshipWrites, /target_status in \('activated','suspended','offboarded'\)/);
+  assert.match(relationshipWrites, /Executed or recurrent lifecycle requires an activated relationship/);
+  assert.match(relationshipWrites, /insert into public\.provider_relationship_events/);
+  assert.match(relationshipWrites, /'lifecycle_changed'/);
+  assert.match(relationshipWrites, /revoke all on function public\.provider_service_set_relationship_lifecycle/);
+  assert.match(relationshipWrites, /grant execute on function public\.provider_service_set_relationship_lifecycle[\s\S]*to service_role/);
+});
+
+test('Provider 360 activity does not expose free-text case or communication subjects', () => {
+  assert.doesNotMatch(activityRedaction, /c\.subject/);
+  assert.doesNotMatch(activityRedaction, /t\.subject/);
+  assert.match(activityRedaction, /c\.case_category \|\| ' case'/);
+  assert.match(activityRedaction, /t\.channel \|\| ' communication'/);
+  assert.match(activityRedaction, /revoke all on table public\.provider_service_360_activity_feed from public,anon,authenticated,service_role/);
+  assert.match(activityRedaction, /grant select on table public\.provider_service_360_activity_feed to service_role/);
 });
 
 test('Build 2 replay regression cannot restore the invalid multi-target rowtype SELECT', () => {
