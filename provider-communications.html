@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Communications Inbox</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/provider-communications.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav class="nav-groups">
+          <section class="nav-group">
+            <p>Operate</p>
+            <a href="./app.html" data-nav-code="CC">Command Center</a>
+            <a href="./upload-center.html" data-nav-code="IM">Import</a>
+            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
+            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
+            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
+          </section>
+          <section class="nav-group">
+            <p>Analyze</p>
+            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
+          </section>
+          <section class="nav-group">
+            <p>Source</p>
+            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
+            <a aria-current="page" href="./provider-service.html" data-nav-code="PS">Provider Service</a>
+            <a href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
+            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
+            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
+            <a href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
+          </section>
+          <section class="nav-group">
+            <p>Admin</p>
+            <a href="./settings.html" data-nav-code="ST">Settings</a>
+            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
+            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
+          </section>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Provider relationship communications</p>
+            <h1>Communications Inbox</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./provider-service.html">Provider Service</a>
+              <span>Communications Inbox</span>
+            </nav>
+          </div>
+          <div class="page-header-actions">
+            <a class="secondary-link" href="./provider-service.html">Provider Service 360</a>
+            <form id="auth-form" class="auth-strip">
+              <button id="auth-button" type="submit">Log in</button>
+              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+              <p id="auth-status" role="status"></p>
+            </form>
+          </div>
+        </header>
+
+        <main class="communications-layout">
+          <section class="communications-hero wide-section">
+            <div>
+              <p class="eyebrow">Provider communications control tower</p>
+              <h2>Resolve every provider thread without losing context.</h2>
+              <p>Read-only operational triage across unmatched conversations, replies due, review queues, waiting states, linked cases, attachments, and provider relationships.</p>
+            </div>
+            <label class="communications-search-field">
+              <span>Search threads</span>
+              <input id="communications-search" type="search" placeholder="Subject, provider, Vendor ID…" autocomplete="off" />
+            </label>
+          </section>
+
+          <section class="communications-metrics wide-section" aria-label="Communications metrics">
+            <button type="button" data-communication-queue="all" class="communications-metric is-active"><span>Threads</span><strong id="communication-metric-threads">0</strong></button>
+            <button type="button" data-communication-queue="unmatched" class="communications-metric"><span>Unmatched</span><strong id="communication-metric-unmatched">0</strong></button>
+            <button type="button" data-communication-queue="needs_review" class="communications-metric"><span>Review</span><strong id="communication-metric-review">0</strong></button>
+            <button type="button" data-communication-queue="needs_reply" class="communications-metric"><span>Reply due</span><strong id="communication-metric-reply">0</strong></button>
+            <button type="button" data-communication-queue="waiting_xbf" class="communications-metric"><span>Waiting XBF</span><strong id="communication-metric-xbf">0</strong></button>
+            <button type="button" data-communication-queue="waiting_external" class="communications-metric"><span>Waiting external</span><strong id="communication-metric-external">0</strong></button>
+            <button type="button" data-communication-queue="resolved" class="communications-metric"><span>Resolved</span><strong id="communication-metric-resolved">0</strong></button>
+          </section>
+
+          <section class="communications-queues wide-section" aria-label="Communications queues">
+            <button class="communications-queue is-active" type="button" data-communication-queue="all">All</button>
+            <button class="communications-queue" type="button" data-communication-queue="unmatched">Unmatched</button>
+            <button class="communications-queue" type="button" data-communication-queue="needs_review">Needs review</button>
+            <button class="communications-queue" type="button" data-communication-queue="needs_reply">Needs reply</button>
+            <button class="communications-queue" type="button" data-communication-queue="waiting_xbf">Waiting XBF</button>
+            <button class="communications-queue" type="button" data-communication-queue="waiting_provider">Waiting provider</button>
+            <button class="communications-queue" type="button" data-communication-queue="waiting_external">Waiting external</button>
+            <button class="communications-queue" type="button" data-communication-queue="active">Active</button>
+            <button class="communications-queue" type="button" data-communication-queue="resolved">Resolved</button>
+          </section>
+
+          <section class="communications-master-detail wide-section">
+            <div class="workspace-panel communications-list-panel">
+              <div class="section-heading compact split-heading">
+                <div>
+                  <p class="eyebrow">Operational queue</p>
+                  <h2>Provider threads</h2>
+                </div>
+                <span id="communications-result-caption" class="section-caption">0–0 of 0</span>
+              </div>
+              <div class="communications-table-head" aria-hidden="true">
+                <span>Provider / subject</span><span>Queue</span><span>Signals</span><span>Last activity</span>
+              </div>
+              <div id="communications-rows" class="communications-rows" aria-live="polite">
+                <article class="ui-state ui-state-loading"><strong>Loading Communications Inbox</strong><p>Resolving provider threads.</p></article>
+              </div>
+              <div class="communications-pagination">
+                <button id="communications-prev" class="secondary" type="button" disabled>Previous</button>
+                <button id="communications-next" class="secondary" type="button" disabled>Next</button>
+              </div>
+            </div>
+
+            <aside class="workspace-panel communications-detail-panel" aria-label="Selected communication thread">
+              <div id="communications-detail" class="communications-detail-empty">
+                <strong>Select a thread</strong>
+                <p>Open a conversation to inspect messages, attachment metadata, matching evidence, and linked Provider Service cases.</p>
+              </div>
+            </aside>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module">
+      import { initAuthControls } from "./src/auth.js";
+      initAuthControls();
+    </script>
+    <script type="module" src="./src/provider-communications-page.js"></script>
+  </body>
+</html>
