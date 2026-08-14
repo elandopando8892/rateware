@@ -18,6 +18,7 @@ const files = [
   'supabase/functions/_shared/provider-onboarding-case-workflow.ts',
   'supabase/functions/_shared/provider-onboarding-release-package.ts',
   'supabase/functions/_shared/provider-onboarding-form-assembly.ts',
+  'supabase/functions/_shared/provider-onboarding-gmail-delivery.ts',
   'supabase/functions/_shared/provider-gmail-sync.ts',
   'supabase/functions/_shared/provider-pubsub-auth.ts',
   'supabase/functions/provider-gmail-intake-api/index.ts',
