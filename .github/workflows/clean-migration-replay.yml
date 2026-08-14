@@ -14,9 +14,12 @@ on:
       - 'tests/action-contract.test.mjs'
       - 'tools/action-contract-*.mjs'
       - 'tools/effective-action-contract.mjs'
+      - 'tools/validate-action-contract-no-regression.mjs'
       - 'tools/verify-migration-history.mjs'
       - 'tools/validate-action-contract-delta.mjs'
       - 'tools/validate-provider-service-runtime-syntax.mjs'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/clean-migration-replay.yml'
   workflow_dispatch:
 
@@ -28,6 +31,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
 
       - name: Install Supabase CLI
         uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
@@ -55,8 +60,17 @@ jobs:
       - name: Gate authorization contract delta
         run: node tools/validate-action-contract-delta.mjs
 
-      - name: Run existing Rateware regression suite
-        run: npm test
+      - name: Prepare main authorization baseline
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          rm -rf /tmp/rateware-main
+          git worktree add --detach /tmp/rateware-main origin/main
+
+      - name: Gate authorization no-regression against main
+        run: node tools/validate-action-contract-no-regression.mjs --baseline-root /tmp/rateware-main
+
+      - name: Run Rateware product regression suite
+        run: npm run test:product
 
       - name: Start clean local Supabase database
         run: supabase db start
