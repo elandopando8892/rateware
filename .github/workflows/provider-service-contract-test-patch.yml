@@ -63,7 +63,14 @@ jobs:
                   dependencyImpact.set(path, (dependencyImpact.get(path) || 0) + 1);
                 }
               }
-              envelopeChanges.push({ canonicalId, changedDeps, beforeDeps: base.dependencyFiles, afterDeps: next.dependencyFiles });
+              envelopeChanges.push({
+                canonicalId,
+                mainAuthorizationFingerprint: base.authorizationFingerprint,
+                branchAuthorizationFingerprint: next.authorizationFingerprint,
+                changedDeps,
+                beforeDeps: base.dependencyFiles,
+                afterDeps: next.dependencyFiles,
+              });
             }
           }
 
@@ -74,6 +81,6 @@ jobs:
             envelopeChangeCount: envelopeChanges.length,
             dependencyImpact: [...dependencyImpact.entries()].sort((a,b)=>b[1]-a[1]),
             sourceChanges,
-            envelopeSamples: envelopeChanges.slice(0, 12),
+            envelopeChanges,
           }, null, 2));
           NODE
