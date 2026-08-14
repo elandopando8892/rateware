@@ -1,0 +1,24 @@
+main: discovered=352 errors=267
+current: discovered=394 errors=276
+new authorization errors=9
+Current branch introduced authorization-contract errors not present on main:
+- AUTHORIZATION_ENVELOPE_CHANGED	edge.provider-gmail-intake-api.provider_gmail_status
+  discovered={"canonicalId":"edge.provider-gmail-intake-api.provider_gmail_status","sourceFingerprint":"ff47d3e1b16ed554128449d8c47321e8ae9e3bd03ad45f23694bcd8eb89b5364","authorizationFingerprint":"0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41","sourceFile":"supabase/functions/provider-gmail-intake-api/index.ts"}
+- AUTHORIZATION_ENVELOPE_CHANGED	edge.provider-gmail-intake-api.renew_provider_gmail_watch
+  discovered={"canonicalId":"edge.provider-gmail-intake-api.renew_provider_gmail_watch","sourceFingerprint":"fdf4ab91c410e8257a263debc1b4239442bfdc4351fec42c7bc90ccf01ac4873","authorizationFingerprint":"0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41","sourceFile":"supabase/functions/provider-gmail-intake-api/index.ts"}
+- AUTHORIZATION_ENVELOPE_CHANGED	edge.provider-gmail-intake-api.start_provider_gmail_oauth
+  discovered={"canonicalId":"edge.provider-gmail-intake-api.start_provider_gmail_oauth","sourceFingerprint":"8cc34ecc22576d13e08e2ba5e3a680ecb723d7a7f78a421e3128f3d622449117","authorizationFingerprint":"0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41","sourceFile":"supabase/functions/provider-gmail-intake-api/index.ts"}
+- AUTHORIZATION_ENVELOPE_CHANGED	edge.provider-gmail-intake-api.sync_provider_gmail_inbox
+  discovered={"canonicalId":"edge.provider-gmail-intake-api.sync_provider_gmail_inbox","sourceFingerprint":"e230016c68593f77f0c194d48dfb131cdef6ce5d74be7a9e0f7373a4e7e09d86","authorizationFingerprint":"0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41","sourceFile":"supabase/functions/provider-gmail-intake-api/index.ts"}
+- AUTHORIZATION_ENVELOPE_CHANGED	edge.provider-gmail-push.receive_provider_gmail_push
+  discovered={"canonicalId":"edge.provider-gmail-push.receive_provider_gmail_push","sourceFingerprint":"6d02841bfab871b000375f4b174a96cd125218692fcfba97edea65fa7a3ee146","authorizationFingerprint":"2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f","sourceFile":"supabase/functions/provider-gmail-push/index.ts"}
+- SENSITIVE_METADATA_CHANGED	rpc.public.provider_service_guard_exception_approval()
+  discovered={"canonicalId":"rpc.public.provider_service_guard_exception_approval()","sourceFingerprint":"0274d8a674f02e512ac4eb1830aa06573e53b07224bf4fe305095e159848e053","authorizationFingerprint":"0274d8a674f02e512ac4eb1830aa06573e53b07224bf4fe305095e159848e053","sourceFile":"supabase/migrations/20260813132610_provider_service_exception_approval.sql"}
+- SOURCE_FINGERPRINT_CHANGED	edge.provider-gmail-intake-api.renew_provider_gmail_watch
+  discovered={"canonicalId":"edge.provider-gmail-intake-api.renew_provider_gmail_watch","sourceFingerprint":"fdf4ab91c410e8257a263debc1b4239442bfdc4351fec42c7bc90ccf01ac4873","authorizationFingerprint":"0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41","sourceFile":"supabase/functions/provider-gmail-intake-api/index.ts"}
+- SOURCE_FINGERPRINT_CHANGED	edge.provider-gmail-intake-api.sync_provider_gmail_inbox
+  discovered={"canonicalId":"edge.provider-gmail-intake-api.sync_provider_gmail_inbox","sourceFingerprint":"e230016c68593f77f0c194d48dfb131cdef6ce5d74be7a9e0f7373a4e7e09d86","authorizationFingerprint":"0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41","sourceFile":"supabase/functions/provider-gmail-intake-api/index.ts"}
+- SOURCE_FINGERPRINT_CHANGED	edge.provider-gmail-push.receive_provider_gmail_push
+  discovered={"canonicalId":"edge.provider-gmail-push.receive_provider_gmail_push","sourceFingerprint":"6d02841bfab871b000375f4b174a96cd125218692fcfba97edea65fa7a3ee146","authorizationFingerprint":"2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f","sourceFile":"supabase/functions/provider-gmail-push/index.ts"}
+
+exit_code=1
