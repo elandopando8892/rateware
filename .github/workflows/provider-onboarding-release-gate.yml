@@ -1,0 +1,28 @@
+name: provider-onboarding-release-gate
+on:
+  pull_request:
+    paths:
+      - "config/provider-onboarding-release-policy.json"
+      - "fixtures/provider-onboarding-e2e.synthetic.json"
+      - "src/provider-onboarding-*.js"
+      - "tools/validate-provider-onboarding-release.mjs"
+      - "tests/provider-service-onboarding-e2e-release.test.mjs"
+      - "docs/runbooks/provider-onboarding-production-rollout.md"
+      - ".github/workflows/provider-onboarding-release-gate.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fail-closed-release-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: node tools/validate-provider-onboarding-release.mjs
+      - run: node --test tests/provider-service-onboarding-e2e-release.test.mjs
+      - run: node tools/validate-provider-service-runtime-syntax.mjs
