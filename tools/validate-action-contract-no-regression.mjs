@@ -30,14 +30,28 @@ const baseline = errors(BASELINE_CONTRACT, baselineRoot);
 const current = errors(CURRENT_CONTRACT, process.cwd());
 const baselineSet = new Set(baseline.normalized);
 const newErrors = current.normalized.filter((entry) => !baselineSet.has(entry));
+const currentById = new Map(current.discovered.map((surface) => [surface.canonicalId, surface]));
 
 console.log(`main: discovered=${baseline.discovered.length} errors=${baseline.normalized.length}`);
-console.log(`build13: discovered=${current.discovered.length} errors=${current.normalized.length}`);
-console.log(`build13 new authorization errors=${newErrors.length}`);
+console.log(`current: discovered=${current.discovered.length} errors=${current.normalized.length}`);
+console.log(`new authorization errors=${newErrors.length}`);
 
 if (newErrors.length) {
-  console.error("Build 13 introduced authorization-contract errors not present on main:");
-  for (const entry of newErrors) console.error(`- ${entry}`);
+  console.error("Current branch introduced authorization-contract errors not present on main:");
+  for (const entry of newErrors) {
+    console.error(`- ${entry}`);
+    const canonicalId = entry.split("\t")[1] || "";
+    const surface = currentById.get(canonicalId);
+    if (surface) {
+      console.error(`  discovered=${JSON.stringify({
+        canonicalId: surface.canonicalId,
+        sourceFingerprint: surface.sourceFingerprint,
+        metadataFingerprint: surface.metadataFingerprint,
+        authorizationFingerprint: surface.authorizationFingerprint,
+        sourceFile: surface.sourceFile,
+      })}`);
+    }
+  }
   process.exit(1);
 }
 

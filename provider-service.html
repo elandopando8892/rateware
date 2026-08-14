@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rateware Provider Service</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/provider-service-360.css" />
+    <link rel="stylesheet" href="./src/provider-service-page.css" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="side-nav" aria-label="Rateware modules">
+        <a class="brand-mark" href="./app.html">Rateware</a>
+        <nav class="nav-groups">
+          <section class="nav-group">
+            <p>Operate</p>
+            <a href="./app.html" data-nav-code="CC">Command Center</a>
+            <a href="./upload-center.html" data-nav-code="IM">Import</a>
+            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
+            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
+            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
+          </section>
+          <section class="nav-group">
+            <p>Analyze</p>
+            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
+          </section>
+          <section class="nav-group">
+            <p>Source</p>
+            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
+            <a aria-current="page" href="./provider-service.html" data-nav-code="PS">Provider Service</a>
+            <a href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
+            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
+            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
+            <a href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
+          </section>
+          <section class="nav-group">
+            <p>Admin</p>
+            <a href="./settings.html" data-nav-code="ST">Settings</a>
+            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
+            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
+          </section>
+        </nav>
+      </aside>
+
+      <div class="page-frame">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Provider relationship operations</p>
+            <h1>Provider Service</h1>
+            <nav class="module-crumbs" aria-label="Module context">
+              <a href="./vendors.html">Carrier CRM</a>
+              <span>Provider Service 360</span>
+            </nav>
+          </div>
+          <div class="page-header-actions">
+            <a class="secondary-link" href="./vendors.html">Open Carrier CRM</a>
+            <form id="auth-form" class="auth-strip">
+              <button id="auth-button" type="submit">Log in</button>
+              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+              <p id="auth-status" role="status"></p>
+            </form>
+          </div>
+        </header>
+
+        <main class="provider-service-layout">
+          <section class="provider-service-hero wide-section">
+            <div>
+              <p class="eyebrow">Relationship control tower</p>
+              <h2>Activate, support, and develop the provider network.</h2>
+              <p>One operational queue for onboarding, documents, compliance, cases, communications, approvals, downstream readiness, and provider health.</p>
+            </div>
+            <label class="provider-service-search-field">
+              <span>Search relationships</span>
+              <input id="provider-service-search" type="search" placeholder="Vendor, Vendor ID, legal entity…" autocomplete="off" />
+            </label>
+          </section>
+
+          <section class="provider-service-metrics wide-section" aria-label="Provider Service metrics">
+            <button type="button" data-provider-queue="all" class="provider-service-metric is-active"><span>Relationships</span><strong id="provider-metric-relationships">0</strong></button>
+            <button type="button" data-provider-queue="critical" class="provider-service-metric"><span>Critical</span><strong id="provider-metric-critical">0</strong></button>
+            <button type="button" data-provider-queue="attention" class="provider-service-metric"><span>Needs attention</span><strong id="provider-metric-attention">0</strong></button>
+            <button type="button" data-provider-queue="needs_reply" class="provider-service-metric"><span>Needs reply</span><strong id="provider-metric-replies">0</strong></button>
+            <button type="button" data-provider-queue="approvals" class="provider-service-metric"><span>Approvals</span><strong id="provider-metric-approvals">0</strong></button>
+            <button type="button" data-provider-queue="blocked" class="provider-service-metric"><span>Blocked activation</span><strong id="provider-metric-blocked">0</strong></button>
+          </section>
+
+          <section class="provider-service-queues wide-section" aria-label="Provider Service queues">
+            <button class="provider-service-queue is-active" type="button" data-provider-queue="all">All</button>
+            <button class="provider-service-queue" type="button" data-provider-queue="critical">Critical</button>
+            <button class="provider-service-queue" type="button" data-provider-queue="attention">Attention</button>
+            <button class="provider-service-queue" type="button" data-provider-queue="watch">Watch</button>
+            <button class="provider-service-queue" type="button" data-provider-queue="healthy">Healthy</button>
+            <button class="provider-service-queue" type="button" data-provider-queue="needs_reply">Needs reply</button>
+            <button class="provider-service-queue" type="button" data-provider-queue="approvals">Approvals</button>
+            <button class="provider-service-queue" type="button" data-provider-queue="blocked">Blocked</button>
+          </section>
+
+          <section class="provider-service-master-detail wide-section">
+            <div class="workspace-panel provider-service-list-panel">
+              <div class="section-heading compact split-heading">
+                <div>
+                  <p class="eyebrow">Work queue</p>
+                  <h2>Provider relationships</h2>
+                </div>
+                <span id="provider-service-result-caption" class="section-caption">0–0 of 0</span>
+              </div>
+              <div class="provider-service-table-head" aria-hidden="true">
+                <span>Provider</span><span>Health</span><span>Lifecycle</span><span>Next attention</span>
+              </div>
+              <div id="provider-service-rows" class="provider-service-rows" aria-live="polite">
+                <article class="ui-state ui-state-loading"><strong>Loading Provider Service</strong><p>Resolving the current relationship queue.</p></article>
+              </div>
+              <div class="provider-service-pagination">
+                <button id="provider-service-prev" class="secondary" type="button" disabled>Previous</button>
+                <button id="provider-service-next" class="secondary" type="button" disabled>Next</button>
+              </div>
+            </div>
+
+            <aside class="workspace-panel provider-service-detail-panel" aria-label="Selected Provider 360">
+              <div id="provider-service-detail" class="provider-service-detail-empty">
+                <strong>Select a provider</strong>
+                <p>Open a relationship to inspect activation, documents, cases, communications, compliance, integrations, approvals, and recent activity.</p>
+              </div>
+            </aside>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module">
+      import { initAuthControls } from "./src/auth.js";
+      initAuthControls();
+    </script>
+    <script type="module" src="./src/provider-service-page.js"></script>
+  </body>
+</html>

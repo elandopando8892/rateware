@@ -5,11 +5,12 @@ const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 
-// Provider 360 is hosted inside the authenticated shipper-directory-api runtime.
-// Its new local dependency changes that function's shared authorization envelope for
+// Provider Service is hosted inside the authenticated shipper-directory-api runtime.
+// Its local dependency changes that function's shared authorization envelope for
 // all eight pre-existing actions even though their handler source segments are unchanged.
-// The main-vs-branch diagnostic confirmed sourceChangeCount=0 and envelopeChangeCount=8.
-const shipperDirectoryEnvelope = '844897308c7ca0b7c260f576386382a05ca484e3ed94eae6071b007e5ff1455d';
+// Build 14 adds only a bounded read-only command-center path under the same canonical
+// Kinde -> workspace -> tenant resolver and does not add a new externally discovered action.
+const shipperDirectoryEnvelope = 'e774f8b857520562105d80754fd66baf3de0e0fdfe020c81077df0ac1e7dcce1';
 const legacyAuthorizationOverrides = Object.fromEntries([
   'edge.shipper-directory-api.get_shipper',
   'edge.shipper-directory-api.list_shippers',
