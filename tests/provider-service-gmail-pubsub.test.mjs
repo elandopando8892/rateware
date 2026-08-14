@@ -8,6 +8,7 @@ const auth = read('../supabase/functions/_shared/provider-pubsub-auth.ts');
 const sync = read('../supabase/functions/_shared/provider-gmail-sync.ts');
 const manualApi = read('../supabase/functions/provider-gmail-intake-api/index.ts');
 const push = read('../supabase/functions/provider-gmail-push/index.ts');
+const config = read('../supabase/config.toml');
 
 test('Pub/Sub delivery ledger is tenant/entity scoped, idempotent, and service-role only', () => {
   assert.match(migration, /create table if not exists public\.provider_gmail_push_events/);
@@ -72,4 +73,11 @@ test('manual and push paths share the same bounded Gmail sync engine', () => {
 test('Build 17 adds no Gmail outbound authority', () => {
   const combined = [auth, sync, manualApi, push].join('\n');
   assert.doesNotMatch(combined, /gmail\.send|gmail\.compose|gmail\.modify|\/messages\/send|\/drafts\/send/i);
+});
+
+
+test('Pub/Sub push bypasses only the Supabase JWT gateway and verifies Google OIDC internally', () => {
+  assert.match(config, /\[functions\.provider-gmail-push\]\s+verify_jwt = false/);
+  assert.match(push, /verifyProviderPubSubRequest\(request\)/);
+  assert.match(auth, /crypto\.subtle\.verify/);
 });
