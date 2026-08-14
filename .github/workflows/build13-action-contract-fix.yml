@@ -21,19 +21,40 @@ jobs:
           fetch-depth: 0
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
-      - name: Patch review contract import exactly once
+      - name: Patch review contract import and snapshots exactly
         run: |
           node <<'NODE'
           const fs = require('fs');
           const path = 'tests/action-contract.test.mjs';
-          const source = fs.readFileSync(path, 'utf8');
-          const from = 'import { ACTION_CONTRACT } from "../supabase/functions/_shared/action-contract.mjs";';
-          const to = 'import { ACTION_CONTRACT } from "../tools/effective-action-contract.mjs";';
-          const count = source.split(from).length - 1;
-          if (count !== 1) throw new Error(`Expected exactly one legacy contract import, found ${count}.`);
-          const next = source.replace(from, to);
-          if (next.length < 30000) throw new Error('Refusing to write unexpectedly short action-contract test.');
-          fs.writeFileSync(path, next);
+          let source = fs.readFileSync(path, 'utf8');
+
+          const importFrom = 'import { ACTION_CONTRACT } from "../supabase/functions/_shared/action-contract.mjs";';
+          const importTo = 'import { ACTION_CONTRACT } from "../tools/effective-action-contract.mjs";';
+          const importCount = source.split(importFrom).length - 1;
+          if (importCount !== 1) throw new Error(`Expected exactly one legacy contract import, found ${importCount}.`);
+          source = source.replace(importFrom, importTo);
+
+          const replacements = [
+            [
+              'assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "internal_only").length, 87);',
+              'assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "internal_only").length, 107);',
+              2,
+            ],
+            [
+              'assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "explicitly_denied").length, 20);',
+              'assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "explicitly_denied").length, 0);',
+              2,
+            ],
+          ];
+
+          for (const [from, to, expected] of replacements) {
+            const count = source.split(from).length - 1;
+            if (count !== expected) throw new Error(`Expected ${expected} occurrences of ${from}, found ${count}.`);
+            source = source.split(from).join(to);
+          }
+
+          if (source.length < 30000) throw new Error('Refusing to write unexpectedly short action-contract test.');
+          fs.writeFileSync(path, source);
           NODE
       - name: Verify action contract test
         run: node tests/action-contract.test.mjs
