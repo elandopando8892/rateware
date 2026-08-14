@@ -54,12 +54,12 @@ const providerSurfaces = extension.surfaces.map((entry) => ({
 }));
 
 const gmailAuthorizationFingerprints = {
-  'edge.provider-gmail-intake-api.provider_gmail_status': '0904678ec741f0bc1b55e879460df454062962fed509697def51956256419d6d',
-  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': '0904678ec741f0bc1b55e879460df454062962fed509697def51956256419d6d',
-  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '0904678ec741f0bc1b55e879460df454062962fed509697def51956256419d6d',
-  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '0904678ec741f0bc1b55e879460df454062962fed509697def51956256419d6d',
+  'edge.provider-gmail-intake-api.provider_gmail_status': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
+  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
+  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
+  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
   'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': '61a4d760bc3bc7157e0abcebf08818cd4e84841f6ec35f7c406475e28df53a3b',
-  'edge.provider-gmail-push.receive_provider_gmail_push': '2b47e441fa85e227109954422c6d5cbcb6b8018926b92cc8e7b7a5376ec08818',
+  'edge.provider-gmail-push.receive_provider_gmail_push': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
 };
 
 const gmailMetadataFingerprints = {
@@ -114,7 +114,7 @@ const gmailSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.gmail.watch.manage',
-    sourceFingerprint: 'fdf4ab17fe36808d55a8727793548621ba41e4f5f702673565628136096d52df',
+    sourceFingerprint: 'fdf4ab91c410e8257a263debc1b4239442bfdc4351fec42c7bc90ccf01ac4873',
     ...gmailSharedMetadata,
   },
   {
@@ -146,7 +146,7 @@ const gmailSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.gmail.sync.manage',
-    sourceFingerprint: 'e2300162682d8793edb5f9971366baf9d1afad4f27ec84f3c0a1d350b797e464',
+    sourceFingerprint: 'e230016c68593f77f0c194d48dfb131cdef6ce5d74be7a9e0f7373a4e7e09d86',
     ...gmailSharedMetadata,
   },
   {
@@ -178,7 +178,7 @@ const gmailSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'record-derived',
     proposedPermissionKey: 'external.provider-gmail-push.manage',
-    sourceFingerprint: '6d02841bcd28f4801e600fc41912a148ce7b44c3bd1f31b14eb8e72fa40e8d25',
+    sourceFingerprint: '6d02841bfab871b000375f4b174a96cd125218692fcfba97edea65fa7a3ee146',
     ...gmailSharedMetadata,
   },
 ];
