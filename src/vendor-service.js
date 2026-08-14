@@ -1,4 +1,5 @@
 import { callRatewareApi } from "./rateware-api.js";
+import "./provider-service-360-mount.js";
 
 export async function fetchVendors({
   search = "",
