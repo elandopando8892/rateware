@@ -54,11 +54,12 @@ const providerSurfaces = extension.surfaces.map((entry) => ({
 }));
 
 const gmailAuthorizationFingerprints = {
-  'edge.provider-gmail-intake-api.provider_gmail_status': 'a4fdbe2fb1c5dd6ef98c3ecee3adc7647adf6f93b80cd41513556d17928398a0',
-  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': 'a4fdbe2fb1c5dd6ef98c3ecee3adc7647adf6f93b80cd41513556d17928398a0',
-  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': 'a4fdbe2fb1c5dd6ef98c3ecee3adc7647adf6f93b80cd41513556d17928398a0',
-  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': 'a4fdbe2fb1c5dd6ef98c3ecee3adc7647adf6f93b80cd41513556d17928398a0',
+  'edge.provider-gmail-intake-api.provider_gmail_status': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
+  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
+  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
+  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
   'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': '61a4d760bc3bc7157e0abcebf08818cd4e84841f6ec35f7c406475e28df53a3b',
+  'edge.provider-gmail-push.receive_provider_gmail_push': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
 };
 
 const gmailMetadataFingerprints = {
@@ -67,6 +68,7 @@ const gmailMetadataFingerprints = {
   'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '6a8207af747fc37ccf2739c8a7ca721248323c430fa8aeafe305430bfe862ae1',
   'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': 'aedaa25ab711b311445d607f04c9f828ef869dc560fb6ded3b45782baaa64186',
   'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': 'fec0d1b03b9b6b246c34ad98931f83368d586bd2322bddbbaa43e26c13b9c4e7',
+  'edge.provider-gmail-push.receive_provider_gmail_push': '5e5b7e00fa5ae1111ad73f71d2a7c7165f0342b41868b0050cb49cc88f560f8a',
 };
 
 const gmailSharedMetadata = {
@@ -112,7 +114,7 @@ const gmailSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.gmail.watch.manage',
-    sourceFingerprint: '67761c9b68ae30456e1b0bbcb1debb4006a41f7d82b67a4f8b8172838334f084',
+    sourceFingerprint: 'fdf4ab91c410e8257a263debc1b4239442bfdc4351fec42c7bc90ccf01ac4873',
     ...gmailSharedMetadata,
   },
   {
@@ -144,7 +146,7 @@ const gmailSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.gmail.sync.manage',
-    sourceFingerprint: '7970654d18bbb644da7516abf657918fbdbc7549aa196e71ac1003d6370c2388',
+    sourceFingerprint: 'e230016c68593f77f0c194d48dfb131cdef6ce5d74be7a9e0f7373a4e7e09d86',
     ...gmailSharedMetadata,
   },
   {
@@ -163,15 +165,31 @@ const gmailSurfaces = [
     sourceFingerprint: '09dd452318873b80f980665981dc0b9abfe5898b9c7716eb3a2c917d875b3f7e',
     ...gmailSharedMetadata,
   },
+  {
+    canonicalId: 'edge.provider-gmail-push.receive_provider_gmail_push',
+    actionName: 'receive_provider_gmail_push',
+    sourceKind: 'edge-method',
+    sourceFile: 'supabase/functions/provider-gmail-push/index.ts',
+    handler: 'Deno.serve',
+    endpoint: 'POST /functions/v1/provider-gmail-push',
+    operation: 'manage',
+    resource: 'provider-gmail-intake',
+    access: 'write',
+    sensitivity: 'critical',
+    tenantRelevance: 'record-derived',
+    proposedPermissionKey: 'external.provider-gmail-push.manage',
+    sourceFingerprint: '6d02841bfab871b000375f4b174a96cd125218692fcfba97edea65fa7a3ee146',
+    ...gmailSharedMetadata,
+  },
 ];
 
 export const ACTION_CONTRACT = {
   ...BASE_ACTION_CONTRACT,
   contractVersion,
-  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake`,
+  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 5,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 5,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi,
   },

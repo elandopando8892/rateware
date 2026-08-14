@@ -431,3 +431,7 @@ verify_jwt = false
 
 [functions.provider-gmail-oauth-callback]
 verify_jwt = false
+
+# Pub/Sub authenticates with a Google-signed OIDC token verified inside the function.
+[functions.provider-gmail-push]
+verify_jwt = false

@@ -10,8 +10,11 @@ const files = [
   ...providerBrowserFiles,
   'src/vendor-service.js',
   'supabase/functions/_shared/provider-gmail.ts',
+  'supabase/functions/_shared/provider-gmail-sync.ts',
+  'supabase/functions/_shared/provider-pubsub-auth.ts',
   'supabase/functions/provider-gmail-intake-api/index.ts',
   'supabase/functions/provider-gmail-oauth-callback/index.ts',
+  'supabase/functions/provider-gmail-push/index.ts',
   'supabase/functions/shipper-directory-api/index.ts',
   'supabase/functions/shipper-directory-api/provider-service.ts',
 ];
