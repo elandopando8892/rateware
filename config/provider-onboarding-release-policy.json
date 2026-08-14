@@ -44,5 +44,6 @@
     "max_initial_messages": 1,
     "automatic_followups": false,
     "rollback_on_any_gate_failure": true
-  }
+  },
+  "cumulative_base": "main"
 }
