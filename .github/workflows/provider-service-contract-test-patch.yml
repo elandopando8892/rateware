@@ -1,0 +1,70 @@
+name: provider-service-contract-test-patch
+
+on:
+  push:
+    branches:
+      - provider-service-convergence-hardening
+    paths:
+      - '.github/workflows/provider-service-contract-test-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: provider-service-convergence-hardening
+          fetch-depth: 0
+
+      - name: Apply exact Phase 0 v1.3 snapshot replacements
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/action-contract.test.mjs')
+          text = path.read_text()
+          assert len(text) > 30000, f'unexpectedly short test file: {len(text)} bytes'
+          assert 'Action contract hardening tests passed.' in text
+
+          replacements = [
+              ('import { ACTION_CONTRACT } from "../supabase/functions/_shared/action-contract.mjs";',
+               'import { ACTION_CONTRACT } from "../tools/effective-action-contract.mjs";', 1),
+              ('ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "internal_only").length, 87',
+               'ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "internal_only").length, 107', 2),
+              ('ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "explicitly_denied").length, 20',
+               'ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "explicitly_denied").length, 0', 2),
+          ]
+
+          for old, new, expected in replacements:
+              count = text.count(old)
+              assert count == expected, f'{old!r}: expected {expected}, found {count}'
+              text = text.replace(old, new)
+
+          path.write_text(text)
+          assert len(text) > 30000
+          assert text.count('internal_only").length, 107') == 2
+          assert text.count('explicitly_denied").length, 0') == 2
+          PY
+
+          git diff --check -- tests/action-contract.test.mjs
+
+      - name: Install locked Node dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Verify complete action contract hardening suite
+        run: node tests/action-contract.test.mjs
+
+      - name: Commit verified patch and remove temporary workflow
+        run: |
+          rm .github/workflows/provider-service-contract-test-patch.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tests/action-contract.test.mjs .github/workflows/provider-service-contract-test-patch.yml
+          git diff --cached --check
+          git commit -m 'test(auth): validate effective Phase 0 contract v1.3'
+          git push origin HEAD:provider-service-convergence-hardening
