@@ -831,6 +831,7 @@ async function loadPipeline() {
 
 const OPEN_OPPORTUNITY_STAGES = ["identified", "discovery", "rfi", "rfx", "proposal", "negotiation"];
 const OPPORTUNITY_STAGES = [...OPEN_OPPORTUNITY_STAGES, "won", "lost", "archived"];
+const TERMINAL_COMMERCIAL_STAGES = new Set(["won", "lost"]);
 
 function formatCommercialValue(value, currency) {
   if (value === null || value === undefined || value === "") return "-";
@@ -1176,6 +1177,25 @@ async function moveCommercialOpportunity(opportunityId, stage) {
   } finally {
     shipperCommercialMutationKeys.delete(mutationKey);
   }
+}
+
+function requestCommercialOpportunityStage(control) {
+  const opportunityId = control?.dataset?.commercialOpportunityStage;
+  const row = state.commercialOpportunities.find((item) => item.id === opportunityId);
+  const stage = String(control?.value || "").toLowerCase();
+  if (!row || !stage || row.stage === stage) return;
+  if (TERMINAL_COMMERCIAL_STAGES.has(stage)) {
+    const name = row.opportunity_name || "this commercial deal";
+    const approved = window.confirm(
+      `Mark ${name} as ${humanLabel(stage)}? This only records the commercial pipeline stage. It does not approve rates, send communications, create an RFx workspace, or make a customer commitment.`
+    );
+    if (!approved) {
+      control.value = row.stage || "identified";
+      setStatus(elements.commercialStatus, "Commercial stage change cancelled.", "warning");
+      return;
+    }
+  }
+  moveCommercialOpportunity(opportunityId, stage);
 }
 
 function openRfxWorkspace(projectId, eventId = "") {
@@ -2108,7 +2128,7 @@ elements.commercial.addEventListener("click", (event) => {
 
 elements.commercial.addEventListener("change", (event) => {
   const move = event.target.closest("[data-commercial-opportunity-stage]");
-  if (move) moveCommercialOpportunity(move.dataset.commercialOpportunityStage, move.value);
+  if (move) requestCommercialOpportunityStage(move);
 });
 
 elements.cadenceSearch.addEventListener("input", () => {
