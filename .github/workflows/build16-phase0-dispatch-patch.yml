@@ -1,0 +1,67 @@
+name: build16-phase0-dispatch-patch
+
+on:
+  push:
+    branches:
+      - provider-service-build16-gmail-intake
+    paths:
+      - .github/workflows/build16-phase0-dispatch-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Build 16
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: provider-service-build16-gmail-intake
+          fetch-depth: 0
+      - name: Make Gmail dispatch and OAuth fixed route explicit
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const apiPath = 'supabase/functions/provider-gmail-intake-api/index.ts';
+          let api = fs.readFileSync(apiPath, 'utf8');
+          const oldDispatch = `    const body = await request.json() as Record<string, unknown>;
+              const action = cleanProviderGmailText(body.action);
+              if (!action || !ACTIONS.has(action)) return jsonResponse({ error: 'Unknown Provider Gmail action.' }, 400);
+              const { organizationUuid } = await resolveScope(supabase, user as Record<string, unknown>);
+              if (action === 'provider_gmail_status') return jsonResponse(await listSafeStatus(supabase, organizationUuid));
+              if (action === 'start_provider_gmail_oauth') return jsonResponse(await startOauth(supabase, user as Record<string, unknown>, organizationUuid, body));
+              if (action === 'sync_provider_gmail_inbox') return jsonResponse(await syncInbox(supabase, organizationUuid, body));
+              return jsonResponse(await renewWatch(supabase, organizationUuid, body));`;
+          const newDispatch = `    const body = await request.json() as Record<string, unknown>;
+              if (typeof body.action !== 'string' || !ACTIONS.has(body.action)) return jsonResponse({ error: 'Unknown Provider Gmail action.' }, 400);
+              const { organizationUuid } = await resolveScope(supabase, user as Record<string, unknown>);
+              if (body.action === 'provider_gmail_status') return jsonResponse(await listSafeStatus(supabase, organizationUuid));
+              if (body.action === 'start_provider_gmail_oauth') return jsonResponse(await startOauth(supabase, user as Record<string, unknown>, organizationUuid, body));
+              if (body.action === 'sync_provider_gmail_inbox') return jsonResponse(await syncInbox(supabase, organizationUuid, body));
+              if (body.action === 'renew_provider_gmail_watch') return jsonResponse(await renewWatch(supabase, organizationUuid, body));
+              return jsonResponse({ error: 'Unknown Provider Gmail action.' }, 400);`;
+          if ((api.split(oldDispatch).length - 1) !== 1) throw new Error('Expected exactly one Provider Gmail dispatch block.');
+          api = api.replace(oldDispatch, newDispatch);
+          fs.writeFileSync(apiPath, api);
+
+          const libPath = 'tools/action-contract-lib.mjs';
+          let lib = fs.readFileSync(libPath, 'utf8');
+          const anchor = `  ["gmail-oauth-callback", [["complete_google_oauth_callback", "GET /functions/v1/gmail-oauth-callback?code&state", "external-tokenized"]]],`;
+          const insertion = `${anchor}\n  ["provider-gmail-oauth-callback", [["complete_provider_gmail_oauth_callback", "GET /functions/v1/provider-gmail-oauth-callback?code&state", "external-tokenized"]]],`;
+          if ((lib.split(anchor).length - 1) !== 1) throw new Error('Expected exactly one Gmail OAuth fixed-operation anchor.');
+          if (lib.includes('complete_provider_gmail_oauth_callback')) throw new Error('Provider Gmail OAuth callback is already registered in fixed operations.');
+          lib = lib.replace(anchor, insertion);
+          fs.writeFileSync(libPath, lib);
+          NODE
+      - name: Validate and commit patch
+        run: |
+          npm ci --ignore-scripts
+          node tools/validate-provider-service-runtime-syntax.mjs
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add supabase/functions/provider-gmail-intake-api/index.ts tools/action-contract-lib.mjs
+          git commit -m "fix(build16): make Gmail Edge dispatch Phase 0 discoverable"
+          git push origin HEAD:provider-service-build16-gmail-intake
