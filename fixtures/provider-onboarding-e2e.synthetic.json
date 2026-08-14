@@ -1,0 +1,26 @@
+{
+  "fixture_version": 1,
+  "synthetic": true,
+  "organization_id": "00000000-0000-4000-8000-000000000001",
+  "legal_entity_id": "00000000-0000-4000-8000-000000000002",
+  "case_id": "00000000-0000-4000-8000-000000000003",
+  "external_party_key": "synthetic_provider",
+  "mailbox": "pilot@example.invalid",
+  "recipient": "provider@example.invalid",
+  "document_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "manifest_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "stages": [
+    "inbound_received",
+    "vault_ingested",
+    "malware_scan_passed",
+    "human_review_approved",
+    "facts_promoted",
+    "readiness_complete",
+    "case_ready_for_approval",
+    "release_package_approved",
+    "signature_consent_active",
+    "form_assembled",
+    "message_approved",
+    "message_sent"
+  ]
+}
