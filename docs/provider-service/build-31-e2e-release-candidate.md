@@ -23,3 +23,7 @@ The committed policy is intentionally disabled. Production release requires a se
 ## Completion boundary
 
 This PR is the final release candidate, not a production deployment. Merge order, environment configuration, private pilot ingestion, outbound authorization, validation, and rollback are defined in the runbook.
+
+## Cumulative promotion
+
+PR #56 is the single cumulative release candidate against `main`. Historical stacked PRs remain review slices and are not intended to be merged individually. The cumulative PR must pass fresh current-main validation before any promotion.
