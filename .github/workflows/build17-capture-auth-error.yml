@@ -1,0 +1,39 @@
+name: build17-capture-auth-error
+
+on:
+  push:
+    branches:
+      - provider-service-build17-pubsub-inbound
+    paths:
+      - .github/workflows/build17-capture-auth-error.yml
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: provider-service-build17-pubsub-inbound
+          fetch-depth: 0
+      - run: npm ci --ignore-scripts
+      - name: Capture no-regression output
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          rm -rf /tmp/rateware-main
+          git worktree add --detach /tmp/rateware-main origin/main
+          set +e
+          node tools/validate-action-contract-no-regression.mjs --baseline-root /tmp/rateware-main > build17-auth-diagnostic.txt 2>&1
+          code=$?
+          set -e
+          printf '\nexit_code=%s\n' "$code" >> build17-auth-diagnostic.txt
+          cat build17-auth-diagnostic.txt
+      - name: Commit diagnostic output
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add build17-auth-diagnostic.txt
+          git commit -m "chore(build17): record authorization diagnostic"
+          git push origin HEAD:provider-service-build17-pubsub-inbound
