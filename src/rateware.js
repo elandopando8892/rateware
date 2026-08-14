@@ -2208,7 +2208,7 @@ async function prepareFinanceHandoff() {
   setActionStatus(`Preparing ${ids.length.toLocaleString()} selected approved rate(s) for the MARKSMAN handoff...`);
   try {
     const rows = await fetchSelectedRatewareRows();
-    const handoff = buildFinanceHandoff(rows, { expectedIds: ids });
+    const handoff = buildFinanceHandoff(rows, { expectedIds: ids, requireValidityVerification: true });
     downloadFinanceHandoff(handoff);
     const blocked = handoff.summary.blocked_rates;
     setActionStatus(

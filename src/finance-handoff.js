@@ -80,7 +80,7 @@ function missingField(name, value) {
   return value === null ? name : null;
 }
 
-function buildRateHandoff(row) {
+function buildRateHandoff(row, { requireValidityVerification = false } = {}) {
   const issues = [];
   if (!isPlainObject(row)) return { status: "blocked", missing_fields: ["rate_row:object"], rate: null };
 
@@ -115,6 +115,7 @@ function buildRateHandoff(row) {
   if (carrierCostRate.present && !carrierCostRate.valid) issues.push("carrier_cost_rate:positive");
   if (customerBoardRate.present && !customerBoardRate.valid) issues.push("customer_board_rate:positive");
   if (validThrough.present && !validThrough.valid) issues.push("valid_through:date");
+  if (requireValidityVerification && !validThrough.present) issues.push("valid_through:verification_required");
   if (quoteDate.present && !quoteDate.valid) issues.push("quote_date:date");
   if (validThrough.valid && quoteDate.valid && validThrough.value && quoteDate.value && validThrough.value < quoteDate.value) {
     issues.push("valid_through:not_before_quote_date");
@@ -142,8 +143,8 @@ function buildRateHandoff(row) {
   };
 }
 
-export function buildFinanceHandoff(rows, { expectedIds = [] } = {}) {
-  const entries = (Array.isArray(rows) ? rows : []).map(buildRateHandoff);
+export function buildFinanceHandoff(rows, { expectedIds = [], requireValidityVerification = false } = {}) {
+  const entries = (Array.isArray(rows) ? rows : []).map((row) => buildRateHandoff(row, { requireValidityVerification }));
   const receivedIds = new Set(entries.map((entry) => entry.rate?.rate_row_id).filter(Boolean));
   const unavailableIds = Array.isArray(expectedIds)
     ? [...new Set(expectedIds.map(text).filter(Boolean))].filter((id) => !receivedIds.has(id))

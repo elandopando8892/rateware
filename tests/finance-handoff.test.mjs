@@ -38,6 +38,13 @@ assert.equal(optionalCommercialValuesAbsent.status, "ready");
 assert.equal(optionalCommercialValuesAbsent.rates[0].rate.commercial.carrier_cost_rate, null);
 assert.equal(optionalCommercialValuesAbsent.rates[0].rate.commercial.customer_board_rate, null);
 
+const uiValidityGate = buildFinanceHandoff([{ ...validRow, valid_through: null }], { requireValidityVerification: true });
+assert.equal(uiValidityGate.status, "blocked");
+assert.ok(uiValidityGate.rates[0].missing_fields.includes("valid_through:verification_required"));
+
+const uiValidityVerified = buildFinanceHandoff([validRow], { requireValidityVerification: true });
+assert.equal(uiValidityVerified.status, "ready");
+
 for (const value of ["X", 0, -1, true, "0x10", "1e3", "NaN", "Infinity"]) {
   const invalidAllIn = buildFinanceHandoff([{ ...validRow, all_in_rate: value }]);
   assert.equal(invalidAllIn.status, "blocked", `all-in ${String(value)} must fail closed`);
@@ -144,5 +151,6 @@ assert.match(ratewareHtml, /id="prepare-finance-handoff"/);
 assert.match(ratewareSource, /buildFinanceHandoff/);
 assert.match(ratewareSource, /prepareFinanceHandoffButton\?\.addEventListener\("click", prepareFinanceHandoff\)/);
 assert.match(ratewareSource, /fetchSelectedRatewareRows\(\)/);
+assert.match(ratewareSource, /buildFinanceHandoff\(rows, \{ expectedIds: ids, requireValidityVerification: true \}\)/);
 
 console.log("finance handoff tests passed");
