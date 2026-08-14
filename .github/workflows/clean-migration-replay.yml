@@ -6,6 +6,7 @@ on:
       - 'supabase/migrations/**'
       - 'supabase/config.toml'
       - 'tools/verify-migration-history.mjs'
+      - 'tools/provider-service-replay-fixes.patch'
       - '.github/workflows/clean-migration-replay.yml'
   workflow_dispatch:
 
@@ -25,6 +26,12 @@ jobs:
 
       - name: Validate migration history
         run: node tools/verify-migration-history.mjs
+
+      - name: Apply convergence replay patches
+        run: |
+          git apply --check tools/provider-service-replay-fixes.patch
+          git apply tools/provider-service-replay-fixes.patch
+          echo 'Applied explicit convergence-only replay patches.'
 
       - name: Start clean local Supabase database
         run: supabase db start
