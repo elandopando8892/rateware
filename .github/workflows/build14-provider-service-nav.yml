@@ -24,19 +24,18 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const targets = ['app.html','vendors.html','vendor-support.html','vendor-improvement.html','rfx-process.html','rfx-events.html'];
-          const anchor = '<a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>';
-          const insertion = `${anchor}\n            <a href="./provider-service.html" data-nav-code="PS">Provider Service</a>`;
+          const carrierLink = /<a\b[^>]*href="\.\/vendors\.html"[^>]*data-nav-code="CM"[^>]*>Carrier CRM<\/a>/;
           let changed = 0;
           for (const path of targets) {
             if (!fs.existsSync(path)) continue;
             let source = fs.readFileSync(path, 'utf8');
             if (source.includes('href="./provider-service.html"')) continue;
-            const count = source.split(anchor).length - 1;
-            if (count === 1) {
-              source = source.replace(anchor, insertion);
-              fs.writeFileSync(path, source);
-              changed += 1;
-            }
+            const match = source.match(carrierLink);
+            if (!match) continue;
+            const insertion = `${match[0]}\n            <a href="./provider-service.html" data-nav-code="PS">Provider Service</a>`;
+            source = source.replace(match[0], insertion);
+            fs.writeFileSync(path, source);
+            changed += 1;
           }
           for (const required of ['app.html','vendors.html']) {
             const source = fs.readFileSync(required, 'utf8');
