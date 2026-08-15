@@ -24723,6 +24723,52 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
+  /* Mobile Rateware actions: keep the primary controls and More actions in-view. */
+  .rateware-command-bar .bulk-action-bar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+
+  .rateware-command-bar .bulk-scope-strip,
+  .rateware-command-bar .bulk-scope-note,
+  .rateware-command-bar .row-save-status {
+    grid-column: 1 / -1;
+  }
+
+  .rateware-command-bar .bulk-scope-strip {
+    width: 100%;
+    overflow-x: auto;
+    padding: 0 0 3px;
+    border-right: 0;
+  }
+
+  .rateware-command-bar .bulk-scope-note {
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .rateware-command-bar .bulk-action-bar > .small-button,
+  .rateware-command-bar .sheet-more-actions,
+  .rateware-command-bar .sheet-more-actions summary {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .rateware-command-bar .sheet-more-actions summary {
+    justify-content: center;
+  }
+
+  .rateware-command-bar .sheet-more-actions > div {
+    width: min(260px, calc(100vw - 32px));
+    max-height: min(420px, calc(100vh - 160px));
+    overflow-y: auto;
+  }
+
   .bi-prompt-groups,
   .bi-use-case-grid,
   .bi-context-panel,
