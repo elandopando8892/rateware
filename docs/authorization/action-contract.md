@@ -58,21 +58,21 @@ An unresolved local dependency or non-determinable dispatch is a blocking error.
 
 Committed-source discovery produces:
 
-- 284 active Edge operations;
+- 285 active Edge operations;
 - 68 active PostgreSQL/RPC signatures;
-- 352 active discovered surfaces;
-- 244 `rateware-api` actions.
+- 353 active discovered surfaces;
+- 245 `rateware-api` actions.
 
-The contract retains 354 rows because two historically counted RPCs are now proven absent after committed `DROP FUNCTION` statements:
+The contract retains 355 rows because two historically counted RPCs are now proven absent after committed `DROP FUNCTION` statements:
 
 - `public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)`;
 - `public.rateware_rfx_text_match_score(text,text,integer)`.
 
-H07 records both signatures as intentionally `removed`, with `public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)` as their functional replacement. The repository history, current API call, stability guard, and a read-only production catalog probe confirm that the old signatures are absent while the service-role-only replacement remains active. Historical rows remain in the 354-record contract; active discovery remains 352.
+H07 records both signatures as intentionally `removed`, with `public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)` as their functional replacement. The repository history, current API call, stability guard, and a read-only production catalog probe confirm that the old signatures are absent while the service-role-only replacement remains active. Historical rows remain in the 355-record contract; active discovery remains 353.
 
 ## Decision and lifecycle boundary
 
-The contract preserves 256 `pending_human_approval`, 27 `explicitly_allowed`, and 71 `internal_only` rows. No pending surface is converted to allowed.
+The contract preserves 257 `pending_human_approval`, 27 `explicitly_allowed`, and 71 `internal_only` rows. No pending surface is converted to allowed.
 
 H07 is approved as an intentional retirement with functional replacement. This disposition changes lifecycle metadata only; it does not restore or drop database functions, modify grants, or alter runtime behavior.
 
