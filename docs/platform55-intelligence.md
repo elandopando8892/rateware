@@ -20,6 +20,8 @@ The JSON artifact uses `rateware.intelligence_brief.v1` and records:
 
 `generated_at` is the time the local artifact was created. It is never presented as data freshness. If the source does not provide a governed date, currency, sample, or lineage, the brief remains blocked or requires review instead of inventing a value.
 
+Lineage labels and filenames are context, not identifiers: a structured reference must include an `id`, `raw_upload_id`, or `rate_staging_id`. Empty objects and boolean-only placeholders do not count as usable observations. Monetary values found in rows, points, or nested recommendation metrics require an explicit single currency, including cost-based ranking modes.
+
 ## Safety boundary
 
 The contract fixes all material-action flags to `false`:

@@ -1,6 +1,9 @@
 const SCHEMA_VERSION = "rateware.intelligence_brief.v1";
 const ALLOWED_SOURCES = new Set(["geo", "pivot", "copilot", "ranking"]);
 const MONEY_SIGNAL = /(rate|cost|price|all[_ -]?in|linehaul|fsc|fee)/i;
+const MONEY_FIELD_SIGNAL = /(rate|cost|price|all[_ -]?in|linehaul|fsc|fuel|fee|charge|amount|spend|revenue|margin|toll)/i;
+const NON_MONEY_FIELD_SIGNAL = /(^|_)(count|counts|signals?)($|_)|(^|_)(id|ids|rank|score)$|^(linked|approved|crossborder|d2d)_rates$/i;
+const LINEAGE_IDENTIFIER_KEYS = ["id", "raw_upload_id", "rate_staging_id"];
 
 function isRecord(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -65,10 +68,26 @@ function collectCurrencies(result) {
   for (const collection of [result.points, result.rows, result.recommendations]) {
     if (!Array.isArray(collection)) continue;
     collection.slice(0, 500).forEach((item) => {
-      if (isRecord(item)) pushCurrency(currencies, item.currency);
+      if (!isRecord(item)) return;
+      pushCurrency(currencies, item.currency);
+      if (isRecord(item.metrics)) pushCurrency(currencies, item.metrics.currency);
     });
   }
   return [...currencies].sort();
+}
+
+function hasUsableObservation(value, depth = 0) {
+  if (depth > 3) return false;
+  if (typeof value === "string") return Boolean(value.trim());
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return false;
+  if (Array.isArray(value)) return value.some((item) => hasUsableObservation(item, depth + 1));
+  if (!isRecord(value)) return false;
+  return Object.values(value).some((item) => hasUsableObservation(item, depth + 1));
+}
+
+function observationCount(value) {
+  return Array.isArray(value) ? value.filter((item) => hasUsableObservation(item)).length : null;
 }
 
 function sanitizeValue(value) {
@@ -118,7 +137,7 @@ function lineageReferences(result) {
         const value = text(item[key], key === "source_file" ? 180 : 100);
         if (value) reference[key] = value;
       }
-      if (Object.keys(reference).length) references.push(reference);
+      if (LINEAGE_IDENTIFIER_KEYS.some((key) => reference[key])) references.push(reference);
     }
   }
   return references;
@@ -145,21 +164,33 @@ function sampleSummary(result) {
   const summary = isRecord(result.summary) ? result.summary : {};
   const transactions = count(summary.transactions ?? result.transaction_count);
   const carriers = count(summary.carriers ?? result.carrier_count ?? result.candidate_count);
-  const rows = Array.isArray(result.rows) ? result.rows.length : null;
-  const points = Array.isArray(result.points) ? result.points.length : null;
-  const recommendations = Array.isArray(result.recommendations) ? result.recommendations.length : null;
+  const rows = observationCount(result.rows);
+  const points = observationCount(result.points);
+  const recommendations = observationCount(result.recommendations);
   const rateSignals = count(result.rate_signal_count);
   const primary = transactions ?? rateSignals ?? recommendations ?? rows ?? points ?? carriers;
   return { transactions, carriers, rows, points, recommendations, rate_signals: rateSignals, primary };
 }
 
+function containsMonetaryEvidence(value, depth = 0) {
+  if (depth > 3 || !isRecord(value)) return false;
+  for (const [key, item] of Object.entries(value)) {
+    const numericString = typeof item === "string" && /^[-+]?\d+(?:\.\d+)?$/.test(item.trim());
+    if ((finiteNumber(item) !== null || numericString) && MONEY_FIELD_SIGNAL.test(key) && !NON_MONEY_FIELD_SIGNAL.test(key)) return true;
+    if (depth < 3 && isRecord(item) && containsMonetaryEvidence(item, depth + 1)) return true;
+  }
+  return false;
+}
+
 function hasMonetaryEvidence(result, context) {
   const summary = isRecord(result.summary) ? result.summary : {};
-  if (MONEY_SIGNAL.test(text(result.metric || context.metric, 80))) return true;
+  if ([result.metric, context.metric, context.ranking_mode].some((value) => MONEY_SIGNAL.test(text(value, 80)))) return true;
   for (const key of ["avg_all_in_rate", "min_all_in_rate", "max_all_in_rate", "avg_all_in", "avg_cost_per_mile", "avg_cost_per_km"]) {
     if (finiteNumber(summary[key]) !== null) return true;
   }
-  return Array.isArray(result.points) && result.points.some((point) => isRecord(point) && [point.avg_all_in, point.avg_cost_per_mile, point.avg_cost_per_km].some((value) => finiteNumber(value) !== null));
+  return [result.points, result.rows, result.recommendations].some((collection) => (
+    Array.isArray(collection) && collection.slice(0, 500).some((item) => containsMonetaryEvidence(item))
+  ));
 }
 
 function dataAsOf(result) {

@@ -129,6 +129,119 @@ const thinSample = buildIntelligenceBrief({
 assert.ok(thinSample.gaps.some((gap) => gap.code === "sample:thin"));
 assert.ok(thinSample.gaps.some((gap) => gap.code === "sample:single_carrier"));
 
+const lineageWithoutIdentifier = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    metric: "transaction_count",
+    data_as_of: "2026-08-12",
+    summary: { transactions: 20, carriers: 4 },
+    lineage: [{ type: "rate_staging" }]
+  }
+});
+assert.notEqual(lineageWithoutIdentifier.status, "reviewable");
+assert.deepEqual(lineageWithoutIdentifier.lineage.references, []);
+assert.ok(lineageWithoutIdentifier.gaps.some((gap) => gap.code === "lineage:missing"));
+
+const emptyObjectRows = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    rows: [{}, {}, {}, {}, {}],
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(emptyObjectRows.sample.rows, 0);
+assert.equal(emptyObjectRows.status, "blocked");
+assert.ok(emptyObjectRows.gaps.some((gap) => gap.code === "sample:empty"));
+
+const metadataOnlyRows = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    rows: Array.from({ length: 5 }, () => ({ selected: false })),
+    lineage: [{ source_file: "quote.xlsx", type: "raw_upload" }]
+  }
+});
+assert.equal(metadataOnlyRows.status, "blocked");
+assert.ok(metadataOnlyRows.gaps.some((gap) => gap.code === "sample:empty"));
+assert.ok(metadataOnlyRows.gaps.some((gap) => gap.code === "lineage:missing"));
+
+const rowMoneyWithoutCurrency = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    rows: Array.from({ length: 5 }, (_, index) => ({ lane: `lane-${index}`, linehaul: 1000 + index })),
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(rowMoneyWithoutCurrency.status, "blocked");
+assert.ok(rowMoneyWithoutCurrency.gaps.some((gap) => gap.code === "currency:missing"));
+
+const stringMoneyWithoutCurrency = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    rows: Array.from({ length: 5 }, (_, index) => ({ lane: `lane-${index}`, linehaul: "1000.00" })),
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(stringMoneyWithoutCurrency.status, "blocked");
+assert.ok(stringMoneyWithoutCurrency.gaps.some((gap) => gap.code === "currency:missing"));
+
+const rankingMoneyWithoutCurrency = buildIntelligenceBrief({
+  source: "ranking",
+  generatedAt,
+  context: { ranking_mode: "cost_per_mile" },
+  result: {
+    data_as_of: "2026-08-12",
+    recommendations: Array.from({ length: 5 }, (_, index) => ({
+      vendor_id: `vendor-${index}`,
+      metrics: { avg_cost_per_mile: 2 + index / 10 }
+    })),
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(rankingMoneyWithoutCurrency.status, "blocked");
+assert.ok(rankingMoneyWithoutCurrency.gaps.some((gap) => gap.code === "currency:missing"));
+
+const nestedCurrency = buildIntelligenceBrief({
+  source: "ranking",
+  generatedAt,
+  context: { ranking_mode: "cost_per_mile" },
+  result: {
+    data_as_of: "2026-08-12",
+    recommendations: Array.from({ length: 5 }, (_, index) => ({
+      vendor_id: `vendor-${index}`,
+      metrics: { avg_cost_per_mile: 2 + index / 10, currency: "USD" }
+    })),
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(nestedCurrency.status, "reviewable");
+assert.deepEqual(nestedCurrency.evidence.currencies, ["USD"]);
+
+const rankingModeMustNotBeMaskedByMetric = buildIntelligenceBrief({
+  source: "ranking",
+  generatedAt,
+  context: { metric: "transaction_count", ranking_mode: "cost_per_mile" },
+  result: {
+    metric: "transaction_count",
+    data_as_of: "2026-08-12",
+    recommendations: Array.from({ length: 5 }, (_, index) => ({
+      vendor_id: `vendor-${index}`,
+      metrics: { avg_cost_per_mile: 2 + index / 10 }
+    })),
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(rankingModeMustNotBeMaskedByMetric.status, "blocked");
+assert.ok(rankingModeMustNotBeMaskedByMetric.gaps.some((gap) => gap.code === "currency:missing"));
+
 const hostile = new Proxy({}, { getPrototypeOf() { throw new Error("hostile"); } });
 assert.doesNotThrow(() => buildIntelligenceBrief(hostile));
 assert.equal(buildIntelligenceBrief(hostile).status, "blocked");
