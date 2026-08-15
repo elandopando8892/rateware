@@ -85,6 +85,18 @@ const inlineActual = selector(edgeSource('if (body.action === "inline_action") {
 assert.equal(inlineActual[0].handlerStatus, "inline-real");
 assert.equal(validateActionContract(contractFor([entryFrom(inlineActual[0])], inlineActual), inlineActual).ok, true);
 
+const dualAuthorizationContract = contractFor([entryFrom(inlineActual[0])], inlineActual);
+const inlineId = inlineActual[0].canonicalId;
+dualAuthorizationContract.reviewedAuthorizationFingerprints[inlineId] = [
+  "0".repeat(64),
+  inlineActual[0].authorizationFingerprint
+];
+assert.equal(validateActionContract(dualAuthorizationContract, inlineActual).ok, true, "Every explicitly reviewed platform fingerprint must be accepted");
+dualAuthorizationContract.reviewedAuthorizationFingerprints[inlineId] = ["0".repeat(64), "1".repeat(64)];
+assert.ok(codes(validateActionContract(dualAuthorizationContract, inlineActual)).includes("AUTHORIZATION_ENVELOPE_CHANGED"), "An unreviewed third fingerprint must remain blocked");
+dualAuthorizationContract.reviewedAuthorizationFingerprints[inlineId] = ["0".repeat(64), "0".repeat(64)];
+assert.ok(codes(validateActionContract(dualAuthorizationContract, inlineActual)).includes("INVALID_AUTHORIZATION_FINGERPRINT"), "Reviewed fingerprint lists must be unique");
+
 const namedSource = edgeSource('if (body.action === "named_action") { return await namedHandler(); }', "async function namedHandler() { return { ok: true }; }");
 const namedActual = selector(namedSource);
 assert.equal(namedActual[0].handlerStatus, "named-existing");

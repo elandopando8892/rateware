@@ -89,6 +89,22 @@ export function metadataFingerprint(entry) {
   return hash(JSON.stringify(METADATA_FIELDS.map((field) => [field, entry?.[field] ?? null])));
 }
 
+function reviewedAuthorizationValues(value) {
+  if (value === undefined || value === null) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function validReviewedAuthorization(value) {
+  const values = reviewedAuthorizationValues(value);
+  return values.length > 0
+    && values.every((item) => typeof item === "string" && /^[0-9a-f]{64}$/.test(item))
+    && new Set(values).size === values.length;
+}
+
+function reviewedAuthorizationMatches(value, actualFingerprint) {
+  return reviewedAuthorizationValues(value).includes(actualFingerprint);
+}
+
 function allMatches(regex, value, minimumIndex = 0) {
   regex.lastIndex = 0;
   const out = [];
@@ -1914,7 +1930,9 @@ export function validateActionContract(contract, discovered, { repoRoot } = {}) 
     if (entry.contractVersion !== contract.contractVersion) issues.push(issue("error", "ENTRY_VERSION_MISMATCH", entry.canonicalId, "Entry contractVersion differs from the contract."));
     if (!reviewedMetadata[entry.canonicalId]) issues.push(issue("error", "METADATA_REVIEW_MISSING", entry.canonicalId, "Sensitive metadata has no reviewed fingerprint."));
     else if (reviewedMetadata[entry.canonicalId] !== metadataFingerprint(entry)) issues.push(issue("error", "SENSITIVE_METADATA_CHANGED", entry.canonicalId, "Sensitive metadata changed without reviewed fingerprint refresh."));
-    if (!reviewedAuthorization[entry.canonicalId]) issues.push(issue("error", "AUTHORIZATION_FINGERPRINT_MISSING", entry.canonicalId, "Authorization dependency envelope has no reviewed fingerprint."));
+    const reviewedAuthorizationValue = reviewedAuthorization[entry.canonicalId];
+    if (!reviewedAuthorizationValue) issues.push(issue("error", "AUTHORIZATION_FINGERPRINT_MISSING", entry.canonicalId, "Authorization dependency envelope has no reviewed fingerprint."));
+    else if (!validReviewedAuthorization(reviewedAuthorizationValue)) issues.push(issue("error", "INVALID_AUTHORIZATION_FINGERPRINT", entry.canonicalId, "Reviewed authorization fingerprints must be unique lower-case SHA-256 values."));
   }
   for (const [id, values] of idGroups) if (values.length > 1) issues.push(issue("error", "DUPLICATE_CANONICAL_ID", id, "Canonical ID occurs more than once."));
   for (const [name, values] of nameGroups) if (values.length > 1) issues.push(issue("info", "DUPLICATE_ACTION_NAME", values[0].canonicalId, "Action name " + name + " occurs on " + values.length + " governed surfaces."));
@@ -1950,7 +1968,7 @@ export function validateActionContract(contract, discovered, { repoRoot } = {}) 
     if ((expectedEntry.rpcSignature || "") !== (actual.rpcSignature || "")) issues.push(issue("error", "RPC_SIGNATURE_CHANGED", actual.canonicalId, "RPC signature differs from the contract."));
     if (expectedEntry.exposure !== actual.exposureHint) issues.push(issue("error", "EXPOSURE_CHANGED", actual.canonicalId, "Observed exposure class differs from the contract."));
     if (expectedEntry.sourceFingerprint !== actual.sourceFingerprint) issues.push(issue("error", "SOURCE_FINGERPRINT_CHANGED", actual.canonicalId, "Direct source fingerprint changed; review and refresh deliberately."));
-    if (reviewedAuthorization[actual.canonicalId] !== actual.authorizationFingerprint) issues.push(issue("error", "AUTHORIZATION_ENVELOPE_CHANGED", actual.canonicalId, "Authorization/shared dependency envelope changed; review and refresh deliberately."));
+    if (!reviewedAuthorizationMatches(reviewedAuthorization[actual.canonicalId], actual.authorizationFingerprint)) issues.push(issue("error", "AUTHORIZATION_ENVELOPE_CHANGED", actual.canonicalId, "Authorization/shared dependency envelope changed; review and refresh deliberately."));
   }
   for (const entry of entries) {
     if (actualById.has(entry.canonicalId)) {
@@ -2028,7 +2046,7 @@ export function inventoryRows(contract, discovered) {
     ...entry,
     discovered: actual.has(entry.canonicalId) ? "yes" : "no",
     fingerprintMatches: actual.get(entry.canonicalId)?.sourceFingerprint === entry.sourceFingerprint ? "yes" : "no",
-    authorizationFingerprintMatches: actual.get(entry.canonicalId)?.authorizationFingerprint === contract.reviewedAuthorizationFingerprints?.[entry.canonicalId] ? "yes" : "no",
+    authorizationFingerprintMatches: reviewedAuthorizationMatches(contract.reviewedAuthorizationFingerprints?.[entry.canonicalId], actual.get(entry.canonicalId)?.authorizationFingerprint) ? "yes" : "no",
     metadataFingerprintMatches: metadataFingerprint(entry) === contract.reviewedMetadataFingerprints?.[entry.canonicalId] ? "yes" : "no"
   }));
 }

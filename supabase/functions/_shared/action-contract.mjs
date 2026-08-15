@@ -575,7 +575,10 @@ export const ACTION_CONTRACT = {
     "edge.rateware-api.search_staging_locations": "2d508c407347671f04321fba09607ab6b9f992c837f9aa70f78b2e0b738725dd",
     "edge.rateware-api.select_whatsapp_sender": "2d508c407347671f04321fba09607ab6b9f992c837f9aa70f78b2e0b738725dd",
     "edge.rateware-api.send_bid_room_carrier_message": "2d508c407347671f04321fba09607ab6b9f992c837f9aa70f78b2e0b738725dd",
-    "edge.rateware-api.send_fcm_customer_quote_email": "2d508c407347671f04321fba09607ab6b9f992c837f9aa70f78b2e0b738725dd",
+    "edge.rateware-api.send_fcm_customer_quote_email": [
+      "2d508c407347671f04321fba09607ab6b9f992c837f9aa70f78b2e0b738725dd",
+      "0bfc25bc992fc314e28cdf9e7e11e0c07a2902164ef350ec44cdc0ae6c42ed00"
+    ],
     "edge.rateware-api.send_outreach_messages": "2d508c407347671f04321fba09607ab6b9f992c837f9aa70f78b2e0b738725dd",
     "edge.rateware-api.send_ratebook_distribution": "2d508c407347671f04321fba09607ab6b9f992c837f9aa70f78b2e0b738725dd",
     "edge.rateware-api.send_whatsapp_group_outreach_messages": "2d508c407347671f04321fba09607ab6b9f992c837f9aa70f78b2e0b738725dd",
