@@ -31,6 +31,7 @@ function identifierText(value, maxLength = 160) {
   if (typeof value !== "string") return "";
   const candidate = value.trim().slice(0, maxLength);
   if (!candidate || /^(true|false|null|undefined|nan|infinity)$/i.test(candidate)) return "";
+  if (/[\p{Cc}\p{Cf}]/u.test(candidate) || !/[\p{L}\p{N}]/u.test(candidate)) return "";
   return candidate;
 }
 

@@ -255,6 +255,21 @@ assert.equal(booleanLineage.status, "review_required");
 assert.deepEqual(booleanLineage.lineage.references, []);
 assert.ok(booleanLineage.gaps.some((gap) => gap.code === "lineage:missing"));
 
+for (const invisibleId of ["\u0000", "\u200B"]) {
+  const invisibleLineage = buildIntelligenceBrief({
+    source: "pivot",
+    generatedAt: "2026-08-15",
+    result: {
+      data_as_of: "2026-08-12",
+      summary: { transactions: 5 },
+      lineage: [{ id: invisibleId }]
+    }
+  });
+  assert.equal(invisibleLineage.status, "review_required");
+  assert.deepEqual(invisibleLineage.lineage.references, []);
+  assert.ok(invisibleLineage.gaps.some((gap) => gap.code === "lineage:missing"));
+}
+
 const formattedMoneyWithoutCurrency = buildIntelligenceBrief({
   source: "pivot",
   generatedAt,
