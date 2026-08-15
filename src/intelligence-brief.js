@@ -1,9 +1,18 @@
 const SCHEMA_VERSION = "rateware.intelligence_brief.v1";
 const ALLOWED_SOURCES = new Set(["geo", "pivot", "copilot", "ranking"]);
-const MONEY_SIGNAL = /(rate|cost|price|all[_ -]?in|linehaul|fsc|fee)/i;
-const MONEY_FIELD_SIGNAL = /(rate|cost|price|all[_ -]?in|linehaul|fsc|fuel|fee|charge|amount|spend|revenue|margin|toll)/i;
-const NON_MONEY_FIELD_SIGNAL = /(^|_)(count|counts|signals?)($|_)|(^|_)(id|ids|rank|score)$|^(linked|approved|crossborder|d2d)_rates$/i;
+const MONETARY_METRICS = new Set([
+  "all_in", "all_in_rate", "avg_all_in", "avg_all_in_rate", "min_all_in_rate", "max_all_in_rate",
+  "cost_per_mile", "cost_per_km", "avg_cost_per_mile", "avg_cost_per_km",
+  "mx_linehaul", "us_linehaul", "linehaul", "fsc", "fuel", "border_crossing_fee", "border_fee"
+]);
+const MONETARY_FIELDS = new Set([
+  ...MONETARY_METRICS,
+  "rate", "price", "cost", "amount", "spend", "revenue", "margin_amount", "toll", "fee", "charge",
+  "flat_rate", "carrier_cost_rate", "customer_board_rate"
+]);
 const LINEAGE_IDENTIFIER_KEYS = ["id", "raw_upload_id", "rate_staging_id"];
+const OBSERVATION_METADATA_KEYS = new Set(["currency", "currencies", "selected", "type", "source_file"]);
+const MAX_EVIDENCE_NODES = 20000;
 
 function isRecord(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -16,6 +25,13 @@ function text(value, maxLength = 240) {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (typeof value === "boolean") return String(value);
   return "";
+}
+
+function identifierText(value, maxLength = 160) {
+  if (typeof value !== "string") return "";
+  const candidate = value.trim().slice(0, maxLength);
+  if (!candidate || /^(true|false|null|undefined|nan|infinity)$/i.test(candidate)) return "";
+  return candidate;
 }
 
 function finiteNumber(value) {
@@ -59,35 +75,43 @@ function pushCurrency(target, value) {
   if (currency) target.add(currency);
 }
 
-function collectCurrencies(result) {
-  const currencies = new Set();
-  pushCurrency(currencies, result.currency);
-  pushCurrency(currencies, result.summary?.currency);
-  if (Array.isArray(result.currencies)) result.currencies.forEach((value) => pushCurrency(currencies, value));
-  if (Array.isArray(result.summary?.currencies)) result.summary.currencies.forEach((value) => pushCurrency(currencies, value));
-  for (const collection of [result.points, result.rows, result.recommendations]) {
-    if (!Array.isArray(collection)) continue;
-    collection.slice(0, 500).forEach((item) => {
-      if (!isRecord(item)) return;
-      pushCurrency(currencies, item.currency);
-      if (isRecord(item.metrics)) pushCurrency(currencies, item.metrics.currency);
-    });
+function pushCurrencies(target, value) {
+  if (Array.isArray(value)) value.forEach((item) => pushCurrency(target, item));
+  else pushCurrency(target, value);
+}
+
+function usableObservation(value, budget) {
+  const stack = [{ value, key: "" }];
+  const seen = new WeakSet();
+  while (stack.length) {
+    if (++budget.count > MAX_EVIDENCE_NODES) return { usable: false, incomplete: true };
+    const current = stack.pop();
+    const item = current.value;
+    if (typeof item === "string" && item.trim() && !OBSERVATION_METADATA_KEYS.has(current.key)) return { usable: true, incomplete: false };
+    if (typeof item === "number" && Number.isFinite(item) && !OBSERVATION_METADATA_KEYS.has(current.key)) return { usable: true, incomplete: false };
+    if (typeof item === "boolean" || item === null || item === undefined) continue;
+    if (typeof item !== "object") continue;
+    if (seen.has(item)) return { usable: false, incomplete: true };
+    seen.add(item);
+    if (Array.isArray(item)) {
+      for (let index = item.length - 1; index >= 0; index -= 1) stack.push({ value: item[index], key: current.key });
+      continue;
+    }
+    if (!isRecord(item)) continue;
+    for (const [key, nested] of Object.entries(item)) stack.push({ value: nested, key: key.toLowerCase() });
   }
-  return [...currencies].sort();
+  return { usable: false, incomplete: false };
 }
 
-function hasUsableObservation(value, depth = 0) {
-  if (depth > 3) return false;
-  if (typeof value === "string") return Boolean(value.trim());
-  if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value === "boolean") return false;
-  if (Array.isArray(value)) return value.some((item) => hasUsableObservation(item, depth + 1));
-  if (!isRecord(value)) return false;
-  return Object.values(value).some((item) => hasUsableObservation(item, depth + 1));
-}
-
-function observationCount(value) {
-  return Array.isArray(value) ? value.filter((item) => hasUsableObservation(item)).length : null;
+function observationCount(value, budget) {
+  if (!Array.isArray(value)) return { count: null, incomplete: false };
+  let usable = 0;
+  for (const item of value) {
+    const inspected = usableObservation(item, budget);
+    if (inspected.incomplete) return { count: usable, incomplete: true };
+    if (inspected.usable) usable += 1;
+  }
+  return { count: usable, incomplete: false };
 }
 
 function sanitizeValue(value) {
@@ -127,14 +151,16 @@ function lineageReferences(result) {
   for (const collection of collections) {
     for (const item of collection.slice(0, 100)) {
       if (typeof item === "string") {
-        const id = text(item, 160);
+        const id = identifierText(item, 160);
         if (id) references.push({ id });
         continue;
       }
       if (!isRecord(item)) continue;
       const reference = {};
       for (const key of ["type", "id", "raw_upload_id", "rate_staging_id", "source_file"]) {
-        const value = text(item[key], key === "source_file" ? 180 : 100);
+        const value = LINEAGE_IDENTIFIER_KEYS.includes(key)
+          ? identifierText(item[key], 100)
+          : (typeof item[key] === "string" ? text(item[key], key === "source_file" ? 180 : 100) : "");
         if (value) reference[key] = value;
       }
       if (LINEAGE_IDENTIFIER_KEYS.some((key) => reference[key])) references.push(reference);
@@ -164,33 +190,133 @@ function sampleSummary(result) {
   const summary = isRecord(result.summary) ? result.summary : {};
   const transactions = count(summary.transactions ?? result.transaction_count);
   const carriers = count(summary.carriers ?? result.carrier_count ?? result.candidate_count);
-  const rows = observationCount(result.rows);
-  const points = observationCount(result.points);
-  const recommendations = observationCount(result.recommendations);
+  const budget = { count: 0 };
+  const rowAnalysis = observationCount(result.rows, budget);
+  const pointAnalysis = observationCount(result.points, budget);
+  const recommendationAnalysis = observationCount(result.recommendations, budget);
+  const rows = rowAnalysis.count;
+  const points = pointAnalysis.count;
+  const recommendations = recommendationAnalysis.count;
   const rateSignals = count(result.rate_signal_count);
   const primary = transactions ?? rateSignals ?? recommendations ?? rows ?? points ?? carriers;
-  return { transactions, carriers, rows, points, recommendations, rate_signals: rateSignals, primary };
+  return {
+    sample: { transactions, carriers, rows, points, recommendations, rate_signals: rateSignals, primary },
+    incomplete: rowAnalysis.incomplete || pointAnalysis.incomplete || recommendationAnalysis.incomplete
+  };
 }
 
-function containsMonetaryEvidence(value, depth = 0) {
-  if (depth > 3 || !isRecord(value)) return false;
-  for (const [key, item] of Object.entries(value)) {
-    const numericString = typeof item === "string" && /^[-+]?\d+(?:\.\d+)?$/.test(item.trim());
-    if ((finiteNumber(item) !== null || numericString) && MONEY_FIELD_SIGNAL.test(key) && !NON_MONEY_FIELD_SIGNAL.test(key)) return true;
-    if (depth < 3 && isRecord(item) && containsMonetaryEvidence(item, depth + 1)) return true;
+function monetaryValueState(value) {
+  if (value === null || value === undefined || (typeof value === "string" && !value.trim())) return "absent";
+  if (typeof value === "number") return Number.isFinite(value) ? "valid" : "invalid";
+  if (typeof value !== "string") return "invalid";
+  return /^[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$/.test(value.trim()) ? "valid" : "invalid";
+}
+
+function inspectEvidenceTree(value, metricMonetary, budget) {
+  const currencies = new Set();
+  const stack = [value];
+  const seen = new WeakSet();
+  let hasMoney = Boolean(metricMonetary);
+  let invalidMoney = false;
+  while (stack.length) {
+    if (++budget.count > MAX_EVIDENCE_NODES) return { currencies, hasMoney, invalidMoney, incomplete: true };
+    const item = stack.pop();
+    if (!item || typeof item !== "object") continue;
+    if (seen.has(item)) return { currencies, hasMoney, invalidMoney, incomplete: true };
+    seen.add(item);
+    if (Array.isArray(item)) {
+      for (let index = item.length - 1; index >= 0; index -= 1) stack.push(item[index]);
+      continue;
+    }
+    if (!isRecord(item)) continue;
+    for (const [rawKey, nested] of Object.entries(item)) {
+      const key = rawKey.toLowerCase();
+      if (key === "currency" || key === "currencies") pushCurrencies(currencies, nested);
+      if (MONETARY_FIELDS.has(key)) {
+        const state = monetaryValueState(nested);
+        if (state !== "absent") hasMoney = true;
+        if (state === "invalid") invalidMoney = true;
+      }
+      if (nested && typeof nested === "object") stack.push(nested);
+    }
   }
-  return false;
+  return { currencies, hasMoney, invalidMoney, incomplete: false };
 }
 
-function hasMonetaryEvidence(result, context) {
+function analyzeMonetaryEvidence(result, context, sample) {
   const summary = isRecord(result.summary) ? result.summary : {};
-  if ([result.metric, context.metric, context.ranking_mode].some((value) => MONEY_SIGNAL.test(text(value, 80)))) return true;
-  for (const key of ["avg_all_in_rate", "min_all_in_rate", "max_all_in_rate", "avg_all_in", "avg_cost_per_mile", "avg_cost_per_km"]) {
-    if (finiteNumber(summary[key]) !== null) return true;
+  const sourceCurrencies = new Set();
+  pushCurrencies(sourceCurrencies, result.currency);
+  pushCurrencies(sourceCurrencies, result.currencies);
+  pushCurrencies(sourceCurrencies, summary.currency);
+  pushCurrencies(sourceCurrencies, summary.currencies);
+  const observedCurrencies = new Set(sourceCurrencies);
+  const monetaryCurrencies = new Set(sourceCurrencies);
+  const metricMonetary = [result.metric, result.ranking_mode, result.filters?.ranking_mode, context.metric, context.ranking_mode]
+    .some((value) => MONETARY_METRICS.has(text(value, 80).toLowerCase()));
+  const budget = { count: 0 };
+  let hasMoney = false;
+  let missingCurrency = false;
+  let invalidMoney = false;
+  let incomplete = false;
+  let monetaryObservationSeen = false;
+
+  const summaryEvidence = inspectEvidenceTree(summary, false, budget);
+  summaryEvidence.currencies.forEach((currency) => observedCurrencies.add(currency));
+  if (summaryEvidence.hasMoney) {
+    hasMoney = true;
+    summaryEvidence.currencies.forEach((currency) => monetaryCurrencies.add(currency));
+    if (!sourceCurrencies.size) missingCurrency = true;
   }
-  return [result.points, result.rows, result.recommendations].some((collection) => (
-    Array.isArray(collection) && collection.slice(0, 500).some((item) => containsMonetaryEvidence(item))
-  ));
+  invalidMoney ||= summaryEvidence.invalidMoney;
+  incomplete ||= summaryEvidence.incomplete;
+
+  const directEvidence = {};
+  for (const [rawKey, value] of Object.entries(result)) {
+    const key = rawKey.toLowerCase();
+    if (MONETARY_FIELDS.has(key)) directEvidence[key] = value;
+  }
+  const topLevelEvidence = inspectEvidenceTree(directEvidence, false, budget);
+  if (topLevelEvidence.hasMoney) {
+    hasMoney = true;
+    if (!sourceCurrencies.size) missingCurrency = true;
+  }
+  invalidMoney ||= topLevelEvidence.invalidMoney;
+  incomplete ||= topLevelEvidence.incomplete;
+
+  for (const collection of [result.points, result.rows, result.recommendations]) {
+    if (!Array.isArray(collection)) continue;
+    for (const item of collection) {
+      const usable = usableObservation(item, budget);
+      incomplete ||= usable.incomplete;
+      const evidence = inspectEvidenceTree(item, metricMonetary && usable.usable, budget);
+      evidence.currencies.forEach((currency) => observedCurrencies.add(currency));
+      if (evidence.hasMoney) {
+        hasMoney = true;
+        monetaryObservationSeen = true;
+        evidence.currencies.forEach((currency) => monetaryCurrencies.add(currency));
+        if (!sourceCurrencies.size && !evidence.currencies.size) missingCurrency = true;
+      }
+      invalidMoney ||= evidence.invalidMoney;
+      incomplete ||= evidence.incomplete;
+      if (incomplete) break;
+    }
+    if (incomplete) break;
+  }
+
+  if (metricMonetary && sample.primary > 0 && !monetaryObservationSeen) {
+    hasMoney = true;
+    if (!sourceCurrencies.size) missingCurrency = true;
+  }
+  const currencies = hasMoney ? monetaryCurrencies : observedCurrencies;
+  return {
+    currencies: [...currencies].sort(),
+    hasMoney,
+    missingCurrency,
+    mixedCurrency: hasMoney && monetaryCurrencies.size > 1,
+    invalidMoney,
+    incomplete
+  };
 }
 
 function dataAsOf(result) {
@@ -242,8 +368,10 @@ export function buildIntelligenceBrief(input = {}) {
     const result = input.result;
     const source = ALLOWED_SOURCES.has(input.source) ? input.source : "unknown";
     const context = sanitizeContext(input.context);
-    const sample = sampleSummary(result);
-    const currencies = collectCurrencies(result);
+    const sampleAnalysis = sampleSummary(result);
+    const sample = sampleAnalysis.sample;
+    const monetaryEvidence = analyzeMonetaryEvidence(result, context, sample);
+    const currencies = monetaryEvidence.currencies;
     const asOf = dataAsOf(result);
     const references = lineageReferences(result);
     const warnings = safeWarningRows(result);
@@ -260,10 +388,16 @@ export function buildIntelligenceBrief(input = {}) {
     if (sample.primary === null || sample.primary === 0) addGap("sample:empty", "blocking", "The source contains no usable observations.");
     else if (sample.primary < 5) addGap("sample:thin", "review", "The source contains fewer than five observations.");
     if (sample.carriers !== null && sample.carriers < 2) addGap("sample:single_carrier", "review", "The result does not contain a comparable carrier sample.");
+    if (sampleAnalysis.incomplete || monetaryEvidence.incomplete) {
+      addGap("evidence:incomplete", "blocking", "The source evidence exceeded the bounded local inspection limit.");
+    }
 
-    if (hasMonetaryEvidence(result, context)) {
-      if (!currencies.length) addGap("currency:missing", "blocking", "Monetary evidence has no explicit currency.");
-      else if (currencies.length > 1) addGap("currency:mixed", "blocking", "Monetary evidence contains mixed currencies and was not converted.");
+    if (monetaryEvidence.invalidMoney) {
+      addGap("monetary:invalid", "blocking", "Monetary evidence contains an invalid amount.");
+    }
+    if (monetaryEvidence.hasMoney) {
+      if (monetaryEvidence.missingCurrency) addGap("currency:missing", "blocking", "At least one monetary observation has no explicit currency.");
+      if (monetaryEvidence.mixedCurrency) addGap("currency:mixed", "blocking", "Monetary evidence contains mixed currencies and was not converted.");
     }
     if (!references.length) addGap("lineage:missing", "review", "The source did not provide rate or upload lineage references.");
     warnings.forEach((warning, index) => addGap(`source_warning:${index + 1}`, "review", warning));

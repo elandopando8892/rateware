@@ -242,6 +242,182 @@ const rankingModeMustNotBeMaskedByMetric = buildIntelligenceBrief({
 assert.equal(rankingModeMustNotBeMaskedByMetric.status, "blocked");
 assert.ok(rankingModeMustNotBeMaskedByMetric.gaps.some((gap) => gap.code === "currency:missing"));
 
+const booleanLineage = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    summary: { transactions: 5, carriers: 2 },
+    lineage: [{ id: true }]
+  }
+});
+assert.equal(booleanLineage.status, "review_required");
+assert.deepEqual(booleanLineage.lineage.references, []);
+assert.ok(booleanLineage.gaps.some((gap) => gap.code === "lineage:missing"));
+
+const formattedMoneyWithoutCurrency = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    rows: Array.from({ length: 5 }, (_, index) => ({ lane: `lane-${index}`, linehaul: "1,000.00" })),
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(formattedMoneyWithoutCurrency.status, "blocked");
+assert.ok(formattedMoneyWithoutCurrency.gaps.some((gap) => gap.code === "currency:missing"));
+
+const summaryStringMoneyWithoutCurrency = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    summary: { transactions: 5, carriers: 2, avg_all_in_rate: "1000.00" },
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(summaryStringMoneyWithoutCurrency.status, "blocked");
+assert.ok(summaryStringMoneyWithoutCurrency.gaps.some((gap) => gap.code === "currency:missing"));
+
+const nestedArrayMoneyWithoutCurrency = buildIntelligenceBrief({
+  source: "ranking",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    recommendations: Array.from({ length: 5 }, (_, index) => ({
+      vendor_id: `vendor-${index}`,
+      metrics: { lanes: [{ linehaul: 100 + index }] }
+    })),
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(nestedArrayMoneyWithoutCurrency.status, "blocked");
+assert.ok(nestedArrayMoneyWithoutCurrency.gaps.some((gap) => gap.code === "currency:missing"));
+
+const moneyAfterFiveHundred = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    rows: [
+      ...Array.from({ length: 500 }, (_, index) => ({ lane: `lane-${index}`, transaction_count: 1 })),
+      { lane: "lane-500", linehaul: 1000 }
+    ],
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(moneyAfterFiveHundred.status, "blocked");
+assert.ok(moneyAfterFiveHundred.gaps.some((gap) => gap.code === "currency:missing"));
+
+const partialObservationCurrency = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    rows: Array.from({ length: 5 }, (_, index) => ({
+      lane: `lane-${index}`,
+      linehaul: 1000 + index,
+      ...(index === 0 ? { currency: "USD" } : {})
+    })),
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(partialObservationCurrency.status, "blocked");
+assert.ok(partialObservationCurrency.gaps.some((gap) => gap.code === "currency:missing"));
+
+const nonMonetaryRates = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    rows: Array.from({ length: 5 }, (_, index) => ({ lane: `lane-${index}`, on_time_rate: 0.95, margin_percent: 5 })),
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(nonMonetaryRates.status, "reviewable");
+assert.ok(!nonMonetaryRates.gaps.some((gap) => gap.code.startsWith("currency:")));
+
+const deeplyNestedCurrency = buildIntelligenceBrief({
+  source: "ranking",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    recommendations: Array.from({ length: 5 }, (_, index) => ({
+      vendor_id: `vendor-${index}`,
+      metrics: { commercial: { linehaul: 1000 + index, currency: "USD" } }
+    })),
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(deeplyNestedCurrency.status, "reviewable");
+assert.deepEqual(deeplyNestedCurrency.evidence.currencies, ["USD"]);
+
+const globalCurrencyCoverage = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    currency: "USD",
+    rows: Array.from({ length: 5 }, (_, index) => ({ lane: `lane-${index}`, linehaul: 1000 + index })),
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(globalCurrencyCoverage.status, "reviewable");
+
+const unrelatedCurrencyDoesNotCreateMixedMoney = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    rows: [
+      { lane: "lane-money", linehaul: 1000, currency: "USD" },
+      ...Array.from({ length: 4 }, (_, index) => ({ lane: `lane-count-${index}`, transaction_count: 1, currency: "MXN" }))
+    ],
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(unrelatedCurrencyDoesNotCreateMixedMoney.status, "reviewable");
+assert.deepEqual(unrelatedCurrencyDoesNotCreateMixedMoney.evidence.currencies, ["USD"]);
+
+const invalidMoney = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    currency: "USD",
+    rows: Array.from({ length: 5 }, (_, index) => ({ lane: `lane-${index}`, linehaul: "N/A" })),
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(invalidMoney.status, "blocked");
+assert.ok(invalidMoney.gaps.some((gap) => gap.code === "monetary:invalid"));
+
+const oversizedEvidence = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    rows: [{ lane: "large", values: Array.from({ length: 21000 }, () => 1) }],
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(oversizedEvidence.status, "blocked");
+assert.ok(oversizedEvidence.gaps.some((gap) => gap.code === "evidence:incomplete"));
+
+const cyclicRow = { lane: "cycle" };
+cyclicRow.self = cyclicRow;
+const cyclicEvidence = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    rows: [cyclicRow],
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(cyclicEvidence.status, "blocked");
+assert.ok(cyclicEvidence.gaps.some((gap) => gap.code === "evidence:incomplete"));
+
 const hostile = new Proxy({}, { getPrototypeOf() { throw new Error("hostile"); } });
 assert.doesNotThrow(() => buildIntelligenceBrief(hostile));
 assert.equal(buildIntelligenceBrief(hostile).status, "blocked");
