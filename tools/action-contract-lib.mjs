@@ -16,6 +16,8 @@ export const ANALYSIS_COVERAGE = new Set(["direct", "shared-observed", "dependen
 const FIXED_EDGE_OPERATIONS = new Map([
   ["create-raw-upload", [["create_raw_upload", "POST multipart /functions/v1/create-raw-upload", "human"]]],
   ["gmail-oauth-callback", [["complete_google_oauth_callback", "GET /functions/v1/gmail-oauth-callback?code&state", "external-tokenized"]]],
+  ["provider-gmail-oauth-callback", [["complete_provider_gmail_oauth_callback", "GET /functions/v1/provider-gmail-oauth-callback?code&state", "external-tokenized"]]],
+  ["provider-gmail-push", [["receive_provider_gmail_push", "POST /functions/v1/provider-gmail-push", "external-tokenized"]]],
   ["google-chat-app", [["health", "GET /functions/v1/google-chat-app", "public"], ["handle_chat_event", "POST /functions/v1/google-chat-app provider event", "public"]]],
   ["interpret-upload", [["interpret_upload", "POST /functions/v1/interpret-upload", "human"]]],
   ["sync-banxico-fx", [["sync_banxico_fx", "POST /functions/v1/sync-banxico-fx x-cron-secret", "internal/service-role"]]],

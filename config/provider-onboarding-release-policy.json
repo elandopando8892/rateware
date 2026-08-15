@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "release_enabled": false,
+  "pilot_mode": "disabled",
+  "required_ci_workflow": "clean-migration-replay",
+  "required_ci_conclusion": "success",
+  "required_private_page": "provider-onboarding.html",
+  "required_mailbox_env": "PROVIDER_GMAIL_ALLOWED_ACCOUNT",
+  "required_secret_names": [
+    "GMAIL_TOKEN_ENCRYPTION_KEY",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "PROVIDER_GMAIL_PUBSUB_AUDIENCE",
+    "PROVIDER_GMAIL_PUBSUB_SERVICE_ACCOUNT",
+    "RATEWARE_SUPABASE_SERVICE_ROLE_KEY"
+  ],
+  "required_pipeline_stages": [
+    "inbound_received",
+    "vault_ingested",
+    "malware_scan_passed",
+    "human_review_approved",
+    "facts_promoted",
+    "readiness_complete",
+    "case_ready_for_approval",
+    "release_package_approved",
+    "signature_consent_active",
+    "form_assembled",
+    "message_approved",
+    "message_sent"
+  ],
+  "prohibited_repository_artifacts": [
+    "*.pdf",
+    "*.png",
+    "*.jpg",
+    "*.jpeg",
+    "*.p12",
+    "*.pem",
+    "*.key",
+    "*.env"
+  ],
+  "rollout": {
+    "canary_legal_entities": 1,
+    "max_initial_cases": 2,
+    "max_initial_messages": 1,
+    "automatic_followups": false,
+    "rollback_on_any_gate_failure": true
+  },
+  "cumulative_base": "main"
+}

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rateware Provider Onboarding</title>
+  <link rel="stylesheet" href="./src/styles.css" />
+  <link rel="stylesheet" href="./src/provider-onboarding.css" />
+</head>
+<body>
+<div class="shell-layout">
+  <aside class="side-nav" aria-label="Rateware modules">
+    <a class="brand-mark" href="./app.html">Rateware</a>
+    <nav class="nav-groups">
+      <section class="nav-group"><p>Operate</p><a href="./app.html" data-nav-code="CC">Command Center</a><a href="./staging-review.html" data-nav-code="RQ">Review Queue</a><a href="./rateware.html" data-nav-code="RW">Rateware</a></section>
+      <section class="nav-group"><p>Source</p><a href="./vendors.html" data-nav-code="CM">Carrier CRM</a><a href="./provider-service.html" data-nav-code="PS">Provider Service</a><a aria-current="page" href="./provider-onboarding.html" data-nav-code="PO">Provider Onboarding</a><a href="./provider-communications.html" data-nav-code="PC">Communications</a></section>
+      <section class="nav-group"><p>Admin</p><a href="./settings.html" data-nav-code="ST">Settings</a></section>
+    </nav>
+  </aside>
+  <div class="page-frame">
+    <header class="page-header">
+      <div><p class="eyebrow">Provider Service · controlled operations</p><h1>Provider Onboarding</h1><nav class="module-crumbs"><a href="./provider-service.html">Provider Service</a><span>Onboarding Workspace</span></nav></div>
+      <div class="page-header-actions"><a class="secondary-link" href="./provider-communications.html">Communications</a><form id="auth-form" class="auth-strip"><button id="auth-button" type="submit">Log in</button><button id="sign-out-button" type="button" class="secondary hidden">Sign out</button><p id="auth-status" role="status"></p></form></div>
+    </header>
+    <main class="onboarding-layout">
+      <section class="onboarding-hero">
+        <div><p class="eyebrow">Human-controlled pipeline</p><h2>Move each legal entity from evidence collection to verified delivery.</h2><p>Every gate is tied to reviewed evidence, an exact approval scope, explicit signature consent, and bounded Gmail delivery.</p></div>
+        <label><span>Search cases</span><input id="onboarding-search" type="search" placeholder="Program, jurisdiction, case ID…" autocomplete="off" /></label>
+      </section>
+      <section class="onboarding-metrics" aria-label="Onboarding metrics">
+        <button data-onboarding-queue="all" class="is-active"><span>Cases</span><strong id="metric-total">0</strong></button>
+        <button data-onboarding-queue="blocked"><span>Blocked</span><strong id="metric-blocked">0</strong></button>
+        <button data-onboarding-queue="ready_for_approval"><span>Approval</span><strong id="metric-approval">0</strong></button>
+        <button data-onboarding-queue="overdue"><span>Overdue</span><strong id="metric-overdue">0</strong></button>
+      </section>
+      <section class="onboarding-queues">
+        <button data-onboarding-queue="all" class="is-active">All</button><button data-onboarding-queue="draft">Draft</button><button data-onboarding-queue="evidence_collection">Evidence collection</button><button data-onboarding-queue="blocked">Blocked</button><button data-onboarding-queue="ready_for_approval">Ready for approval</button><button data-onboarding-queue="closed">Closed</button><button data-onboarding-queue="overdue">Overdue</button>
+      </section>
+      <section class="onboarding-master-detail">
+        <div class="workspace-panel">
+          <div class="section-heading compact split-heading"><div><p class="eyebrow">Pipeline</p><h2>Onboarding cases</h2></div><span id="onboarding-caption" class="section-caption">0–0 of 0</span></div>
+          <div class="onboarding-table-head"><span>Program / entity</span><span>Stage</span><span>Work</span><span>Controlled output</span></div>
+          <div id="onboarding-rows" class="onboarding-rows" aria-live="polite"><article class="ui-state ui-state-loading"><strong>Loading onboarding</strong><p>Resolving the private workspace.</p></article></div>
+          <div class="onboarding-pagination"><button id="onboarding-prev" class="secondary" disabled>Previous</button><button id="onboarding-next" class="secondary" disabled>Next</button></div>
+        </div>
+        <aside class="workspace-panel onboarding-detail-panel"><div id="onboarding-detail" class="onboarding-empty"><strong>Select a case</strong><p>Inspect readiness, work, approval, assembly, delivery, and audit status.</p></div></aside>
+      </section>
+      <p class="onboarding-boundary">This workspace never renders fact values, document bytes or paths, signature assets, recipients, mailbox addresses, message bodies, credentials, or cryptographic hashes.</p>
+    </main>
+  </div>
+</div>
+<script type="module">import { initAuthControls } from "./src/auth.js"; initAuthControls();</script>
+<script type="module" src="./src/provider-onboarding-page.js"></script>
+</body>
+</html>

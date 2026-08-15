@@ -1,0 +1,20 @@
+create table if not exists public.provider_portal_requirement_responses (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null,
+  invitation_id uuid not null,
+  requirement_access_id uuid not null,
+  provider_relationship_id uuid not null,
+  legal_entity_id uuid not null,
+  activation_id uuid not null,
+  activation_requirement_id uuid not null,
+  revision integer not null default 1,
+  response_text text,
+  document_version_id uuid,
+  status text not null default 'draft',
+  submitted_at timestamptz,
+  reviewed_at timestamptz,
+  reviewed_by_user_id text,
+  review_note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);

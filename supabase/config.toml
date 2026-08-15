@@ -423,3 +423,15 @@ verify_jwt = false
 
 [functions.shipper-directory-api]
 verify_jwt = false
+
+# Provider Gmail uses Kinde for the operator API and a one-time OAuth state for
+# the Google callback. Both functions perform authentication inside the runtime.
+[functions.provider-gmail-intake-api]
+verify_jwt = false
+
+[functions.provider-gmail-oauth-callback]
+verify_jwt = false
+
+# Pub/Sub authenticates with a Google-signed OIDC token verified inside the function.
+[functions.provider-gmail-push]
+verify_jwt = false

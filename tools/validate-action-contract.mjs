@@ -1,4 +1,4 @@
-import { ACTION_CONTRACT } from "../supabase/functions/_shared/action-contract.mjs";
+import { ACTION_CONTRACT } from "./effective-action-contract.mjs";
 import { discoverGovernableSurfaces, formatValidationResult, repoRootFrom, validateActionContract, validationExitCode } from "./action-contract-lib.mjs";
 
 const repoRoot = repoRootFrom(process.cwd());

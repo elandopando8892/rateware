@@ -1,0 +1,315 @@
+.communications-layout {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+}
+
+.communications-hero,
+.communications-metrics,
+.communications-queues,
+.communications-master-detail {
+  width: 100%;
+}
+
+.communications-hero {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.communications-hero h2 {
+  margin: 4px 0 8px;
+  max-width: 780px;
+}
+
+.communications-hero p:last-child {
+  margin: 0;
+  max-width: 850px;
+}
+
+.communications-search-field {
+  min-width: min(360px, 100%);
+}
+
+.communications-search-field span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.communications-search-field input {
+  width: 100%;
+}
+
+.communications-metrics {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.communications-metric {
+  display: grid;
+  gap: 5px;
+  text-align: left;
+  min-height: 82px;
+  padding: 13px 14px;
+}
+
+.communications-metric span {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.communications-metric strong {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.communications-metric.is-active,
+.communications-queue.is-active {
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+.communications-queues {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.communications-queue {
+  padding: 8px 12px;
+}
+
+.communications-master-detail {
+  display: grid;
+  grid-template-columns: minmax(560px, 1.15fr) minmax(380px, .85fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.communications-list-panel,
+.communications-detail-panel {
+  min-width: 0;
+}
+
+.communications-detail-panel {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 112px);
+  overflow: auto;
+}
+
+.communications-table-head,
+.communications-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(105px, .55fr) minmax(150px, .8fr) minmax(120px, .65fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.communications-table-head {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  opacity: .7;
+}
+
+.communications-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.communications-row {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  text-align: left;
+}
+
+.communications-row.is-selected {
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+.communications-row-main,
+.communications-row-state,
+.communications-row-signals,
+.communications-row-time {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.communications-row-main strong,
+.communications-row-main small,
+.communications-row-signals span,
+.communications-row-signals small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.communications-row-main small,
+.communications-row-state small,
+.communications-row-signals small,
+.communications-row-time small {
+  opacity: .7;
+}
+
+.communications-pagination {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.communications-detail-empty,
+.communication-detail-loading,
+.communication-detail-error {
+  padding: 30px 18px;
+  text-align: center;
+}
+
+.communication-thread-header {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.communication-thread-header h2 {
+  margin: 0;
+}
+
+.communication-thread-meta,
+.communication-thread-evidence {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.communication-thread-meta span,
+.communication-thread-evidence span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 12px;
+  opacity: .82;
+}
+
+.communication-message-list {
+  display: grid;
+  gap: 12px;
+}
+
+.communication-message {
+  padding: 13px;
+  border: 1px solid rgba(127, 127, 127, .28);
+  border-radius: 12px;
+}
+
+.communication-message--outbound {
+  margin-left: 34px;
+}
+
+.communication-message--inbound {
+  margin-right: 34px;
+}
+
+.communication-message--internal {
+  margin-inline: 18px;
+}
+
+.communication-message-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.communication-message-head div {
+  min-width: 0;
+}
+
+.communication-message-head strong,
+.communication-message-head small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.communication-message-body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.communication-message-redacted {
+  padding: 12px;
+  border: 1px dashed currentColor;
+  border-radius: 8px;
+  opacity: .72;
+}
+
+.communication-attachments {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.communication-attachment {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+@media (max-width: 1180px) {
+  .communications-metrics {
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+  }
+
+  .communications-master-detail {
+    grid-template-columns: 1fr;
+  }
+
+  .communications-detail-panel {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .communications-layout {
+    padding: 16px;
+  }
+
+  .communications-hero {
+    display: grid;
+  }
+
+  .communications-search-field {
+    min-width: 0;
+  }
+
+  .communications-metrics {
+    grid-template-columns: repeat(2, minmax(110px, 1fr));
+  }
+
+  .communications-table-head {
+    display: none;
+  }
+
+  .communications-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}

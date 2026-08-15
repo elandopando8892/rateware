@@ -1,0 +1,5 @@
+alter table public.provider_portal_requirement_responses
+  add constraint provider_portal_requirement_responses_access_fkey
+  foreign key (organization_id,requirement_access_id,invitation_id,provider_relationship_id,legal_entity_id,activation_id,activation_requirement_id)
+  references public.provider_portal_requirement_access(organization_id,id,invitation_id,provider_relationship_id,legal_entity_id,activation_id,activation_requirement_id)
+  on delete cascade;
