@@ -50,6 +50,8 @@ Direct source fingerprints use lexical tokens that ignore comments and formattin
 
 Authorization envelope fingerprints include the complete Edge source and recursively observed local static imports, side-effect-only imports, and literal dynamic imports. Legal comments between import tokens and module specifiers do not remove a dependency from the envelope. Deterministic local re-exports used for handler attribution are followed. The fingerprint therefore changes with observed dispatch, wrappers, authentication helpers, tenant/service-role guards, and other determinable shared local dependencies.
 
+A reviewed authorization entry is normally one lower-case SHA-256 value. When a documented platform-only parsing difference produces more than one stable envelope for the same reviewed source, the entry may be a closed list of unique lower-case SHA-256 values. Every listed value is explicit evidence; any unlisted value remains blocking.
+
 Coverage is recorded with explicit signals: `direct`, `shared_dependency_observed`, `unresolved_local_dependency`, `dynamic_dependency`, `external_dependency`, and `coverage_not_determinable`. External imports are identified but their semantics are not claimed as locally covered. Nonliteral dynamic imports and unresolved local imports produce `coverage_not_determinable` and block validation; they are never silently downgraded to direct coverage. Import cycles terminate through a visited-file set.
 
 An unresolved local dependency or non-determinable dispatch is a blocking error. Local-looking path aliases such as `@/`, `~/`, and `#/` are blocked unless a future resolver can determine them; they are not classified as external packages. The mechanism does not claim semantic certainty for remote modules, runtime reflection, generated code, arbitrary wrapper semantics, or provider behavior. It remains a conservative recognizer rather than a universal JavaScript, TypeScript, or SQL parser.
@@ -58,21 +60,21 @@ An unresolved local dependency or non-determinable dispatch is a blocking error.
 
 Committed-source discovery produces:
 
-- 284 active Edge operations;
+- 285 active Edge operations;
 - 68 active PostgreSQL/RPC signatures;
-- 352 active discovered surfaces;
-- 244 `rateware-api` actions.
+- 353 active discovered surfaces;
+- 245 `rateware-api` actions.
 
-The contract retains 354 rows because two historically counted RPCs are now proven absent after committed `DROP FUNCTION` statements:
+The contract retains 355 rows because two historically counted RPCs are now proven absent after committed `DROP FUNCTION` statements:
 
 - `public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)`;
 - `public.rateware_rfx_text_match_score(text,text,integer)`.
 
-H07 records both signatures as intentionally `removed`, with `public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)` as their functional replacement. The repository history, current API call, stability guard, and a read-only production catalog probe confirm that the old signatures are absent while the service-role-only replacement remains active. Historical rows remain in the 354-record contract; active discovery remains 352.
+H07 records both signatures as intentionally `removed`, with `public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)` as their functional replacement. The repository history, current API call, stability guard, and a read-only production catalog probe confirm that the old signatures are absent while the service-role-only replacement remains active. Historical rows remain in the 355-record contract; active discovery remains 353.
 
 ## Decision and lifecycle boundary
 
-The contract preserves 256 `pending_human_approval`, 27 `explicitly_allowed`, and 71 `internal_only` rows. No pending surface is converted to allowed.
+The contract preserves 257 `pending_human_approval`, 27 `explicitly_allowed`, and 71 `internal_only` rows. No pending surface is converted to allowed.
 
 H07 is approved as an intentional retirement with functional replacement. This disposition changes lifecycle metadata only; it does not restore or drop database functions, modify grants, or alter runtime behavior.
 

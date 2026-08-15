@@ -85,6 +85,18 @@ const inlineActual = selector(edgeSource('if (body.action === "inline_action") {
 assert.equal(inlineActual[0].handlerStatus, "inline-real");
 assert.equal(validateActionContract(contractFor([entryFrom(inlineActual[0])], inlineActual), inlineActual).ok, true);
 
+const dualAuthorizationContract = contractFor([entryFrom(inlineActual[0])], inlineActual);
+const inlineId = inlineActual[0].canonicalId;
+dualAuthorizationContract.reviewedAuthorizationFingerprints[inlineId] = [
+  "0".repeat(64),
+  inlineActual[0].authorizationFingerprint
+];
+assert.equal(validateActionContract(dualAuthorizationContract, inlineActual).ok, true, "Every explicitly reviewed platform fingerprint must be accepted");
+dualAuthorizationContract.reviewedAuthorizationFingerprints[inlineId] = ["0".repeat(64), "1".repeat(64)];
+assert.ok(codes(validateActionContract(dualAuthorizationContract, inlineActual)).includes("AUTHORIZATION_ENVELOPE_CHANGED"), "An unreviewed third fingerprint must remain blocked");
+dualAuthorizationContract.reviewedAuthorizationFingerprints[inlineId] = ["0".repeat(64), "0".repeat(64)];
+assert.ok(codes(validateActionContract(dualAuthorizationContract, inlineActual)).includes("INVALID_AUTHORIZATION_FINGERPRINT"), "Reviewed fingerprint lists must be unique");
+
 const namedSource = edgeSource('if (body.action === "named_action") { return await namedHandler(); }', "async function namedHandler() { return { ok: true }; }");
 const namedActual = selector(namedSource);
 assert.equal(namedActual[0].handlerStatus, "named-existing");
@@ -220,12 +232,12 @@ assert.ok(codes(validateActionContract(contractFor([malformed], [{ ...inlineActu
 // 25-30: committed baseline, status preservation, non-governable declaration, divergence and explicit limitations.
 const baseline = discoverGovernableSurfaces(process.cwd());
 const baselineResult = validateActionContract(ACTION_CONTRACT, baseline, { repoRoot: process.cwd() });
-assert.equal(baseline.length, 394);
-assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, 290);
+assert.equal(baseline.length, 395);
+assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, 291);
 assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length, 104);
-assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.rateware-api.")).length, 244);
-assert.equal(ACTION_CONTRACT.surfaces.length, 396);
-assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 256);
+assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.rateware-api.")).length, 245);
+assert.equal(ACTION_CONTRACT.surfaces.length, 397);
+assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 257);
 assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "explicitly_allowed").length, 33);
 assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "internal_only").length, 107);
 assert.equal(baseline.some((entry) => entry.canonicalId.includes("whatsapp-healthcheck")), false);
@@ -729,9 +741,9 @@ assert.equal(formatValidationResult(validateActionContract(deterministicContract
 assert.equal(formatValidationResult(validateActionContract(deterministicContract, inlineActual)).includes(secretMarker), false);
 const finalBaseline = discoverGovernableSurfaces(process.cwd());
 const finalBaselineResult = validateActionContract(ACTION_CONTRACT, finalBaseline, { repoRoot: process.cwd() });
-assert.deepEqual({ total: finalBaseline.length, edge: finalBaseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, rpc: finalBaseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length }, { total: 394, edge: 290, rpc: 104 });
+assert.deepEqual({ total: finalBaseline.length, edge: finalBaseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, rpc: finalBaseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length }, { total: 395, edge: 291, rpc: 104 });
 assert.deepEqual(finalBaselineResult.issues.filter((entry) => entry.level === "error").map((entry) => entry.code), []);
-assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 256);
+assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 257);
 assert.equal(ACTION_CONTRACT.nonGovernableDeclarations.some((entry) => entry.canonicalId === "declaration.edge.whatsapp-healthcheck" && entry.decisionStatus === "pending_human_approval"), true);
 for (const actual of [dynamicTemplate, spreadRegistry, computedDynamic, callbackWrapper, multipleRegistries, multipleDispatchers, fallbackDispatch]) {
   assert.equal(actual.dispatchCandidates.length > 0, true, "No unsupported dispatch fixture may omit its blocking candidate.");

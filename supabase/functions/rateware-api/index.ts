@@ -10,6 +10,9 @@ const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const VENDOR_LOGOS_BUCKET = "vendor-logos";
 const GMAIL_ALLOWED_SENDER = (Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@heymarksman.com").trim().toLowerCase();
+const FCM_CUSTOMER_QUOTE_EMAIL_CONTRACT_VERSION = "fcm.rateware-gmail-send.v1";
+const FCM_CUSTOMER_QUOTE_EMAIL_DRAFT_VERSION = "fcm.rateware-gmail-draft.v1";
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
 const RFX_INVITATION_TOKEN_ENCRYPTION_KEY = (Deno.env.get("RFX_INVITATION_TOKEN_ENCRYPTION_KEY")
   || Deno.env.get("RFX_RFI_LINK_ENCRYPTION_KEY")
   || Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY")
@@ -3133,9 +3136,11 @@ function apiErrorStatus(info: ReturnType<typeof apiErrorInfo>) {
     "authentication required",
     "unauthorized"
   ].some((marker) => message.includes(marker));
+  if (code === "400") return 400;
   if (code === "401" || explicitAuthFailure) return 401;
   if (code === "403" || message.includes("forbidden") || message.includes("not allowed")) return 403;
   if (code === "404" || message.includes("not found")) return 404;
+  if (code === "409") return 409;
   return 500;
 }
 
@@ -16773,6 +16778,396 @@ async function gmailConnectionIdentity(
   return (result.data || null) as Record<string, unknown> | null;
 }
 
+function requiredFcmString(value: unknown, label: string, maxLength: number, preserveWhitespace = false) {
+  if (typeof value !== "string") throw Object.assign(new Error(`${label} is required.`), { code: "400" });
+  const normalized = preserveWhitespace ? value : value.trim();
+  if (!normalized || normalized.length > maxLength) {
+    throw Object.assign(new Error(`${label} is invalid.`), { code: "400" });
+  }
+  return normalized;
+}
+
+async function fcmSha256Hex(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function validateFcmCustomerQuoteEmailPackage(
+  user: RatewareUser,
+  input: Record<string, unknown>,
+  headerIdempotencyKey: string | null
+) {
+  const ownerEmail = normalizeEmail(user.owner_email);
+  if (!ownerEmail || ownerEmail !== GMAIL_ALLOWED_SENDER) {
+    throw Object.assign(new Error(`Only ${GMAIL_ALLOWED_SENDER} is allowed to deliver customer quote email.`), { code: "403" });
+  }
+
+  const packageInput = objectRecord(input.package);
+  const contractVersion = requiredFcmString(packageInput.contractVersion, "FCM delivery contract version", 80);
+  if (contractVersion !== FCM_CUSTOMER_QUOTE_EMAIL_CONTRACT_VERSION || packageInput.mode !== "DELIVER") {
+    throw Object.assign(new Error("Unsupported FCM customer quote delivery contract."), { code: "400" });
+  }
+
+  const idempotencyKey = requiredFcmString(packageInput.idempotencyKey, "Idempotency key", 64).toLowerCase();
+  const requestIdempotencyKey = requiredFcmString(input.idempotency_key, "Request idempotency key", 64).toLowerCase();
+  const headerKey = requiredFcmString(headerIdempotencyKey, "X-Idempotency-Key header", 64).toLowerCase();
+  if (!SHA256_HEX_PATTERN.test(idempotencyKey) || requestIdempotencyKey !== idempotencyKey || headerKey !== idempotencyKey) {
+    throw Object.assign(new Error("FCM delivery idempotency keys do not match."), { code: "400" });
+  }
+
+  const sourceOrganizationId = requiredFcmString(packageInput.sourceOrganizationId, "Source organization id", 200);
+  const authorization = objectRecord(packageInput.authorization);
+  const actorUserId = requiredFcmString(authorization.actorUserId, "Authorized actor user id", 200);
+  if (authorization.confirmation !== "EXPLICIT_QUOTE_DESK_SEND") {
+    throw Object.assign(new Error("Explicit Quote Desk send confirmation is required."), { code: "400" });
+  }
+
+  const prepared = objectRecord(packageInput.prepared);
+  if (prepared.contractVersion !== FCM_CUSTOMER_QUOTE_EMAIL_DRAFT_VERSION || prepared.mode !== "READ_ONLY") {
+    throw Object.assign(new Error("Unsupported FCM prepared email contract."), { code: "400" });
+  }
+  const source = objectRecord(prepared.source);
+  if (source.system !== "Freight Cost Model") {
+    throw Object.assign(new Error("FCM source system is invalid."), { code: "400" });
+  }
+  const emailDraftId = requiredFcmString(source.emailDraftId, "FCM email draft id", 200);
+  const customerQuoteId = requiredFcmString(source.customerQuoteId, "FCM customer quote id", 200);
+  const folio = requiredFcmString(source.folio, "FCM customer quote folio", 200);
+  const preparedAt = requiredFcmString(source.preparedAt, "FCM prepared timestamp", 80);
+  const preparedAtMs = Date.parse(preparedAt);
+  if (!Number.isFinite(preparedAtMs) || preparedAtMs > Date.now() + 300_000) {
+    throw Object.assign(new Error("FCM prepared timestamp is invalid."), { code: "400" });
+  }
+
+  const governance = objectRecord(prepared.governance);
+  if (governance.status !== "PREPARED" || governance.delivery !== "NOT_SENT") {
+    throw Object.assign(new Error("FCM email is not in the prepared, unsent state."), { code: "400" });
+  }
+  const payloadChecksum = requiredFcmString(governance.payloadChecksum, "FCM payload checksum", 64).toLowerCase();
+  if (!SHA256_HEX_PATTERN.test(payloadChecksum)) {
+    throw Object.assign(new Error("FCM payload checksum is invalid."), { code: "400" });
+  }
+  const template = objectRecord(governance.template);
+  const templateId = requiredFcmString(template.id, "FCM email template id", 200);
+  const templateName = requiredFcmString(template.name, "FCM email template name", 300);
+
+  const recipient = objectRecord(prepared.recipient);
+  const recipientEmail = requiredFcmString(recipient.email, "Customer email", 320);
+  if (!VENDOR_EMAIL_PATTERN.test(recipientEmail)) {
+    throw Object.assign(new Error("Customer email is invalid."), { code: "400" });
+  }
+  const message = objectRecord(prepared.message);
+  const subject = requiredFcmString(message.subject, "Customer quote email subject", 998, true);
+  const html = requiredFcmString(message.html, "Customer quote email HTML", 250_000, true);
+  const text = requiredFcmString(message.text, "Customer quote email text", 100_000, true);
+  const preparedBy = objectRecord(prepared.preparedBy);
+  const preparedByEmail = normalizeEmail(requiredFcmString(preparedBy.email, "Prepared-by email", 320));
+  if (!preparedByEmail || preparedByEmail !== ownerEmail) {
+    throw Object.assign(new Error("The authenticated Rateware user must match the FCM prepared-by email."), { code: "403" });
+  }
+
+  const expectedPayloadChecksum = await fcmSha256Hex(JSON.stringify({
+    toEmail: recipientEmail,
+    subject,
+    html,
+    text
+  }));
+  if (expectedPayloadChecksum !== payloadChecksum) {
+    throw Object.assign(new Error("FCM email payload checksum does not match the prepared content."), { code: "400" });
+  }
+  const expectedIdempotencyKey = await fcmSha256Hex(
+    `${FCM_CUSTOMER_QUOTE_EMAIL_CONTRACT_VERSION}:${sourceOrganizationId}:${emailDraftId}:${payloadChecksum}`
+  );
+  if (expectedIdempotencyKey !== idempotencyKey) {
+    throw Object.assign(new Error("FCM delivery idempotency key is invalid."), { code: "400" });
+  }
+
+  return {
+    ownerEmail,
+    contractVersion,
+    idempotencyKey,
+    sourceOrganizationId,
+    actorUserId,
+    emailDraftId,
+    customerQuoteId,
+    folio,
+    preparedAt,
+    payloadChecksum,
+    templateId,
+    templateName,
+    recipientEmail,
+    subject,
+    html,
+    text,
+    preparedByEmail
+  };
+}
+
+function fcmReceiptAccepted(receipt: Record<string, unknown>, duplicate: boolean) {
+  return {
+    accepted: true,
+    duplicate,
+    receipt_id: cleanText(receipt.id),
+    provider_message_id: cleanText(receipt.provider_message_id),
+    provider_thread_id: cleanText(receipt.provider_thread_id),
+    provider_response_status: cleanText(receipt.provider_response_status) || "accepted"
+  };
+}
+
+function fcmReceiptBlocked(receipt: Record<string, unknown>) {
+  const status = cleanText(receipt.status) || "sending";
+  const deliveryUnknown = status === "delivery_unknown";
+  return {
+    status: 409,
+    body: {
+      error: deliveryUnknown
+        ? "Gmail delivery outcome is uncertain; reconcile the existing receipt before retrying."
+        : "This customer quote email delivery is already in progress.",
+      accepted: false,
+      delivery_unknown: deliveryUnknown,
+      receipt_id: cleanText(receipt.id),
+      provider_message_id: cleanText(receipt.provider_message_id),
+      provider_thread_id: cleanText(receipt.provider_thread_id)
+    }
+  };
+}
+
+async function sendFcmCustomerQuoteEmail(
+  supabase: RatewareSupabaseClient,
+  user: RatewareUser,
+  input: Record<string, unknown>,
+  headerIdempotencyKey: string | null
+) {
+  const delivery = await validateFcmCustomerQuoteEmailPackage(user, input, headerIdempotencyKey);
+  const existingResult = await supabase
+    .from("fcm_customer_quote_email_receipts")
+    .select("*")
+    .eq("owner_email", delivery.ownerEmail)
+    .eq("idempotency_key", delivery.idempotencyKey)
+    .maybeSingle();
+  if (existingResult.error) throw existingResult.error;
+
+  let receipt = (existingResult.data || null) as Record<string, unknown> | null;
+  if (receipt && cleanText(receipt.status) === "sent") {
+    return { status: 200, body: fcmReceiptAccepted(receipt, true) };
+  }
+  if (receipt && ["sending", "delivery_unknown"].includes(cleanText(receipt.status) || "")) {
+    return fcmReceiptBlocked(receipt);
+  }
+
+  const now = new Date().toISOString();
+  if (receipt) {
+    const reclaimResult = await supabase
+      .from("fcm_customer_quote_email_receipts")
+      .update({
+        status: "sending",
+        attempted_at: now,
+        updated_at: now,
+        error: null,
+        provider_response_status: null
+      })
+      .eq("id", receipt.id)
+      .eq("status", "failed")
+      .select("*")
+      .maybeSingle();
+    if (reclaimResult.error) throw reclaimResult.error;
+    receipt = (reclaimResult.data || null) as Record<string, unknown> | null;
+    if (!receipt) {
+      const racedResult = await supabase
+        .from("fcm_customer_quote_email_receipts")
+        .select("*")
+        .eq("owner_email", delivery.ownerEmail)
+        .eq("idempotency_key", delivery.idempotencyKey)
+        .single();
+      if (racedResult.error) throw racedResult.error;
+      return fcmReceiptBlocked(racedResult.data as Record<string, unknown>);
+    }
+  } else {
+    const insertResult = await supabase
+      .from("fcm_customer_quote_email_receipts")
+      .insert(withOwner({
+        source_organization_id: delivery.sourceOrganizationId,
+        source_system: "Freight Cost Model",
+        contract_version: delivery.contractVersion,
+        idempotency_key: delivery.idempotencyKey,
+        payload_checksum: delivery.payloadChecksum,
+        email_draft_id: delivery.emailDraftId,
+        customer_quote_id: delivery.customerQuoteId,
+        folio: delivery.folio,
+        recipient_email: delivery.recipientEmail,
+        subject: delivery.subject,
+        status: "sending",
+        attempted_at: now,
+        payload_metadata: {
+          actor_user_id: delivery.actorUserId,
+          prepared_at: delivery.preparedAt,
+          prepared_by_email: delivery.preparedByEmail,
+          template: { id: delivery.templateId, name: delivery.templateName }
+        }
+      }, user))
+      .select("*")
+      .single();
+    if (insertResult.error) {
+      if (cleanText(objectRecord(insertResult.error).code) !== "23505") throw insertResult.error;
+      const racedResult = await supabase
+        .from("fcm_customer_quote_email_receipts")
+        .select("*")
+        .eq("owner_email", delivery.ownerEmail)
+        .eq("idempotency_key", delivery.idempotencyKey)
+        .single();
+      if (racedResult.error) throw racedResult.error;
+      const raced = racedResult.data as Record<string, unknown>;
+      if (cleanText(raced.status) === "sent") return { status: 200, body: fcmReceiptAccepted(raced, true) };
+      return fcmReceiptBlocked(raced);
+    }
+    receipt = insertResult.data as Record<string, unknown>;
+  }
+
+  const receiptId = requiredFcmString(receipt.id, "Rateware delivery receipt id", 80);
+  let accessToken: string;
+  let connection: Record<string, unknown> | null;
+  try {
+    accessToken = await gmailAccessToken(supabase, user, GMAIL_ALLOWED_SENDER);
+    connection = await gmailConnectionIdentity(supabase, user, GMAIL_ALLOWED_SENDER);
+  } catch (error) {
+    const failure = safeOperationalError(error);
+    await supabase
+      .from("fcm_customer_quote_email_receipts")
+      .update({ status: "failed", error: failure, provider_response_status: "not_attempted", updated_at: new Date().toISOString() })
+      .eq("id", receiptId)
+      .eq("status", "sending");
+    throw error;
+  }
+
+  let gmailResponse: Response;
+  let gmailData: Record<string, unknown> = {};
+  try {
+    gmailResponse = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        raw: gmailRawMessage({
+          recipient_email: delivery.recipientEmail,
+          subject: delivery.subject,
+          html_body: delivery.html,
+          text_body: delivery.text,
+          metadata: {
+            fcm_email_draft_id: delivery.emailDraftId,
+            fcm_customer_quote_id: delivery.customerQuoteId,
+            fcm_folio: delivery.folio
+          }
+        }, GMAIL_ALLOWED_SENDER)
+      })
+    });
+    gmailData = await gmailResponse.json().catch(() => ({})) as Record<string, unknown>;
+  } catch (error) {
+    const failure = safeOperationalError(error);
+    await supabase
+      .from("fcm_customer_quote_email_receipts")
+      .update({ status: "delivery_unknown", error: failure, provider_response_status: "network_unknown", updated_at: new Date().toISOString() })
+      .eq("id", receiptId)
+      .eq("status", "sending");
+    return {
+      status: 409,
+      body: { error: "Gmail delivery outcome is uncertain; do not retry automatically.", accepted: false, delivery_unknown: true, receipt_id: receiptId }
+    };
+  }
+
+  if (!gmailResponse.ok) {
+    const uncertain = gmailResponse.status === 408 || gmailResponse.status === 429 || gmailResponse.status >= 500;
+    const failure = safeOperationalError(cleanText(objectRecord(gmailData.error).message) || `Gmail request failed (${gmailResponse.status}).`);
+    await supabase
+      .from("fcm_customer_quote_email_receipts")
+      .update({
+        status: uncertain ? "delivery_unknown" : "failed",
+        error: failure,
+        provider_response_status: String(gmailResponse.status),
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", receiptId)
+      .eq("status", "sending");
+    return {
+      status: uncertain ? 409 : 502,
+      body: { error: failure, accepted: false, delivery_unknown: uncertain, receipt_id: receiptId }
+    };
+  }
+
+  const providerMessageId = cleanText(gmailData.id);
+  const providerThreadId = cleanText(gmailData.threadId);
+  if (!providerMessageId) {
+    await supabase
+      .from("fcm_customer_quote_email_receipts")
+      .update({ status: "delivery_unknown", error: "Gmail accepted the request without a message receipt.", provider_response_status: String(gmailResponse.status), updated_at: new Date().toISOString() })
+      .eq("id", receiptId)
+      .eq("status", "sending");
+    return {
+      status: 409,
+      body: { error: "Gmail accepted the request without a message receipt; reconcile before retrying.", accepted: false, delivery_unknown: true, receipt_id: receiptId }
+    };
+  }
+
+  const sentAt = new Date().toISOString();
+  const sentResult = await supabase
+    .from("fcm_customer_quote_email_receipts")
+    .update({
+      status: "sent",
+      sent_at: sentAt,
+      updated_at: sentAt,
+      gmail_connection_id: cleanText(connection?.id),
+      provider_message_id: providerMessageId,
+      provider_thread_id: providerThreadId,
+      provider_response_status: String(gmailResponse.status),
+      error: null
+    })
+    .eq("id", receiptId)
+    .eq("status", "sending")
+    .select("*")
+    .maybeSingle();
+
+  if (sentResult.error || !sentResult.data) {
+    console.error("fcm_customer_quote_email_receipt_finalize_failed", {
+      receipt_id: receiptId,
+      provider_message_id: providerMessageId,
+      error: sentResult.error ? safeOperationalError(sentResult.error) : "receipt_state_changed"
+    });
+    return {
+      status: 200,
+      body: {
+        accepted: true,
+        duplicate: false,
+        receipt_id: receiptId,
+        provider_message_id: providerMessageId,
+        provider_thread_id: providerThreadId,
+        provider_response_status: String(gmailResponse.status),
+        reconciliation_required: true
+      }
+    };
+  }
+
+  await tryWriteAuditLog(
+    supabase,
+    user,
+    "fcm.customer_quote.gmail.sent",
+    "fcm_customer_quote_email_receipts",
+    receiptId,
+    `Sent Freight Cost Model customer quote ${delivery.folio} through Gmail.`,
+    {
+      source_organization_id: delivery.sourceOrganizationId,
+      email_draft_id: delivery.emailDraftId,
+      customer_quote_id: delivery.customerQuoteId,
+      payload_checksum: delivery.payloadChecksum,
+      gmail_connection_id: cleanText(connection?.id),
+      provider_message_id: providerMessageId,
+      provider_thread_id: providerThreadId
+    }
+  );
+
+  return { status: 200, body: fcmReceiptAccepted(sentResult.data as Record<string, unknown>, false) };
+}
+
 async function gmailApiGet(accessToken: string, path: string) {
   const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me${path}`, {
     headers: { Authorization: `Bearer ${accessToken}` }
@@ -28538,6 +28933,16 @@ Deno.serve(async (request) => {
     if (body.action === "send_outreach_messages") {
       const result = await sendOutreachMessages(supabase, user, body);
       return jsonResponse(result);
+    }
+
+    if (body.action === "send_fcm_customer_quote_email") {
+      const result = await sendFcmCustomerQuoteEmail(
+        supabase,
+        user,
+        body,
+        request.headers.get("x-idempotency-key")
+      );
+      return jsonResponse(result.body, result.status);
     }
 
     if (body.action === "send_whatsapp_outreach_messages") {
