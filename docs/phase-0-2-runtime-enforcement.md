@@ -23,6 +23,26 @@ Do not enable `required` until all of the following are evidenced:
 5. Shadow logs show no legitimate-user rejection during a controlled operating window.
 6. A controlled authenticated smoke covers Rateware API, Shipper directory, upload creation, interpretation, and catalog sync.
 
+### Phase 0.2E evidence gate
+
+Phase 0.2E turns those conditions into a repeatable, fail-closed evidence check. Keep production in `shadow` while collecting a controlled window of at least 24 hours. The evidence file must use one 16-hex pseudonymous tenant reference throughout; do not include email, Kinde subject, bearer token, or the raw external organization id.
+
+Run:
+
+```powershell
+npm run check:tenant-readiness -- --input .\phase0-shadow-evidence.json
+```
+
+The command exits successfully only when all mapping gates agree, the window contains legitimate traffic with zero legitimate shadow rejections, and these five authenticated smokes pass exactly once:
+
+- `rateware-api`: read-only authenticated request;
+- `shipper-directory-api`: read-only authenticated request;
+- `create-raw-upload`: exactly one auditable raw upload;
+- `interpret-upload`: one or more `pending_review` staging rows and zero approved rows;
+- `sync-rateware-catalog`: `dry_run=true` and zero writes.
+
+The tool evaluates supplied evidence only. It does not query Supabase, activate mappings, invoke Edge Functions, approve a rate, change the environment, or enable `required`. A `GO` is evidence for a separate human cutover decision, not an automatic deployment instruction.
+
 Existing business rows remain scoped by the reconciled external Kinde organization id during this phase. Moving `organization_id` columns to the canonical UUID requires a separate bounded backfill/cutover with row counts, rollback, and independent review.
 
 ## Rollback
