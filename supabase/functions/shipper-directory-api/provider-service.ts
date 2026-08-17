@@ -3,6 +3,22 @@ import {
   decideProviderEntityReviewField,
   finalizeProviderEntityDocumentReview,
 } from "../_shared/provider-entity-review-commands.ts";
+import { promoteApprovedProviderEntityReviewFacts } from "../_shared/provider-entity-fact-promotion.ts";
+import {
+  cancelProviderOnboardingCase,
+  openProviderOnboardingCase,
+  reconcileProviderOnboardingCase,
+} from "../_shared/provider-onboarding-case-workflow.ts";
+import { createProviderOnboardingReleasePackage } from "../_shared/provider-onboarding-release-package.ts";
+
+// Deliberately NOT wired:
+//   decideProviderOnboardingReleasePackage — duplicates the
+//     provider_onboarding_decide_release_package_approval RPC and counts approvals
+//     across every revision, so a re-cut package inherits approvals granted for
+//     different contents. The RPC is canonical; see docs/provider-service.
+//   queueProviderOnboardingFormAssembly / processProviderOnboardingFormAssembly and
+//     the Gmail delivery commands — these reach external systems and stay unreachable
+//     until a sender allowlist and recipient-domain policy exist.
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PROVIDER_SERVICE_ACTIONS = new Set([
@@ -19,11 +35,21 @@ const PROVIDER_SERVICE_ACTIONS = new Set([
   "claim_provider_entity_document_review",
   "decide_provider_entity_review_field",
   "finalize_provider_entity_document_review",
+  "promote_provider_entity_review_facts",
+  "open_provider_onboarding_case",
+  "reconcile_provider_onboarding_case",
+  "cancel_provider_onboarding_case",
+  "create_provider_onboarding_release_package",
 ]);
-const PROVIDER_SERVICE_COMMANDS = new Set([
-  "claim_provider_entity_document_review",
-  "decide_provider_entity_review_field",
-  "finalize_provider_entity_document_review",
+const PROVIDER_SERVICE_COMMANDS = new Map<string, (supabase: any, input: Record<string, unknown>, actorId: string) => Promise<unknown>>([
+  ["claim_provider_entity_document_review", claimProviderEntityDocumentReview],
+  ["decide_provider_entity_review_field", decideProviderEntityReviewField],
+  ["finalize_provider_entity_document_review", finalizeProviderEntityDocumentReview],
+  ["promote_provider_entity_review_facts", promoteApprovedProviderEntityReviewFacts],
+  ["open_provider_onboarding_case", openProviderOnboardingCase],
+  ["reconcile_provider_onboarding_case", reconcileProviderOnboardingCase],
+  ["cancel_provider_onboarding_case", cancelProviderOnboardingCase],
+  ["create_provider_onboarding_release_package", createProviderOnboardingReleasePackage],
 ]);
 const COMMAND_CENTER_QUEUES = new Set(["all", "critical", "attention", "watch", "healthy", "needs_reply", "approvals", "blocked"]);
 const COMMUNICATION_INBOX_QUEUES = new Set([
@@ -736,20 +762,15 @@ export async function handleProviderServiceAction(
 
   const { workspaceId, organizationUuid } = await resolveProviderServiceScope(supabase, user);
 
-  if (PROVIDER_SERVICE_COMMANDS.has(action)) {
-    // Commands act on behalf of an identified reviewer. The organization is the
+  const command = PROVIDER_SERVICE_COMMANDS.get(action || "");
+  if (command) {
+    // Commands act on behalf of an identified actor. The organization is the
     // resolved tenant, never the caller-supplied one — the shared command modules
     // take organization_id as input, so it is overwritten here rather than merged.
-    const reviewerUserId = cleanText(user.owner_user_id);
-    if (!reviewerUserId) throw new Error("Provider Service commands require an identified user.");
+    const actorId = cleanText(user.owner_user_id);
+    if (!actorId) throw new Error("Provider Service commands require an identified user.");
     const input = { ...body, organization_id: organizationUuid };
-    if (action === "claim_provider_entity_document_review") {
-      return { data: await claimProviderEntityDocumentReview(supabase, input, reviewerUserId) };
-    }
-    if (action === "decide_provider_entity_review_field") {
-      return { data: await decideProviderEntityReviewField(supabase, input, reviewerUserId) };
-    }
-    return { data: await finalizeProviderEntityDocumentReview(supabase, input, reviewerUserId) };
+    return { data: await command(supabase, input, actorId) };
   }
   if (action === "list_provider_service_command_center") {
     return await listProviderServiceCommandCenter(supabase, organizationUuid, body);

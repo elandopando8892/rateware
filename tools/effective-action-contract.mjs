@@ -28,10 +28,17 @@ const delta = extension.expectedCountsDelta;
 //      does change what the function can do — it is registered here deliberately and the
 //      commands' own guards (ownership, expected_revision, separation of duties) remain
 //      the authorization boundary.
+//   4. Five further commands wired through the same table-driven dispatch —
+//      promote_provider_entity_review_facts, open/reconcile/cancel_provider_onboarding_case
+//      and create_provider_onboarding_release_package. All are internal state
+//      transitions with no external side effect. Form assembly and Gmail delivery are
+//      deliberately left unwired until a sender allowlist and recipient-domain policy
+//      exist, and decideProviderOnboardingReleasePackage stays unwired because it
+//      duplicates the canonical approval RPC with cross-revision approval counting.
 // All run under the same canonical Kinde -> workspace -> tenant resolver and add no new
 // privilege, table or caller, and none is externally discovered, so the envelope is
 // refreshed deliberately rather than the eight actions being re-reviewed.
-const shipperDirectoryEnvelope = '053fec837e6f11b5c00462157a7626f6ebcdcfde2780dcc15727feb4ecbf0284';
+const shipperDirectoryEnvelope = '05cdaa982712c46e67d860ba97c3f9d69abcb84504d7e46229f83f0b97e7318c';
 const legacyAuthorizationOverrides = Object.fromEntries([
   'edge.shipper-directory-api.get_shipper',
   'edge.shipper-directory-api.list_shippers',
