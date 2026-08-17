@@ -9,6 +9,7 @@
     "smoke:integrations": "node tools/integration-smoke.mjs",
     "validate:action-contract": "node tools/validate-action-contract.mjs",
     "test:action-contract": "node tests/action-contract.test.mjs",
+    "test:provider-service": "node tools/run-provider-service-tests.mjs",
     "test:fcm-gmail": "node tests/fcm-customer-quote-email.test.mjs && deno test --allow-env --node-modules-dir=none --no-lock tests/fcm-customer-quote-email.contract.test.ts",
     "test:identity-contract": "node --test tests/phase0-identity.test.mjs",
     "test:shadow-hardening": "node tests/phase0-shadow-hardening.test.mjs",
