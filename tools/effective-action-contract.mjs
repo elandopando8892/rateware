@@ -35,10 +35,16 @@ const delta = extension.expectedCountsDelta;
 //      deliberately left unwired until a sender allowlist and recipient-domain policy
 //      exist, and decideProviderOnboardingReleasePackage stays unwired because it
 //      duplicates the canonical approval RPC with cross-revision approval counting.
+//   5. The bounded-upload pair — begin_provider_entity_upload and
+//      confirm_provider_entity_upload — wired through the same table. These issue a
+//      short-lived signed upload URL into the private vault bucket and confirm the
+//      object afterwards. The adapter pins actor.type to 'user', so a caller cannot
+//      claim to be the system or an integration and bypass the identified-user
+//      requirement. No public URL is ever produced by either path.
 // All run under the same canonical Kinde -> workspace -> tenant resolver and add no new
 // privilege, table or caller, and none is externally discovered, so the envelope is
 // refreshed deliberately rather than the eight actions being re-reviewed.
-const shipperDirectoryEnvelope = '05cdaa982712c46e67d860ba97c3f9d69abcb84504d7e46229f83f0b97e7318c';
+const shipperDirectoryEnvelope = '1fb36039d1ba330bb8c287628ad5e345ea18e828b8f6fbc40c4a1e058413d196';
 const legacyAuthorizationOverrides = Object.fromEntries([
   'edge.shipper-directory-api.get_shipper',
   'edge.shipper-directory-api.list_shippers',

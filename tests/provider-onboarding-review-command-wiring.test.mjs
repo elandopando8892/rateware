@@ -12,6 +12,8 @@ const COMMANDS = [
   'reconcile_provider_onboarding_case',
   'cancel_provider_onboarding_case',
   'create_provider_onboarding_release_package',
+  'begin_provider_entity_upload',
+  'confirm_provider_entity_upload',
 ];
 
 test('the review command module is actually imported by an entrypoint', () => {
@@ -77,6 +79,15 @@ test('commands are dispatched before the read handlers and never fall through', 
 test('the actor identity comes from the authenticated user, not the request body', () => {
   assert.ok(!/body\.reviewer_user_id|body\.actor/.test(dispatch), 'the actor must never come from the request body');
   assert.match(dispatch, /command\(supabase, input, actorId\)/);
+});
+
+test('the bounded-upload adapter pins the actor type to user', () => {
+  // The module accepts actor.type of user | agent | system | integration, and only
+  // 'user' requires an identified id. Taking the type from the request would let a
+  // browser caller claim to be the system and upload without an identity.
+  const map = source.slice(source.indexOf('const PROVIDER_SERVICE_COMMANDS'), source.indexOf('const COMMAND_CENTER_QUEUES'));
+  assert.equal((map.match(/\{ type: "user", userId: actorId \}/g) || []).length, 2);
+  assert.ok(!/type: cleanText\(body|type: body\./.test(map), 'the actor type must never come from the request');
 });
 
 test('the command table is the only route into a command module', () => {

@@ -10,6 +10,10 @@ import {
   reconcileProviderOnboardingCase,
 } from "../_shared/provider-onboarding-case-workflow.ts";
 import { createProviderOnboardingReleasePackage } from "../_shared/provider-onboarding-release-package.ts";
+import {
+  beginProviderEntitySignedUpload,
+  confirmProviderEntitySignedUpload,
+} from "../_shared/provider-entity-upload.ts";
 
 // Deliberately NOT wired:
 //   decideProviderOnboardingReleasePackage — duplicates the
@@ -40,6 +44,8 @@ const PROVIDER_SERVICE_ACTIONS = new Set([
   "reconcile_provider_onboarding_case",
   "cancel_provider_onboarding_case",
   "create_provider_onboarding_release_package",
+  "begin_provider_entity_upload",
+  "confirm_provider_entity_upload",
 ]);
 const PROVIDER_SERVICE_COMMANDS = new Map<string, (supabase: any, input: Record<string, unknown>, actorId: string) => Promise<unknown>>([
   ["claim_provider_entity_document_review", claimProviderEntityDocumentReview],
@@ -50,6 +56,13 @@ const PROVIDER_SERVICE_COMMANDS = new Map<string, (supabase: any, input: Record<
   ["reconcile_provider_onboarding_case", reconcileProviderOnboardingCase],
   ["cancel_provider_onboarding_case", cancelProviderOnboardingCase],
   ["create_provider_onboarding_release_package", createProviderOnboardingReleasePackage],
+  // The bounded-upload module takes an actor object rather than an id. The adapter
+  // pins actor.type to 'user' so a browser caller can never claim to be the system
+  // or an integration, which would bypass the identified-user requirement.
+  ["begin_provider_entity_upload", (supabase, input, actorId) =>
+    beginProviderEntitySignedUpload(supabase, input, { type: "user", userId: actorId })],
+  ["confirm_provider_entity_upload", (supabase, input, actorId) =>
+    confirmProviderEntitySignedUpload(supabase, input, { type: "user", userId: actorId })],
 ]);
 const COMMAND_CENTER_QUEUES = new Set(["all", "critical", "attention", "watch", "healthy", "needs_reply", "approvals", "blocked"]);
 const COMMUNICATION_INBOX_QUEUES = new Set([
