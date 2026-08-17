@@ -1,3 +1,9 @@
+import {
+  claimProviderEntityDocumentReview,
+  decideProviderEntityReviewField,
+  finalizeProviderEntityDocumentReview,
+} from "../_shared/provider-entity-review-commands.ts";
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PROVIDER_SERVICE_ACTIONS = new Set([
   "get_provider_360",
@@ -10,6 +16,14 @@ const PROVIDER_SERVICE_ACTIONS = new Set([
   "list_provider_onboarding_field_review",
   "list_provider_onboarding_approvals",
   "list_provider_onboarding_delivery",
+  "claim_provider_entity_document_review",
+  "decide_provider_entity_review_field",
+  "finalize_provider_entity_document_review",
+]);
+const PROVIDER_SERVICE_COMMANDS = new Set([
+  "claim_provider_entity_document_review",
+  "decide_provider_entity_review_field",
+  "finalize_provider_entity_document_review",
 ]);
 const COMMAND_CENTER_QUEUES = new Set(["all", "critical", "attention", "watch", "healthy", "needs_reply", "approvals", "blocked"]);
 const COMMUNICATION_INBOX_QUEUES = new Set([
@@ -714,13 +728,29 @@ async function listProviderOnboardingDelivery(supabase: any, organizationUuid: s
 
 export async function handleProviderServiceAction(
   supabase: any,
-  user: { organization_id?: string | null },
+  user: { organization_id?: string | null; owner_user_id?: string | null },
   body: Record<string, unknown>,
 ) {
   const action = cleanText(body.action);
   if (!isProviderServiceAction(action)) throw new Error("Unknown Provider Service action.");
 
   const { workspaceId, organizationUuid } = await resolveProviderServiceScope(supabase, user);
+
+  if (PROVIDER_SERVICE_COMMANDS.has(action)) {
+    // Commands act on behalf of an identified reviewer. The organization is the
+    // resolved tenant, never the caller-supplied one — the shared command modules
+    // take organization_id as input, so it is overwritten here rather than merged.
+    const reviewerUserId = cleanText(user.owner_user_id);
+    if (!reviewerUserId) throw new Error("Provider Service commands require an identified user.");
+    const input = { ...body, organization_id: organizationUuid };
+    if (action === "claim_provider_entity_document_review") {
+      return { data: await claimProviderEntityDocumentReview(supabase, input, reviewerUserId) };
+    }
+    if (action === "decide_provider_entity_review_field") {
+      return { data: await decideProviderEntityReviewField(supabase, input, reviewerUserId) };
+    }
+    return { data: await finalizeProviderEntityDocumentReview(supabase, input, reviewerUserId) };
+  }
   if (action === "list_provider_service_command_center") {
     return await listProviderServiceCommandCenter(supabase, organizationUuid, body);
   }

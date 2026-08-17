@@ -18,10 +18,20 @@ const delta = extension.expectedCountsDelta;
 //      list_provider_onboarding_delivery — each reading an organization-scoped view that
 //      already withholds document bytes, paths, hashes, restricted field values and
 //      recipient local parts.
+//   3. Three document-review COMMANDS were wired to the same dispatch —
+//      claim_provider_entity_document_review, decide_provider_entity_review_field and
+//      finalize_provider_entity_document_review. Their logic already existed in
+//      _shared/provider-entity-review-commands.ts but no entrypoint imported it, so it
+//      was unreachable. The handlers inject the resolved organization and the
+//      authenticated reviewer; a caller-supplied organization_id is overwritten, never
+//      merged. This is the first write path in this runtime, so unlike (1) and (2) it
+//      does change what the function can do — it is registered here deliberately and the
+//      commands' own guards (ownership, expected_revision, separation of duties) remain
+//      the authorization boundary.
 // All run under the same canonical Kinde -> workspace -> tenant resolver and add no new
 // privilege, table or caller, and none is externally discovered, so the envelope is
 // refreshed deliberately rather than the eight actions being re-reviewed.
-const shipperDirectoryEnvelope = '16f7e6ffa1a2420837977e0260f20a0241cba7e9e0a513ea21efd3068b3caedc';
+const shipperDirectoryEnvelope = '053fec837e6f11b5c00462157a7626f6ebcdcfde2780dcc15727feb4ecbf0284';
 const legacyAuthorizationOverrides = Object.fromEntries([
   'edge.shipper-directory-api.get_shipper',
   'edge.shipper-directory-api.list_shippers',
