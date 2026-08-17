@@ -334,7 +334,23 @@ async function listProviderOnboardingWorkspace(
   const result = await query;
   if (result.error) throw result.error;
   const rows = (result.data || []) as Record<string, unknown>[];
-  const first = rows[0] || {};
+
+  // The workspace view carries org-wide window aggregates on every row, so any
+  // row answers the metrics. An empty page carries none — reading rows[0] there
+  // reported every counter as zero while the organization still had cases. Fall
+  // back to an unfiltered single row so an empty queue cannot blank the header.
+  let metricsRow = rows[0];
+  if (!metricsRow) {
+    const aggregate = await supabase
+      .from("provider_onboarding_workspace")
+      .select("total_cases,blocked_cases,approval_cases,overdue_cases")
+      .eq("organization_id", organizationUuid)
+      .limit(1)
+      .maybeSingle();
+    if (aggregate.error) throw aggregate.error;
+    metricsRow = aggregate.data || {};
+  }
+
   return {
     data: {
       rows,
@@ -343,10 +359,10 @@ async function listProviderOnboardingWorkspace(
       offset,
       queue,
       metrics: {
-        total: Number(first.total_cases || 0),
-        blocked: Number(first.blocked_cases || 0),
-        approval: Number(first.approval_cases || 0),
-        overdue: Number(first.overdue_cases || 0),
+        total: Number(metricsRow.total_cases || 0),
+        blocked: Number(metricsRow.blocked_cases || 0),
+        approval: Number(metricsRow.approval_cases || 0),
+        overdue: Number(metricsRow.overdue_cases || 0),
       },
     },
   };

@@ -1,6 +1,6 @@
 import { requirePrivatePage } from './auth.js';
 import { callRatewareFunction } from './rateware-api.js';
-import { approvalProgress,normalizeOnboardingQueue,onboardingAttention,onboardingOutputStage,safeCaseLabel,summarizeOnboarding } from './provider-onboarding-domain.js';
+import { PIPELINE_STAGES,approvalProgress,groupTasks,nextGate,normalizeOnboardingQueue,onboardingAttention,onboardingOutputStage,outputChain,pipelineCounts,pipelineStage,safeCaseLabel,summarizeOnboarding } from './provider-onboarding-domain.js';
 
 const escapeHtml=(value)=>String(value??'').replace(/[&<>'"]/g,(char)=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
 const label=(value)=>String(value||'—').replaceAll('_',' ').replaceAll(':',' · ').replace(/\b\w/g,(c)=>c.toUpperCase());
@@ -11,6 +11,15 @@ const prev=document.getElementById('onboarding-prev'),next=document.getElementBy
 const queueButtons=[...document.querySelectorAll('[data-onboarding-queue]')];
 function metric(id,value){const node=document.getElementById(id);if(node)node.textContent=String(value??0);}
 function renderMetrics(){const m=summarizeOnboarding(state.rows,state.metrics);metric('metric-total',m.total);metric('metric-blocked',m.blocked);metric('metric-approval',m.approval);metric('metric-overdue',m.overdue);}
+function renderPipeline(){
+ const node=document.getElementById('onboarding-pipeline');if(!node)return;
+ const counts=pipelineCounts(state.rows);
+ const caption=document.getElementById('onboarding-pipeline-caption');
+ // Counts are derived from the loaded page, not the whole workspace. Say so
+ // rather than letting the rail read as an organization-wide total.
+ if(caption)caption.textContent=state.rows.length?`${state.rows.length} loaded case${state.rows.length===1?'':'s'}`:'No cases loaded';
+ node.innerHTML=PIPELINE_STAGES.map(stage=>`<li class="pipeline-stage pipeline-stage--${escapeHtml(stage.group)} ${counts[stage.code]?'has-cases':'is-empty'}"><span>${escapeHtml(stage.label)}</span><b>${counts[stage.code]}</b></li>`).join('');
+}
 function renderPagination(){const start=state.total?state.offset+1:0,end=Math.min(state.offset+state.rows.length,state.total);if(caption)caption.textContent=`${start}–${end} of ${state.total}`;if(prev)prev.disabled=state.offset<=0;if(next)next.disabled=state.offset+state.limit>=state.total;}
 function renderRows(){
  if(!rowsNode)return;
@@ -25,9 +34,13 @@ function renderRows(){
 function renderDetail(data={}){
  const c=data.case||{},tasks=Array.isArray(data.tasks)?data.tasks:[],packages=Array.isArray(data.packages)?data.packages:[],assemblies=Array.isArray(data.assemblies)?data.assemblies:[],messages=Array.isArray(data.messages)?data.messages:[],events=Array.isArray(data.events)?data.events:[];
  const item=(title,status,meta='')=>`<li><span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(meta)}</small></span><b>${escapeHtml(label(status))}</b></li>`;
- detailNode.innerHTML=`<div class="onboarding-detail-head"><p class="eyebrow">Case ${escapeHtml(String(c.id||'').slice(0,8))}</p><h2>${escapeHtml(safeCaseLabel(c))}</h2><div class="onboarding-pills"><span>${escapeHtml(label(c.case_status))}</span><span>${Number(c.blocking_task_count||0)} blockers</span><span>Revision ${Number(c.revision||0)}</span></div></div>
- <section><h3>My Work</h3><ul class="onboarding-detail-list">${tasks.length?tasks.map(t=>item(t.task_type,t.task_status,[t.requirement_code,t.blocking?'blocking':null,date(t.due_at)].filter(Boolean).join(' · '))).join(''):'<li><span><strong>No active work</strong><small>The case has no open task.</small></span></li>'}</ul></section>
- <section><h3>Approval & assembly</h3><ul class="onboarding-detail-list">${packages.map(p=>item('Release package',p.package_status,`${p.approval_count||0}/${p.required_approval_count||0} approvals`)).join('')||'<li><span><strong>No release package</strong><small>Readiness does not authorize release.</small></span></li>'}${assemblies.map(a=>item('Private form assembly',a.assembly_status,date(a.requested_at))).join('')}</ul></section>
+ const gate=nextGate(data),chain=outputChain(data),grouped=groupTasks(tasks);
+ const taskGroup=(title,list)=>list.length?`<li class="task-group"><span><strong>${escapeHtml(title)}</strong><small>${list.length} item${list.length===1?'':'s'}</small></span></li>${list.map(t=>item(t.task_type,t.task_status,[t.requirement_code,date(t.due_at)].filter(Boolean).join(' · '))).join('')}`:'';
+ detailNode.innerHTML=`<div class="onboarding-detail-head"><p class="eyebrow">Case ${escapeHtml(String(c.id||'').slice(0,8))}</p><h2>${escapeHtml(safeCaseLabel(c))}</h2><div class="onboarding-pills"><span>${escapeHtml(label(pipelineStage(c)))}</span><span>${Number(c.blocking_task_count||0)} blockers</span><span>Revision ${Number(c.revision||0)}</span></div></div>
+ <div class="onboarding-next-gate onboarding-next-gate--${gate?'open':'clear'}"><strong>${gate?'Next gate':'No gate outstanding'}</strong><p>${escapeHtml(gate?gate.label:'Every controlled output for this case has cleared.')}</p></div>
+ <section><h3>Controlled output chain</h3><ol class="onboarding-chain">${chain.map(step=>`<li class="chain-step chain-step--${escapeHtml(step.state)}"><span><strong>${escapeHtml(step.label)}</strong><small>${escapeHtml(step.detail)}</small></span><b>${escapeHtml(label(step.state))}</b></li>`).join('')}</ol></section>
+ <section><h3>My Work</h3><ul class="onboarding-detail-list">${[taskGroup('Overdue',grouped.overdue),taskGroup('Blocking',grouped.blocking),taskGroup('Routine',grouped.routine)].filter(Boolean).join('')||'<li><span><strong>No active work</strong><small>The case has no open task.</small></span></li>'}</ul></section>
+ <section><h3>Approval & assembly</h3><ul class="onboarding-detail-list">${packages.map(p=>item(`Release package v${Number(p.package_version||0)}`,p.package_status,`${p.approval_count||0}/${p.required_approval_count||0} approvals`)).join('')||'<li><span><strong>No release package</strong><small>Readiness does not authorize release.</small></span></li>'}${assemblies.map(a=>item('Private form assembly',a.assembly_status,date(a.requested_at))).join('')}</ul></section>
  <section><h3>Delivery</h3><ul class="onboarding-detail-list">${messages.map(m=>item(`Message ${Number(m.followup_number||0)?'follow-up':'submission'}`,m.message_status,m.next_followup_at?`Next follow-up ${date(m.next_followup_at)}`:date(m.sent_at))).join('')||'<li><span><strong>No outbound delivery</strong><small>Human approval remains required.</small></span></li>'}</ul></section>
  <section><h3>Audit timeline</h3><ul class="onboarding-timeline">${events.map(e=>item(e.event_type,'',date(e.occurred_at))).join('')||'<li>No recorded event.</li>'}</ul></section>
  <div class="onboarding-guard"><strong>Controlled-action boundary</strong><p>This read-only workspace cannot approve, sign, assemble, send, or submit. Those commands remain separate, scoped, audited operations.</p></div>`;
@@ -35,8 +48,8 @@ function renderDetail(data={}){
 async function selectCase(id){if(!id||!detailNode)return;state.selectedId=id;renderRows();detailNode.innerHTML='<div class="onboarding-empty">Loading case workspace…</div>';try{const response=await callRatewareFunction('shipper-directory-api','get_provider_onboarding_case',{case_id:id});if(state.selectedId!==id)return;renderDetail(response?.data||{});}catch(error){if(state.selectedId!==id)return;detailNode.innerHTML=`<div class="ui-state ui-state-error"><strong>Case could not load</strong><p>${escapeHtml(error?.message||'Request failed.')}</p></div>`;}}
 async function loadCases({preserve=false}={}){
  const requestId=++state.requestId;rowsNode.innerHTML='<article class="ui-state ui-state-loading"><strong>Loading onboarding</strong><p>Resolving cases and controlled outputs.</p></article>';
- try{const response=await callRatewareFunction('shipper-directory-api','list_provider_onboarding_workspace',{queue:state.queue,search:state.search||undefined,limit:state.limit,offset:state.offset});if(requestId!==state.requestId)return;const data=response?.data||{};state.rows=Array.isArray(data.rows)?data.rows:[];state.total=Number(data.total||0);state.metrics=data.metrics||{};renderMetrics();renderRows();renderPagination();if(!preserve&&state.rows[0])selectCase(state.rows[0].id);else if(state.selectedId&&!state.rows.some(r=>r.id===state.selectedId)){state.selectedId=null;detailNode.innerHTML='<div class="onboarding-empty"><strong>Select a case</strong><p>Inspect its controlled workflow.</p></div>';}}
- catch(error){if(requestId!==state.requestId)return;state.rows=[];state.total=0;rowsNode.innerHTML=`<article class="ui-state ui-state-error"><strong>Onboarding could not load</strong><p>${escapeHtml(error?.message||'Request failed.')}</p></article>`;renderMetrics();renderPagination();}
+ try{const response=await callRatewareFunction('shipper-directory-api','list_provider_onboarding_workspace',{queue:state.queue,search:state.search||undefined,limit:state.limit,offset:state.offset});if(requestId!==state.requestId)return;const data=response?.data||{};state.rows=Array.isArray(data.rows)?data.rows:[];state.total=Number(data.total||0);state.metrics=data.metrics||{};renderMetrics();renderPipeline();renderRows();renderPagination();if(!preserve&&state.rows[0])selectCase(state.rows[0].id);else if(state.selectedId&&!state.rows.some(r=>r.id===state.selectedId)){state.selectedId=null;detailNode.innerHTML='<div class="onboarding-empty"><strong>Select a case</strong><p>Inspect its controlled workflow.</p></div>';}}
+ catch(error){if(requestId!==state.requestId)return;state.rows=[];state.total=0;rowsNode.innerHTML=`<article class="ui-state ui-state-error"><strong>Onboarding could not load</strong><p>${escapeHtml(error?.message||'Request failed.')}</p></article>`;renderMetrics();renderPipeline();renderPagination();}
 }
 queueButtons.forEach(button=>button.addEventListener('click',()=>{state.queue=normalizeOnboardingQueue(button.dataset.onboardingQueue);state.offset=0;queueButtons.forEach(b=>b.classList.toggle('is-active',b.dataset.onboardingQueue===state.queue));loadCases({preserve:true});}));
 let timer;search?.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>{state.search=search.value.trim();state.offset=0;loadCases({preserve:true});},250);});

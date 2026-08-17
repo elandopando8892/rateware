@@ -33,6 +33,10 @@
         <button data-onboarding-queue="ready_for_approval"><span>Approval</span><strong id="metric-approval">0</strong></button>
         <button data-onboarding-queue="overdue"><span>Overdue</span><strong id="metric-overdue">0</strong></button>
       </section>
+      <section class="onboarding-pipeline-section" aria-label="Onboarding pipeline">
+        <div class="section-heading compact split-heading"><div><p class="eyebrow">Pipeline</p><h2>Stage distribution</h2></div><span id="onboarding-pipeline-caption" class="section-caption">Loaded page</span></div>
+        <ol id="onboarding-pipeline" class="onboarding-pipeline" aria-live="polite"></ol>
+      </section>
       <section class="onboarding-queues">
         <button data-onboarding-queue="all" class="is-active">All</button><button data-onboarding-queue="draft">Draft</button><button data-onboarding-queue="evidence_collection">Evidence collection</button><button data-onboarding-queue="blocked">Blocked</button><button data-onboarding-queue="ready_for_approval">Ready for approval</button><button data-onboarding-queue="closed">Closed</button><button data-onboarding-queue="overdue">Overdue</button>
       </section>
