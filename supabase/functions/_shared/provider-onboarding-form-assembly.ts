@@ -195,7 +195,13 @@ export async function processProviderOnboardingFormAssembly(
       if(!authorization.data||Date.parse(authorization.data.expires_at)<=Date.now()) throw new Error('Signature consent expired.');
       signatureReference={method:authorization.data.signature_method,assetId:authorization.data.signature_document_asset_id,scopeSha256:authorization.data.scope_sha256};
     }
-    const outputPath=`assembled/${organizationId}/${assemblyId}.pdf`;
+    // The output keeps the template's own format. Hardcoding .pdf here silently
+    // mislabelled every XLSX and DOCX assembly.
+    const templateExtension=String(template.data.storage_path||'').toLowerCase().match(/\.([a-z0-9]{2,4})$/)?.[1];
+    if(!templateExtension||!['pdf','xlsx','xls','docx','doc'].includes(templateExtension)){
+      throw new Error('Form template has an unsupported or missing file extension.');
+    }
+    const outputPath=`assembled/${organizationId}/${assemblyId}.${templateExtension}`;
     const output=await assembler.assembleAndStore({
       template:{bucket:template.data.storage_bucket,path:template.data.storage_path,sha256:template.data.template_sha256},
       fields,

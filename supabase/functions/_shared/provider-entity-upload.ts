@@ -1,6 +1,16 @@
 const VAULT_BUCKET = 'provider-entity-vault';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const ALLOWED_MIME_TYPES = new Set(['application/pdf', 'image/png', 'image/jpeg']);
+// Onboarding packets arrive as spreadsheets and Word documents as often as PDFs.
+// Legacy xls/doc are accepted for storage and human review only; no adapter fills them.
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/msword',
+]);
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const UPLOAD_TTL_SECONDS = 10 * 60;
 
