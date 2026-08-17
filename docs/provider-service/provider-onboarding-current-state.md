@@ -1,120 +1,238 @@
-# Provider Service Onboarding — Current State (Phase 0 + Phase 1)
+# Provider Service Onboarding — Current State
 
 Branch: `feat/provider-service-onboarding-production`
-Base: `origin/main` @ `c5200a3` ("Integrate Freight Cost Model Quote Desk Gmail delivery (#59)")
+Base: `origin/main` @ `c5200a3`
+Head: `8a187b0`
 Date: 2026-08-17
 
-This document records the verified baseline and the fit-gap matrix. It describes the
-code that exists today, not an aspirational architecture.
+This document describes the code that exists, not an intended architecture. Where a
+capability is absent or unreachable, it says so.
 
 ---
 
-## 1. Baseline validation (Phase 0)
+## 1. The finding that matters most
 
-Run from a clean `npm install` on Node v20.14.0.
+**Builds 22–29 authored seven onboarding command modules that no entrypoint imported.**
 
-| Command | Result | Evidence |
+Their only references in the repository were `tools/validate-provider-service-runtime-syntax.mjs`,
+which parses them as files, and tests that read them as text. No edge function called
+any of them. The logic was well written — optimistic concurrency, ownership checks,
+separation of duties — and completely unreachable over HTTP.
+
+This explains the standing message in the onboarding workspace UI: *"This read-only
+workspace cannot approve, sign, assemble, send, or submit."* It was accurate, and not
+because a UI feature was missing.
+
+It also means the runtime-syntax gate, which reports `PASS: 40 files`, was validating
+files that never execute. That gate remains useful but must not be read as evidence
+that a module is wired.
+
+Eight commands are now reachable. Three remain deliberately unwired (§5).
+
+---
+
+## 2. Baseline at `c5200a3`
+
+| Command | Result |
+| --- | --- |
+| `npm install` | PASS |
+| `npm test` | PASS |
+| `tests/provider-*.test.mjs` | 37/37 PASS |
+| `npm run validate:action-contract` | PASS — `contract=397 discovered=395`, 0 errors, 1 warning |
+| `npm run test:action-contract` | PASS |
+| `node tools/effective-action-contract.mjs` | PASS |
+
+Pre-existing debt observed then, and its status now:
+
+1. `DECLARATION_PATH_MISSING declaration.edge.whatsapp-healthcheck` — **still open**, unrelated to onboarding.
+2. 12 `DUPLICATE_ACTION_NAME` infos — **still open**, informational.
+3. Contract/discovery gap of 2 declared-but-undiscovered actions — **still open**, now 400/398.
+4. Provider suites not wired into CI — **fixed** (`npm run test:provider-service`, 47 suites).
+5. Clean migration replay never executed — **fixed and repeatable** (§6).
+
+---
+
+## 3. What was added on this branch
+
+13 commits, 32 files, ~4,100 insertions.
+
+**Field ontology** — `_shared/provider-onboarding-ontology.mjs`. 35 canonical field codes
+with data type, disclosure sensitivity and EN/ES aliases. Exact alias → confidence 1;
+single-candidate containment → 0.6 with review required; multiple candidates → `ambiguous`
+with the candidate list rather than a silent choice. Banking, trade-reference, credit,
+bond and signature fields are `NEVER_INFERRED` and demand a reviewed canonical fact.
+Missing or blank values return `proposed_value: null, status: 'pending'`.
+
+**Form engine** — `_shared/provider-onboarding-form-adapters.mjs`. PDF AcroForm fill
+(text/checkbox/radio/dropdown, values outside an option list refused); flat PDF returns
+`requires_human_layout_review` without approved overlay coordinates; XLSX fill by
+`Sheet!Cell` that refuses to overwrite formula cells; DOCX `{placeholder}` substitution.
+Legacy XLS/DOC return the original byte-identical with a human-conversion task
+(Option B, approved 2026-08-17). Runtime deps added: `pdf-lib`, `exceljs`,
+`docxtemplater`, `pizzip`.
+
+**Assembler** — `_shared/provider-onboarding-assembler.mjs`. Implements the
+`ProviderOnboardingFormAssembler` interface declared in `provider-onboarding-form-assembly.ts`
+and previously satisfied by nothing. Refuses assembly when the template no longer hashes
+to the value registered at approval; applies a stored signature only at operator-approved
+coordinates; re-hashes the signature asset against its registered `file_sha256`.
+
+**Read models** — four sanitized `security_invoker` views: Entity Vault, field review,
+approval queue, delivery workspace. See §4.
+
+**Commands** — two new RPCs (approval decision, package revocation), one signature-consent
+revocation RPC, plus the template binding that makes consent enforceable. See §5.
+
+**UI** — 16-stage pipeline rail and a case workspace with a next-gate banner and a
+controlled-output chain distinguishing done / pending / unreachable / failed / revoked.
+
+---
+
+## 4. Redaction, verified against a live database
+
+Redaction is enforced in the views, and the edge handlers read only views — a test
+asserts no handler reads `provider_legal_entity_document_assets`,
+`provider_entity_document_review_fields`, `provider_onboarding_outbound_messages`
+or `provider_onboarding_release_packages` directly.
+
+Observed output with synthetic rows:
+
+```
+field_code  | sensitivity       | value_withheld | value                  | has_proposed_value
+------------+-------------------+----------------+------------------------+-------------------
+bank_name   | highly_restricted | t              | NULL                   | t
+ein         | restricted        | t              | NULL                   | t
+trade_name  | public            | f              | "Synthetic Trade Name" | t
+```
+
+A reviewer learns a value exists without seeing it. Delivery behaved the same way:
+`ap.clerk@provider.invalid` and `ops@mailbox.invalid` project as `provider.invalid` and
+`mailbox.invalid`; subject, body and attachment hash are absent entirely.
+
+The Entity Vault omits `storage_bucket`, `storage_path`, `file_sha256`,
+`original_filename` and the free-form metadata jsonb. All counters are partitioned by
+organization; `anon` and `authenticated` are revoked on every view and confirmed denied.
+
+---
+
+## 5. Command reachability
+
+| Command | Reachable | Notes |
 | --- | --- | --- |
-| `npm install` | PASS | exit 0, devDeps only (`@babel/parser`) |
-| `npm test` (product regression, 17 suites) | PASS | exit 0 |
-| `tests/provider-*.test.mjs` (37 suites, run individually) | PASS 37 / FAIL 0 | all green |
-| `npm run validate:action-contract` | PASS | `contract=397 discovered=395 edge=291 postgres=104`, `errors=0 warnings=1 info=12` |
-| `npm run test:action-contract` | PASS | "Action contract hardening tests passed." |
-| `node tools/effective-action-contract.mjs` | PASS | no output, exit 0 |
+| `claim_provider_entity_document_review` | yes | Build 23 guards intact |
+| `decide_provider_entity_review_field` | yes | withheld only for restricted; correction requires a value |
+| `finalize_provider_entity_document_review` | yes | all fields decided first; no self-finalize |
+| `promote_provider_entity_review_facts` | yes | |
+| `open` / `reconcile` / `cancel_provider_onboarding_case` | yes | |
+| `create_provider_onboarding_release_package` | yes | |
+| `provider_onboarding_decide_release_package_approval` | RPC | canonical approval path |
+| `provider_onboarding_revoke_release_package` | RPC | cascades to active signature consent |
+| `provider_onboarding_revoke_signature_authorization` | RPC | consumed consent refused |
+| `decideProviderOnboardingReleasePackage` | **no** | duplicate; counts approvals across all revisions |
+| `queue`/`processProviderOnboardingFormAssembly` | **no** | external side effect; awaiting policy |
+| Gmail delivery commands | **no** | external side effect; awaiting policy |
 
-### Pre-existing debt observed at baseline (NOT regressions)
+Dispatch is table-driven: one `Map` from action name to command, one dispatch site that
+injects the resolved tenant and the authenticated actor. `{ ...body, organization_id:
+organizationUuid }` — spreading the body last would let the browser choose its tenant, and
+a test pins that ordering.
 
-1. `WARNING DECLARATION_PATH_MISSING declaration.edge.whatsapp-healthcheck` —
-   a declared surface whose path no longer exists. Unrelated to onboarding.
-2. 12 `INFO DUPLICATE_ACTION_NAME` entries (`get_profile`, `submit_profile`,
-   `get_shipper`, `list_shippers`, `list_bid_room_chat`, … ) where one action name is
-   served by two governed surfaces.
-3. `contract=397` vs `discovered=395` — two declared actions are not discovered in
-   source.
-4. The provider-service suites are **not** wired into `npm test` or `npm run test:product`.
-   They only pass because they are invoked directly. There is no `test:provider-service`
-   script, so CI does not gate on them.
-5. Clean migration replay from zero was **not** executed in this environment (no local
-   Supabase/Docker stack available on this host). It remains unverified.
+### Defects found and fixed on this branch
 
----
+1. **Read model blanked its counters.** `listProviderOnboardingWorkspace` read org-wide
+   window aggregates from `rows[0]` of a paged, filtered result; an empty queue reported
+   every counter as zero. Now falls back to an unfiltered aggregate row, and the same
+   fallback is in all four new list handlers.
+2. **Vault view unreadable.** `security_invoker` means the view runs with the caller's
+   privileges; granting select on the view alone left every `service_role` read failing
+   with `permission denied`. Caught by reading *through* the view as that role.
+3. **Assembled output mislabelled.** `form-assembly.ts` hardcoded the output path to
+   `.pdf`, so every XLSX and DOCX assembly was mislabelled or failed its own path check.
+4. **Ingestion rejected the common case.** `provider-entity-upload.ts` allowed only
+   pdf/png/jpeg, so inbound XLSX and DOCX onboarding packets were refused.
+5. **Re-cut packages were unapprovable.** The approval uniqueness key omitted
+   `package_revision` while counting included it, so a revised package could never reach
+   its threshold from the same approver set.
+6. **Signature consent was not bound to the document.** Consent scoped to a package but
+   not a template, so a signature authorized on one form was consumable against another
+   active form in the same program. `template_id` and `template_sha256` now bind it, and
+   the binding is checked at queue time *and* assembly time.
 
-## 2. What actually exists
-
-The backend is deep and real. The UI and the document engine are not.
-
-**Database — substantial.** 345 migrations total, ~137 of them provider-service.
-Builds 1–31 land real tables, guards, RLS, revokes and commands for: relationship core,
-activation engine, document registry, cases, communications, agent runs, approvals and
-signature operations, provider portal, compliance, integrations, Provider 360, health,
-command center, Gmail intake, Gmail Pub/Sub push, legal-entity source of truth, entity
-document ingestion, bounded upload, processing worker, document review, review commands,
-fact promotion, onboarding readiness, case workflow, release packages, form assembly,
-Gmail delivery, and the workspace read model.
-
-**Edge functions — partial.** `provider-gmail-intake-api`, `provider-gmail-oauth-callback`,
-`provider-gmail-push`, `shipper-directory-api`, plus `_shared/provider-entity-upload.ts`
-(206 lines).
-
-**Frontend — shells.** Four pages exist (`provider-service.html`,
-`provider-onboarding.html`, `provider-communications.html`, `provider-gmail.html`) and are
-linked from `app.html`. `src/provider-onboarding-page.js` is 44 lines,
-`src/provider-onboarding-domain.js` 24 lines, `src/provider-onboarding-release-domain.js`
-30 lines.
+Defect 6 was real in code but not exploitable, because the assembly commands were never
+reachable (§1).
 
 ---
 
-## 3. Fit-gap matrix
+## 6. Verification
 
-| Capability | Current state | Evidence | Gap | Production dependency |
-| --- | --- | --- | --- | --- |
-| Provider relationship / activation / cases / compliance / 360 / health | Schema + guards + RLS + domain tests | ~120 migrations, 37 green tests | None material for onboarding | — |
-| Gmail OAuth + Pub/Sub intake | Edge functions present, idempotency migrations present | `provider-gmail-*` functions, `20260814030000`, `20260814040000` | Live OAuth client, Pub/Sub topic + IAM never configured | **Human**: Google Cloud project, OAuth consent, topic, IAM |
-| Entity Vault (legal-entity facts, ingestion, review, promotion) | Schema complete | `20260814050000`–`20260814110000` | **No importer.** No tool ingests local files, hashes, MIME-validates, or uploads to a private bucket | Private bucket + service-role key |
-| Private source corpus (`/mnt/data/*`) | **Not mounted on this host** | `Test-Path C:\mnt\data` → False | All 13 documents must be mounted before any real fact load | **Human**: mount corpus |
-| Onboarding readiness / case workflow / tasks / SLA | Schema + read model | `20260814120000`, `20260814130000` | No task-generation worker wired to a runtime | Worker runtime |
-| Release package / manifest / approvals | Schema | `20260814140000` | No Edge command surface; UI cannot approve | — |
-| Signature consent | Schema (`provider_onboarding_signature_authorizations`) | `20260814150000` L56 | No consent-issuance or consent-consumption command surface | **Human**: signature policy, approver roles |
-| Form assembly | **Metadata only** | `20260814150000` is 168 lines: 5 tables (`form_templates`, `form_field_mappings`, `signature_authorizations`, `form_assemblies`, `form_assembly_events`) and no assembly logic | **No document engine exists.** Repo-wide grep for `acroform`/`pdf-lib`/`xlsx`/`docx` returns zero onboarding hits | **Decision required** — see §4 |
-| Field ontology + alias mapping | **Absent** | No `ontology` file anywhere in `src/` | Whole module (~40 canonical fields, EN/ES aliases, versioned) must be built | — |
-| Gmail delivery + follow-up | Schema | `20260814160000` | No send command, no dry-run harness | **Human**: sender allowlist, recipient-domain policy |
-| Onboarding UI | Read-only observation shell | `provider-onboarding-page.js` = 44 lines; only two actions exist server-side: `list_provider_onboarding_workspace`, `get_provider_onboarding_case` | Command Center, Pipeline, Case Workspace, Document Review, Entity Vault, Approval Center, Delivery Workspace are all **not built**. The page itself states: "This read-only workspace cannot approve, sign, assemble, send, or submit." | — |
-| Onboarding command surfaces (approve field, confirm entity, authorize signature, request assembly, approve recipient, approve send, revoke) | **Absent from the Edge layer** | Only 2 onboarding actions found across `supabase/functions/` | ~12 commands to author + register in the Action Contract | — |
-| Synthetic E2E release gate | Policy evaluator only | `provider-onboarding-release-domain.js` evaluates a *release-readiness policy*; `tools/validate-provider-onboarding-release.mjs` | Not an end-to-end flow test. The 16-stage synthetic flow (§18 Phase 9) does not exist | — |
+Local Supabase via `npx supabase` on Docker.
+
+| Gate | Result |
+| --- | --- |
+| `supabase db reset` (clean replay from zero) | PASS — 350 migrations, run 5× |
+| `supabase db dump` | PASS — 22,676 lines |
+| `npm run test:provider-service` | 47/47 PASS |
+| `npm test` | PASS |
+| `npm run validate:action-contract` | `400/398`, 0 errors, 1 pre-existing warning |
+| `validate-action-contract-delta` | PASS — 0 unregistered surfaces |
+| `validate-action-contract-no-regression` | PASS — 0 new authorization errors |
+| `verify-migration-history` | PASS |
+| `validate-provider-service-runtime-syntax` | PASS — 40 files (see §1 caveat) |
+| `git diff --check` | clean |
+
+**Migration replay deadlock.** One `db reset` failed with `deadlock detected (SQLSTATE
+40P01)` in `20260801015155_harden_public_data_api_access.sql`, and passed on retry. That
+migration loops over every public table taking `AccessExclusiveLock` to enable RLS, which
+can deadlock against any concurrent connection — PostgREST and pg_cron were both attached.
+Harmless locally; a real hazard against a production database with live connections. It
+needs a `lock_timeout` and a retry in the rollout runbook.
+
+**Not verified.** The approval queue view is covered structurally but not functionally —
+its fixtures need a `readiness_evaluation_id` chain that does not exist yet. No edge
+function was deployed or invoked over HTTP; command wiring is verified by source assertions
+and the command bodies by direct SQL, not by an end-to-end request.
 
 ---
 
-## 4. Decision required before the form engine can be built
+## 7. Action contract handling
 
-The prompt requires byte-level fill of PDF (AcroForm + flat + scanned), XLSX (formula- and
-format-preserving), XLS, DOCX and DOC. The repo today has **one** devDependency and
-**zero** runtime dependencies; it is a static site plus Deno edge functions.
+The contract governs PostgreSQL RPCs with committed fingerprints and edge functions at the
+function level; individual edge actions are not contract entries.
 
-Delivering this requires, at minimum:
+Adding onboarding logic to `provider-service.ts` changes the shared dependency envelope for
+all eight pre-existing `shipper-directory-api` actions. Build 30 had already established an
+override constant in `tools/effective-action-contract.mjs` for exactly this; it was
+refreshed four times on this branch, each with its reason recorded inline rather than
+overwriting the previous note. The delta and no-regression gates remain the substantive
+check and pass throughout.
 
-- `pdf-lib` (AcroForm fill, overlay, signature placement),
-- `exceljs` or `sheetjs` (XLSX without destroying formulas),
-- `docxtemplater` + `pizzip`, or direct OOXML manipulation (DOCX),
-- **an isolated converter process (LibreOffice headless) for legacy XLS and DOC** — which
-  cannot run inside a Supabase Edge Function and needs its own container.
+Inventory counts in `tests/action-contract.test.mjs` were updated for the three added RPCs
+(395→398 governable, 104→107 rpc, 397→400 registered, 107→110 internal_only). These are a
+census, not a behavioural claim.
 
-Every one of these is a new runtime dependency and the LibreOffice path is new
-infrastructure. §15 of the brief forbids introducing new stack elements "without
-authorization", and §24 forbids leaving the main flow as a mock. Those two constraints
-collide here, so the choice is escalated rather than made silently:
+---
 
-- **Option A** — approve `pdf-lib` + `exceljs` + `docxtemplater` as runtime deps and a
-  containerized LibreOffice sidecar for XLS/DOC. Full fidelity, real engine.
-- **Option B** — approve the three JS libraries only; XLS and DOC are accepted as
-  originals with a mandatory human-intervention task and no automated fill.
-- **Option C** — no new dependencies; the form engine stays a metadata/plan layer and the
-  acceptance criteria 6–11 cannot be met.
+## 8. What is still missing
 
-## 5. Other blocking human decisions
+**Blocked on a human decision:**
 
-- Google Cloud project, Gmail OAuth client and consent screen for `carriers@xbfreight.com`.
-- Pub/Sub topic name and IAM grants.
-- Mounting the 13-file private corpus listed in §5 of the brief.
-- Private Storage bucket name and retention for the Entity Vault.
-- Approver assignments and separation-of-duties policy.
-- Signature policy owner; sender allowlist; recipient-domain policy; rollback owner.
+- Approver role assignments — who holds `operations`, `compliance`, `data_owner`, `legal`.
+  The approval commands cannot be used in production without this.
+- Sender allowlist and recipient-domain policy — gate on wiring form assembly and Gmail
+  delivery at all.
+- Gmail OAuth client, consent screen, Pub/Sub topic and IAM for `carriers@xbfreight.com`.
+- The private corpus. `/mnt/data` is **not mounted**; none of the 13 documents listed in
+  the brief are present, so no real canonical legal-entity facts exist. The importer is
+  not built; the bounded-upload path (`_shared/provider-entity-upload.ts`) is the intended
+  entry point.
+- Whether `expected_revision` optimistic concurrency should be added to the canonical
+  approval RPC (the unwired duplicate had it; the RPC does not).
+
+**Not built:**
+
+- Private corpus importer (hash, MIME validation, dedupe, classification, private upload).
+- Operator UI for Entity Vault, Document Review, Approval Center, Delivery Workspace. The
+  read models and read actions exist; the surfaces do not.
+- The 16-stage synthetic end-to-end release gate described in the brief's Phase 9.
+- Observability metrics.
+- The remaining documents required by the brief's §23.
