@@ -23,6 +23,7 @@ export async function authorizeProviderOnboardingSignature(
 ){
   const organizationId=uuid(input.organization_id,'organization_id');
   const packageId=uuid(input.package_id,'package_id');
+  const templateId=uuid(input.template_id,'template_id');
   const signer=required(signerActorId,'signer_actor_id');
   const method=required(input.signature_method,'signature_method');
   const consentVersion=required(input.consent_text_version,'consent_text_version');
@@ -49,6 +50,18 @@ export async function authorizeProviderOnboardingSignature(
       throw new Error('Verified private signature asset was not found.');
     }
   }
+  // Consent is granted against one specific document. Recording the template and
+  // its hash lets assembly refuse a consent issued while reviewing a different
+  // form, and makes a re-cut template invalidate the consent automatically.
+  const template=await supabase.from('provider_onboarding_form_templates')
+    .select('id,template_sha256')
+    .eq('organization_id',organizationId).eq('id',templateId)
+    .eq('active',true).maybeSingle();
+  if(template.error) throw template.error;
+  if(!template.data||!/^[0-9a-f]{64}$/.test(String(template.data.template_sha256||''))){
+    throw new Error('Active form template with a valid hash was not found.');
+  }
+
   const requestedExpiry=Date.parse(String(input.expires_at||''));
   const expiresAt=new Date(Math.min(requestedExpiry||Date.parse(release.data.expires_at),Date.parse(release.data.expires_at))).toISOString();
   if(Date.parse(expiresAt)<=Date.now()) throw new Error('Signature authorization expiry must be in the future.');
@@ -56,16 +69,18 @@ export async function authorizeProviderOnboardingSignature(
     package_id:packageId,manifest_sha256:release.data.manifest_sha256,
     purpose_code:release.data.purpose_code,recipient_key:release.data.recipient_key,
     signer_actor_id:signer,signature_method:method,signature_document_asset_id:signatureAssetId,
+    template_id:templateId,template_sha256:template.data.template_sha256,
     consent_text_version:consentVersion,expires_at:expiresAt,
   });
   const inserted=await supabase.from('provider_onboarding_signature_authorizations').insert({
     organization_id:organizationId,package_id:packageId,signer_actor_id:signer,
     signature_document_asset_id:signatureAssetId,signature_method:method,
+    template_id:templateId,template_sha256:template.data.template_sha256,
     scope_sha256:scopeSha,consent_text_version:consentVersion,
     consent_evidence:consent,expires_at:expiresAt,
   }).select('id').single();
   if(inserted.error) throw inserted.error;
-  return {signature_authorization_id:inserted.data.id,authorization_status:'active',scope_sha256:scopeSha,expires_at:expiresAt};
+  return {signature_authorization_id:inserted.data.id,authorization_status:'active',scope_sha256:scopeSha,expires_at:expiresAt,template_id:templateId};
 }
 
 export async function queueProviderOnboardingFormAssembly(
@@ -96,6 +111,15 @@ export async function queueProviderOnboardingFormAssembly(
     if(authorization.error) throw authorization.error;
     if(!authorization.data||Date.parse(authorization.data.expires_at)<=Date.now()){
       throw new Error('Active signature authorization was not found.');
+    }
+    // Consent must have been granted against this exact template, at the exact
+    // bytes it had then. Without this an authorization reviewed on one form is
+    // consumable against any other active form in the same program.
+    if(authorization.data.template_id!==template.data.id){
+      throw new Error('Signature authorization was granted for a different form template.');
+    }
+    if(authorization.data.template_sha256!==template.data.template_sha256){
+      throw new Error('Form template changed after signature consent was granted.');
     }
     if(template.data.signature_policy==='external_esign'&&authorization.data.signature_method!=='external_esign'){
       throw new Error('Template requires external e-sign authorization.');
@@ -193,6 +217,14 @@ export async function processProviderOnboardingFormAssembly(
         .eq('package_id',release.data.id).eq('authorization_status','active').maybeSingle();
       if(authorization.error) throw authorization.error;
       if(!authorization.data||Date.parse(authorization.data.expires_at)<=Date.now()) throw new Error('Signature consent expired.');
+      // Re-checked at process time, not only at queue time: the template can be
+      // re-cut between queueing and assembly, and consent must not survive that.
+      if(authorization.data.template_id!==template.data.id){
+        throw new Error('Signature authorization was granted for a different form template.');
+      }
+      if(authorization.data.template_sha256!==template.data.template_sha256){
+        throw new Error('Form template changed after signature consent was granted.');
+      }
       signatureReference={method:authorization.data.signature_method,assetId:authorization.data.signature_document_asset_id,scopeSha256:authorization.data.scope_sha256};
     }
     // The output keeps the template's own format. Hardcoding .pdf here silently
