@@ -66,5 +66,14 @@ left join lateral (
 revoke all on public.provider_entity_vault_workspace from public, anon, authenticated;
 grant select on public.provider_entity_vault_workspace to service_role;
 
+-- security_invoker means the view executes with the caller's privileges, so the
+-- backend service role also needs read access to each underlying table. Without
+-- this the view exists but every read fails with "permission denied". Browser
+-- roles stay revoked and RLS stays on, exactly as for the onboarding workspace.
+grant select on table
+  public.provider_legal_entity_document_assets,
+  public.provider_onboarding_release_package_items
+to service_role;
+
 comment on view public.provider_entity_vault_workspace is
 'Sanitized service-role read model for the private Entity Vault operator surface; projects custody and disclosure metadata only and excludes storage buckets, storage paths, file hashes, original filenames and free-form document metadata.';
