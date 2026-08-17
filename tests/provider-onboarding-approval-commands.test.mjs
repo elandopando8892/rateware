@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const migration = readFileSync(new URL('../supabase/migrations/20260817110000_provider_onboarding_approval_commands.sql', import.meta.url), 'utf8');
+const revisionScope = readFileSync(new URL('../supabase/migrations/20260817120000_provider_onboarding_approval_revision_scope.sql', import.meta.url), 'utf8');
 const contract = readFileSync(new URL('../supabase/functions/_shared/action-contract-provider-service.mjs', import.meta.url), 'utf8');
 
 const SIGNATURES = [
@@ -53,9 +54,27 @@ test('approvals are counted only against the current package revision', () => {
 });
 
 test('an identical decision replays idempotently while a changed decision is refused', () => {
-  assert.match(migration, /if existing\.decision = normalized_decision and existing\.package_revision = package_row\.revision then/);
-  assert.match(migration, /'idempotent_replay', true/);
-  assert.match(migration, /This approver has already decided this release package\./);
+  // The effective definition is the revision-scoped one.
+  assert.match(revisionScope, /if existing\.decision = normalized_decision then/);
+  assert.match(revisionScope, /'idempotent_replay', true/);
+  assert.match(revisionScope, /This approver has already decided this package revision\./);
+});
+
+test('one decision per approver is scoped to the package revision, so a re-cut package stays approvable', () => {
+  // The original key was (organization_id, package_id, approver_actor_id), which
+  // permanently barred the same approver set from approving a new revision while
+  // counting was already revision-scoped — the threshold became unreachable.
+  assert.match(revisionScope, /drop constraint if exists provider_release_package_approvals_unique;/);
+  assert.match(revisionScope, /add constraint provider_release_package_approvals_revision_unique\s+unique \(organization_id, package_id, package_revision, approver_actor_id\);/);
+  // The command's duplicate lookup must match the widened key or the fix is inert.
+  assert.match(revisionScope, /and package_revision=package_row\.revision\s+and approver_actor_id=normalized_actor;/);
+});
+
+test('the revision-scoped redefinition keeps its security posture', () => {
+  assert.match(revisionScope, /language plpgsql\s+security definer\s+set search_path = public, pg_temp/);
+  assert.match(revisionScope, /revoke all on function public\.provider_onboarding_decide_release_package_approval\(uuid,uuid,text,text,text,text\) from public, anon, authenticated;/);
+  assert.match(revisionScope, /grant execute on function public\.provider_onboarding_decide_release_package_approval\(uuid,uuid,text,text,text,text\) to service_role;/);
+  assert.match(revisionScope, /The requester cannot approve their own release package\./);
 });
 
 test('revocation cascades to any active signature authorization for the package', () => {
