@@ -10,11 +10,18 @@ const delta = extension.expectedCountsDelta;
 // all eight pre-existing actions even though their handler source segments are unchanged.
 // Build 30 adds two sanitized, read-only onboarding actions under the same canonical
 // Kinde -> workspace -> tenant resolver and does not add a new externally discovered action.
-// Refreshed 2026-08-17: listProviderOnboardingWorkspace gained an aggregate fallback so an
-// empty queue page cannot blank the workspace counters. The change reads the same
-// organization-scoped view under the same resolver — no new privilege, table or caller —
-// so the envelope is refreshed deliberately rather than the eight actions being re-reviewed.
-const shipperDirectoryEnvelope = 'a00e3f7ddcf0dea3319b6208fa841aed9371fe3891ea8ec4c562b39b1b8e8e2d';
+// Refreshed 2026-08-17 for two reviewed changes, neither of which alters authorization:
+//   1. listProviderOnboardingWorkspace gained an aggregate fallback so an empty queue page
+//      cannot blank the workspace counters.
+//   2. Four sanitized read-only actions were added — list_provider_entity_vault,
+//      list_provider_onboarding_field_review, list_provider_onboarding_approvals and
+//      list_provider_onboarding_delivery — each reading an organization-scoped view that
+//      already withholds document bytes, paths, hashes, restricted field values and
+//      recipient local parts.
+// All run under the same canonical Kinde -> workspace -> tenant resolver and add no new
+// privilege, table or caller, and none is externally discovered, so the envelope is
+// refreshed deliberately rather than the eight actions being re-reviewed.
+const shipperDirectoryEnvelope = '16f7e6ffa1a2420837977e0260f20a0241cba7e9e0a513ea21efd3068b3caedc';
 const legacyAuthorizationOverrides = Object.fromEntries([
   'edge.shipper-directory-api.get_shipper',
   'edge.shipper-directory-api.list_shippers',

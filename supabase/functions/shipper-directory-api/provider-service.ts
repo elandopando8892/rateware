@@ -6,6 +6,10 @@ const PROVIDER_SERVICE_ACTIONS = new Set([
   "get_provider_communication_thread",
   "list_provider_onboarding_workspace",
   "get_provider_onboarding_case",
+  "list_provider_entity_vault",
+  "list_provider_onboarding_field_review",
+  "list_provider_onboarding_approvals",
+  "list_provider_onboarding_delivery",
 ]);
 const COMMAND_CENTER_QUEUES = new Set(["all", "critical", "attention", "watch", "healthy", "needs_reply", "approvals", "blocked"]);
 const COMMUNICATION_INBOX_QUEUES = new Set([
@@ -525,6 +529,189 @@ async function getProvider360(
   };
 }
 
+const VAULT_QUEUES = new Set(["all", "expiring", "expired", "unverified", "restricted", "releasable"]);
+const APPROVAL_QUEUES = new Set(["all", "pending", "approved", "expired", "revoked"]);
+const DELIVERY_QUEUES = new Set(["all", "awaiting_approval", "scheduled", "sent", "failed", "followup_due"]);
+
+// Every list below reads a sanitized view. The views already withhold document
+// bytes, paths, hashes, restricted field values and recipient local parts, so
+// these handlers add tenant scoping and bounds rather than further redaction.
+async function listProviderEntityVault(supabase: any, organizationUuid: string, body: Record<string, unknown>) {
+  const queue = cleanText(body.queue)?.toLowerCase() || "all";
+  if (!VAULT_QUEUES.has(queue)) throw new Error("Unsupported Entity Vault queue.");
+  const limit = clampInteger(body.limit, 40, 10, 100);
+  const offset = clampInteger(body.offset, 0, 0, 100000);
+  const legalEntityId = optionalUuid(body.legal_entity_id, "legal_entity_id");
+  const search = safeSearch(body.search);
+
+  let query = supabase
+    .from("provider_entity_vault_workspace")
+    .select("*", { count: "exact" })
+    .eq("organization_id", organizationUuid)
+    .order("expiration_date", { ascending: true, nullsFirst: false })
+    .order("document_type", { ascending: true })
+    .range(offset, offset + limit - 1);
+  if (legalEntityId) query = query.eq("legal_entity_id", legalEntityId);
+  if (queue === "expired") query = query.eq("expiry_state", "expired");
+  else if (queue === "expiring") query = query.eq("expiry_state", "expiring_soon");
+  else if (queue === "unverified") query = query.neq("verification_status", "verified");
+  else if (queue === "restricted") query = query.eq("requires_human_release_approval", true);
+  else if (queue === "releasable") query = query.eq("is_releasable", true);
+  if (search) {
+    query = query.or([`document_type.ilike.%${search}%`, `document_name.ilike.%${search}%`].join(","));
+  }
+
+  const result = await query;
+  if (result.error) throw result.error;
+  const rows = (result.data || []) as Record<string, unknown>[];
+  let metricsRow = rows[0];
+  if (!metricsRow) {
+    const aggregate = await supabase
+      .from("provider_entity_vault_workspace")
+      .select("total_documents,expired_documents,unverified_documents,restricted_documents")
+      .eq("organization_id", organizationUuid)
+      .limit(1)
+      .maybeSingle();
+    if (aggregate.error) throw aggregate.error;
+    metricsRow = aggregate.data || {};
+  }
+  return {
+    data: {
+      rows,
+      total: result.count || 0,
+      limit,
+      offset,
+      queue,
+      metrics: {
+        total: Number(metricsRow.total_documents || 0),
+        expired: Number(metricsRow.expired_documents || 0),
+        unverified: Number(metricsRow.unverified_documents || 0),
+        restricted: Number(metricsRow.restricted_documents || 0),
+      },
+    },
+  };
+}
+
+async function listProviderOnboardingFieldReview(supabase: any, organizationUuid: string, body: Record<string, unknown>) {
+  const reviewId = requireUuid(body.review_id, "review_id");
+  const result = await supabase
+    .from("provider_onboarding_field_review")
+    .select("*")
+    .eq("organization_id", organizationUuid)
+    .eq("review_id", reviewId)
+    .order("field_status", { ascending: true })
+    .order("field_code", { ascending: true })
+    .limit(400);
+  if (result.error) throw result.error;
+  const rows = (result.data || []) as Record<string, unknown>[];
+  return {
+    data: {
+      review_id: reviewId,
+      rows,
+      field_count: Number(rows[0]?.review_field_count || 0),
+      pending_count: Number(rows[0]?.review_pending_count || 0),
+    },
+  };
+}
+
+async function listProviderOnboardingApprovals(supabase: any, organizationUuid: string, body: Record<string, unknown>) {
+  const queue = cleanText(body.queue)?.toLowerCase() || "all";
+  if (!APPROVAL_QUEUES.has(queue)) throw new Error("Unsupported approval queue.");
+  const limit = clampInteger(body.limit, 40, 10, 100);
+  const offset = clampInteger(body.offset, 0, 0, 100000);
+  const caseId = optionalUuid(body.case_id, "case_id");
+
+  let query = supabase
+    .from("provider_onboarding_approval_queue")
+    .select("*", { count: "exact" })
+    .eq("organization_id", organizationUuid)
+    .order("requested_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (caseId) query = query.eq("case_id", caseId);
+  if (queue === "pending") query = query.eq("package_status", "pending_approval");
+  else if (queue === "approved") query = query.eq("package_status", "approved");
+  else if (queue === "revoked") query = query.not("revoked_at", "is", null);
+  else if (queue === "expired") query = query.eq("authorization_expired", true);
+
+  const result = await query;
+  if (result.error) throw result.error;
+  const rows = (result.data || []) as Record<string, unknown>[];
+  let metricsRow = rows[0];
+  if (!metricsRow) {
+    const aggregate = await supabase
+      .from("provider_onboarding_approval_queue")
+      .select("pending_packages,expired_packages")
+      .eq("organization_id", organizationUuid)
+      .limit(1)
+      .maybeSingle();
+    if (aggregate.error) throw aggregate.error;
+    metricsRow = aggregate.data || {};
+  }
+  return {
+    data: {
+      rows,
+      total: result.count || 0,
+      limit,
+      offset,
+      queue,
+      metrics: {
+        pending: Number(metricsRow.pending_packages || 0),
+        expired: Number(metricsRow.expired_packages || 0),
+      },
+    },
+  };
+}
+
+async function listProviderOnboardingDelivery(supabase: any, organizationUuid: string, body: Record<string, unknown>) {
+  const queue = cleanText(body.queue)?.toLowerCase() || "all";
+  if (!DELIVERY_QUEUES.has(queue)) throw new Error("Unsupported delivery queue.");
+  const limit = clampInteger(body.limit, 40, 10, 100);
+  const offset = clampInteger(body.offset, 0, 0, 100000);
+  const caseId = optionalUuid(body.case_id, "case_id");
+
+  let query = supabase
+    .from("provider_onboarding_delivery_workspace")
+    .select("*", { count: "exact" })
+    .eq("organization_id", organizationUuid)
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (caseId) query = query.eq("case_id", caseId);
+  if (queue === "awaiting_approval") query = query.in("message_status", ["draft", "pending_approval"]);
+  else if (queue === "scheduled") query = query.in("message_status", ["approved", "queued"]);
+  else if (queue === "sent") query = query.eq("message_status", "sent");
+  else if (queue === "failed") query = query.eq("message_status", "failed");
+  else if (queue === "followup_due") query = query.not("next_followup_at", "is", null).lte("next_followup_at", new Date().toISOString());
+
+  const result = await query;
+  if (result.error) throw result.error;
+  const rows = (result.data || []) as Record<string, unknown>[];
+  let metricsRow = rows[0];
+  if (!metricsRow) {
+    const aggregate = await supabase
+      .from("provider_onboarding_delivery_workspace")
+      .select("awaiting_approval,failed_messages,followups_due")
+      .eq("organization_id", organizationUuid)
+      .limit(1)
+      .maybeSingle();
+    if (aggregate.error) throw aggregate.error;
+    metricsRow = aggregate.data || {};
+  }
+  return {
+    data: {
+      rows,
+      total: result.count || 0,
+      limit,
+      offset,
+      queue,
+      metrics: {
+        awaiting_approval: Number(metricsRow.awaiting_approval || 0),
+        failed: Number(metricsRow.failed_messages || 0),
+        followups_due: Number(metricsRow.followups_due || 0),
+      },
+    },
+  };
+}
+
 export async function handleProviderServiceAction(
   supabase: any,
   user: { organization_id?: string | null },
@@ -548,6 +735,18 @@ export async function handleProviderServiceAction(
   }
   if (action === "get_provider_onboarding_case") {
     return await getProviderOnboardingCase(supabase, organizationUuid, body);
+  }
+  if (action === "list_provider_entity_vault") {
+    return await listProviderEntityVault(supabase, organizationUuid, body);
+  }
+  if (action === "list_provider_onboarding_field_review") {
+    return await listProviderOnboardingFieldReview(supabase, organizationUuid, body);
+  }
+  if (action === "list_provider_onboarding_approvals") {
+    return await listProviderOnboardingApprovals(supabase, organizationUuid, body);
+  }
+  if (action === "list_provider_onboarding_delivery") {
+    return await listProviderOnboardingDelivery(supabase, organizationUuid, body);
   }
   return await getProvider360(supabase, workspaceId, organizationUuid, body);
 }
