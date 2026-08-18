@@ -57,6 +57,17 @@ export async function commitPlannedDocument(config, plan, bytes) {
   const ingestionId = crypto.randomUUID();
   const storagePath = `${organizationId}/${legalEntityId}/${ingestionId}/${plan.filename}`;
 
+  // A completed upload is only valid inside a bounded upload session: the
+  // upload_window_check requires session id, issued-at and expires-at (<= 15 min)
+  // to move together, and the upload_completion_check refuses upload_completed_at
+  // unless the session id is set. This is a direct service-role upload rather than
+  // the browser signed-upload flow, so the session is opened here and closed a few
+  // seconds later at completion. Without it, the completion PATCH is rejected and
+  // the row is stranded in 'requested' with its object already stored.
+  const uploadSessionId = crypto.randomUUID();
+  const uploadIssuedAt = new Date();
+  const uploadExpiresAt = new Date(uploadIssuedAt.getTime() + 10 * 60 * 1000);
+
   const insert = await restRequest(config, '/rest/v1/provider_entity_document_ingestions', {
     method: 'POST',
     headers: { 'content-type': 'application/json', prefer: 'return=representation' },
@@ -74,6 +85,9 @@ export async function commitPlannedDocument(config, plan, bytes) {
       requested_by_actor_type: 'user',
       requested_by_user_id: config.actorUserId,
       storage_path: storagePath,
+      upload_session_id: uploadSessionId,
+      upload_issued_at: uploadIssuedAt.toISOString(),
+      upload_expires_at: uploadExpiresAt.toISOString(),
     }),
   });
   const [row] = await insert.json();
