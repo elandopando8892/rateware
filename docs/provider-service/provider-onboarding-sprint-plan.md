@@ -1,187 +1,182 @@
-# Provider Service Onboarding — Sprint Plan
+# Provider Service Onboarding — Sprint Plan (rev 2)
 
-Branch: `feat/provider-service-onboarding-production` @ 19 commits, 44 files, ~6,200 insertions.
-Date: 2026-08-17
+Branch: `feat/provider-service-onboarding-production` @ 28 commits, 62 files, ~8,500 insertions.
+Date: 2026-08-18. Supersedes rev 1 of 2026-08-17.
 
-The goal is `carriers@xbfreight.com` operating as a supervised superagent for
-**XBF Customer Setup** — the carrier asks XBF to register as their customer, the agent
-reads the request and its attachments, fills the forms, escalates what it cannot answer,
-and after human approval sends and follows up until the alta is confirmed. Reley.ai keeps
-provider onboarding *into* XBF; this system does not duplicate it.
+Goal unchanged: `carriers@xbfreight.com` as a supervised superagent for **XBF Customer
+Setup**. Reley.ai keeps provider onboarding *into* XBF; this does not duplicate it.
 
 ---
 
-## 0. Where the work actually stands
+## What changed since rev 1
 
-Eight agent capabilities from §3:
+Rev 1 named the corpus mount as the critical path. That was wrong, and the reason
+matters more than the correction.
 
-| Capability | State |
+**The corpus was never the blocker.** It sits in `H:\Mi unidad\Socios\Legal &
+Cumplimiento`, 32 documents across `XBFus` and `XBFmx`, and the importer has already
+planned it end to end.
+
+**The real blocker is deployment.** Eight migrations on this branch — including the
+service_role grants without which *no command can write at all* — have never been
+applied to production. Every command, the agent intake, and the new Document Review
+surface work locally and fail in production with `permission denied`. Nothing
+downstream can be verified against the real system until that changes.
+
+### Sprints closed
+
+| Sprint | Outcome |
 | --- | --- |
-| Match provider to relationship | Built |
-| Resolve XBF entity (MX / US) | Built |
-| Resolve thread → provider + vendor_id | Built |
-| Classify the request | Built (OpenAI → Anthropic → deterministic) |
-| Map answers to canonical facts | Partial — ontology built, no canonical facts exist |
-| Extract questions from attachments | **Not built** |
-| Draft the reply | **Not built** |
-| Follow-up loop to activation | **Not built** |
+| 1 — agent reachable | `provider-gmail-sync.ts` calls the intake: thread resolution, classification, entity resolution. Done. |
+| 3 — read the attachments | PDF/XLSX/DOCX question extraction mapped through the ontology. Done. |
+| 6 (partial) — Document Review | Built and verified in-browser. Withheld values never render. |
+| 7 (partial) — E2E gate | Seven-stage synthetic gate chaining the real modules. Done. |
 
-### The finding that sets Sprint 1
+### The defect class that reshaped the plan
 
-**Every module built for the agent this session is unwired.** `provider-agent-resolution`,
-`provider-agent-thread-resolution`, `provider-agent-classifier`,
-`provider-onboarding-assembler` and `provider-entity-import` are imported by no
-entrypoint — exactly the defect found in Builds 22–29 and criticized in
-`provider-onboarding-current-state.md` §1.
+Three separate times, a gate was green over a path nothing had executed: orphaned
+modules nothing imported, a `security_invoker` view with no base-table grants, and
+finally 30 of 35 tables with no `service_role` grant at all. Structural tests, the
+runtime syntax gate, the action contract validator and clean migration replay all
+passed throughout — **none of them runs a query**.
 
-The eight command modules were wired; the agent modules were not. Sprint 1 closes that
-before any new capability is added, and every later sprint ends with its module reachable
-rather than merely tested.
+Rev 1's standing rule ("a module is done when an entrypoint calls it") was necessary
+and insufficient. Rev 2 replaces it:
 
----
+> A capability is done when it has been **executed against a database** and observed to
+> produce its effect. Not when its tests pass, and not when something calls it.
 
-## Sprint 1 — Make the agent reachable
-
-**Goal:** an inbound email produces a linked, classified case. Nothing new is written.
-
-- Call `resolveProviderThread` from `provider-gmail-sync.ts`, replacing the hardcoded
-  `matching_status: 'unmatched'` / `match_method: 'none'`.
-- Call `classifyOnboardingRequest` on intake; persist the proposal (engine, model, prompt
-  version, context digest, confidence) as an agent run, never the body.
-- Call `resolveXbfEntity`; ambiguous evidence creates a review task instead of selecting.
-- Wire `beginProviderEntitySignedUpload` into the importer's `--commit` path.
-
-**Depends on:** nothing. **Blocked by:** nothing.
-**Exit:** a synthetic inbound fixture produces a thread linked to a `vendor_id`, a
-classification proposal, and an entity decision or review task. Envelope refreshed.
+Sprint A exists to enforce that rule retroactively across everything already built.
 
 ---
 
-## Sprint 2 — Canonical facts exist
+## Sprint A — Deploy and smoke-test (the new critical path)
 
-**Goal:** the Entity Vault holds real, reviewed legal-entity facts for both XBF entities.
+**Goal:** the code that works locally also works in production.
 
-- Mount the corpus; run the importer for real.
-- Human review of every extracted fact through the already-wired review commands.
-- Promote reviewed facts via `promote_provider_entity_review_facts`.
-- Record conflicts between `Onboarding.txt` and the official documents as review tasks —
-  never resolved silently.
+1. Apply the 8 branch migrations to production. Note the deadlock hazard in
+   `20260801015155_harden_public_data_api_access.sql` — it takes `AccessExclusiveLock`
+   on every public table in a loop and can deadlock against live connections. Set
+   `lock_timeout` and retry.
+2. Build a **runtime smoke test**: execute every wired command once against a real
+   database and assert its effect. This is the gate that would have caught all three
+   grant defects, and it is the sprint's real deliverable.
+3. Re-run the importer's dry run against production to confirm the entity picker
+   resolves the real organization and both legal entities.
 
-**Depends on:** Sprint 1's upload path.
-**Blocked by:** **the corpus mount** — `/mnt/data` is absent, so all 13 documents are
-missing. Nothing downstream can produce a truthful filled form until this lands.
-**Exit:** `provider_entity_vault_workspace` returns verified facts for MX and US, and a
-form field maps to a real value with provenance.
-
----
-
-## Sprint 3 — Read the attachments
-
-**Goal:** an attached packet yields a structured question list.
-
-- PDF AcroForm field extraction (adapter exists; extraction does not).
-- XLSX and DOCX question extraction.
-- Flat-PDF path → human layout review, no OCR.
-- Map extracted questions through the ontology; unmapped and low-confidence stay pending.
-
-**Depends on:** Sprint 2 for anything to map *to*.
-**Blocked by:** nothing technical.
-**Exit:** a synthetic packet produces a field list with provenance, confidence and
-pending markers, and no invented values.
+**Blocked by:** authorization to deploy, plus production credentials. This is a human
+decision by design — 353 migrations applied to production for the first time should not
+be an agent acting alone.
+**Exit:** every wired command demonstrably writes in production.
 
 ---
 
-## Sprint 4 — Fill and package
+## Sprint B — Ingest and review the corpus
 
-**Goal:** an approved package produces a real filled document, privately stored.
+**Goal:** the Entity Vault holds reviewed canonical facts for both XBF entities.
 
-- Wire `queueProviderOnboardingFormAssembly` / `processProviderOnboardingFormAssembly` to
-  the concrete assembler.
-- Field review UI so an operator can accept, correct, reject or withhold.
-- Release manifest and disclosure decisions through the existing approval RPCs.
+1. `node tools/import-entity-vault.mjs --all "H:\Mi unidad\Socios\Legal & Cumplimiento" --commit --actor <id>` — one command, both entities.
+2. Human review of all 32 documents through the Document Review surface. Two need
+   manual classification: a PNG with no descriptive name, and a file whose name has a
+   typo (`Opinion de Cumpliento`).
+3. Promote reviewed facts. Record any conflict between documents as a review task
+   rather than resolving it silently.
 
-**Depends on:** Sprint 3.
-**Blocked by:** **approver role assignments** — nothing maps a user to
-`operations` / `compliance` / `data_owner` / `legal`, so the approval commands cannot be
-used in production even though they work.
-**Exit:** a filled PDF and XLSX assembled from reviewed facts, hash recorded, signature
-consent bound to the exact template.
+**Depends on:** Sprint A. **Blocked by:** nothing else — corpus and screen both exist.
+**Exit:** a form field maps to a real value with provenance.
 
 ---
 
-## Sprint 5 — Reply and follow up
+## Sprint C — Fill, package, approve
+
+**Goal:** an approved package produces a real filled document.
+
+- Wire form assembly to the concrete assembler.
+- Approval Center surface.
+- Release manifest and disclosure decisions.
+
+**Blocked by:** **approver roles.** `operations` = `ops@xbfreight.com` is settled;
+`compliance`, `data_owner` and `legal` are not, and the approval threshold per
+sensitivity is undecided. Separation of duties means the requester cannot approve, so at
+least two identities are required.
+**Exit:** a filled PDF and XLSX assembled from reviewed facts, signature consent bound
+to the exact template.
+
+---
+
+## Sprint D — Reply and follow up
 
 **Goal:** the round trip closes.
 
-- Draft the reply (the third LLM capability, behind the same provider interface).
-- Wire Gmail delivery: dry-run first, approval-gated send, same thread.
-- Interpret the provider's response — the harder classification, since "attached the
-  corrected form, please sign" and "you are now registered, vendor #X" look alike and mean
-  opposite things.
+- Draft the reply (third LLM capability, same provider interface).
+- Wire Gmail delivery: dry-run, approval-gated send, same thread.
+- Interpret the provider's response — harder than the inbound classification, since
+  "attached the corrected form, please sign" and "you are now registered" look alike and
+  mean opposite things.
 - Configurable follow-ups, cancelled on reply.
 
-**Depends on:** Sprint 4.
-**Blocked by:** **Gmail OAuth + Pub/Sub**, and **sender allowlist + recipient-domain
-policy** — form assembly and Gmail delivery stay deliberately unwired until these exist,
-asserted by test.
+**Blocked by:** a redirect URI on the **existing** OAuth client, and
+`PROVIDER_GMAIL_ALLOWED_ACCOUNT`. Rev 1 claimed a new Google Cloud project was needed —
+that was wrong. Rateware already has one: `gmail-oauth-callback` is in production and
+uses the same `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GMAIL_TOKEN_ENCRYPTION_KEY`
+that the provider code reuses by design. Pub/Sub is optional — manual sync works without
+a topic. Also blocked by the sender allowlist and recipient-domain policy, which is why
+delivery stays deliberately unwired, asserted by test.
 **Exit:** dry-run produces the expected email and attachments; a synthetic confirmation
 advances the case to activated.
 
 ---
 
-## Sprint 6 — Operator surfaces
+## Sprint E — Remaining operator surfaces
 
-**Goal:** the four remaining UI surfaces, on read models and actions that already exist.
+Entity Vault, Approval Center, Delivery Workspace. Read models and read actions exist;
+only the surfaces are missing. Worth doing after Sprint B, when the vault holds 32 real
+documents and the screens have something to show.
 
-Entity Vault, Document Review, Approval Center, Delivery Workspace. Read models and read
-actions were built in this session; only the surfaces are missing.
-
-**Depends on:** Sprints 2–5 for meaningful data.
 **Blocked by:** nothing.
-**Exit:** responsive, accessible, no restricted value rendered.
 
 ---
 
-## Sprint 7 — Release gate and rollout
+## Sprint F — Release and rollout
 
-- The 16-stage synthetic end-to-end gate from §18 Phase 9.
-- Observability metrics.
-- Remaining §23 documents: architecture, data model, Gmail, operator runbook, rollout,
-  rollback.
-- Deployment order, canary, monitoring, rollback owner.
+Extend the E2E gate to cover delivery once Sprint D lands. Observability metrics. The
+remaining §23 documents: architecture, data model, Gmail, operator runbook, rollout,
+rollback. Deployment order, canary, monitoring, rollback owner.
 
-**Blocked by:** production secret owners, migration window, canary entity, rollback owner.
+**Blocked by:** production secret owners, migration window, canary entity, rollback
+owner.
 
 ---
 
 ## Critical path
 
 ```
-Sprint 1 (wiring)  ──► Sprint 3 (extraction) ──► Sprint 4 (fill) ──► Sprint 5 (deliver)
-        │                      ▲                        ▲                    ▲
-        └──► Sprint 2 (facts) ─┘                        │                    │
-                   ▲                          approver roles        Gmail OAuth,
-             corpus mount                                          sender allowlist
+Sprint A (deploy + smoke)  ──►  Sprint B (ingest + review)  ──►  Sprint C (fill)  ──►  Sprint D (deliver)
+        ▲                                    │                        ▲                     ▲
+   authorization                             └──► Sprint E (surfaces) │                     │
+   + credentials                                                 approver roles      redirect URI
+                                                                                   + sender policy
 ```
 
-Only Sprint 1 is fully unblocked today. Sprint 2 is the true bottleneck: without the
-corpus there are no canonical facts, so Sprints 3–5 can only ever run on synthetic
-fixtures, and the release gate would certify a system that has never filled a real form.
+**Sprint E is the only one fully unblocked today.** Everything else waits on Sprint A,
+and Sprint A waits on a decision only the operator can make.
 
-## Human decisions, by the sprint they block
+## Human decisions, by what they block
 
-| Decision | Blocks |
-| --- | --- |
-| Mount the 13-document corpus | Sprint 2 — and transitively everything after it |
-| Approver role assignments | Sprint 4 |
-| Gmail OAuth client, consent screen | Sprint 5 |
-| Pub/Sub topic and IAM | Sprint 5 |
-| Sender allowlist, recipient-domain policy | Sprint 5 |
-| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` secrets | Degrades Sprint 1 to keyword-only |
-| Production secret owners, migration window, canary entity, rollback owner | Sprint 7 |
+| Decision | Blocks | Status |
+| --- | --- | --- |
+| Authorize production deployment + credentials | Sprint A → everything | **open — now the top blocker** |
+| `compliance`, `data_owner`, `legal` approvers; threshold per sensitivity | Sprint C | partially answered (`operations` set) |
+| Redirect URI on the existing OAuth client; `PROVIDER_GMAIL_ALLOWED_ACCOUNT` | Sprint D | open |
+| Sender allowlist, recipient-domain policy | Sprint D | agreed in principle, not configured |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` in Supabase secrets | degrades the classifier to keywords | open |
+| Drop the `https://mail.google.com/` scope | security hardening | open — affects the Quote Desk too |
+| Production secret owners, migration window, canary, rollback owner | Sprint F | open |
 
-## Standing rule for every sprint
+## Standing rules
 
-A module is not done when its tests pass. It is done when an entrypoint calls it. This
-session produced eight wired commands and five unwired agent modules; the sprint exit
-criteria above make reachability the gate, not test count.
+1. A capability is done when it has been executed against a database and observed to
+   produce its effect.
+2. A gate that cannot fail on a broken path is not a gate. Prefer one that runs the
+   thing over three that inspect it.
+3. Nothing that reaches an external system gets wired before its policy exists.
