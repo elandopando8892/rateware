@@ -147,3 +147,53 @@ test('malformed input degrades to empty results rather than throwing', async () 
   assert.deepEqual(result.duplicates, []);
   assert.deepEqual(result.rejections, []);
 });
+
+test('cryptographic key material is refused ahead of every other rule', async () => {
+  // The SAT e.firma bundle ships a private key beside ordinary PDFs. A mis-aimed
+  // --source must never ingest a signing key as a "document".
+  const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 1]);
+  const { plans, rejections } = await planEntityVaultImport([
+    { filename: 'Claveprivada_FIEL_XSL260511N11_20260812_130805.key', bytes: pdf },
+    { filename: '00001000000727261687.cer', bytes: pdf },
+    { filename: 'FIEL_XSL260511N11_20260812130805.pdf', bytes: pdf },
+    { filename: 'bundle.p12', bytes: pdf },
+  ]);
+  assert.equal(plans.length, 0);
+  assert.equal(rejections.length, 4);
+  for (const entry of rejections) assert.equal(entry.reason, 'key_material_refused');
+});
+
+test('a document that merely mentions the e.firma is not refused', async () => {
+  // Over-blocking is its own failure: an appointment receipt is an ordinary PDF.
+  const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 2]);
+  const { plans, rejections } = await planEntityVaultImport([
+    { filename: 'XBFmx - AcuseCita efirma.pdf', bytes: pdf },
+  ]);
+  assert.equal(rejections.length, 0);
+  assert.equal(plans.length, 1);
+});
+
+test('the real corpus document types classify without a human', async () => {
+  const pdf = (n) => new Uint8Array([0x25, 0x50, 0x44, 0x46, n]);
+  const expected = {
+    'XBFus - Tax Information Authorization 2024.pdf': 'tax_filing',
+    'XBFus - SS4 Application.pdf': 'tax_filing',
+    'XBFus - Texas Comptroller of Public Accounts 2024.pdf': 'tax_filing',
+    'XBFus - UCR 2026.pdf': 'ucr_registration',
+    'XBFus - BOC3 Agent.pdf': 'process_agent',
+    'XBFus - Registered Agent.pdf': 'process_agent',
+    'XBFus - Operating Agreement.pdf': 'governance_document',
+    'XBFus - Statement of the Organizer.pdf': 'governance_document',
+    'XBFmx - CIF.pdf': 'cif',
+    'XBFmx - Escrito Socios 2026 (pendiente).pdf': 'governance_document',
+    'Contrato de Arrendamiento XBF 2026 (borrador).pdf': 'lease_contract',
+  };
+  let index = 0;
+  for (const [filename, documentType] of Object.entries(expected)) {
+    index += 1;
+    const { plans } = await planEntityVaultImport([{ filename, bytes: pdf(index) }]);
+    assert.equal(plans.length, 1, filename);
+    assert.equal(plans[0].document_type, documentType, filename);
+    assert.equal(plans[0].requires_human_classification, false, filename);
+  }
+});

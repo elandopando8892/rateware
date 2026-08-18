@@ -22,6 +22,17 @@ const SIGNATURES = [
   { family: 'ole2', bytes: [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1] },
 ];
 
+// Cryptographic key material must never enter the vault under any circumstance.
+// The SAT e.firma (FIEL) and CSD bundles ship a private key alongside ordinary PDFs;
+// a single mis-aimed --source would otherwise ingest a signing key as a "document".
+// This is a hard block ahead of every other rule, not a classification.
+const KEY_MATERIAL_EXTENSIONS = new Set(['key', 'cer', 'req', 'pfx', 'p12', 'pem', 'crt', 'jks', 'keystore']);
+// Name matching is deliberately narrow: it targets actual key-bundle filenames
+// (Claveprivada_FIEL_..., FIEL_XXXX_..., CSD_XXXX_...), not documents that merely
+// mention the e.firma — an appointment receipt named "AcuseCita efirma.pdf" is an
+// ordinary PDF and must not be refused.
+const KEY_MATERIAL_NAME = /clave\s*privada|claveprivada|private[_\s-]?key|\b(?:fiel|csd)_[a-z0-9]{8,}/i;
+
 const EXTENSION_FAMILY = Object.freeze({
   pdf: 'pdf', png: 'png', jpg: 'jpeg', jpeg: 'jpeg',
   xlsx: 'zip', docx: 'zip', xls: 'ole2', doc: 'ole2',
@@ -52,9 +63,20 @@ const CLASSIFICATION_RULES = [
   [/\bcsf\b|constancia de situacion fiscal/i, 'csf', 'restricted'],
   [/\brfc\b|acuse de inscripcion/i, 'rfc_registration', 'restricted'],
   [/bmc-?84|surety|bond|fianza/i, 'surety_bond', 'confidential'],
+  // Tax authorizations and filings carry taxpayer identifiers; restricted, like the W-9.
+  [/tax information authorization|\bss-?4\b|comptroller|opinion de cumplimiento|buzon tributario/i, 'tax_filing', 'restricted'],
+  [/\bcif\b|cedula de identificacion fiscal/i, 'cif', 'restricted'],
+  // Regulatory registrations are public-record adjacent; confidential is enough.
+  [/\bucr\b|unified registration|unified carrier registration/i, 'ucr_registration', 'confidential'],
+  [/boc-?3|process agent|registered agent|agente registrado/i, 'process_agent', 'confidential'],
   [/\bmc\b.*authority|operating authority|autoridad mc/i, 'mc_authority', 'confidential'],
-  [/articles of organization|articles of incorporation|operating agreement/i, 'articles_of_organization', 'confidential'],
+  [/operating agreement|statement of the organizer|escrito socios|acta de asamblea/i, 'governance_document', 'restricted'],
+  [/articles of organization|articles of incorporation/i, 'articles_of_organization', 'confidential'],
   [/boleta.*inscripcion|registro publico|\brpc\b/i, 'commercial_registry', 'confidential'],
+  // A lease is a commercial contract, not onboarding evidence, but it lives in the
+  // same folder — classify it so it is never mistaken for a releasable document.
+  [/contrato de arrendamiento|lease agreement/i, 'lease_contract', 'restricted'],
+  [/acuse\s*cita|acuse de cita/i, 'appointment_receipt', 'confidential'],
 ];
 
 const DEFAULT_CLASSIFICATION = Object.freeze({
@@ -134,6 +156,12 @@ export async function planEntityVaultImport(files = [], options = {}) {
       continue;
     }
     const extension = extensionOf(filename);
+    // Ahead of every other check: refuse key material outright. Both the extension
+    // and the filename are tested, because a .key renamed to .pdf is still a key.
+    if ((extension && KEY_MATERIAL_EXTENSIONS.has(extension)) || KEY_MATERIAL_NAME.test(filename)) {
+      rejections.push(rejection(filename, 'key_material_refused', 'cryptographic key material is never stored in the vault'));
+      continue;
+    }
     const expectedFamily = extension ? EXTENSION_FAMILY[extension] : null;
     if (!expectedFamily) {
       rejections.push(rejection(filename, 'unsupported_extension', extension));
