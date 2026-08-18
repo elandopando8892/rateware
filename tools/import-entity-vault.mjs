@@ -16,6 +16,7 @@ import path from 'node:path';
 import {
   IMPORT_CORE_VERSION, planEntityVaultImport, summarizeForLog,
 } from '../supabase/functions/_shared/provider-entity-import.mjs';
+import { commitEntityVaultImport } from '../supabase/functions/_shared/provider-entity-import-commit.mjs';
 
 // The corpus named in the onboarding brief §5. Listed so the tool can report exactly
 // which files must be mounted rather than failing vaguely.
@@ -123,8 +124,45 @@ async function main() {
 
   reportCorpus(new Set(files.map((file) => file.filename)));
 
-  console.log('\nDry run only. No file was read beyond hashing, and nothing was uploaded.');
-  console.log('Upload requires the bounded-upload endpoint, which is not wired yet.');
+  if (!hasFlag('--commit')) {
+    console.log('\nDry run only. No file was read beyond hashing, and nothing was uploaded.');
+    console.log('To ingest for real, re-run with:  --commit --entity <uuid> --org <uuid> --actor <user-id>');
+    return;
+  }
+
+  // --- commit -------------------------------------------------------------
+  const organizationId = arg('--org');
+  const legalEntityId = arg('--entity');
+  const actorUserId = arg('--actor');
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const missing = [
+    !organizationId && '--org', !legalEntityId && '--entity', !actorUserId && '--actor',
+    !supabaseUrl && 'SUPABASE_URL', !serviceRoleKey && 'SUPABASE_SERVICE_ROLE_KEY',
+  ].filter(Boolean);
+  if (missing.length) {
+    console.error(`\nCannot commit — missing: ${missing.join(', ')}`);
+    process.exitCode = 1;
+    return;
+  }
+  // Key material aborts the whole batch, not just its own file.
+  if (result.rejections.some((entry) => entry.reason === 'key_material_refused')) {
+    console.error('\nRefusing to commit: this batch contains cryptographic key material.');
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(`\nCommitting ${result.plans.length} document(s) to the private vault…`);
+  const bytesByFilename = new Map(files.map((file) => [file.filename, file.bytes]));
+  const outcome = await commitEntityVaultImport(
+    { supabaseUrl, serviceRoleKey, organizationId, legalEntityId, actorUserId, fetch: globalThis.fetch },
+    result,
+    bytesByFilename,
+  );
+  console.log(`  ${outcome.committed.length} ingested, ${outcome.failed.length} failed`);
+  for (const entry of outcome.failed) console.log(`  FAILED ${entry.document_type}: ${entry.error}`);
+  console.log('\nEach document is queued for human review. Nothing is releasable until reviewed.');
+  if (outcome.failed.length) process.exitCode = 1;
 }
 
 await main();

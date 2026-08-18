@@ -29,6 +29,7 @@ const files = [
   'supabase/functions/_shared/provider-onboarding-assembler.mjs',
   'supabase/functions/_shared/provider-onboarding-form-extraction.mjs',
   'supabase/functions/_shared/provider-entity-import.mjs',
+  'supabase/functions/_shared/provider-entity-import-commit.mjs',
   'supabase/functions/_shared/provider-pubsub-auth.ts',
   'supabase/functions/provider-gmail-intake-api/index.ts',
   'supabase/functions/provider-gmail-oauth-callback/index.ts',
