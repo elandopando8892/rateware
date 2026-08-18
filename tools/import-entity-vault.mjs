@@ -68,7 +68,48 @@ function reportCorpus(present) {
   }
 }
 
+/**
+ * Lists the organizations and legal entities available, so the operator never has to
+ * hunt for a UUID by hand. Read-only; writes nothing.
+ */
+async function listEntities() {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY first.');
+    process.exitCode = 1;
+    return;
+  }
+  const headers = { apikey: serviceRoleKey, authorization: `Bearer ${serviceRoleKey}` };
+  const get = async (path) => {
+    const response = await fetch(`${supabaseUrl}${path}`, { headers });
+    if (!response.ok) throw new Error(`Supabase responded ${response.status}`);
+    return response.json();
+  };
+  const organizations = await get('/rest/v1/organizations?select=id,org_name,organization_id');
+  const entities = await get('/rest/v1/legal_entities?select=id,organization_id,entity_code,legal_name,country_code');
+
+  console.log('\nORGANIZATIONS  (use one of these for --org)\n');
+  for (const org of organizations) {
+    console.log(`  --org ${org.id}`);
+    console.log(`      ${org.org_name || org.organization_id || '(unnamed)'}\n`);
+  }
+  console.log('LEGAL ENTITIES  (use one of these for --entity)\n');
+  if (!entities.length) {
+    console.log('  None found. Create the XBF legal entities before importing —');
+    console.log('  a document cannot be filed against an entity that does not exist.\n');
+  }
+  for (const entity of entities) {
+    console.log(`  --entity ${entity.id}`);
+    console.log(`      ${entity.entity_code} · ${entity.legal_name} · ${entity.country_code}\n`);
+  }
+}
+
 async function main() {
+  if (hasFlag('--list-entities')) {
+    await listEntities();
+    return;
+  }
   if (hasFlag('--manifest')) {
     console.log('Entity Vault expected corpus (onboarding brief §5):');
     for (const name of EXPECTED_CORPUS) console.log(`  ${name}`);
