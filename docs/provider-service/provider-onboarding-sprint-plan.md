@@ -112,9 +112,29 @@ before and after that failure. None of them runs a query.
 
 ---
 
-## Sprint A — Deploy and smoke-test (the new critical path)
+## Sprint A — Deploy and smoke-test — DONE 2026-08-18
 
-**Goal:** the code that works locally also works in production.
+**The 8 branch migrations are applied to `rateware-prod`.** `supabase db push`
+after the recovery reconciliation saw exactly the 8 this branch adds — the two
+ChatGPT migrations were already in the remote ledger, so history matched and
+nothing collided. Verified against the live database, not the ledger alone:
+
+- All 8 present in `schema_migrations`.
+- `service_role` now holds INSERT/SELECT/UPDATE on the reachable runtime tables
+  (`provider_agent_runs`, `provider_entity_document_ingestions`,
+  `provider_onboarding_release_packages`, `provider_inbound_envelopes`) — the
+  grant defect that reached production twice is closed for the wired paths.
+- The pre-push schema audit held: the `provider_agent_runs` runtime check only
+  widens (its one existing `deterministic` row passes), the signature tables were
+  empty or single-row, no table rewrite, and the all-tables lock-loop migration
+  (`20260801015155`) was already applied and out of scope.
+- One latent defect surfaced, not caused by the push — see Sprint C's signature
+  consent note.
+
+Still open: the runtime smoke test as a first-class gate. `test:provider-runtime`
+is the template — it already proved the envelope against a real database.
+
+### Original plan (for reference)
 
 1. Apply the 8 branch migrations to production. Note the deadlock hazard in
    `20260801015155_harden_public_data_api_access.sql` — it takes `AccessExclusiveLock`
@@ -163,6 +183,28 @@ sensitivity is undecided. Separation of duties means the requester cannot approv
 least two identities are required.
 **Exit:** a filled PDF and XLSX assembled from reviewed facts, signature consent bound
 to the exact template.
+
+> **Latent grant/design defect, must be resolved before wiring assembly.**
+> `provider-onboarding-form-assembly.ts` grants a signature consent by a direct
+> `service_role` INSERT (line ~75) and consumes it by a direct UPDATE (line ~257)
+> on `provider_onboarding_signature_authorizations`. `service_role` holds **SELECT
+> only** there. The revoke path already goes through a `SECURITY DEFINER` RPC
+> (`provider_onboarding_revoke_signature_authorization`); grant and consume do not.
+>
+> Not an active outage: the assembler chain
+> (`form-assembly.ts ← assembler.mjs ← nothing`) is unreachable in production, and
+> the SELECT-only grant predates this branch — the 2026-08-18 push did not cause it.
+> But wiring assembly onto the current code would fail with `permission denied`,
+> the fourth instance of the grant-defect class on this branch.
+>
+> This carries a real decision, not just a missing grant. This table authorizes
+> applying a real signature, so the boundary matters most here. Two options:
+> **(A)** grant `service_role` INSERT/UPDATE — one line, but any service_role caller
+> could then forge or consume consent directly, bypassing the rules; **(B)** route
+> grant and consume through `SECURITY DEFINER` RPCs like revoke already is —
+> more work, keeps consent writes inside functions that enforce separation of
+> duties and template binding. **(B) is the consistent, safer design.** Do it as
+> part of Sprint C, not before — assembly is blocked on approver roles regardless.
 
 ---
 
