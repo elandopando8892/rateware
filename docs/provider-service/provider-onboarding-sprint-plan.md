@@ -92,6 +92,24 @@ than guessing.
 `rateware-prod`. Two agents deploying to one project without coordination is how
 these four artifacts came to exist outside version control.
 
+### The first capability that meets standing rule 1
+
+`npm run test:provider-runtime` executes `recordInboundEnvelope` against a real
+Postgres and asserts the effect — the composite FK into `legal_entities`, the
+routed/non-routed check constraints, the unique key that makes a replay
+idempotent, and whether `service_role` holds the grants at all.
+
+It is the template for the Sprint A smoke test, and it earned its keep
+immediately: the first run failed with `permission denied for table
+organizations`. That was the fixture being wrong, not the code — `service_role`
+deliberately has no INSERT there, because the application never creates an
+organization. Widening the grant so a test could would have weakened the exact
+property the suite exists to prove, so the fixture seeds with the owner role and
+the code under test keeps the runtime role it will have in production.
+
+Every other suite on this branch — structural, syntax, contract, replay — passed
+before and after that failure. None of them runs a query.
+
 ---
 
 ## Sprint A — Deploy and smoke-test (the new critical path)
