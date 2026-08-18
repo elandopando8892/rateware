@@ -105,7 +105,116 @@ async function listEntities() {
   }
 }
 
+/**
+ * One-command mode: resolve the organization and both legal entities, match each
+ * subfolder to its entity by code, and run every folder in one pass.
+ *
+ * Exists because the step-by-step flow asked the operator to copy UUIDs between six
+ * commands. Everything derivable is derived; only the credentials and the --commit
+ * decision stay with the human.
+ */
+async function runAll(baseDirectory) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY first.');
+    process.exitCode = 1;
+    return;
+  }
+  const headers = { apikey: serviceRoleKey, authorization: `Bearer ${serviceRoleKey}` };
+  const get = async (p) => {
+    const response = await fetch(`${supabaseUrl}${p}`, { headers });
+    if (!response.ok) throw new Error(`Supabase responded ${response.status} on ${p}`);
+    return response.json();
+  };
+
+  const organizations = await get('/rest/v1/organizations?select=id,org_name');
+  if (organizations.length !== 1 && !arg('--org')) {
+    console.error(`Found ${organizations.length} organizations — pass --org <uuid> to choose one.`);
+    process.exitCode = 1;
+    return;
+  }
+  const organizationId = arg('--org') || organizations[0].id;
+  const entities = await get('/rest/v1/legal_entities?select=id,entity_code,legal_name');
+  if (!entities.length) {
+    console.error('No legal entities exist yet. Create the XBF entities before importing.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const folders = (await readdir(baseDirectory, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+
+  // Match folder to entity by code, ignoring case and non-alphanumerics: a folder
+  // named "XBFus" resolves to entity_code "XBFUS".
+  const normalize = (value) => String(value).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const pairs = [];
+  for (const folder of folders) {
+    const entity = entities.find((item) => normalize(item.entity_code) === normalize(folder));
+    if (entity) pairs.push({ folder, entity });
+  }
+  if (!pairs.length) {
+    console.error(`No subfolder matched a legal entity code. Folders: ${folders.join(', ')}`);
+    console.error(`Entity codes: ${entities.map((item) => item.entity_code).join(', ')}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const commit = hasFlag('--commit');
+  const actorUserId = arg('--actor');
+  if (commit && !actorUserId) {
+    console.error('--commit requires --actor <user-id>.');
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`Organization: ${organizationId}`);
+  console.log(`Matched ${pairs.length} folder(s): ${pairs.map((p) => `${p.folder} -> ${p.entity.entity_code}`).join(', ')}`);
+  console.log(commit ? '\nMODE: COMMIT — documents will be ingested.\n' : '\nMODE: dry run — nothing will be uploaded.\n');
+
+  let totals = { planned: 0, committed: 0, failed: 0, rejected: 0, needsClassification: 0 };
+  for (const { folder, entity } of pairs) {
+    const files = await readSource(path.join(baseDirectory, folder));
+    const result = await planEntityVaultImport(files, { legalEntityId: entity.id });
+    totals.planned += result.plans.length;
+    totals.rejected += result.rejections.length;
+    totals.needsClassification += result.plans.filter((p) => p.requires_human_classification).length;
+    console.log(`${folder} (${entity.entity_code}): ${result.plans.length} to ingest, ${result.duplicates.length} duplicate, ${result.rejections.length} rejected`);
+    for (const entry of result.rejections) console.log(`    rejected: ${entry.filename} — ${entry.reason}`);
+
+    if (!commit) continue;
+    const outcome = await commitEntityVaultImport(
+      { supabaseUrl, serviceRoleKey, organizationId, legalEntityId: entity.id, actorUserId, fetch: globalThis.fetch },
+      result,
+      new Map(files.map((file) => [file.filename, file.bytes])),
+    );
+    totals.committed += outcome.committed.length;
+    totals.failed += outcome.failed.length;
+    console.log(`    ingested ${outcome.committed.length}, failed ${outcome.failed.length}`);
+    for (const entry of outcome.failed) console.log(`    FAILED ${entry.document_type}: ${entry.error}`);
+  }
+
+  console.log(`\n${totals.planned} planned · ${totals.rejected} rejected · ${totals.needsClassification} need human classification`);
+  if (commit) {
+    console.log(`${totals.committed} ingested · ${totals.failed} failed`);
+    console.log('\nEvery document is queued for human review. None is releasable until reviewed.');
+    if (totals.failed) process.exitCode = 1;
+  } else {
+    console.log('\nRe-run with --commit --actor <user-id> to ingest for real.');
+  }
+}
+
 async function main() {
+  if (hasFlag('--all')) {
+    const base = arg('--all');
+    if (!base) {
+      console.error('Usage: node tools/import-entity-vault.mjs --all <base-dir> [--commit --actor <user-id>]');
+      process.exitCode = 1;
+      return;
+    }
+    await runAll(path.resolve(base));
+    return;
+  }
   if (hasFlag('--list-entities')) {
     await listEntities();
     return;
