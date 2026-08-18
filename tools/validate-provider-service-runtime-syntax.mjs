@@ -9,6 +9,8 @@ const providerBrowserFiles = srcEntries
 const files = [
   ...providerBrowserFiles,
   'src/vendor-service.js',
+  'src/provider-document-review-domain.js',
+  'src/provider-document-review-page.js',
   'supabase/functions/_shared/provider-gmail.ts',
   'supabase/functions/_shared/provider-entity-upload.ts',
   'supabase/functions/_shared/provider-entity-document-processor.ts',

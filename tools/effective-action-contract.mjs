@@ -44,7 +44,7 @@ const delta = extension.expectedCountsDelta;
 // All run under the same canonical Kinde -> workspace -> tenant resolver and add no new
 // privilege, table or caller, and none is externally discovered, so the envelope is
 // refreshed deliberately rather than the eight actions being re-reviewed.
-const shipperDirectoryEnvelope = '1fb36039d1ba330bb8c287628ad5e345ea18e828b8f6fbc40c4a1e058413d196';
+const shipperDirectoryEnvelope = 'd61a30598da59b4dc8ced3487462f89ca3eae59ae57e6b5a8e45b551306e68ea';
 const legacyAuthorizationOverrides = Object.fromEntries([
   'edge.shipper-directory-api.get_shipper',
   'edge.shipper-directory-api.list_shippers',

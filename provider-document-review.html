@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rateware Document Review</title>
+  <link rel="stylesheet" href="./src/styles.css" />
+  <link rel="stylesheet" href="./src/provider-onboarding.css" />
+  <link rel="stylesheet" href="./src/provider-document-review.css" />
+</head>
+<body>
+<div class="shell-layout">
+  <aside class="side-nav" aria-label="Rateware modules">
+    <a class="brand-mark" href="./app.html">Rateware</a>
+    <nav class="nav-groups">
+      <section class="nav-group"><p>Operate</p><a href="./app.html" data-nav-code="CC">Command Center</a><a href="./staging-review.html" data-nav-code="RQ">Review Queue</a><a href="./rateware.html" data-nav-code="RW">Rateware</a></section>
+      <section class="nav-group"><p>Source</p><a href="./vendors.html" data-nav-code="CM">Carrier CRM</a><a href="./provider-service.html" data-nav-code="PS">Provider Service</a><a href="./provider-onboarding.html" data-nav-code="PO">Provider Onboarding</a><a aria-current="page" href="./provider-document-review.html" data-nav-code="DR">Document Review</a><a href="./provider-communications.html" data-nav-code="PC">Communications</a></section>
+      <section class="nav-group"><p>Admin</p><a href="./settings.html" data-nav-code="ST">Settings</a></section>
+    </nav>
+  </aside>
+  <div class="page-frame">
+    <header class="page-header">
+      <div><p class="eyebrow">Provider Service · human review</p><h1>Document Review</h1><nav class="module-crumbs"><a href="./provider-service.html">Provider Service</a><span>Document Review</span></nav></div>
+      <div class="page-header-actions"><a class="secondary-link" href="./provider-onboarding.html">Onboarding</a><form id="auth-form" class="auth-strip"><button id="auth-button" type="submit">Log in</button><button id="sign-out-button" type="button" class="secondary hidden">Sign out</button><p id="auth-status" role="status"></p></form></div>
+    </header>
+    <main class="onboarding-layout">
+      <section class="onboarding-hero">
+        <div><p class="eyebrow">Nothing is releasable until reviewed</p><h2>Turn ingested documents into reviewed canonical facts.</h2><p>Every extracted field is decided by a person. Restricted values stay withheld — accept, correct, reject or withhold each one, then finalize the document.</p></div>
+      </section>
+      <section class="onboarding-metrics" aria-label="Review metrics">
+        <button data-review-queue="all" class="is-active"><span>Reviews</span><strong id="metric-total">0</strong></button>
+        <button data-review-queue="unassigned"><span>Unassigned</span><strong id="metric-unassigned">0</strong></button>
+        <button data-review-queue="in_review"><span>In review</span><strong id="metric-inreview">0</strong></button>
+        <button data-review-queue="all"><span>Pending fields</span><strong id="metric-fields">0</strong></button>
+      </section>
+      <section class="onboarding-queues">
+        <button data-review-queue="all" class="is-active">All</button><button data-review-queue="unassigned">Unassigned</button><button data-review-queue="in_review">In review</button><button data-review-queue="blocked">Blocked</button><button data-review-queue="decided">Decided</button>
+      </section>
+      <section class="onboarding-master-detail">
+        <div class="workspace-panel">
+          <div class="section-heading compact split-heading"><div><p class="eyebrow">Queue</p><h2>Documents awaiting review</h2></div><span id="review-caption" class="section-caption">0–0 of 0</span></div>
+          <div class="onboarding-table-head"><span>Document</span><span>Entity</span><span>Sensitivity</span><span>Fields</span></div>
+          <div id="review-rows" class="onboarding-rows" aria-live="polite"><article class="ui-state ui-state-loading"><strong>Loading reviews</strong><p>Resolving the review queue.</p></article></div>
+          <div class="onboarding-pagination"><button id="review-prev" class="secondary" disabled>Previous</button><button id="review-next" class="secondary" disabled>Next</button></div>
+        </div>
+        <aside class="workspace-panel onboarding-detail-panel"><div id="review-detail" class="onboarding-empty"><strong>Select a document</strong><p>Decide each extracted field, then finalize.</p></div></aside>
+      </section>
+      <p class="onboarding-boundary">Restricted and highly restricted values are withheld from this screen. Open the document itself through the audited disclosure path when a value must be seen.</p>
+    </main>
+  </div>
+</div>
+<script type="module">import { initAuthControls } from "./src/auth.js"; initAuthControls();</script>
+<script type="module" src="./src/provider-document-review-page.js"></script>
+</body>
+</html>

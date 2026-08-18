@@ -34,6 +34,7 @@ const PROVIDER_SERVICE_ACTIONS = new Set([
   "get_provider_onboarding_case",
   "list_provider_entity_vault",
   "list_provider_onboarding_field_review",
+  "list_provider_document_reviews",
   "list_provider_onboarding_approvals",
   "list_provider_onboarding_delivery",
   "claim_provider_entity_document_review",
@@ -765,6 +766,33 @@ async function listProviderOnboardingDelivery(supabase: any, organizationUuid: s
   };
 }
 
+const DOCUMENT_REVIEW_QUEUES = new Set(["all", "unassigned", "in_review", "blocked", "decided"]);
+
+async function listProviderDocumentReviews(supabase: any, organizationUuid: string, body: Record<string, unknown>) {
+  const queue = cleanText(body.queue)?.toLowerCase() || "all";
+  if (!DOCUMENT_REVIEW_QUEUES.has(queue)) throw new Error("Unsupported document review queue.");
+  const limit = clampInteger(body.limit, 40, 10, 100);
+  const offset = clampInteger(body.offset, 0, 0, 100000);
+  const legalEntityId = optionalUuid(body.legal_entity_id, "legal_entity_id");
+
+  let query = supabase
+    .from("provider_entity_document_review_queue")
+    .select("*", { count: "exact" })
+    .eq("organization_id", organizationUuid)
+    .order("priority_rank", { ascending: true })
+    .order("requested_at", { ascending: true })
+    .range(offset, offset + limit - 1);
+  if (legalEntityId) query = query.eq("legal_entity_id", legalEntityId);
+  if (queue === "unassigned") query = query.eq("review_status", "pending").is("assigned_reviewer_user_id", null);
+  else if (queue === "in_review") query = query.eq("review_status", "in_review");
+  else if (queue === "blocked") query = query.gt("pending_field_count", 0).eq("review_status", "in_review");
+  else if (queue === "decided") query = query.in("review_status", ["approved", "rejected", "changes_required"]);
+
+  const result = await query;
+  if (result.error) throw result.error;
+  return { data: { rows: result.data || [], total: result.count || 0, limit, offset, queue } };
+}
+
 export async function handleProviderServiceAction(
   supabase: any,
   user: { organization_id?: string | null; owner_user_id?: string | null },
@@ -802,6 +830,9 @@ export async function handleProviderServiceAction(
   }
   if (action === "list_provider_entity_vault") {
     return await listProviderEntityVault(supabase, organizationUuid, body);
+  }
+  if (action === "list_provider_document_reviews") {
+    return await listProviderDocumentReviews(supabase, organizationUuid, body);
   }
   if (action === "list_provider_onboarding_field_review") {
     return await listProviderOnboardingFieldReview(supabase, organizationUuid, body);
