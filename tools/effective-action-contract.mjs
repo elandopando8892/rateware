@@ -92,14 +92,110 @@ const providerSurfaces = extension.surfaces.map((entry) => ({
 // resolution). That adds a local dependency to the Gmail runtime and changes its
 // shared envelope. The intake writes only proposals and an agent-run audit row under
 // the same tenant scope — no new privilege, no new caller, and no outbound action.
+// Refreshed 2026-08-18. The Gmail sync now hands the agent intake the mailbox and
+// the Gmail message id so the intake can record a neutral inbox envelope, and the
+// intake imports `provider-inbound-envelope.ts`. The dependency envelope is
+// computed per function, not per action, so all four intake-api actions move
+// together even though only the sync path changed.
+//
+// Authorization itself is unchanged: no new caller, no new privilege, no new
+// external reach. The push receiver moves for the same reason — it reaches the
+// sync — and the OAuth callback, which does not, keeps its envelope.
 const gmailAuthorizationFingerprints = {
-  'edge.provider-gmail-intake-api.provider_gmail_status': 'e1eba34fda32fdb3fba2590cb99bf281f3bf9d71d768a699bdf37f9ed06abcb9',
-  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': 'e1eba34fda32fdb3fba2590cb99bf281f3bf9d71d768a699bdf37f9ed06abcb9',
-  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': 'e1eba34fda32fdb3fba2590cb99bf281f3bf9d71d768a699bdf37f9ed06abcb9',
-  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': 'e1eba34fda32fdb3fba2590cb99bf281f3bf9d71d768a699bdf37f9ed06abcb9',
+  'edge.provider-gmail-intake-api.provider_gmail_status': '6df0b9545ebfa7516556916d0c5c74a7c81fa08a9198531dd3b9091f746f7e2a',
+  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': '6df0b9545ebfa7516556916d0c5c74a7c81fa08a9198531dd3b9091f746f7e2a',
+  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '6df0b9545ebfa7516556916d0c5c74a7c81fa08a9198531dd3b9091f746f7e2a',
+  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '6df0b9545ebfa7516556916d0c5c74a7c81fa08a9198531dd3b9091f746f7e2a',
   'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': '61a4d760bc3bc7157e0abcebf08818cd4e84841f6ec35f7c406475e28df53a3b',
-  'edge.provider-gmail-push.receive_provider_gmail_push': '0f368977fd12c40da88a8ecee7254d340337e81e32fe3f09e8edcf87e2d3e4ff',
+  'edge.provider-gmail-push.receive_provider_gmail_push': '3efbde42fc99498642e648d5da8ac285930d3d587e7cd8069cb5744e94774aee',
 };
+
+// Surfaces recovered from production on 2026-08-18. Both functions were deployed
+// to rateware-prod without a source commit, so they had never been governed. They
+// are declared here at the state actually running in production.
+const recoveredAuthorizationFingerprints = {
+  'edge.provider-document-canary-processor.provider_document_canary_gone': 'e442680a43f5180ecb6d89212e28d060746dd6ab3b999eb641fbf06a9cd1700a',
+  'edge.provider-release-package-api.get_provider_release_manifest': 'cf1d74974a46d97c26ca4418943e5733a0845bda5fde3f2e1dd2a17c3c8bd2af',
+  'edge.provider-release-package-api.get_provider_release_download_url': 'cf1d74974a46d97c26ca4418943e5733a0845bda5fde3f2e1dd2a17c3c8bd2af',
+};
+
+const recoveredMetadataFingerprints = {
+  'edge.provider-release-package-api.get_provider_release_manifest': '53ed919755f4be55e7525aad1de25be4ad2170862e4329f2cd35ad352109dd8f',
+  'edge.provider-release-package-api.get_provider_release_download_url': 'd0f283235e8fcec38f9f3a4c05905bed19c317d653f59ab587d37bc0d56170b9',
+  'edge.provider-document-canary-processor.provider_document_canary_gone': '6b84f34c73e697ef5d226e2552d67c6c150854463f3df0f0a6499f834c1c9748',
+};
+
+const recoveredSharedMetadata = {
+  businessModule: 'Provider Service',
+  functionalOwner: 'Provider Service',
+  decisionStatus: 'explicitly_allowed',
+  lifecycle: 'active',
+  replacementAction: null,
+  analysisCoverage: 'direct',
+  coverageSignals: ['direct', 'external_dependency'],
+  rpcSignature: null,
+  contractVersion,
+};
+
+const recoveredSurfaces = [
+  {
+    canonicalId: 'edge.provider-release-package-api.get_provider_release_manifest',
+    actionName: 'get_provider_release_manifest',
+    sourceKind: 'edge-method',
+    sourceFile: 'supabase/functions/provider-release-package-api/index.ts',
+    handler: 'Deno.serve',
+    endpoint: 'POST /functions/v1/provider-release-package-api action=get_manifest',
+    operation: 'read',
+    resource: 'provider-onboarding-release-package',
+    access: 'read',
+    exposure: 'human',
+    sensitivity: 'critical',
+    tenantRelevance: 'record-derived',
+    proposedPermissionKey: 'provider.release-package.read',
+    sourceFingerprint: 'ab39a6bcfdde50ae76f6ce98d8a7672c827f2125162da52c6ff914cb2503f52b',
+    ...recoveredSharedMetadata,
+  },
+  {
+    canonicalId: 'edge.provider-release-package-api.get_provider_release_download_url',
+    actionName: 'get_provider_release_download_url',
+    sourceKind: 'edge-method',
+    sourceFile: 'supabase/functions/provider-release-package-api/index.ts',
+    handler: 'Deno.serve',
+    endpoint: 'POST /functions/v1/provider-release-package-api action=get_download_url',
+    operation: 'read',
+    resource: 'provider-onboarding-release-package',
+    access: 'read',
+    exposure: 'human',
+    sensitivity: 'critical',
+    tenantRelevance: 'record-derived',
+    proposedPermissionKey: 'provider.release-package.download',
+    sourceFingerprint: 'ab39a6bcfdde50ae76f6ce98d8a7672c827f2125162da52c6ff914cb2503f52b',
+    ...recoveredSharedMetadata,
+  },
+  {
+    canonicalId: 'edge.provider-document-canary-processor.provider_document_canary_gone',
+    actionName: 'provider_document_canary_gone',
+    sourceKind: 'edge-method',
+    sourceFile: 'supabase/functions/provider-document-canary-processor/index.ts',
+    handler: 'Deno.serve',
+    endpoint: 'POST /functions/v1/provider-document-canary-processor',
+    operation: 'read',
+    resource: 'provider-entity-document-ingestion',
+    // The tombstone reads nothing and writes nothing; it answers a constant 410.
+    // `read` is the least-privilege value the contract's vocabulary allows, and
+    // the surface is platform-scoped because it touches no tenant record.
+    access: 'read',
+    exposure: 'internal/service-role',
+    sensitivity: 'low',
+    tenantRelevance: 'platform-scoped',
+    proposedPermissionKey: 'provider.document-canary.read',
+    sourceFingerprint: '60688265ba2148b672d0b23361f832f42c4220a3dc57d91ebd546adfbf7db8c6',
+    ...recoveredSharedMetadata,
+    // An internal/service-role surface must be internal_only; this overrides the
+    // shared default deliberately, after the spread.
+    decisionStatus: 'internal_only',
+  },
+];
 
 const gmailMetadataFingerprints = {
   'edge.provider-gmail-intake-api.provider_gmail_status': '85dbc15681218bc1ca70193ec2ae29d5db0782120e3fb0da91bf3cff90e7adfa',
@@ -227,8 +323,10 @@ export const ACTION_CONTRACT = {
   contractVersion,
   methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6,
+    // +6 Gmail intake/pubsub, +3 recovered from production 2026-08-18
+    // (2 release-package actions, 1 canary tombstone).
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + 3,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + 3,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi,
   },
@@ -237,16 +335,19 @@ export const ACTION_CONTRACT = {
     ...extension.reviewedMetadataFingerprints,
     ...providerMetadataOverrides,
     ...gmailMetadataFingerprints,
+    ...recoveredMetadataFingerprints,
   },
   reviewedAuthorizationFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedAuthorizationFingerprints,
     ...legacyAuthorizationOverrides,
     ...extension.reviewedAuthorizationFingerprints,
     ...gmailAuthorizationFingerprints,
+    ...recoveredAuthorizationFingerprints,
   },
   surfaces: [
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({ ...entry, contractVersion })),
     ...providerSurfaces,
     ...gmailSurfaces,
+    ...recoveredSurfaces,
   ],
 };

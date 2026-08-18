@@ -18,6 +18,18 @@ const FIXED_EDGE_OPERATIONS = new Map([
   ["gmail-oauth-callback", [["complete_google_oauth_callback", "GET /functions/v1/gmail-oauth-callback?code&state", "external-tokenized"]]],
   ["provider-gmail-oauth-callback", [["complete_provider_gmail_oauth_callback", "GET /functions/v1/provider-gmail-oauth-callback?code&state", "external-tokenized"]]],
   ["provider-gmail-push", [["receive_provider_gmail_push", "POST /functions/v1/provider-gmail-push", "external-tokenized"]]],
+  // Recovered from production 2026-08-18 (see commit recovering untracked deploys).
+  // Both were deployed without a source commit, so neither had ever been governed.
+  // The release API selects on body.action, but through `new Set([...]).has(action)`,
+  // which the dispatch extractor cannot read as a table — declared here explicitly
+  // rather than reshaped, because the deployed bytes are the thing under contract.
+  ["provider-release-package-api", [
+    ["get_provider_release_manifest", "POST /functions/v1/provider-release-package-api action=get_manifest", "human"],
+    ["get_provider_release_download_url", "POST /functions/v1/provider-release-package-api action=get_download_url", "human"]
+  ]],
+  // A tombstone: the canary finished and the function answers 410 so a stale caller
+  // sees "gone" rather than a 404 that would read as a routing failure.
+  ["provider-document-canary-processor", [["provider_document_canary_gone", "POST /functions/v1/provider-document-canary-processor", "internal/service-role"]]],
   ["google-chat-app", [["health", "GET /functions/v1/google-chat-app", "public"], ["handle_chat_event", "POST /functions/v1/google-chat-app provider event", "public"]]],
   ["interpret-upload", [["interpret_upload", "POST /functions/v1/interpret-upload", "human"]]],
   ["sync-banxico-fx", [["sync_banxico_fx", "POST /functions/v1/sync-banxico-fx x-cron-secret", "internal/service-role"]]],

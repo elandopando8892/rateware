@@ -12,8 +12,10 @@
 import { resolveXbfEntity } from './provider-agent-resolution.mjs';
 import { resolveProviderThread } from './provider-agent-thread-resolution.ts';
 import { classifyOnboardingRequest } from './provider-agent-classifier.mjs';
+import { recordInboundEnvelope } from './provider-inbound-envelope.ts';
 
 type IntakeMessage = {
+  id?: string;
   threadId?: string;
   subject?: string | null;
   bodyText?: string | null;
@@ -38,6 +40,7 @@ export async function runProviderOnboardingIntake(
     organization_id: string;
     legal_entity_id: string;
     thread_id: string;
+    mailbox_reference?: string | null;
     message: IntakeMessage;
     relationship_entity_kind?: string | null;
   },
@@ -93,6 +96,38 @@ export async function runProviderOnboardingIntake(
       relationship_entity_kind: input.relationship_entity_kind ?? null,
     });
 
+    // 4. Record the neutral inbox envelope — the durable, metadata-only record of
+    // what arrived and where it routed. The envelope is idempotent on the Gmail
+    // message id, so a replayed message adopts the existing one.
+    //
+    // A failed envelope write is captured rather than thrown: matching and
+    // classification already succeeded, and discarding them because an audit row
+    // was refused would lose more than it protects. The failure stays visible in
+    // the run metadata, which is queryable.
+    let envelope: Record<string, unknown> | null = null;
+    let envelopeError: string | null = null;
+    if (input.mailbox_reference && message.id) {
+      try {
+        envelope = await recordInboundEnvelope(supabase, {
+          organization_id: organizationId,
+          mailbox_reference: String(input.mailbox_reference),
+          external_message_id: String(message.id),
+          external_thread_id: message.threadId ?? null,
+          entity,
+          // Counts and codes only — the envelope table stores no message content.
+          metadata: {
+            request_type: classification.request_type,
+            attachment_count: attachmentNames.length,
+            match_decision: match.decision,
+          },
+        });
+      } catch (error) {
+        envelopeError = String((error as Error)?.message || 'envelope_failed').slice(0, 200);
+      }
+    } else {
+      envelopeError = 'envelope_identity_unavailable';
+    }
+
     const completedAt = new Date().toISOString();
     const update = await supabase.from('provider_agent_runs').update({
       provider_relationship_id: match.decision === 'matched' ? match.provider_relationship_id : null,
@@ -122,12 +157,18 @@ export async function runProviderOnboardingIntake(
         context_digest: classification.context_digest,
         failed_tiers: classification.attempts.map((attempt: any) => attempt.engine),
         decision: 'proposed',
+        envelope_id: envelope?.envelope_id ?? null,
+        envelope_status: envelope?.envelope_status ?? null,
+        envelope_created: envelope?.created ?? false,
+        envelope_error: envelopeError,
       },
     }).eq('organization_id', organizationId).eq('id', runId);
     if (update.error) throw update.error;
 
     return {
       agent_run_id: runId,
+      envelope_id: envelope?.envelope_id ?? null,
+      envelope_status: envelope?.envelope_status ?? null,
       match_decision: match.decision,
       vendor_id: match.vendor_id ?? null,
       request_type: classification.request_type,

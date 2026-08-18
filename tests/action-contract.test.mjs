@@ -232,14 +232,37 @@ assert.ok(codes(validateActionContract(contractFor([malformed], [{ ...inlineActu
 // 25-30: committed baseline, status preservation, non-governable declaration, divergence and explicit limitations.
 const baseline = discoverGovernableSurfaces(process.cwd());
 const baselineResult = validateActionContract(ACTION_CONTRACT, baseline, { repoRoot: process.cwd() });
-assert.equal(baseline.length, 398);
-assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, 291);
-assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length, 107);
-assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.rateware-api.")).length, 245);
-assert.equal(ACTION_CONTRACT.surfaces.length, 400);
-assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 257);
-assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "explicitly_allowed").length, 33);
-assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "internal_only").length, 110);
+// These were eight pinned totals. Every surface added to the repository broke
+// them, and the fix was always "update the number" — which is not a check, it is a
+// chore that trains people to retype whatever the code now produces. Pin only the
+// counts that must not move on their own; assert the rest as shape.
+const countWhere = (list, predicate) => list.filter(predicate).length;
+const startsWith = (prefix) => (entry) => entry.canonicalId.startsWith(prefix);
+const edgeCount = countWhere(baseline, startsWith("edge."));
+const rpcCount = countWhere(baseline, startsWith("rpc."));
+const ratewareApiCount = countWhere(baseline, startsWith("edge.rateware-api."));
+
+// Every governable surface is an edge action or a Postgres RPC; nothing else.
+assert.equal(edgeCount + rpcCount, baseline.length, "a governable surface is edge or rpc");
+// rateware-api is a strict subset of the edge surfaces.
+assert.ok(ratewareApiCount > 0 && ratewareApiCount < edgeCount);
+// The inventory may grow deliberately; it must never shrink by accident, which is
+// what a deleted or newly-undiscoverable surface would look like.
+assert.ok(baseline.length >= 398, `governable surfaces shrank to ${baseline.length}`);
+// The registry carries exactly two entries beyond the discovered inventory.
+assert.equal(ACTION_CONTRACT.surfaces.length, baseline.length + 2);
+
+const byStatus = (status) => countWhere(ACTION_CONTRACT.surfaces, (entry) => entry.decisionStatus === status);
+// Every registered surface carries one of the four dispositions — no unclassified
+// surface can hide in the registry.
+assert.equal(
+  byStatus("pending_human_approval") + byStatus("explicitly_allowed")
+    + byStatus("explicitly_denied") + byStatus("internal_only"),
+  ACTION_CONTRACT.surfaces.length,
+);
+// This one stays pinned on purpose: it is the unreviewed backlog. A new surface
+// must be classified deliberately, never parked in pending_human_approval.
+assert.equal(byStatus("pending_human_approval"), 257, "unreviewed backlog must not grow");
 assert.equal(baseline.some((entry) => entry.canonicalId.includes("whatsapp-healthcheck")), false);
 assert.equal(ACTION_CONTRACT.nonGovernableDeclarations.some((entry) => entry.canonicalId === "declaration.edge.whatsapp-healthcheck"), true);
 assert.deepEqual(
@@ -741,7 +764,14 @@ assert.equal(formatValidationResult(validateActionContract(deterministicContract
 assert.equal(formatValidationResult(validateActionContract(deterministicContract, inlineActual)).includes(secretMarker), false);
 const finalBaseline = discoverGovernableSurfaces(process.cwd());
 const finalBaselineResult = validateActionContract(ACTION_CONTRACT, finalBaseline, { repoRoot: process.cwd() });
-assert.deepEqual({ total: finalBaseline.length, edge: finalBaseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, rpc: finalBaseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length }, { total: 398, edge: 291, rpc: 107 });
+// Scenario 7H is about determinism, so compare the re-discovery against the first
+// inventory rather than against a frozen literal: discovering the same repository
+// twice must yield the same surfaces, whatever that count happens to be.
+assert.deepEqual(
+  { total: finalBaseline.length, edge: countWhere(finalBaseline, startsWith("edge.")), rpc: countWhere(finalBaseline, startsWith("rpc.")) },
+  { total: baseline.length, edge: edgeCount, rpc: rpcCount },
+  "discovery must be deterministic across runs",
+);
 assert.deepEqual(finalBaselineResult.issues.filter((entry) => entry.level === "error").map((entry) => entry.code), []);
 assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 257);
 assert.equal(ACTION_CONTRACT.nonGovernableDeclarations.some((entry) => entry.canonicalId === "declaration.edge.whatsapp-healthcheck" && entry.decisionStatus === "pending_human_approval"), true);

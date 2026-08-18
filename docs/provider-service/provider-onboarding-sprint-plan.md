@@ -50,6 +50,50 @@ Sprint A exists to enforce that rule retroactively across everything already bui
 
 ---
 
+## The parallel agent (discovered 2026-08-18, before any deploy)
+
+Sprint A opened by comparing local migrations against production. Production held
+**two migrations and two Edge Functions that existed in no branch of this
+repository**, applied between 2026-08-15 and 2026-08-17:
+
+| Artifact | What it is |
+| --- | --- |
+| `20260815071846_grant_provider_document_processor_service_role` | service_role grants on three ingestion tables |
+| `20260817052654_provider_neutral_inbox_persistence` | `provider_inbound_envelopes`, `provider_internal_actors`, `provider_inbound_envelope_events`, `provider_onboarding_approval_packets` |
+| `provider-release-package-api` | Kinde-authenticated release manifest reader |
+| `provider-document-canary-processor` | 410 tombstone for a finished canary |
+
+They came from a second agent working the same master prompt in another session,
+writing to production through the Supabase MCP rather than through the repository.
+Nothing was committed, so a redeploy from source would have orphaned live code.
+
+**Recovered verbatim into commit `1b76deb`.** Both migrations slot in
+chronologically ahead of this branch's own, local history now matches the remote
+ledger, and clean replay from zero passes with all 355.
+
+### Why the designs did not collide
+
+`provider_inbound_envelopes` does entity routing with confidence — the same job as
+`resolveXbfEntity`. Building a second inbound record beside it would have violated
+§24 ("no dupliques tablas"), so the intake now defers to it:
+
+| Table | Owns |
+| --- | --- |
+| `provider_inbound_envelopes` | **what** arrived and **where** it routed — durable, one per Gmail message id |
+| `provider_agent_runs` | **how** the agent decided — engine, model, prompt version, context digest |
+
+The bridge is `provider-inbound-envelope-plan.mjs` (pure rules, executed by 13
+tests) plus `provider-inbound-envelope.ts` (reads, writes, race). Jurisdiction is
+matched on `country_code`, not on the `XBFMX`/`XBFUS` string, so renaming an entity
+cannot silently break routing. Two entities in one country routes to review rather
+than guessing.
+
+**Standing hazard:** the other session may still hold write access to
+`rateware-prod`. Two agents deploying to one project without coordination is how
+these four artifacts came to exist outside version control.
+
+---
+
 ## Sprint A — Deploy and smoke-test (the new critical path)
 
 **Goal:** the code that works locally also works in production.

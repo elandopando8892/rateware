@@ -391,7 +391,9 @@ export async function syncProviderGmailConnection(
               organization_id: organizationUuid,
               legal_entity_id: legalEntityId,
               thread_id: String((thread as Record<string, unknown>).id),
+              mailbox_reference: mailbox,
               message: {
+                id: message.id,
                 threadId: message.threadId,
                 subject: message.subject,
                 bodyText: message.bodyText,
