@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Onboarding Service Provider</title>
+  <link rel="stylesheet" href="./src/styles.css" />
+  <link rel="stylesheet" href="./src/provider-onboarding-app.css" />
+</head>
+<body>
+<div class="osp-app">
+  <aside class="osp-nav" aria-label="Onboarding Service Provider">
+    <div class="osp-brand">
+      <strong>Onboarding<br />Service Provider</strong>
+      <small>XBF Customer Setup</small>
+      <div class="osp-mailbox"><i></i>carriers@xbfreight.com</div>
+    </div>
+    <nav class="osp-groups" id="osp-nav" aria-label="Onboarding surfaces"></nav>
+    <div class="osp-foot">Supervised superagent. It classifies, matches, extracts and drafts — it never <b>approves, signs or sends</b>. Those stay human, scoped and audited.</div>
+  </aside>
+  <div class="osp-main">
+    <header class="osp-bar">
+      <h1 id="osp-title">Onboarding Service Provider</h1>
+      <form id="auth-form" class="auth-strip">
+        <a class="secondary-link" href="./app.html">Rateware</a>
+        <button id="auth-button" type="submit">Log in</button>
+        <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+        <p id="auth-status" role="status"></p>
+      </form>
+    </header>
+    <iframe class="osp-frame" id="osp-frame" title="Onboarding surface" referrerpolicy="same-origin"></iframe>
+  </div>
+</div>
+<script type="module">import { initAuthControls } from "./src/auth.js"; initAuthControls();</script>
+<script type="module" src="./src/provider-onboarding-app.js"></script>
+</body>
+</html>

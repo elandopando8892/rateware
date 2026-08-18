@@ -37433,3 +37433,12 @@ form[data-unsaved-guard][data-unsaved="true"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Onboarding Service Provider app — embed mode.
+   When a surface opens inside the standalone app shell (provider-onboarding-app.html)
+   with ?embed=1, it drops the Rateware chrome and renders only its own content.
+   Same page, same code, same backend — §14 "verse de dos maneras". */
+:root.embedded .side-nav,
+:root.embedded .page-header { display: none; }
+:root.embedded .shell-layout { grid-template-columns: 1fr; min-height: auto; }
+:root.embedded .page-frame { padding: 16px; }
