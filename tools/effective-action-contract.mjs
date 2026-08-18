@@ -87,13 +87,18 @@ const providerSurfaces = extension.surfaces.map((entry) => ({
   decisionStatus: 'internal_only',
 }));
 
+// Refreshed 2026-08-17 (Sprint 1): provider-gmail-sync.ts now calls the agent intake
+// (provider-agent-intake.ts -> thread resolution, request classification, entity
+// resolution). That adds a local dependency to the Gmail runtime and changes its
+// shared envelope. The intake writes only proposals and an agent-run audit row under
+// the same tenant scope — no new privilege, no new caller, and no outbound action.
 const gmailAuthorizationFingerprints = {
-  'edge.provider-gmail-intake-api.provider_gmail_status': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
-  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
-  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
-  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
+  'edge.provider-gmail-intake-api.provider_gmail_status': 'e1eba34fda32fdb3fba2590cb99bf281f3bf9d71d768a699bdf37f9ed06abcb9',
+  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': 'e1eba34fda32fdb3fba2590cb99bf281f3bf9d71d768a699bdf37f9ed06abcb9',
+  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': 'e1eba34fda32fdb3fba2590cb99bf281f3bf9d71d768a699bdf37f9ed06abcb9',
+  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': 'e1eba34fda32fdb3fba2590cb99bf281f3bf9d71d768a699bdf37f9ed06abcb9',
   'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': '61a4d760bc3bc7157e0abcebf08818cd4e84841f6ec35f7c406475e28df53a3b',
-  'edge.provider-gmail-push.receive_provider_gmail_push': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
+  'edge.provider-gmail-push.receive_provider_gmail_push': '0f368977fd12c40da88a8ecee7254d340337e81e32fe3f09e8edcf87e2d3e4ff',
 };
 
 const gmailMetadataFingerprints = {

@@ -1,3 +1,4 @@
+import { runProviderOnboardingIntake } from './provider-agent-intake.ts';
 import {
   cleanProviderGmailText,
   getProviderGmailAccessToken,
@@ -133,6 +134,9 @@ function parsedGmailMessage(raw: Record<string, any>, mailbox: string) {
     internetMessageId: headerValue(payload, 'Message-ID'),
     senderName: senderName(from),
     senderEmail,
+    // Reply-To is a real matching signal: AP desks routinely send from a shared
+    // relay and expect replies at an addressable mailbox.
+    replyToEmail: parseAddresses(headerValue(payload, 'Reply-To'))[0] || null,
     toEmails,
     ccEmails,
     subject,
@@ -362,6 +366,9 @@ export async function syncProviderGmailConnection(
     let insertedMessageCount = 0;
     let duplicateMessageCount = 0;
     let insertedAttachmentCount = 0;
+    let intakeRunCount = 0;
+    let intakeMatchedCount = 0;
+    let intakeFailureCount = 0;
     let latestMessageAt = cleanProviderGmailText(connection.last_message_at);
 
     for (const id of messageIds) {
@@ -374,6 +381,32 @@ export async function syncProviderGmailConnection(
         insertedMessageCount += 1;
         insertedAttachmentCount += outcome.attachmentCount;
         if (!latestMessageAt || message.messageAt > latestMessageAt) latestMessageAt = message.messageAt;
+        if (message.direction === 'inbound') {
+          // Agent intake: resolve the provider, classify the request, resolve the
+          // XBF entity. Proposals only — ambiguity becomes a review task, never a
+          // selection. A failed intake must not fail the sync: the message is
+          // already stored, and the run records its own failure.
+          try {
+            const intake = await runProviderOnboardingIntake(supabase, {
+              organization_id: organizationUuid,
+              legal_entity_id: legalEntityId,
+              thread_id: String((thread as Record<string, unknown>).id),
+              message: {
+                threadId: message.threadId,
+                subject: message.subject,
+                bodyText: message.bodyText,
+                senderEmail: message.senderEmail,
+                senderName: message.senderName,
+                replyToEmail: message.replyToEmail,
+                attachments: message.attachments,
+              },
+            });
+            intakeRunCount += 1;
+            if (intake.match_decision === 'matched') intakeMatchedCount += 1;
+          } catch (_error) {
+            intakeFailureCount += 1;
+          }
+        }
       } else {
         duplicateMessageCount += 1;
       }
@@ -398,7 +431,14 @@ export async function syncProviderGmailConnection(
       duplicate_message_count: duplicateMessageCount,
       inserted_attachment_count: insertedAttachmentCount,
       completed_at: completedAt,
-      metadata: { trigger },
+      // Intake counters are observability, not content: how many inbound messages
+      // the agent processed, how many linked to a provider, how many failed.
+      metadata: {
+        trigger,
+        intake_run_count: intakeRunCount,
+        intake_matched_count: intakeMatchedCount,
+        intake_failure_count: intakeFailureCount,
+      },
     }).eq('id', run.data.id).eq('organization_id', organizationUuid);
     if (runUpdate.error) throw runUpdate.error;
 

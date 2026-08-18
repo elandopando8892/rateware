@@ -1,0 +1,89 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const sync = readFileSync(new URL('../supabase/functions/_shared/provider-gmail-sync.ts', import.meta.url), 'utf8');
+const intake = readFileSync(new URL('../supabase/functions/_shared/provider-agent-intake.ts', import.meta.url), 'utf8');
+const validator = readFileSync(new URL('../tools/validate-provider-service-runtime-syntax.mjs', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../supabase/migrations/20260817140000_provider_agent_model_assisted_runtime.sql', import.meta.url), 'utf8');
+
+test('Gmail sync actually calls the agent intake', () => {
+  // Sprint 1 exists because every agent module was unreachable. This is the assertion
+  // that would have caught it.
+  assert.match(sync, /import \{ runProviderOnboardingIntake \} from '\.\/provider-agent-intake\.ts';/);
+  assert.match(sync, /await runProviderOnboardingIntake\(supabase, \{/);
+});
+
+test('intake runs on inbound messages only, and only on first insert', () => {
+  // Re-running intake on a duplicate would double-count and re-bill the classifier.
+  assert.match(sync, /if \(outcome\.inserted\) \{[\s\S]*?if \(message\.direction === 'inbound'\) \{/);
+});
+
+test('a failed intake does not fail the sync', () => {
+  // The message is already stored; losing the sync would strand every later message.
+  assert.match(sync, /\} catch \(_error\) \{\s*\n\s*intakeFailureCount \+= 1;/);
+  assert.match(sync, /intake_failure_count: intakeFailureCount/);
+});
+
+test('the composed intake calls all three resolution steps', () => {
+  assert.match(intake, /await resolveProviderThread\(/);
+  assert.match(intake, /await classifyOnboardingRequest\(/);
+  assert.match(intake, /resolveXbfEntity\(/);
+});
+
+test('the agent proposes and never selects on ambiguity', () => {
+  assert.match(intake, /decision: 'proposed'/);
+  assert.match(intake, /requires_human_entity_selection: entity\.requires_human_selection/);
+  assert.match(intake, /requires_human_provider_selection: match\.decision !== 'matched'/);
+  // A relationship is recorded only on an unambiguous match.
+  assert.match(intake, /provider_relationship_id: match\.decision === 'matched' \? match\.provider_relationship_id : null/);
+});
+
+test('the run records the audit fields section 17 requires', () => {
+  for (const field of ['engine', 'model', 'prompt_version', 'policy_version', 'context_digest']) {
+    assert.match(intake, new RegExp(`${field}:`), `missing ${field}`);
+  }
+  assert.match(intake, /run_mode: 'intake'/);
+  assert.match(intake, /runtime_type: 'model_assisted'/);
+});
+
+test('no message content is written to the agent run', () => {
+  const metadata = intake.slice(intake.indexOf('metadata: {'), intake.indexOf('}).eq(\'organization_id\', organizationId).eq(\'id\', runId)'));
+  for (const leak of ['body_text', 'bodyText', 'subject', 'senderEmail', 'requested_documents:', 'reasoning']) {
+    assert.ok(!metadata.includes(leak), `${leak} must not be persisted on the run`);
+  }
+  // Counts and the digest stand in for the content.
+  assert.match(metadata, /requested_document_count/);
+  assert.match(metadata, /context_digest/);
+});
+
+test('provider API keys come from the environment, never from a caller', () => {
+  assert.match(intake, /env\?\.get\?\.\('OPENAI_API_KEY'\)/);
+  assert.match(intake, /env\?\.get\?\.\('ANTHROPIC_API_KEY'\)/);
+  assert.ok(!/apiKey:\s*input\./.test(intake), 'keys must never be read from the request');
+});
+
+test('Reply-To is captured as a matching signal', () => {
+  assert.match(sync, /replyToEmail: parseAddresses\(headerValue\(payload, 'Reply-To'\)\)\[0\] \|\| null/);
+});
+
+test('model_assisted is a valid runtime type', () => {
+  // Recording an LLM-backed run as 'deterministic' would claim no model was involved.
+  assert.match(migration, /check \(runtime_type in \('deterministic', 'model_assisted', 'openai_agents_sdk'\)\)/);
+  assert.match(migration, /drop constraint if exists provider_agent_runs_runtime_check/);
+});
+
+test('every agent module is covered by the runtime syntax gate', () => {
+  for (const module of [
+    'provider-agent-resolution.mjs',
+    'provider-agent-thread-resolution.ts',
+    'provider-agent-classifier.mjs',
+    'provider-agent-intake.ts',
+    'provider-onboarding-ontology.mjs',
+    'provider-onboarding-form-adapters.mjs',
+    'provider-onboarding-assembler.mjs',
+    'provider-entity-import.mjs',
+  ]) {
+    assert.ok(validator.includes(module), `${module} is not syntax-gated`);
+  }
+});
