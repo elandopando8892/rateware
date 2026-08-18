@@ -30,6 +30,9 @@ const FIXED_EDGE_OPERATIONS = new Map([
   // A tombstone: the canary finished and the function answers 410 so a stale caller
   // sees "gone" rather than a 404 that would read as a routing failure.
   ["provider-document-canary-processor", [["provider_document_canary_gone", "POST /functions/v1/provider-document-canary-processor", "internal/service-role"]]],
+  // The Entity Vault scan/classify/promote worker. Internal: it holds the service
+  // role and the VirusTotal key, gated on the service-role key, not a user token.
+  ["provider-entity-document-processor", [["process_provider_entity_documents", "POST /functions/v1/provider-entity-document-processor service-role", "internal/service-role"]]],
   ["google-chat-app", [["health", "GET /functions/v1/google-chat-app", "public"], ["handle_chat_event", "POST /functions/v1/google-chat-app provider event", "public"]]],
   ["interpret-upload", [["interpret_upload", "POST /functions/v1/interpret-upload", "human"]]],
   ["sync-banxico-fx", [["sync_banxico_fx", "POST /functions/v1/sync-banxico-fx x-cron-secret", "internal/service-role"]]],

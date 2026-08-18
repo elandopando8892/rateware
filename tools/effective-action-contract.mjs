@@ -117,12 +117,15 @@ const recoveredAuthorizationFingerprints = {
   'edge.provider-document-canary-processor.provider_document_canary_gone': 'e442680a43f5180ecb6d89212e28d060746dd6ab3b999eb641fbf06a9cd1700a',
   'edge.provider-release-package-api.get_provider_release_manifest': 'cf1d74974a46d97c26ca4418943e5733a0845bda5fde3f2e1dd2a17c3c8bd2af',
   'edge.provider-release-package-api.get_provider_release_download_url': 'cf1d74974a46d97c26ca4418943e5733a0845bda5fde3f2e1dd2a17c3c8bd2af',
+  // The Entity Vault scan/classify/promote worker (VirusTotal Private Scanning).
+  'edge.provider-entity-document-processor.process_provider_entity_documents': 'f3dc2aa09b14fda4fb9494b3ada35ab09eb556a0422fe74f5aa38ed4865ead94',
 };
 
 const recoveredMetadataFingerprints = {
   'edge.provider-release-package-api.get_provider_release_manifest': '53ed919755f4be55e7525aad1de25be4ad2170862e4329f2cd35ad352109dd8f',
   'edge.provider-release-package-api.get_provider_release_download_url': 'd0f283235e8fcec38f9f3a4c05905bed19c317d653f59ab587d37bc0d56170b9',
   'edge.provider-document-canary-processor.provider_document_canary_gone': '6b84f34c73e697ef5d226e2552d67c6c150854463f3df0f0a6499f834c1c9748',
+  'edge.provider-entity-document-processor.process_provider_entity_documents': 'ca92c6b90bb72d769d59426a7b0c4a96dafa4cdc41c7778a2103749256f46d66',
 };
 
 const recoveredSharedMetadata = {
@@ -194,6 +197,28 @@ const recoveredSurfaces = [
     // An internal/service-role surface must be internal_only; this overrides the
     // shared default deliberately, after the spread.
     decisionStatus: 'internal_only',
+  },
+  {
+    canonicalId: 'edge.provider-entity-document-processor.process_provider_entity_documents',
+    actionName: 'process_provider_entity_documents',
+    sourceKind: 'edge-method',
+    sourceFile: 'supabase/functions/provider-entity-document-processor/index.ts',
+    handler: 'Deno.serve',
+    endpoint: 'POST /functions/v1/provider-entity-document-processor service-role',
+    operation: 'manage',
+    resource: 'provider-entity-document-ingestion',
+    access: 'write',
+    exposure: 'internal/service-role',
+    sensitivity: 'critical',
+    tenantRelevance: 'record-derived',
+    proposedPermissionKey: 'provider.entity-document-processor.manage',
+    sourceFingerprint: '1f96610d59e17f4fc0c8d82884020d313b3a43e1a9aa3e3b3c21e1290dbd25f8',
+    ...recoveredSharedMetadata,
+    decisionStatus: 'internal_only',
+    // It composes the shared processor and scanner modules, so coverage is
+    // shared-observed, not the direct default the recovered surfaces carry.
+    analysisCoverage: 'shared-observed',
+    coverageSignals: ['shared_dependency_observed', 'external_dependency'],
   },
 ];
 
@@ -324,9 +349,9 @@ export const ACTION_CONTRACT = {
   methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub`,
   expectedCounts: {
     // +6 Gmail intake/pubsub, +3 recovered from production 2026-08-18
-    // (2 release-package actions, 1 canary tombstone).
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + 3,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + 3,
+    // (2 release-package actions, 1 canary tombstone), +1 vault document processor.
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + 3 + 1,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + 3 + 1,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi,
   },
