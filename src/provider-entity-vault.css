@@ -1,0 +1,15 @@
+.vault-row--critical{border-left-color:#b42318}
+.vault-row--expiring{border-left-color:#7c3aed}
+.vault-row--unverified{border-left-color:#d97706}
+.vault-row--restricted{border-left-color:#0369a1}
+.vault-row--normal{border-left-color:transparent}
+.vault-disposition{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid currentColor}
+.vault-disposition--releasable{color:#15803d}
+.vault-disposition--requires_approval{color:#0369a1}
+.vault-disposition--blocked_unverified{color:#d97706}
+.vault-disposition--blocked_expired{color:#b42318}
+.vault-search{width:100%;max-width:420px}
+.vault-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.vault-meta-grid div{display:grid;gap:3px;padding:10px;border:1px solid rgba(127,127,127,.25);border-radius:9px}
+.vault-meta-grid small{opacity:.7;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+@media(max-width:760px){.vault-meta-grid{grid-template-columns:1fr}}

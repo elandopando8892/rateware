@@ -231,13 +231,39 @@ advances the case to activated.
 
 ---
 
-## Sprint E — Remaining operator surfaces
+## Sprint E — Remaining operator surfaces — DONE 2026-08-18
 
-Entity Vault, Approval Center, Delivery Workspace. Read models and read actions exist;
-only the surfaces are missing. Worth doing after Sprint B, when the vault holds 32 real
-documents and the screens have something to show.
+Entity Vault, Approval Center, Delivery Workspace, all three built against the read
+models the operator read-actions already return. Each follows the Document Review
+template: an HTML shell reusing the onboarding layout, a `*-page.js` that fetches
+and renders, and a `*-domain.js` of pure triage rules with an executable
+`*-domain.test.mjs`.
 
-**Blocked by:** nothing.
+The domain layer is where the rules that matter live, and they are tested by
+running them, not by reading them:
+
+- **Entity Vault** shows metadata only — the read model projects no document
+  values, and `disclosureDisposition` never offers to release unverified or
+  expired material, restricted material always routes to a human.
+- **Approval Center** ranks a separation-of-duties conflict above a complete
+  count: a package the requester also approved reads *blocked*, not *ready*,
+  because the table constraint will never let it send.
+- **Delivery Workspace** shows recipient and mailbox domains only — never the
+  local part, subject, body or attachment hash — and a sent message with a due
+  follow-up reads *follow-up due*, not *sent*.
+
+All three are **read-only by design for this sprint**: acting on an approval or a
+send belongs with the approver roles Sprint C and D wait on. The surfaces show
+posture; they do not mutate.
+
+Verified: 26 domain tests pass; a static cross-check confirms every referenced DOM
+id exists and every import resolves; loading each page against a local server
+executes the whole module cleanly and reaches the auth gate with no import or
+syntax error. Provider suites 60/60, npm test PASS, action contract unchanged
+(no new governed surface — the pages call read actions that already exist).
+
+**Was blocked by:** nothing. Done ahead of Sprint B; the screens will fill once
+the corpus is ingested.
 
 ---
 

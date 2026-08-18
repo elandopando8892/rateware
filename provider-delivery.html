@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rateware Delivery Workspace</title>
+  <link rel="stylesheet" href="./src/styles.css" />
+  <link rel="stylesheet" href="./src/provider-onboarding.css" />
+  <link rel="stylesheet" href="./src/provider-operator-surfaces.css" />
+</head>
+<body>
+<div class="shell-layout">
+  <aside class="side-nav" aria-label="Rateware modules">
+    <a class="brand-mark" href="./app.html">Rateware</a>
+    <nav class="nav-groups">
+      <section class="nav-group"><p>Operate</p><a href="./app.html" data-nav-code="CC">Command Center</a><a href="./staging-review.html" data-nav-code="RQ">Review Queue</a><a href="./rateware.html" data-nav-code="RW">Rateware</a></section>
+      <section class="nav-group"><p>Source</p><a href="./vendors.html" data-nav-code="CM">Carrier CRM</a><a href="./provider-service.html" data-nav-code="PS">Provider Service</a><a href="./provider-onboarding.html" data-nav-code="PO">Provider Onboarding</a><a href="./provider-document-review.html" data-nav-code="DR">Document Review</a><a href="./provider-entity-vault.html" data-nav-code="EV">Entity Vault</a><a href="./provider-approvals.html" data-nav-code="AP">Approvals</a><a aria-current="page" href="./provider-delivery.html" data-nav-code="DL">Delivery</a><a href="./provider-communications.html" data-nav-code="PC">Communications</a></section>
+      <section class="nav-group"><p>Admin</p><a href="./settings.html" data-nav-code="ST">Settings</a></section>
+    </nav>
+  </aside>
+  <div class="page-frame">
+    <header class="page-header">
+      <div><p class="eyebrow">Provider Service · outbound</p><h1>Delivery Workspace</h1><nav class="module-crumbs"><a href="./provider-service.html">Provider Service</a><span>Delivery Workspace</span></nav></div>
+      <div class="page-header-actions"><a class="secondary-link" href="./provider-approvals.html">Approvals</a><form id="auth-form" class="auth-strip"><button id="auth-button" type="submit">Log in</button><button id="sign-out-button" type="button" class="secondary hidden">Sign out</button><p id="auth-status" role="status"></p></form></div>
+    </header>
+    <main class="onboarding-layout">
+      <section class="onboarding-hero">
+        <div><p class="eyebrow">The round trip, watched to confirmation</p><h2>What is waiting to send, what sent, and what needs a follow-up.</h2><p>Each message shows its send-approval posture, whether it stays in the provider's thread, and its follow-up state. Only recipient and mailbox domains are shown — never the local part, subject or body.</p></div>
+      </section>
+      <section class="onboarding-metrics" aria-label="Delivery metrics">
+        <button data-delivery-queue="all" class="is-active"><span>Messages</span><strong id="metric-total">0</strong></button>
+        <button data-delivery-queue="awaiting_approval"><span>Awaiting</span><strong id="metric-awaiting">0</strong></button>
+        <button data-delivery-queue="failed"><span>Failed</span><strong id="metric-failed">0</strong></button>
+        <button data-delivery-queue="followup_due"><span>Follow-ups due</span><strong id="metric-followups">0</strong></button>
+      </section>
+      <section class="onboarding-queues">
+        <button data-delivery-queue="all" class="is-active">All</button><button data-delivery-queue="awaiting_approval">Awaiting approval</button><button data-delivery-queue="scheduled">Scheduled</button><button data-delivery-queue="sent">Sent</button><button data-delivery-queue="failed">Failed</button><button data-delivery-queue="followup_due">Follow-up due</button>
+      </section>
+      <section class="onboarding-master-detail">
+        <div class="workspace-panel">
+          <div class="section-heading compact split-heading"><div><p class="eyebrow">Workspace</p><h2>Outbound messages</h2></div><span id="delivery-caption" class="section-caption">0–0 of 0</span></div>
+          <div class="onboarding-table-head"><span>Recipient</span><span>Posture</span><span>Thread</span><span>Timing</span></div>
+          <div id="delivery-rows" class="onboarding-rows" aria-live="polite"><article class="ui-state ui-state-loading"><strong>Loading delivery</strong><p>Resolving the delivery workspace.</p></article></div>
+          <div class="onboarding-pagination"><button id="delivery-prev" class="secondary" disabled>Previous</button><button id="delivery-next" class="secondary" disabled>Next</button></div>
+        </div>
+        <aside class="workspace-panel onboarding-detail-panel"><div id="delivery-detail" class="onboarding-empty"><strong>Select a message</strong><p>See its delivery posture and follow-up state.</p></div></aside>
+      </section>
+      <p class="onboarding-boundary">This surface shows delivery posture only. Recipient local part, subject, body and attachment hashes are never projected here.</p>
+    </main>
+  </div>
+</div>
+<script type="module">import { initAuthControls } from "./src/auth.js"; initAuthControls();</script>
+<script type="module" src="./src/provider-delivery-page.js"></script>
+</body>
+</html>
