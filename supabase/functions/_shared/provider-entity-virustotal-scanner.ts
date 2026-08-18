@@ -49,11 +49,18 @@ export function createVirusTotalProcessor(apiKey: string, options: {
         body: form,
       });
       if (!upload.ok) {
+        const detail = await upload.text().catch(() => '');
+        // Diagnostic only: VT upload responses carry no document content, just an
+        // error envelope. Logged to locate a tier/endpoint problem, not the file.
+        console.error('VT_UPLOAD_FAILED', upload.status, detail.slice(0, 200));
         return { status: 'error', engine: 'virustotal-private', reference: `upload_http_${upload.status}` };
       }
       const uploadBody = await upload.json();
       const analysisId = uploadBody?.data?.id;
-      if (!analysisId) return { status: 'error', engine: 'virustotal-private', reference: 'no_analysis_id' };
+      if (!analysisId) {
+        console.error('VT_NO_ANALYSIS_ID', JSON.stringify(uploadBody).slice(0, 200));
+        return { status: 'error', engine: 'virustotal-private', reference: 'no_analysis_id' };
+      }
 
       // 2. Poll the private analysis until it completes or the bound elapses.
       const deadline = Date.now() + timeoutMs;

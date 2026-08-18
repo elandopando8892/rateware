@@ -14,7 +14,9 @@ import { processProviderEntityDocument } from '../_shared/provider-entity-docume
 import { createVirusTotalProcessor } from '../_shared/provider-entity-virustotal-scanner.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
-const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('RATEWARE_SUPABASE_SERVICE_ROLE_KEY') || '';
+// The edge runtime reserves the SUPABASE_ prefix, so the service role is read from
+// the project's own RATEWARE_ secret — the same one every other function here uses.
+const SERVICE_ROLE_KEY = Deno.env.get('RATEWARE_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const VIRUSTOTAL_API_KEY = Deno.env.get('VIRUSTOTAL_API_KEY') || '';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
@@ -32,10 +34,14 @@ Deno.serve(async (request) => {
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return json({ ok: false, error: 'service_configuration_missing' }, 500);
   if (!VIRUSTOTAL_API_KEY) return json({ ok: false, error: 'virustotal_key_missing' }, 503);
 
-  // Internal gate: the caller must present the service-role key. No user tokens —
-  // this worker is triggered by an operator process, not a browser.
-  const bearer = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
-  if (!bearer || bearer !== SERVICE_ROLE_KEY) return json({ ok: false, error: 'unauthorized' }, 401);
+  // Internal gate: the caller presents a dedicated trigger secret. This worker is
+  // driven by an operator process, not a browser, so it is gated on a shared secret
+  // held only in the project's Edge Function secrets — never a user token.
+  const triggerSecret = Deno.env.get('PROVIDER_PROCESSOR_TRIGGER') || '';
+  const presented = (request.headers.get('x-processor-trigger') || '').trim();
+  if (!triggerSecret || !presented || presented !== triggerSecret) {
+    return json({ ok: false, error: 'unauthorized' }, 401);
+  }
 
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const organizationId = cleanUuid(body.organization_id);
