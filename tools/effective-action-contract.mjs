@@ -118,7 +118,7 @@ const recoveredAuthorizationFingerprints = {
   'edge.provider-release-package-api.get_provider_release_manifest': 'cf1d74974a46d97c26ca4418943e5733a0845bda5fde3f2e1dd2a17c3c8bd2af',
   'edge.provider-release-package-api.get_provider_release_download_url': 'cf1d74974a46d97c26ca4418943e5733a0845bda5fde3f2e1dd2a17c3c8bd2af',
   // The Entity Vault scan/classify/promote worker (VirusTotal Private Scanning).
-  'edge.provider-entity-document-processor.process_provider_entity_documents': 'f3dc2aa09b14fda4fb9494b3ada35ab09eb556a0422fe74f5aa38ed4865ead94',
+  'edge.provider-entity-document-processor.process_provider_entity_documents': '670fa917f43d53a04bc51753f1410c41a703eacab40d7a2b664588ffb8c189cc',
 };
 
 const recoveredMetadataFingerprints = {
@@ -212,7 +212,7 @@ const recoveredSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'record-derived',
     proposedPermissionKey: 'provider.entity-document-processor.manage',
-    sourceFingerprint: '1f96610d59e17f4fc0c8d82884020d313b3a43e1a9aa3e3b3c21e1290dbd25f8',
+    sourceFingerprint: '7f9029a6677ec8ba29b27a6efbe2d370c193496d311089cf4d721848e6593f15',
     ...recoveredSharedMetadata,
     decisionStatus: 'internal_only',
     // It composes the shared processor and scanner modules, so coverage is

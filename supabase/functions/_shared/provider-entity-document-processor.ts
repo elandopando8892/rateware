@@ -31,7 +31,7 @@ async function quarantine(supabase:any,row:Record<string,any>,reason:string,payl
 }
 
 export type ProviderEntityDocumentProcessor = {
-  scan(bytes: Uint8Array, context: { mimeType:string; filename:string }): Promise<{status:'clean'|'infected'|'error'; engine:string; reference?:string}>;
+  scan(bytes: Uint8Array, context: { mimeType:string; filename:string }): Promise<{status:'clean'|'infected'|'error'|'operator_attested'; engine:string; reference?:string}>;
   classify(bytes: Uint8Array, context: { mimeType:string; filename:string }): Promise<{
     status:'classified'|'needs_review'|'rejected';
     documentType?:string;
@@ -85,9 +85,16 @@ export async function processProviderEntityDocument(
     }
 
     const scan=await processor.scan(bytes,{mimeType:row.declared_mime_type,filename:row.original_filename});
-    if(scan.status!=='clean') {
+    // 'operator_attested' is accepted only for an operator-import row — one whose
+    // source_channel is 'manual'. Attestation on an untrusted portal upload is a
+    // misuse and is refused here, so the scan gate cannot be bypassed for the flow
+    // it protects.
+    const attested = scan.status==='operator_attested' && row.source_channel==='manual';
+    const malwareStatus = attested ? 'operator_attested' : 'clean';
+    if(scan.status!=='clean' && !attested) {
       await supabase.from('provider_entity_document_ingestions').update({
-        observed_sha256:observedSha256,hash_status:hashStatus,malware_status:scan.status,
+        observed_sha256:observedSha256,hash_status:hashStatus,
+        malware_status:scan.status==='operator_attested'?'error':scan.status,
       }).eq('organization_id',organizationId).eq('id',ingestionId);
       return await quarantine(supabase,row,scan.status==='infected'?'malware_detected':'malware_scan_error',{scan_engine:scan.engine});
     }
@@ -102,7 +109,7 @@ export async function processProviderEntityDocument(
       confidence<0.8
     ) {
       await supabase.from('provider_entity_document_ingestions').update({
-        observed_sha256:observedSha256,hash_status:hashStatus,malware_status:'clean',
+        observed_sha256:observedSha256,hash_status:hashStatus,malware_status:malwareStatus,
         classification_status:'needs_review',classification_confidence:Number.isFinite(confidence)?confidence:null,
       }).eq('organization_id',organizationId).eq('id',ingestionId);
       return await quarantine(supabase,row,'classification_review_required');
@@ -118,13 +125,13 @@ export async function processProviderEntityDocument(
       sensitivity,release_policy:releasePolicy,lifecycle_status:'active',verification_status:'needs_review',
       issuer_name:classification.issuerName||null,effective_date:classification.effectiveDate||null,
       expiration_date:classification.expirationDate||null,
-      metadata:{ingestion_id:ingestionId,classification_confidence:confidence},
+      metadata:{ingestion_id:ingestionId,classification_confidence:confidence,malware_status:malwareStatus,scan_engine:scan.engine,scan_reference:scan.reference??null},
     }).select('id').single();
     if(asset.error) throw asset.error;
 
     const readyAt=new Date().toISOString();
     const ready=await supabase.from('provider_entity_document_ingestions').update({
-      observed_sha256:observedSha256,hash_status:hashStatus,malware_status:'clean',
+      observed_sha256:observedSha256,hash_status:hashStatus,malware_status:malwareStatus,
       classification_status:'classified',classified_document_type:documentType,
       classified_sensitivity:sensitivity,classification_confidence:confidence,
       provider_document_asset_id:asset.data.id,ingestion_status:'ready',ready_at:readyAt,
