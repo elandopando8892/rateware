@@ -88,6 +88,15 @@ async function previewIntake(body: Record<string, unknown>) {
       policy_version: classification.policy_version,
       context_digest: classification.context_digest,
       attempted_engines: classification.attempts.map((attempt: Record<string, unknown>) => attempt.engine),
+      // Why a tier was skipped is the whole point of a preview: a silent fallback
+      // to keywords looks identical to no key at all. Bounded and scrubbed of
+      // anything key-shaped, since a provider error can echo the request.
+      attempts: classification.attempts.map((attempt: Record<string, unknown>) => ({
+        engine: attempt.engine,
+        error: attempt.error
+          ? String(attempt.error).replace(/\b(sk|rk)-[A-Za-z0-9_-]{8,}/g, '[redacted]').slice(0, 240)
+          : null,
+      })),
     },
   };
 }
