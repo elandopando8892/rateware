@@ -160,3 +160,20 @@ test('the summary accounts for every row', async () => {
   assert.equal(total, result.rows.length);
   assert.equal(proposed + needs_review + pending, total);
 });
+
+test('a macro-enabled workbook is still read, so the agent can map its questions', async () => {
+  // The value of a carrier's .xlsm is in reading it: the agent extracts the
+  // questions and proposes values even though it must never write the file back.
+  const bytes = await xlsx();
+  const extraction = await extractFormQuestions({ format: 'xlsm', bytes });
+  assert.equal(extraction.format, 'xlsm');
+  assert.ok(extraction.questions.length > 0, 'questions must be extracted from a macro-enabled workbook');
+  // The caller still needs to know a human completes the fill.
+  assert.equal(extraction.requires_human_conversion, true);
+});
+
+test('an OLE2 legacy file yields no questions at all', async () => {
+  const extraction = await extractFormQuestions({ format: 'xls', bytes: new Uint8Array([1, 2, 3]) });
+  assert.deepEqual(extraction.questions, []);
+  assert.equal(extraction.requires_human_conversion, true);
+});

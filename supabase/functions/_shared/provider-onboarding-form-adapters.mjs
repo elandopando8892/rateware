@@ -13,7 +13,30 @@ import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 
 export const SUPPORTED_FORMATS = Object.freeze(['pdf', 'xlsx', 'docx']);
-export const LEGACY_FORMATS = Object.freeze(['xls', 'doc']);
+
+/**
+ * Formats this engine may hold but must never rewrite.
+ *
+ * `xls`/`doc` are the OLE2 legacy pair: no authorized converter exists.
+ *
+ * `xlsm`/`docm` are macro-enabled OOXML, and they are here for a sharper reason.
+ * They are ZIP containers exceljs and docxtemplater can happily *read*, so the
+ * questions can be extracted and mapped — but writing one back drops the VBA
+ * project. A carrier form whose validation, totals or page flow live in macros
+ * would return to the customer visibly broken, which is worse than declining. And
+ * rewriting one would mean this system generating and returning executable
+ * content, which is not a boundary to cross silently.
+ *
+ * So: read yes, fill never. The operator completes it in Excel with the macros
+ * intact, using the values the agent proposed.
+ */
+export const LEGACY_FORMATS = Object.freeze(['xls', 'doc', 'xlsm', 'docm']);
+
+/** Macro-enabled formats can still be read for question extraction. */
+export const MACRO_ENABLED_FORMATS = Object.freeze(['xlsm', 'docm']);
+
+/** The OOXML family a macro-enabled format can be parsed as. */
+export const MACRO_READ_FAMILY = Object.freeze({ xlsm: 'xlsx', docm: 'docx' });
 
 const MIME_BY_FORMAT = Object.freeze({
   pdf: 'application/pdf',
@@ -21,6 +44,9 @@ const MIME_BY_FORMAT = Object.freeze({
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xls: 'application/vnd.ms-excel',
   doc: 'application/msword',
+  // Gmail reports the real carrier form as exactly this type.
+  xlsm: 'application/vnd.ms-excel.sheet.macroenabled.12',
+  docm: 'application/vnd.ms-word.document.macroenabled.12',
 });
 
 const FORMAT_BY_MIME = Object.freeze(Object.fromEntries(
@@ -191,12 +217,20 @@ export async function fillDocx(templateBytes, fields) {
 export async function assembleFormDocument({ format, templateBytes, fields = {}, overlay = null, signature = null }) {
   const normalized = String(format ?? '').toLowerCase();
   if (LEGACY_FORMATS.includes(normalized)) {
+    const macroEnabled = MACRO_ENABLED_FORMATS.includes(normalized);
     return frozenResult({
       format: normalized,
       bytes: templateBytes,
       filled_fields: [],
       fidelity: 'original_preserved',
-      review_tasks: [{ kind: 'legacy_format_requires_human_conversion', reason: `${normalized}_conversion_not_authorized` }],
+      review_tasks: [{
+        kind: 'legacy_format_requires_human_conversion',
+        // The two reasons are different work for the operator: a legacy OLE2 file
+        // needs converting, a macro-enabled one needs filling in Excel as-is.
+        reason: macroEnabled
+          ? `${normalized}_macro_preserving_fill_required`
+          : `${normalized}_conversion_not_authorized`,
+      }],
     });
   }
   if (!SUPPORTED_FORMATS.includes(normalized)) throw new Error(`Unsupported form format: ${format}`);

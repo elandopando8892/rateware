@@ -138,6 +138,20 @@ export async function extractFormQuestions({ format, bytes }) {
   if (normalized === 'pdf') return extractPdfQuestions(bytes);
   if (normalized === 'xlsx') return extractXlsxQuestions(bytes);
   if (normalized === 'docx') return extractDocxQuestions(bytes);
+  // Macro-enabled OOXML is a ZIP container the same parsers can read, so its
+  // questions ARE extractable — the agent maps them and proposes values as usual.
+  // Only the write-back is refused, because rewriting drops the VBA project. The
+  // flag travels with the result so the caller still raises the human-fill task.
+  if (normalized === 'xlsm' || normalized === 'docm') {
+    const extraction = normalized === 'xlsm'
+      ? await extractXlsxQuestions(bytes)
+      : await extractDocxQuestions(bytes);
+    return Object.freeze({
+      ...extraction,
+      format: normalized,
+      requires_human_conversion: true,
+    });
+  }
   if (normalized === 'xls' || normalized === 'doc') {
     return Object.freeze({
       format: normalized,

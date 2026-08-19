@@ -192,3 +192,34 @@ test('template bytes are never mutated by a fill', async () => {
   await fillPdf(template, { legal_name: 'Synthetic Freight Systems LLC' });
   assert.deepEqual(template, copy, 'the original template must remain immutable');
 });
+
+test('a macro-enabled carrier form is detected from the type Gmail reports', () => {
+  // The real Salzillo customer-setup thread attached exactly this: a macro-enabled
+  // workbook, reported by Gmail with this MIME type.
+  assert.equal(
+    detectFormat('Copia de Formato 3.3 Alta Cliente.xlsm', 'application/vnd.ms-excel.sheet.macroEnabled.12'),
+    'xlsm',
+  );
+  assert.equal(detectFormat('form.docm', 'application/vnd.ms-word.document.macroEnabled.12'), 'docm');
+  assert.equal(mimeTypeForFormat('xlsm'), 'application/vnd.ms-excel.sheet.macroenabled.12');
+});
+
+test('a macro-enabled form is preserved, never rewritten', async () => {
+  // Rewriting drops the VBA project, so the carrier would get a broken form back.
+  // The original must return byte-identical with a human-fill task instead.
+  for (const format of ['xlsm', 'docm']) {
+    const original = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 9, 9, 9]); // PK.. zip header
+    const result = await assembleFormDocument({ format, templateBytes: original, fields: { legal_name: 'X' } });
+    assert.deepEqual(result.bytes, original, `${format} original must be returned byte-identical`);
+    assert.equal(result.fidelity, 'original_preserved');
+    assert.deepEqual(result.filled_fields, [], 'no field may be written into a macro-enabled form');
+    assert.equal(result.review_tasks[0].kind, 'legacy_format_requires_human_conversion');
+    // The reason distinguishes this from an OLE2 legacy file: different operator work.
+    assert.match(result.review_tasks[0].reason, /macro_preserving_fill_required/);
+  }
+});
+
+test('an OLE2 legacy file still reports conversion, not macro preservation', async () => {
+  const result = await assembleFormDocument({ format: 'xls', templateBytes: new Uint8Array([1, 2, 3]) });
+  assert.match(result.review_tasks[0].reason, /conversion_not_authorized/);
+});
