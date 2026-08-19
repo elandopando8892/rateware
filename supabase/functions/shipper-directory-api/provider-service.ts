@@ -10,6 +10,7 @@ import {
   reconcileProviderOnboardingCase,
 } from "../_shared/provider-onboarding-case-workflow.ts";
 import { createProviderOnboardingReleasePackage } from "../_shared/provider-onboarding-release-package.ts";
+import { evaluateProviderOnboardingReadiness } from "../_shared/provider-onboarding-readiness.ts";
 import {
   recordProviderOnboardingRequirementWaiver,
   revokeProviderOnboardingRequirementWaiver,
@@ -48,6 +49,7 @@ const PROVIDER_SERVICE_ACTIONS = new Set([
   "open_provider_onboarding_case",
   "reconcile_provider_onboarding_case",
   "cancel_provider_onboarding_case",
+  "evaluate_provider_onboarding_readiness",
   "create_provider_onboarding_release_package",
   "record_provider_onboarding_requirement_waiver",
   "revoke_provider_onboarding_requirement_waiver",
@@ -62,6 +64,10 @@ const PROVIDER_SERVICE_COMMANDS = new Map<string, (supabase: any, input: Record<
   ["open_provider_onboarding_case", openProviderOnboardingCase],
   ["reconcile_provider_onboarding_case", reconcileProviderOnboardingCase],
   ["cancel_provider_onboarding_case", cancelProviderOnboardingCase],
+  // Readiness had no production entry point at all: reconcile takes an evaluation id as
+  // input, so an evaluation had to exist already, and nothing could create one. It
+  // reads evidence and writes an evaluation for this tenant only -- no external reach.
+  ["evaluate_provider_onboarding_readiness", evaluateProviderOnboardingReadiness],
   ["create_provider_onboarding_release_package", createProviderOnboardingReleasePackage],
   ["record_provider_onboarding_requirement_waiver", recordProviderOnboardingRequirementWaiver],
   ["revoke_provider_onboarding_requirement_waiver", revokeProviderOnboardingRequirementWaiver],

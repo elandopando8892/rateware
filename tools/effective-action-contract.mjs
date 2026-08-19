@@ -41,6 +41,10 @@ const delta = extension.expectedCountsDelta;
 //      object afterwards. The adapter pins actor.type to 'user', so a caller cannot
 //      claim to be the system or an integration and bypass the identified-user
 //      requirement. No public URL is ever produced by either path.
+//   - evaluate_provider_onboarding_readiness, which had no production entry point at
+//      all: reconcile takes an evaluation id and cannot compute one, so nothing that
+//      runs could produce the input the case workflow requires. It reads this tenant's
+//      evidence and writes an evaluation row; it reaches nothing external.
 //   - record_provider_onboarding_requirement_waiver / revoke_..., which let an operator
 //      accept a specific unmet onboarding requirement on the record. The waiver reaches
 //      one new table, provider_onboarding_requirement_waivers, which is service-role
@@ -51,7 +55,7 @@ const delta = extension.expectedCountsDelta;
 // All run under the same canonical Kinde -> workspace -> tenant resolver and add no new
 // privilege or caller, and none is externally discovered, so the envelope is refreshed
 // deliberately rather than the eight actions being re-reviewed.
-const shipperDirectoryEnvelope = '35f9d79a92eac4add4f1ea51f37a1a0c39f321fd4983c5de3f825d2382407f6c';
+const shipperDirectoryEnvelope = 'f40576204fb3a0f6991ad74706dd99a7ba0f15848a0171119d48c5edf32ffa2e';
 const legacyAuthorizationOverrides = Object.fromEntries([
   'edge.shipper-directory-api.get_shipper',
   'edge.shipper-directory-api.list_shippers',
