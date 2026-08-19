@@ -106,10 +106,11 @@ const providerSurfaces = extension.surfaces.map((entry) => ({
 // external reach. The push receiver moves for the same reason — it reaches the
 // sync — and the OAuth callback, which does not, keeps its envelope.
 const gmailAuthorizationFingerprints = {
-  'edge.provider-gmail-intake-api.provider_gmail_status': '58e3680eb7b684ea13544c059316f2655bb304fea0d8933aba66366092bfef86',
-  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': '58e3680eb7b684ea13544c059316f2655bb304fea0d8933aba66366092bfef86',
-  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '58e3680eb7b684ea13544c059316f2655bb304fea0d8933aba66366092bfef86',
-  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '58e3680eb7b684ea13544c059316f2655bb304fea0d8933aba66366092bfef86',
+  'edge.provider-gmail-intake-api.provider_gmail_status': '733bc42b03891e4582509f5468f7b39e5d7bf5a531169cedd4e84ce2039f0f00',
+  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': '733bc42b03891e4582509f5468f7b39e5d7bf5a531169cedd4e84ce2039f0f00',
+  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '733bc42b03891e4582509f5468f7b39e5d7bf5a531169cedd4e84ce2039f0f00',
+  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '733bc42b03891e4582509f5468f7b39e5d7bf5a531169cedd4e84ce2039f0f00',
+  'edge.provider-gmail-intake-api.preview_provider_message_intake': '733bc42b03891e4582509f5468f7b39e5d7bf5a531169cedd4e84ce2039f0f00',
   'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': '61a4d760bc3bc7157e0abcebf08818cd4e84841f6ec35f7c406475e28df53a3b',
   'edge.provider-gmail-push.receive_provider_gmail_push': '764611e74e0861f3d9df3f330a36a91d0230bd6801fa4adc7ccd36573258b572',
 };
@@ -227,6 +228,7 @@ const recoveredSurfaces = [
 ];
 
 const gmailMetadataFingerprints = {
+  'edge.provider-gmail-intake-api.preview_provider_message_intake': '1d99b228e275856af6a8ac9b257f6dfdaebe19962630194ebe078b270e1c80b0',
   'edge.provider-gmail-intake-api.provider_gmail_status': '85dbc15681218bc1ca70193ec2ae29d5db0782120e3fb0da91bf3cff90e7adfa',
   'edge.provider-gmail-intake-api.renew_provider_gmail_watch': 'f4fff693928c09472972f5b9ac9d13a365174f177fadb5bb72c7f56e0808756e',
   'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '6a8207af747fc37ccf2739c8a7ca721248323c430fa8aeafe305430bfe862ae1',
@@ -314,6 +316,24 @@ const gmailSurfaces = [
     ...gmailSharedMetadata,
   },
   {
+    canonicalId: 'edge.provider-gmail-intake-api.preview_provider_message_intake',
+    actionName: 'preview_provider_message_intake',
+    sourceKind: 'edge-selector',
+    sourceFile: 'supabase/functions/provider-gmail-intake-api/index.ts',
+    handler: 'previewIntake',
+    endpoint: 'POST /functions/v1/provider-gmail-intake-api body.action',
+    operation: 'read',
+    resource: 'provider-communications',
+    // Writes nothing: no row, no case, no provider link, and neither the subject
+    // nor the body is stored. It returns the proposal and its audit fields only.
+    access: 'read',
+    sensitivity: 'high',
+    tenantRelevance: 'tenant-scoped',
+    proposedPermissionKey: 'provider.gmail.intake.preview',
+    sourceFingerprint: '5f54f690f2a37ebbbc8f598aaebc52d3d9cdfec3e95db78d61312a5b25bc6c28',
+    ...gmailSharedMetadata,
+  },
+  {
     canonicalId: 'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback',
     actionName: 'complete_provider_gmail_oauth_callback',
     sourceKind: 'edge-method',
@@ -354,8 +374,8 @@ export const ACTION_CONTRACT = {
   expectedCounts: {
     // +6 Gmail intake/pubsub, +3 recovered from production 2026-08-18
     // (2 release-package actions, 1 canary tombstone), +1 vault document processor.
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + 3 + 1,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + 3 + 1,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + 3 + 1 + 1,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + 3 + 1 + 1,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi,
   },

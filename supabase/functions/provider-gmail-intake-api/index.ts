@@ -1,5 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from '../_shared/kinde.ts';
+import { classifyOnboardingRequest } from '../_shared/provider-agent-classifier.mjs';
+import { resolveXbfEntity } from '../_shared/provider-agent-resolution.mjs';
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from '../_shared/runtime-identity.ts';
 import {
   PROVIDER_GMAIL_READONLY_SCOPE,
@@ -24,7 +26,71 @@ const ACTIONS = new Set([
   'start_provider_gmail_oauth',
   'sync_provider_gmail_inbox',
   'renew_provider_gmail_watch',
+  'preview_provider_message_intake',
 ]);
+
+/**
+ * Dry-run the agent's reading of one message.
+ *
+ * Read-only in the strongest sense: it writes no row, creates no case, links no
+ * provider and stores nothing — not the subject, not the body. It returns the
+ * proposal the intake would make, plus the audit fields §17 requires, so an
+ * operator can see how a real carrier email classifies before Gmail is connected
+ * and can diagnose a misclassification afterwards.
+ *
+ * It runs inside the edge runtime precisely so the model keys stay in the
+ * project's secrets and never leave it.
+ */
+async function previewIntake(body: Record<string, unknown>) {
+  const subject = cleanProviderGmailText(body.subject) ?? '';
+  const bodyText = typeof body.body_text === 'string' ? body.body_text.slice(0, 40000) : '';
+  if (!subject && !bodyText) throw new Error('A subject or body is required to preview intake.');
+  const attachmentNames = Array.isArray(body.attachment_names)
+    ? body.attachment_names.map((name) => String(name ?? '').trim().slice(0, 300)).filter(Boolean).slice(0, 100)
+    : [];
+
+  const classification = await classifyOnboardingRequest(
+    { subject, body_text: bodyText, attachment_names: attachmentNames },
+    {
+      openaiApiKey: Deno.env.get('OPENAI_API_KEY') || undefined,
+      anthropicApiKey: Deno.env.get('ANTHROPIC_API_KEY') || undefined,
+    },
+  );
+  const entity = resolveXbfEntity({
+    subject,
+    body_text: bodyText,
+    attachment_names: attachmentNames,
+    relationship_entity_kind: null,
+  });
+
+  return {
+    data: {
+      // The proposal, never a decision.
+      decision: 'proposed',
+      request_type: classification.request_type,
+      confidence: classification.confidence,
+      language: classification.language,
+      requested_documents: classification.requested_documents,
+      forms_to_complete: classification.forms_to_complete,
+      deadline_text: classification.deadline_text ?? null,
+      entity: {
+        entity_kind: entity.entity_kind,
+        decision: entity.decision,
+        basis: entity.basis,
+        confidence: entity.confidence,
+        requires_human_selection: entity.requires_human_selection,
+      },
+      // §17 audit: engine and versions travel with every agent result. The prompt
+      // and the message content do not — only the context digest.
+      engine: classification.engine,
+      model: classification.model,
+      prompt_version: classification.prompt_version,
+      policy_version: classification.policy_version,
+      context_digest: classification.context_digest,
+      attempted_engines: classification.attempts.map((attempt: Record<string, unknown>) => attempt.engine),
+    },
+  };
+}
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('Missing Provider Gmail Supabase configuration.');
@@ -223,6 +289,7 @@ Deno.serve(async (request) => {
     if (body.action === 'start_provider_gmail_oauth') return jsonResponse(await startOauth(supabase, user as Record<string, unknown>, organizationUuid, body));
     if (body.action === 'sync_provider_gmail_inbox') return jsonResponse(await syncInbox(supabase, organizationUuid, body));
     if (body.action === 'renew_provider_gmail_watch') return jsonResponse(await renewWatch(supabase, organizationUuid, body));
+    if (body.action === 'preview_provider_message_intake') return jsonResponse(await previewIntake(body));
     return jsonResponse({ error: 'Unknown Provider Gmail action.' }, 400);
   } catch (error) {
     const identityStatus = runtimeIdentityStatus(error);
