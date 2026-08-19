@@ -39,6 +39,15 @@ export async function createProviderOnboardingReleasePackage(
   const recipient=required(input.recipient_key,'recipient_key',RECIPIENT);
   const packageVersion=positive(input.package_version,'package_version');
   const approvalCount=positive(input.required_approval_count||1,'required_approval_count',3);
+  // Single-admin operation: the requester may approve their own package, but only when
+  // the package is cut that way, and it is recorded on the package and on the approval.
+  // Separation of duties stays the default for everything that does not ask.
+  const selfApproval=input.self_approval_permitted===true;
+  if(selfApproval&&approvalCount!==1){
+    // The only eligible approver can decide once, so a higher threshold is unreachable
+    // and would leave the package looking merely pending forever.
+    throw new Error('A self-approving package must require exactly one approval.');
+  }
   const ttlHours=positive(input.approval_ttl_hours||24,'approval_ttl_hours',168);
   const disclosure=(input.disclosure_modes||{}) as Record<string,string>;
 
@@ -155,6 +164,7 @@ export async function createProviderOnboardingReleasePackage(
     organization_id:organizationId,case_id:caseId,readiness_evaluation_id:evaluation.data.id,
     package_version:packageVersion,purpose_code:purpose,recipient_key:recipient,
     required_approval_count:approvalCount,requested_by_actor_id:requestedBy,
+    self_approval_permitted:selfApproval,
     metadata:{approval_ttl_hours:ttlHours,evidence_snapshot_sha256:evaluation.data.evidence_snapshot_sha256,
       readiness_evaluation_status:evaluation.data.evaluation_status,
       declared_gap_count:waivedResults.length},
@@ -188,7 +198,8 @@ export async function createProviderOnboardingReleasePackage(
   });
   return {package_id:packageId,package_status:'pending_approval',revision:2,manifest_sha256:manifestSha,
     item_count:items.length,declared_gap_count:waivedResults.length,
-    readiness_evaluation_status:evaluation.data.evaluation_status};
+    readiness_evaluation_status:evaluation.data.evaluation_status,
+    self_approval_permitted:selfApproval};
 }
 
 export async function decideProviderOnboardingReleasePackage(
