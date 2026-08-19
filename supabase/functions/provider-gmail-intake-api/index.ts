@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from '../_shared/kinde.ts';
-import { classifyOnboardingRequest } from '../_shared/provider-agent-classifier.mjs';
+import { classifyOnboardingRequest, resolveProviderKeys } from '../_shared/provider-agent-classifier.mjs';
 import { resolveXbfEntity } from '../_shared/provider-agent-resolution.mjs';
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from '../_shared/runtime-identity.ts';
 import {
@@ -51,10 +51,9 @@ async function previewIntake(body: Record<string, unknown>) {
 
   const classification = await classifyOnboardingRequest(
     { subject, body_text: bodyText, attachment_names: attachmentNames },
-    {
-      openaiApiKey: Deno.env.get('OPENAI_API_KEY') || undefined,
-      anthropicApiKey: Deno.env.get('ANTHROPIC_API_KEY') || undefined,
-    },
+    // Shared with the Gmail intake so both resolve the same secrets in the same
+    // order; a key that works in the preview must work in production.
+    resolveProviderKeys(Deno.env),
   );
   const entity = resolveXbfEntity({
     subject,

@@ -11,7 +11,7 @@
 
 import { resolveXbfEntity } from './provider-agent-resolution.mjs';
 import { resolveProviderThread } from './provider-agent-thread-resolution.ts';
-import { classifyOnboardingRequest } from './provider-agent-classifier.mjs';
+import { classifyOnboardingRequest, resolveProviderKeys } from './provider-agent-classifier.mjs';
 import { recordInboundEnvelope } from './provider-inbound-envelope.ts';
 
 type IntakeMessage = {
@@ -27,11 +27,9 @@ type IntakeMessage = {
 
 /** Reads provider keys from the environment. Absent keys degrade to the keyword tier. */
 function providerKeys() {
-  const env = (globalThis as Record<string, any>).Deno?.env;
-  return {
-    openaiApiKey: env?.get?.('OPENAI_API_KEY') || undefined,
-    anthropicApiKey: env?.get?.('ANTHROPIC_API_KEY') || undefined,
-  };
+  // Shared with the preview endpoint so both resolve the same secrets in the same
+  // order; a key that works in one must work in the other.
+  return resolveProviderKeys((globalThis as Record<string, any>).Deno?.env);
 }
 
 export async function runProviderOnboardingIntake(

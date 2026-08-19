@@ -21,6 +21,36 @@
 export const CLASSIFIER_PROMPT_VERSION = '2026.08.17';
 export const CLASSIFIER_POLICY_VERSION = '2026.08.17';
 
+/**
+ * Secret names each provider key may be stored under, in preference order.
+ *
+ * OPENAI_API_KEY_2 comes first deliberately: the original OPENAI_API_KEY was
+ * refused with a 403, and the replacement was added alongside it rather than over
+ * it, so the working key must win. Both are read so neither has to be deleted.
+ *
+ * The classifier itself never reads the environment — keys are passed in, which is
+ * what keeps it testable. This is the one place that maps env to keys, so the
+ * preview endpoint and the Gmail intake cannot drift apart and behave differently.
+ */
+export const OPENAI_KEY_ENV_NAMES = Object.freeze(['OPENAI_API_KEY_2', 'OPENAI_API_KEY']);
+export const ANTHROPIC_KEY_ENV_NAMES = Object.freeze(['ANTHROPIC_API_KEY_2', 'ANTHROPIC_API_KEY']);
+
+function firstEnvValue(env, names) {
+  for (const name of names) {
+    const value = env?.get?.(name);
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+/** Resolves both provider keys from an environment, newest name first. */
+export function resolveProviderKeys(env) {
+  return {
+    openaiApiKey: firstEnvValue(env, OPENAI_KEY_ENV_NAMES),
+    anthropicApiKey: firstEnvValue(env, ANTHROPIC_KEY_ENV_NAMES),
+  };
+}
+
 const OPENAI_MODEL = 'gpt-4o-2024-11-20';
 const ANTHROPIC_MODEL = 'claude-opus-5';
 const ANTHROPIC_VERSION = '2023-06-01';

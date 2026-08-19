@@ -106,13 +106,13 @@ const providerSurfaces = extension.surfaces.map((entry) => ({
 // external reach. The push receiver moves for the same reason — it reaches the
 // sync — and the OAuth callback, which does not, keeps its envelope.
 const gmailAuthorizationFingerprints = {
-  'edge.provider-gmail-intake-api.provider_gmail_status': '6cf3f743f4bb048e188be7b3a9e92aed603f8978864bd3a52140356ec1964719',
-  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': '6cf3f743f4bb048e188be7b3a9e92aed603f8978864bd3a52140356ec1964719',
-  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '6cf3f743f4bb048e188be7b3a9e92aed603f8978864bd3a52140356ec1964719',
-  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '6cf3f743f4bb048e188be7b3a9e92aed603f8978864bd3a52140356ec1964719',
-  'edge.provider-gmail-intake-api.preview_provider_message_intake': '6cf3f743f4bb048e188be7b3a9e92aed603f8978864bd3a52140356ec1964719',
+  'edge.provider-gmail-intake-api.provider_gmail_status': 'a591aa0d74fa447124c34a623e112d1ab517547b2d5c0d92ffbb179d347bc30a',
+  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': 'a591aa0d74fa447124c34a623e112d1ab517547b2d5c0d92ffbb179d347bc30a',
+  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': 'a591aa0d74fa447124c34a623e112d1ab517547b2d5c0d92ffbb179d347bc30a',
+  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': 'a591aa0d74fa447124c34a623e112d1ab517547b2d5c0d92ffbb179d347bc30a',
+  'edge.provider-gmail-intake-api.preview_provider_message_intake': 'a591aa0d74fa447124c34a623e112d1ab517547b2d5c0d92ffbb179d347bc30a',
   'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': '61a4d760bc3bc7157e0abcebf08818cd4e84841f6ec35f7c406475e28df53a3b',
-  'edge.provider-gmail-push.receive_provider_gmail_push': '764611e74e0861f3d9df3f330a36a91d0230bd6801fa4adc7ccd36573258b572',
+  'edge.provider-gmail-push.receive_provider_gmail_push': 'c8ffe3370e79b63853e61d021170a8bd6e898506310bae8695bbcbc2d38e1d72',
 };
 
 // Surfaces recovered from production on 2026-08-18. Both functions were deployed
@@ -330,7 +330,7 @@ const gmailSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.gmail.intake.preview',
-    sourceFingerprint: '7465e800c97a68cdc98d690326187143ea7508e4ab7831147f3b0c7a2f6cb750',
+    sourceFingerprint: '1fae1d83ecbf6644a01df8f6952b7af191bebf853a977abe01a8469533a864a9',
     ...gmailSharedMetadata,
   },
   {

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { resolveProviderKeys } from '../supabase/functions/_shared/provider-agent-classifier.mjs';
 
 const sync = readFileSync(new URL('../supabase/functions/_shared/provider-gmail-sync.ts', import.meta.url), 'utf8');
 const intake = readFileSync(new URL('../supabase/functions/_shared/provider-agent-intake.ts', import.meta.url), 'utf8');
@@ -58,8 +59,24 @@ test('no message content is written to the agent run', () => {
 });
 
 test('provider API keys come from the environment, never from a caller', () => {
-  assert.match(intake, /env\?\.get\?\.\('OPENAI_API_KEY'\)/);
-  assert.match(intake, /env\?\.get\?\.\('ANTHROPIC_API_KEY'\)/);
+  // Executed rather than grepped: the resolver is shared by the intake and the
+  // preview endpoint, so this pins the actual behaviour both depend on.
+  const env = (values) => ({ get: (name) => values[name] });
+  assert.deepEqual(
+    resolveProviderKeys(env({ OPENAI_API_KEY: 'openai-key', ANTHROPIC_API_KEY: 'anthropic-key' })),
+    { openaiApiKey: 'openai-key', anthropicApiKey: 'anthropic-key' },
+  );
+  // An absent key stays undefined so the tier is skipped, never sent empty.
+  assert.deepEqual(resolveProviderKeys(env({})), { openaiApiKey: undefined, anthropicApiKey: undefined });
+  assert.deepEqual(resolveProviderKeys(env({ OPENAI_API_KEY: '   ' })).openaiApiKey, undefined);
+  assert.deepEqual(resolveProviderKeys(undefined), { openaiApiKey: undefined, anthropicApiKey: undefined });
+  // The replacement key wins: the original OPENAI_API_KEY was refused with a 403
+  // and the working one was added alongside rather than over it.
+  assert.equal(
+    resolveProviderKeys(env({ OPENAI_API_KEY: 'refused', OPENAI_API_KEY_2: 'working' })).openaiApiKey,
+    'working',
+  );
+  // And the intake still never takes a key off the request.
   assert.ok(!/apiKey:\s*input\./.test(intake), 'keys must never be read from the request');
 });
 
