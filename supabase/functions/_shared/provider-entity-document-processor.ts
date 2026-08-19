@@ -1,3 +1,5 @@
+import { planDocumentReview } from './provider-entity-review-seeding.mjs';
+
 const VAULT_BUCKET = 'provider-entity-vault';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SENSITIVITIES = new Set(['public','internal','confidential','restricted','highly_restricted']);
@@ -140,11 +142,41 @@ export async function processProviderEntityDocument(
       .eq('processing_lease_token',leaseToken).select('id').maybeSingle();
     if(ready.error) throw ready.error;
     if(!ready.data) throw new Error('Processing lease was lost.');
+
+    // Seed the human review now that the asset exists. A promoted document that
+    // nobody can review is the state this branch already shipped once: 25 vault
+    // documents with zero reviews, because nothing created them.
+    //
+    // Non-fatal by design. The document is already stored, hashed and promoted;
+    // losing that because a review row was refused would cost more than it
+    // protects. The failure is recorded as an event and re-running the seeder
+    // picks it up, since reviews are unique per (organization, ingestion, asset).
+    let reviewSeeded=false;
+    let reviewSeedError:string|null=null;
+    try {
+      const plan=planDocumentReview({
+        id:asset.data.id,organization_id:organizationId,legal_entity_id:legalEntityId,
+        ingestion_id:ingestionId,document_type:documentType,sensitivity,
+      });
+      if(plan) {
+        const review=await supabase.from('provider_entity_document_reviews')
+          .insert(plan.review).select('id').single();
+        if(review.error) throw review.error;
+        const fields=await supabase.from('provider_entity_document_review_fields')
+          .insert(plan.fields.map((field:Record<string,unknown>)=>({...field,review_id:review.data.id})));
+        if(fields.error) throw fields.error;
+        reviewSeeded=true;
+      }
+    } catch(seedError) {
+      reviewSeedError=String((seedError as Error)?.message||'review_seed_failed').slice(0,300);
+    }
+
     await event(supabase,organizationId,ingestionId,'document_processed','ready',{
-      document_asset_id:asset.data.id,hash_status:hashStatus,malware_status:'clean',
+      document_asset_id:asset.data.id,hash_status:hashStatus,malware_status:malwareStatus,
       classification_status:'classified',verification_status:'needs_review',
+      review_seeded:reviewSeeded,review_seed_error:reviewSeedError,
     });
-    return {ingestion_id:ingestionId,ingestion_status:'ready',document_asset_id:asset.data.id};
+    return {ingestion_id:ingestionId,ingestion_status:'ready',document_asset_id:asset.data.id,review_seeded:reviewSeeded};
   } catch(error) {
     const message=error instanceof Error?error.message:String(error);
     await supabase.from('provider_entity_document_ingestions').update({

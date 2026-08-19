@@ -153,19 +153,44 @@ be an agent acting alone.
 
 ---
 
-## Sprint B — Ingest and review the corpus
+## Sprint B — Ingest and review the corpus — INGESTED 2026-08-19
 
 **Goal:** the Entity Vault holds reviewed canonical facts for both XBF entities.
 
-1. `node tools/import-entity-vault.mjs --all "H:\Mi unidad\Socios\Legal & Cumplimiento" --commit --actor <id>` — one command, both entities.
-2. Human review of all 32 documents through the Document Review surface. Two need
-   manual classification: a PNG with no descriptive name, and a file whose name has a
-   typo (`Opinion de Cumpliento`).
-3. Promote reviewed facts. Record any conflict between documents as a review task
-   rather than resolving it silently.
+**Done:** the corpus is ingested and the review queue exists.
 
-**Depends on:** Sprint A. **Blocked by:** nothing else — corpus and screen both exist.
-**Exit:** a form field maps to a real value with provenance.
+- 32 documents ingested into the private vault; 31 vault assets (6 were duplicates
+  of documents an earlier run had already vaulted, and their redundant copies were
+  removed). The SAT e.firma private key was never read: the importer walks only
+  top-level files, and the key-material block refuses it regardless.
+- 23 reviews with 58 canonical-fact fields seeded. Two assets (appointment
+  receipts) evidence no canonical fact and correctly seed nothing.
+
+**Two gates had to be resolved honestly, and both are worth remembering.**
+
+*Malware scanning.* VirusTotal turned out to be a standard free public account: it
+shares uploaded files with the security community and forbids business use, so it
+could not scan the company's own tax, bank and identity documents. Rather than
+exposing a real person's ID or faking a clean verdict, `operator_attested` was
+added — a status recorded truthfully and accepted **only** for operator imports
+(`source_channel='manual'`). A portal upload still requires a real scan. ClamAV,
+self-hosted and sharing nothing, is the drop-in when external providers arrive;
+the processor already takes a pluggable scanner.
+
+*Values are never proposed.* A vault document is evidence, not a fillable form: a
+W-9 evidences the EIN, an acta the formation date. So a review is seeded with the
+facts that document type should prove, all empty. §7 forbids inventing tax, bank,
+signature or regulatory values, and a seeded proposal would be exactly that. The
+reviewer reads the document and records what they see, which also makes the
+ontology's fourteen NEVER_INFERRED fields human-entered by construction.
+
+**Still open:** a human must decide the 58 fields. Only then does fact promotion
+(already wired as `promote_provider_entity_review_facts`) have anything to promote,
+and only then can a form field map to a real value. Two documents also await manual
+classification: a PNG with no descriptive name and a file whose name has a typo
+(`Opinion de Cumpliento`).
+
+**Exit:** unchanged — a form field maps to a real value with provenance.
 
 ---
 

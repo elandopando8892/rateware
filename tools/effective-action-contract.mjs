@@ -118,7 +118,7 @@ const recoveredAuthorizationFingerprints = {
   'edge.provider-release-package-api.get_provider_release_manifest': 'cf1d74974a46d97c26ca4418943e5733a0845bda5fde3f2e1dd2a17c3c8bd2af',
   'edge.provider-release-package-api.get_provider_release_download_url': 'cf1d74974a46d97c26ca4418943e5733a0845bda5fde3f2e1dd2a17c3c8bd2af',
   // The Entity Vault scan/classify/promote worker (VirusTotal Private Scanning).
-  'edge.provider-entity-document-processor.process_provider_entity_documents': '670fa917f43d53a04bc51753f1410c41a703eacab40d7a2b664588ffb8c189cc',
+  'edge.provider-entity-document-processor.process_provider_entity_documents': '0f64625cbe533a9bf67cc1c03d585b0b33f2d275ae8bf880c025d31177cebc41',
 };
 
 const recoveredMetadataFingerprints = {

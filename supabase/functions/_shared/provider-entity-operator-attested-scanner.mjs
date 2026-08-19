@@ -9,24 +9,34 @@
 // hash-verified and still lands in Document Review before it is releasable.
 import { classifyDocument } from './provider-entity-import.mjs';
 
+/**
+ * @param {string} attestedByUserId
+ * @returns {{
+ *   scan: () => Promise<{status:'operator_attested'; engine:string; reference:string}>,
+ *   classify: (bytes: any, context: {mimeType?: string; filename?: string}) => Promise<{
+ *     status:'classified'|'needs_review'|'rejected';
+ *     documentType?: string; sensitivity?: string; confidence?: number;
+ *   }>
+ * }}
+ */
 export function createOperatorAttestedProcessor(attestedByUserId) {
   const attestedBy = String(attestedByUserId || '').trim() || 'operator';
   return {
     async scan() {
-      return { status: 'operator_attested', engine: 'operator-attested', reference: attestedBy };
+      return /** @type {const} */ ({ status: 'operator_attested', engine: 'operator-attested', reference: attestedBy });
     },
     async classify(_bytes, context) {
       const result = classifyDocument((context && context.filename) || '');
       if (result.requires_human_classification) {
         // The unnamed files route to human classification instead of promotion.
-        return { status: 'needs_review' };
+        return /** @type {const} */ ({ status: 'needs_review' });
       }
-      return {
+      return /** @type {const} */ ({
         status: 'classified',
         documentType: result.document_type,
         sensitivity: result.sensitivity,
         confidence: 0.95,
-      };
+      });
     },
   };
 }
