@@ -13,6 +13,7 @@ import { resolveXbfEntity } from './provider-agent-resolution.mjs';
 import { resolveProviderThread } from './provider-agent-thread-resolution.ts';
 import { classifyOnboardingRequest, resolveProviderKeys } from './provider-agent-classifier.mjs';
 import { recordInboundEnvelope } from './provider-inbound-envelope.ts';
+import { detectOperatorDirective, trustedDirectiveDomains } from './provider-agent-directive.mjs';
 
 type IntakeMessage = {
   id?: string;
@@ -86,6 +87,29 @@ export async function runProviderOnboardingIntake(
       attachment_names: attachmentNames,
     }, providerKeys());
 
+    // 2b. Did an operator tell us what this is?
+    //
+    // A directive from a trusted internal sender outranks the model: the operator
+    // forwarding the email knows the direction of the request, and the live mailbox
+    // showed the model cannot always tell "a carrier asks us to register" from "we
+    // are told a carrier registered with us" — it called the latter customer_setup
+    // at 0.95.
+    //
+    // Honoured only from a trusted sender. The same phrase written by an external
+    // carrier is recorded and refused: a directive is content, not authority.
+    const directive = detectOperatorDirective({
+      subject: message.subject,
+      body_text: message.bodyText,
+      sender_email: message.senderEmail,
+      trusted_domains: trustedDirectiveDomains({
+        mailboxEmail: input.mailbox_reference,
+        configured: (globalThis as Record<string, any>).Deno?.env?.get?.('PROVIDER_INTERNAL_DOMAINS'),
+      }),
+    });
+    const effectiveRequestType = directive.honored && directive.request_type
+      ? directive.request_type
+      : classification.request_type;
+
     // 3. Which XBF entity? Deterministic; ambiguity is never resolved silently.
     const entity = resolveXbfEntity({
       subject: message.subject,
@@ -114,7 +138,7 @@ export async function runProviderOnboardingIntake(
           entity,
           // Counts and codes only — the envelope table stores no message content.
           metadata: {
-            request_type: classification.request_type,
+            request_type: effectiveRequestType,
             attachment_count: attachmentNames.length,
             match_decision: match.decision,
           },
@@ -139,8 +163,17 @@ export async function runProviderOnboardingIntake(
         match_reason: match.reason,
         match_candidate_count: match.candidate_count,
         vendor_id: match.vendor_id ?? null,
-        request_type: classification.request_type,
+        request_type: effectiveRequestType,
         request_confidence: classification.confidence,
+        // §17 honesty: when an operator directive decided the type, the run must
+        // say so rather than letting the model take credit for it. The model's own
+        // answer is kept alongside, so a disagreement stays visible.
+        request_type_source: directive.honored ? 'operator_directive' : 'classifier',
+        model_request_type: classification.request_type,
+        directive_protocol: directive.protocol,
+        directive_found: directive.found,
+        directive_honored: directive.honored,
+        directive_refused_reason: directive.reason,
         language: classification.language,
         requested_document_count: classification.requested_documents.length,
         forms_to_complete_count: classification.forms_to_complete.length,
@@ -169,9 +202,10 @@ export async function runProviderOnboardingIntake(
       envelope_status: envelope?.envelope_status ?? null,
       match_decision: match.decision,
       vendor_id: match.vendor_id ?? null,
-      request_type: classification.request_type,
+      request_type: effectiveRequestType,
       confidence: classification.confidence,
       engine: classification.engine,
+      directive_honored: directive.honored,
       entity_kind: entity.entity_kind,
       requires_human_entity_selection: entity.requires_human_selection,
       requires_human_provider_selection: match.decision !== 'matched',

@@ -25,6 +25,7 @@ const files = [
   'supabase/functions/_shared/provider-agent-resolution.mjs',
   'supabase/functions/_shared/provider-agent-thread-resolution.ts',
   'supabase/functions/_shared/provider-agent-classifier.mjs',
+  'supabase/functions/_shared/provider-agent-directive.mjs',
   'supabase/functions/_shared/provider-agent-intake.ts',
   'supabase/functions/_shared/provider-onboarding-ontology.mjs',
   'supabase/functions/_shared/provider-onboarding-form-adapters.mjs',

@@ -104,3 +104,24 @@ test('every agent module is covered by the runtime syntax gate', () => {
     assert.ok(validator.includes(module), `${module} is not syntax-gated`);
   }
 });
+
+test('an operator directive outranks the model, and the run says so', () => {
+  // The live mailbox showed the model calling "a carrier registered with us"
+  // customer_setup at 0.95. An operator forwarding the email knows the direction,
+  // so a trusted directive decides the type — and the audit records which decided.
+  assert.match(intake, /const directive = detectOperatorDirective\(/);
+  assert.match(intake, /directive\.honored && directive\.request_type/);
+  assert.match(intake, /request_type: effectiveRequestType/);
+  // The model's own answer is kept, so a disagreement stays visible.
+  assert.match(intake, /request_type_source: directive\.honored \? 'operator_directive' : 'classifier'/);
+  assert.match(intake, /model_request_type: classification\.request_type/);
+  // A refused directive is recorded rather than dropped.
+  assert.match(intake, /directive_refused_reason: directive\.reason/);
+});
+
+test('the directive is scoped to trusted senders at the call site', () => {
+  // The security property lives in the module, but the intake must actually pass
+  // the trust set — omitting it would honour any sender.
+  assert.match(intake, /trusted_domains: trustedDirectiveDomains\(\{/);
+  assert.match(intake, /mailboxEmail: input\.mailbox_reference/);
+});
