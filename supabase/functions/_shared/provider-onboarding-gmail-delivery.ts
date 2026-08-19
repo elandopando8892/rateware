@@ -1,3 +1,5 @@
+import { providerGmailAllowedAccount } from './provider-gmail.ts';
+
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function required(value:unknown,field:string){const result=String(value||'').trim();if(!result)throw new Error(`${field} is required.`);return result;}
@@ -19,11 +21,27 @@ async function messageEvent(supabase:any,row:Record<string,any>,type:string,acto
   });if(result.error)throw result.error;
 }
 async function policyFor(supabase:any,organizationId:string,mailbox:string,recipient:string){
+  // Sender allowlist, checked before the policy is even read.
+  //
+  // The policy table said which recipients a mailbox may write to, but nothing said
+  // which mailbox may send at all: a policy row naming any address would have been
+  // honoured. The allowlist is the same single account the Gmail integration is pinned
+  // to -- imported rather than re-derived here, because two copies of "which mailbox is
+  // ours" would eventually disagree, and this is the copy that authorises sending.
+  const allowed=providerGmailAllowedAccount();
+  if(String(mailbox||'').trim().toLowerCase()!==allowed){
+    throw new Error('Mailbox is not the allowlisted provider intake account.');
+  }
   const result=await supabase.from('provider_onboarding_mailbox_policies').select('*')
     .eq('organization_id',organizationId).eq('mailbox_email',mailbox).eq('enabled',true).maybeSingle();
   if(result.error)throw result.error;if(!result.data)throw new Error('Enabled mailbox policy was not found.');
-  const domain=recipient.split('@')[1];
-  if(!(result.data.allowed_recipient_domains||[]).map((item:string)=>item.toLowerCase()).includes(domain)){
+  const domains=(result.data.allowed_recipient_domains||[])
+    .map((item:string)=>String(item||'').trim().toLowerCase()).filter(Boolean);
+  // An enabled policy that allows nothing is a misconfiguration, not a silent deny: it
+  // reads as configured while refusing every recipient.
+  if(!domains.length) throw new Error('Mailbox policy is enabled but allows no recipient domain.');
+  const domain=String(recipient||'').split('@')[1];
+  if(!domain||!domains.includes(domain)){
     throw new Error('Recipient domain is not allowed by mailbox policy.');
   }
   return result.data;

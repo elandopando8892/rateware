@@ -41,6 +41,7 @@ const DEFINITIONS = [
   ["rpc.public.provider_onboarding_revoke_release_package(uuid,uuid,text,text)", "public.provider_onboarding_revoke_release_package", "supabase/migrations/20260817110000_provider_onboarding_approval_commands.sql", "uuid,uuid,text,text", "a874e650eb1df90233a94b91be348b5804c2a7174ccc67497b1a17a2e969edab", "463bb271bb37948f4b87b16ecc7e96b99eda16c9727f71e692685488b4a8034d", "internal", "provider_approvals", "execute", "write", "critical", "tenant-scoped", "internal.provider_onboarding.revoke_release_package"],
   ["rpc.public.provider_onboarding_revoke_signature_authorization(uuid,uuid,text,text)", "public.provider_onboarding_revoke_signature_authorization", "supabase/migrations/20260817130000_provider_onboarding_signature_template_binding.sql", "uuid,uuid,text,text", "c760b822858aa8669924eaefed9e2500405088790ba2b8998b65523035a0c889", "deb8f67fea5b0070df849e3b3c55ccdb298d604bcba459ef7138016764e15714", "internal", "provider_approvals", "execute", "write", "critical", "tenant-scoped", "internal.provider_onboarding.revoke_signature_authorization"],
   ["rpc.public.provider_service_set_relationship_lifecycle(uuid,uuid,text,text,text,text,uuid)", "public.provider_service_set_relationship_lifecycle", "supabase/migrations/20260813235030_provider_relationship_runtime_write_hardening.sql", "uuid,uuid,text,text,text,text,uuid", "30084d1f9f9368ec4921e9d6d1e25468a25831bba12064ede625a36bd31cc6ae", "ef1cc78cc254e494c7ddd8d90905bbca2848cce41adbd6f4b99baf692887ff44", "internal", "provider_relationships", "execute", "write", "high", "tenant-scoped", "internal.provider_service.set_relationship_lifecycle"],
+  ["rpc.public.provider_onboarding_valid_recipient_domains(text[])", "public.provider_onboarding_valid_recipient_domains", "supabase/migrations/20260819140000_provider_mailbox_policy_domain_shape.sql", "text[]", "9151559faea6dfc301a20e61138f96ec6a9475f12833d149526df118f7d3f2e8", "97a019fa8c964830149c8d73027c2b5aa79735a2c9354e8fce5841891b4533ea", "internal", "provider_communications", "read", "read", "high", "platform-scoped", "internal.provider_onboarding.valid_recipient_domains"],
   ["rpc.public.provider_service_set_requirement_state(uuid,uuid,text,text,text,text,uuid)", "public.provider_service_set_requirement_state", "supabase/migrations/20260813132600_provider_service_requirement_state_command.sql", "uuid,uuid,text,text,text,text,uuid", "2c02579ec5e96ad9700a688d466d5966c871c5e297db6261683e72512a2acb2c", "42e7e3990420c4a763b09b36dfdc46372906043fa0dbf915b8e64fd8092f15fb", "internal", "provider_activation", "execute", "write", "high", "tenant-scoped", "internal.provider_service.set_requirement_state"]
 ];
 
@@ -81,7 +82,7 @@ function surfaceFrom(definition) {
 
 export const PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION = {
   contractVersion: "1.3.0",
-  expectedCountsDelta: { governable: 39, edge: 0, postgres: 39, ratewareApi: 0 },
+  expectedCountsDelta: { governable: 40, edge: 0, postgres: 40, ratewareApi: 0 },
   reviewedMetadataFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry[0], entry[5]])),
   reviewedAuthorizationFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry[0], entry[4]])),
   surfaces: DEFINITIONS.map(surfaceFrom)
