@@ -92,6 +92,10 @@ const providerSurfaces = extension.surfaces.map((entry) => ({
 // resolution). That adds a local dependency to the Gmail runtime and changes its
 // shared envelope. The intake writes only proposals and an agent-run audit row under
 // the same tenant scope — no new privilege, no new caller, and no outbound action.
+// Refreshed 2026-08-19: the deterministic classifier learned the Spanish alta
+// phrasings a real carrier thread used, and the envelope bridge now maps the
+// resolver vocabulary. Both are intake dependencies, so the Gmail envelope moves;
+// no new caller, privilege or external reach.
 // Refreshed 2026-08-18. The Gmail sync now hands the agent intake the mailbox and
 // the Gmail message id so the intake can record a neutral inbox envelope, and the
 // intake imports `provider-inbound-envelope.ts`. The dependency envelope is
@@ -102,12 +106,12 @@ const providerSurfaces = extension.surfaces.map((entry) => ({
 // external reach. The push receiver moves for the same reason — it reaches the
 // sync — and the OAuth callback, which does not, keeps its envelope.
 const gmailAuthorizationFingerprints = {
-  'edge.provider-gmail-intake-api.provider_gmail_status': '6df0b9545ebfa7516556916d0c5c74a7c81fa08a9198531dd3b9091f746f7e2a',
-  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': '6df0b9545ebfa7516556916d0c5c74a7c81fa08a9198531dd3b9091f746f7e2a',
-  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '6df0b9545ebfa7516556916d0c5c74a7c81fa08a9198531dd3b9091f746f7e2a',
-  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '6df0b9545ebfa7516556916d0c5c74a7c81fa08a9198531dd3b9091f746f7e2a',
+  'edge.provider-gmail-intake-api.provider_gmail_status': '58e3680eb7b684ea13544c059316f2655bb304fea0d8933aba66366092bfef86',
+  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': '58e3680eb7b684ea13544c059316f2655bb304fea0d8933aba66366092bfef86',
+  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '58e3680eb7b684ea13544c059316f2655bb304fea0d8933aba66366092bfef86',
+  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '58e3680eb7b684ea13544c059316f2655bb304fea0d8933aba66366092bfef86',
   'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': '61a4d760bc3bc7157e0abcebf08818cd4e84841f6ec35f7c406475e28df53a3b',
-  'edge.provider-gmail-push.receive_provider_gmail_push': '3efbde42fc99498642e648d5da8ac285930d3d587e7cd8069cb5744e94774aee',
+  'edge.provider-gmail-push.receive_provider_gmail_push': '764611e74e0861f3d9df3f330a36a91d0230bd6801fa4adc7ccd36573258b572',
 };
 
 // Surfaces recovered from production on 2026-08-18. Both functions were deployed

@@ -5,11 +5,33 @@
 // rather than inspected as text. The `.ts` side only reads, writes and retries.
 // This mirrors the split already used by `provider-agent-resolution.mjs`.
 
-/** Jurisdiction is matched on country_code, so renaming XBFMX/XBFUS cannot break routing. */
-export const ROUTING_COUNTRY = Object.freeze({
-  mexico: 'MX',
-  united_states: 'US',
+/**
+ * Translates the resolver's vocabulary into the envelope table's.
+ *
+ * `resolveXbfEntity` returns 'mx' / 'us'; `provider_inbound_envelopes.routing_decision`
+ * only accepts 'mexico' / 'united_states'. The two were built separately and do not
+ * share a vocabulary, so this bridge must map rather than assume — an unmapped kind
+ * silently routes a confidently-resolved entity to review. The long forms are
+ * accepted too, so a caller passing either spelling behaves the same.
+ *
+ * Jurisdiction is matched on country_code, so renaming XBFMX/XBFUS cannot break routing.
+ */
+export const ROUTING_JURISDICTIONS = Object.freeze({
+  mx: Object.freeze({ country: 'MX', decision: 'mexico' }),
+  us: Object.freeze({ country: 'US', decision: 'united_states' }),
+  mexico: Object.freeze({ country: 'MX', decision: 'mexico' }),
+  united_states: Object.freeze({ country: 'US', decision: 'united_states' }),
 });
+
+/** Country code for an entity kind, or null when the kind is not routable. */
+export function jurisdictionOf(entityKind) {
+  return ROUTING_JURISDICTIONS[String(entityKind || '').trim().toLowerCase()] || null;
+}
+
+/** Retained for callers that only need the country code. */
+export const ROUTING_COUNTRY = Object.freeze(
+  Object.fromEntries(Object.entries(ROUTING_JURISDICTIONS).map(([kind, value]) => [kind, value.country])),
+);
 
 /** numeric(5,4) constrained to [0,1] — clamp rather than let the insert fail. */
 export function boundedConfidence(value) {
@@ -32,7 +54,7 @@ export function normalizeMailbox(value) {
  * resolving one silently — so this declines and the envelope routes to review.
  */
 export function selectLegalEntity(entities, entityKind) {
-  if (!ROUTING_COUNTRY[entityKind]) return null;
+  if (!jurisdictionOf(entityKind)) return null;
   const rows = Array.isArray(entities) ? entities.filter(Boolean) : [];
   if (rows.length !== 1) return null;
   const [row] = rows;
@@ -57,7 +79,8 @@ export function planInboundEnvelope(input) {
 
   const entity = input.entity || {};
   const entityKind = String(entity.entity_kind || '');
-  const resolved = entity.decision === 'resolved' && Boolean(ROUTING_COUNTRY[entityKind]);
+  const jurisdiction = jurisdictionOf(entityKind);
+  const resolved = entity.decision === 'resolved' && Boolean(jurisdiction);
   const target = resolved ? selectLegalEntity(input.entities, entityKind) : null;
   const routed = Boolean(target);
   const now = input.now || new Date().toISOString();
@@ -78,7 +101,8 @@ export function planInboundEnvelope(input) {
     // The check constraint permits a legal entity only on a routed envelope.
     legal_entity_id: routed ? target.id : null,
     entity_code: routed ? target.entity_code : null,
-    routing_decision: routed ? entityKind : 'needs_review',
+    // The table's vocabulary, not the resolver's: 'mexico' / 'united_states'.
+    routing_decision: routed ? jurisdiction.decision : 'needs_review',
     routing_confidence: boundedConfidence(entity.confidence),
     // Deterministic evidence rules decided this, not the model. The classifier is
     // model-assisted; the routing is not, and the audit should not blur the two.
@@ -94,7 +118,7 @@ export function planInboundEnvelope(input) {
       ? {
         event_type: 'routed',
         event_metadata: {
-          routing_decision: entityKind,
+          routing_decision: jurisdiction.decision,
           entity_code: target.entity_code,
           routed_by_type: 'rule',
         },

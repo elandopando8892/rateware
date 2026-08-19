@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  boundedConfidence, normalizeMailbox, planInboundEnvelope, selectLegalEntity,
+  boundedConfidence, jurisdictionOf, normalizeMailbox, planInboundEnvelope, selectLegalEntity,
 } from '../supabase/functions/_shared/provider-inbound-envelope-plan.mjs';
+import { resolveXbfEntity } from '../supabase/functions/_shared/provider-agent-resolution.mjs';
 
 const MX = [{ id: 'mx-uuid', entity_code: 'XBFMX' }];
 const NOW = '2026-08-18T12:00:00.000Z';
@@ -17,6 +18,33 @@ const base = {
 };
 
 const plan = (overrides) => planInboundEnvelope({ ...base, ...overrides });
+
+// These two pin the bridge against its real producer and its real consumer. The
+// resolver emits 'mx'/'us'; the envelope table's routing_decision check accepts only
+// 'mexico'/'united_states'. Assuming one vocabulary for both silently routed every
+// confidently-resolved entity to review, which synthetic fixtures could not catch
+// because both sides of them were written by hand.
+test('the bridge accepts the entity kinds the real resolver actually emits', () => {
+  const mx = resolveXbfEntity({ subject: 'Alta de proveedor', body_text: 'Requerimos RFC, CSF y acta constitutiva. Pagos en MXN.', attachment_names: [] });
+  const us = resolveXbfEntity({ subject: 'New vendor setup', body_text: 'Please return the W-9 with your EIN and MC number. Payment in USD.', attachment_names: [] });
+  assert.equal(mx.decision, 'resolved');
+  assert.equal(us.decision, 'resolved');
+  // Whatever the resolver calls them, the bridge must route them.
+  assert.ok(jurisdictionOf(mx.entity_kind), `bridge cannot route resolver kind ${mx.entity_kind}`);
+  assert.ok(jurisdictionOf(us.entity_kind), `bridge cannot route resolver kind ${us.entity_kind}`);
+});
+
+test('routing_decision is emitted in the vocabulary the table constraint accepts', () => {
+  // provider_inbound_envelopes: check (routing_decision in ('mexico','united_states','needs_review','rejected'))
+  const ALLOWED = new Set(['mexico', 'united_states', 'needs_review', 'rejected']);
+  const mx = resolveXbfEntity({ subject: 'Alta', body_text: 'RFC y CSF del SAT, pagos en MXN', attachment_names: [] });
+  const plan = planInboundEnvelope({
+    ...base, entity: mx, entities: [{ id: 'mx-uuid', entity_code: 'XBFMX' }],
+  });
+  assert.ok(ALLOWED.has(plan.row.routing_decision), `illegal routing_decision ${plan.row.routing_decision}`);
+  assert.equal(plan.row.routing_decision, 'mexico');
+  assert.equal(plan.routed, true, 'a confidently resolved entity must route, not fall to review');
+});
 
 test('a resolved entity routes, naming the legal entity found for its jurisdiction', () => {
   const { row, routed } = plan({

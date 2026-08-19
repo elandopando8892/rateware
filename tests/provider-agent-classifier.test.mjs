@@ -173,6 +173,21 @@ test('the deterministic tier recognizes confirmation and Spanish requests', () =
   assert.equal(classifyDeterministically({ body_text: 'Favor de enviar su constancia fiscal.' }).request_type, 'document_request');
 });
 
+test('the deterministic tier recognizes how Mexican carriers actually phrase an alta', () => {
+  // Drawn from a real carrier thread. None of these contain the literal "alta de
+  // cliente" the rule originally looked for, and every one of them is the primary
+  // business case — a carrier asking XBF to register as their customer.
+  const setup = (input) => classifyDeterministically(input).request_type;
+  assert.equal(setup({ subject: 'PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN' }), 'customer_setup');
+  assert.equal(setup({ body_text: 'formato que requerimos para poder darlos de alta en nuestro sistema' }), 'customer_setup');
+  assert.equal(setup({ body_text: 'Les comparto requisitos para comenzar el alta con GRUPO SALZILLO' }), 'customer_setup');
+  assert.equal(setup({ body_text: 'Llenado completo del Formato 3.3 Alta Cliente' }), 'customer_setup');
+  // The specific vendor phrasing must still win over the broadened alta patterns.
+  assert.equal(setup({ body_text: 'Le enviamos el alta de proveedor para su llenado.' }), 'vendor_packet');
+  // And a completed alta is still a confirmation, not a new setup request.
+  assert.equal(setup({ body_text: 'Ya quedó dado de alta como proveedor.' }), 'confirmation');
+});
+
 test('an unrecognizable email is unrelated at zero confidence, never guessed', () => {
   const result = classifyDeterministically({ subject: 'Lunch?', body_text: 'Are you free Thursday?' });
   assert.equal(result.request_type, 'unrelated');

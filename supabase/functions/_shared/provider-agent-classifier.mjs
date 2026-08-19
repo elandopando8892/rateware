@@ -164,8 +164,18 @@ async function classifyWithAnthropic(input, { apiKey, fetchImpl }) {
 const KEYWORD_RULES = [
   [/vendor (number|code) (is|:)|has been (set up|registered)|alta (completada|realizada)|ya (quedó|quedo) dado de alta/i, 'confirmation'],
   [/credit (application|line|reference)|solicitud de cr[eé]dito|l[ií]nea de cr[eé]dito/i, 'credit_application'],
-  [/customer setup|new customer|set ?up (form|packet)|alta de cliente|registro de cliente/i, 'customer_setup'],
-  [/vendor (packet|onboarding|registration)|supplier onboarding|alta de proveedor/i, 'vendor_packet'],
+  // Only this one specific Spanish phrase is hoisted above customer_setup: it names
+  // the opposite direction explicitly, so it must beat the broader alta patterns
+  // below. The English vendor rule stays after customer_setup, where a subject like
+  // "New customer setup ... attached vendor packet" still reads as a customer setup.
+  [/alta de proveedor/i, 'vendor_packet'],
+  // Mexican carriers phrase client registration many ways, and a real thread from
+  // one showed the previous rule missing all of them: the subject read "PROCESO DE
+  // ALTA", the body "para poder darlos de alta en nuestro sistema", and the attached
+  // form "Formato 3.3 Alta Cliente" — no "alta de cliente" anywhere. It fell through
+  // to document_request on "Favor de enviar", which is the wrong case entirely.
+  [/customer setup|new customer|set ?up (form|packet)|alta\s+(?:de\s+)?cliente|registro de cliente|dar(?:los|nos|les|le)?\s+de\s+alta|proceso\s+de\s+alta|alta\s+con\s/i, 'customer_setup'],
+  [/vendor (packet|onboarding|registration)|supplier onboarding/i, 'vendor_packet'],
   [/please (send|provide|attach)|favor de (enviar|proporcionar)|we (need|require) (your|the)/i, 'document_request'],
   [/follow(ing)? up|any update|seguimiento|alguna actualizaci[oó]n/i, 'status_followup'],
 ];
