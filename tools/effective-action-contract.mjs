@@ -41,10 +41,17 @@ const delta = extension.expectedCountsDelta;
 //      object afterwards. The adapter pins actor.type to 'user', so a caller cannot
 //      claim to be the system or an integration and bypass the identified-user
 //      requirement. No public URL is ever produced by either path.
+//   - record_provider_onboarding_requirement_waiver / revoke_..., which let an operator
+//      accept a specific unmet onboarding requirement on the record. The waiver reaches
+//      one new table, provider_onboarding_requirement_waivers, which is service-role
+//      only and tenant-scoped like every other Provider Service table. It changes what
+//      readiness reports, not who may call anything: a waived evaluation is
+//      'complete_with_waivers', a release package must opt in to accept it, and the
+//      two-person package approval is untouched.
 // All run under the same canonical Kinde -> workspace -> tenant resolver and add no new
-// privilege, table or caller, and none is externally discovered, so the envelope is
-// refreshed deliberately rather than the eight actions being re-reviewed.
-const shipperDirectoryEnvelope = 'd61a30598da59b4dc8ced3487462f89ca3eae59ae57e6b5a8e45b551306e68ea';
+// privilege or caller, and none is externally discovered, so the envelope is refreshed
+// deliberately rather than the eight actions being re-reviewed.
+const shipperDirectoryEnvelope = '69df3d4ecc2780b0c7d9f08a26f21cedd43ad43f222f0f0ceb9a376797de0885';
 const legacyAuthorizationOverrides = Object.fromEntries([
   'edge.shipper-directory-api.get_shipper',
   'edge.shipper-directory-api.list_shippers',

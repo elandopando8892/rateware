@@ -11,6 +11,10 @@ import {
 } from "../_shared/provider-onboarding-case-workflow.ts";
 import { createProviderOnboardingReleasePackage } from "../_shared/provider-onboarding-release-package.ts";
 import {
+  recordProviderOnboardingRequirementWaiver,
+  revokeProviderOnboardingRequirementWaiver,
+} from "../_shared/provider-onboarding-waiver-commands.ts";
+import {
   beginProviderEntitySignedUpload,
   confirmProviderEntitySignedUpload,
 } from "../_shared/provider-entity-upload.ts";
@@ -45,6 +49,8 @@ const PROVIDER_SERVICE_ACTIONS = new Set([
   "reconcile_provider_onboarding_case",
   "cancel_provider_onboarding_case",
   "create_provider_onboarding_release_package",
+  "record_provider_onboarding_requirement_waiver",
+  "revoke_provider_onboarding_requirement_waiver",
   "begin_provider_entity_upload",
   "confirm_provider_entity_upload",
 ]);
@@ -57,6 +63,8 @@ const PROVIDER_SERVICE_COMMANDS = new Map<string, (supabase: any, input: Record<
   ["reconcile_provider_onboarding_case", reconcileProviderOnboardingCase],
   ["cancel_provider_onboarding_case", cancelProviderOnboardingCase],
   ["create_provider_onboarding_release_package", createProviderOnboardingReleasePackage],
+  ["record_provider_onboarding_requirement_waiver", recordProviderOnboardingRequirementWaiver],
+  ["revoke_provider_onboarding_requirement_waiver", revokeProviderOnboardingRequirementWaiver],
   // The bounded-upload module takes an actor object rather than an id. The adapter
   // pins actor.type to 'user' so a browser caller can never claim to be the system
   // or an integration, which would bypass the identified-user requirement.

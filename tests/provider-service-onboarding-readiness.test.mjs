@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {applyWaivers} from '../supabase/functions/_shared/provider-onboarding-requirement-waiver.mjs';
 const migration=readFileSync(new URL('../supabase/migrations/20260814120000_provider_onboarding_readiness.sql',import.meta.url),'utf8');
 const evaluator=readFileSync(new URL('../supabase/functions/_shared/provider-onboarding-readiness.ts',import.meta.url),'utf8');
 
@@ -25,7 +26,20 @@ test('facts must be current and documents active and verified',()=>{
   assert.match(evaluator,/document_too_old/);
 });
 test('readiness is blocked by unresolved evidence and complete only with all required evidence',()=>{
-  assert.match(evaluator,/missing===0\?'complete':blocking\?'blocked':'incomplete'/);
+  // Executed rather than grepped. The status rule moved into the waiver module when
+  // operator overrides landed; a source-text assertion would have gone on passing
+  // against a copy of the rule that no longer decided anything.
+  const row=(code,status)=>({requirement:{id:`req-${code}`,requirement_code:code,is_required:true},status,
+    reason:'r',fact_id:null,asset_id:null,evidence_sha256:null});
+  const statusOf=(rows)=>applyWaivers({rows,waivers:[]}).evaluation_status;
+  assert.equal(statusOf([row('a','satisfied')]),'complete');
+  assert.equal(statusOf([row('a','satisfied'),row('b','missing')]),'incomplete');
+  assert.equal(statusOf([row('a','satisfied'),row('b','unverified')]),'blocked');
+  assert.equal(statusOf([row('a','expired')]),'blocked');
+  assert.equal(statusOf([row('a','conflict')]),'blocked');
+  // An optional requirement never holds the evaluation back.
+  assert.equal(applyWaivers({rows:[{requirement:{id:'r1',requirement_code:'o',is_required:false},status:'missing'}],
+    waivers:[]}).evaluation_status,'complete');
   assert.match(evaluator,/required_fact_missing/);
   assert.match(evaluator,/document_not_verified/);
 });

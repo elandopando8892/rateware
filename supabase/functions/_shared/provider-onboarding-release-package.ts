@@ -49,22 +49,33 @@ export async function createProviderOnboardingReleasePackage(
   if(!onboardingCase.data||!onboardingCase.data.current_readiness_evaluation_id){
     throw new Error('Case is not ready for controlled package approval.');
   }
+  // A waived evaluation is releasable, but only deliberately: the caller must pass
+  // accept_waivers. Defaulting to true would let an override slip into a package whose
+  // requester believed every requirement was met by evidence.
+  const acceptWaivers=input.accept_waivers===true;
+  const releasableStatuses=acceptWaivers?['complete','complete_with_waivers']:['complete'];
   const evaluation=await supabase.from('provider_onboarding_readiness_evaluations').select('*')
     .eq('organization_id',organizationId)
     .eq('id',onboardingCase.data.current_readiness_evaluation_id)
-    .eq('evaluation_status','complete').maybeSingle();
+    .in('evaluation_status',releasableStatuses).maybeSingle();
   if(evaluation.error) throw evaluation.error;
-  if(!evaluation.data) throw new Error('Current complete readiness evaluation was not found.');
+  if(!evaluation.data){
+    throw new Error(acceptWaivers
+      ?'Current complete readiness evaluation was not found.'
+      :'Current readiness evaluation is not complete, or carries waivers and accept_waivers was not set.');
+  }
 
   const results=await supabase.from('provider_onboarding_readiness_results')
-    .select('id,requirement_code,result_status,matched_fact_id,matched_document_asset_id,evidence_sha256')
+    .select('id,requirement_code,result_status,matched_fact_id,matched_document_asset_id,evidence_sha256,metadata')
     .eq('organization_id',organizationId).eq('evaluation_id',evaluation.data.id)
-    .eq('result_status','satisfied');
+    .in('result_status',['satisfied','waived']);
   if(results.error) throw results.error;
-  if(!(results.data||[]).length) throw new Error('Complete evaluation has no releasable evidence references.');
+  const satisfiedResults=(results.data||[]).filter((item:any)=>item.result_status==='satisfied');
+  const waivedResults=(results.data||[]).filter((item:any)=>item.result_status==='waived');
+  if(!satisfiedResults.length) throw new Error('Complete evaluation has no releasable evidence references.');
 
-  const factIds=results.data.map((item:any)=>item.matched_fact_id).filter(Boolean);
-  const assetIds=results.data.map((item:any)=>item.matched_document_asset_id).filter(Boolean);
+  const factIds=satisfiedResults.map((item:any)=>item.matched_fact_id).filter(Boolean);
+  const assetIds=satisfiedResults.map((item:any)=>item.matched_document_asset_id).filter(Boolean);
   let facts=[] as Array<Record<string,any>>,assets=[] as Array<Record<string,any>>;
   if(factIds.length){
     const query=await supabase.from('provider_legal_entity_facts')
@@ -82,7 +93,7 @@ export async function createProviderOnboardingReleasePackage(
   const factById=new Map(facts.map((item)=>[item.id,item]));
   const assetById=new Map(assets.map((item)=>[item.id,item]));
   const items=[] as Array<Record<string,any>>;
-  for(const result of results.data){
+  for(const result of satisfiedResults){
     const source=result.matched_fact_id?factById.get(result.matched_fact_id):assetById.get(result.matched_document_asset_id);
     if(!source) throw new Error(`Evidence changed for ${result.requirement_code}; rerun readiness.`);
     const mode=disclosure[result.requirement_code]||'reference_only';
@@ -101,11 +112,52 @@ export async function createProviderOnboardingReleasePackage(
     });
   }
 
+  // Waived requirements travel as declared gaps. They carry no evidence and no hash --
+  // the point is to state plainly that the requirement was not met, who accepted that,
+  // and what was accepted instead. A package that quietly omitted them would read as
+  // complete when it is not.
+  if(waivedResults.length){
+    const waiverIds=waivedResults.map((item:any)=>item.metadata?.waiver_id).filter(Boolean);
+    let waiverById=new Map<string,Record<string,any>>();
+    if(waiverIds.length){
+      const query=await supabase.from('provider_onboarding_requirement_waivers')
+        .select('id,requirement_code,justification,substitute_reference,authorized_by_actor_id,authorized_at,expires_at,waiver_status')
+        .eq('organization_id',organizationId).in('id',waiverIds);
+      if(query.error) throw query.error;
+      waiverById=new Map((query.data||[]).map((item:any)=>[item.id,item]));
+    }
+    for(const result of waivedResults){
+      const waiver=waiverById.get(result.metadata?.waiver_id);
+      if(!waiver) throw new Error(`Waiver record missing for ${result.requirement_code}; rerun readiness.`);
+      if(waiver.waiver_status!=='active'){
+        throw new Error(`Waiver for ${result.requirement_code} is no longer active; rerun readiness.`);
+      }
+      items.push({
+        item_key:`requirement:${result.requirement_code}`,
+        item_kind:'declared_gap',
+        source_fact_id:null,source_document_asset_id:null,
+        // A declared gap describes an absence. There is nothing to redact, so the mode
+        // is fixed rather than taken from the caller.
+        disclosure_mode:'reference_only',sensitivity:'internal',
+        evidence_sha256:null,
+        metadata:{
+          readiness_result_id:result.id,requirement_code:result.requirement_code,
+          waiver_id:waiver.id,justification:waiver.justification,
+          substitute_reference:waiver.substitute_reference,
+          authorized_by_actor_id:waiver.authorized_by_actor_id,
+          authorized_at:waiver.authorized_at,expires_at:waiver.expires_at,
+        },
+      });
+    }
+  }
+
   const created=await supabase.from('provider_onboarding_release_packages').insert({
     organization_id:organizationId,case_id:caseId,readiness_evaluation_id:evaluation.data.id,
     package_version:packageVersion,purpose_code:purpose,recipient_key:recipient,
     required_approval_count:approvalCount,requested_by_actor_id:requestedBy,
-    metadata:{approval_ttl_hours:ttlHours,evidence_snapshot_sha256:evaluation.data.evidence_snapshot_sha256},
+    metadata:{approval_ttl_hours:ttlHours,evidence_snapshot_sha256:evaluation.data.evidence_snapshot_sha256,
+      readiness_evaluation_status:evaluation.data.evaluation_status,
+      declared_gap_count:waivedResults.length},
   }).select('*').single();
   if(created.error) throw created.error;
   const packageId=created.data.id;
@@ -132,9 +184,11 @@ export async function createProviderOnboardingReleasePackage(
   if(submitted.error) throw submitted.error;
   if(!submitted.data) throw new Error('Package changed before approval submission.');
   await releaseEvent(supabase,submitted.data,'package_submitted_for_approval',requestedBy,1,{
-    manifest_sha256:manifestSha,item_count:items.length,
+    manifest_sha256:manifestSha,item_count:items.length,declared_gap_count:waivedResults.length,
   });
-  return {package_id:packageId,package_status:'pending_approval',revision:2,manifest_sha256:manifestSha,item_count:items.length};
+  return {package_id:packageId,package_status:'pending_approval',revision:2,manifest_sha256:manifestSha,
+    item_count:items.length,declared_gap_count:waivedResults.length,
+    readiness_evaluation_status:evaluation.data.evaluation_status};
 }
 
 export async function decideProviderOnboardingReleasePackage(

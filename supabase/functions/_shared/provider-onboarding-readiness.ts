@@ -1,3 +1,5 @@
+import { applyWaivers } from './provider-onboarding-requirement-waiver.mjs';
+
 const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE=/^[a-z][a-z0-9_]{1,127}$/;
 const PROGRAM=/^[a-z][a-z0-9_]{1,63}$/;
@@ -112,37 +114,57 @@ export async function evaluateProviderOnboardingReadiness(
     rows.push({requirement,status,reason,fact_id:null,asset_id:asset?.id||null,evidence_sha256:asset?.file_sha256||null});
   }
 
-  const requiredRows=rows.filter((row)=>row.requirement.is_required);
-  const satisfied=requiredRows.filter((row)=>row.status==='satisfied').length;
-  const missing=requiredRows.length-satisfied;
-  const blocking=requiredRows.filter((row)=>['expired','unverified','conflict','withheld'].includes(row.status)).length;
-  const evaluationStatus=missing===0?'complete':blocking?'blocked':'incomplete';
-  const snapshot=await sha256(rows.map((row)=>({
+  // An operator may have knowingly accepted a gap. A waiver never supplies evidence; it
+  // moves a row to 'waived' and the evaluation to 'complete_with_waivers', so nothing
+  // downstream can read an override as a verified document.
+  const waivers=await supabase.from('provider_onboarding_requirement_waivers')
+    .select('id,requirement_id,requirement_code,program_code,requirement_set_version,waiver_status,expires_at')
+    .eq('organization_id',organizationId).eq('legal_entity_id',legalEntityId)
+    .eq('waiver_status','active');
+  if(waivers.error) throw waivers.error;
+  const decision=applyWaivers({
+    rows,waivers:waivers.data||[],now:new Date().toISOString(),
+    program_code:programCode,requirement_set_version:version,
+  });
+  const decidedRows=decision.rows;
+  const {required_count:requiredCount,satisfied_count:satisfied,waived_count:waived,
+    missing_count:missing,blocking_count:blocking}=decision.counts;
+  const evaluationStatus=decision.evaluation_status;
+  const snapshot=await sha256(decidedRows.map((row:any)=>({
     requirement_id:row.requirement.id,status:row.status,fact_id:row.fact_id,
-    asset_id:row.asset_id,evidence_sha256:row.evidence_sha256,
+    asset_id:row.asset_id,evidence_sha256:row.evidence_sha256,waiver_id:row.waiver_id||null,
   })));
 
   const evaluation=await supabase.from('provider_onboarding_readiness_evaluations').insert({
     organization_id:organizationId,legal_entity_id:legalEntityId,program_code:programCode,
     requirement_set_version:version,evaluation_status:evaluationStatus,
-    required_count:requiredRows.length,satisfied_count:satisfied,missing_count:missing,
+    required_count:requiredCount,satisfied_count:satisfied,missing_count:missing,
+    waived_count:waived,
     blocking_count:blocking,evidence_snapshot_sha256:snapshot,evaluated_by_actor_id:actor,
-    completed_at:new Date().toISOString(),metadata:{jurisdiction_code:jurisdiction,legal_entity_kind:legalEntityKind},
+    completed_at:new Date().toISOString(),metadata:{
+      jurisdiction_code:jurisdiction,legal_entity_kind:legalEntityKind,
+      // Refused waivers are recorded on the evaluation. An operator who issued one and
+      // saw no effect needs to be able to find out why without reading the code.
+      waivers_applied:decision.applied,waivers_refused:decision.refused,
+    },
   }).select('id').single();
   if(evaluation.error) throw evaluation.error;
 
-  const inserts=rows.map((row)=>({
+  const inserts=decidedRows.map((row:any)=>({
     organization_id:organizationId,evaluation_id:evaluation.data.id,
     requirement_id:row.requirement.id,requirement_code:row.requirement.requirement_code,
     result_status:row.status,matched_fact_id:row.fact_id,
     matched_document_asset_id:row.asset_id,evidence_sha256:row.evidence_sha256,
     result_reason_code:row.reason,
+    metadata:row.waiver_id?{waiver_id:row.waiver_id}:{},
   }));
   const stored=await supabase.from('provider_onboarding_readiness_results').insert(inserts);
   if(stored.error) throw stored.error;
   return {
     evaluation_id:evaluation.data.id,evaluation_status:evaluationStatus,
-    required_count:requiredRows.length,satisfied_count:satisfied,
-    missing_count:missing,blocking_count:blocking,evidence_snapshot_sha256:snapshot,
+    required_count:requiredCount,satisfied_count:satisfied,
+    missing_count:missing,waived_count:waived,blocking_count:blocking,
+    waivers_applied:decision.applied.length,waivers_refused:decision.refused.length,
+    evidence_snapshot_sha256:snapshot,
   };
 }

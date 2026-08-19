@@ -13,7 +13,12 @@ test('Build 27 creates packages, reference-only items, approvals, and events',()
 test('packages require a ready case and its current complete readiness snapshot',()=>{
   assert.match(commands,/eq\('case_status','ready_for_approval'\)/);
   assert.match(commands,/current_readiness_evaluation_id/);
-  assert.match(commands,/eq\('evaluation_status','complete'\)/);
+  // The gate widened when operator waivers landed: 'complete' always, and
+  // 'complete_with_waivers' only when the caller explicitly passes accept_waivers.
+  // Behaviour is pinned by execution in provider-onboarding-waiver-release.test.mjs.
+  assert.match(commands,/const acceptWaivers=input\.accept_waivers===true;/);
+  assert.match(commands,/acceptWaivers\?\['complete','complete_with_waivers'\]:\['complete'\]/);
+  assert.match(commands,/in\('evaluation_status',releasableStatuses\)/);
   assert.match(commands,/Evidence changed .* rerun readiness/);
 });
 test('manifest is deterministic and contains references and hashes',()=>{
