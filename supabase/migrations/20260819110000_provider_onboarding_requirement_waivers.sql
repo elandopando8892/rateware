@@ -119,6 +119,11 @@ alter table public.provider_onboarding_release_package_items
   );
 
 -- A declared gap has no evidence, so it has no hash. Every other kind still must.
+--
+-- The IS NOT NULL below is load-bearing, not belt-and-braces. Dropping the column's
+-- NOT NULL is what makes a gap expressible, and `null ~ '...'` evaluates to NULL rather
+-- than false -- a CHECK only rejects on false, so without it a document row with no hash
+-- would pass. A probe against the live table caught exactly that.
 alter table public.provider_onboarding_release_package_items
   alter column evidence_sha256 drop not null;
 alter table public.provider_onboarding_release_package_items
@@ -126,7 +131,8 @@ alter table public.provider_onboarding_release_package_items
 alter table public.provider_onboarding_release_package_items
   add constraint provider_release_package_items_hash_check check (
     (item_kind='declared_gap' and evidence_sha256 is null)
-    or (item_kind<>'declared_gap' and evidence_sha256 ~ '^[0-9a-f]{64}$')
+    or (item_kind<>'declared_gap' and evidence_sha256 is not null
+        and evidence_sha256 ~ '^[0-9a-f]{64}$')
   );
 
 alter table public.provider_onboarding_requirement_waivers enable row level security;

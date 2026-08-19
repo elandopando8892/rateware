@@ -22,8 +22,21 @@ test('readiness outcomes create operational tasks',()=>{
   }
   assert.match(workflow,/task_key:\`readiness:\$\{result\.requirement_code\}\`/);
 });
-test('only complete readiness reaches ready for approval',()=>{
-  assert.match(workflow,/evaluation_status==='complete'/);
+test('only a releasable readiness evaluation reaches ready for approval',()=>{
+  // Was 'only complete'. Operator waivers added a second releasable status, and the
+  // rule is now named once in the module rather than re-typed at each branch -- which
+  // is what let the middle of the chain stay severed while both ends looked right.
+  assert.match(workflow,/const RELEASABLE_EVALUATIONS=\['complete','complete_with_waivers'\];/);
+  const RELEASABLE=['complete','complete_with_waivers'];
+  const nextStatus=(status)=>RELEASABLE.includes(status)
+    ?'ready_for_approval'
+    :status==='blocked'?'blocked':'evidence_collection';
+  assert.equal(nextStatus('complete'),'ready_for_approval');
+  assert.equal(nextStatus('complete_with_waivers'),'ready_for_approval');
+  assert.equal(nextStatus('blocked'),'blocked');
+  assert.equal(nextStatus('incomplete'),'evidence_collection');
+  assert.equal(nextStatus('pending'),'evidence_collection');
+  assert.equal(nextStatus('failed'),'evidence_collection');
   assert.match(workflow,/'ready_for_approval'/);
   assert.match(workflow,/evidence_snapshot_sha256/);
   assert.doesNotMatch(workflow,/submitted|send_email|signed_url/);

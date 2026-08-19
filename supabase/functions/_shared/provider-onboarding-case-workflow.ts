@@ -37,8 +37,18 @@ export async function openProviderOnboardingCase(supabase:any,input:Record<strin
   return {case_id:inserted.data.id,case_status:'evidence_collection',revision:1};
 }
 
+// An evaluation an operator may act on: every required item is either evidenced or
+// knowingly waived. 'complete_with_waivers' is deliberately a separate status, so every
+// consumer has to name it -- this is where the onboarding case names it.
+const RELEASABLE_EVALUATIONS=['complete','complete_with_waivers'];
+
 function taskFor(result:Record<string,any>){
   if(result.result_status==='satisfied') return null;
+  // A waived requirement produces no collection task: an operator already decided not
+  // to chase it, and re-opening the task would ask them to undo their own decision.
+  // Nothing is lost -- the waiver expires, and the next evaluation after that flips the
+  // requirement back to missing and the task returns on its own.
+  if(result.result_status==='waived') return null;
   let taskType='collect_document';
   if(result.result_reason_code==='required_fact_missing') taskType='collect_fact';
   else if(result.result_status==='unverified') taskType='verify_document';
@@ -79,11 +89,13 @@ export async function reconcileProviderOnboardingCase(supabase:any,input:Record<
     .eq('organization_id',organizationId).eq('evaluation_id',evaluationId);
   if(results.error) throw results.error;
   const desired=(results.data||[]).map(taskFor).filter(Boolean) as Array<Record<string,any>>;
-  if(evaluation.data.evaluation_status==='complete'){
+  if(RELEASABLE_EVALUATIONS.includes(evaluation.data.evaluation_status)){
     desired.push({
       task_type:'approve_package',task_key:'approval:package',
       requirement_code:null,blocking:true,source_readiness_result_id:null,
-      metadata:{evidence_snapshot_sha256:evaluation.data.evidence_snapshot_sha256},
+      metadata:{evidence_snapshot_sha256:evaluation.data.evidence_snapshot_sha256,
+        evaluation_status:evaluation.data.evaluation_status,
+        waived_count:evaluation.data.waived_count||0},
     });
   }
   const desiredKeys=new Set(desired.map((item)=>item.task_key));
@@ -112,7 +124,7 @@ export async function reconcileProviderOnboardingCase(supabase:any,input:Record<
     if(upserted.error) throw upserted.error;
   }
 
-  const nextStatus=evaluation.data.evaluation_status==='complete'
+  const nextStatus=RELEASABLE_EVALUATIONS.includes(evaluation.data.evaluation_status)
     ?'ready_for_approval'
     :evaluation.data.evaluation_status==='blocked'?'blocked':'evidence_collection';
   const now=new Date().toISOString();
@@ -126,6 +138,7 @@ export async function reconcileProviderOnboardingCase(supabase:any,input:Record<
   await caseEvent(supabase,updated.data,'tasks_reconciled',reconciledBy,expectedRevision,{
     readiness_evaluation_id:evaluationId,evaluation_status:evaluation.data.evaluation_status,
     case_status:nextStatus,open_task_count:desired.length,
+    waived_count:evaluation.data.waived_count||0,
   });
   return {case_id:caseId,case_status:nextStatus,revision:expectedRevision+1,open_task_count:desired.length};
 }

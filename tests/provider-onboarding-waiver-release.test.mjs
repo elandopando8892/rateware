@@ -10,6 +10,10 @@ const source = readFileSync(
   new URL('../supabase/functions/_shared/provider-onboarding-release-package.ts', import.meta.url),
   'utf8',
 );
+const migration = readFileSync(
+  new URL('../supabase/migrations/20260819110000_provider_onboarding_requirement_waivers.sql', import.meta.url),
+  'utf8',
+);
 
 /** The gate as the module writes it, extracted so it can actually be run. */
 function releasableStatuses(input) {
@@ -84,4 +88,34 @@ test('the manifest covers declared gaps, so approvers sign off on the gaps too',
 test('a package with only waivers and no evidence is refused', () => {
   // Something has to be released. An all-gaps package is not a submission.
   assert.match(source, /if\(!satisfiedResults\.length\) throw new Error\('Complete evaluation has no releasable evidence references\.'\);/);
+});
+
+test('the item hash check rejects a missing hash rather than evaluating to NULL', () => {
+  // Making a declared gap expressible meant dropping the column's NOT NULL. `null ~
+  // '...'` is NULL, and a CHECK only rejects on false -- so without an explicit IS NOT
+  // NULL a document item with no hash at all passed. A probe against the live table
+  // caught it; this is the regression guard.
+  const check = migration.slice(
+    migration.indexOf('add constraint provider_release_package_items_hash_check'),
+    migration.indexOf('alter table public.provider_onboarding_requirement_waivers enable row level security'),
+  );
+  assert.match(check, /item_kind<>'declared_gap' and evidence_sha256 is not null/);
+  assert.match(check, /item_kind='declared_gap' and evidence_sha256 is null/);
+});
+
+test('no constraint in the migration leaves a nullable column to a bare regex', () => {
+  // The same three-valued trap anywhere else would be just as silent.
+  // Scanned over whitespace-normalised SQL: the guard and the regex routinely sit on
+  // different lines, so a line-by-line scan reports a false positive on the very
+  // constraint it is meant to bless.
+  const flat = migration.replace(/\s+/g, ' ');
+  const NULLABLE = ['evidence_sha256', 'substitute_reference', 'revocation_reason', 'revoked_by_actor_id'];
+  for (const match of flat.matchAll(/(\w+) ~ '\^/g)) {
+    if (!NULLABLE.includes(match[1])) continue;
+    const before = flat.slice(Math.max(0, match.index - 240), match.index);
+    assert.ok(
+      /is not null|coalesce\(/.test(before),
+      `${match[1]} is nullable and matched by a bare regex; null ~ '...' is NULL and a CHECK only rejects on false`,
+    );
+  }
 });
