@@ -29,12 +29,12 @@ P1 is limited to 25% while this scope and evidence plan exist. The authoritative
 
 The immutable initial queue above remains the historical starting record. The following evidence was collected later and does not replace or edit that row.
 
-- Candidate SHA: `f1d4170a3ea27967ca25af464579ba1341ec461c`
+- Candidate SHA: `243f0dd60381728803f303f98a6e534f3d9f46ce`
 - Base SHA: `c5200a39b175729ae2ed63c68d83f5f5bc76e674`
 - Originally observed PR head: `42381154d335eb007a977070a3f1b078c71135f8`
 - Scoped independent verdict: **GO**
 - Independent review evidence: `docs/release/evidence/2026-08-20-p1-pr35-independent-review.md`
-- Independent detached worktree: `C:\Users\andre\OneDrive\Documents\Rateware_P1_PR35_Independent_Fix1_f1d4170`
+- Independent detached worktree: `C:\Users\andre\OneDrive\Documents\Rateware_P1_PR35_Independent_243f0dd`
 
 ### Collected verification
 
@@ -43,7 +43,8 @@ The immutable initial queue above remains the historical starting record. The fo
 | Independent reviewer | `git rev-parse HEAD` and `git status --porcelain=v2 --branch` | PASS — exact candidate, detached, clean |
 | Independent reviewer | `node tests/platform55-intelligence.test.mjs` | PASS — focused Sprint 8 intelligence suite |
 | Independent reviewer | `node --check src/intelligence-brief.js` and `node --check src/business-intelligence.js` | PASS — exit 0, no output |
-| Independent reviewer | `git diff --check c5200a39b175729ae2ed63c68d83f5f5bc76e674..f1d4170a3ea27967ca25af464579ba1341ec461c` | PASS — exit 0, no output |
+| Independent reviewer | `git diff --check c5200a39b175729ae2ed63c68d83f5f5bc76e674..243f0dd60381728803f303f98a6e534f3d9f46ce` | PASS — exit 0, no output |
+| Independent reviewer | Positive-summary explicit collection boundary | PASS — empty `rows`, metadata-only `rows`, empty `points`, and empty `recommendations` each blocked with `sample:empty`; absent collections remained reviewable |
 | Implementer | Expanded adversarial matrix | PASS — `24/24`, including both corrected proxy regressions and positive controls |
 | Implementer | `npm test` | PASS — all product suites; identity `14/14`; runtime enforcement `5/5` |
 | Implementer | `npm run validate:action-contract` | PASS — `0` errors, `1` historical warning, `12` informational findings |
