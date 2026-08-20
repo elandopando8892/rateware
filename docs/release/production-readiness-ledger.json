@@ -45,7 +45,7 @@
     {
       "id": "P1",
       "weight": 9,
-      "progress": 25,
+      "progress": 55,
       "evidence": {
         "scope": [
           "docs/superpowers/specs/2026-08-19-rateware-production-closure-design.md"
@@ -53,6 +53,9 @@
         "evidence_plan": [
           "docs/superpowers/plans/2026-08-20-rateware-p1-platform55-release-closure.md",
           "docs/release/2026-08-20-p1-platform55-release-ledger.md"
+        ],
+        "implementation": [
+          "docs/release/evidence/2026-08-20-p1-implementation.md"
         ]
       }
     },
