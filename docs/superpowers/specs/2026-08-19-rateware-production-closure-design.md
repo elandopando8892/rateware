@@ -43,7 +43,7 @@ Local implementation, a green preview, or a package labelled production candidat
 
 ## Delivery Strategy
 
-Use a release-first sequence. Freeze new feature expansion while the P0-P5 closure train is active, except for defects or missing controls that directly block a gate. Each sprint produces an independently reviewable outcome and advances the weighted production score only after its exit criteria are met.
+Use continuous isolated development throughout the P0-P5 closure train. Scheduled evidence windows, preview availability, and release gates do not pause local coding, tests, documentation, or offline review. Evidence and explicit human authorization gate only PR Ready transitions, merges, promotions or deployments, migrations or DDL/DML, configuration, secret, environment or enforcement changes, uploads, approvals, and other production-data mutations. Each sprint produces an independently reviewable outcome and advances the weighted production score only after its exit criteria are met.
 
 The provisional starting score is 63%. Sprint P0 recalibrates that score from live GitHub, Vercel, Supabase, and production evidence. A recalibration may move the baseline in either direction; it may not award points for unverified local work.
 

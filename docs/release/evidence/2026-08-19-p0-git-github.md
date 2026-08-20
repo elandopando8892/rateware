@@ -169,31 +169,50 @@ All listed PRs are open drafts, have no recorded review decision, and were retur
 | #54 | `provider-service-build28-form-assembly-signature-consent@48e8ab590a5973a7e180ef3c7bc6992d0c873467 <- provider-service-build29-gmail-delivery-followup@079e0d4dd200c9f76b011fe4857683a7a1659f1c` | draft, no decision, MERGEABLE | replay S; preview K; Vercel S | Provider Service (excluded) |
 | #55 | `provider-service-build29-gmail-delivery-followup@079e0d4dd200c9f76b011fe4857683a7a1659f1c <- provider-service-build30-rateware-onboarding-ui@1f55f7cfff5f09c03cb8df6cf5a32703ddc5679f` | draft, no decision, MERGEABLE | replay S; preview K; Vercel S | Provider Service (excluded) |
 
+## Merged-PR and production-ancestry reconciliation
+
+**Reconciled:** 2026-08-20T01:31:26.2018669-06:00 (America/Mexico_City).
+
+The original open-only inventory was insufficient for production attribution. A bounded refresh queried merged PRs #12, #13, #14, #15, #24, #40, and #56 directly. `git cat-file -e <sha>^{commit}` succeeded for every head and merge SHA below, and `git merge-base --is-ancestor <merge-sha> c5200a39b175729ae2ed63c68d83f5f5bc76e674` returned success for all seven merge commits.
+
+| Scope | PR | Final PR head | Merge/squash SHA | Relationship to production `c5200a39b175729ae2ed63c68d83f5f5bc76e674` | Disposition |
+|---|---:|---|---|---|---|
+| Platform 55 P2 operator home | #12 | `67735a448e686a7aa409c676784c7c22ffe8e38d` | `6708579b62c257d36f26517483e721bc2fb8fbbf` | merge SHA is an ancestor | already production |
+| Platform 55 P3 governed rate intake | #13 | `484516fdd145a77a66ff5fc7b32f54e275661e67` | `11a43799a6533befb5637a7f7b1f78a221a6c579` | merge SHA is an ancestor | already production |
+| Platform 55 P4 procurement execution | #14 | `06d57c5b66fc217db1e7973c0d042500781fe901` | `c5929147a80c63cc5e12336d0e38febbab212ee3` | merge SHA is an ancestor | already production |
+| Platform 55 P5 commercial network | #15 | `e7c0f657299eb0bc48e1640c91ae129fd0e3bafc` | `d1bab3b2aa84a91cb17fd1b6a2514d96e044b76b` | merge SHA is an ancestor | already production |
+| Platform 55 P6 operations handoff | #40 | `b19af32b6d87e3f1444e90bcb10245754070bf7a` | `df4a19591ca0430ea8c69e8f81e1aa8a3763132b` | merge SHA is an ancestor | already production |
+| Platform 55 P7 finance handoff | #24 | `18c540ddfd4cc70c51994e0d001aea4cb8318409` | `814f9f7bb71a2ee23525eb63a0ca26839e8d0d5e` | merge SHA is an ancestor | already production |
+| Provider Service Builds 1-31 | #56 | `0cf651564fc27c722b2d52681723ae0a2ad27548` | `83bb24b24683e2274ebc2f276ed79da4e0e771b7` | merge SHA is an ancestor | already production |
+
+For P7, `05ae2a562bcad94757f335727d1ecf92ab500aeb` is an intermediate candidate and a verified ancestor of final PR #24 head `18c540ddfd4cc70c51994e0d001aea4cb8318409`; it is not the final PR head or the production merge SHA. Feature-head non-ancestry is not used as negative production proof after a squash merge.
+
+The refresh also re-queried open Provider Service component PRs #18, #20, #22, #25-32, #36, #38, and #41-55. For all 28 exact heads recorded in the open-PR table, `git cat-file -e` succeeded and both ancestry checks succeeded: each head is an ancestor of PR #56 final head `0cf651564fc27c722b2d52681723ae0a2ad27548` and of production `c5200a39b175729ae2ed63c68d83f5f5bc76e674`. Their component content is therefore already production through cumulative PR #56, and the still-open component PRs are superseded as release vehicles by #56. No equivalence is inferred beyond those exact heads.
+
 ## Immutable release queue
 
 No merge, ready-for-review change, or deployment is authorized by this inventory. The human release controller owns every transition; branch naming identifies code ownership only and is not a substitute for an approved owner.
 
 | Order | Scope / exact candidate | Dependency and state | Required owner action |
 |---|---|---|---|
-| 0 | P0 baseline: `origin/main@c5200a39b175729ae2ed63c68d83f5f5bc76e674`; baseline docs at `96db8d597d7d29d07791189d93aa4a233398050d` | Immutable inventory point | Keep this SHA as the comparison base. |
-| 1 | Platform 55 P0-P7 local heads: `dd318f594f5f7b8f75103104d8bb0fdf7c170dbc`, `bd0bc7d6d74b8cd4e53ab856f15ad69b20d62325`, `67735a448e686a7aa409c676784c7c22ffe8e38d`, `484516fdd145a77a66ff5fc7b32f54e275661e67`, `06d57c5b66fc217db1e7973c0d042500781fe901`, `e7c0f657299eb0bc48e1640c91ae129fd0e3bafc`, `b19af32b6d87e3f1444e90bcb10245754070bf7a`, `05ae2a562bcad94757f335727d1ecf92ab500aeb` | No corresponding open PR was returned live; detached review worktrees exist for S1-S7. | Reconcile each candidate against live main and establish a reviewed, authorized PR sequence. |
-| 2 | Platform 55 Sprint 8 / PR #35: `42381154d335eb007a977070a3f1b078c71135f8` | Draft, mergeable, main-based, no review decision; recorded checks are replay S, preview K, Vercel S. | Human review and explicit ready/merge authorization only after the preceding sequence is reconciled. |
-| 3 | Platform 55 Sprint 9 / PR #37: live head `5357cd2cd22bd88acdb1b5bf21fe5a00fcb0b690` | Draft, conflicting, based on PR #35 branch at `ee5419ba27c6c9245a7f7356a423b77e2e941017`; local Sprint 9 head differs (`c582526066fbc4f6e007039f267a316d8266c0fc`). | Rebase/reconcile only under an approved change; rerun checks and independent review. |
-| 4 | Platform 55 Sprint 10 / PR #39: live head `46f5e80ff7c914c3ae4a0922c840364fbf8a052d` | Draft, mergeable but depends on #37's head; Vercel failed and preview skipped. | Wait for authorized resolution of #37, then review/check/smoke in sequence. |
+| 1 | Platform 55 Sprint 8 / PR #35: `42381154d335eb007a977070a3f1b078c71135f8` | Draft, mergeable, main-based, no review decision; replay and Vercel checks succeeded while Supabase Preview was skipped. | Continue isolated development and review now; human authorization is required only for Ready/merge and later external transitions. |
+| 2 | Platform 55 Sprint 9 / PR #37: `5357cd2cd22bd88acdb1b5bf21fe5a00fcb0b690` | Draft, conflicting, based on the PR #35 branch at `ee5419ba27c6c9245a7f7356a423b77e2e941017`; Vercel failed for build-rate-limit and Supabase Preview was skipped. | Reconcile locally after #35, rerun checks/preview and independent review; human authorization gates Ready/merge. |
+| 3 | Platform 55 Sprint 10 / PR #39: `46f5e80ff7c914c3ae4a0922c840364fbf8a052d` | Draft and dependent on #37; Vercel failed for build-rate-limit and Supabase Preview was skipped. | Continue local work without a scheduled wait; after #37 reconciliation, obtain current checks/preview/review before authorized Ready/merge. |
 
 ## Explicit post-core exclusions
 
 - Phase 0.2E is PR #9 (`36c8a42`), a separate draft main-based line; it is not part of the Platform 55 core queue.
 - PR #33 is conflicting against obsolete main SHA `d1bab3b`; it is excluded from the current main queue.
 - Sprint 11 and Agentic MarkOS appear only as uncommitted primary-checkout work at collection; neither has a P0 release candidate or open PR in the live list.
-- Provider Service is its own 30-build draft stack: open PRs #18, #20, #22, #25-32, #36, #38, and #41-55. It is explicitly excluded from the P0 core release queue.
+- Provider Service remains outside the Rateware Core queue. Cumulative PR #56 is already production at merge SHA `83bb24b24683e2274ebc2f276ed79da4e0e771b7`; the still-open component PRs #18, #20, #22, #25-32, #36, #38, and #41-55 are superseded release vehicles because each exact head is an ancestor of #56's final head and production.
 - The dirty primary checkout and all detached audit worktrees are evidence locations, not merge candidates.
 
-## Blockers and limitations
+## Release-only gates and evidence limitations
 
 1. The primary checkout is dirty and must remain isolated from all P0 commits.
-2. Platform 55 P0-P7 have local candidates but no live open PRs returned by this collection; their relationship to the live #35/#37/#39 stack must be reconciled before any release decision.
-3. PR #37 is conflicting; PR #39 depends on it. Both #37 and #39 report a failed Vercel status and skipped Supabase Preview. A previous successful preview is not current release proof.
-4. PR #35 is draft with no review decision. Its successful checks are historical PR evidence, not production evidence.
-5. The full GitHub table records 33 open drafts and their current API state only. It does not assert production deployment, approval, or merge eligibility.
-6. A post-collection self-review observed the unrelated `U/rateware-onboarding` worktree advance from the recorded snapshot SHA `bfe181e08252c6c9e595be8d7bc0bb532765dd3b` to `fb60d1a491b84a23df6c65e1d09dda3448a86cb4`. The table intentionally preserves the timestamped collection snapshot; this concurrent movement is not a P0 change.
+2. PR #35 remains draft without a review decision. PR #37 is conflicting, and PR #39 depends on #37. Current checks/preview/review are required before their Ready/merge transitions, but none of these conditions pauses isolated local development.
+3. #37 and #39 report Vercel `build-rate-limit` failures and skipped Supabase Preview checks. A previous successful preview is not current release proof; development and offline verification may continue while preview capacity is unavailable.
+4. The original table is a timestamped snapshot of 33 open drafts; the reconciliation above adds bounded merged-PR evidence for #12, #13, #14, #15, #24, #40, and #56. Neither section independently authorizes promotion or production mutation.
+5. A post-collection self-review observed the unrelated `U/rateware-onboarding` worktree advance from the recorded snapshot SHA `bfe181e08252c6c9e595be8d7bc0bb532765dd3b` to `fb60d1a491b84a23df6c65e1d09dda3448a86cb4`. The table intentionally preserves the timestamped collection snapshot; this concurrent movement is not a P0 change.
+
+There is no scheduled blocker on isolated coding, tests, documentation, or offline review. Evidence and explicit human authorization apply only to PR Ready, merge, deployment/promotion, migration or DDL/DML, configuration/secret/environment/enforcement, upload, approval, and production-data transitions.
