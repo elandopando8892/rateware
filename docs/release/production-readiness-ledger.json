@@ -5,7 +5,7 @@
     {
       "id": "P0",
       "weight": 4,
-      "progress": 25,
+      "progress": 70,
       "evidence": {
         "scope": [
           "docs/superpowers/specs/2026-08-19-rateware-production-closure-design.md",
@@ -13,6 +13,14 @@
         ],
         "evidence_plan": [
           "docs/release/evidence/2026-08-19-p0-git-github.md"
+        ],
+        "implementation": [
+          "docs/release/2026-08-19-p0-release-baseline.md"
+        ],
+        "automated_suite": [
+          "node tests/production-readiness-report.test.mjs",
+          "npm run release:progress",
+          "git diff --check origin/main...HEAD"
         ]
       }
     },
