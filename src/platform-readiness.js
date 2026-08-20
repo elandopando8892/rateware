@@ -70,13 +70,26 @@ function isJsonEvidence(value, seen = new WeakSet()) {
   return true;
 }
 
+function hasOnlyDataProperties(value, seen = new WeakSet()) {
+  if (value === null || ["string", "boolean", "number"].includes(typeof value)) return true;
+  if (typeof value !== "object" || seen.has(value)) return false;
+  seen.add(value);
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key === "symbol") return false;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, "value")) return false;
+    if (!hasOnlyDataProperties(descriptor.value, seen)) return false;
+  }
+  return true;
+}
+
 function jsonEvidenceSnapshot(value) {
-  if (typeof globalThis.structuredClone !== "function") {
+  if (typeof globalThis.structuredClone !== "function" || !hasOnlyDataProperties(value)) {
     return INVALID_DATA_PROPERTY;
   }
   try {
     const snapshot = globalThis.structuredClone(value);
-    return isJsonEvidence(value) && isJsonEvidence(snapshot) ? snapshot : INVALID_DATA_PROPERTY;
+    return isJsonEvidence(snapshot) ? snapshot : INVALID_DATA_PROPERTY;
   } catch {
     return INVALID_DATA_PROPERTY;
   }

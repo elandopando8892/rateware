@@ -165,6 +165,20 @@ const timeOfCheckEvidence = buildPlatformControlReadiness(mutableEvidence);
 assert.equal(timeOfCheckEvidence.summary.observed_surfaces, 0, "self-removing Proxy evidence fails closed before validation");
 assert.deepEqual(timeOfCheckEvidence.surfaces.find((surface) => surface.page_id === "runtime-jobs")?.evidence, []);
 
+const selfRemovingAccessor = { observability: { events: [] } };
+Object.defineProperty(selfRemovingAccessor, "observabilityLoaded", {
+  configurable: true,
+  enumerable: true,
+  get() {
+    delete selfRemovingAccessor.observabilityLoaded;
+    return true;
+  }
+});
+const accessorRaceEvidence = buildPlatformControlReadiness(selfRemovingAccessor);
+assert.equal(accessorRaceEvidence.summary.observed_surfaces, 0, "self-removing accessors are rejected before cloning");
+assert.deepEqual(accessorRaceEvidence.surfaces.find((surface) => surface.page_id === "runtime-jobs")?.evidence, []);
+assert.equal(Object.prototype.hasOwnProperty.call(selfRemovingAccessor, "observabilityLoaded"), true, "rejected accessors are never executed");
+
 const contradictoryGovernance = buildPlatformControlReadiness({
   governance: {
     status: "blocked",
