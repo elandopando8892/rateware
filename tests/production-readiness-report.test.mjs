@@ -33,15 +33,28 @@ test("rejects progress without evidence", () => {
 test("requires high-risk gates", () => {
   const prerequisites = {
     independent_review: ["scope", "evidence_plan", "implementation", "automated_suite"],
+    preview_smoke: ["scope", "evidence_plan", "implementation", "automated_suite", "independent_review"],
     deployment: ["scope", "evidence_plan", "implementation", "automated_suite", "independent_review", "preview_smoke"],
     production_smoke: ["scope", "evidence_plan", "implementation", "automated_suite", "independent_review", "preview_smoke", "deployment"],
     monitoring: ["scope", "evidence_plan", "implementation", "automated_suite", "independent_review", "preview_smoke", "deployment", "production_smoke"]
   };
-  for (const [progress, key] of [[85, "independent_review"], [97, "deployment"], [100, "production_smoke"], [100, "monitoring"]]) {
+  for (const [progress, key] of [[85, "independent_review"], [93, "preview_smoke"], [97, "deployment"], [100, "production_smoke"], [100, "monitoring"]]) {
     const invalid = structuredClone(ledger);
     invalid.sprints[0].progress = progress;
     invalid.sprints[0].evidence = Object.fromEntries(prerequisites[key].map((name) => [name, ["spec"]]));
+    invalid.sprints[0].verdicts = key === "independent_review" ? {} : { independent_review: "GO" };
     assert.throws(() => validateLedger(invalid), new RegExp(key, "i"));
+  }
+});
+
+test("requires an explicit independent review GO verdict", () => {
+  const evidence = { scope: ["spec"], evidence_plan: ["plan"], implementation: ["code"], automated_suite: ["tests"], independent_review: ["detached-review"], preview_smoke: ["preview"], deployment: ["deploy"], production_smoke: ["production"], monitoring: ["monitoring"] };
+  for (const verdict of [undefined, "NO-GO"]) {
+    const invalid = structuredClone(ledger);
+    invalid.sprints[0].progress = 100;
+    invalid.sprints[0].evidence = evidence;
+    invalid.sprints[0].verdicts = verdict === undefined ? {} : { independent_review: verdict };
+    assert.throws(() => validateLedger(invalid), /independent_review.*GO/i);
   }
 });
 
