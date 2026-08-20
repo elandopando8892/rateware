@@ -24,3 +24,40 @@ P1 is limited to 25% while this scope and evidence plan exist. The authoritative
 - Scope: `docs/superpowers/specs/2026-08-19-rateware-production-closure-design.md`
 - Plan: `docs/superpowers/plans/2026-08-20-rateware-p1-platform55-release-closure.md`
 - Ledger: `docs/release/2026-08-20-p1-platform55-release-ledger.md`
+
+## Collected candidate evidence — PR #35 intelligence
+
+The immutable initial queue above remains the historical starting record. The following evidence was collected later and does not replace or edit that row.
+
+- Candidate SHA: `f1d4170a3ea27967ca25af464579ba1341ec461c`
+- Base SHA: `c5200a39b175729ae2ed63c68d83f5f5bc76e674`
+- Originally observed PR head: `42381154d335eb007a977070a3f1b078c71135f8`
+- Scoped independent verdict: **GO**
+- Independent review evidence: `docs/release/evidence/2026-08-20-p1-pr35-independent-review.md`
+- Independent detached worktree: `C:\Users\andre\OneDrive\Documents\Rateware_P1_PR35_Independent_Fix1_f1d4170`
+
+### Collected verification
+
+| Evidence owner | Command | Result |
+| --- | --- | --- |
+| Independent reviewer | `git rev-parse HEAD` and `git status --porcelain=v2 --branch` | PASS — exact candidate, detached, clean |
+| Independent reviewer | `node tests/platform55-intelligence.test.mjs` | PASS — focused Sprint 8 intelligence suite |
+| Independent reviewer | `node --check src/intelligence-brief.js` and `node --check src/business-intelligence.js` | PASS — exit 0, no output |
+| Independent reviewer | `git diff --check c5200a39b175729ae2ed63c68d83f5f5bc76e674..f1d4170a3ea27967ca25af464579ba1341ec461c` | PASS — exit 0, no output |
+| Implementer | Expanded adversarial matrix | PASS — `24/24`, including both corrected proxy regressions and positive controls |
+| Implementer | `npm test` | PASS — all product suites; identity `14/14`; runtime enforcement `5/5` |
+| Implementer | `npm run validate:action-contracts` | PASS — `0` errors, `1` historical warning, `12` informational findings |
+| Implementer | `npm audit` | PASS — `0` vulnerabilities |
+
+Both independently reported proxy findings are **ADDRESSED**. Supported plain JSON objects and normal arrays remained positive controls. The validator warning remains the historical `DECLARATION_PATH_MISSING declaration.edge.whatsapp-healthcheck` warning and was not introduced by the candidate.
+
+### Limitations and future gates
+
+- This is local, commit-scoped evidence. No browser or UI validation was collected.
+- Corrected-candidate preview deployment and preview QA: `not collected`.
+- PR Ready transition and PR metadata update: `not collected`.
+- Merge SHA: `not collected`.
+- Production deployment SHA and production smoke: `not collected`.
+- Human authorization and final disposition: `not collected`.
+- No push, PR mutation, preview, Ready transition, merge, deployment, Supabase action, production mutation, or external action was performed while collecting this evidence.
+- P1 progress remains **25%**. This evidence alone does not authorize an increase.
