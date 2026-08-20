@@ -82,7 +82,7 @@ function surfaceFrom(definition) {
 
 export const PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION = {
   contractVersion: "1.3.0",
-  expectedCountsDelta: { governable: 40, edge: 0, postgres: 40, ratewareApi: 0 },
+  expectedCountsDelta: { governable: 64, edge: 24, postgres: 40, ratewareApi: 0 },
   reviewedMetadataFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry[0], entry[5]])),
   reviewedAuthorizationFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry[0], entry[4]])),
   surfaces: DEFINITIONS.map(surfaceFrom)

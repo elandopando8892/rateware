@@ -1,4 +1,4 @@
-import { callRatewareFunction } from './rateware-api.js';
+import { callOsp } from './osp-api.js';
 import { renderProviderService360, loadProviderService360 } from './provider-service-360.js';
 import {
   normalizeProviderServiceQueue,
@@ -114,7 +114,7 @@ async function loadCommandCenter({ preserveSelection = false } = {}) {
   if (rowsContainer) rowsContainer.innerHTML = '<article class="ui-state ui-state-loading"><strong>Loading Provider Service</strong><p>Resolving relationships, cases, documents, communications and health.</p></article>';
 
   try {
-    const response = await callRatewareFunction('shipper-directory-api', 'list_provider_service_command_center', {
+    const response = await callOsp('list_provider_service_command_center', {
       queue: state.queue,
       search: state.search || undefined,
       legal_entity_id: state.legalEntityId || undefined,

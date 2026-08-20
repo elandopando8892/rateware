@@ -98,7 +98,7 @@ test('readiness is reachable, because reconcile cannot create its own input', ()
   // The evaluation this produces is a required input to reconcileProviderOnboardingCase,
   // which takes readiness_evaluation_id and does not compute it. With readiness
   // unreachable, no evaluation could be produced by anything that runs in production.
-  const dispatch = readFileSync(`${root}supabase/functions/shipper-directory-api/provider-service.ts`, 'utf8');
+  const dispatch = readFileSync(`${root}supabase/functions/provider-onboarding-api/provider-service.ts`, 'utf8');
   assert.match(dispatch, /import \{ evaluateProviderOnboardingReadiness \} from "\.\.\/_shared\/provider-onboarding-readiness\.ts";/);
   assert.match(dispatch, /\["evaluate_provider_onboarding_readiness", evaluateProviderOnboardingReadiness\]/);
   assert.match(dispatch, /"evaluate_provider_onboarding_readiness",/);

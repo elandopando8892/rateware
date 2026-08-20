@@ -1,7 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from "../_shared/runtime-identity.ts";
-import { handleProviderServiceAction, isProviderServiceAction } from "./provider-service.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -767,7 +766,6 @@ Deno.serve(async (request) => {
       { persistLegacyIdentity: false }
     );
     const body = await request.json() as Record<string, unknown>;
-    if (isProviderServiceAction(body.action)) return jsonResponse(await handleProviderServiceAction(supabase, user, body));
     if (body.action === "shipper_crm_summary") return jsonResponse(await shipperSummary(supabase, user.owner_email));
     if (body.action === "list_shippers") return jsonResponse(await listShippers(supabase, user.owner_email, body));
     if (body.action === "get_shipper") return jsonResponse(await getShipper(supabase, user.owner_email, body.id || body.shipper_id));

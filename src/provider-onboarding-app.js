@@ -8,7 +8,7 @@
 // Provider Service 360 is deliberately not a screen here: it is a Rateware surface
 // this workflow consumes from, not part of the standalone onboarding app.
 import { requirePrivatePage } from './auth.js';
-import { callRatewareFunction } from './rateware-api.js';
+import { callOsp, callOspGmail } from './osp-api.js';
 import { listenForCase, withCase } from './osp-case-context.js';
 
 // The fourth element marks a surface that honours the working case. Gmail, Document
@@ -64,7 +64,7 @@ async function renderMailbox() {
     mailboxNode.title = title;
   };
   try {
-    const response = await callRatewareFunction('provider-gmail-intake-api', 'provider_gmail_status');
+    const response = await callOspGmail('provider_gmail_status');
     const data = response?.data || {};
     mailboxNode.querySelector('span').textContent = data.mailbox_email || 'no mailbox configured';
     const connections = Array.isArray(data.connections) ? data.connections : [];
@@ -88,7 +88,7 @@ async function renderMailbox() {
 async function renderCounts() {
   let metrics = {};
   try {
-    const response = await callRatewareFunction('shipper-directory-api', 'list_provider_onboarding_workspace', { queue: 'all', limit: 1 });
+    const response = await callOsp('list_provider_onboarding_workspace', { queue: 'all', limit: 1 });
     metrics = response?.data?.metrics || {};
   } catch (_error) {
     return; // No badge is honest; a zero badge would not be.

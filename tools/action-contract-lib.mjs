@@ -14,6 +14,40 @@ export const TENANT_RELEVANCE = new Set(["tenant-scoped", "record-derived", "pla
 export const ANALYSIS_COVERAGE = new Set(["direct", "shared-observed", "dependency-undetermined", "dynamic"]);
 
 const FIXED_EDGE_OPERATIONS = new Map([
+  // The Onboarding Service Provider runtime. Its 24 actions were never under contract:
+  // they lived inside shipper-directory-api and dispatched through
+  // `isProviderServiceAction(body.action)` -- a call the dispatch extractor cannot read as
+  // a table -- so OSP's thirteen write commands carried no governance of their own while
+  // churning the fingerprints of the eight governed Rateware actions beside them.
+  // Registered here on the move, which registers them fresh; registering them under
+  // shipper-directory-api first would have made every later move cost a rename
+  // disposition forever.
+  ["provider-onboarding-api", [
+    ["get_provider_360", "POST /functions/v1/provider-onboarding-api action=get_provider_360", "human"],
+    ["list_provider_service_command_center", "POST /functions/v1/provider-onboarding-api action=list_provider_service_command_center", "human"],
+    ["list_provider_communications_inbox", "POST /functions/v1/provider-onboarding-api action=list_provider_communications_inbox", "human"],
+    ["get_provider_communication_thread", "POST /functions/v1/provider-onboarding-api action=get_provider_communication_thread", "human"],
+    ["list_provider_onboarding_workspace", "POST /functions/v1/provider-onboarding-api action=list_provider_onboarding_workspace", "human"],
+    ["get_provider_onboarding_case", "POST /functions/v1/provider-onboarding-api action=get_provider_onboarding_case", "human"],
+    ["list_provider_entity_vault", "POST /functions/v1/provider-onboarding-api action=list_provider_entity_vault", "human"],
+    ["list_provider_onboarding_field_review", "POST /functions/v1/provider-onboarding-api action=list_provider_onboarding_field_review", "human"],
+    ["list_provider_document_reviews", "POST /functions/v1/provider-onboarding-api action=list_provider_document_reviews", "human"],
+    ["list_provider_onboarding_approvals", "POST /functions/v1/provider-onboarding-api action=list_provider_onboarding_approvals", "human"],
+    ["list_provider_onboarding_delivery", "POST /functions/v1/provider-onboarding-api action=list_provider_onboarding_delivery", "human"],
+    ["claim_provider_entity_document_review", "POST /functions/v1/provider-onboarding-api action=claim_provider_entity_document_review", "human"],
+    ["decide_provider_entity_review_field", "POST /functions/v1/provider-onboarding-api action=decide_provider_entity_review_field", "human"],
+    ["finalize_provider_entity_document_review", "POST /functions/v1/provider-onboarding-api action=finalize_provider_entity_document_review", "human"],
+    ["promote_provider_entity_review_facts", "POST /functions/v1/provider-onboarding-api action=promote_provider_entity_review_facts", "human"],
+    ["open_provider_onboarding_case", "POST /functions/v1/provider-onboarding-api action=open_provider_onboarding_case", "human"],
+    ["reconcile_provider_onboarding_case", "POST /functions/v1/provider-onboarding-api action=reconcile_provider_onboarding_case", "human"],
+    ["cancel_provider_onboarding_case", "POST /functions/v1/provider-onboarding-api action=cancel_provider_onboarding_case", "human"],
+    ["evaluate_provider_onboarding_readiness", "POST /functions/v1/provider-onboarding-api action=evaluate_provider_onboarding_readiness", "human"],
+    ["create_provider_onboarding_release_package", "POST /functions/v1/provider-onboarding-api action=create_provider_onboarding_release_package", "human"],
+    ["record_provider_onboarding_requirement_waiver", "POST /functions/v1/provider-onboarding-api action=record_provider_onboarding_requirement_waiver", "human"],
+    ["revoke_provider_onboarding_requirement_waiver", "POST /functions/v1/provider-onboarding-api action=revoke_provider_onboarding_requirement_waiver", "human"],
+    ["begin_provider_entity_upload", "POST /functions/v1/provider-onboarding-api action=begin_provider_entity_upload", "human"],
+    ["confirm_provider_entity_upload", "POST /functions/v1/provider-onboarding-api action=confirm_provider_entity_upload", "human"]
+  ]],
   ["create-raw-upload", [["create_raw_upload", "POST multipart /functions/v1/create-raw-upload", "human"]]],
   ["gmail-oauth-callback", [["complete_google_oauth_callback", "GET /functions/v1/gmail-oauth-callback?code&state", "external-tokenized"]]],
   ["provider-gmail-oauth-callback", [["complete_provider_gmail_oauth_callback", "GET /functions/v1/provider-gmail-oauth-callback?code&state", "external-tokenized"]]],

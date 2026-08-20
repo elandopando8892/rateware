@@ -41,7 +41,8 @@ const files = [
   'supabase/functions/provider-gmail-oauth-callback/index.ts',
   'supabase/functions/provider-gmail-push/index.ts',
   'supabase/functions/shipper-directory-api/index.ts',
-  'supabase/functions/shipper-directory-api/provider-service.ts',
+  'supabase/functions/provider-onboarding-api/index.ts',
+  'supabase/functions/provider-onboarding-api/provider-service.ts',
 ];
 
 for (const path of files) {

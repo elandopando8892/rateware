@@ -5,7 +5,8 @@ import { readFile } from 'node:fs/promises';
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('Provider 360 backend is routed only after canonical runtime identity resolution', async () => {
-  const source = await read('supabase/functions/shipper-directory-api/index.ts');
+  // Provider 360 is served by OSP's own runtime now, not by Rateware's.
+  const source = await read('supabase/functions/provider-onboarding-api/index.ts');
   assert.match(source, /import \{ handleProviderServiceAction, isProviderServiceAction \} from "\.\/provider-service\.ts"/);
   const identityIndex = source.indexOf('resolveRuntimeWorkspaceUser');
   const dispatchIndex = source.indexOf('isProviderServiceAction(body.action)');
@@ -15,7 +16,7 @@ test('Provider 360 backend is routed only after canonical runtime identity resol
 });
 
 test('Provider 360 handler verifies workspace mapping and vendor ownership', async () => {
-  const source = await read('supabase/functions/shipper-directory-api/provider-service.ts');
+  const source = await read('supabase/functions/provider-onboarding-api/provider-service.ts');
   assert.match(source, /\.from\("workspace_registry"\)/);
   assert.match(source, /\.select\("organization_uuid"\)/);
   assert.match(source, /\.from\("vendors"\)/);
@@ -27,7 +28,7 @@ test('Provider 360 handler verifies workspace mapping and vendor ownership', asy
 
 test('Provider 360 browser client uses the authenticated internal directory endpoint', async () => {
   const source = await read('src/provider-service-360.js');
-  assert.match(source, /callRatewareFunction\('shipper-directory-api','get_provider_360'/);
+  assert.match(source, /callOsp\('get_provider_360'/);
   assert.doesNotMatch(source, /\.from\(['"]provider_/);
 });
 

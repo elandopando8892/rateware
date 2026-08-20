@@ -1,5 +1,5 @@
 import { requirePrivatePage } from './auth.js';
-import { callRatewareFunction } from './rateware-api.js';
+import { callOspGmail } from './osp-api.js';
 
 const entitySelect = document.getElementById('provider-gmail-entity');
 const connectButton = document.getElementById('provider-gmail-connect');
@@ -69,7 +69,7 @@ function renderConnection() {
 async function loadStatus({ quiet = false } = {}) {
   if (!quiet) setStatus('Loading Gmail intake status…');
   try {
-    const response = await callRatewareFunction('provider-gmail-intake-api', 'provider_gmail_status');
+    const response = await callOspGmail('provider_gmail_status');
     snapshot = response?.data || snapshot;
     renderEntityOptions();
     renderConnection();
@@ -102,7 +102,7 @@ connectButton?.addEventListener('click', () => runAction(async () => {
   const legalEntityId = selectedEntityId();
   if (!legalEntityId) return;
   setStatus(`Preparing read-only OAuth for ${snapshot.mailbox_email}…`);
-  const response = await callRatewareFunction('provider-gmail-intake-api', 'start_provider_gmail_oauth', { legal_entity_id: legalEntityId });
+  const response = await callOspGmail('start_provider_gmail_oauth', { legal_entity_id: legalEntityId });
   const authUrl = response?.data?.auth_url;
   if (!authUrl) throw new Error('Provider Gmail OAuth URL was not returned.');
   window.location.assign(authUrl);
@@ -112,7 +112,7 @@ syncButton?.addEventListener('click', () => runAction(async () => {
   const legalEntityId = selectedEntityId();
   if (!legalEntityId) return;
   setStatus('Synchronizing Gmail INBOX into Provider Service…');
-  const response = await callRatewareFunction('provider-gmail-intake-api', 'sync_provider_gmail_inbox', { legal_entity_id: legalEntityId, limit: 50 });
+  const response = await callOspGmail('sync_provider_gmail_inbox', { legal_entity_id: legalEntityId, limit: 50 });
   const data = response?.data || {};
   setStatus(`Sync complete: ${data.inserted_messages || 0} new message(s), ${data.duplicates || 0} duplicate(s), ${data.attachment_metadata_rows || 0} attachment metadata row(s).`, 'success');
   await loadStatus({ quiet: true });
@@ -122,7 +122,7 @@ watchButton?.addEventListener('click', () => runAction(async () => {
   const legalEntityId = selectedEntityId();
   if (!legalEntityId) return;
   setStatus('Starting or renewing Gmail INBOX watch…');
-  const response = await callRatewareFunction('provider-gmail-intake-api', 'renew_provider_gmail_watch', { legal_entity_id: legalEntityId });
+  const response = await callOspGmail('renew_provider_gmail_watch', { legal_entity_id: legalEntityId });
   setStatus(`Watch active until ${dateTime(response?.data?.watch_expiration_at)}.`, 'success');
   await loadStatus({ quiet: true });
 }));

@@ -1,5 +1,5 @@
 import { requirePrivatePage } from './auth.js';
-import { callRatewareFunction } from './rateware-api.js';
+import { callOsp } from './osp-api.js';
 import {
   disclosureDisposition, expiryLabel, formatFileSize, normalizeVaultQueue,
   summarizeVault, vaultPriority,
@@ -95,7 +95,7 @@ async function loadVault({ preserve = false } = {}) {
   const requestId = ++state.requestId;
   if (!preserve) rowsNode.innerHTML = '<article class="ui-state ui-state-loading"><strong>Loading vault</strong><p>Resolving canonical documents.</p></article>';
   try {
-    const response = await callRatewareFunction('shipper-directory-api', 'list_provider_entity_vault', { queue: state.queue, search: state.search || undefined, limit: state.limit, offset: state.offset });
+    const response = await callOsp('list_provider_entity_vault', { queue: state.queue, search: state.search || undefined, limit: state.limit, offset: state.offset });
     if (requestId !== state.requestId) return;
     const data = response?.data || {};
     state.rows = Array.isArray(data.rows) ? data.rows : [];

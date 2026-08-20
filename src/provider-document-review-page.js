@@ -1,5 +1,5 @@
 import { requirePrivatePage } from './auth.js';
-import { callRatewareFunction } from './rateware-api.js';
+import { callOsp } from './osp-api.js';
 import {
   availableFieldDecisions, canFinalizeReview, displayableValue, groupReviewFields,
   normalizeReviewQueue, reviewIsClaimable, reviewPriority, summarizeReviewQueue, validateFieldDecision,
@@ -101,7 +101,7 @@ async function selectReview(reviewId) {
   detailNode.innerHTML = '<div class="onboarding-empty">Loading document…</div>';
   const review = state.rows.find((row) => row.review_id === reviewId);
   try {
-    const response = await callRatewareFunction('shipper-directory-api', 'list_provider_onboarding_field_review', { review_id: reviewId });
+    const response = await callOsp('list_provider_onboarding_field_review', { review_id: reviewId });
     if (state.selectedId !== reviewId) return;
     state.fields = Array.isArray(response?.data?.rows) ? response.data.rows : [];
     renderDetail(review || {}, state.fields);
@@ -115,7 +115,7 @@ async function runCommand(action, payload, onDone) {
   if (state.busy) return;
   state.busy = true;
   try {
-    await callRatewareFunction('shipper-directory-api', action, payload);
+    await callOsp(action, payload);
     await onDone();
   } catch (error) {
     reviewError(error?.message || 'The command was rejected.');
@@ -164,7 +164,7 @@ async function loadReviews({ preserve = false } = {}) {
   const requestId = ++state.requestId;
   if (!preserve) rowsNode.innerHTML = '<article class="ui-state ui-state-loading"><strong>Loading reviews</strong><p>Resolving the review queue.</p></article>';
   try {
-    const response = await callRatewareFunction('shipper-directory-api', 'list_provider_document_reviews', { queue: state.queue, limit: state.limit, offset: state.offset });
+    const response = await callOsp('list_provider_document_reviews', { queue: state.queue, limit: state.limit, offset: state.offset });
     if (requestId !== state.requestId) return;
     const data = response?.data || {};
     state.rows = Array.isArray(data.rows) ? data.rows : [];

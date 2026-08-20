@@ -12,7 +12,7 @@ test('onboarding domain fails closed and prioritizes overdue work',()=>{
  assert.deepEqual(summarizeOnboarding([{case_status:'blocked',overdue_task_count:1}]),{total:1,blocked:1,approval:0,overdue:1});
 });
 test('workspace read model and API exclude sensitive content',async()=>{
- const [sql,api,page,html]=await Promise.all([read('supabase/migrations/20260814170000_provider_onboarding_workspace.sql'),read('supabase/functions/shipper-directory-api/provider-service.ts'),read('src/provider-onboarding-page.js'),read('provider-onboarding.html')]);
+ const [sql,api,page,html]=await Promise.all([read('supabase/migrations/20260814170000_provider_onboarding_workspace.sql'),read('supabase/functions/provider-onboarding-api/provider-service.ts'),read('src/provider-onboarding-page.js'),read('provider-onboarding.html')]);
  assert.match(sql,/revoke all on public\.provider_onboarding_workspace from public,anon,authenticated/i);
  assert.match(sql,/grant select on public\.provider_onboarding_workspace to service_role/i);
  assert.match(api,/list_provider_onboarding_workspace/);

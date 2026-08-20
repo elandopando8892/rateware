@@ -12,7 +12,7 @@ import {
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const migration = read('../supabase/migrations/20260814010000_provider_service_command_center.sql');
-const api = read('../supabase/functions/shipper-directory-api/provider-service.ts');
+const api = read('../supabase/functions/provider-onboarding-api/provider-service.ts');
 const page = read('../provider-service.html');
 const controller = read('../src/provider-service-page.js');
 const commandCenterPage = read('../app.html');

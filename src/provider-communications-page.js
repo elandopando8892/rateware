@@ -1,5 +1,5 @@
 import { requirePrivatePage } from './auth.js';
-import { callRatewareFunction } from './rateware-api.js';
+import { callOsp } from './osp-api.js';
 import {
   communicationProviderLabel,
   communicationThreadSignals,
@@ -172,7 +172,7 @@ async function selectThread(threadId) {
   renderRows();
   detailContainer.innerHTML = '<div class="communication-detail-loading"><strong>Loading thread</strong><p>Resolving messages and evidence.</p></div>';
   try {
-    const response = await callRatewareFunction('shipper-directory-api', 'get_provider_communication_thread', { thread_id: threadId });
+    const response = await callOsp('get_provider_communication_thread', { thread_id: threadId });
     if (requestId !== state.detailRequestId || state.selectedThreadId !== threadId) return;
     renderThreadDetail(response?.data || {});
   } catch (error) {
@@ -185,7 +185,7 @@ async function loadInbox({ preserveSelection = false } = {}) {
   const requestId = ++state.requestId;
   if (rowsContainer) rowsContainer.innerHTML = '<article class="ui-state ui-state-loading"><strong>Loading Communications Inbox</strong><p>Resolving provider threads.</p></article>';
   try {
-    const response = await callRatewareFunction('shipper-directory-api', 'list_provider_communications_inbox', {
+    const response = await callOsp('list_provider_communications_inbox', {
       queue: state.queue,
       search: state.search || undefined,
       limit: state.limit,

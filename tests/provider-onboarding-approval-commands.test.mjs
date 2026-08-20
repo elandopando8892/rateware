@@ -102,15 +102,17 @@ test('both commands are registered in the Provider Service action contract', () 
   }
   assert.match(contract, /internal\.provider_onboarding\.decide_release_package_approval/);
   assert.match(contract, /internal\.provider_onboarding\.revoke_release_package/);
-  // The extension registers only PostgreSQL functions, so its governable and
-  // postgres deltas must stay equal with no edge or rateware-api surfaces.
+  // The extension used to register only PostgreSQL functions. It now also registers
+  // OSP's own edge runtime, provider-onboarding-api, whose 24 actions moved out of
+  // shipper-directory-api and were registered fresh. So governable is postgres plus
+  // those edge surfaces, and rateware-api stays untouched.
   // Asserting the invariant rather than a literal keeps this from breaking every
   // time a command is added; the delta gate catches unregistered surfaces.
   const delta = contract.match(/expectedCountsDelta: \{ governable: (\d+), edge: (\d+), postgres: (\d+), ratewareApi: (\d+) \}/);
   assert.ok(delta, 'expectedCountsDelta is missing');
   const [, governable, edge, postgres, ratewareApi] = delta.map(Number);
-  assert.equal(governable, postgres);
-  assert.equal(edge, 0);
+  assert.equal(governable, postgres + edge);
+  assert.equal(edge, 24, 'the OSP runtime registers 24 actions');
   assert.equal(ratewareApi, 0);
   assert.ok(governable >= 39, `expected at least 39 registered commands, found ${governable}`);
 });

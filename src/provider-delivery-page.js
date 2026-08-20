@@ -1,6 +1,6 @@
 import { requirePrivatePage } from './auth.js';
 import { caseFromUrl } from './osp-case-context.js';
-import { callRatewareFunction } from './rateware-api.js';
+import { callOsp } from './osp-api.js';
 import {
   deliveryPosture, deliveryPriority, followupDue, normalizeDeliveryQueue, sendApproved, summarizeDelivery,
 } from './provider-delivery-domain.js';
@@ -80,7 +80,7 @@ async function loadDelivery({ preserve = false } = {}) {
   const requestId = ++state.requestId;
   if (!preserve) rowsNode.innerHTML = '<article class="ui-state ui-state-loading"><strong>Loading delivery</strong><p>Resolving the delivery workspace.</p></article>';
   try {
-    const response = await callRatewareFunction('shipper-directory-api', 'list_provider_onboarding_delivery', { queue: state.queue, limit: state.limit, offset: state.offset });
+    const response = await callOsp('list_provider_onboarding_delivery', { queue: state.queue, limit: state.limit, offset: state.offset });
     if (requestId !== state.requestId) return;
     const data = response?.data || {};
     state.rows = Array.isArray(data.rows) ? data.rows : [];

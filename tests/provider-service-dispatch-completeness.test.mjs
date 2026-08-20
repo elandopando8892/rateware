@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 // set during the waiver work, so the trap is live traffic, not hypothetical.
 
 const source = readFileSync(
-  new URL('../supabase/functions/shipper-directory-api/provider-service.ts', import.meta.url),
+  new URL('../supabase/functions/provider-onboarding-api/provider-service.ts', import.meta.url),
   'utf8',
 );
 

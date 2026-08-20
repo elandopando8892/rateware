@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const source = readFileSync(new URL('../supabase/functions/shipper-directory-api/provider-service.ts', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../supabase/functions/provider-onboarding-api/provider-service.ts', import.meta.url), 'utf8');
 const COMMANDS = [
   'claim_provider_entity_document_review',
   'decide_provider_entity_review_field',
