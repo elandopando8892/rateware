@@ -1,8 +1,8 @@
 /* Shared row-priority accents for the Approval Center and Delivery Workspace,
    matching the onboarding-row left-border convention. */
-.approval-row--critical,.delivery-row--critical{border-left-color:#b42318}
-.approval-row--expired{border-left-color:#6b7280}
-.approval-row--attention,.delivery-row--attention{border-left-color:#d97706}
-.approval-row--awaiting,.delivery-row--awaiting{border-left-color:#2563eb}
+.approval-row--critical,.delivery-row--critical{border-left-color:var(--stage-exception)}
+.approval-row--expired{border-left-color:var(--stage-intake)}
+.approval-row--attention,.delivery-row--attention{border-left-color:var(--stage-attention)}
+.approval-row--awaiting,.delivery-row--awaiting{border-left-color:var(--stage-review)}
 .approval-row--normal,.delivery-row--normal{border-left-color:transparent}
-.onboarding-next-gate--blocked{border:1px solid #b42318;color:#b42318}
+.onboarding-next-gate--blocked{border:1px solid var(--stage-exception);color:var(--stage-exception)}

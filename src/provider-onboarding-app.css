@@ -4,18 +4,35 @@
    pages, the same JS and the same backend viewed as one focused application. */
 .osp-app { display: grid; grid-template-columns: 214px minmax(0, 1fr); min-height: 100vh; min-width: 0; }
 
-.osp-nav { display: flex; flex-direction: column; gap: 12px; border-right: 1px solid var(--line); background: #fbfcfd; padding: 14px 10px; }
+.osp-nav { display: flex; flex-direction: column; gap: 12px; border-right: 1px solid var(--line); background: var(--soft-panel); padding: 14px 10px; }
 .osp-brand { display: grid; gap: 2px; border-bottom: 1px solid var(--line); padding: 6px 8px 13px; }
-.osp-brand strong { font-size: 0.98rem; font-weight: 850; line-height: 1.1; color: var(--text); }
+.osp-brand strong { font-size: 0.98rem; font-weight: 800; line-height: 1.1; color: var(--text); }
 .osp-brand small { font-size: 0.68rem; color: var(--muted); font-weight: 600; }
 .osp-mailbox { display: flex; align-items: center; gap: 7px; margin: 2px 8px 0; font-size: 0.7rem; color: var(--brand-strong); font-weight: 700; }
-.osp-mailbox i { width: 7px; height: 7px; border-radius: 999px; background: var(--success); display: inline-block; }
+.osp-mailbox { flex-wrap: wrap; }
+.osp-mailbox span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The dot takes its colour from the reported state. There is deliberately no default
+   green: unknown must not look like healthy. */
+.osp-mailbox i { width: 7px; height: 7px; border-radius: 999px; background: var(--muted); display: inline-block; flex: none; }
+.osp-mailbox b { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.osp-mailbox[data-tone="ok"] i { background: var(--success); }
+.osp-mailbox[data-tone="ok"] b { color: var(--success); }
+.osp-mailbox[data-tone="warn"] i { background: var(--stage-attention); }
+.osp-mailbox[data-tone="warn"] b { color: var(--stage-attention); }
+.osp-mailbox[data-tone="off"] i { background: var(--stage-exception); }
+.osp-mailbox[data-tone="off"] b { color: var(--stage-exception); }
+.osp-mailbox[data-tone="unknown"] i { background: var(--line-strong); }
+
+/* Work counts on a nav item. */
+.osp-count { flex: none; min-width: 18px; padding: 1px 6px; border-radius: var(--radius-pill); font-size: 0.66rem; font-style: normal; font-weight: 800; text-align: center; }
+.osp-count[data-tone="warn"] { background: var(--warning-soft); color: var(--warning); }
+.osp-count[data-tone="brand"] { background: var(--brand-tint-strong); color: var(--brand-press); }
 
 .osp-groups { display: grid; gap: 11px; overflow: auto; }
 .osp-group { display: grid; gap: 2px; }
-.osp-group p { margin: 0 8px 2px; color: #7b8892; font-size: 0.64rem; font-weight: 860; letter-spacing: 0.05em; text-transform: uppercase; }
-.osp-item { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: auto; border: 0; border-radius: 6px; background: none; color: #41505b; font: inherit; font-size: 0.85rem; font-weight: 700; text-align: left; padding: 7px 9px 7px 12px; cursor: pointer; }
-.osp-item:hover { background: #eef1f4; color: var(--accent-dark); }
+.osp-group p { margin: 0 8px 2px; color: var(--muted); font-size: 0.64rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; }
+.osp-item { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: auto; border: 0; border-radius: 6px; background: none; color: var(--neutral); font: inherit; font-size: 0.85rem; font-weight: 700; text-align: left; padding: 7px 9px 7px 12px; cursor: pointer; }
+.osp-item:hover { background: var(--accent-soft); color: var(--accent-dark); }
 .osp-item.is-active { background: var(--brand-tint); color: var(--brand-press); }
 .osp-item.is-active::before { content: ""; position: absolute; left: 4px; top: 7px; bottom: 7px; width: 3px; border-radius: 999px; background: var(--brand); }
 
