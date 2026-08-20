@@ -42,7 +42,20 @@
         "independent_review": "GO"
       }
     },
-    { "id": "P1", "weight": 9, "progress": 0, "evidence": {} },
+    {
+      "id": "P1",
+      "weight": 9,
+      "progress": 25,
+      "evidence": {
+        "scope": [
+          "docs/superpowers/specs/2026-08-19-rateware-production-closure-design.md"
+        ],
+        "evidence_plan": [
+          ".superpowers/sdd/2026-08-20-rateware-p1-platform55-release-closure/task-1-brief.md",
+          "docs/release/2026-08-20-p1-platform55-release-ledger.md"
+        ]
+      }
+    },
     { "id": "P2", "weight": 7, "progress": 0, "evidence": {} },
     { "id": "P3", "weight": 7, "progress": 0, "evidence": {} },
     { "id": "P4", "weight": 6, "progress": 0, "evidence": {} },

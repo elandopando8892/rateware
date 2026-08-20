@@ -225,3 +225,22 @@ test("accepts a valid P0=100 GO fixture and preserves NO-GO rejection", () => {
   noGo.sprints[0].verdicts.independent_review = "NO-GO";
   assert.throws(() => validateLedger(noGo), /independent_review.*GO/i);
 });
+
+test("accepts the P1 evidence-plan gate and reports the one-decimal starting score", () => {
+  const p1 = completeLedger();
+  p1.sprints[1] = {
+    id: "P1",
+    weight: 9,
+    progress: 25,
+    evidence: {
+      scope: ["docs/superpowers/specs/2026-08-19-rateware-production-closure-design.md"],
+      evidence_plan: [
+        ".superpowers/sdd/2026-08-20-rateware-p1-platform55-release-closure/task-1-brief.md",
+        "docs/release/2026-08-20-p1-platform55-release-ledger.md"
+      ]
+    }
+  };
+
+  validateLedger(p1);
+  assert.equal(computeOverallProgress(p1), 69.3);
+});
