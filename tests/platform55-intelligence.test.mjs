@@ -196,6 +196,47 @@ assert.deepEqual(invalidEvidenceContainerOutcomes, [
   { field: "recommendations", status: "blocked", has_invalid_container_gap: true }
 ]);
 
+const hiddenRowsProxy = new Proxy({
+  data_as_of: "2026-08-12",
+  summary: { transactions: 5, carriers: 2 },
+  lineage: [{ id: "rate-1" }]
+}, {
+  get(target, key, receiver) {
+    if (key === "rows") return { lane: "invalid" };
+    return Reflect.get(target, key, receiver);
+  },
+  getOwnPropertyDescriptor(target, key) {
+    if (key === "rows") return undefined;
+    return Reflect.getOwnPropertyDescriptor(target, key);
+  }
+});
+const emptyIteratorRowsProxy = new Proxy([{ linehaul: 1000 }], {
+  get(target, key, receiver) {
+    if (key === Symbol.iterator) return function* emptyIterator() {};
+    return Reflect.get(target, key, receiver);
+  }
+});
+const mutableEvidenceProxyOutcomes = [
+  ["hidden rows descriptor", hiddenRowsProxy],
+  ["empty array iterator", {
+    data_as_of: "2026-08-12",
+    summary: { transactions: 5, carriers: 2 },
+    lineage: [{ id: "rate-1" }],
+    rows: emptyIteratorRowsProxy
+  }]
+].map(([caseName, result]) => {
+  const brief = buildIntelligenceBrief({ source: "pivot", generatedAt, result });
+  return {
+    case: caseName,
+    status: brief.status,
+    has_invalid_result_gap: brief.gaps.some((gap) => gap.code === "result:invalid")
+  };
+});
+assert.deepEqual(mutableEvidenceProxyOutcomes, [
+  { case: "hidden rows descriptor", status: "blocked", has_invalid_result_gap: true },
+  { case: "empty array iterator", status: "blocked", has_invalid_result_gap: true }
+]);
+
 const rowMoneyWithoutCurrency = buildIntelligenceBrief({
   source: "pivot",
   generatedAt,

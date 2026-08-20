@@ -12,12 +12,50 @@ const MONETARY_FIELDS = new Set([
 ]);
 const LINEAGE_IDENTIFIER_KEYS = ["id", "raw_upload_id", "rate_staging_id"];
 const OBSERVATION_METADATA_KEYS = new Set(["currency", "currencies", "selected", "type", "source_file"]);
+const EVIDENCE_COLLECTION_KEYS = new Set(["rows", "points", "recommendations"]);
 const MAX_EVIDENCE_NODES = 20000;
 
 function isRecord(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+function snapshotEvidenceResult(value) {
+  if (!isRecord(value)) return { ok: false, value: null };
+  const stack = [{ value, root: true, allowInvalidCollection: false }];
+  const seen = new WeakSet();
+  while (stack.length) {
+    const current = stack.pop();
+    const item = current.value;
+    if (item === null || ["string", "number", "boolean", "undefined"].includes(typeof item)) continue;
+    if (typeof item !== "object") return { ok: false, value: null };
+    if (seen.has(item)) continue;
+    seen.add(item);
+    const array = Array.isArray(item);
+    const prototype = Object.getPrototypeOf(item);
+    if (!array && prototype !== Object.prototype && prototype !== null) {
+      if (current.allowInvalidCollection) continue;
+      return { ok: false, value: null };
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(item);
+    for (const key of Reflect.ownKeys(descriptors)) {
+      if (array && key === "length") continue;
+      if (typeof key !== "string" || (array && !/^(?:0|[1-9]\d*)$/.test(key))) return { ok: false, value: null };
+      const descriptor = descriptors[key];
+      if (!("value" in descriptor) || !descriptor.enumerable) return { ok: false, value: null };
+      stack.push({
+        value: descriptor.value,
+        root: false,
+        allowInvalidCollection: current.root && EVIDENCE_COLLECTION_KEYS.has(key)
+      });
+    }
+  }
+  try {
+    return { ok: true, value: structuredClone(value) };
+  } catch {
+    return { ok: false, value: null };
+  }
 }
 
 function text(value, maxLength = 240) {
@@ -366,8 +404,12 @@ function blockedBrief(generatedAt, code = "result:invalid") {
 
 export function buildIntelligenceBrief(input = {}) {
   try {
-    if (!isRecord(input) || !isRecord(input.result)) return blockedBrief(input?.generatedAt);
-    const result = input.result;
+    if (!isRecord(input)) return blockedBrief(input?.generatedAt);
+    const resultDescriptor = Object.getOwnPropertyDescriptor(input, "result");
+    if (!resultDescriptor || !("value" in resultDescriptor)) return blockedBrief(input?.generatedAt);
+    const resultSnapshot = snapshotEvidenceResult(resultDescriptor.value);
+    if (!resultSnapshot.ok) return blockedBrief(input?.generatedAt);
+    const result = resultSnapshot.value;
     const source = ALLOWED_SOURCES.has(input.source) ? input.source : "unknown";
     const context = sanitizeContext(input.context);
     const sampleAnalysis = sampleSummary(result);
