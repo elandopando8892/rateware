@@ -1,4 +1,5 @@
 const SCHEMA_VERSION = "rateware.admin_governance_readiness.v1";
+const INVALID_DATA_PROPERTY = Symbol("invalid-data-property");
 
 function isRecord(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -10,18 +11,41 @@ function record(value) {
   return isRecord(value) ? value : {};
 }
 
+function ownDataProperty(value, key) {
+  if (!isRecord(value)) return INVALID_DATA_PROPERTY;
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (!descriptor) return undefined;
+  return Object.prototype.hasOwnProperty.call(descriptor, "value")
+    ? descriptor.value
+    : INVALID_DATA_PROPERTY;
+}
+
+function recordProperty(value, key) {
+  const property = ownDataProperty(value, key);
+  return property === INVALID_DATA_PROPERTY ? {} : record(property);
+}
+
+function textProperty(value, key) {
+  const property = ownDataProperty(value, key);
+  return typeof property === "string" ? property.trim() : "";
+}
+
 function rows(value) {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
 function integrationState(value, options = {}) {
-  const row = rows(record(value).rows)[0] || {};
-  const connected = row.status === "connected"
-    && (options.requiresValidation !== true || row.connection_validated === true);
+  const row = rows(ownDataProperty(record(value), "rows"))[0] || {};
+  const status = textProperty(row, "status");
+  const configured = ownDataProperty(row, "configured") === true
+    || ownDataProperty(row, "credentials_configured") === true;
+  const connected = configured
+    && status === "connected"
+    && (options.requiresValidation !== true || ownDataProperty(row, "connection_validated") === true);
   return {
-    configured: row.configured === true || row.credentials_configured === true,
+    configured,
     connected,
-    status: connected ? "observed" : row.status === "error" ? "error" : "not_observed"
+    status: connected ? "observed" : status === "error" ? "error" : "not_observed"
   };
 }
 
@@ -36,36 +60,46 @@ function generatedTimestamp(value) {
 export function buildAdminGovernanceReadiness(input = {}) {
   try {
     if (!isRecord(input)) throw new Error("invalid input");
-    const settings = record(input.settings);
-    const session = record(input.session);
-    const organization = record(settings.organization);
-    const access = record(settings.access);
-    const audit = rows(settings.audit).filter((row) => typeof row.action === "string" && row.action.trim() && typeof row.created_at === "string" && row.created_at.trim());
-    const catalogValues = rows(input.catalogValues);
-    const observability = record(input.observability);
-    const observabilityEvents = rows(observability.events);
-    const gmail = integrationState(settings.gmail);
-    const googleChat = integrationState(settings.google_chat);
-    const whatsapp = integrationState(settings.whatsapp, { requiresValidation: true });
+    const settings = recordProperty(input, "settings");
+    const session = recordProperty(input, "session");
+    const organization = recordProperty(settings, "organization");
+    const access = recordProperty(settings, "access");
+    const audit = rows(ownDataProperty(settings, "audit")).filter((row) => {
+      const action = textProperty(row, "action");
+      const createdAt = textProperty(row, "created_at");
+      return Boolean(action && createdAt && Number.isFinite(Date.parse(createdAt)));
+    });
+    const catalogValueContainer = ownDataProperty(input, "catalogValues");
+    const catalogValues = rows(catalogValueContainer);
+    const observability = recordProperty(input, "observability");
+    const observabilityEventContainer = ownDataProperty(observability, "events");
+    const observabilityEvents = rows(observabilityEventContainer);
+    const gmail = integrationState(ownDataProperty(settings, "gmail"));
+    const googleChat = integrationState(ownDataProperty(settings, "google_chat"));
+    const whatsapp = integrationState(ownDataProperty(settings, "whatsapp"), { requiresValidation: true });
     const gaps = [];
     const evidence = [];
 
     const addGap = (code, severity, message) => gaps.push({ code, severity, message });
     const addEvidence = (control, status, detail) => evidence.push({ control, status, detail });
 
-    const authenticated = Boolean(session.token || record(session.user).email);
+    const authenticated = Boolean(textProperty(session, "token") || textProperty(recordProperty(session, "user"), "email"));
     addEvidence("Authenticated session", authenticated ? "observed" : "missing", authenticated
       ? "A private user session is present. Authentication alone does not grant a role."
       : "No authenticated user session was observed.");
     if (!authenticated) addGap("session:missing", "blocking", "An authenticated private session is required.");
 
-    const workspacePresent = Boolean(organization.org_name || organization.workspace_slug || organization.id);
+    const workspacePresent = Boolean(
+      textProperty(organization, "org_name")
+      || textProperty(organization, "workspace_slug")
+      || textProperty(organization, "id")
+    );
     addEvidence("Workspace context", workspacePresent ? "observed" : "missing", workspacePresent
       ? "A workspace organization is present in the existing Settings response."
       : "No workspace organization was supplied by Settings.");
     if (!workspacePresent) addGap("workspace:missing", "blocking", "A workspace organization is required for governed administration.");
 
-    const rolesEnforced = access.mode === "role_enforced";
+    const rolesEnforced = textProperty(access, "mode") === "role_enforced";
     addEvidence("Role authorization", rolesEnforced ? "observed" : "missing", rolesEnforced
       ? "The Settings contract reports role enforcement."
       : "The Settings contract reports broad authenticated access; roles and separation of duties are not enforced.");
@@ -79,18 +113,20 @@ export function buildAdminGovernanceReadiness(input = {}) {
       : "No recent audit event was returned.");
     if (!audit.length) addGap("audit:evidence_missing", "review", "No recent administration audit evidence is available in this session.");
 
-    const observabilityLoaded = input.observabilityLoaded === true;
+    const observabilityLoaded = ownDataProperty(input, "observabilityLoaded") === true
+      && Array.isArray(observabilityEventContainer);
     addEvidence("Operational observability", observabilityLoaded ? "observed" : "not_observed", observabilityLoaded
       ? `${observabilityEvents.length} recent operational event(s) were loaded.`
       : "Operational events have not been loaded in this session.");
     if (!observabilityLoaded) addGap("observability:not_loaded", "review", "Load operational evidence before treating the readiness view as current.");
 
-    const catalogLoaded = input.catalogLoaded === true;
+    const catalogLoaded = ownDataProperty(input, "catalogLoaded") === true
+      && Array.isArray(catalogValueContainer);
     addEvidence("Master-data catalog", catalogLoaded ? "observed" : "not_observed", catalogLoaded
-      ? `${catalogValues.filter((row) => row.active !== false).length} active catalog value(s) were loaded.`
+      ? `${catalogValues.filter((row) => ownDataProperty(row, "active") !== false).length} active catalog value(s) were loaded.`
       : "Catalog evidence has not been loaded in this session.");
     if (!catalogLoaded) addGap("catalog:not_loaded", "review", "Load the catalog before reviewing master-data governance.");
-    else if (!catalogValues.some((row) => row.active !== false)) addGap("catalog:empty", "review", "The loaded catalog contains no active master-data values.");
+    else if (!catalogValues.some((row) => ownDataProperty(row, "active") !== false)) addGap("catalog:empty", "review", "The loaded catalog contains no active master-data values.");
 
     for (const [name, state] of [["Gmail", gmail], ["Google Chat", googleChat], ["WhatsApp", whatsapp]]) {
       addEvidence(`${name} integration`, state.status, state.connected
@@ -106,7 +142,7 @@ export function buildAdminGovernanceReadiness(input = {}) {
       schema_version: SCHEMA_VERSION,
       mode: "observation_only",
       status: blocking ? "blocked" : gaps.length ? "review_required" : "ready",
-      generated_at: generatedTimestamp(input.generatedAt),
+      generated_at: generatedTimestamp(ownDataProperty(input, "generatedAt")),
       summary: {
         evidence_observed: evidence.filter((item) => item.status === "observed").length,
         blocking_gaps: gaps.filter((item) => item.severity === "blocking").length,

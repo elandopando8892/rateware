@@ -79,6 +79,132 @@ const invalid = new Proxy({}, { getPrototypeOf() { throw new Error("hostile"); }
 assert.doesNotThrow(() => buildAdminGovernanceReadiness(invalid));
 assert.equal(buildAdminGovernanceReadiness(invalid).status, "blocked");
 
+const roleEnforcedSettings = { ...settings, access: { mode: "role_enforced" } };
+const completeEvidence = {
+  generatedAt,
+  observability: { events: [] },
+  observabilityLoaded: true,
+  catalogValues: [{ active: true }],
+  catalogLoaded: true
+};
+const hasGap = (readiness, code) => readiness.gaps.some((gap) => gap.code === code);
+const evidenceStatus = (readiness, control) => readiness.evidence.find((item) => item.control === control)?.status;
+
+const whitespaceScalars = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    organization: { org_name: " \t\n ", workspace_slug: "  ", id: "\r\n" }
+  },
+  session: { token: " \t\n ", user: { email: "  " } }
+});
+
+const nonStringScalars = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: { ...roleEnforcedSettings, organization: { id: [] } },
+  session: { token: {}, user: { email: false } }
+});
+
+const hiddenDescriptor = (forged) => new Proxy({}, {
+  getPrototypeOf() { return Object.prototype; },
+  get(_target, key) { return forged[key]; },
+  getOwnPropertyDescriptor() { return undefined; },
+  ownKeys() { return []; }
+});
+const descriptorHiding = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...settings,
+    organization: hiddenDescriptor({ id: "workspace-forged" }),
+    access: hiddenDescriptor({ mode: "role_enforced" })
+  },
+  session: hiddenDescriptor({ token: "session-forged" })
+});
+const accessorSession = {};
+const accessorOrganization = {};
+const accessorAccess = {};
+Object.defineProperty(accessorSession, "token", { enumerable: true, get: () => "session-forged" });
+Object.defineProperty(accessorOrganization, "id", { enumerable: true, get: () => "workspace-forged" });
+Object.defineProperty(accessorAccess, "mode", { enumerable: true, get: () => "role_enforced" });
+const accessorEvidence = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: { ...settings, organization: accessorOrganization, access: accessorAccess },
+  session: accessorSession
+});
+
+const invalidObservability = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: roleEnforcedSettings,
+  session: { token: "session-valid" },
+  observability: { events: { forged: true } }
+});
+
+const invalidAuditTimestamp = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    audit: [{ action: "settings.reviewed", created_at: "not-a-date" }]
+  },
+  session: { token: "session-valid" }
+});
+
+const unconfiguredGmail = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    gmail: { rows: [{ status: "connected", configured: false }] }
+  },
+  session: { token: "session-valid" }
+});
+
+assert.deepEqual([
+  {
+    family: "whitespace-only session and workspace evidence",
+    passed: whitespaceScalars.status === "blocked"
+      && hasGap(whitespaceScalars, "session:missing")
+      && hasGap(whitespaceScalars, "workspace:missing")
+  },
+  {
+    family: "non-string session and workspace evidence",
+    passed: nonStringScalars.status === "blocked"
+      && hasGap(nonStringScalars, "session:missing")
+      && hasGap(nonStringScalars, "workspace:missing")
+  },
+  {
+    family: "descriptor-hiding proxies and accessor evidence",
+    passed: descriptorHiding.status === "blocked"
+      && hasGap(descriptorHiding, "session:missing")
+      && hasGap(descriptorHiding, "workspace:missing")
+      && hasGap(descriptorHiding, "access:role_enforcement_missing")
+      && accessorEvidence.status === "blocked"
+      && hasGap(accessorEvidence, "session:missing")
+      && hasGap(accessorEvidence, "workspace:missing")
+      && hasGap(accessorEvidence, "access:role_enforcement_missing")
+  },
+  {
+    family: "invalid observability container",
+    passed: evidenceStatus(invalidObservability, "Operational observability") === "not_observed"
+      && hasGap(invalidObservability, "observability:not_loaded")
+  },
+  {
+    family: "invalid audit timestamp",
+    passed: evidenceStatus(invalidAuditTimestamp, "Audit trail") === "not_observed"
+      && hasGap(invalidAuditTimestamp, "audit:evidence_missing")
+  },
+  {
+    family: "explicitly unconfigured Gmail integration",
+    passed: evidenceStatus(unconfiguredGmail, "Gmail integration") === "not_observed"
+      && hasGap(unconfiguredGmail, "integration:gmail")
+  }
+], [
+  { family: "whitespace-only session and workspace evidence", passed: true },
+  { family: "non-string session and workspace evidence", passed: true },
+  { family: "descriptor-hiding proxies and accessor evidence", passed: true },
+  { family: "invalid observability container", passed: true },
+  { family: "invalid audit timestamp", passed: true },
+  { family: "explicitly unconfigured Gmail integration", passed: true }
+]);
+
 assert.match(html, /data-workbench-view-button="governance"/);
 assert.match(html, /data-workbench-view-panel="governance"/);
 assert.match(html, /Readiness is not authorization/);
