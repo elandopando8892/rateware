@@ -36,7 +36,7 @@ Object.defineProperty(Deno, "serve", {
   })
 });
 
-const { receiveFcmRateBook, validateFcmRateBookPackage } = await import(
+const { receiveFcmRateBook, receiverErrorStatus, validateFcmRateBookPackage } = await import(
   "../supabase/functions/fcm-ratebook-receiver/index.ts"
 );
 Object.defineProperty(Deno, "serve", { configurable: true, value: originalServe });
@@ -120,6 +120,11 @@ const user = {
   identity_id: "identity-1",
   tenant_enforcement_mode: "required" as const
 };
+
+Deno.test("maps a missing Kinde bearer token to an authentication response", () => {
+  assertEquals(receiverErrorStatus(new Error("Kinde bearer token is required.")), 401);
+  assertEquals(receiverErrorStatus(new Error("Unexpected receiver failure.")), 500);
+});
 
 Deno.test("accepts a tenant-bound published FCM RateBook package", async () => {
   const request = await validRequest();

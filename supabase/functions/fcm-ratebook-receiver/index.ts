@@ -189,6 +189,14 @@ function receiptResponse(receipt: Record<string, unknown>, duplicate: boolean) {
   };
 }
 
+export function receiverErrorStatus(error: unknown) {
+  const identityStatus = runtimeIdentityStatus(error);
+  const explicitStatus = Number(objectRecord(error).code);
+  if (error instanceof Error && error.message === "Kinde bearer token is required.") return 401;
+  if (identityStatus === 403) return 403;
+  return [400, 401, 403, 409, 422].includes(explicitStatus) ? explicitStatus : 500;
+}
+
 export async function receiveFcmRateBook(
   supabase: ReceiverClient,
   user: RuntimeWorkspaceUser,
@@ -260,13 +268,7 @@ Deno.serve(async (request) => {
     }
     return jsonResponse({ error: "Unknown action." }, 400);
   } catch (error) {
-    const identityStatus = runtimeIdentityStatus(error);
-    const explicitStatus = Number(objectRecord(error).code);
-    const status = identityStatus === 403
-      ? 403
-      : [400, 401, 403, 409, 422].includes(explicitStatus)
-        ? explicitStatus
-        : 500;
+    const status = receiverErrorStatus(error);
     const message = error instanceof Error ? error.message : "RateBook receiver failed.";
     console.error(JSON.stringify({ event: "fcm_ratebook_receiver.error", status, message }));
     return jsonResponse({ error: message }, status);
