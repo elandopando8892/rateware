@@ -1,6 +1,8 @@
 # P0 authoritative release baseline
 
-**Decision:** the baseline is complete enough to establish an auditable, non-executing release queue. It is **not authorization to mark a PR ready, merge, deploy, change Supabase, or activate tenant enforcement**. The next production change remains **NO-GO** until the exact gates in this report are met and the release controller receives the required human authorization.
+**Decision:** the baseline is complete enough to establish an auditable, non-executing release queue. It is **not authorization to mark a PR ready, merge, deploy, change Supabase, or activate tenant enforcement**. The next production/promotion change remains **NO-GO** until the exact gates in this report are met and the release controller receives the required human authorization. **Isolated local P1 development may start now**; these release and promotion gates do not block coding.
+
+Detached independent GO and release-controller authorization gate P0 closure and consequential transitions, not local development. Explicit human authorization remains required before any PR Ready transition, merge, deployment or promotion, migration or DDL/DML, configuration/secret/environment change, tenant-enforcement change, upload, approval, or other production-data mutation.
 
 **Recalibrated progress:** **65.8% general; P0 70%**. This score records completed baseline evidence and deterministic repository verification only. It does not count a release, preview smoke, deployment, production smoke, or independent GO review.
 
@@ -70,7 +72,7 @@ This component inventory is deployment metadata, not an application-behavior smo
 | Phase 0.2E tenant enforcement (P2) | #9, draft | `c5200a39b175729ae2ed63c68d83f5f5bc76e674` | `36c8a42d810ae44cd392619688ff1b4ee00a347c` | no decision | READY, not ancestor of main | `required` activation NO-GO | blocked |
 | Agentic MarkOS / Sprint 11 | no live PR | not captured | not captured | not captured | not captured | not production | post-core |
 | Provider Service stack | #18, #20, #22, #25-32, #36, #38, #41-55 (all draft) | `50b0326168d87dd21dc22f20d339893d93fb441a` (stack start) | `1f55f7cfff5f09c03cb8df6cf5a32703ddc5679f` (recorded terminal head) | no decisions | previews are skipped or mixed; not core release proof | production attribution separated; 21 remote-only migrations | post-core |
-| Hardening clean migration replay | #33, draft | `d1bab3b2aa84a91cb17fd1b6a2514d96e044b76b` | `0da39e2792b693262ceb62c4e88f2d5f662524de` | no decision | skipped | not production | superseded |
+| Hardening clean migration replay | #33, draft | `d1bab3b2aa84a91cb17fd1b6a2514d96e044b76b` | `0da39e2792b693262ceb62c4e88f2d5f662524de` | no decision | skipped | not production | blocked |
 
 ## Ordered Platform 55 core release queue
 
@@ -88,9 +90,9 @@ The queue starts only after reconciliating P2-P7 against the live base and creat
 
 P0 parity and P1 shared shell precede this queue historically but are already in the production main history; they are not merge candidates.
 
-## Separate P2: Phase 0.2E
+## Separate P2 release/promotion blocker: Phase 0.2E
 
-PR #9 is not in the Platform 55 core sequence. Its `RATEWARE_TENANT_ENFORCEMENT=shadow` value is not independently proven by the collected secret metadata, and the evidence does not establish a continuous pseudonymized 24-hour legitimate-traffic window with zero legitimate shadow rejections. Therefore activation to `required` remains **NO-GO**, even though its historical preview is READY. The canonical aggregate evidence is safe but does not remove this operational gate.
+PR #9 is not in the Platform 55 core sequence. Its `RATEWARE_TENANT_ENFORCEMENT=shadow` value is not independently proven by the collected secret metadata, and the evidence does not establish a continuous pseudonymized 24-hour legitimate-traffic window with zero legitimate shadow rejections. Therefore activation to `required` remains **NO-GO for release/promotion**, even though its historical preview is READY. The canonical aggregate evidence is safe but does not remove this operational gate. This does not prevent isolated local P1 development.
 
 ## Post-core streams
 
@@ -101,9 +103,9 @@ PR #9 is not in the Platform 55 core sequence. Its `RATEWARE_TENANT_ENFORCEMENT=
 
 The primary checkout `C:\\Users\\andre\\OneDrive\\Documents\\Rateware` was on `codex/phase-0-1-action-contract` at `d33e30f131762958c25485d7623fb31cebbc516f` during collection, with 12 modified and 13 untracked paths. The paths included action-contract sources/tests, RFX files, migrations, Agentic MarkOS files, and `.superpowers/`; they are concurrent work, not P0 baseline input. The P0 worktree is isolated and neither stages nor edits those paths. Detached review worktrees are evidence locations, not merge candidates. The unrelated `U/rateware-onboarding` worktree advanced after collection; the recorded SHA remains a timestamped snapshot, not a P0 change.
 
-## Blockers and P1 entry criteria
+## Release/promotion blockers and P1 boundaries
 
-### Blocking facts
+### Blocking facts for promotion or consequential mutation
 
 1. P2-P7 have local candidate SHAs but no corresponding live open PRs in the collected GitHub inventory.
 2. #35 is draft with no accepted independent release verdict; passing historical checks and its READY preview are not human authorization or production proof.
@@ -112,12 +114,16 @@ The primary checkout `C:\\Users\\andre\\OneDrive\\Documents\\Rateware` was on `c
 5. Supabase default branch metadata reports `MIGRATIONS_FAILED` and its only preview reports `CREATING_PROJECT` while preview health says `ACTIVE_HEALTHY`; this must be reconciled before branch metadata is used as release proof.
 6. The primary checkout is intentionally dirty and cannot be used as a release source.
 
-### P1 may start only when
+### P1 local development may start now
+
+Isolated local P1 development may proceed from this release queue now. It must preserve the dirty primary checkout, avoid external mutations, and must not treat local tests or this baseline as a Ready/merge/deploy authorization.
+
+### P1 promotion may proceed only when
 
 1. the P0 candidate receives a detached independent **GO** review with no P0/P1/P2 finding;
 2. the reviewer reconfirms ledger gates/arithmetic, the exact production SHA, Vercel mappings, Supabase project and preview count, queue order, redaction, and preservation of the dirty primary checkout;
-3. the release controller accepts that refreshed evidence and explicitly authorizes the first bounded P2 reconciliation; and
-4. every later Ready, merge, deployment, migration, configuration, or enforcement transition receives its own explicit human authorization.
+3. the release controller accepts that refreshed evidence and explicitly authorizes the first bounded Platform 55 P2 reconciliation; and
+4. every later PR Ready, merge, deployment/promotion, migration or DDL/DML, configuration/secret/environment change, enforcement change, upload, approval, or production-data mutation receives its own explicit human authorization.
 
 ## Supabase preview-branch cost statement
 
@@ -125,7 +131,7 @@ At collection there was exactly **one** non-default, persistent preview branch: 
 
 ## Next exact action
 
-Request the detached, read-only P0 independent review at the immutable candidate after this baseline commit. The reviewer must independently refresh the live GitHub/Vercel/Supabase observations, verify every P0 ledger gate and redaction boundary, and issue a written **GO** or **NO-GO**. No release action follows automatically from that review.
+Begin the first isolated local P1 development task from this queue while requesting the detached, read-only P0 independent review at the immutable candidate. The reviewer must independently refresh the live GitHub/Vercel/Supabase observations, verify every P0 ledger gate and redaction boundary, and issue a written **GO** or **NO-GO**. Neither development nor a GO result automatically triggers any Ready, merge, deployment, migration, configuration, enforcement, or data mutation.
 
 ## Zero-external-mutation statement
 
