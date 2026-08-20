@@ -369,6 +369,223 @@ assert.deepEqual([
 ]);
 assert.equal(roundThreeEvidence.some((readiness) => Object.values(readiness.controls).some(Boolean)), false);
 
+const auditReadiness = (createdAt, readinessGeneratedAt = generatedAt) => buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  generatedAt: readinessGeneratedAt,
+  settings: {
+    ...roleEnforcedSettings,
+    audit: [{ action: "settings.reviewed", created_at: createdAt }]
+  },
+  session: { token: "session-valid" }
+});
+
+// Supported audit-currentness window, inclusive: 30 days before generatedAt through
+// 5 minutes after generatedAt for clock skew.
+const oneYearStaleAuditEvidence = auditReadiness("2025-08-13T12:00:00Z");
+const oneDayFutureAuditEvidence = auditReadiness("2026-08-14T12:00:00Z");
+const auditAtRecencyBoundary = auditReadiness("2026-07-14T12:00:00.000Z");
+const auditBeyondRecencyBoundary = auditReadiness("2026-07-14T11:59:59.999Z");
+const auditAtFutureSkewBoundary = auditReadiness("2026-08-13T12:05:00.000Z");
+const auditBeyondFutureSkewBoundary = auditReadiness("2026-08-13T12:05:00.001Z");
+const auditWithInvalidGeneratedAt = auditReadiness(generatedAt, "2026-02-30T12:00:00.000Z");
+
+const gmailFalseWithCredentialsAlias = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    gmail: { rows: [{ status: "connected", configured: false, credentials_configured: true }] }
+  },
+  session: { token: "session-valid" }
+});
+const gmailCredentialsAliasOnly = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    gmail: { rows: [{ status: "connected", credentials_configured: true }] }
+  },
+  session: { token: "session-valid" }
+});
+const googleChatCredentialsAliasOnly = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    google_chat: { rows: [{ status: "connected", credentials_configured: true }] }
+  },
+  session: { token: "session-valid" }
+});
+const whatsappConfiguredAliasOnly = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    whatsapp: { rows: [{ status: "connected", configured: true, connection_validated: true }] }
+  },
+  session: { token: "session-valid" }
+});
+
+const mixedMalformedConnectorEvidence = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    gmail: { rows: [null, connectedGmailRow] }
+  },
+  session: { token: "session-valid" }
+});
+const mixedMalformedAuditEvidence = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    audit: [null, validAuditRow]
+  },
+  session: { token: "session-valid" }
+});
+const mixedMalformedCatalogEvidence = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: roleEnforcedSettings,
+  session: { token: "session-valid" },
+  catalogValues: [null, { active: true }]
+});
+const mixedMalformedObservabilityEvidence = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: roleEnforcedSettings,
+  session: { token: "session-valid" },
+  observability: { events: [null, { source: "governance-test" }] }
+});
+const explicitEmptyCollectionsEvidence = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    audit: [],
+    gmail: { rows: [] }
+  },
+  session: { token: "session-valid" },
+  observability: { events: [] },
+  catalogValues: []
+});
+
+const roundFourEvidence = [
+  oneYearStaleAuditEvidence,
+  oneDayFutureAuditEvidence,
+  auditAtRecencyBoundary,
+  auditBeyondRecencyBoundary,
+  auditAtFutureSkewBoundary,
+  auditBeyondFutureSkewBoundary,
+  auditWithInvalidGeneratedAt,
+  gmailFalseWithCredentialsAlias,
+  gmailCredentialsAliasOnly,
+  googleChatCredentialsAliasOnly,
+  whatsappConfiguredAliasOnly,
+  mixedMalformedConnectorEvidence,
+  mixedMalformedAuditEvidence,
+  mixedMalformedCatalogEvidence,
+  mixedMalformedObservabilityEvidence,
+  explicitEmptyCollectionsEvidence
+];
+assert.deepEqual([
+  {
+    family: "audit one year stale versus generatedAt",
+    passed: evidenceStatus(oneYearStaleAuditEvidence, "Audit trail") === "not_observed"
+      && hasGap(oneYearStaleAuditEvidence, "audit:evidence_missing")
+  },
+  {
+    family: "audit one day future versus generatedAt",
+    passed: evidenceStatus(oneDayFutureAuditEvidence, "Audit trail") === "not_observed"
+      && hasGap(oneDayFutureAuditEvidence, "audit:evidence_missing")
+  },
+  {
+    family: "audit 30-day recency boundary is inclusive",
+    passed: evidenceStatus(auditAtRecencyBoundary, "Audit trail") === "observed"
+      && !hasGap(auditAtRecencyBoundary, "audit:evidence_missing")
+  },
+  {
+    family: "audit older than 30-day recency boundary",
+    passed: evidenceStatus(auditBeyondRecencyBoundary, "Audit trail") === "not_observed"
+      && hasGap(auditBeyondRecencyBoundary, "audit:evidence_missing")
+  },
+  {
+    family: "audit 5-minute future clock-skew boundary is inclusive",
+    passed: evidenceStatus(auditAtFutureSkewBoundary, "Audit trail") === "observed"
+      && !hasGap(auditAtFutureSkewBoundary, "audit:evidence_missing")
+  },
+  {
+    family: "audit beyond 5-minute future clock skew",
+    passed: evidenceStatus(auditBeyondFutureSkewBoundary, "Audit trail") === "not_observed"
+      && hasGap(auditBeyondFutureSkewBoundary, "audit:evidence_missing")
+  },
+  {
+    family: "audit with invalid generatedAt",
+    passed: evidenceStatus(auditWithInvalidGeneratedAt, "Audit trail") === "not_observed"
+      && hasGap(auditWithInvalidGeneratedAt, "audit:evidence_missing")
+  },
+  {
+    family: "Gmail explicit false with contradictory credentials alias",
+    passed: evidenceStatus(gmailFalseWithCredentialsAlias, "Gmail integration") === "not_observed"
+      && hasGap(gmailFalseWithCredentialsAlias, "integration:gmail")
+  },
+  {
+    family: "Gmail credentials_configured alias without configured",
+    passed: evidenceStatus(gmailCredentialsAliasOnly, "Gmail integration") === "not_observed"
+      && hasGap(gmailCredentialsAliasOnly, "integration:gmail")
+  },
+  {
+    family: "Google Chat credentials_configured alias without configured",
+    passed: evidenceStatus(googleChatCredentialsAliasOnly, "Google Chat integration") === "not_observed"
+      && hasGap(googleChatCredentialsAliasOnly, "integration:google_chat")
+  },
+  {
+    family: "WhatsApp configured alias without credentials_configured",
+    passed: evidenceStatus(whatsappConfiguredAliasOnly, "WhatsApp integration") === "not_observed"
+      && hasGap(whatsappConfiguredAliasOnly, "integration:whatsapp")
+  },
+  {
+    family: "mixed malformed connector rows",
+    passed: evidenceStatus(mixedMalformedConnectorEvidence, "Gmail integration") === "not_observed"
+      && hasGap(mixedMalformedConnectorEvidence, "integration:gmail")
+  },
+  {
+    family: "mixed malformed audit rows",
+    passed: evidenceStatus(mixedMalformedAuditEvidence, "Audit trail") === "not_observed"
+      && hasGap(mixedMalformedAuditEvidence, "audit:evidence_missing")
+  },
+  {
+    family: "mixed malformed catalog rows",
+    passed: evidenceStatus(mixedMalformedCatalogEvidence, "Master-data catalog") === "not_observed"
+      && hasGap(mixedMalformedCatalogEvidence, "catalog:not_loaded")
+  },
+  {
+    family: "mixed malformed observability rows",
+    passed: evidenceStatus(mixedMalformedObservabilityEvidence, "Operational observability") === "not_observed"
+      && hasGap(mixedMalformedObservabilityEvidence, "observability:not_loaded")
+  },
+  {
+    family: "valid explicit empty arrays",
+    passed: evidenceStatus(explicitEmptyCollectionsEvidence, "Audit trail") === "not_observed"
+      && evidenceStatus(explicitEmptyCollectionsEvidence, "Gmail integration") === "not_observed"
+      && evidenceStatus(explicitEmptyCollectionsEvidence, "Operational observability") === "observed"
+      && evidenceStatus(explicitEmptyCollectionsEvidence, "Master-data catalog") === "observed"
+      && hasGap(explicitEmptyCollectionsEvidence, "catalog:empty")
+      && !hasGap(explicitEmptyCollectionsEvidence, "catalog:not_loaded")
+      && !hasGap(explicitEmptyCollectionsEvidence, "observability:not_loaded")
+  }
+], [
+  { family: "audit one year stale versus generatedAt", passed: true },
+  { family: "audit one day future versus generatedAt", passed: true },
+  { family: "audit 30-day recency boundary is inclusive", passed: true },
+  { family: "audit older than 30-day recency boundary", passed: true },
+  { family: "audit 5-minute future clock-skew boundary is inclusive", passed: true },
+  { family: "audit beyond 5-minute future clock skew", passed: true },
+  { family: "audit with invalid generatedAt", passed: true },
+  { family: "Gmail explicit false with contradictory credentials alias", passed: true },
+  { family: "Gmail credentials_configured alias without configured", passed: true },
+  { family: "Google Chat credentials_configured alias without configured", passed: true },
+  { family: "WhatsApp configured alias without credentials_configured", passed: true },
+  { family: "mixed malformed connector rows", passed: true },
+  { family: "mixed malformed audit rows", passed: true },
+  { family: "mixed malformed catalog rows", passed: true },
+  { family: "mixed malformed observability rows", passed: true },
+  { family: "valid explicit empty arrays", passed: true }
+]);
+assert.equal(roundFourEvidence.some((readiness) => Object.values(readiness.controls).some(Boolean)), false);
+
 assert.match(html, /data-workbench-view-button="governance"/);
 assert.match(html, /data-workbench-view-panel="governance"/);
 assert.match(html, /Readiness is not authorization/);

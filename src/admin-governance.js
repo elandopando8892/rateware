@@ -1,5 +1,7 @@
 const SCHEMA_VERSION = "rateware.admin_governance_readiness.v1";
 const INVALID_DATA_PROPERTY = Symbol("invalid-data-property");
+const AUDIT_RECENCY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const AUDIT_FUTURE_CLOCK_SKEW_MS = 5 * 60 * 1000;
 
 function isRecord(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -53,14 +55,16 @@ function rowCollection(value) {
       || !Object.is(Reflect.get(value, key, value), descriptor.value)) {
       return { valid: false, rows: [] };
     }
-    if (isRecord(descriptor.value)) result.push(descriptor.value);
+    if (!isRecord(descriptor.value)) return { valid: false, rows: [] };
+    result.push(descriptor.value);
   }
   return { valid: true, rows: result };
 }
 
-function validAuditTimestamp(value) {
+function strictTimestamp(value) {
+  if (typeof value !== "string") return null;
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
-  if (!match) return false;
+  if (!match) return null;
   const [, yearText, monthText, dayText, hourText, minuteText, secondText, , zone] = match;
   const [year, month, day, hour, minute, second] = [yearText, monthText, dayText, hourText, minuteText, secondText].map(Number);
   const calendar = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
@@ -69,19 +73,19 @@ function validAuditTimestamp(value) {
     || calendar.getUTCDate() !== day
     || calendar.getUTCHours() !== hour
     || calendar.getUTCMinutes() !== minute
-    || calendar.getUTCSeconds() !== second) return false;
+    || calendar.getUTCSeconds() !== second) return null;
   if (zone !== "Z") {
     const [offsetHour, offsetMinute] = zone.slice(1).split(":").map(Number);
-    if (offsetHour > 23 || offsetMinute > 59) return false;
+    if (offsetHour > 23 || offsetMinute > 59) return null;
   }
-  return Number.isFinite(Date.parse(value));
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 function integrationState(value, options = {}) {
   const row = rowCollection(ownDataProperty(record(value), "rows")).rows[0] || {};
   const status = textProperty(row, "status");
-  const configured = ownDataProperty(row, "configured") === true
-    || ownDataProperty(row, "credentials_configured") === true;
+  const configured = ownDataProperty(row, options.configurationKey || "configured") === true;
   const connected = configured
     && status === "connected"
     && (options.requiresValidation !== true || ownDataProperty(row, "connection_validated") === true);
@@ -93,11 +97,8 @@ function integrationState(value, options = {}) {
 }
 
 function generatedTimestamp(value) {
-  if (typeof value === "string") {
-    const timestamp = Date.parse(value);
-    if (Number.isFinite(timestamp)) return new Date(timestamp).toISOString();
-  }
-  return new Date().toISOString();
+  const timestamp = strictTimestamp(value);
+  return new Date(timestamp ?? Date.now()).toISOString();
 }
 
 export function buildAdminGovernanceReadiness(input = {}) {
@@ -107,11 +108,19 @@ export function buildAdminGovernanceReadiness(input = {}) {
     const session = recordProperty(input, "session");
     const organization = recordProperty(settings, "organization");
     const access = recordProperty(settings, "access");
+    const generatedAtValue = ownDataProperty(input, "generatedAt");
+    const generatedAtTimestamp = generatedAtValue === undefined ? Date.now() : strictTimestamp(generatedAtValue);
+    const generatedAt = new Date(generatedAtTimestamp ?? Date.now()).toISOString();
     const auditCollection = rowCollection(ownDataProperty(settings, "audit"));
     const audit = auditCollection.rows.filter((row) => {
       const action = textProperty(row, "action");
       const createdAt = textProperty(row, "created_at");
-      return Boolean(action && createdAt && validAuditTimestamp(createdAt));
+      const createdAtTimestamp = strictTimestamp(createdAt);
+      return Boolean(action
+        && generatedAtTimestamp !== null
+        && createdAtTimestamp !== null
+        && createdAtTimestamp >= generatedAtTimestamp - AUDIT_RECENCY_WINDOW_MS
+        && createdAtTimestamp <= generatedAtTimestamp + AUDIT_FUTURE_CLOCK_SKEW_MS);
     });
     const catalogValueContainer = ownDataProperty(input, "catalogValues");
     const catalogCollection = rowCollection(catalogValueContainer);
@@ -120,9 +129,12 @@ export function buildAdminGovernanceReadiness(input = {}) {
     const observabilityEventContainer = ownDataProperty(observability, "events");
     const observabilityCollection = rowCollection(observabilityEventContainer);
     const observabilityEvents = observabilityCollection.rows;
-    const gmail = integrationState(ownDataProperty(settings, "gmail"));
-    const googleChat = integrationState(ownDataProperty(settings, "google_chat"));
-    const whatsapp = integrationState(ownDataProperty(settings, "whatsapp"), { requiresValidation: true });
+    const gmail = integrationState(ownDataProperty(settings, "gmail"), { configurationKey: "configured" });
+    const googleChat = integrationState(ownDataProperty(settings, "google_chat"), { configurationKey: "configured" });
+    const whatsapp = integrationState(ownDataProperty(settings, "whatsapp"), {
+      configurationKey: "credentials_configured",
+      requiresValidation: true
+    });
     const gaps = [];
     const evidence = [];
 
@@ -188,7 +200,7 @@ export function buildAdminGovernanceReadiness(input = {}) {
       schema_version: SCHEMA_VERSION,
       mode: "observation_only",
       status: blocking ? "blocked" : gaps.length ? "review_required" : "ready",
-      generated_at: generatedTimestamp(ownDataProperty(input, "generatedAt")),
+      generated_at: generatedAt,
       summary: {
         evidence_observed: evidence.filter((item) => item.status === "observed").length,
         blocking_gaps: gaps.filter((item) => item.severity === "blocking").length,
