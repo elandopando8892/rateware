@@ -1,4 +1,5 @@
 import { requirePrivatePage } from './auth.js';
+import { caseFromUrl } from './osp-case-context.js';
 import { callRatewareFunction } from './rateware-api.js';
 import {
   approvalPosture, approvalPriority, approvalProgress, normalizeApprovalQueue, summarizeApprovals,
@@ -88,7 +89,19 @@ async function loadApprovals({ preserve = false } = {}) {
     state.rows = Array.isArray(data.rows) ? data.rows : [];
     state.total = Number(data.total || 0);
     renderMetrics(data.metrics); renderRows(); renderPagination();
-    if (!preserve && state.rows[0]) selectPackage(state.rows[0].package_id);
+    if (!preserve) {
+      // Opened from the shell for a specific case: land on that case's row rather than
+      // whichever happens to be first. Pagination means the row may not be on this page;
+      // that is said out loud instead of silently falling back.
+      const workingCase = caseFromUrl();
+      const match = workingCase ? state.rows.find((row) => row.case_id === workingCase) : null;
+      if (match) selectPackage(match.package_id);
+      else if (state.rows[0]) selectPackage(state.rows[0].package_id);
+      if (workingCase && !match) setCaseNotice(state.rows.length
+        ? 'The case you are working is not on this page.'
+        : 'The case you are working has nothing here.');
+      else setCaseNotice('');
+    }
     else if (!state.rows.length && detailNode) detailNode.innerHTML = '<div class="onboarding-empty"><strong>Select a package</strong><p>See its approval posture and manifest binding.</p></div>';
   } catch (error) {
     if (requestId !== state.requestId) return;
@@ -106,6 +119,18 @@ queueButtons.forEach((button) => button.addEventListener('click', () => {
 }));
 prev?.addEventListener('click', () => { state.offset = Math.max(0, state.offset - state.limit); loadApprovals({ preserve: true }); });
 next?.addEventListener('click', () => { if (state.offset + state.limit < state.total) { state.offset += state.limit; loadApprovals({ preserve: true }); } });
+
+function setCaseNotice(message) {
+  let node = document.getElementById('osp-case-notice');
+  if (!message) { node?.remove(); return; }
+  if (!node) {
+    node = document.createElement('p');
+    node.id = 'osp-case-notice';
+    node.className = 'osp-case-notice';
+    rowsNode?.parentNode?.insertBefore(node, rowsNode);
+  }
+  node.textContent = message;
+}
 
 await requirePrivatePage();
 loadApprovals();

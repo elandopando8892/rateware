@@ -52,6 +52,14 @@
 .osp-case button { flex: none; width: 18px; height: 18px; border: 0; border-radius: 999px; background: none;
   color: var(--brand-strong); font: inherit; font-size: 0.85rem; line-height: 1; cursor: pointer; }
 .osp-case button:hover { background: var(--brand-tint-strong); }
+/* A surface keyed by mailbox, document or legal entity does not act on the case. The
+   pill stays -- it is still the context the operator is holding -- but it stops looking
+   like an active filter. */
+.osp-case[data-applies="false"] { border-color: var(--line); background: var(--soft-panel); }
+.osp-case[data-applies="false"] span,
+.osp-case[data-applies="false"] b,
+.osp-case[data-applies="false"] button { color: var(--muted); }
+.osp-case[data-applies="false"] b { text-decoration: line-through; text-decoration-thickness: 1px; }
 .osp-bar .auth-strip { display: flex; align-items: center; gap: 10px; }
 .osp-frame { flex: 1; width: 100%; border: 0; background: var(--bg); }
 

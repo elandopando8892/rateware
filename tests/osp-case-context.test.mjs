@@ -147,3 +147,39 @@ test('the shell and the surface are wired to the shared protocol', () => {
   // the difference between a private channel and an open one.
   assert.match(shell, /listenForCase\([^;]*frame\?\.contentWindow/s);
 });
+
+test('the case travels only to surfaces that act on it', () => {
+  // Sending a case to a screen that ignores it promises a filter that never happens.
+  // Gmail, Document Review and Entity Vault are keyed by mailbox, document and legal
+  // entity; only the case-keyed screens receive it.
+  const shell = readFileSync(new URL('../src/provider-onboarding-app.js', import.meta.url), 'utf8');
+  const surfaces = shell.slice(shell.indexOf('const SURFACES = ['), shell.indexOf('const BY_ID'));
+  const honours = Object.fromEntries(
+    [...surfaces.matchAll(/\['(\w+)',\s*'[^']+',\s*'[^']+',\s*(true|false)\]/g)]
+      .map((match) => [match[1], match[2] === 'true']),
+  );
+  assert.deepEqual(honours, {
+    gmail: false, command: true, review: false, vault: false, approvals: true, delivery: true,
+  });
+  // And the flag must actually gate the URL, not merely be declared.
+  assert.match(shell, /function embeddedUrl\(path, honoursCase\)/);
+  assert.match(shell, /honoursCase \? withCase\(base, activeCase\?\.caseId\) : base/);
+});
+
+test('the pill says when the surface on screen ignores the case', () => {
+  const shell = readFileSync(new URL('../src/provider-onboarding-app.js', import.meta.url), 'utf8');
+  assert.match(shell, /markCaseApplies\(item\[3\]\)/);
+  assert.match(shell, /is not organised by case/);
+});
+
+test('a case-keyed surface lands on the case, and says when it cannot', () => {
+  // Falling back to the first row without a word would look like the case was honoured.
+  for (const name of ['provider-approvals-page.js', 'provider-delivery-page.js']) {
+    const source = readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8');
+    assert.match(source, /from '\.\/osp-case-context\.js'/, name);
+    assert.match(source, /const workingCase = caseFromUrl\(\);/, name);
+    assert.match(source, /row\.case_id === workingCase/, name);
+    assert.match(source, /is not on this page/, name);
+    assert.match(source, /has nothing here/, name);
+  }
+});

@@ -11,20 +11,23 @@ import { requirePrivatePage } from './auth.js';
 import { callRatewareFunction } from './rateware-api.js';
 import { listenForCase, withCase } from './osp-case-context.js';
 
+// The fourth element marks a surface that honours the working case. Gmail, Document
+// Review and Entity Vault are keyed by mailbox, document and legal entity rather than by
+// case, so sending them a case would promise a filter they do not apply.
 const SURFACES = [
   ['Intake', [
-    ['gmail', 'Gmail Intake', './provider-gmail.html'],
+    ['gmail', 'Gmail Intake', './provider-gmail.html', false],
   ]],
   ['Work', [
-    ['command', 'Command Center', './provider-onboarding.html'],
+    ['command', 'Command Center', './provider-onboarding.html', true],
   ]],
   ['Evidence', [
-    ['review', 'Document Review', './provider-document-review.html'],
-    ['vault', 'Entity Vault', './provider-entity-vault.html'],
+    ['review', 'Document Review', './provider-document-review.html', false],
+    ['vault', 'Entity Vault', './provider-entity-vault.html', false],
   ]],
   ['Release', [
-    ['approvals', 'Approvals', './provider-approvals.html'],
-    ['delivery', 'Delivery', './provider-delivery.html'],
+    ['approvals', 'Approvals', './provider-approvals.html', true],
+    ['delivery', 'Delivery', './provider-delivery.html', true],
   ]],
 ];
 const BY_ID = new Map(SURFACES.flatMap(([, items]) => items.map((item) => [item[0], item])));
@@ -108,10 +111,11 @@ async function renderCounts() {
 }
 
 /** Adds ?embed=1 so the hosted surface drops its Rateware chrome. */
-function embeddedUrl(path) {
+function embeddedUrl(path, honoursCase) {
   const url = new URL(path, window.location.href);
   url.searchParams.set('embed', '1');
-  return withCase(`${url.pathname}${url.search}`, activeCase?.caseId);
+  const base = `${url.pathname}${url.search}`;
+  return honoursCase ? withCase(base, activeCase?.caseId) : base;
 }
 
 /**
@@ -125,6 +129,15 @@ function renderCase() {
   caseNode.querySelector('b').textContent = activeCase.label || 'Selected case';
 }
 
+/** Says plainly whether the surface on screen acts on the working case. */
+function markCaseApplies(applies) {
+  if (!caseNode) return;
+  caseNode.dataset.applies = applies ? 'true' : 'false';
+  caseNode.title = applies
+    ? 'This screen opens on the case you are working.'
+    : 'This screen is not organised by case, so it ignores the one you are working.';
+}
+
 function setCase(next) {
   const changed = next?.caseId !== activeCase?.caseId;
   activeCase = next;
@@ -133,7 +146,7 @@ function setCase(next) {
   // Reload the current surface so it picks the case up, and keep the address bar
   // honest: a deep link should reopen the same surface on the same case.
   const item = BY_ID.get(frame.getAttribute('data-surface'));
-  if (item) frame.src = embeddedUrl(item[2]);
+  if (item) frame.src = embeddedUrl(item[2], item[3]);
   syncLocation(frame.getAttribute('data-surface'));
 }
 
@@ -148,10 +161,11 @@ function select(id) {
   const item = BY_ID.get(id);
   if (!item) return;
   const [, label, path] = item;
+  markCaseApplies(item[3]);
   syncLocation(id);
   if (titleNode) titleNode.textContent = label;
   if (frame && frame.getAttribute('data-surface') !== id) {
-    frame.src = embeddedUrl(path);
+    frame.src = embeddedUrl(path, item[3]);
     frame.setAttribute('data-surface', id);
   }
   nav.querySelectorAll('[data-surface]').forEach((button) => {

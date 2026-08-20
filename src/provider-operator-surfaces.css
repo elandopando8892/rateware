@@ -6,3 +6,9 @@
 .approval-row--awaiting,.delivery-row--awaiting{border-left-color:var(--stage-review)}
 .approval-row--normal,.delivery-row--normal{border-left-color:transparent}
 .onboarding-next-gate--blocked{border:1px solid var(--stage-exception);color:var(--stage-exception)}
+
+/* Said out loud when the shell sent a case that is not on the page in view. Silence
+   would read as "no work here", which is a different claim. */
+.osp-case-notice { margin: 0 0 10px; padding: 8px 11px; border: 1px solid var(--brand-border);
+  border-radius: var(--radius); background: var(--brand-tint); color: var(--brand-press);
+  font-size: 0.76rem; font-weight: 700; }
