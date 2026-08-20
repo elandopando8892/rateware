@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   computeOverallProgress,
@@ -235,7 +237,7 @@ test("accepts the P1 evidence-plan gate and reports the one-decimal starting sco
     evidence: {
       scope: ["docs/superpowers/specs/2026-08-19-rateware-production-closure-design.md"],
       evidence_plan: [
-        ".superpowers/sdd/2026-08-20-rateware-p1-platform55-release-closure/task-1-brief.md",
+        "docs/superpowers/plans/2026-08-20-rateware-p1-platform55-release-closure.md",
         "docs/release/2026-08-20-p1-platform55-release-ledger.md"
       ]
     }
@@ -243,4 +245,19 @@ test("accepts the P1 evidence-plan gate and reports the one-decimal starting sco
 
   validateLedger(p1);
   assert.equal(computeOverallProgress(p1), 69.3);
+});
+
+test("keeps the persisted P1 evidence-plan gate backed by tracked files", () => {
+  const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p1 = persisted.sprints.find((sprint) => sprint.id === "P1");
+  const trackedEvidence = [
+    "docs/superpowers/specs/2026-08-19-rateware-production-closure-design.md",
+    "docs/superpowers/plans/2026-08-20-rateware-p1-platform55-release-closure.md",
+    "docs/release/2026-08-20-p1-platform55-release-ledger.md"
+  ];
+
+  assert.deepEqual([...p1.evidence.scope, ...p1.evidence.evidence_plan], trackedEvidence);
+  for (const path of trackedEvidence) execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
+  validateLedger(persisted);
+  assert.equal(computeOverallProgress(persisted), 69.3);
 });
