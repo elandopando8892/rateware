@@ -22234,6 +22234,10 @@ select.staging-input {
   grid-column: 1 / -1;
 }
 
+.settings-governance-panel {
+  grid-column: 1 / -1;
+}
+
 .observability-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
