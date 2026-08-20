@@ -12,10 +12,15 @@ import { fileURLToPath } from 'node:url';
 // This is the same shape of defect as the orphaned modules: invisible, and found one at
 // a time. Checked as a class instead.
 
+// Scoped to OSP's own stylesheets. src/styles.css belongs to Rateware and is checked by
+// nobody here on purpose: OSP forked its tokens so the two can diverge, and asserting
+// Rateware's palette from an OSP test is how the last leak happened.
 const root = fileURLToPath(new URL('../src/', import.meta.url));
-const files = readdirSync(root).filter((name) => name.endsWith('.css'));
+const files = readdirSync(root)
+  .filter((name) => name.endsWith('.css'))
+  .filter((name) => name === 'osp.css' || name.startsWith('provider-'));
 const sources = files.map((name) => ({ name, text: readFileSync(root + name, 'utf8') }));
-const base = sources.find((file) => file.name === 'styles.css');
+const base = sources.find((file) => file.name === 'osp.css');
 
 /** Properties assigned a value at runtime by JS, so a static definition is not expected. */
 const RUNTIME_ASSIGNED = new Set(['--funnel-stage-count', '--vendor-visible-columns']);
@@ -93,12 +98,30 @@ test('the font-weight scale stays collapsed', () => {
   assert.deepEqual(stray, [], `weights outside the scale: ${stray.join(', ')}`);
 });
 
+test('OSP does not load the Rateware stylesheet', () => {
+  // The whole point of the fork. If a page links styles.css again, OSP inherits
+  // Rateware's palette and any OSP design change lands on all 34 Rateware pages.
+  const repo = fileURLToPath(new URL('../', import.meta.url));
+  const pages = readdirSync(repo).filter((name) => /^(provider-|osp-)/.test(name) && name.endsWith('.html'));
+  const shellSurfaces = ['provider-onboarding-app.html', 'provider-onboarding.html', 'provider-approvals.html',
+    'provider-delivery.html', 'provider-document-review.html', 'provider-entity-vault.html',
+    'provider-gmail.html', 'osp-preview.html'];
+  const leaks = [];
+  for (const page of pages) {
+    if (!shellSurfaces.includes(page)) continue; // Rateware-hosted provider views keep their own sheet
+    const html = readFileSync(repo + page, 'utf8');
+    if (/src\/styles\.css/.test(html)) leaks.push(page);
+    if (!/src\/osp\.css/.test(html)) leaks.push(`${page} (does not load osp.css)`);
+  }
+  assert.deepEqual(leaks, [], `OSP surfaces must load src/osp.css, not Rateware's:\n  ${leaks.join('\n  ')}`);
+});
+
 test('the operator surfaces carry no hardcoded colour', () => {
   // These are the pages the dark theme has to reach. styles.css owns the palette; a raw
   // hex in a surface file is a colour the theme cannot touch.
   const offenders = [];
   for (const file of sources) {
-    if (file.name === 'styles.css') continue;
+    if (file.name === 'osp.css') continue;
     if (!file.name.startsWith('provider')) continue;
     const hexes = [...file.text.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0]);
     if (hexes.length) offenders.push(`${file.name}: ${[...new Set(hexes)].join(', ')}`);
