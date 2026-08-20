@@ -71,6 +71,7 @@
           <nav class="module-workbench-nav" role="tablist" aria-label="Settings workbench">
             <button type="button" role="tab" aria-selected="true" data-workbench-view-button="access">Access</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="governance">Governance</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="platform">Platform</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="profile" data-workbench-focus-target="#profile-full-name">Profile</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="organization" data-workbench-focus-target="#org-name">Organization</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="integrations">Integrations</button>
@@ -80,7 +81,7 @@
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="audit">Audit Log</button>
           </nav>
 
-          <section class="settings-grid" data-workbench-view-panel="access governance profile organization integrations observability onboarding catalogs">
+          <section class="settings-grid" data-workbench-view-panel="access governance platform profile organization integrations observability onboarding catalogs">
             <section class="workspace-panel" data-workbench-view-panel="access">
               <div class="section-heading compact">
                 <p class="eyebrow">Access model</p>
@@ -132,6 +133,47 @@
                       <strong>Readiness is not authorization</strong>
                       <p>This view cannot provision users, assign roles, change connectors, publish catalog values, access secrets, or switch tenant enforcement.</p>
                       <em>Human-controlled administration remains required</em>
+                    </article>
+                  </div>
+                </section>
+              </div>
+            </section>
+
+            <section id="settings-platform-panel" class="workspace-panel settings-platform-panel" data-workbench-view-panel="platform">
+              <div class="section-heading compact split-heading">
+                <div>
+                  <p class="eyebrow">Platform controls 34–40</p>
+                  <h2>Release readiness</h2>
+                </div>
+                <span id="settings-platform-state" class="status-pill danger">Blocked</span>
+              </div>
+              <p id="settings-platform-status" class="status-message" role="status">Platform release gates are blocked until privileged server-side evidence and human approvals are available. This view is observation only.</p>
+              <div class="review-insight-grid bi-metrics" aria-label="Platform readiness summary">
+                <article><span>Control surfaces</span><strong id="settings-platform-surface-count">7</strong></article>
+                <article><span>Evidence observed</span><strong id="settings-platform-observed-count">0</strong></article>
+                <article><span>Blocked surfaces</span><strong id="settings-platform-blocked-count">7</strong></article>
+                <article><span>Mode</span><strong>Observation only</strong></article>
+              </div>
+              <div class="bi-analyst-grid">
+                <section>
+                  <h3>Control surfaces</h3>
+                  <div id="settings-platform-surfaces" class="bi-analyst-list">
+                    <article><strong>Evidence not evaluated</strong><p>Load Settings to build the fail-closed readiness brief.</p></article>
+                  </div>
+                </section>
+                <section>
+                  <h3>Implementation gates</h3>
+                  <div id="settings-platform-stages" class="bi-analyst-list">
+                    <article><strong>PLAN</strong><p>Review only. No preparation, validation, pilot, cutover, or stabilization is authorized.</p></article>
+                  </div>
+                </section>
+                <section>
+                  <h3>Execution boundary</h3>
+                  <div class="bi-analyst-list">
+                    <article>
+                      <strong>Evidence is not authorization</strong>
+                      <p>This view cannot run jobs, publish services, approve RFCs, change identity, read secrets, change flags, or authorize cutover.</p>
+                      <em>Privileged server evidence and explicit human approval remain required</em>
                     </article>
                   </div>
                 </section>

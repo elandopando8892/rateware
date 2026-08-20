@@ -30,6 +30,7 @@ import { SUPABASE_URL } from "./config.js";
 import { humanizeError } from "./error-copy.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
 import { buildAdminGovernanceReadiness } from "./admin-governance.js";
+import { buildPlatformControlReadiness } from "./platform-readiness.js";
 
 const accessMode = document.querySelector("#settings-access-mode");
 const onboardingScore = document.querySelector("#settings-onboarding-score");
@@ -102,6 +103,13 @@ const governanceBlockingCount = document.querySelector("#settings-governance-blo
 const governanceReviewCount = document.querySelector("#settings-governance-review-count");
 const governanceGaps = document.querySelector("#settings-governance-gaps");
 const governanceEvidence = document.querySelector("#settings-governance-evidence");
+const platformState = document.querySelector("#settings-platform-state");
+const platformStatus = document.querySelector("#settings-platform-status");
+const platformSurfaceCount = document.querySelector("#settings-platform-surface-count");
+const platformObservedCount = document.querySelector("#settings-platform-observed-count");
+const platformBlockedCount = document.querySelector("#settings-platform-blocked-count");
+const platformSurfaces = document.querySelector("#settings-platform-surfaces");
+const platformStages = document.querySelector("#settings-platform-stages");
 
 const profileInputs = {
   full_name: document.querySelector("#profile-full-name"),
@@ -291,6 +299,65 @@ function renderGovernance() {
   return readiness;
 }
 
+function renderPlatformReadiness(governance = buildAdminGovernanceReadiness({
+  settings: currentSettings,
+  session: currentSession,
+  observability: currentObservability,
+  observabilityLoaded,
+  catalogValues: currentCatalogValues,
+  catalogLoaded: catalogValuesLoaded
+})) {
+  const readiness = buildPlatformControlReadiness({
+    settings: currentSettings,
+    governance,
+    observability: currentObservability,
+    observabilityLoaded,
+    catalogValues: currentCatalogValues,
+    catalogLoaded: catalogValuesLoaded
+  });
+  if (platformState) {
+    platformState.textContent = "Blocked";
+    platformState.className = "status-pill danger";
+  }
+  if (platformStatus) {
+    platformStatus.textContent = "Platform release gates remain blocked. Review the observed evidence and obtain privileged server proof plus explicit human approval before advancing.";
+    platformStatus.dataset.tone = "danger";
+  }
+  if (platformSurfaceCount) platformSurfaceCount.textContent = readiness.summary.surfaces.toLocaleString();
+  if (platformObservedCount) platformObservedCount.textContent = readiness.summary.observed_surfaces.toLocaleString();
+  if (platformBlockedCount) platformBlockedCount.textContent = readiness.summary.blocked_surfaces.toLocaleString();
+  if (platformSurfaces) {
+    platformSurfaces.innerHTML = readiness.surfaces.map((surface) => {
+      const evidence = surface.evidence.length
+        ? surface.evidence.map((item) => item.detail).join(" ")
+        : "No browser evidence was observed for this control.";
+      const gaps = surface.gaps.map((gap) => gap.message).join(" ");
+      return `
+        <article>
+          <strong>${escapeHtml(surface.name)}</strong>
+          <p>${escapeHtml(evidence)} ${escapeHtml(gaps)}</p>
+          <em>${escapeHtml(surface.release_gate)} · ${escapeHtml(surface.state)}</em>
+        </article>
+      `;
+    }).join("");
+  }
+  if (platformStages) {
+    platformStages.innerHTML = readiness.implementation_stages.map((stage) => `
+      <article>
+        <strong>${escapeHtml(stage.stage)}</strong>
+        <p>${escapeHtml(stage.detail)}</p>
+        <em>${escapeHtml(stage.state)}</em>
+      </article>
+    `).join("");
+  }
+  return readiness;
+}
+
+function renderReadinessViews() {
+  const governance = renderGovernance();
+  return renderPlatformReadiness(governance);
+}
+
 function renderOnboarding(settings) {
   const tasks = settings.onboarding || [];
   const completed = tasks.filter((task) => task.completed).length;
@@ -336,7 +403,7 @@ function renderAudit(settings) {
 
 function renderObservability(data = currentObservability) {
   currentObservability = data || { summary: {}, events: [] };
-  renderGovernance();
+  renderReadinessViews();
   const events = Array.isArray(currentObservability.events) ? currentObservability.events : [];
   const summary = currentObservability.summary || {};
   const bySource = summary.by_source || {};
@@ -716,7 +783,7 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
 function renderCatalogValues(rows = currentCatalogValues) {
   currentCatalogValues = rows || [];
   catalogValuesLoaded = true;
-  renderGovernance();
+  renderReadinessViews();
   const category = catalogCategoryFilter?.value || "";
   const visibleRows = currentCatalogValues
     .filter((row) => !category || row.category === category)
@@ -764,7 +831,7 @@ function renderSettings(settings) {
   renderGmailConnections(settings.gmail);
   renderGoogleChatConnections(settings.google_chat);
   renderWhatsappConnections(settings.whatsapp);
-  renderGovernance();
+  renderReadinessViews();
 }
 
 async function loadObservability() {
@@ -775,7 +842,7 @@ async function loadObservability() {
     renderObservability(data);
   } catch (error) {
     observabilityLoaded = false;
-    renderGovernance();
+    renderReadinessViews();
     if (observabilityLogBody) {
       observabilityLogBody.innerHTML = `
         <tr>
@@ -823,7 +890,7 @@ async function loadGmailConnections() {
     currentSettings = currentSettings || {};
     currentSettings.gmail = data;
     renderGmailConnections(data);
-    renderGovernance();
+    renderReadinessViews();
   } catch (error) {
     setStatus(gmailConnectionStatus, humanGmailMessage(error), "error");
   }
@@ -845,7 +912,7 @@ async function loadGoogleChatConnections() {
       }
     }
     renderGoogleChatConnections(data, spaces);
-    renderGovernance();
+    renderReadinessViews();
   } catch (error) {
     setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error), "error");
   }
@@ -858,7 +925,7 @@ async function loadWhatsappConnections() {
     currentSettings = currentSettings || {};
     currentSettings.whatsapp = data;
     renderWhatsappConnections(data);
-    renderGovernance();
+    renderReadinessViews();
   } catch (error) {
     setStatus(whatsappConnectionStatus, humanWhatsappMessage(error), "error");
   }
