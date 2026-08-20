@@ -80,4 +80,27 @@ Warning: the validator retains historical `DECLARATION_PATH_MISSING declaration.
 
 ## Limitations and mutation boundary
 
-This evidence is local and commit-scoped, not deployed-preview or production proof. No push, PR change, Vercel action, Supabase action, upload, approval, configuration/secret change, production-data mutation, or other external write occurred. The evidence file is intentionally uncommitted. This GO does not itself authorize any remote or production transition.
+The independent review above was local and commit-scoped; at the time it was collected it was not deployed-preview or production proof. No push, PR change, Vercel action, Supabase action, upload, approval, configuration/secret change, production-data mutation, or other external write occurred during that review. This GO did not itself authorize any remote or production transition.
+
+## Authorized release acceptance
+
+The later release actions below were separately authorized and do not alter the immutable independent-review verdict above.
+
+- Reviewed and released head: `000d494479b2e73da7ad22b313bd87b1236bae74`.
+- Retargeted base before release: `main` at `efef3c0f8916bd6d4e95afede1098a00f4a312cb`.
+- Preview deployment: `dpl_DX4fxHPBDqPC8RtXEsZv8VLNnftR`, `READY`, exact reviewed head.
+- Stable preview alias: `https://rateware-git-codex-platform55-8c1f10-elandopando8892s-projects.vercel.app`.
+- Clean migration replay: GitHub Actions run `32410109065`, PASS in `3m3s`.
+- Supabase Preview check: `SKIPPED`; no Supabase preview branch was created.
+- Auth support: the stable preview callback was added to Kinde and the preview origin was added to `RATEWARE_CORS_ORIGINS` while preserving all previously configured production, local-development, PR #24, and PR #35 origins.
+- Authenticated preview smoke: PASS for Governance and Decision Brief; both remained fail-closed and observation-only with no consequential control or write path.
+- Responsive limitation: desktop had no horizontal overflow; a 21 px overflow at a 390 px viewport reproduced on the preexisting production Settings shell and is retained as P3/non-blocking shell debt.
+- Human authorization: update the PR description, mark Ready, squash merge, and allow the resulting automatic Vercel production deployment. Manual promotion was explicitly not authorized.
+- PR final state: `MERGED`, squash merge `e0c91cc0c3ae86db6786923b80f8e69fcbfadf42`, merged at `2026-08-20T20:42:44Z`.
+- Automatic production deployment: `dpl_GwRRiHxYhv44RpLYHidGzpRXygBe`; URL `https://rateware-9l8qze0k1-elandopando8892s-projects.vercel.app`; target `production`; state `READY`; exact merge SHA `e0c91cc0c3ae86db6786923b80f8e69fcbfadf42`.
+- Stable production aliases include `https://rateware.vercel.app` and `https://rateware-git-main-elandopando8892s-projects.vercel.app`; both resolve to that deployment.
+- Authenticated production smoke: PASS. Governance selected with `BLOCKED`, `Observation only`, one blocking gap, two review gaps, zero controls in the Governance panel, and no horizontal overflow. Decision Brief selected with `BLOCKED`, only `Refresh brief` plus disabled `Download JSON`, no write path, and no horizontal overflow. Browser console log collection returned zero entries.
+- Supabase branch gate after release: exactly one persistent non-default preview, `fcm-gmail-staging`; no second preview branch was created.
+- No manual Vercel promotion, database migration, DDL/DML, upload, approval, outreach, dispatch, or production-data write was performed.
+
+Final disposition: **merged and production accepted**. P1 remains at **25%** until PR #39 is reconstructed and independently accepted under the release plan.

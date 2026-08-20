@@ -83,3 +83,25 @@ This later evidence closes the PR #35 preview and production acceptance gates wi
 - Post-deploy observability: Vercel reported no runtime error clusters in the prior hour and no error/fatal logs for the exact production deployment.
 - Final PR #35 disposition: merged and production accepted. No manual promotion, Supabase mutation, database mutation, upload, approval, outreach, dispatch, or production-data write was performed.
 - P1 progress remains **25%** until PR #37 and PR #39 are reconstructed/certified and their implementation milestone is independently accepted.
+
+## Collected release evidence — PR #37 administration governance
+
+This evidence closes the PR #37 reconstruction, preview, independent-review, merge, and production-smoke gates without altering the immutable initial queue.
+
+- Reviewed candidate SHA: `000d494479b2e73da7ad22b313bd87b1236bae74`.
+- Final pre-merge base: `main` at `efef3c0f8916bd6d4e95afede1098a00f4a312cb`.
+- Scoped independent verdict: **GO**; P0/P1/P2 none; time-varying Proxy limitation retained as P3 outside the parsed-JSON contract.
+- Independent evidence: `docs/release/evidence/2026-08-20-p1-pr37-independent-review.md`.
+- Preview deployment: `dpl_DX4fxHPBDqPC8RtXEsZv8VLNnftR`, `READY`, exact candidate; stable alias `https://rateware-git-codex-platform55-8c1f10-elandopando8892s-projects.vercel.app`.
+- Clean migration replay: GitHub Actions run `32410109065`, PASS in `3m3s`; Vercel check PASS; Supabase Preview `SKIPPED`.
+- Preview access support: Kinde callback and CORS origin added for the stable alias while preserving all existing origins.
+- Authenticated preview smoke: PASS for fail-closed Governance and Decision Brief, with no consequential controls or production write.
+- Responsive finding: desktop PASS; the 21 px mobile overflow at 390 px reproduced on the preexisting production Settings shell and remains P3/non-blocking debt.
+- Human authorization: refresh the PR description, mark Ready, squash merge, and allow automatic Vercel production deployment. Manual promotion explicitly not authorized.
+- PR final state: `MERGED`; squash merge SHA `e0c91cc0c3ae86db6786923b80f8e69fcbfadf42`; merged at `2026-08-20T20:42:44Z`.
+- Automatic production deployment: `dpl_GwRRiHxYhv44RpLYHidGzpRXygBe`; URL `https://rateware-9l8qze0k1-elandopando8892s-projects.vercel.app`; `READY`; target `production`; exact merge SHA.
+- Stable alias: `https://rateware.vercel.app` resolves to that exact deployment and SHA.
+- Authenticated production smoke: PASS. Governance remained `BLOCKED / Observation only` with one blocking gap, two review gaps, zero panel controls, no horizontal overflow, and zero console log entries. Decision Brief remained selected and `BLOCKED`; JSON download was disabled; no write control was exposed.
+- Supabase branch count after release: exactly one persistent non-default preview (`fcm-gmail-staging`); no second preview branch was created.
+- Final PR #37 disposition: merged and production accepted. No manual promotion, database migration, DDL/DML, upload, approval, outreach, dispatch, or production-data write was performed.
+- P1 progress remains **25%** until PR #39 is reconstructed/certified and the three-candidate implementation milestone is independently accepted.
