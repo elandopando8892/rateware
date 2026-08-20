@@ -33,6 +33,55 @@ function record(value) {
   return isRecord(value) ? value : {};
 }
 
+function isJsonEvidence(value, seen = new WeakSet()) {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "object" || seen.has(value)) return false;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const keys = Reflect.ownKeys(value);
+    if (keys.some((key) => typeof key === "symbol")) return false;
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+    if (!lengthDescriptor
+      || !Object.prototype.hasOwnProperty.call(lengthDescriptor, "value")
+      || !Number.isSafeInteger(lengthDescriptor.value)
+      || lengthDescriptor.value < 0
+      || keys.length !== lengthDescriptor.value + 1) return false;
+    for (let index = 0; index < lengthDescriptor.value; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (!descriptor
+        || !descriptor.enumerable
+        || !Object.prototype.hasOwnProperty.call(descriptor, "value")
+        || !isJsonEvidence(descriptor.value, seen)) return false;
+    }
+    return true;
+  }
+
+  if (!isRecord(value)) return false;
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key === "symbol") return false;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor
+      || !descriptor.enumerable
+      || !Object.prototype.hasOwnProperty.call(descriptor, "value")
+      || !isJsonEvidence(descriptor.value, seen)) return false;
+  }
+  return true;
+}
+
+function jsonEvidenceSnapshot(value) {
+  if (!isJsonEvidence(value) || typeof globalThis.structuredClone !== "function") {
+    return INVALID_DATA_PROPERTY;
+  }
+  try {
+    const snapshot = globalThis.structuredClone(value);
+    return isJsonEvidence(snapshot) ? snapshot : INVALID_DATA_PROPERTY;
+  } catch {
+    return INVALID_DATA_PROPERTY;
+  }
+}
+
 function ownDataProperty(value, key) {
   if (!isRecord(value)) return INVALID_DATA_PROPERTY;
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
@@ -147,7 +196,9 @@ function invalidResult(generatedAt) {
 
 export function buildPlatformControlReadiness(input = {}) {
   try {
-    if (!isRecord(input)) throw new Error("invalid input");
+    const snapshot = jsonEvidenceSnapshot(input);
+    if (snapshot === INVALID_DATA_PROPERTY || !isRecord(snapshot)) throw new Error("invalid input");
+    input = snapshot;
     const settings = recordProperty(input, "settings");
     const governance = recordProperty(input, "governance");
     const observability = recordProperty(input, "observability");
@@ -180,8 +231,14 @@ export function buildPlatformControlReadiness(input = {}) {
     const rfcEvidence = rfcAuditCount
       ? [{ status: "observed", detail: `${rfcAuditCount} architecture-related audit event(s) are visible; a versioned decision and approval receipt are still required.` }]
       : [];
-    const sessionObserved = governanceEvidence.some((item) => textProperty(item, "control") === "Authenticated session" && textProperty(item, "status") === "observed");
-    const roleObserved = governanceEvidence.some((item) => textProperty(item, "control") === "Role authorization" && textProperty(item, "status") === "observed");
+    const governanceBlocked = textProperty(governance, "status") === "blocked"
+      || governanceGaps.some((gap) => textProperty(gap, "severity") === "blocking");
+    const controlObserved = (control) => {
+      const matches = governanceEvidence.filter((item) => textProperty(item, "control") === control);
+      return !governanceBlocked && matches.length === 1 && textProperty(matches[0], "status") === "observed";
+    };
+    const sessionObserved = controlObserved("Authenticated session");
+    const roleObserved = controlObserved("Role authorization");
     const identityEvidence = [
       ...(sessionObserved ? [{ status: "observed", detail: "An authenticated browser session is present." }] : []),
       ...(roleObserved ? [{ status: "observed", detail: "The Settings contract reports role enforcement; required-mode tenant evidence remains server-only." }] : [])

@@ -119,6 +119,53 @@ assert.equal(
   "accessor-backed governance evidence is not observed"
 );
 
+const forgedObservability = { events: [{ source: "forged" }] };
+const forgedTopLevelInput = new Proxy({}, {
+  ownKeys: () => ["observabilityLoaded", "observability"],
+  getOwnPropertyDescriptor: (_, key) => key === "observabilityLoaded"
+    ? { configurable: true, enumerable: true, writable: true, value: true }
+    : key === "observability"
+      ? { configurable: true, enumerable: true, writable: true, value: forgedObservability }
+      : undefined,
+  get: (_, key) => key === "observabilityLoaded" ? true : key === "observability" ? forgedObservability : undefined,
+  getPrototypeOf: () => Object.prototype
+});
+const forgedTopLevelEvidence = buildPlatformControlReadiness(forgedTopLevelInput);
+assert.equal(forgedTopLevelEvidence.summary.observed_surfaces, 0, "Proxy-forged top-level evidence fails closed");
+assert.deepEqual(forgedTopLevelEvidence.surfaces.find((surface) => surface.page_id === "runtime-jobs")?.evidence, []);
+
+const injectedEvent = { source: "forged-row" };
+const proxiedEvents = new Proxy([{ source: "real-row" }], {
+  getOwnPropertyDescriptor: (target, key) => key === "0"
+    ? { configurable: true, enumerable: true, writable: true, value: injectedEvent }
+    : Reflect.getOwnPropertyDescriptor(target, key),
+  get: (target, key, receiver) => key === "0" ? injectedEvent : Reflect.get(target, key, receiver)
+});
+const forgedCollectionEvidence = buildPlatformControlReadiness({
+  observabilityLoaded: true,
+  observability: { events: proxiedEvents }
+});
+assert.equal(forgedCollectionEvidence.summary.observed_surfaces, 0, "Proxy-forged collection evidence fails closed");
+assert.deepEqual(forgedCollectionEvidence.surfaces.find((surface) => surface.page_id === "runtime-jobs")?.evidence, []);
+
+const contradictoryGovernance = buildPlatformControlReadiness({
+  governance: {
+    status: "blocked",
+    evidence: [
+      { control: "Authenticated session", status: "observed" },
+      { control: "Authenticated session", status: "missing" },
+      { control: "Role authorization", status: "observed" },
+      { control: "Role authorization", status: "missing" }
+    ],
+    gaps: [
+      { code: "session:missing", severity: "blocking" },
+      { code: "access:role_enforcement_missing", severity: "blocking" }
+    ]
+  }
+});
+assert.equal(contradictoryGovernance.summary.observed_surfaces, 0, "contradictory blocked Governance cannot become observed");
+assert.deepEqual(contradictoryGovernance.surfaces.find((surface) => surface.page_id === "enterprise-identity")?.evidence, []);
+
 const freshRfc = buildPlatformControlReadiness({
   generatedAt,
   settings: { audit: [{ action: "architecture.rfc.reviewed", created_at: generatedAt }] }
