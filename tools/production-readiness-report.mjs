@@ -5,13 +5,7 @@ import { pathToFileURL } from "node:url";
 const IDS = ["P0", "P1", "P2", "P3", "P4", "P5"];
 const WEIGHTS = { P0: 4, P1: 9, P2: 7, P3: 7, P4: 6, P5: 4 };
 const GATES = [[10, "scope"], [25, "evidence_plan"], [55, "implementation"], [70, "automated_suite"], [85, "independent_review"], [93, "preview_smoke"], [97, "deployment"], [100, "production_smoke"], [100, "monitoring"]];
-
-const isFileEvidence = (value) => {
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return false;
-  if (/^(?:node|npm|npx|git|pnpm|yarn|deno|bun|powershell|pwsh)\s/i.test(value)) return false;
-  if (isAbsolute(value) || /^\.{1,2}[\\/]/.test(value) || /^(?:docs|tests|tools|supabase|src|public|\.github|\.superpowers)[\\/]/i.test(value)) return true;
-  return /[\\/].+\.[^\\/]+$/.test(value) || /\.[a-z0-9]+$/i.test(value);
-};
+const FILE_EVIDENCE_KEYS = new Set(["scope", "evidence_plan", "implementation", "independent_review"]);
 
 const isInside = (root, candidate) => {
   const path = relative(root, candidate);
@@ -25,8 +19,9 @@ const validateEvidence = (sprint, rootDir) => {
     }
     for (const entry of entries) {
       const value = entry.trim();
-      if (isFileEvidence(value)) {
+      if (FILE_EVIDENCE_KEYS.has(key)) {
         const root = realpathSync(resolve(rootDir));
+        if (isAbsolute(value)) throw new Error(`${sprint.id} ${key} evidence must be a relative path inside the evaluated checkout: ${value}`);
         const candidate = resolve(root, value);
         if (!isInside(root, candidate)) throw new Error(`${sprint.id} ${key} evidence is outside the evaluated checkout: ${value}`);
         if (!existsSync(candidate)) throw new Error(`${sprint.id} ${key} evidence file does not exist: ${value}`);

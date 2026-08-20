@@ -10,7 +10,7 @@ const ledger = {
   schema_version: 1,
   baseline: 63,
   sprints: [
-    { id: "P0", weight: 4, progress: 10, evidence: { scope: ["spec", "plan"] } },
+    { id: "P0", weight: 4, progress: 10, evidence: { scope: ["docs/superpowers/specs/2026-08-19-rateware-production-closure-design.md"] } },
     { id: "P1", weight: 9, progress: 0, evidence: {} },
     { id: "P2", weight: 7, progress: 0, evidence: {} },
     { id: "P3", weight: 7, progress: 0, evidence: {} },
@@ -24,7 +24,7 @@ const completeEvidence = {
   evidence_plan: ["docs/release/evidence/2026-08-19-p0-git-github.md"],
   implementation: ["docs/release/2026-08-19-p0-release-baseline.md"],
   automated_suite: ["node tests/production-readiness-report.test.mjs"],
-  independent_review: ["detached independent review completed"],
+  independent_review: ["docs/release/evidence/2026-08-19-p0-vercel.md"],
   preview_smoke: ["read-only preview inventory verified"],
   deployment: ["documentation-only release required no application deployment"],
   production_smoke: ["read-only production inventory verified"],
@@ -61,14 +61,14 @@ test("requires high-risk gates", () => {
   for (const [progress, key] of [[85, "independent_review"], [93, "preview_smoke"], [97, "deployment"], [100, "production_smoke"], [100, "monitoring"]]) {
     const invalid = structuredClone(ledger);
     invalid.sprints[0].progress = progress;
-    invalid.sprints[0].evidence = Object.fromEntries(prerequisites[key].map((name) => [name, ["spec"]]));
+    invalid.sprints[0].evidence = Object.fromEntries(prerequisites[key].map((name) => [name, completeEvidence[name]]));
     invalid.sprints[0].verdicts = key === "independent_review" ? {} : { independent_review: "GO" };
     assert.throws(() => validateLedger(invalid), new RegExp(key, "i"));
   }
 });
 
 test("requires an explicit independent review GO verdict", () => {
-  const evidence = { scope: ["spec"], evidence_plan: ["plan"], implementation: ["code"], automated_suite: ["tests"], independent_review: ["detached-review"], preview_smoke: ["preview"], deployment: ["deploy"], production_smoke: ["production"], monitoring: ["monitoring"] };
+  const evidence = structuredClone(completeEvidence);
   for (const verdict of [undefined, "NO-GO"]) {
     const invalid = structuredClone(ledger);
     invalid.sprints[0].progress = 100;
@@ -170,20 +170,37 @@ test("rejects directories as file-backed evidence", () => {
   assert.throws(() => validateLedger(invalidDirectory), /P0.*scope.*regular file/i);
 });
 
-test("rejects absolute evidence paths outside the evaluated checkout", () => {
+test("requires file-backed evidence to use relative paths inside the evaluated checkout", () => {
   const invalidOutside = structuredClone(ledger);
   invalidOutside.sprints[0].evidence.scope = ["C:\\Windows\\win.ini"];
-  assert.throws(() => validateLedger(invalidOutside), /P0.*scope.*outside.*checkout/i);
+  assert.throws(() => validateLedger(invalidOutside), /P0.*scope.*relative path/i);
 });
 
-test("accepts descriptions, commands, and in-checkout evidence files with spaces", () => {
-  const descriptions = structuredClone(ledger);
-  descriptions.sprints[0].evidence.scope = [
-    "release scope approved",
-    "node tests/production-readiness-report.test.mjs"
-  ];
-  validateLedger(descriptions);
+test("does not permit descriptions under file-backed evidence keys", () => {
+  const invalidDescription = structuredClone(ledger);
+  invalidDescription.sprints[0].evidence.scope = ["release scope approved"];
+  assert.throws(() => validateLedger(invalidDescription), /P0.*scope.*does not exist/i);
+});
 
+test("accepts a Vercel command under automated-suite evidence", () => {
+  const descriptions = completeLedger();
+  descriptions.sprints[0].evidence.automated_suite = ["vercel inspect rateware.vercel.app"];
+  validateLedger(descriptions);
+});
+
+test("accepts a CORS URL description under preview-smoke evidence", () => {
+  const descriptions = completeLedger();
+  descriptions.sprints[0].evidence.preview_smoke = ["CORS origin https://rateware.vercel.app"];
+  validateLedger(descriptions);
+});
+
+test("accepts a dotted release version under deployment evidence", () => {
+  const descriptions = completeLedger();
+  descriptions.sprints[0].evidence.deployment = ["release evidence version v1.0"];
+  validateLedger(descriptions);
+});
+
+test("accepts an in-checkout file-backed evidence path with spaces", () => {
   const fileWithSpaces = structuredClone(ledger);
   fileWithSpaces.sprints[0].evidence.scope = ["output/import guide-preview.png"];
   validateLedger(fileWithSpaces);
