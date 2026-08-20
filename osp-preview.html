@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OSP — design preview</title>
+  <!--
+    Design preview for the Onboarding Service Provider shell.
+
+    The app itself is auth-gated and its surfaces only render against live data, so the
+    only way anyone had to look at the UI was to log in and have a case in the right
+    state. Nobody did, which is how a hardcoded green "connected" dot survived: there was
+    no way to see it lying.
+
+    This page renders the shell chrome and the shared surface components against fixture
+    data, with no auth and no backend. It is a design surface, not a demo of the product:
+    every value here is invented and labelled as such.
+  -->
+  <link rel="stylesheet" href="./src/styles.css" />
+  <link rel="stylesheet" href="./src/provider-onboarding-app.css" />
+  <link rel="stylesheet" href="./src/provider-onboarding.css" />
+  <style>
+    .pv-bar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+      border-bottom: 1px solid var(--line); background: var(--panel); padding: 10px 16px; }
+    .pv-bar strong { font-size: 0.9rem; }
+    .pv-bar .pv-note { color: var(--muted); font-size: 0.72rem; max-width: 52ch; }
+    .pv-bar button { font: inherit; font-weight: 700; font-size: 0.75rem; border: 1px solid var(--line-strong);
+      border-radius: var(--radius-pill); background: var(--panel); color: var(--text); padding: 5px 12px; cursor: pointer; }
+    .pv-bar button[aria-pressed="true"] { background: var(--brand-tint); border-color: var(--brand-border); color: var(--brand-press); }
+    .pv-section { border-top: 1px solid var(--line); padding: 20px 16px; }
+    .pv-section > h2 { margin: 0 0 4px; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    .pv-section > p { margin: 0 0 14px; color: var(--muted); font-size: 0.78rem; max-width: 70ch; }
+    .pv-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+    .pv-swatch { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; font-size: 0.68rem; }
+    .pv-swatch i { display: block; height: 30px; border-radius: 5px; border: 1px solid var(--line); margin-bottom: 6px; }
+    .pv-swatch code { color: var(--muted); }
+    .pv-shell { height: 460px; border: 1px solid var(--line); border-radius: var(--radius-card); overflow: hidden; }
+    .pv-shell .osp-app { height: 100%; min-height: 0; }
+    .pv-shell .osp-frame-stub { flex: 1; display: grid; place-content: center; gap: 6px; text-align: center;
+      background: var(--bg); color: var(--muted); font-size: 0.78rem; padding: 20px; }
+    .pv-weights p { margin: 0 0 2px; font-size: 1.05rem; }
+    .pv-weights span { color: var(--muted); font-size: 0.7rem; }
+    .pv-contrast { border-collapse: collapse; font-size: 0.75rem; width: 100%; max-width: 620px; }
+    .pv-contrast th, .pv-contrast td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+    .pv-contrast td:last-child { font-weight: 800; }
+  </style>
+</head>
+<body>
+<div class="pv-bar">
+  <strong>OSP design preview</strong>
+  <button type="button" id="pv-light" aria-pressed="false">Light</button>
+  <button type="button" id="pv-dark" aria-pressed="false">Dark</button>
+  <button type="button" id="pv-system" aria-pressed="true">System</button>
+  <span class="pv-note">Fixture data. Nothing here is real, nothing is fetched, and no login is involved — this page exists so the design can be looked at.</span>
+</div>
+
+<section class="pv-section">
+  <h2>Shell — mailbox states</h2>
+  <p>The indicator used to be a green dot in CSS that reported “connected” regardless. These are the four states it can now actually report; unknown is deliberately not green.</p>
+  <div class="pv-shell">
+    <div class="osp-app">
+      <aside class="osp-nav">
+        <div class="osp-brand">
+          <strong>Onboarding<br />Service Provider</strong>
+          <small>XBF Customer Setup</small>
+          <div class="osp-mailbox" data-tone="ok"><i aria-hidden="true"></i><span>carriers@example.test</span><b>watching</b></div>
+          <div class="osp-mailbox" data-tone="warn"><i aria-hidden="true"></i><span>carriers@example.test</span><b>idle</b></div>
+          <div class="osp-mailbox" data-tone="off"><i aria-hidden="true"></i><span>carriers@example.test</span><b>not connected</b></div>
+          <div class="osp-mailbox" data-tone="unknown"><i aria-hidden="true"></i><span>carriers@example.test</span><b>unknown</b></div>
+        </div>
+        <nav class="osp-groups" id="pv-nav"></nav>
+        <div class="osp-foot">Supervised superagent. It classifies, matches, extracts and drafts — it never <b>approves, signs or sends</b>.</div>
+      </aside>
+      <div class="osp-main">
+        <header class="osp-bar"><h1>Command Center</h1></header>
+        <div class="osp-frame-stub"><strong>Surface region</strong><span>Each surface renders here.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pv-section">
+  <h2>Pipeline and case rows</h2>
+  <p>The stage hues were raw hex in the surface stylesheets, so a dark theme could not reach them. They are tokens now, lifted for dark.</p>
+  <ol class="onboarding-pipeline" id="pv-pipeline"></ol>
+  <div class="onboarding-rows" id="pv-rows" style="margin-top:14px"></div>
+</section>
+
+<section class="pv-section">
+  <h2>Palette</h2>
+  <p>Rendered from the live tokens, so this section changes with the theme rather than describing it.</p>
+  <div class="pv-swatches" id="pv-swatches"></div>
+</section>
+
+<section class="pv-section pv-weights">
+  <h2>Type scale</h2>
+  <p>Collapsed from 21 weights to five. 730 and 740 both existed; nobody can tell them apart.</p>
+  <div id="pv-weights"></div>
+</section>
+
+<section class="pv-section">
+  <h2>Contrast against the current surface</h2>
+  <p>Computed live. WCAG AA needs 4.5 for body text and 3.0 for large text and non-text indicators.</p>
+  <table class="pv-contrast"><thead><tr><th>Token</th><th>On</th><th>Ratio</th></tr></thead><tbody id="pv-contrast"></tbody></table>
+</section>
+
+<script type="module" src="./src/osp-preview.js"></script>
+</body>
+</html>
