@@ -52,10 +52,14 @@ const delta = extension.expectedCountsDelta;
 //      readiness reports, not who may call anything: a waived evaluation is
 //      'complete_with_waivers', a release package must opt in to accept it, and the
 //      two-person package approval is untouched.
+// Fact promotion additionally classifies a taxpayer identifier from its own value: a
+// 12-character RFC is a persona moral and is business identification, a 13-character RFC
+// is a persona fisica and embeds that person's date of birth. This narrows what may be
+// released rather than widening it, and adds no privilege, table or caller.
 // All run under the same canonical Kinde -> workspace -> tenant resolver and add no new
 // privilege or caller, and none is externally discovered, so the envelope is refreshed
 // deliberately rather than the eight actions being re-reviewed.
-const shipperDirectoryEnvelope = 'f40576204fb3a0f6991ad74706dd99a7ba0f15848a0171119d48c5edf32ffa2e';
+const shipperDirectoryEnvelope = '5003174d2861a032cba332d8c5e783bec17c7b8998321b9b720104777c360de3';
 const legacyAuthorizationOverrides = Object.fromEntries([
   'edge.shipper-directory-api.get_shipper',
   'edge.shipper-directory-api.list_shippers',

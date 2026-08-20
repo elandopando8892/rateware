@@ -1,3 +1,5 @@
+import { factSensitivity } from './provider-onboarding-taxpayer-classification.mjs';
+
 const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const FIELD_CODE=/^[a-z][a-z0-9_]{1,127}$/;
 
@@ -60,7 +62,16 @@ export async function promoteApprovedProviderEntityReviewFacts(
     if(!['accepted','corrected'].includes(field.field_status)) continue;
     const value=field.field_status==='corrected'?field.reviewer_value:field.proposed_value;
     if(value===null||value===undefined) throw new Error(`Approved field ${field.field_code} has no value.`);
-    candidates.push({...field,value,value_sha256:await sha256(value)});
+    // Sensitivity for a taxpayer identifier is decided from the value, not the field
+    // code: a persona moral RFC is business identification, a persona fisica RFC embeds
+    // the person's date of birth. Every other field keeps what the review assigned.
+    const classified=factSensitivity(field.field_code,value,field.sensitivity);
+    candidates.push({
+      ...field,value,value_sha256:await sha256(value),
+      sensitivity:classified.sensitivity,
+      sensitivity_reason:classified.reason,
+      taxpayer_kind:classified.taxpayer_kind,
+    });
   }
 
   let currents=[] as Array<Record<string,any>>;
@@ -131,6 +142,7 @@ export async function promoteApprovedProviderEntityReviewFacts(
       field_code:field.field_code,fact_value:field.value,fact_value_sha256:field.value_sha256,
       sensitivity:field.sensitivity,source_review_id:reviewId,
       source_review_field_id:field.id,source_promotion_id:promotionId,effective_at:now,
+      metadata:{sensitivity_reason:field.sensitivity_reason,taxpayer_kind:field.taxpayer_kind},
     }).select('id').single();
     if(inserted.error) throw inserted.error;
     if(current){
