@@ -586,6 +586,66 @@ assert.deepEqual([
 ]);
 assert.equal(roundFourEvidence.some((readiness) => Object.values(readiness.controls).some(Boolean)), false);
 
+const gmailTrueWithFalseCredentialsAlias = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    gmail: { rows: [{ status: "connected", configured: true, credentials_configured: false }] }
+  },
+  session: { token: "session-valid" }
+});
+const googleChatTrueWithFalseCredentialsAlias = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    google_chat: { rows: [{ status: "connected", configured: true, credentials_configured: false }] }
+  },
+  session: { token: "session-valid" }
+});
+const whatsappTrueWithFalseConfiguredAlias = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    whatsapp: {
+      rows: [{
+        status: "connected",
+        credentials_configured: true,
+        configured: false,
+        connection_validated: true
+      }]
+    }
+  },
+  session: { token: "session-valid" }
+});
+
+const roundFiveEvidence = [
+  gmailTrueWithFalseCredentialsAlias,
+  googleChatTrueWithFalseCredentialsAlias,
+  whatsappTrueWithFalseConfiguredAlias
+];
+assert.deepEqual([
+  {
+    family: "Gmail configured with contradictory credentials alias",
+    passed: evidenceStatus(gmailTrueWithFalseCredentialsAlias, "Gmail integration") === "not_observed"
+      && hasGap(gmailTrueWithFalseCredentialsAlias, "integration:gmail")
+  },
+  {
+    family: "Google Chat configured with contradictory credentials alias",
+    passed: evidenceStatus(googleChatTrueWithFalseCredentialsAlias, "Google Chat integration") === "not_observed"
+      && hasGap(googleChatTrueWithFalseCredentialsAlias, "integration:google_chat")
+  },
+  {
+    family: "WhatsApp credentials configured with contradictory configured alias",
+    passed: evidenceStatus(whatsappTrueWithFalseConfiguredAlias, "WhatsApp integration") === "not_observed"
+      && hasGap(whatsappTrueWithFalseConfiguredAlias, "integration:whatsapp")
+  }
+], [
+  { family: "Gmail configured with contradictory credentials alias", passed: true },
+  { family: "Google Chat configured with contradictory credentials alias", passed: true },
+  { family: "WhatsApp credentials configured with contradictory configured alias", passed: true }
+]);
+assert.equal(roundFiveEvidence.some((readiness) => Object.values(readiness.controls).some(Boolean)), false);
+
 assert.match(html, /data-workbench-view-button="governance"/);
 assert.match(html, /data-workbench-view-panel="governance"/);
 assert.match(html, /Readiness is not authorization/);

@@ -86,7 +86,16 @@ function integrationState(value, options = {}) {
   const row = rowCollection(ownDataProperty(record(value), "rows")).rows[0] || {};
   const status = textProperty(row, "status");
   const configured = ownDataProperty(row, options.configurationKey || "configured") === true;
+  const alternateConfigurationKey = options.alternateConfigurationKey;
+  const alternateConfigured = alternateConfigurationKey
+    ? ownDataProperty(row, alternateConfigurationKey)
+    : undefined;
+  const alternateConfigurationSupplied = alternateConfigurationKey
+    ? Reflect.ownKeys(row).includes(alternateConfigurationKey)
+    : false;
+  const configurationConsistent = !alternateConfigurationSupplied || alternateConfigured === configured;
   const connected = configured
+    && configurationConsistent
     && status === "connected"
     && (options.requiresValidation !== true || ownDataProperty(row, "connection_validated") === true);
   return {
@@ -129,10 +138,17 @@ export function buildAdminGovernanceReadiness(input = {}) {
     const observabilityEventContainer = ownDataProperty(observability, "events");
     const observabilityCollection = rowCollection(observabilityEventContainer);
     const observabilityEvents = observabilityCollection.rows;
-    const gmail = integrationState(ownDataProperty(settings, "gmail"), { configurationKey: "configured" });
-    const googleChat = integrationState(ownDataProperty(settings, "google_chat"), { configurationKey: "configured" });
+    const gmail = integrationState(ownDataProperty(settings, "gmail"), {
+      configurationKey: "configured",
+      alternateConfigurationKey: "credentials_configured"
+    });
+    const googleChat = integrationState(ownDataProperty(settings, "google_chat"), {
+      configurationKey: "configured",
+      alternateConfigurationKey: "credentials_configured"
+    });
     const whatsapp = integrationState(ownDataProperty(settings, "whatsapp"), {
       configurationKey: "credentials_configured",
+      alternateConfigurationKey: "configured",
       requiresValidation: true
     });
     const gaps = [];
