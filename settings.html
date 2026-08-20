@@ -70,6 +70,7 @@
 
           <nav class="module-workbench-nav" role="tablist" aria-label="Settings workbench">
             <button type="button" role="tab" aria-selected="true" data-workbench-view-button="access">Access</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-view-button="governance">Governance</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="profile" data-workbench-focus-target="#profile-full-name">Profile</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="organization" data-workbench-focus-target="#org-name">Organization</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="integrations">Integrations</button>
@@ -79,21 +80,62 @@
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="audit">Audit Log</button>
           </nav>
 
-          <section class="settings-grid" data-workbench-view-panel="access profile organization integrations observability onboarding catalogs">
+          <section class="settings-grid" data-workbench-view-panel="access governance profile organization integrations observability onboarding catalogs">
             <section class="workspace-panel" data-workbench-view-panel="access">
               <div class="section-heading compact">
                 <p class="eyebrow">Access model</p>
-                <h2>Full access now</h2>
+                <h2>Authenticated access</h2>
               </div>
               <div id="settings-access-card" class="settings-access-card">
-                <strong>Full access enabled</strong>
-                <p>All authenticated users can use every Rateware module. Role-based control stays parked until the workflow is stable.</p>
+                <strong>Role enforcement pending</strong>
+                <p>Authentication is active, but broad module access is not equivalent to governed authorization.</p>
               </div>
               <dl id="settings-session" class="diagnostic-list">
                 <div><dt>User</dt><dd>-</dd></div>
-                <div><dt>Mode</dt><dd>Full access</dd></div>
-                <div><dt>Roles</dt><dd>Disabled for MVP</dd></div>
+                <div><dt>Mode</dt><dd>Authenticated access</dd></div>
+                <div><dt>Roles</dt><dd>Not enforced</dd></div>
               </dl>
+            </section>
+
+            <section id="settings-governance-panel" class="workspace-panel settings-governance-panel" data-workbench-view-panel="governance">
+              <div class="section-heading compact split-heading">
+                <div>
+                  <p class="eyebrow">Administration readiness</p>
+                  <h2>Governance evidence</h2>
+                </div>
+                <span id="settings-governance-state" class="status-pill danger">Blocked</span>
+              </div>
+              <p id="settings-governance-status" class="status-message" role="status">Load Settings evidence to review governance readiness. This view cannot change users, roles, integrations, catalogs, secrets, or tenant enforcement.</p>
+              <div class="review-insight-grid bi-metrics" aria-label="Governance readiness summary">
+                <article><span>Evidence observed</span><strong id="settings-governance-evidence-count">0</strong></article>
+                <article><span>Blocking gaps</span><strong id="settings-governance-blocking-count">1</strong></article>
+                <article><span>Review gaps</span><strong id="settings-governance-review-count">0</strong></article>
+                <article><span>Mode</span><strong>Observation only</strong></article>
+              </div>
+              <div class="bi-analyst-grid">
+                <section>
+                  <h3>Control gaps</h3>
+                  <div id="settings-governance-gaps" class="bi-analyst-list">
+                    <article><strong>Evidence not loaded</strong><p>Governance remains blocked until the existing Settings response is available.</p></article>
+                  </div>
+                </section>
+                <section>
+                  <h3>Observed evidence</h3>
+                  <div id="settings-governance-evidence" class="bi-analyst-list">
+                    <article><strong>No evidence yet</strong><p>The panel uses only data already loaded by Settings.</p></article>
+                  </div>
+                </section>
+                <section>
+                  <h3>Execution boundary</h3>
+                  <div class="bi-analyst-list">
+                    <article>
+                      <strong>Readiness is not authorization</strong>
+                      <p>This view cannot provision users, assign roles, change connectors, publish catalog values, access secrets, or switch tenant enforcement.</p>
+                      <em>Human-controlled administration remains required</em>
+                    </article>
+                  </div>
+                </section>
+              </div>
             </section>
 
             <section class="workspace-panel" data-workbench-view-panel="profile">
