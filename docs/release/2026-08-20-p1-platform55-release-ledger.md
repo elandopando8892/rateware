@@ -46,8 +46,8 @@ The immutable initial queue above remains the historical starting record. The fo
 | Independent reviewer | `git diff --check c5200a39b175729ae2ed63c68d83f5f5bc76e674..f1d4170a3ea27967ca25af464579ba1341ec461c` | PASS — exit 0, no output |
 | Implementer | Expanded adversarial matrix | PASS — `24/24`, including both corrected proxy regressions and positive controls |
 | Implementer | `npm test` | PASS — all product suites; identity `14/14`; runtime enforcement `5/5` |
-| Implementer | `npm run validate:action-contracts` | PASS — `0` errors, `1` historical warning, `12` informational findings |
-| Implementer | `npm audit` | PASS — `0` vulnerabilities |
+| Implementer | `npm run validate:action-contract` | PASS — `0` errors, `1` historical warning, `12` informational findings |
+| Implementer | `npm audit --audit-level=low` | PASS — `0` vulnerabilities |
 
 Both independently reported proxy findings are **ADDRESSED**. Supported plain JSON objects and normal arrays remained positive controls. The validator warning remains the historical `DECLARATION_PATH_MISSING declaration.edge.whatsapp-healthcheck` warning and was not introduced by the candidate.
 

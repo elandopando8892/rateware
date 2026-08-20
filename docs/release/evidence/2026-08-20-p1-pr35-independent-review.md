@@ -36,8 +36,8 @@ The following broader gates passed on the same candidate in the implementer work
 | Command | Result |
 | --- | --- |
 | `npm test` | PASS — all product suites passed; identity matrix `14/14`; runtime enforcement `5/5` |
-| `npm run validate:action-contracts` | PASS — `0` errors, `1` historical warning, `12` informational findings; contract `397`, discovered `395`, edge `291`, postgres `104` |
-| `npm audit` | PASS — `0` vulnerabilities |
+| `npm run validate:action-contract` | PASS — `0` errors, `1` historical warning, `12` informational findings; contract `397`, discovered `395`, edge `291`, postgres `104` |
+| `npm audit --audit-level=low` | PASS — `0` vulnerabilities |
 
 The single validator warning was the historical `DECLARATION_PATH_MISSING declaration.edge.whatsapp-healthcheck` warning: `Declaration path no longer exists.` It was not introduced by this candidate.
 
