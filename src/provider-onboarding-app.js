@@ -9,6 +9,7 @@
 // this workflow consumes from, not part of the standalone onboarding app.
 import { requirePrivatePage } from './auth.js';
 import { callRatewareFunction } from './rateware-api.js';
+import { listenForCase, withCase } from './osp-case-context.js';
 
 const SURFACES = [
   ['Intake', [
@@ -33,6 +34,10 @@ const nav = document.getElementById('osp-nav');
 const frame = document.getElementById('osp-frame');
 const titleNode = document.getElementById('osp-title');
 const mailboxNode = document.getElementById('osp-mailbox');
+const caseNode = document.getElementById('osp-case');
+
+/** The case the operator is working. Carried into every surface the shell opens. */
+let activeCase = null;
 
 /** Which surface a queue sends an operator to, so a count is also a way in. */
 const COUNT_TARGETS = [
@@ -106,15 +111,44 @@ async function renderCounts() {
 function embeddedUrl(path) {
   const url = new URL(path, window.location.href);
   url.searchParams.set('embed', '1');
-  return `${url.pathname}${url.search}`;
+  return withCase(`${url.pathname}${url.search}`, activeCase?.caseId);
+}
+
+/**
+ * Shows what the operator is working on, so it survives moving between surfaces.
+ * A surface that does not understand the case simply ignores the parameter.
+ */
+function renderCase() {
+  if (!caseNode) return;
+  caseNode.hidden = !activeCase;
+  if (!activeCase) return;
+  caseNode.querySelector('b').textContent = activeCase.label || 'Selected case';
+}
+
+function setCase(next) {
+  const changed = next?.caseId !== activeCase?.caseId;
+  activeCase = next;
+  renderCase();
+  if (!changed || !frame) return;
+  // Reload the current surface so it picks the case up, and keep the address bar
+  // honest: a deep link should reopen the same surface on the same case.
+  const item = BY_ID.get(frame.getAttribute('data-surface'));
+  if (item) frame.src = embeddedUrl(item[2]);
+  syncLocation(frame.getAttribute('data-surface'));
+}
+
+function syncLocation(surfaceId) {
+  const params = new URLSearchParams();
+  if (surfaceId) params.set('surface', surfaceId);
+  if (activeCase?.caseId) params.set('case', activeCase.caseId);
+  window.history.replaceState(null, '', `?${params}`);
 }
 
 function select(id) {
   const item = BY_ID.get(id);
   if (!item) return;
   const [, label, path] = item;
-  // Reflect the surface in the address bar so a deep link reopens the same screen.
-  window.history.replaceState(null, '', `?surface=${encodeURIComponent(id)}`);
+  syncLocation(id);
   if (titleNode) titleNode.textContent = label;
   if (frame && frame.getAttribute('data-surface') !== id) {
     frame.src = embeddedUrl(path);
@@ -139,9 +173,19 @@ function renderNav() {
 
 await requirePrivatePage();
 renderNav();
-const requested = new URLSearchParams(window.location.search).get('surface');
+const params = new URLSearchParams(window.location.search);
+// Adopted before the first select() so the opening frame already carries the case,
+// rather than loading once without it and immediately reloading with it.
+const initialCase = params.get('case');
+if (initialCase) { activeCase = { caseId: initialCase, label: '' }; renderCase(); }
+const requested = params.get('surface');
 select(BY_ID.has(requested) ? requested : DEFAULT_SURFACE);
 // Both are additive: the shell is usable before either resolves, and stays usable if
 // either fails.
 renderMailbox();
 renderCounts();
+
+// Only this shell's own frame may set the working case, and only with a well-formed
+// payload. See osp-case-context.js.
+listenForCase(({ caseId, label }) => setCase({ caseId, label }), () => frame?.contentWindow);
+caseNode?.querySelector('button')?.addEventListener('click', () => setCase(null));

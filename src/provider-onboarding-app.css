@@ -42,6 +42,16 @@
 .osp-main { display: flex; flex-direction: column; min-width: 0; }
 .osp-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); background: var(--panel); padding: 9px 16px; }
 .osp-bar h1 { margin: 0; font-size: 1.05rem; }
+/* What the operator is working on, carried between surfaces. Sits beside the title so
+   it reads as context for the screen rather than as a control. */
+.osp-case { display: flex; align-items: center; gap: 7px; margin-right: auto; padding: 4px 6px 4px 10px;
+  border: 1px solid var(--brand-border); border-radius: var(--radius-pill); background: var(--brand-tint); min-width: 0; }
+.osp-case[hidden] { display: none; }
+.osp-case span { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--brand-strong); flex: none; }
+.osp-case b { font-size: 0.78rem; color: var(--brand-press); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.osp-case button { flex: none; width: 18px; height: 18px; border: 0; border-radius: 999px; background: none;
+  color: var(--brand-strong); font: inherit; font-size: 0.85rem; line-height: 1; cursor: pointer; }
+.osp-case button:hover { background: var(--brand-tint-strong); }
 .osp-bar .auth-strip { display: flex; align-items: center; gap: 10px; }
 .osp-frame { flex: 1; width: 100%; border: 0; background: var(--bg); }
 
