@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const IDS = ["P0", "P1", "P2", "P3", "P4", "P5"];
@@ -8,9 +8,14 @@ const GATES = [[10, "scope"], [25, "evidence_plan"], [55, "implementation"], [70
 
 const isFileEvidence = (value) => {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return false;
+  if (/^(?:node|npm|npx|git|pnpm|yarn|deno|bun|powershell|pwsh)\s/i.test(value)) return false;
   if (isAbsolute(value) || /^\.{1,2}[\\/]/.test(value) || /^(?:docs|tests|tools|supabase|src|public|\.github|\.superpowers)[\\/]/i.test(value)) return true;
-  if (/\s/.test(value)) return false;
-  return /[\\/].+\.[^\\/]+$/.test(value) || /^[^\\/]+\.[a-z0-9]+$/i.test(value);
+  return /[\\/].+\.[^\\/]+$/.test(value) || /\.[a-z0-9]+$/i.test(value);
+};
+
+const isInside = (root, candidate) => {
+  const path = relative(root, candidate);
+  return path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
 };
 
 const validateEvidence = (sprint, rootDir) => {
@@ -20,8 +25,13 @@ const validateEvidence = (sprint, rootDir) => {
     }
     for (const entry of entries) {
       const value = entry.trim();
-      if (isFileEvidence(value) && !existsSync(resolve(rootDir, value))) {
-        throw new Error(`${sprint.id} ${key} evidence file does not exist: ${value}`);
+      if (isFileEvidence(value)) {
+        const root = realpathSync(resolve(rootDir));
+        const candidate = resolve(root, value);
+        if (!isInside(root, candidate)) throw new Error(`${sprint.id} ${key} evidence is outside the evaluated checkout: ${value}`);
+        if (!existsSync(candidate)) throw new Error(`${sprint.id} ${key} evidence file does not exist: ${value}`);
+        if (!statSync(candidate).isFile()) throw new Error(`${sprint.id} ${key} evidence must be a regular file: ${value}`);
+        if (!isInside(root, realpathSync(candidate))) throw new Error(`${sprint.id} ${key} evidence is outside the evaluated checkout: ${value}`);
       }
     }
   }

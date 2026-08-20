@@ -155,12 +155,38 @@ test("rejects empty, whitespace-only, non-string, and missing closure evidence",
 test("rejects file-backed evidence that does not exist in the evaluated checkout", () => {
   for (const path of [
     "docs/release/evidence/does-not-exist.md",
-    "docs/release/evidence/does not exist.md"
+    "docs/release/evidence/does not exist.md",
+    "missing root evidence.md"
   ]) {
     const invalid = structuredClone(ledger);
     invalid.sprints[0].evidence.scope = [path];
     assert.throws(() => validateLedger(invalid), /P0.*scope.*does not exist/i, path);
   }
+});
+
+test("rejects directories as file-backed evidence", () => {
+  const invalidDirectory = structuredClone(ledger);
+  invalidDirectory.sprints[0].evidence.scope = ["docs/release"];
+  assert.throws(() => validateLedger(invalidDirectory), /P0.*scope.*regular file/i);
+});
+
+test("rejects absolute evidence paths outside the evaluated checkout", () => {
+  const invalidOutside = structuredClone(ledger);
+  invalidOutside.sprints[0].evidence.scope = ["C:\\Windows\\win.ini"];
+  assert.throws(() => validateLedger(invalidOutside), /P0.*scope.*outside.*checkout/i);
+});
+
+test("accepts descriptions, commands, and in-checkout evidence files with spaces", () => {
+  const descriptions = structuredClone(ledger);
+  descriptions.sprints[0].evidence.scope = [
+    "release scope approved",
+    "node tests/production-readiness-report.test.mjs"
+  ];
+  validateLedger(descriptions);
+
+  const fileWithSpaces = structuredClone(ledger);
+  fileWithSpaces.sprints[0].evidence.scope = ["output/import guide-preview.png"];
+  validateLedger(fileWithSpaces);
 });
 
 test("accepts the current P0=70 ledger shape and computes 65.8 percent", () => {
