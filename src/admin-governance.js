@@ -32,12 +32,53 @@ function textProperty(value, key) {
   return typeof property === "string" ? property.trim() : "";
 }
 
-function rows(value) {
-  return Array.isArray(value) ? value.filter(isRecord) : [];
+function rowCollection(value) {
+  if (!Array.isArray(value)) return { valid: false, rows: [] };
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (!lengthDescriptor || !Object.prototype.hasOwnProperty.call(lengthDescriptor, "value")) {
+    return { valid: false, rows: [] };
+  }
+  const length = lengthDescriptor.value;
+  if (!Number.isSafeInteger(length) || length < 0 || Reflect.get(value, "length", value) !== length) {
+    return { valid: false, rows: [] };
+  }
+  const ownKeys = Reflect.ownKeys(value);
+  const result = [];
+  for (let index = 0; index < length; index += 1) {
+    const key = String(index);
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor
+      || !Object.prototype.hasOwnProperty.call(descriptor, "value")
+      || !ownKeys.includes(key)
+      || !Object.is(Reflect.get(value, key, value), descriptor.value)) {
+      return { valid: false, rows: [] };
+    }
+    if (isRecord(descriptor.value)) result.push(descriptor.value);
+  }
+  return { valid: true, rows: result };
+}
+
+function validAuditTimestamp(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match) return false;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, , zone] = match;
+  const [year, month, day, hour, minute, second] = [yearText, monthText, dayText, hourText, minuteText, secondText].map(Number);
+  const calendar = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  if (calendar.getUTCFullYear() !== year
+    || calendar.getUTCMonth() !== month - 1
+    || calendar.getUTCDate() !== day
+    || calendar.getUTCHours() !== hour
+    || calendar.getUTCMinutes() !== minute
+    || calendar.getUTCSeconds() !== second) return false;
+  if (zone !== "Z") {
+    const [offsetHour, offsetMinute] = zone.slice(1).split(":").map(Number);
+    if (offsetHour > 23 || offsetMinute > 59) return false;
+  }
+  return Number.isFinite(Date.parse(value));
 }
 
 function integrationState(value, options = {}) {
-  const row = rows(ownDataProperty(record(value), "rows"))[0] || {};
+  const row = rowCollection(ownDataProperty(record(value), "rows")).rows[0] || {};
   const status = textProperty(row, "status");
   const configured = ownDataProperty(row, "configured") === true
     || ownDataProperty(row, "credentials_configured") === true;
@@ -66,16 +107,19 @@ export function buildAdminGovernanceReadiness(input = {}) {
     const session = recordProperty(input, "session");
     const organization = recordProperty(settings, "organization");
     const access = recordProperty(settings, "access");
-    const audit = rows(ownDataProperty(settings, "audit")).filter((row) => {
+    const auditCollection = rowCollection(ownDataProperty(settings, "audit"));
+    const audit = auditCollection.rows.filter((row) => {
       const action = textProperty(row, "action");
       const createdAt = textProperty(row, "created_at");
-      return Boolean(action && createdAt && Number.isFinite(Date.parse(createdAt)));
+      return Boolean(action && createdAt && validAuditTimestamp(createdAt));
     });
     const catalogValueContainer = ownDataProperty(input, "catalogValues");
-    const catalogValues = rows(catalogValueContainer);
+    const catalogCollection = rowCollection(catalogValueContainer);
+    const catalogValues = catalogCollection.rows;
     const observability = recordProperty(input, "observability");
     const observabilityEventContainer = ownDataProperty(observability, "events");
-    const observabilityEvents = rows(observabilityEventContainer);
+    const observabilityCollection = rowCollection(observabilityEventContainer);
+    const observabilityEvents = observabilityCollection.rows;
     const gmail = integrationState(ownDataProperty(settings, "gmail"));
     const googleChat = integrationState(ownDataProperty(settings, "google_chat"));
     const whatsapp = integrationState(ownDataProperty(settings, "whatsapp"), { requiresValidation: true });
@@ -116,14 +160,14 @@ export function buildAdminGovernanceReadiness(input = {}) {
     if (!audit.length) addGap("audit:evidence_missing", "review", "No recent administration audit evidence is available in this session.");
 
     const observabilityLoaded = ownDataProperty(input, "observabilityLoaded") === true
-      && Array.isArray(observabilityEventContainer);
+      && observabilityCollection.valid;
     addEvidence("Operational observability", observabilityLoaded ? "observed" : "not_observed", observabilityLoaded
       ? `${observabilityEvents.length} recent operational event(s) were loaded.`
       : "Operational events have not been loaded in this session.");
     if (!observabilityLoaded) addGap("observability:not_loaded", "review", "Load operational evidence before treating the readiness view as current.");
 
     const catalogLoaded = ownDataProperty(input, "catalogLoaded") === true
-      && Array.isArray(catalogValueContainer);
+      && catalogCollection.valid;
     addEvidence("Master-data catalog", catalogLoaded ? "observed" : "not_observed", catalogLoaded
       ? `${catalogValues.filter((row) => ownDataProperty(row, "active") !== false).length} active catalog value(s) were loaded.`
       : "Catalog evidence has not been loaded in this session.");

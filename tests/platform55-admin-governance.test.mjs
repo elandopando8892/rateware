@@ -231,6 +231,144 @@ assert.deepEqual([
   { family: "explicitly unconfigured Gmail integration", passed: true }
 ]);
 
+const connectedGmailRow = { status: "connected", configured: true };
+const validAuditRow = { action: "settings.reviewed", created_at: generatedAt };
+const inheritedElementArray = (element) => {
+  const prototype = Object.create(Array.prototype);
+  Object.defineProperty(prototype, "0", {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value: element
+  });
+  const value = [];
+  Object.setPrototypeOf(value, prototype);
+  value.length = 1;
+  return value;
+};
+
+const accessorConnectorRows = [];
+Object.defineProperty(accessorConnectorRows, "0", {
+  configurable: true,
+  enumerable: true,
+  get: () => connectedGmailRow
+});
+const accessorConnectorEvidence = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: { ...roleEnforcedSettings, gmail: { rows: accessorConnectorRows } },
+  session: { token: "session-valid" }
+});
+
+const inheritedAuditEvidence = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: { ...roleEnforcedSettings, audit: inheritedElementArray(validAuditRow) },
+  session: { token: "session-valid" }
+});
+
+const inheritedConnectorEvidence = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: { ...roleEnforcedSettings, gmail: { rows: inheritedElementArray(connectedGmailRow) } },
+  session: { token: "session-valid" }
+});
+
+const inheritedCatalogEvidence = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: roleEnforcedSettings,
+  session: { token: "session-valid" },
+  catalogValues: inheritedElementArray({ active: true })
+});
+
+const proxyConnectorRows = new Proxy([], {
+  get(target, key, receiver) {
+    if (key === "length") return 1;
+    if (key === "0") return connectedGmailRow;
+    return Reflect.get(target, key, receiver);
+  },
+  has(target, key) {
+    if (key === "0") return true;
+    return Reflect.has(target, key);
+  }
+});
+const proxyConnectorEvidence = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: { ...roleEnforcedSettings, gmail: { rows: proxyConnectorRows } },
+  session: { token: "session-valid" }
+});
+
+const bareNumberTimestampEvidence = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    audit: [{ action: "settings.reviewed", created_at: "1" }]
+  },
+  session: { token: "session-valid" }
+});
+
+const impossibleTimestampEvidence = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...roleEnforcedSettings,
+    audit: [{ action: "settings.reviewed", created_at: "2026-02-30T00:00:00.000Z" }]
+  },
+  session: { token: "session-valid" }
+});
+
+const roundThreeEvidence = [
+  accessorConnectorEvidence,
+  inheritedAuditEvidence,
+  inheritedConnectorEvidence,
+  inheritedCatalogEvidence,
+  proxyConnectorEvidence,
+  bareNumberTimestampEvidence,
+  impossibleTimestampEvidence
+];
+assert.deepEqual([
+  {
+    family: "connector rows[0] accessor",
+    passed: evidenceStatus(accessorConnectorEvidence, "Gmail integration") === "not_observed"
+      && hasGap(accessorConnectorEvidence, "integration:gmail")
+  },
+  {
+    family: "inherited audit[0]",
+    passed: evidenceStatus(inheritedAuditEvidence, "Audit trail") === "not_observed"
+      && hasGap(inheritedAuditEvidence, "audit:evidence_missing")
+  },
+  {
+    family: "inherited Gmail rows[0]",
+    passed: evidenceStatus(inheritedConnectorEvidence, "Gmail integration") === "not_observed"
+      && hasGap(inheritedConnectorEvidence, "integration:gmail")
+  },
+  {
+    family: "inherited catalogValues[0]",
+    passed: evidenceStatus(inheritedCatalogEvidence, "Master-data catalog") === "not_observed"
+      && hasGap(inheritedCatalogEvidence, "catalog:not_loaded")
+  },
+  {
+    family: "Proxy array fabricating rows[0] through has/get",
+    passed: evidenceStatus(proxyConnectorEvidence, "Gmail integration") === "not_observed"
+      && hasGap(proxyConnectorEvidence, "integration:gmail")
+  },
+  {
+    family: "bare numeric audit timestamp",
+    passed: evidenceStatus(bareNumberTimestampEvidence, "Audit trail") === "not_observed"
+      && hasGap(bareNumberTimestampEvidence, "audit:evidence_missing")
+  },
+  {
+    family: "impossible calendar audit timestamp",
+    passed: evidenceStatus(impossibleTimestampEvidence, "Audit trail") === "not_observed"
+      && hasGap(impossibleTimestampEvidence, "audit:evidence_missing")
+  }
+], [
+  { family: "connector rows[0] accessor", passed: true },
+  { family: "inherited audit[0]", passed: true },
+  { family: "inherited Gmail rows[0]", passed: true },
+  { family: "inherited catalogValues[0]", passed: true },
+  { family: "Proxy array fabricating rows[0] through has/get", passed: true },
+  { family: "bare numeric audit timestamp", passed: true },
+  { family: "impossible calendar audit timestamp", passed: true }
+]);
+assert.equal(roundThreeEvidence.some((readiness) => Object.values(readiness.controls).some(Boolean)), false);
+
 assert.match(html, /data-workbench-view-button="governance"/);
 assert.match(html, /data-workbench-view-panel="governance"/);
 assert.match(html, /Readiness is not authorization/);
