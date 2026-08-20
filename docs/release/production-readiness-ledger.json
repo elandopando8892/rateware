@@ -5,7 +5,7 @@
     {
       "id": "P0",
       "weight": 4,
-      "progress": 70,
+      "progress": 100,
       "evidence": {
         "scope": [
           "docs/superpowers/specs/2026-08-19-rateware-production-closure-design.md",
@@ -21,7 +21,25 @@
           "node tests/production-readiness-report.test.mjs",
           "npm run release:progress",
           "git diff --check origin/main...HEAD"
+        ],
+        "independent_review": [
+          "docs/release/evidence/2026-08-19-p0-independent-review.md"
+        ],
+        "preview_smoke": [
+          "P0 read-only inventories verified without creating a preview"
+        ],
+        "deployment": [
+          "P0 documentation and tooling require no application deployment"
+        ],
+        "production_smoke": [
+          "P0 production inventory verified read-only"
+        ],
+        "monitoring": [
+          "P0 completed without production mutation"
         ]
+      },
+      "verdicts": {
+        "independent_review": "GO"
       }
     },
     { "id": "P1", "weight": 9, "progress": 0, "evidence": {} },
