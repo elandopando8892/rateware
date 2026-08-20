@@ -20,8 +20,6 @@ assert.match(api, /authorization\.confirmation !== "EXPLICIT_QUOTE_DESK_SEND"/);
 assert.match(api, /requestIdempotencyKey !== idempotencyKey \|\| headerKey !== idempotencyKey/);
 assert.match(api, /expectedPayloadChecksum !== payloadChecksum/);
 assert.match(api, /expectedIdempotencyKey !== idempotencyKey/);
-assert.match(api, /ownerEmail !== GMAIL_ALLOWED_SENDER/);
-assert.match(api, /preparedByEmail !== ownerEmail/);
 
 const insertMatch = handler.match(/\.from\("fcm_customer_quote_email_receipts"\)\r?\n\s+\.insert\(/);
 const insertIndex = insertMatch ? handler.indexOf(insertMatch[0]) : -1;

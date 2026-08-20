@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
+import { resolveOAuthReturnTarget } from "../_shared/oauth-return-policy.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import type { WorkspaceUser } from "../_shared/workspace.ts";
 import { handleGrowthAction, isGrowthAction } from "./growth.ts";
@@ -10,6 +11,8 @@ const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const VENDOR_LOGOS_BUCKET = "vendor-logos";
 const GMAIL_ALLOWED_SENDER = (Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@heymarksman.com").trim().toLowerCase();
+const RATEWARE_APP_ORIGIN = (Deno.env.get("RATEWARE_APP_ORIGIN") || "https://rateware.vercel.app").replace(/\/$/, "");
+const GMAIL_OAUTH_RETURN_ORIGINS = Deno.env.get("GMAIL_OAUTH_RETURN_ORIGINS");
 const FCM_CUSTOMER_QUOTE_EMAIL_CONTRACT_VERSION = "fcm.rateware-gmail-send.v1";
 const FCM_CUSTOMER_QUOTE_EMAIL_DRAFT_VERSION = "fcm.rateware-gmail-draft.v1";
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
@@ -15631,7 +15634,16 @@ async function startGoogleChatOauth(
   }
 
   const state = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-  const redirectAfter = cleanText(input.redirect_after) || "settings.html?view=integrations&chat=connected";
+  let redirectAfter: string;
+  try {
+    redirectAfter = resolveOAuthReturnTarget(cleanText(input.redirect_after), {
+      defaultOrigin: RATEWARE_APP_ORIGIN,
+      configuredOrigins: GMAIL_OAUTH_RETURN_ORIGINS,
+      fallbackPath: "settings.html?view=integrations&chat=connected"
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "OAuth return URL is not allowed.", status: 400 };
+  }
   const stateResult = await supabase.from("google_chat_oauth_states").insert({
     state,
     owner_user_id: user.owner_user_id,
@@ -15710,7 +15722,16 @@ async function startGmailOauth(
   }
 
   const state = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-  const redirectAfter = cleanText(input.redirect_after) || "settings.html?gmail=connected";
+  let redirectAfter: string;
+  try {
+    redirectAfter = resolveOAuthReturnTarget(cleanText(input.redirect_after), {
+      defaultOrigin: RATEWARE_APP_ORIGIN,
+      configuredOrigins: GMAIL_OAUTH_RETURN_ORIGINS,
+      fallbackPath: "settings.html?gmail=connected"
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "OAuth return URL is not allowed.", status: 400 };
+  }
   const stateResult = await supabase.from("gmail_oauth_states").insert({
     state,
     owner_user_id: user.owner_user_id,
@@ -16770,7 +16791,7 @@ async function gmailConnectionIdentity(
 ) {
   const result = await supabase
     .from("gmail_mailbox_connections")
-    .select("id,mailbox_email,provider,status")
+    .select("id,owner_email,mailbox_email,provider,status")
     .eq("owner_email", user.owner_email)
     .eq("mailbox_email", senderEmail.toLowerCase())
     .maybeSingle();
@@ -16795,12 +16816,24 @@ async function fcmSha256Hex(value: string) {
 export async function validateFcmCustomerQuoteEmailPackage(
   user: RatewareUser,
   input: Record<string, unknown>,
-  headerIdempotencyKey: string | null
+  headerIdempotencyKey: string | null,
+  identity: {
+    gmailConnection?: Record<string, unknown> | null;
+    requireConnectedMailbox?: boolean;
+  } = {}
 ) {
-  const ownerEmail = normalizeEmail(user.owner_email);
-  if (!ownerEmail || ownerEmail !== GMAIL_ALLOWED_SENDER) {
-    throw Object.assign(new Error(`Only ${GMAIL_ALLOWED_SENDER} is allowed to deliver customer quote email.`), { code: "403" });
+  const ownerEmail = cleanText(user.owner_email)?.toLowerCase() || null;
+  if (!ownerEmail) {
+    throw Object.assign(new Error("A tenant owner identity is required to deliver customer quote email."), { code: "403" });
   }
+  const runtimeUser = user as RatewareUser & Partial<RuntimeWorkspaceUser>;
+  const canonicalTenantId = cleanText(runtimeUser.canonical_tenant_id);
+  const legacyOrganizationId = cleanText(user.organization_id);
+  const receiptOrganizationId = UUID_PATTERN.test(canonicalTenantId || "")
+    ? canonicalTenantId
+    : UUID_PATTERN.test(legacyOrganizationId || "")
+      ? legacyOrganizationId
+      : null;
 
   const packageInput = objectRecord(input.package);
   const contractVersion = requiredFcmString(packageInput.contractVersion, "FCM delivery contract version", 80);
@@ -16862,8 +16895,25 @@ export async function validateFcmCustomerQuoteEmailPackage(
   const text = requiredFcmString(message.text, "Customer quote email text", 100_000, true);
   const preparedBy = objectRecord(prepared.preparedBy);
   const preparedByEmail = normalizeEmail(requiredFcmString(preparedBy.email, "Prepared-by email", 320));
-  if (!preparedByEmail || preparedByEmail !== ownerEmail) {
-    throw Object.assign(new Error("The authenticated Rateware user must match the FCM prepared-by email."), { code: "403" });
+  if (!preparedByEmail || preparedByEmail !== GMAIL_ALLOWED_SENDER) {
+    throw Object.assign(new Error(`The FCM prepared-by email must use the authorized Gmail sender ${GMAIL_ALLOWED_SENDER}.`), { code: "403" });
+  }
+  const gmailConnection = objectRecord(identity.gmailConnection);
+  const connectedOwnerEmail = cleanText(gmailConnection.owner_email)?.toLowerCase() || null;
+  const connectedMailboxEmail = normalizeEmail(gmailConnection.mailbox_email);
+  if (
+    identity.requireConnectedMailbox !== false &&
+    (
+    connectedOwnerEmail !== ownerEmail ||
+    connectedMailboxEmail !== GMAIL_ALLOWED_SENDER ||
+    cleanText(gmailConnection.provider) !== "gmail" ||
+    cleanText(gmailConnection.status) !== "connected"
+    )
+  ) {
+    throw Object.assign(
+      new Error(`A connected ${GMAIL_ALLOWED_SENDER} Gmail mailbox for this tenant is required.`),
+      { code: "403" }
+    );
   }
 
   const expectedPayloadChecksum = await fcmSha256Hex(JSON.stringify({
@@ -16884,6 +16934,7 @@ export async function validateFcmCustomerQuoteEmailPackage(
 
   return {
     ownerEmail,
+    receiptOrganizationId,
     contractVersion,
     idempotencyKey,
     sourceOrganizationId,
@@ -16932,13 +16983,74 @@ function fcmReceiptBlocked(receipt: Record<string, unknown>) {
   };
 }
 
+export function reconcileFcmCustomerQuoteEmailReceipt(
+  receipt: Record<string, unknown> | null
+) {
+  if (!receipt) {
+    return {
+      reconciled: true,
+      outcome: "NOT_ATTEMPTED",
+      retryable: true,
+      receipt_id: null,
+      provider_message_id: null,
+      provider_thread_id: null,
+      sent_at: null,
+      error: null
+    };
+  }
+
+  const status = cleanText(receipt.status) || "delivery_unknown";
+  const outcome = status === "sent"
+    ? "SENT"
+    : status === "failed"
+      ? "FAILED"
+      : "DELIVERY_UNKNOWN";
+  return {
+    reconciled: true,
+    outcome,
+    retryable: outcome === "FAILED",
+    receipt_id: cleanText(receipt.id),
+    provider_message_id: cleanText(receipt.provider_message_id),
+    provider_thread_id: cleanText(receipt.provider_thread_id),
+    sent_at: cleanText(receipt.sent_at),
+    error: cleanText(receipt.error)
+  };
+}
+
+async function reconcileFcmCustomerQuoteEmail(
+  supabase: RatewareSupabaseClient,
+  user: RatewareUser,
+  input: Record<string, unknown>,
+  headerIdempotencyKey: string | null
+) {
+  const delivery = await validateFcmCustomerQuoteEmailPackage(user, input, headerIdempotencyKey, {
+    requireConnectedMailbox: false
+  });
+  const receiptResult = await supabase
+    .from("fcm_customer_quote_email_receipts")
+    .select("*")
+    .eq("owner_email", delivery.ownerEmail)
+    .eq("idempotency_key", delivery.idempotencyKey)
+    .maybeSingle();
+  if (receiptResult.error) throw receiptResult.error;
+  return {
+    status: 200,
+    body: reconcileFcmCustomerQuoteEmailReceipt(
+      (receiptResult.data || null) as Record<string, unknown> | null
+    )
+  };
+}
+
 async function sendFcmCustomerQuoteEmail(
   supabase: RatewareSupabaseClient,
   user: RatewareUser,
   input: Record<string, unknown>,
   headerIdempotencyKey: string | null
 ) {
-  const delivery = await validateFcmCustomerQuoteEmailPackage(user, input, headerIdempotencyKey);
+  const gmailConnection = await gmailConnectionIdentity(supabase, user, GMAIL_ALLOWED_SENDER);
+  const delivery = await validateFcmCustomerQuoteEmailPackage(user, input, headerIdempotencyKey, {
+    gmailConnection
+  });
   const existingResult = await supabase
     .from("fcm_customer_quote_email_receipts")
     .select("*")
@@ -17004,7 +17116,7 @@ async function sendFcmCustomerQuoteEmail(
           prepared_by_email: delivery.preparedByEmail,
           template: { id: delivery.templateId, name: delivery.templateName }
         }
-      }, user))
+      }, { ...user, organization_id: delivery.receiptOrganizationId }))
       .select("*")
       .single();
     if (insertResult.error) {
@@ -17025,10 +17137,9 @@ async function sendFcmCustomerQuoteEmail(
 
   const receiptId = requiredFcmString(receipt.id, "Rateware delivery receipt id", 80);
   let accessToken: string;
-  let connection: Record<string, unknown> | null;
+  const connection = gmailConnection;
   try {
     accessToken = await gmailAccessToken(supabase, user, GMAIL_ALLOWED_SENDER);
-    connection = await gmailConnectionIdentity(supabase, user, GMAIL_ALLOWED_SENDER);
   } catch (error) {
     const failure = safeOperationalError(error);
     await supabase
@@ -28937,6 +29048,16 @@ Deno.serve(async (request) => {
 
     if (body.action === "send_fcm_customer_quote_email") {
       const result = await sendFcmCustomerQuoteEmail(
+        supabase,
+        user,
+        body,
+        request.headers.get("x-idempotency-key")
+      );
+      return jsonResponse(result.body, result.status);
+    }
+
+    if (body.action === "reconcile_fcm_customer_quote_email") {
+      const result = await reconcileFcmCustomerQuoteEmail(
         supabase,
         user,
         body,

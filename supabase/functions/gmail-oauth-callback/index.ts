@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/kinde.ts";
+import { resolveOAuthReturnTarget } from "../_shared/oauth-return-policy.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -9,6 +10,7 @@ const GMAIL_TOKEN_ENCRYPTION_KEY = Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY");
 const GMAIL_ALLOWED_SENDER = (Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@heymarksman.com").trim().toLowerCase();
 const GOOGLE_CHAT_ALLOWED_ACCOUNT = (Deno.env.get("GOOGLE_CHAT_ALLOWED_ACCOUNT") || GMAIL_ALLOWED_SENDER).trim().toLowerCase();
 const RATEWARE_APP_ORIGIN = (Deno.env.get("RATEWARE_APP_ORIGIN") || "https://rateware.vercel.app").replace(/\/$/, "");
+const GMAIL_OAUTH_RETURN_ORIGINS = Deno.env.get("GMAIL_OAUTH_RETURN_ORIGINS");
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -23,7 +25,21 @@ function redirectUri() {
 }
 
 function redirectTo(path = "settings.html", params: Record<string, string> = {}) {
-  const target = new URL(path || "settings.html", `${RATEWARE_APP_ORIGIN}/`);
+  let resolvedTarget: string;
+  try {
+    resolvedTarget = resolveOAuthReturnTarget(path, {
+      defaultOrigin: RATEWARE_APP_ORIGIN,
+      configuredOrigins: GMAIL_OAUTH_RETURN_ORIGINS,
+      fallbackPath: "settings.html"
+    });
+  } catch {
+    resolvedTarget = resolveOAuthReturnTarget("settings.html", {
+      defaultOrigin: RATEWARE_APP_ORIGIN,
+      configuredOrigins: GMAIL_OAUTH_RETURN_ORIGINS,
+      fallbackPath: "settings.html"
+    });
+  }
+  const target = new URL(resolvedTarget);
   for (const [key, value] of Object.entries(params)) target.searchParams.set(key, value);
   return new Response(null, {
     status: 302,
