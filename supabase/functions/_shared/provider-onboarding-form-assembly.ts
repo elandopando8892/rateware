@@ -145,6 +145,9 @@ export type ProviderOnboardingFormAssembler={
   }):Promise<{bucket:string;path:string;sha256:string;sizeBytes:number}>;
 };
 
+/** Transforms that actually mask the value. Only these may consume a redacted item. */
+const REDACTING_TRANSFORMS=new Set(['mask_all','mask_all_but_last4']);
+
 function transform(value:any,code:string){
   if(code==='uppercase') return String(value).toUpperCase();
   if(code==='lowercase') return String(value).toLowerCase();
@@ -152,6 +155,14 @@ function transform(value:any,code:string){
     const date=String(value||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new Error('Mapped date is not ISO.');return date;
   }
   if(code==='boolean_yes_no') return value===true?'Yes':value===false?'No':String(value);
+  if(code==='mask_all') return '•'.repeat(Math.min(String(value??'').length,32));
+  if(code==='mask_all_but_last4'){
+    const text=String(value??'');
+    // Fewer than five characters cannot be partially masked without revealing most of
+    // it, so the whole value is masked instead of silently passing through.
+    if(text.length<5) return '•'.repeat(text.length);
+    return '•'.repeat(text.length-4)+text.slice(-4);
+  }
   return value;
 }
 
@@ -207,6 +218,13 @@ export async function processProviderOnboardingFormAssembly(
       if(!fact||!disclosureOk){
         if(mapping.required) throw new Error(`Approved full-disclosure fact is missing for ${mapping.source_field_code}.`);
         continue;
+      }
+      // An item released as 'redacted' must not reach the document in full. The gate
+      // above only checked that a redacted item was ACCEPTABLE; without this the value
+      // was then written verbatim, so 'redacted' redacted nothing and the approver was
+      // told something the document did not honour.
+      if(packageItem.disclosure_mode==='redacted'&&!REDACTING_TRANSFORMS.has(mapping.transform_code)){
+        throw new Error(`Mapping for ${mapping.source_field_code} would write a redacted item in full; use a masking transform or release it at full disclosure.`);
       }
       fields[mapping.target_field_name]=transform(fact.fact_value,mapping.transform_code);
     }
