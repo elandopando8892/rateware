@@ -17,6 +17,8 @@
   --warning: #9a6400;
   --warning-soft: #fff4d6;
   --neutral: #46525d;
+  /* Used by .relationship-type; was referenced without ever being defined. */
+  --teal-700: #0f766e;
   --neutral-soft: #eef2f5;
   --soft-panel: #f8fafc;
 
@@ -28,17 +30,6 @@
   --brand-tint-strong: #dfe4fb;
   --brand-border: #c3ccf6;
   --on-brand: #ffffff;
-
-
-  /* Stage hues. Used as thin coloured edges on pipeline and row indicators, never as
-     a background behind text, so they only need to read against the page surface. */
-  --stage-intake: #64748b;
-  --stage-review: #2563eb;
-  --stage-release: #7c3aed;
-  --stage-delivery: #0f766e;
-  --stage-closed: #15803d;
-  --stage-exception: #b42318;
-  --stage-attention: #d97706;
 
   /* Focus ring for accessible keyboard navigation. */
   --ring: 0 0 0 3px rgba(58, 84, 214, 0.32);
@@ -66,119 +57,6 @@
   --space-6: 32px;
 
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-/* ---------------------------------------------------------------------------
-   Dark theme.
-
-   Only the colour tokens are redefined; every rule in this file already reads
-   them, so nothing below this block needs to know a dark theme exists.
-
-   Three things are deliberately NOT a straight inversion:
-   - Surfaces lift instead of dropping. In light mode --panel is white on a grey
-     --bg; in dark an elevated surface must be LIGHTER than its background,
-     because shadow carries almost no signal on a dark ground.
-   - The brand hue lightens. #3a54d6 is a strong accent on white and nearly
-     unreadable on #0f141a, so it moves up the scale and --on-brand flips to
-     dark text.
-   - Shadows deepen and borders do more of the work of separating surfaces.
-
-   Both a system preference and an explicit data-theme are honoured, so a future
-   in-app toggle needs no further CSS.
-   --------------------------------------------------------------------------- */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --bg: #0f141a;
-    --panel: #171e26;
-    --soft-panel: #1c242e;
-    --text: #e6ecf3;
-    --muted: #9aa7b4;
-    --line: #2a333e;
-    --line-strong: #3a4552;
-    --accent: #b8c4d0;
-    --accent-dark: #dbe3ea;
-    --accent-soft: #232c36;
-    --accent-border: #39434f;
-    --danger: #f0796a;
-    --danger-soft: #3a1f1c;
-    --success: #4cc98a;
-    --success-soft: #16301f;
-    --warning: #e0a63a;
-    --warning-soft: #33280f;
-    --neutral: #a8b3be;
-    --neutral-soft: #222a33;
-    --brand: #7d92f5;
-    --brand-strong: #9aa9f8;
-    --brand-press: #b3befb;
-    --brand-tint: #1b2240;
-    --brand-tint-strong: #232c52;
-    --brand-border: #3b4680;
-    --on-brand: #0f141a;
-    --ring: 0 0 0 3px rgba(125, 146, 245, 0.42);
-    --ring-danger: 0 0 0 3px rgba(240, 121, 106, 0.35);
-    --shadow-soft: 0 8px 18px rgba(0, 0, 0, 0.36);
-    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.42);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.42), 0 2px 6px rgba(0, 0, 0, 0.34);
-    --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.4), 0 8px 20px rgba(0, 0, 0, 0.46);
-    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.56), 0 4px 10px rgba(0, 0, 0, 0.4);
-    /* Lifted: the light-mode stage hues are mid-tone and all but disappear
-       against a #0f141a ground. */
-    --stage-intake: #94a3b8;
-    --stage-review: #6f9bff;
-    --stage-release: #b18aff;
-    --stage-delivery: #3fb5aa;
-    --stage-closed: #4cc98a;
-    --stage-exception: #f0796a;
-    --stage-attention: #e0a63a;
-
-  }
-}
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #0f141a;
-  --panel: #171e26;
-  --soft-panel: #1c242e;
-  --text: #e6ecf3;
-  --muted: #9aa7b4;
-  --line: #2a333e;
-  --line-strong: #3a4552;
-  --accent: #b8c4d0;
-  --accent-dark: #dbe3ea;
-  --accent-soft: #232c36;
-  --accent-border: #39434f;
-  --danger: #f0796a;
-  --danger-soft: #3a1f1c;
-  --success: #4cc98a;
-  --success-soft: #16301f;
-  --warning: #e0a63a;
-  --warning-soft: #33280f;
-  --neutral: #a8b3be;
-  --neutral-soft: #222a33;
-  --brand: #7d92f5;
-  --brand-strong: #9aa9f8;
-  --brand-press: #b3befb;
-  --brand-tint: #1b2240;
-  --brand-tint-strong: #232c52;
-  --brand-border: #3b4680;
-  --on-brand: #0f141a;
-  --ring: 0 0 0 3px rgba(125, 146, 245, 0.42);
-  --ring-danger: 0 0 0 3px rgba(240, 121, 106, 0.35);
-  --shadow-soft: 0 8px 18px rgba(0, 0, 0, 0.36);
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.42);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.42), 0 2px 6px rgba(0, 0, 0, 0.34);
-  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.4), 0 8px 20px rgba(0, 0, 0, 0.46);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.56), 0 4px 10px rgba(0, 0, 0, 0.4);
-  /* Lifted: the light-mode stage hues are mid-tone and all but disappear
-     against a #0f141a ground. */
-  --stage-intake: #94a3b8;
-  --stage-review: #6f9bff;
-  --stage-release: #b18aff;
-  --stage-delivery: #3fb5aa;
-  --stage-closed: #4cc98a;
-  --stage-exception: #f0796a;
-  --stage-attention: #e0a63a;
 }
 
 * {
@@ -292,7 +170,7 @@ a {
 .scene-metrics span {
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .scene-toolbar strong {
@@ -354,7 +232,7 @@ a {
 
 .secondary-link {
   color: var(--accent-dark);
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .landing-panel {
@@ -386,7 +264,7 @@ a {
 .landing-panel span {
   grid-row: span 2;
   color: var(--accent-dark);
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .landing-panel strong {
@@ -447,7 +325,7 @@ a {
   padding: 8px 8px 14px;
   color: var(--text);
   font-size: 1rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .side-nav nav {
@@ -471,7 +349,7 @@ a {
   margin: 0 8px 3px;
   color: #7b8892;
   font-size: 0.66rem;
-  font-weight: 900;
+  font-weight: 860;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -481,7 +359,7 @@ a {
   border-radius: 5px;
   color: #4b5962;
   font-size: 0.86rem;
-  font-weight: 700;
+  font-weight: 720;
   padding: 8px 9px 8px 12px;
 }
 
@@ -518,7 +396,7 @@ a {
   background: #ffffff;
   color: var(--muted);
   font-size: 0.64rem;
-  font-weight: 800;
+  font-weight: 820;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
@@ -558,7 +436,7 @@ a {
   gap: 6px;
   color: #40505d;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .rfx-event-list {
@@ -593,7 +471,7 @@ a {
   gap: 10px;
   min-height: 58px;
   padding: 8px 0;
-  background: var(--soft-panel);
+  background: var(--surface, #f7f9fb);
   border-bottom: 1px solid var(--line, #d7dee7);
 }
 
@@ -1101,7 +979,7 @@ a {
   background: #edf2f5;
   color: #405365;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 750;
   white-space: nowrap;
 }
 
@@ -1341,7 +1219,7 @@ a {
 
 .ratebook-quote-review-metrics div { min-width: 0; padding: 7px 8px; border-right: 1px solid #e0e7ec; background: #fbfcfd; }
 .ratebook-quote-review-metrics div:last-child { border-right: 0; }
-.ratebook-quote-review-metrics dt { color: #687b88; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.ratebook-quote-review-metrics dt { color: #687b88; font-size: 9px; font-weight: 750; text-transform: uppercase; }
 .ratebook-quote-review-metrics dd { margin: 3px 0 0; color: #20394a; font-size: 11px; font-weight: 700; overflow-wrap: anywhere; }
 
 .ratebook-quote-review-notes { margin: 0; color: #465d6a; font-size: 11px; line-height: 1.35; white-space: pre-wrap; }
@@ -1353,7 +1231,7 @@ a {
   gap: 8px;
 }
 
-.ratebook-quote-review-controls label { display: grid; gap: 4px; color: #586f7c; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.ratebook-quote-review-controls label { display: grid; gap: 4px; color: #586f7c; font-size: 10px; font-weight: 750; text-transform: uppercase; }
 .ratebook-quote-review-controls select,
 .ratebook-quote-review-controls textarea { width: 100%; box-sizing: border-box; border: 1px solid #b9cbd5; border-radius: 4px; padding: 5px 7px; color: #1d3545; font: inherit; font-size: 11px; text-transform: none; }
 .ratebook-quote-review-controls textarea { min-height: 32px; resize: vertical; }
@@ -2495,7 +2373,7 @@ a {
 .rfx-process-segment-list small {
   color: #5d6e7b;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .rfx-event-master-package {
@@ -2543,7 +2421,7 @@ a {
 .rfx-event-segment-strip small {
   color: #5d6e7b;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 /* Customer RFI */
@@ -3522,7 +3400,7 @@ a {
   padding: 2px 7px;
   color: #344552;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -3613,7 +3491,7 @@ a {
 .outreach-ops-health small {
   color: #51606b;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.25;
 }
 
@@ -3707,7 +3585,7 @@ a {
   color: #43505a;
   padding: 4px 8px;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .rfx-status-mix span[data-tone="success"],
@@ -3845,7 +3723,7 @@ a {
 .rfx-wizard-offer-strip span {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 880;
   text-transform: uppercase;
 }
 
@@ -3881,7 +3759,7 @@ a {
   padding: 8px;
   color: #40505d;
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .rfx-email-preview-card {
@@ -4031,7 +3909,7 @@ a {
 .rfx-coverage-card span {
   color: var(--muted);
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .coverage-meter {
@@ -4088,7 +3966,7 @@ a {
 .rfx-decision-metrics span {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 880;
   text-transform: uppercase;
 }
 
@@ -4115,7 +3993,7 @@ a {
   color: #43505a;
   padding: 3px 8px;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .rfx-lane-shortlist {
@@ -4192,7 +4070,7 @@ a {
   gap: 6px;
   color: #40505d;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .rfx-shortlist-box select[multiple] {
@@ -4455,7 +4333,7 @@ a {
   padding: 3px 5px;
   color: #64727d;
   font-size: 0.61rem;
-  font-weight: 700;
+  font-weight: 720;
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -4484,7 +4362,7 @@ a {
   min-width: 0;
   color: #53616d;
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 760;
   text-transform: uppercase;
 }
 
@@ -4525,7 +4403,7 @@ a {
 
 .rfx-outreach-audience-list-tools summary {
   cursor: pointer;
-  font-weight: 800;
+  font-weight: 760;
   list-style-position: inside;
   white-space: nowrap;
 }
@@ -4561,7 +4439,7 @@ a {
   min-width: 118px;
   color: #53616d;
   font-size: 0.64rem;
-  font-weight: 800;
+  font-weight: 760;
   text-transform: uppercase;
 }
 
@@ -4610,7 +4488,7 @@ a {
   color: #53616d;
   background: #f3f6f8;
   font-size: 0.6rem;
-  font-weight: 800;
+  font-weight: 780;
   letter-spacing: 0.01em;
   text-transform: uppercase;
 }
@@ -4738,7 +4616,7 @@ a {
   padding: 8px 10px;
   color: #26323d;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .rfx-outreach-carrier-adder summary small {
@@ -4790,7 +4668,7 @@ a {
 .rfx-outreach-carrier-wave-actions small {
   color: #63717d;
   font-size: 0.67rem;
-  font-weight: 600;
+  font-weight: 620;
 }
 
 .rfx-outreach-carrier-wave-actions .action-row {
@@ -4805,7 +4683,7 @@ a {
   min-width: 0;
   color: #40505d;
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 760;
   text-transform: uppercase;
 }
 
@@ -4925,7 +4803,7 @@ a {
   overflow: hidden;
   color: #4f6471;
   cursor: pointer;
-  font-weight: 800;
+  font-weight: 760;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -5115,7 +4993,7 @@ a {
 
 .rfx-message-readiness-copy span {
   color: #667580;
-  font-weight: 800;
+  font-weight: 760;
   text-transform: uppercase;
 }
 
@@ -5163,7 +5041,7 @@ a {
   gap: 5px;
   color: #40505d;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .rfx-outreach-form .status-message {
@@ -5306,7 +5184,7 @@ a {
   overflow: hidden;
   color: #667580;
   font-size: 0.59rem;
-  font-weight: 800;
+  font-weight: 760;
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
@@ -5365,7 +5243,7 @@ a {
 
 .rfx-delivery-wave-copy span {
   color: #667580;
-  font-weight: 800;
+  font-weight: 760;
   text-transform: uppercase;
 }
 
@@ -5453,7 +5331,7 @@ a {
   color: #415362;
   font: inherit;
   font-size: 0.63rem;
-  font-weight: 700;
+  font-weight: 730;
   cursor: pointer;
 }
 
@@ -5675,7 +5553,7 @@ a {
 .rfx-touchpoint-list small {
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .rfx-touchpoint-list {
@@ -6000,13 +5878,13 @@ a {
 .rfx-invitation small {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .rfx-invitation span {
   color: var(--muted);
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .rfx-bid-delta {
@@ -6015,7 +5893,7 @@ a {
   background: #eef2f5;
   color: #344552;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 850;
   text-align: center;
 }
 
@@ -6084,13 +5962,13 @@ a {
   color: var(--muted);
   text-align: left;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .rfx-operate-workspace-tabs button span {
   color: inherit;
   font-size: 0.67rem;
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .rfx-operate-workspace-tabs button.is-active {
@@ -6282,7 +6160,7 @@ a {
 .live-offer-lane small {
   color: var(--muted);
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .live-offer-lane table,
@@ -6318,7 +6196,7 @@ a {
 .bid-live-table tr.is-current {
   background: var(--brand-tint);
   color: var(--accent-dark);
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .bid-live-action-cell {
@@ -6368,7 +6246,7 @@ a {
 .carrier-book-summary span {
   color: var(--muted);
   font-size: 0.62rem;
-  font-weight: 900;
+  font-weight: 880;
   text-transform: uppercase;
 }
 
@@ -6409,7 +6287,7 @@ a {
 .carrier-award-summary small {
   color: var(--muted);
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .carrier-award-summary span {
@@ -6454,7 +6332,7 @@ a {
 .carrier-award-timeline.empty {
   color: #42515d;
   font-size: 0.74rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.35;
 }
 
@@ -6566,7 +6444,7 @@ a {
 .carrier-bid-history-list small {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .carrier-bid-history-list p {
@@ -6589,7 +6467,7 @@ a {
   background: #ffffff;
   color: #40505d;
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 820;
   line-height: 1.2;
   padding: 2px 6px;
 }
@@ -6625,7 +6503,7 @@ a {
   display: block;
   color: var(--muted);
   font-size: 0.62rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.25;
 }
 
@@ -6657,7 +6535,7 @@ a {
   overflow: hidden;
   color: #183446;
   font-size: 0.7rem;
-  font-weight: 900;
+  font-weight: 860;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6703,7 +6581,7 @@ a {
 .quick-bid-table small {
   color: var(--muted);
   font-size: 0.66rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .quick-bid-commercial-effect {
@@ -6723,7 +6601,7 @@ a {
   color: #35556a;
   cursor: help;
   font-size: 0.61rem;
-  font-weight: 800;
+  font-weight: 760;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6732,7 +6610,7 @@ a {
 
 .quick-bid-commercial-preview[data-preview-state="empty"] {
   color: var(--muted);
-  font-weight: 700;
+  font-weight: 680;
 }
 
 .quick-bid-commercial-percent-cell {
@@ -6746,7 +6624,7 @@ a {
   overflow: hidden;
   color: #60717d;
   font-size: 0.58rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -6793,7 +6671,7 @@ a {
   overflow: hidden;
   color: #173145;
   font-size: 0.66rem;
-  font-weight: 900;
+  font-weight: 860;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6801,7 +6679,7 @@ a {
 .commercial-model-quick-guide span {
   overflow: hidden;
   font-size: 0.62rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -6811,7 +6689,7 @@ a {
   overflow: hidden;
   color: #657784;
   font-size: 0.58rem;
-  font-weight: 700;
+  font-weight: 680;
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -6845,7 +6723,7 @@ a {
   align-items: center;
   color: #173145;
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 880;
 }
 
 .commercial-model-selected-context span {
@@ -6884,7 +6762,7 @@ a {
   color: #1d3341;
   cursor: pointer;
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .commercial-model-guide summary small {
@@ -6941,13 +6819,13 @@ a {
 .commercial-model-guide-grid small {
   color: #5d6d78;
   font-size: 0.66rem;
-  font-weight: 700;
+  font-weight: 680;
   line-height: 1.32;
 }
 
 .commercial-model-guide-grid small {
   color: #385d72;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 @media (max-width: 860px) {
@@ -6993,7 +6871,7 @@ a {
   background: #fff;
   color: var(--text);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 760;
   padding: 2px 6px;
 }
 
@@ -7020,7 +6898,7 @@ a {
   min-width: 0;
   color: #8a6100;
   cursor: help;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .quick-bid-actions {
@@ -7141,7 +7019,7 @@ a {
   gap: 3px;
   color: #5a6975;
   font-size: 0.62rem;
-  font-weight: 800;
+  font-weight: 820;
   text-transform: uppercase;
 }
 
@@ -7158,7 +7036,7 @@ a {
   color: var(--text);
   font: inherit;
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: 720;
   padding: 4px 6px;
   text-transform: none;
 }
@@ -7241,7 +7119,7 @@ a {
   margin: 1px 0 0;
   color: #1b3545;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 760;
   text-transform: none;
 }
 
@@ -7300,7 +7178,7 @@ a {
 .lane-fit-autosave-state {
   color: #62727c;
   font-size: 0.61rem;
-  font-weight: 800;
+  font-weight: 760;
   white-space: nowrap;
 }
 
@@ -7315,7 +7193,7 @@ a {
 .lane-fit-disclosure-trigger {
   color: #52626e;
   font-size: 0.65rem;
-  font-weight: 800;
+  font-weight: 820;
   white-space: nowrap;
 }
 
@@ -7854,7 +7732,7 @@ a {
 .master-package-statline small {
   color: #6a5a30;
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .master-package-statline {
@@ -7966,7 +7844,7 @@ a {
 .master-package-segment summary small {
   color: #64717e;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .master-package-segment-progress {
@@ -7977,7 +7855,7 @@ a {
   color: #1f675b;
   padding: 3px 7px;
   font-size: 0.66rem;
-  font-weight: 900;
+  font-weight: 860;
   white-space: nowrap;
 }
 
@@ -8037,7 +7915,7 @@ a {
   padding: 3px 6px;
   color: #263440;
   font-size: 0.66rem;
-  font-weight: 900;
+  font-weight: 860;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -8119,7 +7997,7 @@ a {
   min-height: 28px;
   color: var(--muted);
   font-size: 0.74rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .private-bid-alert {
@@ -8163,7 +8041,7 @@ a {
 .private-bid-alert small {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .bid-lane-summary {
@@ -8228,7 +8106,7 @@ a {
   margin-top: 2px;
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.25;
 }
 
@@ -8247,12 +8125,12 @@ a {
 .bid-lane-summary dt {
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .bid-lane-summary dd {
   margin: 3px 0 0;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .bid-lane-detail-disclosure {
@@ -8270,13 +8148,13 @@ a {
   padding: 7px 9px;
   color: var(--text);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .bid-lane-detail-disclosure summary small {
   color: var(--muted);
   font-size: 0.66rem;
-  font-weight: 700;
+  font-weight: 680;
 }
 
 .bid-lane-detail-disclosure[open] summary {
@@ -8315,7 +8193,7 @@ a {
   display: block;
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -8591,7 +8469,7 @@ a {
   background: transparent;
   color: #526773;
   font-size: .7rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .shipper-view-switcher button span {
@@ -8632,7 +8510,7 @@ a {
   margin-bottom: 3px;
   color: #667984;
   font-size: .65rem;
-  font-weight: 800;
+  font-weight: 850;
   line-height: 1.1;
   text-transform: uppercase;
 }
@@ -8777,7 +8655,7 @@ a {
   display: block;
   color: #70818c;
   font-size: .6rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -8887,7 +8765,7 @@ a {
   display: block;
   color: #70818c;
   font-size: .6rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -8958,7 +8836,7 @@ a {
   padding: 2px 5px;
   color: #526772;
   font-size: .58rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -9035,7 +8913,7 @@ a {
   margin-bottom: 3px;
   color: #667984;
   font-size: .65rem;
-  font-weight: 800;
+  font-weight: 850;
   line-height: 1.1;
   text-transform: uppercase;
 }
@@ -9074,7 +8952,7 @@ a {
 .shipper-commercial-summary span {
   color: #667984;
   font-size: .64rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -9191,7 +9069,7 @@ a {
   color: #174a68;
   padding: 0;
   font: inherit;
-  font-weight: 800;
+  font-weight: 850;
   text-align: left;
   cursor: pointer;
 }
@@ -9243,7 +9121,7 @@ a {
   margin-bottom: 2px;
   color: #61747f;
   font-size: .61rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -9279,7 +9157,7 @@ a {
 .shipper-cadence-summary span {
   color: #60737f;
   font-size: .61rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -9348,7 +9226,7 @@ a {
   border-radius: 999px;
   padding: 1px 6px;
   font-size: .61rem;
-  font-weight: 800;
+  font-weight: 850;
   white-space: nowrap;
 }
 
@@ -9428,7 +9306,7 @@ a {
   margin-bottom: 3px;
   color: #667984;
   font-size: .65rem;
-  font-weight: 800;
+  font-weight: 850;
   line-height: 1.1;
   text-transform: uppercase;
 }
@@ -9466,7 +9344,7 @@ a {
 .shipper-intelligence-summary span {
   color: #667984;
   font-size: .64rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -9603,7 +9481,7 @@ a {
   margin-bottom: 3px;
   color: #667984;
   font-size: .65rem;
-  font-weight: 800;
+  font-weight: 850;
   line-height: 1.1;
   text-transform: uppercase;
 }
@@ -9741,7 +9619,7 @@ a {
 .shipper-pipeline-card dt {
   color: #71838e;
   font-size: .59rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .shipper-pipeline-card dd {
@@ -9773,7 +9651,7 @@ a {
   color: #24475b;
   cursor: pointer;
   font: inherit;
-  font-weight: 800;
+  font-weight: 780;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -9789,7 +9667,7 @@ a {
   margin-top: 1px;
   color: #71838e;
   font-size: .55rem;
-  font-weight: 700;
+  font-weight: 750;
 }
 
 .shipper-pipeline-move {
@@ -9803,7 +9681,7 @@ a {
 .shipper-pipeline-move span {
   color: #71838e;
   font-size: .59rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .shipper-pipeline-move select {
@@ -9980,7 +9858,7 @@ a {
   color: #174a68;
   padding: 0;
   font: inherit;
-  font-weight: 800;
+  font-weight: 850;
   cursor: pointer;
 }
 
@@ -10002,7 +9880,7 @@ a {
   color: #174a68;
   cursor: pointer;
   font: inherit;
-  font-weight: 800;
+  font-weight: 850;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -10014,7 +9892,7 @@ a {
 
 .shipper-directory-action.is-empty {
   color: #60727d;
-  font-weight: 700;
+  font-weight: 750;
 }
 
 .shipper-status {
@@ -10172,7 +10050,7 @@ a {
   color: #586b76;
   padding: 4px 9px;
   font-size: .69rem;
-  font-weight: 800;
+  font-weight: 850;
   white-space: nowrap;
 }
 
@@ -10901,7 +10779,7 @@ body.bid-editor-open {
   background: var(--soft-panel);
   color: #40505d;
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .carrier-bid-workflow button:hover,
@@ -10960,7 +10838,7 @@ body.bid-editor-open {
   margin-top: 3px;
   color: var(--muted);
   font-size: 0.64rem;
-  font-weight: 700;
+  font-weight: 680;
   line-height: 1.2;
 }
 
@@ -11001,7 +10879,7 @@ body.bid-editor-open {
 .bid-form-section-title span {
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .bid-checkbox-label {
@@ -11030,7 +10908,7 @@ body.bid-editor-open {
   padding: 7px 9px;
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .bid-review-summary {
@@ -11058,7 +10936,7 @@ body.bid-editor-open {
 .bid-review-warnings span {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 760;
   line-height: 1.3;
 }
 
@@ -11131,7 +11009,7 @@ body.bid-editor-open {
   color: #4c5863;
   padding: 2px 7px;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 860;
 }
 
 .marketplace-score-pill {
@@ -11152,7 +11030,7 @@ body.bid-editor-open {
 .marketplace-score-pill small {
   color: #5a6671;
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .marketplace-score-pill[data-tone="success"] {
@@ -11196,7 +11074,7 @@ body.bid-editor-open {
   color: #42515e;
   padding: 2px 6px;
   font-size: 0.66rem;
-  font-weight: 900;
+  font-weight: 860;
   line-height: 1.25;
 }
 
@@ -11238,7 +11116,7 @@ body.bid-editor-open {
 .bid-board-stats span {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 880;
   text-transform: uppercase;
 }
 
@@ -11287,7 +11165,7 @@ body.bid-editor-open {
   color: #40505d;
   padding: 0 8px;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .segmented-control button.is-active {
@@ -11322,7 +11200,7 @@ body.bid-editor-open {
   color: #53616d;
   padding: 1px 7px;
   font-size: 0.64rem;
-  font-weight: 800;
+  font-weight: 820;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -11398,7 +11276,7 @@ body.bid-editor-open {
 .draft-vendor-timeline span {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -11437,7 +11315,7 @@ body.bid-editor-open {
   gap: 6px;
   color: #40505d;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .outreach-template-form .wide-field {
@@ -11721,7 +11599,7 @@ body.bid-editor-open {
   color: #43505a;
   padding: 2px 7px;
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .template-token-row button {
@@ -11740,7 +11618,7 @@ body.bid-editor-open {
 .contact-history-list small {
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .contact-history-list p {
@@ -11795,14 +11673,14 @@ body.bid-editor-open {
   padding: 2px 7px;
   color: #344552;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
 .outreach-campaign-card small {
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .outreach-campaign-card b {
@@ -11857,7 +11735,7 @@ body.bid-editor-open {
 .outreach-draft-preview span {
   color: var(--muted);
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .draft-preview-header {
@@ -11893,7 +11771,7 @@ body.bid-editor-open {
 .draft-preview-meta dt {
   color: var(--muted);
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -11901,7 +11779,7 @@ body.bid-editor-open {
   margin: 0;
   overflow-wrap: anywhere;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .draft-html-preview,
@@ -12059,7 +11937,7 @@ body.bid-editor-open {
   margin-top: 5px;
   color: #84909a;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .module-crumbs a {
@@ -12097,7 +11975,7 @@ body.bid-editor-open {
   padding: 7px 12px;
   font: inherit;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 850;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -12127,7 +12005,7 @@ body.bid-editor-open {
   padding: 9px 12px;
   border-radius: 6px;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .nav-links a[aria-current="page"] {
@@ -12222,7 +12100,7 @@ body.bid-editor-open {
 .user-menu-panel a {
   color: var(--muted);
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .user-menu-panel a {
@@ -12296,7 +12174,7 @@ body.bid-editor-open {
 .source-summary-strip span {
   color: var(--muted);
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .source-summary-strip strong {
@@ -12316,7 +12194,7 @@ body.bid-editor-open {
   padding: 7px 9px;
   color: var(--muted);
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .workflow-disclosure .upload-flow-steps {
@@ -12521,14 +12399,14 @@ body.bid-editor-open {
 .location-match-summary dt {
   color: #667784;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .location-match-summary dd {
   margin: 0;
   color: #17232b;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .location-match-summary ul {
@@ -12683,7 +12561,7 @@ body.bid-editor-open {
   margin: 0;
   color: #53616b;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 740;
   line-height: 1.35;
 }
 
@@ -12732,7 +12610,7 @@ body.bid-editor-open {
   gap: 6px;
   color: #40505d;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .drawer-header {
@@ -12995,7 +12873,7 @@ body.bid-editor-open {
 }
 
 .relationship-type {
-  color: var(--stage-delivery);
+  color: var(--teal-700);
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -13382,7 +13260,7 @@ body.bid-editor-open {
 .ci-case-follow-up {
   flex: 1 1 100%;
   margin-top: 3px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-subtle, #d9e2ec);
   border-radius: 4px;
   padding: 4px 6px;
 }
@@ -13651,7 +13529,7 @@ body.bid-editor-open {
 .vendor-profile-list dt {
   color: var(--muted);
   font-size: 0.58rem;
-  font-weight: 900;
+  font-weight: 880;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -13662,7 +13540,7 @@ body.bid-editor-open {
   margin: 0;
   color: var(--text);
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -13716,7 +13594,7 @@ body.bid-editor-open {
   color: var(--text);
   padding: 3px 6px;
   font-size: 0.64rem;
-  font-weight: 800;
+  font-weight: 760;
   line-height: 1.1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -13790,7 +13668,7 @@ body.bid-editor-open {
   min-width: 0;
   color: var(--muted);
   font-size: 0.62rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .vendor-profile-drawer input,
@@ -13852,7 +13730,7 @@ body.bid-editor-open {
   padding: 6px;
   color: var(--muted);
   font-size: 0.64rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .vendor-profile-drawer .vendor-profile-section,
@@ -13877,7 +13755,7 @@ body.bid-editor-open {
   padding: 5px 7px;
   color: var(--text);
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .vendor-profile-drawer .vendor-profile-section .vendor-profile-list {
@@ -13915,7 +13793,7 @@ body.bid-editor-open {
 .vendor-profile-drawer #drawer-edit-dirty-message {
   color: var(--muted);
   font-size: 0.63rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .vendor-profile-drawer .drawer-profile-grid {
@@ -13955,7 +13833,7 @@ body.bid-editor-open {
   gap: 5px;
   color: var(--text);
   font-size: 0.64rem;
-  font-weight: 700;
+  font-weight: 680;
   line-height: 1.2;
 }
 
@@ -14035,7 +13913,7 @@ body.bid-editor-open {
 .metric-card span {
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .metric-card strong {
@@ -14056,7 +13934,7 @@ body.bid-editor-open {
   color: var(--muted);
   padding: 4px 8px;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .priority-queue {
@@ -14101,7 +13979,7 @@ body.bid-editor-open {
   margin-top: 3px;
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.35;
 }
 
@@ -14189,7 +14067,7 @@ body.bid-editor-open {
   color: var(--muted);
   margin-top: 2px;
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .priority-queue b {
@@ -14199,7 +14077,7 @@ body.bid-editor-open {
 
 .priority-queue a {
   color: var(--accent-dark);
-  font-weight: 800;
+  font-weight: 850;
   white-space: nowrap;
 }
 
@@ -14209,7 +14087,7 @@ body.bid-editor-open {
   margin: 0;
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 760;
   text-align: right;
 }
 
@@ -14236,7 +14114,7 @@ body.bid-editor-open {
   color: #53616b;
   padding: 3px 8px;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .pipeline-card strong {
@@ -14252,7 +14130,7 @@ body.bid-editor-open {
 .pipeline-card small {
   color: var(--muted);
   font-size: 0.74rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.35;
 }
 
@@ -14302,7 +14180,7 @@ body.bid-editor-open {
 .vendor-metrics span {
   color: var(--muted);
   font-size: 0.64rem;
-  font-weight: 800;
+  font-weight: 820;
   text-transform: uppercase;
 }
 
@@ -14337,7 +14215,7 @@ body.bid-editor-open {
   color: #4a5863;
   padding: 4px 10px;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .crm-view-switcher button:last-child {
@@ -14362,7 +14240,7 @@ body.bid-editor-open {
   padding: 4px 7px;
   color: #4a5863;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .vendor-saved-view-controls .small-button {
@@ -14392,7 +14270,7 @@ body.bid-editor-open {
   color: #4a5863;
   padding: 4px 10px;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 850;
   cursor: pointer;
   list-style: none;
 }
@@ -14437,7 +14315,7 @@ body.bid-editor-open {
   padding: 3px 5px;
   color: var(--text);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .vendor-column-option:hover {
@@ -14498,7 +14376,7 @@ body.bid-editor-open {
 .vendor-workflow-tabs .vendor-tab span {
   color: var(--muted);
   font-size: 0.58rem;
-  font-weight: 800;
+  font-weight: 780;
   line-height: 1;
 }
 
@@ -14539,7 +14417,7 @@ body.bid-editor-open {
   color: var(--muted);
   padding: 5px 9px;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .directory-base-switcher button.is-active {
@@ -14580,7 +14458,7 @@ body.bid-editor-open {
 .vendor-tool-grid span {
   color: var(--muted);
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 760;
   line-height: 1.3;
 }
 
@@ -14605,7 +14483,7 @@ body.bid-editor-open {
 .vendor-funnel-metrics span {
   color: var(--muted);
   font-size: 0.58rem;
-  font-weight: 800;
+  font-weight: 820;
   text-transform: uppercase;
 }
 
@@ -14631,7 +14509,7 @@ body.bid-editor-open {
   gap: 2px;
   color: var(--muted);
   font-size: 0.58rem;
-  font-weight: 900;
+  font-weight: 860;
   text-transform: uppercase;
 }
 
@@ -14726,7 +14604,7 @@ body.bid-editor-open {
 .funnel-stage-step small {
   color: var(--muted);
   font-size: 0.54rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .funnel-stage-step.is-active {
@@ -14799,7 +14677,7 @@ body.bid-editor-open {
   display: block;
   color: var(--muted);
   font-size: 0.52rem;
-  font-weight: 700;
+  font-weight: 740;
   line-height: 1.1;
 }
 
@@ -14873,7 +14751,7 @@ body.bid-editor-open {
 .funnel-empty-column {
   color: var(--muted);
   font-size: 0.52rem;
-  font-weight: 700;
+  font-weight: 740;
 }
 
 .funnel-card-signals span {
@@ -14896,7 +14774,7 @@ body.bid-editor-open {
   overflow: hidden;
   color: var(--neutral);
   font-size: 0.55rem;
-  font-weight: 900;
+  font-weight: 860;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -14928,7 +14806,7 @@ body.bid-editor-open {
   color: var(--neutral);
   padding: 5px;
   font-size: 0.62rem;
-  font-weight: 900;
+  font-weight: 860;
   text-align: center;
 }
 
@@ -14941,7 +14819,7 @@ body.bid-editor-open {
 .funnel-show-more span {
   color: var(--muted);
   font-size: 0.54rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .funnel-card-actions {
@@ -14958,7 +14836,7 @@ body.bid-editor-open {
   padding: 1px 4px;
   color: var(--text);
   font-size: 0.58rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .funnel-stage-select:disabled {
@@ -15017,7 +14895,7 @@ body.bid-editor-open {
 .workflow-step small {
   color: var(--muted);
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .workflow-step:hover {
@@ -15068,7 +14946,7 @@ body.bid-editor-open {
 .upload-flow-steps article small {
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .upload-flow-steps article.is-active {
@@ -15123,7 +15001,7 @@ body.bid-editor-open {
 .import-wizard-steps article small {
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .import-wizard-steps article.is-active {
@@ -15149,7 +15027,7 @@ body.bid-editor-open {
   color: #53616b;
   padding: 2px 7px;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .upload-row-flow span.done {
@@ -15206,7 +15084,7 @@ body.bid-editor-open {
 .upload-audit-meter small {
   color: var(--muted);
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .scope-banner {
@@ -15233,12 +15111,12 @@ body.bid-editor-open {
 .scope-banner span {
   color: #43505a;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .scope-banner a {
   color: var(--accent-dark);
-  font-weight: 800;
+  font-weight: 850;
   white-space: nowrap;
 }
 
@@ -15277,7 +15155,7 @@ body.bid-editor-open {
 .workflow-action small {
   color: var(--muted);
   font-size: 0.76rem;
-  font-weight: 700;
+  font-weight: 740;
   line-height: 1.35;
 }
 
@@ -15310,12 +15188,12 @@ body.bid-editor-open {
 .next-step-strip span {
   color: var(--muted);
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .next-step-strip a {
   color: var(--accent-dark);
-  font-weight: 800;
+  font-weight: 850;
   white-space: nowrap;
 }
 
@@ -15360,7 +15238,7 @@ body.bid-editor-open {
   display: inline-flex;
   min-width: 44px;
   color: var(--accent-dark);
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .workspace-panel,
@@ -15618,7 +15496,7 @@ h2 {
 .vendor-intelligence-summary span {
   color: var(--muted);
   font-size: 0.75rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .vendor-match-summary {
@@ -15646,7 +15524,7 @@ h2 {
 .vendor-match-summary small {
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .vendor-match-guidance {
@@ -15858,7 +15736,7 @@ small,
 .bulk-toolbar-summary span {
   color: var(--muted);
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .bulk-action-group {
@@ -15910,7 +15788,7 @@ small,
   background: var(--brand-tint);
   color: var(--accent-dark);
   padding: 4px 10px;
-  font-weight: 800;
+  font-weight: 850;
   white-space: nowrap;
 }
 
@@ -15956,7 +15834,7 @@ small,
 
 .preview-summary span {
   color: var(--muted);
-  font-weight: 800;
+  font-weight: 760;
 }
 
 label {
@@ -15964,7 +15842,7 @@ label {
   gap: 5px;
   color: #43515b;
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 750;
 }
 
 input,
@@ -16051,7 +15929,7 @@ button.danger {
   display: block;
   max-width: 360px;
   color: var(--danger);
-  font-weight: 600;
+  font-weight: 650;
   overflow-wrap: anywhere;
 }
 
@@ -16202,7 +16080,7 @@ table {
   min-width: 84px;
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .bulk-action-bar .small-button {
@@ -16225,7 +16103,7 @@ table {
   color: #26333d;
   padding: 2px 7px;
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 850;
   list-style: none;
   cursor: pointer;
 }
@@ -16299,7 +16177,7 @@ table {
   color: #34424e;
   padding: 7px 11px;
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 820;
   list-style: none;
   cursor: pointer;
 }
@@ -16337,7 +16215,7 @@ table {
   color: #34424e;
   padding: 4px 7px;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .column-toggle-grid .column-toggle-row {
@@ -16390,7 +16268,7 @@ table {
 .column-active-view small {
   color: var(--muted);
   font-size: 0.58rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -16398,7 +16276,7 @@ table {
   min-width: 0;
   overflow: hidden;
   font-size: 0.66rem;
-  font-weight: 900;
+  font-weight: 880;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -16425,7 +16303,7 @@ table {
 .column-current-view small {
   color: var(--muted);
   font-size: 0.62rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -16461,7 +16339,7 @@ table {
   color: #26333d;
   padding: 3px 7px;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 820;
   cursor: pointer;
 }
 
@@ -16487,7 +16365,7 @@ table {
   min-width: 72px;
   color: var(--success);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .column-save-view-row,
@@ -16526,7 +16404,7 @@ table {
   color: #26333d;
   padding: 3px 7px;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 820;
   cursor: pointer;
 }
 
@@ -16571,7 +16449,7 @@ table {
   min-height: 24px;
   color: var(--muted);
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 850;
   cursor: pointer;
   text-transform: uppercase;
 }
@@ -16591,7 +16469,7 @@ table {
   color: #26333d;
   padding: 3px 7px;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 820;
   cursor: pointer;
 }
 
@@ -16741,7 +16619,7 @@ table {
   padding: 7px 9px;
   color: var(--muted);
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .rateware-workbench-disclosure summary::-webkit-details-marker {
@@ -16796,7 +16674,7 @@ table {
   gap: 4px;
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .rateware-control-grid input,
@@ -16869,7 +16747,7 @@ table {
 .comparison-offers em {
   color: var(--neutral);
   font-style: normal;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .comparison-signal {
@@ -16966,7 +16844,7 @@ table {
 .review-insight-grid span {
   color: var(--muted);
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .review-insight-grid strong {
@@ -17010,7 +16888,7 @@ th {
   background: #f3f5f7;
   color: #43505a;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 850;
   letter-spacing: 0;
 }
 
@@ -17077,7 +16955,7 @@ tbody tr:hover {
   margin-left: 6px;
   padding: 2px 7px;
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .location-chip {
@@ -17090,7 +16968,7 @@ tbody tr:hover {
   border-radius: 999px;
   padding: 2px 7px;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 850;
   font-family: inherit;
   white-space: nowrap;
   overflow: hidden;
@@ -17156,7 +17034,7 @@ button.location-chip:focus-visible {
   max-width: 140px;
   color: #27323a;
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 760;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -17182,7 +17060,7 @@ button.location-chip:focus-visible {
   color: #34404a;
   padding: 3px 7px;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .tag-chip.muted {
@@ -17450,14 +17328,14 @@ button.location-chip:focus-visible {
   min-width: 110px;
   color: var(--muted);
   font-size: 0.58rem;
-  font-weight: 800;
+  font-weight: 760;
   line-height: 1.15;
 }
 
 .vendor-quote-cell strong {
   color: var(--text);
   font-size: 0.61rem;
-  font-weight: 900;
+  font-weight: 880;
 }
 
 .coverage-fit-cell {
@@ -17535,7 +17413,7 @@ button.location-chip:focus-visible {
 .vendor-crm-card p {
   color: var(--muted);
   font-size: 0.6rem;
-  font-weight: 700;
+  font-weight: 740;
 }
 
 .vendor-crm-card .link-button {
@@ -17599,7 +17477,7 @@ button.location-chip:focus-visible {
 .vendor-source-cell small {
   color: var(--muted);
   font-size: 0.76rem;
-  font-weight: 700;
+  font-weight: 740;
   line-height: 1.35;
 }
 
@@ -17662,7 +17540,7 @@ button.location-chip:focus-visible {
 .fit-label {
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .score-pill,
@@ -17673,7 +17551,7 @@ button.location-chip:focus-visible {
   border-radius: 999px;
   padding: 3px 9px;
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .score-pill.strong {
@@ -17714,7 +17592,7 @@ button.location-chip:focus-visible {
   color: var(--neutral);
   padding: 2px 7px;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .drawer-rateware-evidence {
@@ -17740,7 +17618,7 @@ button.location-chip:focus-visible {
 .drawer-evidence-grid span {
   color: var(--muted);
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .drawer-evidence-grid strong {
@@ -17875,14 +17753,14 @@ button.location-chip:focus-visible {
 .carrier-profile-progress small {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 820;
   text-transform: uppercase;
 }
 
 .carrier-profile-progress strong {
   color: var(--text);
   font-size: 1.32rem;
-  font-weight: 900;
+  font-weight: 950;
 }
 
 .profile-progress-track {
@@ -17936,7 +17814,7 @@ button.location-chip:focus-visible {
   border-radius: 6px;
   background: #eef2f5;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 950;
 }
 
 .carrier-profile-stepper button[aria-current="step"] span {
@@ -17955,7 +17833,7 @@ button.location-chip:focus-visible {
 .carrier-profile-stepper button small {
   color: var(--muted);
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .carrier-profile-editor {
@@ -18121,7 +17999,7 @@ button.location-chip:focus-visible {
   background: #ffffff;
   padding: 4px 8px;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .profile-check-option:has(input:checked) {
@@ -18392,7 +18270,7 @@ button.location-chip:focus-visible {
   background: #e6f6f2;
   color: #126b5d;
   font-size: 0.61rem;
-  font-weight: 800;
+  font-weight: 850;
   padding: 3px 6px;
   text-transform: uppercase;
 }
@@ -18712,7 +18590,7 @@ button.location-chip:focus-visible {
   border-color: #d3dee5;
   border-radius: 3px;
   font-size: .6rem;
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .rfx-process-rfi-editor-table textarea {
@@ -18812,7 +18690,7 @@ button.location-chip:focus-visible {
   gap: 2px;
   color: #506671;
   font-size: .58rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -18823,7 +18701,7 @@ button.location-chip:focus-visible {
   border: 1px solid #cbd8df;
   border-radius: 3px;
   font-size: .63rem;
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .rfx-rfi-rubric-groups {
@@ -18941,7 +18819,7 @@ button.location-chip:focus-visible {
 .rfx-marketplace-brand {
   color: #8a6a12;
   font-size: .58rem;
-  font-weight: 900;
+  font-weight: 950;
   letter-spacing: .08em;
 }
 
@@ -18989,7 +18867,7 @@ button.location-chip:focus-visible {
 }
 
 .rfx-marketplace-route-heading strong { color: #263b43; font-size: .64rem; }
-.rfx-marketplace-route-heading span { color: #257363; font-size: .58rem; font-weight: 800; }
+.rfx-marketplace-route-heading span { color: #257363; font-size: .58rem; font-weight: 850; }
 .rfx-marketplace-route-path { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: .65rem; }
 .rfx-marketplace-route-path b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rfx-marketplace-route-path span { color: #9b8242; font-size: .58rem; }
@@ -19126,7 +19004,7 @@ button.location-chip:focus-visible {
   border-radius: 50%;
   color: var(--muted);
   font-size: 0.65rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .my-work-copy {
@@ -19138,7 +19016,7 @@ button.location-chip:focus-visible {
 .my-work-copy small {
   color: var(--muted);
   font-size: 0.62rem;
-  font-weight: 800;
+  font-weight: 850;
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
@@ -19235,7 +19113,7 @@ button.location-chip:focus-visible {
   border-radius: 50%;
   color: var(--muted);
   font-size: 0.65rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .dashboard-workflow-panel--progress .workflow-progress-step strong {
@@ -19390,7 +19268,7 @@ button.location-chip:focus-visible {
   border-radius: 999px;
   padding: 3px 8px;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .check-done {
@@ -19414,7 +19292,7 @@ button.location-chip:focus-visible {
   color: var(--accent-dark);
   padding: 0;
   text-align: left;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .link-button:hover {
@@ -19425,7 +19303,7 @@ button.location-chip:focus-visible {
 .vendor-subline {
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 720;
   margin-top: 3px;
 }
 
@@ -19471,7 +19349,7 @@ button.location-chip:focus-visible {
   overflow: hidden;
   color: var(--muted);
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: 740;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -19490,7 +19368,7 @@ button.location-chip:focus-visible {
 .upload-next-step small {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .upload-next-step.danger strong {
@@ -19521,7 +19399,7 @@ button.location-chip:focus-visible {
   list-style: none;
   padding: 3px 8px;
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .row-more-menu summary::-webkit-details-marker {
@@ -19633,7 +19511,7 @@ button.location-chip:focus-visible {
 .upload-detail-section dt {
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .rateware-detail-section dd,
@@ -19684,7 +19562,7 @@ button.location-chip:focus-visible {
 .rateware-governance-timeline small {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .catalog-workbench-layout {
@@ -19735,7 +19613,7 @@ button.location-chip:focus-visible {
   gap: 3px;
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 840;
 }
 
 .catalog-filter-bar input,
@@ -19785,7 +19663,7 @@ button.location-chip:focus-visible {
   max-width: 420px;
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 760;
   line-height: 1.25;
 }
 
@@ -19808,7 +19686,7 @@ button.location-chip:focus-visible {
   margin-top: 3px;
   color: var(--neutral);
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .catalog-actions {
@@ -19885,7 +19763,7 @@ button.location-chip:focus-visible {
 .catalog-inspector-dl dt {
   color: var(--muted);
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 840;
 }
 
 .catalog-inspector-dl dd {
@@ -19893,7 +19771,7 @@ button.location-chip:focus-visible {
   margin: 0;
   overflow-wrap: anywhere;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .catalog-candidate-list {
@@ -19972,7 +19850,7 @@ button.location-chip:focus-visible {
 .audit-summary small {
   color: var(--muted);
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .audit-summary .audit-gap-label {
@@ -20010,7 +19888,7 @@ button.location-chip:focus-visible {
 .audit-viewer-header span:not(.review-chip) {
   color: var(--muted);
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .audit-viewer-grid {
@@ -20106,7 +19984,7 @@ button.location-chip:focus-visible {
   grid-column: 2;
   color: var(--muted);
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .compact-warning-list {
@@ -20137,7 +20015,7 @@ button.location-chip:focus-visible {
   padding: 5px 7px;
   color: var(--muted);
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .audit-field-grid strong {
@@ -20194,7 +20072,7 @@ button.location-chip:focus-visible {
   color: var(--muted);
   font-size: 0.64rem;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 760;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -20313,7 +20191,7 @@ button.location-chip:focus-visible {
   overflow: hidden;
   color: var(--muted);
   font-size: 0.56rem;
-  font-weight: 800;
+  font-weight: 850;
   line-height: 1;
   pointer-events: none;
   text-overflow: ellipsis;
@@ -20334,7 +20212,7 @@ button.location-chip:focus-visible {
   border-radius: 999px;
   padding: 1px 5px;
   font-size: 0.58rem;
-  font-weight: 900;
+  font-weight: 880;
   line-height: 1;
 }
 
@@ -20408,7 +20286,7 @@ button.location-chip:focus-visible {
 .location-autocomplete-panel small {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 760;
   margin-top: 2px;
 }
 
@@ -20430,7 +20308,7 @@ button.location-chip:focus-visible {
   color: var(--neutral);
   padding: 1px 6px;
   font-size: 0.62rem;
-  font-weight: 800;
+  font-weight: 850;
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -20449,7 +20327,7 @@ button.location-chip:focus-visible {
 .location-autocomplete-empty {
   color: var(--muted);
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 780;
   padding: 9px 10px;
 }
 
@@ -20460,7 +20338,7 @@ button.location-chip:focus-visible {
   border-radius: 999px;
   padding: 1px 6px;
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 850;
   white-space: nowrap;
 }
 
@@ -20519,7 +20397,7 @@ select.staging-input {
   color: #51606b;
   padding: 1px 5px;
   font-size: 0.64rem;
-  font-weight: 800;
+  font-weight: 760;
   text-align: left;
   cursor: pointer;
 }
@@ -20552,7 +20430,7 @@ select.staging-input {
 .active-filter-label {
   color: #5b6872;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 820;
   text-transform: uppercase;
 }
 
@@ -20568,7 +20446,7 @@ select.staging-input {
   color: #2f3d48;
   padding: 2px 7px;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 760;
   cursor: pointer;
 }
 
@@ -20590,7 +20468,7 @@ select.staging-input {
   border-color: transparent;
   background: transparent;
   color: var(--danger);
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .sheet-filter-popover {
@@ -20630,7 +20508,7 @@ select.staging-input {
   color: var(--muted);
   padding: 6px 8px;
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 760;
   line-height: 1.25;
 }
 
@@ -20642,7 +20520,7 @@ select.staging-input {
   color: #2f3d48;
   padding: 5px 7px;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 760;
   text-align: left;
   cursor: pointer;
 }
@@ -20658,7 +20536,7 @@ select.staging-input {
   border-bottom: 1px solid var(--line);
   color: #586773;
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .sheet-filter-popover-header button,
@@ -20688,7 +20566,7 @@ select.staging-input {
   color: #ffffff;
   padding: 4px 10px;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 820;
   cursor: pointer;
 }
 
@@ -20843,7 +20721,7 @@ select.staging-input {
   min-height: 12px;
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .staging-table button.small-button {
@@ -20886,7 +20764,7 @@ select.staging-input {
 .staging-row-detail dt {
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .staging-row-detail dd {
@@ -20910,7 +20788,7 @@ select.staging-input {
 .drawer-brief > div > span {
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .drawer-alert-row {
@@ -20950,7 +20828,7 @@ select.staging-input {
 .rate-component-grid span {
   color: var(--muted);
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .drawer-brief-metrics strong,
@@ -20996,7 +20874,7 @@ select.staging-input {
 .fix-item span {
   color: var(--muted);
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .fix-item.success {
@@ -21035,7 +20913,7 @@ select.staging-input {
 
 .leg-card small {
   color: var(--muted);
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .row-save-status[data-tone="success"] {
@@ -21091,7 +20969,7 @@ select.staging-input {
 .ui-state > span {
   color: var(--muted);
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -21126,7 +21004,7 @@ select.staging-input {
   color: #fff;
   padding: 4px 9px;
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .ui-state-row td {
@@ -21245,7 +21123,7 @@ select.staging-input {
 
 .empty-state a {
   color: var(--accent-dark);
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .bi-layout {
@@ -21292,7 +21170,7 @@ select.staging-input {
 .ai-confirmation-strip span {
   color: #43505a;
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .bi-copilot-brief {
@@ -21346,7 +21224,7 @@ select.staging-input {
   padding: 2px 7px;
   font-size: 0.68rem;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .bi-context-panel {
@@ -21388,7 +21266,7 @@ select.staging-input {
   color: #43505a;
   padding: 3px 8px;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .bi-workbench-nav {
@@ -21413,7 +21291,7 @@ select.staging-input {
   color: #43505a;
   padding: 5px 9px;
   font-size: 0.77rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .bi-workbench-nav button:hover,
@@ -21449,7 +21327,7 @@ select.staging-input {
   color: #43505a;
   padding: 5px 9px;
   font-size: 0.77rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .module-workbench-nav button:hover,
@@ -21577,7 +21455,7 @@ select.staging-input {
 .bi-analyst-summary li {
   color: #43505a;
   font-size: 0.82rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .bi-analyst-summary ul {
@@ -21643,7 +21521,7 @@ select.staging-input {
 .bi-analyst-list article.bi-empty-card {
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .bi-analyst-list strong {
@@ -21663,7 +21541,7 @@ select.staging-input {
   color: var(--muted);
   font-size: 0.74rem;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .bi-analyst-list em {
@@ -21699,7 +21577,7 @@ select.staging-input {
   color: #43505a;
   padding: 2px 7px;
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .bi-action-card {
@@ -21740,7 +21618,7 @@ select.staging-input {
   gap: 5px;
   color: var(--muted);
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .bi-geo-controls select,
@@ -21776,7 +21654,7 @@ select.staging-input {
   padding: 8px 10px;
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .bi-map-legend i {
@@ -21825,7 +21703,7 @@ select.staging-input {
 .bi-na-map-svg text {
   fill: rgba(52, 64, 74, 0.48);
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 850;
   pointer-events: none;
 }
 
@@ -21936,7 +21814,7 @@ select.staging-input {
 .bi-recommendation-controls span {
   color: var(--muted);
   font-size: 0.82rem;
-  font-weight: 700;
+  font-weight: 750;
   align-self: center;
 }
 
@@ -22049,7 +21927,7 @@ select.staging-input {
   padding: 3px 6px;
   text-align: left;
   font-size: 0.84rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .bi-cell-button:hover {
@@ -22141,7 +22019,7 @@ select.staging-input {
 
 .diagnostic-list dt {
   color: var(--muted);
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .diagnostic-list dd {
@@ -22188,7 +22066,7 @@ select.staging-input {
   gap: 6px;
   color: #40505d;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .settings-form .wide-field,
@@ -22325,7 +22203,7 @@ select.staging-input {
   color: #7a4d00;
   padding: 3px 8px;
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -22388,7 +22266,7 @@ select.staging-input {
 .observability-summary small {
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .observability-summary strong {
@@ -22410,7 +22288,7 @@ select.staging-input {
   gap: 4px;
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .observability-toolbar select {
@@ -22469,7 +22347,7 @@ select.staging-input {
   gap: 4px;
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .catalog-import-controls .wide-field {
@@ -22599,7 +22477,7 @@ h2 {
 .eyebrow {
   color: var(--muted);
   font-size: 0.64rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .workspace-panel,
@@ -22686,7 +22564,7 @@ label {
   gap: 4px;
   color: #4c5964;
   font-size: 0.75rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 input,
@@ -22726,7 +22604,7 @@ button,
   color: #ffffff;
   padding: 5px 10px;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 button:hover,
@@ -22808,7 +22686,7 @@ th,
   background: #f1f4f6;
   color: #46525d;
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 880;
 }
 
 td {
@@ -22848,7 +22726,7 @@ tbody tr:hover {
   color: var(--neutral);
   padding: 2px 7px;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .status-pill.neutral,
@@ -22960,7 +22838,7 @@ tbody tr:hover {
 .row-save-status {
   color: var(--neutral);
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .status-message[data-tone="success"],
@@ -23105,7 +22983,7 @@ tbody tr:hover {
   color: var(--muted);
   padding: 6px 10px;
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .shell-status-strip a:hover {
@@ -23196,7 +23074,7 @@ tbody tr:hover {
 .workflow-progress-step small {
   color: var(--muted);
   font-size: 0.73rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .next-best-action-card {
@@ -23324,7 +23202,7 @@ tbody tr:hover {
 .rateware-summary-strip span {
   color: var(--muted);
   font-size: 0.64rem;
-  font-weight: 800;
+  font-weight: 840;
 }
 
 .staging-summary-strip strong,
@@ -23393,7 +23271,7 @@ tbody tr:hover {
 .staging-approval-metrics span {
   color: var(--muted);
   font-size: 0.61rem;
-  font-weight: 800;
+  font-weight: 840;
   line-height: 1.15;
   text-transform: uppercase;
 }
@@ -23587,7 +23465,7 @@ tbody tr:hover {
   padding: 1px 6px;
   white-space: nowrap;
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .bulk-scope-note {
@@ -23598,7 +23476,7 @@ tbody tr:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .sheet-bulk-form .bulk-scope-note {
@@ -23683,7 +23561,7 @@ tbody tr:hover {
 
 .sheet-issue-nav span {
   color: var(--neutral);
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .sheet-helper-strip kbd {
@@ -23694,7 +23572,7 @@ tbody tr:hover {
   padding: 1px 4px;
   color: var(--neutral);
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 850;
   line-height: 1.3;
   text-align: center;
   box-shadow: inset 0 -1px 0 #e6edf1;
@@ -23711,7 +23589,7 @@ tbody tr:hover {
   padding: 5px 7px;
   color: var(--neutral);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .sheet-pagination-controls {
@@ -23792,7 +23670,7 @@ tbody tr:hover {
   gap: 10px;
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .staging-load-row button {
@@ -24106,7 +23984,7 @@ tbody tr:hover {
 .correction-history small {
   color: var(--neutral);
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: 750;
 }
 
 .reprocess-impact-card,
@@ -24133,7 +24011,7 @@ tbody tr:hover {
   margin: 0;
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 740;
   line-height: 1.35;
 }
 
@@ -24149,7 +24027,7 @@ tbody tr:hover {
 .reprocess-impact-panel small {
   color: var(--muted);
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: 750;
 }
 
 .reprocess-impact-list {
@@ -24323,7 +24201,7 @@ tbody tr:hover {
   margin: 0;
   color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 760;
   line-height: 1.35;
 }
 
@@ -24434,7 +24312,7 @@ tbody tr:hover {
 .memory-simulation-list small {
   color: var(--muted);
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .memory-change-log-panel {
@@ -24478,7 +24356,7 @@ tbody tr:hover {
 .memory-change-main small {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 760;
   white-space: nowrap;
 }
 
@@ -24488,7 +24366,7 @@ tbody tr:hover {
   gap: 2px;
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 760;
   white-space: nowrap;
 }
 
@@ -24505,7 +24383,7 @@ tbody tr:hover {
 .memory-recommendation small {
   color: var(--muted);
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 760;
   line-height: 1.25;
 }
 
@@ -24597,7 +24475,7 @@ tbody tr:hover {
 .source-compare-row small {
   color: var(--muted);
   font-size: 0.65rem;
-  font-weight: 800;
+  font-weight: 840;
 }
 
 .source-compare-row strong {
@@ -25601,7 +25479,7 @@ tbody tr:hover {
 .bid-room-stage-rail small {
   color: var(--muted);
   font-size: 0.64rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .bid-room-next-action {
@@ -25631,7 +25509,7 @@ tbody tr:hover {
 .bid-room-next-action small {
   color: #4b5964;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.25;
 }
 
@@ -25866,14 +25744,14 @@ tbody tr:hover {
   margin: 0;
   color: #40505d;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 760;
   line-height: 1.25;
 }
 
 .rfx-manager-flow small {
   color: var(--muted);
   font-size: 0.66rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.2;
 }
 
@@ -25959,7 +25837,7 @@ tbody tr:hover {
 .rfx-manager-task-list small {
   color: #4c5964;
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.25;
 }
 
@@ -26162,7 +26040,7 @@ button[disabled] {
 
 .secondary-link {
   color: var(--brand-strong);
-  font-weight: 700;
+  font-weight: 750;
 }
 
 .secondary-link:hover {
@@ -26206,7 +26084,7 @@ textarea:focus,
 .side-nav a[aria-current="page"] {
   background: var(--brand-tint);
   color: var(--brand-strong);
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .side-nav a[aria-current="page"]::before {
@@ -26300,7 +26178,7 @@ textarea:focus,
   color: #7a8993;
   padding: 2px 4px;
   font-size: 0.58rem;
-  font-weight: 800;
+  font-weight: 850;
   white-space: nowrap;
 }
 
@@ -26423,7 +26301,7 @@ textarea:focus,
   color: var(--muted);
   padding: 9px 14px;
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .command-palette-empty {
@@ -26452,7 +26330,7 @@ textarea:focus,
   border-color: #dce5ea;
   padding: 4px 9px;
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 820;
   white-space: nowrap;
 }
 
@@ -26904,7 +26782,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   gap: 6px;
   color: var(--muted);
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .freshness-legend i {
@@ -26915,7 +26793,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 
 .freshness-legend b {
   color: var(--text);
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .rate-health-metrics {
@@ -26944,7 +26822,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   padding: 2px 10px;
   color: var(--muted);
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .sheet-shortcuts summary::-webkit-details-marker {
@@ -27189,7 +27067,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   color: #43505a;
   padding: 5px 9px;
   font-size: 0.75rem;
-  font-weight: 900;
+  font-weight: 880;
 }
 
 .bid-room-mode-nav button:hover,
@@ -27290,7 +27168,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .bid-room-stage-rail small {
   color: var(--muted);
   font-size: 0.6rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .bid-room-next-action {
@@ -27322,7 +27200,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .bid-room-next-action small {
   color: #4b5964;
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.25;
 }
 
@@ -27375,7 +27253,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .rfx-ops-health small {
   color: #51606b;
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.2;
 }
 
@@ -27472,7 +27350,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .rfx-manager-task-list small {
   color: #4c5964;
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.25;
 }
 
@@ -27716,7 +27594,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .bid-room-metrics small {
   color: #52616d;
   font-size: 0.66rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .bid-room-readiness-panel {
@@ -27748,7 +27626,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   margin-top: 2px;
   color: #52616d;
   font-size: 0.7rem;
-  font-weight: 700;
+  font-weight: 740;
 }
 
 .bid-room-readiness-actions {
@@ -27816,7 +27694,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   min-height: 28px;
   color: #52616d;
   font-size: 0.64rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.25;
 }
 
@@ -27953,7 +27831,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   overflow: hidden;
   color: var(--muted);
   font-size: 0.64rem;
-  font-weight: 700;
+  font-weight: 720;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -28125,7 +28003,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   min-height: 48px;
   resize: vertical;
   color: #26323d;
-  font-weight: 600;
+  font-weight: 650;
   line-height: 1.3;
   text-transform: none;
 }
@@ -28580,7 +28458,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .bid-support-message.is-user span {
   color: #3553d8;
   font-size: 0.62rem;
-  font-weight: 900;
+  font-weight: 950;
   text-transform: uppercase;
 }
 
@@ -29398,7 +29276,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   margin-top: 8px;
   color: #52616d;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .rfx-award-readiness p {
@@ -29715,7 +29593,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   overflow: hidden;
   color: inherit;
   font-size: 0.66rem;
-  font-weight: 600;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -29821,7 +29699,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   margin: 0;
   color: #52616d;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 760;
   line-height: 1.25;
 }
 
@@ -29861,7 +29739,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   color: #43515c;
   padding: 1px 6px;
   font-size: 0.62rem;
-  font-weight: 800;
+  font-weight: 850;
   white-space: nowrap;
 }
 
@@ -29926,7 +29804,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   padding: 3px 5px;
   color: #52616d;
   font-size: 0.64rem;
-  font-weight: 800;
+  font-weight: 780;
 }
 
 .rfx-award-table {
@@ -30755,7 +30633,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   overflow: hidden;
   color: var(--muted);
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 760;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -30805,7 +30683,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .bid-portal-shell .bid-tools-lane-switcher-bar small {
   color: var(--muted);
   font-size: 0.65rem;
-  font-weight: 700;
+  font-weight: 680;
   text-align: right;
 }
 
@@ -30924,7 +30802,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   margin-top: 1px;
   color: var(--muted);
   font-size: 0.62rem;
-  font-weight: 700;
+  font-weight: 680;
 }
 
 .bid-portal-shell .carrier-lane-book-table tr.is-current td {
@@ -30978,7 +30856,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   background: var(--accent);
   color: #fff;
   cursor: pointer;
-  font-weight: 800;
+  font-weight: 850;
   list-style: none;
 }
 
@@ -31115,13 +30993,13 @@ form[data-unsaved-guard][data-unsaved="true"] {
 
 .bid-chat-launcher span {
   font-size: 0.86rem;
-  font-weight: 900;
+  font-weight: 950;
 }
 
 .bid-chat-launcher small {
   color: #506c66;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 820;
 }
 
 .bid-chat-popover {
@@ -31207,7 +31085,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .bid-chat-thread-tabs span {
   overflow: hidden;
   font-size: 0.7rem;
-  font-weight: 900;
+  font-weight: 920;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -31215,7 +31093,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .bid-chat-thread-tabs small {
   color: inherit;
   font-size: 0.62rem;
-  font-weight: 800;
+  font-weight: 850;
   opacity: 0.78;
 }
 
@@ -31271,7 +31149,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 
 .bid-support-launcher span {
   font-size: 0.86rem;
-  font-weight: 900;
+  font-weight: 950;
 }
 
 .bid-support-launcher small {
@@ -32993,7 +32871,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .ratebook-carrier-meta { display: grid; grid-template-columns: repeat(2, minmax(140px, 1fr)); gap: 8px; margin: 0; }
 .ratebook-carrier-meta div { padding: 9px 11px; border: 1px solid #d7e2e7; border-radius: 5px; background: #f7fafb; }
 .ratebook-carrier-meta dt { color: #58717e; font-size: .66rem; font-weight: 800; text-transform: uppercase; }
-.ratebook-carrier-meta dd { margin: 3px 0 0; font-size: .82rem; font-weight: 700; }
+.ratebook-carrier-meta dd { margin: 3px 0 0; font-size: .82rem; font-weight: 750; }
 .ratebook-carrier-status { min-height: 18px; margin: 10px 0; color: #315466; font-size: .82rem; }
 .ratebook-carrier-workspace { border: 1px solid #c5d6de; border-radius: 7px; background: #fff; overflow: hidden; }
 .ratebook-carrier-toolbar { display: flex; align-items: end; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #dce7eb; background: #f8fbfc; }
@@ -33006,7 +32884,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .ratebook-carrier-grid th { padding: 7px 9px; border-bottom: 1px solid #c7d8df; background: #edf4f7; color: #41606f; text-align: left; font-size: .64rem; text-transform: uppercase; letter-spacing: .025em; white-space: nowrap; }
 .ratebook-carrier-grid td { max-width: 220px; padding: 7px 9px; border-bottom: 1px solid #e1eaee; vertical-align: top; line-height: 1.3; }
 .ratebook-carrier-grid td strong { color: #173d52; }
-.ratebook-carrier-grid button, .ratebook-carrier-dialog button { border: 1px solid #9db4bf; border-radius: 4px; padding: 4px 7px; background: #fff; color: #173d52; font: inherit; font-size: .72rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.ratebook-carrier-grid button, .ratebook-carrier-dialog button { border: 1px solid #9db4bf; border-radius: 4px; padding: 4px 7px; background: #fff; color: #173d52; font: inherit; font-size: .72rem; font-weight: 750; cursor: pointer; white-space: nowrap; }
 .ratebook-carrier-grid button:hover, .ratebook-carrier-dialog button:hover { background: #eef7f7; }
 .ratebook-carrier-empty { padding: 24px !important; color: #58717e; text-align: center; }
 .ratebook-carrier-dialog { width: min(900px, calc(100% - 30px)); max-height: min(760px, calc(100% - 30px)); border: 1px solid #aebfc8; border-radius: 8px; padding: 0; color: #163241; box-shadow: 0 18px 60px rgba(20, 48, 62, .22); }
@@ -33023,12 +32901,12 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .ratebook-carrier-offer { display: grid; gap: 2px; min-width: 105px; color: #214a5a; }
 .ratebook-carrier-offer strong { color: #13586c; }
 .ratebook-carrier-offer small { color: #607a85; font-size: .66rem; }
-.ratebook-carrier-offer.is-empty, .ratebook-carrier-offer.is-withdrawn { display: inline-flex; width: auto; padding: 2px 6px; border-radius: 10px; font-size: .67rem; font-weight: 700; }
+.ratebook-carrier-offer.is-empty, .ratebook-carrier-offer.is-withdrawn { display: inline-flex; width: auto; padding: 2px 6px; border-radius: 10px; font-size: .67rem; font-weight: 750; }
 .ratebook-carrier-offer.is-empty { color: #5d707a; background: #edf2f4; }
 .ratebook-carrier-offer.is-withdrawn { color: #8b4e25; background: #fff1e5; }
 .ratebook-carrier-quote-dialog { width: min(640px, calc(100% - 30px)); }
 .ratebook-carrier-quote-form { display: grid; gap: 12px; padding: 14px 16px 16px; }
-.ratebook-carrier-quote-route { margin: 0; padding: 8px 10px; border: 1px solid #d5e2e7; border-radius: 5px; background: #f7fafb; color: #294b58; font-size: .78rem; font-weight: 700; }
+.ratebook-carrier-quote-route { margin: 0; padding: 8px 10px; border: 1px solid #d5e2e7; border-radius: 5px; background: #f7fafb; color: #294b58; font-size: .78rem; font-weight: 750; }
 .ratebook-carrier-quote-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .ratebook-carrier-quote-form label { display: grid; gap: 4px; color: #4e6874; font-size: .67rem; font-weight: 800; text-transform: uppercase; }
 .ratebook-carrier-quote-form input, .ratebook-carrier-quote-form select, .ratebook-carrier-quote-form textarea { min-height: 31px; border: 1px solid #aec3ce; border-radius: 4px; padding: 5px 7px; background: #fff; color: #183440; font: inherit; font-size: .8rem; text-transform: none; }
@@ -33067,7 +32945,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   color: #fff;
   font: inherit;
   font-size: .72rem;
-  font-weight: 700;
+  font-weight: 750;
   cursor: pointer;
 }
 
@@ -33646,7 +33524,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
     color: var(--muted);
     padding: 7px 13px 6px;
     font-size: 0.72rem;
-    font-weight: 800;
+    font-weight: 820;
     white-space: nowrap;
   }
 
@@ -33728,7 +33606,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   list-style: none;
   padding: 6px 8px;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .vendor-directory-filter-drawer > summary::-webkit-details-marker {
@@ -33846,7 +33724,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   color: var(--text);
   cursor: pointer;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 850;
   list-style: none;
 }
 
@@ -33872,7 +33750,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   margin-left: auto;
   color: var(--muted);
   font-size: 0.64rem;
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .bi-filter-disclosure > .bi-filter-grid {
@@ -34093,7 +33971,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   color: #ffffff;
   content: attr(data-nav-tooltip);
   font-size: 0.68rem;
-  font-weight: 600;
+  font-weight: 650;
   line-height: 1.3;
   opacity: 0;
   padding: 7px 9px;
@@ -34241,7 +34119,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   background: #f8fafb;
   color: #647783;
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .bid-room-page .bid-room-flow-shell .bid-room-stage-rail button.is-active .stage-index {
@@ -34289,7 +34167,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   color: #ffffff;
   content: attr(data-stage-tooltip);
   font-size: 0.67rem;
-  font-weight: 600;
+  font-weight: 650;
   line-height: 1.3;
   opacity: 0;
   padding: 7px 9px;
@@ -34384,7 +34262,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   cursor: pointer;
   color: #31434d;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 820;
   list-style: none;
 }
 
@@ -34406,7 +34284,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   margin-left: auto;
   color: #73838c;
   font-size: 0.64rem;
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .bid-room-page .bid-room-manual-lanes {
@@ -34651,7 +34529,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   box-shadow: 0 8px 18px rgba(19, 27, 36, 0.16);
   color: #ffffff;
   font-size: 0.68rem;
-  font-weight: 600;
+  font-weight: 650;
   line-height: 1.3;
   opacity: 0;
   padding: 7px 9px;
@@ -34684,7 +34562,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .bid-room-page .rfx-event-card .rfx-event-select strong {
   overflow: hidden;
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 850;
   line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -34721,7 +34599,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   overflow: hidden;
   color: #ffffff;
   font-size: 0.64rem;
-  font-weight: 600;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -34801,7 +34679,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   box-shadow: 0 10px 22px rgba(19, 27, 36, 0.22);
   color: #ffffff;
   font-size: 0.68rem;
-  font-weight: 600;
+  font-weight: 650;
   line-height: 1.3;
   padding: 8px 10px;
   pointer-events: none;
@@ -34842,7 +34720,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   overflow: hidden;
   color: #ffffff;
   font-size: 0.64rem;
-  font-weight: 600;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -34944,7 +34822,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   height: 26px;
   border-radius: 4px;
   font-size: 0.64rem;
-  font-weight: 700;
+  font-weight: 750;
 }
 
 .bid-room-event-filter-strip input,
@@ -35241,7 +35119,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .rfx-event-published-grid dt {
   color: #72838d;
   font-size: 0.55rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -35250,7 +35128,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   margin: 2px 0 0;
   color: #263b47;
   font-size: 0.66rem;
-  font-weight: 700;
+  font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -35488,7 +35366,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   color: #ffffff;
   content: attr(data-supply-tooltip);
   font-size: 0.62rem;
-  font-weight: 600;
+  font-weight: 650;
   line-height: 1.35;
   opacity: 0;
   padding: 6px 8px;
@@ -35664,7 +35542,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   cursor: pointer;
   color: #334b57;
   font-size: 0.68rem;
-  font-weight: 800;
+  font-weight: 850;
   list-style: none;
 }
 
@@ -36035,7 +35913,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   background: transparent;
   color: #47606d;
   font-size: .66rem;
-  font-weight: 800;
+  font-weight: 850;
 }
 
 .rfx-process-rfi-legacy-layout .rfi-workspace-view-toggle button.is-active {
@@ -36309,7 +36187,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .rfx-golden-fit-label {
   color: #8a6a13;
   font-size: .56rem;
-  font-weight: 900;
+  font-weight: 950;
   letter-spacing: .03em;
 }
 
@@ -36425,7 +36303,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .rfi-summary-fields span {
   color: #67808b;
   font-size: .57rem;
-  font-weight: 800;
+  font-weight: 850;
   letter-spacing: .04em;
   text-transform: uppercase;
 }
@@ -36641,7 +36519,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .rfx-public-preview-brand {
   color: #8b6c13;
   font-size: .6rem;
-  font-weight: 900;
+  font-weight: 950;
   letter-spacing: .09em;
 }
 
@@ -36669,7 +36547,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .rfx-public-preview-status span {
   color: #257363;
   font-size: .6rem;
-  font-weight: 900;
+  font-weight: 950;
 }
 
 .rfx-public-preview-status small {
@@ -36722,7 +36600,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 }
 
 .rfx-preview-section-heading strong { color: #263b43; font-size: .73rem; }
-.rfx-preview-section-heading > small { color: #7c6a35; font-size: .62rem; font-weight: 800; }
+.rfx-preview-section-heading > small { color: #7c6a35; font-size: .62rem; font-weight: 850; }
 
 .rfx-public-route-list {
   display: grid;
@@ -36857,7 +36735,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   background: #fff0af;
   color: #72560a;
   font-size: .65rem;
-  font-weight: 900;
+  font-weight: 950;
 }
 
 .rfx-golden-segment-copy { display: grid; gap: 3px; min-width: 0; }
@@ -36865,7 +36743,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
 .rfx-golden-segment-copy span { overflow: hidden; color: #758187; font-size: .61rem; text-overflow: ellipsis; white-space: nowrap; }
 .rfx-golden-segment-stat { display: grid; gap: 2px; min-width: 0; }
 .rfx-golden-segment-stat strong { color: #354e50; font-size: .72rem; }
-.rfx-golden-segment-status { color: #277263; font-size: .6rem; font-weight: 800; white-space: nowrap; }
+.rfx-golden-segment-status { color: #277263; font-size: .6rem; font-weight: 850; white-space: nowrap; }
 .rfx-golden-card-footer { border-top-color: #eee3bc; background: #fffefa; }
 .rfx-golden-card-footer strong { color: #70550c; }
 
@@ -36906,7 +36784,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   gap: 3px;
   color: #405965;
   font-size: 0.65rem;
-  font-weight: 800;
+  font-weight: 850;
   text-transform: uppercase;
 }
 
@@ -36925,7 +36803,7 @@ form[data-unsaved-guard][data-unsaved="true"] {
   color: #172530;
   font: inherit;
   font-size: 0.69rem;
-  font-weight: 600;
+  font-weight: 650;
   padding: 5px 6px;
   text-transform: none;
 }
