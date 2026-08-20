@@ -131,6 +131,24 @@ const accessorEvidence = buildAdminGovernanceReadiness({
   settings: { ...settings, organization: accessorOrganization, access: accessorAccess },
   session: accessorSession
 });
+const forgedDescriptor = (forged) => new Proxy({}, {
+  getPrototypeOf() { return Object.prototype; },
+  get() { return undefined; },
+  getOwnPropertyDescriptor(_target, key) {
+    if (!Object.prototype.hasOwnProperty.call(forged, key)) return undefined;
+    return { configurable: true, enumerable: true, writable: true, value: forged[key] };
+  },
+  ownKeys() { return []; }
+});
+const descriptorForging = buildAdminGovernanceReadiness({
+  ...completeEvidence,
+  settings: {
+    ...settings,
+    organization: forgedDescriptor({ id: "workspace-forged" }),
+    access: forgedDescriptor({ mode: "role_enforced" })
+  },
+  session: forgedDescriptor({ token: "session-forged" })
+});
 
 const invalidObservability = buildAdminGovernanceReadiness({
   ...completeEvidence,
@@ -182,6 +200,13 @@ assert.deepEqual([
       && hasGap(accessorEvidence, "access:role_enforcement_missing")
   },
   {
+    family: "descriptor-forging proxy inconsistency",
+    passed: descriptorForging.status === "blocked"
+      && hasGap(descriptorForging, "session:missing")
+      && hasGap(descriptorForging, "workspace:missing")
+      && hasGap(descriptorForging, "access:role_enforcement_missing")
+  },
+  {
     family: "invalid observability container",
     passed: evidenceStatus(invalidObservability, "Operational observability") === "not_observed"
       && hasGap(invalidObservability, "observability:not_loaded")
@@ -200,6 +225,7 @@ assert.deepEqual([
   { family: "whitespace-only session and workspace evidence", passed: true },
   { family: "non-string session and workspace evidence", passed: true },
   { family: "descriptor-hiding proxies and accessor evidence", passed: true },
+  { family: "descriptor-forging proxy inconsistency", passed: true },
   { family: "invalid observability container", passed: true },
   { family: "invalid audit timestamp", passed: true },
   { family: "explicitly unconfigured Gmail integration", passed: true }

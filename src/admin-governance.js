@@ -15,7 +15,9 @@ function ownDataProperty(value, key) {
   if (!isRecord(value)) return INVALID_DATA_PROPERTY;
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
   if (!descriptor) return undefined;
-  return Object.prototype.hasOwnProperty.call(descriptor, "value")
+  if (!Object.prototype.hasOwnProperty.call(descriptor, "value")) return INVALID_DATA_PROPERTY;
+  if (!Reflect.ownKeys(value).includes(key)) return INVALID_DATA_PROPERTY;
+  return Object.is(Reflect.get(value, key, value), descriptor.value)
     ? descriptor.value
     : INVALID_DATA_PROPERTY;
 }
