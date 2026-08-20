@@ -104,15 +104,15 @@ function usableObservation(value, budget) {
   return { usable: false, incomplete: false };
 }
 
-function observationCount(value, budget) {
-  if (!Array.isArray(value)) return { count: null, incomplete: false };
+function observationCount(value, budget, present) {
+  if (!Array.isArray(value)) return { count: null, incomplete: false, invalidContainer: present };
   let usable = 0;
   for (const item of value) {
     const inspected = usableObservation(item, budget);
-    if (inspected.incomplete) return { count: usable, incomplete: true };
+    if (inspected.incomplete) return { count: usable, incomplete: true, invalidContainer: false };
     if (inspected.usable) usable += 1;
   }
-  return { count: usable, incomplete: false };
+  return { count: usable, incomplete: false, invalidContainer: false };
 }
 
 function sanitizeValue(value) {
@@ -192,9 +192,9 @@ function sampleSummary(result) {
   const transactions = count(summary.transactions ?? result.transaction_count);
   const carriers = count(summary.carriers ?? result.carrier_count ?? result.candidate_count);
   const budget = { count: 0 };
-  const rowAnalysis = observationCount(result.rows, budget);
-  const pointAnalysis = observationCount(result.points, budget);
-  const recommendationAnalysis = observationCount(result.recommendations, budget);
+  const rowAnalysis = observationCount(result.rows, budget, Object.prototype.hasOwnProperty.call(result, "rows"));
+  const pointAnalysis = observationCount(result.points, budget, Object.prototype.hasOwnProperty.call(result, "points"));
+  const recommendationAnalysis = observationCount(result.recommendations, budget, Object.prototype.hasOwnProperty.call(result, "recommendations"));
   const rows = rowAnalysis.count;
   const points = pointAnalysis.count;
   const recommendations = recommendationAnalysis.count;
@@ -202,7 +202,8 @@ function sampleSummary(result) {
   const primary = transactions ?? rateSignals ?? recommendations ?? rows ?? points ?? carriers;
   return {
     sample: { transactions, carriers, rows, points, recommendations, rate_signals: rateSignals, primary },
-    incomplete: rowAnalysis.incomplete || pointAnalysis.incomplete || recommendationAnalysis.incomplete
+    incomplete: rowAnalysis.incomplete || pointAnalysis.incomplete || recommendationAnalysis.incomplete,
+    invalidContainer: rowAnalysis.invalidContainer || pointAnalysis.invalidContainer || recommendationAnalysis.invalidContainer
   };
 }
 
@@ -391,6 +392,9 @@ export function buildIntelligenceBrief(input = {}) {
     if (sample.carriers !== null && sample.carriers < 2) addGap("sample:single_carrier", "review", "The result does not contain a comparable carrier sample.");
     if (sampleAnalysis.incomplete || monetaryEvidence.incomplete) {
       addGap("evidence:incomplete", "blocking", "The source evidence exceeded the bounded local inspection limit.");
+    }
+    if (sampleAnalysis.invalidContainer) {
+      addGap("evidence:invalid_container", "blocking", "Rows, points, and recommendations must be arrays when provided.");
     }
 
     if (monetaryEvidence.invalidMoney) {

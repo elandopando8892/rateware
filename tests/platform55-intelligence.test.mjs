@@ -169,6 +169,33 @@ assert.equal(metadataOnlyRows.status, "blocked");
 assert.ok(metadataOnlyRows.gaps.some((gap) => gap.code === "sample:empty"));
 assert.ok(metadataOnlyRows.gaps.some((gap) => gap.code === "lineage:missing"));
 
+const invalidEvidenceContainerOutcomes = [
+  ["rows", { rows: { lane: "Laredo-Monterrey" } }],
+  ["points", { points: "five" }],
+  ["recommendations", { recommendations: new Set(["vendor-1"]) }]
+].map(([field, invalidEvidence]) => {
+  const brief = buildIntelligenceBrief({
+    source: "pivot",
+    generatedAt,
+    result: {
+      data_as_of: "2026-08-12",
+      summary: { transactions: 5, carriers: 2 },
+      lineage: [{ id: "rate-1" }],
+      ...invalidEvidence
+    }
+  });
+  return {
+    field,
+    status: brief.status,
+    has_invalid_container_gap: brief.gaps.some((gap) => gap.code === "evidence:invalid_container")
+  };
+});
+assert.deepEqual(invalidEvidenceContainerOutcomes, [
+  { field: "rows", status: "blocked", has_invalid_container_gap: true },
+  { field: "points", status: "blocked", has_invalid_container_gap: true },
+  { field: "recommendations", status: "blocked", has_invalid_container_gap: true }
+]);
+
 const rowMoneyWithoutCurrency = buildIntelligenceBrief({
   source: "pivot",
   generatedAt,
