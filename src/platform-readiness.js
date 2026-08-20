@@ -71,12 +71,12 @@ function isJsonEvidence(value, seen = new WeakSet()) {
 }
 
 function jsonEvidenceSnapshot(value) {
-  if (!isJsonEvidence(value) || typeof globalThis.structuredClone !== "function") {
+  if (typeof globalThis.structuredClone !== "function") {
     return INVALID_DATA_PROPERTY;
   }
   try {
     const snapshot = globalThis.structuredClone(value);
-    return isJsonEvidence(snapshot) ? snapshot : INVALID_DATA_PROPERTY;
+    return isJsonEvidence(value) && isJsonEvidence(snapshot) ? snapshot : INVALID_DATA_PROPERTY;
   } catch {
     return INVALID_DATA_PROPERTY;
   }

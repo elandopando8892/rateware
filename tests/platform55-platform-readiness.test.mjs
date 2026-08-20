@@ -148,6 +148,23 @@ const forgedCollectionEvidence = buildPlatformControlReadiness({
 assert.equal(forgedCollectionEvidence.summary.observed_surfaces, 0, "Proxy-forged collection evidence fails closed");
 assert.deepEqual(forgedCollectionEvidence.surfaces.find((surface) => surface.page_id === "runtime-jobs")?.evidence, []);
 
+const mutableEvidence = {
+  observabilityLoaded: false,
+  observability: { events: [] }
+};
+mutableEvidence.trigger = new Proxy({}, {
+  getPrototypeOf() {
+    mutableEvidence.observabilityLoaded = true;
+    mutableEvidence.observability = { events: [{ source: "forged-after-validation" }] };
+    delete mutableEvidence.trigger;
+    return Object.prototype;
+  },
+  ownKeys: () => []
+});
+const timeOfCheckEvidence = buildPlatformControlReadiness(mutableEvidence);
+assert.equal(timeOfCheckEvidence.summary.observed_surfaces, 0, "self-removing Proxy evidence fails closed before validation");
+assert.deepEqual(timeOfCheckEvidence.surfaces.find((surface) => surface.page_id === "runtime-jobs")?.evidence, []);
+
 const contradictoryGovernance = buildPlatformControlReadiness({
   governance: {
     status: "blocked",
