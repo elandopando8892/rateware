@@ -105,3 +105,23 @@ This evidence closes the PR #37 reconstruction, preview, independent-review, mer
 - Supabase branch count after release: exactly one persistent non-default preview (`fcm-gmail-staging`); no second preview branch was created.
 - Final PR #37 disposition: merged and production accepted. No manual promotion, database migration, DDL/DML, upload, approval, outreach, dispatch, or production-data write was performed.
 - P1 progress remains **25%** until PR #39 is reconstructed/certified and the three-candidate implementation milestone is independently accepted.
+
+## Collected candidate evidence — PR #39 Platform Readiness
+
+This evidence records the final local implementation candidate. It does not alter the immutable initial queue and does not claim preview or production acceptance.
+
+- Reviewed candidate SHA: `cf2f0ecaf370df228d6c8cd5f9375fb5539f4ce3`.
+- Base and merge-base: `e0c91cc0c3ae86db6786923b80f8e69fcbfadf42`.
+- Cumulative scope: exactly seven expected paths.
+- Scoped independent verdict: **GO**, P0/P1/P2 all zero.
+- Independent review: `docs/release/evidence/2026-08-20-p1-pr39-independent-review.md`.
+- Independent detached worktree: `C:\Users\andre\OneDrive\Documents\Rateware_PR39_Review_Final_20260820_153002_893_0d42269b`.
+- Five frozen regressions: `5/5` PASS; final bounded defensive matrix: `20/20` PASS.
+- Full `npm test`, validator, audit, syntax, and diff checks: PASS.
+- Runtime contract remained observation-only: global `blocked`, seven surfaces blocked, all consequential controls `false`.
+- Push, base retarget, preview, Ready transition, merge, deployment, manual promotion, Supabase branch creation, and production mutation: not performed.
+- Final read-only Supabase refresh: exactly one persistent non-default preview remains, `fcm-gmail-staging` (`FUNCTIONS_DEPLOYED`, `ACTIVE_HEALTHY`); the default `main` metadata still reports `MIGRATIONS_FAILED`. No branch was created, changed, or deleted.
+
+## P1 implementation milestone — 55%
+
+The implementation milestone is now file-backed by `docs/release/evidence/2026-08-20-p1-implementation.md`. PR #35 and PR #37 are merged and production accepted; PR #39 is reconstructed and independently GO at the exact local SHA above. This is implementation-complete evidence, not release-complete evidence. P1 release progression beyond 55% still requires the separately authorized PR #39 update, exact preview validation, Ready/merge/automatic production deployment authorization, production smoke, and bounded monitoring.
