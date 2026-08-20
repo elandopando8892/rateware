@@ -25,7 +25,7 @@ const governedPivot = buildIntelligenceBrief({
     metric: "all_in_rate",
     data_as_of: "2026-08-12",
     summary: { transactions: 20, carriers: 4, avg_all_in_rate: 2400, currency: "USD" },
-    rows: [{ currency: "USD" }],
+    rows: [{ lane: "Laredo-Monterrey", currency: "USD" }],
     lineage: [{ type: "rate_staging", id: "rate-1", raw_upload_id: "upload-1" }]
   }
 });
@@ -168,6 +168,47 @@ const metadataOnlyRows = buildIntelligenceBrief({
 assert.equal(metadataOnlyRows.status, "blocked");
 assert.ok(metadataOnlyRows.gaps.some((gap) => gap.code === "sample:empty"));
 assert.ok(metadataOnlyRows.gaps.some((gap) => gap.code === "lineage:missing"));
+
+const presentUnusableCollectionOutcomes = [
+  ["empty rows", { rows: [] }],
+  ["metadata-only rows", { rows: Array.from({ length: 5 }, () => ({ selected: false })) }],
+  ["empty points", { points: [] }],
+  ["empty recommendations", { recommendations: [] }]
+].map(([caseName, collection]) => {
+  const brief = buildIntelligenceBrief({
+    source: "pivot",
+    generatedAt,
+    result: {
+      data_as_of: "2026-08-12",
+      summary: { transactions: 5, carriers: 2 },
+      lineage: [{ id: "rate-1" }],
+      ...collection
+    }
+  });
+  return {
+    case: caseName,
+    status: brief.status,
+    has_empty_sample_gap: brief.gaps.some((gap) => gap.code === "sample:empty")
+  };
+});
+assert.deepEqual(presentUnusableCollectionOutcomes, [
+  { case: "empty rows", status: "blocked", has_empty_sample_gap: true },
+  { case: "metadata-only rows", status: "blocked", has_empty_sample_gap: true },
+  { case: "empty points", status: "blocked", has_empty_sample_gap: true },
+  { case: "empty recommendations", status: "blocked", has_empty_sample_gap: true }
+]);
+
+const summaryOnlyWithoutCollections = buildIntelligenceBrief({
+  source: "pivot",
+  generatedAt,
+  result: {
+    data_as_of: "2026-08-12",
+    summary: { transactions: 5, carriers: 2 },
+    lineage: [{ id: "rate-1" }]
+  }
+});
+assert.equal(summaryOnlyWithoutCollections.status, "reviewable");
+assert.ok(!summaryOnlyWithoutCollections.gaps.some((gap) => gap.code === "sample:empty"));
 
 const invalidEvidenceContainerOutcomes = [
   ["rows", { rows: { lane: "Laredo-Monterrey" } }],

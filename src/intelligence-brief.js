@@ -241,7 +241,8 @@ function sampleSummary(result) {
   return {
     sample: { transactions, carriers, rows, points, recommendations, rate_signals: rateSignals, primary },
     incomplete: rowAnalysis.incomplete || pointAnalysis.incomplete || recommendationAnalysis.incomplete,
-    invalidContainer: rowAnalysis.invalidContainer || pointAnalysis.invalidContainer || recommendationAnalysis.invalidContainer
+    invalidContainer: rowAnalysis.invalidContainer || pointAnalysis.invalidContainer || recommendationAnalysis.invalidContainer,
+    emptyCollection: [rowAnalysis, pointAnalysis, recommendationAnalysis].some((analysis) => analysis.count === 0)
   };
 }
 
@@ -429,7 +430,9 @@ export function buildIntelligenceBrief(input = {}) {
 
     if (source === "unknown") addGap("source:unknown", "blocking", "The source Analyze view is unknown.");
     if (!asOf) addGap("data_as_of:missing", "review", "The source did not provide a governed data-as-of timestamp.");
-    if (sample.primary === null || sample.primary === 0) addGap("sample:empty", "blocking", "The source contains no usable observations.");
+    if (sampleAnalysis.emptyCollection || sample.primary === null || sample.primary === 0) {
+      addGap("sample:empty", "blocking", "The source contains no usable observations.");
+    }
     else if (sample.primary < 5) addGap("sample:thin", "review", "The source contains fewer than five observations.");
     if (sample.carriers !== null && sample.carriers < 2) addGap("sample:single_carrier", "review", "The result does not contain a comparable carrier sample.");
     if (sampleAnalysis.incomplete || monetaryEvidence.incomplete) {
