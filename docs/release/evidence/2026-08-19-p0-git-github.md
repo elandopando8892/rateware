@@ -175,10 +175,10 @@ No merge, ready-for-review change, or deployment is authorized by this inventory
 
 | Order | Scope / exact candidate | Dependency and state | Required owner action |
 |---|---|---|---|
-| 0 | P0 baseline: `origin/main@c5200a3`; baseline docs at `96db8d5` | Immutable inventory point | Keep this SHA as the comparison base. |
-| 1 | Platform 55 P0-P7 local heads: `dd318f5`, `bd0bc7d`, `67735a4`, `484516f`, `06d57c5`, `e7c0f65`, `b19af32`, `05ae2a5` | No corresponding open PR was returned live; detached review worktrees exist for S1-S7. | Reconcile each candidate against live main and establish a reviewed, authorized PR sequence. |
+| 0 | P0 baseline: `origin/main@c5200a39b175729ae2ed63c68d83f5f5bc76e674`; baseline docs at `96db8d597d7d29d07791189d93aa4a233398050d` | Immutable inventory point | Keep this SHA as the comparison base. |
+| 1 | Platform 55 P0-P7 local heads: `dd318f594f5f7b8f75103104d8bb0fdf7c170dbc`, `bd0bc7d6d74b8cd4e53ab856f15ad69b20d62325`, `67735a448e686a7aa409c676784c7c22ffe8e38d`, `484516fdd145a77a66ff5fc7b32f54e275661e67`, `06d57c5b66fc217db1e7973c0d042500781fe901`, `e7c0f657299eb0bc48e1640c91ae129fd0e3bafc`, `b19af32b6d87e3f1444e90bcb10245754070bf7a`, `05ae2a562bcad94757f335727d1ecf92ab500aeb` | No corresponding open PR was returned live; detached review worktrees exist for S1-S7. | Reconcile each candidate against live main and establish a reviewed, authorized PR sequence. |
 | 2 | Platform 55 Sprint 8 / PR #35: `42381154d335eb007a977070a3f1b078c71135f8` | Draft, mergeable, main-based, no review decision; recorded checks are replay S, preview K, Vercel S. | Human review and explicit ready/merge authorization only after the preceding sequence is reconciled. |
-| 3 | Platform 55 Sprint 9 / PR #37: live head `5357cd2cd22bd88acdb1b5bf21fe5a00fcb0b690` | Draft, conflicting, based on PR #35 branch at `ee5419b`; local Sprint 9 head differs (`c582526`). | Rebase/reconcile only under an approved change; rerun checks and independent review. |
+| 3 | Platform 55 Sprint 9 / PR #37: live head `5357cd2cd22bd88acdb1b5bf21fe5a00fcb0b690` | Draft, conflicting, based on PR #35 branch at `ee5419ba27c6c9245a7f7356a423b77e2e941017`; local Sprint 9 head differs (`c582526066fbc4f6e007039f267a316d8266c0fc`). | Rebase/reconcile only under an approved change; rerun checks and independent review. |
 | 4 | Platform 55 Sprint 10 / PR #39: live head `46f5e80ff7c914c3ae4a0922c840364fbf8a052d` | Draft, mergeable but depends on #37's head; Vercel failed and preview skipped. | Wait for authorized resolution of #37, then review/check/smoke in sequence. |
 
 ## Explicit post-core exclusions
