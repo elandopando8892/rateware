@@ -217,7 +217,7 @@ Present exact head SHA, detached verdict, preview ID/URL, checks, limitations, a
 
 - [ ] **Step 4: Perform only the authorized GitHub transitions**
 
-After that exact authorization, mark PR #35 Ready, re-read live head/base/checks, and merge one PR only. Record the exact merge SHA returned by GitHub and the automatically triggered production deployment. Do not manually promote an unrelated deployment and do not start PR #37 promotion in the same action.
+After that exact authorization, first re-read PR #35 and require head `42381154d335eb007a977070a3f1b078c71135f8`, base equal to current `origin/main`, successful checks, and clean mergeability. Abort without changing metadata on any drift. Only then mark PR #35 Ready, re-read the same fields again, abort before merge on any new drift, and merge one PR only. Record the exact merge SHA returned by GitHub and the automatically triggered production deployment. Do not manually promote an unrelated deployment and do not start PR #37 promotion in the same action.
 
 - [ ] **Step 5: Verify production deployment mapping**
 
@@ -343,19 +343,32 @@ try {
 
 - [ ] **Step 8: Request independent review, then push authorization**
 
-Review the exact local commit in a new detached worktree. If GO, copy the independently reproduced result into `docs/release/evidence/2026-08-20-p1-pr37-independent-review.md`, then present old/new patch equivalence, exact SHA, tests, and the exact remote transition below. Before requesting authorization, use the Supabase skill to refresh the live branch inventory read-only. If a push could create a second persistent non-default preview while `fcm-gmail-staging` still exists, stop and request an explicit reuse/delete/integration decision.
+Capture and freeze the candidate before review:
+
+```powershell
+$candidate37 = git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR37_Reconstructed rev-parse HEAD
+$status37 = @(git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR37_Reconstructed status --porcelain)
+if ($candidate37 -notmatch '^[0-9a-f]{40}$' -or $status37.Count -ne 0) { throw 'PR #37 candidate is not a clean immutable commit' }
+```
+
+Review `$candidate37` in a new detached worktree. If GO, copy the independently reproduced result into `docs/release/evidence/2026-08-20-p1-pr37-independent-review.md` with a machine-readable line containing `reviewed_sha:` followed by exactly the 40 lowercase hexadecimal characters of `$candidate37`. Then present old/new patch equivalence, exact SHA, tests, and the exact remote transition below. Before requesting authorization, use the Supabase skill to refresh the live branch inventory read-only. If a push could create a second persistent non-default preview while `fcm-gmail-staging` still exists, stop and request an explicit reuse/delete/integration decision.
 
 - [ ] **Step 9: Request and perform the exact remote update**
 
-Request one explicit authorization covering the force-with-lease push, retargeting PR #37 to `main`, and the expected Vercel preview build. After authorization, run with `$new37` set to the independently reviewed local SHA:
+Request one explicit authorization covering the force-with-lease push, retargeting PR #37 to `main`, and the expected Vercel preview build. After authorization, recover the certified SHA from the evidence and require the worktree to remain exactly clean before pushing:
 
 ```powershell
 git fetch origin --prune
+$review37 = Get-Content -LiteralPath C:\Users\andre\OneDrive\Documents\Rateware_P0_Release_Baseline\docs\release\evidence\2026-08-20-p1-pr37-independent-review.md -Raw
+if ($review37 -notmatch '(?m)^reviewed_sha:\s*`?([0-9a-f]{40})`?\s*$') { throw 'PR #37 review evidence lacks one exact reviewed_sha' }
+$reviewed37 = $Matches[1]
 $new37 = git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR37_Reconstructed rev-parse HEAD
+$status37 = @(git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR37_Reconstructed status --porcelain)
+if ($new37 -ne $reviewed37 -or $status37.Count -ne 0) { throw 'PR #37 changed after independent review' }
 git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR37_Reconstructed push origin HEAD:refs/heads/codex/platform55-admin-governance-sprint9 --force-with-lease=refs/heads/codex/platform55-admin-governance-sprint9:5357cd2cd22bd88acdb1b5bf21fe5a00fcb0b690
 gh pr edit 37 --repo elandopando8892/rateware --base main
 gh pr view 37 --repo elandopando8892/rateware --json baseRefName,baseRefOid,headRefOid,isDraft,mergeable,statusCheckRollup,url
-if ((gh pr view 37 --repo elandopando8892/rateware --json headRefOid --jq .headRefOid) -ne $new37) { throw 'PR #37 head drift after push' }
+if ((gh pr view 37 --repo elandopando8892/rateware --json headRefOid --jq .headRefOid) -ne $reviewed37) { throw 'PR #37 head drift after push' }
 ```
 
 Do not mark Ready or merge in this step.
@@ -377,7 +390,13 @@ Do not mark Ready or merge in this step.
 Run:
 
 ```powershell
-$new37 = git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR37_Reconstructed rev-parse HEAD
+git fetch origin --prune
+$review37 = Get-Content -LiteralPath C:\Users\andre\OneDrive\Documents\Rateware_P0_Release_Baseline\docs\release\evidence\2026-08-20-p1-pr37-independent-review.md -Raw
+if ($review37 -notmatch '(?m)^reviewed_sha:\s*`?([0-9a-f]{40})`?\s*$') { throw 'PR #37 review evidence lacks one exact reviewed_sha' }
+$new37 = $Matches[1]
+$local37 = git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR37_Reconstructed rev-parse HEAD
+$status37 = @(git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR37_Reconstructed status --porcelain)
+if ($local37 -ne $new37 -or $status37.Count -ne 0) { throw 'PR #37 local candidate drifted after review' }
 $main37 = git rev-parse origin/main
 $live37 = gh pr view 37 --repo elandopando8892/rateware --json baseRefName,baseRefOid,headRefOid,isDraft,mergeable,statusCheckRollup,url | ConvertFrom-Json
 if ($live37.baseRefName -ne 'main' -or $live37.baseRefOid -ne $main37 -or $live37.headRefOid -ne $new37) { throw 'PR #37 live state does not match reviewed candidate/current main' }
@@ -410,7 +429,7 @@ Present exact head, preview, review verdict, checks, and limitations; stop until
 
 - [ ] **Step 4: Merge only PR #37 and verify production**
 
-After that exact authorization, mark Ready, revalidate head/checks, merge, record exact merge SHA, wait for the automatically triggered stable production mapping, and run a read-only authenticated smoke. Do not manually promote another deployment and do not advance PR #39 promotion in the same action.
+After that exact authorization, first re-fetch and revalidate that PR #37 head equals the evidence-backed `$new37`, base equals current `origin/main`, checks succeeded, and mergeability is clean. Abort without changing metadata on drift. Only then mark Ready, re-read the same fields, abort before merge on any new drift, merge, record the exact merge SHA, wait for the automatically triggered stable production mapping, and run a read-only authenticated smoke. Do not manually promote another deployment and do not advance PR #39 promotion in the same action.
 
 - [ ] **Step 5: Commit evidence**
 
@@ -525,7 +544,15 @@ try {
 }
 ```
 
-Obtain a detached GO at the exact SHA and copy the independently reproduced result into `docs/release/evidence/2026-08-20-p1-pr39-independent-review.md`. A finding returns to this task without stopping other isolated work.
+Capture the clean candidate before review:
+
+```powershell
+$candidate39 = git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR39_Reconstructed rev-parse HEAD
+$status39 = @(git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR39_Reconstructed status --porcelain)
+if ($candidate39 -notmatch '^[0-9a-f]{40}$' -or $status39.Count -ne 0) { throw 'PR #39 candidate is not a clean immutable commit' }
+```
+
+Obtain a detached GO at `$candidate39` and copy the independently reproduced result into `docs/release/evidence/2026-08-20-p1-pr39-independent-review.md` with a machine-readable line containing `reviewed_sha:` followed by exactly the 40 lowercase hexadecimal characters of `$candidate39`. A finding returns to this task without stopping other isolated work.
 
 - [ ] **Step 6: Advance P1 to 55% after all three implementations are complete**
 
@@ -551,15 +578,20 @@ Use the Supabase skill to refresh the live branch inventory read-only. If a push
 
 - [ ] **Step 8: Perform only the authorized PR #39 remote update**
 
-After authorization, run with `$new39` set to the independently reviewed local SHA:
+After authorization, recover the certified SHA from evidence and require the worktree to remain exactly clean before pushing:
 
 ```powershell
 git fetch origin --prune
+$review39 = Get-Content -LiteralPath C:\Users\andre\OneDrive\Documents\Rateware_P0_Release_Baseline\docs\release\evidence\2026-08-20-p1-pr39-independent-review.md -Raw
+if ($review39 -notmatch '(?m)^reviewed_sha:\s*`?([0-9a-f]{40})`?\s*$') { throw 'PR #39 review evidence lacks one exact reviewed_sha' }
+$reviewed39 = $Matches[1]
 $new39 = git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR39_Reconstructed rev-parse HEAD
+$status39 = @(git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR39_Reconstructed status --porcelain)
+if ($new39 -ne $reviewed39 -or $status39.Count -ne 0) { throw 'PR #39 changed after independent review' }
 git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR39_Reconstructed push origin HEAD:refs/heads/codex/platform55-platform-readiness-sprint10 --force-with-lease=refs/heads/codex/platform55-platform-readiness-sprint10:46f5e80ff7c914c3ae4a0922c840364fbf8a052d
 gh pr edit 39 --repo elandopando8892/rateware --base main
 gh pr view 39 --repo elandopando8892/rateware --json baseRefName,baseRefOid,headRefOid,isDraft,mergeable,statusCheckRollup,url
-if ((gh pr view 39 --repo elandopando8892/rateware --json headRefOid --jq .headRefOid) -ne $new39) { throw 'PR #39 head drift after push' }
+if ((gh pr view 39 --repo elandopando8892/rateware --json headRefOid --jq .headRefOid) -ne $reviewed39) { throw 'PR #39 head drift after push' }
 ```
 
 Do not mark Ready or merge in this step.
@@ -582,7 +614,13 @@ Do not mark Ready or merge in this step.
 Run:
 
 ```powershell
-$new39 = git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR39_Reconstructed rev-parse HEAD
+git fetch origin --prune
+$review39 = Get-Content -LiteralPath C:\Users\andre\OneDrive\Documents\Rateware_P0_Release_Baseline\docs\release\evidence\2026-08-20-p1-pr39-independent-review.md -Raw
+if ($review39 -notmatch '(?m)^reviewed_sha:\s*`?([0-9a-f]{40})`?\s*$') { throw 'PR #39 review evidence lacks one exact reviewed_sha' }
+$new39 = $Matches[1]
+$local39 = git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR39_Reconstructed rev-parse HEAD
+$status39 = @(git -C C:\Users\andre\OneDrive\Documents\Rateware_P1_PR39_Reconstructed status --porcelain)
+if ($local39 -ne $new39 -or $status39.Count -ne 0) { throw 'PR #39 local candidate drifted after review' }
 $main39 = git rev-parse origin/main
 $live39 = gh pr view 39 --repo elandopando8892/rateware --json baseRefName,baseRefOid,headRefOid,isDraft,mergeable,statusCheckRollup,url | ConvertFrom-Json
 if ($live39.baseRefName -ne 'main' -or $live39.baseRefOid -ne $main39 -or $live39.headRefOid -ne $new39) { throw 'PR #39 live state does not match reviewed candidate/current main' }
@@ -610,7 +648,7 @@ Present the complete queue evidence and stop until the user explicitly authorize
 
 - [ ] **Step 4: Merge and smoke only after authorization**
 
-After that exact authorization, mark Ready, re-read head/base/checks, merge PR #39, capture the exact merge SHA, verify the automatically triggered stable production deployment maps to it, and run a read-only authenticated smoke across the three newly released surfaces plus representative existing flows. Do not manually promote another deployment.
+After that exact authorization, first re-fetch and revalidate that PR #39 head equals the evidence-backed `$new39`, base equals current `origin/main`, checks succeeded, and mergeability is clean. Abort without changing metadata on drift. Only then mark Ready, re-read the same fields, abort before merge on any new drift, merge PR #39, capture the exact merge SHA, verify the automatically triggered stable production deployment maps to it, and run a read-only authenticated smoke across the three newly released surfaces plus representative existing flows. Do not manually promote another deployment.
 
 - [ ] **Step 5: Obtain aggregate candidate GO and advance P1 to 93%**
 
