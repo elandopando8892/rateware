@@ -62,3 +62,24 @@ Both independently reported proxy findings are **ADDRESSED**. Supported plain JS
 - Human authorization and final disposition: `not collected`.
 - No push, PR mutation, preview, Ready transition, merge, deployment, Supabase action, production mutation, or external action was performed while collecting this evidence.
 - P1 progress remains **25%**. This evidence alone does not authorize an increase.
+
+## Collected release evidence — PR #35 intelligence
+
+This later evidence closes the PR #35 preview and production acceptance gates without altering the immutable initial queue or the historical candidate-only limitations above.
+
+- Reviewed head SHA: `243f0dd60381728803f303f98a6e534f3d9f46ce`
+- Preview deployment: `dpl_67sxsiDd6gRDwfFJ6ARFnfmestfU`; URL: `https://rateware-1wv79qqzy-elandopando8892s-projects.vercel.app`; state: `READY`; target: preview.
+- Stable preview alias: `https://rateware-git-codex-platform55-c308d5-elandopando8892s-projects.vercel.app`.
+- Clean migration replay: GitHub Actions run `32393546437`, PASS in `2m54s`.
+- Supabase preview result: `SKIPPED`; persistent non-default Supabase preview count remained exactly `1` (`fcm-gmail-staging`).
+- Authenticated preview smoke: PASS on desktop and mobile; `?view=brief` selected Decision Brief; empty evidence remained `Blocked`; local JSON download remained disabled; no consequential controls, console errors, or horizontal overflow were observed.
+- Live Geo control: remained `Blocked` for missing `data_as_of`, mixed/missing currency, and missing lineage; no approval, export, outreach, dispatch, promotion, or write was performed.
+- Human authorization: update PR description, mark Ready, squash merge, and allow the resulting automatic Vercel production deployment; manual promotion explicitly not authorized.
+- Merge method: squash.
+- Merge SHA: `efef3c0f8916bd6d4e95afede1098a00f4a312cb`.
+- Production deployment: `dpl_2koUAh23WeWwuhWdU1xda5JeUNxT`; URL: `https://rateware-epdk60n5s-elandopando8892s-projects.vercel.app`; target: `production`; state: `READY`.
+- Stable production alias: `https://rateware.vercel.app`; Vercel metadata maps it to exact SHA `efef3c0f8916bd6d4e95afede1098a00f4a312cb`.
+- Production smoke: PASS — authenticated Decision Brief selected, fail-closed `Blocked` state, download disabled, no consequential controls, no horizontal overflow, Command Center loaded with full access, and browser console contained no errors.
+- Post-deploy observability: Vercel reported no runtime error clusters in the prior hour and no error/fatal logs for the exact production deployment.
+- Final PR #35 disposition: merged and production accepted. No manual promotion, Supabase mutation, database mutation, upload, approval, outreach, dispatch, or production-data write was performed.
+- P1 progress remains **25%** until PR #37 and PR #39 are reconstructed/certified and their implementation milestone is independently accepted.
