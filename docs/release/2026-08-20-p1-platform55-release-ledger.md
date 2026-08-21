@@ -140,3 +140,15 @@ This later evidence closes the exact-head preview-access gate only. It does not 
 - Safety boundary: Governance and Platform Readiness remained `Blocked`/observation-only; Decision Brief remained blocked with local export disabled and explicit human-decision copy; no consequential control was invoked and no application data was written.
 - Responsive limitation: the in-app browser's temporary `390x844` viewport override did not change the reported page viewport, even in a new isolated tab. Mobile behavior therefore remains supported by the commit-scoped responsive tests and prior platform smoke evidence, but was not independently re-observed at a true mobile width in this preview run.
 - P1 remains **55%**. Advancement to 93% requires the separately authorized Ready/merge/automatic production deployment, exact production smoke, and a new detached aggregate candidate GO at the post-merge production SHA.
+
+## Production release and aggregate review — PR #39
+
+- PR #39 description was updated to the exact reviewed SHA, then the PR was marked Ready only after head/base/checks/mergeability were revalidated without drift.
+- PR #39 was squash-merged at `fa8e35c96c8fb30635ddac21b894614172831083` on 2026-08-21T01:20:29Z.
+- The automatic Vercel production deployment was `dpl_9qzBYLrBaAmMZ2AwE2WaSKu8tBh7`, `READY`, and mapped exactly to the squash merge. The stable alias `https://rateware.vercel.app` pointed to that deployment.
+- No manual Vercel promotion occurred.
+- Authenticated production smoke passed across Decision Brief, Governance, Platform Readiness, Command Center, Import, Review Queue, Carrier CRM, RFx Process, and Rateware. The three new surfaces remained blocked/observation-only; no consequential action or data write was invoked; browser console and Vercel runtime error scans were clean in the observed window.
+- Post-release Supabase inventory remained exactly one persistent non-default preview (`fcm-gmail-staging`); no second branch was created.
+- Aggregate independent review: **NO-GO** at `fa8e35c96c8fb30635ddac21b894614172831083`; evidence: `docs/release/evidence/2026-08-20-p1-release-candidate-independent-review.md`.
+- The blocking cause is an inherited 24-version remote-only Supabase migration-history gap: production reports 369 migrations while the exact production commit contains 345. The live `Supabase Preview` check failed with `Remote migration versions not found in local migrations directory.`
+- P1 therefore remains **55%** and General remains **72%**. This is a release-readiness promotion gate, not a scheduled blocker for isolated coding, tests, documentation, or offline review.
