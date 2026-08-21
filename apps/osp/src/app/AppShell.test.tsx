@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ReactNode } from 'react';
 import { type OspClient } from '../api/osp-client';
@@ -32,6 +32,14 @@ function fakeOspClient(): OspClient {
   } as unknown as OspClient;
 }
 
+function deferredInitialization() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((fulfill) => {
+    resolve = fulfill;
+  });
+  return { promise, resolve };
+}
+
 function Providers({ auth, children }: { auth: AuthPort; children: ReactNode }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
@@ -41,8 +49,7 @@ function Providers({ auth, children }: { auth: AuthPort; children: ReactNode }) 
   );
 }
 
-function renderRoute(path: string, authenticated = true) {
-  const auth = fakeAuthPort(authenticated);
+function renderRouteWithAuth(path: string, auth: AuthPort) {
   const ospClient = fakeOspClient();
   const router = createOspRouter(
     { auth, ospClient },
@@ -54,6 +61,10 @@ function renderRoute(path: string, authenticated = true) {
     </Providers>,
   );
   return { ...result, auth, router };
+}
+
+function renderRoute(path: string, authenticated = true) {
+  return renderRouteWithAuth(path, fakeAuthPort(authenticated));
 }
 
 test('redirects the application index to the read-only pipeline shell', async () => {
@@ -117,4 +128,46 @@ test('keeps application data hidden until authentication is verified', async () 
 
   await user.click(screen.getByRole('button', { name: 'Sign in' }));
   expect(auth.login).toHaveBeenCalledWith('/app/pipeline');
+});
+
+test('keeps route content hidden while authentication is still checking', async () => {
+  // Catches rendering a protected route during the asynchronous session barrier.
+  const initialization = deferredInitialization();
+  const auth = {
+    ...fakeAuthPort(true),
+    initialize: vi.fn(() => initialization.promise),
+  };
+  renderRouteWithAuth('/app/pipeline', auth);
+
+  expect(await screen.findByRole('status')).toHaveTextContent('Checking access…');
+  expect(screen.queryByRole('navigation', { name: 'Flujo OSP' })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Pipeline' })).toBeNull();
+
+  await act(async () => initialization.resolve());
+  expect(await screen.findByRole('heading', { name: 'Pipeline' })).toBeVisible();
+});
+
+test('keeps route content hidden when authentication initialization fails', async () => {
+  // Catches an auth error falling through to the protected shell or exposing provider details.
+  const auth = {
+    ...fakeAuthPort(true),
+    initialize: vi.fn(async () => {
+      throw new Error('provider token should never render');
+    }),
+  };
+  renderRouteWithAuth('/app/pipeline', auth);
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Unable to verify your session. Please try again.');
+  expect(screen.queryByText(/provider token should never render/i)).toBeNull();
+  expect(screen.queryByRole('navigation', { name: 'Flujo OSP' })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Pipeline' })).toBeNull();
+});
+
+test('renders an unknown app URL as a controlled unavailable route', async () => {
+  // Catches unknown URLs falling through to an unrelated route or an unbounded framework error.
+  const { container } = renderRoute('/app/not-a-real-route');
+
+  expect(await screen.findByRole('heading', { name: 'Ruta no disponible' })).toBeVisible();
+  expect(screen.getByText('La ruta solicitada no forma parte de esta fase.')).toBeVisible();
+  expect(container.querySelector('iframe')).toBeNull();
 });

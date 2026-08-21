@@ -31,6 +31,12 @@ export function createOspRouter(context: RouterContext, history?: RouterHistory)
     getParentRoute: () => rootRoute,
     path: 'app',
     component: AppShell,
+    notFoundComponent: () => (
+      <RoutePlaceholder
+        title="Ruta no disponible"
+        message="La ruta solicitada no forma parte de esta fase."
+      />
+    ),
   });
   const appIndexRoute = createRoute({
     getParentRoute: () => appRoute,
@@ -108,4 +114,12 @@ export function createOspRouter(context: RouterContext, history?: RouterHistory)
   ]);
 
   return createRouter({ routeTree, context, history });
+}
+
+export type OspRouter = ReturnType<typeof createOspRouter>;
+
+declare module '@tanstack/react-router' {
+  interface Register {
+    router: OspRouter;
+  }
 }
