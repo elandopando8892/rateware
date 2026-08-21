@@ -47,3 +47,27 @@ to service_role;
 
 -- The human document review queue, read by list_provider_document_reviews.
 grant select on public.provider_entity_document_review_queue to service_role;
+
+-- WRITE SIDE
+--
+-- evaluate_provider_onboarding_readiness then failed with
+--   permission denied for table provider_onboarding_readiness_evaluations
+-- so the same audit was done for every table the thirteen wired commands touch,
+-- derived by parsing each `.from(table)` statement to the end of the statement rather
+-- than by reading the first error. An earlier one-line scan under-reported: it missed a
+-- `.select('id')` that sat on the next line, which is exactly how
+-- provider_legal_entity_fact_promotions would have been left half-granted.
+--
+-- Four tables were short. Least privilege per table, as before.
+
+-- Fact promotion inserts the promotion, reads its id back, then marks it applied.
+grant select, update on table public.provider_legal_entity_fact_promotions to service_role;
+
+-- Readiness writes an evaluation and reads its id back, then writes the result rows.
+grant insert on table
+  public.provider_onboarding_readiness_evaluations,
+  public.provider_onboarding_readiness_results
+to service_role;
+
+-- Recording an approval decision on a release package.
+grant insert on table public.provider_onboarding_release_package_approvals to service_role;
