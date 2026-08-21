@@ -112,6 +112,32 @@ function Get-UniqueEntry {
   return $matches[0]
 }
 
+function ConvertTo-CanonicalJsonString {
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
+
+  $builder = [Text.StringBuilder]::new()
+  $null = $builder.Append('"')
+  foreach ($character in $Value.ToCharArray()) {
+    $code = [int][char]$character
+    switch ($code) {
+      8 { $null = $builder.Append('\b'); continue }
+      9 { $null = $builder.Append('\t'); continue }
+      10 { $null = $builder.Append('\n'); continue }
+      12 { $null = $builder.Append('\f'); continue }
+      13 { $null = $builder.Append('\r'); continue }
+      34 { $null = $builder.Append('\"'); continue }
+      92 { $null = $builder.Append('\\'); continue }
+    }
+    if ($code -lt 32) {
+      $null = $builder.Append(('\u{0:x4}' -f $code))
+    } else {
+      $null = $builder.Append($character)
+    }
+  }
+  $null = $builder.Append('"')
+  return $builder.ToString()
+}
+
 $repositoryRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $resolvedArchive = (Resolve-Path -LiteralPath $ArchivePath).Path
 $resolvedMatrix = Resolve-RepositoryOutputPath -CandidatePath $MatrixPath -RepositoryRoot $repositoryRoot
@@ -283,19 +309,38 @@ try {
   }
 
   $csvLines = @($rows | Select-Object $matrixColumns | ConvertTo-Csv -NoTypeInformation)
-  $sourceDocument = [pscustomobject][ordered]@{
-    schema_version = 1
-    archive_filename = [IO.Path]::GetFileName($resolvedArchive)
-    sha256 = $actualHash
-    archive_entries = $archive.Entries.Count
-    render_states = $rows.Count
-    states_by_build = [pscustomobject]$expectedStates
-    source_entries = $sourceEntries
+  $sourceLines = [Collections.Generic.List[string]]::new()
+  $sourceLines.Add('{')
+  $sourceLines.Add('  "schema_version": 1,')
+  $sourceLines.Add(('  "archive_filename": {0},' -f (ConvertTo-CanonicalJsonString -Value ([IO.Path]::GetFileName($resolvedArchive)))))
+  $sourceLines.Add(('  "sha256": {0},' -f (ConvertTo-CanonicalJsonString -Value $actualHash)))
+  $sourceLines.Add(('  "archive_entries": {0},' -f $archive.Entries.Count))
+  $sourceLines.Add(('  "render_states": {0},' -f $rows.Count))
+  $sourceLines.Add('  "states_by_build": {')
+  $stateKeys = @($expectedStates.Keys)
+  for ($index = 0; $index -lt $stateKeys.Count; $index += 1) {
+    $stateKey = [string]$stateKeys[$index]
+    $comma = if ($index -lt ($stateKeys.Count - 1)) { ',' } else { '' }
+    $sourceLines.Add(('    {0}: {1}{2}' -f (ConvertTo-CanonicalJsonString -Value $stateKey), $expectedStates[$stateKey], $comma))
   }
-  $sourceJson = $sourceDocument | ConvertTo-Json -Depth 5
+  $sourceLines.Add('  },')
+  $sourceLines.Add('  "source_entries": [')
+  for ($index = 0; $index -lt $sourceEntries.Count; $index += 1) {
+    $entry = $sourceEntries[$index]
+    $comma = if ($index -lt ($sourceEntries.Count - 1)) { ',' } else { '' }
+    $sourceLines.Add('    {')
+    $sourceLines.Add(('      "build": {0},' -f (ConvertTo-CanonicalJsonString -Value ([string]$entry.build))))
+    $sourceLines.Add(('      "manifest": {0},' -f (ConvertTo-CanonicalJsonString -Value ([string]$entry.manifest))))
+    $sourceLines.Add(('      "render_plan": {0},' -f (ConvertTo-CanonicalJsonString -Value ([string]$entry.render_plan))))
+    $sourceLines.Add(('      "render_states": {0}' -f $entry.render_states))
+    $sourceLines.Add(('    }' + $comma))
+  }
+  $sourceLines.Add('  ]')
+  $sourceLines.Add('}')
+  $sourceJson = $sourceLines -join "`r`n"
   $utf8WithoutBom = [Text.UTF8Encoding]::new($false)
   [IO.File]::WriteAllLines($resolvedMatrix, $csvLines, $utf8WithoutBom)
-  [IO.File]::WriteAllText($resolvedSource, $sourceJson + [Environment]::NewLine, $utf8WithoutBom)
+  [IO.File]::WriteAllText($resolvedSource, $sourceJson + "`r`n", $utf8WithoutBom)
 
   Write-Output "Platform55 inventory generated: builds=12 states=$($rows.Count) entries=$($archive.Entries.Count)"
 } finally {

@@ -2,6 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const css = readFileSync("src/platform55-tokens.css", "utf8");
+const operatePlan = readFileSync(
+  "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s2-operate.md",
+  "utf8"
+);
+const procurementPlan = readFileSync(
+  "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md",
+  "utf8"
+);
 const expectedTokens = [
   ["--rw-brand-50", "#eef2ff"],
   ["--rw-brand-100", "#e0e7ff"],
@@ -61,3 +69,8 @@ for (const [name, value] of expectedTokens) {
 assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/i);
 assert.match(css, /--rw-motion-fast:\s*var\(--rw-motion-none\)/i);
 assert.doesNotMatch(css, /url\s*\(|@import|javascript\s*:/i);
+
+assert.doesNotMatch(operatePlan, /test:platform55:shell|--p55-/);
+assert.equal(operatePlan.match(/npm run test:platform55-shell/g)?.length, 2);
+assert.doesNotMatch(procurementPlan, /--p55-|not_verified/);
+assert.match(procurementPlan, /state without evidence remains `not_started`/);

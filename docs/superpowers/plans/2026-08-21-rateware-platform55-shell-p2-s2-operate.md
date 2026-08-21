@@ -66,7 +66,7 @@ git commit -m "test: define Platform55 operate shell contract"
 
 - [ ] **Step 1: Add failing semantic-layout assertions**
 
-Require reusable classes for page heading, primary metric strip, filter row, workspace panel, empty state, validation banner, review state, and responsive data table. Require all colors, spacing, radii, shadows, and typography to use `--p55-*` tokens.
+Require reusable classes for page heading, primary metric strip, filter row, workspace panel, empty state, validation banner, review state, and responsive data table. Require all colors, spacing, radii, shadows, and typography to use `--rw-*` tokens.
 
 - [ ] **Step 2: Implement the Operate CSS module**
 
@@ -79,7 +79,7 @@ Define only page-composition classes. Do not redefine the shell rail, top bar, o
 - [ ] **Step 4: Run focused tests**
 
 ```powershell
-npm run test:platform55:shell
+npm run test:platform55-shell
 npm run test:platform55:operate
 node --check src/platform55-shell.js
 ```
@@ -218,7 +218,7 @@ At `1440x900`, `1024x768`, and `390x844`, capture all four pages in loaded and o
 
 ```powershell
 npm run test:platform55:operate
-npm run test:platform55:shell
+npm run test:platform55-shell
 npm test
 npm run validate:action-contract
 npm audit --audit-level=low

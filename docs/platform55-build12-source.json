@@ -1,95 +1,95 @@
 {
-    "schema_version":  1,
-    "archive_filename":  "rateware_foundation_home_commercial_procurement_operations_finance_intelligence_administration_platform_build_v12.zip",
-    "sha256":  "CF2CED85E95DFB33BB7410BF73ACE22CB95090CE649747DF60BF2920E808C16A",
-    "archive_entries":  3239,
-    "render_states":  1150,
-    "states_by_build":  {
-                            "build_01":  61,
-                            "build_02":  61,
-                            "build_03":  68,
-                            "build_04":  76,
-                            "build_05":  82,
-                            "build_06":  90,
-                            "build_07":  96,
-                            "build_08":  104,
-                            "build_09":  116,
-                            "build_10":  124,
-                            "build_11":  132,
-                            "build_12":  140
-                        },
-    "source_entries":  [
-                           {
-                               "build":  "build_01",
-                               "manifest":  "build_01/BUILD_01_ARTIFACT_MANIFEST.md",
-                               "render_plan":  "build_01/render_plan.json",
-                               "render_states":  61
-                           },
-                           {
-                               "build":  "build_02",
-                               "manifest":  "build_02/BUILD_02_ARTIFACT_MANIFEST.md",
-                               "render_plan":  "build_02/BUILD_02_RENDER_PLAN.json",
-                               "render_states":  61
-                           },
-                           {
-                               "build":  "build_03",
-                               "manifest":  "build_03/BUILD_03_ARTIFACT_MANIFEST.md",
-                               "render_plan":  "build_03/BUILD_03_RENDER_PLAN.json",
-                               "render_states":  68
-                           },
-                           {
-                               "build":  "build_04",
-                               "manifest":  "build_04/BUILD_04_ARTIFACT_MANIFEST.md",
-                               "render_plan":  "build_04/BUILD_04_RENDER_PLAN.json",
-                               "render_states":  76
-                           },
-                           {
-                               "build":  "build_05",
-                               "manifest":  "build_05/BUILD_05_ARTIFACT_MANIFEST.md",
-                               "render_plan":  "build_05/BUILD_05_RENDER_PLAN.json",
-                               "render_states":  82
-                           },
-                           {
-                               "build":  "build_06",
-                               "manifest":  "build_06/BUILD_06_ARTIFACT_MANIFEST.md",
-                               "render_plan":  "build_06/BUILD_06_RENDER_PLAN.json",
-                               "render_states":  90
-                           },
-                           {
-                               "build":  "build_07",
-                               "manifest":  "build_07/BUILD_07_ARTIFACT_MANIFEST.md",
-                               "render_plan":  "build_07/BUILD_07_RENDER_PLAN.json",
-                               "render_states":  96
-                           },
-                           {
-                               "build":  "build_08",
-                               "manifest":  "build_08/BUILD_08_ARTIFACT_MANIFEST.md",
-                               "render_plan":  "build_08/BUILD_08_RENDER_PLAN.json",
-                               "render_states":  104
-                           },
-                           {
-                               "build":  "build_09",
-                               "manifest":  "build_09/BUILD_09_ARTIFACT_MANIFEST.md",
-                               "render_plan":  "build_09/BUILD_09_RENDER_PLAN.json",
-                               "render_states":  116
-                           },
-                           {
-                               "build":  "build_10",
-                               "manifest":  "build_10/BUILD_10_ARTIFACT_MANIFEST.md",
-                               "render_plan":  "build_10/BUILD_10_RENDER_PLAN.json",
-                               "render_states":  124
-                           },
-                           {
-                               "build":  "build_11",
-                               "manifest":  "build_11/BUILD_11_ARTIFACT_MANIFEST.md",
-                               "render_plan":  "build_11/BUILD_11_RENDER_PLAN.json",
-                               "render_states":  132
-                           },
-                           {
-                               "build":  "build_12",
-                               "manifest":  "build_12/BUILD_12_ARTIFACT_MANIFEST.md",
-                               "render_plan":  "build_12/BUILD_12_RENDER_PLAN.json",
-                               "render_states":  140
-                           }
-                       ]
+  "schema_version": 1,
+  "archive_filename": "rateware_foundation_home_commercial_procurement_operations_finance_intelligence_administration_platform_build_v12.zip",
+  "sha256": "CF2CED85E95DFB33BB7410BF73ACE22CB95090CE649747DF60BF2920E808C16A",
+  "archive_entries": 3239,
+  "render_states": 1150,
+  "states_by_build": {
+    "build_01": 61,
+    "build_02": 61,
+    "build_03": 68,
+    "build_04": 76,
+    "build_05": 82,
+    "build_06": 90,
+    "build_07": 96,
+    "build_08": 104,
+    "build_09": 116,
+    "build_10": 124,
+    "build_11": 132,
+    "build_12": 140
+  },
+  "source_entries": [
+    {
+      "build": "build_01",
+      "manifest": "build_01/BUILD_01_ARTIFACT_MANIFEST.md",
+      "render_plan": "build_01/render_plan.json",
+      "render_states": 61
+    },
+    {
+      "build": "build_02",
+      "manifest": "build_02/BUILD_02_ARTIFACT_MANIFEST.md",
+      "render_plan": "build_02/BUILD_02_RENDER_PLAN.json",
+      "render_states": 61
+    },
+    {
+      "build": "build_03",
+      "manifest": "build_03/BUILD_03_ARTIFACT_MANIFEST.md",
+      "render_plan": "build_03/BUILD_03_RENDER_PLAN.json",
+      "render_states": 68
+    },
+    {
+      "build": "build_04",
+      "manifest": "build_04/BUILD_04_ARTIFACT_MANIFEST.md",
+      "render_plan": "build_04/BUILD_04_RENDER_PLAN.json",
+      "render_states": 76
+    },
+    {
+      "build": "build_05",
+      "manifest": "build_05/BUILD_05_ARTIFACT_MANIFEST.md",
+      "render_plan": "build_05/BUILD_05_RENDER_PLAN.json",
+      "render_states": 82
+    },
+    {
+      "build": "build_06",
+      "manifest": "build_06/BUILD_06_ARTIFACT_MANIFEST.md",
+      "render_plan": "build_06/BUILD_06_RENDER_PLAN.json",
+      "render_states": 90
+    },
+    {
+      "build": "build_07",
+      "manifest": "build_07/BUILD_07_ARTIFACT_MANIFEST.md",
+      "render_plan": "build_07/BUILD_07_RENDER_PLAN.json",
+      "render_states": 96
+    },
+    {
+      "build": "build_08",
+      "manifest": "build_08/BUILD_08_ARTIFACT_MANIFEST.md",
+      "render_plan": "build_08/BUILD_08_RENDER_PLAN.json",
+      "render_states": 104
+    },
+    {
+      "build": "build_09",
+      "manifest": "build_09/BUILD_09_ARTIFACT_MANIFEST.md",
+      "render_plan": "build_09/BUILD_09_RENDER_PLAN.json",
+      "render_states": 116
+    },
+    {
+      "build": "build_10",
+      "manifest": "build_10/BUILD_10_ARTIFACT_MANIFEST.md",
+      "render_plan": "build_10/BUILD_10_RENDER_PLAN.json",
+      "render_states": 124
+    },
+    {
+      "build": "build_11",
+      "manifest": "build_11/BUILD_11_ARTIFACT_MANIFEST.md",
+      "render_plan": "build_11/BUILD_11_RENDER_PLAN.json",
+      "render_states": 132
+    },
+    {
+      "build": "build_12",
+      "manifest": "build_12/BUILD_12_ARTIFACT_MANIFEST.md",
+      "render_plan": "build_12/BUILD_12_RENDER_PLAN.json",
+      "render_states": 140
+    }
+  ]
 }

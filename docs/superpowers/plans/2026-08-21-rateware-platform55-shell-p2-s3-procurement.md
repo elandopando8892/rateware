@@ -30,7 +30,7 @@ Public pages must contain `data-platform55-shell="public"` and must not contain 
 
 - [ ] **Step 3: Implement procurement and public-shell CSS**
 
-Procurement classes cover event status, milestones, lane tables, vendor responses, award-readiness, outreach state, and carrier comparison. Public-shell classes cover a compact brand header, deadline/context strip, form workspace, mobile action region, and signed-out/error states. Both consume `--p55-*` tokens.
+Procurement classes cover event status, milestones, lane tables, vendor responses, award-readiness, outreach state, and carrier comparison. Public-shell classes cover a compact brand header, deadline/context strip, form workspace, mobile action region, and signed-out/error states. Both consume `--rw-*` tokens.
 
 - [ ] **Step 4: Register and run focused tests**
 
@@ -194,7 +194,7 @@ Expected: PASS, zero Action Contract errors, zero vulnerabilities.
 
 - [ ] **Step 3: Reconcile the Build12 fidelity matrix**
 
-Mark only the procurement route/state rows actually reproduced. Attach screenshots and test names to each updated row; a state without evidence remains `not_verified`.
+Mark only the procurement route/state rows actually reproduced. Attach screenshots and test names to each updated row; a state without evidence remains `not_started`.
 
 - [ ] **Step 4: Advance readiness with evidence**
 

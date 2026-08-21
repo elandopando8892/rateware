@@ -132,7 +132,13 @@ if (process.platform === "win32") {
   }
 }
 
-const source = JSON.parse(readFileSync("docs/platform55-build12-source.json", "utf8"));
+const sourceText = readFileSync("docs/platform55-build12-source.json", "utf8");
+const source = JSON.parse(sourceText);
+assert.equal(
+  sourceText,
+  `${JSON.stringify(source, null, 2).replace(/\n/g, "\r\n")}\r\n`,
+  "source metadata must use the canonical CRLF JSON form under PowerShell 5.1 and 7"
+);
 const records = parseCsv(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"));
 const [header, ...rows] = records;
 
