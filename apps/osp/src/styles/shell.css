@@ -1,0 +1,111 @@
+.osp-shell {
+  background: #f4f7fb;
+  color: #172033;
+  min-height: 100vh;
+}
+
+.skip-link {
+  background: #ffffff;
+  border: 2px solid #155eef;
+  left: 1rem;
+  padding: 0.75rem 1rem;
+  position: fixed;
+  top: 1rem;
+  transform: translateY(-200%);
+  z-index: 10;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.osp-header {
+  align-items: center;
+  background: #102a56;
+  color: #ffffff;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1rem clamp(1rem, 4vw, 3rem);
+}
+
+.osp-header h1,
+.osp-session p {
+  margin: 0;
+}
+
+.osp-header h1 {
+  font-size: clamp(1.1rem, 2vw, 1.5rem);
+}
+
+.osp-session {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.osp-navigation {
+  background: #ffffff;
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding: 0.75rem clamp(1rem, 4vw, 3rem);
+}
+
+.osp-navigation a {
+  border-radius: 0.35rem;
+  color: #293b5f;
+  padding: 0.65rem 0.8rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.osp-navigation a[aria-current='page'] {
+  background: #e7efff;
+  color: #0c4dcc;
+  font-weight: 700;
+}
+
+.phase-banner {
+  background: #fff4cf;
+  border-block: 1px solid #e5bd38;
+  color: #5f4700;
+  padding: 0.75rem clamp(1rem, 4vw, 3rem);
+}
+
+.osp-shell main {
+  margin: 0 auto;
+  max-width: 72rem;
+  padding: 2rem clamp(1rem, 4vw, 3rem);
+}
+
+.route-placeholder {
+  background: #ffffff;
+  border: 1px solid #d6deeb;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+}
+
+.auth-gate {
+  margin: 4rem auto;
+  max-width: 32rem;
+  padding: 2rem;
+}
+
+:where(a, button):focus-visible {
+  outline: 3px solid #f4b400;
+  outline-offset: 3px;
+}
+
+button {
+  cursor: pointer;
+  font: inherit;
+}
+
+@media (max-width: 48rem) {
+  .osp-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
