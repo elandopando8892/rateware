@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import {
+  PLATFORM55_ROUTES,
+  routeForPath,
+  visibleNavigation,
+  shellModel
+} from "../src/platform55-shell-model.js";
 
 const css = readFileSync("src/platform55-tokens.css", "utf8");
 const operatePlan = readFileSync(
@@ -74,3 +80,58 @@ assert.doesNotMatch(operatePlan, /test:platform55:shell|--p55-/);
 assert.equal(operatePlan.match(/npm run test:platform55-shell/g)?.length, 2);
 assert.doesNotMatch(procurementPlan, /--p55-|not_verified/);
 assert.match(procurementPlan, /state without evidence remains `not_started`/);
+
+const routeMapFiles = readFileSync("docs/platform55-shell-route-map.csv", "utf8")
+  .trim()
+  .split(/\r?\n/)
+  .slice(1)
+  .map((row) => row.split(",", 1)[0])
+  .sort();
+const registeredFiles = PLATFORM55_ROUTES.map((row) => row.path.replace(/^\.\//, "")).sort();
+
+assert.equal(PLATFORM55_ROUTES.length, 29);
+assert.equal(PLATFORM55_ROUTES.filter((row) => row.shell === "tenant").length, 22);
+assert.equal(PLATFORM55_ROUTES.filter((row) => row.shell !== "tenant").length, 7);
+assert.deepEqual(registeredFiles, routeMapFiles);
+assert.equal(routeForPath("/app")?.key, "app");
+assert.equal(routeForPath("/app.html")?.key, "app");
+assert.equal(routeForPath("/rfx-bid")?.shell, "public");
+assert.equal(routeForPath("/missing"), null);
+
+assert.equal(new Set(PLATFORM55_ROUTES.map((row) => row.key)).size, PLATFORM55_ROUTES.length);
+assert.equal(new Set(PLATFORM55_ROUTES.map((row) => row.path)).size, PLATFORM55_ROUTES.length);
+for (const route of PLATFORM55_ROUTES) {
+  assert.ok(Object.isFrozen(route));
+  assert.match(route.path, /^\.\/[a-z0-9-]+\.html$/);
+  assert.doesNotMatch(route.path, /:\/\/|^\/\//);
+  if (route.shell === "tenant") {
+    assert.ok(route.group);
+    assert.ok(route.icon);
+    assert.ok(route.title);
+    assert.ok(route.subtitle);
+  }
+}
+assert.ok(Object.isFrozen(PLATFORM55_ROUTES));
+
+const restricted = visibleNavigation({ can: () => false });
+assert.ok(restricted.every((item) => item.requiredAction == null));
+assert.ok(restricted.every((item) => item.shell === "tenant"));
+assert.ok(restricted.every((item) => !["rfx-bid", "carrier-profile", "shipper-profile"].includes(item.key)));
+
+const model = shellModel({
+  pageKey: "app",
+  user: { given_name: "<Andre>" },
+  accessContext: { can: () => true },
+  notificationSummary: { unread: 3 }
+});
+assert.equal(model.activeRoute.key, "app");
+assert.equal(model.notificationCount, 3);
+assert.doesNotMatch(JSON.stringify(model), /<Andre>/);
+
+const iconSource = readFileSync("src/platform55-icons.js", "utf8");
+assert.match(iconSource, /registerPlatform55Icons/);
+assert.match(iconSource, /customElements\.define/);
+assert.match(iconSource, /rw-i-/);
+assert.doesNotMatch(iconSource, /innerHTML\s*=\s*[^;]*(getAttribute|name)/);
+assert.doesNotMatch(iconSource, /javascript:/i);
+assert.doesNotMatch(iconSource, /href\s*=\s*["']https?:/i);
