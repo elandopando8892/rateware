@@ -152,13 +152,32 @@ function setCollapsed(state, collapsed, persist = false) {
   if (persist) writeCollapsed(state.doc.defaultView, collapsed);
 }
 
+export function mobileNavigationAccessibility({ isMobile, isOpen }) {
+  const hidden = Boolean(isMobile && !isOpen);
+  return {
+    ariaHidden: isMobile ? String(hidden) : null,
+    inert: hidden
+  };
+}
+
+function syncMobileNavigationAccessibility(state) {
+  const isMobile = Boolean(state.doc.defaultView?.matchMedia?.("(max-width: 900px)").matches);
+  const accessibility = mobileNavigationAccessibility({
+    isMobile,
+    isOpen: state.app.dataset.mobileNavOpen === "true"
+  });
+  if (accessibility.ariaHidden === null) state.sidebar.removeAttribute("aria-hidden");
+  else state.sidebar.setAttribute("aria-hidden", accessibility.ariaHidden);
+  state.sidebar.inert = accessibility.inert;
+  for (const element of state.sidebar.querySelectorAll("a, button, input, select, textarea, [tabindex]")) {
+    if (accessibility.inert) element.setAttribute("tabindex", "-1");
+    else element.removeAttribute("tabindex");
+  }
+}
+
 function closeMobileNavigation(state, { returnFocus = false } = {}) {
   state.app.dataset.mobileNavOpen = "false";
-  if (state.doc.defaultView?.matchMedia?.("(max-width: 900px)").matches) {
-    state.sidebar.setAttribute("aria-hidden", "true");
-  } else {
-    state.sidebar.removeAttribute("aria-hidden");
-  }
+  syncMobileNavigationAccessibility(state);
   state.topbar.querySelector("[data-platform55-nav-open]")?.setAttribute("aria-expanded", "false");
   if (returnFocus) state.mobileTrigger?.focus({ preventScroll: true });
 }
@@ -166,7 +185,7 @@ function closeMobileNavigation(state, { returnFocus = false } = {}) {
 function openMobileNavigation(state) {
   state.mobileTrigger = state.doc.activeElement;
   state.app.dataset.mobileNavOpen = "true";
-  state.sidebar.setAttribute("aria-hidden", "false");
+  syncMobileNavigationAccessibility(state);
   state.topbar.querySelector("[data-platform55-nav-open]")?.setAttribute("aria-expanded", "true");
   state.sidebar.querySelector("[data-platform55-nav-close]")?.focus({ preventScroll: true });
 }
@@ -199,7 +218,10 @@ function bindShell(state) {
     }
   }, { signal });
   state.doc.defaultView?.addEventListener("resize", () => {
-    if (!state.doc.defaultView.matchMedia("(max-width: 900px)").matches) closeMobileNavigation(state);
+    if (!state.doc.defaultView.matchMedia("(max-width: 900px)").matches) {
+      state.app.dataset.mobileNavOpen = "false";
+    }
+    syncMobileNavigationAccessibility(state);
   }, { signal });
 }
 

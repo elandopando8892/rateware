@@ -7,6 +7,7 @@ import {
   shellModel
 } from "../src/platform55-shell-model.js";
 import { searchShellCommands } from "../src/platform55-search.js";
+import { mobileNavigationAccessibility } from "../src/platform55-shell.js";
 
 const css = readFileSync("src/platform55-tokens.css", "utf8");
 const operatePlan = readFileSync(
@@ -155,6 +156,19 @@ assert.doesNotMatch(shellSource, /fetch\(|authenticatedFetch|supabase|localStora
 assert.match(shellSource, /export function mountPlatform55Shell/);
 assert.match(shellSource, /export function updatePlatform55Shell/);
 assert.match(shellSource, /export function unmountPlatform55Shell/);
+assert.deepEqual(
+  mobileNavigationAccessibility({ isMobile: true, isOpen: false }),
+  { ariaHidden: "true", inert: true }
+);
+assert.deepEqual(
+  mobileNavigationAccessibility({ isMobile: true, isOpen: true }),
+  { ariaHidden: "false", inert: false }
+);
+assert.deepEqual(
+  mobileNavigationAccessibility({ isMobile: false, isOpen: false }),
+  { ariaHidden: null, inert: false }
+);
+assert.match(shellSource, /addEventListener\("resize",\s*\(\)\s*=>\s*\{[\s\S]*syncMobileNavigationAccessibility\(state\)/);
 assert.match(shellCss, /grid-template-columns:\s*var\(--rw-sidebar-expanded\)\s+minmax\(0,\s*1fr\)/);
 assert.match(shellCss, /@media\s*\(max-width:\s*1320px\)/);
 assert.match(shellCss, /@media\s*\(max-width:\s*900px\)/);
