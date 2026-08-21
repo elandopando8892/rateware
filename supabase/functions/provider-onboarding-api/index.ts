@@ -28,6 +28,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from "../_shared/runtime-identity.ts";
+import { statusFromSqlState } from "../_shared/http-error.ts";
 import { handleProviderServiceAction, isProviderServiceAction } from "./provider-service.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -51,8 +52,16 @@ function errorMessage(value: unknown) {
 }
 
 function errorStatus(value: unknown) {
+  // An error that names its own status wins: that is how ClientError produces a 400 and
+  // KindeSessionError a 401.
   const explicitStatus = Number((value as { status?: number } | null)?.status);
   if (Number.isFinite(explicitStatus) && explicitStatus >= 400 && explicitStatus < 600) return explicitStatus;
+
+  // A database error carries a SQLSTATE, which says whose fault it is far more reliably
+  // than the message text does.
+  const fromSqlState = statusFromSqlState((value as { code?: unknown } | null)?.code);
+  if (fromSqlState) return fromSqlState;
+
   const message = errorMessage(value).toLowerCase();
   return /bearer|jwt|token|auth|unauthorized|sign in|kinde/.test(message) ? 401 : 500;
 }
