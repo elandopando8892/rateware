@@ -65,3 +65,20 @@ test("production migration history remains reproducible from tracked SQL files",
   assert.deepEqual(empty, [], `empty production migrations:\n${empty.join("\n")}`);
   assert.deepEqual(changed, [], `changed production migrations:\n${changed.join("\n")}`);
 });
+
+test("clean replay CI verifies pinned hashes, final ledger, and Provider Service grants", () => {
+  const workflow = readFileSync(
+    path.join(repoRoot, ".github", "workflows", "clean-migration-replay.yml"),
+    "utf8",
+  );
+
+  assert.match(workflow, /run:\s+npm run test:migration-ledger/);
+  assert.match(workflow, /tests\/supabase-migration-ledger\.test\.mjs/);
+  assert.match(workflow, /count\(\*\).*max\(version\)/s);
+  assert.match(workflow, /369\|20260821011805/);
+  assert.match(workflow, /provider_legal_entity_fact_promotions/);
+  assert.match(workflow, /provider_onboarding_readiness_evaluations/);
+  assert.match(workflow, /provider_onboarding_readiness_results/);
+  assert.match(workflow, /provider_onboarding_release_package_approvals/);
+  assert.match(workflow, /t\|t\|t\|t\|t/);
+});
