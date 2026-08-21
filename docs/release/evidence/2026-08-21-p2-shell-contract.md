@@ -6,7 +6,7 @@
 - P2 progress credited: 10%.
 - Overall production-readiness score: 76.7%.
 - Release verdict: NO-GO. P2 implementation, independent review, preview, deployment, production smoke, and monitoring are not complete.
-- Product candidate SHA: `5f803d4fa707e0dc5eb1489f99dc3f1d4ad38f00`.
+- Corrective product candidate SHA: `c9fb24d966e5dd8a9cd7a6bb6cf6a52236a379c3`.
 - Baseline `origin/main`: `f751dd8455440cb1036c0687049e63f0c0dd826e`.
 
 ## Reference inputs
@@ -26,10 +26,13 @@ The ZIP was opened read-only with `System.IO.Compression.ZipFile::OpenRead`. No 
 - States by build: `61,61,68,76,82,90,96,104,116,124,132,140`.
 - Builds 01-05 source schema: `number`, `state`, `name`, `width`, `height`.
 - Builds 06-12 source schema: `sequence`, `state`, `route`, `status`; the normalized matrix records width and height as `0` because those source plans define no viewport dimensions.
-- Matrix SHA-256: `CF762E0795B23DF3F5FD4E05C6A1C3549B09D5C41C73D73FEC2804E34D4664A4`.
+- Every row records its non-index reference HTML asset, stable source identity, duplicate count, desktop/tablet/mobile applicability, and unresolved target route/component fields.
+- Builds 01-05 classify their source viewport as desktop (`>1320`), tablet (`901-1320`), or mobile (`<=900`). Builds 06-12 record all three applicability fields as `unspecified` rather than inventing a viewport.
+- The source contains one allowlisted duplicate identity, `build_11|control-testing|#control-testing|0|0`, at ordinals `22` and `59`. Both rows are preserved with `source_duplicate_count=2`; any other duplicate or ordinal drift fails generation.
+- Matrix SHA-256: `284968AEA26862B697107A20DE2EB9A19608C43921EC723B76F0BB2CF17FB3ED`.
 - Source metadata SHA-256: `3C45D90DD891438C0D70847B68486942B3E05492AE5077C261B1368C90B74972`.
 - Re-running the generator produced byte-identical matrix and source hashes.
-- The generator rejected an incorrect archive hash and an output path outside the checkout without creating the requested outside file.
+- The generator rejected an incorrect archive hash, a direct outside path, and a path traversing an ancestor junction before reading or writing the requested output.
 
 ## Route and surface contract
 
@@ -40,7 +43,7 @@ The ZIP was opened read-only with `System.IO.Compression.ZipFile::OpenRead`. No 
 - Platform55 surface inventory: 95/95 unique `page_id` values.
 - Every surface has a P2 owner sprint, production route, allowed disposition, and non-empty scope evidence.
 - Every surface ID is present in the `platform55_surfaces` index of its target route.
-- Route-map SHA-256: `2C8F2773C46FCF416F76B152C23F5991A72BCA1AD95711BD65E0EEB375A5F7FA`.
+- Route-map SHA-256: `7116941FCF34CDF0C05562F47FFAA04149A905F3699089D9473A844AFD16F6EF`.
 - Surface-inventory SHA-256: `A96476872DB5DC6430C75A81346295041BF595B54E7FECCF549A489F10FEE490`.
 
 `reference_only` means the source design is accounted for but P2 does not claim to implement that operational capability. In particular P2 does not create BCDR, billing, payment, dispatch, tracking, optimization, machine credentials, secret management, or a feature-flag control plane.
@@ -61,6 +64,11 @@ The ZIP was opened read-only with `System.IO.Compression.ZipFile::OpenRead`. No 
 - TDD surface-map RED: missing P2 ownership columns.
 - Cross-map RED: `integration-runtime` absent from its target route index; the regression then exposed and closed all four omissions.
 - TDD token RED: missing `src/platform55-tokens.css`.
+- Independent-review junction RED: a lexical containment check followed an ancestor junction and reached archive validation; the corrected implementation rejects the reparse point first.
+- Traceability RED: the committed matrix omitted reference asset, target component, applicability, and explicit duplicate metadata.
+- Duplicate RED: the two Build 11 duplicate rows reported `source_duplicate_count=1`; the exact allowlist now reports `2` and rejects drift.
+- Planned-test RED: the route map labeled 29 future files as `primary_test`; they are now explicitly `planned_test` while all routes remain `not_started`.
+- Readiness-plan RED: S2-S6 referenced a nonexistent shadow ledger; every plan now uses `docs/release/production-readiness-ledger.json`.
 - `npm run test:platform55-shell`: PASS.
 - `npm test`: PASS after the token and aggregate-script change, including Action Contract, identity 14/14, and runtime enforcement 5/5.
 - `git diff --check`: PASS at each focused commit.
@@ -70,6 +78,6 @@ The ZIP was opened read-only with `System.IO.Compression.ZipFile::OpenRead`. No 
 - No production HTML was changed.
 - No production runtime JavaScript was changed.
 - No Supabase branch, migration, DDL, DML, function, secret, or tenant-enforcement value was changed.
-- No Vercel build, preview, deployment, or promotion was requested.
+- PR #62 previously produced a successful Vercel preview for head `0189406`; the local corrective SHA above has not been pushed and has no new preview. No deployment or manual promotion was requested.
 - No upload, staging row, approval, bid, message, award, dispatch, or production-data mutation occurred.
 - P2-S0 proves scope and reproducibility only. It does not prove visual fidelity, responsive behavior, authenticated preview behavior, or production readiness.
