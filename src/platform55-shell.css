@@ -147,7 +147,7 @@ body[data-platform55-shell="tenant"] {
 .rw-nav-group { margin-top: 13px; }
 .rw-nav-group > p {
   margin: 0 8px 6px;
-  color: var(--rw-slate-400);
+  color: var(--rw-slate-600);
   font-size: 8px;
   font-weight: 850;
   letter-spacing: 0.9px;
@@ -194,7 +194,7 @@ body[data-platform55-shell="tenant"] {
 .rw-sidebar-footer span,
 .rw-sidebar-footer small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rw-sidebar-footer span { font-size: 8px; }
-.rw-sidebar-footer small { margin-top: 3px; color: var(--rw-slate-400); font-size: 7px; }
+.rw-sidebar-footer small { margin-top: 3px; color: var(--rw-slate-600); font-size: 7px; }
 
 .rw-workspace { min-width: 0; }
 .rw-topbar {
@@ -216,7 +216,7 @@ body[data-platform55-shell="tenant"] {
   padding: 0 11px;
   border: 1px solid var(--rw-slate-200);
   border-radius: var(--rw-radius-md);
-  color: var(--rw-slate-500);
+  color: var(--rw-slate-600);
   background: var(--rw-slate-50);
   font: inherit;
   cursor: pointer;

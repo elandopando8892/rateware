@@ -183,6 +183,21 @@ assert.match(shellCss, /grid-template-columns:\s*var\(--rw-sidebar-expanded\)\s+
 assert.match(shellCss, /@media\s*\(max-width:\s*1320px\)/);
 assert.match(shellCss, /@media\s*\(max-width:\s*900px\)/);
 assert.match(shellCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+assert.match(
+  shellCss,
+  /\.rw-nav-group\s*>\s*p\s*\{[^}]*color:\s*var\(--rw-slate-600\)/s,
+  "Navigation group labels must retain WCAG AA contrast on the white sidebar"
+);
+assert.match(
+  shellCss,
+  /\.rw-sidebar-footer\s+small\s*\{[^}]*color:\s*var\(--rw-slate-600\)/s,
+  "The sidebar footer label must retain WCAG AA contrast"
+);
+assert.match(
+  shellCss,
+  /\.rw-search-trigger\s*\{[^}]*color:\s*var\(--rw-slate-600\)/s,
+  "Search text must retain WCAG AA contrast on the slate-50 surface"
+);
 
 const searchOptions = {
   routes: PLATFORM55_ROUTES,
