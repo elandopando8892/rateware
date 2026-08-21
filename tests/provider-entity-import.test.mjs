@@ -53,6 +53,15 @@ test('signature and identity documents outrank generic matches', () => {
   assert.equal(classifyDocument('INE and bank statement.pdf').document_type, 'government_id');
 });
 
+test('a classified signature source requires separate provisioning', async () => {
+  const { plans, rejections } = await planEntityVaultImport([
+    { filename: 'authorized-signature-sample.png', bytes: png() },
+  ]);
+  assert.equal(plans.length, 0);
+  assert.equal(rejections.length, 1);
+  assert.equal(rejections[0].reason, 'signature_source_requires_separate_provisioning');
+});
+
 test('a plan carries hash, size, MIME, classification and a review flag', async () => {
   const { plans } = await planEntityVaultImport(
     [{ filename: 'XBFus - W9.pdf', bytes: pdf('w9') }],
@@ -125,7 +134,7 @@ test('duplicates are detected within the batch and against the vault', async () 
 test('every plan queues review regardless of sensitivity', async () => {
   const { plans } = await planEntityVaultImport([
     { filename: 'XBFus - Articles of Organization.pdf', bytes: pdf('1') },
-    { filename: 'firma sample.png', bytes: png() },
+    { filename: 'XBFus - Bank Letter.pdf', bytes: pdf('2') },
   ]);
   assert.equal(plans.length, 2);
   for (const plan of plans) assert.equal(plan.queue_review, true);

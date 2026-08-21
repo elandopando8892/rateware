@@ -178,6 +178,14 @@ export async function planEntityVaultImport(files = [], options = {}) {
       continue;
     }
 
+    const classification = classifyDocument(filename);
+    // Signature material is classified for disclosure, but Phase 1 must not plan it
+    // for this importer. A later, separately provisioned signing mechanism owns it.
+    if (classification.document_type === 'authorized_signature') {
+      rejections.push(rejection(filename, 'signature_source_requires_separate_provisioning'));
+      continue;
+    }
+
     const sha256 = await sha256Hex(bytes);
     if (existing.has(sha256)) {
       duplicates.push(Object.freeze({ filename, outcome: 'duplicate', scope: 'vault', sha256 }));
@@ -189,7 +197,6 @@ export async function planEntityVaultImport(files = [], options = {}) {
     }
     seen.set(sha256, filename);
 
-    const classification = classifyDocument(filename);
     plans.push(Object.freeze({
       filename,
       outcome: 'plan',
