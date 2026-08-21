@@ -60,7 +60,7 @@ function sha256(path) {
 
 assert.equal(
   sha256("docs/platform55-shell-route-map.csv"),
-  "7116941FCF34CDF0C05562F47FFAA04149A905F3699089D9473A844AFD16F6EF"
+  "89A6ACB0E79474965D14C35B878A36D57D7CDEFEB7A71D2243767123BFDA33FB"
 );
 assert.equal(
   sha256("docs/platform55-surface-inventory.csv"),
@@ -329,10 +329,14 @@ for (const route of routeMap.rows) {
   assert.match(route.owner_sprint, /^P2-S[1-5]$/);
   assert.match(route.module_script, /^src\/.+\.js$/);
   assert.match(route.planned_test, /^tests\/.+\.test\.mjs$/);
-  assert.equal(existsSync(route.planned_test), false, `${route.planned_test} is already real but remains marked as planned`);
+  const testExists = existsSync(route.planned_test);
   assert.ok(route.platform55_surfaces);
-  assert.equal(route.status, "not_started");
-  assert.equal(route.evidence, "");
+  assert.ok(new Set(["not_started", "contract_ready", "implemented", "verified", "dispositioned"]).has(route.status));
+  if (testExists) {
+    assert.notEqual(route.status, "not_started", `${route.planned_test} is already real but remains marked as not_started`);
+  }
+  if (route.status === "not_started") assert.equal(route.evidence, "");
+  else assert.ok(route.evidence.trim(), `${route.route} ${route.status} status requires evidence`);
   if (internalRoutes.has(route.route)) {
     assert.equal(route.access, "authenticated");
     assert.equal(route.shell_variant, "tenant");

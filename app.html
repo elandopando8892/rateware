@@ -5,73 +5,53 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Command Center</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-command-center.css" />
   </head>
-  <body>
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Rateware modules">
-        <a class="brand-mark" href="./app.html">Rateware</a>
-        <nav class="nav-groups">
-          <section class="nav-group">
-            <p>Operate</p>
-            <a aria-current="page" href="./app.html" data-nav-code="CC">Command Center</a>
-            <a href="./upload-center.html" data-nav-code="IM">Import</a>
-            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
-            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
-            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
-          </section>
-          <section class="nav-group">
-            <p>Analyze</p>
-            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
-          </section>
-          <section class="nav-group">
-            <p>Source</p>
-            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
-            <a href="./provider-service.html" data-nav-code="PS">Provider Service</a>
-            <a href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
-            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
-            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
-            <a href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
-          </section>
-          <section class="nav-group">
-            <p>Admin</p>
-            <a href="./settings.html" data-nav-code="ST">Settings</a>
-            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
-            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
-          </section>
-        </nav>
-      </aside>
-
-      <div class="page-frame">
-        <header class="page-header">
-          <div>
-            <p class="eyebrow">Procurement command center</p>
-            <h1>Command Center</h1>
-            <nav class="module-crumbs" aria-label="Module context">
-              <span>Command</span>
-              <span>Today</span>
-            </nav>
-          </div>
-          <div class="page-header-actions">
-            <a class="page-primary-action" href="./business-intelligence.html">Ask AI</a>
-            <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Log in</button>
-              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
-              <p id="auth-status" role="status"></p>
-            </form>
-          </div>
+  <body data-platform55-shell="tenant" data-platform55-page="app">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <div class="rw-workspace">
+        <header class="rw-topbar" data-platform55-topbar>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Log in</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
         </header>
-
-        <main class="dashboard-layout">
-          <section id="next-best-action" class="next-best-action-card" aria-live="polite">
-            <div>
+        <main class="rw-main" id="main-content">
+          <div class="rw-command-center rw-page" data-platform55-page-content>
+            <header class="rw-page-header">
+              <div>
+                <p class="rw-page-eyebrow">Home · Today</p>
+                <h1>Command Center</h1>
+                <p>Prioritized work across commercial, procurement, operations, and finance.</p>
+              </div>
+              <div class="rw-page-actions" aria-label="Command Center context">
+                <span><rw-icon name="settings"></rw-icon>Focus: All domains</span>
+                <time id="command-center-date"><rw-icon name="work"></rw-icon>Today</time>
+                <a href="#my-work-title"><rw-icon name="work"></rw-icon>Open My Work</a>
+              </div>
+            </header>
+          <section id="next-best-action" class="rw-hero next-best-action-card" aria-live="polite">
+            <div class="rw-hero-copy">
               <p class="eyebrow">Next best action</p>
               <h2 id="next-action-title">Checking today's work...</h2>
               <p id="next-action-detail">Loading the highest-impact action from uploads, staging, AI, and Bid Room.</p>
+              <div class="rw-hero-actions">
+                <a id="next-action-link" class="page-primary-action" href="#" aria-disabled="true">Loading</a>
+                <a class="page-secondary-action" href="./business-intelligence.html"><rw-icon name="ai"></rw-icon>Explain with AI</a>
+              </div>
             </div>
-            <a id="next-action-link" class="page-primary-action" href="#" aria-disabled="true">Loading</a>
+            <div class="rw-hero-metrics" aria-label="Decision context">
+              <span><small>Impact</small><strong id="next-action-impact">Checking</strong><em>Operational priority</em></span>
+              <span><small>Due</small><strong id="next-action-due">Today</strong><em>Current queue</em></span>
+              <span><small>Object</small><strong id="next-action-object">Work</strong><em>Controlled action</em></span>
+            </div>
           </section>
 
-          <section class="workspace-panel dashboard-priority-panel" aria-labelledby="priority-queue-title">
+          <section class="rw-command-priority workspace-panel dashboard-priority-panel" aria-labelledby="priority-queue-title">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Priority queue</p>
@@ -87,13 +67,13 @@
             </div>
           </section>
 
-          <section class="workspace-panel dashboard-my-work-panel" aria-labelledby="my-work-title">
+          <section class="rw-my-work workspace-panel dashboard-my-work-panel" aria-labelledby="my-work-title">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">My Work</p>
                 <h2 id="my-work-title">Today’s operator queue</h2>
               </div>
-              <span class="section-caption">The next controlled actions across intake, review, sourcing, and RFx.</span>
+              <a class="secondary-link" href="./staging-review.html">Open workspace</a>
             </div>
             <div id="my-work-list" class="my-work-list" aria-live="polite">
               <article class="ui-state ui-state-loading" data-tone="loading">
@@ -103,49 +83,41 @@
             </div>
           </section>
 
-          <section class="workspace-panel dashboard-workflow-panel dashboard-workflow-panel--progress" aria-label="Procurement workflow">
+          <section id="business-lifecycle" class="rw-lifecycle workspace-panel dashboard-workflow-panel dashboard-workflow-panel--progress" aria-label="Business lifecycle">
             <div class="section-heading compact split-heading">
               <div>
-                <p class="eyebrow">Workflow status</p>
-                <h2>Where work is waiting</h2>
+                <p class="eyebrow">Business lifecycle</p>
+                <h2>Current live flow from acquisition to execution.</h2>
               </div>
-              <span class="section-caption">A quick path from source files to awarded capacity.</span>
             </div>
             <div class="workflow-progress-panel">
               <a class="workflow-progress-step" href="./upload-center.html">
-                <span>1</span>
-                <strong>Upload</strong>
-                <small id="progress-upload">0 files</small>
-              </a>
-              <a class="workflow-progress-step" href="./upload-history.html">
-                <span>2</span>
-                <strong>Interpret</strong>
+                <span>Source files</span>
+                <strong id="progress-upload">0 files</strong>
                 <small id="progress-interpret">0 failed</small>
               </a>
               <a class="workflow-progress-step" href="./staging-review.html">
-                <span>3</span>
-                <strong>Review</strong>
-                <small id="progress-review">0 pending</small>
+                <span>Review</span>
+                <strong id="progress-review">0 pending</strong>
               </a>
               <a class="workflow-progress-step" href="./rateware.html">
-                <span>4</span>
-                <strong>Rateware</strong>
-                <small id="progress-rateware">0 approved</small>
+                <span>Rateware</span>
+                <strong id="progress-rateware">0 approved</strong>
               </a>
               <a class="workflow-progress-step" href="./rfx-events.html">
-                <span>5</span>
-                <strong>Bid Room</strong>
+                <span>Bid Room</span>
+                <strong id="metric-rfx-open">-</strong>
                 <small id="progress-rfx">0 events</small>
               </a>
               <a class="workflow-progress-step" href="./rfx-events.html?view=responses">
-                <span>6</span>
-                <strong>Live bids</strong>
+                <span>Responses</span>
+                <strong id="metric-rfx-bids">-</strong>
                 <small id="progress-outreach">0 bids</small>
               </a>
             </div>
           </section>
 
-          <section id="rate-book-health" class="workspace-panel rate-book-health-panel hidden" aria-label="Rate book health">
+          <section id="rate-book-health" class="rw-command-health workspace-panel rate-book-health-panel hidden" aria-label="Rate book health">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Rate book health</p>
@@ -183,10 +155,10 @@
             </div>
           </section>
 
-          <section class="workspace-panel dashboard-metrics-panel" aria-label="Dashboard metrics">
+          <section id="network-pulse" class="rw-network-pulse workspace-panel dashboard-metrics-panel" aria-label="Network pulse">
             <div class="section-heading compact">
-              <p class="eyebrow">Signals</p>
-              <h2>At a glance</h2>
+              <p class="eyebrow">Network pulse</p>
+              <h2>Scoped operational signals</h2>
             </div>
             <div class="metric-grid">
               <a class="metric-card" href="./staging-review.html">
@@ -205,18 +177,10 @@
                 <span>Procurement vendors</span>
                 <strong id="metric-procurement">-</strong>
               </a>
-              <a class="metric-card" href="./rfx-events.html">
-                <span>Open Bid Room</span>
-                <strong id="metric-rfx-open">-</strong>
-              </a>
-              <a class="metric-card" href="./rfx-events.html">
-                <span>Bid responses</span>
-                <strong id="metric-rfx-bids">-</strong>
-              </a>
             </div>
           </section>
 
-          <section class="workspace-panel dashboard-workflow-panel">
+          <section class="rw-command-shortcuts workspace-panel dashboard-workflow-panel">
             <div class="section-heading compact">
               <p class="eyebrow">Shortcuts</p>
               <h2>Workspaces</h2>
@@ -259,6 +223,7 @@
               </a>
             </div>
           </section>
+          </div>
         </main>
       </div>
     </div>

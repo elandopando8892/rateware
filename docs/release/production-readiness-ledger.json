@@ -88,11 +88,14 @@
     {
       "id": "P2",
       "weight": 7,
-      "progress": 10,
+      "progress": 25,
       "evidence": {
         "scope": [
-          "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md",
-          "docs/release/evidence/2026-08-21-p2-shell-contract.md"
+          "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
+        ],
+        "evidence_plan": [
+          "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-master.md",
+          "docs/release/evidence/2026-08-21-p2-shell-s1-command-center.md"
         ]
       }
     },

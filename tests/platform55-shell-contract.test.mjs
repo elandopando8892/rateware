@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import {
+  PLATFORM55_ROUTES,
+  routeForPath,
+  visibleNavigation,
+  shellModel
+} from "../src/platform55-shell-model.js";
+import { searchShellCommands } from "../src/platform55-search.js";
+import { mobileNavigationAccessibility } from "../src/platform55-shell.js";
 
 const css = readFileSync("src/platform55-tokens.css", "utf8");
 const operatePlan = readFileSync(
@@ -74,3 +82,149 @@ assert.doesNotMatch(operatePlan, /test:platform55:shell|--p55-/);
 assert.equal(operatePlan.match(/npm run test:platform55-shell/g)?.length, 2);
 assert.doesNotMatch(procurementPlan, /--p55-|not_verified/);
 assert.match(procurementPlan, /state without evidence remains `not_started`/);
+
+const routeMapFiles = readFileSync("docs/platform55-shell-route-map.csv", "utf8")
+  .trim()
+  .split(/\r?\n/)
+  .slice(1)
+  .map((row) => row.split(",", 1)[0])
+  .sort();
+const registeredFiles = PLATFORM55_ROUTES.map((row) => row.path.replace(/^\.\//, "")).sort();
+
+assert.equal(PLATFORM55_ROUTES.length, 29);
+assert.equal(PLATFORM55_ROUTES.filter((row) => row.shell === "tenant").length, 22);
+assert.equal(PLATFORM55_ROUTES.filter((row) => row.shell !== "tenant").length, 7);
+assert.deepEqual(registeredFiles, routeMapFiles);
+assert.equal(routeForPath("/app")?.key, "app");
+assert.equal(routeForPath("/app.html")?.key, "app");
+assert.equal(routeForPath("/rfx-bid")?.shell, "public");
+assert.equal(routeForPath("/missing"), null);
+
+assert.equal(new Set(PLATFORM55_ROUTES.map((row) => row.key)).size, PLATFORM55_ROUTES.length);
+assert.equal(new Set(PLATFORM55_ROUTES.map((row) => row.path)).size, PLATFORM55_ROUTES.length);
+for (const route of PLATFORM55_ROUTES) {
+  assert.ok(Object.isFrozen(route));
+  assert.match(route.path, /^\.\/[a-z0-9-]+\.html$/);
+  assert.doesNotMatch(route.path, /:\/\/|^\/\//);
+  if (route.shell === "tenant") {
+    assert.ok(route.group);
+    assert.ok(route.icon);
+    assert.ok(route.title);
+    assert.ok(route.subtitle);
+  }
+}
+assert.ok(Object.isFrozen(PLATFORM55_ROUTES));
+
+const restricted = visibleNavigation({ can: () => false });
+assert.ok(restricted.every((item) => item.requiredAction == null));
+assert.ok(restricted.every((item) => item.shell === "tenant"));
+assert.ok(restricted.every((item) => !["rfx-bid", "carrier-profile", "shipper-profile"].includes(item.key)));
+
+const model = shellModel({
+  pageKey: "app",
+  user: { given_name: "<Andre>" },
+  accessContext: { can: () => true },
+  notificationSummary: { unread: 3 }
+});
+assert.equal(model.activeRoute.key, "app");
+assert.equal(model.notificationCount, 3);
+assert.doesNotMatch(JSON.stringify(model), /<Andre>/);
+
+const iconSource = readFileSync("src/platform55-icons.js", "utf8");
+assert.match(iconSource, /registerPlatform55Icons/);
+assert.match(iconSource, /customElements\.define/);
+assert.match(iconSource, /rw-i-/);
+assert.doesNotMatch(iconSource, /innerHTML\s*=\s*[^;]*(getAttribute|name)/);
+assert.doesNotMatch(iconSource, /javascript:/i);
+assert.doesNotMatch(iconSource, /href\s*=\s*["']https?:/i);
+
+const appHtml = readFileSync("app.html", "utf8");
+const authSource = readFileSync("src/auth.js", "utf8");
+const shellSource = readFileSync("src/platform55-shell.js", "utf8");
+const shellCss = readFileSync("src/platform55-shell.css", "utf8");
+
+assert.match(appHtml, /data-platform55-shell="tenant"/);
+assert.match(appHtml, /data-platform55-page="app"/);
+assert.match(appHtml, /platform55-tokens\.css/);
+assert.match(appHtml, /platform55-shell\.css/);
+assert.doesNotMatch(appHtml, /<aside class="side-nav"/);
+assert.equal((appHtml.match(/id="auth-form"/g) || []).length, 1);
+assert.match(authSource, /mountPlatform55Shell/);
+assert.match(authSource, /dataset\.platform55Shell === "tenant"/);
+assert.match(authSource, /initLegacySaasShell/);
+assert.doesNotMatch(shellSource, /fetch\(|authenticatedFetch|supabase|localStorage\.clear/i);
+assert.match(shellSource, /export function mountPlatform55Shell/);
+assert.match(shellSource, /export function updatePlatform55Shell/);
+assert.match(shellSource, /export function unmountPlatform55Shell/);
+assert.match(
+  shellSource,
+  /class="rw-search-trigger"[^>]*aria-label="Search modules and actions"/,
+  "The mobile search control must retain an accessible name when its visible label is hidden"
+);
+assert.match(
+  shellSource,
+  /class="rw-ask-ai"[^>]*aria-label="Ask AI"/,
+  "The mobile Ask AI control must retain an accessible name when its visible label is hidden"
+);
+assert.deepEqual(
+  mobileNavigationAccessibility({ isMobile: true, isOpen: false }),
+  { ariaHidden: "true", inert: true }
+);
+assert.deepEqual(
+  mobileNavigationAccessibility({ isMobile: true, isOpen: true }),
+  { ariaHidden: "false", inert: false }
+);
+assert.deepEqual(
+  mobileNavigationAccessibility({ isMobile: false, isOpen: false }),
+  { ariaHidden: null, inert: false }
+);
+assert.match(shellSource, /addEventListener\("resize",\s*\(\)\s*=>\s*\{[\s\S]*syncMobileNavigationAccessibility\(state\)/);
+assert.match(
+  shellSource,
+  /addEventListener\("resize",\s*\(\)\s*=>\s*\{[\s\S]*data-platform55-nav-open[^\n]*aria-expanded[^\n]*false[\s\S]*syncMobileNavigationAccessibility\(state\)/,
+  "Desktop resize must reset the mobile navigation trigger to its collapsed state"
+);
+assert.match(shellCss, /grid-template-columns:\s*var\(--rw-sidebar-expanded\)\s+minmax\(0,\s*1fr\)/);
+assert.match(shellCss, /@media\s*\(max-width:\s*1320px\)/);
+assert.match(shellCss, /@media\s*\(max-width:\s*900px\)/);
+assert.match(shellCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+assert.match(
+  shellCss,
+  /\.rw-nav-group\s*>\s*p\s*\{[^}]*color:\s*var\(--rw-slate-600\)/s,
+  "Navigation group labels must retain WCAG AA contrast on the white sidebar"
+);
+assert.match(
+  shellCss,
+  /\.rw-sidebar-footer\s+small\s*\{[^}]*color:\s*var\(--rw-slate-600\)/s,
+  "The sidebar footer label must retain WCAG AA contrast"
+);
+assert.match(
+  shellCss,
+  /\.rw-search-trigger\s*\{[^}]*color:\s*var\(--rw-slate-600\)/s,
+  "Search text must retain WCAG AA contrast on the slate-50 surface"
+);
+
+const searchOptions = {
+  routes: PLATFORM55_ROUTES,
+  actions: [],
+  accessContext: { can: () => true },
+  limit: 12
+};
+const reviewResults = searchShellCommands("review", searchOptions);
+assert.equal(reviewResults[0]?.key, "staging-review");
+assert.equal(searchShellCommands("<script>", searchOptions).length, 0);
+assert.ok(searchShellCommands("rate", searchOptions).length <= 12);
+assert.ok(searchShellCommands("admin", { ...searchOptions, accessContext: { can: () => false } }).every((row) => row.requiredAction == null));
+assert.throws(() => searchShellCommands("rate", {
+  ...searchOptions,
+  actions: [{ key: "unsafe", label: "Unsafe", path: "https://example.com" }]
+}), /relative/i);
+
+const searchSource = readFileSync("src/platform55-search.js", "utf8");
+assert.doesNotMatch(searchSource, /fetch\(|authenticatedFetch|supabase/i);
+assert.match(searchSource, /ctrlKey/);
+assert.match(searchSource, /metaKey/);
+assert.match(searchSource, /ArrowDown/);
+assert.match(searchSource, /ArrowUp/);
+assert.match(searchSource, /Escape/);
+assert.match(searchSource, /focus/);

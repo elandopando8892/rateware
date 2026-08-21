@@ -9,6 +9,7 @@ import {
   sortProviderServiceRows,
   summarizeProviderServiceRows,
 } from '../src/provider-service-page-domain.js';
+import { shellModel } from '../src/platform55-shell-model.js';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const migration = read('../supabase/migrations/20260814010000_provider_service_command_center.sql');
@@ -92,7 +93,11 @@ test('Provider Service page is wired to command center and existing Provider 360
 });
 
 test('Provider Service is discoverable from Command Center and Carrier CRM navigation', () => {
-  for (const source of [commandCenterPage, vendorCrmPage]) {
-    assert.match(source, /href="\.\/provider-service\.html"[^>]*data-nav-code="PS">Provider Service<\/a>/);
-  }
+  assert.match(commandCenterPage, /data-platform55-sidebar/);
+  const providerServiceRoute = shellModel({ pageKey: 'app' }).navigation
+    .find((route) => route.key === 'provider-service');
+  assert.equal(providerServiceRoute?.path, './provider-service.html');
+  assert.equal(providerServiceRoute?.group, 'Service');
+  assert.equal(providerServiceRoute?.label, 'Provider Service');
+  assert.match(vendorCrmPage, /href="\.\/provider-service\.html"[^>]*data-nav-code="PS">Provider Service<\/a>/);
 });

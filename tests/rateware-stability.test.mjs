@@ -13,6 +13,7 @@ const uploadServiceSource = readFileSync(new URL("../src/upload-service.js", imp
 const uploadHistoryHtml = readFileSync(new URL("../upload-history.html", import.meta.url), "utf8");
 const uploadCenterHtml = readFileSync(new URL("../upload-center.html", import.meta.url), "utf8");
 const appHtml = readFileSync(new URL("../app.html", import.meta.url), "utf8");
+const platform55ShellModelSource = readFileSync(new URL("../src/platform55-shell-model.js", import.meta.url), "utf8");
 const businessIntelligenceSource = readFileSync(new URL("../src/business-intelligence.js", import.meta.url), "utf8");
 const businessIntelligenceHtml = readFileSync(new URL("../business-intelligence.html", import.meta.url), "utf8");
 const bulkImportTemplateSource = readFileSync(new URL("../src/bulk-import-template.js", import.meta.url), "utf8");
@@ -363,14 +364,14 @@ assert.match(dashboardSource, /nextActionLink\.removeAttribute\("aria-disabled"\
 assert.match(stylesSource, /\.next-best-action-card a\[aria-disabled="true"\]/, "Command Center loading action should look and behave disabled");
 const nextActionPosition = appHtml.indexOf('id="next-best-action"');
 const priorityQueuePosition = appHtml.indexOf('id="priority-queue-title"');
-const workflowStatusPosition = appHtml.indexOf('aria-label="Procurement workflow"');
-const metricsPosition = appHtml.indexOf('aria-label="Dashboard metrics"');
+const workflowStatusPosition = appHtml.indexOf('id="business-lifecycle"');
+const metricsPosition = appHtml.indexOf('id="network-pulse"');
 assert.ok(nextActionPosition >= 0 && priorityQueuePosition > nextActionPosition, "Command Center should place the priority queue after the next action");
-assert.ok(priorityQueuePosition >= 0 && workflowStatusPosition > priorityQueuePosition, "Command Center should show workflow status after priorities");
-assert.ok(workflowStatusPosition >= 0 && metricsPosition > workflowStatusPosition, "Command Center should keep metrics below operational workflow context");
-assert.match(appHtml, /class="workspace-panel dashboard-priority-panel" aria-labelledby="priority-queue-title"/, "Command Center priority queue should have a stable accessible heading");
+assert.ok(priorityQueuePosition >= 0 && workflowStatusPosition > priorityQueuePosition, "Command Center should show business lifecycle after priorities in source order");
+assert.ok(workflowStatusPosition >= 0 && metricsPosition > workflowStatusPosition, "Command Center should keep network pulse after lifecycle context in source order");
+assert.match(appHtml, /class="rw-command-priority workspace-panel dashboard-priority-panel" aria-labelledby="priority-queue-title"/, "Command Center priority queue should have a stable accessible heading");
 assert.doesNotMatch(appHtml, /class="secondary-link" href="\.\/business-intelligence\.html">Ask AI Analyst<\//, "Command Center should keep the AI action in the global header instead of duplicating it in Priority Queue");
-assert.match(appHtml, /<p class="eyebrow">Signals<\/p>\s+<h2>At a glance<\/h2>/, "Command Center metrics should read as supporting signals");
+assert.match(appHtml, /<p class="eyebrow">Network pulse<\/p>\s+<h2>Scoped operational signals<\/h2>/, "Command Center metrics should read as scoped network signals");
 assert.match(stylesSource, /\.dashboard-priority-panel \.priority-queue \{[\s\S]*grid-template-columns: repeat\(2/, "Command Center priorities should use a compact two-column layout");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
@@ -433,8 +434,12 @@ assert.match(stagingReviewSource, /downloadVendorMatchErrors/, "Staging should d
 assert.match(ratewareSource, /downloadVendorMatchErrors/, "Rateware should download unmatched vendor diagnostics");
 assert.match(stagingReviewSource, /Shipment ID/, "Staging should expose Shipment ID");
 assert.match(ratewareSource, /Shipment ID/, "Rateware should expose Shipment ID");
+assert.match(appHtml, /data-platform55-shell="tenant"/, "Command Center should opt into the Platform 55 tenant shell");
+for (const label of ["Command Center", "Import", "Source Files", "Review Queue", "Carrier CRM", "RFx Process", "Learning Rules", "Catalog"]) {
+  assert.match(platform55ShellModelSource, new RegExp(`label: "${label}"`), `Platform 55 shell model should expose ${label}`);
+}
+
 for (const [label, html] of [
-  ["Command Center", appHtml],
   ["Import", uploadCenterHtml],
   ["Source Files", uploadHistoryHtml],
   ["Review Queue", stagingReviewHtml],
@@ -2830,7 +2835,7 @@ assert.match(apiSource, /\.eq\("vendor_id", vendorId\)/, "Carrier relationship a
 assert.match(apiSource, /\.eq\("owner_email", user\.owner_email\)/, "Carrier relationship activity should stay isolated by workspace owner");
 assert.match(apiSource, /bid_room_chat_threads/, "Carrier relationship activity should include Bid Room conversations");
 assert.match(apiSource, /vendor_improvement_cases/, "Carrier relationship activity should include Vendor CI cases");
-assert.match(appHtml, /vendor-support\.html/, "Dashboard navigation should include Vendor Support");
+assert.match(platform55ShellModelSource, /path: "\.\/vendor-support\.html"/, "Dashboard navigation should include Vendor Support");
 assert.match(vendorContinuousImprovementMigration, /vendor_improvement_cases/, "Vendor CI should persist continuous improvement cases");
 assert.match(vendorContinuousImprovementMigration, /vendor_value_scorecards/, "Vendor CI should persist carrier value scorecards");
 assert.match(vendorContinuousImprovementMigration, /vendor_improvement_cases_owner_status_idx/, "Vendor CI cases should have owner/status index");
@@ -2911,7 +2916,7 @@ assert.match(vendorImprovementServiceSource, /create_vendor_improvement_case/, "
 assert.match(vendorImprovementServiceSource, /submit_vendor_improvement_case/, "Vendor CI service should call the email submit action");
 assert.match(vendorImprovementServiceSource, /process_vendor_ci_reminders/, "Vendor CI service should call the reminder processor action");
 assert.match(vendorImprovementServiceSource, /refresh_vendor_value_curve/, "Vendor CI service should call the Value Curve refresh action");
-assert.match(appHtml, /vendor-improvement\.html/, "Dashboard navigation should include Vendor CI");
+assert.match(platform55ShellModelSource, /path: "\.\/vendor-improvement\.html"/, "Dashboard navigation should include Vendor CI");
 assert.match(apiSource, /const invitationIdChunks = invitationIds\.length \? chunkValues\(invitationIds, 100\) : \[\[\]\]/, "Outreach draft generation should read selected invitations in small id batches");
 assert.match(apiSource, /label: "RFx invitation ids", limit: 5000/, "Outreach draft generation should support large carrier waves without unbounded requests");
 assert.match(apiSource, /mapWithConcurrency\(invitationIdChunks, 4/, "Outreach draft generation should load invitation batches with bounded concurrency");

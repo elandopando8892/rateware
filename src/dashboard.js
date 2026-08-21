@@ -7,6 +7,10 @@ const nextActionCard = document.querySelector("#next-best-action");
 const nextActionTitle = document.querySelector("#next-action-title");
 const nextActionDetail = document.querySelector("#next-action-detail");
 const nextActionLink = document.querySelector("#next-action-link");
+const nextActionImpact = document.querySelector("#next-action-impact");
+const nextActionDue = document.querySelector("#next-action-due");
+const nextActionObject = document.querySelector("#next-action-object");
+const commandCenterDate = document.querySelector("#command-center-date");
 
 const metricPending = document.querySelector("#metric-pending");
 const metricFailed = document.querySelector("#metric-failed");
@@ -182,6 +186,31 @@ function buildActionList(summary) {
   return actions;
 }
 
+function actionObject(action) {
+  const href = action?.href || "";
+  if (href.includes("upload")) return "Upload";
+  if (href.includes("staging")) return "Review";
+  if (href.includes("rfx")) return "RFx";
+  if (href.includes("vendor")) return "Vendor";
+  if (href.includes("intelligence")) return "Insight";
+  return "Work";
+}
+
+function renderHeroDecisionContext(action) {
+  const impact = action?.severity === "critical" ? "Critical" : action?.severity === "warning" ? "High" : action?.severity === "success" ? "Ready" : "Monitor";
+  const due = action?.severity === "critical" || action?.severity === "warning" ? "Today" : "Next";
+  setText(nextActionImpact, impact);
+  setText(nextActionDue, due);
+  setText(nextActionObject, actionObject(action));
+}
+
+function priorityIcon(severity) {
+  if (severity === "critical") return "error";
+  if (severity === "warning") return "warning";
+  if (severity === "success") return "check";
+  return "work";
+}
+
 function renderNextBestAction(summary) {
   const [action] = buildActionList(summary);
   if (!action || !nextActionTitle || !nextActionDetail || !nextActionLink) return;
@@ -192,6 +221,7 @@ function renderNextBestAction(summary) {
   nextActionLink.textContent = action.action;
   nextActionLink.href = action.href;
   nextActionLink.removeAttribute("aria-disabled");
+  renderHeroDecisionContext(action);
 }
 
 function renderPriorityQueue(summary) {
@@ -212,6 +242,7 @@ function renderPriorityQueue(summary) {
     .map(
       (item) => `
         <a class="priority-alert ${item.severity}" href="${item.href}">
+          <span class="priority-alert-icon ${item.severity}" aria-hidden="true"><rw-icon name="${priorityIcon(item.severity)}"></rw-icon></span>
           <div>
             <span>${item.severity === "critical" ? "Critical" : item.severity === "warning" ? "Needs review" : item.severity === "success" ? "Ready" : "Next"}</span>
             <strong>${escapeHtml(item.title)}</strong>
@@ -294,14 +325,7 @@ function renderRateBookHealth(summary) {
   rateBookHealthPanel.classList.remove("hidden");
 }
 
-function renderSummary(summary) {
-  setMetric(metricPending, summary.pending_review);
-  setMetric(metricFailed, summary.failed_uploads);
-  setMetric(metricApproved, summary.approved_rows);
-  setMetric(metricProcurement, summary.procurement_vendors);
-  setMetric(metricRfxOpen, summary.rfx_open_events);
-  setMetric(metricRfxBids, summary.rfx_bids);
-
+function renderBusinessLifecycle(summary) {
   setText(workflowStaging, `${formatCount(summary.pending_review)} pending rows`);
   setText(workflowFailed, `${formatCount(summary.failed_uploads)} files need review`);
   setText(workflowRfx, `${formatCount(summary.rfx_open_events)} open Bid Rooms`);
@@ -313,8 +337,21 @@ function renderSummary(summary) {
   setText(progressRateware, `${formatCount(summary.approved_rows)} approved`);
   setText(progressRfx, `${formatCount(summary.rfx_open_events)} events`);
   setText(progressOutreach, `${formatCount(summary.rfx_bids)} bids`);
+}
 
+function renderNetworkPulse(summary) {
+  setMetric(metricPending, summary.pending_review);
+  setMetric(metricFailed, summary.failed_uploads);
+  setMetric(metricApproved, summary.approved_rows);
+  setMetric(metricProcurement, summary.procurement_vendors);
+  setMetric(metricRfxOpen, summary.rfx_open_events);
+  setMetric(metricRfxBids, summary.rfx_bids);
   renderRateBookHealth(summary);
+}
+
+function renderSummary(summary) {
+  renderBusinessLifecycle(summary);
+  renderNetworkPulse(summary);
   renderNextBestAction(summary);
   renderPriorityQueue(summary);
   renderMyWork(summary);
@@ -327,6 +364,7 @@ function renderDashboardLoading() {
   if (nextActionCard) nextActionCard.setAttribute("data-severity", "info");
   setText(nextActionTitle, "Checking today's work...");
   setText(nextActionDetail, "Loading the highest-impact action from uploads, staging, AI, and Bid Room.");
+  renderHeroDecisionContext({ severity: "info", href: "" });
   if (nextActionLink) {
     nextActionLink.textContent = "Loading";
     nextActionLink.href = "#";
@@ -358,6 +396,7 @@ function renderLoadError(error) {
   if (nextActionCard) nextActionCard.setAttribute("data-severity", "critical");
   setText(nextActionTitle, "Dashboard could not load");
   setText(nextActionDetail, message);
+  renderHeroDecisionContext({ severity: "critical", href: "" });
   if (nextActionLink) {
     nextActionLink.textContent = "Retry";
     nextActionLink.href = "#";
@@ -400,6 +439,14 @@ async function loadDashboard() {
     if (loadVersion !== dashboardLoadVersion) return;
     renderLoadError(error);
   }
+}
+
+if (commandCenterDate?.lastChild) {
+  commandCenterDate.lastChild.textContent = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  }).format(new Date());
 }
 
 initAuthControls();
