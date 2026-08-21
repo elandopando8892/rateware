@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { z } from 'zod';
 import {
   OspApiError,
@@ -188,9 +189,19 @@ test('renders explicit zero metrics returned by the server', async () => {
 
 test('reports mailbox health as unknown after a failed refresh of previously validated data', async () => {
   // Catches presenting a stale connected/watching state as current after the status read fails.
+  const refreshedGmailResponse: GmailStatusResponse = {
+    data: {
+      ...gmailResponse.data,
+      connections: [{
+        ...gmailResponse.data.connections[0],
+        status: 'watching',
+      }],
+    },
+  };
   const gmail = vi.fn()
     .mockResolvedValueOnce(gmailResponse)
-    .mockRejectedValueOnce(apiError({ status: 403, code: 'FORBIDDEN' }));
+    .mockRejectedValueOnce(apiError({ status: 403, code: 'FORBIDDEN' }))
+    .mockResolvedValueOnce(refreshedGmailResponse);
   const client = clientWith({ getGmailStatus: gmail });
   const { queryClient } = renderOverview(client);
   expect(await screen.findByText('idle')).toBeVisible();
@@ -201,6 +212,55 @@ test('reports mailbox health as unknown after a failed refresh of previously val
   expect(screen.queryByText('idle')).toBeNull();
   expect(screen.getByText('unknown')).toBeVisible();
   expect(screen.getByText('carriers@xbfreight.com')).toBeVisible();
+
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: 'Reintentar estado del buzón' }));
+  expect(await screen.findByText('watching')).toBeVisible();
+  expect(gmail).toHaveBeenCalledTimes(3);
+  expect(client.listOnboardingWorkspace).toHaveBeenCalledOnce();
+});
+
+test('hides stale pipeline metrics after a failed refresh until its own retry succeeds', async () => {
+  // Catches presenting old counts as current when no server freshness timestamp can support them.
+  const transientFailure = apiError({ status: 503, code: 'HTTP_503' });
+  const refreshedPipelineResponse: OnboardingWorkspaceResponse = {
+    data: {
+      ...pipelineResponse.data,
+      total: 21,
+      metrics: { total: 21, blocked: 8, approval: 7, overdue: 6 },
+    },
+  };
+  const pipeline = vi.fn()
+    .mockResolvedValueOnce(pipelineResponse)
+    .mockRejectedValueOnce(transientFailure)
+    .mockRejectedValueOnce(transientFailure)
+    .mockResolvedValueOnce(refreshedPipelineResponse);
+  const client = clientWith({ listOnboardingWorkspace: pipeline });
+  const { queryClient } = renderOverview(client);
+  const initialMetrics = await screen.findByRole('group', { name: 'Conteos del pipeline' });
+  expect(initialMetrics).toHaveTextContent('12');
+
+  await queryClient.refetchQueries({ queryKey: [
+    'osp',
+    'onboarding-workspace',
+    { queue: 'all', limit: 1, offset: 0 },
+  ] });
+
+  expect(await screen.findByRole('alert', { name: 'Error de conteos del pipeline' })).toBeVisible();
+  expect(screen.queryByRole('group', { name: 'Conteos del pipeline' })).toBeNull();
+  expect(screen.queryByText('12')).toBeNull();
+  expect(pipeline).toHaveBeenCalledTimes(3);
+  expect(client.getGmailStatus).toHaveBeenCalledOnce();
+
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: 'Reintentar conteos del pipeline' }));
+  const refreshedMetrics = await screen.findByRole('group', { name: 'Conteos del pipeline' });
+  expect(refreshedMetrics).toHaveTextContent('21');
+  expect(refreshedMetrics).toHaveTextContent('8');
+  expect(refreshedMetrics).toHaveTextContent('7');
+  expect(refreshedMetrics).toHaveTextContent('6');
+  expect(pipeline).toHaveBeenCalledTimes(4);
+  expect(client.getGmailStatus).toHaveBeenCalledOnce();
 });
 
 test.each([
