@@ -5,6 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "npx serve .",
+    "osp:dev": "pnpm --dir apps/osp dev",
+    "osp:test": "pnpm --dir apps/osp test",
+    "osp:lint": "pnpm --dir apps/osp lint",
+    "osp:build": "pnpm --dir apps/osp build",
+    "osp:e2e": "pnpm --dir apps/osp test:e2e",
     "e2e:bid-room": "node tools/bid-room-e2e.mjs",
     "smoke:integrations": "node tools/integration-smoke.mjs",
     "validate:action-contract": "node tools/validate-action-contract.mjs",
