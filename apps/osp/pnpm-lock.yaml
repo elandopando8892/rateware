@@ -4,13 +4,16 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@kinde-oss/kinde-auth-pkce-js@4.5.1': d9339fecb5575778d84a278f63c4a1e0d35b1051cc239d55218205277d769f14
+
 importers:
 
   .:
     dependencies:
       '@kinde-oss/kinde-auth-pkce-js':
         specifier: 4.5.1
-        version: 4.5.1
+        version: 4.5.1(patch_hash=d9339fecb5575778d84a278f63c4a1e0d35b1051cc239d55218205277d769f14)
       '@tanstack/react-query':
         specifier: 5.101.4
         version: 5.101.4(react@19.2.8)
@@ -1636,7 +1639,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@kinde-oss/kinde-auth-pkce-js@4.5.1':
+  '@kinde-oss/kinde-auth-pkce-js@4.5.1(patch_hash=d9339fecb5575778d84a278f63c4a1e0d35b1051cc239d55218205277d769f14)':
     dependencies:
       '@kinde/js-utils': 0.32.0
       jwt-decode: 4.0.0
