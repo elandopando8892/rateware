@@ -7,7 +7,10 @@ OSP breaks — in one case silently and completely.
 Nothing here asks Rateware to do anything new. It documents claims OSP *already made*, in
 a migration Rateware's authors never reviewed, so that they stop being invisible.
 
-Verified live against `alqjqzqagdmcywpjtnnr` on 2026-08-20.
+Verified live against `alqjqzqagdmcywpjtnnr` on 2026-08-20, and re-verified the
+same day after OSP moved to its own runtime: both constraints, both foreign keys,
+and the exact `vendors` columns OSP reads (queried from the view dependencies, not
+asserted).
 
 ---
 
@@ -102,12 +105,46 @@ as someone else's, and OSP will not ask Rateware to know anything about it.
 
 ---
 
-## 5. The one thing OSP still needs to fix on its own side
+## 5. OSP no longer lives inside a Rateware function
 
-OSP's 24 edge actions execute inside `supabase/functions/shipper-directory-api` — a
-Rateware function. When Rateware is rebuilt, that function is rebuilt, and OSP's backend
-goes with it.
+**This section used to describe a problem. It is fixed, and the fix is the reason this
+document is short.**
 
-This is OSP's problem, not Rateware's, and OSP is moving them to their own function. It is
-listed here only so that whoever rebuilds `shipper-directory-api` knows why
-`provider-service.ts` is imported into it today, and that the import is on its way out.
+OSP's 24 edge actions used to execute inside `supabase/functions/shipper-directory-api`,
+a Rateware function. Rebuilding that function would have taken OSP's entire backend with
+it. They now live in `supabase/functions/provider-onboarding-api`, which OSP owns.
+
+Verified: `shipper-directory-api` no longer imports `provider-service.ts`, and no OSP
+module calls `callRatewareApi()`.
+
+So **whoever rebuilds `shipper-directory-api` owes OSP nothing.** Rebuild it, delete it,
+rename it — OSP does not notice.
+
+---
+
+## 6. One check that belongs in front of any rebuild
+
+Before trusting any statement about this schema — including this document — compare what
+is applied against what is committed:
+
+```sql
+select count(*) from supabase_migrations.schema_migrations;
+```
+
+against `git ls-tree -r --name-only origin/main -- supabase/migrations | wc -l`.
+
+Compare against `origin/main`, not against your working tree. On 2026-08-20 that
+distinction was got wrong here: production was compared to this branch's working tree,
+six files came up missing, and the gap was reported as work orphaned in production. It
+was not. `main` already carried all six, reconciled in `bc7686e`. This branch had simply
+forked earlier.
+
+**"The repo is missing this" and "my branch is missing this" are different claims.** Only
+the second was true, and only the first would have justified the alarm.
+
+The underlying hazard is still real: `apply_migration` writes the database and stamps a
+version, and nothing writes the file. It leaves no trace in git, and no test here detects
+it, because the suite runs against code rather than a replayed schema. Run the check —
+just name the baseline.
+
+See `docs/osp-recovered-migrations.md`.
