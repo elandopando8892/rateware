@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
@@ -48,6 +49,23 @@ const EXPECTED_STATES_BY_BUILD = Object.freeze({
   build_11: 132,
   build_12: 140
 });
+
+const attributes = readFileSync(".gitattributes", "utf8");
+assert.match(attributes, /^docs\/platform55-shell-route-map\.csv text eol=lf$/m);
+assert.match(attributes, /^docs\/platform55-surface-inventory\.csv text eol=lf$/m);
+
+function sha256(path) {
+  return createHash("sha256").update(readFileSync(path)).digest("hex").toUpperCase();
+}
+
+assert.equal(
+  sha256("docs/platform55-shell-route-map.csv"),
+  "7116941FCF34CDF0C05562F47FFAA04149A905F3699089D9473A844AFD16F6EF"
+);
+assert.equal(
+  sha256("docs/platform55-surface-inventory.csv"),
+  "A96476872DB5DC6430C75A81346295041BF595B54E7FECCF549A489F10FEE490"
+);
 
 function parseCsv(text) {
   const records = [];
