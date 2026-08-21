@@ -247,7 +247,7 @@ test("accepts the P1 evidence-plan gate and reports the one-decimal starting sco
   assert.equal(computeOverallProgress(p1), 69.3);
 });
 
-test("keeps the persisted P1 production closure backed by tracked evidence", () => {
+test("keeps the persisted P1 production closure backed while P2 advances", () => {
   const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p1 = persisted.sprints.find((sprint) => sprint.id === "P1");
   const trackedEvidence = [
@@ -269,5 +269,21 @@ test("keeps the persisted P1 production closure backed by tracked evidence", () 
   }
   for (const path of trackedEvidence) execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   validateLedger(persisted);
-  assert.equal(computeOverallProgress(persisted), 76);
+  assert.equal(computeOverallProgress(persisted), 76.7);
+});
+
+test("accepts the P2 Platform55 shell scope gate and reports 76.7 percent", () => {
+  const p2Ledger = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = p2Ledger.sprints.find((sprint) => sprint.id === "P2");
+  p2.progress = 10;
+  p2.evidence = {
+    scope: [
+      "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md",
+      "docs/release/evidence/2026-08-21-p2-shell-contract.md"
+    ]
+  };
+
+  validateLedger(p2Ledger);
+  assert.equal(computeOverallProgress(p2Ledger), 76.7);
+  assert.match(formatProgressReport(p2Ledger), /P2:\s+10%/);
 });

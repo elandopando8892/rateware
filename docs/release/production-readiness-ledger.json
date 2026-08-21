@@ -85,7 +85,17 @@
         "independent_review": "GO"
       }
     },
-    { "id": "P2", "weight": 7, "progress": 0, "evidence": {} },
+    {
+      "id": "P2",
+      "weight": 7,
+      "progress": 10,
+      "evidence": {
+        "scope": [
+          "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md",
+          "docs/release/evidence/2026-08-21-p2-shell-contract.md"
+        ]
+      }
+    },
     { "id": "P3", "weight": 7, "progress": 0, "evidence": {} },
     { "id": "P4", "weight": 6, "progress": 0, "evidence": {} },
     { "id": "P5", "weight": 4, "progress": 0, "evidence": {} }
