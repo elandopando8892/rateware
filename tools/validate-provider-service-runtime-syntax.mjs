@@ -21,6 +21,7 @@ const files = [
   'supabase/functions/_shared/provider-onboarding-release-package.ts',
   'supabase/functions/_shared/provider-onboarding-requirement-waiver.mjs',
   'supabase/functions/_shared/provider-onboarding-taxpayer-classification.mjs',
+  'supabase/functions/_shared/action-contract-osp.mjs',
   'supabase/functions/_shared/provider-onboarding-waiver-commands.ts',
   'supabase/functions/_shared/provider-onboarding-form-assembly.ts',
   'supabase/functions/_shared/provider-onboarding-gmail-delivery.ts',
