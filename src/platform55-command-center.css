@@ -12,15 +12,43 @@
   align-items: start;
 }
 
-.rw-command-center > .rw-page-header { grid-area: header; }
+.rw-command-center > .rw-page-header {
+  grid-area: header;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.rw-page-actions { display: flex; align-items: center; gap: 8px; }
+.rw-page-actions > span,
+.rw-page-actions > time,
+.rw-page-actions > a {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid var(--rw-slate-200);
+  border-radius: var(--rw-radius-md);
+  color: var(--rw-slate-700);
+  background: var(--rw-white);
+  text-decoration: none;
+  font-size: 9px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.rw-page-actions > a { border-color: var(--rw-brand-500); color: var(--rw-white); background: var(--rw-brand-500); }
+.rw-page-actions rw-icon { width: 14px; height: 14px; }
+.rw-page-actions rw-icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; }
 
 .rw-hero {
   grid-area: hero;
-  min-height: 184px;
+  min-height: 164px;
   margin: 0;
   padding: 22px 24px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(330px, 390px);
   align-items: center;
   gap: 24px;
   overflow: hidden;
@@ -64,9 +92,12 @@
   line-height: 1.5;
 }
 
+.rw-hero-copy { position: relative; z-index: 1; min-width: 0; }
+.rw-hero-actions { display: flex; align-items: center; gap: 8px; margin-top: 15px; }
+
 .rw-hero .page-primary-action {
   min-width: 132px;
-  min-height: 42px;
+  min-height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -79,6 +110,45 @@
   font-size: 10px;
   font-weight: 850;
 }
+
+.rw-hero .page-secondary-action {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--rw-radius-md);
+  color: var(--rw-white);
+  background: rgba(255, 255, 255, 0.07);
+  text-decoration: none;
+  font-size: 9px;
+  font-weight: 800;
+}
+.rw-hero .page-secondary-action rw-icon { width: 14px; height: 14px; }
+.rw-hero .page-secondary-action rw-icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; }
+
+.rw-hero-metrics {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: var(--rw-radius-lg);
+  background: rgba(255, 255, 255, 0.07);
+}
+.rw-hero-metrics > span { min-width: 0; padding: 16px; }
+.rw-hero-metrics > span + span { border-left: 1px solid rgba(255, 255, 255, 0.1); }
+.rw-hero-metrics small,
+.rw-hero-metrics strong,
+.rw-hero-metrics em { display: block; }
+.rw-hero-metrics small { color: rgba(255, 255, 255, 0.52); font-size: 8px; font-weight: 850; letter-spacing: 0.65px; text-transform: uppercase; }
+.rw-hero-metrics strong { margin-top: 7px; overflow: hidden; color: var(--rw-white); font-size: 19px; letter-spacing: -0.35px; text-overflow: ellipsis; white-space: nowrap; }
+.rw-hero-metrics em { margin-top: 4px; overflow: hidden; color: rgba(255, 255, 255, 0.56); font-size: 7px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 
 .rw-command-priority { grid-area: priority; }
 .rw-lifecycle { grid-area: lifecycle; }
@@ -137,6 +207,7 @@
 
 .rw-command-priority .priority-queue {
   display: grid;
+  grid-template-columns: 1fr;
   gap: 8px;
   padding: 12px 14px 14px;
 }
@@ -144,7 +215,7 @@
 .rw-command-priority .priority-alert {
   min-height: 66px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 8px 11px;
@@ -154,6 +225,13 @@
   background: var(--rw-slate-25);
   text-decoration: none;
 }
+
+.rw-command-priority .priority-alert-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; color: var(--rw-brand-700); background: var(--rw-brand-50); }
+.rw-command-priority .priority-alert-icon.warning { color: var(--rw-amber-700); background: var(--rw-amber-50); }
+.rw-command-priority .priority-alert-icon.critical { color: var(--rw-red-700); background: var(--rw-red-50); }
+.rw-command-priority .priority-alert-icon.success { color: var(--rw-teal-700); background: var(--rw-teal-50); }
+.rw-command-priority .priority-alert-icon rw-icon { width: 17px; height: 17px; }
+.rw-command-priority .priority-alert-icon rw-icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; }
 
 .rw-command-priority .priority-alert strong,
 .rw-command-priority .priority-alert small { display: block; }
@@ -234,12 +312,25 @@
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "header" "hero" "priority" "lifecycle" "pulse" "work" "health" "shortcuts";
   }
+  .rw-command-center > .rw-page-header { align-items: flex-start; }
+  .rw-page-actions > span { display: none; }
+  .rw-hero { grid-template-columns: 1fr; }
+  .rw-hero-metrics { min-height: 112px; }
 }
 
 @media (max-width: 680px) {
   .rw-command-center { gap: 10px; }
   .rw-hero { min-height: 0; grid-template-columns: 1fr; padding: 18px; }
   .rw-hero .page-primary-action { width: 100%; }
+  .rw-command-center > .rw-page-header { display: block; }
+  .rw-page-actions { margin-top: 12px; }
+  .rw-page-actions > time { display: none; }
+  .rw-page-actions > a { width: 100%; justify-content: center; }
+  .rw-hero-actions { align-items: stretch; flex-direction: column; }
+  .rw-hero .page-secondary-action { justify-content: center; }
+  .rw-hero-metrics { grid-template-columns: 1fr; min-height: 0; }
+  .rw-hero-metrics > span { padding: 11px 12px; }
+  .rw-hero-metrics > span + span { border-top: 1px solid rgba(255, 255, 255, 0.1); border-left: 0; }
   .rw-lifecycle .workflow-progress-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rw-lifecycle .workflow-progress-step:last-child { grid-column: 1 / -1; }
   .rw-network-pulse .metric-grid { grid-template-columns: 1fr 1fr; }

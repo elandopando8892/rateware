@@ -28,14 +28,27 @@
                 <h1>Command Center</h1>
                 <p>Prioritized work across commercial, procurement, operations, and finance.</p>
               </div>
+              <div class="rw-page-actions" aria-label="Command Center context">
+                <span><rw-icon name="settings"></rw-icon>Focus: All domains</span>
+                <time id="command-center-date"><rw-icon name="work"></rw-icon>Today</time>
+                <a href="#my-work-title"><rw-icon name="work"></rw-icon>Open My Work</a>
+              </div>
             </header>
           <section id="next-best-action" class="rw-hero next-best-action-card" aria-live="polite">
-            <div>
+            <div class="rw-hero-copy">
               <p class="eyebrow">Next best action</p>
               <h2 id="next-action-title">Checking today's work...</h2>
               <p id="next-action-detail">Loading the highest-impact action from uploads, staging, AI, and Bid Room.</p>
+              <div class="rw-hero-actions">
+                <a id="next-action-link" class="page-primary-action" href="#" aria-disabled="true">Loading</a>
+                <a class="page-secondary-action" href="./business-intelligence.html"><rw-icon name="ai"></rw-icon>Explain with AI</a>
+              </div>
             </div>
-            <a id="next-action-link" class="page-primary-action" href="#" aria-disabled="true">Loading</a>
+            <div class="rw-hero-metrics" aria-label="Decision context">
+              <span><small>Impact</small><strong id="next-action-impact">Checking</strong><em>Operational priority</em></span>
+              <span><small>Due</small><strong id="next-action-due">Today</strong><em>Current queue</em></span>
+              <span><small>Object</small><strong id="next-action-object">Work</strong><em>Controlled action</em></span>
+            </div>
           </section>
 
           <section class="rw-command-priority workspace-panel dashboard-priority-panel" aria-labelledby="priority-queue-title">
@@ -60,7 +73,7 @@
                 <p class="eyebrow">My Work</p>
                 <h2 id="my-work-title">Today’s operator queue</h2>
               </div>
-              <span class="section-caption">The next controlled actions across intake, review, sourcing, and RFx.</span>
+              <a class="secondary-link" href="./staging-review.html">Open workspace</a>
             </div>
             <div id="my-work-list" class="my-work-list" aria-live="polite">
               <article class="ui-state ui-state-loading" data-tone="loading">
@@ -74,9 +87,8 @@
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Business lifecycle</p>
-                <h2>From source to awarded capacity</h2>
+                <h2>Current live flow from acquisition to execution.</h2>
               </div>
-              <span class="section-caption">A quick path from source files to awarded capacity.</span>
             </div>
             <div class="workflow-progress-panel">
               <a class="workflow-progress-step" href="./upload-center.html">
