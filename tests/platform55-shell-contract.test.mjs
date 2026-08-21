@@ -179,6 +179,11 @@ assert.deepEqual(
   { ariaHidden: null, inert: false }
 );
 assert.match(shellSource, /addEventListener\("resize",\s*\(\)\s*=>\s*\{[\s\S]*syncMobileNavigationAccessibility\(state\)/);
+assert.match(
+  shellSource,
+  /addEventListener\("resize",\s*\(\)\s*=>\s*\{[\s\S]*data-platform55-nav-open[^\n]*aria-expanded[^\n]*false[\s\S]*syncMobileNavigationAccessibility\(state\)/,
+  "Desktop resize must reset the mobile navigation trigger to its collapsed state"
+);
 assert.match(shellCss, /grid-template-columns:\s*var\(--rw-sidebar-expanded\)\s+minmax\(0,\s*1fr\)/);
 assert.match(shellCss, /@media\s*\(max-width:\s*1320px\)/);
 assert.match(shellCss, /@media\s*\(max-width:\s*900px\)/);

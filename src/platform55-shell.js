@@ -220,6 +220,7 @@ function bindShell(state) {
   state.doc.defaultView?.addEventListener("resize", () => {
     if (!state.doc.defaultView.matchMedia("(max-width: 900px)").matches) {
       state.app.dataset.mobileNavOpen = "false";
+      state.topbar.querySelector("[data-platform55-nav-open]")?.setAttribute("aria-expanded", "false");
     }
     syncMobileNavigationAccessibility(state);
   }, { signal });
