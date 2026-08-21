@@ -1,0 +1,74 @@
+.pipeline-overview {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.pipeline-overview__header {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.pipeline-overview__header > * {
+  margin: 0;
+}
+
+.pipeline-overview__eyebrow {
+  color: #0c4dcc;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pipeline-panel {
+  background: #ffffff;
+  border: 1px solid #d6deeb;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+}
+
+.pipeline-panel h3 {
+  margin-top: 0;
+}
+
+.pipeline-metrics {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  margin: 0;
+}
+
+.pipeline-metrics div,
+.mailbox-status div {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.pipeline-metrics dd,
+.mailbox-status dd {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.pipeline-metrics dt,
+.mailbox-status dt {
+  color: #4b5f7f;
+  font-size: 0.875rem;
+}
+
+.mailbox-status {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+}
+
+.pipeline-alert {
+  border-left: 0.25rem solid #b42318;
+  margin-top: 1rem;
+  padding-left: 1rem;
+}
+
+.pipeline-alert button {
+  cursor: pointer;
+}
