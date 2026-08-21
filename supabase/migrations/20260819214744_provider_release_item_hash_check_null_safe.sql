@@ -1,6 +1,3 @@
--- Recovered from rateware-prod: applied there, never committed. See
--- docs/osp-recovered-migrations.md.
---
 -- `null ~ '...'` is NULL, not false, and a CHECK only rejects on false. Without an
 -- explicit IS NOT NULL, dropping the column's NOT NULL let a document item carry no
 -- hash at all.
@@ -14,4 +11,4 @@ alter table public.provider_onboarding_release_package_items
     (item_kind='declared_gap' and evidence_sha256 is null)
     or (item_kind<>'declared_gap' and evidence_sha256 is not null
         and evidence_sha256 ~ '^[0-9a-f]{64}$')
-  );
+  );;

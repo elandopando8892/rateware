@@ -8,6 +8,7 @@ import {
   promoteCarrierRecommendations
 } from "./business-intelligence-service.js";
 import { humanizeError } from "./error-copy.js";
+import { buildIntelligenceBrief } from "./intelligence-brief.js";
 import { NORTH_AMERICA_MAP_BOUNDS, NORTH_AMERICA_MAP_PATHS } from "./north-america-map-paths.js";
 
 const chatForm = document.querySelector("#bi-chat-form");
@@ -70,6 +71,18 @@ const geoPivotZoneButton = document.querySelector("#bi-geo-pivot-zone");
 const geoClearZoneButton = document.querySelector("#bi-geo-clear-zone");
 const viewButtons = document.querySelectorAll("[data-bi-view-button]");
 const viewPanels = document.querySelectorAll("[data-bi-view-panel]");
+const briefPanel = document.querySelector("#bi-brief-panel");
+const briefState = document.querySelector("#bi-brief-state");
+const briefStatus = document.querySelector("#bi-brief-status");
+const briefSource = document.querySelector("#bi-brief-source");
+const briefAsOf = document.querySelector("#bi-brief-as-of");
+const briefSample = document.querySelector("#bi-brief-sample");
+const briefCurrency = document.querySelector("#bi-brief-currency");
+const briefGaps = document.querySelector("#bi-brief-gaps");
+const briefProposals = document.querySelector("#bi-brief-proposals");
+const briefLineage = document.querySelector("#bi-brief-lineage");
+const refreshBriefButton = document.querySelector("#bi-refresh-brief");
+const downloadBriefButton = document.querySelector("#bi-download-brief");
 
 let currentRecommendations = [];
 let currentPivot = null;
@@ -77,6 +90,8 @@ let currentDrilldown = null;
 let currentGeoDensity = null;
 let selectedGeoPointKey = null;
 let currentAnalystResult = null;
+let latestIntelligenceInput = null;
+let currentIntelligenceBrief = null;
 let queuedActionIndexes = new Set();
 const selectedVendorIds = new Set();
 let analystLoadVersion = 0;
@@ -358,6 +373,8 @@ async function loadBiView(view) {
     await runGeoDensity();
   } else if (view === "pivots" && !currentPivot && !pivotRunning) {
     await runPivot();
+  } else if (view === "brief") {
+    renderIntelligenceBrief();
   }
 }
 
@@ -569,6 +586,7 @@ function pivotMetricLabel(result) {
 
 function renderPivot(result) {
   currentPivot = result;
+  rememberIntelligenceResult("pivot", result);
   const rowLabels = (result.row_dimensions || []).map((dimension) => PIVOT_DIMENSIONS.find(([key]) => key === dimension)?.[1] || dimension);
   const columns = result.columns || [];
   const metricLabel = pivotMetricLabel(result);
@@ -946,6 +964,7 @@ function renderGeoTable(result) {
 
 function renderGeoDensity(result) {
   currentGeoDensity = result;
+  rememberIntelligenceResult("geo", result);
   if (selectedGeoPointKey && !(result.points || []).some((point) => point.key === selectedGeoPointKey)) {
     selectedGeoPointKey = null;
   }
@@ -1229,8 +1248,9 @@ function renderRecommendations(rows = []) {
   updateSelectionState();
 }
 
-function renderAnswer(result) {
+function renderAnswer(result, source = "copilot") {
   renderAnalystLayer(result);
+  rememberIntelligenceResult(source, result);
   if (answerPanel) answerPanel.innerHTML = `
     <strong>${escapeHtml(result.answer || "Carrier intelligence response")}</strong>
     <span>${escapeHtml(result.filters?.focus?.join(", ") || "general fit")}</span>
@@ -1275,7 +1295,7 @@ async function runIntelligenceQuery(message) {
 }
 
 function renderRecommendationResult(result) {
-  renderAnswer(result);
+  renderAnswer(result, "ranking");
   renderRecommendations(result.recommendations || []);
   metricCandidates.textContent = formatNumber(result.candidate_count);
   metricRates.textContent = formatNumber(result.rate_signal_count);
@@ -1426,6 +1446,118 @@ async function copySingleAction(index) {
   setStatus("Proposed action copied.", "success");
 }
 
+function intelligenceContextFromResult(result = {}) {
+  const rawFilters = result?.filters;
+  return {
+    metric: result?.metric,
+    aggregation: result?.aggregation,
+    level: result?.level,
+    scope: result?.scope,
+    ranking_mode: result?.ranking_mode || rawFilters?.ranking_mode,
+    filters: rawFilters?.filters || rawFilters || {}
+  };
+}
+
+function rememberIntelligenceResult(source, result) {
+  latestIntelligenceInput = {
+    source,
+    result,
+    context: intelligenceContextFromResult(result)
+  };
+  currentIntelligenceBrief = null;
+  if (briefStatus) briefStatus.textContent = `A new ${source} result is available. Refresh the brief to review its evidence.`;
+  if (briefPanel && !briefPanel.hidden) renderIntelligenceBrief();
+}
+
+function briefEmpty(message) {
+  return `<article class="bi-empty-card"><p>${escapeHtml(message)}</p></article>`;
+}
+
+function renderIntelligenceBrief() {
+  currentIntelligenceBrief = buildIntelligenceBrief(latestIntelligenceInput || {});
+  const brief = currentIntelligenceBrief;
+  const stateLabel = {
+    blocked: "Blocked",
+    review_required: "Review required",
+    reviewable: "Reviewable"
+  }[brief.status] || "Review required";
+  const tone = brief.status === "blocked" ? "danger" : brief.status === "reviewable" ? "success" : "warning";
+  const sourceLabel = {
+    geo: "Geo",
+    pivot: "Pivot",
+    copilot: "Copilot",
+    ranking: "Ranking"
+  }[brief.source] || "None";
+
+  if (briefState) {
+    briefState.textContent = stateLabel;
+    briefState.className = `status-pill ${tone}`;
+  }
+  if (briefSource) briefSource.textContent = sourceLabel;
+  if (briefAsOf) briefAsOf.textContent = brief.data_as_of || "Missing";
+  if (briefSample) briefSample.textContent = brief.sample.primary === null ? "-" : formatNumber(brief.sample.primary);
+  if (briefCurrency) briefCurrency.textContent = brief.evidence.currencies.join(" / ") || "Missing";
+  if (briefStatus) {
+    briefStatus.textContent = latestIntelligenceInput
+      ? `Built locally from the last successful ${sourceLabel} result. No API call or write was performed.`
+      : "Run Geo, Pivot, Copilot, or Ranking, then return here. This view does not load or write data.";
+    briefStatus.dataset.tone = tone;
+  }
+
+  if (briefGaps) {
+    briefGaps.innerHTML = brief.gaps.length
+      ? brief.gaps.map((gap) => `
+          <article>
+            <strong>${escapeHtml(gap.code)}</strong>
+            <p>${escapeHtml(gap.message)}</p>
+            <em>${escapeHtml(gap.severity)}</em>
+          </article>
+        `).join("")
+      : briefEmpty("No evidence gaps detected in the source contract.");
+  }
+
+  if (briefProposals) {
+    briefProposals.innerHTML = brief.proposals.length
+      ? brief.proposals.map((proposal) => `
+          <article>
+            <strong>${escapeHtml(proposal.action)}</strong>
+            ${proposal.rationale ? `<p>${escapeHtml(proposal.rationale)}</p>` : ""}
+            <em>Proposal only | confirmation required | execution disabled</em>
+          </article>
+        `).join("")
+      : briefEmpty("No proposals were included in the source result.");
+  }
+
+  if (briefLineage) {
+    briefLineage.innerHTML = brief.lineage.references.length
+      ? brief.lineage.references.map((reference) => `
+          <article>
+            <strong>${escapeHtml(reference.type || "Source reference")}</strong>
+            <p>${escapeHtml([reference.id, reference.rate_staging_id, reference.raw_upload_id, reference.source_file].filter(Boolean).join(" | "))}</p>
+          </article>
+        `).join("")
+      : briefEmpty("No rate or upload lineage was supplied by the source result.");
+  }
+
+  if (downloadBriefButton) downloadBriefButton.disabled = !latestIntelligenceInput;
+  return brief;
+}
+
+function downloadIntelligenceBrief() {
+  if (!latestIntelligenceInput) return;
+  const brief = renderIntelligenceBrief();
+  const blob = new Blob([`${JSON.stringify(brief, null, 2)}\n`], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `rateware-intelligence-brief-${brief.generated_at.slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  if (briefStatus) briefStatus.textContent = "Decision brief downloaded locally. No external distribution was authorized.";
+}
+
 initAuthControls();
 setupPivotControls();
 const initialBiView = activateBiView(new URLSearchParams(window.location.search).get("view") || "geo");
@@ -1530,6 +1662,8 @@ runGeoButton?.addEventListener("click", runGeoDensity);
 exportGeoButton?.addEventListener("click", exportGeoCsv);
 geoPivotZoneButton?.addEventListener("click", buildPivotFromSelectedGeoPoint);
 geoClearZoneButton?.addEventListener("click", () => selectGeoPoint(null));
+refreshBriefButton?.addEventListener("click", renderIntelligenceBrief);
+downloadBriefButton?.addEventListener("click", downloadIntelligenceBrief);
 
 geoMap?.addEventListener("click", (event) => {
   const point = event.target.closest("[data-geo-point-key]");

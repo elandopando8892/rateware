@@ -29,6 +29,8 @@ import {
 import { SUPABASE_URL } from "./config.js";
 import { humanizeError } from "./error-copy.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
+import { buildAdminGovernanceReadiness } from "./admin-governance.js";
+import { buildPlatformControlReadiness } from "./platform-readiness.js";
 
 const accessMode = document.querySelector("#settings-access-mode");
 const onboardingScore = document.querySelector("#settings-onboarding-score");
@@ -94,6 +96,20 @@ const catalogNoteInput = document.querySelector("#catalog-note");
 const catalogStatus = document.querySelector("#catalog-status");
 const catalogValuesBody = document.querySelector("#catalog-values-body");
 const refreshCatalogButton = document.querySelector("#refresh-catalog-values");
+const governanceState = document.querySelector("#settings-governance-state");
+const governanceStatus = document.querySelector("#settings-governance-status");
+const governanceEvidenceCount = document.querySelector("#settings-governance-evidence-count");
+const governanceBlockingCount = document.querySelector("#settings-governance-blocking-count");
+const governanceReviewCount = document.querySelector("#settings-governance-review-count");
+const governanceGaps = document.querySelector("#settings-governance-gaps");
+const governanceEvidence = document.querySelector("#settings-governance-evidence");
+const platformState = document.querySelector("#settings-platform-state");
+const platformStatus = document.querySelector("#settings-platform-status");
+const platformSurfaceCount = document.querySelector("#settings-platform-surface-count");
+const platformObservedCount = document.querySelector("#settings-platform-observed-count");
+const platformBlockedCount = document.querySelector("#settings-platform-blocked-count");
+const platformSurfaces = document.querySelector("#settings-platform-surfaces");
+const platformStages = document.querySelector("#settings-platform-stages");
 
 const profileInputs = {
   full_name: document.querySelector("#profile-full-name"),
@@ -116,6 +132,8 @@ let currentSettings = null;
 let currentSession = null;
 let currentCatalogValues = [];
 let currentObservability = { summary: {}, events: [] };
+let catalogValuesLoaded = false;
+let observabilityLoaded = false;
 let gmailIntegrationActionRunning = false;
 let googleChatIntegrationActionRunning = false;
 let whatsappIntegrationActionRunning = false;
@@ -216,20 +234,128 @@ function fillForms(settings) {
 
 function renderAccess(settings) {
   const access = settings.access || {};
-  accessMode.textContent = access.mode === "full_access" ? "Full" : "Roles later";
+  accessMode.textContent = access.mode === "role_enforced" ? "Role enforced" : "Broad access";
   workspaceName.textContent = settings.organization?.org_name || "-";
   accessCard.innerHTML = `
-    <strong>${escapeHtml(access.label || "Full access enabled")}</strong>
-    <p>${escapeHtml(access.detail || "All authenticated users can use every module.")}</p>
+    <strong>${escapeHtml(access.mode === "role_enforced" ? (access.label || "Role enforcement active") : "Role enforcement pending")}</strong>
+    <p>${escapeHtml(access.mode === "role_enforced" ? (access.detail || "Access is governed by explicit roles.") : "Authenticated users currently have broad module access. Authentication is not equivalent to role authorization or separation of duties.")}</p>
   `;
   const values = [
     currentSession?.user?.email || settings.profile?.owner_email || "-",
-    access.label || "Full access enabled",
-    "Disabled for MVP; all modules are available"
+    access.mode === "role_enforced" ? "Role enforcement active" : "Broad authenticated access",
+    access.mode === "role_enforced" ? "Enforced" : "Not enforced"
   ];
   settingsSession.querySelectorAll("dd").forEach((element, index) => {
     element.textContent = values[index] || "-";
   });
+}
+
+function renderGovernance() {
+  const readiness = buildAdminGovernanceReadiness({
+    settings: currentSettings,
+    session: currentSession,
+    observability: currentObservability,
+    observabilityLoaded,
+    catalogValues: currentCatalogValues,
+    catalogLoaded: catalogValuesLoaded
+  });
+  const stateLabel = readiness.status === "ready" ? "Ready" : readiness.status === "review_required" ? "Review required" : "Blocked";
+  const tone = readiness.status === "ready" ? "success" : readiness.status === "review_required" ? "warning" : "danger";
+  if (governanceState) {
+    governanceState.textContent = stateLabel;
+    governanceState.className = `status-pill ${tone}`;
+  }
+  if (governanceStatus) {
+    governanceStatus.textContent = readiness.status === "blocked"
+      ? "Administration readiness is blocked. Review the control gaps before enabling governed administration."
+      : readiness.status === "review_required"
+        ? "No blocking gap was detected, but review evidence is still incomplete."
+        : "The evidence contract reports readiness; consequential changes still require a separate authorized workflow.";
+    governanceStatus.dataset.tone = tone;
+  }
+  if (governanceEvidenceCount) governanceEvidenceCount.textContent = readiness.summary.evidence_observed.toLocaleString();
+  if (governanceBlockingCount) governanceBlockingCount.textContent = readiness.summary.blocking_gaps.toLocaleString();
+  if (governanceReviewCount) governanceReviewCount.textContent = readiness.summary.review_gaps.toLocaleString();
+  if (governanceGaps) {
+    governanceGaps.innerHTML = readiness.gaps.length
+      ? readiness.gaps.map((gap) => `
+          <article>
+            <strong>${escapeHtml(gap.code)}</strong>
+            <p>${escapeHtml(gap.message)}</p>
+            <em>${escapeHtml(gap.severity)}</em>
+          </article>
+        `).join("")
+      : "<article><strong>No readiness gaps</strong><p>The current evidence contract contains no missing control.</p></article>";
+  }
+  if (governanceEvidence) {
+    governanceEvidence.innerHTML = readiness.evidence.map((item) => `
+      <article>
+        <strong>${escapeHtml(item.control)}</strong>
+        <p>${escapeHtml(item.detail)}</p>
+        <em>${escapeHtml(item.status)}</em>
+      </article>
+    `).join("") || "<article><strong>No evidence</strong><p>Settings evidence is not available.</p></article>";
+  }
+  return readiness;
+}
+
+function renderPlatformReadiness(governance = buildAdminGovernanceReadiness({
+  settings: currentSettings,
+  session: currentSession,
+  observability: currentObservability,
+  observabilityLoaded,
+  catalogValues: currentCatalogValues,
+  catalogLoaded: catalogValuesLoaded
+})) {
+  const readiness = buildPlatformControlReadiness({
+    settings: currentSettings,
+    governance,
+    observability: currentObservability,
+    observabilityLoaded,
+    catalogValues: currentCatalogValues,
+    catalogLoaded: catalogValuesLoaded
+  });
+  if (platformState) {
+    platformState.textContent = "Blocked";
+    platformState.className = "status-pill danger";
+  }
+  if (platformStatus) {
+    platformStatus.textContent = "Platform release gates remain blocked. Review the observed evidence and obtain privileged server proof plus explicit human approval before advancing.";
+    platformStatus.dataset.tone = "danger";
+  }
+  if (platformSurfaceCount) platformSurfaceCount.textContent = readiness.summary.surfaces.toLocaleString();
+  if (platformObservedCount) platformObservedCount.textContent = readiness.summary.observed_surfaces.toLocaleString();
+  if (platformBlockedCount) platformBlockedCount.textContent = readiness.summary.blocked_surfaces.toLocaleString();
+  if (platformSurfaces) {
+    platformSurfaces.innerHTML = readiness.surfaces.map((surface) => {
+      const evidence = surface.evidence.length
+        ? surface.evidence.map((item) => item.detail).join(" ")
+        : "No browser evidence was observed for this control.";
+      const gaps = surface.gaps.map((gap) => gap.message).join(" ");
+      return `
+        <article>
+          <strong>${escapeHtml(surface.name)}</strong>
+          <p>${escapeHtml(evidence)} ${escapeHtml(gaps)}</p>
+          <em>${escapeHtml(surface.release_gate)} · ${escapeHtml(surface.state)}</em>
+        </article>
+      `;
+    }).join("");
+  }
+  if (platformStages) {
+    platformStages.innerHTML = readiness.implementation_stages.map((stage) => `
+      <article>
+        <strong>${escapeHtml(stage.stage)}</strong>
+        <p>${escapeHtml(stage.detail)}</p>
+        <em>${escapeHtml(stage.state)}</em>
+      </article>
+    `).join("");
+  }
+  return readiness;
+}
+
+function renderReadinessViews() {
+  const governance = renderGovernance();
+  return renderPlatformReadiness(governance);
 }
 
 function renderOnboarding(settings) {
@@ -277,6 +403,7 @@ function renderAudit(settings) {
 
 function renderObservability(data = currentObservability) {
   currentObservability = data || { summary: {}, events: [] };
+  renderReadinessViews();
   const events = Array.isArray(currentObservability.events) ? currentObservability.events : [];
   const summary = currentObservability.summary || {};
   const bySource = summary.by_source || {};
@@ -655,6 +782,8 @@ function renderWhatsappConnections(data = currentSettings?.whatsapp) {
 
 function renderCatalogValues(rows = currentCatalogValues) {
   currentCatalogValues = rows || [];
+  catalogValuesLoaded = true;
+  renderReadinessViews();
   const category = catalogCategoryFilter?.value || "";
   const visibleRows = currentCatalogValues
     .filter((row) => !category || row.category === category)
@@ -702,14 +831,18 @@ function renderSettings(settings) {
   renderGmailConnections(settings.gmail);
   renderGoogleChatConnections(settings.google_chat);
   renderWhatsappConnections(settings.whatsapp);
+  renderReadinessViews();
 }
 
 async function loadObservability() {
   setStatus(observabilityStatus, "Loading operational logs...");
   try {
     const data = await fetchObservabilityEvents({ limit: 150 });
+    observabilityLoaded = true;
     renderObservability(data);
   } catch (error) {
+    observabilityLoaded = false;
+    renderReadinessViews();
     if (observabilityLogBody) {
       observabilityLogBody.innerHTML = `
         <tr>
@@ -757,6 +890,7 @@ async function loadGmailConnections() {
     currentSettings = currentSettings || {};
     currentSettings.gmail = data;
     renderGmailConnections(data);
+    renderReadinessViews();
   } catch (error) {
     setStatus(gmailConnectionStatus, humanGmailMessage(error), "error");
   }
@@ -778,6 +912,7 @@ async function loadGoogleChatConnections() {
       }
     }
     renderGoogleChatConnections(data, spaces);
+    renderReadinessViews();
   } catch (error) {
     setStatus(googleChatConnectionStatus, humanGoogleChatMessage(error), "error");
   }
@@ -790,6 +925,7 @@ async function loadWhatsappConnections() {
     currentSettings = currentSettings || {};
     currentSettings.whatsapp = data;
     renderWhatsappConnections(data);
+    renderReadinessViews();
   } catch (error) {
     setStatus(whatsappConnectionStatus, humanWhatsappMessage(error), "error");
   }

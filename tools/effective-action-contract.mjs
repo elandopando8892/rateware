@@ -134,13 +134,13 @@ const providerSurfaces = extension.surfaces.map((entry) => ({
 // external reach. The push receiver moves for the same reason — it reaches the
 // sync — and the OAuth callback, which does not, keeps its envelope.
 const gmailAuthorizationFingerprints = {
-  'edge.provider-gmail-intake-api.provider_gmail_status': '858b2b15dbd25e1dceb472ebe167d1ebb54b6752a8ffa4367484064ca1523b9e',
-  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': '858b2b15dbd25e1dceb472ebe167d1ebb54b6752a8ffa4367484064ca1523b9e',
-  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '858b2b15dbd25e1dceb472ebe167d1ebb54b6752a8ffa4367484064ca1523b9e',
-  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '858b2b15dbd25e1dceb472ebe167d1ebb54b6752a8ffa4367484064ca1523b9e',
-  'edge.provider-gmail-intake-api.preview_provider_message_intake': '858b2b15dbd25e1dceb472ebe167d1ebb54b6752a8ffa4367484064ca1523b9e',
+  'edge.provider-gmail-intake-api.provider_gmail_status': 'b46922ac1ae77c402c3eed089b0805929e9eacb6127f85f43159d5a99833437f',
+  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': 'b46922ac1ae77c402c3eed089b0805929e9eacb6127f85f43159d5a99833437f',
+  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': 'b46922ac1ae77c402c3eed089b0805929e9eacb6127f85f43159d5a99833437f',
+  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': 'b46922ac1ae77c402c3eed089b0805929e9eacb6127f85f43159d5a99833437f',
+  'edge.provider-gmail-intake-api.preview_provider_message_intake': 'b46922ac1ae77c402c3eed089b0805929e9eacb6127f85f43159d5a99833437f',
   'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': '61a4d760bc3bc7157e0abcebf08818cd4e84841f6ec35f7c406475e28df53a3b',
-  'edge.provider-gmail-push.receive_provider_gmail_push': '38c847bb82baf746ffc261e76300fbdc712333cbe1d49b61f959507f9816d4a2',
+  'edge.provider-gmail-push.receive_provider_gmail_push': '080e54f3e81fda701069415f40c463fe3ad8c4022829e00a27e439d62de75676',
 };
 
 // Surfaces recovered from production on 2026-08-18. Both functions were deployed

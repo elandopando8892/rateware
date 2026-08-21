@@ -263,6 +263,17 @@ assert.equal(
 // This one stays pinned on purpose: it is the unreviewed backlog. A new surface
 // must be classified deliberately, never parked in pending_human_approval.
 assert.equal(byStatus("pending_human_approval"), 257, "unreviewed backlog must not grow");
+for (const canonicalId of [
+  'rpc.public.provider_onboarding_decide_release_package_approval(uuid,uuid,text,text,text,text)',
+  'rpc.public.provider_onboarding_revoke_release_package(uuid,uuid,text,text)',
+  'rpc.public.provider_onboarding_revoke_signature_authorization(uuid,uuid,text,text)',
+  'rpc.public.provider_onboarding_valid_recipient_domains(text[])',
+]) {
+  const action = ACTION_CONTRACT.surfaces.find((row) => row.canonicalId === canonicalId);
+  assert.ok(action, `${canonicalId} must remain governed`);
+  assert.equal(action.exposure, 'internal/service-role');
+  assert.equal(action.decisionStatus, 'internal_only');
+}
 assert.equal(baseline.some((entry) => entry.canonicalId.includes("whatsapp-healthcheck")), false);
 assert.equal(ACTION_CONTRACT.nonGovernableDeclarations.some((entry) => entry.canonicalId === "declaration.edge.whatsapp-healthcheck"), true);
 assert.deepEqual(
