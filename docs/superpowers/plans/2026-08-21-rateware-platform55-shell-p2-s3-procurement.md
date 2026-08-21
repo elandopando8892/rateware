@@ -174,7 +174,7 @@ Before committing, use `git diff --name-only --cached` and require the staged se
 
 **Files:**
 - Create: `docs/release/evidence/2026-08-21-p2-s3-procurement.md`
-- Modify: `docs/release/production-readiness.json`
+- Modify: `docs/release/production-readiness-ledger.json`
 
 - [ ] **Step 1: Capture deterministic viewports**
 
@@ -203,7 +203,7 @@ Set P2 to `60` and overall progress to `80.2` after the full implementation evid
 - [ ] **Step 5: Commit evidence**
 
 ```powershell
-git add docs/release/evidence/2026-08-21-p2-s3-procurement.md docs/release/production-readiness.json docs/platform55-shell-build-matrix.csv
+git add docs/release/evidence/2026-08-21-p2-s3-procurement.md docs/release/production-readiness-ledger.json docs/platform55-shell-build-matrix.csv
 git commit -m "docs: record P2 procurement shell evidence"
 ```
 

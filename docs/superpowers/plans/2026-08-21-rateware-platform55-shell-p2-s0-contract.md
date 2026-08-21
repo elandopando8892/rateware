@@ -85,15 +85,15 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
 try {
   # Read only the twelve known manifest/render-plan entries.
-  # Emit build, ordinal, state, name_or_route, width, height, source_manifest,
-  # source_render_plan, mapping_status, target_route, disposition, evidence.
-  # Initial mapping_status is not_started and the final three fields are empty.
+  # Emit source identity and duplicate count, reference HTML asset, desktop/tablet/mobile
+  # applicability, mapping status, target route/component, disposition, and evidence.
+  # Initial mapping_status is not_started; target route/component, disposition, and evidence are empty.
 } finally {
   $archive.Dispose()
 }
 ```
 
-The implementation must reject missing/duplicate build namespaces, missing manifest/render plan, invalid JSON, duplicate state identity within a build, count drift, and output paths outside the current checkout. It must not extract archive entries or execute embedded content.
+The implementation must reject missing/duplicate build namespaces, missing manifest/render plan, invalid JSON, duplicate ordinals, unexpected duplicate source identities, count drift, and output paths outside the current checkout, including paths that traverse a symlink or junction. The immutable source contains one deliberate duplicate identity, `build_11|control-testing|#control-testing|0|0`, at ordinals `22` and `59`; preserve both rows, record `source_duplicate_count=2`, and fail if its identity, count, or ordinals drift. It must not extract archive entries or execute embedded content.
 
 - [ ] **Step 4: Generate the committed evidence**
 
@@ -153,7 +153,7 @@ assert.equal(internalRoutes.size, 22);
 assert.equal(publicRoutes.size, 7);
 ```
 
-Assert every `git ls-files '*.html'` root route appears exactly once, every route has `owner_sprint`, `shell_variant`, `module_script`, and `verification_test`, and all 95 surface IDs have an owner sprint and route/disposition.
+Assert every `git ls-files '*.html'` root route appears exactly once, every route has `owner_sprint`, `shell_variant`, `module_script`, and `planned_test`, and all 95 surface IDs have an owner sprint and route/disposition. While a route remains `not_started`, its `planned_test` is a future owner path and must not be represented as an existing verification artifact.
 
 - [ ] **Step 2: Run RED**
 
@@ -168,7 +168,7 @@ Expected: FAIL because `docs/platform55-shell-route-map.csv` does not exist and 
 Use exact columns:
 
 ```text
-route,page_key,access,shell_variant,owner_sprint,module_script,primary_test,platform55_surfaces,status,evidence
+route,page_key,access,shell_variant,owner_sprint,module_script,planned_test,platform55_surfaces,status,evidence
 ```
 
 Assign internal routes to `tenant`, public portals to `public`, and `index.html` to `entry`. Assign P2-S1 through P2-S5 exactly as stated in the approved spec. Do not assign a public page to the tenant shell.

@@ -23,6 +23,9 @@ $expectedStates = [ordered]@{
   build_11 = 132
   build_12 = 140
 }
+$expectedSourceDuplicates = [ordered]@{
+  'build_11|control-testing|#control-testing|0|0' = @(22, 59)
+}
 $matrixColumns = @(
   'build',
   'ordinal',
@@ -32,8 +35,15 @@ $matrixColumns = @(
   'height',
   'source_manifest',
   'source_render_plan',
+  'reference_asset',
+  'source_state_identity',
+  'source_duplicate_count',
+  'desktop_applicability',
+  'tablet_applicability',
+  'mobile_applicability',
   'mapping_status',
   'target_route',
+  'target_component',
   'disposition',
   'evidence'
 )
@@ -58,9 +68,20 @@ function Resolve-RepositoryOutputPath {
   if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
     throw "Output directory does not exist: $parent"
   }
-  $parentInfo = Get-Item -LiteralPath $parent
-  if (($parentInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-    throw "Output directory may not be a reparse point: $parent"
+
+  $pathToInspect = $absolute
+  while (-not $pathToInspect.Equals($RepositoryRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    if (Test-Path -LiteralPath $pathToInspect) {
+      $pathInfo = Get-Item -LiteralPath $pathToInspect
+      if (($pathInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Output path may not traverse a reparse point: $pathToInspect"
+      }
+    }
+    $nextPath = Split-Path -Parent $pathToInspect
+    if ([string]::IsNullOrWhiteSpace($nextPath) -or $nextPath -eq $pathToInspect) {
+      throw "Unable to prove output path containment: $CandidatePath"
+    }
+    $pathToInspect = $nextPath
   }
   return $absolute
 }
@@ -127,6 +148,14 @@ try {
     if ($manifestEntry.Length -le 0 -or $renderPlanEntry.Length -le 0) {
       throw "Empty manifest or render plan for $build"
     }
+    $referenceAssets = @($archive.Entries | Where-Object {
+      $_.FullName -cmatch "^$([regex]::Escape($build))/[^/]+[.]html$" -and
+      $_.FullName -cne "$build/index.html"
+    })
+    if ($referenceAssets.Count -ne 1) {
+      throw "Expected exactly one non-index reference HTML asset for $build; found $($referenceAssets.Count)"
+    }
+    $referenceAsset = $referenceAssets[0].FullName
 
     try {
       $renderPlan = Read-ZipText -Entry $renderPlanEntry | ConvertFrom-Json
@@ -174,6 +203,25 @@ try {
         throw "Duplicate ordinal $ordinal in $build"
       }
 
+      if ($width -eq 0) {
+        $desktopApplicability = 'unspecified'
+        $tabletApplicability = 'unspecified'
+        $mobileApplicability = 'unspecified'
+      } elseif ($width -le 900) {
+        $desktopApplicability = 'no'
+        $tabletApplicability = 'no'
+        $mobileApplicability = 'yes'
+      } elseif ($width -le 1320) {
+        $desktopApplicability = 'no'
+        $tabletApplicability = 'yes'
+        $mobileApplicability = 'no'
+      } else {
+        $desktopApplicability = 'yes'
+        $tabletApplicability = 'no'
+        $mobileApplicability = 'no'
+      }
+      $sourceStateIdentity = "$build|$state|$nameOrRoute|$width|$height"
+
       $rows.Add([pscustomobject][ordered]@{
         build = $build
         ordinal = $ordinal
@@ -183,8 +231,15 @@ try {
         height = $height
         source_manifest = $manifestPath
         source_render_plan = $renderPlanPath
+        reference_asset = $referenceAsset
+        source_state_identity = $sourceStateIdentity
+        source_duplicate_count = 1
+        desktop_applicability = $desktopApplicability
+        tablet_applicability = $tabletApplicability
+        mobile_applicability = $mobileApplicability
         mapping_status = 'not_started'
         target_route = ''
+        target_component = ''
         disposition = ''
         evidence = ''
       })
@@ -200,6 +255,31 @@ try {
 
   if ($rows.Count -ne 1150) {
     throw "Total render state count drift: expected 1150, received $($rows.Count)"
+  }
+
+  $observedDuplicateKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  $identityGroups = @($rows | Group-Object -Property source_state_identity)
+  foreach ($identityGroup in $identityGroups) {
+    foreach ($row in $identityGroup.Group) {
+      $row.source_duplicate_count = $identityGroup.Count
+    }
+    if ($identityGroup.Count -le 1) {
+      continue
+    }
+    if (-not $expectedSourceDuplicates.Contains($identityGroup.Name)) {
+      throw "Unexpected duplicate source state identity: $($identityGroup.Name)"
+    }
+    $actualOrdinals = @($identityGroup.Group | ForEach-Object { [int]$_.ordinal } | Sort-Object)
+    $expectedOrdinals = @($expectedSourceDuplicates[$identityGroup.Name] | Sort-Object)
+    if (($actualOrdinals -join ',') -cne ($expectedOrdinals -join ',')) {
+      throw "Duplicate source state identity ordinal drift for $($identityGroup.Name)"
+    }
+    $null = $observedDuplicateKeys.Add($identityGroup.Name)
+  }
+  foreach ($expectedDuplicateKey in $expectedSourceDuplicates.Keys) {
+    if (-not $observedDuplicateKeys.Contains($expectedDuplicateKey)) {
+      throw "Expected source duplicate is missing: $expectedDuplicateKey"
+    }
   }
 
   $csvLines = @($rows | Select-Object $matrixColumns | ConvertTo-Csv -NoTypeInformation)

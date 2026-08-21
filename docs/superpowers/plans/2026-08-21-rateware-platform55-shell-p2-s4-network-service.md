@@ -161,7 +161,7 @@ git commit -m "feat: migrate provider operations to Platform55"
 
 **Files:**
 - Create: `docs/release/evidence/2026-08-21-p2-s4-network-service.md`
-- Modify: `docs/release/production-readiness.json`
+- Modify: `docs/release/production-readiness-ledger.json`
 - Modify: `docs/platform55-shell-build-matrix.csv`
 
 - [ ] **Step 1: Capture visual and interaction evidence**
@@ -192,7 +192,7 @@ Set P2 to `70` and overall progress to `80.9` only after the complete automated 
 - [ ] **Step 5: Commit evidence**
 
 ```powershell
-git add docs/release/evidence/2026-08-21-p2-s4-network-service.md docs/release/production-readiness.json docs/platform55-shell-build-matrix.csv
+git add docs/release/evidence/2026-08-21-p2-s4-network-service.md docs/release/production-readiness-ledger.json docs/platform55-shell-build-matrix.csv
 git commit -m "docs: record P2 network service evidence"
 ```
 

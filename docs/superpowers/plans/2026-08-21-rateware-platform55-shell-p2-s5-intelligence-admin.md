@@ -159,7 +159,7 @@ Require the staged set to match those four paths exactly. Do not stage `src/auth
 - Modify: `docs/platform55-shell-build-matrix.csv`
 - Modify: `docs/platform55-surface-inventory.csv`
 - Create: `docs/release/evidence/2026-08-21-p2-s5-intelligence-admin.md`
-- Modify: `docs/release/production-readiness.json`
+- Modify: `docs/release/production-readiness-ledger.json`
 
 - [ ] **Step 1: Capture visual evidence**
 
@@ -189,7 +189,7 @@ Set P2 to `80` and overall progress to `81.6` only when implementation coverage 
 - [ ] **Step 5: Commit Sprint 5 evidence**
 
 ```powershell
-git add docs/platform55-shell-build-matrix.csv docs/platform55-surface-inventory.csv docs/release/evidence/2026-08-21-p2-s5-intelligence-admin.md docs/release/production-readiness.json
+git add docs/platform55-shell-build-matrix.csv docs/platform55-surface-inventory.csv docs/release/evidence/2026-08-21-p2-s5-intelligence-admin.md docs/release/production-readiness-ledger.json
 git commit -m "docs: complete P2 shell implementation evidence"
 ```
 

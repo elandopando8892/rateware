@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 const EXPECTED_HASH = "CF2CED85E95DFB33BB7410BF73ACE22CB95090CE649747DF60BF2920E808C16A";
 const EXPECTED_COLUMNS = [
@@ -12,8 +22,15 @@ const EXPECTED_COLUMNS = [
   "height",
   "source_manifest",
   "source_render_plan",
+  "reference_asset",
+  "source_state_identity",
+  "source_duplicate_count",
+  "desktop_applicability",
+  "tablet_applicability",
+  "mobile_applicability",
   "mapping_status",
   "target_route",
+  "target_component",
   "disposition",
   "evidence"
 ];
@@ -75,6 +92,46 @@ function parseCsv(text) {
   return records;
 }
 
+if (process.platform === "win32") {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "rateware-platform55-junction-"));
+  const candidateRoot = join(fixtureRoot, "candidate");
+  const outsideRoot = join(fixtureRoot, "outside");
+  const junctionPath = join(candidateRoot, "ancestor-link");
+  const escapedMatrix = join(junctionPath, "nested", "escaped-matrix.csv");
+
+  try {
+    mkdirSync(join(candidateRoot, "tools"), { recursive: true });
+    mkdirSync(join(outsideRoot, "nested"), { recursive: true });
+    copyFileSync(
+      "tools/platform55-build12-inventory.ps1",
+      join(candidateRoot, "tools", "platform55-build12-inventory.ps1")
+    );
+    symlinkSync(outsideRoot, junctionPath, "junction");
+
+    assert.throws(
+      () => execFileSync("powershell.exe", [
+        "-NoProfile",
+        "-File",
+        join(candidateRoot, "tools", "platform55-build12-inventory.ps1"),
+        "-ArchivePath",
+        resolve("package.json"),
+        "-MatrixPath",
+        escapedMatrix,
+        "-SourcePath",
+        join(candidateRoot, "source.json")
+      ], { encoding: "utf8", stdio: "pipe" }),
+      (error) => {
+        assert.match(String(error.stderr), /reparse point/i);
+        return true;
+      },
+      "an ancestor junction must be rejected before archive validation"
+    );
+    assert.equal(existsSync(join(outsideRoot, "nested", "escaped-matrix.csv")), false);
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+}
+
 const source = JSON.parse(readFileSync("docs/platform55-build12-source.json", "utf8"));
 const records = parseCsv(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"));
 const [header, ...rows] = records;
@@ -90,7 +147,27 @@ assert.ok(rows.every((row) => row.length === EXPECTED_COLUMNS.length));
 const byBuild = Object.fromEntries(Object.keys(EXPECTED_STATES_BY_BUILD).map((build) => [build, 0]));
 const ordinalKeys = new Set();
 for (const row of rows) {
-  const [build, ordinal, state, nameOrRoute, width, height, manifest, renderPlan, status, target, disposition, evidence] = row;
+  const [
+    build,
+    ordinal,
+    state,
+    nameOrRoute,
+    width,
+    height,
+    manifest,
+    renderPlan,
+    referenceAsset,
+    sourceStateIdentity,
+    sourceDuplicateCount,
+    desktopApplicability,
+    tabletApplicability,
+    mobileApplicability,
+    status,
+    targetRoute,
+    targetComponent,
+    disposition,
+    evidence
+  ] = row;
   assert.ok(Object.hasOwn(byBuild, build), `Unexpected build ${build}`);
   byBuild[build] += 1;
   assert.match(ordinal, /^\d+$/);
@@ -100,8 +177,26 @@ for (const row of rows) {
   assert.match(height, /^\d+$/);
   assert.ok(manifest.startsWith(`${build}/`));
   assert.ok(renderPlan.startsWith(`${build}/`));
+  assert.match(referenceAsset, new RegExp(`^${build}/(?!index\\.html$)[^/]+\\.html$`));
+  assert.equal(sourceStateIdentity, `${build}|${state}|${nameOrRoute}|${width}|${height}`);
+  assert.match(sourceDuplicateCount, /^[1-9]\d*$/);
+  assert.ok(["yes", "no", "unspecified"].includes(desktopApplicability));
+  assert.ok(["yes", "no", "unspecified"].includes(tabletApplicability));
+  assert.ok(["yes", "no", "unspecified"].includes(mobileApplicability));
+  if (width === "0") {
+    assert.deepEqual(
+      [desktopApplicability, tabletApplicability, mobileApplicability],
+      ["unspecified", "unspecified", "unspecified"]
+    );
+  } else {
+    assert.equal([desktopApplicability, tabletApplicability, mobileApplicability].filter((value) => value === "yes").length, 1);
+    assert.equal(mobileApplicability, Number(width) <= 900 ? "yes" : "no");
+    assert.equal(tabletApplicability, Number(width) > 900 && Number(width) <= 1320 ? "yes" : "no");
+    assert.equal(desktopApplicability, Number(width) > 1320 ? "yes" : "no");
+  }
   assert.equal(status, "not_started");
-  assert.equal(target, "");
+  assert.equal(targetRoute, "");
+  assert.equal(targetComponent, "");
   assert.equal(disposition, "");
   assert.equal(evidence, "");
   assert.equal(ordinalKeys.has(`${build}:${ordinal}`), false, `Duplicate ordinal ${build}:${ordinal}`);
@@ -110,6 +205,31 @@ for (const row of rows) {
 
 assert.deepEqual(byBuild, EXPECTED_STATES_BY_BUILD);
 assert.equal(ordinalKeys.size, 1150);
+
+const sourceIdentityIndex = EXPECTED_COLUMNS.indexOf("source_state_identity");
+const duplicateCountIndex = EXPECTED_COLUMNS.indexOf("source_duplicate_count");
+const ordinalIndex = EXPECTED_COLUMNS.indexOf("ordinal");
+const sourceIdentityGroups = new Map();
+for (const row of rows) {
+  const key = row[sourceIdentityIndex];
+  const group = sourceIdentityGroups.get(key) ?? [];
+  group.push(row);
+  sourceIdentityGroups.set(key, group);
+}
+const duplicateGroups = [...sourceIdentityGroups.entries()].filter(([, group]) => group.length > 1);
+assert.deepEqual(
+  duplicateGroups.map(([identity, group]) => ({
+    identity,
+    ordinals: group.map((row) => Number(row[ordinalIndex])).sort((left, right) => left - right)
+  })),
+  [{
+    identity: "build_11|control-testing|#control-testing|0|0",
+    ordinals: [22, 59]
+  }]
+);
+for (const [, group] of sourceIdentityGroups) {
+  for (const row of group) assert.equal(Number(row[duplicateCountIndex]), group.length);
+}
 
 const internalRoutes = new Set([
   "app.html",
@@ -172,7 +292,7 @@ assert.deepEqual(routeMap.header, [
   "shell_variant",
   "owner_sprint",
   "module_script",
-  "primary_test",
+  "planned_test",
   "platform55_surfaces",
   "status",
   "evidence"
@@ -184,7 +304,8 @@ assert.equal(new Set(routeMap.rows.map((row) => row.page_key)).size, 29);
 for (const route of routeMap.rows) {
   assert.match(route.owner_sprint, /^P2-S[1-5]$/);
   assert.match(route.module_script, /^src\/.+\.js$/);
-  assert.match(route.primary_test, /^tests\/.+\.test\.mjs$/);
+  assert.match(route.planned_test, /^tests\/.+\.test\.mjs$/);
+  assert.equal(existsSync(route.planned_test), false, `${route.planned_test} is already real but remains marked as planned`);
   assert.ok(route.platform55_surfaces);
   assert.equal(route.status, "not_started");
   assert.equal(route.evidence, "");
@@ -227,3 +348,26 @@ for (const surface of surfaceInventory.rows) {
     `${surface.page_id} is missing from ${surface.p2_target_route}`
   );
 }
+
+const readinessPlanFiles = [
+  "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s2-operate.md",
+  "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md",
+  "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s4-network-service.md",
+  "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s5-intelligence-admin.md",
+  "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s6-certification-release.md"
+];
+for (const planFile of readinessPlanFiles) {
+  const plan = readFileSync(planFile, "utf8");
+  assert.doesNotMatch(plan, /docs\/release\/production-readiness\.json/);
+  assert.match(plan, /docs\/release\/production-readiness-ledger\.json/);
+}
+
+const sprintZeroPlan = readFileSync(
+  "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s0-contract.md",
+  "utf8"
+);
+assert.doesNotMatch(sprintZeroPlan, /reject[^\n]*duplicate state identity within a build/i);
+assert.match(sprintZeroPlan, /build_11\|control-testing\|#control-testing\|0\|0/);
+assert.match(sprintZeroPlan, /ordinals? `22` and `59`/i);
+assert.match(sprintZeroPlan, /planned_test/);
+assert.doesNotMatch(sprintZeroPlan, /verification_test/);

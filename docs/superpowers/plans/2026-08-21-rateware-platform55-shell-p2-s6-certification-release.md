@@ -106,7 +106,7 @@ git commit -m "docs: certify local Platform55 shell fidelity"
 
 **Files:**
 - Create: `docs/release/evidence/2026-08-21-p2-s6-independent-review.md`
-- Modify: `docs/release/production-readiness.json`
+- Modify: `docs/release/production-readiness-ledger.json`
 
 - [ ] **Step 1: Freeze and record the candidate**
 
@@ -127,7 +127,7 @@ Only a clean independent review tied to the exact immutable SHA may create the e
 - [ ] **Step 5: Commit review evidence**
 
 ```powershell
-git add docs/release/evidence/2026-08-21-p2-s6-independent-review.md docs/release/production-readiness.json
+git add docs/release/evidence/2026-08-21-p2-s6-independent-review.md docs/release/production-readiness-ledger.json
 git commit -m "docs: record independent Platform55 shell GO"
 ```
 

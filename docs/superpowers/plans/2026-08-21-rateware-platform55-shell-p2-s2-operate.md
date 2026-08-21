@@ -208,7 +208,7 @@ git commit -m "feat: migrate approved rates to Platform55 shell"
 
 **Files:**
 - Create: `docs/release/evidence/2026-08-21-p2-s2-operate.md`
-- Modify: `docs/release/production-readiness.json`
+- Modify: `docs/release/production-readiness-ledger.json`
 
 - [ ] **Step 1: Capture deterministic local evidence**
 
@@ -238,7 +238,7 @@ Set P2 to `45` and overall progress to `79.2` only after the evidence file exist
 - [ ] **Step 5: Commit local Sprint 2 evidence**
 
 ```powershell
-git add docs/release/evidence/2026-08-21-p2-s2-operate.md docs/release/production-readiness.json
+git add docs/release/evidence/2026-08-21-p2-s2-operate.md docs/release/production-readiness-ledger.json
 git commit -m "docs: record P2 operate shell evidence"
 ```
 
