@@ -125,3 +125,18 @@ This evidence records the final local implementation candidate. It does not alte
 ## P1 implementation milestone — 55%
 
 The implementation milestone is now file-backed by `docs/release/evidence/2026-08-20-p1-implementation.md`. PR #35 and PR #37 are merged and production accepted; PR #39 is reconstructed and independently GO at the exact local SHA above. This is implementation-complete evidence, not release-complete evidence. P1 release progression beyond 55% still requires the separately authorized PR #39 update, exact preview validation, Ready/merge/automatic production deployment authorization, production smoke, and bounded monitoring.
+
+## Collected preview evidence — PR #39 Platform Readiness
+
+This later evidence closes the exact-head preview-access gate only. It does not authorize or claim Ready, merge, automatic production deployment, manual promotion, production acceptance, or P1 queue completion.
+
+- Live PR #39 head: `cf2f0ecaf370df228d6c8cd5f9375fb5539f4ce3`; base: `main` at `e0c91cc0c3ae86db6786923b80f8e69fcbfadf42`; PR remained open, draft, and mergeable.
+- Vercel preview deployment: `dpl_89KowY1Svvk1VQTz7eQg3rJyii1C`; state: `READY`; target: preview; exact-head mapping confirmed.
+- Stable preview alias: `https://rateware-git-codex-platform55-b7d599-elandopando8892s-projects.vercel.app`.
+- Kinde callback: the exact stable callback ending in `/app` was already present when the authenticated configuration was inspected; no Kinde save or additional application change was required.
+- CORS: the stable PR #39 origin was added to `RATEWARE_CORS_ORIGINS` while preserving production, local-development, PR #24, PR #35, and PR #37 origins. Post-change preflight returned the exact requested origin for both the PR #39 alias and production.
+- Supabase preview gate after the CORS update and smoke: exactly one persistent non-default preview remained, `fcm-gmail-staging` (`FUNCTIONS_DEPLOYED`, `ACTIVE_HEALTHY`); no second preview branch was created.
+- Authenticated read-only smoke: PASS for Command Center, Import, Review Queue, Carrier CRM, RFx Process, Bid Room, Rateware, Governance, Platform Readiness, and Intelligence Decision Brief. All loaded under the authenticated user, emitted no browser console errors, and showed no desktop horizontal overflow.
+- Safety boundary: Governance and Platform Readiness remained `Blocked`/observation-only; Decision Brief remained blocked with local export disabled and explicit human-decision copy; no consequential control was invoked and no application data was written.
+- Responsive limitation: the in-app browser's temporary `390x844` viewport override did not change the reported page viewport, even in a new isolated tab. Mobile behavior therefore remains supported by the commit-scoped responsive tests and prior platform smoke evidence, but was not independently re-observed at a true mobile width in this preview run.
+- P1 remains **55%**. Advancement to 93% requires the separately authorized Ready/merge/automatic production deployment, exact production smoke, and a new detached aggregate candidate GO at the post-merge production SHA.
