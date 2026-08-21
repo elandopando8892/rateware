@@ -1,2 +1,4 @@
 minimumReleaseAgeExclude:
   - eslint@10.9.0
+patchedDependencies:
+  '@kinde-oss/kinde-auth-pkce-js@4.5.1': patches/@kinde-oss__kinde-auth-pkce-js@4.5.1.patch

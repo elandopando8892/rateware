@@ -2,6 +2,15 @@ import createKindeClient, { type KindeClient } from '@kinde-oss/kinde-auth-pkce-
 import { authRedirectUri, type RuntimeConfig } from '../config/runtime';
 import { type AuthPort, type OspUser } from './auth-port';
 
+const authErrorCodes = {
+  initialization: 'AUTH_INITIALIZATION_FAILED',
+  session: 'AUTH_SESSION_CHECK_FAILED',
+  login: 'AUTH_LOGIN_FAILED',
+  logout: 'AUTH_LOGOUT_FAILED',
+  token: 'AUTH_TOKEN_UNAVAILABLE',
+  profile: 'AUTH_PROFILE_UNAVAILABLE',
+} as const;
+
 function displayNameFor(email: string, givenName: string | undefined, familyName: string | undefined): string {
   return [givenName, familyName].filter(Boolean).join(' ') || email;
 }
@@ -20,48 +29,66 @@ export function createKindeAuthPort(config: RuntimeConfig): AuthPort {
     return clientPromise;
   }
 
+  async function invoke<T>(
+    code: (typeof authErrorCodes)[keyof typeof authErrorCodes],
+    operation: (client: KindeClient) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await operation(await getClient());
+    } catch {
+      throw new Error(code);
+    }
+  }
+
   return {
     async initialize() {
-      await getClient();
+      await invoke(authErrorCodes.initialization, async () => undefined);
     },
     async isAuthenticated() {
-      return (await getClient()).isAuthenticated();
+      return invoke(authErrorCodes.session, async (client) => client.isAuthenticated());
     },
     async login(returnTo) {
-      const client = await getClient();
-      if (returnTo) {
-        await client.login({ app_state: { returnTo } });
-        return;
-      }
-      await client.login();
+      await invoke(authErrorCodes.login, async (client) => {
+        if (returnTo) {
+          await client.login({ app_state: { returnTo } });
+          return;
+        }
+        await client.login();
+      });
     },
     async logout() {
-      await (await getClient()).logout();
+      await invoke(authErrorCodes.logout, async (client) => client.logout());
     },
     async getAccessToken(forceRefresh) {
-      const client = await getClient();
-      const token = forceRefresh
-        ? (await client.getToken({ isForceRefresh: true })) ?? (await client.getAccessToken())
-        : await client.getAccessToken();
-      if (!token) {
-        throw new Error('No access token is available for this session.');
-      }
-      return token;
+      return invoke(authErrorCodes.token, async (client) => {
+        const token = forceRefresh
+          ? await client.getToken({ isForceRefresh: true })
+          : await client.getAccessToken();
+        if (!token) {
+          throw new Error(authErrorCodes.token);
+        }
+        return token;
+      });
     },
     async getUser(): Promise<OspUser | null> {
-      const client = await getClient();
-      const user = (await client.getUserProfile()) ?? client.getUser();
-      if (!user.id) {
-        throw new Error('Kinde user profile is missing a subject.');
-      }
-      if (!user.email || client.getClaim('email_verified', 'id_token')?.value !== true) {
-        throw new Error('Kinde user profile is missing a verified email.');
-      }
-      return {
-        subject: user.id,
-        email: user.email,
-        displayName: displayNameFor(user.email, user.given_name, user.family_name),
-      };
+      return invoke(authErrorCodes.profile, async (client) => {
+        const user = (await client.getUserProfile()) ?? client.getUser();
+        const verifiedEmail = client.getClaim('email', 'id_token')?.value;
+        if (
+          !user.id ||
+          !user.email ||
+          client.getClaim('email_verified', 'id_token')?.value !== true ||
+          typeof verifiedEmail !== 'string' ||
+          verifiedEmail.toLowerCase() !== user.email.toLowerCase()
+        ) {
+          throw new Error(authErrorCodes.profile);
+        }
+        return {
+          subject: user.id,
+          email: user.email,
+          displayName: displayNameFor(user.email, user.given_name, user.family_name),
+        };
+      });
     },
   };
 }

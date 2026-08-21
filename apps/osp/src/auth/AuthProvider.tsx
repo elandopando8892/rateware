@@ -14,6 +14,8 @@ type AuthContextValue = {
 };
 
 const safeSessionError = 'Unable to verify your session. Please try again.';
+const safeActionError = 'Unable to complete that authentication action. Please try again.';
+const checkingState: AuthState = { status: 'checking', user: null, error: null };
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -24,7 +26,7 @@ export function safeReturnTo(value: string | undefined, origin = window.location
 
   try {
     const parsed = new URL(value, origin);
-    if (parsed.origin !== origin || !parsed.pathname.startsWith('/app')) {
+    if (parsed.origin !== origin || (parsed.pathname !== '/app' && !parsed.pathname.startsWith('/app/'))) {
       return '/app';
     }
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
@@ -34,10 +36,14 @@ export function safeReturnTo(value: string | undefined, origin = window.location
 }
 
 export function AuthProvider({ port, children }: { port: AuthPort; children: ReactNode }) {
-  const [state, setState] = useState<AuthState>({ status: 'checking', user: null, error: null });
+  const [session, setSession] = useState<{ port: AuthPort; state: AuthState }>({ port, state: checkingState });
+  const state = session.port === port ? session.state : checkingState;
 
   useEffect(() => {
     let active = true;
+    const setStateForPort = (nextState: AuthState) => {
+      setSession({ port, state: nextState });
+    };
 
     void (async () => {
       try {
@@ -47,7 +53,7 @@ export function AuthProvider({ port, children }: { port: AuthPort; children: Rea
           return;
         }
         if (!authenticated) {
-          setState({ status: 'anonymous', user: null, error: null });
+          setStateForPort({ status: 'anonymous', user: null, error: null });
           return;
         }
 
@@ -58,10 +64,10 @@ export function AuthProvider({ port, children }: { port: AuthPort; children: Rea
         if (!user) {
           throw new Error('Authenticated session did not provide a user.');
         }
-        setState({ status: 'authenticated', user, error: null });
+        setStateForPort({ status: 'authenticated', user, error: null });
       } catch {
         if (active) {
-          setState({ status: 'error', user: null, error: safeSessionError });
+          setStateForPort({ status: 'error', user: null, error: safeSessionError });
         }
       }
     })();
@@ -72,12 +78,20 @@ export function AuthProvider({ port, children }: { port: AuthPort; children: Rea
   }, [port]);
 
   async function login(returnTo?: string) {
-    await port.login(safeReturnTo(returnTo));
+    try {
+      await port.login(safeReturnTo(returnTo));
+    } catch {
+      setSession({ port, state: { status: 'error', user: null, error: safeActionError } });
+    }
   }
 
   async function logout() {
-    await port.logout();
-    setState({ status: 'anonymous', user: null, error: null });
+    try {
+      await port.logout();
+      setSession({ port, state: { status: 'anonymous', user: null, error: null } });
+    } catch {
+      setSession({ port, state: { status: 'error', user: null, error: safeActionError } });
+    }
   }
 
   return <AuthContext.Provider value={{ state, login, logout }}>{children}</AuthContext.Provider>;
