@@ -82,6 +82,10 @@ The blueprint remains reference-only. Production must not load or parse the 11 M
 
 Owns the shell DOM contract, route metadata, active navigation state, collapsible groups, responsive navigation state, and shell event hooks. It receives user/permission data from authentication code and does not call Supabase or mutate business data.
 
+### `src/platform55-icons.js`
+
+Owns the allowlisted Platform 55 SVG sprite and the `rw-icon` custom element adapted from the blueprint. Icons are decorative by default; interactive controls retain explicit accessible names on their owning buttons or links.
+
 ### `src/platform55-shell.css`
 
 Owns shell tokens and layout only: color, typography, spacing, elevation, sidebar, header, lifecycle, responsive breakpoints, focus states, and reduced-motion behavior. Page-specific components remain in `src/styles.css` until migrated deliberately.
@@ -97,6 +101,8 @@ Continues to own Kinde session handling, user identity, authorization, permissio
 ### Page modules
 
 Existing page modules continue to own data loading and domain actions. Existing element IDs and action handlers remain stable unless a page-specific migration explicitly changes and tests them.
+
+The baseline contains 29 routed root HTML pages: 22 authenticated internal workspaces and 7 public/entry experiences. The tenant sidebar/header shell applies to the 22 internal workspaces. `bid-room-board.html`, `carrier-profile.html`, `customer-rfi.html`, `index.html`, `ratebook-carrier.html`, `rfx-bid.html`, and `shipper-profile.html` use explicit public/entry shell variants with shared visual tokens but no private tenant navigation or private header controls.
 
 ## Data and action boundaries
 
@@ -117,9 +123,9 @@ P2 has a formal weight of 7 readiness points. Completing P2 moves overall readin
 | P2-S0 | Freeze the shell contract and migration map | blueprint tokens, route map, page inventory, test fixtures | 10% | 76.7% | GPT-5.6 Sol, high |
 | P2-S1 | First production-quality vertical slice | shared shell, Command Center, desktop/tablet/mobile | 25% | 77.8% | GPT-5.6 Sol, xhigh |
 | P2-S2 | Governed Operate workflow | Import, Source Files, Review Queue, Rateware | 45% | 79.2% | GPT-5.6 Terra, high; Sol review |
-| P2-S3 | Procurement execution | Carrier CRM, RFx Process, Bid Room, Ratebook, RFI, outreach | 65% | 80.6% | GPT-5.6 Sol, high |
-| P2-S4 | Network and service workspaces | shipper/carrier profiles, support, improvement, Provider Service | 80% | 81.6% | GPT-5.6 Terra, high; Sol review |
-| P2-S5 | Intelligence and administration | Analyze, Growth, Settings, Learning Rules, Catalog | 93% | 82.5% | GPT-5.6 Sol, xhigh |
+| P2-S3 | Procurement execution | Carrier CRM, RFx Process, Bid Room, Ratebook, RFI, outreach | 60% | 80.2% | GPT-5.6 Sol, high |
+| P2-S4 | Network and service workspaces | shipper/carrier profiles, support, improvement, Provider Service | 70% | 80.9% | GPT-5.6 Terra, high; Sol review |
+| P2-S5 | Intelligence and administration | Analyze, Growth, Settings, Learning Rules, Catalog | 80% | 81.6% | GPT-5.6 Sol, xhigh |
 | P2-S6 | All-surface convergence and production certification | every routed HTML surface and all 95 inventory dispositions | 100% | 83.0% | GPT-5.6 Sol, xhigh |
 
 ### P2-S0 — Shell contract and migration map
@@ -245,7 +251,8 @@ Exit criteria:
 
 Deliverables:
 
-- every routed production HTML page uses the shared shell contract;
+- every authenticated internal HTML page uses the shared tenant shell contract;
+- every public/entry HTML page uses an explicitly reviewed public shell variant and never exposes tenant navigation or private controls;
 - duplicated sidebar/header markup is removed or reduced to a documented compatibility shim;
 - all 95 Platform 55 inventory rows have an implemented or explicit disposition;
 - the twelve-build fidelity matrix has 12/12 build coverage and zero unreviewed artifact/state;
