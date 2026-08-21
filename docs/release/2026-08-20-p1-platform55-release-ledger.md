@@ -152,3 +152,23 @@ This later evidence closes the exact-head preview-access gate only. It does not 
 - Aggregate independent review: **NO-GO** at `fa8e35c96c8fb30635ddac21b894614172831083`; evidence: `docs/release/evidence/2026-08-20-p1-release-candidate-independent-review.md`.
 - The blocking cause is an inherited 24-version remote-only Supabase migration-history gap: production reports 369 migrations while the exact production commit contains 345. The live `Supabase Preview` check failed with `Remote migration versions not found in local migrations directory.`
 - P1 therefore remains **55%** and General remains **72%**. This is a release-readiness promotion gate, not a scheduled blocker for isolated coding, tests, documentation, or offline review.
+
+## P1 final production closure — 100%
+
+This later evidence preserves the historical NO-GO above and closes its only
+P1 blocker. It does not rewrite what was true at `fa8e35c`; PR #60 reconciled
+that exact migration-history gap and produced a new production candidate.
+
+- PR #60 reviewed head: `ed87f7d57b98c6c20bb2c445d0ce6c878812ac30`.
+- Exact-head clean replay: GitHub Actions run `32450536455`, PASS in `2m48s`; 369 migrations replayed from zero, final ledger/head and five grants PASS.
+- PR #60 final state: squash-merged as `bc7686e5c12c155365763db174ac829b5bf437a9` on 2026-08-21T05:32:12Z.
+- Automatic Vercel production deployment: `dpl_APiGXCBbWfdKXLjJhx8LE37hbjgv`, `READY`, target production, exact merge SHA; no manual promotion.
+- Production smoke: canonical root, Business Intelligence, and Settings routes returned HTTP 200.
+- Supabase post-release: project and main healthy, 369 migrations through `20260821011805`, exactly one persistent non-default preview (`fcm-gmail-staging`). No migration, DDL, DML, branch creation, secret update, or production-data write was invoked by the controller or reviewer.
+- Final detached aggregate review: **GO** at exact production SHA `bc7686e5c12c155365763db174ac829b5bf437a9`; P0/P1 release blockers none. Evidence: `docs/release/evidence/2026-08-21-p1-final-independent-review.md`.
+- Non-blocking P2 governance advisories retained: unprotected `main` and the inherited `whatsapp-healthcheck` declaration-path warning.
+- Authenticated UI was not repeated in the final review because the browser handle was unavailable; prior authenticated production smoke remains historical evidence, while the final review independently reverified public routes and every code, CI, migration, deployment, and Supabase gate.
+
+P1 is now **100%** and General is **76%**. This is an evidence-backed closure;
+it authorizes no new deployment, migration, configuration, enforcement, or
+production-data mutation.

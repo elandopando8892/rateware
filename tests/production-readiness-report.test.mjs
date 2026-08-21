@@ -247,19 +247,27 @@ test("accepts the P1 evidence-plan gate and reports the one-decimal starting sco
   assert.equal(computeOverallProgress(p1), 69.3);
 });
 
-test("keeps the persisted P1 implementation milestone backed by tracked files", () => {
+test("keeps the persisted P1 production closure backed by tracked evidence", () => {
   const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p1 = persisted.sprints.find((sprint) => sprint.id === "P1");
   const trackedEvidence = [
     "docs/superpowers/specs/2026-08-19-rateware-production-closure-design.md",
     "docs/superpowers/plans/2026-08-20-rateware-p1-platform55-release-closure.md",
     "docs/release/2026-08-20-p1-platform55-release-ledger.md",
-    "docs/release/evidence/2026-08-20-p1-implementation.md"
+    "docs/release/evidence/2026-08-20-p1-implementation.md",
+    "docs/release/evidence/2026-08-21-p1-final-independent-review.md"
   ];
 
-  assert.equal(p1.progress, 55);
-  assert.deepEqual([...p1.evidence.scope, ...p1.evidence.evidence_plan, ...p1.evidence.implementation], trackedEvidence);
+  assert.equal(p1.progress, 100);
+  assert.deepEqual(
+    [...p1.evidence.scope, ...p1.evidence.evidence_plan, ...p1.evidence.implementation, ...p1.evidence.independent_review],
+    trackedEvidence,
+  );
+  assert.equal(p1.verdicts.independent_review, "GO");
+  for (const key of ["automated_suite", "preview_smoke", "deployment", "production_smoke", "monitoring"]) {
+    assert.ok(Array.isArray(p1.evidence[key]) && p1.evidence[key].length > 0, `${key} evidence is required`);
+  }
   for (const path of trackedEvidence) execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   validateLedger(persisted);
-  assert.equal(computeOverallProgress(persisted), 72);
+  assert.equal(computeOverallProgress(persisted), 76);
 });
