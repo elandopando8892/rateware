@@ -135,3 +135,26 @@ assert.match(iconSource, /rw-i-/);
 assert.doesNotMatch(iconSource, /innerHTML\s*=\s*[^;]*(getAttribute|name)/);
 assert.doesNotMatch(iconSource, /javascript:/i);
 assert.doesNotMatch(iconSource, /href\s*=\s*["']https?:/i);
+
+const appHtml = readFileSync("app.html", "utf8");
+const authSource = readFileSync("src/auth.js", "utf8");
+const shellSource = readFileSync("src/platform55-shell.js", "utf8");
+const shellCss = readFileSync("src/platform55-shell.css", "utf8");
+
+assert.match(appHtml, /data-platform55-shell="tenant"/);
+assert.match(appHtml, /data-platform55-page="app"/);
+assert.match(appHtml, /platform55-tokens\.css/);
+assert.match(appHtml, /platform55-shell\.css/);
+assert.doesNotMatch(appHtml, /<aside class="side-nav"/);
+assert.equal((appHtml.match(/id="auth-form"/g) || []).length, 1);
+assert.match(authSource, /mountPlatform55Shell/);
+assert.match(authSource, /dataset\.platform55Shell === "tenant"/);
+assert.match(authSource, /initLegacySaasShell/);
+assert.doesNotMatch(shellSource, /fetch\(|authenticatedFetch|supabase|localStorage\.clear/i);
+assert.match(shellSource, /export function mountPlatform55Shell/);
+assert.match(shellSource, /export function updatePlatform55Shell/);
+assert.match(shellSource, /export function unmountPlatform55Shell/);
+assert.match(shellCss, /grid-template-columns:\s*var\(--rw-sidebar-expanded\)\s+minmax\(0,\s*1fr\)/);
+assert.match(shellCss, /@media\s*\(max-width:\s*1320px\)/);
+assert.match(shellCss, /@media\s*\(max-width:\s*900px\)/);
+assert.match(shellCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);

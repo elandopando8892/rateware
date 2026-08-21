@@ -3,6 +3,7 @@ import { KINDE_CLIENT_ID, KINDE_DOMAIN } from "./config.js";
 import { humanizeError } from "./error-copy.js";
 import { initGlobalNotifications } from "./ui-notifications.js";
 import { initUnsavedChangesGuard } from "./unsaved-changes.js";
+import { mountPlatform55Shell, updatePlatform55Shell } from "./platform55-shell.js";
 
 let kindePromise;
 let kindeRefreshPromise;
@@ -777,13 +778,21 @@ function initShellHeader() {
   document.title = `Rateware ${meta.title}`;
 }
 
-function initSaasShell() {
-  initGlobalNotifications();
-  initUnsavedChangesGuard();
+function initLegacySaasShell() {
   initShellNavigation();
   initShellHeader();
   initCommandPalette();
   initFocusMode();
+}
+
+function initSaasShell() {
+  initGlobalNotifications();
+  initUnsavedChangesGuard();
+  if (document.body.dataset.platform55Shell === "tenant") {
+    mountPlatform55Shell({ pageKey: document.body.dataset.platform55Page });
+    return;
+  }
+  initLegacySaasShell();
 }
 
 if (document.readyState === "loading") {
@@ -893,6 +902,7 @@ export function initAuthControls() {
 
     if (!signedIn) {
       document.body.dataset.role = "";
+      updatePlatform55Shell({ user: null, accessContext: {} });
       setStatus(expired ? "Your session expired. Sign in again to continue." : "Sign in to upload and view source files.");
       return;
     }
@@ -905,6 +915,8 @@ export function initAuthControls() {
       userMenu.email.textContent = email;
       userMenu.access.textContent = "Full access";
     }
+    const access = await getAccessContext().catch(() => ({ roles: [], permissions: [] }));
+    updatePlatform55Shell({ user, accessContext: { ...access, can: () => true } });
     setStatus(`${user?.email || "Kinde user"} | full access`);
   }
 

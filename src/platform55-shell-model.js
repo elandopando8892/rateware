@@ -47,13 +47,12 @@ function pathKey(pathname = "") {
   return leaf.replace(/\.html$/i, "") || "index";
 }
 
-function escapeText(value) {
+function safeDisplayText(value) {
   return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replace(/[<>]/g, "")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() || "Rateware user";
 }
 
 export function routeForPath(pathname) {
@@ -76,7 +75,7 @@ export function shellModel({ pageKey = "app", user = null, accessContext = {}, n
   return Object.freeze({
     activeRoute: activeRoute?.shell === "tenant" ? activeRoute : PLATFORM55_ROUTES[0],
     navigation: visibleNavigation(accessContext),
-    userLabel: escapeText(displaySource),
+    userLabel: safeDisplayText(displaySource),
     notificationCount: Number.isFinite(unread) && unread > 0 ? Math.floor(unread) : 0
   });
 }

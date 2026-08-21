@@ -1,0 +1,233 @@
+import { registerPlatform55Icons } from "./platform55-icons.js";
+import { shellModel } from "./platform55-shell-model.js";
+
+const NAV_STORAGE_KEY = "rateware:shell-nav-collapsed";
+const mountedShells = new WeakMap();
+
+function documentFor(root) {
+  return root?.nodeType === 9 ? root : root?.ownerDocument || globalThis.document;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function groupedNavigation(routes) {
+  const groups = new Map();
+  for (const route of routes) {
+    const rows = groups.get(route.group) || [];
+    rows.push(route);
+    groups.set(route.group, rows);
+  }
+  return groups;
+}
+
+function navMarkup(model) {
+  return [...groupedNavigation(model.navigation)].map(([group, routes]) => `
+    <section class="rw-nav-group${routes.some((route) => route.key === model.activeRoute.key) ? " is-active" : ""}">
+      <p>${escapeHtml(group)}</p>
+      ${routes.map((route) => `
+        <a class="rw-nav-link" href="${escapeHtml(route.path)}" title="${escapeHtml(route.label)}"${route.key === model.activeRoute.key ? ' aria-current="page"' : ""}>
+          <rw-icon name="${escapeHtml(route.icon)}"></rw-icon>
+          <span>${escapeHtml(route.label)}</span>
+        </a>`).join("")}
+    </section>`).join("");
+}
+
+function renderSidebar(state) {
+  const { sidebar, model } = state;
+  sidebar.innerHTML = `
+    <div class="rw-brand-row">
+      <a class="rw-brand" href="./app.html" aria-label="Rateware Command Center"><span>R</span><strong>Rateware</strong></a>
+      <button class="rw-icon-button rw-mobile-close" type="button" data-platform55-nav-close aria-label="Close navigation"><rw-icon name="close"></rw-icon></button>
+    </div>
+    <a class="rw-tenant" href="./app.html">
+      <span>MX</span>
+      <span><strong>MARKSMAN Network</strong><small>Production tenant</small></span>
+      <rw-icon name="chevron"></rw-icon>
+    </a>
+    <button class="rw-nav-collapse" type="button" data-platform55-nav-collapse aria-controls="platform55-navigation">
+      <rw-icon name="chevron"></rw-icon><span>Collapse navigation</span>
+    </button>
+    <nav id="platform55-navigation" class="rw-nav" aria-label="Product navigation">${navMarkup(model)}</nav>
+    <div class="rw-sidebar-footer">
+      <span>Design state: Command Center</span>
+      <small>Platform 55 · P2-S1</small>
+    </div>`;
+}
+
+function renderTopbar(state) {
+  const { topbar, authForm } = state;
+  topbar.replaceChildren();
+  topbar.insertAdjacentHTML("afterbegin", `
+    <button class="rw-icon-button rw-mobile-menu" type="button" data-platform55-nav-open aria-label="Open navigation"><rw-icon name="menu"></rw-icon></button>
+    <button class="rw-search-trigger" type="button" data-platform55-search-trigger aria-haspopup="dialog">
+      <rw-icon name="search"></rw-icon><span>Search modules and actions...</span><kbd>Ctrl K</kbd>
+    </button>
+    <div class="rw-topbar-actions">
+      <span class="rw-system-status" data-platform55-system-status><i></i><span>Status unavailable</span></span>
+      <button class="rw-icon-button rw-notification-button" type="button" data-platform55-notifications aria-label="Notifications">
+        <rw-icon name="bell"></rw-icon><b data-platform55-notification-count hidden>0</b>
+      </button>
+      <a class="rw-ask-ai" href="./business-intelligence.html?view=analyst"><rw-icon name="ai"></rw-icon><span>Ask AI</span></a>
+      <div class="rw-auth-slot" data-platform55-auth-slot></div>
+    </div>`);
+  if (authForm) topbar.querySelector("[data-platform55-auth-slot]")?.append(authForm);
+}
+
+function readCollapsed(view) {
+  try {
+    return view?.localStorage?.getItem(NAV_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeCollapsed(view, value) {
+  try {
+    view?.localStorage?.setItem(NAV_STORAGE_KEY, String(value));
+  } catch {
+    // The current session still supports collapse when browser storage is blocked.
+  }
+}
+
+function setCollapsed(state, collapsed, persist = false) {
+  state.app.dataset.navCollapsed = String(Boolean(collapsed));
+  const toggle = state.sidebar.querySelector("[data-platform55-nav-collapse]");
+  toggle?.setAttribute("aria-expanded", String(!collapsed));
+  toggle?.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
+  if (toggle) toggle.querySelector("span").textContent = collapsed ? "Expand navigation" : "Collapse navigation";
+  if (persist) writeCollapsed(state.doc.defaultView, collapsed);
+}
+
+function closeMobileNavigation(state, { returnFocus = false } = {}) {
+  state.app.dataset.mobileNavOpen = "false";
+  if (state.doc.defaultView?.matchMedia?.("(max-width: 900px)").matches) {
+    state.sidebar.setAttribute("aria-hidden", "true");
+  } else {
+    state.sidebar.removeAttribute("aria-hidden");
+  }
+  state.topbar.querySelector("[data-platform55-nav-open]")?.setAttribute("aria-expanded", "false");
+  if (returnFocus) state.mobileTrigger?.focus({ preventScroll: true });
+}
+
+function openMobileNavigation(state) {
+  state.mobileTrigger = state.doc.activeElement;
+  state.app.dataset.mobileNavOpen = "true";
+  state.sidebar.setAttribute("aria-hidden", "false");
+  state.topbar.querySelector("[data-platform55-nav-open]")?.setAttribute("aria-expanded", "true");
+  state.sidebar.querySelector("[data-platform55-nav-close]")?.focus({ preventScroll: true });
+}
+
+function bindShell(state) {
+  const signal = state.abort.signal;
+  state.sidebar.addEventListener("click", (event) => {
+    const collapse = event.target.closest("[data-platform55-nav-collapse]");
+    if (collapse) setCollapsed(state, state.app.dataset.navCollapsed !== "true", true);
+    if (event.target.closest("[data-platform55-nav-close]")) closeMobileNavigation(state, { returnFocus: true });
+    if (event.target.closest("a.rw-nav-link")) closeMobileNavigation(state);
+  }, { signal });
+  state.topbar.addEventListener("click", (event) => {
+    if (event.target.closest("[data-platform55-nav-open]")) openMobileNavigation(state);
+  }, { signal });
+  state.scrim.addEventListener("click", () => closeMobileNavigation(state, { returnFocus: true }), { signal });
+  state.doc.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.app.dataset.mobileNavOpen === "true") {
+      event.preventDefault();
+      closeMobileNavigation(state, { returnFocus: true });
+    }
+  }, { signal });
+  state.doc.defaultView?.addEventListener("resize", () => {
+    if (!state.doc.defaultView.matchMedia("(max-width: 900px)").matches) closeMobileNavigation(state);
+  }, { signal });
+}
+
+function applyModel(state) {
+  const { model, doc } = state;
+  const current = state.sidebar.querySelector('[aria-current="page"]');
+  if (!current || current.getAttribute("href") !== model.activeRoute.path) renderSidebar(state);
+  const userLabel = state.topbar.querySelector("#user-menu-label");
+  if (userLabel && state.options.user) userLabel.textContent = model.userLabel;
+  const count = state.topbar.querySelector("[data-platform55-notification-count]");
+  if (count) {
+    count.textContent = String(model.notificationCount);
+    count.hidden = model.notificationCount === 0;
+  }
+  const status = state.topbar.querySelector("[data-platform55-system-status] span");
+  if (status) status.textContent = state.options.status || "Status unavailable";
+  doc.title = `Rateware ${model.activeRoute.title}`;
+}
+
+export function mountPlatform55Shell({
+  pageKey,
+  user = null,
+  accessContext = {},
+  notificationSummary = {},
+  status = "",
+  root = globalThis.document
+} = {}) {
+  const doc = documentFor(root);
+  if (!doc?.body || doc.body.dataset.platform55Shell !== "tenant") return null;
+  if (mountedShells.has(doc)) {
+    updatePlatform55Shell({ pageKey, user, accessContext, notificationSummary, status }, { root: doc });
+    return mountedShells.get(doc);
+  }
+
+  const app = doc.querySelector("[data-platform55-app]");
+  const sidebar = doc.querySelector("[data-platform55-sidebar]");
+  const topbar = doc.querySelector("[data-platform55-topbar]");
+  if (!app || !sidebar || !topbar) return null;
+
+  registerPlatform55Icons({ root: doc });
+  const authForm = doc.querySelector("#auth-form");
+  const scrim = doc.createElement("button");
+  scrim.type = "button";
+  scrim.className = "rw-nav-scrim";
+  scrim.setAttribute("aria-label", "Close navigation");
+  app.append(scrim);
+
+  const options = { pageKey: pageKey || doc.body.dataset.platform55Page || "app", user, accessContext, notificationSummary, status };
+  const state = {
+    doc, app, sidebar, topbar, authForm, scrim, options,
+    model: shellModel(options),
+    abort: new AbortController(),
+    mobileTrigger: null
+  };
+  mountedShells.set(doc, state);
+  renderSidebar(state);
+  renderTopbar(state);
+  setCollapsed(state, readCollapsed(doc.defaultView));
+  closeMobileNavigation(state);
+  bindShell(state);
+  applyModel(state);
+  return state;
+}
+
+export function updatePlatform55Shell(patch = {}, { root = globalThis.document } = {}) {
+  const doc = documentFor(root);
+  const state = mountedShells.get(doc);
+  if (!state) return null;
+  state.options = { ...state.options, ...patch };
+  state.model = shellModel(state.options);
+  applyModel(state);
+  return state;
+}
+
+export function unmountPlatform55Shell({ root = globalThis.document } = {}) {
+  const doc = documentFor(root);
+  const state = mountedShells.get(doc);
+  if (!state) return;
+  state.abort.abort();
+  state.sidebar.replaceChildren();
+  state.topbar.replaceChildren();
+  if (state.authForm) state.topbar.append(state.authForm);
+  state.scrim.remove();
+  delete state.app.dataset.navCollapsed;
+  delete state.app.dataset.mobileNavOpen;
+  mountedShells.delete(doc);
+}
