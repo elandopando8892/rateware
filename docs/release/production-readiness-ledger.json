@@ -45,7 +45,7 @@
     {
       "id": "P1",
       "weight": 9,
-      "progress": 55,
+      "progress": 100,
       "evidence": {
         "scope": [
           "docs/superpowers/specs/2026-08-19-rateware-production-closure-design.md"
@@ -56,7 +56,33 @@
         ],
         "implementation": [
           "docs/release/evidence/2026-08-20-p1-implementation.md"
+        ],
+        "automated_suite": [
+          "GitHub Actions clean-migration-replay run 32450536455 PASS on exact head ed87f7d57b98c6c20bb2c445d0ce6c878812ac30",
+          "npm test PASS on production SHA bc7686e5c12c155365763db174ac829b5bf437a9",
+          "npm run validate:action-contract PASS with 0 errors",
+          "npm audit --audit-level=low PASS with 0 vulnerabilities"
+        ],
+        "independent_review": [
+          "docs/release/evidence/2026-08-21-p1-final-independent-review.md"
+        ],
+        "preview_smoke": [
+          "PR 60 Vercel preview READY at exact head ed87f7d57b98c6c20bb2c445d0ce6c878812ac30; clean replay PASS; Supabase retained exactly one persistent preview"
+        ],
+        "deployment": [
+          "PRs 35 37 39 and 60 squash merges are ancestors of production bc7686e5c12c155365763db174ac829b5bf437a9",
+          "Vercel deployment dpl_APiGXCBbWfdKXLjJhx8LE37hbjgv READY in production at exact SHA bc7686e5c12c155365763db174ac829b5bf437a9"
+        ],
+        "production_smoke": [
+          "https://rateware.vercel.app root business-intelligence and settings routes returned HTTP 200",
+          "Supabase remained ACTIVE_HEALTHY with 369 migrations through 20260821011805 and no second persistent preview"
+        ],
+        "monitoring": [
+          "Post-deploy GitHub status success Vercel READY Supabase main FUNCTIONS_DEPLOYED and exactly one persistent preview; no production mutation invoked by the closure review"
         ]
+      },
+      "verdicts": {
+        "independent_review": "GO"
       }
     },
     { "id": "P2", "weight": 7, "progress": 0, "evidence": {} },
