@@ -13,9 +13,9 @@ Setup**. Reley.ai keeps provider onboarding *into* XBF; this does not duplicate 
 Rev 1 named the corpus mount as the critical path. That was wrong, and the reason
 matters more than the correction.
 
-**The corpus was never the blocker.** It sits in `H:\Mi unidad\Socios\Legal &
-Cumplimiento`, 32 documents across `XBFus` and `XBFmx`, and the importer has already
-planned it end to end.
+**The corpus was never the blocker.** It sits in a mounted private legal-corpus
+directory, 32 documents across `XBFus` and `XBFmx`, and the importer has already planned
+it end to end.
 
 **The real blocker is deployment.** Eight migrations on this branch — including the
 service_role grants without which *no command can write at all* — have never been

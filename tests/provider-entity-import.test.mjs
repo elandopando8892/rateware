@@ -23,7 +23,7 @@ test('container families are identified from magic bytes', () => {
 
 test('the brief\'s disclosure table is applied to recognizable names', () => {
   const expected = {
-    'firma JAGP sin fondo.png': ['authorized_signature', 'highly_restricted'],
+    'authorized-signature-sample.png': ['authorized_signature', 'highly_restricted'],
     'XBFmx - INE_Someone.pdf': ['government_id', 'highly_restricted'],
     'XBFus - Bank Letter.pdf': ['bank_letter', 'highly_restricted'],
     'XBFus - W9.pdf': ['w9', 'restricted'],

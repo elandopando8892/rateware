@@ -33,7 +33,6 @@ const EXPECTED_CORPUS = [
   'XBFmx - CSF.pdf',
   'XBFmx - INE_Jose Andres Gonzalez Perales.pdf',
   'XBFnx - Acta Constitutiva.pdf',
-  'firma JAGP sin fondo.png',
 ];
 
 function arg(name) {

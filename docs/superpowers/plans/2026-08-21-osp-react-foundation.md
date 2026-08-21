@@ -18,7 +18,7 @@
 - OSP is for registering XBF as a provider's customer. It is not a quotation, rate intake, `rate_staging`, or carrier onboarding flow.
 - The browser may call authenticated Edge Functions only. It must not query Supabase tables or buckets directly.
 - Phase 1 is read-only after login. It must not approve, sign, authorize, send, mutate CRM state, or modify production data.
-- Never copy `firma JAGP sin fondo.png` into the worktree, build output, test fixtures, logs, screenshots, or Git.
+- Never copy a private signature-source asset into the worktree, build output, test fixtures, logs, screenshots, or Git.
 - Preserve `workspace_registry_external_canonical_unique`, `vendors_id_organization_id_unique`, the documented eight-column `vendors` seam, and OSP's separation from Rateware Edge Actions.
 - Production Kinde callback and logout redirect are exactly `https://osp.heymarksman.com/app`; local callback and logout redirect are exactly `http://localhost:8791/app`. Do not remove or edit the existing `partners.heymarksman.com` URLs.
 - An unreadable mailbox is `unknown`, never healthy. An empty or failed metric request must never become a fabricated zero.
@@ -1007,7 +1007,7 @@ git commit -m "feat(osp): show live pipeline and mailbox status"
 - `dist/app/index.html` exists;
 - its script and stylesheet URLs begin with `/app/`;
 - referenced assets exist below `dist/app/assets`;
-- no built text file contains `firma JAGP`, the source signature path, `SERVICE_ROLE`, `GOOGLE_CLIENT_SECRET`, or a Kinde client secret;
+- no built text file contains `sin fondo.png`, the private drive-directory marker, `SERVICE_ROLE`, `GOOGLE_CLIENT_SECRET`, or a Kinde client secret;
 - no built file contains an `<iframe` tag.
 
 Add `"verify:build": "node scripts/verify-build.mjs"` and run it before building. Expected: FAIL because `dist/app` is absent.
@@ -1037,7 +1037,7 @@ async function textFiles(path) {
   return nested.flat().filter((path) => /\.(?:html|js|css|map|json|txt)$/i.test(path));
 }
 
-const forbidden = [/firma JAGP/i, /Legal & Cumplimiento/i, /SERVICE_ROLE/i, /GOOGLE_CLIENT_SECRET/i, /KINDE_CLIENT_SECRET/i, /synthetic-e2e-token/i, /__OSP_E2E_RUNTIME__/i, /<iframe/i];
+const forbidden = [/sin fondo\.png/i, /Legal & Cumplimiento/i, /SERVICE_ROLE/i, /GOOGLE_CLIENT_SECRET/i, /KINDE_CLIENT_SECRET/i, /synthetic-e2e-token/i, /__OSP_E2E_RUNTIME__/i, /<iframe/i];
 for (const path of await textFiles(distRoot)) {
   const content = await readFile(path, 'utf8');
   for (const pattern of forbidden) {
