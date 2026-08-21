@@ -1,5 +1,6 @@
 import { registerPlatform55Icons } from "./platform55-icons.js";
 import { shellModel } from "./platform55-shell-model.js";
+import { initPlatform55Search } from "./platform55-search.js";
 
 const NAV_STORAGE_KEY = "rateware:shell-nav-collapsed";
 const mountedShells = new WeakMap();
@@ -80,6 +81,52 @@ function renderTopbar(state) {
   if (authForm) topbar.querySelector("[data-platform55-auth-slot]")?.append(authForm);
 }
 
+function renderNotificationDrawer(state) {
+  const items = Array.isArray(state.options.notificationSummary?.items)
+    ? state.options.notificationSummary.items.slice(0, 8)
+    : [];
+  const content = state.notificationDrawer.querySelector("[data-platform55-notification-items]");
+  if (!content) return;
+  content.innerHTML = items.length
+    ? items.map((item) => `
+        <article class="rw-notification-item">
+          <rw-icon name="${escapeHtml(item.icon || "bell")}"></rw-icon>
+          <span><strong>${escapeHtml(item.title || "Notification")}</strong><small>${escapeHtml(item.detail || "No additional detail.")}</small></span>
+        </article>`).join("")
+    : '<p class="rw-notification-empty">No unread shell notifications.</p>';
+}
+
+function createNotificationDrawer(state) {
+  const host = state.doc.createElement("aside");
+  host.className = "rw-notification-drawer";
+  host.dataset.platform55NotificationDrawer = "true";
+  host.hidden = true;
+  host.setAttribute("aria-hidden", "true");
+  host.setAttribute("aria-labelledby", "rw-notification-title");
+  host.innerHTML = `
+    <header><div><small>Notifications</small><h2 id="rw-notification-title">Current workspace</h2></div><button class="rw-icon-button" type="button" data-platform55-notifications-close aria-label="Close notifications"><rw-icon name="close"></rw-icon></button></header>
+    <div data-platform55-notification-items></div>
+    <footer>Read-only summary · No notification state is changed here.</footer>`;
+  state.doc.body.append(host);
+  state.notificationDrawer = host;
+  renderNotificationDrawer(state);
+}
+
+function closeNotifications(state, { returnFocus = false } = {}) {
+  state.notificationDrawer.hidden = true;
+  state.notificationDrawer.setAttribute("aria-hidden", "true");
+  const trigger = state.topbar.querySelector("[data-platform55-notifications]");
+  trigger?.setAttribute("aria-expanded", "false");
+  if (returnFocus) trigger?.focus({ preventScroll: true });
+}
+
+function openNotifications(state) {
+  state.notificationDrawer.hidden = false;
+  state.notificationDrawer.setAttribute("aria-hidden", "false");
+  state.topbar.querySelector("[data-platform55-notifications]")?.setAttribute("aria-expanded", "true");
+  state.notificationDrawer.querySelector("[data-platform55-notifications-close]")?.focus({ preventScroll: true });
+}
+
 function readCollapsed(view) {
   try {
     return view?.localStorage?.getItem(NAV_STORAGE_KEY) === "true";
@@ -134,12 +181,21 @@ function bindShell(state) {
   }, { signal });
   state.topbar.addEventListener("click", (event) => {
     if (event.target.closest("[data-platform55-nav-open]")) openMobileNavigation(state);
+    if (event.target.closest("[data-platform55-notifications]")) {
+      state.notificationDrawer.hidden ? openNotifications(state) : closeNotifications(state, { returnFocus: true });
+    }
+  }, { signal });
+  state.notificationDrawer.addEventListener("click", (event) => {
+    if (event.target.closest("[data-platform55-notifications-close]")) closeNotifications(state, { returnFocus: true });
   }, { signal });
   state.scrim.addEventListener("click", () => closeMobileNavigation(state, { returnFocus: true }), { signal });
   state.doc.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && state.app.dataset.mobileNavOpen === "true") {
       event.preventDefault();
       closeMobileNavigation(state, { returnFocus: true });
+    } else if (event.key === "Escape" && !state.notificationDrawer.hidden) {
+      event.preventDefault();
+      closeNotifications(state, { returnFocus: true });
     }
   }, { signal });
   state.doc.defaultView?.addEventListener("resize", () => {
@@ -160,6 +216,7 @@ function applyModel(state) {
   }
   const status = state.topbar.querySelector("[data-platform55-system-status] span");
   if (status) status.textContent = state.options.status || "Status unavailable";
+  renderNotificationDrawer(state);
   doc.title = `Rateware ${model.activeRoute.title}`;
 }
 
@@ -201,9 +258,17 @@ export function mountPlatform55Shell({
   mountedShells.set(doc, state);
   renderSidebar(state);
   renderTopbar(state);
+  createNotificationDrawer(state);
   setCollapsed(state, readCollapsed(doc.defaultView));
   closeMobileNavigation(state);
   bindShell(state);
+  state.search = initPlatform55Search({
+    trigger: state.topbar.querySelector("[data-platform55-search-trigger]"),
+    routes: state.model.navigation,
+    actions: [],
+    accessContext: state.options.accessContext,
+    root: doc
+  });
   applyModel(state);
   return state;
 }
@@ -223,6 +288,8 @@ export function unmountPlatform55Shell({ root = globalThis.document } = {}) {
   const state = mountedShells.get(doc);
   if (!state) return;
   state.abort.abort();
+  state.search?.destroy();
+  state.notificationDrawer.remove();
   state.sidebar.replaceChildren();
   state.topbar.replaceChildren();
   if (state.authForm) state.topbar.append(state.authForm);

@@ -6,6 +6,7 @@ import {
   visibleNavigation,
   shellModel
 } from "../src/platform55-shell-model.js";
+import { searchShellCommands } from "../src/platform55-search.js";
 
 const css = readFileSync("src/platform55-tokens.css", "utf8");
 const operatePlan = readFileSync(
@@ -158,3 +159,28 @@ assert.match(shellCss, /grid-template-columns:\s*var\(--rw-sidebar-expanded\)\s+
 assert.match(shellCss, /@media\s*\(max-width:\s*1320px\)/);
 assert.match(shellCss, /@media\s*\(max-width:\s*900px\)/);
 assert.match(shellCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+
+const searchOptions = {
+  routes: PLATFORM55_ROUTES,
+  actions: [],
+  accessContext: { can: () => true },
+  limit: 12
+};
+const reviewResults = searchShellCommands("review", searchOptions);
+assert.equal(reviewResults[0]?.key, "staging-review");
+assert.equal(searchShellCommands("<script>", searchOptions).length, 0);
+assert.ok(searchShellCommands("rate", searchOptions).length <= 12);
+assert.ok(searchShellCommands("admin", { ...searchOptions, accessContext: { can: () => false } }).every((row) => row.requiredAction == null));
+assert.throws(() => searchShellCommands("rate", {
+  ...searchOptions,
+  actions: [{ key: "unsafe", label: "Unsafe", path: "https://example.com" }]
+}), /relative/i);
+
+const searchSource = readFileSync("src/platform55-search.js", "utf8");
+assert.doesNotMatch(searchSource, /fetch\(|authenticatedFetch|supabase/i);
+assert.match(searchSource, /ctrlKey/);
+assert.match(searchSource, /metaKey/);
+assert.match(searchSource, /ArrowDown/);
+assert.match(searchSource, /ArrowUp/);
+assert.match(searchSource, /Escape/);
+assert.match(searchSource, /focus/);
