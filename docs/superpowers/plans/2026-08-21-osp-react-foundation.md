@@ -6,7 +6,7 @@
 
 **Architecture:** Build a standalone Vite SPA in `apps/osp` and keep the delivered Supabase Edge Functions as the only browser-facing data boundary. Kinde PKCE supplies the bearer token through an injected auth port; a typed OSP client calls `provider-onboarding-api` and `provider-gmail-intake-api`; TanStack Query renders read-only operational state. The legacy HTML surfaces remain intact during this phase, but the new app contains no iframe and does not expose any consequential command.
 
-**Tech Stack:** Node.js >=22.12, pnpm 11.19, React 19.2, TypeScript 7, Vite 8, TanStack Router 1, TanStack Query 5, Kinde PKCE JS 4, Zod 4, Vitest 4, React Testing Library 16, Playwright 1.62, existing Supabase/Postgres/Storage/Edge Functions.
+**Tech Stack:** Node.js >=22.12, pnpm 11.19, React 19.2, TypeScript 6.0.3, Vite 8, TanStack Router 1, TanStack Query 5, Kinde PKCE JS 4, Zod 4, Vitest 4, React Testing Library 16, Playwright 1.62, existing Supabase/Postgres/Storage/Edge Functions.
 
 **Spec:** `docs/superpowers/specs/2026-08-21-osp-customer-setup-rebuild-design.md`
 
@@ -256,7 +256,7 @@ Use this complete manifest:
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.11.0",
     "jsdom": "30.0.1",
-    "typescript": "7.0.2",
+    "typescript": "6.0.3",
     "typescript-eslint": "8.67.0",
     "vite": "8.2.2",
     "vitest": "4.1.11"
