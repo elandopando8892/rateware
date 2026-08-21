@@ -184,30 +184,30 @@ const ospSharedMetadata = {
 };
 
 const ospAuthorizationFingerprints = {
-  "edge.provider-onboarding-api.begin_provider_entity_upload": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.cancel_provider_onboarding_case": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.claim_provider_entity_document_review": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.confirm_provider_entity_upload": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.create_provider_onboarding_release_package": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.decide_provider_entity_review_field": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.evaluate_provider_onboarding_readiness": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.finalize_provider_entity_document_review": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.get_provider_360": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.get_provider_communication_thread": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.get_provider_onboarding_case": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.list_provider_communications_inbox": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.list_provider_document_reviews": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.list_provider_entity_vault": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.list_provider_onboarding_approvals": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.list_provider_onboarding_delivery": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.list_provider_onboarding_field_review": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.list_provider_onboarding_workspace": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.list_provider_service_command_center": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.open_provider_onboarding_case": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.promote_provider_entity_review_facts": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.reconcile_provider_onboarding_case": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.record_provider_onboarding_requirement_waiver": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a",
-  "edge.provider-onboarding-api.revoke_provider_onboarding_requirement_waiver": "53b4f22987bfb077dc91afc12fbe13b48fd6cc46705844e74974e72a97ce166a"
+  "edge.provider-onboarding-api.begin_provider_entity_upload": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.cancel_provider_onboarding_case": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.claim_provider_entity_document_review": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.confirm_provider_entity_upload": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.create_provider_onboarding_release_package": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.decide_provider_entity_review_field": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.evaluate_provider_onboarding_readiness": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.finalize_provider_entity_document_review": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.get_provider_360": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.get_provider_communication_thread": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.get_provider_onboarding_case": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.list_provider_communications_inbox": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.list_provider_document_reviews": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.list_provider_entity_vault": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.list_provider_onboarding_approvals": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.list_provider_onboarding_delivery": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.list_provider_onboarding_field_review": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.list_provider_onboarding_workspace": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.list_provider_service_command_center": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.open_provider_onboarding_case": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.promote_provider_entity_review_facts": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.reconcile_provider_onboarding_case": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.record_provider_onboarding_requirement_waiver": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
+  "edge.provider-onboarding-api.revoke_provider_onboarding_requirement_waiver": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49"
 };
 
 const ospMetadataFingerprints = {
@@ -252,7 +252,7 @@ const ospSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.write',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -269,7 +269,7 @@ const ospSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.write',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -286,7 +286,7 @@ const ospSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.write',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -303,7 +303,7 @@ const ospSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.write',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -320,7 +320,7 @@ const ospSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.write',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -337,7 +337,7 @@ const ospSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.write',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -354,7 +354,7 @@ const ospSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.write',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -371,7 +371,7 @@ const ospSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.write',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -388,7 +388,7 @@ const ospSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.read',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -405,7 +405,7 @@ const ospSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.read',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -422,7 +422,7 @@ const ospSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.read',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -439,7 +439,7 @@ const ospSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.read',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -456,7 +456,7 @@ const ospSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.read',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -473,7 +473,7 @@ const ospSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.read',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -490,7 +490,7 @@ const ospSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.read',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -507,7 +507,7 @@ const ospSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.read',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -524,7 +524,7 @@ const ospSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.read',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -541,7 +541,7 @@ const ospSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.read',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -558,7 +558,7 @@ const ospSurfaces = [
     sensitivity: 'high',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.read',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -575,7 +575,7 @@ const ospSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.write',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -592,7 +592,7 @@ const ospSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.write',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -609,7 +609,7 @@ const ospSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.write',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -626,7 +626,7 @@ const ospSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.write',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
   {
@@ -643,7 +643,7 @@ const ospSurfaces = [
     sensitivity: 'critical',
     tenantRelevance: 'tenant-scoped',
     proposedPermissionKey: 'provider.onboarding.write',
-    sourceFingerprint: '02e39865ed1eb273a2832275445407a613675bba137fb4447a1cc7e36b1a0116',
+    sourceFingerprint: 'e7e8601cbf06f7a4444e66c3fcca7ba90ff26bbd8ec8bc3a4f3a9fc9c0ca034b',
     ...ospSharedMetadata,
   },
 ];
