@@ -294,14 +294,7 @@ function renderRateBookHealth(summary) {
   rateBookHealthPanel.classList.remove("hidden");
 }
 
-function renderSummary(summary) {
-  setMetric(metricPending, summary.pending_review);
-  setMetric(metricFailed, summary.failed_uploads);
-  setMetric(metricApproved, summary.approved_rows);
-  setMetric(metricProcurement, summary.procurement_vendors);
-  setMetric(metricRfxOpen, summary.rfx_open_events);
-  setMetric(metricRfxBids, summary.rfx_bids);
-
+function renderBusinessLifecycle(summary) {
   setText(workflowStaging, `${formatCount(summary.pending_review)} pending rows`);
   setText(workflowFailed, `${formatCount(summary.failed_uploads)} files need review`);
   setText(workflowRfx, `${formatCount(summary.rfx_open_events)} open Bid Rooms`);
@@ -313,8 +306,21 @@ function renderSummary(summary) {
   setText(progressRateware, `${formatCount(summary.approved_rows)} approved`);
   setText(progressRfx, `${formatCount(summary.rfx_open_events)} events`);
   setText(progressOutreach, `${formatCount(summary.rfx_bids)} bids`);
+}
 
+function renderNetworkPulse(summary) {
+  setMetric(metricPending, summary.pending_review);
+  setMetric(metricFailed, summary.failed_uploads);
+  setMetric(metricApproved, summary.approved_rows);
+  setMetric(metricProcurement, summary.procurement_vendors);
+  setMetric(metricRfxOpen, summary.rfx_open_events);
+  setMetric(metricRfxBids, summary.rfx_bids);
   renderRateBookHealth(summary);
+}
+
+function renderSummary(summary) {
+  renderBusinessLifecycle(summary);
+  renderNetworkPulse(summary);
   renderNextBestAction(summary);
   renderPriorityQueue(summary);
   renderMyWork(summary);

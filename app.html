@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="./src/styles.css" />
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-command-center.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="app">
     <div class="rw-app" data-platform55-app>
@@ -20,7 +21,7 @@
           </form>
         </header>
         <main class="rw-main" id="main-content">
-          <div class="rw-page" data-platform55-page-content>
+          <div class="rw-command-center rw-page" data-platform55-page-content>
             <header class="rw-page-header">
               <div>
                 <p class="rw-page-eyebrow">Home · Today</p>
@@ -28,7 +29,7 @@
                 <p>Prioritized work across commercial, procurement, operations, and finance.</p>
               </div>
             </header>
-          <section id="next-best-action" class="next-best-action-card" aria-live="polite">
+          <section id="next-best-action" class="rw-hero next-best-action-card" aria-live="polite">
             <div>
               <p class="eyebrow">Next best action</p>
               <h2 id="next-action-title">Checking today's work...</h2>
@@ -37,7 +38,7 @@
             <a id="next-action-link" class="page-primary-action" href="#" aria-disabled="true">Loading</a>
           </section>
 
-          <section class="workspace-panel dashboard-priority-panel" aria-labelledby="priority-queue-title">
+          <section class="rw-command-priority workspace-panel dashboard-priority-panel" aria-labelledby="priority-queue-title">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Priority queue</p>
@@ -53,7 +54,7 @@
             </div>
           </section>
 
-          <section class="workspace-panel dashboard-my-work-panel" aria-labelledby="my-work-title">
+          <section class="rw-my-work workspace-panel dashboard-my-work-panel" aria-labelledby="my-work-title">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">My Work</p>
@@ -69,49 +70,42 @@
             </div>
           </section>
 
-          <section class="workspace-panel dashboard-workflow-panel dashboard-workflow-panel--progress" aria-label="Procurement workflow">
+          <section id="business-lifecycle" class="rw-lifecycle workspace-panel dashboard-workflow-panel dashboard-workflow-panel--progress" aria-label="Business lifecycle">
             <div class="section-heading compact split-heading">
               <div>
-                <p class="eyebrow">Workflow status</p>
-                <h2>Where work is waiting</h2>
+                <p class="eyebrow">Business lifecycle</p>
+                <h2>From source to awarded capacity</h2>
               </div>
               <span class="section-caption">A quick path from source files to awarded capacity.</span>
             </div>
             <div class="workflow-progress-panel">
               <a class="workflow-progress-step" href="./upload-center.html">
-                <span>1</span>
-                <strong>Upload</strong>
-                <small id="progress-upload">0 files</small>
-              </a>
-              <a class="workflow-progress-step" href="./upload-history.html">
-                <span>2</span>
-                <strong>Interpret</strong>
+                <span>Source files</span>
+                <strong id="progress-upload">0 files</strong>
                 <small id="progress-interpret">0 failed</small>
               </a>
               <a class="workflow-progress-step" href="./staging-review.html">
-                <span>3</span>
-                <strong>Review</strong>
-                <small id="progress-review">0 pending</small>
+                <span>Review</span>
+                <strong id="progress-review">0 pending</strong>
               </a>
               <a class="workflow-progress-step" href="./rateware.html">
-                <span>4</span>
-                <strong>Rateware</strong>
-                <small id="progress-rateware">0 approved</small>
+                <span>Rateware</span>
+                <strong id="progress-rateware">0 approved</strong>
               </a>
               <a class="workflow-progress-step" href="./rfx-events.html">
-                <span>5</span>
-                <strong>Bid Room</strong>
+                <span>Bid Room</span>
+                <strong id="metric-rfx-open">-</strong>
                 <small id="progress-rfx">0 events</small>
               </a>
               <a class="workflow-progress-step" href="./rfx-events.html?view=responses">
-                <span>6</span>
-                <strong>Live bids</strong>
+                <span>Responses</span>
+                <strong id="metric-rfx-bids">-</strong>
                 <small id="progress-outreach">0 bids</small>
               </a>
             </div>
           </section>
 
-          <section id="rate-book-health" class="workspace-panel rate-book-health-panel hidden" aria-label="Rate book health">
+          <section id="rate-book-health" class="rw-command-health workspace-panel rate-book-health-panel hidden" aria-label="Rate book health">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Rate book health</p>
@@ -149,10 +143,10 @@
             </div>
           </section>
 
-          <section class="workspace-panel dashboard-metrics-panel" aria-label="Dashboard metrics">
+          <section id="network-pulse" class="rw-network-pulse workspace-panel dashboard-metrics-panel" aria-label="Network pulse">
             <div class="section-heading compact">
-              <p class="eyebrow">Signals</p>
-              <h2>At a glance</h2>
+              <p class="eyebrow">Network pulse</p>
+              <h2>Scoped operational signals</h2>
             </div>
             <div class="metric-grid">
               <a class="metric-card" href="./staging-review.html">
@@ -171,18 +165,10 @@
                 <span>Procurement vendors</span>
                 <strong id="metric-procurement">-</strong>
               </a>
-              <a class="metric-card" href="./rfx-events.html">
-                <span>Open Bid Room</span>
-                <strong id="metric-rfx-open">-</strong>
-              </a>
-              <a class="metric-card" href="./rfx-events.html">
-                <span>Bid responses</span>
-                <strong id="metric-rfx-bids">-</strong>
-              </a>
             </div>
           </section>
 
-          <section class="workspace-panel dashboard-workflow-panel">
+          <section class="rw-command-shortcuts workspace-panel dashboard-workflow-panel">
             <div class="section-heading compact">
               <p class="eyebrow">Shortcuts</p>
               <h2>Workspaces</h2>

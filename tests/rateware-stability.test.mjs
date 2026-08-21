@@ -364,14 +364,14 @@ assert.match(dashboardSource, /nextActionLink\.removeAttribute\("aria-disabled"\
 assert.match(stylesSource, /\.next-best-action-card a\[aria-disabled="true"\]/, "Command Center loading action should look and behave disabled");
 const nextActionPosition = appHtml.indexOf('id="next-best-action"');
 const priorityQueuePosition = appHtml.indexOf('id="priority-queue-title"');
-const workflowStatusPosition = appHtml.indexOf('aria-label="Procurement workflow"');
-const metricsPosition = appHtml.indexOf('aria-label="Dashboard metrics"');
+const workflowStatusPosition = appHtml.indexOf('id="business-lifecycle"');
+const metricsPosition = appHtml.indexOf('id="network-pulse"');
 assert.ok(nextActionPosition >= 0 && priorityQueuePosition > nextActionPosition, "Command Center should place the priority queue after the next action");
-assert.ok(priorityQueuePosition >= 0 && workflowStatusPosition > priorityQueuePosition, "Command Center should show workflow status after priorities");
-assert.ok(workflowStatusPosition >= 0 && metricsPosition > workflowStatusPosition, "Command Center should keep metrics below operational workflow context");
-assert.match(appHtml, /class="workspace-panel dashboard-priority-panel" aria-labelledby="priority-queue-title"/, "Command Center priority queue should have a stable accessible heading");
+assert.ok(priorityQueuePosition >= 0 && workflowStatusPosition > priorityQueuePosition, "Command Center should show business lifecycle after priorities in source order");
+assert.ok(workflowStatusPosition >= 0 && metricsPosition > workflowStatusPosition, "Command Center should keep network pulse after lifecycle context in source order");
+assert.match(appHtml, /class="rw-command-priority workspace-panel dashboard-priority-panel" aria-labelledby="priority-queue-title"/, "Command Center priority queue should have a stable accessible heading");
 assert.doesNotMatch(appHtml, /class="secondary-link" href="\.\/business-intelligence\.html">Ask AI Analyst<\//, "Command Center should keep the AI action in the global header instead of duplicating it in Priority Queue");
-assert.match(appHtml, /<p class="eyebrow">Signals<\/p>\s+<h2>At a glance<\/h2>/, "Command Center metrics should read as supporting signals");
+assert.match(appHtml, /<p class="eyebrow">Network pulse<\/p>\s+<h2>Scoped operational signals<\/h2>/, "Command Center metrics should read as scoped network signals");
 assert.match(stylesSource, /\.dashboard-priority-panel \.priority-queue \{[\s\S]*grid-template-columns: repeat\(2/, "Command Center priorities should use a compact two-column layout");
 
 for (const domain of ["gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "yahoo.com.mx"]) {
