@@ -67,7 +67,7 @@ function renderTopbar(state) {
   topbar.replaceChildren();
   topbar.insertAdjacentHTML("afterbegin", `
     <button class="rw-icon-button rw-mobile-menu" type="button" data-platform55-nav-open aria-label="Open navigation"><rw-icon name="menu"></rw-icon></button>
-    <button class="rw-search-trigger" type="button" data-platform55-search-trigger aria-haspopup="dialog">
+    <button class="rw-search-trigger" type="button" data-platform55-search-trigger aria-haspopup="dialog" aria-label="Search modules and actions">
       <rw-icon name="search"></rw-icon><span>Search modules and actions...</span><kbd>Ctrl K</kbd>
     </button>
     <div class="rw-topbar-actions">
@@ -75,7 +75,7 @@ function renderTopbar(state) {
       <button class="rw-icon-button rw-notification-button" type="button" data-platform55-notifications aria-label="Notifications">
         <rw-icon name="bell"></rw-icon><b data-platform55-notification-count hidden>0</b>
       </button>
-      <a class="rw-ask-ai" href="./business-intelligence.html?view=analyst"><rw-icon name="ai"></rw-icon><span>Ask AI</span></a>
+      <a class="rw-ask-ai" href="./business-intelligence.html?view=analyst" aria-label="Ask AI"><rw-icon name="ai"></rw-icon><span>Ask AI</span></a>
       <div class="rw-auth-slot" data-platform55-auth-slot></div>
     </div>`);
   if (authForm) topbar.querySelector("[data-platform55-auth-slot]")?.append(authForm);

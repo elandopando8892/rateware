@@ -156,6 +156,16 @@ assert.doesNotMatch(shellSource, /fetch\(|authenticatedFetch|supabase|localStora
 assert.match(shellSource, /export function mountPlatform55Shell/);
 assert.match(shellSource, /export function updatePlatform55Shell/);
 assert.match(shellSource, /export function unmountPlatform55Shell/);
+assert.match(
+  shellSource,
+  /class="rw-search-trigger"[^>]*aria-label="Search modules and actions"/,
+  "The mobile search control must retain an accessible name when its visible label is hidden"
+);
+assert.match(
+  shellSource,
+  /class="rw-ask-ai"[^>]*aria-label="Ask AI"/,
+  "The mobile Ask AI control must retain an accessible name when its visible label is hidden"
+);
 assert.deepEqual(
   mobileNavigationAccessibility({ isMobile: true, isOpen: false }),
   { ariaHidden: "true", inert: true }
