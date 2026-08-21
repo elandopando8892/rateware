@@ -9,6 +9,7 @@ import {
 import { type OspClient } from '../api/osp-client';
 import { type AuthPort } from '../auth/auth-port';
 import { RoutePlaceholder } from '../components/RoutePlaceholder';
+import { PipelineOverview } from '../features/pipeline/PipelineOverview';
 import { AppShell } from './AppShell';
 
 export type RouterContext = {
@@ -16,16 +17,12 @@ export type RouterContext = {
   ospClient: OspClient;
 };
 
-function PipelinePlaceholder() {
-  return (
-    <RoutePlaceholder
-      title="Pipeline"
-      message="La vista operativa de consulta se habilitará en el siguiente incremento."
-    />
-  );
-}
-
 export function createOspRouter(context: RouterContext, history?: RouterHistory) {
+  function PipelineRoute() {
+    const { ospClient } = pipelineRoute.useRouteContext();
+    return <PipelineOverview client={ospClient} />;
+  }
+
   const rootRoute = createRootRouteWithContext<RouterContext>()({ component: Outlet });
   const appRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -48,7 +45,7 @@ export function createOspRouter(context: RouterContext, history?: RouterHistory)
   const pipelineRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'pipeline',
-    component: PipelinePlaceholder,
+    component: PipelineRoute,
   });
   const caseRoute = createRoute({
     getParentRoute: () => appRoute,
