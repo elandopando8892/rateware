@@ -56,7 +56,7 @@ export function PipelineOverview({ client }: { client: OspClient }) {
         {pipeline.isPending ? (
           <p role="status" aria-label="Cargando conteos del pipeline">Cargando conteos…</p>
         ) : null}
-        {pipeline.data ? (
+        {pipeline.data && !pipeline.isError ? (
           <dl className="pipeline-metrics" role="group" aria-label="Conteos del pipeline">
             <div><dt>Total</dt><dd>{pipeline.data.data.metrics.total}</dd></div>
             <div><dt>Bloqueados</dt><dd>{pipeline.data.data.metrics.blocked}</dd></div>
