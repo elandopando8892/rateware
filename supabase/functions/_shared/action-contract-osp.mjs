@@ -31,31 +31,37 @@ const ospSharedMetadata = {
   contractVersion,
 };
 
+// Refreshed once, deliberately, when the runtime's caller-fault failures were given
+// their real HTTP statuses: six shared modules now import _shared/http-error.ts, which
+// enters the import closure and moves the envelope for all 24 actions at once. The
+// change adds no privilege, no caller and no dependency the analyser had not already
+// observed -- a 500 became a 400, 401, 403, 404 or 409. Rateware's envelopes did not
+// move, which is the separation doing its job.
 const ospAuthorizationFingerprints = {
-  "edge.provider-onboarding-api.begin_provider_entity_upload": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.cancel_provider_onboarding_case": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.claim_provider_entity_document_review": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.confirm_provider_entity_upload": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.create_provider_onboarding_release_package": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.decide_provider_entity_review_field": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.evaluate_provider_onboarding_readiness": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.finalize_provider_entity_document_review": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.get_provider_360": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.get_provider_communication_thread": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.get_provider_onboarding_case": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.list_provider_communications_inbox": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.list_provider_document_reviews": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.list_provider_entity_vault": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.list_provider_onboarding_approvals": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.list_provider_onboarding_delivery": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.list_provider_onboarding_field_review": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.list_provider_onboarding_workspace": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.list_provider_service_command_center": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.open_provider_onboarding_case": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.promote_provider_entity_review_facts": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.reconcile_provider_onboarding_case": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.record_provider_onboarding_requirement_waiver": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49",
-  "edge.provider-onboarding-api.revoke_provider_onboarding_requirement_waiver": "8863f546014bcddbfb6c2f98c1c0f6ee28d1c44f46ac60a5d17a4cf43c579d49"
+  "edge.provider-onboarding-api.begin_provider_entity_upload": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.cancel_provider_onboarding_case": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.claim_provider_entity_document_review": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.confirm_provider_entity_upload": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.create_provider_onboarding_release_package": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.decide_provider_entity_review_field": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.evaluate_provider_onboarding_readiness": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.finalize_provider_entity_document_review": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.get_provider_360": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.get_provider_communication_thread": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.get_provider_onboarding_case": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.list_provider_communications_inbox": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.list_provider_document_reviews": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.list_provider_entity_vault": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.list_provider_onboarding_approvals": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.list_provider_onboarding_delivery": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.list_provider_onboarding_field_review": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.list_provider_onboarding_workspace": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.list_provider_service_command_center": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.open_provider_onboarding_case": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.promote_provider_entity_review_facts": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.reconcile_provider_onboarding_case": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.record_provider_onboarding_requirement_waiver": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024",
+  "edge.provider-onboarding-api.revoke_provider_onboarding_requirement_waiver": "f8bcc80a290a1a08410a9abb2bee62607c93e28803a4b40a6472c20f5a4a5024"
 };
 
 const ospMetadataFingerprints = {

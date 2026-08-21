@@ -58,7 +58,7 @@ const dispatch = source.slice(
 
 test('commands require an identified user', () => {
   assert.match(source, /const actorId = cleanText\(user\.owner_user_id\);/);
-  assert.match(source, /if \(!actorId\) throw new Error\("Provider Service commands require an identified user\."\);/);
+  assert.match(source, /if \(!actorId\) throw unauthorized\("Provider Service commands require an identified user\."\);/);
 });
 
 test('the resolved tenant overwrites any caller-supplied organization id', () => {

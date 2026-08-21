@@ -19,6 +19,7 @@ import {
   beginProviderEntitySignedUpload,
   confirmProviderEntitySignedUpload,
 } from "../_shared/provider-entity-upload.ts";
+import { ClientError, unauthorized } from "../_shared/http-error.ts";
 
 // Deliberately NOT wired:
 //   decideProviderOnboardingReleasePackage — duplicates the
@@ -116,13 +117,13 @@ function clampInteger(value: unknown, fallback: number, minimum: number, maximum
 
 function requireUuid(value: unknown, field: string) {
   const normalized = cleanText(value);
-  if (!normalized || !UUID_PATTERN.test(normalized)) throw new Error(`${field} must be a valid UUID.`);
+  if (!normalized || !UUID_PATTERN.test(normalized)) throw new ClientError(`${field} must be a valid UUID.`);
   return normalized;
 }
 
 function optionalUuid(value: unknown, field: string) {
   const normalized = cleanText(value);
-  if (normalized && !UUID_PATTERN.test(normalized)) throw new Error(`${field} must be a valid UUID.`);
+  if (normalized && !UUID_PATTERN.test(normalized)) throw new ClientError(`${field} must be a valid UUID.`);
   return normalized;
 }
 
@@ -179,7 +180,7 @@ async function listProviderServiceCommandCenter(
   const legalEntityId = optionalUuid(body.legal_entity_id, "legal_entity_id");
 
   const queue = cleanText(body.queue)?.toLowerCase() || "all";
-  if (!COMMAND_CENTER_QUEUES.has(queue)) throw new Error("Unsupported Provider Service queue.");
+  if (!COMMAND_CENTER_QUEUES.has(queue)) throw new ClientError("Unsupported Provider Service queue.");
 
   const limit = clampInteger(body.limit, 50, 10, 100);
   const offset = clampInteger(body.offset, 0, 0, 100000);
@@ -241,7 +242,7 @@ async function listProviderCommunicationsInbox(
   const providerRelationshipId = optionalUuid(body.provider_relationship_id, "provider_relationship_id");
   const vendorId = optionalUuid(body.vendor_id, "vendor_id");
   const queue = cleanText(body.queue)?.toLowerCase() || "all";
-  if (!COMMUNICATION_INBOX_QUEUES.has(queue)) throw new Error("Unsupported communications queue.");
+  if (!COMMUNICATION_INBOX_QUEUES.has(queue)) throw new ClientError("Unsupported communications queue.");
 
   const limit = clampInteger(body.limit, 50, 10, 100);
   const offset = clampInteger(body.offset, 0, 0, 100000);
@@ -380,7 +381,7 @@ async function listProviderOnboardingWorkspace(
   body: Record<string, unknown>,
 ) {
   const queue = cleanText(body.queue)?.toLowerCase() || "all";
-  if (!ONBOARDING_QUEUES.has(queue)) throw new Error("Unsupported onboarding queue.");
+  if (!ONBOARDING_QUEUES.has(queue)) throw new ClientError("Unsupported onboarding queue.");
   const limit = clampInteger(body.limit, 40, 10, 100);
   const offset = clampInteger(body.offset, 0, 0, 100000);
   const search = safeSearch(body.search);
@@ -606,7 +607,7 @@ const DELIVERY_QUEUES = new Set(["all", "awaiting_approval", "scheduled", "sent"
 // these handlers add tenant scoping and bounds rather than further redaction.
 async function listProviderEntityVault(supabase: any, organizationUuid: string, body: Record<string, unknown>) {
   const queue = cleanText(body.queue)?.toLowerCase() || "all";
-  if (!VAULT_QUEUES.has(queue)) throw new Error("Unsupported Entity Vault queue.");
+  if (!VAULT_QUEUES.has(queue)) throw new ClientError("Unsupported Entity Vault queue.");
   const limit = clampInteger(body.limit, 40, 10, 100);
   const offset = clampInteger(body.offset, 0, 0, 100000);
   const legalEntityId = optionalUuid(body.legal_entity_id, "legal_entity_id");
@@ -684,7 +685,7 @@ async function listProviderOnboardingFieldReview(supabase: any, organizationUuid
 
 async function listProviderOnboardingApprovals(supabase: any, organizationUuid: string, body: Record<string, unknown>) {
   const queue = cleanText(body.queue)?.toLowerCase() || "all";
-  if (!APPROVAL_QUEUES.has(queue)) throw new Error("Unsupported approval queue.");
+  if (!APPROVAL_QUEUES.has(queue)) throw new ClientError("Unsupported approval queue.");
   const limit = clampInteger(body.limit, 40, 10, 100);
   const offset = clampInteger(body.offset, 0, 0, 100000);
   const caseId = optionalUuid(body.case_id, "case_id");
@@ -732,7 +733,7 @@ async function listProviderOnboardingApprovals(supabase: any, organizationUuid: 
 
 async function listProviderOnboardingDelivery(supabase: any, organizationUuid: string, body: Record<string, unknown>) {
   const queue = cleanText(body.queue)?.toLowerCase() || "all";
-  if (!DELIVERY_QUEUES.has(queue)) throw new Error("Unsupported delivery queue.");
+  if (!DELIVERY_QUEUES.has(queue)) throw new ClientError("Unsupported delivery queue.");
   const limit = clampInteger(body.limit, 40, 10, 100);
   const offset = clampInteger(body.offset, 0, 0, 100000);
   const caseId = optionalUuid(body.case_id, "case_id");
@@ -784,7 +785,7 @@ const DOCUMENT_REVIEW_QUEUES = new Set(["all", "unassigned", "in_review", "block
 
 async function listProviderDocumentReviews(supabase: any, organizationUuid: string, body: Record<string, unknown>) {
   const queue = cleanText(body.queue)?.toLowerCase() || "all";
-  if (!DOCUMENT_REVIEW_QUEUES.has(queue)) throw new Error("Unsupported document review queue.");
+  if (!DOCUMENT_REVIEW_QUEUES.has(queue)) throw new ClientError("Unsupported document review queue.");
   const limit = clampInteger(body.limit, 40, 10, 100);
   const offset = clampInteger(body.offset, 0, 0, 100000);
   const legalEntityId = optionalUuid(body.legal_entity_id, "legal_entity_id");
@@ -813,7 +814,7 @@ export async function handleProviderServiceAction(
   body: Record<string, unknown>,
 ) {
   const action = cleanText(body.action);
-  if (!isProviderServiceAction(action)) throw new Error("Unknown Provider Service action.");
+  if (!isProviderServiceAction(action)) throw new ClientError("Unknown Provider Service action.");
 
   const { workspaceId, organizationUuid } = await resolveProviderServiceScope(supabase, user);
 
@@ -823,7 +824,7 @@ export async function handleProviderServiceAction(
     // resolved tenant, never the caller-supplied one — the shared command modules
     // take organization_id as input, so it is overwritten here rather than merged.
     const actorId = cleanText(user.owner_user_id);
-    if (!actorId) throw new Error("Provider Service commands require an identified user.");
+    if (!actorId) throw unauthorized("Provider Service commands require an identified user.");
     const input = { ...body, organization_id: organizationUuid };
     return { data: await command(supabase, input, actorId) };
   }

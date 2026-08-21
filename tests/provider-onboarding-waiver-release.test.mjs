@@ -87,7 +87,7 @@ test('the manifest covers declared gaps, so approvers sign off on the gaps too',
 
 test('a package with only waivers and no evidence is refused', () => {
   // Something has to be released. An all-gaps package is not a submission.
-  assert.match(source, /if\(!satisfiedResults\.length\) throw new Error\('Complete evaluation has no releasable evidence references\.'\);/);
+  assert.match(source, /if\(!satisfiedResults\.length\) throw conflict\('Complete evaluation has no releasable evidence references\.'\);/);
 });
 
 test('the item hash check rejects a missing hash rather than evaluating to NULL', () => {

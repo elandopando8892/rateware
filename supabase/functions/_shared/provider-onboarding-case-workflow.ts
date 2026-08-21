@@ -1,15 +1,17 @@
+import { ClientError, conflict, notFound } from './http-error.ts';
+
 const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PARTY=/^[A-Za-z0-9][A-Za-z0-9_.:-]{1,127}$/;
 const PROGRAM=/^[a-z][a-z0-9_]{1,63}$/;
 const JURISDICTION=/^[A-Z]{2}(-[A-Z0-9]{1,3})?$/;
 function checked(value:unknown,field:string,pattern:RegExp){
   const result=String(value||'').trim();
-  if(!pattern.test(result)) throw new Error(`${field} is invalid.`);
+  if(!pattern.test(result)) throw new ClientError(`${field} is invalid.`);
   return result;
 }
 function uuid(value:unknown,field:string){return checked(value,field,UUID_PATTERN);}
-function actor(value:unknown){const result=String(value||'').trim();if(!result)throw new Error('actor_id is required.');return result;}
-function revision(value:unknown){const result=Number(value);if(!Number.isInteger(result)||result<1)throw new Error('expected_revision must be positive.');return result;}
+function actor(value:unknown){const result=String(value||'').trim();if(!result)throw new ClientError('actor_id is required.');return result;}
+function revision(value:unknown){const result=Number(value);if(!Number.isInteger(result)||result<1)throw new ClientError('expected_revision must be positive.');return result;}
 async function caseEvent(supabase:any,row:Record<string,any>,type:string,actorId:string,previousRevision:number|null,payload:Record<string,unknown>={}){
   const result=await supabase.from('provider_onboarding_case_events').insert({
     organization_id:row.organization_id,case_id:row.id,event_type:type,
@@ -74,15 +76,15 @@ export async function reconcileProviderOnboardingCase(supabase:any,input:Record<
     .eq('organization_id',organizationId).eq('id',caseId)
     .eq('revision',expectedRevision).maybeSingle();
   if(current.error) throw current.error;
-  if(!current.data) throw new Error('Onboarding case revision changed.');
-  if(['cancelled','closed'].includes(current.data.case_status)) throw new Error('Closed onboarding cases cannot be reconciled.');
+  if(!current.data) throw conflict('Onboarding case revision changed.');
+  if(['cancelled','closed'].includes(current.data.case_status)) throw conflict('Closed onboarding cases cannot be reconciled.');
 
   const evaluation=await supabase.from('provider_onboarding_readiness_evaluations').select('*')
     .eq('organization_id',organizationId).eq('id',evaluationId)
     .eq('legal_entity_id',current.data.legal_entity_id)
     .eq('program_code',current.data.program_code).maybeSingle();
   if(evaluation.error) throw evaluation.error;
-  if(!evaluation.data||!evaluation.data.completed_at) throw new Error('Completed readiness evaluation was not found for this case.');
+  if(!evaluation.data||!evaluation.data.completed_at) throw notFound('Completed readiness evaluation was not found for this case.');
 
   const results=await supabase.from('provider_onboarding_readiness_results')
     .select('id,requirement_code,result_status,result_reason_code')
@@ -134,7 +136,7 @@ export async function reconcileProviderOnboardingCase(supabase:any,input:Record<
   }).eq('organization_id',organizationId).eq('id',caseId)
     .eq('revision',expectedRevision).select('*').maybeSingle();
   if(updated.error) throw updated.error;
-  if(!updated.data) throw new Error('Onboarding case revision changed during reconciliation.');
+  if(!updated.data) throw conflict('Onboarding case revision changed during reconciliation.');
   await caseEvent(supabase,updated.data,'tasks_reconciled',reconciledBy,expectedRevision,{
     readiness_evaluation_id:evaluationId,evaluation_status:evaluation.data.evaluation_status,
     case_status:nextStatus,open_task_count:desired.length,
@@ -149,7 +151,7 @@ export async function cancelProviderOnboardingCase(supabase:any,input:Record<str
   const expectedRevision=revision(input.expected_revision);
   const cancelledBy=actor(actorId);
   const reason=String(input.reason_code||'').trim();
-  if(!/^[a-z][a-z0-9_]{1,127}$/.test(reason)) throw new Error('reason_code is invalid.');
+  if(!/^[a-z][a-z0-9_]{1,127}$/.test(reason)) throw new ClientError('reason_code is invalid.');
   const now=new Date().toISOString();
   const updated=await supabase.from('provider_onboarding_cases').update({
     case_status:'cancelled',revision:expectedRevision+1,closed_at:now,updated_at:now,
@@ -157,7 +159,7 @@ export async function cancelProviderOnboardingCase(supabase:any,input:Record<str
     .eq('revision',expectedRevision).not('case_status','in','(cancelled,closed)')
     .select('*').maybeSingle();
   if(updated.error) throw updated.error;
-  if(!updated.data) throw new Error('Onboarding case cannot be cancelled.');
+  if(!updated.data) throw conflict('Onboarding case cannot be cancelled.');
   const tasks=await supabase.from('provider_onboarding_case_tasks').update({
     task_status:'cancelled',completed_by_actor_id:cancelledBy,completed_at:now,updated_at:now,
   }).eq('organization_id',organizationId).eq('case_id',caseId).in('task_status',['open','in_progress']);

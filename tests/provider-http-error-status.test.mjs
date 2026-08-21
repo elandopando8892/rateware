@@ -77,3 +77,112 @@ test('the pure validator stays importable by Node', () => {
   assert.ok(!/from '\.\/[a-z-]+\.ts'/.test(validator), 'the .mjs validator must not import a .ts module');
   assert.match(waiverCommands, /catch\(error\)\{\s*\n?\s*throw new ClientError/);
 });
+
+// --- the whole runtime, not just the waiver commands -------------------------------
+//
+// Converting one module proved the mechanism; leaving the other eleven commands on 500
+// meant the same defect was still shipping under a different action name. What follows
+// pins the conversion so it cannot quietly regress.
+
+const COMMAND_MODULES = [
+  'provider-entity-review-commands.ts',
+  'provider-entity-fact-promotion.ts',
+  'provider-onboarding-case-workflow.ts',
+  'provider-onboarding-release-package.ts',
+  'provider-onboarding-readiness.ts',
+  'provider-entity-upload.ts',
+  'provider-onboarding-waiver-commands.ts',
+];
+
+/**
+ * The failures that are OURS, not the caller's, and so must keep answering 500.
+ *
+ * A 500 here is correct and load-bearing: each of these means a row we wrote is
+ * malformed, or the tenant is mis-wired. Retrying will not help the caller, and nobody
+ * should be told "you sent the wrong thing" when they did not. This list is the whole
+ * justification for every remaining bare throw -- if a new one appears, it either
+ * belongs here with a reason, or it is a caller error wearing the wrong status.
+ */
+const INTENTIONAL_500 = new Map([
+  ['provider-entity-review-commands.ts', ['Review field code is invalid.']],
+  ['provider-entity-fact-promotion.ts', [
+    'Review contains an invalid field code.',
+    'Approved field ${field.field_code} has no value.',
+  ]],
+  ['provider-entity-upload.ts', ['Upload session bucket is invalid.']],
+  ['provider-service.ts', [
+    'Organization workspace is required for Provider Service.',
+    'Workspace tenant mapping is incomplete.',
+  ]],
+]);
+
+function bareThrows(source) {
+  return [...source.matchAll(/throw new Error\(\s*[`'"]([^`'"]*)/g)].map((match) => match[1]);
+}
+
+test('every caller-fault failure in the onboarding runtime carries a status', () => {
+  const runtimeSource = readFileSync(`${root}supabase/functions/provider-onboarding-api/provider-service.ts`, 'utf8');
+  const sources = new Map([['provider-service.ts', runtimeSource]]);
+  for (const name of COMMAND_MODULES) {
+    sources.set(name, readFileSync(`${root}supabase/functions/_shared/${name}`, 'utf8'));
+  }
+
+  for (const [name, source] of sources) {
+    const expected = INTENTIONAL_500.get(name) ?? [];
+    const actual = bareThrows(source);
+    assert.deepEqual(actual.sort(), [...expected].sort(),
+      `${name}: the bare throws are not the documented set.\n` +
+      '  A new bare Error becomes a 500. If it is the caller\'s fault, throw ClientError,\n' +
+      '  conflict, notFound, forbidden or unauthorized. If it is ours, add it to\n' +
+      '  INTENTIONAL_500 with the reason.');
+  }
+});
+
+test('a module that classifies errors imports the helper it uses', () => {
+  // Naming conflict() without importing it is a ReferenceError at the moment a caller
+  // makes a mistake -- the exact path least likely to be exercised before release.
+  for (const name of COMMAND_MODULES) {
+    const source = readFileSync(`${root}supabase/functions/_shared/${name}`, 'utf8');
+    const importLine = source.match(/import \{([^}]*)\} from '\.\/http-error\.ts';/);
+    assert.ok(importLine, `${name} classifies errors but does not import http-error.ts`);
+    const imported = new Set(importLine[1].split(',').map((part) => part.trim()).filter(Boolean));
+    const body = source.slice(importLine.index + importLine[0].length);
+    for (const helper of ['conflict', 'notFound', 'forbidden', 'unauthorized']) {
+      if (body.includes(`throw ${helper}(`)) {
+        assert.ok(imported.has(helper), `${name} throws ${helper}() without importing it`);
+      }
+    }
+    if (body.includes('throw new ClientError(')) {
+      assert.ok(imported.has('ClientError'), `${name} throws ClientError without importing it`);
+    }
+  }
+});
+
+test('separation of duties answers 403, not 400 or 500', () => {
+  // A requester who tries to approve their own package sent a perfectly well-formed
+  // request. Telling them it was malformed is a lie, and telling them we broke is worse:
+  // both invite a retry that can never succeed.
+  const review = readFileSync(`${root}supabase/functions/_shared/provider-entity-review-commands.ts`, 'utf8');
+  const release = readFileSync(`${root}supabase/functions/_shared/provider-onboarding-release-package.ts`, 'utf8');
+  assert.match(review, /throw forbidden\('Requester cannot finalize their own review\.'\)/);
+  assert.match(release, /throw forbidden\('Package requester cannot approve their own package\.'\)/);
+  assert.match(helper, /export function forbidden\(message: string\) \{\s*\n\s*return new ClientError\(message, 403\);/);
+  assert.match(helper, /export function unauthorized\(message: string\) \{\s*\n\s*return new ClientError\(message, 401\);/);
+});
+
+test('optimistic-concurrency failures answer 409 rather than 400', () => {
+  // "The revision changed" is not bad input -- the caller sent what was true when they
+  // read it. 409 is the one status that tells them to re-read and retry.
+  const cases = [
+    ['provider-entity-review-commands.ts', 'Review revision changed.'],
+    ['provider-entity-fact-promotion.ts', 'Current fact changed for ${field.field_code}.'],
+    ['provider-onboarding-case-workflow.ts', 'Onboarding case revision changed.'],
+    ['provider-onboarding-release-package.ts', 'Package revision changed during approval.'],
+    ['provider-entity-upload.ts', 'Upload session was already consumed.'],
+  ];
+  for (const [name, message] of cases) {
+    const source = readFileSync(`${root}supabase/functions/_shared/${name}`, 'utf8');
+    assert.ok(source.includes(`throw conflict(\`${message}\`)`) || source.includes(`throw conflict('${message}')`),
+      `${name}: "${message}" should be a 409`);
+  }
+});

@@ -78,6 +78,6 @@ test('nothing is both a command and a read branch', () => {
 
 test('the guard still runs before dispatch', () => {
   // Everything above assumes only declared actions reach the dispatch.
-  assert.match(source, /if \(!isProviderServiceAction\(action\)\) throw new Error\("Unknown Provider Service action\."\);/);
+  assert.match(source, /if \(!isProviderServiceAction\(action\)\) throw new ClientError\("Unknown Provider Service action\."\);/);
   assert.match(source, /return PROVIDER_SERVICE_ACTIONS\.has\(cleanText\(value\) \|\| ""\);/);
 });

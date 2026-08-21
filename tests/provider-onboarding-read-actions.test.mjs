@@ -46,7 +46,7 @@ test('list handlers clamp limit and offset rather than trusting the caller', () 
 
 test('unsupported queue names are rejected instead of silently widening the result', () => {
   for (const name of ['listProviderEntityVault', 'listProviderOnboardingApprovals', 'listProviderOnboardingDelivery']) {
-    assert.match(handlerBody(name), /throw new Error\("Unsupported [^"]+ queue\."\)/, `${name} must reject unknown queues`);
+    assert.match(handlerBody(name), /throw new ClientError\("Unsupported [^"]+ queue\."\)/, `${name} must reject unknown queues`);
   }
 });
 

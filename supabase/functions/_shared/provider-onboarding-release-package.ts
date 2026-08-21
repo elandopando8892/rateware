@@ -1,3 +1,5 @@
+import { ClientError, conflict, forbidden, notFound } from './http-error.ts';
+
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE=/^[a-z][a-z0-9_]{1,127}$/;
 const RECIPIENT=/^[A-Za-z0-9][A-Za-z0-9_.:@-]{1,191}$/;
@@ -5,12 +7,12 @@ const ROLES=new Set(['operations','compliance','data_owner','legal']);
 const DISCLOSURES=new Set(['reference_only','redacted','full']);
 function required(value:unknown,field:string,pattern?:RegExp){
   const result=String(value||'').trim();
-  if(!result||pattern&&!pattern.test(result)) throw new Error(`${field} is invalid.`);
+  if(!result||pattern&&!pattern.test(result)) throw new ClientError(`${field} is invalid.`);
   return result;
 }
 function uuid(value:unknown,field:string){return required(value,field,UUID);}
 function positive(value:unknown,field:string,max=Number.MAX_SAFE_INTEGER){
-  const result=Number(value);if(!Number.isInteger(result)||result<1||result>max)throw new Error(`${field} is invalid.`);return result;
+  const result=Number(value);if(!Number.isInteger(result)||result<1||result>max)throw new ClientError(`${field} is invalid.`);return result;
 }
 function canonical(value:any):string{
   if(value===null||typeof value!=='object') return JSON.stringify(value);
@@ -46,7 +48,7 @@ export async function createProviderOnboardingReleasePackage(
   if(selfApproval&&approvalCount!==1){
     // The only eligible approver can decide once, so a higher threshold is unreachable
     // and would leave the package looking merely pending forever.
-    throw new Error('A self-approving package must require exactly one approval.');
+    throw new ClientError('A self-approving package must require exactly one approval.');
   }
   const ttlHours=positive(input.approval_ttl_hours||24,'approval_ttl_hours',168);
   const disclosure=(input.disclosure_modes||{}) as Record<string,string>;
@@ -56,7 +58,7 @@ export async function createProviderOnboardingReleasePackage(
     .eq('case_status','ready_for_approval').maybeSingle();
   if(onboardingCase.error) throw onboardingCase.error;
   if(!onboardingCase.data||!onboardingCase.data.current_readiness_evaluation_id){
-    throw new Error('Case is not ready for controlled package approval.');
+    throw conflict('Case is not ready for controlled package approval.');
   }
   // A waived evaluation is releasable, but only deliberately: the caller must pass
   // accept_waivers. Defaulting to true would let an override slip into a package whose
@@ -69,7 +71,7 @@ export async function createProviderOnboardingReleasePackage(
     .in('evaluation_status',releasableStatuses).maybeSingle();
   if(evaluation.error) throw evaluation.error;
   if(!evaluation.data){
-    throw new Error(acceptWaivers
+    throw conflict(acceptWaivers
       ?'Current complete readiness evaluation was not found.'
       :'Current readiness evaluation is not complete, or carries waivers and accept_waivers was not set.');
   }
@@ -81,7 +83,7 @@ export async function createProviderOnboardingReleasePackage(
   if(results.error) throw results.error;
   const satisfiedResults=(results.data||[]).filter((item:any)=>item.result_status==='satisfied');
   const waivedResults=(results.data||[]).filter((item:any)=>item.result_status==='waived');
-  if(!satisfiedResults.length) throw new Error('Complete evaluation has no releasable evidence references.');
+  if(!satisfiedResults.length) throw conflict('Complete evaluation has no releasable evidence references.');
 
   const factIds=satisfiedResults.map((item:any)=>item.matched_fact_id).filter(Boolean);
   const assetIds=satisfiedResults.map((item:any)=>item.matched_document_asset_id).filter(Boolean);
@@ -104,11 +106,11 @@ export async function createProviderOnboardingReleasePackage(
   const items=[] as Array<Record<string,any>>;
   for(const result of satisfiedResults){
     const source=result.matched_fact_id?factById.get(result.matched_fact_id):assetById.get(result.matched_document_asset_id);
-    if(!source) throw new Error(`Evidence changed for ${result.requirement_code}; rerun readiness.`);
+    if(!source) throw conflict(`Evidence changed for ${result.requirement_code}; rerun readiness.`);
     const mode=disclosure[result.requirement_code]||'reference_only';
-    if(!DISCLOSURES.has(mode)) throw new Error(`Invalid disclosure mode for ${result.requirement_code}.`);
+    if(!DISCLOSURES.has(mode)) throw new ClientError(`Invalid disclosure mode for ${result.requirement_code}.`);
     if(['restricted','highly_restricted'].includes(source.sensitivity)&&mode==='full'){
-      throw new Error(`Restricted evidence cannot use full disclosure: ${result.requirement_code}.`);
+      throw new ClientError(`Restricted evidence cannot use full disclosure: ${result.requirement_code}.`);
     }
     items.push({
       item_key:`requirement:${result.requirement_code}`,
@@ -137,9 +139,9 @@ export async function createProviderOnboardingReleasePackage(
     }
     for(const result of waivedResults){
       const waiver=waiverById.get(result.metadata?.waiver_id);
-      if(!waiver) throw new Error(`Waiver record missing for ${result.requirement_code}; rerun readiness.`);
+      if(!waiver) throw conflict(`Waiver record missing for ${result.requirement_code}; rerun readiness.`);
       if(waiver.waiver_status!=='active'){
-        throw new Error(`Waiver for ${result.requirement_code} is no longer active; rerun readiness.`);
+        throw conflict(`Waiver for ${result.requirement_code} is no longer active; rerun readiness.`);
       }
       items.push({
         item_key:`requirement:${result.requirement_code}`,
@@ -192,7 +194,7 @@ export async function createProviderOnboardingReleasePackage(
   }).eq('organization_id',organizationId).eq('id',packageId).eq('revision',1)
     .select('*').maybeSingle();
   if(submitted.error) throw submitted.error;
-  if(!submitted.data) throw new Error('Package changed before approval submission.');
+  if(!submitted.data) throw conflict('Package changed before approval submission.');
   await releaseEvent(supabase,submitted.data,'package_submitted_for_approval',requestedBy,1,{
     manifest_sha256:manifestSha,item_count:items.length,declared_gap_count:waivedResults.length,
   });
@@ -212,15 +214,15 @@ export async function decideProviderOnboardingReleasePackage(
   const role=required(input.approval_role,'approval_role');
   const decision=required(input.decision,'decision');
   const note=required(input.decision_note,'decision_note');
-  if(!ROLES.has(role)) throw new Error('approval_role is invalid.');
-  if(!['approved','rejected'].includes(decision)) throw new Error('decision is invalid.');
+  if(!ROLES.has(role)) throw new ClientError('approval_role is invalid.');
+  if(!['approved','rejected'].includes(decision)) throw new ClientError('decision is invalid.');
 
   const pending=await supabase.from('provider_onboarding_release_packages').select('*')
     .eq('organization_id',organizationId).eq('id',packageId)
     .eq('package_status','pending_approval').eq('revision',expectedRevision).maybeSingle();
   if(pending.error) throw pending.error;
-  if(!pending.data) throw new Error('Pending package revision was not found.');
-  if(pending.data.requested_by_actor_id===approver) throw new Error('Package requester cannot approve their own package.');
+  if(!pending.data) throw notFound('Pending package revision was not found.');
+  if(pending.data.requested_by_actor_id===approver) throw forbidden('Package requester cannot approve their own package.');
 
   const approval=await supabase.from('provider_onboarding_release_package_approvals').insert({
     organization_id:organizationId,package_id:packageId,package_revision:expectedRevision,
@@ -249,7 +251,7 @@ export async function decideProviderOnboardingReleasePackage(
     .eq('package_status','pending_approval').eq('revision',expectedRevision)
     .select('*').maybeSingle();
   if(updated.error) throw updated.error;
-  if(!updated.data) throw new Error('Package revision changed during approval.');
+  if(!updated.data) throw conflict('Package revision changed during approval.');
   const eventType=nextStatus==='approved'?'package_approved':nextStatus==='rejected'?'package_rejected':'package_created';
   if(nextStatus!=='pending_approval') await releaseEvent(supabase,updated.data,eventType,approver,expectedRevision,{approval_role:role});
   return {package_id:packageId,package_status:nextStatus,revision:expectedRevision+1,expires_at:expiresAt};

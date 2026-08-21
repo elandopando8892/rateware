@@ -1,21 +1,22 @@
 import { factSensitivity } from './provider-onboarding-taxpayer-classification.mjs';
+import { ClientError, conflict } from './http-error.ts';
 
 const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const FIELD_CODE=/^[a-z][a-z0-9_]{1,127}$/;
 
 function required(value:unknown,field:string){
   const text=String(value||'').trim();
-  if(!text) throw new Error(`${field} is required.`);
+  if(!text) throw new ClientError(`${field} is required.`);
   return text;
 }
 function uuid(value:unknown,field:string){
   const text=required(value,field);
-  if(!UUID_PATTERN.test(text)) throw new Error(`${field} must be a valid UUID.`);
+  if(!UUID_PATTERN.test(text)) throw new ClientError(`${field} must be a valid UUID.`);
   return text;
 }
 function revision(value:unknown){
   const number=Number(value);
-  if(!Number.isInteger(number)||number<1) throw new Error('expected_review_revision must be a positive integer.');
+  if(!Number.isInteger(number)||number<1) throw new ClientError('expected_review_revision must be a positive integer.');
   return number;
 }
 function canonical(value:any):string{
@@ -47,7 +48,7 @@ export async function promoteApprovedProviderEntityReviewFacts(
     .eq('organization_id',organizationId).eq('id',reviewId)
     .eq('review_status','approved').eq('revision',expectedRevision).maybeSingle();
   if(review.error) throw review.error;
-  if(!review.data) throw new Error('Approved review or expected revision was not found.');
+  if(!review.data) throw conflict('Approved review or expected revision was not found.');
 
   const fields=await supabase.from('provider_entity_document_review_fields')
     .select('id,field_code,field_status,proposed_value,reviewer_value,sensitivity')
@@ -135,7 +136,7 @@ export async function promoteApprovedProviderEntityReviewFacts(
       }).eq('organization_id',organizationId).eq('id',current.id)
         .eq('fact_status','current').select('id').maybeSingle();
       if(retired.error) throw retired.error;
-      if(!retired.data) throw new Error(`Current fact changed for ${field.field_code}.`);
+      if(!retired.data) throw conflict(`Current fact changed for ${field.field_code}.`);
     }
     const inserted=await supabase.from('provider_legal_entity_facts').insert({
       organization_id:organizationId,legal_entity_id:review.data.legal_entity_id,

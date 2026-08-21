@@ -1,4 +1,5 @@
 import { applyWaivers } from './provider-onboarding-requirement-waiver.mjs';
+import { ClientError, notFound } from './http-error.ts';
 
 const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE=/^[a-z][a-z0-9_]{1,127}$/;
@@ -7,7 +8,7 @@ const JURISDICTION=/^[A-Z]{2}(-[A-Z0-9]{1,3})?$/;
 
 function text(value:unknown,field:string,pattern:RegExp){
   const result=String(value||'').trim();
-  if(!pattern.test(result)) throw new Error(`${field} is invalid.`);
+  if(!pattern.test(result)) throw new ClientError(`${field} is invalid.`);
   return result;
 }
 function uuid(value:unknown,field:string){
@@ -15,7 +16,7 @@ function uuid(value:unknown,field:string){
 }
 function positiveInteger(value:unknown,field:string){
   const result=Number(value);
-  if(!Number.isInteger(result)||result<1) throw new Error(`${field} must be a positive integer.`);
+  if(!Number.isInteger(result)||result<1) throw new ClientError(`${field} must be a positive integer.`);
   return result;
 }
 function canonical(value:any):string{
@@ -42,7 +43,7 @@ export async function evaluateProviderOnboardingReadiness(
   const jurisdiction=text(input.jurisdiction_code,'jurisdiction_code',JURISDICTION);
   const legalEntityKind=input.legal_entity_kind?text(input.legal_entity_kind,'legal_entity_kind',CODE):null;
   const actor=String(actorId||'').trim();
-  if(!actor) throw new Error('actor_id is required.');
+  if(!actor) throw new ClientError('actor_id is required.');
 
   let requirementsQuery=supabase.from('provider_onboarding_requirements').select('*')
     .eq('organization_id',organizationId).eq('program_code',programCode)
@@ -53,7 +54,7 @@ export async function evaluateProviderOnboardingReadiness(
     :requirementsQuery.is('legal_entity_kind',null);
   const requirements=await requirementsQuery;
   if(requirements.error) throw requirements.error;
-  if(!(requirements.data||[]).length) throw new Error('No active onboarding requirements matched the requested scope.');
+  if(!(requirements.data||[]).length) throw notFound('No active onboarding requirements matched the requested scope.');
 
   const factCodes=requirements.data.filter((item:any)=>item.requirement_kind==='fact').map((item:any)=>item.fact_field_code);
   const documentTypes=requirements.data.filter((item:any)=>item.requirement_kind==='document').map((item:any)=>item.document_type);

@@ -31,6 +31,18 @@ export function notFound(message: string) {
   return new ClientError(message, 404);
 }
 
+/** The caller is identified but is not allowed to do this. Separation of duties lives
+ * here: a requester who tries to approve their own package is not sending bad input and
+ * retrying will never help, so neither 400 nor 500 describes it. */
+export function forbidden(message: string) {
+  return new ClientError(message, 403);
+}
+
+/** The caller is not identified well enough to do this. */
+export function unauthorized(message: string) {
+  return new ClientError(message, 401);
+}
+
 /**
  * Maps a PostgreSQL SQLSTATE to a status, for errors that come back from the database
  * rather than from our own checks.

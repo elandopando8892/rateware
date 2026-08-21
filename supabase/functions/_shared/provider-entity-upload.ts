@@ -1,3 +1,5 @@
+import { ClientError, conflict, notFound, unauthorized } from './http-error.ts';
+
 const VAULT_BUCKET = 'provider-entity-vault';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 // Onboarding packets arrive as spreadsheets and Word documents as often as PDFs.
@@ -22,41 +24,41 @@ function cleanText(value: unknown) {
 
 function requireUuid(value: unknown, field: string) {
   const normalized = cleanText(value);
-  if (!normalized || !UUID_PATTERN.test(normalized)) throw new Error(`${field} must be a valid UUID.`);
+  if (!normalized || !UUID_PATTERN.test(normalized)) throw new ClientError(`${field} must be a valid UUID.`);
   return normalized;
 }
 
 function requireFilename(value: unknown) {
   const filename = cleanText(value);
   if (!filename || filename.length > 240 || /[\\/]/.test(filename) || filename === '.' || filename === '..') {
-    throw new Error('original_filename is invalid.');
+    throw new ClientError('original_filename is invalid.');
   }
   return filename;
 }
 
 function requireMimeType(value: unknown) {
   const mimeType = cleanText(value)?.toLowerCase();
-  if (!mimeType || !ALLOWED_MIME_TYPES.has(mimeType)) throw new Error('Unsupported document MIME type.');
+  if (!mimeType || !ALLOWED_MIME_TYPES.has(mimeType)) throw new ClientError('Unsupported document MIME type.');
   return mimeType;
 }
 
 function requireFileSize(value: unknown) {
   const size = Number(value);
   if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_FILE_SIZE) {
-    throw new Error('declared_size_bytes must be between 1 and 26214400.');
+    throw new ClientError('declared_size_bytes must be between 1 and 26214400.');
   }
   return size;
 }
 
 function requireIngestionKey(value: unknown) {
   const key = cleanText(value);
-  if (!key || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,127}$/.test(key)) throw new Error('ingestion_key is invalid.');
+  if (!key || !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,127}$/.test(key)) throw new ClientError('ingestion_key is invalid.');
   return key;
 }
 
 function optionalSha256(value: unknown) {
   const hash = cleanText(value)?.toLowerCase() || null;
-  if (hash && !/^[0-9a-f]{64}$/.test(hash)) throw new Error('expected_sha256 must be lowercase SHA-256.');
+  if (hash && !/^[0-9a-f]{64}$/.test(hash)) throw new ClientError('expected_sha256 must be lowercase SHA-256.');
   return hash;
 }
 
@@ -95,7 +97,7 @@ export async function beginProviderEntitySignedUpload(
   const fileSize = requireFileSize(input.declared_size_bytes);
   const expectedSha256 = optionalSha256(input.expected_sha256);
   const actorUserId = cleanText(actor.userId);
-  if (actor.type === 'user' && !actorUserId) throw new Error('User uploads require an identified user.');
+  if (actor.type === 'user' && !actorUserId) throw unauthorized('User uploads require an identified user.');
 
   const ingestionId = crypto.randomUUID();
   const uploadSessionId = crypto.randomUUID();
@@ -162,7 +164,7 @@ export async function confirmProviderEntitySignedUpload(
   const ingestionId = requireUuid(input.ingestion_id, 'ingestion_id');
   const uploadSessionId = requireUuid(input.upload_session_id, 'upload_session_id');
   const actorUserId = cleanText(actor.userId);
-  if (actor.type === 'user' && !actorUserId) throw new Error('User confirmation requires an identified user.');
+  if (actor.type === 'user' && !actorUserId) throw unauthorized('User confirmation requires an identified user.');
 
   const row = await supabase.from('provider_entity_document_ingestions')
     .select('id,original_filename,declared_size_bytes,storage_bucket,storage_path,ingestion_status,upload_session_id,upload_expires_at')
@@ -172,9 +174,9 @@ export async function confirmProviderEntitySignedUpload(
     .eq('upload_session_id', uploadSessionId)
     .maybeSingle();
   if (row.error) throw row.error;
-  if (!row.data) throw new Error('Upload session was not found in this legal entity.');
-  if (row.data.ingestion_status !== 'requested') throw new Error('Upload session is not confirmable.');
-  if (!row.data.upload_expires_at || Date.parse(row.data.upload_expires_at) <= Date.now()) throw new Error('Upload session expired.');
+  if (!row.data) throw notFound('Upload session was not found in this legal entity.');
+  if (row.data.ingestion_status !== 'requested') throw conflict('Upload session is not confirmable.');
+  if (!row.data.upload_expires_at || Date.parse(row.data.upload_expires_at) <= Date.now()) throw conflict('Upload session expired.');
   if (row.data.storage_bucket !== VAULT_BUCKET) throw new Error('Upload session bucket is invalid.');
 
   const prefix = `${organizationId}/${legalEntityId}/${ingestionId}`;
@@ -184,11 +186,11 @@ export async function confirmProviderEntitySignedUpload(
   });
   if (listed.error) throw listed.error;
   const matches = (listed.data || []).filter((item: Record<string, any>) => item.name === row.data.original_filename);
-  if (matches.length !== 1) throw new Error('Exactly one uploaded object is required.');
+  if (matches.length !== 1) throw conflict('Exactly one uploaded object is required.');
   const object = matches[0];
   const observedSize = Number(object?.metadata?.size ?? object?.metadata?.contentLength);
   if (!Number.isSafeInteger(observedSize) || observedSize !== Number(row.data.declared_size_bytes)) {
-    throw new Error('Uploaded object size does not match the declared size.');
+    throw new ClientError('Uploaded object size does not match the declared size.');
   }
 
   const completedAt = new Date().toISOString();
@@ -206,7 +208,7 @@ export async function confirmProviderEntitySignedUpload(
     .select('id')
     .maybeSingle();
   if (updated.error) throw updated.error;
-  if (!updated.data) throw new Error('Upload session was already consumed.');
+  if (!updated.data) throw conflict('Upload session was already consumed.');
 
   await recordEvent(supabase, organizationId, ingestionId, 'upload_confirmed', 'uploaded', actor.type, actorUserId, {
     declared_size_bytes: Number(row.data.declared_size_bytes),
