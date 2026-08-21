@@ -12,6 +12,7 @@ on:
       - 'src/vendor-service.js'
       - 'tests/provider-service-*.test.mjs'
       - 'tests/action-contract.test.mjs'
+      - 'tests/supabase-migration-ledger.test.mjs'
       - 'tools/action-contract-*.mjs'
       - 'tools/effective-action-contract.mjs'
       - 'tools/validate-action-contract-no-regression.mjs'
@@ -47,6 +48,9 @@ jobs:
 
       - name: Install locked Node dependencies
         run: npm ci --ignore-scripts
+
+      - name: Verify pinned production migration hashes
+        run: npm run test:migration-ledger
 
       - name: Validate migration history
         run: node tools/verify-migration-history.mjs
@@ -86,6 +90,22 @@ jobs:
           grep -q 'organizations' /tmp/rateware-public-schema.sql
           grep -q 'workspace_registry' /tmp/rateware-public-schema.sql
           echo 'Canonical tenant objects PASS.'
+
+      - name: Verify final migration ledger and Provider Service grants
+        run: |
+          container='supabase_db_alqjqzqagdmcywpjtnnr'
+          ledger="$(docker exec "$container" psql -U postgres -d postgres -Atc \
+            "select count(*)::text || '|' || max(version)::text from supabase_migrations.schema_migrations")"
+          test "$ledger" = '369|20260821011805'
+
+          grants="$(docker exec "$container" psql -U postgres -d postgres -Atc \
+            "select has_table_privilege('service_role','public.provider_legal_entity_fact_promotions','SELECT'),
+                    has_table_privilege('service_role','public.provider_legal_entity_fact_promotions','UPDATE'),
+                    has_table_privilege('service_role','public.provider_onboarding_readiness_evaluations','INSERT'),
+                    has_table_privilege('service_role','public.provider_onboarding_readiness_results','INSERT'),
+                    has_table_privilege('service_role','public.provider_onboarding_release_package_approvals','INSERT')")"
+          test "$grants" = 't|t|t|t|t'
+          echo 'Final migration ledger and Provider Service grants PASS.'
 
       - name: Stop local Supabase
         if: always()
