@@ -6,7 +6,7 @@
 - P2 progress credited: 10%.
 - Overall production-readiness score: 76.7%.
 - Release verdict: NO-GO. P2 implementation, independent review, preview, deployment, production smoke, and monitoring are not complete.
-- Corrective product candidate SHA: `e99217f5e0487f4c6622a2090597c4979aaf485c`.
+- Corrective product candidate SHA: `70e7ae3b950a24ed0995a1e7f826a2b2dba0b94f`.
 - Baseline `origin/main`: `f751dd8455440cb1036c0687049e63f0c0dd826e`.
 
 ## Reference inputs
@@ -45,6 +45,7 @@ The ZIP was opened read-only with `System.IO.Compression.ZipFile::OpenRead`. No 
 - Every surface ID is present in the `platform55_surfaces` index of its target route.
 - Route-map SHA-256: `7116941FCF34CDF0C05562F47FFAA04149A905F3699089D9473A844AFD16F6EF`.
 - Surface-inventory SHA-256: `A96476872DB5DC6430C75A81346295041BF595B54E7FECCF549A489F10FEE490`.
+- `.gitattributes` pins both CSV artifacts to `text eol=lf`; a brand-new detached Windows checkout reproduced both published file hashes with `core.autocrlf=true`.
 
 `reference_only` means the source design is accounted for but P2 does not claim to implement that operational capability. In particular P2 does not create BCDR, billing, payment, dispatch, tracking, optimization, machine credentials, secret management, or a feature-flag control plane.
 
@@ -71,6 +72,7 @@ The ZIP was opened read-only with `System.IO.Compression.ZipFile::OpenRead`. No 
 - Readiness-plan RED: S2-S6 referenced a nonexistent shadow ledger; every plan now uses `docs/release/production-readiness-ledger.json`.
 - Follow-up plan RED: S2 invoked the nonexistent `test:platform55:shell` script, S2/S3 required the nonexistent `--p55-*` token namespace, and S3 used the unsupported `not_verified` state. The plans now use `test:platform55-shell`, `--rw-*`, and `not_started`, and the focused contract rejects future drift.
 - Cross-runtime RED: PowerShell 5.1 and PowerShell 7 produced semantically equal but byte-different source JSON. Canonical serialization now produces the same `997FB441...A9A24` hash under both runtimes.
+- Checkout-hash RED: the route and surface hashes described Git's LF blobs but were not reproducible from a fresh Windows checkout. Explicit LF attributes and raw-file SHA-256 assertions now make both hashes checkout-stable.
 - `npm run test:platform55-shell`: PASS.
 - `npm test`: PASS after the token and aggregate-script change, including Action Contract, identity 14/14, and runtime enforcement 5/5.
 - `git diff --check`: PASS at each focused commit.
