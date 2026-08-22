@@ -27,6 +27,11 @@ assert.match(
   /\.rw-operate-panel\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s,
   "Operate panels must keep wide data tables inside a zero-minimum grid track"
 );
+assert.match(
+  operateCss,
+  /@media\s*\(max-width:\s*900px\)[\s\S]*?\.rw-operate-page\.upload-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s,
+  "Upload Center must collapse its desktop two-column grid at the mobile breakpoint"
+);
 
 const normalizedPageState = normalizePlatform55PageState({
   title: "Source <Files>",

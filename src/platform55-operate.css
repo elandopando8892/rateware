@@ -132,6 +132,10 @@
 }
 
 @media (max-width: 900px) {
+  .rw-operate-page.upload-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .rw-operate-heading,
   .rw-operate-filters {
     align-items: stretch;
