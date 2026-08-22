@@ -1,5 +1,49 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { normalizePlatform55PageState } from "../src/platform55-shell.js";
+
+const operateCss = readFileSync("src/platform55-operate.css", "utf8");
+const operatePrimitives = [
+  "rw-operate-page",
+  "rw-operate-heading",
+  "rw-operate-metrics",
+  "rw-operate-filters",
+  "rw-operate-panel",
+  "rw-operate-empty",
+  "rw-operate-validation",
+  "rw-operate-review-state",
+  "rw-operate-table-scroll"
+];
+
+for (const primitive of operatePrimitives) {
+  assert.match(operateCss, new RegExp(`\\.${primitive}\\b`), `${primitive} must be reusable`);
+}
+assert.doesNotMatch(operateCss, /\.rw-(?:sidebar|topbar|nav-link|nav-scrim)\b/);
+assert.doesNotMatch(operateCss, /#[0-9a-f]{3,8}\b|rgba?\s*\(/i);
+assert.match(operateCss, /@media\s*\(max-width:\s*900px\)/i);
+assert.match(operateCss, /\.rw-operate-table-scroll\s*\{[^}]*overflow-x:\s*auto/s);
+
+const normalizedPageState = normalizePlatform55PageState({
+  title: "Source <Files>",
+  subtitle: "Last successful result",
+  breadcrumbs: ["Operate", "Source Files"],
+  status: "Loaded",
+  busy: true,
+  actions: [{ id: "refresh", label: "Refresh", status: "ready", busy: false }]
+}, { allowedActionIds: ["refresh"] });
+assert.equal(normalizedPageState.title, "Source <Files>");
+assert.deepEqual(normalizedPageState.breadcrumbs, ["Operate", "Source Files"]);
+assert.equal(normalizedPageState.busy, true);
+assert.ok(Object.isFrozen(normalizedPageState));
+assert.ok(Object.isFrozen(normalizedPageState.actions));
+assert.throws(
+  () => normalizePlatform55PageState({ actions: [{ id: "approve-all", label: "Approve all" }] }, { allowedActionIds: ["refresh"] }),
+  /Unknown Platform55 page action/
+);
+assert.throws(
+  () => normalizePlatform55PageState({ actions: [{ id: "refresh", label: "Refresh", run() {} }] }, { allowedActionIds: ["refresh"] }),
+  /descriptor keys/
+);
 
 const pages = Object.freeze([
   Object.freeze({
