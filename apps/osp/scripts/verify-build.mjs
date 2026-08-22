@@ -1,72 +1,230 @@
-import { access, readFile, readdir, stat } from 'node:fs/promises';
-import { dirname, extname, relative, resolve, sep } from 'node:path';
+import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+process.on('uncaughtException', (error) => {
+  const message = error instanceof Error ? error.message : 'Unexpected build verification failure.';
+  console.error(`Build verification failed: ${message}`);
+  process.exitCode = 1;
+});
 
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const distRoot = resolve(appRoot, 'dist');
 const appDistRoot = resolve(distRoot, 'app');
 const assetsRoot = resolve(appDistRoot, 'assets');
 const indexPath = resolve(appDistRoot, 'index.html');
+const assetUrlRoot = '/app/assets/';
 
 function safeRelative(path) {
   return relative(distRoot, path).split(sep).join('/');
 }
 
-function assertWithin(root, candidate, label, { allowRoot = false } = {}) {
+function isWithin(root, candidate, { allowRoot = false } = {}) {
   const pathFromRoot = relative(root, candidate);
-  if ((!allowRoot && pathFromRoot === '') || pathFromRoot.startsWith(`..${sep}`) || pathFromRoot === '..' || pathFromRoot.includes(`${sep}..${sep}`)) {
+  if (pathFromRoot === '') return allowRoot;
+  return !isAbsolute(pathFromRoot)
+    && pathFromRoot !== '..'
+    && !pathFromRoot.startsWith(`..${sep}`);
+}
+
+function assertWithin(root, candidate, label, options) {
+  if (!isWithin(root, candidate, options)) {
     throw new Error(`${label} escapes its allowed build directory.`);
   }
 }
 
-await access(indexPath).catch(() => {
-  throw new Error('Missing required build entry app/index.html. Run pnpm build first.');
-});
-
-const html = await readFile(indexPath, 'utf8');
-const assetUrls = [...html.matchAll(/(?:src|href)=["']([^"']+)["']/gi)]
-  .map((match) => match[1])
-  .filter((url) => url.startsWith('/app/assets/'));
-
-if (assetUrls.length === 0) {
-  throw new Error('No /app/assets/ references found in app/index.html.');
+async function safeLstat(path, missingMessage) {
+  try {
+    return await lstat(path);
+  } catch {
+    throw new Error(missingMessage);
+  }
 }
 
-for (const assetUrl of assetUrls) {
+async function safeRealpath(path, label) {
+  try {
+    return await realpath(path);
+  } catch {
+    throw new Error(`${label} cannot be resolved inside the build artifact.`);
+  }
+}
+
+async function safeReadText(path, label) {
+  try {
+    return await readFile(path, 'utf8');
+  } catch {
+    throw new Error(`${label} cannot be read from the build artifact.`);
+  }
+}
+
+async function safeReadDirectory(path, label) {
+  try {
+    return await readdir(path, { withFileTypes: true });
+  } catch {
+    throw new Error(`${label} cannot be enumerated inside the build artifact.`);
+  }
+}
+
+function rejectLink(stats, label) {
+  if (stats.isSymbolicLink()) {
+    throw new Error(`Linked build entry ${label} is not allowed.`);
+  }
+}
+
+const initialIndexStats = await safeLstat(
+  indexPath,
+  'Missing required build entry app/index.html. Run pnpm build first.',
+);
+
+const distStats = await safeLstat(distRoot, 'Missing required build directory dist.');
+rejectLink(distStats, 'dist');
+if (!distStats.isDirectory()) throw new Error('Build entry dist must be a directory.');
+const physicalDistRoot = await safeRealpath(distRoot, 'Build directory dist');
+
+const appDistStats = await safeLstat(appDistRoot, 'Missing required build directory app.');
+rejectLink(appDistStats, 'app');
+if (!appDistStats.isDirectory()) throw new Error('Build entry app must be a directory.');
+const physicalAppDistRoot = await safeRealpath(appDistRoot, 'Build directory app');
+assertWithin(physicalDistRoot, physicalAppDistRoot, 'Physical app build directory');
+
+const assetsStats = await safeLstat(assetsRoot, 'Missing required build directory app/assets.');
+rejectLink(assetsStats, 'app/assets');
+if (!assetsStats.isDirectory()) throw new Error('Build entry app/assets must be a directory.');
+const physicalAssetsRoot = await safeRealpath(assetsRoot, 'Build directory app/assets');
+assertWithin(physicalAppDistRoot, physicalAssetsRoot, 'Physical asset directory');
+
+rejectLink(initialIndexStats, 'app/index.html');
+if (!initialIndexStats.isFile()) throw new Error('Build entry app/index.html must be a file.');
+const physicalIndexPath = await safeRealpath(indexPath, 'Build entry app/index.html');
+assertWithin(physicalAppDistRoot, physicalIndexPath, 'Physical build entry app/index.html');
+
+function parseAttributes(tag) {
+  const attributes = new Map();
+  const pattern = /\s([^\s"'<>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  for (const match of tag.matchAll(pattern)) {
+    const name = match[1].toLowerCase();
+    if (attributes.has(name)) throw new Error('Built index contains a duplicate asset attribute.');
+    attributes.set(name, match[2] ?? match[3] ?? match[4] ?? null);
+  }
+  return attributes;
+}
+
+function assetReferences(html) {
+  const references = [];
+
+  for (const match of html.matchAll(/<script\b[^>]*>/gi)) {
+    const attributes = parseAttributes(match[0]);
+    if (!attributes.has('src')) continue;
+    const value = attributes.get('src');
+    if (!value) throw new Error('Built index contains a script asset without a usable src.');
+    references.push({ kind: 'script', value });
+  }
+
+  for (const match of html.matchAll(/<link\b[^>]*>/gi)) {
+    const attributes = parseAttributes(match[0]);
+    const rel = attributes.get('rel');
+    const isStylesheet = typeof rel === 'string'
+      && rel.split(/\s+/).some((token) => token.toLowerCase() === 'stylesheet');
+    if (!isStylesheet) continue;
+    const value = attributes.get('href');
+    if (!value) throw new Error('Built index contains a stylesheet asset without a usable href.');
+    references.push({ kind: 'stylesheet', value });
+  }
+
+  return references;
+}
+
+function assetPathname(reference) {
+  if (!reference.value.startsWith(assetUrlRoot) || reference.value.includes('\\')) {
+    throw new Error(`Built index contains a ${reference.kind} asset outside /app/assets/.`);
+  }
+
+  let parsed;
   let pathname;
   try {
-    pathname = decodeURIComponent(new URL(assetUrl, 'https://osp.example.test').pathname);
+    parsed = new URL(reference.value, 'https://osp.example.test');
+    pathname = decodeURIComponent(parsed.pathname);
   } catch {
-    throw new Error('Built index contains an invalid /app/assets/ URL.');
+    throw new Error(`Built index contains an invalid ${reference.kind} asset URL.`);
   }
 
-  if (!pathname.startsWith('/app/assets/')) {
-    throw new Error('Built index contains an asset outside /app/assets/.');
+  if (
+    parsed.origin !== 'https://osp.example.test'
+    || !pathname.startsWith(assetUrlRoot)
+    || pathname.includes('%')
+    || pathname.slice(assetUrlRoot.length).length === 0
+  ) {
+    throw new Error(`Built index contains a ${reference.kind} asset outside /app/assets/.`);
   }
 
+  return pathname;
+}
+
+async function assertNoLinkedSegments(root, target) {
+  const pathFromRoot = relative(root, target);
+  let current = root;
+  for (const segment of pathFromRoot.split(sep)) {
+    current = join(current, segment);
+    const stats = await safeLstat(
+      current,
+      `Missing referenced build asset ${safeRelative(target)}.`,
+    );
+    rejectLink(stats, safeRelative(current));
+  }
+}
+
+const html = await safeReadText(indexPath, 'Build entry app/index.html');
+const references = assetReferences(html);
+if (references.length === 0) {
+  throw new Error('No executable or stylesheet assets found in app/index.html.');
+}
+
+for (const reference of references) {
+  const pathname = assetPathname(reference);
   const assetPath = resolve(distRoot, pathname.slice(1));
   assertWithin(assetsRoot, assetPath, 'Referenced asset');
-  const assetStats = await stat(assetPath).catch(() => null);
-  if (!assetStats?.isFile()) {
-    throw new Error(`Missing referenced build asset ${safeRelative(assetPath)}.`);
+  await assertNoLinkedSegments(assetsRoot, assetPath);
+  const assetStats = await safeLstat(
+    assetPath,
+    `Missing referenced build asset ${safeRelative(assetPath)}.`,
+  );
+  if (!assetStats.isFile()) {
+    throw new Error(`Referenced build asset ${safeRelative(assetPath)} must be a file.`);
   }
+  const physicalAssetPath = await safeRealpath(
+    assetPath,
+    `Referenced build asset ${safeRelative(assetPath)}`,
+  );
+  assertWithin(physicalAssetsRoot, physicalAssetPath, 'Physical referenced asset');
 }
 
 const textExtensions = new Set(['.html', '.js', '.css', '.map', '.json', '.txt']);
 
-async function textFiles(path) {
-  assertWithin(distRoot, path, 'Build scan path', { allowRoot: true });
-  const entries = await readdir(path, { withFileTypes: true });
+async function textFiles(path, { allowRoot = false } = {}) {
+  assertWithin(distRoot, path, 'Build scan path', { allowRoot });
+  const physicalPath = await safeRealpath(path, `Build scan entry ${safeRelative(path) || 'dist'}`);
+  assertWithin(physicalDistRoot, physicalPath, 'Physical build scan path', { allowRoot });
+  const entries = await safeReadDirectory(path, `Build scan entry ${safeRelative(path) || 'dist'}`);
   const files = [];
+
   for (const entry of entries) {
     const absolute = resolve(path, entry.name);
     assertWithin(distRoot, absolute, 'Build scan entry');
-    if (entry.isDirectory()) {
+    const relativeEntry = safeRelative(absolute);
+    const stats = await safeLstat(absolute, `Build scan entry ${relativeEntry} disappeared.`);
+    rejectLink(stats, relativeEntry);
+    const physicalEntry = await safeRealpath(absolute, `Build scan entry ${relativeEntry}`);
+    assertWithin(physicalDistRoot, physicalEntry, 'Physical build scan entry');
+
+    if (stats.isDirectory()) {
       files.push(...await textFiles(absolute));
-    } else if (entry.isFile() && textExtensions.has(extname(entry.name).toLowerCase())) {
-      files.push(absolute);
+    } else if (stats.isFile()) {
+      if (textExtensions.has(extname(entry.name).toLowerCase())) files.push(absolute);
+    } else {
+      throw new Error(`Unsupported build entry ${relativeEntry}.`);
     }
   }
+
   return files;
 }
 
@@ -82,9 +240,9 @@ const forbidden = [
   /<iframe\b/i,
 ];
 
-const builtTextFiles = await textFiles(distRoot);
+const builtTextFiles = await textFiles(distRoot, { allowRoot: true });
 for (const path of builtTextFiles) {
-  const content = await readFile(path, 'utf8');
+  const content = await safeReadText(path, `Build text entry ${safeRelative(path)}`);
   for (const pattern of forbidden) {
     if (pattern.test(content)) {
       throw new Error(`Forbidden content detected in ${safeRelative(path)}.`);
@@ -92,4 +250,4 @@ for (const path of builtTextFiles) {
   }
 }
 
-console.log(`Verified ${assetUrls.length} rooted asset reference(s) and ${builtTextFiles.length} built text file(s).`);
+console.log(`Verified ${references.length} rooted asset reference(s) and ${builtTextFiles.length} built text file(s).`);
