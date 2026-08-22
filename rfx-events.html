@@ -5,65 +5,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Bid Room</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-procurement.css" />
   </head>
-  <body class="bid-room-page">
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Rateware modules">
-        <a class="brand-mark" href="./app.html">Rateware</a>
-        <nav class="nav-groups">
-          <section class="nav-group">
-            <p>Operate</p>
-            <a href="./app.html" data-nav-code="CC" data-nav-tooltip="Priorities, health, and next action">Command Center</a>
-            <a href="./upload-center.html" data-nav-code="IM" data-nav-tooltip="Upload carrier quotes and source files">Import</a>
-            <a href="./upload-history.html" data-nav-code="SF" data-nav-tooltip="Review interpretation history and failures">Source Files</a>
-            <a href="./staging-review.html" data-nav-code="RQ" data-nav-tooltip="Correct and approve staged rates">Review Queue</a>
-            <a href="./rateware.html" data-nav-code="RW" data-nav-tooltip="Search approved rates and exports">Rateware</a>
-          </section>
-          <section class="nav-group">
-            <p>Analyze</p>
-            <a href="./business-intelligence.html" data-nav-code="AN" data-nav-tooltip="Find carrier, lane, and market signals">Analyze</a>
-          </section>
-          <section class="nav-group">
-            <p>Source</p>
-            <a href="./vendors.html" data-nav-code="CM" data-nav-tooltip="Source and curate your carrier base">Carrier CRM</a>
-            <a href="./provider-service.html" data-nav-code="PS">Provider Service</a>
-            <a href="./rfx-process.html" data-nav-code="RP" data-nav-tooltip="Build a business book and RFx">RFx Process</a>
-            <a aria-current="page" href="./rfx-events.html" data-nav-code="BR" data-nav-tooltip="Launch, monitor, and close private bids">Bid Room</a>
-            <a href="./vendor-support.html" data-nav-code="VS" data-nav-tooltip="Resolve carrier tickets and questions">Vendor Support</a>
-            <a href="./vendor-improvement.html" data-nav-code="CI" data-nav-tooltip="Run carrier improvement plans">Vendor CI</a>
-          </section>
-          <section class="nav-group">
-            <p>Admin</p>
-            <a href="./settings.html" data-nav-code="ST" data-nav-tooltip="Workspace, integrations, and configuration">Settings</a>
-            <a href="./interpretation-memory.html" data-nav-code="LR" data-nav-tooltip="Parser rules, aliases, and corrections">Learning Rules</a>
-            <a href="./catalog-workbench.html" data-nav-code="CT" data-nav-tooltip="Locations, markets, and operational values">Catalog</a>
-          </section>
-        </nav>
-      </aside>
-
-      <div class="page-frame">
-        <header class="page-header">
-          <div>
-            <p class="eyebrow">Private procurement room</p>
-            <h1>Bid Room</h1>
-            <nav class="module-crumbs" aria-label="Module context">
-              <a href="./app.html">Command Center</a>
-              <a href="./vendors.html">Procurement Base</a>
-              <span>Bid Room</span>
-            </nav>
-          </div>
-          <div class="page-header-actions">
-            <button class="page-primary-action" type="button" data-rfx-focus-create>New bid event</button>
-            <a class="secondary-link" href="./bid-room-board.html" target="_blank" rel="noreferrer">Public board</a>
-            <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Log in</button>
-              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
-              <p id="auth-status" role="status"></p>
-            </form>
-          </div>
+  <body class="bid-room-page" data-platform55-shell="tenant" data-platform55-page="rfx-events">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <div class="rw-workspace">
+        <header class="rw-topbar" data-platform55-topbar>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Log in</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
         </header>
 
-        <main class="bid-room-product">
+        <main class="bid-room-product rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="event-lifecycle">
+          <header class="rw-operate-heading" data-platform55-page-header>
+            <div>
+              <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Source · Procurement Base · Bid Room</p>
+              <h1 data-platform55-page-title>Bid Room</h1>
+              <p data-platform55-page-subtitle>Design, monitor, and close private bid events with explicit human control.</p>
+            </div>
+            <div class="page-header-actions">
+              <button class="page-primary-action" type="button" data-rfx-focus-create>New bid event</button>
+              <a class="secondary-link" href="./bid-room-board.html" target="_blank" rel="noreferrer">Public board</a>
+            </div>
+          </header>
           <aside class="bid-room-event-rail" aria-label="Bid events">
             <section class="bid-room-rail-card">
               <div class="bid-room-event-filter-strip" aria-label="Filter bid events">

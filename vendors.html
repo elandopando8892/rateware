@@ -5,64 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Vendors</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-procurement.css" />
   </head>
-  <body>
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Rateware modules">
-        <a class="brand-mark" href="./app.html">Rateware</a>
-        <nav class="nav-groups">
-          <section class="nav-group">
-            <p>Operate</p>
-            <a href="./app.html" data-nav-code="CC">Command Center</a>
-            <a href="./upload-center.html" data-nav-code="IM">Import</a>
-            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
-            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
-            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
-          </section>
-          <section class="nav-group">
-            <p>Analyze</p>
-            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
-          </section>
-          <section class="nav-group">
-            <p>Source</p>
-            <a aria-current="page" href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
-            <a href="./provider-service.html" data-nav-code="PS">Provider Service</a>
-            <a href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
-            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
-            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
-            <a href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
-          </section>
-          <section class="nav-group">
-            <p>Admin</p>
-            <a href="./settings.html" data-nav-code="ST">Settings</a>
-            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
-            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
-          </section>
-        </nav>
-      </aside>
-
-      <div class="page-frame">
-        <header class="page-header">
-          <div>
-            <p class="eyebrow">Carrier master</p>
-            <h1>Carrier CRM</h1>
-            <nav class="module-crumbs" aria-label="Module context">
-              <a href="./app.html">Source</a>
-              <span>Carrier CRM</span>
-            </nav>
-          </div>
-          <div class="page-header-actions">
-            <button class="page-primary-action" type="button" data-vendor-open="wizard">Add vendor</button>
-            <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Log in</button>
-              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
-              <p id="auth-status" role="status"></p>
-            </form>
-          </div>
+  <body data-platform55-shell="tenant" data-platform55-page="vendors">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <div class="rw-workspace">
+        <header class="rw-topbar" data-platform55-topbar>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Log in</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
         </header>
 
-        <main class="vendors-layout">
-          <section class="vendor-metrics wide-section" aria-label="Vendor health">
+        <main class="vendors-layout rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="vendor-directory">
+          <header class="rw-operate-heading" data-platform55-page-header>
+            <div>
+              <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Source · Carrier CRM</p>
+              <h1 data-platform55-page-title>Carrier CRM</h1>
+              <p data-platform55-page-subtitle>Source, qualify, and prepare carriers for governed procurement.</p>
+            </div>
+            <button class="page-primary-action" type="button" data-vendor-open="wizard">Add vendor</button>
+          </header>
+          <section class="vendor-metrics wide-section rw-procurement-milestones" aria-label="Vendor health">
             <article>
               <span>Total vendors</span>
               <strong id="vendor-metric-total">0</strong>

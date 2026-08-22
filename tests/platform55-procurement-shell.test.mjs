@@ -68,6 +68,43 @@ for (const [file, key, script] of tenantPages) {
   assert.match(source, /requirePrivatePage\s*\(/, `${script} must preserve its private-page gate`);
 }
 
+const vendorHtml = readFileSync("vendors.html", "utf8");
+const vendorSource = readFileSync("src/vendors.js", "utf8");
+assert.match(vendorHtml, /data-platform55-procurement-state="vendor-directory"/);
+assert.match(vendorHtml, /class="[^"]*rw-procurement-milestones[^"]*"/);
+assert.match(vendorSource, /updatePlatform55Shell\s*\(\s*\{\s*pageState:/s);
+assert.match(vendorSource, /status:\s*"Loading carrier directory"/);
+assert.match(vendorSource, /status:\s*`\$\{rows\.length\.toLocaleString\(\)\} carrier record\(s\) loaded`/);
+assert.match(vendorSource, /status:\s*"Carrier directory could not load"/);
+
+const rfxEventsHtml = readFileSync("rfx-events.html", "utf8");
+const rfxEventsSource = readFileSync("src/rfx-events.js", "utf8");
+assert.match(rfxEventsHtml, /data-platform55-procurement-state="event-lifecycle"/);
+assert.match(rfxEventsSource, /updatePlatform55Shell\s*\(\s*\{\s*pageState:/s);
+assert.match(rfxEventsSource, /status:\s*"Loading bid events"/);
+assert.match(rfxEventsSource, /status:\s*`\$\{events\.length\.toLocaleString\(\)\} bid event\(s\) loaded`/);
+assert.match(rfxEventsSource, /status:\s*"Bid events could not load"/);
+for (const key of ["rfx_event_id", "draft_search"]) {
+  assert.match(rfxEventsSource, new RegExp(`(?:get|set)\\(["']${key}["']`), `Bid Room must preserve ${key} URL state`);
+}
+assert.match(rfxEventsSource, /window\.history\.replaceState\s*\(/, "Bid Room filters must remain shareable through the URL");
+
+const rfxProcessHtml = readFileSync("rfx-process.html", "utf8");
+const rfxProcessSource = readFileSync("src/rfx-process.js", "utf8");
+assert.match(rfxProcessHtml, /data-platform55-procurement-state="process-readiness"/);
+assert.match(rfxProcessSource, /Operations handoff JSON downloaded locally\. No shipment or dispatch was created\./);
+const renderPanelsBody = rfxProcessSource.match(/function renderPanels\(\)\s*\{([\s\S]*?)\n\}/)?.[1] || "";
+assert.doesNotMatch(renderPanelsBody, /awardPanel\s*\(/, "Shell adoption must not mount dormant award mutations");
+
+const ratebookHtml = readFileSync("ratebook.html", "utf8");
+assert.match(ratebookHtml, /data-platform55-procurement-state="ratebook-review"/);
+assert.match(ratebookHtml, /id="send-ratebook-distribution"[^>]*class="[^"]*hidden|class="[^"]*hidden[^>]*id="send-ratebook-distribution"/);
+
+const outreachHtml = readFileSync("outreach.html", "utf8");
+assert.match(outreachHtml, /data-platform55-procurement-state="outreach-drafts"/);
+assert.match(outreachHtml, /Create campaign/);
+assert.doesNotMatch(outreachHtml, /data-platform55-action="(?:send|dispatch|promote)"/i, "Shell actions must not expose consequential outreach mutations");
+
 const privateSurfacePattern = /data-platform55-(?:sidebar|topbar)|(?:href|src)="[^"]*(?:settings|upload-center|staging-review|business-intelligence)\.html|\bAsk AI\b|notification center/i;
 
 for (const [file, key, scripts] of publicPages) {
