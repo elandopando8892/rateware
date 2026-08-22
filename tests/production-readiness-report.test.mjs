@@ -269,15 +269,15 @@ test("keeps the persisted P1 production closure backed while P2 advances", () =>
   }
   for (const path of trackedEvidence) execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   validateLedger(persisted);
-  assert.equal(computeOverallProgress(persisted), 77.8);
+  assert.equal(computeOverallProgress(persisted), 79.2);
 });
 
-test("withholds P2-S2 completion credit until actual-route visual evidence passes", () => {
+test("credits P2-S2 only after immutable actual-route evidence and independent GO", () => {
   const p2Ledger = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p2 = p2Ledger.sprints.find((sprint) => sprint.id === "P2");
 
   validateLedger(p2Ledger);
-  assert.equal(p2.progress, 25);
+  assert.equal(p2.progress, 45);
   assert.deepEqual(p2.evidence.scope, [
     "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
   ]);
@@ -289,8 +289,13 @@ test("withholds P2-S2 completion credit until actual-route visual evidence passe
     "docs/release/evidence/2026-08-21-p2-shell-s1-command-center.md",
     "docs/release/evidence/2026-08-21-p2-s2-operate.md"
   ]);
-  assert.equal(computeOverallProgress(p2Ledger), 77.8);
-  assert.match(formatProgressReport(p2Ledger), /P2:\s+25%/);
+  assert.deepEqual(p2.evidence.independent_review, [
+    "docs/release/evidence/2026-08-21-p2-s2-independent-review.md"
+  ]);
+  assert.equal(p2.verdicts.independent_review, "GO");
+  assert.ok(Array.isArray(p2.evidence.automated_suite) && p2.evidence.automated_suite.length >= 4);
+  assert.equal(computeOverallProgress(p2Ledger), 79.2);
+  assert.match(formatProgressReport(p2Ledger), /P2:\s+45%/);
 });
 
 test("does not credit P2-S2 visual completion without immutable actual-route evidence", () => {
