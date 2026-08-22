@@ -18,6 +18,7 @@ const page = read('../provider-service.html');
 const controller = read('../src/provider-service-page.js');
 const commandCenterPage = read('../app.html');
 const vendorCrmPage = read('../vendors.html');
+const vendorController = read('../src/vendors.js');
 
 test('normalizes command center queues without inventing queue names', () => {
   assert.equal(normalizeProviderServiceQueue('CRITICAL'), 'critical');
@@ -99,5 +100,9 @@ test('Provider Service is discoverable from Command Center and Carrier CRM navig
   assert.equal(providerServiceRoute?.path, './provider-service.html');
   assert.equal(providerServiceRoute?.group, 'Service');
   assert.equal(providerServiceRoute?.label, 'Provider Service');
-  assert.match(vendorCrmPage, /href="\.\/provider-service\.html"[^>]*data-nav-code="PS">Provider Service<\/a>/);
+  assert.match(vendorCrmPage, /<body data-platform55-shell="tenant" data-platform55-page="vendors">/);
+  assert.match(vendorCrmPage, /<aside class="rw-sidebar" data-platform55-sidebar/);
+  assert.match(vendorCrmPage, /<script type="module" src="\.\/src\/vendors\.js"><\/script>/);
+  assert.match(vendorController, /import \{ updatePlatform55Shell \} from "\.\/platform55-shell\.js"/);
+  assert.match(vendorController, /updatePlatform55Shell\(\{/);
 });
