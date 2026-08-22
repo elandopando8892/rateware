@@ -95,6 +95,30 @@ test('rejects an external script after a greater-than character inside a quoted 
   });
 });
 
+test('rejects an SVG script carrying an href data URL', async () => {
+  const html = `${validScript}${validStylesheet}<svg xmlns="http://www.w3.org/2000/svg"><script href="data:text/javascript,alert(1)"></script></svg>`;
+  await withFixture(html, async ({ fixtureRoot, appRoot }) => {
+    const output = assertSafeFailure(await runVerifier(appRoot), fixtureRoot);
+    assert.match(output, /script/i);
+  });
+});
+
+test('rejects an SVG script carrying an xlink href', async () => {
+  const html = `${validScript}${validStylesheet}<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><script xlink:href="data:text/javascript,alert(1)"></script></svg>`;
+  await withFixture(html, async ({ fixtureRoot, appRoot }) => {
+    const output = assertSafeFailure(await runVerifier(appRoot), fixtureRoot);
+    assert.match(output, /script/i);
+  });
+});
+
+test('keeps inline HTML scripts allowed without executing them', async () => {
+  const html = `${validScript}${validStylesheet}<script>throw new Error('inline script executed');</script>`;
+  await withFixture(html, async ({ appRoot }) => {
+    const result = await runVerifier(appRoot);
+    assert.equal(result.code, 0, result.stderr);
+  });
+});
+
 test('rejects a wrong-root stylesheet even when valid assets exist', async () => {
   const html = `${validScript}${validStylesheet}<link rel="stylesheet" href="/wrong.css">`;
   await withFixture(html, async ({ fixtureRoot, appRoot }) => {
