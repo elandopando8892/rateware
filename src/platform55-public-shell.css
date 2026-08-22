@@ -1,4 +1,7 @@
 .rw-public-app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   min-height: 100vh;
   color: var(--rw-slate-800);
   background: var(--rw-slate-50);
@@ -62,7 +65,23 @@
   .rw-public-header {
     align-items: flex-start;
     flex-direction: column;
+    flex-wrap: nowrap;
     padding-block: 12px;
+  }
+
+  .rw-public-header > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .rw-public-app .public-board-search-control,
+  .rw-public-app .public-board-control-actions {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .rw-public-app .public-board-control-actions {
+    flex-wrap: wrap;
   }
 
   .rw-public-actions {

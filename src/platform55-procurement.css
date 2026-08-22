@@ -5,6 +5,11 @@
   min-width: 0;
 }
 
+.rw-procurement-page.bid-room-product {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .rw-procurement-status,
 .rw-procurement-response,
 .rw-procurement-readiness {
@@ -79,6 +84,30 @@
 
   .rw-procurement-milestones > * {
     flex: 0 0 min(78vw, 220px);
+  }
+
+  .rw-procurement-page .funnel-toolbar,
+  .rw-procurement-page .bid-room-import-panel,
+  .rw-procurement-page .bid-room-stage-panel,
+  .rw-procurement-page .bid-room-table-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .rw-procurement-page .bid-room-import-panel {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .rw-procurement-page .bid-room-book-entry-header,
+  .rw-procurement-page .bid-room-manual-lanes-header,
+  .rw-procurement-page .action-row {
+    flex-wrap: wrap;
+  }
+
+  .rw-procurement-page.ratebook-workspace > .page-header {
+    margin-inline: -12px;
   }
 }
 
