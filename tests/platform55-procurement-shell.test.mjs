@@ -115,9 +115,30 @@ for (const [file, key, scripts] of publicPages) {
   assert.equal((html.match(/platform55-tokens\.css/g) || []).length, 1, `${file} must include shared tokens once`);
   assert.equal((html.match(/platform55-public-shell\.css/g) || []).length, 1, `${file} must include public shell CSS once`);
   assert.equal((html.match(/data-platform55-public-app(?:\s|>)/g) || []).length, 1, `${file} must expose one public app host`);
+  assert.ok((html.match(/data-platform55-public-context(?:\s|>)/g) || []).length >= 1, `${file} must expose organization or event context`);
+  assert.ok((html.match(/data-platform55-public-state(?:\s|>)/g) || []).length >= 1, `${file} must expose a signed-out/loading/error state boundary`);
   assert.equal((html.match(/<main\b/g) || []).length, 1, `${file} must retain one main landmark`);
   assert.doesNotMatch(html, privateSurfacePattern, `${file} must not expose private tenant controls or links`);
   assert.doesNotMatch(source, /from\s*["']\.\/auth\.js["']|initAuthControls|requirePrivatePage/, `${file} must not import tenant auth bootstrap`);
 }
+
+for (const script of ["src/carrier-profile.js", "src/rfx-bid.js", "src/bid-room-board.js", "src/ratebook-carrier.js"]) {
+  const source = readFileSync(script, "utf8");
+  assert.match(source, /addEventListener\s*\(\s*["']submit["']/);
+  assert.match(source, /preventDefault\s*\(\s*\)/, `${script} must retain browser submission control`);
+}
+
+for (const file of ["bid-room-board.html", "customer-rfi.html", "ratebook-carrier.html"]) {
+  const html = readFileSync(file, "utf8");
+  assert.ok((html.match(/data-platform55-public-actions(?:\s|>)/g) || []).length >= 1, `${file} must expose a mobile action region`);
+}
+
+const carrierProfileSource = readFileSync("src/carrier-profile.js", "utf8");
+assert.match(carrierProfileSource, /carrier-profile-actions rw-public-actions[^>]*data-platform55-public-actions/);
+assert.ok((carrierProfileSource.match(/data-platform55-public-state/g) || []).length >= 2, "Carrier profile must retain public state semantics after dynamic rendering");
+
+const privateBidSource = readFileSync("src/rfx-bid.js", "utf8");
+assert.match(privateBidSource, /Missing invitation token[^<]*<\/p>|Missing invitation token/s);
+assert.ok((privateBidSource.match(/data-platform55-public-state/g) || []).length >= 2, "Private Bid Room must retain public state semantics after dynamic rendering");
 
 console.log("Platform55 procurement shell contract passed.");

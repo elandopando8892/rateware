@@ -4295,7 +4295,7 @@ async function selectPrivateLane(invitationToken, options = {}) {
   nextUrl.searchParams.set("token", nextToken);
   nextUrl.searchParams.delete("view");
   window.history.pushState({}, "", nextUrl);
-  card.innerHTML = `<p class="status-message">${escapeHtml(dualText("Loading selected lane...", "Cargando la lane seleccionada..."))}</p>`;
+  card.innerHTML = `<p class="status-message rw-public-state" data-platform55-public-state data-state="loading">${escapeHtml(dualText("Loading selected lane...", "Cargando la lane seleccionada..."))}</p>`;
   try {
     await loadInvitation();
     if (options.after === "fit") focusRouteFit();
@@ -4648,7 +4648,7 @@ function renderInvitation(invitation, liveBoard = {}, carrierBook = {}) {
 
 async function loadInvitation(options = {}) {
   if (!tokenFromUrl()) {
-    card.innerHTML = `<p class="status-message" data-tone="error">Missing invitation token.</p>`;
+    card.innerHTML = `<p class="status-message rw-public-state" data-platform55-public-state data-state="signed-out" data-tone="error">Missing invitation token.</p>`;
     return;
   }
   try {
@@ -4706,7 +4706,7 @@ async function loadInvitation(options = {}) {
   } catch (error) {
     if (options.refreshOnly) return;
     title.textContent = "Bid request unavailable";
-    card.innerHTML = `<p class="status-message" data-tone="error">${escapeHtml(humanizeError(error))}</p>`;
+    card.innerHTML = `<p class="status-message rw-public-state" data-platform55-public-state data-state="error" data-tone="error">${escapeHtml(humanizeError(error))}</p>`;
   }
 }
 

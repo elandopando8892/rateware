@@ -5,10 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Private Bid Room</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-public-shell.css" />
   </head>
-  <body class="bid-portal-page">
-    <main class="bid-portal-shell">
-      <section class="bid-portal-header">
+  <body class="bid-portal-page" data-platform55-shell="public" data-platform55-page="rfx-bid">
+    <main class="bid-portal-shell rw-public-app" data-platform55-public-app>
+      <section class="bid-portal-header rw-public-header" data-platform55-public-context>
         <a class="brand-mark" href="./index.html">Rateware</a>
         <div>
           <p class="eyebrow" data-bid-private-eyebrow>Private carrier access</p>
@@ -19,8 +21,8 @@
         </section>
       </section>
 
-      <section id="bid-invitation-card" class="workspace-panel">
-        <p id="bid-status" class="status-message" role="status">Loading Private Bid Room...</p>
+      <section id="bid-invitation-card" class="workspace-panel rw-public-workspace">
+        <p id="bid-status" class="status-message rw-public-state" role="status" data-platform55-public-state data-state="loading">Loading Private Bid Room...</p>
       </section>
     </main>
 

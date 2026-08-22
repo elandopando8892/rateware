@@ -5,10 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Private Ratebook | Rateware</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-public-shell.css" />
   </head>
-  <body class="ratebook-carrier-page">
-    <main class="ratebook-carrier-shell">
-      <header class="ratebook-carrier-header">
+  <body class="ratebook-carrier-page" data-platform55-shell="public" data-platform55-page="ratebook-carrier">
+    <main class="ratebook-carrier-shell rw-public-app" data-platform55-public-app>
+      <header class="ratebook-carrier-header rw-public-header" data-platform55-public-context>
         <a class="ratebook-carrier-brand" href="./bid-room-board.html">Rateware</a>
         <p>Private carrier access</p>
       </header>
@@ -23,7 +25,7 @@
           <div><dt>Valid until</dt><dd id="ratebook-carrier-validity">-</dd></div>
         </dl>
       </section>
-      <p class="ratebook-carrier-status" id="ratebook-carrier-status" role="status">Loading private routes...</p>
+      <p class="ratebook-carrier-status rw-public-state" id="ratebook-carrier-status" role="status" data-platform55-public-state data-state="loading">Loading private routes...</p>
       <section class="ratebook-carrier-workspace" id="ratebook-carrier-workspace" hidden>
         <div class="ratebook-carrier-toolbar">
           <label><span>Segment</span><select id="ratebook-carrier-segment"><option value="">All segments</option></select></label>
@@ -56,7 +58,7 @@
         </div>
         <label class="ratebook-carrier-quote-notes">Offer notes<textarea name="notes" maxlength="5000" placeholder="Assumptions, exclusions, capacity conditions, or service notes."></textarea></label>
         <p class="ratebook-carrier-quote-feedback" id="ratebook-carrier-quote-feedback" role="status"></p>
-        <div class="ratebook-carrier-quote-actions"><button type="button" id="ratebook-carrier-withdraw-quote" hidden>Withdraw offer</button><button type="submit" class="ratebook-carrier-primary" id="ratebook-carrier-submit-quote">Submit offer</button></div>
+        <div class="ratebook-carrier-quote-actions rw-public-actions" data-platform55-public-actions><button type="button" id="ratebook-carrier-withdraw-quote" hidden>Withdraw offer</button><button type="submit" class="ratebook-carrier-primary" id="ratebook-carrier-submit-quote">Submit offer</button></div>
       </form>
     </dialog>
     <script type="module" src="./src/ratebook-carrier.js"></script>

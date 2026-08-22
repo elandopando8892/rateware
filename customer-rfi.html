@@ -6,10 +6,12 @@
     <title>Rateware Customer RFI</title>
     <link rel="stylesheet" href="./src/styles.css" />
     <link rel="stylesheet" href="./src/customer-rfi-ui.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-public-shell.css" />
   </head>
-  <body class="public-rfi-page">
-    <main class="customer-rfi-shell">
-      <header class="customer-rfi-header customer-rfi-header-dense">
+  <body class="public-rfi-page" data-platform55-shell="public" data-platform55-page="customer-rfi">
+    <main class="customer-rfi-shell rw-public-app" data-platform55-public-app>
+      <header class="customer-rfi-header customer-rfi-header-dense rw-public-header" data-platform55-public-context>
         <div>
           <a class="brand-mark" href="./index.html">Rateware</a>
           <p class="eyebrow" data-i18n="customerRfi">Customer RFI</p>
@@ -29,7 +31,7 @@
         </div>
       </header>
 
-      <p id="customer-rfi-message" class="row-save-status" role="status"></p>
+      <p id="customer-rfi-message" class="row-save-status rw-public-state" role="status" data-platform55-public-state></p>
 
       <section class="customer-rfi-grid rfi-overview-grid">
         <article class="customer-rfi-card rfi-section-card">
@@ -150,7 +152,7 @@
         <div id="rfi-segment-files"></div>
       </section>
 
-      <section class="customer-rfi-actions">
+      <section class="customer-rfi-actions rw-public-actions" data-platform55-public-actions>
         <button id="save-customer-rfi" type="button" class="secondary" data-i18n="saveDraft">Save draft</button>
         <button id="submit-customer-rfi" type="button" class="page-primary-action" data-i18n="submitFinal">Submit final RFI</button>
       </section>
