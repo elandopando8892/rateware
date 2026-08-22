@@ -613,7 +613,7 @@ function renderProfile(vendor) {
               </label>
             </div>
           </section>
-          <div class="carrier-profile-actions">
+          <div class="carrier-profile-actions rw-public-actions" data-platform55-public-actions>
             <button class="secondary" type="button" data-step-action="previous">${escapeHtml(t("previous"))}</button>
             <button class="secondary" type="button" data-step-action="next">${escapeHtml(t("next"))}</button>
             <button id="carrier-profile-submit" type="submit">${escapeHtml(t("submit"))}</button>
@@ -830,7 +830,7 @@ async function saveTicketFollowup(ticketId) {
 function renderMissingToken() {
   title.textContent = t("noTokenTitle");
   card.innerHTML = `
-    <section class="carrier-profile-empty">
+    <section class="carrier-profile-empty rw-public-state" data-platform55-public-state data-state="signed-out">
       ${renderLanguageToggle()}
       <strong>${escapeHtml(t("missingToken"))}</strong>
       <p>${escapeHtml(t("noTokenDetail"))}</p>
@@ -855,7 +855,7 @@ async function init() {
   } catch (error) {
     title.textContent = t("unavailableTitle");
     card.innerHTML = `
-      <section class="carrier-profile-empty">
+      <section class="carrier-profile-empty rw-public-state" data-platform55-public-state data-state="error">
         ${renderLanguageToggle()}
         <p class="status-message" data-tone="error">${escapeHtml(humanizeError(error))}</p>
       </section>

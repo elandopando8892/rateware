@@ -28,6 +28,7 @@ import {
 } from "./vendor-service.js";
 import { errorState, loadingState, stateBlock, tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 
 const form = document.querySelector("#vendor-form");
 const vendorTabs = document.querySelectorAll("[data-vendor-tab]");
@@ -3689,6 +3690,16 @@ async function loadVendors({ force = false } = {}) {
 
 async function loadVendorsRequest(query) {
   const loadVersion = ++vendorDirectoryLoadVersion;
+  updatePlatform55Shell({
+    pageState: {
+      title: "Carrier CRM",
+      subtitle: "Source, qualify, and prepare carriers for governed procurement.",
+      breadcrumbs: ["Source", "Carrier CRM"],
+      status: "Loading carrier directory",
+      busy: true,
+      actions: []
+    }
+  });
   renderVendorTableHeader();
   vendorsBody.innerHTML = tableLoadingState(vendorTableColumnCount(), {
     title: `Loading ${baseStageLabel()}`,
@@ -3715,6 +3726,16 @@ async function loadVendorsRequest(query) {
     } else {
       renderVendors(rows);
     }
+    updatePlatform55Shell({
+      pageState: {
+        title: "Carrier CRM",
+        subtitle: "Source, qualify, and prepare carriers for governed procurement.",
+        breadcrumbs: ["Source", "Carrier CRM"],
+        status: `${rows.length.toLocaleString()} carrier record(s) loaded`,
+        busy: false,
+        actions: []
+      }
+    });
   } catch (error) {
     if (loadVersion !== vendorDirectoryLoadVersion) return;
     vendorsBody.innerHTML = tableErrorState(vendorTableColumnCount(), error, {
@@ -3723,6 +3744,16 @@ async function loadVendorsRequest(query) {
       meta: "Vendor records were not changed."
     });
     vendorTotalCount = 0;
+    updatePlatform55Shell({
+      pageState: {
+        title: "Carrier CRM",
+        subtitle: "Source, qualify, and prepare carriers for governed procurement.",
+        breadcrumbs: ["Source", "Carrier CRM"],
+        status: "Carrier directory could not load",
+        busy: false,
+        actions: []
+      }
+    });
   } finally {
     if (loadVersion !== vendorDirectoryLoadVersion) return;
     refreshButton.disabled = false;

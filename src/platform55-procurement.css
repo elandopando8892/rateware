@@ -1,0 +1,119 @@
+.rw-procurement-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+}
+
+.rw-procurement-page.bid-room-product {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.rw-procurement-status,
+.rw-procurement-response,
+.rw-procurement-readiness {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--rw-slate-200);
+  border-radius: var(--rw-radius-md);
+  color: var(--rw-slate-700);
+  background: var(--rw-white);
+}
+
+.rw-procurement-status[data-state="open"],
+.rw-procurement-readiness[data-state="ready"] {
+  border-color: var(--rw-teal-500);
+  color: var(--rw-teal-700);
+  background: var(--rw-teal-50);
+}
+
+.rw-procurement-status[data-state="blocked"],
+.rw-procurement-readiness[data-state="review-required"] {
+  border-color: var(--rw-amber-500);
+  color: var(--rw-amber-700);
+  background: var(--rw-amber-50);
+}
+
+.rw-procurement-milestones {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(144px, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.rw-procurement-milestones > * {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--rw-slate-200);
+  border-radius: var(--rw-radius-md);
+  background: var(--rw-slate-25);
+}
+
+.rw-procurement-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--rw-slate-200);
+  border-radius: var(--rw-radius-md);
+  background: var(--rw-white);
+}
+
+.rw-procurement-table-scroll > table {
+  width: 100%;
+  min-width: 720px;
+}
+
+@media (min-width: 1101px) {
+  .rw-procurement-page.ratebook-workspace .ratebook-toolbar {
+    grid-template-columns: minmax(180px, 1.45fr) repeat(4, minmax(86px, 0.62fr)) minmax(340px, 1.4fr) minmax(110px, 0.58fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .rw-procurement-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rw-procurement-milestones {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .rw-procurement-milestones > * {
+    flex: 0 0 min(78vw, 220px);
+  }
+
+  .rw-procurement-page .funnel-toolbar,
+  .rw-procurement-page .bid-room-import-panel,
+  .rw-procurement-page .bid-room-stage-panel,
+  .rw-procurement-page .bid-room-table-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .rw-procurement-page .bid-room-import-panel {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .rw-procurement-page .bid-room-book-entry-header,
+  .rw-procurement-page .bid-room-manual-lanes-header,
+  .rw-procurement-page .action-row {
+    flex-wrap: wrap;
+  }
+
+  .rw-procurement-page.ratebook-workspace > .page-header {
+    margin-inline: -12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rw-procurement-page,
+  .rw-procurement-page * {
+    scroll-behavior: auto;
+  }
+}
