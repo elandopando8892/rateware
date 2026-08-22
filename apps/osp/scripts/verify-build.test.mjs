@@ -17,6 +17,7 @@ import test from 'node:test';
 
 const execFileAsync = promisify(execFile);
 const verifierSource = fileURLToPath(new URL('./verify-build.mjs', import.meta.url));
+const packageNodeModules = resolve(dirname(verifierSource), '..', 'node_modules');
 const tempBase = await realpath(tmpdir());
 
 const validScript = '<script type="module" src="/app/assets/app.js"></script>';
@@ -31,6 +32,7 @@ async function withFixture(html, run) {
   try {
     await mkdir(scriptsRoot, { recursive: true });
     await mkdir(assetsRoot, { recursive: true });
+    await symlink(packageNodeModules, join(appRoot, 'node_modules'), 'junction');
     await copyFile(verifierSource, join(scriptsRoot, 'verify-build.mjs'));
     await writeFile(join(appRoot, 'dist', 'app', 'index.html'), html, 'utf8');
     await writeFile(join(assetsRoot, 'app.js'), 'console.log("safe build");', 'utf8');
@@ -79,6 +81,14 @@ test('accepts a valid build with rooted executable and stylesheet assets', async
 
 test('rejects an external script even when another valid asset exists', async () => {
   const html = `${validScript}${validStylesheet}<script src="https://cdn.example.test/evil.js"></script>`;
+  await withFixture(html, async ({ fixtureRoot, appRoot }) => {
+    const output = assertSafeFailure(await runVerifier(appRoot), fixtureRoot);
+    assert.match(output, /script asset/i);
+  });
+});
+
+test('rejects an external script after a greater-than character inside a quoted attribute', async () => {
+  const html = `${validScript}${validStylesheet}<script data-note=">" src="https://cdn.example.test/evil.js"></script>`;
   await withFixture(html, async ({ fixtureRoot, appRoot }) => {
     const output = assertSafeFailure(await runVerifier(appRoot), fixtureRoot);
     assert.match(output, /script asset/i);
