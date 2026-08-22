@@ -13,6 +13,7 @@ From the repository root:
 pnpm --dir apps/osp install --frozen-lockfile
 pnpm --dir apps/osp dev
 pnpm --dir apps/osp test
+pnpm --dir apps/osp test:verify-build
 pnpm --dir apps/osp lint
 pnpm --dir apps/osp build
 pnpm --dir apps/osp verify:build
