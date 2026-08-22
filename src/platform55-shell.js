@@ -73,6 +73,10 @@ export function normalizePlatform55PageState(input = {}, { allowedActionIds = []
   });
 }
 
+export function platform55BreadcrumbText(breadcrumbs = []) {
+  return breadcrumbs.join(" · ");
+}
+
 function allowedPageActionIds(doc) {
   return [...doc.querySelectorAll("[data-platform55-action]")]
     .map((element) => element.dataset.platform55Action || "")
@@ -90,11 +94,7 @@ function applyPageState(state) {
   if (title && pageState.title) title.textContent = pageState.title;
   if (subtitle) subtitle.textContent = pageState.subtitle;
   if (breadcrumbs) {
-    breadcrumbs.replaceChildren(...pageState.breadcrumbs.map((label) => {
-      const item = state.doc.createElement("span");
-      item.textContent = label;
-      return item;
-    }));
+    breadcrumbs.textContent = platform55BreadcrumbText(pageState.breadcrumbs);
   }
   content.setAttribute("aria-busy", String(pageState.busy));
   for (const action of pageState.actions) {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { normalizePlatform55PageState } from "../src/platform55-shell.js";
+import { normalizePlatform55PageState, platform55BreadcrumbText } from "../src/platform55-shell.js";
 
 const operateCss = readFileSync("src/platform55-operate.css", "utf8");
 const operatePrimitives = [
@@ -33,6 +33,11 @@ const normalizedPageState = normalizePlatform55PageState({
 }, { allowedActionIds: ["refresh"] });
 assert.equal(normalizedPageState.title, "Source <Files>");
 assert.deepEqual(normalizedPageState.breadcrumbs, ["Operate", "Source Files"]);
+assert.equal(
+  platform55BreadcrumbText(normalizedPageState.breadcrumbs),
+  "Operate · Source Files",
+  "Visible breadcrumbs must preserve a readable separator"
+);
 assert.equal(normalizedPageState.busy, true);
 assert.ok(Object.isFrozen(normalizedPageState));
 assert.ok(Object.isFrozen(normalizedPageState.actions));
