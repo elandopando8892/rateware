@@ -5,64 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware RFx Process</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-procurement.css" />
   </head>
-  <body>
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Rateware modules">
-        <a class="brand-mark" href="./app.html">Rateware</a>
-        <nav class="nav-groups">
-          <section class="nav-group">
-            <p>Operate</p>
-            <a href="./app.html" data-nav-code="CC">Command Center</a>
-            <a href="./upload-center.html" data-nav-code="IM">Import</a>
-            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
-            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
-            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
-          </section>
-          <section class="nav-group">
-            <p>Analyze</p>
-            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
-          </section>
-          <section class="nav-group">
-            <p>Source</p>
-            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
-            <a href="./provider-service.html" data-nav-code="PS">Provider Service</a>
-            <a aria-current="page" href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
-            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
-            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
-            <a href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
-          </section>
-          <section class="nav-group">
-            <p>Admin</p>
-            <a href="./settings.html" data-nav-code="ST">Settings</a>
-            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
-            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
-          </section>
-        </nav>
-      </aside>
-
-      <div class="page-frame">
-        <header class="page-header">
-          <div>
-            <p class="eyebrow">Procurement design</p>
-            <h1>RFx Process</h1>
-            <nav class="module-crumbs" aria-label="Module context">
-              <a href="./app.html">Command Center</a>
-              <a href="./vendors.html">Carrier CRM</a>
-              <span>RFx Process</span>
-            </nav>
-          </div>
-          <div class="page-header-actions">
-            <button id="new-rfx-project" class="page-primary-action" type="button">New RFx Project</button>
-            <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Log in</button>
-              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
-              <p id="auth-status" role="status"></p>
-            </form>
-          </div>
+  <body data-platform55-shell="tenant" data-platform55-page="rfx-process">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <div class="rw-workspace">
+        <header class="rw-topbar" data-platform55-topbar>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Log in</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
         </header>
 
-        <main class="rfx-process-layout">
+        <main class="rfx-process-layout rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="process-readiness">
+          <header class="rw-operate-heading" data-platform55-page-header>
+            <div>
+              <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Source · Carrier CRM · RFx Process</p>
+              <h1 data-platform55-page-title>RFx Process</h1>
+              <p data-platform55-page-subtitle>Prepare demand, packages, responses, and reviewed implementation handoff.</p>
+            </div>
+            <button id="new-rfx-project" class="page-primary-action" type="button">New RFx Project</button>
+          </header>
           <section class="rfx-process-list-panel rfx-process-directory">
             <div class="split-heading compact">
               <div>

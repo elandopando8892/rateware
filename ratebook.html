@@ -5,40 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ratebook | Rateware</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-procurement.css" />
   </head>
-  <body class="app-shell-page">
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Primary navigation">
-        <a class="brand" href="./app.html">Rateware</a>
-        <div class="side-nav-group">
-          <span>Operate</span>
-          <a href="./app.html">Command Center</a>
-          <a href="./upload-center.html">Import</a>
-          <a href="./upload-history.html">Source Files</a>
-          <a href="./staging-review.html">Review Queue</a>
-          <a href="./rateware.html">Rateware</a>
-        </div>
-        <div class="side-nav-group">
-          <span>Analyze</span>
-          <a href="./business-intelligence.html">Analyze</a>
-        </div>
-        <div class="side-nav-group">
-          <span>Source</span>
-          <a href="./vendors.html">Carrier CRM</a>
-          <a href="./shipper-crm.html">Shipper CRM</a>
-          <a href="./rfx-process.html">RFx Process</a>
-          <a class="is-active" href="./ratebook.html">Ratebook</a>
-          <a href="./rfx-events.html">Bid Room</a>
-        </div>
-        <div class="side-nav-group">
-          <span>Admin</span>
-          <a href="./settings.html">Settings</a>
-          <a href="./catalogs.html">Catalog</a>
-        </div>
-      </aside>
+  <body class="app-shell-page" data-platform55-shell="tenant" data-platform55-page="ratebook">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <div class="rw-workspace">
+        <header class="rw-topbar" data-platform55-topbar>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Log in</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
+        </header>
 
-      <main class="page-frame ratebook-workspace">
-        <header class="page-header">
+      <main class="page-frame ratebook-workspace rw-main rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="ratebook-review">
+        <header class="page-header" data-platform55-page-header>
           <div>
             <p class="eyebrow">RFx Route Books</p>
             <h1>Ratebook</h1>
@@ -135,6 +119,7 @@
           </section>
         </section>
       </main>
+      </div>
     </div>
 
     <div class="ratebook-drawer-backdrop hidden" id="ratebook-drawer-backdrop"></div>
