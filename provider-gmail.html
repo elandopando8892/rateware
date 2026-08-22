@@ -5,41 +5,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Provider Gmail Intake</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-network-service.css" />
     <link rel="stylesheet" href="./src/provider-gmail.css" />
   </head>
-  <body>
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Rateware modules">
-        <a class="brand-mark" href="./app.html">Rateware</a>
-        <nav class="nav-groups">
-          <section class="nav-group"><p>Operate</p><a href="./app.html" data-nav-code="CC">Command Center</a><a href="./rateware.html" data-nav-code="RW">Rateware</a></section>
-          <section class="nav-group"><p>Source</p><a href="./vendors.html" data-nav-code="CM">Carrier CRM</a><a aria-current="page" href="./provider-service.html" data-nav-code="PS">Provider Service</a><a href="./rfx-process.html" data-nav-code="RP">RFx Process</a><a href="./rfx-events.html" data-nav-code="BR">Bid Room</a></section>
-          <section class="nav-group"><p>Admin</p><a href="./settings.html" data-nav-code="ST">Settings</a></section>
-        </nav>
-      </aside>
-
-      <div class="page-frame">
-        <header class="page-header">
+  <body data-platform55-shell="tenant" data-platform55-page="provider-gmail">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <div class="rw-shell">
+        <header class="rw-topbar" data-platform55-topbar>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Log in</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
+        </header>
+        <main class="provider-gmail-layout rw-main rw-network-service-page" data-platform55-page-content data-platform55-network-state="gmail-connectivity">
+          <header class="page-header" data-platform55-page-header>
           <div>
-            <p class="eyebrow">Provider Service integration</p>
-            <h1>Gmail Intake</h1>
-            <nav class="module-crumbs" aria-label="Module context">
-              <a href="./provider-service.html">Provider Service</a>
-              <a href="./provider-communications.html">Communications Inbox</a>
-              <span>Gmail Intake</span>
-            </nav>
+            <p class="eyebrow" data-platform55-breadcrumbs>Service · Provider Gmail</p>
+            <h1 data-platform55-page-title>Gmail Intake</h1>
+            <p data-platform55-page-subtitle>Read-only mailbox connectivity and bounded inbox synchronization.</p>
           </div>
           <div class="page-header-actions">
             <a class="secondary-link" href="./provider-communications.html">Open Communications Inbox</a>
-            <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Log in</button>
-              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
-              <p id="auth-status" role="status"></p>
-            </form>
           </div>
-        </header>
+          </header>
 
-        <main class="provider-gmail-layout">
           <section class="workspace-panel provider-gmail-hero wide-section">
             <div>
               <p class="eyebrow">Inbound only</p>
@@ -75,7 +68,7 @@
             <p id="provider-gmail-status-message" class="status-message" role="status"></p>
           </section>
 
-          <section class="provider-gmail-status-grid wide-section" aria-label="Gmail intake status">
+          <section class="provider-gmail-status-grid wide-section rw-network-service-metrics" aria-label="Gmail intake status">
             <article class="workspace-panel"><span>Connection</span><strong id="provider-gmail-connection-state">Not connected</strong><small id="provider-gmail-token-state">—</small></article>
             <article class="workspace-panel"><span>Watch</span><strong id="provider-gmail-watch-state">Inactive</strong><small id="provider-gmail-watch-expiration">—</small></article>
             <article class="workspace-panel"><span>Last sync</span><strong id="provider-gmail-last-sync">Never</strong><small id="provider-gmail-history">No history ID</small></article>

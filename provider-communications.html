@@ -5,64 +5,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Communications Inbox</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-network-service.css" />
     <link rel="stylesheet" href="./src/provider-communications.css" />
   </head>
-  <body>
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Rateware modules">
-        <a class="brand-mark" href="./app.html">Rateware</a>
-        <nav class="nav-groups">
-          <section class="nav-group">
-            <p>Operate</p>
-            <a href="./app.html" data-nav-code="CC">Command Center</a>
-            <a href="./upload-center.html" data-nav-code="IM">Import</a>
-            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
-            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
-            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
-          </section>
-          <section class="nav-group">
-            <p>Analyze</p>
-            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
-          </section>
-          <section class="nav-group">
-            <p>Source</p>
-            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
-            <a aria-current="page" href="./provider-service.html" data-nav-code="PS">Provider Service</a>
-            <a href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
-            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
-            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
-            <a href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
-          </section>
-          <section class="nav-group">
-            <p>Admin</p>
-            <a href="./settings.html" data-nav-code="ST">Settings</a>
-            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
-            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
-          </section>
-        </nav>
-      </aside>
-
-      <div class="page-frame">
-        <header class="page-header">
+  <body data-platform55-shell="tenant" data-platform55-page="provider-communications">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <div class="rw-shell">
+        <header class="rw-topbar" data-platform55-topbar>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Log in</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
+        </header>
+        <main class="communications-layout rw-main rw-network-service-page" data-platform55-page-content data-platform55-network-state="communication-history">
+          <header class="page-header" data-platform55-page-header>
           <div>
-            <p class="eyebrow">Provider relationship communications</p>
-            <h1>Communications Inbox</h1>
-            <nav class="module-crumbs" aria-label="Module context">
-              <a href="./provider-service.html">Provider Service</a>
-              <span>Communications Inbox</span>
-            </nav>
+            <p class="eyebrow" data-platform55-breadcrumbs>Service · Provider Communications</p>
+            <h1 data-platform55-page-title>Communications Inbox</h1>
+            <p data-platform55-page-subtitle>Read-only provider threads, matching evidence, and communication history.</p>
           </div>
           <div class="page-header-actions">
             <a class="secondary-link" href="./provider-service.html">Provider Service 360</a>
-            <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Log in</button>
-              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
-              <p id="auth-status" role="status"></p>
-            </form>
           </div>
-        </header>
+          </header>
 
-        <main class="communications-layout">
           <section class="communications-hero wide-section">
             <div>
               <p class="eyebrow">Provider communications control tower</p>
@@ -75,7 +45,7 @@
             </label>
           </section>
 
-          <section class="communications-metrics wide-section" aria-label="Communications metrics">
+          <section class="communications-metrics wide-section rw-network-service-metrics" aria-label="Communications metrics">
             <button type="button" data-communication-queue="all" class="communications-metric is-active"><span>Threads</span><strong id="communication-metric-threads">0</strong></button>
             <button type="button" data-communication-queue="unmatched" class="communications-metric"><span>Unmatched</span><strong id="communication-metric-unmatched">0</strong></button>
             <button type="button" data-communication-queue="needs_review" class="communications-metric"><span>Review</span><strong id="communication-metric-review">0</strong></button>
@@ -118,7 +88,7 @@
               </div>
             </div>
 
-            <aside class="workspace-panel communications-detail-panel" aria-label="Selected communication thread">
+            <aside class="workspace-panel communications-detail-panel rw-network-service-detail" aria-label="Selected communication thread">
               <div id="communications-detail" class="communications-detail-empty">
                 <strong>Select a thread</strong>
                 <p>Open a conversation to inspect messages, attachment metadata, matching evidence, and linked Provider Service cases.</p>

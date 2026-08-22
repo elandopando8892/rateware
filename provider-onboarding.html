@@ -5,29 +5,28 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Rateware Provider Onboarding</title>
   <link rel="stylesheet" href="./src/styles.css" />
+  <link rel="stylesheet" href="./src/platform55-tokens.css" />
+  <link rel="stylesheet" href="./src/platform55-shell.css" />
+  <link rel="stylesheet" href="./src/platform55-network-service.css" />
   <link rel="stylesheet" href="./src/provider-onboarding.css" />
 </head>
-<body>
-<div class="shell-layout">
-  <aside class="side-nav" aria-label="Rateware modules">
-    <a class="brand-mark" href="./app.html">Rateware</a>
-    <nav class="nav-groups">
-      <section class="nav-group"><p>Operate</p><a href="./app.html" data-nav-code="CC">Command Center</a><a href="./staging-review.html" data-nav-code="RQ">Review Queue</a><a href="./rateware.html" data-nav-code="RW">Rateware</a></section>
-      <section class="nav-group"><p>Source</p><a href="./vendors.html" data-nav-code="CM">Carrier CRM</a><a href="./provider-service.html" data-nav-code="PS">Provider Service</a><a aria-current="page" href="./provider-onboarding.html" data-nav-code="PO">Provider Onboarding</a><a href="./provider-communications.html" data-nav-code="PC">Communications</a></section>
-      <section class="nav-group"><p>Admin</p><a href="./settings.html" data-nav-code="ST">Settings</a></section>
-    </nav>
-  </aside>
-  <div class="page-frame">
-    <header class="page-header">
-      <div><p class="eyebrow">Provider Service · controlled operations</p><h1>Provider Onboarding</h1><nav class="module-crumbs"><a href="./provider-service.html">Provider Service</a><span>Onboarding Workspace</span></nav></div>
-      <div class="page-header-actions"><a class="secondary-link" href="./provider-communications.html">Communications</a><form id="auth-form" class="auth-strip"><button id="auth-button" type="submit">Log in</button><button id="sign-out-button" type="button" class="secondary hidden">Sign out</button><p id="auth-status" role="status"></p></form></div>
+<body data-platform55-shell="tenant" data-platform55-page="provider-onboarding">
+<div class="rw-app" data-platform55-app>
+  <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+  <div class="rw-shell">
+    <header class="rw-topbar" data-platform55-topbar>
+      <form id="auth-form" class="auth-strip"><button id="auth-button" type="submit">Log in</button><button id="sign-out-button" type="button" class="secondary hidden">Sign out</button><p id="auth-status" role="status"></p></form>
     </header>
-    <main class="onboarding-layout">
+    <main class="onboarding-layout rw-main rw-network-service-page" data-platform55-page-content data-platform55-network-state="onboarding-readiness">
+      <header class="page-header" data-platform55-page-header>
+        <div><p class="eyebrow" data-platform55-breadcrumbs>Service · Provider Onboarding</p><h1 data-platform55-page-title>Provider Onboarding</h1><p data-platform55-page-subtitle>Evidence collection, approval readiness, and controlled delivery status.</p></div>
+        <div class="page-header-actions"><a class="secondary-link" href="./provider-communications.html">Communications</a></div>
+      </header>
       <section class="onboarding-hero">
         <div><p class="eyebrow">Human-controlled pipeline</p><h2>Move each legal entity from evidence collection to verified delivery.</h2><p>Every gate is tied to reviewed evidence, an exact approval scope, explicit signature consent, and bounded Gmail delivery.</p></div>
         <label><span>Search cases</span><input id="onboarding-search" type="search" placeholder="Program, jurisdiction, case ID…" autocomplete="off" /></label>
       </section>
-      <section class="onboarding-metrics" aria-label="Onboarding metrics">
+      <section class="onboarding-metrics rw-network-service-metrics" aria-label="Onboarding metrics">
         <button data-onboarding-queue="all" class="is-active"><span>Cases</span><strong id="metric-total">0</strong></button>
         <button data-onboarding-queue="blocked"><span>Blocked</span><strong id="metric-blocked">0</strong></button>
         <button data-onboarding-queue="ready_for_approval"><span>Approval</span><strong id="metric-approval">0</strong></button>
@@ -43,9 +42,9 @@
           <div id="onboarding-rows" class="onboarding-rows" aria-live="polite"><article class="ui-state ui-state-loading"><strong>Loading onboarding</strong><p>Resolving the private workspace.</p></article></div>
           <div class="onboarding-pagination"><button id="onboarding-prev" class="secondary" disabled>Previous</button><button id="onboarding-next" class="secondary" disabled>Next</button></div>
         </div>
-        <aside class="workspace-panel onboarding-detail-panel"><div id="onboarding-detail" class="onboarding-empty"><strong>Select a case</strong><p>Inspect readiness, work, approval, assembly, delivery, and audit status.</p></div></aside>
+        <aside class="workspace-panel onboarding-detail-panel rw-network-service-detail"><div id="onboarding-detail" class="onboarding-empty"><strong>Select a case</strong><p>Inspect readiness, work, approval, assembly, delivery, and audit status.</p></div></aside>
       </section>
-      <p class="onboarding-boundary">This workspace never renders fact values, document bytes or paths, signature assets, recipients, mailbox addresses, message bodies, credentials, or cryptographic hashes.</p>
+      <p class="onboarding-boundary rw-network-service-boundary">This workspace never renders fact values, document bytes or paths, signature assets, recipients, mailbox addresses, message bodies, credentials, or cryptographic hashes.</p>
     </main>
   </div>
 </div>

@@ -1,5 +1,6 @@
 import { requirePrivatePage } from './auth.js';
 import { callRatewareFunction } from './rateware-api.js';
+import { updatePlatform55Shell } from './platform55-shell.js';
 import {
   communicationProviderLabel,
   communicationThreadSignals,
@@ -45,6 +46,16 @@ const detailContainer = document.getElementById('communications-detail');
 const resultCaption = document.getElementById('communications-result-caption');
 const prevButton = document.getElementById('communications-prev');
 const nextButton = document.getElementById('communications-next');
+
+function updateProviderCommunicationsShell(status, busy = false) {
+  updatePlatform55Shell({ pageState: {
+    title: 'Communications Inbox',
+    subtitle: 'Read-only provider threads, matching evidence, and communication history.',
+    breadcrumbs: ['Service', 'Provider Communications'],
+    status,
+    busy,
+  } });
+}
 
 function metric(id, value) {
   const node = document.getElementById(id);
@@ -183,6 +194,7 @@ async function selectThread(threadId) {
 
 async function loadInbox({ preserveSelection = false } = {}) {
   const requestId = ++state.requestId;
+  updateProviderCommunicationsShell('Loading provider communication history', true);
   if (rowsContainer) rowsContainer.innerHTML = '<article class="ui-state ui-state-loading"><strong>Loading Communications Inbox</strong><p>Resolving provider threads.</p></article>';
   try {
     const response = await callRatewareFunction('shipper-directory-api', 'list_provider_communications_inbox', {
@@ -205,6 +217,7 @@ async function loadInbox({ preserveSelection = false } = {}) {
     renderMetrics();
     renderRows();
     renderPagination();
+    updateProviderCommunicationsShell(`${state.total.toLocaleString()} provider communication thread(s) loaded`);
   } catch (error) {
     if (requestId !== state.requestId) return;
     state.rows = [];
@@ -212,6 +225,7 @@ async function loadInbox({ preserveSelection = false } = {}) {
     if (rowsContainer) rowsContainer.innerHTML = `<article class="ui-state ui-state-error"><strong>Communications Inbox could not load</strong><p>${escapeHtml(error?.message || 'Request failed.')}</p></article>`;
     renderMetrics();
     renderPagination();
+    updateProviderCommunicationsShell('Provider communication history could not load');
   }
 }
 

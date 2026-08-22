@@ -76,6 +76,59 @@ for (const html of [vendorSupportHtml, vendorImprovementHtml]) {
   assert.doesNotMatch(html, /data-platform55-action="(?:send|dispatch|approve|promote|release|remediate)"/i, "Shell actions must not expose consequential vendor mutations");
 }
 
+const providerPages = Object.freeze([
+  {
+    htmlFile: "provider-service.html",
+    sourceFile: "src/provider-service-page.js",
+    state: "provider-review-queue",
+    states: ["Loading provider review queue", "provider relationship(s) loaded", "Provider review queue could not load"],
+    actions: ["list_provider_service_command_center"]
+  },
+  {
+    htmlFile: "provider-onboarding.html",
+    sourceFile: "src/provider-onboarding-page.js",
+    state: "onboarding-readiness",
+    states: ["Loading provider onboarding readiness", "onboarding case(s) loaded", "Provider onboarding readiness could not load"],
+    actions: ["list_provider_onboarding_workspace", "get_provider_onboarding_case"]
+  },
+  {
+    htmlFile: "provider-gmail.html",
+    sourceFile: "src/provider-gmail-page.js",
+    state: "gmail-connectivity",
+    states: ["Loading Gmail connectivity", "Gmail connectivity loaded", "Gmail connectivity could not load"],
+    actions: ["provider_gmail_status", "start_provider_gmail_oauth", "sync_provider_gmail_inbox", "renew_provider_gmail_watch"]
+  },
+  {
+    htmlFile: "provider-communications.html",
+    sourceFile: "src/provider-communications-page.js",
+    state: "communication-history",
+    states: ["Loading provider communication history", "provider communication thread(s) loaded", "Provider communication history could not load"],
+    actions: ["list_provider_communications_inbox", "get_provider_communication_thread"]
+  }
+]);
+
+for (const { htmlFile, sourceFile, state, states, actions } of providerPages) {
+  const html = readFileSync(htmlFile, "utf8");
+  const source = readFileSync(sourceFile, "utf8");
+  assert.match(html, new RegExp(`data-platform55-network-state="${state}"`), `${htmlFile} must expose ${state}`);
+  assert.match(source, /updatePlatform55Shell\s*\(\s*\{\s*pageState:/s, `${sourceFile} must publish shell page state`);
+  assert.match(source, /escapeHtml\s*[=(]/, `${sourceFile} must keep variable text escaped`);
+  assert.match(source, /requirePrivatePage\s*\(/, `${sourceFile} must preserve a private-page gate`);
+  for (const stateText of states) {
+    assert.match(source, new RegExp(stateText.replace(/[()]/g, "\\$&")), `${sourceFile} must publish ${stateText}`);
+  }
+  for (const action of actions) assert.match(source, new RegExp(`["']${action}["']`), `${sourceFile} must preserve ${action}`);
+  assert.doesNotMatch(html, /data-platform55-action="(?:send|dispatch|approve|promote|release|modify-provider)"/i, `${htmlFile} shell must expose summary-only actions`);
+}
+
+assert.match(
+  readFileSync("src/provider-gmail-page.js", "utf8"),
+  /renderConnection\(\);\s*updateProviderGmailShell\('Gmail connectivity loaded'\);\s*if \(!quiet\)/,
+  "Provider Gmail must publish the loaded shell state even when callback status text stays quiet"
+);
+assert.match(readFileSync("provider-onboarding.html", "utf8"), /class="[^"]*rw-network-service-boundary[^"]*"/, "Provider Onboarding must retain the controlled-action boundary");
+assert.match(readFileSync("provider-communications.html", "utf8"), /class="[^"]*rw-network-service-detail[^"]*"/, "Provider Communications must expose bounded thread detail");
+
 const tenantPages = Object.freeze([
   ["shipper-crm.html", "shipper-crm"],
   ["vendor-support.html", "vendor-support"],
