@@ -141,6 +141,11 @@ export async function startOperateEvidenceServer({ rootDir = process.cwd(), port
       }
 
       const url = new URL(request.url || "/", "http://127.0.0.1");
+      if (url.pathname === "/favicon.ico") {
+        response.writeHead(204, { "Cache-Control": "no-store" });
+        response.end();
+        return;
+      }
       const boundary = BOUNDARIES.get(url.pathname);
       if (boundary) {
         response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-store", "X-Rateware-QA-Boundary": "true" });

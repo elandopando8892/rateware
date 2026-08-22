@@ -31,6 +31,9 @@ test("serves actual Operate routes while replacing only auth and data boundaries
 
   const writeResponse = await fetch(`${instance.origin}/upload-center.html`, { method: "POST" });
   assert.equal(writeResponse.status, 405);
+
+  const faviconResponse = await fetch(`${instance.origin}/favicon.ico`);
+  assert.equal(faviconResponse.status, 204);
 });
 
 test("anchors the complete actual-route capture matrix to its immutable subject", async () => {
@@ -40,7 +43,7 @@ test("anchors the complete actual-route capture matrix to its immutable subject"
 
   const directory = `docs/platform55-evidence/p2-s2/${subject}`;
   const manifest = JSON.parse(await readFile(`${directory}/manifest.json`, "utf8"));
-  assert.equal(manifest.schema_version, 3);
+  assert.equal(manifest.schema_version, 4);
   assert.equal(manifest.subject_sha, subject);
   assert.deepEqual(manifest.routes, ["upload-center", "upload-history", "staging-review", "rateware"]);
   assert.deepEqual(manifest.states, ["loaded", "error"]);
@@ -72,6 +75,8 @@ test("anchors the complete actual-route capture matrix to its immutable subject"
     assert.equal(capture.document_overflow, false, `${capture.file} must not contain horizontal overflow`);
     assert.equal(capture.active_routes, 1, `${capture.file} must expose one active route`);
     assert.equal(capture.page_module_declared, true, `${capture.file} must load the actual page module`);
+    assert.equal(capture.console_errors, 0, `${capture.file} must have zero browser console errors`);
+    assert.equal(capture.http_errors, 0, `${capture.file} must have zero HTTP responses at or above 400`);
     assert.ok(Number.isFinite(capture.content_width_ratio), `${capture.file} must record its content width ratio`);
     assert.ok(capture.content_width_ratio >= 0.65, `${capture.file} must not collapse into a narrow fraction of the viewport`);
     assert.ok(capture.layout_stability_samples >= 3, `${capture.file} must be captured only after three stable layout samples`);
