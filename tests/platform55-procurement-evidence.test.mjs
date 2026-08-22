@@ -22,6 +22,10 @@ const states = ["loaded", "error", "lifecycle"];
 const viewports = ["1440x900", "1024x768", "390x844"];
 const tenantRoutes = new Set(routes.slice(0, 5));
 const publicRoutes = new Set(routes.slice(5));
+const expectedCaptureMetadata = new Map(routes.flatMap((route) => states.flatMap((state) => viewports.map((viewport) => [
+  `${route}-${state}-${viewport}.png`,
+  { route: `${route}.html`, state, viewport, kind: tenantRoutes.has(route) ? "tenant" : "public" }
+]))));
 const sourcePaths = [
   "vendors.html",
   "rfx-events.html",
@@ -64,14 +68,15 @@ function validateManifestShape(manifest) {
   assert.equal(manifest.captures.length, 90);
   assert.deepEqual(manifest.captures.map((capture) => capture.file).sort(), expectedFiles());
   for (const capture of manifest.captures) {
-    const route = routes.find((candidate) => states.some((state) => viewports.some((viewport) => (
-      capture.file === `${candidate}-${state}-${viewport}.png`
-    ))));
-    assert.ok(route, `${capture.file} known route`);
-    const expectedKind = tenantRoutes.has(route) ? "tenant" : publicRoutes.has(route) ? "public" : undefined;
-    assert.ok(expectedKind, `${capture.file} route kind`);
-    assert.equal(capture.route, `${route}.html`, `${capture.file} route identity`);
-    assert.equal(capture.kind, expectedKind, `${capture.file} route kind`);
+    const expected = expectedCaptureMetadata.get(capture.file);
+    assert.ok(expected, `${capture.file} known capture tuple`);
+    assert.ok(tenantRoutes.has(expected.route.slice(0, -5)) || publicRoutes.has(expected.route.slice(0, -5)), `${capture.file} route kind`);
+    assert.equal(capture.route, expected.route, `${capture.file} route identity`);
+    assert.equal(capture.kind, expected.kind, `${capture.file} route kind`);
+    assert.equal(capture.shell, expected.kind, `${capture.file} shell kind`);
+    assert.equal(capture.state, expected.state, `${capture.file} state identity`);
+    assert.equal(capture.qa_state, expected.state === "lifecycle" ? "loaded" : expected.state, `${capture.file} QA state`);
+    assert.equal(capture.viewport, expected.viewport, `${capture.file} viewport identity`);
     assert.equal(capture.exact_viewport, true, `${capture.file} viewport`);
     assert.equal(capture.source_frame, capture.viewport, `${capture.file} source frame`);
     assert.equal(capture.canvas_normalized, false, `${capture.file} must not need canvas padding`);
@@ -81,8 +86,8 @@ function validateManifestShape(manifest) {
     assert.match(capture.state_selector, /\S/, `${capture.file} state selector`);
     assert.ok(capture.layout_stability_samples >= 3, `${capture.file} stable layout`);
     assert.ok(capture.state_intersection_ratio >= (capture.state === "lifecycle" ? 0.7 : capture.state === "error" ? 0.4 : 0.2), `${capture.file} state intersection`);
-    if (expectedKind === "tenant") assert.equal(capture.active_routes, 1, `${capture.file} active tenant route`);
-    if (expectedKind === "public") assert.equal(capture.private_controls, 0, `${capture.file} public isolation`);
+    if (expected.kind === "tenant") assert.equal(capture.active_routes, 1, `${capture.file} active tenant route`);
+    if (expected.kind === "public") assert.equal(capture.private_controls, 0, `${capture.file} public isolation`);
     assert.match(capture.sha256, /^[0-9a-f]{64}$/);
   }
 }
@@ -122,6 +127,10 @@ test("rejects semantically fabricated Procurement evidence", async () => {
     (copy) => { copy.captures.find((capture) => capture.kind === "public").private_controls = 1; },
     (copy) => { const capture = copy.captures.find((entry) => entry.kind === "public"); capture.kind = "unclassified"; capture.private_controls = 99; },
     (copy) => { copy.captures.find((capture) => capture.kind === "public").route = "vendors.html"; },
+    (copy) => { copy.captures[0].state = "unclassified"; },
+    (copy) => { copy.captures[0].state = "error"; },
+    (copy) => { copy.captures[0].viewport = "390x844"; copy.captures[0].source_frame = "390x844"; },
+    (copy) => { copy.captures[1].file = copy.captures[0].file; },
     (copy) => { copy.captures[0].state_visible = false; },
     (copy) => { copy.captures[0].sha256 = "fabricated"; }
   ]) {

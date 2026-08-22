@@ -348,6 +348,16 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
   const wrongRoute = structuredClone(manifest);
   wrongRoute.captures.find((capture) => capture.kind === "public").route = "vendors.html";
   assert.throws(() => validateP2S3Manifest(wrongRoute), /public isolation/i);
+  const wrongState = structuredClone(manifest);
+  wrongState.captures[0].state = "unclassified";
+  assert.throws(() => validateP2S3Manifest(wrongState), /public isolation/i);
+  const wrongViewport = structuredClone(manifest);
+  wrongViewport.captures[0].viewport = "390x844";
+  wrongViewport.captures[0].source_frame = "390x844";
+  assert.throws(() => validateP2S3Manifest(wrongViewport), /public isolation/i);
+  const duplicateTuple = structuredClone(manifest);
+  duplicateTuple.captures[1].file = duplicateTuple.captures[0].file;
+  assert.throws(() => validateP2S3Manifest(duplicateTuple), /10 x 3 x 3 matrix/i);
 });
 
 test("rejects fabricated P2-S2 closure evidence", () => {
