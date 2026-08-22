@@ -40,6 +40,7 @@ test("anchors the complete actual-route capture matrix to its immutable subject"
 
   const directory = `docs/platform55-evidence/p2-s2/${subject}`;
   const manifest = JSON.parse(await readFile(`${directory}/manifest.json`, "utf8"));
+  assert.equal(manifest.schema_version, 3);
   assert.equal(manifest.subject_sha, subject);
   assert.deepEqual(manifest.routes, ["upload-center", "upload-history", "staging-review", "rateware"]);
   assert.deepEqual(manifest.states, ["loaded", "error"]);
@@ -74,6 +75,13 @@ test("anchors the complete actual-route capture matrix to its immutable subject"
     assert.ok(Number.isFinite(capture.content_width_ratio), `${capture.file} must record its content width ratio`);
     assert.ok(capture.content_width_ratio >= 0.65, `${capture.file} must not collapse into a narrow fraction of the viewport`);
     assert.ok(capture.layout_stability_samples >= 3, `${capture.file} must be captured only after three stable layout samples`);
+    assert.equal(capture.state_visible, true, `${capture.file} must visibly contain its requested state`);
+    assert.match(capture.state_marker, /\S/, `${capture.file} must record the visible state marker`);
+    assert.match(capture.state_selector, /\S/, `${capture.file} must record the target state selector`);
+    assert.ok(capture.state_intersection_ratio >= 0.8, `${capture.file} must keep at least 80% of the requested state inside the viewport`);
+    if (capture.state === "error") {
+      assert.equal(capture.scrolled_to_state, true, `${capture.file} must place its non-happy state inside the captured viewport`);
+    }
     assert.match(capture.sha256, /^[0-9a-f]{64}$/);
     const capturePath = `${directory}/${capture.file}`;
     await access(capturePath);

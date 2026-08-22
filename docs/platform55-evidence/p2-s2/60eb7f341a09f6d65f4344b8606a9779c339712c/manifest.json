@@ -1,8 +1,8 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "subject_sha": "60eb7f341a09f6d65f4344b8606a9779c339712c",
   "captured_at": "2026-08-21",
-  "capture_method": "in-app Browser CDP Page.captureScreenshot after three stable actual-route layout samples with deterministic auth/data boundaries",
+  "capture_method": "in-app Browser CDP Page.captureScreenshot with an explicit page-coordinate viewport clip after three stable actual-route layout samples; the requested state marker was scrolled into view and measured at >=80% intersection; deterministic auth/data boundaries only",
   "routes": [
     "upload-center",
     "upload-history",
@@ -44,7 +44,12 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "365f0c680e9e463116c17e578be8e8e04b94030eece9f209667bdfa425f5f366"
+      "state_visible": true,
+      "state_marker": "Rateware could not load",
+      "state_selector": "#rateware-body .ui-state[data-tone=\"danger\"]",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": true,
+      "sha256": "e016fc1405c4483aab50a48f9dc46cea8ad64cac872a33aaf454f638812c45fc"
     },
     {
       "file": "rateware-error-1440x900.png",
@@ -59,7 +64,12 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "6911647891b59b700815fe59a947184ca19402377f386e36f83aeb5141d5b2cd"
+      "state_visible": true,
+      "state_marker": "Rateware could not load",
+      "state_selector": "#rateware-body .ui-state[data-tone=\"danger\"]",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": true,
+      "sha256": "4caed388a6097fc08e0aa8b36b07142b57df5c60c7889599739af79a69c07d75"
     },
     {
       "file": "rateware-error-390x844.png",
@@ -67,14 +77,19 @@
       "state": "error",
       "width": 390,
       "height": 844,
-      "content_width": 366,
-      "content_width_ratio": 0.9385,
+      "content_width": 356,
+      "content_width_ratio": 0.9128,
       "layout_stability_samples": 3,
       "exact_viewport": true,
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "e8b83acfbc1fda483ca1950cf2bcc38d528eafcfb159927e5e23c62a911e44a8"
+      "state_visible": true,
+      "state_marker": "Rateware could not load",
+      "state_selector": "#rateware-body .ui-state[data-tone=\"danger\"]",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": true,
+      "sha256": "fdcd4bc609f216596ff3843084f877700e897738fa7899a1d7b531c76593c66f"
     },
     {
       "file": "rateware-loaded-1024x768.png",
@@ -89,6 +104,11 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
+      "state_visible": true,
+      "state_marker": "1",
+      "state_selector": "#rateware-metric-total",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": false,
       "sha256": "e1b773374ea173434b9e49fb257a11eec7c8f5e59ca519d0d8cf067220695b95"
     },
     {
@@ -104,6 +124,11 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
+      "state_visible": true,
+      "state_marker": "1",
+      "state_selector": "#rateware-metric-total",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": false,
       "sha256": "5a89b2a8c296316b70c05854615eb060f2661c5c74feb8b8ff263c7a5d66a7b7"
     },
     {
@@ -112,14 +137,19 @@
       "state": "loaded",
       "width": 390,
       "height": 844,
-      "content_width": 366,
-      "content_width_ratio": 0.9385,
+      "content_width": 356,
+      "content_width_ratio": 0.9128,
       "layout_stability_samples": 3,
       "exact_viewport": true,
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "20cf8c9ee40d2bd26c0055fc77e489e0f934b5a6fc66734a7b4ae526a6871971"
+      "state_visible": true,
+      "state_marker": "1",
+      "state_selector": "#rateware-metric-total",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": false,
+      "sha256": "e27daf2d3999ea32078188e2b0facea635a82e915d7db2a971b0ee57dc71df7c"
     },
     {
       "file": "staging-review-error-1024x768.png",
@@ -134,7 +164,12 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "b7584fc5feb226aad2ae30bca5618fcd8bd9d44bdd8fa149aea43b037f3a7f67"
+      "state_visible": true,
+      "state_marker": "Staging Review could not load",
+      "state_selector": "#staging-body .ui-state[data-tone=\"danger\"]",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": true,
+      "sha256": "b954d317ccd510e8a1e5755df634c49eaab8e750a963275891881029b9d04ee3"
     },
     {
       "file": "staging-review-error-1440x900.png",
@@ -149,7 +184,12 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "152f3ac26f7778101a816cc86debce284c3d4203e40ae7e959d2f561babf31c6"
+      "state_visible": true,
+      "state_marker": "Staging Review could not load",
+      "state_selector": "#staging-body .ui-state[data-tone=\"danger\"]",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": true,
+      "sha256": "771322cb56a44b24edbd3ea8b579111079ddaad9b2619385ff55b332344c2eba"
     },
     {
       "file": "staging-review-error-390x844.png",
@@ -157,14 +197,19 @@
       "state": "error",
       "width": 390,
       "height": 844,
-      "content_width": 366,
-      "content_width_ratio": 0.9385,
+      "content_width": 356,
+      "content_width_ratio": 0.9128,
       "layout_stability_samples": 3,
       "exact_viewport": true,
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "7a4b60dce2818bfec8aa6f4920d5a37c03de92862f3390445cbd5ebefd22908e"
+      "state_visible": true,
+      "state_marker": "Staging Review could not load",
+      "state_selector": "#staging-body .ui-state[data-tone=\"danger\"]",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": true,
+      "sha256": "37c482f91b42e03cbb01402549c39250d406f9eec6edc4aff870c8846796e615"
     },
     {
       "file": "staging-review-loaded-1024x768.png",
@@ -179,6 +224,11 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
+      "state_visible": true,
+      "state_marker": "1",
+      "state_selector": "#staging-metric-visible",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": false,
       "sha256": "3d3d28773ef4d37548a8daa58b070cab7bae1ba7c6a2cb1fd9db55dd0320f984"
     },
     {
@@ -194,6 +244,11 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
+      "state_visible": true,
+      "state_marker": "1",
+      "state_selector": "#staging-metric-visible",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": false,
       "sha256": "519d43a7cca09dc5a7627ab40493a6c3bad0b25e7b85f15c9532bbea919ea3e6"
     },
     {
@@ -202,14 +257,19 @@
       "state": "loaded",
       "width": 390,
       "height": 844,
-      "content_width": 366,
-      "content_width_ratio": 0.9385,
+      "content_width": 356,
+      "content_width_ratio": 0.9128,
       "layout_stability_samples": 3,
       "exact_viewport": true,
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "b2daf45fd549f649d2863f99899fde3601840ba077cf7439038d940dc4559cee"
+      "state_visible": true,
+      "state_marker": "1",
+      "state_selector": "#staging-metric-visible",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": false,
+      "sha256": "ac6b004870367241c857950ef04c0d946b58b3a73a8b477654b19d85c2cab164"
     },
     {
       "file": "upload-center-error-1024x768.png",
@@ -224,11 +284,12 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "a49f01cd417d792438ed6d9aa084f1e63b0ded16dea2e24a31aa28569e6f54a8",
-      "state_trigger": "empty_submit",
-      "state_message": "Choose at least one XLSX, PDF, image, or EML email file.",
-      "state_tone": "error",
-      "scrolled_to_state": true
+      "state_visible": true,
+      "state_marker": "Choose at least one XLSX",
+      "state_selector": "#status-message[data-tone=\"error\"]",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": true,
+      "sha256": "12f47ae8673b5d66c7990f622dd9d36470b24878acccdc9336369e1d848cf622"
     },
     {
       "file": "upload-center-error-1440x900.png",
@@ -243,11 +304,12 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "3b76f27f4d772fa63ab9f6fc383e62e13cd729700f24da9aaa08217f51c3a225",
-      "state_trigger": "empty_submit",
-      "state_message": "Choose at least one XLSX, PDF, image, or EML email file.",
-      "state_tone": "error",
-      "scrolled_to_state": true
+      "state_visible": true,
+      "state_marker": "Choose at least one XLSX",
+      "state_selector": "#status-message[data-tone=\"error\"]",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": true,
+      "sha256": "de15937cfa5bf72718ce8728e15139914783074930494d9b1ff0813c95d418a8"
     },
     {
       "file": "upload-center-error-390x844.png",
@@ -255,18 +317,19 @@
       "state": "error",
       "width": 390,
       "height": 844,
-      "content_width": 366,
-      "content_width_ratio": 0.9385,
+      "content_width": 356,
+      "content_width_ratio": 0.9128,
       "layout_stability_samples": 3,
       "exact_viewport": true,
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "780e1b73d19d22a2b84a83a84297c10e86afe9eab9226382279cc83863c7730c",
-      "state_trigger": "empty_submit",
-      "state_message": "Choose at least one XLSX, PDF, image, or EML email file.",
-      "state_tone": "error",
-      "scrolled_to_state": true
+      "state_visible": true,
+      "state_marker": "Choose at least one XLSX",
+      "state_selector": "#status-message[data-tone=\"error\"]",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": true,
+      "sha256": "ce7ddd70c1b712a18ffdd2a5f1ea0bc3788c5942fb08bce4fa666f90a5379dc6"
     },
     {
       "file": "upload-center-loaded-1024x768.png",
@@ -281,7 +344,12 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "09e0bc2096ce0771deebfbd73408fc1b0383faa8ea04eb4a9a32bc62966d5182"
+      "state_visible": true,
+      "state_marker": "Drop quotation files here",
+      "state_selector": ".drop-title",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": false,
+      "sha256": "71dcf24f7c9b528a17682eb1a0d70ffe46e21028eafe032d6949d98124871e1e"
     },
     {
       "file": "upload-center-loaded-1440x900.png",
@@ -296,7 +364,12 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "a70e0ae5b2e5ab2e017b20d6f051cbf799deed5c42b258e6dab95c9b010c5282"
+      "state_visible": true,
+      "state_marker": "Drop quotation files here",
+      "state_selector": ".drop-title",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": false,
+      "sha256": "cca661bc77d6f0134e56a84af4afae10b96520e672b2c35107afd08867197967"
     },
     {
       "file": "upload-center-loaded-390x844.png",
@@ -304,14 +377,19 @@
       "state": "loaded",
       "width": 390,
       "height": 844,
-      "content_width": 366,
-      "content_width_ratio": 0.9385,
+      "content_width": 356,
+      "content_width_ratio": 0.9128,
       "layout_stability_samples": 3,
       "exact_viewport": true,
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "2df27348f90aa32f8fd57ade42dcd6d08b3ad94805930255490f984734e99db9"
+      "state_visible": true,
+      "state_marker": "Drop quotation files here",
+      "state_selector": ".drop-title",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": false,
+      "sha256": "50a589f0939389141ecdb74df67504fa821e3a9b9a6fc1afe86c2835d7e8218c"
     },
     {
       "file": "upload-history-error-1024x768.png",
@@ -326,7 +404,12 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "0c3365a2343339c1a7a69b31be89d106c66c74af0c467d20c8834d5afa6ad790"
+      "state_visible": true,
+      "state_marker": "Upload History could not load",
+      "state_selector": "#history-body .ui-state[data-tone=\"danger\"]",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": true,
+      "sha256": "42e450887f1471ba05c7ec4de48e4016d4bf200dc20c7a9546251d30bdf88c6c"
     },
     {
       "file": "upload-history-error-1440x900.png",
@@ -341,6 +424,11 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
+      "state_visible": true,
+      "state_marker": "Upload History could not load",
+      "state_selector": "#history-body .ui-state[data-tone=\"danger\"]",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": true,
       "sha256": "e4e0003c0e5ab0be032c4c5e9e6bdb4f2f68e70bbd6dcaa73727305079e2cab1"
     },
     {
@@ -349,14 +437,19 @@
       "state": "error",
       "width": 390,
       "height": 844,
-      "content_width": 366,
-      "content_width_ratio": 0.9385,
+      "content_width": 356,
+      "content_width_ratio": 0.9128,
       "layout_stability_samples": 3,
       "exact_viewport": true,
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "56b74328f7a744f7806f02801c635becb78cb05d70a1b99117d95281132d76a1"
+      "state_visible": true,
+      "state_marker": "Upload History could not load",
+      "state_selector": "#history-body .ui-state[data-tone=\"danger\"]",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": true,
+      "sha256": "6c1c079c90685740d0eeee7d2770fca29c6bd34c7f13fc5b2df286b9833eaf93"
     },
     {
       "file": "upload-history-loaded-1024x768.png",
@@ -371,6 +464,11 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
+      "state_visible": true,
+      "state_marker": "1",
+      "state_selector": "#upload-metric-visible",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": false,
       "sha256": "a6c94ad403a1504fa151b2d3ff4b339739117eb1fee3b1af294f503743679054"
     },
     {
@@ -386,6 +484,11 @@
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
+      "state_visible": true,
+      "state_marker": "1",
+      "state_selector": "#upload-metric-visible",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": false,
       "sha256": "feb6462c04daba9c6827981179a84ffeece46dc0ea2ed516da41eab5dd5a8fd2"
     },
     {
@@ -394,14 +497,19 @@
       "state": "loaded",
       "width": 390,
       "height": 844,
-      "content_width": 366,
-      "content_width_ratio": 0.9385,
+      "content_width": 356,
+      "content_width_ratio": 0.9128,
       "layout_stability_samples": 3,
       "exact_viewport": true,
       "document_overflow": false,
       "active_routes": 1,
       "page_module_declared": true,
-      "sha256": "21f46954d2ac36e236cf65a9e14d48cfec110310d570caff54ac6bbd1c80cd06"
+      "state_visible": true,
+      "state_marker": "1",
+      "state_selector": "#upload-metric-visible",
+      "state_intersection_ratio": 1,
+      "scrolled_to_state": false,
+      "sha256": "91d4cfcec98ee1648b056e26f6661666a4b9fb92a346ae07782687b4d37a813a"
     }
   ]
 }
