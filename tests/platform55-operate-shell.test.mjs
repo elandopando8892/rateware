@@ -22,6 +22,11 @@ assert.doesNotMatch(operateCss, /\.rw-(?:sidebar|topbar|nav-link|nav-scrim)\b/);
 assert.doesNotMatch(operateCss, /#[0-9a-f]{3,8}\b|rgba?\s*\(/i);
 assert.match(operateCss, /@media\s*\(max-width:\s*900px\)/i);
 assert.match(operateCss, /\.rw-operate-table-scroll\s*\{[^}]*overflow-x:\s*auto/s);
+assert.match(
+  operateCss,
+  /\.rw-operate-panel\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s,
+  "Operate panels must keep wide data tables inside a zero-minimum grid track"
+);
 
 const normalizedPageState = normalizePlatform55PageState({
   title: "Source <Files>",
