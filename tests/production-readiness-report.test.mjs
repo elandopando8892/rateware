@@ -293,9 +293,37 @@ test("credits P2-S2 only after immutable actual-route evidence and independent G
     "docs/release/evidence/2026-08-21-p2-s2-independent-review.md"
   ]);
   assert.equal(p2.verdicts.independent_review, "GO");
-  assert.ok(Array.isArray(p2.evidence.automated_suite) && p2.evidence.automated_suite.length >= 4);
+  assert.deepEqual(p2.evidence.automated_suite, [
+    "npm test PASS on exact closure head 18955d06443d3532823da6725eda90041b15b2e8",
+    "npm run validate:action-contract PASS with 0 errors and 1 pre-existing warning",
+    "npm audit --audit-level=low PASS with 0 vulnerabilities",
+    "node tests/platform55-operate-evidence-server.test.mjs PASS with 24 of 24 actual-route captures"
+  ]);
+  const review = readFileSync(p2.evidence.independent_review[0], "utf8");
+  assert.match(review, /Verdict:\s*GO/i);
+  assert.match(review, /18955d06443d3532823da6725eda90041b15b2e8/);
+  assert.match(review, /60eb7f341a09f6d65f4344b8606a9779c339712c/);
+  assert.match(review, /No push, pull-request mutation, preview, deployment, promotion, Supabase change/i);
+  for (const path of [...p2.evidence.scope, ...p2.evidence.evidence_plan, ...p2.evidence.implementation, ...p2.evidence.independent_review]) {
+    execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
+  }
   assert.equal(computeOverallProgress(p2Ledger), 79.2);
   assert.match(formatProgressReport(p2Ledger), /P2:\s+45%/);
+});
+
+test("rejects fabricated P2-S2 closure evidence", () => {
+  const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const fakeSuite = structuredClone(persisted);
+  fakeSuite.sprints.find((sprint) => sprint.id === "P2").evidence.automated_suite = ["fabricated 1", "fabricated 2", "fabricated 3", "fabricated 4"];
+  assert.throws(() => validateLedger(fakeSuite), /P2.*automated_suite/i);
+
+  const wrongReview = structuredClone(persisted);
+  wrongReview.sprints.find((sprint) => sprint.id === "P2").evidence.independent_review = ["docs/release/evidence/2026-08-19-p0-independent-review.md"];
+  assert.throws(() => validateLedger(wrongReview), /P2.*independent_review/i);
+
+  const missingVerdict = structuredClone(persisted);
+  missingVerdict.sprints.find((sprint) => sprint.id === "P2").verdicts = {};
+  assert.throws(() => validateLedger(missingVerdict), /P2.*independent_review.*GO/i);
 });
 
 test("does not credit P2-S2 visual completion without immutable actual-route evidence", () => {
