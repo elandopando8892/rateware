@@ -20,6 +20,8 @@ const routes = [
 ];
 const states = ["loaded", "error", "lifecycle"];
 const viewports = ["1440x900", "1024x768", "390x844"];
+const tenantRoutes = new Set(routes.slice(0, 5));
+const publicRoutes = new Set(routes.slice(5));
 const sourcePaths = [
   "vendors.html",
   "rfx-events.html",
@@ -62,6 +64,14 @@ function validateManifestShape(manifest) {
   assert.equal(manifest.captures.length, 90);
   assert.deepEqual(manifest.captures.map((capture) => capture.file).sort(), expectedFiles());
   for (const capture of manifest.captures) {
+    const route = routes.find((candidate) => states.some((state) => viewports.some((viewport) => (
+      capture.file === `${candidate}-${state}-${viewport}.png`
+    ))));
+    assert.ok(route, `${capture.file} known route`);
+    const expectedKind = tenantRoutes.has(route) ? "tenant" : publicRoutes.has(route) ? "public" : undefined;
+    assert.ok(expectedKind, `${capture.file} route kind`);
+    assert.equal(capture.route, `${route}.html`, `${capture.file} route identity`);
+    assert.equal(capture.kind, expectedKind, `${capture.file} route kind`);
     assert.equal(capture.exact_viewport, true, `${capture.file} viewport`);
     assert.equal(capture.source_frame, capture.viewport, `${capture.file} source frame`);
     assert.equal(capture.canvas_normalized, false, `${capture.file} must not need canvas padding`);
@@ -71,8 +81,8 @@ function validateManifestShape(manifest) {
     assert.match(capture.state_selector, /\S/, `${capture.file} state selector`);
     assert.ok(capture.layout_stability_samples >= 3, `${capture.file} stable layout`);
     assert.ok(capture.state_intersection_ratio >= (capture.state === "lifecycle" ? 0.7 : capture.state === "error" ? 0.4 : 0.2), `${capture.file} state intersection`);
-    if (capture.kind === "tenant") assert.equal(capture.active_routes, 1, `${capture.file} active tenant route`);
-    if (capture.kind === "public") assert.equal(capture.private_controls, 0, `${capture.file} public isolation`);
+    if (expectedKind === "tenant") assert.equal(capture.active_routes, 1, `${capture.file} active tenant route`);
+    if (expectedKind === "public") assert.equal(capture.private_controls, 0, `${capture.file} public isolation`);
     assert.match(capture.sha256, /^[0-9a-f]{64}$/);
   }
 }
@@ -110,6 +120,8 @@ test("rejects semantically fabricated Procurement evidence", async () => {
     (copy) => { copy.subject_sha = "0".repeat(40); },
     (copy) => { copy.captures = copy.captures.slice(1); },
     (copy) => { copy.captures.find((capture) => capture.kind === "public").private_controls = 1; },
+    (copy) => { const capture = copy.captures.find((entry) => entry.kind === "public"); capture.kind = "unclassified"; capture.private_controls = 99; },
+    (copy) => { copy.captures.find((capture) => capture.kind === "public").route = "vendors.html"; },
     (copy) => { copy.captures[0].state_visible = false; },
     (copy) => { copy.captures[0].sha256 = "fabricated"; }
   ]) {

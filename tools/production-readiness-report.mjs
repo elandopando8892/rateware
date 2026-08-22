@@ -32,6 +32,42 @@ const P2_S3_CLOSURE = Object.freeze({
     "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures"
   ])
 });
+const P2_S3_TENANT_ROUTES = new Set(["vendors.html", "rfx-events.html", "rfx-process.html", "ratebook.html", "outreach.html"]);
+const P2_S3_PUBLIC_ROUTES = new Set(["carrier-profile.html", "rfx-bid.html", "bid-room-board.html", "customer-rfi.html", "ratebook-carrier.html"]);
+
+export function validateP2S3Manifest(manifest) {
+  const sourceBlobs = manifest?.source_git_blobs && Object.keys(manifest.source_git_blobs);
+  if (
+    manifest?.schema_version !== 1 ||
+    manifest.subject_sha !== P2_S3_CLOSURE.visualSubject ||
+    manifest.routes?.length !== 10 ||
+    manifest.states?.length !== 3 ||
+    manifest.viewports?.length !== 3 ||
+    manifest.captures?.length !== 90 ||
+    sourceBlobs?.length !== 25
+  ) {
+    throw new Error("P2-S3 visual manifest must contain the exact 10 x 3 x 3 matrix and 25 source blobs");
+  }
+  if (manifest.captures.some((capture) => {
+    const tenant = P2_S3_TENANT_ROUTES.has(capture.route);
+    const publicRoute = P2_S3_PUBLIC_ROUTES.has(capture.route);
+    return (
+      capture.exact_viewport !== true ||
+      capture.document_overflow !== false ||
+      capture.state_visible !== true ||
+      capture.layout_stability_samples !== 3 ||
+      capture.canvas_normalized !== false ||
+      capture.source_frame !== capture.viewport ||
+      (!tenant && !publicRoute) ||
+      capture.kind !== (tenant ? "tenant" : "public") ||
+      (tenant && capture.active_routes !== 1) ||
+      (publicRoute && capture.private_controls !== 0)
+    );
+  })) {
+    throw new Error("P2-S3 visual manifest must prove stable exact viewports and public isolation");
+  }
+  return manifest;
+}
 
 const isInside = (root, candidate) => {
   const path = relative(root, candidate);
@@ -138,30 +174,7 @@ const validateP2S3Closure = (sprint, rootDir) => {
   requireText(implementation, /global Platform55 verdict:\s*NO-GO/i, "P2-S3 evidence must keep the global verdict NO-GO");
   requireText(implementation, /No push, PR metadata, preview, deployment, promotion, Supabase change/i, "P2-S3 evidence must preserve local-only boundaries");
 
-  const sourceBlobs = manifest.source_git_blobs && Object.keys(manifest.source_git_blobs);
-  if (
-    manifest.schema_version !== 1 ||
-    manifest.subject_sha !== P2_S3_CLOSURE.visualSubject ||
-    manifest.routes?.length !== 10 ||
-    manifest.states?.length !== 3 ||
-    manifest.viewports?.length !== 3 ||
-    manifest.captures?.length !== 90 ||
-    sourceBlobs?.length !== 25
-  ) {
-    throw new Error("P2-S3 visual manifest must contain the exact 10 x 3 x 3 matrix and 25 source blobs");
-  }
-  if (manifest.captures.some((capture) => (
-    capture.exact_viewport !== true ||
-    capture.document_overflow !== false ||
-    capture.state_visible !== true ||
-    capture.layout_stability_samples !== 3 ||
-    capture.canvas_normalized !== false ||
-    capture.source_frame !== capture.viewport ||
-    (capture.kind === "tenant" && capture.active_routes !== 1) ||
-    (capture.kind === "public" && capture.private_controls !== 0)
-  ))) {
-    throw new Error("P2-S3 visual manifest must prove stable exact viewports and public isolation");
-  }
+  validateP2S3Manifest(manifest);
 };
 
 export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {

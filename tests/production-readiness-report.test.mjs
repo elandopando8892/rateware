@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   computeOverallProgress,
   formatProgressReport,
+  validateP2S3Manifest,
   validateP2S2ReviewBody,
   validateLedger
 } from "../tools/production-readiness-report.mjs";
@@ -336,6 +337,17 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
     "fabricated visual matrix"
   ];
   assert.throws(() => validateLedger(fakeSuite), /P2.*P2-S2|P2-S3|automated_suite/i);
+
+  const manifest = JSON.parse(readFileSync("docs/platform55-evidence/p2-s3/6917246927a6a13e82abf9e1e84b00b27f172ab7/manifest.json", "utf8"));
+  validateP2S3Manifest(manifest);
+  const wrongKind = structuredClone(manifest);
+  const publicCapture = wrongKind.captures.find((capture) => capture.kind === "public");
+  publicCapture.kind = "unclassified";
+  publicCapture.private_controls = 99;
+  assert.throws(() => validateP2S3Manifest(wrongKind), /public isolation/i);
+  const wrongRoute = structuredClone(manifest);
+  wrongRoute.captures.find((capture) => capture.kind === "public").route = "vendors.html";
+  assert.throws(() => validateP2S3Manifest(wrongRoute), /public isolation/i);
 });
 
 test("rejects fabricated P2-S2 closure evidence", () => {
