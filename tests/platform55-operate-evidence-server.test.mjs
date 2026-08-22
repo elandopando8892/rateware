@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
@@ -44,6 +45,26 @@ test("anchors the complete actual-route capture matrix to its immutable subject"
   assert.deepEqual(manifest.states, ["loaded", "error"]);
   assert.deepEqual(manifest.viewports, ["1440x900", "1024x768", "390x844"]);
   assert.equal(manifest.captures.length, 24);
+
+  const sourcePaths = [
+    "upload-center.html",
+    "upload-history.html",
+    "staging-review.html",
+    "rateware.html",
+    "src/upload-center.js",
+    "src/upload-history.js",
+    "src/staging-review.js",
+    "src/rateware.js",
+    "src/platform55-shell.js",
+    "src/platform55-operate.css"
+  ];
+  assert.deepEqual(Object.keys(manifest.source_git_blobs), sourcePaths);
+  for (const sourcePath of sourcePaths) {
+    const subjectBlob = execFileSync("git", ["rev-parse", `${subject}:${sourcePath}`], { encoding: "utf8" }).trim();
+    const currentBlob = execFileSync("git", ["rev-parse", `HEAD:${sourcePath}`], { encoding: "utf8" }).trim();
+    assert.equal(manifest.source_git_blobs[sourcePath], subjectBlob, `${sourcePath} must be anchored to the subject Git blob`);
+    assert.equal(currentBlob, subjectBlob, `${sourcePath} must not drift after the subject SHA`);
+  }
 
   for (const capture of manifest.captures) {
     assert.equal(capture.exact_viewport, true, `${capture.file} must use the requested viewport`);

@@ -18,17 +18,17 @@
     "1024x768",
     "390x844"
   ],
-  "source_sha256": {
-    "upload-center.html": "50f8361d3cba0af27bfe926283415a2902589cf5203a019e48e00e61aced1724",
-    "upload-history.html": "38102270ccf5a396c328e1ca67ed735e02ac944233b31c31c5398f51bdc72c4c",
-    "staging-review.html": "4e79c87bbf8558cfabf66c7101ef532e9d80446be13850cc0ce1ca8720f97b00",
-    "rateware.html": "32a48a4582e8bb555104e9b0e01825b93e0a365a7203c16dc47d4ad75105f40b",
-    "src/upload-center.js": "c281fbbc2775daec8374f210c6576fc681738c51c85a0868071fea8b142535d6",
-    "src/upload-history.js": "8af45fbbfa2ba3fb0943d272bd940b425779537904492f72df28bc3200348214",
-    "src/staging-review.js": "903c55cd21fce0bd9bf32f0f13b6343194c2a361be3f0950c212431ea5c4b520",
-    "src/rateware.js": "181c960348f7b1b547b3b0c83e372e7423752574a627b2b6acaf61cc7aa016ec",
-    "src/platform55-shell.js": "c6b7885ffebdbc305f5b32d21f5a52fa7bb26ca4287d272fc134da94d9df9221",
-    "src/platform55-operate.css": "10eba42f0f953a25b52ed34bf87ca997ea13c5743dfae345edf09dd521c698c1"
+  "source_git_blobs": {
+    "upload-center.html": "4f07e718cf3daa08ad139615ed58b5a054d68497",
+    "upload-history.html": "ecfa31c11c5252fae13adb96021369533ac8b493",
+    "staging-review.html": "07f9dee44322f35a5acf2c098913861093ae0521",
+    "rateware.html": "584a5292d8ba4544e64945563a02e94befb42f1f",
+    "src/upload-center.js": "dbe83e610fe9f95864feefa25bef766e5b88d2f3",
+    "src/upload-history.js": "9242e2fdb7d22ff5bef3832dcb09446546212cb9",
+    "src/staging-review.js": "b278095618cfdc4fbc7f2ebee6dbcb12600c316b",
+    "src/rateware.js": "67f9aa755a8cf768c2e89c3ab158b0b1d61d9b1d",
+    "src/platform55-shell.js": "4e42f52b2e77914ab9c26f9f1287925f18ba6ea2",
+    "src/platform55-operate.css": "7c17e8abd440bb93d613c5788649ff0faec7ffc7"
   },
   "captures": [
     {
