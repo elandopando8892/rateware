@@ -21,6 +21,17 @@ const P2_S2_CLOSURE = Object.freeze({
     "node tests/platform55-operate-evidence-server.test.mjs PASS with 24 of 24 actual-route captures"
   ])
 });
+const P2_S3_CLOSURE = Object.freeze({
+  plan: "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md",
+  implementation: "docs/release/evidence/2026-08-21-p2-s3-procurement.md",
+  manifest: "docs/platform55-evidence/p2-s3/6917246927a6a13e82abf9e1e84b00b27f172ab7/manifest.json",
+  evidenceHead: "23584f218d094a622608c813715247cf16190375",
+  visualSubject: "6917246927a6a13e82abf9e1e84b00b27f172ab7",
+  automatedSuite: Object.freeze([
+    "npm test PASS on exact Procurement evidence head 23584f218d094a622608c813715247cf16190375",
+    "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures"
+  ])
+});
 
 const isInside = (root, candidate) => {
   const path = relative(root, candidate);
@@ -103,6 +114,56 @@ const validateP2S2Closure = (sprint, rootDir) => {
   }
 };
 
+const validateP2S3Closure = (sprint, rootDir) => {
+  if (sprint.id !== "P2" || sprint.progress < 60) return;
+  const evidence = sprint.evidence || {};
+  if (!evidence.evidence_plan?.includes(P2_S3_CLOSURE.plan)) {
+    throw new Error("P2 evidence_plan must contain the exact P2-S3 plan");
+  }
+  if (!evidence.implementation?.includes(P2_S3_CLOSURE.implementation)) {
+    throw new Error("P2 implementation must contain the exact P2-S3 evidence");
+  }
+  if (!P2_S3_CLOSURE.automatedSuite.every((entry) => evidence.automated_suite?.includes(entry))) {
+    throw new Error("P2 automated_suite must contain the exact P2-S3 gates");
+  }
+
+  const root = realpathSync(resolve(rootDir));
+  const implementation = readFileSync(resolve(root, P2_S3_CLOSURE.implementation), "utf8");
+  const manifest = JSON.parse(readFileSync(resolve(root, P2_S3_CLOSURE.manifest), "utf8"));
+  requireText(implementation, new RegExp(`Visual subject SHA:\\s*\\\`${P2_S3_CLOSURE.visualSubject}\\\``), "P2-S3 evidence must name the visual subject");
+  requireText(implementation, new RegExp(`Evidence and full-gate HEAD:\\s*\\\`${P2_S3_CLOSURE.evidenceHead}\\\``), "P2-S3 evidence must name the full-gate HEAD");
+  requireText(implementation, /90 of 90 actual-route captures/i, "P2-S3 evidence must record all 90 captures");
+  requireText(implementation, /Local implementation verdict:\s*GO/i, "P2-S3 evidence must record local GO");
+  requireText(implementation, /independent review.*pending/i, "P2-S3 evidence must keep independent review pending");
+  requireText(implementation, /global Platform55 verdict:\s*NO-GO/i, "P2-S3 evidence must keep the global verdict NO-GO");
+  requireText(implementation, /No push, PR metadata, preview, deployment, promotion, Supabase change/i, "P2-S3 evidence must preserve local-only boundaries");
+
+  const sourceBlobs = manifest.source_git_blobs && Object.keys(manifest.source_git_blobs);
+  if (
+    manifest.schema_version !== 1 ||
+    manifest.subject_sha !== P2_S3_CLOSURE.visualSubject ||
+    manifest.routes?.length !== 10 ||
+    manifest.states?.length !== 3 ||
+    manifest.viewports?.length !== 3 ||
+    manifest.captures?.length !== 90 ||
+    sourceBlobs?.length !== 25
+  ) {
+    throw new Error("P2-S3 visual manifest must contain the exact 10 x 3 x 3 matrix and 25 source blobs");
+  }
+  if (manifest.captures.some((capture) => (
+    capture.exact_viewport !== true ||
+    capture.document_overflow !== false ||
+    capture.state_visible !== true ||
+    capture.layout_stability_samples !== 3 ||
+    capture.canvas_normalized !== false ||
+    capture.source_frame !== capture.viewport ||
+    (capture.kind === "tenant" && capture.active_routes !== 1) ||
+    (capture.kind === "public" && capture.private_controls !== 0)
+  ))) {
+    throw new Error("P2-S3 visual manifest must prove stable exact viewports and public isolation");
+  }
+};
+
 export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
   if (ledger?.schema_version !== 1 || ledger?.baseline !== 63) throw new Error("invalid ledger header");
   if (!Array.isArray(ledger.sprints) || ledger.sprints.map((s) => s.id).join(",") !== IDS.join(",")) throw new Error("sprints must be P0-P5");
@@ -112,6 +173,7 @@ export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
     if (sprint.progress > 0 && Object.keys(sprint.evidence || {}).length === 0) throw new Error(`${sprint.id} requires evidence`);
     validateEvidence(sprint, rootDir);
     validateP2S2Closure(sprint, rootDir);
+    validateP2S3Closure(sprint, rootDir);
     if (sprint.progress >= 85 && sprint.verdicts?.independent_review !== "GO") throw new Error(`${sprint.id} requires independent_review GO verdict`);
     for (const [threshold, key] of GATES) if (sprint.progress >= threshold && !hasEvidence(sprint.evidence, key)) throw new Error(`${sprint.id} requires ${key}`);
   }

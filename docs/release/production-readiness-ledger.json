@@ -88,24 +88,28 @@
     {
       "id": "P2",
       "weight": 7,
-      "progress": 45,
+      "progress": 60,
       "evidence": {
         "scope": [
           "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
         ],
         "evidence_plan": [
           "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-master.md",
-          "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s2-operate.md"
+          "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s2-operate.md",
+          "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md"
         ],
         "implementation": [
           "docs/release/evidence/2026-08-21-p2-shell-s1-command-center.md",
-          "docs/release/evidence/2026-08-21-p2-s2-operate.md"
+          "docs/release/evidence/2026-08-21-p2-s2-operate.md",
+          "docs/release/evidence/2026-08-21-p2-s3-procurement.md"
         ],
         "automated_suite": [
           "npm test PASS on exact closure head 18955d06443d3532823da6725eda90041b15b2e8",
           "npm run validate:action-contract PASS with 0 errors and 1 pre-existing warning",
           "npm audit --audit-level=low PASS with 0 vulnerabilities",
-          "node tests/platform55-operate-evidence-server.test.mjs PASS with 24 of 24 actual-route captures"
+          "node tests/platform55-operate-evidence-server.test.mjs PASS with 24 of 24 actual-route captures",
+          "npm test PASS on exact Procurement evidence head 23584f218d094a622608c813715247cf16190375",
+          "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures"
         ],
         "independent_review": [
           "docs/release/evidence/2026-08-21-p2-s2-independent-review.md"

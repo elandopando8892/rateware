@@ -270,25 +270,27 @@ test("keeps the persisted P1 production closure backed while P2 advances", () =>
   }
   for (const path of trackedEvidence) execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   validateLedger(persisted);
-  assert.equal(computeOverallProgress(persisted), 79.2);
+  assert.equal(computeOverallProgress(persisted), 80.2);
 });
 
-test("credits P2-S2 only after immutable actual-route evidence and independent GO", () => {
+test("preserves P2-S2 immutable actual-route evidence and independent GO while P2 advances", () => {
   const p2Ledger = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p2 = p2Ledger.sprints.find((sprint) => sprint.id === "P2");
 
   validateLedger(p2Ledger);
-  assert.equal(p2.progress, 45);
+  assert.equal(p2.progress, 60);
   assert.deepEqual(p2.evidence.scope, [
     "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
   ]);
   assert.deepEqual(p2.evidence.evidence_plan, [
     "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-master.md",
-    "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s2-operate.md"
+    "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s2-operate.md",
+    "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md"
   ]);
   assert.deepEqual(p2.evidence.implementation, [
     "docs/release/evidence/2026-08-21-p2-shell-s1-command-center.md",
-    "docs/release/evidence/2026-08-21-p2-s2-operate.md"
+    "docs/release/evidence/2026-08-21-p2-s2-operate.md",
+    "docs/release/evidence/2026-08-21-p2-s3-procurement.md"
   ]);
   assert.deepEqual(p2.evidence.independent_review, [
     "docs/release/evidence/2026-08-21-p2-s2-independent-review.md"
@@ -298,7 +300,9 @@ test("credits P2-S2 only after immutable actual-route evidence and independent G
     "npm test PASS on exact closure head 18955d06443d3532823da6725eda90041b15b2e8",
     "npm run validate:action-contract PASS with 0 errors and 1 pre-existing warning",
     "npm audit --audit-level=low PASS with 0 vulnerabilities",
-    "node tests/platform55-operate-evidence-server.test.mjs PASS with 24 of 24 actual-route captures"
+    "node tests/platform55-operate-evidence-server.test.mjs PASS with 24 of 24 actual-route captures",
+    "npm test PASS on exact Procurement evidence head 23584f218d094a622608c813715247cf16190375",
+    "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures"
   ]);
   const review = readFileSync(p2.evidence.independent_review[0], "utf8");
   assert.match(review, /Verdict:\s*GO/i);
@@ -308,8 +312,30 @@ test("credits P2-S2 only after immutable actual-route evidence and independent G
   for (const path of [...p2.evidence.scope, ...p2.evidence.evidence_plan, ...p2.evidence.implementation, ...p2.evidence.independent_review]) {
     execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   }
-  assert.equal(computeOverallProgress(p2Ledger), 79.2);
-  assert.match(formatProgressReport(p2Ledger), /P2:\s+45%/);
+  assert.equal(computeOverallProgress(p2Ledger), 80.2);
+  assert.match(formatProgressReport(p2Ledger), /P2:\s+60%/);
+});
+
+test("credits P2-S3 only from the immutable Procurement matrix and exact local gates", () => {
+  const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
+
+  validateLedger(persisted);
+  assert.equal(p2.progress, 60);
+  const evidence = readFileSync("docs/release/evidence/2026-08-21-p2-s3-procurement.md", "utf8");
+  assert.match(evidence, /Visual subject SHA:\s*`6917246927a6a13e82abf9e1e84b00b27f172ab7`/i);
+  assert.match(evidence, /Evidence and full-gate HEAD:\s*`23584f218d094a622608c813715247cf16190375`/i);
+  assert.match(evidence, /90 of 90 actual-route captures/i);
+  assert.match(evidence, /Local implementation verdict:\s*GO/i);
+  assert.match(evidence, /independent review.*pending/i);
+  assert.match(evidence, /global Platform55 verdict:\s*NO-GO/i);
+
+  const fakeSuite = structuredClone(persisted);
+  fakeSuite.sprints.find((sprint) => sprint.id === "P2").evidence.automated_suite = [
+    "fabricated procurement test",
+    "fabricated visual matrix"
+  ];
+  assert.throws(() => validateLedger(fakeSuite), /P2.*P2-S2|P2-S3|automated_suite/i);
 });
 
 test("rejects fabricated P2-S2 closure evidence", () => {
