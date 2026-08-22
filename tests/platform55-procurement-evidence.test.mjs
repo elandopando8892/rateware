@@ -5,6 +5,8 @@ import { access, readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
 const subject = "6917246927a6a13e82abf9e1e84b00b27f172ab7";
+const evidenceHead = "23584f218d094a622608c813715247cf16190375";
+const manifestObjectSha256 = "ca17e2c5faa9a0d08dfdd662f101bf96fe1aee8ce93f93e2dfb6becba9c61845";
 const directory = `docs/platform55-evidence/p2-s3/${subject}`;
 const routes = [
   "vendors",
@@ -90,6 +92,7 @@ function validateManifestShape(manifest) {
     if (expected.kind === "public") assert.equal(capture.private_controls, 0, `${capture.file} public isolation`);
     assert.match(capture.sha256, /^[0-9a-f]{64}$/);
   }
+  assert.equal(createHash("sha256").update(JSON.stringify(manifest)).digest("hex"), manifestObjectSha256);
 }
 
 test("anchors the complete Procurement capture matrix to its immutable subject", async () => {
@@ -105,6 +108,15 @@ test("anchors the complete Procurement capture matrix to its immutable subject",
 
   const actualPngs = (await readdir(directory)).filter((file) => file.endsWith(".png")).sort();
   assert.deepEqual(actualPngs, expectedFiles());
+
+  for (const evidencePath of [
+    `${directory}/manifest.json`,
+    ...manifest.captures.map((capture) => `${directory}/${capture.file}`)
+  ]) {
+    const evidenceBlob = execFileSync("git", ["rev-parse", `${evidenceHead}:${evidencePath}`], { encoding: "utf8" }).trim();
+    const currentBlob = execFileSync("git", ["rev-parse", `HEAD:${evidencePath}`], { encoding: "utf8" }).trim();
+    assert.equal(currentBlob, evidenceBlob, `${evidencePath} must remain anchored to the evidence HEAD`);
+  }
 
   for (const capture of manifest.captures) {
     const capturePath = `${directory}/${capture.file}`;
@@ -131,6 +143,8 @@ test("rejects semantically fabricated Procurement evidence", async () => {
     (copy) => { copy.captures[0].state = "error"; },
     (copy) => { copy.captures[0].viewport = "390x844"; copy.captures[0].source_frame = "390x844"; },
     (copy) => { copy.captures[1].file = copy.captures[0].file; },
+    (copy) => { copy.source_git_blobs[sourcePaths[0]] = "0".repeat(40); },
+    (copy) => { copy.captures[0].sha256 = "0".repeat(64); },
     (copy) => { copy.captures[0].state_visible = false; },
     (copy) => { copy.captures[0].sha256 = "fabricated"; }
   ]) {
