@@ -1,6 +1,7 @@
 import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivatePage } from "./auth.js";
 import { downloadBulkImportTemplate } from "./bulk-import-template.js";
 import { humanizeError } from "./error-copy.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 import { tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 import {
   archiveUpload,
@@ -1270,6 +1271,16 @@ function renderRows(rows) {
 
 async function loadHistory() {
   const loadVersion = ++uploadHistoryLoadVersion;
+  updatePlatform55Shell({
+    pageState: {
+      title: "Upload History",
+      subtitle: "Trace preserved sources and their staged interpretation results.",
+      breadcrumbs: ["Operate", "Source Files"],
+      status: "Loading source files",
+      busy: true,
+      actions: [{ id: "import-files", label: "Import files", status: "available", busy: false }]
+    }
+  });
   historyBody.innerHTML = tableLoadingState(HISTORY_COLSPAN, {
     title: "Loading source files",
     detail: "Reading preserved uploads, staged row counts, and audit signals."
@@ -1282,6 +1293,16 @@ async function loadHistory() {
     if (loadVersion !== uploadHistoryLoadVersion) return;
     loadedRows = rows;
     renderRows(applyUploadFilters(rows));
+    updatePlatform55Shell({
+      pageState: {
+        title: "Upload History",
+        subtitle: "Trace preserved sources and their staged interpretation results.",
+        breadcrumbs: ["Operate", "Source Files"],
+        status: `${rows.length.toLocaleString()} source file(s) loaded`,
+        busy: false,
+        actions: [{ id: "import-files", label: "Import files", status: "available", busy: false }]
+      }
+    });
     await applyPermissionState(UPLOAD_ACTION_SELECTOR, "uploads:interpret");
     if (loadVersion !== uploadHistoryLoadVersion) return;
   } catch (error) {
@@ -1290,6 +1311,16 @@ async function loadHistory() {
       title: "Upload History could not load",
       retryAction: "load-upload-history",
       meta: "Your files are preserved in storage. This only affects the current view."
+    });
+    updatePlatform55Shell({
+      pageState: {
+        title: "Upload History",
+        subtitle: "Trace preserved sources and their staged interpretation results.",
+        breadcrumbs: ["Operate", "Source Files"],
+        status: "Source files could not load",
+        busy: false,
+        actions: [{ id: "import-files", label: "Import files", status: "available", busy: false }]
+      }
     });
   } finally {
     if (loadVersion === uploadHistoryLoadVersion) refreshButton.disabled = false;

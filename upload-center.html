@@ -5,65 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Upload Center</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-operate.css" />
   </head>
-  <body>
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Rateware modules">
-        <a class="brand-mark" href="./app.html">Rateware</a>
-        <nav class="nav-groups">
-          <section class="nav-group">
-            <p>Operate</p>
-            <a href="./app.html" data-nav-code="CC">Command Center</a>
-            <a aria-current="page" href="./upload-center.html" data-nav-code="IM">Import</a>
-            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
-            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
-            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
-          </section>
-          <section class="nav-group">
-            <p>Analyze</p>
-            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
-          </section>
-          <section class="nav-group">
-            <p>Source</p>
-            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
-            <a href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
-            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
-            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
-            <a href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
-          </section>
-          <section class="nav-group">
-            <p>Admin</p>
-            <a href="./settings.html" data-nav-code="ST">Settings</a>
-            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
-            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
-          </section>
-        </nav>
-      </aside>
-
-      <div class="page-frame">
-        <header class="page-header">
-          <div>
-            <p class="eyebrow">Source intake</p>
-            <h1>Upload Center</h1>
-            <nav class="module-crumbs" aria-label="Module context">
-              <a href="./app.html">Command Center</a>
-              <span>Upload Center</span>
-            </nav>
-          </div>
-          <div class="page-header-actions">
-            <button class="secondary" type="button" data-download-bulk-template>Download bulk template</button>
-            <button class="page-primary-action" type="button" data-click-target="#file-input">Select files</button>
-            <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Log in</button>
-              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
-              <p id="auth-status" role="status"></p>
-            </form>
-          </div>
+  <body data-platform55-shell="tenant" data-platform55-page="upload-center">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <div class="rw-workspace">
+        <header class="rw-topbar" data-platform55-topbar>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Log in</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
         </header>
-
-        <main class="upload-layout">
-          <section class="workspace-panel">
-            <div class="review-insight-grid" aria-label="Upload queue summary">
+        <main class="rw-main" id="main-content">
+          <div class="rw-operate-page upload-layout" data-platform55-page-content data-source-field="source_filename">
+            <header class="rw-operate-heading" data-platform55-page-header>
+              <div>
+                <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Operate · Import</p>
+                <h1 data-platform55-page-title>Upload Center</h1>
+                <p data-platform55-page-subtitle>Preserve source files before interpretation and human review.</p>
+              </div>
+              <div class="page-header-actions">
+                <button class="secondary" type="button" data-download-bulk-template>Download bulk template</button>
+                <button class="page-primary-action" type="button" data-click-target="#file-input" data-platform55-action="select-files">Select files</button>
+              </div>
+            </header>
+          <section class="workspace-panel rw-operate-panel">
+            <div class="review-insight-grid rw-operate-metrics" aria-label="Upload queue summary">
               <article>
                 <span>Total files</span>
                 <strong id="upload-queue-total">0</strong>
@@ -147,7 +118,7 @@
             </form>
           </section>
 
-          <aside class="queue-panel" aria-label="Selected files">
+          <aside class="queue-panel rw-operate-panel" aria-label="Selected files">
             <div class="section-heading compact">
               <p class="eyebrow">Queue</p>
               <h2>Files</h2>
@@ -160,6 +131,7 @@
               <a href="./upload-history.html">Open Upload History</a>
             </div>
           </aside>
+          </div>
         </main>
       </div>
     </div>
