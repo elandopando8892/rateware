@@ -48,6 +48,34 @@ assert.match(shipperProfileSource, /data-state="expired"/, "Shipper profile must
 assert.match(shipperProfileSource, /data-state="error"/, "Shipper profile must expose an error state");
 assert.doesNotMatch(shipperProfileSource, /from\s*["']\.\/auth\.js["']|initAuthControls|requirePrivatePage/, "Public shipper profile must not import tenant auth bootstrap");
 
+const vendorSupportHtml = readFileSync("vendor-support.html", "utf8");
+const vendorSupportSource = readFileSync("src/vendor-support.js", "utf8");
+assert.match(vendorSupportHtml, /data-platform55-network-state="vendor-support"/, "Vendor Support must expose its service-case state");
+assert.match(vendorSupportHtml, /class="[^"]*rw-network-service-metrics[^"]*"/, "Vendor Support metrics must use the network primitive");
+assert.match(vendorSupportHtml, /class="[^"]*rw-network-service-table-scroll[^"]*"/, "Vendor Support cases must bound wide tables");
+assert.match(vendorSupportSource, /updatePlatform55Shell\s*\(\s*\{\s*pageState:/s, "Vendor Support must publish shell page state");
+for (const stateText of ["Loading vendor support cases", "vendor support case(s) loaded", "Vendor support cases could not load"]) {
+  assert.match(vendorSupportSource, new RegExp(stateText.replace(/[()]/g, "\\$&")), `Vendor Support must publish ${stateText}`);
+}
+assert.match(vendorSupportSource, /escapeHtml\s*\(/, "Vendor Support variable text must remain escaped");
+assert.match(vendorSupportSource, /applyPermissionState\s*\(/, "Vendor Support must preserve permission-disabled actions");
+
+const vendorImprovementHtml = readFileSync("vendor-improvement.html", "utf8");
+const vendorImprovementSource = readFileSync("src/vendor-improvement.js", "utf8");
+assert.match(vendorImprovementHtml, /data-platform55-network-state="vendor-improvement"/, "Vendor CI must expose its improvement-plan state");
+assert.match(vendorImprovementHtml, /class="[^"]*rw-network-service-metrics[^"]*"/, "Vendor CI metrics must use the network primitive");
+assert.match(vendorImprovementHtml, /class="[^"]*rw-network-service-table-scroll[^"]*"/, "Vendor CI cases must bound wide tables");
+assert.match(vendorImprovementSource, /updatePlatform55Shell\s*\(\s*\{\s*pageState:/s, "Vendor CI must publish shell page state");
+for (const stateText of ["Loading vendor improvement cases", "vendor improvement case(s) loaded", "Vendor improvement cases could not load"]) {
+  assert.match(vendorImprovementSource, new RegExp(stateText.replace(/[()]/g, "\\$&")), `Vendor CI must publish ${stateText}`);
+}
+assert.match(vendorImprovementSource, /escapeHtml\s*\(/, "Vendor CI variable text must remain escaped");
+assert.match(vendorImprovementSource, /applyPermissionState\s*\(/, "Vendor CI must preserve permission-disabled actions");
+
+for (const html of [vendorSupportHtml, vendorImprovementHtml]) {
+  assert.doesNotMatch(html, /data-platform55-action="(?:send|dispatch|approve|promote|release|remediate)"/i, "Shell actions must not expose consequential vendor mutations");
+}
+
 const tenantPages = Object.freeze([
   ["shipper-crm.html", "shipper-crm"],
   ["vendor-support.html", "vendor-support"],

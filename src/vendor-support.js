@@ -1,5 +1,6 @@
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 import { fetchVendorSupportTickets, updateVendorSupportTicket } from "./vendor-support-service.js";
 
 const refreshButton = document.querySelector("#refresh-support-tickets");
@@ -66,6 +67,16 @@ function setStatus(message = "", tone = "neutral") {
   if (!statusMessage) return;
   statusMessage.textContent = tone === "error" ? humanizeError(message) : message;
   statusMessage.dataset.tone = tone;
+}
+
+function updateVendorSupportShell(status, busy = false) {
+  updatePlatform55Shell({ pageState: {
+    title: "Vendor Support",
+    subtitle: "Carrier questions, escalations, and governed case status.",
+    breadcrumbs: ["Service", "Vendor Support"],
+    status,
+    busy
+  } });
 }
 
 function renderMetrics(summary = {}) {
@@ -162,6 +173,7 @@ function readFilters() {
 async function loadSupportTickets() {
   const loadVersion = ++supportLoadVersion;
   setStatus("Loading support tickets...");
+  updateVendorSupportShell("Loading vendor support cases", true);
   if (refreshButton) refreshButton.disabled = true;
   supportBody?.setAttribute("aria-busy", "true");
   if (supportBody) supportBody.innerHTML = '<tr><td colspan="8">Loading support tickets...</td></tr>';
@@ -173,6 +185,7 @@ async function loadSupportTickets() {
     renderMetrics(result.summary || {});
     renderRows();
     setStatus(`${supportRows.length.toLocaleString()} ticket(s) loaded.`, "success");
+    updateVendorSupportShell(`${supportRows.length.toLocaleString()} vendor support case(s) loaded`);
   } catch (error) {
     if (loadVersion !== supportLoadVersion) return;
     supportRows = [];
@@ -189,6 +202,7 @@ async function loadSupportTickets() {
       </tr>
     `;
     setStatus(humanizeError(error), "error");
+    updateVendorSupportShell("Vendor support cases could not load");
   } finally {
     if (loadVersion !== supportLoadVersion) return;
     if (refreshButton) refreshButton.disabled = false;
