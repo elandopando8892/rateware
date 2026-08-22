@@ -34,24 +34,54 @@ const P2_S3_CLOSURE = Object.freeze({
 });
 const P2_S3_TENANT_ROUTES = new Set(["vendors.html", "rfx-events.html", "rfx-process.html", "ratebook.html", "outreach.html"]);
 const P2_S3_PUBLIC_ROUTES = new Set(["carrier-profile.html", "rfx-bid.html", "bid-room-board.html", "customer-rfi.html", "ratebook-carrier.html"]);
+const P2_S3_ROUTES = ["vendors", "rfx-events", "rfx-process", "ratebook", "outreach", "carrier-profile", "rfx-bid", "bid-room-board", "customer-rfi", "ratebook-carrier"];
+const P2_S3_STATES = ["loaded", "error", "lifecycle"];
+const P2_S3_VIEWPORTS = ["1440x900", "1024x768", "390x844"];
+const P2_S3_SOURCE_PATHS = [
+  "vendors.html", "rfx-events.html", "rfx-process.html", "ratebook.html", "outreach.html",
+  "carrier-profile.html", "rfx-bid.html", "bid-room-board.html", "customer-rfi.html", "ratebook-carrier.html",
+  "src/vendors.js", "src/rfx-events.js", "src/rfx-process.js", "src/ratebook.js", "src/outreach.js",
+  "src/carrier-profile.js", "src/rfx-bid.js", "src/bid-room-board.js", "src/customer-rfi.js", "src/ratebook-carrier.js",
+  "src/platform55-shell.js", "src/platform55-shell.css", "src/platform55-procurement.css", "src/platform55-public-shell.css",
+  "tools/platform55-procurement-evidence-server.mjs"
+];
+const P2_S3_CAPTURE_MATRIX = new Map(P2_S3_ROUTES.flatMap((route) => P2_S3_STATES.flatMap((state) => P2_S3_VIEWPORTS.map((viewport) => [
+  `${route}-${state}-${viewport}.png`,
+  {
+    route: `${route}.html`,
+    state,
+    viewport,
+    kind: P2_S3_TENANT_ROUTES.has(`${route}.html`) ? "tenant" : "public"
+  }
+]))));
 
 export function validateP2S3Manifest(manifest) {
   const sourceBlobs = manifest?.source_git_blobs && Object.keys(manifest.source_git_blobs);
+  const captureFiles = manifest?.captures?.map((capture) => capture.file).sort();
   if (
     manifest?.schema_version !== 1 ||
     manifest.subject_sha !== P2_S3_CLOSURE.visualSubject ||
-    manifest.routes?.length !== 10 ||
-    manifest.states?.length !== 3 ||
-    manifest.viewports?.length !== 3 ||
+    JSON.stringify(manifest.routes) !== JSON.stringify(P2_S3_ROUTES) ||
+    JSON.stringify(manifest.states) !== JSON.stringify(P2_S3_STATES) ||
+    JSON.stringify(manifest.viewports) !== JSON.stringify(P2_S3_VIEWPORTS) ||
     manifest.captures?.length !== 90 ||
-    sourceBlobs?.length !== 25
+    JSON.stringify(sourceBlobs) !== JSON.stringify(P2_S3_SOURCE_PATHS) ||
+    JSON.stringify(captureFiles) !== JSON.stringify([...P2_S3_CAPTURE_MATRIX.keys()].sort())
   ) {
     throw new Error("P2-S3 visual manifest must contain the exact 10 x 3 x 3 matrix and 25 source blobs");
   }
   if (manifest.captures.some((capture) => {
-    const tenant = P2_S3_TENANT_ROUTES.has(capture.route);
-    const publicRoute = P2_S3_PUBLIC_ROUTES.has(capture.route);
+    const expected = P2_S3_CAPTURE_MATRIX.get(capture.file);
+    const tenant = expected?.kind === "tenant";
+    const publicRoute = expected?.kind === "public";
     return (
+      !expected ||
+      capture.route !== expected.route ||
+      capture.kind !== expected.kind ||
+      capture.shell !== expected.kind ||
+      capture.state !== expected.state ||
+      capture.qa_state !== (expected.state === "lifecycle" ? "loaded" : expected.state) ||
+      capture.viewport !== expected.viewport ||
       capture.exact_viewport !== true ||
       capture.document_overflow !== false ||
       capture.state_visible !== true ||
@@ -59,7 +89,6 @@ export function validateP2S3Manifest(manifest) {
       capture.canvas_normalized !== false ||
       capture.source_frame !== capture.viewport ||
       (!tenant && !publicRoute) ||
-      capture.kind !== (tenant ? "tenant" : "public") ||
       (tenant && capture.active_routes !== 1) ||
       (publicRoute && capture.private_controls !== 0)
     );
