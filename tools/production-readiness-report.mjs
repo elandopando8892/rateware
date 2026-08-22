@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -12,6 +13,7 @@ const P2_S2_CLOSURE = Object.freeze({
   manifest: "docs/platform55-evidence/p2-s2/60eb7f341a09f6d65f4344b8606a9779c339712c/manifest.json",
   reviewedHead: "18955d06443d3532823da6725eda90041b15b2e8",
   visualSubject: "60eb7f341a09f6d65f4344b8606a9779c339712c",
+  reviewSha256: "377f90847ce2fb9ecb7e707159c8036a9dc040edc624d6c620e70c909c48ee5c",
   automatedSuite: Object.freeze([
     "npm test PASS on exact closure head 18955d06443d3532823da6725eda90041b15b2e8",
     "npm run validate:action-contract PASS with 0 errors and 1 pre-existing warning",
@@ -51,6 +53,16 @@ const requireText = (text, pattern, message) => {
   if (!pattern.test(text)) throw new Error(message);
 };
 
+export function validateP2S2ReviewBody(review) {
+  if (typeof review !== "string") throw new Error("P2 independent review body must be text");
+  const normalized = review.replace(/\r\n/g, "\n");
+  const digest = createHash("sha256").update(normalized).digest("hex");
+  if (digest !== P2_S2_CLOSURE.reviewSha256) {
+    throw new Error("P2 independent review body digest mismatch");
+  }
+  return review;
+}
+
 const validateP2S2Closure = (sprint, rootDir) => {
   if (sprint.id !== "P2" || sprint.progress < 45) return;
   const evidence = sprint.evidence || {};
@@ -71,6 +83,7 @@ const validateP2S2Closure = (sprint, rootDir) => {
   const implementation = readFileSync(resolve(root, P2_S2_CLOSURE.implementation), "utf8");
   const review = readFileSync(resolve(root, P2_S2_CLOSURE.independentReview), "utf8");
   const manifest = JSON.parse(readFileSync(resolve(root, P2_S2_CLOSURE.manifest), "utf8"));
+  validateP2S2ReviewBody(review);
   if (!implementation.includes(`Final candidate SHA: \`${P2_S2_CLOSURE.visualSubject}\``)) {
     throw new Error("P2 implementation evidence must name the immutable visual subject");
   }

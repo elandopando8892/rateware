@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   computeOverallProgress,
   formatProgressReport,
+  validateP2S2ReviewBody,
   validateLedger
 } from "../tools/production-readiness-report.mjs";
 
@@ -324,6 +325,17 @@ test("rejects fabricated P2-S2 closure evidence", () => {
   const missingVerdict = structuredClone(persisted);
   missingVerdict.sprints.find((sprint) => sprint.id === "P2").verdicts = {};
   assert.throws(() => validateLedger(missingVerdict), /P2.*independent_review.*GO/i);
+
+  const review = readFileSync("docs/release/evidence/2026-08-21-p2-s2-independent-review.md", "utf8");
+  validateP2S2ReviewBody(review);
+  assert.throws(
+    () => validateP2S2ReviewBody(review.replace("Findings: P0 0, P1 0, P2 0.", "Findings: P0 0, P1 0, P2 2.")),
+    /digest/i,
+  );
+  assert.throws(
+    () => validateP2S2ReviewBody(review.replace("Full `npm test`: PASS, exit 0.", "Full `npm test`: FAIL, exit 1.")),
+    /digest/i,
+  );
 });
 
 test("does not credit P2-S2 visual completion without immutable actual-route evidence", () => {
