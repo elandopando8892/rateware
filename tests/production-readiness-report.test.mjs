@@ -366,11 +366,11 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
   wrongCaptureHash.captures[0].sha256 = "0".repeat(64);
   assert.throws(() => validateP2S3Manifest(wrongCaptureHash), /digest mismatch/i);
   const manifestBlobs = manifest.source_git_blobs;
-  const subjectBlobs = Object.values(manifestBlobs);
-  validateP2S3SourceBlobParity(manifestBlobs, subjectBlobs, [...subjectBlobs]);
-  const driftedHeadBlobs = [...subjectBlobs];
+  const currentBlobs = Object.values(manifestBlobs);
+  validateP2S3SourceBlobParity(manifestBlobs, currentBlobs);
+  const driftedHeadBlobs = [...currentBlobs];
   driftedHeadBlobs[0] = "0".repeat(40);
-  assert.throws(() => validateP2S3SourceBlobParity(manifestBlobs, subjectBlobs, driftedHeadBlobs), /source blob mismatch/i);
+  assert.throws(() => validateP2S3SourceBlobParity(manifestBlobs, driftedHeadBlobs), /source blob mismatch/i);
 });
 
 test("rejects fabricated P2-S2 closure evidence", () => {

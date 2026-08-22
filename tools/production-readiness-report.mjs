@@ -104,12 +104,12 @@ export function validateP2S3Manifest(manifest) {
   return manifest;
 }
 
-export function validateP2S3SourceBlobParity(manifestBlobs, subjectBlobs, currentBlobs) {
-  if (!manifestBlobs || subjectBlobs?.length !== P2_S3_SOURCE_PATHS.length || currentBlobs?.length !== P2_S3_SOURCE_PATHS.length) {
+export function validateP2S3SourceBlobParity(manifestBlobs, currentBlobs, workingBlobs = currentBlobs) {
+  if (!manifestBlobs || currentBlobs?.length !== P2_S3_SOURCE_PATHS.length || workingBlobs?.length !== P2_S3_SOURCE_PATHS.length) {
     throw new Error("P2-S3 source blob parity requires all 25 source paths");
   }
   for (const [index, sourcePath] of P2_S3_SOURCE_PATHS.entries()) {
-    if (manifestBlobs[sourcePath] !== subjectBlobs[index] || currentBlobs[index] !== subjectBlobs[index]) {
+    if (manifestBlobs[sourcePath] !== currentBlobs[index] || workingBlobs[index] !== currentBlobs[index]) {
       throw new Error(`P2-S3 source blob mismatch: ${sourcePath}`);
     }
   }
@@ -228,19 +228,23 @@ const validateP2S3Closure = (sprint, rootDir) => {
     ["-C", root, "rev-parse", ...paths.map((path) => `${revision}:${path}`)],
     { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
   ).trim().split(/\r?\n/);
-  const subjectBlobs = gitBlobs(P2_S3_CLOSURE.visualSubject, P2_S3_SOURCE_PATHS);
+  const workingBlobs = (paths) => execFileSync(
+    "git",
+    ["-C", root, "hash-object", "--", ...paths],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+  ).trim().split(/\r?\n/);
   const currentSourceBlobs = gitBlobs("HEAD", P2_S3_SOURCE_PATHS);
-  validateP2S3SourceBlobParity(manifest.source_git_blobs, subjectBlobs, currentSourceBlobs);
+  validateP2S3SourceBlobParity(manifest.source_git_blobs, currentSourceBlobs, workingBlobs(P2_S3_SOURCE_PATHS));
   const evidenceDirectory = dirname(manifestPath);
   const evidencePaths = [
     P2_S3_CLOSURE.manifest,
     ...manifest.captures.map((capture) => `${P2_S3_CLOSURE.manifest.slice(0, P2_S3_CLOSURE.manifest.lastIndexOf("/") + 1)}${capture.file}`)
   ];
-  const evidenceHeadBlobs = gitBlobs(P2_S3_CLOSURE.evidenceHead, evidencePaths);
   const currentEvidenceBlobs = gitBlobs("HEAD", evidencePaths);
+  const workingEvidenceBlobs = workingBlobs(evidencePaths);
   for (const [index, evidencePath] of evidencePaths.entries()) {
-    if (evidenceHeadBlobs[index] !== currentEvidenceBlobs[index]) {
-      throw new Error(`P2-S3 evidence Git blob drift: ${evidencePath}`);
+    if (workingEvidenceBlobs[index] !== currentEvidenceBlobs[index]) {
+      throw new Error(`P2-S3 evidence working-tree drift: ${evidencePath}`);
     }
   }
   for (const capture of manifest.captures) {

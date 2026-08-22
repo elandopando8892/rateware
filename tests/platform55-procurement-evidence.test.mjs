@@ -5,7 +5,6 @@ import { access, readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
 const subject = "6917246927a6a13e82abf9e1e84b00b27f172ab7";
-const evidenceHead = "23584f218d094a622608c813715247cf16190375";
 const manifestObjectSha256 = "ca17e2c5faa9a0d08dfdd662f101bf96fe1aee8ce93f93e2dfb6becba9c61845";
 const directory = `docs/platform55-evidence/p2-s3/${subject}`;
 const routes = [
@@ -95,15 +94,15 @@ function validateManifestShape(manifest) {
   assert.equal(createHash("sha256").update(JSON.stringify(manifest)).digest("hex"), manifestObjectSha256);
 }
 
-test("anchors the complete Procurement capture matrix to its immutable subject", async () => {
+test("anchors the complete Procurement capture matrix without requiring historical commit objects", async () => {
   const manifest = JSON.parse(await readFile(`${directory}/manifest.json`, "utf8"));
   validateManifestShape(manifest);
 
   for (const sourcePath of sourcePaths) {
-    const subjectBlob = execFileSync("git", ["rev-parse", `${subject}:${sourcePath}`], { encoding: "utf8" }).trim();
     const currentBlob = execFileSync("git", ["rev-parse", `HEAD:${sourcePath}`], { encoding: "utf8" }).trim();
-    assert.equal(manifest.source_git_blobs[sourcePath], subjectBlob, `${sourcePath} must match the immutable subject`);
-    assert.equal(currentBlob, subjectBlob, `${sourcePath} must not drift after capture`);
+    const workingBlob = execFileSync("git", ["hash-object", "--", sourcePath], { encoding: "utf8" }).trim();
+    assert.equal(currentBlob, manifest.source_git_blobs[sourcePath], `${sourcePath} must match the authenticated manifest`);
+    assert.equal(workingBlob, currentBlob, `${sourcePath} working tree must match HEAD`);
   }
 
   const actualPngs = (await readdir(directory)).filter((file) => file.endsWith(".png")).sort();
@@ -113,9 +112,9 @@ test("anchors the complete Procurement capture matrix to its immutable subject",
     `${directory}/manifest.json`,
     ...manifest.captures.map((capture) => `${directory}/${capture.file}`)
   ]) {
-    const evidenceBlob = execFileSync("git", ["rev-parse", `${evidenceHead}:${evidencePath}`], { encoding: "utf8" }).trim();
     const currentBlob = execFileSync("git", ["rev-parse", `HEAD:${evidencePath}`], { encoding: "utf8" }).trim();
-    assert.equal(currentBlob, evidenceBlob, `${evidencePath} must remain anchored to the evidence HEAD`);
+    const workingBlob = execFileSync("git", ["hash-object", "--", evidencePath], { encoding: "utf8" }).trim();
+    assert.equal(workingBlob, currentBlob, `${evidencePath} working tree must match HEAD`);
   }
 
   for (const capture of manifest.captures) {
