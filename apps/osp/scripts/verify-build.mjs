@@ -1,6 +1,7 @@
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { JSDOM } from 'jsdom';
 
 process.on('uncaughtException', (error) => {
   const message = error instanceof Error ? error.message : 'Unexpected build verification failure.';
@@ -98,37 +99,34 @@ if (!initialIndexStats.isFile()) throw new Error('Build entry app/index.html mus
 const physicalIndexPath = await safeRealpath(indexPath, 'Build entry app/index.html');
 assertWithin(physicalAppDistRoot, physicalIndexPath, 'Physical build entry app/index.html');
 
-function parseAttributes(tag) {
-  const attributes = new Map();
-  const pattern = /\s([^\s"'<>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
-  for (const match of tag.matchAll(pattern)) {
-    const name = match[1].toLowerCase();
-    if (attributes.has(name)) throw new Error('Built index contains a duplicate asset attribute.');
-    attributes.set(name, match[2] ?? match[3] ?? match[4] ?? null);
-  }
-  return attributes;
-}
-
 function assetReferences(html) {
-  const references = [];
-
-  for (const match of html.matchAll(/<script\b[^>]*>/gi)) {
-    const attributes = parseAttributes(match[0]);
-    if (!attributes.has('src')) continue;
-    const value = attributes.get('src');
-    if (!value) throw new Error('Built index contains a script asset without a usable src.');
-    references.push({ kind: 'script', value });
+  let dom;
+  try {
+    // JSDOM defaults deliberately keep script execution disabled and do not load subresources.
+    dom = new JSDOM(html, { url: 'https://osp.example.test/app/index.html' });
+  } catch {
+    throw new Error('Built index could not be parsed safely as HTML.');
   }
 
-  for (const match of html.matchAll(/<link\b[^>]*>/gi)) {
-    const attributes = parseAttributes(match[0]);
-    const rel = attributes.get('rel');
-    const isStylesheet = typeof rel === 'string'
-      && rel.split(/\s+/).some((token) => token.toLowerCase() === 'stylesheet');
-    if (!isStylesheet) continue;
-    const value = attributes.get('href');
-    if (!value) throw new Error('Built index contains a stylesheet asset without a usable href.');
-    references.push({ kind: 'stylesheet', value });
+  const references = [];
+  try {
+    for (const script of dom.window.document.querySelectorAll('script[src]')) {
+      const value = script.getAttribute('src');
+      if (!value) throw new Error('Built index contains a script asset without a usable src.');
+      references.push({ kind: 'script', value });
+    }
+
+    for (const link of dom.window.document.querySelectorAll('link')) {
+      const rel = link.getAttribute('rel');
+      const isStylesheet = typeof rel === 'string'
+        && rel.split(/\s+/).some((token) => token.toLowerCase() === 'stylesheet');
+      if (!isStylesheet) continue;
+      const value = link.getAttribute('href');
+      if (!value) throw new Error('Built index contains a stylesheet asset without a usable href.');
+      references.push({ kind: 'stylesheet', value });
+    }
+  } finally {
+    dom.window.close();
   }
 
   return references;
