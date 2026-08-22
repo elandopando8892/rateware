@@ -59,9 +59,6 @@ const IMPLEMENTED_BUILD5_STATES = new Map([
   ["5535", ["rfx-bid.html", "public carrier bid room"]],
   ["5536", ["rfx-bid.html", "public bid builder"]],
   ["5543", ["rfx-events.html", "tenant bid comparison"]],
-  ["5548", ["ratebook.html", "tenant rate agreements"]],
-  ["5549", ["ratebook.html", "tenant rate card"]],
-  ["5550", ["ratebook.html", "tenant accessorials"]],
   ["5562", ["rfx-events.html", "tenant procurement events"]]
 ]);
 
@@ -253,7 +250,7 @@ for (const row of rows) {
 
 assert.deepEqual(byBuild, EXPECTED_STATES_BY_BUILD);
 assert.equal(ordinalKeys.size, 1150);
-assert.equal(IMPLEMENTED_BUILD5_STATES.size, 12);
+assert.equal(IMPLEMENTED_BUILD5_STATES.size, 9);
 
 const sourceIdentityIndex = EXPECTED_COLUMNS.indexOf("source_state_identity");
 const duplicateCountIndex = EXPECTED_COLUMNS.indexOf("source_duplicate_count");

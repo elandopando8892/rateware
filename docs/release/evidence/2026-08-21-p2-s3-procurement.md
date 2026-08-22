@@ -36,7 +36,7 @@
 - Action Contract validation: PASS with 401 contract entries, 399 discovered surfaces, zero errors, and one pre-existing declaration-path warning.
 - `npm audit --audit-level=low`: PASS with zero vulnerabilities.
 - `git diff --check`: PASS.
-- Build 05 fidelity reconciliation marks only 12 states directly reproduced by the accepted visual and interaction matrix; all other states remain `not_started`. Generic read failures are not credited as the distinct `empty_state` or `validation_errors` reference states.
+- Build 05 fidelity reconciliation marks only 9 states directly reproduced by the accepted visual and interaction matrix; all other states remain `not_started`. Generic read failures are not credited as the distinct `empty_state` or `validation_errors` reference states. The empty Ratebook schedule is not credited as proof of rate agreements, rate-card content, or accessorials.
 
 ## Boundaries
 
