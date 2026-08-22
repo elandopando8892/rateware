@@ -4,6 +4,8 @@ import { initPlatform55Search } from "./platform55-search.js";
 
 const NAV_STORAGE_KEY = "rateware:shell-nav-collapsed";
 const mountedShells = new WeakMap();
+const PAGE_STATE_KEYS = new Set(["title", "subtitle", "breadcrumbs", "status", "busy", "actions"]);
+const PAGE_ACTION_KEYS = new Set(["id", "label", "status", "busy"]);
 
 function documentFor(root) {
   return root?.nodeType === 9 ? root : root?.ownerDocument || globalThis.document;
@@ -16,6 +18,95 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function pageStateText(value, field) {
+  if (value == null) return "";
+  if (!["string", "number"].includes(typeof value)) {
+    throw new TypeError(`Platform55 page state ${field} must be text`);
+  }
+  return String(value).trim();
+}
+
+export function normalizePlatform55PageState(input = {}, { allowedActionIds = [] } = {}) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new TypeError("Platform55 page state must be an object");
+  }
+  for (const key of Object.keys(input)) {
+    if (!PAGE_STATE_KEYS.has(key)) throw new TypeError(`Unknown Platform55 page state key: ${key}`);
+  }
+  const allowed = new Set(allowedActionIds);
+  const breadcrumbs = input.breadcrumbs == null
+    ? []
+    : Array.isArray(input.breadcrumbs)
+      ? input.breadcrumbs.map((value) => pageStateText(value, "breadcrumb")).filter(Boolean)
+      : (() => { throw new TypeError("Platform55 page state breadcrumbs must be an array"); })();
+  const actions = input.actions == null
+    ? []
+    : Array.isArray(input.actions)
+      ? input.actions.map((action) => {
+          if (!action || typeof action !== "object" || Array.isArray(action)) {
+            throw new TypeError("Platform55 page action must be an object");
+          }
+          for (const key of Object.keys(action)) {
+            if (!PAGE_ACTION_KEYS.has(key)) throw new TypeError(`Platform55 page action descriptor keys do not include: ${key}`);
+          }
+          const id = pageStateText(action.id, "action id");
+          if (!/^[a-z0-9][a-z0-9-]*$/.test(id) || !allowed.has(id)) {
+            throw new TypeError(`Unknown Platform55 page action: ${id || "(empty)"}`);
+          }
+          return Object.freeze({
+            id,
+            label: pageStateText(action.label, "action label"),
+            status: pageStateText(action.status, "action status"),
+            busy: action.busy === true
+          });
+        })
+      : (() => { throw new TypeError("Platform55 page state actions must be an array"); })();
+  return Object.freeze({
+    title: pageStateText(input.title, "title"),
+    subtitle: pageStateText(input.subtitle, "subtitle"),
+    breadcrumbs: Object.freeze(breadcrumbs),
+    status: pageStateText(input.status, "status"),
+    busy: input.busy === true,
+    actions: Object.freeze(actions)
+  });
+}
+
+export function platform55BreadcrumbText(breadcrumbs = []) {
+  return breadcrumbs.join(" · ");
+}
+
+function allowedPageActionIds(doc) {
+  return [...doc.querySelectorAll("[data-platform55-action]")]
+    .map((element) => element.dataset.platform55Action || "")
+    .filter(Boolean);
+}
+
+function applyPageState(state) {
+  const pageState = state.pageState;
+  if (!pageState) return;
+  const content = state.doc.querySelector("[data-platform55-page-content]");
+  if (!content) return;
+  const title = content.querySelector("[data-platform55-page-title]");
+  const subtitle = content.querySelector("[data-platform55-page-subtitle]");
+  const breadcrumbs = content.querySelector("[data-platform55-breadcrumbs]");
+  if (title && pageState.title) title.textContent = pageState.title;
+  if (subtitle) subtitle.textContent = pageState.subtitle;
+  if (breadcrumbs) {
+    breadcrumbs.textContent = platform55BreadcrumbText(pageState.breadcrumbs);
+  }
+  content.setAttribute("aria-busy", String(pageState.busy));
+  for (const action of pageState.actions) {
+    const element = content.querySelector(`[data-platform55-action="${action.id}"]`);
+    if (!element) continue;
+    element.dataset.platform55ActionStatus = action.status;
+    element.setAttribute("aria-busy", String(action.busy));
+    const label = element.querySelector("[data-platform55-action-label]");
+    const status = element.querySelector("[data-platform55-action-status]");
+    if (label && action.label) label.textContent = action.label;
+    if (status) status.textContent = action.status;
+  }
 }
 
 function groupedNavigation(routes) {
@@ -238,7 +329,8 @@ function applyModel(state) {
     count.hidden = model.notificationCount === 0;
   }
   const status = state.topbar.querySelector("[data-platform55-system-status] span");
-  if (status) status.textContent = state.options.status || "Status unavailable";
+  if (status) status.textContent = state.pageState?.status || state.options.status || "Status unavailable";
+  applyPageState(state);
   renderNotificationDrawer(state);
   doc.title = `Rateware ${model.activeRoute.title}`;
 }
@@ -249,6 +341,7 @@ export function mountPlatform55Shell({
   accessContext = {},
   notificationSummary = {},
   status = "",
+  pageState = null,
   root = globalThis.document
 } = {}) {
   const doc = documentFor(root);
@@ -275,6 +368,9 @@ export function mountPlatform55Shell({
   const state = {
     doc, app, sidebar, topbar, authForm, scrim, options,
     model: shellModel(options),
+    pageState: pageState
+      ? normalizePlatform55PageState(pageState, { allowedActionIds: allowedPageActionIds(doc) })
+      : null,
     abort: new AbortController(),
     mobileTrigger: null
   };
@@ -300,7 +396,12 @@ export function updatePlatform55Shell(patch = {}, { root = globalThis.document }
   const doc = documentFor(root);
   const state = mountedShells.get(doc);
   if (!state) return null;
-  state.options = { ...state.options, ...patch };
+  const { pageState, ...shellPatch } = patch || {};
+  const normalizedPageState = pageState === undefined
+    ? state.pageState
+    : normalizePlatform55PageState(pageState, { allowedActionIds: allowedPageActionIds(doc) });
+  state.options = { ...state.options, ...shellPatch };
+  state.pageState = normalizedPageState;
   state.model = shellModel(state.options);
   applyModel(state);
   return state;

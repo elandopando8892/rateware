@@ -6,6 +6,7 @@ import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sh
 import { archiveStagingRows, archiveStagingRowsByFilter, bulkUpdateStagingRows, enrichStagingLocationZips, fetchStagingDetail, fetchStagingFilterValues, fetchStagingOptions, fetchStagingPage, matchStagingVendors, matchStagingVendorsByFilter, removeStagingRows, removeStagingRowsByFilter, renormalizeStagingRows, saveLocationAlias, searchStagingLocations, updateStagingRow, updateStagingRowsByFilter } from "./staging-service.js";
 import { humanizeError } from "./error-copy.js";
 import { loadingState, tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 
 const body = document.querySelector("#staging-body");
 const refreshButton = document.querySelector("#refresh-staging-button");
@@ -1512,6 +1513,29 @@ function updateReviewMetrics() {
   setStagingValidationMetric(validation);
   if (stagingMetricSelected) stagingMetricSelected.textContent = String(selectedRowIds.size);
   updateApprovalBrief(scopedRows);
+  const selectedRowsInScope = scopedRows.filter((row) => selectedRowIds.has(row.id));
+  const selectedReady = selectedRowsInScope.filter(isReadyForApproval).length;
+  const selectedElsewhere = Math.max(0, selectedRowIds.size - selectedRowsInScope.length);
+  const actionState = !selectedRowIds.size
+    ? "no-selection"
+    : selectedElsewhere || selectedReady !== selectedRowsInScope.length
+      ? "blocked"
+      : "ready-for-human-review";
+  updatePlatform55Shell({
+    pageState: {
+      title: "Staging Review",
+      subtitle: "Source evidence and blockers remain visible before human approval.",
+      breadcrumbs: ["Operate", "Review Queue"],
+      status: stagingBriefMessage?.textContent || `${scopedRows.length} row(s) visible`,
+      busy: stagingIsLoadingMore || stagingBulkMutationRunning,
+      actions: [{
+        id: "approve-selected",
+        label: "Approve selected",
+        status: actionState,
+        busy: stagingBulkMutationRunning
+      }]
+    }
+  });
 }
 
 function hasPreservedSourceEvidence(row) {
@@ -1527,6 +1551,8 @@ function updateApprovalBrief(scopedRows = scopedStagingRows(loadedRows)) {
   const selectedReady = selectedRowsInScope.filter(isReadyForApproval).length;
   const selectedBlocked = selectedRowsInScope.length - selectedReady;
   const selectedElsewhere = Math.max(0, selectedCount - selectedRowsInScope.length);
+  const approvalBrief = stagingBriefMessage?.closest(".staging-approval-brief");
+  if (approvalBrief) approvalBrief.dataset.state = rows.length && readyRows.length === rows.length ? "ready" : "blocked";
 
   if (stagingBriefSource) stagingBriefSource.textContent = String(rows.filter(hasPreservedSourceEvidence).length);
   if (stagingBriefReady) stagingBriefReady.textContent = String(readyRows.length);

@@ -5,70 +5,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Approved Rates</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-operate.css" />
   </head>
-  <body>
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Rateware modules">
-        <a class="brand-mark" href="./app.html">Rateware</a>
-        <nav class="nav-groups">
-          <section class="nav-group">
-            <p>Operate</p>
-            <a href="./app.html" data-nav-code="CC">Command Center</a>
-            <a href="./upload-center.html" data-nav-code="IM">Import</a>
-            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
-            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
-            <a aria-current="page" href="./rateware.html" data-nav-code="RW">Rateware</a>
-          </section>
-          <section class="nav-group">
-            <p>Analyze</p>
-            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
-          </section>
-          <section class="nav-group">
-            <p>Source</p>
-            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
-            <a href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
-            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
-            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
-            <a href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
-          </section>
-          <section class="nav-group">
-            <p>Admin</p>
-            <a href="./settings.html" data-nav-code="ST">Settings</a>
-            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
-            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
-          </section>
-        </nav>
-      </aside>
-
-      <div class="page-frame">
-        <header class="page-header">
-          <div>
-            <p class="eyebrow">Approved rate book</p>
-            <h1>Rateware</h1>
-            <nav class="module-crumbs" aria-label="Module context">
-              <a href="./app.html">Command Center</a>
-              <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
-              <span>Rateware</span>
-            </nav>
-          </div>
-          <div class="page-header-actions">
-            <button class="page-primary-action" type="button" data-click-target="#export-filtered-button" title="Export every rate matching the active database filters">Export matching</button>
-            <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Log in</button>
-              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
-              <p id="auth-status" role="status"></p>
-            </form>
-          </div>
+  <body data-platform55-shell="tenant" data-platform55-page="rateware">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <div class="rw-workspace">
+        <header class="rw-topbar" data-platform55-topbar>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Log in</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
         </header>
-
-        <main class="history-layout">
-          <section class="workspace-panel spreadsheet-workbench rateware-workspace">
+        <main class="rw-main" id="main-content">
+          <div class="rw-operate-page history-layout" data-platform55-page-content>
+            <header class="rw-operate-heading" data-platform55-page-header>
+              <div>
+                <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Operate · Rateware</p>
+                <h1 data-platform55-page-title>Rateware</h1>
+                <p data-platform55-page-subtitle>Approved rates only, with filters, evidence, and controlled exports.</p>
+              </div>
+              <button class="page-primary-action" type="button" data-click-target="#export-filtered-button" data-platform55-action="export-matching" title="Export every rate matching the active database filters">Export matching</button>
+            </header>
+          <section class="workspace-panel spreadsheet-workbench rateware-workspace rw-operate-panel">
             <div class="workbench-header">
               <div>
                 <p class="eyebrow">Spreadsheet workbench</p>
                 <h2>Approved rate book</h2>
               </div>
-              <div class="rateware-summary-strip" aria-label="Approved Rateware summary">
+              <div class="rateware-summary-strip rw-operate-metrics" aria-label="Approved Rateware summary">
                 <article>
                   <span>Rates</span>
                   <strong id="rateware-metric-total">0</strong>
@@ -215,7 +183,7 @@
               </details>
             </div>
 
-            <div class="table-wrap sheet-table-wrap">
+            <div class="table-wrap sheet-table-wrap rw-operate-table-scroll" aria-label="Approved Rateware rows">
               <table class="rateware-table">
                 <thead>
                   <tr>
@@ -347,6 +315,7 @@
               <p id="rateware-bulk-status" class="status-message" role="status"></p>
             </div>
           </aside>
+          </div>
         </main>
       </div>
     </div>

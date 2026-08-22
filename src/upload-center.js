@@ -2,6 +2,7 @@ import { applyPermissionState, ensureSignedIn, initAuthControls, requirePrivateP
 import { downloadBulkImportTemplate } from "./bulk-import-template.js";
 import { humanizeError } from "./error-copy.js";
 import { detectDocumentType, isAllowedFile } from "./file-rules.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 import { uploadRawFile } from "./upload-service.js";
 import { fetchVendors } from "./vendor-service.js";
 
@@ -28,6 +29,16 @@ let vendorOptionsLoadVersion = 0;
 function setStatus(message, tone = "neutral") {
   statusMessage.textContent = message;
   statusMessage.dataset.tone = tone;
+  updatePlatform55Shell({
+    pageState: {
+      title: "Upload Center",
+      subtitle: "Source files are preserved before interpretation and human review.",
+      breadcrumbs: ["Operate", "Import"],
+      status: message || "Waiting for source files",
+      busy: uploadCenterSubmitting,
+      actions: [{ id: "select-files", label: "Select files", status: tone, busy: uploadCenterSubmitting }]
+    }
+  });
 }
 
 function formatBytes(bytes) {

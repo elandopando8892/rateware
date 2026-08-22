@@ -6,6 +6,7 @@ import { installSpreadsheetGrid } from "./spreadsheet-grid.js";
 import { initColumnVisibility, initDrawer, initLocationAutocomplete } from "./sheet-ui.js";
 import { humanizeError } from "./error-copy.js";
 import { buildFinanceHandoff } from "./finance-handoff.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 import { tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
 const body = document.querySelector("#rateware-body");
@@ -1019,6 +1020,24 @@ function updateQuickFilters() {
   });
 }
 
+function publishRatewarePageState(status = "") {
+  updatePlatform55Shell({
+    pageState: {
+      title: "Rateware",
+      subtitle: "Approved rates only, with filters, evidence, and controlled exports.",
+      breadcrumbs: ["Operate", "Rateware"],
+      status: status || `${Number(ratewareTotalCount || loadedRows.length).toLocaleString()} approved rate(s)`,
+      busy: ratewareIsLoadingMore || ratewareBulkMutationRunning,
+      actions: [{
+        id: "export-matching",
+        label: "Export matching",
+        status: ratewareBulkMutationRunning ? "busy" : "available",
+        busy: ratewareBulkMutationRunning
+      }]
+    }
+  });
+}
+
 function updateRatewareMetrics(rows) {
   const vendorKeys = new Set(rows.map((row) => row.vendors?.vendor_name || row.vendor_domain || row.vendors?.domain).filter(Boolean));
   const markets = new Set(rows.flatMap((row) => [row.origin_market, row.destination_market]).filter(Boolean));
@@ -1033,6 +1052,7 @@ function updateRatewareMetrics(rows) {
   ratewareMetricMarkets.textContent = String(markets.size);
   ratewareMetricAverage.textContent = average === null ? "-" : moneyValue(average);
   setRatewareValidationMetric(validation);
+  publishRatewarePageState();
 }
 
 function populateFilter(select, rows, field) {
@@ -1463,6 +1483,7 @@ function setActionStatus(message, tone = "neutral") {
   const normalized = tone === "error" ? humanizeError(message) : message;
   actionStatus.textContent = normalized;
   actionStatus.dataset.tone = tone;
+  publishRatewarePageState(normalized);
   if (["success", "error", "danger"].includes(tone)) {
     window.ratewareNotify?.({ tone: tone === "error" ? "danger" : tone, message: normalized });
   }

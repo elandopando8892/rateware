@@ -453,6 +453,13 @@ for (const [label, html] of [
   ["Learning Rules", interpretationMemoryHtml],
   ["Catalog", catalogWorkbenchHtml]
 ]) {
+  if (/data-platform55-shell="tenant"/.test(html)) {
+    assert.match(html, /data-platform55-app/, `${label} should expose the shared Platform55 app host`);
+    assert.match(html, /data-platform55-sidebar/, `${label} should expose the shared Platform55 navigation host`);
+    assert.match(html, /data-platform55-topbar/, `${label} should expose the shared Platform55 topbar host`);
+    assert.doesNotMatch(html, /<nav class="nav-groups"|class="[^"]*\bside-nav\b/, `${label} should not retain page-owned global navigation`);
+    continue;
+  }
   const nav = html.match(/<nav class="nav-groups"[\s\S]*?<\/nav>/)?.[0] || "";
   assert.match(nav, /data-nav-code="CC"[^>]*>Command Center/, `${label} shell should use the modern Command Center nav label`);
   assert.match(nav, /data-nav-code="IM"[^>]*>Import/, `${label} shell should use the modern Import nav label`);

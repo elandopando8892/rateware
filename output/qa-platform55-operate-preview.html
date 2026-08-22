@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Platform55 Operate visual evidence</title>
+    <link rel="stylesheet" href="../src/styles.css" />
+    <link rel="stylesheet" href="../src/platform55-tokens.css" />
+    <link rel="stylesheet" href="../src/platform55-shell.css" />
+    <link rel="stylesheet" href="../src/platform55-operate.css" />
+  </head>
+  <body data-platform55-shell="tenant" data-platform55-page="upload-center">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <div class="rw-workspace">
+        <header class="rw-topbar" data-platform55-topbar>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="button">Visual QA</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
+        </header>
+        <main class="rw-main" id="main-content">
+          <div id="qa-operate-content" class="rw-operate-page" data-platform55-page-content></div>
+        </main>
+      </div>
+    </div>
+    <script type="module">
+      import { mountPlatform55Shell, updatePlatform55Shell } from "../src/platform55-shell.js";
+
+      const params = new URLSearchParams(location.search);
+      const key = ["upload-center", "upload-history", "staging-review", "rateware"].includes(params.get("page"))
+        ? params.get("page")
+        : "upload-center";
+      const state = params.get("state") === "error" ? "error" : "loaded";
+      const configurations = {
+        "upload-center": {
+          eyebrow: "Operate · Import",
+          title: "Upload Center",
+          subtitle: "Preserve source files before interpretation and human review.",
+          metrics: [["Total files", "3"], ["Ready", "2"], ["Rejected", "1"], ["Total size", "4.8 MB"]],
+          action: "Select files",
+          panel: `<section class="rw-operate-panel"><div class="section-heading compact"><div><p class="eyebrow">Source intake</p><h2>Original carrier files</h2></div></div><div class="drop-zone"><strong>Drop XLSX, PDF, image, or EML files</strong><p>Every original remains preserved. Interpretation creates pending_review rows only.</p><button type="button">Choose source files</button></div></section>`
+        },
+        "upload-history": {
+          eyebrow: "Operate · Source Files",
+          title: "Upload History",
+          subtitle: "Trace every original source and its staged interpretation result.",
+          metrics: [["Visible", "12"], ["Staged", "8"], ["Failed", "1"], ["Needs audit", "3"]],
+          action: "Import files",
+          rows: [["carrier-quote-aug.xlsx", "Northstar Freight", "Staged", "12 rows"], ["crossborder-rates.pdf", "MX Logistics", "Needs audit", "8 rows"]]
+        },
+        "staging-review": {
+          eyebrow: "Operate · Review Queue",
+          title: "Staging Review",
+          subtitle: "Source evidence and blockers remain visible before human approval.",
+          metrics: [["Visible", "24"], ["Location gaps", "2"], ["Rate gaps", "1"], ["Selected", "3"]],
+          action: "Approve selected",
+          review: "2 selected rows are ready; 1 needs correction before approval can proceed.",
+          rows: [["Northstar Freight", "Monterrey → Dallas", "pending_review", "$2,850"], ["MX Logistics", "Toluca → Laredo", "blocked", "Missing rate"]]
+        },
+        rateware: {
+          eyebrow: "Operate · Rateware",
+          title: "Rateware",
+          subtitle: "Approved rates only, with filters, evidence, and controlled exports.",
+          metrics: [["Rates", "418"], ["Carriers", "36"], ["Markets", "82"], ["Avg all-in", "$3,240"]],
+          action: "Export matching",
+          rows: [["Northstar Freight", "Monterrey → Dallas", "approved", "$2,850"], ["MX Logistics", "Toluca → Laredo", "approved", "$3,100"]]
+        }
+      };
+      const config = configurations[key];
+      document.body.dataset.platform55Page = key;
+      const metricMarkup = config.metrics.map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
+      const tableMarkup = config.rows ? `<div class="rw-operate-table-scroll" aria-label="${config.title} rows"><table><thead><tr><th>Source / carrier</th><th>Lane / context</th><th>Status</th><th>Result</th></tr></thead><tbody>${config.rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`).join("")}</tbody></table></div>` : config.panel;
+      const stateMarkup = state === "error"
+        ? `<section class="rw-operate-validation" data-tone="error"><strong>${config.title} could not load</strong><p>No source, staging, approval, or Rateware data was changed. Retry the current view.</p><button type="button">Retry</button></section>`
+        : config.review
+          ? `<section class="rw-operate-review-state" data-state="blocked"><strong>Human approval required</strong><p>${config.review}</p></section>`
+          : "";
+      const content = document.querySelector("#qa-operate-content");
+      content.innerHTML = `
+        <header class="rw-operate-heading" data-platform55-page-header>
+          <div><p class="rw-page-eyebrow" data-platform55-breadcrumbs>${config.eyebrow}</p><h1 data-platform55-page-title>${config.title}</h1><p data-platform55-page-subtitle>${config.subtitle}</p></div>
+          <button class="page-primary-action" type="button" data-platform55-action="primary">${config.action}</button>
+        </header>
+        <section class="rw-operate-metrics" aria-label="${config.title} summary">${metricMarkup}</section>
+        <section class="rw-operate-panel"><div class="rw-operate-filters"><label>Search<input type="search" placeholder="Search current workspace" /></label><label>Status<select><option>All active</option></select></label><button class="secondary" type="button">Clear filters</button></div></section>
+        ${stateMarkup}
+        ${state === "loaded" ? tableMarkup : ""}`;
+      mountPlatform55Shell({ pageKey: key, user: { given_name: "Visual QA" }, accessContext: { can: () => true }, status: "Local fixture · no writes" });
+      updatePlatform55Shell({ pageState: { title: config.title, subtitle: config.subtitle, breadcrumbs: ["Operate", config.title], status: state === "error" ? "Load error · no writes" : "Loaded local fixture", busy: false, actions: [{ id: "primary", label: config.action, status: state, busy: false }] } });
+    </script>
+  </body>
+</html>
