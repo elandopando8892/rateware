@@ -5,17 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Live Bid Room Board</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-public-shell.css" />
   </head>
-  <body class="public-bid-board-page">
-    <main class="public-bid-board-shell">
-      <header class="public-bid-board-header">
+  <body class="public-bid-board-page" data-platform55-shell="public" data-platform55-page="bid-room-board">
+    <main class="public-bid-board-shell rw-public-app" data-platform55-public-app>
+      <header class="public-bid-board-header rw-public-header" data-platform55-public-context>
         <div>
           <a class="brand-mark" href="./index.html">Rateware</a>
           <p class="eyebrow">Public procurement marketplace</p>
           <h1>Live Bid Room Board</h1>
           <p>All opportunities loaded into Bid Room, active bid movement, expired rooms, and awarded lanes without exposing carrier identity.</p>
         </div>
-        <div class="public-board-actions">
+        <div class="public-board-actions rw-public-actions" data-platform55-public-actions>
           <button id="public-board-sound" type="button" class="page-primary-action" aria-pressed="true">Sound on</button>
           <button id="public-board-support-jump" type="button" class="secondary">Ask support</button>
           <button id="public-board-find-invites" type="button" class="secondary">Find my invitations</button>
@@ -71,7 +73,7 @@
             <p class="eyebrow">Live board</p>
             <h2>Opportunities</h2>
           </div>
-          <p id="public-board-status" class="row-save-status" role="status">Loading opportunities...</p>
+          <p id="public-board-status" class="row-save-status rw-public-state" role="status" data-platform55-public-state data-state="loading">Loading opportunities...</p>
         </div>
         <div id="public-board-root" class="public-board-root"></div>
       </section>
