@@ -151,6 +151,14 @@ test('rejects an import directive in a built stylesheet', async () => {
   });
 });
 
+test('rejects an escaped import directive separated by a CRLF terminator', async () => {
+  await withFixture(`${validScript}${validStylesheet}`, async ({ fixtureRoot, appRoot, assetsRoot }) => {
+    await writeFile(join(assetsRoot, 'app.css'), '@\\69\r\nmport url("https://cdn.example.test/evil.css");', 'utf8');
+    const output = assertSafeFailure(await runVerifier(appRoot), fixtureRoot);
+    assert.match(output, /import|stylesheet/i);
+  });
+});
+
 test('rejects a wrong-root stylesheet even when valid assets exist', async () => {
   const html = `${validScript}${validStylesheet}<link rel="stylesheet" href="/wrong.css">`;
   await withFixture(html, async ({ fixtureRoot, appRoot }) => {
