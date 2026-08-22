@@ -341,6 +341,12 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
 
   const manifest = JSON.parse(readFileSync("docs/platform55-evidence/p2-s3/6917246927a6a13e82abf9e1e84b00b27f172ab7/manifest.json", "utf8"));
   validateP2S3Manifest(manifest);
+  const broadCustomerError = structuredClone(manifest);
+  const customerError = broadCustomerError.captures.find((capture) => capture.file === "customer-rfi-error-390x844.png");
+  customerError.state_selector = "text:Deterministic";
+  customerError.state_marker = "Deterministic Customer RFI evidence error plus offscreen content";
+  customerError.state_intersection_ratio = 0.45;
+  assert.throws(() => validateP2S3Manifest(broadCustomerError), /Customer RFI error target/i);
   const wrongKind = structuredClone(manifest);
   const publicCapture = wrongKind.captures.find((capture) => capture.kind === "public");
   publicCapture.kind = "unclassified";

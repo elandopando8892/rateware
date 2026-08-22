@@ -28,7 +28,7 @@ const P2_S3_CLOSURE = Object.freeze({
   manifest: "docs/platform55-evidence/p2-s3/6917246927a6a13e82abf9e1e84b00b27f172ab7/manifest.json",
   evidenceHead: "23584f218d094a622608c813715247cf16190375",
   visualSubject: "6917246927a6a13e82abf9e1e84b00b27f172ab7",
-  manifestObjectSha256: "ca17e2c5faa9a0d08dfdd662f101bf96fe1aee8ce93f93e2dfb6becba9c61845",
+  manifestObjectSha256: "012f11a9237f9caa54ec45ce45aaa012eac540a2b1b03723a9a192a3079a1eb2",
   automatedSuite: Object.freeze([
     "npm test PASS on exact Procurement evidence head 23584f218d094a622608c813715247cf16190375",
     "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures"
@@ -96,6 +96,17 @@ export function validateP2S3Manifest(manifest) {
     );
   })) {
     throw new Error("P2-S3 visual manifest must prove stable exact viewports and public isolation");
+  }
+  if (manifest.captures.some((capture) => (
+    capture.route === "customer-rfi.html" &&
+    capture.state === "error" &&
+    (
+      capture.state_selector !== "#customer-rfi-message" ||
+      capture.state_marker !== "Deterministic Customer RFI evidence error" ||
+      capture.state_intersection_ratio !== 1
+    )
+  ))) {
+    throw new Error("P2-S3 Customer RFI error target must be the fully visible status element");
   }
   const manifestDigest = createHash("sha256").update(JSON.stringify(manifest)).digest("hex");
   if (manifestDigest !== P2_S3_CLOSURE.manifestObjectSha256) {

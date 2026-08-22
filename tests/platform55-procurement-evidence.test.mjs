@@ -5,7 +5,7 @@ import { access, readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
 const subject = "6917246927a6a13e82abf9e1e84b00b27f172ab7";
-const manifestObjectSha256 = "ca17e2c5faa9a0d08dfdd662f101bf96fe1aee8ce93f93e2dfb6becba9c61845";
+const manifestObjectSha256 = "012f11a9237f9caa54ec45ce45aaa012eac540a2b1b03723a9a192a3079a1eb2";
 const directory = `docs/platform55-evidence/p2-s3/${subject}`;
 const routes = [
   "vendors",
@@ -87,6 +87,11 @@ function validateManifestShape(manifest) {
     assert.match(capture.state_selector, /\S/, `${capture.file} state selector`);
     assert.ok(capture.layout_stability_samples >= 3, `${capture.file} stable layout`);
     assert.ok(capture.state_intersection_ratio >= (capture.state === "lifecycle" ? 0.7 : capture.state === "error" ? 0.4 : 0.2), `${capture.file} state intersection`);
+    if (capture.route === "customer-rfi.html" && capture.state === "error") {
+      assert.equal(capture.state_selector, "#customer-rfi-message", `${capture.file} must target the actual error element`);
+      assert.equal(capture.state_marker, "Deterministic Customer RFI evidence error", `${capture.file} must record only the error text`);
+      assert.equal(capture.state_intersection_ratio, 1, `${capture.file} error must be fully inside the viewport`);
+    }
     if (expected.kind === "tenant") assert.equal(capture.active_routes, 1, `${capture.file} active tenant route`);
     if (expected.kind === "public") assert.equal(capture.private_controls, 0, `${capture.file} public isolation`);
     assert.match(capture.sha256, /^[0-9a-f]{64}$/);
