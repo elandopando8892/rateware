@@ -15,6 +15,7 @@ const appDistRoot = resolve(distRoot, 'app');
 const assetsRoot = resolve(appDistRoot, 'assets');
 const indexPath = resolve(appDistRoot, 'index.html');
 const assetUrlRoot = '/app/assets/';
+const htmlNamespace = 'http://www.w3.org/1999/xhtml';
 
 function safeRelative(path) {
   return relative(distRoot, path).split(sep).join('/');
@@ -110,7 +111,11 @@ function assetReferences(html) {
 
   const references = [];
   try {
-    for (const script of dom.window.document.querySelectorAll('script[src]')) {
+    for (const script of dom.window.document.querySelectorAll('script')) {
+      if (script.namespaceURI !== htmlNamespace) {
+        throw new Error('Built index contains a non-HTML script element.');
+      }
+      if (!script.hasAttribute('src')) continue;
       const value = script.getAttribute('src');
       if (!value) throw new Error('Built index contains a script asset without a usable src.');
       references.push({ kind: 'script', value });
