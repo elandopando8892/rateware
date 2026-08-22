@@ -71,6 +71,9 @@ test("anchors the complete actual-route capture matrix to its immutable subject"
     assert.equal(capture.document_overflow, false, `${capture.file} must not contain horizontal overflow`);
     assert.equal(capture.active_routes, 1, `${capture.file} must expose one active route`);
     assert.equal(capture.page_module_declared, true, `${capture.file} must load the actual page module`);
+    assert.ok(Number.isFinite(capture.content_width_ratio), `${capture.file} must record its content width ratio`);
+    assert.ok(capture.content_width_ratio >= 0.65, `${capture.file} must not collapse into a narrow fraction of the viewport`);
+    assert.ok(capture.layout_stability_samples >= 3, `${capture.file} must be captured only after three stable layout samples`);
     assert.match(capture.sha256, /^[0-9a-f]{64}$/);
     const capturePath = `${directory}/${capture.file}`;
     await access(capturePath);
