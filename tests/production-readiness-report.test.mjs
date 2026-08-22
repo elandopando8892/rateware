@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 import {
   computeOverallProgress,
@@ -269,15 +269,15 @@ test("keeps the persisted P1 production closure backed while P2 advances", () =>
   }
   for (const path of trackedEvidence) execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   validateLedger(persisted);
-  assert.equal(computeOverallProgress(persisted), 79.2);
+  assert.equal(computeOverallProgress(persisted), 77.8);
 });
 
-test("persists the P2-S2 implementation evidence and reports 79.2 percent", () => {
+test("withholds P2-S2 completion credit until actual-route visual evidence passes", () => {
   const p2Ledger = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p2 = p2Ledger.sprints.find((sprint) => sprint.id === "P2");
 
   validateLedger(p2Ledger);
-  assert.equal(p2.progress, 45);
+  assert.equal(p2.progress, 25);
   assert.deepEqual(p2.evidence.scope, [
     "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
   ]);
@@ -289,6 +289,24 @@ test("persists the P2-S2 implementation evidence and reports 79.2 percent", () =
     "docs/release/evidence/2026-08-21-p2-shell-s1-command-center.md",
     "docs/release/evidence/2026-08-21-p2-s2-operate.md"
   ]);
-  assert.equal(computeOverallProgress(p2Ledger), 79.2);
-  assert.match(formatProgressReport(p2Ledger), /P2:\s+45%/);
+  assert.equal(computeOverallProgress(p2Ledger), 77.8);
+  assert.match(formatProgressReport(p2Ledger), /P2:\s+25%/);
+});
+
+test("does not credit P2-S2 visual completion without immutable actual-route evidence", () => {
+  const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
+  if (p2.progress < 45) return;
+
+  const evidence = readFileSync("docs/release/evidence/2026-08-21-p2-s2-operate.md", "utf8");
+  const candidate = evidence.match(/Final candidate SHA:\s*`([0-9a-f]{40})`/i)?.[1];
+  assert.ok(candidate, "45% requires the immutable final candidate SHA");
+
+  const evidenceDir = `docs/platform55-evidence/p2-s2/${candidate}`;
+  assert.ok(existsSync(evidenceDir), "45% requires a SHA-scoped visual evidence directory");
+
+  const pngs = readdirSync(evidenceDir).filter((name) => name.endsWith(".png"));
+  assert.equal(pngs.length, 24, "45% requires four actual routes x two states x three viewports");
+  assert.match(evidence, /actual route HTML and page modules/i);
+  assert.doesNotMatch(evidence, /synthetic page|synthetic reconstruction/i);
 });

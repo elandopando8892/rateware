@@ -88,7 +88,7 @@
     {
       "id": "P2",
       "weight": 7,
-      "progress": 45,
+      "progress": 25,
       "evidence": {
         "scope": [
           "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
