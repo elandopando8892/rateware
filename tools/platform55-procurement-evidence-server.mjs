@@ -222,6 +222,156 @@ const BOUNDARIES = new Map([
 
 const importMap = `<script type="importmap">{"imports":{"https://esm.sh/xlsx@0.18.5":"/qa/xlsx.js"}}</script><!-- ${IMPORT_MARKER} -->`;
 
+const profileVendor = Object.freeze({
+  id: "00000000-0000-4000-8000-000000000301",
+  vendor_name: "Northstar Carrier",
+  legal_name: "Northstar Carrier LLC",
+  status: "active",
+  primary_email: "qa@local.invalid",
+  preferred_channel: "email",
+  country: "MX",
+  profile_data: Object.freeze({})
+});
+
+const publicLane = Object.freeze({
+  id: "00000000-0000-4000-8000-000000000511",
+  origin: "Monterrey, NL",
+  destination: "Laredo, TX",
+  equipment: "Dry Van 53",
+  operation: "D2D Export",
+  service: "One Way",
+  weekly_volume: 8
+});
+
+const publicEvent = Object.freeze({
+  id: "00000000-0000-4000-8000-000000000501",
+  rfx_id: "RFQ-QA-501",
+  name: "Cross-border RFQ",
+  customer: "QA Shipper",
+  status: "open",
+  due_date: "2026-09-30"
+});
+
+const invitation = Object.freeze({
+  id: "00000000-0000-4000-8000-000000000521",
+  invitation_token: "qa-token",
+  invitation_status: "invited",
+  rfx_event_id: publicEvent.id,
+  rfx_lane_id: publicLane.id,
+  commercial_model: "direct_cost_plus",
+  rfx_events: publicEvent,
+  rfx_lanes: publicLane,
+  vendors: profileVendor
+});
+
+const publicBoardRow = Object.freeze({
+  ...publicLane,
+  event_id: publicEvent.id,
+  event: publicEvent,
+  lane: publicLane,
+  route_label: `${publicLane.origin} -> ${publicLane.destination}`,
+  board_status: "open",
+  quote_count: 2,
+  best_rate: 2450,
+  total_weekly_capacity: 16,
+  currency: "USD",
+  last_quote_at: "2026-08-21T12:00:00Z"
+});
+
+const ratebookRoute = Object.freeze({
+  id: "00000000-0000-4000-8000-000000000711",
+  transaction_id: "QA-001",
+  origin: publicLane.origin,
+  destination: publicLane.destination,
+  equipment: publicLane.equipment,
+  operation: publicLane.operation,
+  service: publicLane.service,
+  weekly_volume: publicLane.weekly_volume,
+  currency: "USD",
+  segment_key: "cross-border",
+  quote: null,
+  detail: Object.freeze({})
+});
+
+function fixtureFor(action, state) {
+  const empty = state === "empty";
+  if (action === "get_profile") {
+    return { vendor: profileVendor, support_tickets: [], request: { expires_at: "2026-09-30T00:00:00Z" } };
+  }
+  if (action === "public_bid_room_board") {
+    return {
+      rows: empty ? [] : [publicBoardRow],
+      summary: { live: empty ? 0 : 1, closing: 0, awarded: 0 },
+      generated_at: "2026-08-21T12:00:00Z"
+    };
+  }
+  if (action === "get_invitation") {
+    const invited = empty ? [] : [invitation];
+    return {
+      invitation,
+      live_board: { visibility: { mode: "anonymous" }, rows: [] },
+      segment_confirmations: [],
+      bid_history: [],
+      carrier_book: {
+        invited,
+        open_not_invited: [],
+        quoted: [],
+        summary: { invited: invited.length, quoted: 0, awarded: 0, backup: 0, not_awarded: 0 }
+      }
+    };
+  }
+  if (action === "list_bid_room_chat") return { rows: [], google_chat_configured: false };
+  if (action === "get_ratebook_access") {
+    return {
+      ratebook: { name: "QA Private Ratebook", shipper_name: "QA Shipper", source_type: "award", valid_until: "2026-09-30" },
+      project: { customer_name: "QA Shipper", title: "Cross-border award" },
+      carrier: profileVendor,
+      segments: empty ? [] : [{ segment_key: "cross-border", segment_name: "Cross-border" }],
+      routes: empty ? [] : [ratebookRoute]
+    };
+  }
+  return null;
+}
+
+const READ_ACTIONS = new Map([
+  ["/functions/v1/carrier-profile-api", new Set(["get_profile"])],
+  ["/functions/v1/rfx-bid-api", new Set(["public_bid_room_board", "get_invitation", "list_bid_room_chat"])],
+  ["/functions/v1/ratebook-carrier-api", new Set(["get_ratebook_access"])]
+]);
+
+function evidenceState(request) {
+  try {
+    const state = new URL(request.headers.referer || "http://127.0.0.1").searchParams.get("qa_state");
+    return new Set(["loaded", "empty", "error"]).has(state) ? state : "loaded";
+  } catch {
+    return "loaded";
+  }
+}
+
+async function readJsonBody(request, maxBytes = 65536) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > maxBytes) throw Object.assign(new Error("request too large"), { status: 413 });
+    chunks.push(chunk);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+  } catch {
+    throw Object.assign(new Error("invalid json"), { status: 400 });
+  }
+}
+
+function writeJson(response, status, payload) {
+  response.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "X-Rateware-QA-Boundary": "true"
+  });
+  response.end(JSON.stringify(payload));
+}
+
 function isInside(root, candidate) {
   const value = relative(root, candidate);
   return value !== ".." && !value.startsWith(`..${sep}`) && !value.includes(`..${sep}`);
@@ -246,15 +396,32 @@ export async function startProcurementEvidenceServer({ rootDir = process.cwd(), 
   const root = await realpath(resolve(rootDir));
   const server = createServer(async (request, response) => {
     try {
+      if (containsTraversal(request.url)) throw Object.assign(new Error("path traversal"), { status: 404 });
+
+      const url = new URL(request.url || "/", "http://127.0.0.1");
+      if (request.method === "POST" && READ_ACTIONS.has(url.pathname)) {
+        const payload = await readJsonBody(request);
+        const action = typeof payload.action === "string" ? payload.action : "";
+        if (!READ_ACTIONS.get(url.pathname).has(action)) {
+          response.writeHead(405, { Allow: "POST", "Cache-Control": "no-store", "X-Rateware-QA-Boundary": "true" });
+          response.end();
+          return;
+        }
+        const state = evidenceState(request);
+        if (state === "error") {
+          writeJson(response, 503, { error: `Deterministic ${action} evidence error` });
+          return;
+        }
+        writeJson(response, 200, fixtureFor(action, state));
+        return;
+      }
+
       if (!new Set(["GET", "HEAD"]).has(request.method || "")) {
         response.writeHead(405, { Allow: "GET, HEAD", "Cache-Control": "no-store" });
         response.end();
         return;
       }
 
-      if (containsTraversal(request.url)) throw Object.assign(new Error("path traversal"), { status: 404 });
-
-      const url = new URL(request.url || "/", "http://127.0.0.1");
       if (url.pathname === "/favicon.ico") {
         response.writeHead(204, { "Cache-Control": "no-store" });
         response.end();

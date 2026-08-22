@@ -55,12 +55,39 @@ test("serves actual Procurement routes behind deterministic local-only boundarie
   assert.equal(xlsxResponse.status, 200);
   assert.match(await xlsxResponse.text(), /RATEWARE_PROCUREMENT_QA_BOUNDARY/);
 
-  const apiResponse = await fetch(`${instance.origin}/functions/v1/rateware-api`, {
+  const readActions = [
+    ["carrier-profile-api", "get_profile"],
+    ["rfx-bid-api", "public_bid_room_board"],
+    ["rfx-bid-api", "get_invitation"],
+    ["rfx-bid-api", "list_bid_room_chat"],
+    ["ratebook-carrier-api", "get_ratebook_access"]
+  ];
+  for (const [api, action] of readActions) {
+    const apiResponse = await fetch(`${instance.origin}/functions/v1/${api}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", referer: `${instance.origin}/carrier-profile.html?qa_state=loaded` },
+      body: JSON.stringify({ action, token: "qa-token" })
+    });
+    assert.equal(apiResponse.status, 200, action);
+    assert.equal(apiResponse.headers.get("x-rateware-qa-boundary"), "true", action);
+    assert.equal(typeof await apiResponse.json(), "object", action);
+  }
+
+  const errorResponse = await fetch(`${instance.origin}/functions/v1/carrier-profile-api`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action: "list_public_bid_board" })
+    headers: { "content-type": "application/json", referer: `${instance.origin}/carrier-profile.html?qa_state=error` },
+    body: JSON.stringify({ action: "get_profile", token: "qa-token" })
   });
-  assert.equal(apiResponse.status, 405);
+  assert.equal(errorResponse.status, 503);
+
+  for (const [api, action] of [["carrier-profile-api", "submit_profile"], ["rfx-bid-api", "submit_bid"], ["ratebook-carrier-api", "submit_ratebook_quote"]]) {
+    const mutationResponse = await fetch(`${instance.origin}/functions/v1/${api}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, token: "qa-token" })
+    });
+    assert.equal(mutationResponse.status, 405, action);
+  }
 
   const writeResponse = await fetch(`${instance.origin}/vendors.html`, { method: "POST" });
   assert.equal(writeResponse.status, 405);
