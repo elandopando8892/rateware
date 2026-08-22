@@ -119,6 +119,14 @@ test('keeps inline HTML scripts allowed without executing them', async () => {
   });
 });
 
+test('rejects declarative shadow DOM hiding external script and stylesheet assets', async () => {
+  const html = `${validScript}${validStylesheet}<template shadowrootmode="open"><script src="https://cdn.example.test/evil.js"></script><link rel="stylesheet" href="https://cdn.example.test/evil.css"></template>`;
+  await withFixture(html, async ({ fixtureRoot, appRoot }) => {
+    const output = assertSafeFailure(await runVerifier(appRoot), fixtureRoot);
+    assert.match(output, /shadow|template/i);
+  });
+});
+
 test('rejects a wrong-root stylesheet even when valid assets exist', async () => {
   const html = `${validScript}${validStylesheet}<link rel="stylesheet" href="/wrong.css">`;
   await withFixture(html, async ({ fixtureRoot, appRoot }) => {

@@ -111,6 +111,18 @@ function assetReferences(html) {
 
   const references = [];
   try {
+    const containsDeclarativeShadowRoot = (root) => {
+      for (const template of root.querySelectorAll('template')) {
+        if (template.hasAttribute('shadowrootmode')) return true;
+        if (containsDeclarativeShadowRoot(template.content)) return true;
+      }
+      return false;
+    };
+
+    if (containsDeclarativeShadowRoot(dom.window.document)) {
+      throw new Error('Built index contains a declarative shadow DOM template.');
+    }
+
     for (const script of dom.window.document.querySelectorAll('script')) {
       if (script.namespaceURI !== htmlNamespace) {
         throw new Error('Built index contains a non-HTML script element.');
