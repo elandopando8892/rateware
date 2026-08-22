@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import { startOperateEvidenceServer } from "../tools/platform55-operate-evidence-server.mjs";
 
@@ -29,4 +30,35 @@ test("serves actual Operate routes while replacing only auth and data boundaries
 
   const writeResponse = await fetch(`${instance.origin}/upload-center.html`, { method: "POST" });
   assert.equal(writeResponse.status, 405);
+});
+
+test("anchors the complete actual-route capture matrix to its immutable subject", async () => {
+  const evidence = await readFile("docs/release/evidence/2026-08-21-p2-s2-operate.md", "utf8");
+  const subject = evidence.match(/Final candidate SHA:\s*`([0-9a-f]{40})`/i)?.[1];
+  assert.ok(subject, "evidence must name the immutable final candidate SHA");
+
+  const directory = `docs/platform55-evidence/p2-s2/${subject}`;
+  const manifest = JSON.parse(await readFile(`${directory}/manifest.json`, "utf8"));
+  assert.equal(manifest.subject_sha, subject);
+  assert.deepEqual(manifest.routes, ["upload-center", "upload-history", "staging-review", "rateware"]);
+  assert.deepEqual(manifest.states, ["loaded", "error"]);
+  assert.deepEqual(manifest.viewports, ["1440x900", "1024x768", "390x844"]);
+  assert.equal(manifest.captures.length, 24);
+
+  for (const capture of manifest.captures) {
+    assert.equal(capture.exact_viewport, true, `${capture.file} must use the requested viewport`);
+    assert.equal(capture.document_overflow, false, `${capture.file} must not contain horizontal overflow`);
+    assert.equal(capture.active_routes, 1, `${capture.file} must expose one active route`);
+    assert.equal(capture.page_module_declared, true, `${capture.file} must load the actual page module`);
+    assert.match(capture.sha256, /^[0-9a-f]{64}$/);
+    const capturePath = `${directory}/${capture.file}`;
+    await access(capturePath);
+    const png = await readFile(capturePath);
+    assert.equal(png.subarray(1, 4).toString("ascii"), "PNG", `${capture.file} must be a PNG`);
+    const expectedViewport = capture.file.match(/-(\d+)x(\d+)\.png$/);
+    assert.ok(expectedViewport, `${capture.file} must encode its viewport in the filename`);
+    assert.equal(png.readUInt32BE(16), Number(expectedViewport[1]), `${capture.file} width must match its requested viewport`);
+    assert.equal(png.readUInt32BE(20), Number(expectedViewport[2]), `${capture.file} height must match its requested viewport`);
+    assert.equal(createHash("sha256").update(png).digest("hex"), capture.sha256, `${capture.file} hash must match its bytes`);
+  }
 });
