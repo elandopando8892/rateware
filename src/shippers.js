@@ -1,5 +1,6 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 import {
   applyShipperActionPlaybook,
   archiveShippers,
@@ -331,6 +332,16 @@ function formatDate(value) {
 function setStatus(element, message, tone = "") {
   element.textContent = message;
   element.dataset.tone = tone;
+}
+
+function updateShipperShell(status, busy = false) {
+  updatePlatform55Shell({ pageState: {
+    title: "Shipper CRM",
+    subtitle: "Customer master, commercial progress, and contact context.",
+    breadcrumbs: ["Source", "Shipper CRM"],
+    status,
+    busy
+  } });
 }
 
 const SHIPPER_IMPORT_HEADERS = [
@@ -729,6 +740,7 @@ async function loadRows({ reset = false } = {}) {
   const loadVersion = ++directoryLoadVersion;
   if (reset) state.offset = 0;
   setStatus(elements.directoryStatus, "Loading shippers...");
+  updateShipperShell("Loading shipper accounts", true);
   renderLoadingRows();
   try {
     const result = await fetchShippers({
@@ -744,6 +756,7 @@ async function loadRows({ reset = false } = {}) {
     state.directoryReady = true;
     renderDirectory();
     setStatus(elements.directoryStatus, `${state.total.toLocaleString()} shipper account(s).`, "success");
+    updateShipperShell(`${state.total.toLocaleString()} shipper account(s) loaded`);
   } catch (error) {
     if (loadVersion !== directoryLoadVersion) return;
     state.rows = [];
@@ -751,6 +764,7 @@ async function loadRows({ reset = false } = {}) {
     state.directoryReady = false;
     renderDirectory();
     setStatus(elements.directoryStatus, humanizeError(error), "error");
+    updateShipperShell("Shipper accounts could not load");
   }
 }
 

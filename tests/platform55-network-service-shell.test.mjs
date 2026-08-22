@@ -29,6 +29,25 @@ assert.match(networkCss, /var\(--rw-/, "Network/service styles must use the Plat
 assert.match(networkCss, /@media\s*\(max-width:\s*900px\)/i, "Network/service styles must define the mobile composition");
 assert.match(networkCss, /prefers-reduced-motion:\s*reduce/i, "Network/service styles must respect reduced motion");
 
+const shipperCrmHtml = readFileSync("shipper-crm.html", "utf8");
+const shipperCrmSource = readFileSync("src/shippers.js", "utf8");
+assert.match(shipperCrmHtml, /data-platform55-network-state="shipper-directory"/, "Shipper CRM must expose its directory state");
+assert.match(shipperCrmHtml, /class="[^"]*rw-network-service-metrics[^"]*"/, "Shipper CRM summary must use the network metric primitive");
+assert.match(shipperCrmHtml, /class="[^"]*rw-network-service-table-scroll[^"]*"/, "Shipper CRM directory must bound wide tables");
+assert.match(shipperCrmSource, /updatePlatform55Shell\s*\(\s*\{\s*pageState:/s, "Shipper CRM must publish shell page state");
+for (const stateText of ["Loading shipper accounts", "shipper account(s) loaded", "Shipper accounts could not load"]) {
+  assert.match(shipperCrmSource, new RegExp(stateText.replace(/[()]/g, "\\$&")), `Shipper CRM must publish ${stateText}`);
+}
+assert.match(shipperCrmSource, /initAuthControls\s*\(/, "Shipper CRM must preserve auth initialization");
+assert.match(shipperCrmSource, /requirePrivatePage\s*\(/, "Shipper CRM must preserve its private-page gate");
+
+const shipperProfileSource = readFileSync("src/shipper-profile.js", "utf8");
+assert.match(shipperProfileSource, /data-platform55-public-state/, "Shipper profile dynamic content must preserve public state semantics");
+assert.match(shipperProfileSource, /data-state="signed-out"/, "Shipper profile must expose a signed-out state");
+assert.match(shipperProfileSource, /data-state="expired"/, "Shipper profile must expose an expired-link state");
+assert.match(shipperProfileSource, /data-state="error"/, "Shipper profile must expose an error state");
+assert.doesNotMatch(shipperProfileSource, /from\s*["']\.\/auth\.js["']|initAuthControls|requirePrivatePage/, "Public shipper profile must not import tenant auth bootstrap");
+
 const tenantPages = Object.freeze([
   ["shipper-crm.html", "shipper-crm"],
   ["vendor-support.html", "vendor-support"],
