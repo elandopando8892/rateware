@@ -1,4 +1,5 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 import {
   applyBidUpdateFromChat,
   archiveRfxEvent,
@@ -8746,6 +8747,16 @@ async function loadEvents({ force = false } = {}) {
 
 async function loadEventsRequest() {
   const loadVersion = ++rfxEventsLoadVersion;
+  updatePlatform55Shell({
+    pageState: {
+      title: "Bid Room",
+      subtitle: "Design, monitor, and close private bid events with explicit human control.",
+      breadcrumbs: ["Source", "Procurement Base", "Bid Room"],
+      status: "Loading bid events",
+      busy: true,
+      actions: []
+    }
+  });
   try {
     const loadedEvents = await fetchRfxEvents();
     if (loadVersion !== rfxEventsLoadVersion) return;
@@ -8765,6 +8776,16 @@ async function loadEventsRequest() {
       clearBidRoomDetailState({ clearEventSelection: true });
       renderBidRoomDetailUnavailable();
     }
+    updatePlatform55Shell({
+      pageState: {
+        title: "Bid Room",
+        subtitle: "Design, monitor, and close private bid events with explicit human control.",
+        breadcrumbs: ["Source", "Procurement Base", "Bid Room"],
+        status: `${events.length.toLocaleString()} bid event(s) loaded`,
+        busy: false,
+        actions: []
+      }
+    });
   } catch (error) {
     if (loadVersion !== rfxEventsLoadVersion) return;
     events = [];
@@ -8779,6 +8800,16 @@ async function loadEventsRequest() {
     lanesBody.innerHTML = tableErrorState(22, error, {
       title: "Business book lanes could not load",
       retryAction: "load-rfx-events"
+    });
+    updatePlatform55Shell({
+      pageState: {
+        title: "Bid Room",
+        subtitle: "Design, monitor, and close private bid events with explicit human control.",
+        breadcrumbs: ["Source", "Procurement Base", "Bid Room"],
+        status: "Bid events could not load",
+        busy: false,
+        actions: []
+      }
     });
   }
 }
