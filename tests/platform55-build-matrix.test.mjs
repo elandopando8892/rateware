@@ -54,7 +54,7 @@ const IMPLEMENTED_BUILD5_STATES = new Map([
   ["5510", ["rfx-events.html", "tenant procurement workspace"]],
   ["5517", ["vendors.html", "tenant carrier network"]],
   ["5518", ["vendors.html", "tenant carrier directory"]],
-  ["5519", ["carrier-profile.html", "public carrier profile"]],
+  ["5519", ["vendors.html", "tenant carrier 360"]],
   ["5532", ["rfx-events.html", "tenant sourcing list"]],
   ["5535", ["rfx-bid.html", "public carrier bid room"]],
   ["5536", ["rfx-bid.html", "public bid builder"]],
