@@ -127,6 +127,30 @@ test('rejects declarative shadow DOM hiding external script and stylesheet asset
   });
 });
 
+test('rejects an external base element beside otherwise valid rooted assets', async () => {
+  const html = `<base href="https://cdn.example.test/">${validScript}${validStylesheet}`;
+  await withFixture(html, async ({ fixtureRoot, appRoot }) => {
+    const output = assertSafeFailure(await runVerifier(appRoot), fixtureRoot);
+    assert.match(output, /base/i);
+  });
+});
+
+test('rejects an inline style element containing an external import', async () => {
+  const html = `${validScript}${validStylesheet}<style>@import url("https://cdn.example.test/evil.css");</style>`;
+  await withFixture(html, async ({ fixtureRoot, appRoot }) => {
+    const output = assertSafeFailure(await runVerifier(appRoot), fixtureRoot);
+    assert.match(output, /style/i);
+  });
+});
+
+test('rejects an import directive in a built stylesheet', async () => {
+  await withFixture(`${validScript}${validStylesheet}`, async ({ fixtureRoot, appRoot, assetsRoot }) => {
+    await writeFile(join(assetsRoot, 'app.css'), '@import url("https://cdn.example.test/evil.css");', 'utf8');
+    const output = assertSafeFailure(await runVerifier(appRoot), fixtureRoot);
+    assert.match(output, /import|stylesheet/i);
+  });
+});
+
 test('rejects a wrong-root stylesheet even when valid assets exist', async () => {
   const html = `${validScript}${validStylesheet}<link rel="stylesheet" href="/wrong.css">`;
   await withFixture(html, async ({ fixtureRoot, appRoot }) => {
