@@ -53,7 +53,13 @@ assert.match(procurementCss, /\.rw-procurement-table-scroll\s*\{[^}]*overflow-x:
 const procurementPageRule = procurementCss.match(/\.rw-procurement-page\s*\{([^}]*)\}/)?.[1] || "";
 assert.match(procurementPageRule, /grid-template-columns:\s*minmax\(0,\s*1fr\)/, "Wide procurement workspaces must stay inside the shell grid");
 assert.match(procurementCss, /@media\s*\(min-width:\s*1101px\)[\s\S]*\.rw-procurement-page\.ratebook-workspace\s+\.ratebook-toolbar\s*\{[^}]*minmax\(180px,\s*1\.45fr\)/, "Desktop Ratebook filters must fit the tenant-shell content track");
+assert.match(procurementCss, /@media\s*\(max-width:\s*900px\)[\s\S]*\.rw-procurement-page\s+\.funnel-toolbar,[\s\S]*\.rw-procurement-page\s+\.bid-room-import-panel,[\s\S]*\.rw-procurement-page\s+\.bid-room-stage-panel,[\s\S]*\.rw-procurement-page\s+\.bid-room-table-toolbar\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/, "Wide Procurement controls must collapse inside the mobile viewport");
+assert.match(procurementCss, /\.rw-procurement-page\.bid-room-product\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s, "Bid Room must retain the bounded Procurement grid");
 assert.match(publicCss, /\.rw-public-actions\s*\{[^}]*position:\s*sticky/s);
+const publicAppRule = publicCss.match(/\.rw-public-app\s*\{([^}]*)\}/)?.[1] || "";
+assert.match(publicAppRule, /grid-template-columns:\s*minmax\(0,\s*1fr\)/, "Public shell content must stay inside its grid track");
+assert.match(publicCss, /@media\s*\(max-width:\s*900px\)[\s\S]*\.rw-public-header\s*\{[^}]*flex-wrap:\s*nowrap/, "Public mobile headers must not create a second flex column");
+assert.match(publicCss, /\.rw-public-app\s+\.public-board-control-actions\s*\{[^}]*flex-wrap:\s*wrap/s, "Public board controls must wrap inside the mobile viewport");
 
 for (const [file, key, script] of tenantPages) {
   const html = readFileSync(file, "utf8");
