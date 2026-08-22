@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const IDS = ["P0", "P1", "P2", "P3", "P4", "P5"];
@@ -27,6 +28,7 @@ const P2_S3_CLOSURE = Object.freeze({
   manifest: "docs/platform55-evidence/p2-s3/6917246927a6a13e82abf9e1e84b00b27f172ab7/manifest.json",
   evidenceHead: "23584f218d094a622608c813715247cf16190375",
   visualSubject: "6917246927a6a13e82abf9e1e84b00b27f172ab7",
+  manifestObjectSha256: "ca17e2c5faa9a0d08dfdd662f101bf96fe1aee8ce93f93e2dfb6becba9c61845",
   automatedSuite: Object.freeze([
     "npm test PASS on exact Procurement evidence head 23584f218d094a622608c813715247cf16190375",
     "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures"
@@ -94,6 +96,10 @@ export function validateP2S3Manifest(manifest) {
     );
   })) {
     throw new Error("P2-S3 visual manifest must prove stable exact viewports and public isolation");
+  }
+  const manifestDigest = createHash("sha256").update(JSON.stringify(manifest)).digest("hex");
+  if (manifestDigest !== P2_S3_CLOSURE.manifestObjectSha256) {
+    throw new Error("P2-S3 visual manifest digest mismatch");
   }
   return manifest;
 }
@@ -194,7 +200,8 @@ const validateP2S3Closure = (sprint, rootDir) => {
 
   const root = realpathSync(resolve(rootDir));
   const implementation = readFileSync(resolve(root, P2_S3_CLOSURE.implementation), "utf8");
-  const manifest = JSON.parse(readFileSync(resolve(root, P2_S3_CLOSURE.manifest), "utf8"));
+  const manifestPath = resolve(root, P2_S3_CLOSURE.manifest);
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   requireText(implementation, new RegExp(`Visual subject SHA:\\s*\\\`${P2_S3_CLOSURE.visualSubject}\\\``), "P2-S3 evidence must name the visual subject");
   requireText(implementation, new RegExp(`Evidence and full-gate HEAD:\\s*\\\`${P2_S3_CLOSURE.evidenceHead}\\\``), "P2-S3 evidence must name the full-gate HEAD");
   requireText(implementation, /90 of 90 actual-route captures/i, "P2-S3 evidence must record all 90 captures");
@@ -204,6 +211,42 @@ const validateP2S3Closure = (sprint, rootDir) => {
   requireText(implementation, /No push, PR metadata, preview, deployment, promotion, Supabase change/i, "P2-S3 evidence must preserve local-only boundaries");
 
   validateP2S3Manifest(manifest);
+  const gitBlobs = (revision, paths) => execFileSync(
+    "git",
+    ["-C", root, "rev-parse", ...paths.map((path) => `${revision}:${path}`)],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+  ).trim().split(/\r?\n/);
+  const subjectBlobs = gitBlobs(P2_S3_CLOSURE.visualSubject, P2_S3_SOURCE_PATHS);
+  for (const [index, sourcePath] of P2_S3_SOURCE_PATHS.entries()) {
+    if (manifest.source_git_blobs[sourcePath] !== subjectBlobs[index]) {
+      throw new Error(`P2-S3 source blob mismatch: ${sourcePath}`);
+    }
+  }
+  const evidenceDirectory = dirname(manifestPath);
+  const evidencePaths = [
+    P2_S3_CLOSURE.manifest,
+    ...manifest.captures.map((capture) => `${P2_S3_CLOSURE.manifest.slice(0, P2_S3_CLOSURE.manifest.lastIndexOf("/") + 1)}${capture.file}`)
+  ];
+  const evidenceHeadBlobs = gitBlobs(P2_S3_CLOSURE.evidenceHead, evidencePaths);
+  const currentEvidenceBlobs = gitBlobs("HEAD", evidencePaths);
+  for (const [index, evidencePath] of evidencePaths.entries()) {
+    if (evidenceHeadBlobs[index] !== currentEvidenceBlobs[index]) {
+      throw new Error(`P2-S3 evidence Git blob drift: ${evidencePath}`);
+    }
+  }
+  for (const capture of manifest.captures) {
+    const png = readFileSync(resolve(evidenceDirectory, capture.file));
+    const [, width, height] = capture.viewport.match(/^(\d+)x(\d+)$/) || [];
+    if (
+      png.subarray(1, 4).toString("ascii") !== "PNG" ||
+      png.length !== capture.byte_length ||
+      png.readUInt32BE(16) !== Number(width) ||
+      png.readUInt32BE(20) !== Number(height) ||
+      createHash("sha256").update(png).digest("hex") !== capture.sha256
+    ) {
+      throw new Error(`P2-S3 PNG integrity mismatch: ${capture.file}`);
+    }
+  }
 };
 
 export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {

@@ -358,6 +358,12 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
   const duplicateTuple = structuredClone(manifest);
   duplicateTuple.captures[1].file = duplicateTuple.captures[0].file;
   assert.throws(() => validateP2S3Manifest(duplicateTuple), /10 x 3 x 3 matrix/i);
+  const wrongSourceHash = structuredClone(manifest);
+  wrongSourceHash.source_git_blobs[Object.keys(wrongSourceHash.source_git_blobs)[0]] = "0".repeat(40);
+  assert.throws(() => validateP2S3Manifest(wrongSourceHash), /digest mismatch/i);
+  const wrongCaptureHash = structuredClone(manifest);
+  wrongCaptureHash.captures[0].sha256 = "0".repeat(64);
+  assert.throws(() => validateP2S3Manifest(wrongCaptureHash), /digest mismatch/i);
 });
 
 test("rejects fabricated P2-S2 closure evidence", () => {
