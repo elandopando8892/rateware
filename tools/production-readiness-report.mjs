@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const IDS = ["P0", "P1", "P2", "P3", "P4", "P5"];
@@ -21,6 +22,110 @@ const P2_S2_CLOSURE = Object.freeze({
     "node tests/platform55-operate-evidence-server.test.mjs PASS with 24 of 24 actual-route captures"
   ])
 });
+const P2_S3_CLOSURE = Object.freeze({
+  plan: "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md",
+  implementation: "docs/release/evidence/2026-08-21-p2-s3-procurement.md",
+  manifest: "docs/platform55-evidence/p2-s3/6917246927a6a13e82abf9e1e84b00b27f172ab7/manifest.json",
+  evidenceHead: "23584f218d094a622608c813715247cf16190375",
+  visualSubject: "6917246927a6a13e82abf9e1e84b00b27f172ab7",
+  manifestObjectSha256: "012f11a9237f9caa54ec45ce45aaa012eac540a2b1b03723a9a192a3079a1eb2",
+  automatedSuite: Object.freeze([
+    "npm test PASS on exact Procurement evidence head 23584f218d094a622608c813715247cf16190375",
+    "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures"
+  ])
+});
+const P2_S3_TENANT_ROUTES = new Set(["vendors.html", "rfx-events.html", "rfx-process.html", "ratebook.html", "outreach.html"]);
+const P2_S3_PUBLIC_ROUTES = new Set(["carrier-profile.html", "rfx-bid.html", "bid-room-board.html", "customer-rfi.html", "ratebook-carrier.html"]);
+const P2_S3_ROUTES = ["vendors", "rfx-events", "rfx-process", "ratebook", "outreach", "carrier-profile", "rfx-bid", "bid-room-board", "customer-rfi", "ratebook-carrier"];
+const P2_S3_STATES = ["loaded", "error", "lifecycle"];
+const P2_S3_VIEWPORTS = ["1440x900", "1024x768", "390x844"];
+const P2_S3_SOURCE_PATHS = [
+  "vendors.html", "rfx-events.html", "rfx-process.html", "ratebook.html", "outreach.html",
+  "carrier-profile.html", "rfx-bid.html", "bid-room-board.html", "customer-rfi.html", "ratebook-carrier.html",
+  "src/vendors.js", "src/rfx-events.js", "src/rfx-process.js", "src/ratebook.js", "src/outreach.js",
+  "src/carrier-profile.js", "src/rfx-bid.js", "src/bid-room-board.js", "src/customer-rfi.js", "src/ratebook-carrier.js",
+  "src/platform55-shell.js", "src/platform55-shell.css", "src/platform55-procurement.css", "src/platform55-public-shell.css",
+  "tools/platform55-procurement-evidence-server.mjs"
+];
+const P2_S3_CAPTURE_MATRIX = new Map(P2_S3_ROUTES.flatMap((route) => P2_S3_STATES.flatMap((state) => P2_S3_VIEWPORTS.map((viewport) => [
+  `${route}-${state}-${viewport}.png`,
+  {
+    route: `${route}.html`,
+    state,
+    viewport,
+    kind: P2_S3_TENANT_ROUTES.has(`${route}.html`) ? "tenant" : "public"
+  }
+]))));
+
+export function validateP2S3Manifest(manifest) {
+  const sourceBlobs = manifest?.source_git_blobs && Object.keys(manifest.source_git_blobs);
+  const captureFiles = manifest?.captures?.map((capture) => capture.file).sort();
+  if (
+    manifest?.schema_version !== 1 ||
+    manifest.subject_sha !== P2_S3_CLOSURE.visualSubject ||
+    JSON.stringify(manifest.routes) !== JSON.stringify(P2_S3_ROUTES) ||
+    JSON.stringify(manifest.states) !== JSON.stringify(P2_S3_STATES) ||
+    JSON.stringify(manifest.viewports) !== JSON.stringify(P2_S3_VIEWPORTS) ||
+    manifest.captures?.length !== 90 ||
+    JSON.stringify(sourceBlobs) !== JSON.stringify(P2_S3_SOURCE_PATHS) ||
+    JSON.stringify(captureFiles) !== JSON.stringify([...P2_S3_CAPTURE_MATRIX.keys()].sort())
+  ) {
+    throw new Error("P2-S3 visual manifest must contain the exact 10 x 3 x 3 matrix and 25 source blobs");
+  }
+  if (manifest.captures.some((capture) => {
+    const expected = P2_S3_CAPTURE_MATRIX.get(capture.file);
+    const tenant = expected?.kind === "tenant";
+    const publicRoute = expected?.kind === "public";
+    return (
+      !expected ||
+      capture.route !== expected.route ||
+      capture.kind !== expected.kind ||
+      capture.shell !== expected.kind ||
+      capture.state !== expected.state ||
+      capture.qa_state !== (expected.state === "lifecycle" ? "loaded" : expected.state) ||
+      capture.viewport !== expected.viewport ||
+      capture.exact_viewport !== true ||
+      capture.document_overflow !== false ||
+      capture.state_visible !== true ||
+      capture.layout_stability_samples !== 3 ||
+      capture.canvas_normalized !== false ||
+      capture.source_frame !== capture.viewport ||
+      (!tenant && !publicRoute) ||
+      (tenant && capture.active_routes !== 1) ||
+      (publicRoute && capture.private_controls !== 0)
+    );
+  })) {
+    throw new Error("P2-S3 visual manifest must prove stable exact viewports and public isolation");
+  }
+  if (manifest.captures.some((capture) => (
+    capture.route === "customer-rfi.html" &&
+    capture.state === "error" &&
+    (
+      capture.state_selector !== "#customer-rfi-message" ||
+      capture.state_marker !== "Deterministic Customer RFI evidence error" ||
+      capture.state_intersection_ratio !== 1
+    )
+  ))) {
+    throw new Error("P2-S3 Customer RFI error target must be the fully visible status element");
+  }
+  const manifestDigest = createHash("sha256").update(JSON.stringify(manifest)).digest("hex");
+  if (manifestDigest !== P2_S3_CLOSURE.manifestObjectSha256) {
+    throw new Error("P2-S3 visual manifest digest mismatch");
+  }
+  return manifest;
+}
+
+export function validateP2S3SourceBlobParity(manifestBlobs, currentBlobs, workingBlobs = currentBlobs) {
+  if (!manifestBlobs || currentBlobs?.length !== P2_S3_SOURCE_PATHS.length || workingBlobs?.length !== P2_S3_SOURCE_PATHS.length) {
+    throw new Error("P2-S3 source blob parity requires all 25 source paths");
+  }
+  for (const [index, sourcePath] of P2_S3_SOURCE_PATHS.entries()) {
+    if (manifestBlobs[sourcePath] !== currentBlobs[index] || workingBlobs[index] !== currentBlobs[index]) {
+      throw new Error(`P2-S3 source blob mismatch: ${sourcePath}`);
+    }
+  }
+  return manifestBlobs;
+}
 
 const isInside = (root, candidate) => {
   const path = relative(root, candidate);
@@ -103,6 +208,71 @@ const validateP2S2Closure = (sprint, rootDir) => {
   }
 };
 
+const validateP2S3Closure = (sprint, rootDir) => {
+  if (sprint.id !== "P2" || sprint.progress < 60) return;
+  const evidence = sprint.evidence || {};
+  if (!evidence.evidence_plan?.includes(P2_S3_CLOSURE.plan)) {
+    throw new Error("P2 evidence_plan must contain the exact P2-S3 plan");
+  }
+  if (!evidence.implementation?.includes(P2_S3_CLOSURE.implementation)) {
+    throw new Error("P2 implementation must contain the exact P2-S3 evidence");
+  }
+  if (!P2_S3_CLOSURE.automatedSuite.every((entry) => evidence.automated_suite?.includes(entry))) {
+    throw new Error("P2 automated_suite must contain the exact P2-S3 gates");
+  }
+
+  const root = realpathSync(resolve(rootDir));
+  const implementation = readFileSync(resolve(root, P2_S3_CLOSURE.implementation), "utf8");
+  const manifestPath = resolve(root, P2_S3_CLOSURE.manifest);
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  requireText(implementation, new RegExp(`Visual subject SHA:\\s*\\\`${P2_S3_CLOSURE.visualSubject}\\\``), "P2-S3 evidence must name the visual subject");
+  requireText(implementation, new RegExp(`Evidence and full-gate HEAD:\\s*\\\`${P2_S3_CLOSURE.evidenceHead}\\\``), "P2-S3 evidence must name the full-gate HEAD");
+  requireText(implementation, /90 of 90 actual-route captures/i, "P2-S3 evidence must record all 90 captures");
+  requireText(implementation, /Local implementation verdict:\s*GO/i, "P2-S3 evidence must record local GO");
+  requireText(implementation, /independent review.*pending/i, "P2-S3 evidence must keep independent review pending");
+  requireText(implementation, /global Platform55 verdict:\s*NO-GO/i, "P2-S3 evidence must keep the global verdict NO-GO");
+  requireText(implementation, /No push, PR metadata, preview, deployment, promotion, Supabase change/i, "P2-S3 evidence must preserve local-only boundaries");
+
+  validateP2S3Manifest(manifest);
+  const gitBlobs = (revision, paths) => execFileSync(
+    "git",
+    ["-C", root, "rev-parse", ...paths.map((path) => `${revision}:${path}`)],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+  ).trim().split(/\r?\n/);
+  const workingBlobs = (paths) => execFileSync(
+    "git",
+    ["-C", root, "hash-object", "--", ...paths],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+  ).trim().split(/\r?\n/);
+  const currentSourceBlobs = gitBlobs("HEAD", P2_S3_SOURCE_PATHS);
+  validateP2S3SourceBlobParity(manifest.source_git_blobs, currentSourceBlobs, workingBlobs(P2_S3_SOURCE_PATHS));
+  const evidenceDirectory = dirname(manifestPath);
+  const evidencePaths = [
+    P2_S3_CLOSURE.manifest,
+    ...manifest.captures.map((capture) => `${P2_S3_CLOSURE.manifest.slice(0, P2_S3_CLOSURE.manifest.lastIndexOf("/") + 1)}${capture.file}`)
+  ];
+  const currentEvidenceBlobs = gitBlobs("HEAD", evidencePaths);
+  const workingEvidenceBlobs = workingBlobs(evidencePaths);
+  for (const [index, evidencePath] of evidencePaths.entries()) {
+    if (workingEvidenceBlobs[index] !== currentEvidenceBlobs[index]) {
+      throw new Error(`P2-S3 evidence working-tree drift: ${evidencePath}`);
+    }
+  }
+  for (const capture of manifest.captures) {
+    const png = readFileSync(resolve(evidenceDirectory, capture.file));
+    const [, width, height] = capture.viewport.match(/^(\d+)x(\d+)$/) || [];
+    if (
+      png.subarray(1, 4).toString("ascii") !== "PNG" ||
+      png.length !== capture.byte_length ||
+      png.readUInt32BE(16) !== Number(width) ||
+      png.readUInt32BE(20) !== Number(height) ||
+      createHash("sha256").update(png).digest("hex") !== capture.sha256
+    ) {
+      throw new Error(`P2-S3 PNG integrity mismatch: ${capture.file}`);
+    }
+  }
+};
+
 export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
   if (ledger?.schema_version !== 1 || ledger?.baseline !== 63) throw new Error("invalid ledger header");
   if (!Array.isArray(ledger.sprints) || ledger.sprints.map((s) => s.id).join(",") !== IDS.join(",")) throw new Error("sprints must be P0-P5");
@@ -112,6 +282,7 @@ export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
     if (sprint.progress > 0 && Object.keys(sprint.evidence || {}).length === 0) throw new Error(`${sprint.id} requires evidence`);
     validateEvidence(sprint, rootDir);
     validateP2S2Closure(sprint, rootDir);
+    validateP2S3Closure(sprint, rootDir);
     if (sprint.progress >= 85 && sprint.verdicts?.independent_review !== "GO") throw new Error(`${sprint.id} requires independent_review GO verdict`);
     for (const [threshold, key] of GATES) if (sprint.progress >= threshold && !hasEvidence(sprint.evidence, key)) throw new Error(`${sprint.id} requires ${key}`);
   }
