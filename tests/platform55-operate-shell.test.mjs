@@ -32,6 +32,16 @@ assert.match(
   /@media\s*\(max-width:\s*900px\)[\s\S]*?\.rw-operate-page\.upload-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s,
   "Upload Center must collapse its desktop two-column grid at the mobile breakpoint"
 );
+assert.match(
+  operateCss,
+  /\.rw-operate-page\.upload-layout\s*\{[^}]*grid-template-areas:\s*"heading upload"\s*"queue upload"/s,
+  "Upload Center must place its heading and queue together instead of creating a tall implicit grid row"
+);
+assert.match(
+  operateCss,
+  /@media\s*\(max-width:\s*900px\)[\s\S]*?\.rw-operate-page\.upload-layout\s*\{[^}]*grid-template-areas:\s*"heading"\s*"upload"\s*"queue"/s,
+  "Upload Center must preserve semantic DOM order when its grid collapses"
+);
 
 const normalizedPageState = normalizePlatform55PageState({
   title: "Source <Files>",

@@ -12,6 +12,25 @@
   min-width: 0;
 }
 
+.rw-operate-page.upload-layout {
+  grid-template-areas:
+    "heading upload"
+    "queue upload";
+  align-items: start;
+}
+
+.rw-operate-page.upload-layout > .rw-operate-heading {
+  grid-area: heading;
+}
+
+.rw-operate-page.upload-layout > .workspace-panel {
+  grid-area: upload;
+}
+
+.rw-operate-page.upload-layout > .queue-panel {
+  grid-area: queue;
+}
+
 .rw-operate-heading {
   display: flex;
   align-items: flex-end;
@@ -134,6 +153,10 @@
 @media (max-width: 900px) {
   .rw-operate-page.upload-layout {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "heading"
+      "upload"
+      "queue";
   }
 
   .rw-operate-heading,
