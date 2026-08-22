@@ -49,6 +49,23 @@ const EXPECTED_STATES_BY_BUILD = Object.freeze({
   build_11: 132,
   build_12: 140
 });
+const P2_S3_EVIDENCE = "docs/platform55-evidence/p2-s3/6917246927a6a13e82abf9e1e84b00b27f172ab7/manifest.json;tests/platform55-procurement-evidence.test.mjs";
+const IMPLEMENTED_BUILD5_STATES = new Map([
+  ["5510", ["rfx-events.html", "tenant procurement workspace"]],
+  ["5517", ["vendors.html", "tenant carrier network"]],
+  ["5518", ["vendors.html", "tenant carrier directory"]],
+  ["5519", ["carrier-profile.html", "public carrier profile"]],
+  ["5532", ["rfx-events.html", "tenant sourcing list"]],
+  ["5535", ["rfx-bid.html", "public carrier bid room"]],
+  ["5536", ["rfx-bid.html", "public bid builder"]],
+  ["5543", ["rfx-events.html", "tenant bid comparison"]],
+  ["5548", ["ratebook.html", "tenant rate agreements"]],
+  ["5549", ["ratebook.html", "tenant rate card"]],
+  ["5550", ["ratebook.html", "tenant accessorials"]],
+  ["5558", ["bid-room-board.html", "public empty state"]],
+  ["5559", ["carrier-profile.html", "public validation error"]],
+  ["5562", ["rfx-events.html", "tenant procurement events"]]
+]);
 
 const attributes = readFileSync(".gitattributes", "utf8");
 assert.match(attributes, /^docs\/platform55-shell-route-map\.csv text eol=lf$/m);
@@ -218,17 +235,27 @@ for (const row of rows) {
     assert.equal(tabletApplicability, Number(width) > 900 && Number(width) <= 1320 ? "yes" : "no");
     assert.equal(desktopApplicability, Number(width) > 1320 ? "yes" : "no");
   }
-  assert.equal(status, "not_started");
-  assert.equal(targetRoute, "");
-  assert.equal(targetComponent, "");
-  assert.equal(disposition, "");
-  assert.equal(evidence, "");
+  const implemented = build === "build_05" ? IMPLEMENTED_BUILD5_STATES.get(ordinal) : undefined;
+  if (implemented) {
+    assert.equal(status, "implemented");
+    assert.equal(targetRoute, implemented[0]);
+    assert.equal(targetComponent, implemented[1]);
+    assert.equal(disposition, "implemented");
+    assert.equal(evidence, P2_S3_EVIDENCE);
+  } else {
+    assert.equal(status, "not_started");
+    assert.equal(targetRoute, "");
+    assert.equal(targetComponent, "");
+    assert.equal(disposition, "");
+    assert.equal(evidence, "");
+  }
   assert.equal(ordinalKeys.has(`${build}:${ordinal}`), false, `Duplicate ordinal ${build}:${ordinal}`);
   ordinalKeys.add(`${build}:${ordinal}`);
 }
 
 assert.deepEqual(byBuild, EXPECTED_STATES_BY_BUILD);
 assert.equal(ordinalKeys.size, 1150);
+assert.equal(IMPLEMENTED_BUILD5_STATES.size, 14);
 
 const sourceIdentityIndex = EXPECTED_COLUMNS.indexOf("source_state_identity");
 const duplicateCountIndex = EXPECTED_COLUMNS.indexOf("source_duplicate_count");
