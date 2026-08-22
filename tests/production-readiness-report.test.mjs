@@ -269,22 +269,26 @@ test("keeps the persisted P1 production closure backed while P2 advances", () =>
   }
   for (const path of trackedEvidence) execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   validateLedger(persisted);
-  assert.equal(computeOverallProgress(persisted), 77.8);
+  assert.equal(computeOverallProgress(persisted), 79.2);
 });
 
-test("persists the P2-S1 evidence plan and reports 77.8 percent", () => {
+test("persists the P2-S2 implementation evidence and reports 79.2 percent", () => {
   const p2Ledger = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p2 = p2Ledger.sprints.find((sprint) => sprint.id === "P2");
 
   validateLedger(p2Ledger);
-  assert.equal(p2.progress, 25);
+  assert.equal(p2.progress, 45);
   assert.deepEqual(p2.evidence.scope, [
     "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
   ]);
   assert.deepEqual(p2.evidence.evidence_plan, [
     "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-master.md",
-    "docs/release/evidence/2026-08-21-p2-shell-s1-command-center.md"
+    "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s2-operate.md"
   ]);
-  assert.equal(computeOverallProgress(p2Ledger), 77.8);
-  assert.match(formatProgressReport(p2Ledger), /P2:\s+25%/);
+  assert.deepEqual(p2.evidence.implementation, [
+    "docs/release/evidence/2026-08-21-p2-shell-s1-command-center.md",
+    "docs/release/evidence/2026-08-21-p2-s2-operate.md"
+  ]);
+  assert.equal(computeOverallProgress(p2Ledger), 79.2);
+  assert.match(formatProgressReport(p2Ledger), /P2:\s+45%/);
 });
