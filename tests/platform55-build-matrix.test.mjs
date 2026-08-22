@@ -60,7 +60,7 @@ function sha256(path) {
 
 assert.equal(
   sha256("docs/platform55-shell-route-map.csv"),
-  "89A6ACB0E79474965D14C35B878A36D57D7CDEFEB7A71D2243767123BFDA33FB"
+  "FC13113CE378BAAEDC9E8B01D3CD6B426AF24FEEEDCF31E0787F3FE1EE396FC8"
 );
 assert.equal(
   sha256("docs/platform55-surface-inventory.csv"),
