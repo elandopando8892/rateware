@@ -288,7 +288,12 @@ function cssIdentifierAt(source, start) {
   return { value, cursor };
 }
 
-function containsCssImport(source) {
+function preprocessCssInput(source) {
+  return source.replace(/\r\n?/g, '\n').replace(/\f/g, '\n').replace(/\0/g, '\uFFFD');
+}
+
+function containsCssImport(rawSource) {
+  const source = preprocessCssInput(rawSource);
   let cursor = 0;
   while (cursor < source.length) {
     if (source.startsWith('/*', cursor)) {
