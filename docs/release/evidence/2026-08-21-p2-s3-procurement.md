@@ -28,6 +28,7 @@
 - Tenant captures retain exactly one active route. Public captures expose zero private controls.
 - Lifecycle checks exercised the vendor drawer, RFx operation tab, process requirements, ratebook detail, outreach drafts, carrier-profile step navigation, carrier-bid lane view, bid-board detail, Customer RFI requirements, and private-ratebook route dialog.
 - Manual inspection of the 90 images found no destructive clipping, compositor duplication, collapsed tablet layout, or invisible requested state.
+- Build 05 `carrier_360` maps to the authenticated Vendors lifecycle drawer where Carrier 360 relationship activity is visible; the public carrier-profile onboarding wizard is not used as evidence for that state.
 
 ## Verification
 
