@@ -111,36 +111,43 @@ function assetReferences(html) {
 
   const references = [];
   try {
-    const containsDeclarativeShadowRoot = (root) => {
+    const parsedRoots = [dom.window.document];
+    for (let index = 0; index < parsedRoots.length; index += 1) {
+      const root = parsedRoots[index];
+      if (root.querySelector('base')) {
+        throw new Error('Built index contains a base element.');
+      }
+      if (root.querySelector('style')) {
+        throw new Error('Built index contains an inline style element.');
+      }
       for (const template of root.querySelectorAll('template')) {
-        if (template.hasAttribute('shadowrootmode')) return true;
-        if (containsDeclarativeShadowRoot(template.content)) return true;
+        if (template.hasAttribute('shadowrootmode')) {
+          throw new Error('Built index contains a declarative shadow DOM template.');
+        }
+        parsedRoots.push(template.content);
       }
-      return false;
-    };
-
-    if (containsDeclarativeShadowRoot(dom.window.document)) {
-      throw new Error('Built index contains a declarative shadow DOM template.');
     }
 
-    for (const script of dom.window.document.querySelectorAll('script')) {
-      if (script.namespaceURI !== htmlNamespace) {
-        throw new Error('Built index contains a non-HTML script element.');
+    for (const root of parsedRoots) {
+      for (const script of root.querySelectorAll('script')) {
+        if (script.namespaceURI !== htmlNamespace) {
+          throw new Error('Built index contains a non-HTML script element.');
+        }
+        if (!script.hasAttribute('src')) continue;
+        const value = script.getAttribute('src');
+        if (!value) throw new Error('Built index contains a script asset without a usable src.');
+        references.push({ kind: 'script', value });
       }
-      if (!script.hasAttribute('src')) continue;
-      const value = script.getAttribute('src');
-      if (!value) throw new Error('Built index contains a script asset without a usable src.');
-      references.push({ kind: 'script', value });
-    }
 
-    for (const link of dom.window.document.querySelectorAll('link')) {
-      const rel = link.getAttribute('rel');
-      const isStylesheet = typeof rel === 'string'
-        && rel.split(/\s+/).some((token) => token.toLowerCase() === 'stylesheet');
-      if (!isStylesheet) continue;
-      const value = link.getAttribute('href');
-      if (!value) throw new Error('Built index contains a stylesheet asset without a usable href.');
-      references.push({ kind: 'stylesheet', value });
+      for (const link of root.querySelectorAll('link')) {
+        const rel = link.getAttribute('rel');
+        const isStylesheet = typeof rel === 'string'
+          && rel.split(/\s+/).some((token) => token.toLowerCase() === 'stylesheet');
+        if (!isStylesheet) continue;
+        const value = link.getAttribute('href');
+        if (!value) throw new Error('Built index contains a stylesheet asset without a usable href.');
+        references.push({ kind: 'stylesheet', value });
+      }
     }
   } finally {
     dom.window.close();
@@ -255,9 +262,70 @@ const forbidden = [
   /<iframe\b/i,
 ];
 
+function cssIdentifierAt(source, start) {
+  let cursor = start;
+  let value = '';
+  while (cursor < source.length) {
+    const character = source[cursor];
+    if (/[A-Za-z0-9_-]/.test(character)) {
+      value += character;
+      cursor += 1;
+      continue;
+    }
+    if (character !== '\\' || cursor + 1 >= source.length) break;
+
+    const escaped = source.slice(cursor + 1).match(/^[0-9A-Fa-f]{1,6}/)?.[0];
+    if (escaped) {
+      value += String.fromCodePoint(Number.parseInt(escaped, 16));
+      cursor += escaped.length + 1;
+      if (/\s/.test(source[cursor] ?? '')) cursor += 1;
+      continue;
+    }
+
+    value += source[cursor + 1];
+    cursor += 2;
+  }
+  return { value, cursor };
+}
+
+function containsCssImport(source) {
+  let cursor = 0;
+  while (cursor < source.length) {
+    if (source.startsWith('/*', cursor)) {
+      const commentEnd = source.indexOf('*/', cursor + 2);
+      cursor = commentEnd === -1 ? source.length : commentEnd + 2;
+      continue;
+    }
+
+    const character = source[cursor];
+    if (character === '"' || character === "'") {
+      const quote = character;
+      cursor += 1;
+      while (cursor < source.length && source[cursor] !== quote) {
+        cursor += source[cursor] === '\\' ? 2 : 1;
+      }
+      cursor += 1;
+      continue;
+    }
+
+    if (character === '@') {
+      const identifier = cssIdentifierAt(source, cursor + 1);
+      if (identifier.value.toLowerCase() === 'import') return true;
+      cursor = identifier.cursor;
+      continue;
+    }
+
+    cursor += 1;
+  }
+  return false;
+}
+
 const builtTextFiles = await textFiles(distRoot, { allowRoot: true });
 for (const path of builtTextFiles) {
   const content = await safeReadText(path, `Build text entry ${safeRelative(path)}`);
+  if (extname(path).toLowerCase() === '.css' && containsCssImport(content)) {
+    throw new Error(`CSS import directive detected in ${safeRelative(path)}.`);
+  }
   for (const pattern of forbidden) {
     if (pattern.test(content)) {
       throw new Error(`Forbidden content detected in ${safeRelative(path)}.`);
