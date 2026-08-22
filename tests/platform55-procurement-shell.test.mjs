@@ -50,6 +50,9 @@ for (const css of [procurementCss, publicCss]) {
 }
 
 assert.match(procurementCss, /\.rw-procurement-table-scroll\s*\{[^}]*overflow-x:\s*auto/s);
+const procurementPageRule = procurementCss.match(/\.rw-procurement-page\s*\{([^}]*)\}/)?.[1] || "";
+assert.match(procurementPageRule, /grid-template-columns:\s*minmax\(0,\s*1fr\)/, "Wide procurement workspaces must stay inside the shell grid");
+assert.match(procurementCss, /@media\s*\(min-width:\s*1101px\)[\s\S]*\.rw-procurement-page\.ratebook-workspace\s+\.ratebook-toolbar\s*\{[^}]*minmax\(180px,\s*1\.45fr\)/, "Desktop Ratebook filters must fit the tenant-shell content track");
 assert.match(publicCss, /\.rw-public-actions\s*\{[^}]*position:\s*sticky/s);
 
 for (const [file, key, script] of tenantPages) {
