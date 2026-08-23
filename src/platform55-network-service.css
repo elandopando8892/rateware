@@ -1,3 +1,11 @@
+.shipper-profile-page .rw-public-app {
+  align-content: start;
+}
+
+.shipper-profile-page .rw-public-header .brand-mark {
+  color: inherit;
+}
+
 .rw-network-service-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

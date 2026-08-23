@@ -45,15 +45,11 @@ The route map records all eight as `contract_ready`; this is a code-and-evidence
 
 ## Build12 fidelity reconciliation
 
-Only 13 states visibly or executably demonstrated by S4 are credited:
+Build12 semantic equivalence credit: withheld.
 
-- Build 05: carrier onboarding and onboarding workflow;
-- Build 07: communications and communications thread;
-- Build 10: support, connection wizard, Gmail connection, and support cases;
-- Build 11: vendor risk through the reviewed vendor-improvement surface;
-- Build 12: onboarding, support, support center, and support case.
+The prior 13 S4 mappings are returned to `not_started` with empty target, disposition, and evidence fields. The S4 routes remain useful Rateware functionality, but route-name similarity alone does not prove equivalence to the pinned Build reference semantics.
 
-Every other unresolved Build12 matrix state remains `not_started` with empty target, disposition, and evidence fields.
+Independent review: required after replacement visual evidence and semantic reconciliation are complete. P2 remains at 60% until that review returns GO.
 
 ## Safety boundary
 

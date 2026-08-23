@@ -88,7 +88,7 @@
     {
       "id": "P2",
       "weight": 7,
-      "progress": 70,
+      "progress": 60,
       "evidence": {
         "scope": [
           "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
@@ -111,10 +111,7 @@
           "npm audit --audit-level=low PASS with 0 vulnerabilities",
           "node tests/platform55-operate-evidence-server.test.mjs PASS with 24 of 24 actual-route captures",
           "npm test PASS on exact Procurement evidence head 23584f218d094a622608c813715247cf16190375",
-          "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures",
-          "npm run test:platform55:network-service PASS with 48 of 48 actual-route captures",
-          "npm run test:provider-service PASS with 37 files and 197 tests",
-          "npm test PASS on exact P2-S4 gate head 126e364c48eb8c35b1b5b378a41ae2e418126e95"
+          "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures"
         ],
         "independent_review": [
           "docs/release/evidence/2026-08-21-p2-s2-independent-review.md"
