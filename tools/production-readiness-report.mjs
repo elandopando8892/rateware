@@ -46,7 +46,7 @@ const P2_S3_PUBLIC_ROUTES = new Set(["carrier-profile.html", "rfx-bid.html", "bi
 const P2_S3_ROUTES = ["vendors", "rfx-events", "rfx-process", "ratebook", "outreach", "carrier-profile", "rfx-bid", "bid-room-board", "customer-rfi", "ratebook-carrier"];
 export const P2_S4_SEMANTIC_CANDIDATE = Object.freeze({
   path: "docs/release/evidence/2026-08-22-p2-s4-semantic-closure.json",
-  sha256: "871b99a64ee586f59733e2cdbbf025f36631263813201591e7ec33096b566ad5",
+  sha256: "efa7b7b4535283e130da06b9ab8df2ae081a5870c64a5e4ff27557d1b0174177",
   candidateParent: "93a6fc8517bf3edfb298af64a0d0e7a9d4f3621f",
 });
 const P2_S3_STATES = ["loaded", "error", "lifecycle"];

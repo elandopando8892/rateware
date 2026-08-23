@@ -10,6 +10,7 @@ import {
 import { humanizeError } from "./error-copy.js";
 import { buildIntelligenceBrief } from "./intelligence-brief.js";
 import { NORTH_AMERICA_MAP_BOUNDS, NORTH_AMERICA_MAP_PATHS } from "./north-america-map-paths.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 
 const chatForm = document.querySelector("#bi-chat-form");
 const promptInput = document.querySelector("#bi-prompt");
@@ -315,10 +316,23 @@ function formatNumber(value) {
   return new Intl.NumberFormat().format(Number(value || 0));
 }
 
+function reportPlatform55State(status, busy = false) {
+  updatePlatform55Shell({
+    pageState: {
+      title: "Analyze",
+      subtitle: "Evidence-backed commercial intelligence.",
+      breadcrumbs: ["Analyze", "Commercial intelligence"],
+      status,
+      busy
+    }
+  });
+}
+
 function setStatus(message, tone = "neutral") {
   if (!statusMessage) return;
   statusMessage.textContent = tone === "error" ? humanizeError(message) : message;
   statusMessage.dataset.tone = tone;
+  reportPlatform55State(statusMessage.textContent || "Ready for evidence-backed analysis", tone === "loading");
 }
 
 function setRecommendationStatus(message, tone = "neutral") {
