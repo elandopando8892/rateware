@@ -379,6 +379,15 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
   assert.throws(() => validateP2S3SourceBlobParity(manifestBlobs, driftedHeadBlobs), /source blob mismatch/i);
 });
 
+test("rejects P2 at 70 without the exact P2-S4 Network and Service closure", () => {
+  const fabricated = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = fabricated.sprints.find((sprint) => sprint.id === "P2");
+  p2.progress = 70;
+  p2.evidence.automated_suite.push("fabricated network service suite");
+
+  assert.throws(() => validateLedger(fabricated), /P2-S4/i);
+});
+
 test("rejects fabricated P2-S2 closure evidence", () => {
   const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const fakeSuite = structuredClone(persisted);

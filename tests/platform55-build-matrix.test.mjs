@@ -72,7 +72,7 @@ function sha256(path) {
 
 assert.equal(
   sha256("docs/platform55-shell-route-map.csv"),
-  "5F74349DD63368B1CDAC516EB9502AF1AFA6EEBE4C912BD5C76E7CC524AD5F53"
+  "33BC7239C01D9AF05906C20E5697F0054F8224695C134F1DCFDC9278955D1C25"
 );
 assert.equal(
   sha256("docs/platform55-surface-inventory.csv"),
@@ -369,6 +369,10 @@ for (const route of routeMap.rows) {
     assert.equal(route.access, "public");
     assert.equal(route.shell_variant, "public");
   }
+}
+for (const route of routeMap.rows.filter((row) => row.owner_sprint === "P2-S4")) {
+  assert.equal(route.status, "contract_ready", `${route.route} must expose the completed S4 contract`);
+  assert.equal(route.evidence, "tests/platform55-network-service-shell.test.mjs");
 }
 
 const surfaceInventory = recordsToObjects(readFileSync("docs/platform55-surface-inventory.csv", "utf8"));

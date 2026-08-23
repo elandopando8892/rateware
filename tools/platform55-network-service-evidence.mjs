@@ -8,7 +8,15 @@ export const P2_S4_CLOSURE = Object.freeze({
   implementation: "docs/release/evidence/2026-08-21-p2-s4-network-service.md",
   manifest: "docs/platform55-evidence/p2-s4/f4f86e1e67c395c41f400b070dbd1f4d120d55cb/manifest.json",
   subject: "f4f86e1e67c395c41f400b070dbd1f4d120d55cb",
+  evidenceHead: "93ce41f87888c2f591349e3a71b55d175d0353f4",
   manifestObjectSha256: "efcf5c246a0d59733de3f5418ba276acb8a33631a23e68c5ebc1f238c805f710",
+  automatedSuite: Object.freeze([
+    "npm run test:platform55:network-service PASS with 48 of 48 actual-route captures",
+    "npm run test:provider-service PASS with 37 files and 197 tests",
+    "npm test PASS on exact P2-S4 evidence artifact head 93ce41f87888c2f591349e3a71b55d175d0353f4",
+    "npm run validate:action-contract PASS with 0 errors and 1 pre-existing warning",
+    "npm audit --audit-level=low PASS with 0 vulnerabilities",
+  ]),
 });
 
 export const P2_S4_ROUTES = Object.freeze([

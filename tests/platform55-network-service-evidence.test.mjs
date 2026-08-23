@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
@@ -12,6 +13,10 @@ const loadManifest = async () => JSON.parse(await readFile(P2_S4_CLOSURE.manifes
 
 test("anchors the exact P2-S4 Network and Service evidence matrix", async () => {
   const manifest = await loadManifest();
+  assert.equal(
+    execFileSync("git", ["rev-parse", P2_S4_CLOSURE.evidenceHead], { encoding: "utf8" }).trim(),
+    P2_S4_CLOSURE.evidenceHead,
+  );
   validateP2S4Manifest(manifest);
   validateP2S4EvidenceFiles(process.cwd(), manifest);
 });

@@ -3,6 +3,11 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  P2_S4_CLOSURE,
+  validateP2S4EvidenceFiles,
+  validateP2S4Manifest,
+} from "./platform55-network-service-evidence.mjs";
 
 const IDS = ["P0", "P1", "P2", "P3", "P4", "P5"];
 const WEIGHTS = { P0: 4, P1: 9, P2: 7, P3: 7, P4: 6, P5: 4 };
@@ -273,6 +278,33 @@ const validateP2S3Closure = (sprint, rootDir) => {
   }
 };
 
+const validateP2S4Closure = (sprint, rootDir) => {
+  if (sprint.id !== "P2" || sprint.progress < 70) return;
+  const evidence = sprint.evidence || {};
+  if (!evidence.evidence_plan?.includes(P2_S4_CLOSURE.plan)) {
+    throw new Error("P2-S4 evidence_plan must contain the exact Network and Service plan");
+  }
+  if (!evidence.implementation?.includes(P2_S4_CLOSURE.implementation)) {
+    throw new Error("P2-S4 implementation must contain the exact Network and Service evidence");
+  }
+  if (!P2_S4_CLOSURE.automatedSuite.every((entry) => evidence.automated_suite?.includes(entry))) {
+    throw new Error("P2-S4 automated_suite must contain the exact Network and Service gates");
+  }
+
+  const root = realpathSync(resolve(rootDir));
+  const implementation = readFileSync(resolve(root, P2_S4_CLOSURE.implementation), "utf8");
+  const manifest = JSON.parse(readFileSync(resolve(root, P2_S4_CLOSURE.manifest), "utf8"));
+  requireText(implementation, new RegExp(`Visual subject SHA:\\s*\\\`${P2_S4_CLOSURE.subject}\\\``), "P2-S4 evidence must name the visual subject");
+  requireText(implementation, new RegExp(`Evidence artifact HEAD:\\s*\\\`${P2_S4_CLOSURE.evidenceHead}\\\``), "P2-S4 evidence must name the immutable evidence artifact HEAD");
+  requireText(implementation, /48 of 48 actual-route captures/i, "P2-S4 evidence must record all 48 captures");
+  requireText(implementation, /Local implementation verdict:\s*GO/i, "P2-S4 evidence must record local GO");
+  requireText(implementation, /independent review.*pending/i, "P2-S4 evidence must keep independent review pending");
+  requireText(implementation, /global Platform55 verdict:\s*NO-GO/i, "P2-S4 evidence must keep the global verdict NO-GO");
+  requireText(implementation, /No push, PR metadata, preview, deployment, promotion, Supabase change/i, "P2-S4 evidence must preserve local-only boundaries");
+  validateP2S4Manifest(manifest);
+  validateP2S4EvidenceFiles(root, manifest);
+};
+
 export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
   if (ledger?.schema_version !== 1 || ledger?.baseline !== 63) throw new Error("invalid ledger header");
   if (!Array.isArray(ledger.sprints) || ledger.sprints.map((s) => s.id).join(",") !== IDS.join(",")) throw new Error("sprints must be P0-P5");
@@ -283,6 +315,7 @@ export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
     validateEvidence(sprint, rootDir);
     validateP2S2Closure(sprint, rootDir);
     validateP2S3Closure(sprint, rootDir);
+    validateP2S4Closure(sprint, rootDir);
     if (sprint.progress >= 85 && sprint.verdicts?.independent_review !== "GO") throw new Error(`${sprint.id} requires independent_review GO verdict`);
     for (const [threshold, key] of GATES) if (sprint.progress >= threshold && !hasEvidence(sprint.evidence, key)) throw new Error(`${sprint.id} requires ${key}`);
   }
