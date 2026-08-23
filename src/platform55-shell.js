@@ -266,6 +266,29 @@ function syncMobileNavigationAccessibility(state) {
   }
 }
 
+function focusableElements(container) {
+  return [...container.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+    .filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true" && element.getClientRects().length > 0);
+}
+
+function trapFocusWithin(event, container) {
+  const focusable = focusableElements(container);
+  if (!focusable.length) {
+    event.preventDefault();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  const active = container.ownerDocument.activeElement;
+  if (event.shiftKey && (active === first || !container.contains(active))) {
+    event.preventDefault();
+    last.focus({ preventScroll: true });
+  } else if (!event.shiftKey && (active === last || !container.contains(active))) {
+    event.preventDefault();
+    first.focus({ preventScroll: true });
+  }
+}
+
 function closeMobileNavigation(state, { returnFocus = false } = {}) {
   state.app.dataset.mobileNavOpen = "false";
   syncMobileNavigationAccessibility(state);
@@ -300,7 +323,11 @@ function bindShell(state) {
   }, { signal });
   state.scrim.addEventListener("click", () => closeMobileNavigation(state, { returnFocus: true }), { signal });
   state.doc.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && state.app.dataset.mobileNavOpen === "true") {
+    if (event.key === "Tab" && state.app.dataset.mobileNavOpen === "true") {
+      trapFocusWithin(event, state.sidebar);
+    } else if (event.key === "Tab" && !state.notificationDrawer.hidden) {
+      trapFocusWithin(event, state.notificationDrawer);
+    } else if (event.key === "Escape" && state.app.dataset.mobileNavOpen === "true") {
       event.preventDefault();
       closeMobileNavigation(state, { returnFocus: true });
     } else if (event.key === "Escape" && !state.notificationDrawer.hidden) {

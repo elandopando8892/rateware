@@ -9,6 +9,11 @@ import { startProcurementEvidenceServer } from "./platform55-procurement-evidenc
 import { startNetworkServiceEvidenceServer } from "./platform55-network-service-evidence-server.mjs";
 import { startIntelligenceAdminEvidenceServer } from "./platform55-intelligence-admin-evidence-server.mjs";
 import { startS6CommandEvidenceServer } from "./platform55-s6-command-evidence-server.mjs";
+import {
+  assertAccessibleControlNames,
+  assertContrastSamples,
+  assertFocusCycle,
+} from "./platform55-s6-accessibility-certification.mjs";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.RATEWARE_PLAYWRIGHT_MODULE || "playwright");
@@ -106,6 +111,25 @@ function validateGeometryBaseline(baseline) {
   }
 }
 
+async function verifyFocusCycle(page, containerSelector, label) {
+  const candidates = page.locator(`${containerSelector} a[href], ${containerSelector} button:not([disabled]), ${containerSelector} input:not([disabled]), ${containerSelector} select:not([disabled]), ${containerSelector} textarea:not([disabled]), ${containerSelector} [tabindex]:not([tabindex="-1"])`);
+  const focusable = [];
+  for (let index = 0; index < await candidates.count(); index += 1) {
+    const candidate = candidates.nth(index);
+    if (await candidate.isVisible() && await candidate.getAttribute("aria-hidden") !== "true") focusable.push(candidate);
+  }
+  assert.ok(focusable.length >= 2, `${label} needs at least two visible focusable controls`);
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  await last.focus();
+  await page.keyboard.press("Tab");
+  const forwardActive = await first.evaluate((element) => element === document.activeElement) ? "first" : "outside";
+  await first.focus();
+  await page.keyboard.press("Shift+Tab");
+  const backwardActive = await last.evaluate((element) => element === document.activeElement) ? "last" : "outside";
+  assertFocusCycle({ label, first: "first", last: "last", forwardActive, backwardActive });
+}
+
 validateGeometryBaseline(geometryBaseline);
 
 const routes = parseCsv(await readFile(resolve(root, "docs/platform55-shell-route-map.csv"), "utf8"));
@@ -180,6 +204,75 @@ async function inspect(spec, width, height, { screenshot = "", loading = false }
     await page.waitForFunction(() => document.querySelector("#next-action-title")?.textContent?.includes("Fix failed uploads"));
   }
   const metrics = await page.evaluate(({ shellVariant, width: viewportWidth }) => {
+    const parseColor = (value) => {
+      const match = String(value).match(/rgba?\(([^)]+)\)/i);
+      if (!match) return null;
+      const parts = match[1].split(/[\s,\/]+/).filter(Boolean).map(Number);
+      if (parts.length < 3 || parts.slice(0, 3).some((part) => !Number.isFinite(part))) return null;
+      return { r: parts[0], g: parts[1], b: parts[2], a: Number.isFinite(parts[3]) ? parts[3] : 1 };
+    };
+    const blend = (foreground, background) => {
+      const alpha = foreground.a + background.a * (1 - foreground.a);
+      if (!alpha) return { r: 255, g: 255, b: 255, a: 1 };
+      return {
+        r: (foreground.r * foreground.a + background.r * background.a * (1 - foreground.a)) / alpha,
+        g: (foreground.g * foreground.a + background.g * background.a * (1 - foreground.a)) / alpha,
+        b: (foreground.b * foreground.a + background.b * background.a * (1 - foreground.a)) / alpha,
+        a: alpha,
+      };
+    };
+    const backgroundFor = (element) => {
+      const layers = [];
+      for (let current = element; current; current = current.parentElement) {
+        const color = parseColor(getComputedStyle(current).backgroundColor);
+        if (color?.a > 0) layers.push(color);
+        if (color?.a >= 1) break;
+      }
+      let result = { r: 255, g: 255, b: 255, a: 1 };
+      for (const layer of layers.reverse()) result = blend(layer, result);
+      return result;
+    };
+    const backgroundsFor = (element) => {
+      const overlays = [];
+      for (let current = element; current; current = current.parentElement) {
+        const style = getComputedStyle(current);
+        const solid = parseColor(style.backgroundColor);
+        const image = style.backgroundImage;
+        if (image && image !== "none") {
+          const colors = [...image.matchAll(/rgba?\([^)]+\)/gi)].map((match) => parseColor(match[0])).filter(Boolean);
+          const opaque = colors.filter((color) => color.a >= 1);
+          if (!opaque.length && solid?.a >= 1) opaque.push(solid);
+          if (!opaque.length) continue;
+          const translucent = colors.filter((color) => color.a > 0 && color.a < 1);
+          const candidates = opaque.flatMap((base) => [
+            base,
+            ...translucent.map((color) => blend(color, base)),
+          ]);
+          return candidates.map((base) => {
+            let result = base;
+            for (const overlay of [...overlays].reverse()) result = blend(overlay, result);
+            return result;
+          });
+        }
+        if (solid?.a >= 1) {
+          let result = solid;
+          for (const overlay of overlays.reverse()) result = blend(overlay, result);
+          return [result];
+        }
+        if (solid?.a > 0) overlays.push(solid);
+      }
+      return [backgroundFor(element)];
+    };
+    const luminance = ({ r, g, b }) => [r, g, b]
+      .map((value) => value / 255)
+      .map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+      .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+    const contrastRatio = (foreground, background) => {
+      const text = blend(foreground, background);
+      const light = Math.max(luminance(text), luminance(background));
+      const dark = Math.min(luminance(text), luminance(background));
+      return (light + 0.05) / (dark + 0.05);
+    };
     const rect = (selector) => {
       const box = document.querySelector(selector)?.getBoundingClientRect();
       return box ? Object.fromEntries(["x", "y", "width", "height"].map((key) => [key, Math.round(box[key] * 100) / 100])) : null;
@@ -196,6 +289,31 @@ async function inspect(spec, width, height, { screenshot = "", loading = false }
       const value = element.getAttribute("aria-label") || labelled || explicitLabel || wrappingLabel || element.textContent || element.getAttribute("placeholder") || element.getAttribute("title") || element.getAttribute("alt") || "";
       return !value.trim();
     }).map((element) => `${element.tagName.toLowerCase()}#${element.id}.${String(element.className).replace(/\s+/g, ".")}`);
+    const contrastCandidates = [...new Set([
+      ...controls.filter((element) => (element.innerText || element.value || element.placeholder || "").trim()),
+      ...document.querySelectorAll(".rw-nav-group > p, .rw-sidebar-footer span, .rw-sidebar-footer small, .rw-system-status span, .rw-page-header h1, .rw-page-header p, body[data-platform55-shell='public'] header a, body[data-platform55-shell='entry'] header a"),
+    ])].filter((element) => {
+      const style = getComputedStyle(element);
+      const box = element.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0 && box.width > 0 && box.height > 0 && !element.matches(":disabled,[aria-disabled='true']");
+    });
+    const contrastSamples = contrastCandidates.map((element) => {
+      const style = getComputedStyle(element);
+      const foreground = parseColor(style.color);
+      const backgrounds = backgroundsFor(element);
+      const fontSize = Number.parseFloat(style.fontSize);
+      const fontWeight = Number.parseInt(style.fontWeight, 10) || 400;
+      const large = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
+      const ratios = foreground ? backgrounds.map((background) => contrastRatio(foreground, background)) : [];
+      return {
+        selector: `${element.tagName.toLowerCase()}#${element.id}.${String(element.className).trim().replace(/\s+/g, ".")}`,
+        text: (element.innerText || element.value || element.placeholder || "").trim().replace(/\s+/g, " ").slice(0, 80),
+        color: style.color,
+        background: backgrounds.map((background) => `rgb(${Math.round(background.r)}, ${Math.round(background.g)}, ${Math.round(background.b)})`).join(" | ") || "unmeasurable",
+        ratio: ratios.length ? Math.round(Math.min(...ratios) * 1000) / 1000 : 0,
+        threshold: large ? 3 : 4.5,
+      };
+    });
     const resources = performance.getEntriesByType("resource");
     const shell = rect(".rw-app");
     const sidebar = rect(".rw-sidebar");
@@ -215,6 +333,7 @@ async function inspect(spec, width, height, { screenshot = "", loading = false }
       document_overflow: document.documentElement.scrollWidth > viewportWidth + 1,
       reduced_motion: matchMedia("(prefers-reduced-motion: reduce)").matches,
       missing_accessible_names: missingNames,
+      contrast_samples: contrastSamples,
       shell, sidebar, topbar, main, workspace_header: workspaceHeader, command_bar: commandBar, summary_strip: summaryStrip, bulk_actions: bulkActions,
       hero_background_image: hero ? getComputedStyle(hero).backgroundImage : "",
       geometry: sidebar && topbar && main ? { sidebar_width: sidebar.width, topbar_x: topbar.x, topbar_height: topbar.height, main_x: main.x, main_y: main.y } : null,
@@ -230,10 +349,11 @@ async function inspect(spec, width, height, { screenshot = "", loading = false }
   assert.equal(metrics.document_overflow, false, `${spec.route} must not overflow the page`);
   assert.equal(metrics.reduced_motion, true, `${spec.route} must honor reduced motion`);
   assert.deepEqual(errors, { console: [], http: [], page: [], request: [], external: [], mutation: [] }, `${spec.route} must remain local, read-only, and error-free`);
+  assertAccessibleControlNames(metrics.missing_accessible_names, spec.route);
+  assertContrastSamples(metrics.contrast_samples, spec.route);
   if ((spec.shell_variant || "tenant") === "tenant") {
     assert.equal(metrics.active_routes, 1, `${spec.route} must expose one active tenant route`);
     if (!baselineMode) assert.ok(metrics.skip_links >= 1, `${spec.route} must expose a skip link`);
-    if (!baselineMode) assert.deepEqual(metrics.missing_accessible_names, [], `${spec.route} visible controls need accessible names`);
     if (!baselineMode) {
       const expected = baselineGeometry(spec.route, width, height, spec.commandState);
       assert.ok(expected, `${spec.route} must have accepted baseline geometry`);
@@ -286,6 +406,8 @@ try {
   await trigger.click();
   const close = focusResult.page.locator("[data-platform55-nav-close]");
   assert.equal(await close.evaluate((element) => element === document.activeElement), true, "mobile drawer must focus Close");
+  await verifyFocusCycle(focusResult.page, ".rw-sidebar", "mobile navigation");
+  interactions.mobile_drawer_focus_cycle = true;
   await focusResult.page.keyboard.press("Escape");
   assert.equal(await trigger.evaluate((element) => element === document.activeElement), true, "mobile drawer must restore trigger focus");
   const searchTrigger = focusResult.page.locator("[data-platform55-search-trigger]");
@@ -293,6 +415,8 @@ try {
   await focusResult.page.keyboard.press("Control+K");
   const searchInput = focusResult.page.locator("[data-platform55-search-dialog] input[type='search']");
   assert.equal(await searchInput.evaluate((element) => element === document.activeElement), true, "search must focus its input");
+  await verifyFocusCycle(focusResult.page, "[data-platform55-search-dialog] .rw-search-dialog", "global search");
+  interactions.search_focus_cycle = true;
   await focusResult.page.keyboard.press("Escape");
   assert.equal(await searchTrigger.evaluate((element) => element === document.activeElement), true, "search must restore trigger focus");
   interactions.mobile_drawer_focus_restore = true;

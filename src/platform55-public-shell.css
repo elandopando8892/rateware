@@ -25,6 +25,15 @@
   background: var(--rw-navy-950);
 }
 
+.rw-public-header .brand-mark,
+.rw-public-header .ratebook-carrier-brand {
+  color: var(--rw-white);
+}
+
+body.public-rfi-page .rw-public-header .brand-mark {
+  color: var(--rw-slate-900);
+}
+
 .rw-public-context,
 .rw-public-state {
   display: grid;
