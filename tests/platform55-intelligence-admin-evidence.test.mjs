@@ -13,8 +13,8 @@ const manifestPath = `docs/platform55-evidence/p2-s5/${EXPECTED_P2_S5_SUBJECT}/m
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 
 test("anchors the exact 36-capture Intelligence and Administration matrix", async () => {
-  assert.equal(EXPECTED_P2_S5_SUBJECT, "36a8643e9eca319a5a4b931a6ec0d2272cee3e1b");
-  assert.equal(EXPECTED_P2_S5_MANIFEST_SHA256, "1203446ce4d15aec7293b1cbc55487595d1fc68a81493ab978e7764bfa1122a4");
+  assert.equal(EXPECTED_P2_S5_SUBJECT, "b78f73fbcba8cad7720bf329f9d65bd20746a147");
+  assert.equal(EXPECTED_P2_S5_MANIFEST_SHA256, "8320e6294aacd3af527b02cd2973b0ce4971a2ea67c3737f6838e4c67cfbda77");
   const result = validateP2S5Manifest(manifest);
   assert.equal(result.captureCount, 36);
   assert.equal(result.sourceCount, 19);

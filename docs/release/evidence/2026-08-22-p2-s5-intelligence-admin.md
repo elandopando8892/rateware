@@ -3,9 +3,9 @@
 - Recorded: 2026-08-23, America/Mexico_City
 - Verdict: **PENDING-INDEPENDENT-REVIEW**
 - Implementation branch: `codex/p2-shell-intelligence-admin-s5`
-- Browser subject: `36a8643e9eca319a5a4b931a6ec0d2272cee3e1b`
-- Browser manifest: `docs/platform55-evidence/p2-s5/36a8643e9eca319a5a4b931a6ec0d2272cee3e1b/manifest.json`
-- Manifest SHA-256: `1203446ce4d15aec7293b1cbc55487595d1fc68a81493ab978e7764bfa1122a4`
+- Browser subject: `b78f73fbcba8cad7720bf329f9d65bd20746a147`
+- Browser manifest: `docs/platform55-evidence/p2-s5/b78f73fbcba8cad7720bf329f9d65bd20746a147/manifest.json`
+- Manifest SHA-256: `8320e6294aacd3af527b02cd2973b0ce4971a2ea67c3737f6838e4c67cfbda77`
 - Reference archive SHA-256: `cf2ced85e95dfb33bb7410bf73ace22cb95090ce649747df60bf2920e808c16a`
 
 ## Scope completed locally
@@ -20,7 +20,7 @@ Manual inspection covered all 36 captures. Growth mobile metrics do not widen th
 
 `tools/platform55-intelligence-admin-evidence.mjs` pins the exact subject, manifest digest, 19 source Git blobs, six-route/state/viewport matrix, 36 PNG hashes and dimensions, mutually exclusive browser-state metrics, tenant/public isolation, and zero-error boundary. The focused tests reject duplicate captures, source drift, hidden or overlapping state evidence, browser errors, public tenant-control leakage, and non-canonical EOL for content-addressed JSON in clean Windows worktrees.
 
-The six P2-S5 route-map records are `verified` against the immutable manifest. The route-map digest is `c97e6db121b3ef4c3005447f540dd5812d52f072388b6cb57773d94fc37994d6`; the pending P2-S4 semantic candidate was re-pinned to that exact route map without changing its `PENDING-INDEPENDENT-REVIEW` verdict or granting semantic credit.
+The six P2-S5 route-map records are `verified` against the immutable manifest. The route-map digest is `12b4db2c5718d96902bac145c041ca978c8778edddf7a268276ab72d7494fe11`; the pending P2-S4 semantic candidate was re-pinned to that exact route map without changing its `PENDING-INDEPENDENT-REVIEW` verdict or granting semantic credit.
 
 ## Verification
 

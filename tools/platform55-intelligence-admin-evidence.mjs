@@ -3,8 +3,8 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 
-export const EXPECTED_P2_S5_SUBJECT = "36a8643e9eca319a5a4b931a6ec0d2272cee3e1b";
-export const EXPECTED_P2_S5_MANIFEST_SHA256 = "1203446ce4d15aec7293b1cbc55487595d1fc68a81493ab978e7764bfa1122a4";
+export const EXPECTED_P2_S5_SUBJECT = "b78f73fbcba8cad7720bf329f9d65bd20746a147";
+export const EXPECTED_P2_S5_MANIFEST_SHA256 = "8320e6294aacd3af527b02cd2973b0ce4971a2ea67c3737f6838e4c67cfbda77";
 
 const VIEWPORTS = Object.freeze(["1440x900", "1024x768", "390x844"]);
 const ROUTES = Object.freeze([

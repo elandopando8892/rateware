@@ -5,7 +5,7 @@
   "candidate_parent_sha": "93a6fc8517bf3edfb298af64a0d0e7a9d4f3621f",
   "reference_archive_sha256": "cf2ced85e95dfb33bb7410bf73ace22cb95090ce649747df60bf2920e808c16a",
   "matrix_source_projection_sha256": "26889f56d6f7dd2afb289b62abb044ac955cc7607ee5236c3c1f5023f4f601fb",
-  "route_map_sha256": "c97e6db121b3ef4c3005447f540dd5812d52f072388b6cb57773d94fc37994d6",
+  "route_map_sha256": "12b4db2c5718d96902bac145c041ca978c8778edddf7a268276ab72d7494fe11",
   "review_mode": "candidate-awaiting-independent-detached-review",
   "independent_review": {
     "verdict": "PENDING",
