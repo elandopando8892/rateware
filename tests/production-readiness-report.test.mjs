@@ -4,6 +4,11 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 import { P2_S4_CLOSURE, validateP2S4Manifest } from "../tools/platform55-network-service-evidence.mjs";
 import {
+  P2_S5_CLOSURE,
+  validateP2S5IndependentReviewBody,
+  validateP2S5SurfaceCandidateBody,
+} from "../tools/platform55-intelligence-admin-evidence.mjs";
+import {
   computeOverallProgress,
   formatProgressReport,
   validateP2S3Manifest,
@@ -28,6 +33,78 @@ const P2_S4_SEMANTIC_FIXTURE = [
   ["build_12", "81", "support-center", "build_12/rateware_experience_configuration_release_readiness_build_v12.html"],
   ["build_12", "82", "support-case", "build_12/rateware_experience_configuration_release_readiness_build_v12.html"],
 ];
+
+const P2_S4_SEMANTIC_CANDIDATE = "docs/release/evidence/2026-08-22-p2-s4-semantic-closure.json";
+
+const proposedP2S4Disposition = (build, ordinal) => {
+  if (build === "build_10" && ordinal === "44") {
+    return {
+      mapping_status: "verified",
+      target_route: "provider-gmail.html",
+      target_component: "integration-runtime",
+      disposition: "shared_surface",
+    };
+  }
+  return {
+    mapping_status: "dispositioned",
+    target_route: "",
+    target_component: "",
+    disposition: "reference_only",
+  };
+};
+
+const mixedP2S4Review = () => ({
+  schema_version: 2,
+  verdict: "PENDING-INDEPENDENT-REVIEW",
+  semantic_credit: "withheld",
+  mappings: P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal, state, reference_asset]) => ({
+    build,
+    ordinal,
+    state,
+    reference_asset,
+    ...proposedP2S4Disposition(build, ordinal),
+    evidence: P2_S4_SEMANTIC_CANDIDATE,
+    rationale: `${build}:${ordinal} has an exact, row-specific semantic disposition.`,
+  })),
+});
+
+const acceptedMixedP2S4IndependentReview = () => {
+  const semantic = mixedP2S4Review();
+  return {
+    verdict: "GO",
+    semantic_credit: "accepted",
+    findings: [],
+    mappings: semantic.mappings.map((mapping) => ({
+      build: mapping.build,
+      ordinal: mapping.ordinal,
+      state: mapping.state,
+      reference_asset: mapping.reference_asset,
+      matrix_status: mapping.mapping_status,
+      target_route: mapping.target_route,
+      target_component: mapping.target_component,
+      disposition: mapping.disposition,
+      rationale: mapping.rationale,
+      evidence: mapping.evidence,
+      result: "accepted",
+    })),
+  };
+};
+
+const mixedP2S4Matrix = (matrixText) => {
+  const keys = new Set(P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal]) => `${build}:${ordinal}`));
+  return matrixText.split(/\r?\n/).map((line, index) => {
+    if (index === 0 || !line) return line;
+    const fields = [...line.matchAll(/"((?:[^"]|"")*)"/g)].map((match) => match[1].replace(/""/g, '"'));
+    if (!keys.has(`${fields[0]}:${fields[1]}`)) return line;
+    const decision = proposedP2S4Disposition(fields[0], fields[1]);
+    fields[14] = decision.mapping_status;
+    fields[15] = decision.target_route;
+    fields[16] = decision.target_component;
+    fields[17] = decision.disposition;
+    fields[18] = P2_S4_SEMANTIC_CANDIDATE;
+    return fields.map((field) => `"${field.replace(/"/g, '""')}"`).join(",");
+  }).join("\n");
+};
 
 const acceptedP2S4Review = (targetRoute = "does-not-exist.html", targetComponent = "invented-component") => ({
   mappings: P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal, state, reference_asset]) => ({
@@ -328,7 +405,7 @@ test("keeps the persisted P1 production closure backed while P2 advances", () =>
   }
   for (const path of trackedEvidence) execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   validateLedger(persisted);
-  assert.equal(computeOverallProgress(persisted), 80.2);
+  assert.equal(computeOverallProgress(persisted), 82);
 });
 
 test("preserves P2-S2 immutable actual-route evidence and independent GO while P2 advances", () => {
@@ -336,7 +413,7 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
   const p2 = p2Ledger.sprints.find((sprint) => sprint.id === "P2");
 
   validateLedger(p2Ledger);
-  assert.equal(p2.progress, 60);
+  assert.equal(p2.progress, 85);
   assert.deepEqual(p2.evidence.scope, [
     "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
   ]);
@@ -344,17 +421,25 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
     "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-master.md",
     "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s2-operate.md",
     "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md",
-    "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s4-network-service.md"
+    "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s4-network-service.md",
+    P2_S5_CLOSURE.plan,
+    productionReadiness.P2_S6_CLOSURE.plan,
   ]);
   assert.deepEqual(p2.evidence.implementation, [
     "docs/release/evidence/2026-08-21-p2-shell-s1-command-center.md",
     "docs/release/evidence/2026-08-21-p2-s2-operate.md",
     "docs/release/evidence/2026-08-21-p2-s3-procurement.md",
-    "docs/release/evidence/2026-08-21-p2-s4-network-service.md"
+    "docs/release/evidence/2026-08-21-p2-s4-network-service.md",
+    P2_S5_CLOSURE.implementation,
+    productionReadiness.P2_S6_CLOSURE.implementation,
   ]);
   assert.deepEqual(p2.evidence.independent_review, [
     "docs/release/evidence/2026-08-21-p2-s2-independent-review.md",
+    P2_S4_SEMANTIC_CANDIDATE,
     P2_S4_CLOSURE.independentReview,
+    P2_S5_CLOSURE.candidate,
+    P2_S5_CLOSURE.independentReview,
+    productionReadiness.P2_S6_CLOSURE.independentReview,
   ]);
   assert.equal(p2.verdicts.independent_review, "GO");
   assert.deepEqual(p2.evidence.automated_suite, [
@@ -363,7 +448,11 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
     "npm audit --audit-level=low PASS with 0 vulnerabilities",
     "node tests/platform55-operate-evidence-server.test.mjs PASS with 24 of 24 actual-route captures",
     "npm test PASS on exact Procurement evidence head 23584f218d094a622608c813715247cf16190375",
-    "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures"
+    "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures",
+    ...P2_S4_CLOSURE.automatedSuite,
+    "npm test PASS on exact P2-S5 reviewed head e159cd205c631220613809aef0d21f7e1ec4f19b",
+    "npm run test:platform55:intelligence-admin PASS with 36 of 36 actual-route captures and 56 of 56 reconciled surfaces",
+    ...productionReadiness.P2_S6_CLOSURE.automatedSuite,
   ]);
   const review = readFileSync(p2.evidence.independent_review[0], "utf8");
   assert.match(review, /Verdict:\s*GO/i);
@@ -373,8 +462,8 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
   for (const path of [...p2.evidence.scope, ...p2.evidence.evidence_plan, ...p2.evidence.implementation, ...p2.evidence.independent_review]) {
     execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   }
-  assert.equal(computeOverallProgress(p2Ledger), 80.2);
-  assert.match(formatProgressReport(p2Ledger), /P2:\s+60%/);
+  assert.equal(computeOverallProgress(p2Ledger), 82);
+  assert.match(formatProgressReport(p2Ledger), /P2:\s+85%/);
 });
 
 test("credits P2-S3 only from the immutable Procurement matrix and exact local gates", () => {
@@ -382,7 +471,7 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
   const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
 
   validateLedger(persisted);
-  assert.equal(p2.progress, 60);
+  assert.equal(p2.progress, 85);
   const evidence = readFileSync("docs/release/evidence/2026-08-21-p2-s3-procurement.md", "utf8");
   assert.match(evidence, /Visual subject SHA:\s*`6917246927a6a13e82abf9e1e84b00b27f172ab7`/i);
   assert.match(evidence, /Evidence and full-gate HEAD:\s*`23584f218d094a622608c813715247cf16190375`/i);
@@ -435,19 +524,17 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
   validateP2S3SourceBlobParity(manifestBlobs, currentBlobs);
   const driftedHeadBlobs = [...currentBlobs];
   driftedHeadBlobs[0] = "0".repeat(40);
-  assert.throws(() => validateP2S3SourceBlobParity(manifestBlobs, driftedHeadBlobs), /source blob mismatch/i);
+  assert.throws(() => validateP2S3SourceBlobParity(manifestBlobs, driftedHeadBlobs), /unapproved current drift/i);
 });
 
-test("keeps P2-S4 uncredited until semantic fidelity and visual accessibility are independently accepted", () => {
+test("credits P2-S4 only after semantic fidelity and visual accessibility are independently accepted", () => {
   const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
   validateLedger(persisted);
-  assert.equal(p2.progress, 60);
+  assert.equal(p2.progress, 85);
   assert.ok(p2.evidence.evidence_plan.includes(P2_S4_CLOSURE.plan));
   assert.ok(p2.evidence.implementation.includes(P2_S4_CLOSURE.implementation));
-  assert.equal(p2.evidence.automated_suite.some((entry) => (
-    entry.includes("network-service") || entry.includes("37 files") || entry.includes("P2-S4")
-  )), false);
+  assert.ok(P2_S4_CLOSURE.automatedSuite.every((entry) => p2.evidence.automated_suite.includes(entry)));
   const evidence = readFileSync(P2_S4_CLOSURE.implementation, "utf8");
   assert.match(evidence, /48 of 48 actual-route captures/i);
   assert.match(evidence, /Build12 semantic equivalence credit:\s*withheld/i);
@@ -456,25 +543,29 @@ test("keeps P2-S4 uncredited until semantic fidelity and visual accessibility ar
   validateP2S4Manifest(JSON.parse(readFileSync(P2_S4_CLOSURE.manifest, "utf8")));
 });
 
-test("records the exact current P2-S4 NO-GO without granting milestone credit", () => {
+test("records the exact accepted mixed P2-S4 semantic review before granting milestone credit", () => {
   const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
+  const semantic = productionReadiness.validateP2S4SemanticClosureBody(
+    readFileSync(P2_S4_SEMANTIC_CANDIDATE, "utf8"),
+    { requireGo: false },
+  );
   const review = readFileSync(P2_S4_CLOSURE.independentReview, "utf8");
-  const record = productionReadiness.validateP2S4IndependentReviewBody(review, { requireGo: false });
+  const record = productionReadiness.validateP2S4IndependentReviewBody(review, { semanticRecord: semantic });
   assert.ok(p2.evidence.independent_review.includes(P2_S4_CLOSURE.independentReview));
   assert.equal(record.reviewed_sha, P2_S4_CLOSURE.reviewedHead);
-  assert.equal(record.verdict, "NO-GO");
-  assert.equal(record.semantic_credit, "withheld");
+  assert.equal(record.verdict, "GO");
+  assert.equal(record.semantic_credit, "accepted");
   assert.equal(record.mappings.length, 13);
   assert.ok(record.mappings.every((mapping) => (
-    mapping.result === "withheld" &&
-    mapping.matrix_status === "not_started" &&
-    mapping.target_route === "" &&
-    mapping.target_component === "" &&
-    mapping.evidence === ""
+    mapping.result === "accepted" &&
+    ["verified", "dispositioned"].includes(mapping.matrix_status) &&
+    mapping.evidence === P2_S4_SEMANTIC_CANDIDATE
   )));
-  assert.equal(p2.progress, 60);
-  assert.equal(computeOverallProgress(persisted), 80.2);
+  assert.equal(record.mappings.filter((mapping) => mapping.matrix_status === "verified").length, 1);
+  assert.equal(record.mappings.filter((mapping) => mapping.matrix_status === "dispositioned").length, 12);
+  assert.equal(p2.progress, 85);
+  assert.equal(computeOverallProgress(persisted), 82);
 });
 
 test("rejects P2 at 70 without the exact P2-S4 Network and Service closure", () => {
@@ -540,6 +631,179 @@ test("rejects P2-S4 semantic credit while the thirteen reference mappings remain
       acceptedReview,
     ),
     /build_05:5516.*implemented/i,
+  );
+});
+
+test("accepts only the exact detached P2-S5 independent review without inflating reference-only surfaces", () => {
+  const candidate = validateP2S5SurfaceCandidateBody(readFileSync(P2_S5_CLOSURE.candidate, "utf8"));
+  const reviewBody = readFileSync(P2_S5_CLOSURE.independentReview, "utf8");
+  const review = validateP2S5IndependentReviewBody(reviewBody, { candidateRecord: candidate });
+  assert.equal(review.reviewed_sha, P2_S5_CLOSURE.reviewedHead);
+  assert.equal(review.verdict, "GO");
+  assert.equal(review.semantic_credit, "accepted");
+  assert.equal(review.mappings.length, 56);
+  assert.equal(review.mappings.filter((mapping) => mapping.disposition === "reference_only").length, 17);
+  assert.equal(review.mappings.filter((mapping) => mapping.mapping_status === "verified").length, 39);
+  assert.equal(review.mappings.filter((mapping) => mapping.mapping_status === "dispositioned").length, 17);
+  assert.throws(
+    () => validateP2S5IndependentReviewBody(reviewBody.replace('"verdict": "GO"', '"verdict": "NO-GO"'), { candidateRecord: candidate }),
+    /digest mismatch/i,
+  );
+});
+
+test("credits P2-S5 only from the exact candidate, review, captures, and detached gates", () => {
+  const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
+  validateLedger(persisted);
+  assert.equal(p2.progress, 85);
+  assert.equal(computeOverallProgress(persisted), 82);
+  assert.ok(p2.evidence.evidence_plan.includes(P2_S5_CLOSURE.plan));
+  assert.ok(p2.evidence.implementation.includes(P2_S5_CLOSURE.implementation));
+  assert.ok(p2.evidence.independent_review.includes(P2_S5_CLOSURE.candidate));
+  assert.ok(p2.evidence.independent_review.includes(P2_S5_CLOSURE.independentReview));
+  assert.ok(P2_S5_CLOSURE.automatedSuite.every((entry) => p2.evidence.automated_suite.includes(entry)));
+
+  const missingReview = structuredClone(persisted);
+  missingReview.sprints.find((sprint) => sprint.id === "P2").evidence.independent_review = p2.evidence.independent_review.filter((entry) => entry !== P2_S5_CLOSURE.independentReview);
+  assert.throws(() => validateLedger(missingReview), /P2-S5 independent_review/i);
+
+  const missingSuite = structuredClone(persisted);
+  missingSuite.sprints.find((sprint) => sprint.id === "P2").evidence.automated_suite = p2.evidence.automated_suite.filter((entry) => !entry.includes("P2-S5 reviewed head"));
+  assert.throws(() => validateLedger(missingSuite), /P2-S5 automated_suite/i);
+});
+
+test("credits P2-S6 only from the exact accessible product candidate and detached independent GO", () => {
+  const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
+  const closure = productionReadiness.P2_S6_CLOSURE;
+
+  validateLedger(persisted);
+  assert.equal(p2.progress, 85);
+  assert.equal(computeOverallProgress(persisted), 82);
+  assert.ok(p2.evidence.evidence_plan.includes(closure.plan));
+  assert.ok(p2.evidence.implementation.includes(closure.implementation));
+  assert.ok(p2.evidence.independent_review.includes(closure.independentReview));
+  assert.ok(closure.automatedSuite.every((entry) => p2.evidence.automated_suite.includes(entry)));
+
+  const reviewBody = readFileSync(closure.independentReview, "utf8");
+  const review = productionReadiness.validateP2S6IndependentReviewBody(reviewBody);
+  assert.equal(review.verdict, "GO");
+  assert.equal(review.reviewedClosure, closure.reviewedClosure);
+  assert.equal(review.productCandidate, closure.productCandidate);
+  assert.equal(review.productTree, closure.productTree);
+  assert.equal(review.manifestSha256, closure.manifestSha256);
+  assert.equal(review.routes, 29);
+  assert.equal(review.captures, 42);
+  assert.equal(review.contrastSamples, 3312);
+  assert.equal(review.minimumContrast, 4.521);
+  assert.equal(review.missingNames, 0);
+  assert.equal(review.contrastFailures, 0);
+  assert.equal(review.p0, 0);
+  assert.equal(review.p1, 0);
+  assert.equal(review.p2, 0);
+
+  const missingReview = structuredClone(persisted);
+  missingReview.sprints.find((sprint) => sprint.id === "P2").evidence.independent_review = p2.evidence.independent_review.filter((entry) => entry !== closure.independentReview);
+  assert.throws(() => validateLedger(missingReview), /P2-S6 independent_review/i);
+
+  const missingSuite = structuredClone(persisted);
+  missingSuite.sprints.find((sprint) => sprint.id === "P2").evidence.automated_suite = p2.evidence.automated_suite.filter((entry) => !entry.includes("3,312 contrast samples"));
+  assert.throws(() => validateLedger(missingSuite), /P2-S6 automated_suite/i);
+
+  assert.throws(
+    () => productionReadiness.validateP2S6IndependentReviewBody(reviewBody.replace("Verdict: GO", "Verdict: NO-GO")),
+    /digest mismatch|verdict/i,
+  );
+  assert.throws(
+    () => productionReadiness.validateP2S6IndependentReviewBody(reviewBody.replace("Minimum contrast: `4.521:1`", "Minimum contrast: `1:1`")),
+    /digest mismatch|contrast/i,
+  );
+});
+
+test("accepts a complete mixed P2-S4 semantic candidate without granting independent credit", () => {
+  const reconciled = productionReadiness.validateP2S4SemanticReconciliation(
+    mixedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8")),
+    mixedP2S4Review(),
+    { requireGo: false },
+  );
+  assert.equal(reconciled.verdict, "PENDING-INDEPENDENT-REVIEW");
+  assert.equal(reconciled.semantic_credit, "withheld");
+  assert.equal(reconciled.mappings.filter((mapping) => mapping.mapping_status === "verified").length, 1);
+  assert.equal(reconciled.mappings.filter((mapping) => mapping.mapping_status === "dispositioned").length, 12);
+});
+
+test("accepts only an exact independent review of the mixed P2-S4 semantic dispositions", () => {
+  const semantic = mixedP2S4Review();
+  const accepted = acceptedMixedP2S4IndependentReview();
+  const validated = productionReadiness.validateP2S4IndependentReviewRecord(accepted, semantic);
+  assert.equal(validated.semantic_credit, "accepted");
+  assert.equal(validated.mappings.filter((mapping) => mapping.matrix_status === "verified").length, 1);
+  assert.equal(validated.mappings.filter((mapping) => mapping.matrix_status === "dispositioned").length, 12);
+
+  const inventedTarget = structuredClone(accepted);
+  inventedTarget.mappings[0].target_route = "provider-onboarding.html";
+  inventedTarget.mappings[0].target_component = "provider-onboarding";
+  assert.throws(
+    () => productionReadiness.validateP2S4IndependentReviewRecord(inventedTarget, semantic),
+    /semantic decision mismatch/i,
+  );
+
+  const alteredSharedStatus = structuredClone(accepted);
+  alteredSharedStatus.mappings.find((mapping) => mapping.ordinal === "44").matrix_status = "implemented";
+  assert.throws(
+    () => productionReadiness.validateP2S4IndependentReviewRecord(alteredSharedStatus, semantic),
+    /semantic decision mismatch/i,
+  );
+});
+
+test("accepts only the pinned P2-S4 semantic closure candidate and keeps GO fail-closed", () => {
+  assert.equal(
+    typeof productionReadiness.validateP2S4SemanticClosureBody,
+    "function",
+    "production readiness must expose the content-addressed semantic candidate validator",
+  );
+  const body = readFileSync(P2_S4_SEMANTIC_CANDIDATE, "utf8");
+  const record = productionReadiness.validateP2S4SemanticClosureBody(body, { requireGo: false });
+  assert.equal(record.verdict, "PENDING-INDEPENDENT-REVIEW");
+  assert.equal(record.semantic_credit, "withheld");
+  assert.equal(record.mappings.length, 13);
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticClosureBody(body),
+    /independent GO/i,
+  );
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticClosureBody(body.replace("shipment-execution communication", "fabricated communication"), { requireGo: false }),
+    /digest mismatch/i,
+  );
+});
+
+test("rejects a non-implementation P2-S4 disposition that claims an executable target", () => {
+  const review = mixedP2S4Review();
+  const mapping = review.mappings.find((candidate) => candidate.build === "build_07" && candidate.ordinal === "14");
+  mapping.target_route = "provider-communications.html";
+  mapping.target_component = "communications";
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(
+      mixedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8")),
+      review,
+      { requireGo: false },
+    ),
+    /non-implementation.*target/i,
+  );
+});
+
+test("rejects a shared P2-S4 surface without exact route, component, and evidence", () => {
+  const review = mixedP2S4Review();
+  const mapping = review.mappings.find((candidate) => candidate.build === "build_10" && candidate.ordinal === "44");
+  mapping.target_component = "";
+  mapping.evidence = "";
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(
+      mixedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8")),
+      review,
+      { requireGo: false },
+    ),
+    /shared_surface.*route.*component.*evidence/i,
   );
 });
 

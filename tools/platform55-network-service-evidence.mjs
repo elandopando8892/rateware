@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import {
+  loadP2S6SourceSupersession,
+  validateHistoricalSourceParity,
+} from "./platform55-s6-source-supersession.mjs";
 
 export const P2_S4_CLOSURE = Object.freeze({
   plan: "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s4-network-service.md",
@@ -10,13 +14,14 @@ export const P2_S4_CLOSURE = Object.freeze({
   subject: "77f2bbb0b62846ea110792227b6ce51d9370ac9c",
   evidenceHead: "d337c5aa17717c51fa87af8ee44433d99f2ff2d7",
   gateHead: "524b7a450c6b01f894b5bc9ec249ecad262a58d6",
-  independentReview: "docs/release/evidence/2026-08-22-p2-s4-independent-review.json",
-  independentReviewSha256: "cb945b0f1bd521fcf7adadf9473162c9bb2f337bda3b8f8e508ca8649f41b6f2",
-  reviewedHead: "70152b4ba5e48a290b33cc3c316ef42b82fb551a",
-  reviewBase: "a15fef8636a725d5c127f0ff64f26445fc82e8f4",
+  independentReview: "docs/release/evidence/2026-08-23-p2-s4-semantic-independent-review.json",
+  independentReviewSha256: "4df5add332e54d70cb912c3a6d6bf974bb8af0e3b29cd42cbaec8754e111ba05",
+  reviewedHead: "da2d7b5df85a34f9757af4ec3ec730779618e65a",
+  reviewBase: "2ea24dfdcb31df5aa8152c8e8f232fffd34720c8",
+  reviewerTask: "/root",
   referenceArchiveSha256: "cf2ced85e95dfb33bb7410bf73ace22cb95090ce649747df60bf2920e808c16a",
   matrixSourceProjectionSha256: "26889f56d6f7dd2afb289b62abb044ac955cc7607ee5236c3c1f5023f4f601fb",
-  routeMapSha256: "33bc7239c01d9af05906c20e5697f0054f8224695c134f1dcfdc9278955d1c25",
+  routeMapSha256: "12b4db2c5718d96902bac145c041ca978c8778edddf7a268276ab72d7494fe11",
   manifestObjectSha256: "3dc18d8c47e1d1e0c55670d18a3ac2f56f3d9eea7dcb033d4834d0e698d37291",
   automatedSuite: Object.freeze([
     "npm run test:platform55:network-service PASS with 48 of 48 actual-route captures",
@@ -174,12 +179,14 @@ export function validateP2S4EvidenceFiles(rootDir, manifest) {
   const subjectBlobs = gitLines(root, ["rev-parse", ...P2_S4_SOURCE_PATHS.map((path) => `${P2_S4_CLOSURE.subject}:${path}`)]);
   const headBlobs = gitLines(root, ["rev-parse", ...P2_S4_SOURCE_PATHS.map((path) => `HEAD:${path}`)]);
   const workingBlobs = gitLines(root, ["hash-object", "--", ...P2_S4_SOURCE_PATHS]);
-  for (const [index, sourcePath] of P2_S4_SOURCE_PATHS.entries()) {
-    const manifestBlob = manifest.source_git_blobs[sourcePath];
-    if (manifestBlob !== subjectBlobs[index] || manifestBlob !== headBlobs[index] || workingBlobs[index] !== headBlobs[index]) {
-      throw new Error(`P2-S4 source blob mismatch: ${sourcePath}`);
-    }
-  }
+  validateHistoricalSourceParity({
+    sourcePaths: P2_S4_SOURCE_PATHS,
+    manifestBlobs: manifest.source_git_blobs,
+    subjectBlobs,
+    currentBlobs: headBlobs,
+    workingBlobs,
+    supersession: loadP2S6SourceSupersession(root),
+  });
 
   const evidenceDirectory = dirname(P2_S4_CLOSURE.manifest);
   const evidencePaths = [

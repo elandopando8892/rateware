@@ -4,6 +4,10 @@ import { createHash } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import { startOperateEvidenceServer } from "../tools/platform55-operate-evidence-server.mjs";
+import {
+  loadP2S6SourceSupersession,
+  validateHistoricalSourceParity,
+} from "../tools/platform55-s6-source-supersession.mjs";
 
 test("serves actual Operate routes while replacing only auth and data boundaries", async (t) => {
   const instance = await startOperateEvidenceServer({ rootDir: process.cwd(), port: 0 });
@@ -63,12 +67,26 @@ test("anchors the complete actual-route capture matrix to its immutable subject"
     "src/platform55-operate.css"
   ];
   assert.deepEqual(Object.keys(manifest.source_git_blobs), sourcePaths);
+  const subjectBlobs = [];
+  const currentBlobs = [];
+  const workingBlobs = [];
   for (const sourcePath of sourcePaths) {
     const subjectBlob = execFileSync("git", ["rev-parse", `${subject}:${sourcePath}`], { encoding: "utf8" }).trim();
     const currentBlob = execFileSync("git", ["rev-parse", `HEAD:${sourcePath}`], { encoding: "utf8" }).trim();
+    const workingBlob = execFileSync("git", ["hash-object", "--", sourcePath], { encoding: "utf8" }).trim();
     assert.equal(manifest.source_git_blobs[sourcePath], subjectBlob, `${sourcePath} must be anchored to the subject Git blob`);
-    assert.equal(currentBlob, subjectBlob, `${sourcePath} must not drift after the subject SHA`);
+    subjectBlobs.push(subjectBlob);
+    currentBlobs.push(currentBlob);
+    workingBlobs.push(workingBlob);
   }
+  validateHistoricalSourceParity({
+    sourcePaths,
+    manifestBlobs: manifest.source_git_blobs,
+    subjectBlobs,
+    currentBlobs,
+    workingBlobs,
+    supersession: loadP2S6SourceSupersession(),
+  });
 
   for (const capture of manifest.captures) {
     assert.equal(capture.exact_viewport, true, `${capture.file} must use the requested viewport`);

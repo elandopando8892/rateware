@@ -266,6 +266,29 @@ function syncMobileNavigationAccessibility(state) {
   }
 }
 
+function focusableElements(container) {
+  return [...container.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+    .filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true" && element.getClientRects().length > 0);
+}
+
+function trapFocusWithin(event, container) {
+  const focusable = focusableElements(container);
+  if (!focusable.length) {
+    event.preventDefault();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  const active = container.ownerDocument.activeElement;
+  if (event.shiftKey && (active === first || !container.contains(active))) {
+    event.preventDefault();
+    last.focus({ preventScroll: true });
+  } else if (!event.shiftKey && (active === last || !container.contains(active))) {
+    event.preventDefault();
+    first.focus({ preventScroll: true });
+  }
+}
+
 function closeMobileNavigation(state, { returnFocus = false } = {}) {
   state.app.dataset.mobileNavOpen = "false";
   syncMobileNavigationAccessibility(state);
@@ -300,7 +323,11 @@ function bindShell(state) {
   }, { signal });
   state.scrim.addEventListener("click", () => closeMobileNavigation(state, { returnFocus: true }), { signal });
   state.doc.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && state.app.dataset.mobileNavOpen === "true") {
+    if (event.key === "Tab" && state.app.dataset.mobileNavOpen === "true") {
+      trapFocusWithin(event, state.sidebar);
+    } else if (event.key === "Tab" && !state.notificationDrawer.hidden) {
+      trapFocusWithin(event, state.notificationDrawer);
+    } else if (event.key === "Escape" && state.app.dataset.mobileNavOpen === "true") {
       event.preventDefault();
       closeMobileNavigation(state, { returnFocus: true });
     } else if (event.key === "Escape" && !state.notificationDrawer.hidden) {
@@ -354,9 +381,17 @@ export function mountPlatform55Shell({
   const app = doc.querySelector("[data-platform55-app]");
   const sidebar = doc.querySelector("[data-platform55-sidebar]");
   const topbar = doc.querySelector("[data-platform55-topbar]");
-  if (!app || !sidebar || !topbar) return null;
+  const main = app?.querySelector("main") || doc.querySelector("main");
+  if (!app || !sidebar || !topbar || !main) return null;
 
   registerPlatform55Icons({ root: doc });
+  const originalMainId = main.id;
+  if (!main.id) main.id = "platform55-main-content";
+  const skipLink = doc.createElement("a");
+  skipLink.className = "rw-skip-link";
+  skipLink.setAttribute("href", `#${main.id}`);
+  skipLink.textContent = "Skip to main content";
+  doc.body.prepend(skipLink);
   const authForm = doc.querySelector("#auth-form");
   const scrim = doc.createElement("button");
   scrim.type = "button";
@@ -366,7 +401,7 @@ export function mountPlatform55Shell({
 
   const options = { pageKey: pageKey || doc.body.dataset.platform55Page || "app", user, accessContext, notificationSummary, status };
   const state = {
-    doc, app, sidebar, topbar, authForm, scrim, options,
+    doc, app, sidebar, topbar, main, originalMainId, skipLink, authForm, scrim, options,
     model: shellModel(options),
     pageState: pageState
       ? normalizePlatform55PageState(pageState, { allowedActionIds: allowedPageActionIds(doc) })
@@ -389,6 +424,7 @@ export function mountPlatform55Shell({
     root: doc
   });
   applyModel(state);
+  app.dataset.platform55ShellRoot = "true";
   return state;
 }
 
@@ -414,11 +450,14 @@ export function unmountPlatform55Shell({ root = globalThis.document } = {}) {
   state.abort.abort();
   state.search?.destroy();
   state.notificationDrawer.remove();
+  state.skipLink.remove();
+  if (!state.originalMainId) state.main.removeAttribute("id");
   state.sidebar.replaceChildren();
   state.topbar.replaceChildren();
   if (state.authForm) state.topbar.append(state.authForm);
   state.scrim.remove();
   delete state.app.dataset.navCollapsed;
   delete state.app.dataset.mobileNavOpen;
+  delete state.app.dataset.platform55ShellRoot;
   mountedShells.delete(doc);
 }

@@ -1,5 +1,6 @@
 import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 import {
   archiveGrowthSegment,
   convertGrowthResult,
@@ -149,11 +150,24 @@ function formatDate(value) {
   return new Intl.DateTimeFormat("es-MX", { dateStyle: "medium" }).format(date);
 }
 
+function reportPlatform55State(status, busy = false) {
+  updatePlatform55Shell({
+    pageState: {
+      title: "Growth Hacking",
+      subtitle: "Shipper opportunities and growth signals.",
+      breadcrumbs: ["Analyze", "Commercial growth"],
+      status,
+      busy
+    }
+  });
+}
+
 function setGlobalStatus(message = "", type = "") {
   const element = $("#growth-global-status");
   if (!element) return;
   element.textContent = message;
   element.className = `growth-status${type ? ` ${type}` : ""}${message ? "" : " hidden"}`;
+  reportPlatform55State(message || "Growth evidence ready for review", type === "loading");
 }
 
 function errorMessage(error) {
@@ -1304,10 +1318,25 @@ function renderDashboard(response) {
       metric.textContent = Number(metrics[key] || 0).toLocaleString("es-MX");
     });
   }
+  const dataAsOf = $("#growth-evidence-as-of");
+  const evidenceGaps = $("#growth-evidence-gaps");
+  if (dataAsOf) dataAsOf.textContent = clean(response.data_as_of || response.generated_at || "Not provided");
+  if (evidenceGaps) {
+    evidenceGaps.textContent = response.data_as_of || response.generated_at
+      ? "Review source coverage and confirm the proposal before execution."
+      : "Data as of is missing; review required before using this proposal."
+  }
 }
 
 async function loadDashboard() {
-  renderDashboard(await loadGrowthDashboard());
+  reportPlatform55State("Loading growth evidence", true);
+  try {
+    renderDashboard(await loadGrowthDashboard());
+    reportPlatform55State("Growth evidence loaded; confirmation required", false);
+  } catch (error) {
+    reportPlatform55State(errorMessage(error), false);
+    throw error;
+  }
 }
 
 function bindEvents() {

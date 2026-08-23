@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "sprint": "P2-S6",
+  "verdict": "LOCAL-GO",
+  "release_credit": "withheld",
+  "product_candidate_sha": "31ca1105865570acd575ae17eeb25c236df45c7c",
+  "product_candidate_tree": "1421417c0f737d8bbd4a420300812f11c38af628",
+  "product_base_sha": "512c15679957abd5dcbfeee4afe3208d76edab92",
+  "source_paths": [
+    "src/platform55-shell.js",
+    "src/platform55-shell.css",
+    "src/platform55-public-shell.css",
+    "src/provider-service-page.css",
+    "src/rateware.js",
+    "src/staging-review.js"
+  ],
+  "source_blobs": {
+    "src/platform55-shell.js": "e7f842fd5151b4270171eda9b5da46956e114569",
+    "src/platform55-shell.css": "3e6ee051a0c1b9f7618ddd021858e6abdc2d49b8",
+    "src/platform55-public-shell.css": "96e59d31646d7ebd6921e172398dcc3d3cb3077b",
+    "src/provider-service-page.css": "89bf1433afe438b513fc725ff88f09c8ce406f75",
+    "src/rateware.js": "864e089b252a65e7e6ee7424309434517dc3a65e",
+    "src/staging-review.js": "2e751250e3f7595c2289cdf97d7bf112d97f4b79"
+  },
+  "audit": {
+    "stdout_sha256": "f6050ecc262db1b1c14de1f2d601bf66e6c0b27325158e222d8110a8ad164f97",
+    "routes": 29,
+    "build_namespaces": 12,
+    "matrix_states": 1150,
+    "surface_records": 95,
+    "errors": 0
+  },
+  "browser": {
+    "manifest_sha256": "862d00305774a9627d278a86a5b57b9b1b9fe92d619a641291bcd7e996af5fd4",
+    "routes": 29,
+    "captures": 42,
+    "max_shell_boot_ms": 303.7,
+    "max_cls": 0.0799,
+    "max_js_css_transfer_bytes": 1440415,
+    "external_requests": 0,
+    "unexpected_writes": 0,
+    "missing_accessible_names": 0,
+    "contrast_samples": 3312,
+    "minimum_contrast_ratio": 4.521,
+    "contrast_failures": 0,
+    "document_overflows": 0,
+    "mobile_drawer_focus_restore": true,
+    "mobile_drawer_focus_cycle": true,
+    "search_focus_restore": true,
+    "search_focus_cycle": true,
+    "text_zoom_200_reflow": true
+  },
+  "artifacts": {
+    "matrix_sha256": "0a5ee5b28467afd3a978b803e4c3ed53bc14f9c507aa3fc835d07a2d60f779db",
+    "reference_disposition_sha256": "7791637bf6dc530698848ba168505e6966825771be6e7f0de542114100de6667",
+    "geometry_baseline_sha256": "12b469d2c9edb322f28ad755c224a1fff7ee5f231c7b84e4f08dd4417d67b3f9",
+    "geometry_baseline_projection_sha256": "9f88ad27e79f790c9590bb6832f2761b35523e614c0e6c2a142936190a09178a"
+  },
+  "boundaries": {
+    "local_only": true,
+    "supabase_changed": false,
+    "production_changed": false,
+    "push_performed": false,
+    "historical_manifests_modified": false
+  }
+}

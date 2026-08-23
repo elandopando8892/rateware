@@ -5,46 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Settings</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-intelligence-admin.css" />
   </head>
-  <body>
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Rateware modules">
-        <a class="brand-mark" href="./app.html">Rateware</a>
-        <nav class="nav-groups">
-          <section class="nav-group">
-            <p>Operate</p>
-            <a href="./app.html" data-nav-code="CC">Command Center</a>
-            <a href="./upload-center.html" data-nav-code="IM">Import</a>
-            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
-            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
-            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
-          </section>
-          <section class="nav-group">
-            <p>Analyze</p>
-            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
-          </section>
-          <section class="nav-group">
-            <p>Source</p>
-            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
-            <a href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
-            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
-            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
-            <a href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
-          </section>
-          <section class="nav-group">
-            <p>Admin</p>
-            <a aria-current="page" href="./settings.html" data-nav-code="ST">Settings</a>
-            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
-            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
-          </section>
-        </nav>
-      </aside>
+  <body data-platform55-shell="tenant" data-platform55-page="settings">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
 
-      <div class="page-frame">
-        <header class="page-header">
+      <div class="rw-workspace page-frame" data-platform55-page-content>
+        <header class="rw-topbar" data-platform55-topbar></header>
+        <header class="page-header" data-platform55-page-header>
           <div>
-            <p class="eyebrow">Admin and SaaS control</p>
-            <h1>Settings</h1>
+            <p class="eyebrow" data-platform55-breadcrumbs>Admin · SaaS control</p>
+            <h1 data-platform55-page-title>Settings</h1>
+            <p data-platform55-page-subtitle>Workspace controls and governance.</p>
             <nav class="module-crumbs" aria-label="Module context">
               <a href="./app.html">Command Center</a>
               <span>Settings</span>
@@ -60,7 +35,7 @@
           </div>
         </header>
 
-        <main class="settings-layout">
+        <main class="settings-layout rw-intelligence-admin-page">
           <section class="review-insight-grid" aria-label="SaaS control summary">
             <article><span>Access mode</span><strong id="settings-access-mode">Full</strong></article>
             <article><span>Onboarding</span><strong id="settings-onboarding-score">0%</strong></article>
@@ -98,7 +73,7 @@
               </dl>
             </section>
 
-            <section id="settings-governance-panel" class="workspace-panel settings-governance-panel" data-workbench-view-panel="governance">
+            <section id="settings-governance-panel" class="workspace-panel settings-governance-panel rw-governance-panel" data-workbench-view-panel="governance" data-platform55-governance-summary>
               <div class="section-heading compact split-heading">
                 <div>
                   <p class="eyebrow">Administration readiness</p>
@@ -107,6 +82,7 @@
                 <span id="settings-governance-state" class="status-pill danger">Blocked</span>
               </div>
               <p id="settings-governance-status" class="status-message" role="status">Load Settings evidence to review governance readiness. This view cannot change users, roles, integrations, catalogs, secrets, or tenant enforcement.</p>
+              <p><strong>Read-only readiness summary.</strong> Governance remains blocked or review required until its evidence contract is complete.</p>
               <div class="review-insight-grid bi-metrics" aria-label="Governance readiness summary">
                 <article><span>Evidence observed</span><strong id="settings-governance-evidence-count">0</strong></article>
                 <article><span>Blocking gaps</span><strong id="settings-governance-blocking-count">1</strong></article>

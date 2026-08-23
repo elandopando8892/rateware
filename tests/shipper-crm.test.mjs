@@ -15,7 +15,7 @@ const rfxService = read("../src/rfx-process-service.js");
 const rfxClient = read("../src/rfx-process.js");
 const page = read("../shipper-crm.html");
 const client = read("../src/shippers.js");
-const auth = read("../src/auth.js");
+const shellModel = read("../src/platform55-shell-model.js");
 const styles = read("../src/styles.css");
 
 for (const table of ["shippers", "shipper_contacts", "shipper_locations", "shipper_lanes", "shipper_rfis", "shipper_opportunities"]) {
@@ -279,8 +279,8 @@ assert.match(page, /data-shipper-view="cadence"/);
 assert.match(page, /id="shipper-cadence"/);
 assert.match(page, /<th>Next action<\/th>/);
 
-assert.match(auth, /href: "\.\/shipper-crm\.html"/);
-assert.match(auth, /"shipper-crm"/);
+assert.match(shellModel, /key: "shipper-crm"/);
+assert.match(shellModel, /path: "\.\/shipper-crm\.html"/);
 assert.match(styles, /\.shipper-table/);
 assert.match(styles, /height: 30px/);
 assert.match(styles, /\.shipper-drawer/);

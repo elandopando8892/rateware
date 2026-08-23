@@ -4,8 +4,14 @@
 
 .growth-workspace {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   padding: 10px 14px 18px;
+}
+
+.growth-workspace > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .growth-tabs {
@@ -45,7 +51,13 @@
 
 .growth-view.active {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
+}
+
+.growth-view.active > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .growth-status {
@@ -1166,6 +1178,14 @@
 @media (max-width: 820px) {
   .growth-workspace {
     padding: 8px;
+  }
+
+  .growth-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .growth-metric-strip > :nth-child(2n) {
+    border-right: 0;
   }
 
   .growth-tabs {

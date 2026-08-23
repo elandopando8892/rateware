@@ -31,6 +31,7 @@ import { humanizeError } from "./error-copy.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
 import { buildAdminGovernanceReadiness } from "./admin-governance.js";
 import { buildPlatformControlReadiness } from "./platform-readiness.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 
 const accessMode = document.querySelector("#settings-access-mode");
 const onboardingScore = document.querySelector("#settings-onboarding-score");
@@ -110,6 +111,18 @@ const platformObservedCount = document.querySelector("#settings-platform-observe
 const platformBlockedCount = document.querySelector("#settings-platform-blocked-count");
 const platformSurfaces = document.querySelector("#settings-platform-surfaces");
 const platformStages = document.querySelector("#settings-platform-stages");
+
+function reportPlatform55State(status, busy = false) {
+  updatePlatform55Shell({
+    pageState: {
+      title: "Settings",
+      subtitle: "Workspace controls and governance.",
+      breadcrumbs: ["Admin", "SaaS control"],
+      status,
+      busy
+    }
+  });
+}
 
 const profileInputs = {
   full_name: document.querySelector("#profile-full-name"),
@@ -858,6 +871,7 @@ async function loadObservability() {
 }
 
 async function loadSettings() {
+  reportPlatform55State("Loading governance evidence", true);
   try {
     const settings = await fetchSaasSettings();
     renderSettings(settings);
@@ -868,8 +882,10 @@ async function loadSettings() {
     if (settings.whatsapp?.rows?.[0]?.connection_validated === true) {
       await loadWhatsappConnections();
     }
+    reportPlatform55State("Governance evidence loaded; review required");
   } catch (error) {
     auditLogBody.innerHTML = `<tr><td colspan="5">${escapeHtml(humanizeError(error))}</td></tr>`;
+    reportPlatform55State(humanizeError(error));
   }
 }
 

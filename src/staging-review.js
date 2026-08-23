@@ -402,7 +402,7 @@ function inputCell(row, field, options = {}) {
       : row[field] || "";
   const inputType = options.type || (options.money ? "number" : "text");
   const step = options.step || (options.money ? "0.01" : "");
-  return `<input class="staging-input ${widthClass}" data-field="${field}" type="${inputType}" value="${escapeHtml(value)}" ${options.list ? `list="${escapeHtml(options.list)}"` : ""} ${options.min ? `min="${escapeHtml(options.min)}"` : ""} ${options.max ? `max="${escapeHtml(options.max)}"` : ""} ${step ? `step="${escapeHtml(step)}"` : ""} ${options.money ? 'inputmode="decimal"' : ""} autocomplete="off" spellcheck="false" />`;
+  return `<input class="staging-input ${widthClass}" data-field="${field}" aria-label="${escapeHtml(options.label || sheetColumnLabel(field))}" type="${inputType}" value="${escapeHtml(value)}" ${options.list ? `list="${escapeHtml(options.list)}"` : ""} ${options.min ? `min="${escapeHtml(options.min)}"` : ""} ${options.max ? `max="${escapeHtml(options.max)}"` : ""} ${step ? `step="${escapeHtml(step)}"` : ""} ${options.money ? 'inputmode="decimal"' : ""} autocomplete="off" spellcheck="false" />`;
 }
 
 function optionList(values = [], currentValue = "") {
@@ -414,7 +414,7 @@ function optionList(values = [], currentValue = "") {
 function selectCell(row, field, values = [], options = {}) {
   const widthClass = options.wide ? "wide-input" : options.money ? "money-input" : options.short ? "short-input" : "";
   return `
-    <select class="staging-input ${widthClass}" data-field="${field}" autocomplete="off">
+    <select class="staging-input ${widthClass}" data-field="${field}" aria-label="${escapeHtml(options.label || sheetColumnLabel(field))}" autocomplete="off">
       <option value=""></option>
       ${optionList(values, row[field] || "")}
     </select>
@@ -425,13 +425,13 @@ function datalistCell(row, field, values = [], options = {}) {
   const widthClass = options.wide ? "wide-input" : options.money ? "money-input" : options.short ? "short-input" : "";
   const listId = `staging-${field}-options`;
   const locationAttr = ["origin", "destination"].includes(field) ? `data-location-field="${field}"` : "";
-  return `<input class="staging-input ${widthClass}" data-field="${field}" ${locationAttr} list="${listId}" value="${escapeHtml(row[field] || "")}" autocomplete="off" spellcheck="false" />`;
+  return `<input class="staging-input ${widthClass}" data-field="${field}" aria-label="${escapeHtml(options.label || sheetColumnLabel(field))}" ${locationAttr} list="${listId}" value="${escapeHtml(row[field] || "")}" autocomplete="off" spellcheck="false" />`;
 }
 
 function checkboxCell(row, field, label) {
   return `
     <label class="table-checkbox" title="${escapeHtml(label)}">
-      <input class="staging-input" data-field="${field}" type="checkbox" value="true" ${row[field] ? "checked" : ""} />
+      <input class="staging-input" data-field="${field}" aria-label="${escapeHtml(label || sheetColumnLabel(field))}" type="checkbox" value="true" ${row[field] ? "checked" : ""} />
     </label>
   `;
 }
@@ -516,7 +516,7 @@ function hiddenLocationFields(row, prefix) {
 function statusSelect(row) {
   const status = row.status || "pending_review";
   return `
-    <select class="staging-input short-input" data-field="status">
+    <select class="staging-input short-input" data-field="status" aria-label="Status">
       <option value="pending_review" ${status === "pending_review" ? "selected" : ""}>pending</option>
       <option value="approved" ${status === "approved" ? "selected" : ""}>approved</option>
       <option value="rejected" ${status === "rejected" ? "selected" : ""}>rejected</option>

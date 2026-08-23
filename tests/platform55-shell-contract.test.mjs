@@ -142,6 +142,7 @@ const appHtml = readFileSync("app.html", "utf8");
 const authSource = readFileSync("src/auth.js", "utf8");
 const shellSource = readFileSync("src/platform55-shell.js", "utf8");
 const shellCss = readFileSync("src/platform55-shell.css", "utf8");
+const commandCenterCss = readFileSync("src/platform55-command-center.css", "utf8");
 
 assert.match(appHtml, /data-platform55-shell="tenant"/);
 assert.match(appHtml, /data-platform55-page="app"/);
@@ -151,11 +152,15 @@ assert.doesNotMatch(appHtml, /<aside class="side-nav"/);
 assert.equal((appHtml.match(/id="auth-form"/g) || []).length, 1);
 assert.match(authSource, /mountPlatform55Shell/);
 assert.match(authSource, /dataset\.platform55Shell === "tenant"/);
-assert.match(authSource, /initLegacySaasShell/);
+assert.doesNotMatch(authSource, /initLegacySaasShell/);
 assert.doesNotMatch(shellSource, /fetch\(|authenticatedFetch|supabase|localStorage\.clear/i);
 assert.match(shellSource, /export function mountPlatform55Shell/);
 assert.match(shellSource, /export function updatePlatform55Shell/);
 assert.match(shellSource, /export function unmountPlatform55Shell/);
+assert.match(shellSource, /className = "rw-skip-link"/);
+assert.match(shellSource, /setAttribute\("href", `#\$\{main\.id\}`\)/);
+assert.match(shellSource, /app\.dataset\.platform55ShellRoot = "true"/);
+assert.match(shellSource, /delete state\.app\.dataset\.platform55ShellRoot/);
 assert.match(
   shellSource,
   /class="rw-search-trigger"[^>]*aria-label="Search modules and actions"/,
@@ -188,6 +193,8 @@ assert.match(shellCss, /grid-template-columns:\s*var\(--rw-sidebar-expanded\)\s+
 assert.match(shellCss, /@media\s*\(max-width:\s*1320px\)/);
 assert.match(shellCss, /@media\s*\(max-width:\s*900px\)/);
 assert.match(shellCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+assert.match(shellCss, /\.rw-skip-link:focus/);
+assert.match(commandCenterCss, /\.rw-hero\.next-best-action-card\[data-severity="critical"\][\s\S]*?linear-gradient/);
 assert.match(
   shellCss,
   /\.rw-nav-group\s*>\s*p\s*\{[^}]*color:\s*var\(--rw-slate-600\)/s,
