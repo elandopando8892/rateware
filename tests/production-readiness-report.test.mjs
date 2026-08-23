@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
+import { P2_S4_CLOSURE, validateP2S4Manifest } from "../tools/platform55-network-service-evidence.mjs";
 import {
   computeOverallProgress,
   formatProgressReport,
@@ -272,7 +273,7 @@ test("keeps the persisted P1 production closure backed while P2 advances", () =>
   }
   for (const path of trackedEvidence) execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   validateLedger(persisted);
-  assert.equal(computeOverallProgress(persisted), 80.2);
+  assert.equal(computeOverallProgress(persisted), 80.9);
 });
 
 test("preserves P2-S2 immutable actual-route evidence and independent GO while P2 advances", () => {
@@ -280,19 +281,21 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
   const p2 = p2Ledger.sprints.find((sprint) => sprint.id === "P2");
 
   validateLedger(p2Ledger);
-  assert.equal(p2.progress, 60);
+  assert.equal(p2.progress, 70);
   assert.deepEqual(p2.evidence.scope, [
     "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
   ]);
   assert.deepEqual(p2.evidence.evidence_plan, [
     "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-master.md",
     "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s2-operate.md",
-    "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md"
+    "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md",
+    "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s4-network-service.md"
   ]);
   assert.deepEqual(p2.evidence.implementation, [
     "docs/release/evidence/2026-08-21-p2-shell-s1-command-center.md",
     "docs/release/evidence/2026-08-21-p2-s2-operate.md",
-    "docs/release/evidence/2026-08-21-p2-s3-procurement.md"
+    "docs/release/evidence/2026-08-21-p2-s3-procurement.md",
+    "docs/release/evidence/2026-08-21-p2-s4-network-service.md"
   ]);
   assert.deepEqual(p2.evidence.independent_review, [
     "docs/release/evidence/2026-08-21-p2-s2-independent-review.md"
@@ -304,7 +307,10 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
     "npm audit --audit-level=low PASS with 0 vulnerabilities",
     "node tests/platform55-operate-evidence-server.test.mjs PASS with 24 of 24 actual-route captures",
     "npm test PASS on exact Procurement evidence head 23584f218d094a622608c813715247cf16190375",
-    "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures"
+    "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures",
+    "npm run test:platform55:network-service PASS with 48 of 48 actual-route captures",
+    "npm run test:provider-service PASS with 37 files and 197 tests",
+    "npm test PASS on exact P2-S4 gate head 126e364c48eb8c35b1b5b378a41ae2e418126e95"
   ]);
   const review = readFileSync(p2.evidence.independent_review[0], "utf8");
   assert.match(review, /Verdict:\s*GO/i);
@@ -314,8 +320,8 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
   for (const path of [...p2.evidence.scope, ...p2.evidence.evidence_plan, ...p2.evidence.implementation, ...p2.evidence.independent_review]) {
     execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   }
-  assert.equal(computeOverallProgress(p2Ledger), 80.2);
-  assert.match(formatProgressReport(p2Ledger), /P2:\s+60%/);
+  assert.equal(computeOverallProgress(p2Ledger), 80.9);
+  assert.match(formatProgressReport(p2Ledger), /P2:\s+70%/);
 });
 
 test("credits P2-S3 only from the immutable Procurement matrix and exact local gates", () => {
@@ -323,7 +329,7 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
   const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
 
   validateLedger(persisted);
-  assert.equal(p2.progress, 60);
+  assert.equal(p2.progress, 70);
   const evidence = readFileSync("docs/release/evidence/2026-08-21-p2-s3-procurement.md", "utf8");
   assert.match(evidence, /Visual subject SHA:\s*`6917246927a6a13e82abf9e1e84b00b27f172ab7`/i);
   assert.match(evidence, /Evidence and full-gate HEAD:\s*`23584f218d094a622608c813715247cf16190375`/i);
@@ -379,11 +385,26 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
   assert.throws(() => validateP2S3SourceBlobParity(manifestBlobs, driftedHeadBlobs), /source blob mismatch/i);
 });
 
+test("credits P2-S4 only from the exact Network and Service closure", () => {
+  const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
+  validateLedger(persisted);
+  assert.equal(p2.progress, 70);
+  assert.ok(p2.evidence.evidence_plan.includes(P2_S4_CLOSURE.plan));
+  assert.ok(p2.evidence.implementation.includes(P2_S4_CLOSURE.implementation));
+  assert.ok(P2_S4_CLOSURE.automatedSuite.every((entry) => p2.evidence.automated_suite.includes(entry)));
+  const evidence = readFileSync(P2_S4_CLOSURE.implementation, "utf8");
+  assert.match(evidence, /48 of 48 actual-route captures/i);
+  assert.match(evidence, /Local implementation verdict:\s*GO/i);
+  assert.match(evidence, /Independent review:\s*pending/i);
+  assert.match(evidence, /Global Platform55 verdict:\s*NO-GO/i);
+  validateP2S4Manifest(JSON.parse(readFileSync(P2_S4_CLOSURE.manifest, "utf8")));
+});
+
 test("rejects P2 at 70 without the exact P2-S4 Network and Service closure", () => {
   const fabricated = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p2 = fabricated.sprints.find((sprint) => sprint.id === "P2");
-  p2.progress = 70;
-  p2.evidence.automated_suite.push("fabricated network service suite");
+  p2.evidence.automated_suite = p2.evidence.automated_suite.filter((entry) => !entry.includes("P2-S4") && !entry.includes("network-service") && !entry.includes("37 files"));
 
   assert.throws(() => validateLedger(fabricated), /P2-S4/i);
 });

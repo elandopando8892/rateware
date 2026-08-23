@@ -296,6 +296,7 @@ const validateP2S4Closure = (sprint, rootDir) => {
   const manifest = JSON.parse(readFileSync(resolve(root, P2_S4_CLOSURE.manifest), "utf8"));
   requireText(implementation, new RegExp(`Visual subject SHA:\\s*\\\`${P2_S4_CLOSURE.subject}\\\``), "P2-S4 evidence must name the visual subject");
   requireText(implementation, new RegExp(`Evidence artifact HEAD:\\s*\\\`${P2_S4_CLOSURE.evidenceHead}\\\``), "P2-S4 evidence must name the immutable evidence artifact HEAD");
+  requireText(implementation, new RegExp(`Full-gate HEAD:\\s*\\\`${P2_S4_CLOSURE.gateHead}\\\``), "P2-S4 evidence must name the immutable full-gate HEAD");
   requireText(implementation, /48 of 48 actual-route captures/i, "P2-S4 evidence must record all 48 captures");
   requireText(implementation, /Local implementation verdict:\s*GO/i, "P2-S4 evidence must record local GO");
   requireText(implementation, /independent review.*pending/i, "P2-S4 evidence must keep independent review pending");

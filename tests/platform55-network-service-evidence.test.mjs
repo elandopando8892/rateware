@@ -13,10 +13,9 @@ const loadManifest = async () => JSON.parse(await readFile(P2_S4_CLOSURE.manifes
 
 test("anchors the exact P2-S4 Network and Service evidence matrix", async () => {
   const manifest = await loadManifest();
-  assert.equal(
-    execFileSync("git", ["rev-parse", P2_S4_CLOSURE.evidenceHead], { encoding: "utf8" }).trim(),
-    P2_S4_CLOSURE.evidenceHead,
-  );
+  for (const revision of [P2_S4_CLOSURE.evidenceHead, P2_S4_CLOSURE.gateHead]) {
+    assert.equal(execFileSync("git", ["rev-parse", revision], { encoding: "utf8" }).trim(), revision);
+  }
   validateP2S4Manifest(manifest);
   validateP2S4EvidenceFiles(process.cwd(), manifest);
 });

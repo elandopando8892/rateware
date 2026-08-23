@@ -50,6 +50,7 @@ const EXPECTED_STATES_BY_BUILD = Object.freeze({
   build_12: 140
 });
 const P2_S3_EVIDENCE = "docs/platform55-evidence/p2-s3/6917246927a6a13e82abf9e1e84b00b27f172ab7/manifest.json;tests/platform55-procurement-evidence.test.mjs";
+const P2_S4_EVIDENCE = "docs/platform55-evidence/p2-s4/f4f86e1e67c395c41f400b070dbd1f4d120d55cb/manifest.json;tests/platform55-network-service-evidence.test.mjs";
 const IMPLEMENTED_BUILD5_STATES = new Map([
   ["5510", ["rfx-events.html", "tenant procurement workspace"]],
   ["5517", ["vendors.html", "tenant carrier network"]],
@@ -60,6 +61,21 @@ const IMPLEMENTED_BUILD5_STATES = new Map([
   ["5536", ["rfx-bid.html", "public bid builder"]],
   ["5543", ["rfx-events.html", "tenant bid comparison"]],
   ["5562", ["rfx-events.html", "tenant procurement events"]]
+]);
+const IMPLEMENTED_S4_STATES = new Map([
+  ["build_05:5516", ["provider-onboarding.html", "tenant provider onboarding"]],
+  ["build_05:5521", ["provider-onboarding.html", "tenant onboarding workflow"]],
+  ["build_07:14", ["provider-communications.html", "tenant provider communications"]],
+  ["build_07:49", ["provider-communications.html", "tenant communications thread"]],
+  ["build_10:25", ["vendor-support.html", "tenant vendor support"]],
+  ["build_10:27", ["provider-gmail.html", "tenant provider connection setup"]],
+  ["build_10:44", ["provider-gmail.html", "tenant Gmail connection"]],
+  ["build_10:67", ["vendor-support.html", "tenant vendor support cases"]],
+  ["build_11:20", ["vendor-improvement.html", "tenant vendor improvement risk"]],
+  ["build_12:14", ["provider-onboarding.html", "tenant provider onboarding"]],
+  ["build_12:23", ["vendor-support.html", "tenant vendor support"]],
+  ["build_12:81", ["vendor-support.html", "tenant vendor support center"]],
+  ["build_12:82", ["vendor-support.html", "tenant vendor support case"]],
 ]);
 
 const attributes = readFileSync(".gitattributes", "utf8");
@@ -230,13 +246,15 @@ for (const row of rows) {
     assert.equal(tabletApplicability, Number(width) > 900 && Number(width) <= 1320 ? "yes" : "no");
     assert.equal(desktopApplicability, Number(width) > 1320 ? "yes" : "no");
   }
-  const implemented = build === "build_05" ? IMPLEMENTED_BUILD5_STATES.get(ordinal) : undefined;
+  const s3Implemented = build === "build_05" ? IMPLEMENTED_BUILD5_STATES.get(ordinal) : undefined;
+  const s4Implemented = IMPLEMENTED_S4_STATES.get(`${build}:${ordinal}`);
+  const implemented = s4Implemented || s3Implemented;
   if (implemented) {
     assert.equal(status, "implemented");
     assert.equal(targetRoute, implemented[0]);
     assert.equal(targetComponent, implemented[1]);
     assert.equal(disposition, "implemented");
-    assert.equal(evidence, P2_S3_EVIDENCE);
+    assert.equal(evidence, s4Implemented ? P2_S4_EVIDENCE : P2_S3_EVIDENCE);
   } else {
     assert.equal(status, "not_started");
     assert.equal(targetRoute, "");
@@ -251,6 +269,7 @@ for (const row of rows) {
 assert.deepEqual(byBuild, EXPECTED_STATES_BY_BUILD);
 assert.equal(ordinalKeys.size, 1150);
 assert.equal(IMPLEMENTED_BUILD5_STATES.size, 9);
+assert.equal(IMPLEMENTED_S4_STATES.size, 13);
 
 const sourceIdentityIndex = EXPECTED_COLUMNS.indexOf("source_state_identity");
 const duplicateCountIndex = EXPECTED_COLUMNS.indexOf("source_duplicate_count");
