@@ -170,4 +170,8 @@ assert.doesNotMatch(
   "shipper-profile.html must not expose private tenant navigation or search"
 );
 
+assert.match(networkCss, /\.rw-network-service-table-scroll[\s\S]*overflow-x:\s*auto/, "Network/service tables must contain horizontal overflow");
+assert.match(networkCss, /\.rw-network-service-page\s*>\s*\*\s*\{[^}]*min-width:\s*0[^}]*max-width:\s*100%/s, "Every direct network/service workspace region must shrink inside the shell");
+assert.match(networkCss, /\.rw-network-service-page\s+\.shipper-view-switcher\s*\{[^}]*width:\s*100%[^}]*overflow-x:\s*auto/s, "The Shipper CRM view switcher must scroll inside the mobile viewport");
+
 console.log("Platform55 network/service route adoption contract passed.");

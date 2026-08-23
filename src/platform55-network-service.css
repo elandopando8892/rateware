@@ -5,6 +5,21 @@
   min-width: 0;
 }
 
+.rw-network-service-page > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.rw-network-service-page .page-header,
+.rw-network-service-page .page-header-actions,
+.rw-network-service-page .workspace-panel,
+.rw-network-service-page .wide-section,
+.rw-network-service-page .shipper-directory,
+.rw-network-service-page .provider-service-master-detail {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .rw-network-service-state,
 .rw-network-service-detail,
 .rw-network-service-boundary {
@@ -43,6 +58,8 @@
 }
 
 .rw-network-service-table-scroll {
+  box-sizing: border-box;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   overflow-x: auto;
@@ -65,6 +82,49 @@
 
   .rw-network-service-metrics > * {
     flex: 0 0 min(78vw, 220px);
+  }
+
+  .rw-network-service-page .page-header {
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rw-network-service-page .page-header-actions,
+  .rw-network-service-page .split-heading,
+  .rw-network-service-page .action-row {
+    display: flex;
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .rw-network-service-page .page-header-actions > *,
+  .rw-network-service-page .action-row > * {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .rw-network-service-page .shipper-view-switcher {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    justify-self: stretch;
+  }
+
+  .rw-network-service-page .shipper-view-switcher > * {
+    flex: 0 0 auto;
+  }
+
+  .rw-network-service-page .vendor-support-toolbar,
+  .rw-network-service-page .vendor-ci-toolbar,
+  .rw-network-service-page .vendor-ci-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rw-network-service-page .vendor-ci-case-form .two-col {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
