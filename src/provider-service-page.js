@@ -1,4 +1,6 @@
+import { requirePrivatePage } from './auth.js';
 import { callRatewareFunction } from './rateware-api.js';
+import { updatePlatform55Shell } from './platform55-shell.js';
 import { renderProviderService360, loadProviderService360 } from './provider-service-360.js';
 import {
   normalizeProviderServiceQueue,
@@ -35,6 +37,16 @@ const detailContainer = document.getElementById('provider-service-detail');
 const resultCaption = document.getElementById('provider-service-result-caption');
 const prevButton = document.getElementById('provider-service-prev');
 const nextButton = document.getElementById('provider-service-next');
+
+function updateProviderServiceShell(status, busy = false) {
+  updatePlatform55Shell({ pageState: {
+    title: 'Provider Service',
+    subtitle: 'Provider review queue, readiness, communications, and evidence.',
+    breadcrumbs: ['Service', 'Provider Service'],
+    status,
+    busy,
+  } });
+}
 
 function metric(id, value) {
   const node = document.getElementById(id);
@@ -111,6 +123,7 @@ function syncQueueUi() {
 
 async function loadCommandCenter({ preserveSelection = false } = {}) {
   const requestId = ++state.requestId;
+  updateProviderServiceShell('Loading provider review queue', true);
   if (rowsContainer) rowsContainer.innerHTML = '<article class="ui-state ui-state-loading"><strong>Loading Provider Service</strong><p>Resolving relationships, cases, documents, communications and health.</p></article>';
 
   try {
@@ -141,6 +154,7 @@ async function loadCommandCenter({ preserveSelection = false } = {}) {
     renderMetrics();
     renderRows();
     renderPagination();
+    updateProviderServiceShell(`${state.total.toLocaleString()} provider relationship(s) loaded`);
   } catch (error) {
     if (requestId !== state.requestId) return;
     state.rows = [];
@@ -148,6 +162,7 @@ async function loadCommandCenter({ preserveSelection = false } = {}) {
     if (rowsContainer) rowsContainer.innerHTML = `<article class="ui-state ui-state-error"><strong>Provider Service could not load</strong><p>${escapeHtml(error?.message || 'Request failed.')}</p></article>`;
     renderMetrics();
     renderPagination();
+    updateProviderServiceShell('Provider review queue could not load');
   }
 }
 
@@ -185,5 +200,6 @@ nextButton?.addEventListener('click', () => {
   loadCommandCenter({ preserveSelection: true });
 });
 
+await requirePrivatePage();
 syncQueueUi();
-loadCommandCenter();
+await loadCommandCenter();

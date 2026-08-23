@@ -1,5 +1,6 @@
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 import { fetchVendors } from "./vendor-service.js";
 import {
   createVendorImprovementCase,
@@ -183,6 +184,16 @@ function setStatus(message = "", tone = "neutral") {
   if (!statusMessage) return;
   statusMessage.textContent = tone === "error" ? humanizeError(message) : message;
   statusMessage.dataset.tone = tone;
+}
+
+function updateVendorImprovementShell(status, busy = false) {
+  updatePlatform55Shell({ pageState: {
+    title: "Vendor Continuous Improvement",
+    subtitle: "Carrier performance, evidence, and human-controlled improvement plans.",
+    breadcrumbs: ["Service", "Vendor CI"],
+    status,
+    busy
+  } });
 }
 
 function fillSelect(select, rows, selectedValue = "") {
@@ -631,6 +642,7 @@ async function searchCrmVendors(query = "") {
 async function loadImprovementCases() {
   const loadVersion = ++improvementLoadVersion;
   setStatus("Loading vendor continuous improvement...");
+  updateVendorImprovementShell("Loading vendor improvement cases", true);
   if (caseBody) caseBody.innerHTML = '<tr><td colspan="8">Loading improvement cases...</td></tr>';
   try {
     await requirePrivatePage();
@@ -645,6 +657,7 @@ async function loadImprovementCases() {
     renderValueCurve();
     renderPlaybooks();
     setStatus(`${caseRows.length.toLocaleString()} CI case(s) loaded.`, "success");
+    updateVendorImprovementShell(`${caseRows.length.toLocaleString()} vendor improvement case(s) loaded`);
   } catch (error) {
     if (loadVersion !== improvementLoadVersion) return;
     caseRows = [];
@@ -664,6 +677,7 @@ async function loadImprovementCases() {
       `;
     }
     setStatus(error, "error");
+    updateVendorImprovementShell("Vendor improvement cases could not load");
   }
 }
 

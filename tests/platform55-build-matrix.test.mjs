@@ -50,6 +50,7 @@ const EXPECTED_STATES_BY_BUILD = Object.freeze({
   build_12: 140
 });
 const P2_S3_EVIDENCE = "docs/platform55-evidence/p2-s3/6917246927a6a13e82abf9e1e84b00b27f172ab7/manifest.json;tests/platform55-procurement-evidence.test.mjs";
+const P2_S4_EVIDENCE = "docs/platform55-evidence/p2-s4/f4f86e1e67c395c41f400b070dbd1f4d120d55cb/manifest.json;tests/platform55-network-service-evidence.test.mjs";
 const IMPLEMENTED_BUILD5_STATES = new Map([
   ["5510", ["rfx-events.html", "tenant procurement workspace"]],
   ["5517", ["vendors.html", "tenant carrier network"]],
@@ -60,6 +61,11 @@ const IMPLEMENTED_BUILD5_STATES = new Map([
   ["5536", ["rfx-bid.html", "public bid builder"]],
   ["5543", ["rfx-events.html", "tenant bid comparison"]],
   ["5562", ["rfx-events.html", "tenant procurement events"]]
+]);
+const S4_STATES_REQUIRING_SEMANTIC_REVIEW = new Set([
+  "build_05:5516", "build_05:5521", "build_07:14", "build_07:49",
+  "build_10:25", "build_10:27", "build_10:44", "build_10:67",
+  "build_11:20", "build_12:14", "build_12:23", "build_12:81", "build_12:82",
 ]);
 
 const attributes = readFileSync(".gitattributes", "utf8");
@@ -72,7 +78,7 @@ function sha256(path) {
 
 assert.equal(
   sha256("docs/platform55-shell-route-map.csv"),
-  "5F74349DD63368B1CDAC516EB9502AF1AFA6EEBE4C912BD5C76E7CC524AD5F53"
+  "33BC7239C01D9AF05906C20E5697F0054F8224695C134F1DCFDC9278955D1C25"
 );
 assert.equal(
   sha256("docs/platform55-surface-inventory.csv"),
@@ -230,7 +236,9 @@ for (const row of rows) {
     assert.equal(tabletApplicability, Number(width) > 900 && Number(width) <= 1320 ? "yes" : "no");
     assert.equal(desktopApplicability, Number(width) > 1320 ? "yes" : "no");
   }
-  const implemented = build === "build_05" ? IMPLEMENTED_BUILD5_STATES.get(ordinal) : undefined;
+  const s3Implemented = build === "build_05" ? IMPLEMENTED_BUILD5_STATES.get(ordinal) : undefined;
+  const stateKey = `${build}:${ordinal}`;
+  const implemented = s3Implemented;
   if (implemented) {
     assert.equal(status, "implemented");
     assert.equal(targetRoute, implemented[0]);
@@ -238,7 +246,9 @@ for (const row of rows) {
     assert.equal(disposition, "implemented");
     assert.equal(evidence, P2_S3_EVIDENCE);
   } else {
-    assert.equal(status, "not_started");
+    assert.equal(status, "not_started", S4_STATES_REQUIRING_SEMANTIC_REVIEW.has(stateKey)
+      ? `${stateKey} must remain uncredited until its Build reference semantics are independently matched`
+      : undefined);
     assert.equal(targetRoute, "");
     assert.equal(targetComponent, "");
     assert.equal(disposition, "");
@@ -251,6 +261,7 @@ for (const row of rows) {
 assert.deepEqual(byBuild, EXPECTED_STATES_BY_BUILD);
 assert.equal(ordinalKeys.size, 1150);
 assert.equal(IMPLEMENTED_BUILD5_STATES.size, 9);
+assert.equal(S4_STATES_REQUIRING_SEMANTIC_REVIEW.size, 13);
 
 const sourceIdentityIndex = EXPECTED_COLUMNS.indexOf("source_state_identity");
 const duplicateCountIndex = EXPECTED_COLUMNS.indexOf("source_duplicate_count");
@@ -369,6 +380,10 @@ for (const route of routeMap.rows) {
     assert.equal(route.access, "public");
     assert.equal(route.shell_variant, "public");
   }
+}
+for (const route of routeMap.rows.filter((row) => row.owner_sprint === "P2-S4")) {
+  assert.equal(route.status, "contract_ready", `${route.route} must expose the completed S4 contract`);
+  assert.equal(route.evidence, "tests/platform55-network-service-shell.test.mjs");
 }
 
 const surfaceInventory = recordsToObjects(readFileSync("docs/platform55-surface-inventory.csv", "utf8"));

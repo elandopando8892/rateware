@@ -3,6 +3,13 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  P2_S4_CLOSURE,
+  P2_S4_ROUTES,
+  P2_S4_SEMANTIC_ROWS,
+  validateP2S4EvidenceFiles,
+  validateP2S4Manifest,
+} from "./platform55-network-service-evidence.mjs";
 
 const IDS = ["P0", "P1", "P2", "P3", "P4", "P5"];
 const WEIGHTS = { P0: 4, P1: 9, P2: 7, P3: 7, P4: 6, P5: 4 };
@@ -158,6 +165,256 @@ const requireText = (text, pattern, message) => {
   if (!pattern.test(text)) throw new Error(message);
 };
 
+const P2_BUILD_MATRIX_COLUMNS = Object.freeze([
+  "build", "ordinal", "state", "name_or_route", "width", "height", "source_manifest", "source_render_plan",
+  "reference_asset", "source_state_identity", "source_duplicate_count", "desktop_applicability", "tablet_applicability",
+  "mobile_applicability", "mapping_status", "target_route", "target_component", "disposition", "evidence",
+]);
+const P2_BUILD_MATRIX_COUNTS = Object.freeze({
+  build_01: 61,
+  build_02: 61,
+  build_03: 68,
+  build_04: 76,
+  build_05: 82,
+  build_06: 90,
+  build_07: 96,
+  build_08: 104,
+  build_09: 116,
+  build_10: 124,
+  build_11: 132,
+  build_12: 140,
+});
+const P2_ROUTE_MAP_COLUMNS = Object.freeze([
+  "route", "page_key", "access", "shell_variant", "owner_sprint", "module_script", "planned_test",
+  "platform55_surfaces", "status", "evidence",
+]);
+const P2_ROUTE_MAP_COUNT = 29;
+
+const parseCsv = (text) => {
+  if (typeof text !== "string" || text.length === 0) throw new Error("CSV evidence must be non-empty text");
+  const rows = [];
+  let row = [];
+  let field = "";
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quoted) {
+      if (character === '"' && text[index + 1] === '"') {
+        field += '"';
+        index += 1;
+      } else if (character === '"') {
+        quoted = false;
+      } else {
+        field += character;
+      }
+    } else if (character === '"' && field.length === 0) {
+      quoted = true;
+    } else if (character === ",") {
+      row.push(field);
+      field = "";
+    } else if (character === "\n") {
+      row.push(field.endsWith("\r") ? field.slice(0, -1) : field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += character;
+    }
+  }
+  if (quoted) throw new Error("CSV evidence contains an unterminated quoted field");
+  if (field.length > 0 || row.length > 0) {
+    row.push(field.endsWith("\r") ? field.slice(0, -1) : field);
+    rows.push(row);
+  }
+  const header = rows.shift();
+  if (!header?.length || rows.some((entry) => entry.length !== header.length)) {
+    throw new Error("CSV evidence has an invalid row width");
+  }
+  return {
+    header,
+    records: rows.map((entry) => Object.fromEntries(header.map((key, index) => [key, entry[index]]))),
+  };
+};
+
+const nonEmptyText = (value) => typeof value === "string" && value.trim().length > 0;
+
+export function validateP2S4IndependentReviewBody(review, { requireGo = true } = {}) {
+  if (typeof review !== "string") throw new Error("P2-S4 independent review body must be text");
+  const normalized = review.replace(/\r\n/g, "\n");
+  const digest = createHash("sha256").update(normalized).digest("hex");
+  if (digest !== P2_S4_CLOSURE.independentReviewSha256) {
+    throw new Error("P2-S4 independent review body digest mismatch");
+  }
+
+  let record;
+  try {
+    record = JSON.parse(normalized);
+  } catch {
+    throw new Error("P2-S4 independent review body must be valid JSON");
+  }
+  if (
+    record?.schema_version !== 1 ||
+    record.reviewed_sha !== P2_S4_CLOSURE.reviewedHead ||
+    record.base_sha !== P2_S4_CLOSURE.reviewBase ||
+    record.visual_subject !== P2_S4_CLOSURE.subject ||
+    record.evidence_head !== P2_S4_CLOSURE.evidenceHead ||
+    record.full_gate_head !== P2_S4_CLOSURE.gateHead ||
+    record.review_mode !== "independent-detached-read-only" ||
+    record.worktree_detached !== true ||
+    record.worktree_clean !== true ||
+    record.reviewer_task !== "/root/pr66_corrective_independent" ||
+    record.reference_archive_sha256 !== P2_S4_CLOSURE.referenceArchiveSha256 ||
+    !Array.isArray(record.mappings) ||
+    record.mappings.length !== P2_S4_SEMANTIC_ROWS.length
+  ) {
+    throw new Error("P2-S4 independent review metadata mismatch");
+  }
+
+  const seen = new Set();
+  for (const expected of P2_S4_SEMANTIC_ROWS) {
+    const key = `${expected.build}:${expected.ordinal}`;
+    const matches = record.mappings.filter((mapping) => `${mapping?.build}:${mapping?.ordinal}` === key);
+    if (matches.length !== 1 || seen.has(key)) throw new Error(`P2-S4 independent review must contain exactly one ${key} mapping`);
+    seen.add(key);
+    const mapping = matches[0];
+    if (mapping.state !== expected.state || mapping.reference_asset !== expected.reference_asset) {
+      throw new Error(`P2-S4 independent review reference mismatch: ${key}`);
+    }
+  }
+
+  const accepted = record.verdict === "GO" && record.semantic_credit === "accepted";
+  const withheld = record.verdict === "NO-GO" && record.semantic_credit === "withheld";
+  if (!accepted && !withheld) throw new Error("P2-S4 independent review verdict and semantic credit are inconsistent");
+  if (requireGo && !accepted) throw new Error("P2-S4 independent review must record GO with accepted semantic credit");
+  for (const mapping of record.mappings) {
+    if (accepted && (
+      mapping.result !== "accepted" ||
+      mapping.matrix_status !== "implemented" ||
+      !nonEmptyText(mapping.target_route) ||
+      !nonEmptyText(mapping.target_component) ||
+      mapping.evidence !== P2_S4_CLOSURE.independentReview
+    )) {
+      throw new Error(`P2-S4 accepted review mapping is incomplete: ${mapping.build}:${mapping.ordinal}`);
+    }
+    if (withheld && (
+      mapping.result !== "withheld" ||
+      mapping.matrix_status !== "not_started" ||
+      mapping.target_route !== "" ||
+      mapping.target_component !== "" ||
+      mapping.evidence !== ""
+    )) {
+      throw new Error(`P2-S4 withheld review mapping is inconsistent: ${mapping.build}:${mapping.ordinal}`);
+    }
+  }
+  if (withheld && (!Array.isArray(record.findings) || record.findings.length < 1 || record.findings.some((finding) => !nonEmptyText(finding)))) {
+    throw new Error("P2-S4 NO-GO review must contain findings");
+  }
+  return record;
+}
+
+export function validateP2S4SemanticReconciliation(matrixText, reviewRecord, { rootDir = process.cwd(), routeMapText } = {}) {
+  const { header, records } = parseCsv(matrixText);
+  if (JSON.stringify(header) !== JSON.stringify(P2_BUILD_MATRIX_COLUMNS) || records.length !== 1150) {
+    throw new Error("P2-S4 semantic reconciliation requires the exact 1,150-row Build matrix schema");
+  }
+  const matrixKeys = new Set();
+  const buildCounts = Object.fromEntries(Object.keys(P2_BUILD_MATRIX_COUNTS).map((build) => [build, 0]));
+  for (const row of records) {
+    const key = `${row.build}:${row.ordinal}`;
+    if (
+      !Object.hasOwn(P2_BUILD_MATRIX_COUNTS, row.build) ||
+      !/^\d+$/.test(row.ordinal) ||
+      matrixKeys.has(key) ||
+      !nonEmptyText(row.state) ||
+      !nonEmptyText(row.name_or_route) ||
+      row.source_state_identity !== `${row.build}|${row.state}|${row.name_or_route}|${row.width}|${row.height}` ||
+      !row.reference_asset.startsWith(`${row.build}/`) ||
+      !row.reference_asset.endsWith(".html")
+    ) {
+      throw new Error(`P2-S4 Build matrix source identity mismatch: ${key}`);
+    }
+    matrixKeys.add(key);
+    buildCounts[row.build] += 1;
+  }
+  if (Object.keys(P2_BUILD_MATRIX_COUNTS).some((build) => buildCounts[build] !== P2_BUILD_MATRIX_COUNTS[build])) {
+    throw new Error("P2-S4 semantic reconciliation requires the canonical Build row distribution");
+  }
+  const sourceProjection = records.map((row) => P2_BUILD_MATRIX_COLUMNS.slice(0, 14).map((column) => row[column]));
+  const sourceProjectionDigest = createHash("sha256").update(JSON.stringify(sourceProjection)).digest("hex");
+  if (sourceProjectionDigest !== P2_S4_CLOSURE.matrixSourceProjectionSha256) {
+    throw new Error("P2-S4 Build matrix source projection digest mismatch");
+  }
+  if (!Array.isArray(reviewRecord?.mappings) || reviewRecord.mappings.length !== P2_S4_SEMANTIC_ROWS.length) {
+    throw new Error("P2-S4 semantic reconciliation requires the exact 13 review mappings");
+  }
+  const reviewKeys = new Set(reviewRecord.mappings.map((mapping) => `${mapping?.build}:${mapping?.ordinal}`));
+  if (reviewKeys.size !== P2_S4_SEMANTIC_ROWS.length) throw new Error("P2-S4 semantic reconciliation contains duplicate review mappings");
+
+  const root = realpathSync(resolve(rootDir));
+  const routeMapSource = routeMapText ?? readFileSync(resolve(root, "docs/platform55-shell-route-map.csv"), "utf8");
+  const routeMapDigest = createHash("sha256").update(routeMapSource).digest("hex");
+  if (routeMapDigest !== P2_S4_CLOSURE.routeMapSha256) {
+    throw new Error("P2-S4 route map digest mismatch");
+  }
+  const routeMap = parseCsv(routeMapSource);
+  if (JSON.stringify(routeMap.header) !== JSON.stringify(P2_ROUTE_MAP_COLUMNS) || routeMap.records.length !== P2_ROUTE_MAP_COUNT) {
+    throw new Error("P2-S4 semantic reconciliation requires the canonical 29-row route map schema");
+  }
+  const routeRecords = routeMap.records;
+  if (new Set(routeRecords.map((row) => row.route)).size !== P2_ROUTE_MAP_COUNT) {
+    throw new Error("P2-S4 route map routes must be unique");
+  }
+
+  for (const expected of P2_S4_SEMANTIC_ROWS) {
+    const key = `${expected.build}:${expected.ordinal}`;
+    const rows = records.filter((row) => `${row.build}:${row.ordinal}` === key);
+    if (rows.length !== 1) throw new Error(`${key} must appear exactly once in the Build matrix`);
+    const row = rows[0];
+    const mapping = reviewRecord.mappings.find((candidate) => `${candidate?.build}:${candidate?.ordinal}` === key);
+    if (!mapping || mapping.state !== expected.state || mapping.reference_asset !== expected.reference_asset) {
+      throw new Error(`${key} must match the pinned Build reference semantics`);
+    }
+    if (row.state !== expected.state || row.reference_asset !== expected.reference_asset) {
+      throw new Error(`${key} Build matrix source identity mismatch`);
+    }
+    if (row.mapping_status !== "implemented") {
+      throw new Error(`${key} must be implemented before P2-S4 semantic credit`);
+    }
+    if (
+      mapping.result !== "accepted" ||
+      mapping.matrix_status !== "implemented" ||
+      !nonEmptyText(mapping.target_route) ||
+      !nonEmptyText(mapping.target_component) ||
+      mapping.evidence !== P2_S4_CLOSURE.independentReview
+    ) {
+      throw new Error(`${key} must have an accepted independent semantic mapping`);
+    }
+    const targetRoutes = routeRecords.filter((candidate) => candidate.route === mapping.target_route);
+    const target = targetRoutes[0];
+    const targetComponents = new Set((target?.platform55_surfaces || "").split(";").filter(Boolean));
+    if (
+      !P2_S4_ROUTES.includes(mapping.target_route) ||
+      targetRoutes.length !== 1 ||
+      target.owner_sprint !== "P2-S4" ||
+      target.status !== "contract_ready" ||
+      !targetComponents.has(mapping.target_component) ||
+      !existsSync(resolve(root, mapping.target_route)) ||
+      !statSync(resolve(root, mapping.target_route)).isFile()
+    ) {
+      throw new Error(`${key} must resolve to a real P2-S4 target route and declared component: ${mapping.target_route}`);
+    }
+    if (
+      row.target_route !== mapping.target_route ||
+      row.target_component !== mapping.target_component ||
+      row.disposition !== "implemented" ||
+      row.evidence !== P2_S4_CLOSURE.independentReview
+    ) {
+      throw new Error(`${key} Build matrix credit must exactly match the independent review`);
+    }
+  }
+  return reviewRecord;
+}
+
 export function validateP2S2ReviewBody(review) {
   if (typeof review !== "string") throw new Error("P2 independent review body must be text");
   const normalized = review.replace(/\r\n/g, "\n");
@@ -273,6 +530,44 @@ const validateP2S3Closure = (sprint, rootDir) => {
   }
 };
 
+const validateP2S4Closure = (sprint, rootDir) => {
+  if (sprint.id !== "P2" || sprint.progress < 70) return;
+  const evidence = sprint.evidence || {};
+  if (!evidence.evidence_plan?.includes(P2_S4_CLOSURE.plan)) {
+    throw new Error("P2-S4 evidence_plan must contain the exact Network and Service plan");
+  }
+  if (!evidence.implementation?.includes(P2_S4_CLOSURE.implementation)) {
+    throw new Error("P2-S4 implementation must contain the exact Network and Service evidence");
+  }
+  if (!P2_S4_CLOSURE.automatedSuite.every((entry) => evidence.automated_suite?.includes(entry))) {
+    throw new Error("P2-S4 automated_suite must contain the exact Network and Service gates");
+  }
+  if (!evidence.independent_review?.includes(P2_S4_CLOSURE.independentReview)) {
+    throw new Error("P2-S4 independent review must contain the exact semantic and visual review");
+  }
+
+  const root = realpathSync(resolve(rootDir));
+  const implementation = readFileSync(resolve(root, P2_S4_CLOSURE.implementation), "utf8");
+  const independentReview = readFileSync(resolve(root, P2_S4_CLOSURE.independentReview), "utf8");
+  const manifest = JSON.parse(readFileSync(resolve(root, P2_S4_CLOSURE.manifest), "utf8"));
+  requireText(implementation, new RegExp(`Visual subject SHA:\\s*\\\`${P2_S4_CLOSURE.subject}\\\``), "P2-S4 evidence must name the visual subject");
+  requireText(implementation, new RegExp(`Evidence artifact HEAD:\\s*\\\`${P2_S4_CLOSURE.evidenceHead}\\\``), "P2-S4 evidence must name the immutable evidence artifact HEAD");
+  requireText(implementation, new RegExp(`Full-gate HEAD:\\s*\\\`${P2_S4_CLOSURE.gateHead}\\\``), "P2-S4 evidence must name the immutable full-gate HEAD");
+  requireText(implementation, /48 of 48 actual-route captures/i, "P2-S4 evidence must record all 48 captures");
+  requireText(implementation, /Local implementation verdict:\s*GO/i, "P2-S4 evidence must record local GO");
+  requireText(implementation, /Build12 semantic equivalence credit:\s*accepted/i, "P2-S4 evidence must record accepted semantic equivalence before credit");
+  const reviewRecord = validateP2S4IndependentReviewBody(independentReview);
+  validateP2S4SemanticReconciliation(
+    readFileSync(resolve(root, "docs/platform55-shell-build-matrix.csv"), "utf8"),
+    reviewRecord,
+    { rootDir: root },
+  );
+  requireText(implementation, /global Platform55 verdict:\s*NO-GO/i, "P2-S4 evidence must keep the global verdict NO-GO");
+  requireText(implementation, /No push, PR metadata, preview, deployment, promotion, Supabase change/i, "P2-S4 evidence must preserve local-only boundaries");
+  validateP2S4Manifest(manifest);
+  validateP2S4EvidenceFiles(root, manifest);
+};
+
 export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
   if (ledger?.schema_version !== 1 || ledger?.baseline !== 63) throw new Error("invalid ledger header");
   if (!Array.isArray(ledger.sprints) || ledger.sprints.map((s) => s.id).join(",") !== IDS.join(",")) throw new Error("sprints must be P0-P5");
@@ -283,6 +578,7 @@ export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
     validateEvidence(sprint, rootDir);
     validateP2S2Closure(sprint, rootDir);
     validateP2S3Closure(sprint, rootDir);
+    validateP2S4Closure(sprint, rootDir);
     if (sprint.progress >= 85 && sprint.verdicts?.independent_review !== "GO") throw new Error(`${sprint.id} requires independent_review GO verdict`);
     for (const [threshold, key] of GATES) if (sprint.progress >= threshold && !hasEvidence(sprint.evidence, key)) throw new Error(`${sprint.id} requires ${key}`);
   }

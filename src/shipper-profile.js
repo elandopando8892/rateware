@@ -85,6 +85,7 @@ function detail(title, body, open = false) {
 }
 
 function render() {
+  root.dataset.state = "loaded";
   const t = copy[locale];
   const shipper = profile.shipper || {};
   const data = shipper.profile_data || {};
@@ -189,9 +190,21 @@ root.addEventListener("submit", async (event) => {
 languageButton.addEventListener("click", () => {
   locale = locale === "en" ? "es" : "en";
   languageButton.textContent = locale === "en" ? "ES" : "EN";
-  render();
+  if (profile) render();
 });
 
-callProfileApi("get_profile").then((data) => { profile = data; render(); }).catch((error) => {
-  root.innerHTML = `<h1>Profile unavailable</h1><p>${escapeHtml(humanizeError(error))}</p>`;
-});
+if (!token) {
+  root.dataset.state = "signed-out";
+  root.innerHTML = `<section class="rw-network-service-state" data-platform55-public-state data-state="signed-out"><h1>Secure profile link required</h1><p>Open the current customer profile invitation to continue.</p></section>`;
+} else {
+  callProfileApi("get_profile").then((data) => { profile = data; render(); }).catch((error) => {
+    const message = humanizeError(error);
+    if (/expired/i.test(message)) {
+      root.dataset.state = "expired";
+      root.innerHTML = `<section class="rw-network-service-state" data-platform55-public-state data-state="expired"><h1>Profile link expired</h1><p>${escapeHtml(message)}</p></section>`;
+    } else {
+      root.dataset.state = "error";
+      root.innerHTML = `<section class="rw-network-service-state" data-platform55-public-state data-state="error"><h1>Profile unavailable</h1><p>${escapeHtml(message)}</p></section>`;
+    }
+  });
+}

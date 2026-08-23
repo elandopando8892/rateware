@@ -5,66 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Vendor CI</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-network-service.css" />
   </head>
-  <body>
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Rateware modules">
-        <a class="brand-mark" href="./app.html">Rateware</a>
-        <nav class="nav-groups">
-          <section class="nav-group">
-            <p>Operate</p>
-            <a href="./app.html" data-nav-code="CC">Command Center</a>
-            <a href="./upload-center.html" data-nav-code="IM">Import</a>
-            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
-            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
-            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
-          </section>
-          <section class="nav-group">
-            <p>Analyze</p>
-            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
-          </section>
-          <section class="nav-group">
-            <p>Source</p>
-            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
-            <a href="./provider-service.html" data-nav-code="PS">Provider Service</a>
-            <a href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
-            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
-            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
-            <a aria-current="page" href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
-          </section>
-          <section class="nav-group">
-            <p>Admin</p>
-            <a href="./settings.html" data-nav-code="ST">Settings</a>
-            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
-            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
-          </section>
-        </nav>
-      </aside>
-
-      <div class="page-frame">
-        <header class="page-header">
+  <body data-platform55-shell="tenant" data-platform55-page="vendor-improvement">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <div class="rw-shell">
+        <header class="rw-topbar" data-platform55-topbar>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Log in</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
+        </header>
+        <main class="vendor-ci-layout rw-main rw-network-service-page" data-platform55-page-content data-platform55-network-state="vendor-improvement">
+          <header class="page-header" data-platform55-page-header>
           <div>
-            <p class="eyebrow">Vendor relationship management</p>
-            <h1>Vendor Continuous Improvement</h1>
-            <nav class="module-crumbs" aria-label="Module context">
-              <a href="./app.html">Command Center</a>
-              <a href="./vendors.html">Carrier CRM</a>
-              <span>Vendor CI</span>
-            </nav>
+            <p class="eyebrow" data-platform55-breadcrumbs>Service · Vendor CI</p>
+            <h1 data-platform55-page-title>Vendor Continuous Improvement</h1>
+            <p data-platform55-page-subtitle>Carrier performance, evidence, and human-controlled improvement plans.</p>
           </div>
           <div class="page-header-actions">
             <button id="run-vendor-ci-reminders" class="secondary" type="button">Run reminders</button>
             <button id="refresh-vendor-ci" class="page-primary-action" type="button">Recalculate Value Curve</button>
-            <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Log in</button>
-              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
-              <p id="auth-status" role="status"></p>
-            </form>
           </div>
-        </header>
+          </header>
 
-        <main class="vendor-ci-layout">
-          <section class="vendor-ci-metrics wide-section" aria-label="Vendor improvement metrics">
+          <section class="vendor-ci-metrics wide-section rw-network-service-metrics" aria-label="Vendor improvement metrics">
             <article><span>Open CI cases</span><strong id="ci-open">0</strong></article>
             <article><span>Critical</span><strong id="ci-critical">0</strong></article>
             <article><span>Due soon</span><strong id="ci-due-soon">0</strong></article>
@@ -194,7 +163,7 @@
                 </div>
                 <a class="secondary link-button" href="./vendor-support.html">Open Support Queue</a>
               </div>
-              <div class="table-wrap vendor-ci-table-wrap">
+              <div class="table-wrap vendor-ci-table-wrap rw-network-service-table-scroll">
                 <table class="vendor-ci-table">
                   <thead>
                     <tr>
@@ -246,7 +215,7 @@
               </div>
               <span class="status-pill neutral">Live scoring with manual overrides</span>
             </div>
-            <div class="table-wrap vendor-ci-table-wrap">
+            <div class="table-wrap vendor-ci-table-wrap rw-network-service-table-scroll">
               <table class="vendor-ci-table">
                 <thead>
                   <tr>

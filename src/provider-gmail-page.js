@@ -1,5 +1,6 @@
 import { requirePrivatePage } from './auth.js';
 import { callRatewareFunction } from './rateware-api.js';
+import { updatePlatform55Shell } from './platform55-shell.js';
 
 const entitySelect = document.getElementById('provider-gmail-entity');
 const connectButton = document.getElementById('provider-gmail-connect');
@@ -17,6 +18,16 @@ const historyLabel = document.getElementById('provider-gmail-history');
 
 let snapshot = { mailbox_email: '', legal_entities: [], connections: [], pubsub_configured: false };
 let actionRunning = false;
+
+function updateProviderGmailShell(status, busy = false) {
+  updatePlatform55Shell({ pageState: {
+    title: 'Gmail Intake',
+    subtitle: 'Read-only mailbox connectivity and bounded inbox synchronization.',
+    breadcrumbs: ['Service', 'Provider Gmail'],
+    status,
+    busy,
+  } });
+}
 
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[char]));
 const dateTime = (value) => {
@@ -67,15 +78,22 @@ function renderConnection() {
 }
 
 async function loadStatus({ quiet = false } = {}) {
-  if (!quiet) setStatus('Loading Gmail intake status…');
+  if (!quiet) {
+    setStatus('Loading Gmail intake status…');
+    updateProviderGmailShell('Loading Gmail connectivity', true);
+  }
   try {
     const response = await callRatewareFunction('provider-gmail-intake-api', 'provider_gmail_status');
     snapshot = response?.data || snapshot;
     renderEntityOptions();
     renderConnection();
-    if (!quiet) setStatus('Gmail intake status loaded.', 'success');
+    updateProviderGmailShell('Gmail connectivity loaded');
+    if (!quiet) {
+      setStatus('Gmail intake status loaded.', 'success');
+    }
   } catch (error) {
     setStatus(error?.message || 'Gmail intake status could not be loaded.', 'error');
+    updateProviderGmailShell('Gmail connectivity could not load');
   }
 }
 

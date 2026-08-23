@@ -5,67 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Provider Service</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-network-service.css" />
     <link rel="stylesheet" href="./src/provider-service-360.css" />
     <link rel="stylesheet" href="./src/provider-service-page.css" />
   </head>
-  <body>
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Rateware modules">
-        <a class="brand-mark" href="./app.html">Rateware</a>
-        <nav class="nav-groups">
-          <section class="nav-group">
-            <p>Operate</p>
-            <a href="./app.html" data-nav-code="CC">Command Center</a>
-            <a href="./upload-center.html" data-nav-code="IM">Import</a>
-            <a href="./upload-history.html" data-nav-code="SF">Source Files</a>
-            <a href="./staging-review.html" data-nav-code="RQ">Review Queue</a>
-            <a href="./rateware.html" data-nav-code="RW">Rateware</a>
-          </section>
-          <section class="nav-group">
-            <p>Analyze</p>
-            <a href="./business-intelligence.html" data-nav-code="AN">Analyze</a>
-          </section>
-          <section class="nav-group">
-            <p>Source</p>
-            <a href="./vendors.html" data-nav-code="CM">Carrier CRM</a>
-            <a aria-current="page" href="./provider-service.html" data-nav-code="PS">Provider Service</a>
-            <a href="./rfx-process.html" data-nav-code="RP">RFx Process</a>
-            <a href="./rfx-events.html" data-nav-code="BR">Bid Room</a>
-            <a href="./vendor-support.html" data-nav-code="VS">Vendor Support</a>
-            <a href="./vendor-improvement.html" data-nav-code="CI">Vendor CI</a>
-          </section>
-          <section class="nav-group">
-            <p>Admin</p>
-            <a href="./settings.html" data-nav-code="ST">Settings</a>
-            <a href="./interpretation-memory.html" data-nav-code="LR">Learning Rules</a>
-            <a href="./catalog-workbench.html" data-nav-code="CT">Catalog</a>
-          </section>
-        </nav>
-      </aside>
-
-      <div class="page-frame">
-        <header class="page-header">
+  <body data-platform55-shell="tenant" data-platform55-page="provider-service">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <div class="rw-shell">
+        <header class="rw-topbar" data-platform55-topbar>
+          <form id="auth-form" class="auth-strip">
+            <button id="auth-button" type="submit">Log in</button>
+            <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
+            <p id="auth-status" role="status"></p>
+          </form>
+        </header>
+        <main class="provider-service-layout rw-main rw-network-service-page" data-platform55-page-content data-platform55-network-state="provider-review-queue">
+          <header class="page-header" data-platform55-page-header>
           <div>
-            <p class="eyebrow">Provider relationship operations</p>
-            <h1>Provider Service</h1>
-            <nav class="module-crumbs" aria-label="Module context">
-              <a href="./vendors.html">Carrier CRM</a>
-              <span>Provider Service 360</span>
-            </nav>
+            <p class="eyebrow" data-platform55-breadcrumbs>Service · Provider Service 360</p>
+            <h1 data-platform55-page-title>Provider Service</h1>
+            <p data-platform55-page-subtitle>Provider review queue, readiness, communications, and evidence.</p>
           </div>
           <div class="page-header-actions">
             <a class="page-primary-action" href="./provider-onboarding.html">Onboarding Workspace</a>
             <a class="secondary-link" href="./provider-communications.html">Communications Inbox</a>
             <a class="secondary-link" href="./vendors.html">Open Carrier CRM</a>
-            <form id="auth-form" class="auth-strip">
-              <button id="auth-button" type="submit">Log in</button>
-              <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
-              <p id="auth-status" role="status"></p>
-            </form>
           </div>
-        </header>
+          </header>
 
-        <main class="provider-service-layout">
           <section class="provider-service-hero wide-section">
             <div>
               <p class="eyebrow">Relationship control tower</p>
@@ -78,7 +48,7 @@
             </label>
           </section>
 
-          <section class="provider-service-metrics wide-section" aria-label="Provider Service metrics">
+          <section class="provider-service-metrics wide-section rw-network-service-metrics" aria-label="Provider Service metrics">
             <button type="button" data-provider-queue="all" class="provider-service-metric is-active"><span>Relationships</span><strong id="provider-metric-relationships">0</strong></button>
             <button type="button" data-provider-queue="critical" class="provider-service-metric"><span>Critical</span><strong id="provider-metric-critical">0</strong></button>
             <button type="button" data-provider-queue="attention" class="provider-service-metric"><span>Needs attention</span><strong id="provider-metric-attention">0</strong></button>
@@ -119,7 +89,7 @@
               </div>
             </div>
 
-            <aside class="workspace-panel provider-service-detail-panel" aria-label="Selected Provider 360">
+            <aside class="workspace-panel provider-service-detail-panel rw-network-service-detail" aria-label="Selected Provider 360">
               <div id="provider-service-detail" class="provider-service-detail-empty">
                 <strong>Select a provider</strong>
                 <p>Open a relationship to inspect activation, documents, cases, communications, compliance, integrations, approvals, and recent activity.</p>

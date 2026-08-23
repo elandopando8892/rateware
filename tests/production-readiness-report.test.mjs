@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
+import { P2_S4_CLOSURE, validateP2S4Manifest } from "../tools/platform55-network-service-evidence.mjs";
 import {
   computeOverallProgress,
   formatProgressReport,
@@ -10,6 +11,61 @@ import {
   validateP2S2ReviewBody,
   validateLedger
 } from "../tools/production-readiness-report.mjs";
+import * as productionReadiness from "../tools/production-readiness-report.mjs";
+
+const P2_S4_SEMANTIC_FIXTURE = [
+  ["build_05", "5516", "onboarding", "build_05/rateware_procurement_carrier_network_build_v05.html"],
+  ["build_05", "5521", "onboarding-workflow", "build_05/rateware_procurement_carrier_network_build_v05.html"],
+  ["build_07", "14", "communications", "build_07/rateware_operations_execution_build_v07.html"],
+  ["build_07", "49", "communications-thread", "build_07/rateware_operations_execution_build_v07.html"],
+  ["build_10", "25", "support", "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html"],
+  ["build_10", "27", "connection-wizard", "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html"],
+  ["build_10", "44", "gmail-connection", "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html"],
+  ["build_10", "67", "support-cases", "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html"],
+  ["build_11", "20", "vendor-risk", "build_11/rateware_security_compliance_enterprise_governance_build_v11.html"],
+  ["build_12", "14", "onboarding", "build_12/rateware_experience_configuration_release_readiness_build_v12.html"],
+  ["build_12", "23", "support", "build_12/rateware_experience_configuration_release_readiness_build_v12.html"],
+  ["build_12", "81", "support-center", "build_12/rateware_experience_configuration_release_readiness_build_v12.html"],
+  ["build_12", "82", "support-case", "build_12/rateware_experience_configuration_release_readiness_build_v12.html"],
+];
+
+const acceptedP2S4Review = (targetRoute = "does-not-exist.html", targetComponent = "invented-component") => ({
+  mappings: P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal, state, reference_asset]) => ({
+    build,
+    ordinal,
+    state,
+    reference_asset,
+    matrix_status: "implemented",
+    target_route: targetRoute,
+    target_component: targetComponent,
+    evidence: P2_S4_CLOSURE.independentReview,
+    result: "accepted",
+  })),
+});
+
+const creditedP2S4Matrix = (matrixText, targetRoute = "does-not-exist.html", targetComponent = "invented-component") => {
+  const keys = new Set(P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal]) => `${build}:${ordinal}`));
+  return matrixText.split(/\r?\n/).map((line, index) => {
+    if (index === 0 || !line) return line;
+    const fields = [...line.matchAll(/"((?:[^"]|"")*)"/g)].map((match) => match[1].replace(/""/g, '"'));
+    if (!keys.has(`${fields[0]}:${fields[1]}`)) return line;
+    fields[14] = "implemented";
+    fields[15] = targetRoute;
+    fields[16] = targetComponent;
+    fields[17] = "implemented";
+    fields[18] = P2_S4_CLOSURE.independentReview;
+    return fields.map((field) => `"${field.replace(/"/g, '""')}"`).join(",");
+  }).join("\n");
+};
+
+const driftP2S4SourceProjection = (matrixText) => {
+  const lines = matrixText.split(/\r?\n/);
+  const fields = [...lines[1].matchAll(/"((?:[^"]|"")*)"/g)].map((match) => match[1].replace(/""/g, '"'));
+  fields[2] = "fabricated-source";
+  fields[9] = `${fields[0]}|${fields[2]}|${fields[3]}|${fields[4]}|${fields[5]}`;
+  lines[1] = fields.map((field) => `"${field.replace(/"/g, '""')}"`).join(",");
+  return lines.join("\n");
+};
 
 const ledger = {
   schema_version: 1,
@@ -287,15 +343,18 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
   assert.deepEqual(p2.evidence.evidence_plan, [
     "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-master.md",
     "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s2-operate.md",
-    "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md"
+    "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md",
+    "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s4-network-service.md"
   ]);
   assert.deepEqual(p2.evidence.implementation, [
     "docs/release/evidence/2026-08-21-p2-shell-s1-command-center.md",
     "docs/release/evidence/2026-08-21-p2-s2-operate.md",
-    "docs/release/evidence/2026-08-21-p2-s3-procurement.md"
+    "docs/release/evidence/2026-08-21-p2-s3-procurement.md",
+    "docs/release/evidence/2026-08-21-p2-s4-network-service.md"
   ]);
   assert.deepEqual(p2.evidence.independent_review, [
-    "docs/release/evidence/2026-08-21-p2-s2-independent-review.md"
+    "docs/release/evidence/2026-08-21-p2-s2-independent-review.md",
+    P2_S4_CLOSURE.independentReview,
   ]);
   assert.equal(p2.verdicts.independent_review, "GO");
   assert.deepEqual(p2.evidence.automated_suite, [
@@ -377,6 +436,173 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
   const driftedHeadBlobs = [...currentBlobs];
   driftedHeadBlobs[0] = "0".repeat(40);
   assert.throws(() => validateP2S3SourceBlobParity(manifestBlobs, driftedHeadBlobs), /source blob mismatch/i);
+});
+
+test("keeps P2-S4 uncredited until semantic fidelity and visual accessibility are independently accepted", () => {
+  const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
+  validateLedger(persisted);
+  assert.equal(p2.progress, 60);
+  assert.ok(p2.evidence.evidence_plan.includes(P2_S4_CLOSURE.plan));
+  assert.ok(p2.evidence.implementation.includes(P2_S4_CLOSURE.implementation));
+  assert.equal(p2.evidence.automated_suite.some((entry) => (
+    entry.includes("network-service") || entry.includes("37 files") || entry.includes("P2-S4")
+  )), false);
+  const evidence = readFileSync(P2_S4_CLOSURE.implementation, "utf8");
+  assert.match(evidence, /48 of 48 actual-route captures/i);
+  assert.match(evidence, /Build12 semantic equivalence credit:\s*withheld/i);
+  assert.match(evidence, /Independent review:\s*NO-GO/i);
+  assert.match(evidence, /Global Platform55 verdict:\s*NO-GO/i);
+  validateP2S4Manifest(JSON.parse(readFileSync(P2_S4_CLOSURE.manifest, "utf8")));
+});
+
+test("records the exact current P2-S4 NO-GO without granting milestone credit", () => {
+  const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
+  const review = readFileSync(P2_S4_CLOSURE.independentReview, "utf8");
+  const record = productionReadiness.validateP2S4IndependentReviewBody(review, { requireGo: false });
+  assert.ok(p2.evidence.independent_review.includes(P2_S4_CLOSURE.independentReview));
+  assert.equal(record.reviewed_sha, P2_S4_CLOSURE.reviewedHead);
+  assert.equal(record.verdict, "NO-GO");
+  assert.equal(record.semantic_credit, "withheld");
+  assert.equal(record.mappings.length, 13);
+  assert.ok(record.mappings.every((mapping) => (
+    mapping.result === "withheld" &&
+    mapping.matrix_status === "not_started" &&
+    mapping.target_route === "" &&
+    mapping.target_component === "" &&
+    mapping.evidence === ""
+  )));
+  assert.equal(p2.progress, 60);
+  assert.equal(computeOverallProgress(persisted), 80.2);
+});
+
+test("rejects P2 at 70 without the exact P2-S4 Network and Service closure", () => {
+  const fabricated = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = fabricated.sprints.find((sprint) => sprint.id === "P2");
+  p2.progress = 70;
+  p2.evidence.automated_suite = p2.evidence.automated_suite.filter((entry) => !entry.includes("P2-S4") && !entry.includes("network-service") && !entry.includes("37 files"));
+
+  assert.throws(() => validateLedger(fabricated), /P2-S4/i);
+});
+
+test("rejects P2-S4 credit without an exact independent semantic review", () => {
+  const fabricated = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = fabricated.sprints.find((sprint) => sprint.id === "P2");
+  p2.progress = 70;
+  p2.evidence.automated_suite.push(...P2_S4_CLOSURE.automatedSuite);
+  p2.evidence.independent_review = p2.evidence.independent_review.filter((entry) => entry !== P2_S4_CLOSURE.independentReview);
+
+  assert.throws(() => validateLedger(fabricated), /P2-S4 independent review/i);
+});
+
+test("rejects a fabricated P2-S4 review even when it contains every declarative phrase", () => {
+  assert.equal(
+    typeof productionReadiness.validateP2S4IndependentReviewBody,
+    "function",
+    "production readiness must expose the content-addressed P2-S4 review validator",
+  );
+  const fabricated = JSON.stringify({
+    verdict: "GO",
+    reviewed_sha: P2_S4_CLOSURE.gateHead,
+    visual_subject: P2_S4_CLOSURE.subject,
+    evidence_head: P2_S4_CLOSURE.evidenceHead,
+    semantic_credit: "accepted",
+    review_mode: "independent-detached-read-only",
+  });
+  assert.throws(
+    () => productionReadiness.validateP2S4IndependentReviewBody(fabricated),
+    /digest mismatch/i,
+  );
+});
+
+test("rejects P2-S4 semantic credit while the thirteen reference mappings remain uncredited", () => {
+  assert.equal(
+    typeof productionReadiness.validateP2S4SemanticReconciliation,
+    "function",
+    "production readiness must expose the exact thirteen-row reconciliation validator",
+  );
+  const acceptedReview = {
+    mappings: P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal, state, reference_asset]) => ({
+      build,
+      ordinal,
+      state,
+      reference_asset,
+      target_route: "semantically-reviewed.html",
+      target_component: "semantically reviewed surface",
+      evidence: P2_S4_CLOSURE.independentReview,
+      result: "accepted",
+    })),
+  };
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(
+      readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"),
+      acceptedReview,
+    ),
+    /build_05:5516.*implemented/i,
+  );
+});
+
+test("rejects P2-S4 semantic credit from a truncated thirteen-row matrix", () => {
+  const credited = creditedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"));
+  const keys = new Set(P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal]) => `${build}:${ordinal}`));
+  const lines = credited.split(/\r?\n/);
+  const truncated = [lines[0], ...lines.slice(1).filter((line) => {
+    const match = line.match(/^"([^"]+)","([^"]+)"/);
+    return match && keys.has(`${match[1]}:${match[2]}`);
+  })].join("\n");
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(truncated, acceptedP2S4Review()),
+    /exact 1,150/i,
+  );
+});
+
+test("rejects P2-S4 semantic credit for a target outside the real S4 route inventory", () => {
+  const credited = creditedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"));
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(credited, acceptedP2S4Review()),
+    /does-not-exist|real P2-S4 target route/i,
+  );
+});
+
+test("rejects P2-S4 semantic credit for an invented component on a real S4 route", () => {
+  const credited = creditedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"), "shipper-crm.html", "invented-component");
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(
+      credited,
+      acceptedP2S4Review("shipper-crm.html", "invented-component"),
+    ),
+    /declared component/i,
+  );
+});
+
+test("rejects P2-S4 semantic credit when the route map invents the reviewed component", () => {
+  const credited = creditedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"), "shipper-crm.html", "invented-component");
+  const routeMap = readFileSync("docs/platform55-shell-route-map.csv", "utf8");
+  const driftedRouteMap = routeMap.replace(
+    /^(shipper-crm\.html,[^\r\n]*?,)(contract_ready,[^\r\n]*)$/m,
+    (row, prefix, suffix) => `${prefix.replace(/,([^,]*),$/, ",$1;invented-component,")}${suffix}`,
+  );
+  assert.notEqual(driftedRouteMap, routeMap, "the route-map mutation fixture must alter shipper-crm surfaces");
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(
+      credited,
+      acceptedP2S4Review("shipper-crm.html", "invented-component"),
+      { routeMapText: driftedRouteMap },
+    ),
+    /route map.*digest/i,
+  );
+});
+
+test("rejects P2-S4 semantic credit when the immutable Build source projection drifts", () => {
+  const credited = creditedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"), "shipper-crm.html", "shippers");
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(
+      driftP2S4SourceProjection(credited),
+      acceptedP2S4Review("shipper-crm.html", "shippers"),
+    ),
+    /source projection/i,
+  );
 });
 
 test("rejects fabricated P2-S2 closure evidence", () => {

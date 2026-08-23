@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "reviewed_sha": "70152b4ba5e48a290b33cc3c316ef42b82fb551a",
+  "base_sha": "a15fef8636a725d5c127f0ff64f26445fc82e8f4",
+  "visual_subject": "77f2bbb0b62846ea110792227b6ce51d9370ac9c",
+  "evidence_head": "d337c5aa17717c51fa87af8ee44433d99f2ff2d7",
+  "full_gate_head": "524b7a450c6b01f894b5bc9ec249ecad262a58d6",
+  "review_mode": "independent-detached-read-only",
+  "worktree_detached": true,
+  "worktree_clean": true,
+  "reviewer_task": "/root/pr66_corrective_independent",
+  "reference_archive_sha256": "cf2ced85e95dfb33bb7410bf73ace22cb95090ce649747df60bf2920e808c16a",
+  "verdict": "NO-GO",
+  "semantic_credit": "withheld",
+  "findings": [
+    "P1: the P2-S4 closure gate accepted declarative review phrases without content addressing or exact reconciliation of the 13 Build reference mappings."
+  ],
+  "mappings": [
+    {
+      "build": "build_05",
+      "ordinal": "5516",
+      "state": "onboarding",
+      "reference_asset": "build_05/rateware_procurement_carrier_network_build_v05.html",
+      "matrix_status": "not_started",
+      "target_route": "",
+      "target_component": "",
+      "evidence": "",
+      "result": "withheld"
+    },
+    {
+      "build": "build_05",
+      "ordinal": "5521",
+      "state": "onboarding-workflow",
+      "reference_asset": "build_05/rateware_procurement_carrier_network_build_v05.html",
+      "matrix_status": "not_started",
+      "target_route": "",
+      "target_component": "",
+      "evidence": "",
+      "result": "withheld"
+    },
+    {
+      "build": "build_07",
+      "ordinal": "14",
+      "state": "communications",
+      "reference_asset": "build_07/rateware_operations_execution_build_v07.html",
+      "matrix_status": "not_started",
+      "target_route": "",
+      "target_component": "",
+      "evidence": "",
+      "result": "withheld"
+    },
+    {
+      "build": "build_07",
+      "ordinal": "49",
+      "state": "communications-thread",
+      "reference_asset": "build_07/rateware_operations_execution_build_v07.html",
+      "matrix_status": "not_started",
+      "target_route": "",
+      "target_component": "",
+      "evidence": "",
+      "result": "withheld"
+    },
+    {
+      "build": "build_10",
+      "ordinal": "25",
+      "state": "support",
+      "reference_asset": "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html",
+      "matrix_status": "not_started",
+      "target_route": "",
+      "target_component": "",
+      "evidence": "",
+      "result": "withheld"
+    },
+    {
+      "build": "build_10",
+      "ordinal": "27",
+      "state": "connection-wizard",
+      "reference_asset": "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html",
+      "matrix_status": "not_started",
+      "target_route": "",
+      "target_component": "",
+      "evidence": "",
+      "result": "withheld"
+    },
+    {
+      "build": "build_10",
+      "ordinal": "44",
+      "state": "gmail-connection",
+      "reference_asset": "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html",
+      "matrix_status": "not_started",
+      "target_route": "",
+      "target_component": "",
+      "evidence": "",
+      "result": "withheld"
+    },
+    {
+      "build": "build_10",
+      "ordinal": "67",
+      "state": "support-cases",
+      "reference_asset": "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html",
+      "matrix_status": "not_started",
+      "target_route": "",
+      "target_component": "",
+      "evidence": "",
+      "result": "withheld"
+    },
+    {
+      "build": "build_11",
+      "ordinal": "20",
+      "state": "vendor-risk",
+      "reference_asset": "build_11/rateware_security_compliance_enterprise_governance_build_v11.html",
+      "matrix_status": "not_started",
+      "target_route": "",
+      "target_component": "",
+      "evidence": "",
+      "result": "withheld"
+    },
+    {
+      "build": "build_12",
+      "ordinal": "14",
+      "state": "onboarding",
+      "reference_asset": "build_12/rateware_experience_configuration_release_readiness_build_v12.html",
+      "matrix_status": "not_started",
+      "target_route": "",
+      "target_component": "",
+      "evidence": "",
+      "result": "withheld"
+    },
+    {
+      "build": "build_12",
+      "ordinal": "23",
+      "state": "support",
+      "reference_asset": "build_12/rateware_experience_configuration_release_readiness_build_v12.html",
+      "matrix_status": "not_started",
+      "target_route": "",
+      "target_component": "",
+      "evidence": "",
+      "result": "withheld"
+    },
+    {
+      "build": "build_12",
+      "ordinal": "81",
+      "state": "support-center",
+      "reference_asset": "build_12/rateware_experience_configuration_release_readiness_build_v12.html",
+      "matrix_status": "not_started",
+      "target_route": "",
+      "target_component": "",
+      "evidence": "",
+      "result": "withheld"
+    },
+    {
+      "build": "build_12",
+      "ordinal": "82",
+      "state": "support-case",
+      "reference_asset": "build_12/rateware_experience_configuration_release_readiness_build_v12.html",
+      "matrix_status": "not_started",
+      "target_route": "",
+      "target_component": "",
+      "evidence": "",
+      "result": "withheld"
+    }
+  ]
+}

@@ -96,12 +96,14 @@
         "evidence_plan": [
           "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-master.md",
           "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s2-operate.md",
-          "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md"
+          "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md",
+          "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s4-network-service.md"
         ],
         "implementation": [
           "docs/release/evidence/2026-08-21-p2-shell-s1-command-center.md",
           "docs/release/evidence/2026-08-21-p2-s2-operate.md",
-          "docs/release/evidence/2026-08-21-p2-s3-procurement.md"
+          "docs/release/evidence/2026-08-21-p2-s3-procurement.md",
+          "docs/release/evidence/2026-08-21-p2-s4-network-service.md"
         ],
         "automated_suite": [
           "npm test PASS on exact closure head 18955d06443d3532823da6725eda90041b15b2e8",
@@ -112,7 +114,8 @@
           "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures"
         ],
         "independent_review": [
-          "docs/release/evidence/2026-08-21-p2-s2-independent-review.md"
+          "docs/release/evidence/2026-08-21-p2-s2-independent-review.md",
+          "docs/release/evidence/2026-08-22-p2-s4-independent-review.json"
         ]
       },
       "verdicts": {

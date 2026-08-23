@@ -1,5 +1,6 @@
 import { requirePrivatePage } from './auth.js';
 import { callRatewareFunction } from './rateware-api.js';
+import { updatePlatform55Shell } from './platform55-shell.js';
 import { approvalProgress,normalizeOnboardingQueue,onboardingAttention,onboardingOutputStage,safeCaseLabel,summarizeOnboarding } from './provider-onboarding-domain.js';
 
 const escapeHtml=(value)=>String(value??'').replace(/[&<>'"]/g,(char)=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -9,6 +10,7 @@ const state={queue:'all',search:'',limit:40,offset:0,total:0,rows:[],metrics:{},
 const rowsNode=document.getElementById('onboarding-rows'),detailNode=document.getElementById('onboarding-detail'),caption=document.getElementById('onboarding-caption');
 const prev=document.getElementById('onboarding-prev'),next=document.getElementById('onboarding-next'),search=document.getElementById('onboarding-search');
 const queueButtons=[...document.querySelectorAll('[data-onboarding-queue]')];
+function updateProviderOnboardingShell(status,busy=false){updatePlatform55Shell({ pageState: {title:'Provider Onboarding',subtitle:'Evidence collection, approval readiness, and controlled delivery status.',breadcrumbs:['Service','Provider Onboarding'],status,busy} });}
 function metric(id,value){const node=document.getElementById(id);if(node)node.textContent=String(value??0);}
 function renderMetrics(){const m=summarizeOnboarding(state.rows,state.metrics);metric('metric-total',m.total);metric('metric-blocked',m.blocked);metric('metric-approval',m.approval);metric('metric-overdue',m.overdue);}
 function renderPagination(){const start=state.total?state.offset+1:0,end=Math.min(state.offset+state.rows.length,state.total);if(caption)caption.textContent=`${start}–${end} of ${state.total}`;if(prev)prev.disabled=state.offset<=0;if(next)next.disabled=state.offset+state.limit>=state.total;}
@@ -34,11 +36,26 @@ function renderDetail(data={}){
 }
 async function selectCase(id){if(!id||!detailNode)return;state.selectedId=id;renderRows();detailNode.innerHTML='<div class="onboarding-empty">Loading case workspace…</div>';try{const response=await callRatewareFunction('shipper-directory-api','get_provider_onboarding_case',{case_id:id});if(state.selectedId!==id)return;renderDetail(response?.data||{});}catch(error){if(state.selectedId!==id)return;detailNode.innerHTML=`<div class="ui-state ui-state-error"><strong>Case could not load</strong><p>${escapeHtml(error?.message||'Request failed.')}</p></div>`;}}
 async function loadCases({preserve=false}={}){
- const requestId=++state.requestId;rowsNode.innerHTML='<article class="ui-state ui-state-loading"><strong>Loading onboarding</strong><p>Resolving cases and controlled outputs.</p></article>';
- try{const response=await callRatewareFunction('shipper-directory-api','list_provider_onboarding_workspace',{queue:state.queue,search:state.search||undefined,limit:state.limit,offset:state.offset});if(requestId!==state.requestId)return;const data=response?.data||{};state.rows=Array.isArray(data.rows)?data.rows:[];state.total=Number(data.total||0);state.metrics=data.metrics||{};renderMetrics();renderRows();renderPagination();if(!preserve&&state.rows[0])selectCase(state.rows[0].id);else if(state.selectedId&&!state.rows.some(r=>r.id===state.selectedId)){state.selectedId=null;detailNode.innerHTML='<div class="onboarding-empty"><strong>Select a case</strong><p>Inspect its controlled workflow.</p></div>';}}
- catch(error){if(requestId!==state.requestId)return;state.rows=[];state.total=0;rowsNode.innerHTML=`<article class="ui-state ui-state-error"><strong>Onboarding could not load</strong><p>${escapeHtml(error?.message||'Request failed.')}</p></article>`;renderMetrics();renderPagination();}
+ const requestId=++state.requestId;
+ updateProviderOnboardingShell('Loading provider onboarding readiness',true);
+ rowsNode.innerHTML='<article class="ui-state ui-state-loading"><strong>Loading onboarding</strong><p>Resolving cases and controlled outputs.</p></article>';
+ try{
+  const response=await callRatewareFunction('shipper-directory-api','list_provider_onboarding_workspace',{queue:state.queue,search:state.search||undefined,limit:state.limit,offset:state.offset});
+  if(requestId!==state.requestId)return;
+  const data=response?.data||{};
+  state.rows=Array.isArray(data.rows)?data.rows:[];state.total=Number(data.total||0);state.metrics=data.metrics||{};
+  renderMetrics();renderRows();renderPagination();
+  updateProviderOnboardingShell(`${state.total.toLocaleString()} onboarding case(s) loaded`);
+  if(!preserve&&state.rows[0])selectCase(state.rows[0].id);else if(state.selectedId&&!state.rows.some(r=>r.id===state.selectedId)){state.selectedId=null;detailNode.innerHTML='<div class="onboarding-empty"><strong>Select a case</strong><p>Inspect its controlled workflow.</p></div>';}
+ }
+ catch(error){
+  if(requestId!==state.requestId)return;
+  state.rows=[];state.total=0;rowsNode.innerHTML=`<article class="ui-state ui-state-error"><strong>Onboarding could not load</strong><p>${escapeHtml(error?.message||'Request failed.')}</p></article>`;
+  renderMetrics();renderPagination();
+  updateProviderOnboardingShell('Provider onboarding readiness could not load');
+ }
 }
 queueButtons.forEach(button=>button.addEventListener('click',()=>{state.queue=normalizeOnboardingQueue(button.dataset.onboardingQueue);state.offset=0;queueButtons.forEach(b=>b.classList.toggle('is-active',b.dataset.onboardingQueue===state.queue));loadCases({preserve:true});}));
 let timer;search?.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>{state.search=search.value.trim();state.offset=0;loadCases({preserve:true});},250);});
 prev?.addEventListener('click',()=>{state.offset=Math.max(0,state.offset-state.limit);loadCases({preserve:true});});next?.addEventListener('click',()=>{if(state.offset+state.limit<state.total){state.offset+=state.limit;loadCases({preserve:true});}});
-await requirePrivatePage();loadCases();
+await requirePrivatePage();await loadCases();

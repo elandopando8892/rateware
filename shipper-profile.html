@@ -5,11 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Customer onboarding profile | Rateware</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-public-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-network-service.css" />
   </head>
-  <body class="shipper-profile-page">
-    <main class="shipper-profile-shell">
-      <header class="shipper-profile-header"><a class="brand-mark" href="./index.html">Rateware</a><div><span id="shipper-profile-status">Secure customer profile</span><button id="shipper-language" class="secondary" type="button">ES</button></div></header>
-      <section id="shipper-profile-root" class="workspace-panel"><p>Loading secure profile...</p></section>
+  <body class="shipper-profile-page" data-platform55-shell="public" data-platform55-page="shipper-profile">
+    <main class="shipper-profile-shell rw-public-app" data-platform55-public-app>
+      <header class="shipper-profile-header rw-public-header" data-platform55-public-context><a class="brand-mark" href="./index.html">Rateware</a><div><span id="shipper-profile-status">Secure customer profile</span><button id="shipper-language" class="secondary" type="button">ES</button></div></header>
+      <section id="shipper-profile-root" class="workspace-panel rw-public-workspace rw-public-state rw-network-service-state" data-platform55-public-state data-state="loading"><p>Loading secure profile...</p></section>
     </main>
     <script type="module" src="./src/shipper-profile.js"></script>
   </body>
