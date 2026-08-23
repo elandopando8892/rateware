@@ -2,15 +2,15 @@
 
 Date: 2026-08-22
 
-Visual subject SHA: `f4f86e1e67c395c41f400b070dbd1f4d120d55cb`
+Visual subject SHA: `77f2bbb0b62846ea110792227b6ce51d9370ac9c`
 
-Evidence artifact HEAD: `93ce41f87888c2f591349e3a71b55d175d0353f4`
+Evidence artifact HEAD: `d337c5aa17717c51fa87af8ee44433d99f2ff2d7`
 
-Full-gate HEAD: `126e364c48eb8c35b1b5b378a41ae2e418126e95`
+Full-gate HEAD: pending final verification.
 
-Local implementation verdict: GO
+Local implementation verdict: GO for the corrected routes and visual evidence; no P2-S4 milestone credit is claimed.
 
-Independent review: pending.
+Independent review: required.
 
 Global Platform55 verdict: NO-GO. P2-S5, P2-S6, preview smoke, deployment, production smoke, and bounded monitoring remain incomplete.
 
@@ -31,14 +31,15 @@ The route map records all eight as `contract_ready`; this is a code-and-evidence
 - Minimum content-width ratio is `0.75`; minimum non-happy-state intersection is `0.5056`.
 - Reduced motion is active in all 48 captures; tenant captures expose exactly one active route and the public profile exposes zero private controls.
 - All 48 captures were inspected visually. Error and signed-out states are visible at every viewport; the Rateware shell does not collapse, duplicate, or overflow the document.
-- The manifest pins 21 source Git blobs, 48 PNG hashes and dimensions, the subject SHA, and manifest object digest `efcf5c246a0d59733de3f5418ba276acb8a33631a23e68c5ebc1f238c805f710`.
+- The six public-profile captures record header-height ratios from `0.07` to `0.12` and brand contrast `17.10:1`, closing the stretched-header and unreadable-brand defect.
+- The manifest pins 21 source Git blobs, 48 PNG hashes and dimensions, the subject SHA, and manifest object digest `3dc18d8c47e1d1e0c55670d18a3ac2f56f3d9eea7dcb033d4834d0e698d37291`.
 - The first capture attempt exposed mobile document overflow on five routes. That corpus was rejected, never committed, and moved to recoverable temporary quarantine after the containment regression was added.
 
 ## Automated gates
 
-- `npm run test:platform55:network-service`: PASS, including 48 of 48 actual-route captures and 20 adversarial manifest mutations rejected.
+- `npm run test:platform55:network-service`: PASS, including 48 of 48 actual-route captures and 22 adversarial manifest mutations rejected.
 - `npm run test:provider-service`: PASS, 37 files enumerated deterministically and 197 tests passed.
-- `npm test`: PASS on exact P2-S4 gate head `126e364c48eb8c35b1b5b378a41ae2e418126e95`.
+- `npm test`: pending on the final immutable P2-S4 gate head.
 - `npm run validate:action-contract`: PASS with 0 errors and 1 pre-existing warning.
 - `npm audit --audit-level=low`: PASS with 0 vulnerabilities.
 - Node syntax checks and `git diff --check`: PASS.

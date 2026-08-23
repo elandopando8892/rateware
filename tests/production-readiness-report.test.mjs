@@ -409,6 +409,15 @@ test("rejects P2 at 70 without the exact P2-S4 Network and Service closure", () 
   assert.throws(() => validateLedger(fabricated), /P2-S4/i);
 });
 
+test("rejects P2-S4 credit without an exact independent semantic review", () => {
+  const fabricated = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = fabricated.sprints.find((sprint) => sprint.id === "P2");
+  p2.progress = 70;
+  p2.evidence.automated_suite.push(...P2_S4_CLOSURE.automatedSuite);
+
+  assert.throws(() => validateLedger(fabricated), /P2-S4 independent review/i);
+});
+
 test("rejects fabricated P2-S2 closure evidence", () => {
   const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const fakeSuite = structuredClone(persisted);

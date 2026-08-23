@@ -290,16 +290,25 @@ const validateP2S4Closure = (sprint, rootDir) => {
   if (!P2_S4_CLOSURE.automatedSuite.every((entry) => evidence.automated_suite?.includes(entry))) {
     throw new Error("P2-S4 automated_suite must contain the exact Network and Service gates");
   }
+  if (!evidence.independent_review?.includes(P2_S4_CLOSURE.independentReview)) {
+    throw new Error("P2-S4 independent review must contain the exact semantic and visual review");
+  }
 
   const root = realpathSync(resolve(rootDir));
   const implementation = readFileSync(resolve(root, P2_S4_CLOSURE.implementation), "utf8");
+  const independentReview = readFileSync(resolve(root, P2_S4_CLOSURE.independentReview), "utf8");
   const manifest = JSON.parse(readFileSync(resolve(root, P2_S4_CLOSURE.manifest), "utf8"));
   requireText(implementation, new RegExp(`Visual subject SHA:\\s*\\\`${P2_S4_CLOSURE.subject}\\\``), "P2-S4 evidence must name the visual subject");
   requireText(implementation, new RegExp(`Evidence artifact HEAD:\\s*\\\`${P2_S4_CLOSURE.evidenceHead}\\\``), "P2-S4 evidence must name the immutable evidence artifact HEAD");
   requireText(implementation, new RegExp(`Full-gate HEAD:\\s*\\\`${P2_S4_CLOSURE.gateHead}\\\``), "P2-S4 evidence must name the immutable full-gate HEAD");
   requireText(implementation, /48 of 48 actual-route captures/i, "P2-S4 evidence must record all 48 captures");
   requireText(implementation, /Local implementation verdict:\s*GO/i, "P2-S4 evidence must record local GO");
-  requireText(implementation, /independent review.*pending/i, "P2-S4 evidence must keep independent review pending");
+  requireText(implementation, /Build12 semantic equivalence credit:\s*accepted/i, "P2-S4 evidence must record accepted semantic equivalence before credit");
+  requireText(independentReview, /Verdict:\s*GO/i, "P2-S4 independent review must record GO");
+  requireText(independentReview, new RegExp(P2_S4_CLOSURE.subject), "P2-S4 independent review must name the visual subject");
+  requireText(independentReview, new RegExp(P2_S4_CLOSURE.evidenceHead), "P2-S4 independent review must name the evidence HEAD");
+  requireText(independentReview, new RegExp(P2_S4_CLOSURE.gateHead), "P2-S4 independent review must name the full-gate HEAD");
+  requireText(independentReview, /Build12 semantic equivalence credit:\s*accepted/i, "P2-S4 independent review must accept semantic equivalence");
   requireText(implementation, /global Platform55 verdict:\s*NO-GO/i, "P2-S4 evidence must keep the global verdict NO-GO");
   requireText(implementation, /No push, PR metadata, preview, deployment, promotion, Supabase change/i, "P2-S4 evidence must preserve local-only boundaries");
   validateP2S4Manifest(manifest);
