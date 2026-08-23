@@ -83,6 +83,16 @@ assert.match(css, /\.rw-evidence-card/);
 assert.match(css, /\.rw-governance-panel/);
 assert.match(css, /\.rw-entry-app/);
 assert.equal(/--p55-|#[0-9a-f]{3,8}\b/i.test(css), false, "S5 presentation must consume Platform55 tokens instead of inventing a second palette");
+assert.match(
+  css,
+  /body\[data-platform55-page=["']interpretation-memory["']\]\s+\[data-workbench-view-panel=["']library["']\]\s*\{[^}]*min-width:\s*0[^}]*max-width:\s*100%/s,
+  "Memory rule library must contain its wide table within the page"
+);
+assert.match(
+  css,
+  /@media\s*\(max-width:\s*900px\)[\s\S]*?\.compact-bulk-toolbar\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/,
+  "Memory mobile toolbar must collapse to a shrinkable column"
+);
 
 const growthCss = readFileSync("src/growth-hacking.css", "utf8");
 assert.match(
