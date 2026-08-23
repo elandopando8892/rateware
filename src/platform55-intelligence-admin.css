@@ -49,6 +49,22 @@ body[data-platform55-page="interpretation-memory"] [data-workbench-view-panel="l
   overflow-x: auto;
 }
 
+body[data-platform55-page="catalog-workbench"] [data-workbench-view-panel="import"] {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-platform55-page="catalog-workbench"] .catalog-import-preview {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body[data-platform55-page="catalog-workbench"] .catalog-import-preview > .table-wrap {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .rw-entry-app {
   min-height: 100vh;
   color: var(--rw-slate-900);
@@ -79,6 +95,15 @@ body[data-platform55-page="interpretation-memory"] [data-workbench-view-panel="l
   body[data-platform55-page="interpretation-memory"] #memory-table-status {
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+
+  body[data-platform55-page="catalog-workbench"] .catalog-import-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-platform55-page="catalog-workbench"] .catalog-import-grid > * {
+    min-width: 0;
+    max-width: 100%;
   }
 }
 

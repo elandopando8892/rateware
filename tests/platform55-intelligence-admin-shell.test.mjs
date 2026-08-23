@@ -93,6 +93,21 @@ assert.match(
   /@media\s*\(max-width:\s*900px\)[\s\S]*?\.compact-bulk-toolbar\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/,
   "Memory mobile toolbar must collapse to a shrinkable column"
 );
+assert.match(
+  css,
+  /body\[data-platform55-page=["']catalog-workbench["']\]\s+\[data-workbench-view-panel=["']import["']\]\s*\{[^}]*min-width:\s*0[^}]*max-width:\s*100%/s,
+  "Catalog import panel must not inherit the preview table's intrinsic width"
+);
+assert.match(
+  css,
+  /body\[data-platform55-page=["']catalog-workbench["']\][\s\S]*?\.catalog-import-preview\s*>\s*\.table-wrap\s*\{[^}]*min-width:\s*0[^}]*max-width:\s*100%[^}]*overflow-x:\s*auto/s,
+  "Catalog import preview must scroll wide data inside its panel"
+);
+assert.match(
+  css,
+  /@media\s*\(max-width:\s*900px\)[\s\S]*?body\[data-platform55-page=["']catalog-workbench["']\]\s+\.catalog-import-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/,
+  "Catalog import controls must collapse to one shrinkable column on mobile"
+);
 
 const growthCss = readFileSync("src/growth-hacking.css", "utf8");
 assert.match(
