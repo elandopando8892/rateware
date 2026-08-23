@@ -28,6 +28,7 @@
 
 **Files:**
 - Modify: `tests/production-readiness-report.test.mjs`
+- Modify: `tests/platform55-build-matrix.test.mjs`
 - Modify: `tools/production-readiness-report.mjs`
 - Modify: `docs/platform55-shell-build-matrix.csv`
 - Create: `docs/release/evidence/2026-08-22-p2-s4-semantic-closure.json`
@@ -70,7 +71,7 @@ Expected before independent review: functional tests PASS and ledger remains P2 
 - [ ] **Step 6: Commit the semantic candidate without claiming independent GO**
 
 ```powershell
-git add tests/production-readiness-report.test.mjs tools/production-readiness-report.mjs docs/platform55-shell-build-matrix.csv docs/release/evidence/2026-08-22-p2-s4-semantic-closure.json
+git add tests/production-readiness-report.test.mjs tests/platform55-build-matrix.test.mjs tools/production-readiness-report.mjs docs/platform55-shell-build-matrix.csv docs/release/evidence/2026-08-22-p2-s4-semantic-closure.json
 git commit -m "fix: reconcile withheld Platform55 service semantics"
 ```
 
