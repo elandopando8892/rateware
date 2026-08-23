@@ -76,6 +76,6 @@ test("preserves historical subject anchors while accepting exact S6 head blobs",
 
 test("binds the checked-in supersession to the exact product candidate and current source blobs", () => {
   const record = loadP2S6SourceSupersession();
-  assert.equal(record.product_candidate_sha, "9eec19fcb1ff45de204cb087a89d6a56bf256710");
+  assert.equal(record.product_candidate_sha, "31ca1105865570acd575ae17eeb25c236df45c7c");
   assert.equal(validateP2S6SourceGitState(process.cwd(), record), record);
 });

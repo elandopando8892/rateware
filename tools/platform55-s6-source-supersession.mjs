@@ -6,14 +6,16 @@ import { resolve } from "node:path";
 const SHA1 = /^[0-9a-f]{40}$/;
 
 export const P2_S6_SOURCE_SUPERSESSION_PATH = "docs/release/evidence/2026-08-23-p2-s6-local-certification.json";
-export const P2_S6_SOURCE_SUPERSESSION_SHA256 = "27e3d9ee387796684f9d6a2d6992be24edeeb5daec132cacc6674570b14b2878";
-export const P2_S6_PRODUCT_CANDIDATE = "9eec19fcb1ff45de204cb087a89d6a56bf256710";
-export const P2_S6_PRODUCT_TREE = "6e3c91a9361b986db38b9b28bbf353db11a980f1";
-export const P2_S6_PRODUCT_BASE = "858f8102cb3b5c7ce74955b00e7ac357b6511cdf";
+export const P2_S6_SOURCE_SUPERSESSION_SHA256 = "53fcacd4005c0070dc52499f506c255184fb2ea255dd9a325b27d8b27c34b71f";
+export const P2_S6_PRODUCT_CANDIDATE = "31ca1105865570acd575ae17eeb25c236df45c7c";
+export const P2_S6_PRODUCT_TREE = "1421417c0f737d8bbd4a420300812f11c38af628";
+export const P2_S6_PRODUCT_BASE = "512c15679957abd5dcbfeee4afe3208d76edab92";
 
 export const P2_S6_SOURCE_PATHS = Object.freeze([
   "src/platform55-shell.js",
   "src/platform55-shell.css",
+  "src/platform55-public-shell.css",
+  "src/provider-service-page.css",
   "src/rateware.js",
   "src/staging-review.js",
 ]);
