@@ -720,6 +720,80 @@ test("credits P2-S6 only from the exact accessible product candidate and detache
   );
 });
 
+const validP2S6ProductionRecord = () => ({
+  schema_version: 1,
+  mode: "read_only",
+  environment: "production",
+  release: {
+    sha: "7a146765ac38bd18a320f32f7e3ed7a7f13c8da7",
+    tree: "f044987b224c54578a0ee19db398f612d67e4b76",
+    deployment_id: "dpl_3P6nWwoaqUeDktTMi7HifGG6XAwk",
+    deployment_url: "rateware-gk93pxg5n-elandopando8892s-projects.vercel.app",
+    production_alias: "rateware.vercel.app",
+    state: "READY",
+    manual_promotion: false,
+  },
+  routes: [
+    ["command-center", "tenant"],
+    ["operate", "tenant"],
+    ["procurement", "tenant"],
+    ["network-service", "tenant"],
+    ["intelligence", "tenant"],
+    ["administration", "tenant"],
+    ["public-carrier", "public"],
+  ].map(([id, shell]) => ({ id, shell, passed: true, overflow: false, console_errors: 0 })),
+  responsive: {
+    viewports: ["1440x900", "1024x768", "390x844"],
+    mobile_navigation: true,
+    focus_trap: true,
+    focus_restoration: true,
+    viewport_overflow: 0,
+  },
+  monitoring: [
+    ["T+0", "2026-08-23T23:21:00.000Z"],
+    ["T+5", "2026-08-23T23:26:00.000Z"],
+    ["T+15", "2026-08-23T23:36:00.000Z"],
+  ].map(([checkpoint, observed_at]) => ({ checkpoint, observed_at, deployment_ready: true, runtime_errors: 0, unexpected_writes: 0 })),
+  supabase: {
+    project_status: "ACTIVE_HEALTHY",
+    persistent_preview_count: 1,
+    unexpected_writes: 0,
+    mutation_authorized: false,
+  },
+  verdict: "GO",
+});
+
+test("requires exact fail-closed production evidence before crediting P2 at 100", () => {
+  const record = validP2S6ProductionRecord();
+  assert.deepEqual(productionReadiness.validateP2S6ProductionRecord(record), record);
+
+  for (const [label, mutate] of [
+    ["release SHA", (value) => { value.release.sha = "0".repeat(40); }],
+    ["deployment state", (value) => { value.release.state = "ERROR"; }],
+    ["manual promotion", (value) => { value.release.manual_promotion = true; }],
+    ["route failure", (value) => { value.routes[2].passed = false; }],
+    ["console error", (value) => { value.routes[4].console_errors = 1; }],
+    ["missing viewport", (value) => { value.responsive.viewports.pop(); }],
+    ["runtime error", (value) => { value.monitoring[1].runtime_errors = 1; }],
+    ["short monitoring window", (value) => { value.monitoring[2].observed_at = "2026-08-23T23:30:00.000Z"; }],
+    ["unexpected write", (value) => { value.supabase.unexpected_writes = 1; }],
+    ["mutation authorization", (value) => { value.supabase.mutation_authorized = true; }],
+    ["verdict", (value) => { value.verdict = "NO-GO"; }],
+  ]) {
+    const changed = structuredClone(record);
+    mutate(changed);
+    assert.throws(() => productionReadiness.validateP2S6ProductionRecord(changed), new RegExp(label, "i"));
+  }
+
+  const fabricated = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = fabricated.sprints.find((sprint) => sprint.id === "P2");
+  p2.progress = 100;
+  p2.evidence.production_smoke = ["generic smoke PASS"];
+  p2.evidence.monitoring = ["generic monitoring PASS"];
+  p2.verdicts.production_release = "GO";
+  assert.throws(() => validateLedger(fabricated), /production/i);
+});
+
 test("accepts a complete mixed P2-S4 semantic candidate without granting independent credit", () => {
   const reconciled = productionReadiness.validateP2S4SemanticReconciliation(
     mixedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8")),
