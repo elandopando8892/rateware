@@ -576,6 +576,24 @@ test("rejects P2-S4 semantic credit for an invented component on a real S4 route
   );
 });
 
+test("rejects P2-S4 semantic credit when the route map invents the reviewed component", () => {
+  const credited = creditedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"), "shipper-crm.html", "invented-component");
+  const routeMap = readFileSync("docs/platform55-shell-route-map.csv", "utf8");
+  const driftedRouteMap = routeMap.replace(
+    /^(shipper-crm\.html,[^\r\n]*?,)(contract_ready,[^\r\n]*)$/m,
+    (row, prefix, suffix) => `${prefix.replace(/,([^,]*),$/, ",$1;invented-component,")}${suffix}`,
+  );
+  assert.notEqual(driftedRouteMap, routeMap, "the route-map mutation fixture must alter shipper-crm surfaces");
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(
+      credited,
+      acceptedP2S4Review("shipper-crm.html", "invented-component"),
+      { routeMapText: driftedRouteMap },
+    ),
+    /route map.*digest/i,
+  );
+});
+
 test("rejects P2-S4 semantic credit when the immutable Build source projection drifts", () => {
   const credited = creditedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"), "shipper-crm.html", "shippers");
   assert.throws(

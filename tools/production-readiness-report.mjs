@@ -184,6 +184,11 @@ const P2_BUILD_MATRIX_COUNTS = Object.freeze({
   build_11: 132,
   build_12: 140,
 });
+const P2_ROUTE_MAP_COLUMNS = Object.freeze([
+  "route", "page_key", "access", "shell_variant", "owner_sprint", "module_script", "planned_test",
+  "platform55_surfaces", "status", "evidence",
+]);
+const P2_ROUTE_MAP_COUNT = 29;
 
 const parseCsv = (text) => {
   if (typeof text !== "string" || text.length === 0) throw new Error("CSV evidence must be non-empty text");
@@ -346,8 +351,19 @@ export function validateP2S4SemanticReconciliation(matrixText, reviewRecord, { r
   if (reviewKeys.size !== P2_S4_SEMANTIC_ROWS.length) throw new Error("P2-S4 semantic reconciliation contains duplicate review mappings");
 
   const root = realpathSync(resolve(rootDir));
-  const routeMap = parseCsv(routeMapText ?? readFileSync(resolve(root, "docs/platform55-shell-route-map.csv"), "utf8"));
+  const routeMapSource = routeMapText ?? readFileSync(resolve(root, "docs/platform55-shell-route-map.csv"), "utf8");
+  const routeMapDigest = createHash("sha256").update(routeMapSource).digest("hex");
+  if (routeMapDigest !== P2_S4_CLOSURE.routeMapSha256) {
+    throw new Error("P2-S4 route map digest mismatch");
+  }
+  const routeMap = parseCsv(routeMapSource);
+  if (JSON.stringify(routeMap.header) !== JSON.stringify(P2_ROUTE_MAP_COLUMNS) || routeMap.records.length !== P2_ROUTE_MAP_COUNT) {
+    throw new Error("P2-S4 semantic reconciliation requires the canonical 29-row route map schema");
+  }
   const routeRecords = routeMap.records;
+  if (new Set(routeRecords.map((row) => row.route)).size !== P2_ROUTE_MAP_COUNT) {
+    throw new Error("P2-S4 route map routes must be unique");
+  }
 
   for (const expected of P2_S4_SEMANTIC_ROWS) {
     const key = `${expected.build}:${expected.ordinal}`;
