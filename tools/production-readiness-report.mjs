@@ -340,7 +340,79 @@ export function validateP2S4SemanticClosureBody(review, { requireGo = true } = {
   return record;
 }
 
-export function validateP2S4IndependentReviewBody(review, { requireGo = true } = {}) {
+export function validateP2S4IndependentReviewRecord(record, semanticRecord, { requireGo = true } = {}) {
+  if (
+    !record ||
+    typeof record !== "object" ||
+    Array.isArray(record) ||
+    !semanticRecord ||
+    typeof semanticRecord !== "object" ||
+    Array.isArray(semanticRecord) ||
+    !Array.isArray(record.mappings) ||
+    !Array.isArray(semanticRecord.mappings) ||
+    record.mappings.length !== P2_S4_SEMANTIC_ROWS.length ||
+    semanticRecord.mappings.length !== P2_S4_SEMANTIC_ROWS.length
+  ) {
+    throw new Error("P2-S4 independent review requires the exact semantic candidate mappings");
+  }
+
+  const accepted = record.verdict === "GO" && record.semantic_credit === "accepted";
+  const withheld = record.verdict === "NO-GO" && record.semantic_credit === "withheld";
+  if (!accepted && !withheld) throw new Error("P2-S4 independent review verdict and semantic credit are inconsistent");
+  if (requireGo && !accepted) throw new Error("P2-S4 independent review must record GO with accepted semantic credit");
+
+  const seen = new Set();
+  for (const expected of P2_S4_SEMANTIC_ROWS) {
+    const key = `${expected.build}:${expected.ordinal}`;
+    const matches = record.mappings.filter((mapping) => `${mapping?.build}:${mapping?.ordinal}` === key);
+    const semanticMatches = semanticRecord.mappings.filter((mapping) => `${mapping?.build}:${mapping?.ordinal}` === key);
+    if (matches.length !== 1 || semanticMatches.length !== 1 || seen.has(key)) {
+      throw new Error(`P2-S4 independent review must contain exactly one ${key} mapping`);
+    }
+    seen.add(key);
+    const mapping = matches[0];
+    const semantic = semanticMatches[0];
+    if (
+      mapping.state !== expected.state ||
+      mapping.reference_asset !== expected.reference_asset ||
+      semantic.state !== expected.state ||
+      semantic.reference_asset !== expected.reference_asset
+    ) {
+      throw new Error(`P2-S4 independent review reference mismatch: ${key}`);
+    }
+
+    if (accepted && (
+      mapping.result !== "accepted" ||
+      mapping.matrix_status !== semantic.mapping_status ||
+      mapping.target_route !== semantic.target_route ||
+      mapping.target_component !== semantic.target_component ||
+      mapping.disposition !== semantic.disposition ||
+      mapping.rationale !== semantic.rationale ||
+      mapping.evidence !== semantic.evidence
+    )) {
+      throw new Error(`P2-S4 independent review semantic decision mismatch: ${key}`);
+    }
+    if (withheld && (
+      mapping.result !== "withheld" ||
+      mapping.matrix_status !== "not_started" ||
+      mapping.target_route !== "" ||
+      mapping.target_component !== "" ||
+      mapping.evidence !== ""
+    )) {
+      throw new Error(`P2-S4 withheld review mapping is inconsistent: ${key}`);
+    }
+  }
+
+  if (withheld && (!Array.isArray(record.findings) || record.findings.length < 1 || record.findings.some((finding) => !visibleText(finding)))) {
+    throw new Error("P2-S4 NO-GO review must contain findings");
+  }
+  if (accepted && (!Array.isArray(record.findings) || record.findings.some((finding) => !visibleText(finding)))) {
+    throw new Error("P2-S4 GO review findings must be an array of visible text");
+  }
+  return record;
+}
+
+export function validateP2S4IndependentReviewBody(review, { requireGo = true, semanticRecord } = {}) {
   if (typeof review !== "string") throw new Error("P2-S4 independent review body must be text");
   const normalized = review.replace(/\r\n/g, "\n");
   const digest = createHash("sha256").update(normalized).digest("hex");
@@ -355,7 +427,7 @@ export function validateP2S4IndependentReviewBody(review, { requireGo = true } =
     throw new Error("P2-S4 independent review body must be valid JSON");
   }
   if (
-    record?.schema_version !== 1 ||
+    record?.schema_version !== 2 ||
     record.reviewed_sha !== P2_S4_CLOSURE.reviewedHead ||
     record.base_sha !== P2_S4_CLOSURE.reviewBase ||
     record.visual_subject !== P2_S4_CLOSURE.subject ||
@@ -364,7 +436,9 @@ export function validateP2S4IndependentReviewBody(review, { requireGo = true } =
     record.review_mode !== "independent-detached-read-only" ||
     record.worktree_detached !== true ||
     record.worktree_clean !== true ||
-    record.reviewer_task !== "/root/pr66_corrective_independent" ||
+    record.reviewer_task !== P2_S4_CLOSURE.reviewerTask ||
+    record.semantic_candidate !== P2_S4_SEMANTIC_CANDIDATE.path ||
+    record.semantic_candidate_sha256 !== P2_S4_SEMANTIC_CANDIDATE.sha256 ||
     record.reference_archive_sha256 !== P2_S4_CLOSURE.referenceArchiveSha256 ||
     !Array.isArray(record.mappings) ||
     record.mappings.length !== P2_S4_SEMANTIC_ROWS.length
@@ -372,46 +446,7 @@ export function validateP2S4IndependentReviewBody(review, { requireGo = true } =
     throw new Error("P2-S4 independent review metadata mismatch");
   }
 
-  const seen = new Set();
-  for (const expected of P2_S4_SEMANTIC_ROWS) {
-    const key = `${expected.build}:${expected.ordinal}`;
-    const matches = record.mappings.filter((mapping) => `${mapping?.build}:${mapping?.ordinal}` === key);
-    if (matches.length !== 1 || seen.has(key)) throw new Error(`P2-S4 independent review must contain exactly one ${key} mapping`);
-    seen.add(key);
-    const mapping = matches[0];
-    if (mapping.state !== expected.state || mapping.reference_asset !== expected.reference_asset) {
-      throw new Error(`P2-S4 independent review reference mismatch: ${key}`);
-    }
-  }
-
-  const accepted = record.verdict === "GO" && record.semantic_credit === "accepted";
-  const withheld = record.verdict === "NO-GO" && record.semantic_credit === "withheld";
-  if (!accepted && !withheld) throw new Error("P2-S4 independent review verdict and semantic credit are inconsistent");
-  if (requireGo && !accepted) throw new Error("P2-S4 independent review must record GO with accepted semantic credit");
-  for (const mapping of record.mappings) {
-    if (accepted && (
-      mapping.result !== "accepted" ||
-      mapping.matrix_status !== "implemented" ||
-      !nonEmptyText(mapping.target_route) ||
-      !nonEmptyText(mapping.target_component) ||
-      mapping.evidence !== P2_S4_CLOSURE.independentReview
-    )) {
-      throw new Error(`P2-S4 accepted review mapping is incomplete: ${mapping.build}:${mapping.ordinal}`);
-    }
-    if (withheld && (
-      mapping.result !== "withheld" ||
-      mapping.matrix_status !== "not_started" ||
-      mapping.target_route !== "" ||
-      mapping.target_component !== "" ||
-      mapping.evidence !== ""
-    )) {
-      throw new Error(`P2-S4 withheld review mapping is inconsistent: ${mapping.build}:${mapping.ordinal}`);
-    }
-  }
-  if (withheld && (!Array.isArray(record.findings) || record.findings.length < 1 || record.findings.some((finding) => !nonEmptyText(finding)))) {
-    throw new Error("P2-S4 NO-GO review must contain findings");
-  }
-  return record;
+  return validateP2S4IndependentReviewRecord(record, semanticRecord, { requireGo });
 }
 
 export function validateP2S4SemanticReconciliation(matrixText, reviewRecord, { rootDir = process.cwd(), routeMapText, requireGo = false } = {}) {
@@ -683,10 +718,14 @@ const validateP2S4Closure = (sprint, rootDir) => {
   if (!evidence.independent_review?.includes(P2_S4_SEMANTIC_CANDIDATE.path)) {
     throw new Error("P2-S4 independent review must contain the exact content-addressed semantic closure");
   }
+  if (!evidence.independent_review?.includes(P2_S4_CLOSURE.independentReview)) {
+    throw new Error("P2-S4 independent review must contain the exact accepted semantic review");
+  }
 
   const root = realpathSync(resolve(rootDir));
   const implementation = readFileSync(resolve(root, P2_S4_CLOSURE.implementation), "utf8");
   const semanticClosure = readFileSync(resolve(root, P2_S4_SEMANTIC_CANDIDATE.path), "utf8");
+  const independentReview = readFileSync(resolve(root, P2_S4_CLOSURE.independentReview), "utf8");
   const manifest = JSON.parse(readFileSync(resolve(root, P2_S4_CLOSURE.manifest), "utf8"));
   requireText(implementation, new RegExp(`Visual subject SHA:\\s*\\\`${P2_S4_CLOSURE.subject}\\\``), "P2-S4 evidence must name the visual subject");
   requireText(implementation, new RegExp(`Evidence artifact HEAD:\\s*\\\`${P2_S4_CLOSURE.evidenceHead}\\\``), "P2-S4 evidence must name the immutable evidence artifact HEAD");
@@ -694,7 +733,8 @@ const validateP2S4Closure = (sprint, rootDir) => {
   requireText(implementation, /48 of 48 actual-route captures/i, "P2-S4 evidence must record all 48 captures");
   requireText(implementation, /Local implementation verdict:\s*GO/i, "P2-S4 evidence must record local GO");
   requireText(implementation, /Build12 semantic equivalence credit:\s*withheld/i, "P2-S4 historical evidence must preserve the withheld semantic finding");
-  const reviewRecord = validateP2S4SemanticClosureBody(semanticClosure);
+  const semanticRecord = validateP2S4SemanticClosureBody(semanticClosure, { requireGo: false });
+  const reviewRecord = validateP2S4IndependentReviewBody(independentReview, { semanticRecord });
   validateP2S4SemanticReconciliation(
     readFileSync(resolve(root, "docs/platform55-shell-build-matrix.csv"), "utf8"),
     reviewRecord,
