@@ -17,7 +17,7 @@ const carrierAccessApi = read("../supabase/functions/ratebook-carrier-api/index.
 const vendorRelationshipMergeMigration = read("../supabase/migrations/20260805054258_merge_exact_vendor_relationship_collisions.sql");
 const carrierAccessPage = read("../ratebook-carrier.html");
 const carrierAccessClient = read("../src/ratebook-carrier.js");
-const auth = read("../src/auth.js");
+const shellModel = read("../src/platform55-shell-model.js");
 
 for (const table of ["rfx_ratebooks", "rfx_ratebook_shares"]) {
   assert.match(migration, new RegExp(`create table if not exists public\\.${table}`));
@@ -269,8 +269,8 @@ assert.match(api, /normalized\.origin_market/);
 assert.match(api, /facets: \{ shippers: \[\], sources: \[\], segments: \[\] \}/);
 assert.match(api, /segment_count/);
 assert.match(api, /total: allRows\.length/);
-assert.match(auth, /id: "ratebook"/);
-assert.match(auth, /title: "Ratebook"/);
+assert.match(shellModel, /key: "ratebook"/);
+assert.match(shellModel, /title: "Ratebook"/);
 
 const shareRatebookSource = api.slice(
   api.indexOf("async function shareRatebookWithCarriers"),

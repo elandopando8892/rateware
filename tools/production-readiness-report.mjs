@@ -17,6 +17,10 @@ import {
   validateP2S5SurfaceCandidateBody,
   validateP2S5SurfaceReconciliation,
 } from "./platform55-intelligence-admin-evidence.mjs";
+import {
+  loadP2S6SourceSupersession,
+  validateHistoricalSourceParity,
+} from "./platform55-s6-source-supersession.mjs";
 
 const IDS = ["P0", "P1", "P2", "P3", "P4", "P5"];
 const WEIGHTS = { P0: 4, P1: 9, P2: 7, P3: 7, P4: 6, P5: 4 };
@@ -134,16 +138,18 @@ export function validateP2S3Manifest(manifest) {
   return manifest;
 }
 
-export function validateP2S3SourceBlobParity(manifestBlobs, currentBlobs, workingBlobs = currentBlobs) {
+export function validateP2S3SourceBlobParity(manifestBlobs, currentBlobs, workingBlobs = currentBlobs, supersession = loadP2S6SourceSupersession()) {
   if (!manifestBlobs || currentBlobs?.length !== P2_S3_SOURCE_PATHS.length || workingBlobs?.length !== P2_S3_SOURCE_PATHS.length) {
     throw new Error("P2-S3 source blob parity requires all 25 source paths");
   }
-  for (const [index, sourcePath] of P2_S3_SOURCE_PATHS.entries()) {
-    if (manifestBlobs[sourcePath] !== currentBlobs[index] || workingBlobs[index] !== currentBlobs[index]) {
-      throw new Error(`P2-S3 source blob mismatch: ${sourcePath}`);
-    }
-  }
-  return manifestBlobs;
+  return validateHistoricalSourceParity({
+    sourcePaths: P2_S3_SOURCE_PATHS,
+    manifestBlobs,
+    subjectBlobs: P2_S3_SOURCE_PATHS.map((path) => manifestBlobs[path]),
+    currentBlobs,
+    workingBlobs,
+    supersession,
+  });
 }
 
 const isInside = (root, candidate) => {
@@ -643,6 +649,25 @@ const validateP2S2Closure = (sprint, rootDir) => {
   if (manifest.captures.some((capture) => capture.console_errors !== 0 || capture.http_errors !== 0 || capture.state_visible !== true || capture.state_intersection_ratio < 0.8)) {
     throw new Error("P2 visual manifest must prove visible states with zero console and HTTP errors");
   }
+  const sourcePaths = Object.keys(manifest.source_git_blobs || {});
+  const gitBlobs = (revision) => execFileSync(
+    "git",
+    ["-C", root, "rev-parse", ...sourcePaths.map((path) => `${revision}:${path}`)],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+  ).trim().split(/\r?\n/);
+  const workingBlobs = execFileSync(
+    "git",
+    ["-C", root, "hash-object", "--", ...sourcePaths],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+  ).trim().split(/\r?\n/);
+  validateHistoricalSourceParity({
+    sourcePaths,
+    manifestBlobs: manifest.source_git_blobs,
+    subjectBlobs: gitBlobs(P2_S2_CLOSURE.visualSubject),
+    currentBlobs: gitBlobs("HEAD"),
+    workingBlobs,
+    supersession: loadP2S6SourceSupersession(root),
+  });
 };
 
 const validateP2S3Closure = (sprint, rootDir) => {
@@ -778,11 +803,17 @@ const validateP2S5Closure = (sprint, rootDir) => {
   requireText(implementation, /created no push, pull request, Vercel build, Kinde change, Supabase branch/i, "P2-S5 evidence must preserve local-only boundaries");
   if (review.verdict !== "GO" || review.semantic_credit !== "accepted") throw new Error("P2-S5 independent review must accept semantic credit");
 
-  for (const [path, expectedBlob] of Object.entries(manifest.source_git_blobs)) {
-    const headBlob = execFileSync("git", ["-C", root, "rev-parse", `HEAD:${path}`], { encoding: "utf8" }).trim();
-    const workingBlob = execFileSync("git", ["-C", root, "hash-object", "--", path], { encoding: "utf8" }).trim();
-    if (headBlob !== expectedBlob || workingBlob !== expectedBlob) throw new Error(`P2-S5 source blob drift: ${path}`);
-  }
+  const sourcePaths = Object.keys(manifest.source_git_blobs);
+  const currentBlobs = sourcePaths.map((path) => execFileSync("git", ["-C", root, "rev-parse", `HEAD:${path}`], { encoding: "utf8" }).trim());
+  const workingBlobs = sourcePaths.map((path) => execFileSync("git", ["-C", root, "hash-object", "--", path], { encoding: "utf8" }).trim());
+  validateHistoricalSourceParity({
+    sourcePaths,
+    manifestBlobs: manifest.source_git_blobs,
+    subjectBlobs: sourcePaths.map((path) => manifest.source_git_blobs[path]),
+    currentBlobs,
+    workingBlobs,
+    supersession: loadP2S6SourceSupersession(root),
+  });
   const evidenceDirectory = dirname(manifestPath);
   for (const capture of manifest.captures) {
     const bytes = readFileSync(resolve(evidenceDirectory, capture.file));

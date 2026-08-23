@@ -8,7 +8,7 @@ const apiIndex = read("../supabase/functions/rateware-api/index.ts");
 const service = read("../src/growth-service.js");
 const client = read("../src/growth-hacking.js");
 const page = read("../growth-hacking.html");
-const auth = read("../src/auth.js");
+const shellModel = read("../src/platform55-shell-model.js");
 
 for (const column of [
   "account_type", "data_status", "logistics_fit", "source_file_name",
@@ -90,7 +90,7 @@ assert.doesNotMatch(`${api}\n${service}\n${client}`, /send_(?:gmail|whatsapp)|se
 
 assert.match(api, /from\("shipper_opportunities"\)/);
 assert.match(api, /from\("shipper_rfis"\)/);
-assert.match(auth, /href: "\.\/growth-hacking\.html"/);
+assert.match(shellModel, /path: "\.\/growth-hacking\.html"/);
 
 const tabs = [...page.matchAll(/data-growth-view="([^"]+)"/g)].map((match) => match[1]);
 assert.deepEqual(tabs, ["dashboard", "segments", "campaigns", "ai", "results"]);

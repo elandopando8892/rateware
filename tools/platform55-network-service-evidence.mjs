@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import {
+  loadP2S6SourceSupersession,
+  validateHistoricalSourceParity,
+} from "./platform55-s6-source-supersession.mjs";
 
 export const P2_S4_CLOSURE = Object.freeze({
   plan: "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s4-network-service.md",
@@ -175,12 +179,14 @@ export function validateP2S4EvidenceFiles(rootDir, manifest) {
   const subjectBlobs = gitLines(root, ["rev-parse", ...P2_S4_SOURCE_PATHS.map((path) => `${P2_S4_CLOSURE.subject}:${path}`)]);
   const headBlobs = gitLines(root, ["rev-parse", ...P2_S4_SOURCE_PATHS.map((path) => `HEAD:${path}`)]);
   const workingBlobs = gitLines(root, ["hash-object", "--", ...P2_S4_SOURCE_PATHS]);
-  for (const [index, sourcePath] of P2_S4_SOURCE_PATHS.entries()) {
-    const manifestBlob = manifest.source_git_blobs[sourcePath];
-    if (manifestBlob !== subjectBlobs[index] || manifestBlob !== headBlobs[index] || workingBlobs[index] !== headBlobs[index]) {
-      throw new Error(`P2-S4 source blob mismatch: ${sourcePath}`);
-    }
-  }
+  validateHistoricalSourceParity({
+    sourcePaths: P2_S4_SOURCE_PATHS,
+    manifestBlobs: manifest.source_git_blobs,
+    subjectBlobs,
+    currentBlobs: headBlobs,
+    workingBlobs,
+    supersession: loadP2S6SourceSupersession(root),
+  });
 
   const evidenceDirectory = dirname(P2_S4_CLOSURE.manifest);
   const evidencePaths = [

@@ -2,6 +2,10 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
+import {
+  loadP2S6SourceSupersession,
+  validateHistoricalSourceParity,
+} from "./platform55-s6-source-supersession.mjs";
 
 export const EXPECTED_P2_S5_SUBJECT = "b78f73fbcba8cad7720bf329f9d65bd20746a147";
 export const EXPECTED_P2_S5_MANIFEST_SHA256 = "8320e6294aacd3af527b02cd2973b0ce4971a2ea67c3737f6838e4c67cfbda77";
@@ -322,12 +326,24 @@ export async function validateP2S5Evidence({ rootDir = process.cwd() } = {}) {
   const manifest = JSON.parse(manifestBytes.toString("utf8"));
   const result = validateP2S5Manifest(manifest);
 
-  for (const [path, expectedBlob] of Object.entries(manifest.source_git_blobs)) {
+  const subjectBlobs = [];
+  const currentBlobs = [];
+  const workingBlobs = [];
+  for (const path of Object.keys(manifest.source_git_blobs)) {
     const candidate = resolve(root, path);
     if (!inside(root, candidate)) throw new Error(`source path escaped the checkout: ${path}`);
-    if (git(root, ["rev-parse", `HEAD:${path}`]) !== expectedBlob) throw new Error(`HEAD source blob mismatch: ${path}`);
-    if (git(root, ["hash-object", path]) !== expectedBlob) throw new Error(`working source blob mismatch: ${path}`);
+    subjectBlobs.push(manifest.source_git_blobs[path]);
+    currentBlobs.push(git(root, ["rev-parse", `HEAD:${path}`]));
+    workingBlobs.push(git(root, ["hash-object", path]));
   }
+  validateHistoricalSourceParity({
+    sourcePaths: Object.keys(manifest.source_git_blobs),
+    manifestBlobs: manifest.source_git_blobs,
+    subjectBlobs,
+    currentBlobs,
+    workingBlobs,
+    supersession: loadP2S6SourceSupersession(root),
+  });
 
   for (const capture of manifest.captures) {
     const path = resolve(evidenceDirectory, capture.file);

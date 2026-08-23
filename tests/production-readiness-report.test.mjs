@@ -520,7 +520,7 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
   validateP2S3SourceBlobParity(manifestBlobs, currentBlobs);
   const driftedHeadBlobs = [...currentBlobs];
   driftedHeadBlobs[0] = "0".repeat(40);
-  assert.throws(() => validateP2S3SourceBlobParity(manifestBlobs, driftedHeadBlobs), /source blob mismatch/i);
+  assert.throws(() => validateP2S3SourceBlobParity(manifestBlobs, driftedHeadBlobs), /unapproved current drift/i);
 });
 
 test("credits P2-S4 only after semantic fidelity and visual accessibility are independently accepted", () => {

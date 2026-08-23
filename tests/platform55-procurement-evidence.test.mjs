@@ -3,6 +3,10 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, readFile, readdir } from "node:fs/promises";
 import test from "node:test";
+import {
+  loadP2S6SourceSupersession,
+  validateHistoricalSourceParity,
+} from "../tools/platform55-s6-source-supersession.mjs";
 
 const subject = "6917246927a6a13e82abf9e1e84b00b27f172ab7";
 const manifestObjectSha256 = "012f11a9237f9caa54ec45ce45aaa012eac540a2b1b03723a9a192a3079a1eb2";
@@ -103,12 +107,25 @@ test("anchors the complete Procurement capture matrix without requiring historic
   const manifest = JSON.parse(await readFile(`${directory}/manifest.json`, "utf8"));
   validateManifestShape(manifest);
 
+  const subjectBlobs = [];
+  const currentBlobs = [];
+  const workingBlobs = [];
   for (const sourcePath of sourcePaths) {
+    const subjectBlob = manifest.source_git_blobs[sourcePath];
     const currentBlob = execFileSync("git", ["rev-parse", `HEAD:${sourcePath}`], { encoding: "utf8" }).trim();
     const workingBlob = execFileSync("git", ["hash-object", "--", sourcePath], { encoding: "utf8" }).trim();
-    assert.equal(currentBlob, manifest.source_git_blobs[sourcePath], `${sourcePath} must match the authenticated manifest`);
-    assert.equal(workingBlob, currentBlob, `${sourcePath} working tree must match HEAD`);
+    subjectBlobs.push(subjectBlob);
+    currentBlobs.push(currentBlob);
+    workingBlobs.push(workingBlob);
   }
+  validateHistoricalSourceParity({
+    sourcePaths,
+    manifestBlobs: manifest.source_git_blobs,
+    subjectBlobs,
+    currentBlobs,
+    workingBlobs,
+    supersession: loadP2S6SourceSupersession(),
+  });
 
   const actualPngs = (await readdir(directory)).filter((file) => file.endsWith(".png")).sort();
   assert.deepEqual(actualPngs, expectedFiles());
