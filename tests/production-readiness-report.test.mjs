@@ -29,6 +29,44 @@ const P2_S4_SEMANTIC_FIXTURE = [
   ["build_12", "82", "support-case", "build_12/rateware_experience_configuration_release_readiness_build_v12.html"],
 ];
 
+const acceptedP2S4Review = (targetRoute = "does-not-exist.html", targetComponent = "invented-component") => ({
+  mappings: P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal, state, reference_asset]) => ({
+    build,
+    ordinal,
+    state,
+    reference_asset,
+    matrix_status: "implemented",
+    target_route: targetRoute,
+    target_component: targetComponent,
+    evidence: P2_S4_CLOSURE.independentReview,
+    result: "accepted",
+  })),
+});
+
+const creditedP2S4Matrix = (matrixText, targetRoute = "does-not-exist.html", targetComponent = "invented-component") => {
+  const keys = new Set(P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal]) => `${build}:${ordinal}`));
+  return matrixText.split(/\r?\n/).map((line, index) => {
+    if (index === 0 || !line) return line;
+    const fields = [...line.matchAll(/"((?:[^"]|"")*)"/g)].map((match) => match[1].replace(/""/g, '"'));
+    if (!keys.has(`${fields[0]}:${fields[1]}`)) return line;
+    fields[14] = "implemented";
+    fields[15] = targetRoute;
+    fields[16] = targetComponent;
+    fields[17] = "implemented";
+    fields[18] = P2_S4_CLOSURE.independentReview;
+    return fields.map((field) => `"${field.replace(/"/g, '""')}"`).join(",");
+  }).join("\n");
+};
+
+const driftP2S4SourceProjection = (matrixText) => {
+  const lines = matrixText.split(/\r?\n/);
+  const fields = [...lines[1].matchAll(/"((?:[^"]|"")*)"/g)].map((match) => match[1].replace(/""/g, '"'));
+  fields[2] = "fabricated-source";
+  fields[9] = `${fields[0]}|${fields[2]}|${fields[3]}|${fields[4]}|${fields[5]}`;
+  lines[1] = fields.map((field) => `"${field.replace(/"/g, '""')}"`).join(",");
+  return lines.join("\n");
+};
+
 const ledger = {
   schema_version: 1,
   baseline: 63,
@@ -502,6 +540,50 @@ test("rejects P2-S4 semantic credit while the thirteen reference mappings remain
       acceptedReview,
     ),
     /build_05:5516.*implemented/i,
+  );
+});
+
+test("rejects P2-S4 semantic credit from a truncated thirteen-row matrix", () => {
+  const credited = creditedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"));
+  const keys = new Set(P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal]) => `${build}:${ordinal}`));
+  const lines = credited.split(/\r?\n/);
+  const truncated = [lines[0], ...lines.slice(1).filter((line) => {
+    const match = line.match(/^"([^"]+)","([^"]+)"/);
+    return match && keys.has(`${match[1]}:${match[2]}`);
+  })].join("\n");
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(truncated, acceptedP2S4Review()),
+    /exact 1,150/i,
+  );
+});
+
+test("rejects P2-S4 semantic credit for a target outside the real S4 route inventory", () => {
+  const credited = creditedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"));
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(credited, acceptedP2S4Review()),
+    /does-not-exist|real P2-S4 target route/i,
+  );
+});
+
+test("rejects P2-S4 semantic credit for an invented component on a real S4 route", () => {
+  const credited = creditedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"), "shipper-crm.html", "invented-component");
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(
+      credited,
+      acceptedP2S4Review("shipper-crm.html", "invented-component"),
+    ),
+    /declared component/i,
+  );
+});
+
+test("rejects P2-S4 semantic credit when the immutable Build source projection drifts", () => {
+  const credited = creditedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"), "shipper-crm.html", "shippers");
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(
+      driftP2S4SourceProjection(credited),
+      acceptedP2S4Review("shipper-crm.html", "shippers"),
+    ),
+    /source projection/i,
   );
 });
 

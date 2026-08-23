@@ -5,6 +5,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   P2_S4_CLOSURE,
+  P2_S4_ROUTES,
   P2_S4_SEMANTIC_ROWS,
   validateP2S4EvidenceFiles,
   validateP2S4Manifest,
@@ -164,6 +165,26 @@ const requireText = (text, pattern, message) => {
   if (!pattern.test(text)) throw new Error(message);
 };
 
+const P2_BUILD_MATRIX_COLUMNS = Object.freeze([
+  "build", "ordinal", "state", "name_or_route", "width", "height", "source_manifest", "source_render_plan",
+  "reference_asset", "source_state_identity", "source_duplicate_count", "desktop_applicability", "tablet_applicability",
+  "mobile_applicability", "mapping_status", "target_route", "target_component", "disposition", "evidence",
+]);
+const P2_BUILD_MATRIX_COUNTS = Object.freeze({
+  build_01: 61,
+  build_02: 61,
+  build_03: 68,
+  build_04: 76,
+  build_05: 82,
+  build_06: 90,
+  build_07: 96,
+  build_08: 104,
+  build_09: 116,
+  build_10: 124,
+  build_11: 132,
+  build_12: 140,
+});
+
 const parseCsv = (text) => {
   if (typeof text !== "string" || text.length === 0) throw new Error("CSV evidence must be non-empty text");
   const rows = [];
@@ -204,7 +225,10 @@ const parseCsv = (text) => {
   if (!header?.length || rows.some((entry) => entry.length !== header.length)) {
     throw new Error("CSV evidence has an invalid row width");
   }
-  return rows.map((entry) => Object.fromEntries(header.map((key, index) => [key, entry[index]])));
+  return {
+    header,
+    records: rows.map((entry) => Object.fromEntries(header.map((key, index) => [key, entry[index]]))),
+  };
 };
 
 const nonEmptyText = (value) => typeof value === "string" && value.trim().length > 0;
@@ -283,13 +307,47 @@ export function validateP2S4IndependentReviewBody(review, { requireGo = true } =
   return record;
 }
 
-export function validateP2S4SemanticReconciliation(matrixText, reviewRecord) {
-  const records = parseCsv(matrixText);
+export function validateP2S4SemanticReconciliation(matrixText, reviewRecord, { rootDir = process.cwd(), routeMapText } = {}) {
+  const { header, records } = parseCsv(matrixText);
+  if (JSON.stringify(header) !== JSON.stringify(P2_BUILD_MATRIX_COLUMNS) || records.length !== 1150) {
+    throw new Error("P2-S4 semantic reconciliation requires the exact 1,150-row Build matrix schema");
+  }
+  const matrixKeys = new Set();
+  const buildCounts = Object.fromEntries(Object.keys(P2_BUILD_MATRIX_COUNTS).map((build) => [build, 0]));
+  for (const row of records) {
+    const key = `${row.build}:${row.ordinal}`;
+    if (
+      !Object.hasOwn(P2_BUILD_MATRIX_COUNTS, row.build) ||
+      !/^\d+$/.test(row.ordinal) ||
+      matrixKeys.has(key) ||
+      !nonEmptyText(row.state) ||
+      !nonEmptyText(row.name_or_route) ||
+      row.source_state_identity !== `${row.build}|${row.state}|${row.name_or_route}|${row.width}|${row.height}` ||
+      !row.reference_asset.startsWith(`${row.build}/`) ||
+      !row.reference_asset.endsWith(".html")
+    ) {
+      throw new Error(`P2-S4 Build matrix source identity mismatch: ${key}`);
+    }
+    matrixKeys.add(key);
+    buildCounts[row.build] += 1;
+  }
+  if (Object.keys(P2_BUILD_MATRIX_COUNTS).some((build) => buildCounts[build] !== P2_BUILD_MATRIX_COUNTS[build])) {
+    throw new Error("P2-S4 semantic reconciliation requires the canonical Build row distribution");
+  }
+  const sourceProjection = records.map((row) => P2_BUILD_MATRIX_COLUMNS.slice(0, 14).map((column) => row[column]));
+  const sourceProjectionDigest = createHash("sha256").update(JSON.stringify(sourceProjection)).digest("hex");
+  if (sourceProjectionDigest !== P2_S4_CLOSURE.matrixSourceProjectionSha256) {
+    throw new Error("P2-S4 Build matrix source projection digest mismatch");
+  }
   if (!Array.isArray(reviewRecord?.mappings) || reviewRecord.mappings.length !== P2_S4_SEMANTIC_ROWS.length) {
     throw new Error("P2-S4 semantic reconciliation requires the exact 13 review mappings");
   }
   const reviewKeys = new Set(reviewRecord.mappings.map((mapping) => `${mapping?.build}:${mapping?.ordinal}`));
   if (reviewKeys.size !== P2_S4_SEMANTIC_ROWS.length) throw new Error("P2-S4 semantic reconciliation contains duplicate review mappings");
+
+  const root = realpathSync(resolve(rootDir));
+  const routeMap = parseCsv(routeMapText ?? readFileSync(resolve(root, "docs/platform55-shell-route-map.csv"), "utf8"));
+  const routeRecords = routeMap.records;
 
   for (const expected of P2_S4_SEMANTIC_ROWS) {
     const key = `${expected.build}:${expected.ordinal}`;
@@ -314,6 +372,20 @@ export function validateP2S4SemanticReconciliation(matrixText, reviewRecord) {
       mapping.evidence !== P2_S4_CLOSURE.independentReview
     ) {
       throw new Error(`${key} must have an accepted independent semantic mapping`);
+    }
+    const targetRoutes = routeRecords.filter((candidate) => candidate.route === mapping.target_route);
+    const target = targetRoutes[0];
+    const targetComponents = new Set((target?.platform55_surfaces || "").split(";").filter(Boolean));
+    if (
+      !P2_S4_ROUTES.includes(mapping.target_route) ||
+      targetRoutes.length !== 1 ||
+      target.owner_sprint !== "P2-S4" ||
+      target.status !== "contract_ready" ||
+      !targetComponents.has(mapping.target_component) ||
+      !existsSync(resolve(root, mapping.target_route)) ||
+      !statSync(resolve(root, mapping.target_route)).isFile()
+    ) {
+      throw new Error(`${key} must resolve to a real P2-S4 target route and declared component: ${mapping.target_route}`);
     }
     if (
       row.target_route !== mapping.target_route ||
@@ -472,6 +544,7 @@ const validateP2S4Closure = (sprint, rootDir) => {
   validateP2S4SemanticReconciliation(
     readFileSync(resolve(root, "docs/platform55-shell-build-matrix.csv"), "utf8"),
     reviewRecord,
+    { rootDir: root },
   );
   requireText(implementation, /global Platform55 verdict:\s*NO-GO/i, "P2-S4 evidence must keep the global verdict NO-GO");
   requireText(implementation, /No push, PR metadata, preview, deployment, promotion, Supabase change/i, "P2-S4 evidence must preserve local-only boundaries");
