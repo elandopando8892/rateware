@@ -95,6 +95,11 @@ assert.match(
 );
 assert.match(
   css,
+  /@media\s*\(max-width:\s*1200px\)[\s\S]*?\.compact-bulk-toolbar\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+  "Memory tablet toolbar must use shrinkable tracks instead of overflowing the document"
+);
+assert.match(
+  css,
   /body\[data-platform55-page=["']catalog-workbench["']\]\s+\[data-workbench-view-panel=["']import["']\]\s*\{[^}]*min-width:\s*0[^}]*max-width:\s*100%/s,
   "Catalog import panel must not inherit the preview table's intrinsic width"
 );

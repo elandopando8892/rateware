@@ -76,6 +76,23 @@ body[data-platform55-page="catalog-workbench"] .catalog-import-preview > .table-
   background: var(--rw-white);
 }
 
+@media (max-width: 1200px) {
+  body[data-platform55-page="interpretation-memory"] .compact-bulk-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-platform55-page="interpretation-memory"] .compact-bulk-toolbar > * {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  body[data-platform55-page="interpretation-memory"] #memory-table-status {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
 @media (max-width: 900px) {
   .rw-intelligence-admin-page {
     gap: 16px;
