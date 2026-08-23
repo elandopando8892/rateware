@@ -88,7 +88,7 @@
     {
       "id": "P2",
       "weight": 7,
-      "progress": 85,
+      "progress": 100,
       "evidence": {
         "scope": [
           "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
@@ -107,7 +107,9 @@
           "docs/release/evidence/2026-08-21-p2-s3-procurement.md",
           "docs/release/evidence/2026-08-21-p2-s4-network-service.md",
           "docs/release/evidence/2026-08-22-p2-s5-intelligence-admin.md",
-          "docs/release/evidence/2026-08-23-p2-s6-local-certification.md"
+          "docs/release/evidence/2026-08-23-p2-s6-local-certification.md",
+          "docs/release/evidence/2026-08-21-p2-s6-production-smoke-monitoring.json",
+          "docs/release/evidence/2026-08-21-p2-s6-production-smoke-monitoring.md"
         ],
         "automated_suite": [
           "npm test PASS on exact closure head 18955d06443d3532823da6725eda90041b15b2e8",
@@ -127,7 +129,8 @@
           "node tools/platform55-s6-browser-certification.mjs PASS on product candidate 31ca1105865570acd575ae17eeb25c236df45c7c with 29 routes, 42 captures, 3,312 contrast samples, minimum 4.521, 0 missing names, 0 contrast failures, and focus cycles/restoration",
           "npm run validate:action-contract PASS on exact P2-S6 closure head 4bc7498805dc313c49ec7917dff8f454b0642303 with 401 contract, 399 discovered, 0 errors and 1 pre-existing warning",
           "npm audit --audit-level=low PASS on exact P2-S6 closure head 4bc7498805dc313c49ec7917dff8f454b0642303 with 0 vulnerabilities",
-          "node --test tests/platform55-s6-source-supersession.test.mjs PASS with 6 of 6 exact source blobs"
+          "node --test tests/platform55-s6-source-supersession.test.mjs PASS with 6 of 6 exact source blobs",
+          "npm test PASS after the production squash with 46 of 46 production-readiness gates"
         ],
         "independent_review": [
           "docs/release/evidence/2026-08-21-p2-s2-independent-review.md",
@@ -136,10 +139,23 @@
           "docs/release/evidence/2026-08-23-p2-s5-surface-candidate.json",
           "docs/release/evidence/2026-08-23-p2-s5-independent-review.json",
           "docs/release/evidence/2026-08-21-p2-s6-independent-review.md"
+        ],
+        "preview_smoke": [
+          "Authenticated PR #68 preview smoke PASS before squash merge"
+        ],
+        "deployment": [
+          "Vercel production deployment dpl_3P6nWwoaqUeDktTMi7HifGG6XAwk READY at rateware.vercel.app"
+        ],
+        "production_smoke": [
+          "Production smoke PASS on release 7a146765ac38bd18a320f32f7e3ed7a7f13c8da7 across 7 routes and 3 viewports"
+        ],
+        "monitoring": [
+          "T+0/T+5/T+15 production monitoring PASS with 0 runtime errors and 0 unexpected writes"
         ]
       },
       "verdicts": {
-        "independent_review": "GO"
+        "independent_review": "GO",
+        "production_release": "GO"
       }
     },
     { "id": "P3", "weight": 7, "progress": 0, "evidence": {} },

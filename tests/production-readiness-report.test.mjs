@@ -405,7 +405,7 @@ test("keeps the persisted P1 production closure backed while P2 advances", () =>
   }
   for (const path of trackedEvidence) execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   validateLedger(persisted);
-  assert.equal(computeOverallProgress(persisted), 82);
+  assert.equal(computeOverallProgress(persisted), 83);
 });
 
 test("preserves P2-S2 immutable actual-route evidence and independent GO while P2 advances", () => {
@@ -413,7 +413,7 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
   const p2 = p2Ledger.sprints.find((sprint) => sprint.id === "P2");
 
   validateLedger(p2Ledger);
-  assert.equal(p2.progress, 85);
+  assert.equal(p2.progress, 100);
   assert.deepEqual(p2.evidence.scope, [
     "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
   ]);
@@ -432,6 +432,8 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
     "docs/release/evidence/2026-08-21-p2-s4-network-service.md",
     P2_S5_CLOSURE.implementation,
     productionReadiness.P2_S6_CLOSURE.implementation,
+    productionReadiness.P2_S6_PRODUCTION_CLOSURE.record,
+    productionReadiness.P2_S6_PRODUCTION_CLOSURE.report,
   ]);
   assert.deepEqual(p2.evidence.independent_review, [
     "docs/release/evidence/2026-08-21-p2-s2-independent-review.md",
@@ -453,6 +455,7 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
     "npm test PASS on exact P2-S5 reviewed head e159cd205c631220613809aef0d21f7e1ec4f19b",
     "npm run test:platform55:intelligence-admin PASS with 36 of 36 actual-route captures and 56 of 56 reconciled surfaces",
     ...productionReadiness.P2_S6_CLOSURE.automatedSuite,
+    "npm test PASS after the production squash with 46 of 46 production-readiness gates",
   ]);
   const review = readFileSync(p2.evidence.independent_review[0], "utf8");
   assert.match(review, /Verdict:\s*GO/i);
@@ -462,8 +465,8 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
   for (const path of [...p2.evidence.scope, ...p2.evidence.evidence_plan, ...p2.evidence.implementation, ...p2.evidence.independent_review]) {
     execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   }
-  assert.equal(computeOverallProgress(p2Ledger), 82);
-  assert.match(formatProgressReport(p2Ledger), /P2:\s+85%/);
+  assert.equal(computeOverallProgress(p2Ledger), 83);
+  assert.match(formatProgressReport(p2Ledger), /P2:\s+100%/);
 });
 
 test("credits P2-S3 only from the immutable Procurement matrix and exact local gates", () => {
@@ -471,7 +474,7 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
   const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
 
   validateLedger(persisted);
-  assert.equal(p2.progress, 85);
+  assert.equal(p2.progress, 100);
   const evidence = readFileSync("docs/release/evidence/2026-08-21-p2-s3-procurement.md", "utf8");
   assert.match(evidence, /Visual subject SHA:\s*`6917246927a6a13e82abf9e1e84b00b27f172ab7`/i);
   assert.match(evidence, /Evidence and full-gate HEAD:\s*`23584f218d094a622608c813715247cf16190375`/i);
@@ -531,7 +534,7 @@ test("credits P2-S4 only after semantic fidelity and visual accessibility are in
   const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
   validateLedger(persisted);
-  assert.equal(p2.progress, 85);
+  assert.equal(p2.progress, 100);
   assert.ok(p2.evidence.evidence_plan.includes(P2_S4_CLOSURE.plan));
   assert.ok(p2.evidence.implementation.includes(P2_S4_CLOSURE.implementation));
   assert.ok(P2_S4_CLOSURE.automatedSuite.every((entry) => p2.evidence.automated_suite.includes(entry)));
@@ -564,8 +567,8 @@ test("records the exact accepted mixed P2-S4 semantic review before granting mil
   )));
   assert.equal(record.mappings.filter((mapping) => mapping.matrix_status === "verified").length, 1);
   assert.equal(record.mappings.filter((mapping) => mapping.matrix_status === "dispositioned").length, 12);
-  assert.equal(p2.progress, 85);
-  assert.equal(computeOverallProgress(persisted), 82);
+  assert.equal(p2.progress, 100);
+  assert.equal(computeOverallProgress(persisted), 83);
 });
 
 test("rejects P2 at 70 without the exact P2-S4 Network and Service closure", () => {
@@ -655,8 +658,8 @@ test("credits P2-S5 only from the exact candidate, review, captures, and detache
   const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
   validateLedger(persisted);
-  assert.equal(p2.progress, 85);
-  assert.equal(computeOverallProgress(persisted), 82);
+  assert.equal(p2.progress, 100);
+  assert.equal(computeOverallProgress(persisted), 83);
   assert.ok(p2.evidence.evidence_plan.includes(P2_S5_CLOSURE.plan));
   assert.ok(p2.evidence.implementation.includes(P2_S5_CLOSURE.implementation));
   assert.ok(p2.evidence.independent_review.includes(P2_S5_CLOSURE.candidate));
@@ -678,8 +681,8 @@ test("credits P2-S6 only from the exact accessible product candidate and detache
   const closure = productionReadiness.P2_S6_CLOSURE;
 
   validateLedger(persisted);
-  assert.equal(p2.progress, 85);
-  assert.equal(computeOverallProgress(persisted), 82);
+  assert.equal(p2.progress, 100);
+  assert.equal(computeOverallProgress(persisted), 83);
   assert.ok(p2.evidence.evidence_plan.includes(closure.plan));
   assert.ok(p2.evidence.implementation.includes(closure.implementation));
   assert.ok(p2.evidence.independent_review.includes(closure.independentReview));
@@ -784,6 +787,23 @@ test("requires exact fail-closed production evidence before crediting P2 at 100"
     mutate(changed);
     assert.throws(() => productionReadiness.validateP2S6ProductionRecord(changed), new RegExp(label, "i"));
   }
+
+  const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const persistedP2 = persisted.sprints.find((sprint) => sprint.id === "P2");
+  validateLedger(persisted);
+  assert.equal(persistedP2.progress, 100);
+  assert.equal(computeOverallProgress(persisted), 83);
+  assert.ok(persistedP2.evidence.implementation.includes(productionReadiness.P2_S6_PRODUCTION_CLOSURE.record));
+  assert.ok(persistedP2.evidence.implementation.includes(productionReadiness.P2_S6_PRODUCTION_CLOSURE.report));
+  assert.ok(persistedP2.evidence.preview_smoke.includes(productionReadiness.P2_S6_PRODUCTION_CLOSURE.previewSmoke));
+  assert.ok(persistedP2.evidence.deployment.includes(productionReadiness.P2_S6_PRODUCTION_CLOSURE.deployment));
+  assert.ok(persistedP2.evidence.production_smoke.includes(productionReadiness.P2_S6_PRODUCTION_CLOSURE.productionSmoke));
+  assert.ok(persistedP2.evidence.monitoring.includes(productionReadiness.P2_S6_PRODUCTION_CLOSURE.monitoring));
+  assert.equal(persistedP2.verdicts.production_release, "GO");
+  assert.deepEqual(
+    productionReadiness.validateP2S6ProductionRecord(JSON.parse(readFileSync(productionReadiness.P2_S6_PRODUCTION_CLOSURE.record, "utf8"))),
+    JSON.parse(readFileSync(productionReadiness.P2_S6_PRODUCTION_CLOSURE.record, "utf8")),
+  );
 
   const fabricated = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p2 = fabricated.sprints.find((sprint) => sprint.id === "P2");
