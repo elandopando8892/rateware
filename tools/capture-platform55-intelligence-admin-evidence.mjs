@@ -13,7 +13,7 @@ const routes = Object.freeze([
   { slug: "growth-hacking", file: "growth-hacking.html", kind: "tenant", query: "", loaded: "#growth-global-status.success", nonhappy: "#growth-global-status.error", nonhappyState: "error" },
   { slug: "settings", file: "settings.html", kind: "tenant", query: "view=governance", nonhappyQuery: "view=audit", loaded: "#settings-governance-status[data-tone]", nonhappy: "#audit-log-body td", nonhappyState: "error" },
   { slug: "interpretation-memory", file: "interpretation-memory.html", kind: "tenant", query: "view=governance", nonhappyQuery: "view=library", loaded: "[data-platform55-governance-summary]", nonhappy: "#memory-body td", nonhappyState: "error" },
-  { slug: "catalog-workbench", file: "catalog-workbench.html", kind: "tenant", query: "view=import", nonhappyQuery: "view=matching", loaded: "[data-platform55-governance-summary]", nonhappy: "#catalog-workbench-body .ui-state-error", nonhappyState: "error" },
+  { slug: "catalog-workbench", file: "catalog-workbench.html", kind: "tenant", query: "view=import", nonhappyQuery: "view=matching", loaded: "[data-platform55-governance-summary]", nonhappy: "#catalog-workbench-body .ui-state[data-tone='danger']", nonhappyState: "error" },
   { slug: "index", file: "index.html", kind: "entry", query: "", loaded: "[data-platform55-demo-data]", nonhappy: "#auth-status", nonhappyState: "signed-out" }
 ]);
 const viewports = Object.freeze([[1440, 900], [1024, 768], [390, 844]]);

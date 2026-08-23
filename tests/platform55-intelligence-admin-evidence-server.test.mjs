@@ -48,3 +48,9 @@ test("blocks writes, traversal, missing files, and external XLSX loading", async
     await server.close();
   }
 });
+
+test("binds Catalog non-happy evidence to the emitted danger state", async () => {
+  const captureSource = await readFile("tools/capture-platform55-intelligence-admin-evidence.mjs", "utf8");
+  assert.match(captureSource, /#catalog-workbench-body \.ui-state\[data-tone=['"]danger['"]\]/);
+  assert.doesNotMatch(captureSource, /#catalog-workbench-body \.ui-state-error/);
+});
