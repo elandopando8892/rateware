@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
@@ -12,8 +13,8 @@ const manifestPath = `docs/platform55-evidence/p2-s5/${EXPECTED_P2_S5_SUBJECT}/m
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 
 test("anchors the exact 36-capture Intelligence and Administration matrix", async () => {
-  assert.equal(EXPECTED_P2_S5_SUBJECT, "649c50f9402d96e4310f570eda471d5af432d3fc");
-  assert.equal(EXPECTED_P2_S5_MANIFEST_SHA256, "5619a614472259f183c0d4d5d8de1cfc82fb7cc374dd5b1b31d6064922703f14");
+  assert.equal(EXPECTED_P2_S5_SUBJECT, "36a8643e9eca319a5a4b931a6ec0d2272cee3e1b");
+  assert.equal(EXPECTED_P2_S5_MANIFEST_SHA256, "1203446ce4d15aec7293b1cbc55487595d1fc68a81493ab978e7764bfa1122a4");
   const result = validateP2S5Manifest(manifest);
   assert.equal(result.captureCount, 36);
   assert.equal(result.sourceCount, 19);
@@ -21,6 +22,24 @@ test("anchors the exact 36-capture Intelligence and Administration matrix", asyn
   assert.equal(evidence.captureCount, 36);
   assert.equal(evidence.sourceCount, 19);
   assert.equal(evidence.subject, EXPECTED_P2_S5_SUBJECT);
+  assert.equal(
+    manifest.captures.every((capture) => capture.opposite_state_visible === false),
+    true,
+    "every capture must prove that its opposite state is not visible"
+  );
+});
+
+test("pins content-addressed evidence JSON to LF in clean Windows worktrees", () => {
+  for (const path of [
+    manifestPath,
+    "docs/release/evidence/2026-08-22-p2-s4-semantic-closure.json"
+  ]) {
+    assert.equal(
+      execFileSync("git", ["check-attr", "eol", "--", path], { encoding: "utf8" }).trim(),
+      `${path}: eol: lf`,
+      `${path} must materialize byte-identically on Windows`
+    );
+  }
 });
 
 test("rejects fabricated or weakened Intelligence and Administration evidence", () => {
@@ -44,6 +63,10 @@ test("rejects fabricated or weakened Intelligence and Administration evidence", 
   const entryCapture = publicLeak.captures.find((capture) => capture.kind === "entry");
   entryCapture.private_controls = 1;
   assert.throws(() => validateP2S5Manifest(publicLeak), /private_controls/);
+
+  const overlappingState = structuredClone(manifest);
+  overlappingState.captures[0].opposite_state_visible = true;
+  assert.throws(() => validateP2S5Manifest(overlappingState), /opposite_state_visible/);
 });
 
 test("binds all six S5 routes to the immutable browser evidence", async () => {

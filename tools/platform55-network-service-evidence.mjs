@@ -16,7 +16,7 @@ export const P2_S4_CLOSURE = Object.freeze({
   reviewBase: "a15fef8636a725d5c127f0ff64f26445fc82e8f4",
   referenceArchiveSha256: "cf2ced85e95dfb33bb7410bf73ace22cb95090ce649747df60bf2920e808c16a",
   matrixSourceProjectionSha256: "26889f56d6f7dd2afb289b62abb044ac955cc7607ee5236c3c1f5023f4f601fb",
-  routeMapSha256: "7f541d3a539fdf6eae92b1a448c5d5e6ed94ba05f46fee6562ab2f797210c60f",
+  routeMapSha256: "c97e6db121b3ef4c3005447f540dd5812d52f072388b6cb57773d94fc37994d6",
   manifestObjectSha256: "3dc18d8c47e1d1e0c55670d18a3ac2f56f3d9eea7dcb033d4834d0e698d37291",
   automatedSuite: Object.freeze([
     "npm run test:platform55:network-service PASS with 48 of 48 actual-route captures",

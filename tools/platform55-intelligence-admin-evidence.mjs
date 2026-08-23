@@ -3,17 +3,17 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 
-export const EXPECTED_P2_S5_SUBJECT = "649c50f9402d96e4310f570eda471d5af432d3fc";
-export const EXPECTED_P2_S5_MANIFEST_SHA256 = "5619a614472259f183c0d4d5d8de1cfc82fb7cc374dd5b1b31d6064922703f14";
+export const EXPECTED_P2_S5_SUBJECT = "36a8643e9eca319a5a4b931a6ec0d2272cee3e1b";
+export const EXPECTED_P2_S5_MANIFEST_SHA256 = "1203446ce4d15aec7293b1cbc55487595d1fc68a81493ab978e7764bfa1122a4";
 
 const VIEWPORTS = Object.freeze(["1440x900", "1024x768", "390x844"]);
 const ROUTES = Object.freeze([
   Object.freeze({ route: "business-intelligence.html", slug: "business-intelligence", kind: "tenant", states: Object.freeze({ loaded: Object.freeze({ qa: "loaded", selector: "#bi-geo-status[data-tone='success']" }), error: Object.freeze({ qa: "error", selector: "#bi-geo-status[data-tone='error']" }) }) }),
   Object.freeze({ route: "growth-hacking.html", slug: "growth-hacking", kind: "tenant", states: Object.freeze({ loaded: Object.freeze({ qa: "loaded", selector: "#growth-global-status.success" }), error: Object.freeze({ qa: "error", selector: "#growth-global-status.error" }) }) }),
   Object.freeze({ route: "settings.html", slug: "settings", kind: "tenant", states: Object.freeze({ loaded: Object.freeze({ qa: "loaded", selector: "#settings-governance-status[data-tone]" }), error: Object.freeze({ qa: "error", selector: "#audit-log-body td" }) }) }),
-  Object.freeze({ route: "interpretation-memory.html", slug: "interpretation-memory", kind: "tenant", states: Object.freeze({ loaded: Object.freeze({ qa: "loaded", selector: "[data-platform55-governance-summary]" }), error: Object.freeze({ qa: "error", selector: "#memory-body td" }) }) }),
-  Object.freeze({ route: "catalog-workbench.html", slug: "catalog-workbench", kind: "tenant", states: Object.freeze({ loaded: Object.freeze({ qa: "loaded", selector: "[data-platform55-governance-summary]" }), error: Object.freeze({ qa: "error", selector: "#catalog-workbench-body .ui-state[data-tone='danger']" }) }) }),
-  Object.freeze({ route: "index.html", slug: "index", kind: "entry", states: Object.freeze({ loaded: Object.freeze({ qa: "loaded", selector: "[data-platform55-demo-data]" }), "signed-out": Object.freeze({ qa: "signed-out", selector: "#auth-status" }) }) })
+  Object.freeze({ route: "interpretation-memory.html", slug: "interpretation-memory", kind: "tenant", states: Object.freeze({ loaded: Object.freeze({ qa: "loaded", selector: "#memory-table-status[data-tone='success']" }), error: Object.freeze({ qa: "error", selector: "#memory-table-status[data-tone='error']" }) }) }),
+  Object.freeze({ route: "catalog-workbench.html", slug: "catalog-workbench", kind: "tenant", states: Object.freeze({ loaded: Object.freeze({ qa: "loaded", selector: "#catalog-workbench-status[data-tone='success']" }), error: Object.freeze({ qa: "error", selector: "#catalog-workbench-status[data-tone='error']" }) }) }),
+  Object.freeze({ route: "index.html", slug: "index", kind: "entry", states: Object.freeze({ loaded: Object.freeze({ qa: "loaded", selector: "#auth-status[data-auth-state='authenticated']" }), "signed-out": Object.freeze({ qa: "signed-out", selector: "#auth-status[data-auth-state='signed-out']" }) }) })
 ]);
 const SOURCE_BLOBS = Object.freeze({
   "business-intelligence.html": "862be0c095280813239c43540bc28fe49ea6d8e9",
@@ -25,23 +25,23 @@ const SOURCE_BLOBS = Object.freeze({
   "src/business-intelligence.js": "38084169504aec07ce87b1870d543a8b7b825a7f",
   "src/growth-hacking.js": "94a12cdc438a70f4f3386a8d0f0a1555e1992d25",
   "src/settings.js": "c62791800ef846ceb867cbe3d547c0c924d2720f",
-  "src/interpretation-memory.js": "4e343b6970802c859c644e7b2005c0898b3f22eb",
+  "src/interpretation-memory.js": "8e6d6cde9b0f24d61d0f15884afb456cb775b0db",
   "src/catalog-workbench.js": "50e3b6f2188bb754572fe516c2b28ff9b2265cab",
   "src/landing.js": "504a346ededc3a67d29dad0d181e62adfa00c182",
   "src/platform55-shell.js": "4e42f52b2e77914ab9c26f9f1287925f18ba6ea2",
   "src/platform55-shell.css": "c641d1068f420da458eb46f1d5e8ed11e927378b",
   "src/platform55-public-shell.css": "f4d48af86f2fa12cb3a2b12127a99558fc5fadcd",
   "src/platform55-tokens.css": "9a88c93567b7318458dc42a11daead5e8a2ff0b5",
-  "src/platform55-intelligence-admin.css": "a5535376ea443c48ecb2d69c4ae8ff93aaedb864",
-  "tools/platform55-intelligence-admin-evidence-server.mjs": "9aa69a6cbaf17ef26f64eeeace9918bb532adb50",
-  "tools/capture-platform55-intelligence-admin-evidence.mjs": "ee55ac1136e77914db0798622d4f75fdb6c9ae53"
+  "src/platform55-intelligence-admin.css": "f8806eecc823198945a051090c6f15b2a68f3c0b",
+  "tools/platform55-intelligence-admin-evidence-server.mjs": "25fbecf6a904b142ffadc30d500291ce9798c74c",
+  "tools/capture-platform55-intelligence-admin-evidence.mjs": "bd1dfa420f3159241bbbf0dcb083302b8854e395"
 });
 const SOURCE_PATHS = Object.freeze(Object.keys(SOURCE_BLOBS));
 const MANIFEST_KEYS = Object.freeze(["schema_version", "subject_sha", "routes", "states_by_route", "viewports", "source_git_blobs", "capture_policy", "captures"]);
 const CAPTURE_KEYS = Object.freeze([
   "file", "route", "kind", "shell", "state", "qa_state", "viewport", "source_frame", "canvas_normalized", "layout_stability_samples", "state_selector",
   "console_errors", "http_errors", "page_errors", "request_errors", "external_requests", "exact_viewport", "document_overflow", "content_width_ratio",
-  "public_header_height_ratio", "public_brand_contrast_ratio", "state_visible", "state_intersection_ratio", "state_marker", "active_routes", "private_controls",
+  "public_header_height_ratio", "public_brand_contrast_ratio", "state_visible", "opposite_state_visible", "state_intersection_ratio", "state_marker", "active_routes", "private_controls",
   "evidence_summaries", "governance_summaries", "demo_data_markers", "system_status", "focusable_count", "reduced_motion", "scroll_x", "overflow_candidates",
   "byte_length", "sha256"
 ]);
@@ -115,7 +115,7 @@ export function validateP2S5Manifest(manifest) {
     for (const key of ["console_errors", "http_errors", "page_errors", "request_errors", "external_requests", "scroll_x"]) {
       if (capture[key] !== 0) throw new Error(`${identity}.${key} must be zero`);
     }
-    if (capture.exact_viewport !== true || capture.document_overflow !== false || capture.state_visible !== true || capture.reduced_motion !== true) throw new Error(`${identity} browser state contract failed`);
+    if (capture.exact_viewport !== true || capture.document_overflow !== false || capture.state_visible !== true || capture.opposite_state_visible !== false || capture.reduced_motion !== true) throw new Error(`${identity}.opposite_state_visible browser state contract failed`);
     if (!Number.isFinite(capture.content_width_ratio) || capture.content_width_ratio < 0.75 || capture.content_width_ratio > 1) throw new Error(`${identity}.content_width_ratio is invalid`);
     if (!Number.isFinite(capture.state_intersection_ratio) || capture.state_intersection_ratio <= 0 || capture.state_intersection_ratio > 1) throw new Error(`${identity}.state_intersection_ratio is invalid`);
     if (typeof capture.state_marker !== "string" || !capture.state_marker.trim()) throw new Error(`${identity}.state_marker is empty`);
