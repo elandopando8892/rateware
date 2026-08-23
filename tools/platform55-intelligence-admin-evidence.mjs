@@ -7,7 +7,7 @@ export const EXPECTED_P2_S5_SUBJECT = "b78f73fbcba8cad7720bf329f9d65bd20746a147"
 export const EXPECTED_P2_S5_MANIFEST_SHA256 = "8320e6294aacd3af527b02cd2973b0ce4971a2ea67c3737f6838e4c67cfbda77";
 export const P2_S5_SURFACE_CANDIDATE = Object.freeze({
   path: "docs/release/evidence/2026-08-23-p2-s5-surface-candidate.json",
-  sha256: "8f4398caab2e32444f4f170f32a56b00880ec53d03f8d37fcad440d9e413e715",
+  sha256: "14c2e99f21bfc4e3d9796df5179b84213d49efd876d176a45ac97522bad53852",
 });
 
 const VIEWPORTS = Object.freeze(["1440x900", "1024x768", "390x844"]);
@@ -128,8 +128,8 @@ export function validateP2S5SurfaceCandidateBody(body, { requireGo = false } = {
   const record = JSON.parse(body);
   const keys = [
     "schema_version", "candidate_parent_sha", "visual_subject_sha", "visual_manifest", "visual_manifest_sha256",
-    "reference_archive", "reference_archive_sha256", "route_map", "route_map_sha256", "review_mode", "verdict",
-    "semantic_credit", "mappings",
+    "reference_archive", "reference_archive_sha256", "route_map", "route_map_sha256", "surface_inventory",
+    "surface_inventory_sha256", "review_mode", "verdict", "semantic_credit", "mappings",
   ];
   if (!sameKeys(record, keys)) throw new Error("P2-S5 surface candidate schema mismatch");
   if (record.schema_version !== 1 || record.candidate_parent_sha !== "4886e4a3ba0e73c0355c45bee2a274644cb66e26") throw new Error("P2-S5 candidate identity mismatch");
@@ -137,6 +137,7 @@ export function validateP2S5SurfaceCandidateBody(body, { requireGo = false } = {
   if (record.visual_manifest !== `docs/platform55-evidence/p2-s5/${EXPECTED_P2_S5_SUBJECT}/manifest.json`) throw new Error("P2-S5 visual manifest path mismatch");
   if (record.reference_archive_sha256 !== "CF2CED85E95DFB33BB7410BF73ACE22CB95090CE649747DF60BF2920E808C16A") throw new Error("P2-S5 reference archive mismatch");
   if (record.route_map !== "docs/platform55-shell-route-map.csv" || record.route_map_sha256 !== "12b4db2c5718d96902bac145c041ca978c8778edddf7a268276ab72d7494fe11") throw new Error("P2-S5 route map mismatch");
+  if (record.surface_inventory !== "docs/platform55-surface-inventory.csv" || record.surface_inventory_sha256 !== "147bdfc59bf00498d9725a416494b28f10ec1c6975f8b921b277a46273ff97d3") throw new Error("P2-S5 surface inventory mismatch");
   if (record.review_mode !== "candidate-awaiting-independent-detached-review" || record.verdict !== "PENDING-INDEPENDENT-REVIEW" || record.semantic_credit !== "withheld") throw new Error("P2-S5 candidate must withhold semantic credit");
   if (requireGo) throw new Error("P2-S5 candidate is not an independent GO review");
   if (!Array.isArray(record.mappings) || record.mappings.length !== 56) throw new Error("P2-S5 candidate must contain exactly 56 mappings");

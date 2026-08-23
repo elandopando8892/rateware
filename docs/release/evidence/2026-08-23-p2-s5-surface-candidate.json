@@ -8,6 +8,8 @@
   "reference_archive_sha256": "CF2CED85E95DFB33BB7410BF73ACE22CB95090CE649747DF60BF2920E808C16A",
   "route_map": "docs/platform55-shell-route-map.csv",
   "route_map_sha256": "12b4db2c5718d96902bac145c041ca978c8778edddf7a268276ab72d7494fe11",
+  "surface_inventory": "docs/platform55-surface-inventory.csv",
+  "surface_inventory_sha256": "147bdfc59bf00498d9725a416494b28f10ec1c6975f8b921b277a46273ff97d3",
   "review_mode": "candidate-awaiting-independent-detached-review",
   "verdict": "PENDING-INDEPENDENT-REVIEW",
   "semantic_credit": "withheld",
