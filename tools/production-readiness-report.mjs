@@ -10,6 +10,13 @@ import {
   validateP2S4EvidenceFiles,
   validateP2S4Manifest,
 } from "./platform55-network-service-evidence.mjs";
+import {
+  P2_S5_CLOSURE,
+  validateP2S5IndependentReviewBody,
+  validateP2S5Manifest,
+  validateP2S5SurfaceCandidateBody,
+  validateP2S5SurfaceReconciliation,
+} from "./platform55-intelligence-admin-evidence.mjs";
 
 const IDS = ["P0", "P1", "P2", "P3", "P4", "P5"];
 const WEIGHTS = { P0: 4, P1: 9, P2: 7, P3: 7, P4: 6, P5: 4 };
@@ -746,6 +753,46 @@ const validateP2S4Closure = (sprint, rootDir) => {
   validateP2S4EvidenceFiles(root, manifest);
 };
 
+const validateP2S5Closure = (sprint, rootDir) => {
+  if (sprint.id !== "P2" || sprint.progress < 80) return;
+  const evidence = sprint.evidence || {};
+  if (!evidence.evidence_plan?.includes(P2_S5_CLOSURE.plan)) throw new Error("P2-S5 evidence_plan must contain the exact Intelligence and Administration plan");
+  if (!evidence.implementation?.includes(P2_S5_CLOSURE.implementation)) throw new Error("P2-S5 implementation must contain the exact candidate evidence");
+  if (!P2_S5_CLOSURE.automatedSuite.every((entry) => evidence.automated_suite?.includes(entry))) throw new Error("P2-S5 automated_suite must contain the exact detached review gates");
+  if (!evidence.independent_review?.includes(P2_S5_CLOSURE.candidate) || !evidence.independent_review?.includes(P2_S5_CLOSURE.independentReview)) throw new Error("P2-S5 independent_review must contain the exact candidate and accepted review");
+
+  const root = realpathSync(resolve(rootDir));
+  const implementation = readFileSync(resolve(root, P2_S5_CLOSURE.implementation), "utf8");
+  const candidateBody = readFileSync(resolve(root, P2_S5_CLOSURE.candidate), "utf8");
+  const reviewBody = readFileSync(resolve(root, P2_S5_CLOSURE.independentReview), "utf8");
+  const surfaceText = readFileSync(resolve(root, "docs/platform55-surface-inventory.csv"), "utf8");
+  const routeText = readFileSync(resolve(root, "docs/platform55-shell-route-map.csv"), "utf8");
+  const manifestPath = resolve(root, P2_S5_CLOSURE.manifest);
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const candidate = validateP2S5SurfaceCandidateBody(candidateBody);
+  const review = validateP2S5IndependentReviewBody(reviewBody, { candidateRecord: candidate });
+  validateP2S5SurfaceReconciliation(surfaceText, routeText, candidate);
+  validateP2S5Manifest(manifest);
+  requireText(implementation, /36 actual-route captures/i, "P2-S5 evidence must record all 36 captures");
+  requireText(implementation, /PENDING-INDEPENDENT-REVIEW/i, "P2-S5 historical candidate evidence must preserve its pending verdict");
+  requireText(implementation, /created no push, pull request, Vercel build, Kinde change, Supabase branch/i, "P2-S5 evidence must preserve local-only boundaries");
+  if (review.verdict !== "GO" || review.semantic_credit !== "accepted") throw new Error("P2-S5 independent review must accept semantic credit");
+
+  for (const [path, expectedBlob] of Object.entries(manifest.source_git_blobs)) {
+    const headBlob = execFileSync("git", ["-C", root, "rev-parse", `HEAD:${path}`], { encoding: "utf8" }).trim();
+    const workingBlob = execFileSync("git", ["-C", root, "hash-object", "--", path], { encoding: "utf8" }).trim();
+    if (headBlob !== expectedBlob || workingBlob !== expectedBlob) throw new Error(`P2-S5 source blob drift: ${path}`);
+  }
+  const evidenceDirectory = dirname(manifestPath);
+  for (const capture of manifest.captures) {
+    const bytes = readFileSync(resolve(evidenceDirectory, capture.file));
+    const [width, height] = capture.viewport.split("x").map(Number);
+    if (bytes.length !== capture.byte_length || createHash("sha256").update(bytes).digest("hex") !== capture.sha256 || bytes.readUInt32BE(16) !== width || bytes.readUInt32BE(20) !== height) {
+      throw new Error(`P2-S5 capture drift: ${capture.file}`);
+    }
+  }
+};
+
 export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
   if (ledger?.schema_version !== 1 || ledger?.baseline !== 63) throw new Error("invalid ledger header");
   if (!Array.isArray(ledger.sprints) || ledger.sprints.map((s) => s.id).join(",") !== IDS.join(",")) throw new Error("sprints must be P0-P5");
@@ -757,6 +804,7 @@ export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
     validateP2S2Closure(sprint, rootDir);
     validateP2S3Closure(sprint, rootDir);
     validateP2S4Closure(sprint, rootDir);
+    validateP2S5Closure(sprint, rootDir);
     if (sprint.progress >= 85 && sprint.verdicts?.independent_review !== "GO") throw new Error(`${sprint.id} requires independent_review GO verdict`);
     for (const [threshold, key] of GATES) if (sprint.progress >= threshold && !hasEvidence(sprint.evidence, key)) throw new Error(`${sprint.id} requires ${key}`);
   }

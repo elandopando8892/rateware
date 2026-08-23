@@ -88,7 +88,7 @@
     {
       "id": "P2",
       "weight": 7,
-      "progress": 70,
+      "progress": 80,
       "evidence": {
         "scope": [
           "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
@@ -97,13 +97,15 @@
           "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-master.md",
           "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s2-operate.md",
           "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s3-procurement.md",
-          "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s4-network-service.md"
+          "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s4-network-service.md",
+          "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s5-intelligence-admin.md"
         ],
         "implementation": [
           "docs/release/evidence/2026-08-21-p2-shell-s1-command-center.md",
           "docs/release/evidence/2026-08-21-p2-s2-operate.md",
           "docs/release/evidence/2026-08-21-p2-s3-procurement.md",
-          "docs/release/evidence/2026-08-21-p2-s4-network-service.md"
+          "docs/release/evidence/2026-08-21-p2-s4-network-service.md",
+          "docs/release/evidence/2026-08-22-p2-s5-intelligence-admin.md"
         ],
         "automated_suite": [
           "npm test PASS on exact closure head 18955d06443d3532823da6725eda90041b15b2e8",
@@ -116,12 +118,16 @@
           "npm run test:provider-service PASS with 37 files and 197 tests",
           "npm test PASS on exact P2-S4 gate head 524b7a450c6b01f894b5bc9ec249ecad262a58d6",
           "npm run validate:action-contract PASS with 0 errors and 1 pre-existing warning",
-          "npm audit --audit-level=low PASS with 0 vulnerabilities"
+          "npm audit --audit-level=low PASS with 0 vulnerabilities",
+          "npm test PASS on exact P2-S5 reviewed head e159cd205c631220613809aef0d21f7e1ec4f19b",
+          "npm run test:platform55:intelligence-admin PASS with 36 of 36 actual-route captures and 56 of 56 reconciled surfaces"
         ],
         "independent_review": [
           "docs/release/evidence/2026-08-21-p2-s2-independent-review.md",
           "docs/release/evidence/2026-08-22-p2-s4-semantic-closure.json",
-          "docs/release/evidence/2026-08-23-p2-s4-semantic-independent-review.json"
+          "docs/release/evidence/2026-08-23-p2-s4-semantic-independent-review.json",
+          "docs/release/evidence/2026-08-23-p2-s5-surface-candidate.json",
+          "docs/release/evidence/2026-08-23-p2-s5-independent-review.json"
         ]
       },
       "verdicts": {

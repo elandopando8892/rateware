@@ -9,6 +9,22 @@ export const P2_S5_SURFACE_CANDIDATE = Object.freeze({
   path: "docs/release/evidence/2026-08-23-p2-s5-surface-candidate.json",
   sha256: "14c2e99f21bfc4e3d9796df5179b84213d49efd876d176a45ac97522bad53852",
 });
+export const P2_S5_CLOSURE = Object.freeze({
+  plan: "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s5-intelligence-admin.md",
+  implementation: "docs/release/evidence/2026-08-22-p2-s5-intelligence-admin.md",
+  manifest: `docs/platform55-evidence/p2-s5/${EXPECTED_P2_S5_SUBJECT}/manifest.json`,
+  candidate: P2_S5_SURFACE_CANDIDATE.path,
+  independentReview: "docs/release/evidence/2026-08-23-p2-s5-independent-review.json",
+  independentReviewSha256: "31cb62ff4b290912b6ebedb2e22f899ea77150141168799a4a21a42a02a81d84",
+  reviewedHead: "e159cd205c631220613809aef0d21f7e1ec4f19b",
+  reviewBase: "2ea24dfdcb31df5aa8152c8e8f232fffd34720c8",
+  automatedSuite: Object.freeze([
+    "npm test PASS on exact P2-S5 reviewed head e159cd205c631220613809aef0d21f7e1ec4f19b",
+    "npm run test:platform55:intelligence-admin PASS with 36 of 36 actual-route captures and 56 of 56 reconciled surfaces",
+    "npm run validate:action-contract PASS with 0 errors and 1 pre-existing warning",
+    "npm audit --audit-level=low PASS with 0 vulnerabilities",
+  ]),
+});
 
 const VIEWPORTS = Object.freeze(["1440x900", "1024x768", "390x844"]);
 const ROUTES = Object.freeze([
@@ -150,6 +166,47 @@ export function validateP2S5SurfaceCandidateBody(body, { requireGo = false } = {
     if (!["implement", "shared_surface", "reference_only"].includes(mapping.disposition)) throw new Error("P2-S5 surface review disposition is invalid");
     const expectedStatus = mapping.disposition === "reference_only" ? "dispositioned" : "verified";
     if (mapping.mapping_status !== expectedStatus || mapping.evidence !== P2_S5_SURFACE_CANDIDATE.path || mapping.rationale !== exactSurfaceRationale(mapping)) throw new Error("P2-S5 surface review mismatch");
+  }
+  return Object.freeze(record);
+}
+
+export function validateP2S5IndependentReviewBody(body, { candidateRecord, requireGo = true } = {}) {
+  if (typeof body !== "string" || sha256(body) !== P2_S5_CLOSURE.independentReviewSha256) throw new Error("P2-S5 independent review digest mismatch");
+  const record = JSON.parse(body);
+  const keys = [
+    "schema_version", "reviewed_sha", "base_sha", "full_gate_head", "surface_candidate", "surface_candidate_sha256",
+    "visual_subject_sha", "visual_manifest_sha256", "surface_inventory_sha256", "route_map_sha256", "reference_archive_sha256",
+    "review_mode", "worktree_detached", "worktree_clean", "reviewer_task", "verdict", "semantic_credit", "findings",
+    "advisories", "gates", "mappings",
+  ];
+  if (!sameKeys(record, keys)) throw new Error("P2-S5 independent review schema mismatch");
+  if (
+    record.schema_version !== 1 ||
+    record.reviewed_sha !== P2_S5_CLOSURE.reviewedHead ||
+    record.base_sha !== P2_S5_CLOSURE.reviewBase ||
+    record.full_gate_head !== P2_S5_CLOSURE.reviewedHead ||
+    record.surface_candidate !== P2_S5_SURFACE_CANDIDATE.path ||
+    record.surface_candidate_sha256 !== P2_S5_SURFACE_CANDIDATE.sha256 ||
+    record.visual_subject_sha !== EXPECTED_P2_S5_SUBJECT ||
+    record.visual_manifest_sha256 !== EXPECTED_P2_S5_MANIFEST_SHA256 ||
+    record.surface_inventory_sha256 !== "147bdfc59bf00498d9725a416494b28f10ec1c6975f8b921b277a46273ff97d3" ||
+    record.route_map_sha256 !== "12b4db2c5718d96902bac145c041ca978c8778edddf7a268276ab72d7494fe11" ||
+    record.reference_archive_sha256 !== "cf2ced85e95dfb33bb7410bf73ace22cb95090ce649747df60bf2920e808c16a" ||
+    record.review_mode !== "independent-detached-read-only" ||
+    record.worktree_detached !== true || record.worktree_clean !== true || record.reviewer_task !== "/root" ||
+    !Array.isArray(record.findings) || record.findings.length !== 0 || !Array.isArray(record.advisories) || record.advisories.length !== 2 ||
+    !isRecord(record.gates)
+  ) throw new Error("P2-S5 independent review metadata mismatch");
+  const accepted = record.verdict === "GO" && record.semantic_credit === "accepted";
+  if (!accepted) throw new Error("P2-S5 independent review verdict and semantic credit are inconsistent");
+  if (requireGo && !accepted) throw new Error("P2-S5 independent review requires GO");
+  if (!candidateRecord || !Array.isArray(candidateRecord.mappings) || !Array.isArray(record.mappings) || record.mappings.length !== candidateRecord.mappings.length) throw new Error("P2-S5 independent review requires the exact candidate mappings");
+  const reviewIndex = new Map(record.mappings.map((mapping) => [mapping?.page_id, mapping]));
+  if (reviewIndex.size !== candidateRecord.mappings.length) throw new Error("P2-S5 independent review contains duplicate mappings");
+  for (const candidate of candidateRecord.mappings) {
+    const mapping = reviewIndex.get(candidate.page_id);
+    if (!mapping || !sameKeys(mapping, [...Object.keys(candidate), "result"]) || mapping.result !== "accepted") throw new Error("P2-S5 independent review mapping mismatch");
+    for (const key of Object.keys(candidate)) if (mapping[key] !== candidate[key]) throw new Error("P2-S5 independent review mapping mismatch");
   }
   return Object.freeze(record);
 }
