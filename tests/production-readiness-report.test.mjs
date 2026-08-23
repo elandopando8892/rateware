@@ -29,6 +29,56 @@ const P2_S4_SEMANTIC_FIXTURE = [
   ["build_12", "82", "support-case", "build_12/rateware_experience_configuration_release_readiness_build_v12.html"],
 ];
 
+const P2_S4_SEMANTIC_CANDIDATE = "docs/release/evidence/2026-08-22-p2-s4-semantic-closure.json";
+
+const proposedP2S4Disposition = (build, ordinal) => {
+  if (build === "build_10" && ordinal === "44") {
+    return {
+      mapping_status: "verified",
+      target_route: "provider-gmail.html",
+      target_component: "integration-runtime",
+      disposition: "shared_surface",
+    };
+  }
+  return {
+    mapping_status: "dispositioned",
+    target_route: "",
+    target_component: "",
+    disposition: "reference_only",
+  };
+};
+
+const mixedP2S4Review = () => ({
+  schema_version: 2,
+  verdict: "PENDING-INDEPENDENT-REVIEW",
+  semantic_credit: "withheld",
+  mappings: P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal, state, reference_asset]) => ({
+    build,
+    ordinal,
+    state,
+    reference_asset,
+    ...proposedP2S4Disposition(build, ordinal),
+    evidence: P2_S4_SEMANTIC_CANDIDATE,
+    rationale: `${build}:${ordinal} has an exact, row-specific semantic disposition.`,
+  })),
+});
+
+const mixedP2S4Matrix = (matrixText) => {
+  const keys = new Set(P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal]) => `${build}:${ordinal}`));
+  return matrixText.split(/\r?\n/).map((line, index) => {
+    if (index === 0 || !line) return line;
+    const fields = [...line.matchAll(/"((?:[^"]|"")*)"/g)].map((match) => match[1].replace(/""/g, '"'));
+    if (!keys.has(`${fields[0]}:${fields[1]}`)) return line;
+    const decision = proposedP2S4Disposition(fields[0], fields[1]);
+    fields[14] = decision.mapping_status;
+    fields[15] = decision.target_route;
+    fields[16] = decision.target_component;
+    fields[17] = decision.disposition;
+    fields[18] = P2_S4_SEMANTIC_CANDIDATE;
+    return fields.map((field) => `"${field.replace(/"/g, '""')}"`).join(",");
+  }).join("\n");
+};
+
 const acceptedP2S4Review = (targetRoute = "does-not-exist.html", targetComponent = "invented-component") => ({
   mappings: P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal, state, reference_asset]) => ({
     build,
@@ -540,6 +590,69 @@ test("rejects P2-S4 semantic credit while the thirteen reference mappings remain
       acceptedReview,
     ),
     /build_05:5516.*implemented/i,
+  );
+});
+
+test("accepts a complete mixed P2-S4 semantic candidate without granting independent credit", () => {
+  const reconciled = productionReadiness.validateP2S4SemanticReconciliation(
+    mixedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8")),
+    mixedP2S4Review(),
+    { requireGo: false },
+  );
+  assert.equal(reconciled.verdict, "PENDING-INDEPENDENT-REVIEW");
+  assert.equal(reconciled.semantic_credit, "withheld");
+  assert.equal(reconciled.mappings.filter((mapping) => mapping.mapping_status === "verified").length, 1);
+  assert.equal(reconciled.mappings.filter((mapping) => mapping.mapping_status === "dispositioned").length, 12);
+});
+
+test("accepts only the pinned P2-S4 semantic closure candidate and keeps GO fail-closed", () => {
+  assert.equal(
+    typeof productionReadiness.validateP2S4SemanticClosureBody,
+    "function",
+    "production readiness must expose the content-addressed semantic candidate validator",
+  );
+  const body = readFileSync(P2_S4_SEMANTIC_CANDIDATE, "utf8");
+  const record = productionReadiness.validateP2S4SemanticClosureBody(body, { requireGo: false });
+  assert.equal(record.verdict, "PENDING-INDEPENDENT-REVIEW");
+  assert.equal(record.semantic_credit, "withheld");
+  assert.equal(record.mappings.length, 13);
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticClosureBody(body),
+    /independent GO/i,
+  );
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticClosureBody(body.replace("shipment-execution communication", "fabricated communication"), { requireGo: false }),
+    /digest mismatch/i,
+  );
+});
+
+test("rejects a non-implementation P2-S4 disposition that claims an executable target", () => {
+  const review = mixedP2S4Review();
+  const mapping = review.mappings.find((candidate) => candidate.build === "build_07" && candidate.ordinal === "14");
+  mapping.target_route = "provider-communications.html";
+  mapping.target_component = "communications";
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(
+      mixedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8")),
+      review,
+      { requireGo: false },
+    ),
+    /non-implementation.*target/i,
+  );
+});
+
+test("rejects a shared P2-S4 surface without exact route, component, and evidence", () => {
+  const review = mixedP2S4Review();
+  const mapping = review.mappings.find((candidate) => candidate.build === "build_10" && candidate.ordinal === "44");
+  mapping.target_component = "";
+  mapping.evidence = "";
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(
+      mixedP2S4Matrix(readFileSync("docs/platform55-shell-build-matrix.csv", "utf8")),
+      review,
+      { requireGo: false },
+    ),
+    /shared_surface.*route.*component.*evidence/i,
   );
 });
 

@@ -228,6 +228,13 @@ Exit criteria:
 
 ### P2-S5 — Intelligence and administration
 
+Current-base amendment approved on 2026-08-22:
+
+- P2-S4 is deployed at production commit `2ea24dfdcb31df5aa8152c8e8f232fffd34720c8`, but its semantic milestone remains deliberately uncredited. The readiness ledger therefore starts P2-S5 at P2 `60` and overall `80.2`, not at the planned P2 `70`.
+- Before P2-S5 can claim any new readiness credit, an exact content-addressed review must resolve the thirteen withheld Build references recorded in `docs/release/evidence/2026-08-22-p2-s4-independent-review.json`. A row may be mapped only when the current production route and named component demonstrate the same semantics; otherwise it must receive an explicit non-implementation disposition with source evidence. No route, component, or behavior may be invented to close the gate.
+- The P2-S5 implementation gate then owns only its six routes and the P2-S5 surface-inventory rows. Global reconciliation of every one of the 1,150 Build states remains a P2-S6 convergence responsibility, as stated below. P2-S5 must not bulk-fill unrelated matrix rows or use generic evidence strings.
+- P2 may move to `70` only after the thirteen-row P2-S4 semantic closure is independently accepted. It may move to `80` only after all six P2-S5 routes, their owned inventory rows, the complete responsive/non-happy evidence matrix, and the automated suites are accepted. Until those facts are true, the ledger remains unchanged.
+
 Pages:
 
 - `business-intelligence.html`, `growth-hacking.html`

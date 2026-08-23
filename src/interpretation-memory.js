@@ -2,6 +2,7 @@ import { initAuthControls, requirePrivatePage } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
 import { archiveMemoryRules, createMemoryRule, listMemoryAudit, listMemoryRules, simulateMemoryRule, updateMemoryRule } from "./memory-service.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 
 const memoryTotal = document.querySelector("#memory-total");
 const memoryGlobal = document.querySelector("#memory-global");
@@ -33,6 +34,18 @@ const simulationList = document.querySelector("#memory-simulation-list");
 const memoryChangeLog = document.querySelector("#memory-change-log");
 const refreshMemoryLogButton = document.querySelector("#refresh-memory-log-button");
 const scopeSuggestion = document.querySelector("#memory-scope-suggestion");
+
+function reportPlatform55State(status, busy = false) {
+  updatePlatform55Shell({
+    pageState: {
+      title: "Interpretation Memory",
+      subtitle: "Interpretation memory and reviewed rules.",
+      breadcrumbs: ["Admin", "AI control plane"],
+      status,
+      busy
+    }
+  });
+}
 const scopeRationale = document.querySelector("#memory-scope-rationale");
 const applyScopeSuggestionButton = document.querySelector("#apply-scope-suggestion");
 
@@ -452,14 +465,19 @@ function renderRules() {
 async function loadMemory() {
   memoryBody.innerHTML = `<tr><td colspan="10">Loading memory rules...</td></tr>`;
   setStatus(memoryTableStatus, "");
+  reportPlatform55State("Loading reviewed interpretation rules", true);
   try {
     await requirePrivatePage();
     loadedRules = await listMemoryRules();
     selectedIds.clear();
     renderRules();
     await loadMemoryAudit();
+    setStatus(memoryTableStatus, "Memory rules loaded. Review required before changes.", "success");
+    reportPlatform55State("Memory evidence loaded; review required before changes");
   } catch (error) {
     memoryBody.innerHTML = `<tr><td colspan="10">${escapeHtml(humanizeError(error))}</td></tr>`;
+    setStatus(memoryTableStatus, humanizeError(error), "error");
+    reportPlatform55State(humanizeError(error));
   }
 }
 

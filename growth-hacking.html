@@ -5,20 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Growth Hacking</title>
     <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/platform55-tokens.css" />
+    <link rel="stylesheet" href="./src/platform55-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-intelligence-admin.css" />
     <link rel="stylesheet" href="./src/growth-hacking.css" />
   </head>
-  <body>
-    <div class="shell-layout">
-      <aside class="side-nav" aria-label="Rateware modules">
-        <a class="brand-mark" href="./app.html">Rateware</a>
-        <nav class="nav-groups"></nav>
-      </aside>
+  <body data-platform55-shell="tenant" data-platform55-page="growth-hacking">
+    <div class="rw-app" data-platform55-app>
+      <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
 
-      <div class="page-frame growth-page">
-        <header class="page-header">
+      <div class="rw-workspace page-frame growth-page" data-platform55-page-content>
+        <header class="rw-topbar" data-platform55-topbar></header>
+        <header class="page-header" data-platform55-page-header>
           <div>
-            <p class="eyebrow">Commercial growth workspace</p>
-            <h1>Growth Hacking</h1>
+            <p class="eyebrow" data-platform55-breadcrumbs>Analyze · Commercial growth</p>
+            <h1 data-platform55-page-title>Growth Hacking</h1>
+            <p data-platform55-page-subtitle>Shipper opportunities and growth signals.</p>
             <nav class="module-crumbs" aria-label="Module context">
               <a href="./business-intelligence.html">Analyze</a>
               <span>Growth Hacking</span>
@@ -34,7 +36,7 @@
           </div>
         </header>
 
-        <main class="growth-workspace">
+        <main class="growth-workspace rw-intelligence-admin-page">
           <nav id="growth-tabs" class="growth-tabs" aria-label="Growth Hacking workspaces">
             <button class="active" type="button" data-growth-view="dashboard">Dashboard</button>
             <button type="button" data-growth-view="segments">Segmentos</button>
@@ -44,6 +46,12 @@
           </nav>
 
           <div id="growth-global-status" class="growth-status hidden" role="status"></div>
+
+          <section class="rw-evidence-card" data-platform55-evidence-summary aria-label="Growth evidence boundary">
+            <p><strong>Last successful result</strong> · Data as of <span id="growth-evidence-as-of">Not provided</span></p>
+            <p id="growth-evidence-gaps">No source evidence loaded in this browser session.</p>
+            <strong>Proposal only · confirmation required before execution.</strong>
+          </section>
 
           <section id="growth-dashboard-view" class="growth-view active" data-growth-panel="dashboard">
             <div class="growth-section-heading">

@@ -14,6 +14,7 @@ import { fetchApprovedRatewarePage, updateApprovedRatewareRow } from "./rateware
 import { fetchStagingOptions, fetchStagingPage, saveLocationAlias, updateStagingRow } from "./staging-service.js";
 import { humanizeError } from "./error-copy.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
+import { updatePlatform55Shell } from "./platform55-shell.js";
 import { tableErrorState, tableLoadingState, tableState } from "./ui-state.js";
 
 const rowsChecked = document.querySelector("#catalog-rows-checked");
@@ -168,10 +169,23 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function reportPlatform55State(status, busy = false) {
+  updatePlatform55Shell({
+    pageState: {
+      title: "Catalogs",
+      subtitle: "Normalization catalogs and mappings.",
+      breadcrumbs: ["Admin", "Catalogs"],
+      status,
+      busy
+    }
+  });
+}
+
 function setStatus(message, tone = "neutral") {
   if (!statusMessage) return;
   statusMessage.textContent = tone === "error" ? humanizeError(message) : message;
   statusMessage.dataset.tone = tone;
+  reportPlatform55State(statusMessage.textContent || "Catalog evidence ready for review", tone === "loading");
 }
 
 function setElementStatus(element, message, tone = "neutral") {
@@ -1447,6 +1461,7 @@ populateCatalogCategoryControls();
 populateImportCategoryControl();
 requirePrivatePage().then(() => {
   const initialView = workbenchTabs?.current() || "import";
+  reportPlatform55State("Catalog controls ready; review required before writes");
   loadAdminCatalogs();
   if (initialView === "matching") loadWorkbench();
 }).catch(() => {});
