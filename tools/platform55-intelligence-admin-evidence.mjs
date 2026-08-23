@@ -5,6 +5,10 @@ import { relative, resolve, sep } from "node:path";
 
 export const EXPECTED_P2_S5_SUBJECT = "b78f73fbcba8cad7720bf329f9d65bd20746a147";
 export const EXPECTED_P2_S5_MANIFEST_SHA256 = "8320e6294aacd3af527b02cd2973b0ce4971a2ea67c3737f6838e4c67cfbda77";
+export const P2_S5_SURFACE_CANDIDATE = Object.freeze({
+  path: "docs/release/evidence/2026-08-23-p2-s5-surface-candidate.json",
+  sha256: "8f4398caab2e32444f4f170f32a56b00880ec53d03f8d37fcad440d9e413e715",
+});
 
 const VIEWPORTS = Object.freeze(["1440x900", "1024x768", "390x844"]);
 const ROUTES = Object.freeze([
@@ -66,6 +70,111 @@ function integer(value, label, minimum = 0) {
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function parseCsv(text) {
+  if (typeof text !== "string" || text.length === 0) throw new Error("CSV evidence must be non-empty text");
+  const rows = [];
+  let row = [];
+  let field = "";
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quoted) {
+      if (character === '"' && text[index + 1] === '"') {
+        field += '"';
+        index += 1;
+      } else if (character === '"') {
+        quoted = false;
+      } else {
+        field += character;
+      }
+    } else if (character === '"' && field.length === 0) {
+      quoted = true;
+    } else if (character === ",") {
+      row.push(field);
+      field = "";
+    } else if (character === "\n") {
+      row.push(field.endsWith("\r") ? field.slice(0, -1) : field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += character;
+    }
+  }
+  if (quoted) throw new Error("CSV evidence contains an unterminated quoted field");
+  if (field.length > 0 || row.length > 0) {
+    row.push(field.endsWith("\r") ? field.slice(0, -1) : field);
+    rows.push(row);
+  }
+  const header = rows.shift();
+  if (!header?.length || rows.some((entry) => entry.length !== header.length)) throw new Error("CSV evidence has an invalid row width");
+  return rows.map((entry) => Object.fromEntries(header.map((key, index) => [key, entry[index]])));
+}
+
+function exactSurfaceRationale(mapping) {
+  if (mapping.disposition === "implement") {
+    return `${mapping.page_id} (${mapping.surface}) is implemented on ${mapping.target_route}; repository state ${mapping.current_state} is evidenced by ${mapping.current_evidence}.`;
+  }
+  if (mapping.disposition === "shared_surface") {
+    return `${mapping.page_id} (${mapping.surface}) shares ${mapping.target_route}; repository state ${mapping.current_state} is evidenced by ${mapping.current_evidence}; no separate product surface is claimed.`;
+  }
+  return `${mapping.page_id} (${mapping.surface}) is reference-only at ${mapping.target_route}; repository state remains ${mapping.current_state} with evidence ${mapping.current_evidence}; no implementation credit is claimed.`;
+}
+
+export function validateP2S5SurfaceCandidateBody(body, { requireGo = false } = {}) {
+  if (typeof body !== "string" || sha256(body) !== P2_S5_SURFACE_CANDIDATE.sha256) throw new Error("P2-S5 surface candidate digest mismatch");
+  const record = JSON.parse(body);
+  const keys = [
+    "schema_version", "candidate_parent_sha", "visual_subject_sha", "visual_manifest", "visual_manifest_sha256",
+    "reference_archive", "reference_archive_sha256", "route_map", "route_map_sha256", "review_mode", "verdict",
+    "semantic_credit", "mappings",
+  ];
+  if (!sameKeys(record, keys)) throw new Error("P2-S5 surface candidate schema mismatch");
+  if (record.schema_version !== 1 || record.candidate_parent_sha !== "4886e4a3ba0e73c0355c45bee2a274644cb66e26") throw new Error("P2-S5 candidate identity mismatch");
+  if (record.visual_subject_sha !== EXPECTED_P2_S5_SUBJECT || record.visual_manifest_sha256 !== EXPECTED_P2_S5_MANIFEST_SHA256) throw new Error("P2-S5 visual evidence identity mismatch");
+  if (record.visual_manifest !== `docs/platform55-evidence/p2-s5/${EXPECTED_P2_S5_SUBJECT}/manifest.json`) throw new Error("P2-S5 visual manifest path mismatch");
+  if (record.reference_archive_sha256 !== "CF2CED85E95DFB33BB7410BF73ACE22CB95090CE649747DF60BF2920E808C16A") throw new Error("P2-S5 reference archive mismatch");
+  if (record.route_map !== "docs/platform55-shell-route-map.csv" || record.route_map_sha256 !== "12b4db2c5718d96902bac145c041ca978c8778edddf7a268276ab72d7494fe11") throw new Error("P2-S5 route map mismatch");
+  if (record.review_mode !== "candidate-awaiting-independent-detached-review" || record.verdict !== "PENDING-INDEPENDENT-REVIEW" || record.semantic_credit !== "withheld") throw new Error("P2-S5 candidate must withhold semantic credit");
+  if (requireGo) throw new Error("P2-S5 candidate is not an independent GO review");
+  if (!Array.isArray(record.mappings) || record.mappings.length !== 56) throw new Error("P2-S5 candidate must contain exactly 56 mappings");
+  const mappingKeys = ["domain", "page_id", "surface", "current_state", "current_evidence", "target_route", "disposition", "mapping_status", "evidence", "rationale"];
+  const seen = new Set();
+  for (const mapping of record.mappings) {
+    if (!sameKeys(mapping, mappingKeys) || !mappingKeys.every((key) => typeof mapping[key] === "string" && mapping[key].trim())) throw new Error("P2-S5 surface review mismatch");
+    if (seen.has(mapping.page_id)) throw new Error("P2-S5 surface review contains duplicate page_id");
+    seen.add(mapping.page_id);
+    if (!["implement", "shared_surface", "reference_only"].includes(mapping.disposition)) throw new Error("P2-S5 surface review disposition is invalid");
+    const expectedStatus = mapping.disposition === "reference_only" ? "dispositioned" : "verified";
+    if (mapping.mapping_status !== expectedStatus || mapping.evidence !== P2_S5_SURFACE_CANDIDATE.path || mapping.rationale !== exactSurfaceRationale(mapping)) throw new Error("P2-S5 surface review mismatch");
+  }
+  return Object.freeze(record);
+}
+
+export function validateP2S5SurfaceReconciliation(surfaceText, routeText, record) {
+  const surfaces = parseCsv(surfaceText);
+  const routes = parseCsv(routeText);
+  if (surfaces.length !== 95) throw new Error("surface inventory must contain exactly 95 rows");
+  const s5Surfaces = surfaces.filter((row) => row.p2_owner_sprint === "P2-S5");
+  const s5Routes = routes.filter((row) => row.owner_sprint === "P2-S5");
+  if (s5Surfaces.length !== 56 || s5Routes.length !== 6) throw new Error("P2-S5 surface or route count mismatch");
+  const mappings = new Map(record.mappings.map((mapping) => [mapping.page_id, mapping]));
+  const routeIndex = new Map(s5Routes.map((route) => [route.route, route]));
+  for (const row of s5Surfaces) {
+    const mapping = mappings.get(row.page_id);
+    const route = routeIndex.get(row.p2_target_route);
+    if (!mapping || !route) throw new Error("P2-S5 surface review mismatch");
+    for (const [mappingKey, rowKey] of [["domain", "domain"], ["surface", "surface"], ["current_state", "current_state"], ["current_evidence", "current_evidence"], ["target_route", "p2_target_route"], ["disposition", "p2_disposition"]]) {
+      if (mapping[mappingKey] !== row[rowKey]) throw new Error("P2-S5 surface review mismatch");
+    }
+    if (row.p2_evidence !== `${P2_S5_SURFACE_CANDIDATE.path}#${row.page_id}`) throw new Error("P2-S5 surface inventory must use content-addressed review evidence");
+    if (route.status !== "verified" || route.evidence !== `docs/platform55-evidence/p2-s5/${EXPECTED_P2_S5_SUBJECT}/manifest.json`) throw new Error("P2-S5 route evidence mismatch");
+    if (!route.platform55_surfaces.split(";").includes(row.page_id)) throw new Error("P2-S5 route does not declare the mapped surface");
+  }
+  if (mappings.size !== s5Surfaces.length) throw new Error("P2-S5 surface review mismatch");
+  return Object.freeze({ surfaceCount: s5Surfaces.length, routeCount: s5Routes.length });
 }
 
 function expectedCaptures() {

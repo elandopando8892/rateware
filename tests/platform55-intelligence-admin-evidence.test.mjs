@@ -5,8 +5,11 @@ import test from "node:test";
 import {
   EXPECTED_P2_S5_MANIFEST_SHA256,
   EXPECTED_P2_S5_SUBJECT,
+  P2_S5_SURFACE_CANDIDATE,
   validateP2S5Evidence,
-  validateP2S5Manifest
+  validateP2S5Manifest,
+  validateP2S5SurfaceCandidateBody,
+  validateP2S5SurfaceReconciliation
 } from "../tools/platform55-intelligence-admin-evidence.mjs";
 
 const manifestPath = `docs/platform55-evidence/p2-s5/${EXPECTED_P2_S5_SUBJECT}/manifest.json`;
@@ -32,7 +35,8 @@ test("anchors the exact 36-capture Intelligence and Administration matrix", asyn
 test("pins content-addressed evidence JSON to LF in clean Windows worktrees", () => {
   for (const path of [
     manifestPath,
-    "docs/release/evidence/2026-08-22-p2-s4-semantic-closure.json"
+    "docs/release/evidence/2026-08-22-p2-s4-semantic-closure.json",
+    P2_S5_SURFACE_CANDIDATE.path,
   ]) {
     assert.equal(
       execFileSync("git", ["check-attr", "eol", "--", path], { encoding: "utf8" }).trim(),
@@ -79,4 +83,32 @@ test("binds all six S5 routes to the immutable browser evidence", async () => {
     assert.equal(row.status, "verified", `${row.route} must be verified`);
     assert.equal(row.evidence, manifestPath, `${row.route} must cite the immutable manifest`);
   }
+});
+
+test("accepts only the exact content-addressed P2-S5 surface candidate", async () => {
+  const reviewBody = await readFile(P2_S5_SURFACE_CANDIDATE.path, "utf8");
+  const review = validateP2S5SurfaceCandidateBody(reviewBody, { requireGo: false });
+  const surfaceText = await readFile("docs/platform55-surface-inventory.csv", "utf8");
+  const routeText = await readFile("docs/platform55-shell-route-map.csv", "utf8");
+  const result = validateP2S5SurfaceReconciliation(surfaceText, routeText, review);
+  assert.equal(result.surfaceCount, 56);
+  assert.equal(result.routeCount, 6);
+  assert.equal(review.verdict, "PENDING-INDEPENDENT-REVIEW");
+  assert.equal(review.semantic_credit, "withheld");
+
+  const genericEvidence = surfaceText.replace(
+    `${P2_S5_SURFACE_CANDIDATE.path}#platform-reliability`,
+    "P2-S5 maps platform-reliability to settings.html under the approved Platform55 shell migration design",
+  );
+  assert.throws(
+    () => validateP2S5SurfaceReconciliation(genericEvidence, routeText, review),
+    /content-addressed review evidence/i,
+  );
+
+  const inventedTarget = structuredClone(review);
+  inventedTarget.mappings.find((mapping) => mapping.page_id === "platform-reliability").target_route = "index.html";
+  assert.throws(
+    () => validateP2S5SurfaceReconciliation(surfaceText, routeText, inventedTarget),
+    /surface review mismatch/i,
+  );
 });
