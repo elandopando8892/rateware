@@ -18,6 +18,10 @@ test("anchors the exact P2-S4 Network and Service evidence matrix", async () => 
   }
   validateP2S4Manifest(manifest);
   validateP2S4EvidenceFiles(process.cwd(), manifest);
+  for (const capture of manifest.captures.filter((entry) => entry.kind === "public")) {
+    assert.ok(capture.public_header_height_ratio > 0 && capture.public_header_height_ratio <= 0.25);
+    assert.ok(capture.public_brand_contrast_ratio >= 4.5);
+  }
 });
 
 test("rejects fabricated P2-S4 Network and Service evidence", async () => {
@@ -41,6 +45,8 @@ test("rejects fabricated P2-S4 Network and Service evidence", async () => {
     (copy) => { copy.captures[0].reduced_motion = false; },
     (copy) => { copy.captures[0].scroll_x = 1; },
     (copy) => { copy.captures.find((capture) => capture.kind === "public").private_controls = 1; },
+    (copy) => { copy.captures.find((capture) => capture.kind === "public").public_header_height_ratio = 0.5; },
+    (copy) => { copy.captures.find((capture) => capture.kind === "public").public_brand_contrast_ratio = 1.01; },
     (copy) => { copy.source_git_blobs[Object.keys(copy.source_git_blobs)[0]] = "0".repeat(40); },
     (copy) => { copy.captures[0].sha256 = "0".repeat(64); },
   ];

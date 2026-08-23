@@ -6,11 +6,11 @@ import { dirname, resolve } from "node:path";
 export const P2_S4_CLOSURE = Object.freeze({
   plan: "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s4-network-service.md",
   implementation: "docs/release/evidence/2026-08-21-p2-s4-network-service.md",
-  manifest: "docs/platform55-evidence/p2-s4/f4f86e1e67c395c41f400b070dbd1f4d120d55cb/manifest.json",
-  subject: "f4f86e1e67c395c41f400b070dbd1f4d120d55cb",
+  manifest: "docs/platform55-evidence/p2-s4/77f2bbb0b62846ea110792227b6ce51d9370ac9c/manifest.json",
+  subject: "77f2bbb0b62846ea110792227b6ce51d9370ac9c",
   evidenceHead: "93ce41f87888c2f591349e3a71b55d175d0353f4",
   gateHead: "126e364c48eb8c35b1b5b378a41ae2e418126e95",
-  manifestObjectSha256: "efcf5c246a0d59733de3f5418ba276acb8a33631a23e68c5ebc1f238c805f710",
+  manifestObjectSha256: "3dc18d8c47e1d1e0c55670d18a3ac2f56f3d9eea7dcb033d4834d0e698d37291",
   automatedSuite: Object.freeze([
     "npm run test:platform55:network-service PASS with 48 of 48 actual-route captures",
     "npm run test:provider-service PASS with 37 files and 197 tests",
@@ -77,7 +77,7 @@ const equalJson = (left, right) => JSON.stringify(left) === JSON.stringify(right
 export function validateP2S4Manifest(manifest) {
   const captureFiles = manifest?.captures?.map((capture) => capture.file).sort();
   if (
-    manifest?.schema_version !== 1 ||
+    manifest?.schema_version !== 2 ||
     manifest.subject_sha !== P2_S4_CLOSURE.subject ||
     !equalJson(manifest.routes, P2_S4_ROUTES) ||
     !equalJson(manifest.states_by_route, P2_S4_STATES_BY_ROUTE) ||
@@ -109,6 +109,13 @@ export function validateP2S4Manifest(manifest) {
       capture.request_errors !== 0 ||
       capture.document_overflow !== false ||
       capture.content_width_ratio < 0.7 ||
+      (expected.kind === "public" && (
+        !Number.isFinite(capture.public_header_height_ratio) ||
+        capture.public_header_height_ratio <= 0 ||
+        capture.public_header_height_ratio > 0.25 ||
+        !Number.isFinite(capture.public_brand_contrast_ratio) ||
+        capture.public_brand_contrast_ratio < 4.5
+      )) ||
       capture.state_visible !== true ||
       capture.state_intersection_ratio < 0.5 ||
       typeof capture.state_selector !== "string" || !/\S/.test(capture.state_selector) ||

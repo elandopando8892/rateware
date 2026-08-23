@@ -74,16 +74,40 @@ try {
         await locator.scrollIntoViewIfNeeded();
         const samples = await stableSamples(page, selector);
         const metrics = await page.evaluate(({ selector: target, kind }) => {
+          const rgb = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+          const luminance = (value) => {
+            const channels = rgb(value).map((channel) => {
+              const normalized = channel / 255;
+              return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+            });
+            return channels.length === 3
+              ? (0.2126 * channels[0]) + (0.7152 * channels[1]) + (0.0722 * channels[2])
+              : 0;
+          };
+          const contrast = (foreground, background) => {
+            const values = [luminance(foreground), luminance(background)].sort((left, right) => right - left);
+            return Math.round(((values[0] + 0.05) / (values[1] + 0.05)) * 1000) / 1000;
+          };
           const node = document.querySelector(target);
           const rect = node?.getBoundingClientRect();
           const horizontal = rect ? Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0)) : 0;
           const vertical = rect ? Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0)) : 0;
           const area = rect ? Math.max(1, rect.width * rect.height) : 1;
           const main = document.querySelector(".rw-main, main");
+          const publicHeader = kind === "public" ? document.querySelector(".rw-public-header") : null;
+          const publicBrand = publicHeader?.querySelector(".brand-mark") || null;
+          const headerStyle = publicHeader ? getComputedStyle(publicHeader) : null;
+          const brandStyle = publicBrand ? getComputedStyle(publicBrand) : null;
           return {
             exact_viewport: innerWidth === document.documentElement.clientWidth,
             document_overflow: document.documentElement.scrollWidth > innerWidth + 1,
             content_width_ratio: main ? Math.round((main.getBoundingClientRect().width / innerWidth) * 10000) / 10000 : 0,
+            public_header_height_ratio: publicHeader
+              ? Math.round((publicHeader.getBoundingClientRect().height / innerHeight) * 10000) / 10000
+              : null,
+            public_brand_contrast_ratio: publicBrand
+              ? contrast(brandStyle.color, headerStyle.backgroundColor)
+              : null,
             state_visible: Boolean(rect && horizontal > 0 && vertical > 0),
             state_intersection_ratio: Math.round(((horizontal * vertical) / area) * 10000) / 10000,
             state_marker: node?.textContent?.replace(/\s+/g, " ").trim().slice(0, 240) || "",
@@ -109,6 +133,9 @@ try {
           ...metrics, byte_length: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex")
         });
         if (metrics.document_overflow) throw new Error(`${filename} document overflow: ${JSON.stringify(metrics.overflow_candidates)}`);
+        if (route.kind === "public" && (metrics.public_header_height_ratio <= 0 || metrics.public_header_height_ratio > 0.25 || metrics.public_brand_contrast_ratio < 4.5)) {
+          throw new Error(`${filename} public shell composition or contrast failure: ${JSON.stringify({ headerRatio: metrics.public_header_height_ratio, brandContrast: metrics.public_brand_contrast_ratio })}`);
+        }
         if (consoleErrors.length || httpErrors.length || pageErrors.length || requestErrors.length) throw new Error(`${filename} browser errors: ${JSON.stringify({ consoleErrors, httpErrors, pageErrors, requestErrors })}`);
         await context.close();
       }
@@ -121,7 +148,7 @@ try {
 
 const sourceGitBlobs = Object.fromEntries(sourcePaths.map((path) => [path, execFileSync("git", ["rev-parse", `${subject}:${path}`], { encoding: "utf8" }).trim()]));
 const manifest = {
-  schema_version: 1,
+  schema_version: 2,
   subject_sha: subject,
   routes: routes.map((route) => route.file),
   states_by_route: Object.fromEntries(routes.map((route) => [route.file, ["loaded", route.nonhappyState]])),
