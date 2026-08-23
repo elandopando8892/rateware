@@ -11,6 +11,23 @@ import {
   validateP2S2ReviewBody,
   validateLedger
 } from "../tools/production-readiness-report.mjs";
+import * as productionReadiness from "../tools/production-readiness-report.mjs";
+
+const P2_S4_SEMANTIC_FIXTURE = [
+  ["build_05", "5516", "onboarding", "build_05/rateware_procurement_carrier_network_build_v05.html"],
+  ["build_05", "5521", "onboarding-workflow", "build_05/rateware_procurement_carrier_network_build_v05.html"],
+  ["build_07", "14", "communications", "build_07/rateware_operations_execution_build_v07.html"],
+  ["build_07", "49", "communications-thread", "build_07/rateware_operations_execution_build_v07.html"],
+  ["build_10", "25", "support", "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html"],
+  ["build_10", "27", "connection-wizard", "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html"],
+  ["build_10", "44", "gmail-connection", "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html"],
+  ["build_10", "67", "support-cases", "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html"],
+  ["build_11", "20", "vendor-risk", "build_11/rateware_security_compliance_enterprise_governance_build_v11.html"],
+  ["build_12", "14", "onboarding", "build_12/rateware_experience_configuration_release_readiness_build_v12.html"],
+  ["build_12", "23", "support", "build_12/rateware_experience_configuration_release_readiness_build_v12.html"],
+  ["build_12", "81", "support-center", "build_12/rateware_experience_configuration_release_readiness_build_v12.html"],
+  ["build_12", "82", "support-case", "build_12/rateware_experience_configuration_release_readiness_build_v12.html"],
+];
 
 const ledger = {
   schema_version: 1,
@@ -298,7 +315,8 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
     "docs/release/evidence/2026-08-21-p2-s4-network-service.md"
   ]);
   assert.deepEqual(p2.evidence.independent_review, [
-    "docs/release/evidence/2026-08-21-p2-s2-independent-review.md"
+    "docs/release/evidence/2026-08-21-p2-s2-independent-review.md",
+    P2_S4_CLOSURE.independentReview,
   ]);
   assert.equal(p2.verdicts.independent_review, "GO");
   assert.deepEqual(p2.evidence.automated_suite, [
@@ -395,9 +413,30 @@ test("keeps P2-S4 uncredited until semantic fidelity and visual accessibility ar
   const evidence = readFileSync(P2_S4_CLOSURE.implementation, "utf8");
   assert.match(evidence, /48 of 48 actual-route captures/i);
   assert.match(evidence, /Build12 semantic equivalence credit:\s*withheld/i);
-  assert.match(evidence, /Independent review:\s*required/i);
+  assert.match(evidence, /Independent review:\s*NO-GO/i);
   assert.match(evidence, /Global Platform55 verdict:\s*NO-GO/i);
   validateP2S4Manifest(JSON.parse(readFileSync(P2_S4_CLOSURE.manifest, "utf8")));
+});
+
+test("records the exact current P2-S4 NO-GO without granting milestone credit", () => {
+  const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
+  const review = readFileSync(P2_S4_CLOSURE.independentReview, "utf8");
+  const record = productionReadiness.validateP2S4IndependentReviewBody(review, { requireGo: false });
+  assert.ok(p2.evidence.independent_review.includes(P2_S4_CLOSURE.independentReview));
+  assert.equal(record.reviewed_sha, P2_S4_CLOSURE.reviewedHead);
+  assert.equal(record.verdict, "NO-GO");
+  assert.equal(record.semantic_credit, "withheld");
+  assert.equal(record.mappings.length, 13);
+  assert.ok(record.mappings.every((mapping) => (
+    mapping.result === "withheld" &&
+    mapping.matrix_status === "not_started" &&
+    mapping.target_route === "" &&
+    mapping.target_component === "" &&
+    mapping.evidence === ""
+  )));
+  assert.equal(p2.progress, 60);
+  assert.equal(computeOverallProgress(persisted), 80.2);
 });
 
 test("rejects P2 at 70 without the exact P2-S4 Network and Service closure", () => {
@@ -414,8 +453,56 @@ test("rejects P2-S4 credit without an exact independent semantic review", () => 
   const p2 = fabricated.sprints.find((sprint) => sprint.id === "P2");
   p2.progress = 70;
   p2.evidence.automated_suite.push(...P2_S4_CLOSURE.automatedSuite);
+  p2.evidence.independent_review = p2.evidence.independent_review.filter((entry) => entry !== P2_S4_CLOSURE.independentReview);
 
   assert.throws(() => validateLedger(fabricated), /P2-S4 independent review/i);
+});
+
+test("rejects a fabricated P2-S4 review even when it contains every declarative phrase", () => {
+  assert.equal(
+    typeof productionReadiness.validateP2S4IndependentReviewBody,
+    "function",
+    "production readiness must expose the content-addressed P2-S4 review validator",
+  );
+  const fabricated = JSON.stringify({
+    verdict: "GO",
+    reviewed_sha: P2_S4_CLOSURE.gateHead,
+    visual_subject: P2_S4_CLOSURE.subject,
+    evidence_head: P2_S4_CLOSURE.evidenceHead,
+    semantic_credit: "accepted",
+    review_mode: "independent-detached-read-only",
+  });
+  assert.throws(
+    () => productionReadiness.validateP2S4IndependentReviewBody(fabricated),
+    /digest mismatch/i,
+  );
+});
+
+test("rejects P2-S4 semantic credit while the thirteen reference mappings remain uncredited", () => {
+  assert.equal(
+    typeof productionReadiness.validateP2S4SemanticReconciliation,
+    "function",
+    "production readiness must expose the exact thirteen-row reconciliation validator",
+  );
+  const acceptedReview = {
+    mappings: P2_S4_SEMANTIC_FIXTURE.map(([build, ordinal, state, reference_asset]) => ({
+      build,
+      ordinal,
+      state,
+      reference_asset,
+      target_route: "semantically-reviewed.html",
+      target_component: "semantically reviewed surface",
+      evidence: P2_S4_CLOSURE.independentReview,
+      result: "accepted",
+    })),
+  };
+  assert.throws(
+    () => productionReadiness.validateP2S4SemanticReconciliation(
+      readFileSync("docs/platform55-shell-build-matrix.csv", "utf8"),
+      acceptedReview,
+    ),
+    /build_05:5516.*implemented/i,
+  );
 });
 
 test("rejects fabricated P2-S2 closure evidence", () => {

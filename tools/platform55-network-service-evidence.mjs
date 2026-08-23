@@ -10,7 +10,11 @@ export const P2_S4_CLOSURE = Object.freeze({
   subject: "77f2bbb0b62846ea110792227b6ce51d9370ac9c",
   evidenceHead: "d337c5aa17717c51fa87af8ee44433d99f2ff2d7",
   gateHead: "524b7a450c6b01f894b5bc9ec249ecad262a58d6",
-  independentReview: "docs/release/evidence/2026-08-22-p2-s4-independent-review.md",
+  independentReview: "docs/release/evidence/2026-08-22-p2-s4-independent-review.json",
+  independentReviewSha256: "cb945b0f1bd521fcf7adadf9473162c9bb2f337bda3b8f8e508ca8649f41b6f2",
+  reviewedHead: "70152b4ba5e48a290b33cc3c316ef42b82fb551a",
+  reviewBase: "a15fef8636a725d5c127f0ff64f26445fc82e8f4",
+  referenceArchiveSha256: "cf2ced85e95dfb33bb7410bf73ace22cb95090ce649747df60bf2920e808c16a",
   manifestObjectSha256: "3dc18d8c47e1d1e0c55670d18a3ac2f56f3d9eea7dcb033d4834d0e698d37291",
   automatedSuite: Object.freeze([
     "npm run test:platform55:network-service PASS with 48 of 48 actual-route captures",
@@ -20,6 +24,22 @@ export const P2_S4_CLOSURE = Object.freeze({
     "npm audit --audit-level=low PASS with 0 vulnerabilities",
   ]),
 });
+
+export const P2_S4_SEMANTIC_ROWS = Object.freeze([
+  Object.freeze({ build: "build_05", ordinal: "5516", state: "onboarding", reference_asset: "build_05/rateware_procurement_carrier_network_build_v05.html" }),
+  Object.freeze({ build: "build_05", ordinal: "5521", state: "onboarding-workflow", reference_asset: "build_05/rateware_procurement_carrier_network_build_v05.html" }),
+  Object.freeze({ build: "build_07", ordinal: "14", state: "communications", reference_asset: "build_07/rateware_operations_execution_build_v07.html" }),
+  Object.freeze({ build: "build_07", ordinal: "49", state: "communications-thread", reference_asset: "build_07/rateware_operations_execution_build_v07.html" }),
+  Object.freeze({ build: "build_10", ordinal: "25", state: "support", reference_asset: "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html" }),
+  Object.freeze({ build: "build_10", ordinal: "27", state: "connection-wizard", reference_asset: "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html" }),
+  Object.freeze({ build: "build_10", ordinal: "44", state: "gmail-connection", reference_asset: "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html" }),
+  Object.freeze({ build: "build_10", ordinal: "67", state: "support-cases", reference_asset: "build_10/rateware_integrations_ecosystem_platform_operations_build_v10.html" }),
+  Object.freeze({ build: "build_11", ordinal: "20", state: "vendor-risk", reference_asset: "build_11/rateware_security_compliance_enterprise_governance_build_v11.html" }),
+  Object.freeze({ build: "build_12", ordinal: "14", state: "onboarding", reference_asset: "build_12/rateware_experience_configuration_release_readiness_build_v12.html" }),
+  Object.freeze({ build: "build_12", ordinal: "23", state: "support", reference_asset: "build_12/rateware_experience_configuration_release_readiness_build_v12.html" }),
+  Object.freeze({ build: "build_12", ordinal: "81", state: "support-center", reference_asset: "build_12/rateware_experience_configuration_release_readiness_build_v12.html" }),
+  Object.freeze({ build: "build_12", ordinal: "82", state: "support-case", reference_asset: "build_12/rateware_experience_configuration_release_readiness_build_v12.html" }),
+]);
 
 export const P2_S4_ROUTES = Object.freeze([
   "shipper-crm.html",

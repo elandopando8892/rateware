@@ -10,7 +10,7 @@ Full-gate HEAD: `524b7a450c6b01f894b5bc9ec249ecad262a58d6`
 
 Local implementation verdict: GO for the corrected routes and visual evidence; no P2-S4 milestone credit is claimed.
 
-Independent review: required.
+Independent review: NO-GO on exact reviewed SHA `70152b4ba5e48a290b33cc3c316ef42b82fb551a`; a new independent review is required after the closure gate is hardened.
 
 Global Platform55 verdict: NO-GO. P2-S5, P2-S6, preview smoke, deployment, production smoke, and bounded monitoring remain incomplete.
 
@@ -50,7 +50,7 @@ Build12 semantic equivalence credit: withheld.
 
 The prior 13 S4 mappings are returned to `not_started` with empty target, disposition, and evidence fields. The S4 routes remain useful Rateware functionality, but route-name similarity alone does not prove equivalence to the pinned Build reference semantics.
 
-Independent review: required after replacement visual evidence and semantic reconciliation are complete. P2 remains at 60% until that review returns GO.
+The content-addressed review record is `docs/release/evidence/2026-08-22-p2-s4-independent-review.json` (SHA-256 `cb945b0f1bd521fcf7adadf9473162c9bb2f337bda3b8f8e508ca8649f41b6f2`). It records NO-GO and withholds all 13 mappings. P2 remains at 60% until the gate rejects fabricated reviews, the exact mappings are implemented against the pinned Build reference semantics, and a new independent review returns GO.
 
 ## Safety boundary
 

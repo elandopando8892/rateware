@@ -114,7 +114,8 @@
           "npm run test:platform55:procurement PASS with 90 of 90 actual-route captures"
         ],
         "independent_review": [
-          "docs/release/evidence/2026-08-21-p2-s2-independent-review.md"
+          "docs/release/evidence/2026-08-21-p2-s2-independent-review.md",
+          "docs/release/evidence/2026-08-22-p2-s4-independent-review.json"
         ]
       },
       "verdicts": {
