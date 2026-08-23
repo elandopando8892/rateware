@@ -339,6 +339,7 @@ function setRecommendationStatus(message, tone = "neutral") {
   if (!recommendationStatus) return;
   recommendationStatus.textContent = tone === "error" ? humanizeError(message) : message;
   recommendationStatus.dataset.tone = tone;
+  reportPlatform55State(recommendationStatus.textContent || "Carrier ranking ready", tone !== "error" && /ranking|loading/i.test(message));
 }
 
 function setModelStatus(value, tone = "muted") {
@@ -351,18 +352,21 @@ function setPivotStatus(message, tone = "neutral") {
   if (!pivotStatus) return;
   pivotStatus.textContent = tone === "error" ? humanizeError(message) : message;
   pivotStatus.dataset.tone = tone;
+  reportPlatform55State(pivotStatus.textContent || "Pivot evidence ready", tone !== "error" && /building|loading/i.test(message));
 }
 
 function setDrilldownStatus(message, tone = "neutral") {
   if (!drilldownStatus) return;
   drilldownStatus.textContent = tone === "error" ? humanizeError(message) : message;
   drilldownStatus.dataset.tone = tone;
+  reportPlatform55State(drilldownStatus.textContent || "Drilldown evidence ready", tone !== "error" && /loading/i.test(message));
 }
 
 function setGeoStatus(message, tone = "neutral") {
   if (!geoStatus) return;
   geoStatus.textContent = tone === "error" ? humanizeError(message) : message;
   geoStatus.dataset.tone = tone;
+  reportPlatform55State(geoStatus.textContent || "Geo evidence ready", tone !== "error" && /building|loading/i.test(message));
 }
 
 function activateBiView(view, options = {}) {

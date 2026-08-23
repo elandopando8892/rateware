@@ -1461,6 +1461,7 @@ populateCatalogCategoryControls();
 populateImportCategoryControl();
 requirePrivatePage().then(() => {
   const initialView = workbenchTabs?.current() || "import";
+  reportPlatform55State("Catalog controls ready; review required before writes");
   loadAdminCatalogs();
   if (initialView === "matching") loadWorkbench();
 }).catch(() => {});
