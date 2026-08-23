@@ -22,6 +22,33 @@ import {
   validateHistoricalSourceParity,
 } from "./platform55-s6-source-supersession.mjs";
 
+export const P2_S6_CLOSURE = Object.freeze({
+  plan: "docs/superpowers/plans/2026-08-21-rateware-platform55-shell-p2-s6-certification-release.md",
+  implementation: "docs/release/evidence/2026-08-23-p2-s6-local-certification.md",
+  independentReview: "docs/release/evidence/2026-08-21-p2-s6-independent-review.md",
+  reviewedClosure: "4bc7498805dc313c49ec7917dff8f454b0642303",
+  reviewedClosureTree: "d5c4c460cc3aa690c500e91a3063423e4c332471",
+  productCandidate: "31ca1105865570acd575ae17eeb25c236df45c7c",
+  productTree: "1421417c0f737d8bbd4a420300812f11c38af628",
+  productParent: "512c15679957abd5dcbfeee4afe3208d76edab92",
+  base: "858f8102cb3b5c7ce74955b00e7ac357b6511cdf",
+  manifestSha256: "862d00305774a9627d278a86a5b57b9b1b9fe92d619a641291bcd7e996af5fd4",
+  reviewSha256: "1f307cdb83ec63312a524749d72e17c89fdd935559b348b52bcdcdfb618b3733",
+  closurePaths: Object.freeze([
+    "docs/release/evidence/2026-08-23-p2-s6-local-certification.json",
+    "docs/release/evidence/2026-08-23-p2-s6-local-certification.md",
+    "tests/platform55-s6-source-supersession.test.mjs",
+    "tools/platform55-s6-source-supersession.mjs",
+  ]),
+  automatedSuite: Object.freeze([
+    "npm test PASS on exact P2-S6 closure head 4bc7498805dc313c49ec7917dff8f454b0642303",
+    "node tools/platform55-s6-browser-certification.mjs PASS on product candidate 31ca1105865570acd575ae17eeb25c236df45c7c with 29 routes, 42 captures, 3,312 contrast samples, minimum 4.521, 0 missing names, 0 contrast failures, and focus cycles/restoration",
+    "npm run validate:action-contract PASS on exact P2-S6 closure head 4bc7498805dc313c49ec7917dff8f454b0642303 with 401 contract, 399 discovered, 0 errors and 1 pre-existing warning",
+    "npm audit --audit-level=low PASS on exact P2-S6 closure head 4bc7498805dc313c49ec7917dff8f454b0642303 with 0 vulnerabilities",
+    "node --test tests/platform55-s6-source-supersession.test.mjs PASS with 6 of 6 exact source blobs",
+  ]),
+});
+
 const IDS = ["P0", "P1", "P2", "P3", "P4", "P5"];
 const WEIGHTS = { P0: 4, P1: 9, P2: 7, P3: 7, P4: 6, P5: 4 };
 const GATES = [[10, "scope"], [25, "evidence_plan"], [55, "implementation"], [70, "automated_suite"], [85, "independent_review"], [93, "preview_smoke"], [97, "deployment"], [100, "production_smoke"], [100, "monitoring"]];
@@ -670,6 +697,47 @@ const validateP2S2Closure = (sprint, rootDir) => {
   });
 };
 
+export function validateP2S6IndependentReviewBody(body) {
+  if (typeof body !== "string") throw new Error("P2-S6 independent review body must be text");
+  const normalized = body.replace(/\r\n/g, "\n");
+  const digest = createHash("sha256").update(normalized).digest("hex");
+  if (digest !== P2_S6_CLOSURE.reviewSha256) throw new Error("P2-S6 independent review digest mismatch");
+
+  requireText(normalized, /^Verdict:\s*GO$/im, "P2-S6 independent review verdict must be GO");
+  requireText(normalized, new RegExp(P2_S6_CLOSURE.reviewedClosure, "i"), "P2-S6 independent review must name the exact reviewed closure");
+  requireText(normalized, new RegExp(P2_S6_CLOSURE.productCandidate, "i"), "P2-S6 independent review must name the exact product candidate");
+  requireText(normalized, new RegExp(P2_S6_CLOSURE.productTree, "i"), "P2-S6 independent review must name the exact product tree");
+  requireText(normalized, new RegExp(P2_S6_CLOSURE.manifestSha256, "i"), "P2-S6 independent review must name the exact browser manifest");
+  requireText(normalized, /Routes:\s*`29`/i, "P2-S6 independent review must cover all 29 routes");
+  requireText(normalized, /Captures:\s*`42`/i, "P2-S6 independent review must cover all 42 captures");
+  requireText(normalized, /Contrast samples:\s*`3312`/i, "P2-S6 independent review must record all contrast samples");
+  requireText(normalized, /Minimum contrast:\s*`4\.521:1`/i, "P2-S6 independent review must preserve the minimum passing contrast");
+  requireText(normalized, /Contrast failures:\s*`0`/i, "P2-S6 independent review must record zero contrast failures");
+  requireText(normalized, /Missing accessible names:\s*`0`/i, "P2-S6 independent review must record zero missing accessible names");
+  requireText(normalized, /P0:\s*`0`[\s\S]*P1:\s*`0`[\s\S]*P2:\s*`0`/i, "P2-S6 independent review must record zero material findings");
+  requireText(normalized, /Focus cycles and restoration:\s*`PASS`/i, "P2-S6 independent review must prove focus cycles and restoration");
+  requireText(normalized, /Accessible-name coverage:\s*`tenant`,\s*`public`,\s*and\s*`entry`/i, "P2-S6 independent review must cover accessible names on every shell kind");
+  requireText(normalized, /Adversarial rejections:.*missing accessible name.*`1:1` contrast.*forward focus escape.*backward focus escape/i, "P2-S6 independent review must reject the prior accessibility false-PASS paths");
+  requireText(normalized, /The review was read-only\. It performed no push, pull-request mutation, Vercel build, deployment, promotion, Kinde change, Supabase branch, migration, DDL, DML, secret change, upload, approval, or production-data mutation\./i, "P2-S6 independent review must preserve the local-only boundary");
+
+  return Object.freeze({
+    verdict: "GO",
+    reviewedClosure: P2_S6_CLOSURE.reviewedClosure,
+    productCandidate: P2_S6_CLOSURE.productCandidate,
+    productTree: P2_S6_CLOSURE.productTree,
+    manifestSha256: P2_S6_CLOSURE.manifestSha256,
+    routes: 29,
+    captures: 42,
+    contrastSamples: 3312,
+    minimumContrast: 4.521,
+    missingNames: 0,
+    contrastFailures: 0,
+    p0: 0,
+    p1: 0,
+    p2: 0,
+  });
+}
+
 const validateP2S3Closure = (sprint, rootDir) => {
   if (sprint.id !== "P2" || sprint.progress < 60) return;
   const evidence = sprint.evidence || {};
@@ -824,6 +892,27 @@ const validateP2S5Closure = (sprint, rootDir) => {
   }
 };
 
+const validateP2S6Closure = (sprint, rootDir) => {
+  if (sprint.id !== "P2" || sprint.progress < 85) return;
+  const evidence = sprint.evidence || {};
+  if (!evidence.evidence_plan?.includes(P2_S6_CLOSURE.plan)) throw new Error("P2-S6 evidence_plan must contain the exact certification plan");
+  if (!evidence.implementation?.includes(P2_S6_CLOSURE.implementation)) throw new Error("P2-S6 implementation must contain the exact local certification evidence");
+  if (!P2_S6_CLOSURE.automatedSuite.every((entry) => evidence.automated_suite?.includes(entry))) throw new Error("P2-S6 automated_suite must contain the exact closure and accessibility gates");
+  if (!evidence.independent_review?.includes(P2_S6_CLOSURE.independentReview)) throw new Error("P2-S6 independent_review must contain the exact detached review evidence");
+
+  const root = realpathSync(resolve(rootDir));
+  const reviewBody = readFileSync(resolve(root, P2_S6_CLOSURE.independentReview), "utf8");
+  validateP2S6IndependentReviewBody(reviewBody);
+  execFileSync("git", ["-C", root, "merge-base", "--is-ancestor", P2_S6_CLOSURE.base, P2_S6_CLOSURE.productCandidate]);
+  execFileSync("git", ["-C", root, "merge-base", "--is-ancestor", P2_S6_CLOSURE.productCandidate, P2_S6_CLOSURE.reviewedClosure]);
+  execFileSync("git", ["-C", root, "merge-base", "--is-ancestor", P2_S6_CLOSURE.reviewedClosure, "HEAD"]);
+  if (execFileSync("git", ["-C", root, "rev-parse", `${P2_S6_CLOSURE.productCandidate}^`], { encoding: "utf8" }).trim() !== P2_S6_CLOSURE.productParent) throw new Error("P2-S6 product parent mismatch");
+  if (execFileSync("git", ["-C", root, "rev-parse", `${P2_S6_CLOSURE.productCandidate}^{tree}`], { encoding: "utf8" }).trim() !== P2_S6_CLOSURE.productTree) throw new Error("P2-S6 product tree mismatch");
+  if (execFileSync("git", ["-C", root, "rev-parse", `${P2_S6_CLOSURE.reviewedClosure}^{tree}`], { encoding: "utf8" }).trim() !== P2_S6_CLOSURE.reviewedClosureTree) throw new Error("P2-S6 reviewed closure tree mismatch");
+  const closurePaths = execFileSync("git", ["-C", root, "diff", "--name-only", `${P2_S6_CLOSURE.productCandidate}..${P2_S6_CLOSURE.reviewedClosure}`], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean).sort();
+  if (JSON.stringify(closurePaths) !== JSON.stringify([...P2_S6_CLOSURE.closurePaths].sort())) throw new Error("P2-S6 reviewed closure path mismatch");
+};
+
 export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
   if (ledger?.schema_version !== 1 || ledger?.baseline !== 63) throw new Error("invalid ledger header");
   if (!Array.isArray(ledger.sprints) || ledger.sprints.map((s) => s.id).join(",") !== IDS.join(",")) throw new Error("sprints must be P0-P5");
@@ -836,6 +925,7 @@ export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
     validateP2S3Closure(sprint, rootDir);
     validateP2S4Closure(sprint, rootDir);
     validateP2S5Closure(sprint, rootDir);
+    validateP2S6Closure(sprint, rootDir);
     if (sprint.progress >= 85 && sprint.verdicts?.independent_review !== "GO") throw new Error(`${sprint.id} requires independent_review GO verdict`);
     for (const [threshold, key] of GATES) if (sprint.progress >= threshold && !hasEvidence(sprint.evidence, key)) throw new Error(`${sprint.id} requires ${key}`);
   }
