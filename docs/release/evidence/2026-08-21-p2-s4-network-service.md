@@ -6,7 +6,7 @@ Visual subject SHA: `77f2bbb0b62846ea110792227b6ce51d9370ac9c`
 
 Evidence artifact HEAD: `d337c5aa17717c51fa87af8ee44433d99f2ff2d7`
 
-Full-gate HEAD: pending final verification.
+Full-gate HEAD: `524b7a450c6b01f894b5bc9ec249ecad262a58d6`
 
 Local implementation verdict: GO for the corrected routes and visual evidence; no P2-S4 milestone credit is claimed.
 
@@ -39,7 +39,7 @@ The route map records all eight as `contract_ready`; this is a code-and-evidence
 
 - `npm run test:platform55:network-service`: PASS, including 48 of 48 actual-route captures and 22 adversarial manifest mutations rejected.
 - `npm run test:provider-service`: PASS, 37 files enumerated deterministically and 197 tests passed.
-- `npm test`: pending on the final immutable P2-S4 gate head.
+- `npm test`: PASS on exact P2-S4 gate head `524b7a450c6b01f894b5bc9ec249ecad262a58d6`.
 - `npm run validate:action-contract`: PASS with 0 errors and 1 pre-existing warning.
 - `npm audit --audit-level=low`: PASS with 0 vulnerabilities.
 - Node syntax checks and `git diff --check`: PASS.
