@@ -61,6 +61,15 @@
   box-shadow: 0 16px 38px rgba(11, 29, 45, 0.18);
 }
 
+.rw-hero.next-best-action-card[data-severity="critical"],
+.rw-hero.next-best-action-card[data-severity="warning"],
+.rw-hero.next-best-action-card[data-severity="success"] {
+  border-color: transparent;
+  background:
+    radial-gradient(circle at 86% 20%, rgba(45, 156, 136, 0.2), transparent 34%),
+    linear-gradient(120deg, var(--rw-navy-950), var(--rw-navy-800));
+}
+
 .rw-hero .eyebrow {
   width: fit-content;
   margin: 0 0 12px;

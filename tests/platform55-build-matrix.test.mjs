@@ -51,6 +51,7 @@ const EXPECTED_STATES_BY_BUILD = Object.freeze({
 });
 const P2_S3_EVIDENCE = "docs/platform55-evidence/p2-s3/6917246927a6a13e82abf9e1e84b00b27f172ab7/manifest.json;tests/platform55-procurement-evidence.test.mjs";
 const P2_S4_SEMANTIC_EVIDENCE = "docs/release/evidence/2026-08-22-p2-s4-semantic-closure.json";
+const P2_S6_REFERENCE_EVIDENCE = "docs/release/evidence/2026-08-23-p2-s6-reference-disposition.json";
 const IMPLEMENTED_BUILD5_STATES = new Map([
   ["5510", ["rfx-events.html", "tenant procurement workspace"]],
   ["5517", ["vendors.html", "tenant carrier network"]],
@@ -259,11 +260,11 @@ for (const row of rows) {
       `${stateKey} must exactly match its content-addressed semantic disposition`,
     );
   } else {
-    assert.equal(status, "not_started");
+    assert.equal(status, "dispositioned");
     assert.equal(targetRoute, "");
     assert.equal(targetComponent, "");
-    assert.equal(disposition, "");
-    assert.equal(evidence, "");
+    assert.equal(disposition, "reference_only");
+    assert.equal(evidence, P2_S6_REFERENCE_EVIDENCE);
   }
   assert.equal(ordinalKeys.has(`${build}:${ordinal}`), false, `Duplicate ordinal ${build}:${ordinal}`);
   ordinalKeys.add(`${build}:${ordinal}`);

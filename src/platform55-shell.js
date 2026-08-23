@@ -354,9 +354,17 @@ export function mountPlatform55Shell({
   const app = doc.querySelector("[data-platform55-app]");
   const sidebar = doc.querySelector("[data-platform55-sidebar]");
   const topbar = doc.querySelector("[data-platform55-topbar]");
-  if (!app || !sidebar || !topbar) return null;
+  const main = app?.querySelector("main") || doc.querySelector("main");
+  if (!app || !sidebar || !topbar || !main) return null;
 
   registerPlatform55Icons({ root: doc });
+  const originalMainId = main.id;
+  if (!main.id) main.id = "platform55-main-content";
+  const skipLink = doc.createElement("a");
+  skipLink.className = "rw-skip-link";
+  skipLink.setAttribute("href", `#${main.id}`);
+  skipLink.textContent = "Skip to main content";
+  doc.body.prepend(skipLink);
   const authForm = doc.querySelector("#auth-form");
   const scrim = doc.createElement("button");
   scrim.type = "button";
@@ -366,7 +374,7 @@ export function mountPlatform55Shell({
 
   const options = { pageKey: pageKey || doc.body.dataset.platform55Page || "app", user, accessContext, notificationSummary, status };
   const state = {
-    doc, app, sidebar, topbar, authForm, scrim, options,
+    doc, app, sidebar, topbar, main, originalMainId, skipLink, authForm, scrim, options,
     model: shellModel(options),
     pageState: pageState
       ? normalizePlatform55PageState(pageState, { allowedActionIds: allowedPageActionIds(doc) })
@@ -389,6 +397,7 @@ export function mountPlatform55Shell({
     root: doc
   });
   applyModel(state);
+  app.dataset.platform55ShellRoot = "true";
   return state;
 }
 
@@ -414,11 +423,14 @@ export function unmountPlatform55Shell({ root = globalThis.document } = {}) {
   state.abort.abort();
   state.search?.destroy();
   state.notificationDrawer.remove();
+  state.skipLink.remove();
+  if (!state.originalMainId) state.main.removeAttribute("id");
   state.sidebar.replaceChildren();
   state.topbar.replaceChildren();
   if (state.authForm) state.topbar.append(state.authForm);
   state.scrim.remove();
   delete state.app.dataset.navCollapsed;
   delete state.app.dataset.mobileNavOpen;
+  delete state.app.dataset.platform55ShellRoot;
   mountedShells.delete(doc);
 }

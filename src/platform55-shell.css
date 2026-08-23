@@ -18,6 +18,24 @@ body[data-platform55-shell="tenant"] {
   transition: grid-template-columns var(--rw-motion-fast) var(--rw-motion-easing);
 }
 
+.rw-skip-link {
+  position: fixed;
+  z-index: 120;
+  top: 8px;
+  left: 8px;
+  padding: 10px 14px;
+  border-radius: var(--rw-radius-md);
+  color: var(--rw-white);
+  background: var(--rw-navy-950);
+  box-shadow: var(--rw-shadow-md);
+  transform: translateY(calc(-100% - 16px));
+  transition: transform var(--rw-motion-fast) var(--rw-motion-easing);
+}
+
+.rw-skip-link:focus {
+  transform: translateY(0);
+}
+
 .rw-app[data-nav-collapsed="true"] {
   grid-template-columns: var(--rw-sidebar-collapsed) minmax(0, 1fr);
 }

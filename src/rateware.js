@@ -314,7 +314,10 @@ function ratewarePageOffset() {
 }
 
 function sheetColumnLabel(field) {
-  return SHEET_COLUMNS.find((column) => column.key === field)?.label || field;
+  const configured = SHEET_COLUMNS.find((column) => column.key === field)?.label;
+  if (configured) return configured;
+  const fallback = String(field || "field").replace(/_/g, " ").trim();
+  return fallback ? `${fallback.charAt(0).toUpperCase()}${fallback.slice(1)}` : "Field";
 }
 
 function filterChipValue(field, values = []) {
@@ -382,7 +385,7 @@ function inputCell(row, field, options = {}) {
       : row[field] || "";
   const inputType = options.type || (options.money ? "number" : "text");
   const step = options.step || (options.money ? "0.01" : "");
-  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" type="${inputType}" value="${escapeHtml(value)}" ${options.list ? `list="${escapeHtml(options.list)}"` : ""} ${step ? `step="${escapeHtml(step)}"` : ""} ${options.money ? 'inputmode="decimal"' : ""} autocomplete="off" spellcheck="false" />`;
+  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" aria-label="${escapeHtml(options.label || sheetColumnLabel(field))}" type="${inputType}" value="${escapeHtml(value)}" ${options.list ? `list="${escapeHtml(options.list)}"` : ""} ${step ? `step="${escapeHtml(step)}"` : ""} ${options.money ? 'inputmode="decimal"' : ""} autocomplete="off" spellcheck="false" />`;
 }
 
 function optionList(values = [], currentValue = "") {
@@ -394,7 +397,7 @@ function optionList(values = [], currentValue = "") {
 function selectCell(row, field, values = [], options = {}) {
   const widthClass = options.wide ? "wide-input" : options.money ? "money-input" : options.short ? "short-input" : "";
   return `
-    <select class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" autocomplete="off">
+    <select class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" aria-label="${escapeHtml(options.label || sheetColumnLabel(field))}" autocomplete="off">
       <option value=""></option>
       ${optionList(values, row[field] || "")}
     </select>
@@ -441,13 +444,13 @@ function hiddenLocationFields(row, prefix) {
 function datalistCell(row, field, listName, options = {}) {
   const widthClass = options.wide ? "wide-input" : options.short ? "short-input" : "";
   const locationAttr = ["origin", "destination"].includes(field) ? `data-location-field="${field}"` : "";
-  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" ${locationAttr} list="${listName}" value="${escapeHtml(row[field] || "")}" autocomplete="off" spellcheck="false" />`;
+  return `<input class="staging-input rateware-input ${widthClass}" data-rateware-field="${field}" aria-label="${escapeHtml(options.label || sheetColumnLabel(field))}" ${locationAttr} list="${listName}" value="${escapeHtml(row[field] || "")}" autocomplete="off" spellcheck="false" />`;
 }
 
 function checkboxCell(row, field, label) {
   return `
     <label class="table-checkbox" title="${escapeHtml(label)}">
-      <input class="staging-input rateware-input" data-rateware-field="${field}" type="checkbox" value="true" ${row[field] ? "checked" : ""} />
+      <input class="staging-input rateware-input" data-rateware-field="${field}" aria-label="${escapeHtml(label || sheetColumnLabel(field))}" type="checkbox" value="true" ${row[field] ? "checked" : ""} />
     </label>
   `;
 }
