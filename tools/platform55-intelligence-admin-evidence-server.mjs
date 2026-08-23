@@ -29,7 +29,10 @@ export async function applyPermissionState(selector) { if (selector) document.qu
 export function initAuthControls() {
   if (document.body.dataset.platform55Shell === "tenant") mountPlatform55Shell({ pageKey: document.body.dataset.platform55Page, user: session.user, accessContext: session.access });
   const status = document.querySelector("#auth-status");
-  if (status) status.textContent = qaState() === "signed-out" ? "Signed out · public preview only" : "Deterministic local QA session";
+  if (status) {
+    status.dataset.authState = qaState() === "signed-out" ? "signed-out" : "authenticated";
+    status.textContent = qaState() === "signed-out" ? "Signed out · public preview only" : "Deterministic local QA session";
+  }
   document.querySelector("#auth-button")?.classList.toggle("hidden", qaState() !== "signed-out");
 }
 export async function getKindeClient() { return Object.freeze({ login: blocked, logout: blocked }); }

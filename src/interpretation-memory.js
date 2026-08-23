@@ -472,9 +472,11 @@ async function loadMemory() {
     selectedIds.clear();
     renderRules();
     await loadMemoryAudit();
+    setStatus(memoryTableStatus, "Memory rules loaded. Review required before changes.", "success");
     reportPlatform55State("Memory evidence loaded; review required before changes");
   } catch (error) {
     memoryBody.innerHTML = `<tr><td colspan="10">${escapeHtml(humanizeError(error))}</td></tr>`;
+    setStatus(memoryTableStatus, humanizeError(error), "error");
     reportPlatform55State(humanizeError(error));
   }
 }

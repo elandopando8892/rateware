@@ -1,2 +1,4 @@
 docs/platform55-shell-route-map.csv text eol=lf
 docs/platform55-surface-inventory.csv text eol=lf
+docs/platform55-evidence/**/manifest.json text eol=lf
+docs/release/evidence/*.json text eol=lf

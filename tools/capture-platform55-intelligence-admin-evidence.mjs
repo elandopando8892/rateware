@@ -12,9 +12,9 @@ const routes = Object.freeze([
   { slug: "business-intelligence", file: "business-intelligence.html", kind: "tenant", query: "view=geo", loaded: "#bi-geo-status[data-tone='success']", nonhappy: "#bi-geo-status[data-tone='error']", nonhappyState: "error" },
   { slug: "growth-hacking", file: "growth-hacking.html", kind: "tenant", query: "", loaded: "#growth-global-status.success", nonhappy: "#growth-global-status.error", nonhappyState: "error" },
   { slug: "settings", file: "settings.html", kind: "tenant", query: "view=governance", nonhappyQuery: "view=audit", loaded: "#settings-governance-status[data-tone]", nonhappy: "#audit-log-body td", nonhappyState: "error" },
-  { slug: "interpretation-memory", file: "interpretation-memory.html", kind: "tenant", query: "view=governance", nonhappyQuery: "view=library", loaded: "[data-platform55-governance-summary]", nonhappy: "#memory-body td", nonhappyState: "error" },
-  { slug: "catalog-workbench", file: "catalog-workbench.html", kind: "tenant", query: "view=import", nonhappyQuery: "view=matching", loaded: "[data-platform55-governance-summary]", nonhappy: "#catalog-workbench-body .ui-state[data-tone='danger']", nonhappyState: "error" },
-  { slug: "index", file: "index.html", kind: "entry", query: "", loaded: "[data-platform55-demo-data]", nonhappy: "#auth-status", nonhappyState: "signed-out" }
+  { slug: "interpretation-memory", file: "interpretation-memory.html", kind: "tenant", query: "view=library", loaded: "#memory-table-status[data-tone='success']", nonhappy: "#memory-table-status[data-tone='error']", nonhappyState: "error" },
+  { slug: "catalog-workbench", file: "catalog-workbench.html", kind: "tenant", query: "view=matching", loaded: "#catalog-workbench-status[data-tone='success']", nonhappy: "#catalog-workbench-status[data-tone='error']", nonhappyState: "error" },
+  { slug: "index", file: "index.html", kind: "entry", query: "", loaded: "#auth-status[data-auth-state='authenticated']", nonhappy: "#auth-status[data-auth-state='signed-out']", nonhappyState: "signed-out" }
 ]);
 const viewports = Object.freeze([[1440, 900], [1024, 768], [390, 844]]);
 const sourcePaths = Object.freeze([
@@ -66,11 +66,12 @@ try {
         const url = `${server.origin}/${route.file}?qa_state=${qaState}${query ? `&${query}` : ""}`;
         await page.goto(url, { waitUntil: "networkidle" });
         const selector = state === "loaded" ? route.loaded : route.nonhappy;
+        const oppositeSelector = state === "loaded" ? route.nonhappy : route.loaded;
         const locator = page.locator(selector).first();
         await locator.waitFor({ state: "visible", timeout: 10000 });
         await locator.scrollIntoViewIfNeeded();
         const samples = await stableSamples(page, selector);
-        const metrics = await page.evaluate(({ selector: target, kind }) => {
+        const metrics = await page.evaluate(({ selector: target, oppositeSelector: oppositeTarget, kind }) => {
           const rgb = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
           const luminance = (value) => {
             const channels = rgb(value).map((channel) => { const normalized = channel / 255; return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4; });
@@ -78,7 +79,10 @@ try {
           };
           const contrast = (foreground, background) => { const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a); return Math.round(((values[0] + 0.05) / (values[1] + 0.05)) * 1000) / 1000; };
           const node = document.querySelector(target);
+          const oppositeNode = document.querySelector(oppositeTarget);
           const rect = node?.getBoundingClientRect();
+          const oppositeRect = oppositeNode?.getBoundingClientRect();
+          const oppositeStyle = oppositeNode ? getComputedStyle(oppositeNode) : null;
           const horizontal = rect ? Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0)) : 0;
           const vertical = rect ? Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0)) : 0;
           const area = rect ? Math.max(1, rect.width * rect.height) : 1;
@@ -95,6 +99,7 @@ try {
             public_header_height_ratio: publicHeader ? Math.round((publicHeader.getBoundingClientRect().height / innerHeight) * 10000) / 10000 : null,
             public_brand_contrast_ratio: brand ? contrast(brandStyle.color, headerStyle.backgroundColor) : null,
             state_visible: Boolean(rect && horizontal > 0 && vertical > 0),
+            opposite_state_visible: Boolean(oppositeRect && oppositeRect.width > 0 && oppositeRect.height > 0 && oppositeStyle?.display !== "none" && oppositeStyle?.visibility !== "hidden"),
             state_intersection_ratio: Math.round(((horizontal * vertical) / area) * 10000) / 10000,
             state_marker: node?.textContent?.replace(/\s+/g, " ").trim().slice(0, 240) || "",
             active_routes: document.querySelectorAll('[aria-current="page"]').length,
@@ -108,13 +113,14 @@ try {
             scroll_x: scrollX,
             overflow_candidates: [...document.querySelectorAll("body *")].map((element) => { const box = element.getBoundingClientRect(); return { tag: element.tagName, id: element.id, className: typeof element.className === "string" ? element.className : "", left: Math.round(box.left), right: Math.round(box.right), width: Math.round(box.width) }; }).filter((candidate) => candidate.width > 0 && (candidate.left < -1 || candidate.right > innerWidth + 1)).sort((a, b) => b.width - a.width).slice(0, 12)
           };
-        }, { selector, kind: route.kind });
+        }, { selector, oppositeSelector, kind: route.kind });
         const filename = `${route.slug}-${state}-${width}x${height}.png`;
         const path = resolve(outputDirectory, filename);
         await page.screenshot({ path, fullPage: false, animations: "disabled" });
         const bytes = await readFile(path);
         captures.push({ file: filename, route: route.file, kind: route.kind, shell: route.kind, state, qa_state: qaState, viewport: `${width}x${height}`, source_frame: `${width}x${height}`, canvas_normalized: false, layout_stability_samples: samples, state_selector: selector, console_errors: consoleErrors.length, http_errors: httpErrors.length, page_errors: pageErrors.length, request_errors: requestErrors.length, external_requests: externalRequests.length, ...metrics, byte_length: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") });
         if (metrics.document_overflow) throw new Error(`${filename} document overflow: ${JSON.stringify(metrics.overflow_candidates)}`);
+        if (metrics.opposite_state_visible) throw new Error(`${filename} opposite state is visible: ${oppositeSelector}`);
         if (route.kind === "entry" && (metrics.public_header_height_ratio <= 0 || metrics.public_header_height_ratio > 0.25 || metrics.public_brand_contrast_ratio < 4.5 || metrics.private_controls !== 0 || metrics.demo_data_markers !== 1)) throw new Error(`${filename} entry isolation/composition failure`);
         if (route.kind === "tenant" && (metrics.active_routes !== 1 || /unavailable/i.test(metrics.system_status))) throw new Error(`${filename} tenant shell state failure: ${JSON.stringify({ activeRoutes: metrics.active_routes, status: metrics.system_status })}`);
         if (consoleErrors.length || httpErrors.length || pageErrors.length || requestErrors.length || externalRequests.length) throw new Error(`${filename} browser errors: ${JSON.stringify({ consoleErrors, httpErrors, pageErrors, requestErrors, externalRequests })}`);

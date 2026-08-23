@@ -49,8 +49,27 @@ test("blocks writes, traversal, missing files, and external XLSX loading", async
   }
 });
 
-test("binds Catalog non-happy evidence to the emitted danger state", async () => {
+test("binds Catalog non-happy evidence to the emitted error status", async () => {
   const captureSource = await readFile("tools/capture-platform55-intelligence-admin-evidence.mjs", "utf8");
-  assert.match(captureSource, /#catalog-workbench-body \.ui-state\[data-tone=['"]danger['"]\]/);
+  assert.match(captureSource, /#catalog-workbench-status\[data-tone=['"]error['"]\]/);
+  assert.doesNotMatch(captureSource, /loaded:\s*["']\[data-platform55-governance-summary\]/);
   assert.doesNotMatch(captureSource, /#catalog-workbench-body \.ui-state-error/);
+});
+
+test("uses mutually exclusive outcome selectors for Memory, Catalog, and public auth", async () => {
+  const captureSource = await readFile("tools/capture-platform55-intelligence-admin-evidence.mjs", "utf8");
+  const serverSource = await readFile("tools/platform55-intelligence-admin-evidence-server.mjs", "utf8");
+  const memorySource = await readFile("src/interpretation-memory.js", "utf8");
+
+  assert.match(captureSource, /#memory-table-status\[data-tone=['"]success['"]\]/);
+  assert.match(captureSource, /#memory-table-status\[data-tone=['"]error['"]\]/);
+  assert.match(captureSource, /#catalog-workbench-status\[data-tone=['"]success['"]\]/);
+  assert.match(captureSource, /#catalog-workbench-status\[data-tone=['"]error['"]\]/);
+  assert.match(captureSource, /#auth-status\[data-auth-state=['"]authenticated['"]\]/);
+  assert.match(captureSource, /#auth-status\[data-auth-state=['"]signed-out['"]\]/);
+  assert.match(captureSource, /opposite_state_visible/);
+
+  assert.match(memorySource, /setStatus\(memoryTableStatus,[\s\S]*?["']success["']\)/);
+  assert.match(memorySource, /setStatus\(memoryTableStatus,[\s\S]*?["']error["']\)/);
+  assert.match(serverSource, /status\.dataset\.authState\s*=\s*qaState\(\)\s*===\s*["']signed-out["']/);
 });
