@@ -84,6 +84,33 @@ assert.match(css, /\.rw-governance-panel/);
 assert.match(css, /\.rw-entry-app/);
 assert.equal(/--p55-|#[0-9a-f]{3,8}\b/i.test(css), false, "S5 presentation must consume Platform55 tokens instead of inventing a second palette");
 
+const growthCss = readFileSync("src/growth-hacking.css", "utf8");
+assert.match(
+  growthCss,
+  /\.growth-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s,
+  "Growth workspace must allow its grid track to shrink within the mobile viewport"
+);
+assert.match(
+  growthCss,
+  /\.growth-workspace\s*>\s*\*\s*\{[^}]*min-width:\s*0[^}]*max-width:\s*100%/s,
+  "Growth workspace children must not impose intrinsic document width"
+);
+assert.match(
+  growthCss,
+  /\.growth-view\.active\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s,
+  "Active Growth views must shrink their content track within the workspace"
+);
+assert.match(
+  growthCss,
+  /\.growth-view\.active\s*>\s*\*\s*\{[^}]*min-width:\s*0[^}]*max-width:\s*100%/s,
+  "Active Growth view children must not widen the document"
+);
+assert.match(
+  growthCss,
+  /@media\s*\(max-width:\s*820px\)[\s\S]*?\.growth-metric-strip\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+  "Growth mobile metrics must use shrinkable columns instead of a 400px intrinsic minimum"
+);
+
 const tenantModuleText = TENANT_ROUTES.map(([, , modulePath]) => readFileSync(modulePath, "utf8")).join("\n");
 assert.equal(/mountPlatform55Shell\s*\(/.test(tenantModuleText), false, "page modules must not mount a second tenant shell");
 
