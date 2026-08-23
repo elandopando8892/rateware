@@ -45,3 +45,15 @@ test("rejects fabricated or weakened Intelligence and Administration evidence", 
   entryCapture.private_controls = 1;
   assert.throws(() => validateP2S5Manifest(publicLeak), /private_controls/);
 });
+
+test("binds all six S5 routes to the immutable browser evidence", async () => {
+  const lines = (await readFile("docs/platform55-shell-route-map.csv", "utf8")).trim().split(/\r?\n/);
+  const headers = lines.shift().split(",");
+  const rows = lines.map((line) => Object.fromEntries(line.split(",").map((value, index) => [headers[index], value])));
+  const s5Rows = rows.filter((row) => row.owner_sprint === "P2-S5");
+  assert.equal(s5Rows.length, 6);
+  for (const row of s5Rows) {
+    assert.equal(row.status, "verified", `${row.route} must be verified`);
+    assert.equal(row.evidence, manifestPath, `${row.route} must cite the immutable manifest`);
+  }
+});
