@@ -405,3 +405,80 @@ test("accredits P3-V1 only from the exact independently reviewed product and evi
   assert.equal(p3.progress, 0);
   assert.deepEqual(p3.evidence, {});
 });
+
+test("rejects a P3-V1 closure summary that only names the evidence directory", async () => {
+  assert.ifError(evidenceImportError);
+  assert.equal(
+    typeof evidence.validateP3V1ClosureAccreditation,
+    "function",
+    "P3-V1 closure must expose a reusable semantic accreditation validator",
+  );
+
+  const rows = await canonicalRows();
+  const fabricated = structuredClone(rows);
+  fabricated.find((row) => row.route === "app.html").gap_summary = EVIDENCE_DIRECTORY;
+
+  assert.throws(
+    () => evidence.validateP3V1ClosureAccreditation({
+      rootDir: ROOT,
+      rows: fabricated,
+      requireTracked: true,
+    }),
+    /gap summary|semantic accreditation/i,
+  );
+});
+
+test("binds P3-V1 semantic accreditation to the exact independent GO review", async () => {
+  assert.ifError(evidenceImportError);
+  const rows = await canonicalRows();
+  const independentReview = await readFile(new URL(`../${INDEPENDENT_REVIEW_PATH}`, import.meta.url), "utf8");
+
+  assert.deepEqual(
+    evidence.validateP3V1ClosureAccreditation({
+      rootDir: ROOT,
+      rows,
+      independentReview,
+      requireTracked: true,
+    }),
+    { captures: 18, scores: { "app.html": 91, "rateware.html": 90 }, routes: ["app.html", "rateware.html"] },
+  );
+  assert.throws(
+    () => evidence.validateP3V1ClosureAccreditation({
+      rootDir: ROOT,
+      rows,
+      independentReview: independentReview.replace("reviewer_verdict: GO", "reviewer_verdict: NO-GO"),
+      requireTracked: true,
+    }),
+    /independent review|verdict|digest/i,
+  );
+});
+
+test("binds P3-V1 semantic accreditation to the validated visual result", async () => {
+  assert.ifError(evidenceImportError);
+  const rows = await canonicalRows();
+  const loaded = evidence.loadP3V1Evidence(ROOT);
+  const independentReview = await readFile(new URL(`../${INDEPENDENT_REVIEW_PATH}`, import.meta.url), "utf8");
+
+  assert.deepEqual(
+    evidence.validateP3V1ClosureAccreditation({
+      rootDir: ROOT,
+      rows,
+      independentReview,
+      ...loaded,
+      requireTracked: true,
+    }),
+    { captures: 18, scores: { "app.html": 91, "rateware.html": 90 }, routes: ["app.html", "rateware.html"] },
+  );
+
+  const scoreDrift = loaded.designReview.replace('"shell_frame":18', '"shell_frame":1');
+  assert.throws(
+    () => evidence.validateP3V1ClosureAccreditation({
+      rootDir: ROOT,
+      rows,
+      independentReview,
+      ...loaded,
+      designReview: scoreDrift,
+    }),
+    /score|accepted/i,
+  );
+});

@@ -13,11 +13,19 @@ import { evaluateVisualParityScore } from "./platform55-visual-parity-contract.m
 export const P3V1_PRODUCT_SHA = "e962b54ee1ed049b0c020fd8278f48711105477e";
 export const P3V1_PRODUCT_TREE = "db331c5d482e629df24feb5e02697066ecf2282f";
 export const P3V1_EVIDENCE_DIRECTORY = `docs/platform55-visual-parity/evidence/p3v1/${P3V1_PRODUCT_SHA}`;
+export const P3V1_REVIEWED_EVIDENCE_COMMIT = "83ea271e2e93ddc7c99b22be1458cad2549f82c2";
+export const P3V1_INDEPENDENT_REVIEW_PATH = `${P3V1_EVIDENCE_DIRECTORY}/independent-review.md`;
+
+const P3V1_INDEPENDENT_REVIEW_SHA256 = "9c46da3be7c39632584c2de04a87ff5f834a6f06294fb6e65867d214fc426479";
 
 const EXPECTED_SCORES = Object.freeze({ "app.html": 91, "rateware.html": 90 });
 const REPRESENTATIVE = Object.freeze({
   "app.html": "app-data-1440x900.png",
   "rateware.html": "rateware-loaded-1440x900.png",
+});
+const ACCREDITED_ROUTES = Object.freeze({
+  "app.html": Object.freeze({ label: "Command Center", score: 91 }),
+  "rateware.html": Object.freeze({ label: "Rateware", score: 90 }),
 });
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -37,6 +45,12 @@ function parseScoreRecords(body) {
     throw new Error("P3-V1 design review must contain exactly two route score records");
   }
   return records;
+}
+
+function exactReviewField(body, name) {
+  const matches = [...body.matchAll(new RegExp(`^${name}:\\s*(\\S+)\\s*$`, "gm"))];
+  if (matches.length !== 1) throw new Error(`P3-V1 independent review must contain exactly one ${name}`);
+  return matches[0][1];
 }
 
 export function loadP3V1Evidence(rootDir = process.cwd()) {
@@ -132,4 +146,86 @@ export function validateP3V1Evidence({
     }
   }
   return Object.freeze({ captures: manifest.captures.length, scores: Object.freeze(scores) });
+}
+
+export function validateP3V1ClosureAccreditation({
+  rootDir = process.cwd(),
+  rows,
+  manifest,
+  designReview,
+  evidenceDirectory,
+  independentReview = readFileSync(resolve(rootDir, P3V1_INDEPENDENT_REVIEW_PATH), "utf8"),
+  requireTracked = false,
+}) {
+  const root = resolve(rootDir);
+  const loaded = loadP3V1Evidence(root);
+  const evidenceResult = validateP3V1Evidence({
+    rootDir: root,
+    manifest: manifest ?? loaded.manifest,
+    designReview: designReview ?? loaded.designReview,
+    evidenceDirectory: evidenceDirectory ?? loaded.evidenceDirectory,
+    requireTracked,
+  });
+  if (typeof independentReview !== "string") throw new Error("P3-V1 independent review must be text");
+  const normalizedReview = independentReview.replace(/\r\n/g, "\n");
+  if (sha256(normalizedReview) !== P3V1_INDEPENDENT_REVIEW_SHA256) {
+    throw new Error("P3-V1 independent review digest mismatch");
+  }
+  if (
+    exactReviewField(normalizedReview, "reviewed_product_sha") !== P3V1_PRODUCT_SHA ||
+    exactReviewField(normalizedReview, "reviewed_product_tree") !== P3V1_PRODUCT_TREE ||
+    exactReviewField(normalizedReview, "reviewed_evidence_commit") !== P3V1_REVIEWED_EVIDENCE_COMMIT ||
+    exactReviewField(normalizedReview, "reviewer_verdict") !== "GO" ||
+    exactReviewField(normalizedReview, "p0") !== "0" ||
+    exactReviewField(normalizedReview, "p1") !== "0" ||
+    exactReviewField(normalizedReview, "p2") !== "0" ||
+    !/Capture matrix:\s*`18\/18`/.test(normalizedReview) ||
+    !/Command Center \(`app\.html`\):\s*`91\/100`/.test(normalizedReview) ||
+    !/Rateware \(`rateware\.html`\):\s*`90\/100`/.test(normalizedReview)
+  ) {
+    throw new Error("P3-V1 independent review verdict or evidence mismatch");
+  }
+  if (requireTracked) {
+    const trackedBody = readFileSync(resolve(root, P3V1_INDEPENDENT_REVIEW_PATH), "utf8");
+    if (independentReview !== trackedBody) throw new Error("P3-V1 independent review is not the exact tracked body");
+    git(root, ["ls-files", "--error-unmatch", "--", P3V1_INDEPENDENT_REVIEW_PATH]);
+    if (
+      git(root, ["hash-object", "--", P3V1_INDEPENDENT_REVIEW_PATH]) !==
+      git(root, ["rev-parse", `HEAD:${P3V1_INDEPENDENT_REVIEW_PATH}`])
+    ) {
+      throw new Error("P3-V1 independent review is not tracked exactly");
+    }
+    git(root, ["cat-file", "-e", `${P3V1_REVIEWED_EVIDENCE_COMMIT}^{commit}`]);
+    git(root, ["merge-base", "--is-ancestor", P3V1_REVIEWED_EVIDENCE_COMMIT, "HEAD"]);
+  }
+
+  if (!Array.isArray(rows)) throw new Error("P3-V1 semantic accreditation requires route rows");
+  const accepted = rows.filter((row) => row?.parity_status === "accepted");
+  if (
+    accepted.length !== 2 ||
+    JSON.stringify(accepted.map((row) => row.route).sort()) !== JSON.stringify(Object.keys(ACCREDITED_ROUTES).sort())
+  ) {
+    throw new Error("P3-V1 semantic accreditation requires exactly the reviewed routes");
+  }
+
+  for (const [route, expected] of Object.entries(ACCREDITED_ROUTES)) {
+    const matches = rows.filter((row) => row?.route === route);
+    if (matches.length !== 1) throw new Error(`P3-V1 semantic accreditation requires one ${route} row`);
+    const row = matches[0];
+    const expectedSummary = `Accepted from ${P3V1_EVIDENCE_DIRECTORY}: 18/18 matrix reproduced, independent GO, and ${expected.label} score ${expected.score}/100; content-adapted differences remain documented`;
+    if (
+      row.parity_status !== "accepted" ||
+      row.verification !== "accepted" ||
+      row.p3v_wave !== "P3-V1" ||
+      row.current_baseline !== `${P3V1_EVIDENCE_DIRECTORY}/${REPRESENTATIVE[route]}` ||
+      row.gap_summary !== expectedSummary
+    ) {
+      throw new Error(`P3-V1 gap summary or semantic accreditation mismatch: ${route}`);
+    }
+  }
+  return Object.freeze({
+    captures: evidenceResult.captures,
+    scores: evidenceResult.scores,
+    routes: Object.freeze(Object.keys(ACCREDITED_ROUTES).sort()),
+  });
 }
