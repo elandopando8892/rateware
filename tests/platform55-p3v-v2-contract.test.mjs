@@ -61,3 +61,21 @@ test("P3-V2 keeps page selection and filtered database actions distinct", async 
   assert.match(review, /data-p3v2-selection-scope="page"/);
   assert.match(review, /data-p3v2-selection-scope="filtered-database"/);
 });
+
+test("P3-V2 exposes route-neutral governed operation primitives", async () => {
+  const parity = await read("src/platform55-visual-parity.css");
+  const operate = await read("src/platform55-operate.css");
+  for (const selector of [
+    ".p55-vp-operation-flow",
+    ".p55-vp-source-dropzone",
+    ".p55-vp-filter-surface",
+    ".p55-vp-scope-strip",
+    ".p55-vp-review-brief",
+    ".p55-vp-state-panel",
+  ]) {
+    assert.match(`${parity}\n${operate}`, new RegExp(selector.replaceAll(".", "\\.")), selector);
+  }
+  assert.doesNotMatch(`${parity}\n${operate}`, /!important/);
+  assert.match(parity, /@media \(max-width: 1100px\)/);
+  assert.match(parity, /@media \(max-width: 680px\)/);
+});
