@@ -160,6 +160,13 @@
 
 .p55-vp-page--review-queue .p55-vp-scope-strip.is-empty {
   display: flex;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.p55-vp-page--review-queue .p55-vp-scope-strip.is-empty > :is(button, details, .row-save-status),
+.p55-vp-page--review-queue .p55-vp-scope-strip.is-empty .bulk-scope-strip button {
+  display: none;
 }
 
 .p55-vp-state-panel {
