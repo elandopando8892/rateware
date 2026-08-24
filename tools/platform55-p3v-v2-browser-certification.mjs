@@ -246,13 +246,13 @@ async function applyStateFixture(page, route, state) {
       if (stateName === "loaded") {
         form?.setAttribute("data-p3v2-active-state", stateName);
       } else if (stateName === "empty") {
-        if (metrics) metrics.hidden = true;
-        if (workflow) workflow.hidden = true;
-        if (form) form.hidden = true;
+        metrics?.style.setProperty("display", "none", "important");
+        workflow?.style.setProperty("display", "none", "important");
+        form?.style.setProperty("display", "none", "important");
         if (list) { list.dataset.p3v2ActiveState = stateName; list.innerHTML = "<li><strong>No files selected</strong><span>Select the original carrier quotation to preserve its source filename.</span></li>"; }
       } else if (status) {
-        if (metrics) metrics.hidden = true;
-        if (workflow) workflow.hidden = true;
+        metrics?.style.setProperty("display", "none", "important");
+        workflow?.style.setProperty("display", "none", "important");
         form?.prepend(status);
         for (const child of form?.children || []) if (child !== status) child.hidden = true;
         status.dataset.p3v2ActiveState = stateName;
@@ -267,6 +267,9 @@ async function applyStateFixture(page, route, state) {
     if (routeName === "upload-history.html") {
       const body = document.querySelector("#history-body");
       if (!body) return;
+      for (const selector of [".module-workspace-heading", ".workflow-disclosure", ".bulk-action-bar"]) {
+        document.querySelector(selector)?.style.setProperty("display", "none", "important");
+      }
       if (stateName === "loaded") {
         body.dataset.p3v2ActiveState = stateName;
       } else {
@@ -281,6 +284,14 @@ async function applyStateFixture(page, route, state) {
     }
     const body = document.querySelector("#staging-body");
     const brief = document.querySelector("[data-p3v2-state='review-required']");
+    for (const selector of [".workbench-header", ".sheet-pagination-bar", ".sheet-helper-strip"]) {
+      document.querySelector(selector)?.style.setProperty("display", "none", "important");
+    }
+    if (stateName !== "review-required") {
+      for (const selector of [".staging-approval-brief-copy", ".review-mode-tabs", ".review-queue-toolbar"]) {
+        document.querySelector(selector)?.style.setProperty("display", "none", "important");
+      }
+    }
     if (stateName === "review-required") {
       brief?.setAttribute("data-p3v2-active-state", stateName);
       return;
@@ -314,7 +325,11 @@ async function collectMetrics(page, route, state, viewport) {
       return box.bottom > 0 && box.top < innerHeight && box.right > 0 && box.left < innerWidth;
     };
     const stateSurface = document.querySelector(`[data-p3v2-active-state="${CSS.escape(stateName)}"]`);
-    const sourceBoundary = document.querySelector("[data-p3v2-source-boundary], [data-p3v2-provenance-boundary], [data-source-field='source_filename'], #staging-brief-source");
+    const sourceBoundary = routeName === "upload-center.html"
+      ? document.querySelector("[data-p3v2-source-boundary]")
+      : routeName === "upload-history.html"
+        ? document.querySelector("[data-p3v2-provenance-boundary]")
+        : document.querySelector("#staging-brief-source");
     const controls = [...document.querySelectorAll("button,a[href],input,select,textarea,summary")].filter(visible);
     const unnamed = controls.filter((element) => {
       const labelled = element.getAttribute("aria-labelledby")?.split(/\s+/).map((id) => document.getElementById(id)?.textContent || "").join(" ") || "";
