@@ -199,6 +199,26 @@ test("Rateware mobile fidelity preserves primary actions and internal overflow",
   assert.equal(bulk["max-width"], "100%");
   assert.equal(bulk["overflow-x"], "auto");
 
+  const pagination = declarationsFor(css, ".p55-vp-page--governed-operations .sheet-pagination-bar");
+  assert.equal(pagination.display, "grid");
+  assert.equal(pagination["grid-template-columns"], "minmax(0, 1fr)");
+  assert.equal(pagination["white-space"], "normal");
+
+  const paginationControls = declarationsFor(css, ".p55-vp-page--governed-operations .sheet-pagination-controls");
+  assert.equal(paginationControls.display, "grid");
+  assert.equal(paginationControls["grid-template-columns"], "repeat(2, minmax(0, 1fr))");
+  assert.equal(paginationControls.width, "100%");
+
+  const helper = declarationsFor(css, ".p55-vp-page--governed-operations .sheet-helper-strip");
+  assert.equal(helper["align-items"], "stretch");
+  assert.equal(helper["flex-direction"], "column");
+  assert.equal(helper["white-space"], "normal");
+
+  const issueNav = declarationsFor(css, ".p55-vp-page--governed-operations .sheet-issue-nav");
+  assert.equal(issueNav.display, "grid");
+  assert.equal(issueNav["grid-template-columns"], "repeat(2, minmax(0, 1fr))");
+  assert.equal(issueNav.width, "100%");
+
   const table = declarationsFor(css, ".p55-vp-page--governed-operations .rw-operate-table-scroll");
   assert.equal(table["overflow-x"], "auto");
 });

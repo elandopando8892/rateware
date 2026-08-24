@@ -374,9 +374,53 @@
     min-width: 100%;
   }
 
-  .p55-vp-page--governed-operations .sheet-pagination-bar,
-  .p55-vp-page--governed-operations .sheet-helper-strip {
+  .p55-vp-page--governed-operations .sheet-pagination-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 8px;
     margin-inline: 10px;
+    white-space: normal;
+  }
+
+  .p55-vp-page--governed-operations .sheet-pagination-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .p55-vp-page--governed-operations .sheet-pagination-controls > button,
+  .p55-vp-page--governed-operations .sheet-pagination-controls > label {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .p55-vp-page--governed-operations .sheet-helper-strip {
+    align-items: stretch;
+    flex-direction: column;
+    margin-inline: 10px;
+    overflow-x: visible;
+    white-space: normal;
+  }
+
+  .p55-vp-page--governed-operations .sheet-issue-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .p55-vp-page--governed-operations .sheet-issue-nav > button {
+    width: 100%;
+  }
+
+  .p55-vp-page--governed-operations .sheet-issue-nav > span {
+    grid-column: 1 / -1;
+    white-space: normal;
   }
 
   .p55-vp-page--governed-operations .rw-operate-table-scroll {
