@@ -250,7 +250,7 @@ export function validateP3V1ClosureAccreditation({
     validateReviewedEvidenceBlobs(root, evaluatedManifest);
   }
 
-  const accepted = rows.filter((row) => row?.parity_status === "accepted");
+  const accepted = rows.filter((row) => row?.parity_status === "accepted" && row?.p3v_wave === "P3-V1");
   if (
     accepted.length !== 2 ||
     JSON.stringify(accepted.map((row) => row.route).sort()) !== JSON.stringify(Object.keys(ACCREDITED_ROUTES).sort())

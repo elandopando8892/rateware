@@ -57,14 +57,20 @@ The current Rateware page uses the shell but retains a legacy interior: repeated
 ## Progress
 
 - Formal release progress: General `83%`; P0-P2 `100%`; P3-P5 `0%`.
-- P3-V visual parity track: `25%` after P3-V1 independent GO and evidence-bound closure.
-- First implementation vertical: Command Center + Rateware, `2/2` routes accepted.
+- P3-V visual parity track: `40%` after P3-V1 and P3-V2 independent GO and evidence-bound closure.
+- Accepted visual routes: Command Center, Rateware, Upload Center, Source Files, and Review Queue, `5/5` reviewed routes accepted.
 
 ### P3-V1 production status
 
 The exact independently reviewed P3-V1 tree reached production through the authorized PR #70 squash release. Vercel reports that release `READY` at `rateware.vercel.app`, and authenticated read-only smoke checks passed on Command Center and Rateware with live tenant data and no console errors or warnings. The content-addressed record is [`2026-08-24-p3v1-production-closure.md`](../release/evidence/2026-08-24-p3v1-production-closure.md).
 
-This closes deployment evidence for the two-route visual vertical only. It leaves the P3-V visual track at `25%` and the formal production-readiness ledger unchanged at General `83%`, P3 `0%`. The next visual implementation wave is P3-V2: Import, Source Files, and Review Queue.
+This closes deployment evidence for the two-route visual vertical only. The subsequent local P3-V2 closure adds Import, Source Files, and Review Queue to the evidence-bound visual board without claiming a production deployment for those three routes.
+
+### P3-V2 local closure status
+
+P3-V2 is independently GO at evidence SHA `e3e1c0bc0c89d76e4c8d595e4054a749164b2eff` for product SHA `cfe0ddb198d4bf9bf2e93654a7a3e05f0ba606f7`. Its 39/39 certified captures reproduce the tracked PNGs, keep all evidence at `scroll_y=0`, and retain page heading, state evidence, and source/provenance boundaries across 1440, 1024, and 390 pixel viewports. Independent scores are Upload Center `92/100`, Source Files `90/100`, and Review Queue `93/100`.
+
+This moves only the P3-V visual parity track from `25%` to `40%`. Formal production-readiness remains General `83%`, P3 `0%`, because no push, PR, merge, deployment, or production smoke is included in this local closure.
 
 The canonical route board is [`p3v-route-matrix.csv`](p3v-route-matrix.csv). No route is considered visually complete merely because it uses the shared shell.
 
