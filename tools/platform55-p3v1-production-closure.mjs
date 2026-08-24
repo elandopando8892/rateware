@@ -15,6 +15,8 @@ export const P3V1_PRODUCTION = Object.freeze({
   productionDeploymentId: "dpl_GR34Gm4xAtvWkRgyNRJ1eZHFL45y",
   productionDeploymentUrl: "rateware-1cb673wzm-elandopando8892s-projects.vercel.app",
   productionAlias: "rateware.vercel.app",
+  recordSha256: "a307a5fa656311c39a7d549a77da599fb5f6277d2b6634a8e210b881c25610d4",
+  reportSha256: "18cf3c8cace720fb60cee287ad4e83e79a9f7c53196d41c9f54a32fa3d642565",
 });
 
 const ROUTES = new Map([
@@ -156,6 +158,8 @@ export function validateP3V1ProductionRecord(record) {
 
 export function validateP3V1ProductionReport(report, recordBytes) {
   const digest = normalizedSha256(recordBytes);
+  if (digest !== P3V1_PRODUCTION.recordSha256) throw new Error("production record canonical digest mismatch");
+  if (normalizedSha256(report) !== P3V1_PRODUCTION.reportSha256) throw new Error("production report canonical digest mismatch");
   const markers = [
     "Verdict: GO",
     `Reviewed head: \`${P3V1_PRODUCTION.reviewedHead}\``,
@@ -179,6 +183,16 @@ export function validateP3V1ProductionGitState(rootDir) {
   }
   if (P3V1_PRODUCTION.releaseTree !== P3V1_PRODUCTION.reviewedTree) throw new Error("reviewed and released trees differ");
   git(root, ["merge-base", "--is-ancestor", P3V1_PRODUCTION.releaseSha, "HEAD"]);
+  for (const [path, expected] of [
+    [P3V1_PRODUCTION.recordPath, P3V1_PRODUCTION.recordSha256],
+    [P3V1_PRODUCTION.reportPath, P3V1_PRODUCTION.reportSha256],
+  ]) {
+    const headBytes = execFileSync("git", ["-C", root, "cat-file", "blob", `HEAD:${path}`], { encoding: "utf8" });
+    const workingBytes = readFileSync(resolve(root, path), "utf8");
+    if (normalizedSha256(headBytes) !== expected || normalizedSha256(workingBytes) !== expected) {
+      throw new Error(`production closure artifact drift: ${path}`);
+    }
+  }
   return { release: P3V1_PRODUCTION.releaseSha, tree: P3V1_PRODUCTION.releaseTree };
 }
 

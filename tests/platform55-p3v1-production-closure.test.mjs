@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -80,4 +81,23 @@ test("binds the report to the exact JSON bytes and release boundaries", () => {
       marker,
     );
   }
+});
+
+test("rejects coordinated JSON and report byte drift even when the embedded digest is updated", () => {
+  const loaded = canonical();
+  const driftedRecordBytes = `${JSON.stringify(loaded.record, null, 4)}\n`;
+  const driftedDigest = createHash("sha256")
+    .update(driftedRecordBytes.replace(/\r\n/g, "\n"), "utf8")
+    .digest("hex");
+  const driftedReport = loaded.report
+    .replace(loaded.recordSha256, driftedDigest)
+    .replace("## Progress boundary", "Additional unreviewed production claim.\n\n## Progress boundary");
+
+  assert.notEqual(driftedRecordBytes, loaded.recordBytes);
+  assert.notEqual(driftedReport, loaded.report);
+  assert.doesNotThrow(() => production.validateP3V1ProductionRecord(JSON.parse(driftedRecordBytes)));
+  assert.throws(
+    () => production.validateP3V1ProductionReport(driftedReport, driftedRecordBytes),
+    /canonical|digest|reviewed/i,
+  );
 });
