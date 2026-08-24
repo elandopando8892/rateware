@@ -120,9 +120,11 @@ export function validateP3V2Capture(record) {
   if (dataValue(descriptors, "file") !== `${String(route || "").replace(/\.html$/, "")}-${state}-${viewportKey(viewport)}.png`) errors.push("screenshot:path");
   for (const [field, code] of [
     ["page_heading_visible", "heading:hidden"],
+    ["page_heading_intersects_viewport", "heading:outside_viewport"],
     ["state_surface_visible", "state_surface:hidden"],
     ["state_surface_intersects_viewport", "state_surface:outside_viewport"],
     ["source_retention_visible", "source_retention:hidden"],
+    ["source_retention_intersects_viewport", "source_retention:outside_viewport"],
     ["internal_overflow_contained", "layout:internal_overflow"],
     ["focus_cycle_pass", "a11y:focus_cycle"],
     ["focus_restore_pass", "a11y:focus_restore"],
@@ -342,9 +344,11 @@ async function collectMetrics(page, route, state, viewport) {
     const scopes = routeName === "staging-review.html" ? [document.querySelector("[data-p3v2-selection-scope='page']"), document.querySelector("[data-p3v2-selection-scope='filtered-database']")] : [];
     return {
       page_heading_visible: visible(document.querySelector("h1")),
+      page_heading_intersects_viewport: intersects(document.querySelector("h1")),
       state_surface_visible: visible(stateSurface),
       state_surface_intersects_viewport: intersects(stateSurface),
       source_retention_visible: visible(sourceBoundary),
+      source_retention_intersects_viewport: intersects(sourceBoundary),
       source_filename_visible: routeName !== "upload-history.html" || stateName !== "loaded" || document.body.innerText.includes("lane-quote.xlsx"),
       selection_scopes_distinct: routeName !== "staging-review.html" || (scopes.every(visible) && scopes[0].textContent.trim() !== scopes[1].textContent.trim()),
       page_overflow: document.documentElement.scrollWidth > width + 1,
@@ -419,8 +423,6 @@ async function runCli() {
         await page.goto(`${server.origin}/${matrix.route}?qa_state=${matrix.state}`, { waitUntil: "networkidle", timeout: 15000 });
         await page.waitForSelector("[data-platform55-page-content]");
         await applyStateFixture(page, matrix.route, matrix.state);
-        const surface = page.locator(`[data-p3v2-active-state="${matrix.state}"]`);
-        await surface.scrollIntoViewIfNeeded();
         await page.waitForTimeout(60);
         const metrics = await collectMetrics(page, matrix.route, matrix.state, matrix.viewport);
         assert.equal(metrics.reduced_motion, true, `${captureKey(matrix)} must honor reduced motion`);
