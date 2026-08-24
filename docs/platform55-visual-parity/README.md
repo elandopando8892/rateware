@@ -60,6 +60,12 @@ The current Rateware page uses the shell but retains a legacy interior: repeated
 - P3-V visual parity track: `25%` after P3-V1 independent GO and evidence-bound closure.
 - First implementation vertical: Command Center + Rateware, `2/2` routes accepted.
 
+### P3-V1 production status
+
+The exact independently reviewed P3-V1 tree reached production through the authorized PR #70 squash release. Vercel reports that release `READY` at `rateware.vercel.app`, and authenticated read-only smoke checks passed on Command Center and Rateware with live tenant data and no console errors or warnings. The content-addressed record is [`2026-08-24-p3v1-production-closure.md`](../release/evidence/2026-08-24-p3v1-production-closure.md).
+
+This closes deployment evidence for the two-route visual vertical only. It leaves the P3-V visual track at `25%` and the formal production-readiness ledger unchanged at General `83%`, P3 `0%`. The next visual implementation wave is P3-V2: Import, Source Files, and Review Queue.
+
 The canonical route board is [`p3v-route-matrix.csv`](p3v-route-matrix.csv). No route is considered visually complete merely because it uses the shared shell.
 
 References beginning with `source://rateware/` are package-relative pointers under the hash-verified extracted source root `C:\Users\andre\Downloads\rateware`. They are discovery pointers only. Each migration wave must copy or render its selected targets into a content-addressed in-repository evidence folder before the route can move from `unscored` to `accepted`.

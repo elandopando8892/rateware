@@ -13,6 +13,7 @@ import {
   evaluateVisualParityScore,
   validateRouteMatrix,
 } from "./platform55-visual-parity-contract.mjs";
+import { validateP3V1SourceGitState } from "./platform55-p3v1-source-supersession.mjs";
 
 export const P3V1_PRODUCT_SHA = "e962b54ee1ed049b0c020fd8278f48711105477e";
 export const P3V1_PRODUCT_TREE = "db331c5d482e629df24feb5e02697066ecf2282f";
@@ -21,6 +22,10 @@ export const P3V1_REVIEWED_EVIDENCE_COMMIT = "83ea271e2e93ddc7c99b22be1458cad254
 export const P3V1_REVIEWED_EVIDENCE_TREE = "b210cb9df1eca9f347f4a20e3107e68830cf0029";
 export const P3V1_REVIEWED_CLOSURE_SHA = "e4e6371afcf451ab264ee164a23e4134b1ed047d";
 export const P3V1_REVIEWED_CLOSURE_TREE = "3bd0e06864daac4405387bad1b62853b5c256c31";
+export const P3V1_FINAL_REVIEWED_HEAD = "93db2a40d9e93ceb5c0e70453fbc83f85dcd89e5";
+export const P3V1_FINAL_REVIEWED_TREE = "740868975bf855415e577019415d76cb826d6d48";
+export const P3V1_PRODUCTION_RELEASE_SHA = "209e40a3764716af165064e00b359068442a6d4d";
+export const P3V1_PRODUCTION_RELEASE_TREE = "740868975bf855415e577019415d76cb826d6d48";
 export const P3V1_INDEPENDENT_REVIEW_PATH = `${P3V1_EVIDENCE_DIRECTORY}/independent-review.md`;
 
 const P3V1_INDEPENDENT_REVIEW_SHA256 = "e7b3fa0e872d62c67eb9b3e8788016549211b6c8417ab370849a470295058d30";
@@ -67,7 +72,7 @@ function validateReviewedEvidenceBlobs(root, manifest) {
     ...manifest.captures.map((capture) => `${P3V1_EVIDENCE_DIRECTORY}/${capture.file}`),
   ];
   for (const path of paths) {
-    const reviewedBlob = git(root, ["rev-parse", `${P3V1_REVIEWED_EVIDENCE_COMMIT}:${path}`]);
+    const reviewedBlob = git(root, ["rev-parse", `${P3V1_PRODUCTION_RELEASE_SHA}:${path}`]);
     const headBlob = git(root, ["rev-parse", `HEAD:${path}`]);
     const workingBlob = git(root, ["hash-object", "--", resolve(root, path)]);
     if (reviewedBlob !== headBlob || headBlob !== workingBlob) {
@@ -101,9 +106,10 @@ export function validateP3V1Evidence({
     throw new Error("P3-V1 product candidate identity mismatch");
   }
 
+  const sourceSupersession = validateP3V1SourceGitState(root);
   for (const path of P3V1_SOURCE_PATHS) {
     const expected = manifest.source_blobs[path];
-    if (git(root, ["rev-parse", `${P3V1_PRODUCT_SHA}:${path}`]) !== expected || git(root, ["hash-object", "--", path]) !== expected) {
+    if (sourceSupersession.source_blobs[path] !== expected) {
       throw new Error(`P3-V1 source blob mismatch: ${path}`);
     }
   }
@@ -230,21 +236,15 @@ export function validateP3V1ClosureAccreditation({
     ) {
       throw new Error("P3-V1 independent review is not tracked exactly");
     }
-    git(root, ["cat-file", "-e", `${P3V1_PRODUCT_SHA}^{commit}`]);
-    if (git(root, ["rev-parse", `${P3V1_PRODUCT_SHA}^{tree}`]) !== P3V1_PRODUCT_TREE) {
-      throw new Error("P3-V1 reviewed product tree mismatch");
+    git(root, ["cat-file", "-e", `${P3V1_PRODUCTION_RELEASE_SHA}^{commit}`]);
+    if (git(root, ["rev-parse", `${P3V1_PRODUCTION_RELEASE_SHA}^{tree}`]) !== P3V1_PRODUCTION_RELEASE_TREE) {
+      throw new Error("P3-V1 production release tree mismatch");
     }
-    git(root, ["cat-file", "-e", `${P3V1_REVIEWED_EVIDENCE_COMMIT}^{commit}`]);
-    if (git(root, ["rev-parse", `${P3V1_REVIEWED_EVIDENCE_COMMIT}^{tree}`]) !== P3V1_REVIEWED_EVIDENCE_TREE) {
-      throw new Error("P3-V1 reviewed evidence tree mismatch");
+    if (P3V1_FINAL_REVIEWED_TREE !== P3V1_PRODUCTION_RELEASE_TREE) {
+      throw new Error("P3-V1 squash tree does not match the final reviewed head tree");
     }
-    git(root, ["merge-base", "--is-ancestor", P3V1_REVIEWED_EVIDENCE_COMMIT, "HEAD"]);
+    git(root, ["merge-base", "--is-ancestor", P3V1_PRODUCTION_RELEASE_SHA, "HEAD"]);
     validateReviewedEvidenceBlobs(root, evaluatedManifest);
-    git(root, ["cat-file", "-e", `${P3V1_REVIEWED_CLOSURE_SHA}^{commit}`]);
-    if (git(root, ["rev-parse", `${P3V1_REVIEWED_CLOSURE_SHA}^{tree}`]) !== P3V1_REVIEWED_CLOSURE_TREE) {
-      throw new Error("P3-V1 reviewed closure tree mismatch");
-    }
-    git(root, ["merge-base", "--is-ancestor", P3V1_REVIEWED_CLOSURE_SHA, "HEAD"]);
   }
 
   const accepted = rows.filter((row) => row?.parity_status === "accepted");

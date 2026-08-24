@@ -32,6 +32,10 @@ const PRODUCT_TREE = "db331c5d482e629df24feb5e02697066ecf2282f";
 const REVIEWED_EVIDENCE_COMMIT = "83ea271e2e93ddc7c99b22be1458cad2549f82c2";
 const REVIEWED_CLOSURE_SHA = "e4e6371afcf451ab264ee164a23e4134b1ed047d";
 const REVIEWED_CLOSURE_TREE = "3bd0e06864daac4405387bad1b62853b5c256c31";
+const FINAL_REVIEWED_HEAD = "93db2a40d9e93ceb5c0e70453fbc83f85dcd89e5";
+const FINAL_REVIEWED_TREE = "740868975bf855415e577019415d76cb826d6d48";
+const PRODUCTION_RELEASE_SHA = "209e40a3764716af165064e00b359068442a6d4d";
+const PRODUCTION_RELEASE_TREE = "740868975bf855415e577019415d76cb826d6d48";
 const EVIDENCE_DIRECTORY = `docs/platform55-visual-parity/evidence/p3v1/${PRODUCT_SHA}`;
 const INDEPENDENT_REVIEW_PATH = `${EVIDENCE_DIRECTORY}/independent-review.md`;
 const INDEPENDENT_REVIEW_SHA256 = "e7b3fa0e872d62c67eb9b3e8788016549211b6c8417ab370849a470295058d30";
@@ -330,18 +334,68 @@ test("fails closed for invalid top-level score inputs without throwing", () => {
   }
 });
 
+test("binds P3-V1 to the exact squash release without requiring feature-commit ancestry", async () => {
+  assert.ifError(evidenceImportError);
+  assert.equal(evidence.P3V1_FINAL_REVIEWED_HEAD, FINAL_REVIEWED_HEAD);
+  assert.equal(evidence.P3V1_FINAL_REVIEWED_TREE, FINAL_REVIEWED_TREE);
+  assert.equal(evidence.P3V1_PRODUCTION_RELEASE_SHA, PRODUCTION_RELEASE_SHA);
+  assert.equal(evidence.P3V1_PRODUCTION_RELEASE_TREE, PRODUCTION_RELEASE_TREE);
+  assert.equal(git("rev-parse", `${FINAL_REVIEWED_HEAD}^{tree}`), FINAL_REVIEWED_TREE);
+  assert.equal(git("rev-parse", `${PRODUCTION_RELEASE_SHA}^{tree}`), PRODUCTION_RELEASE_TREE);
+  execFileSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", PRODUCTION_RELEASE_SHA, "HEAD"], { stdio: "pipe" });
+  assert.throws(
+    () => execFileSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", REVIEWED_CLOSURE_SHA, "HEAD"], { stdio: "pipe" }),
+    /Command failed/,
+    "the accepted squash path must not depend on feature-commit ancestry",
+  );
+
+  const rows = await canonicalRows();
+  assert.deepEqual(
+    evidence.validateP3V1ClosureAccreditation({
+      rootDir: ROOT,
+      rows,
+      requireTracked: true,
+    }),
+    { captures: 18, scores: { "app.html": 91, "rateware.html": 90 }, routes: ["app.html", "rateware.html"] },
+  );
+});
+
+test("validates P3-V1 in a shallow squash-only repository without historical feature commits", async (t) => {
+  assert.ifError(evidenceImportError);
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "rateware-p3v1-production-squash-"));
+  t.after(() => rm(fixtureRoot, { recursive: true, force: true }));
+  const fixtureGit = (...args) => execFileSync("git", ["-C", fixtureRoot, ...args], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+
+  fixtureGit("init");
+  const releaseDepth = Number(git("rev-list", "--count", `${PRODUCTION_RELEASE_SHA}..HEAD`)) + 1;
+  assert.ok(releaseDepth >= 2, "the squash fixture must include the release and every closure commit above it");
+  fixtureGit("fetch", "--depth", String(releaseDepth), ROOT, "HEAD");
+  fixtureGit("checkout", "--detach", "FETCH_HEAD");
+  fixtureGit("cat-file", "-e", `${PRODUCTION_RELEASE_SHA}^{commit}`);
+  assert.throws(() => fixtureGit("cat-file", "-e", `${REVIEWED_CLOSURE_SHA}^{commit}`), /Command failed/);
+
+  assert.deepEqual(
+    evidence.validateP3V1ClosureAccreditation({
+      rootDir: fixtureRoot,
+      rows: await canonicalRows(),
+      requireTracked: true,
+    }),
+    { captures: 18, scores: { "app.html": 91, "rateware.html": 90 }, routes: ["app.html", "rateware.html"] },
+  );
+});
+
 test("accredits P3-V1 only from the exact independently reviewed product and evidence", async () => {
   assert.ifError(evidenceImportError);
   assert.equal(typeof evidence.loadP3V1Evidence, "function");
   assert.equal(typeof evidence.validateP3V1Evidence, "function");
 
-  git("cat-file", "-e", `${PRODUCT_SHA}^{commit}`);
-  assert.equal(git("rev-parse", `${PRODUCT_SHA}^{tree}`), PRODUCT_TREE);
-  git("cat-file", "-e", `${REVIEWED_EVIDENCE_COMMIT}^{commit}`);
-  execFileSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", REVIEWED_EVIDENCE_COMMIT, "HEAD"], { stdio: "pipe" });
-  git("cat-file", "-e", `${REVIEWED_CLOSURE_SHA}^{commit}`);
-  assert.equal(git("rev-parse", `${REVIEWED_CLOSURE_SHA}^{tree}`), REVIEWED_CLOSURE_TREE);
-  execFileSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", REVIEWED_CLOSURE_SHA, "HEAD"], { stdio: "pipe" });
+  git("cat-file", "-e", `${PRODUCTION_RELEASE_SHA}^{commit}`);
+  assert.equal(git("rev-parse", `${PRODUCTION_RELEASE_SHA}^{tree}`), PRODUCTION_RELEASE_TREE);
+  assert.equal(PRODUCTION_RELEASE_TREE, FINAL_REVIEWED_TREE);
+  execFileSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", PRODUCTION_RELEASE_SHA, "HEAD"], { stdio: "pipe" });
 
   const loaded = evidence.loadP3V1Evidence(ROOT);
   const result = evidence.validateP3V1Evidence({
@@ -362,8 +416,8 @@ test("accredits P3-V1 only from the exact independently reviewed product and evi
   for (const path of reviewedEvidencePaths) {
     assert.equal(
       git("rev-parse", `HEAD:${path}`),
-      git("rev-parse", `${REVIEWED_EVIDENCE_COMMIT}:${path}`),
-      `${path} must remain byte-identical to the independently reviewed commit`,
+      git("rev-parse", `${PRODUCTION_RELEASE_SHA}:${path}`),
+      `${path} must remain byte-identical to the reviewed production release`,
     );
   }
   for (const path of [

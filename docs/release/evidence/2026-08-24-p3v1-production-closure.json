@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "sprint": "P3-V1",
+  "mode": "read_only",
+  "environment": "production",
+  "reviewed_head": {
+    "sha": "93db2a40d9e93ceb5c0e70453fbc83f85dcd89e5",
+    "tree": "740868975bf855415e577019415d76cb826d6d48",
+    "independent_verdict": "GO",
+    "p0": 0,
+    "p1": 0,
+    "p2": 0
+  },
+  "release": {
+    "sha": "209e40a3764716af165064e00b359068442a6d4d",
+    "tree": "740868975bf855415e577019415d76cb826d6d48",
+    "pr_number": 70,
+    "merged_at": "2026-08-24T12:39:37Z",
+    "deployment_id": "dpl_GR34Gm4xAtvWkRgyNRJ1eZHFL45y",
+    "deployment_url": "rateware-1cb673wzm-elandopando8892s-projects.vercel.app",
+    "production_alias": "rateware.vercel.app",
+    "state": "READY",
+    "source": "git",
+    "manual_promotion": false
+  },
+  "preview": {
+    "head_sha": "93db2a40d9e93ceb5c0e70453fbc83f85dcd89e5",
+    "deployment_id": "dpl_8jta5akwoWc4sutLpgu5SuEzJ8fy",
+    "state": "READY",
+    "authenticated_smoke": true,
+    "kinde_callback_saved": true,
+    "cors_origins_verified": 11,
+    "supabase_preview_check": "SKIPPED"
+  },
+  "routes": [
+    {
+      "id": "command-center",
+      "path": "/app",
+      "heading": "Command Center",
+      "authenticated": true,
+      "passed": true,
+      "console_errors": 0,
+      "console_warnings": 0,
+      "approved_rates": 55767,
+      "loaded_rows": null,
+      "carriers": null,
+      "markets": null,
+      "avg_all_in_rate": null,
+      "critical_cells": null,
+      "visible_cells": null
+    },
+    {
+      "id": "rateware",
+      "path": "/rateware",
+      "heading": "Rateware",
+      "authenticated": true,
+      "passed": true,
+      "console_errors": 0,
+      "console_warnings": 0,
+      "approved_rates": 55767,
+      "loaded_rows": 100,
+      "carriers": 28,
+      "markets": 19,
+      "avg_all_in_rate": 5517.01,
+      "critical_cells": 2,
+      "visible_cells": 63
+    }
+  ],
+  "supabase": {
+    "project_status": "ACTIVE_HEALTHY",
+    "default_branch": "main",
+    "persistent_preview_count": 1,
+    "persistent_preview_name": "fcm-gmail-staging",
+    "second_preview_created": false,
+    "mutation_authorized": false,
+    "changed": false
+  },
+  "boundaries": {
+    "production_data_mutation": false,
+    "upload_created": false,
+    "row_approved": false,
+    "mutating_control_activated": false,
+    "supabase_changed": false,
+    "manual_promotion": false
+  },
+  "formal_ledger": {
+    "general": 83,
+    "p3": 0,
+    "changed": false
+  },
+  "p3v_progress": 25,
+  "verdict": "GO"
+}
