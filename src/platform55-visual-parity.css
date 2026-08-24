@@ -141,6 +141,15 @@
   border-radius: var(--rw-radius-lg);
 }
 
+.p55-vp-page--upload-center .upload-flow-steps article {
+  min-width: 0;
+}
+
+.p55-vp-page--upload-center .upload-flow-steps :is(strong, small) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .p55-vp-scope-strip {
   min-width: 0;
   display: flex;
