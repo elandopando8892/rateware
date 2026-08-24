@@ -34,7 +34,8 @@ test("P3-V2 routes load the shared visual layer and expose real state hooks", as
     assert.match(source, /platform55-operate\.css[\s\S]*platform55-visual-parity\.css/, path);
     assert.match(source, new RegExp(`class="[^"]*p55-vp-page[^"]*${expected.pageClass}`), path);
     assert.equal((source.match(/data-platform55-page-content/g) || []).length, 1, path);
-    for (const state of expected.requiredStates) assert.match(source, new RegExp(`data-p3v2-state="${state}"`), `${path}:${state}`);
+    const declared = source.match(/data-p3v2-states="([^"]+)"/)?.[1]?.split(/\s+/) || [];
+    for (const state of expected.requiredStates) assert.ok(declared.includes(state), `${path}:${state}`);
   }
 });
 
@@ -89,4 +90,16 @@ test("Upload Center exposes source retention without changing intake controls", 
   assert.match(source, /id="status-message"[\s\S]*data-p3v2-state="validation-error"/);
   assert.match(source, /id="file-input"[\s\S]*multiple[\s\S]*accept="\.xlsx,[^"]*\.pdf,[^"]*image\/\*,\.eml,message\/rfc822"/);
   assert.match(source, /id="upload-button"[^>]*type="submit"/);
+});
+
+test("Source Files exposes provenance and processing states without changing controls", async () => {
+  const source = await read("upload-history.html");
+  assert.match(source, /data-p3v2-provenance-boundary/);
+  assert.match(source, /class="[^"]*p55-vp-filter-surface/);
+  assert.match(source, /id="history-body"[^>]*data-p3v2-state="loaded"/);
+  assert.match(source, /id="upload-bulk-status"[^>]*aria-live="polite"/);
+  assert.match(source, /id="upload-search"[^>]*type="search"/);
+  assert.match(source, /id="status-filter"/);
+  assert.match(source, /id="select-all-uploads"[^>]*aria-label="Select all visible uploads"/);
+  assert.match(source, /id="reprocess-selected-uploads"[^>]*disabled/);
 });
