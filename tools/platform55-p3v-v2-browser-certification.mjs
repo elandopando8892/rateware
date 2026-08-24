@@ -303,7 +303,7 @@ async function collectMetrics(page, route, state, viewport) {
       return box.bottom > 0 && box.top < innerHeight && box.right > 0 && box.left < innerWidth;
     };
     const stateSurface = document.querySelector(`[data-p3v2-active-state="${CSS.escape(stateName)}"]`);
-    const sourceBoundary = document.querySelector("[data-p3v2-source-boundary], [data-source-field='source_filename'], #staging-brief-source");
+    const sourceBoundary = document.querySelector("[data-p3v2-source-boundary], [data-p3v2-provenance-boundary], [data-source-field='source_filename'], #staging-brief-source");
     const controls = [...document.querySelectorAll("button,a[href],input,select,textarea,summary")].filter(visible);
     const unnamed = controls.filter((element) => {
       const labelled = element.getAttribute("aria-labelledby")?.split(/\s+/).map((id) => document.getElementById(id)?.textContent || "").join(" ") || "";
