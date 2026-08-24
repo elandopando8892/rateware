@@ -16,6 +16,11 @@ const baseCapture = Object.freeze({
   route: "app.html",
   state: "data",
   viewport: [1440, 900],
+  access_model: "authenticated",
+  fixture: "qa_state:data",
+  reference_path: P3V1_SPECS[0].referencePath,
+  reference_sha256: sha256,
+  file: "app-data-1440x900.png",
   visible_ids: P3V1_SPECS[0].requiredIds,
   page_heading_visible: true,
   state_surface_visible: true,
@@ -33,6 +38,10 @@ const baseCapture = Object.freeze({
   external_requests: [],
   mutation_attempts: [],
   screenshot_sha256: sha256,
+  screenshot_git_blob: sha1,
+  screenshot_byte_length: 100,
+  screenshot_width: 1440,
+  screenshot_height: 900,
   source_blobs: sourceBlobs,
 });
 
@@ -43,6 +52,11 @@ const captureFor = ({ route, state, viewport }) => {
     route,
     state,
     viewport,
+    fixture: `qa_state:${state}`,
+    reference_path: spec.referencePath,
+    file: `${route.replace(/\.html$/, "")}-${state}-${viewport.join("x")}.png`,
+    screenshot_width: viewport[0],
+    screenshot_height: viewport[1],
     visible_ids: [...spec.requiredIds],
   };
 };
@@ -65,6 +79,11 @@ test("each route, geometry, state, visibility, and accessibility failure rejects
     ["route", { route: "settings.html" }],
     ["state", { state: "unknown" }],
     ["viewport", { viewport: [800, 600] }],
+    ["access", { access_model: "public" }],
+    ["fixture", { fixture: "live" }],
+    ["reference path", { reference_path: "source://untracked" }],
+    ["reference hash", { reference_sha256: "bad" }],
+    ["file", { file: "capture.png" }],
     ["overflow", { page_overflow: true }],
     ["visible", { visible_ids: baseCapture.visible_ids.slice(1) }],
     ["heading", { page_heading_visible: false }],
@@ -76,6 +95,10 @@ test("each route, geometry, state, visibility, and accessibility failure rejects
     ["focus cycle", { focus_cycle_pass: false }],
     ["focus restore", { focus_restore_pass: false }],
     ["screenshot", { screenshot_sha256: "source://capture.png" }],
+    ["screenshot blob", { screenshot_git_blob: "bad" }],
+    ["screenshot bytes", { screenshot_byte_length: 0 }],
+    ["screenshot width", { screenshot_width: 1024 }],
+    ["screenshot height", { screenshot_height: 768 }],
     ["source", { source_blobs: { ...sourceBlobs, "app.html": "bad" } }],
   ];
   for (const [label, mutation] of mutations) {

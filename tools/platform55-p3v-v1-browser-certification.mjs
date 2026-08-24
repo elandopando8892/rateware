@@ -31,11 +31,15 @@ export const P3V1_SOURCE_PATHS = Object.freeze([
 export const P3V1_SPECS = Object.freeze([
   Object.freeze({
     route: "app.html",
+    accessModel: "authenticated",
+    referencePath: "docs/platform55-visual-parity/baseline/reference-command-center-1440x900.png",
     states: Object.freeze(["data", "loading", "empty", "error"]),
     requiredIds: Object.freeze(["next-best-action", "priority-queue", "business-lifecycle", "my-work-list", "network-pulse"]),
   }),
   Object.freeze({
     route: "rateware.html",
+    accessModel: "authenticated",
+    referencePath: "docs/platform55-visual-parity/baseline/reference-runtime-jobs-1920.png",
     states: Object.freeze(["loaded", "error"]),
     requiredIds: Object.freeze(["rateware-metric-total", "rateware-search", "rateware-body", "rateware-drawer", "rateware-bulk-drawer"]),
   }),
@@ -118,6 +122,12 @@ export function validateP3V1Capture(record) {
   if (!spec) errors.push("route:unknown");
   if (!spec?.states.includes(state)) errors.push("state:unknown");
   if (!P3V1_VIEWPORTS.some((candidate) => viewportKey(candidate) === viewportKey(viewport))) errors.push("viewport:unknown");
+  if (dataValue(descriptors, "access_model") !== spec?.accessModel) errors.push("access_model");
+  if (dataValue(descriptors, "fixture") !== `qa_state:${state}`) errors.push("fixture");
+  if (dataValue(descriptors, "reference_path") !== spec?.referencePath) errors.push("reference:path");
+  if (!sha(dataValue(descriptors, "reference_sha256"), 64)) errors.push("reference:sha256");
+  const expectedFile = `${String(route || "").replace(/\.html$/, "")}-${state}-${viewportKey(viewport)}.png`;
+  if (dataValue(descriptors, "file") !== expectedFile) errors.push("screenshot:path");
   if (dataValue(descriptors, "page_overflow") !== false) errors.push("layout:page_overflow");
   const visibleIds = dataValue(descriptors, "visible_ids");
   if (!denseTextArray(visibleIds)) errors.push("visible_ids:array");
@@ -138,6 +148,9 @@ export function validateP3V1Capture(record) {
     if (!Array.isArray(entries) || entries.length) errors.push(`${name}:nonzero`);
   }
   if (!sha(dataValue(descriptors, "screenshot_sha256"), 64)) errors.push("screenshot:sha256");
+  if (!sha(dataValue(descriptors, "screenshot_git_blob"), 40)) errors.push("screenshot:git_blob");
+  if (!Number.isSafeInteger(dataValue(descriptors, "screenshot_byte_length")) || dataValue(descriptors, "screenshot_byte_length") <= 0) errors.push("screenshot:byte_length");
+  if (dataValue(descriptors, "screenshot_width") !== viewport?.[0] || dataValue(descriptors, "screenshot_height") !== viewport?.[1]) errors.push("screenshot:dimensions");
   if (!validSourceBlobs(dataValue(descriptors, "source_blobs"))) errors.push("source:blobs");
   return result(errors);
 }
@@ -460,16 +473,27 @@ async function runCli() {
         const file = `${spec.route.replace(/\.html$/, "")}-${matrix.state}-${width}x${height}.png`;
         const filePath = resolve(outputDirectory, file);
         await page.screenshot({ path: filePath, fullPage: false, animations: "disabled" });
-        const screenshotSha256 = createHash("sha256").update(await readFile(filePath)).digest("hex");
+        const screenshotBytes = await readFile(filePath);
+        const screenshotSha256 = createHash("sha256").update(screenshotBytes).digest("hex");
+        const screenshotGitBlob = gitValue(root, "hash-object", "--no-filters", "--", filePath);
+        const referenceBytes = await readFile(resolve(root, spec.referencePath));
         const record = {
           route: spec.route,
           state: matrix.state,
           viewport: [...matrix.viewport],
+          access_model: spec.accessModel,
+          fixture: `qa_state:${matrix.state}`,
+          reference_path: spec.referencePath,
+          reference_sha256: createHash("sha256").update(referenceBytes).digest("hex"),
           file,
           ...metrics,
           ...interactions,
           ...errors,
           screenshot_sha256: screenshotSha256,
+          screenshot_git_blob: screenshotGitBlob,
+          screenshot_byte_length: screenshotBytes.length,
+          screenshot_width: width,
+          screenshot_height: height,
           source_blobs: sourceBlobs,
         };
         const validation = validateP3V1Capture(record);
