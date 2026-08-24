@@ -68,13 +68,13 @@ export const P2_S6_PRODUCTION_CLOSURE = Object.freeze({
 });
 
 const P2_S6_PRODUCTION_ROUTES = new Map([
-  ["command-center", "tenant"],
-  ["operate", "tenant"],
-  ["procurement", "tenant"],
-  ["network-service", "tenant"],
-  ["intelligence", "tenant"],
-  ["administration", "tenant"],
-  ["public-carrier", "public"],
+  ["command-center", { path: "/app", shell: "tenant", heading: "Command Center", authenticated: true, activeRoutes: 1 }],
+  ["operate", { path: "/rateware", shell: "tenant", heading: "Rateware", authenticated: true, activeRoutes: 1 }],
+  ["procurement", { path: "/rfx-events", shell: "tenant", heading: "Bid Room", authenticated: true, activeRoutes: 1 }],
+  ["network-service", { path: "/provider-service", shell: "tenant", heading: "Provider Service", authenticated: true, activeRoutes: 1 }],
+  ["intelligence", { path: "/business-intelligence?view=brief", shell: "tenant", heading: "Analyze", authenticated: true, activeRoutes: 1 }],
+  ["administration", { path: "/settings?view=governance", shell: "tenant", heading: "Settings", authenticated: true, activeRoutes: 1 }],
+  ["public-carrier", { path: "/carrier-profile", shell: "public", heading: "Se requiere liga de perfil", authenticated: false, activeRoutes: 0 }],
 ]);
 
 export function validateP2S6ProductionRecord(record) {
@@ -89,9 +89,14 @@ export function validateP2S6ProductionRecord(record) {
   if (!Array.isArray(record.routes) || record.routes.length !== P2_S6_PRODUCTION_ROUTES.size) throw new Error("production route matrix must contain 7 routes");
   const seenRoutes = new Set();
   for (const route of record.routes) {
-    const expectedShell = P2_S6_PRODUCTION_ROUTES.get(route?.id);
-    if (!expectedShell || seenRoutes.has(route.id) || route.shell !== expectedShell) throw new Error("production route identity mismatch");
+    const expected = P2_S6_PRODUCTION_ROUTES.get(route?.id);
+    if (!expected || seenRoutes.has(route.id) || route.shell !== expected.shell) throw new Error("production route identity mismatch");
     seenRoutes.add(route.id);
+    if (
+      route.path !== expected.path || route.heading !== expected.heading ||
+      route.main_landmarks !== 1 || route.active_routes !== expected.activeRoutes ||
+      route.authenticated !== expected.authenticated
+    ) throw new Error(`route evidence mismatch: ${route.id}`);
     if (route.passed !== true || route.overflow !== false) throw new Error(`route failure: ${route.id}`);
     if (route.console_errors !== 0) throw new Error(`console error: ${route.id}`);
   }
@@ -100,24 +105,39 @@ export function validateP2S6ProductionRecord(record) {
   const exactViewports = ["1440x900", "1024x768", "390x844"];
   if (!Array.isArray(responsive.viewports) || responsive.viewports.join(",") !== exactViewports.join(",")) throw new Error("missing viewport certification");
   if (responsive.mobile_navigation !== true || responsive.focus_trap !== true || responsive.focus_restoration !== true || responsive.viewport_overflow !== 0) throw new Error("responsive interaction certification mismatch");
+  const expectedTables = [["operate", 1], ["procurement", 8]];
+  if (
+    responsive.routes_per_viewport !== 7 ||
+    !Array.isArray(responsive.table_checks) || responsive.table_checks.length !== expectedTables.length ||
+    expectedTables.some(([route, tables], index) => responsive.table_checks[index]?.route !== route || responsive.table_checks[index]?.tables !== tables || responsive.table_checks[index]?.viewport_overflow !== false) ||
+    !Array.isArray(responsive.dialogs) || responsive.dialogs.join(",") !== "global-search,notifications"
+  ) throw new Error("responsive coverage mismatch");
 
   if (!Array.isArray(record.monitoring) || record.monitoring.length !== 3) throw new Error("monitoring must contain T+0, T+5 and T+15");
   const expectedCheckpoints = ["T+0", "T+5", "T+15"];
   const observedTimes = record.monitoring.map((checkpoint, index) => {
     if (checkpoint?.checkpoint !== expectedCheckpoints[index]) throw new Error("monitoring checkpoint identity mismatch");
     if (checkpoint.deployment_ready !== true) throw new Error("deployment state must remain READY");
+    if (checkpoint.alias_sha !== P2_S6_PRODUCTION_CLOSURE.releaseSha || checkpoint.production_alias !== P2_S6_PRODUCTION_CLOSURE.productionAlias) throw new Error("monitoring alias SHA mismatch");
     if (checkpoint.runtime_errors !== 0) throw new Error("runtime error detected during monitoring");
+    if (checkpoint.client_errors !== 0) throw new Error("client error detected during monitoring");
+    if (checkpoint.http_4xx_5xx !== 0 || checkpoint.routes_available !== P2_S6_PRODUCTION_ROUTES.size) throw new Error("route availability or HTTP status mismatch");
     if (checkpoint.unexpected_writes !== 0) throw new Error("unexpected write detected during monitoring");
     const timestamp = Date.parse(checkpoint.observed_at);
     if (!Number.isFinite(timestamp)) throw new Error("monitoring timestamp invalid");
     return timestamp;
   });
+  if (!(observedTimes[0] < observedTimes[1] && observedTimes[1] < observedTimes[2])) throw new Error("monitoring order mismatch");
   if (observedTimes[1] - observedTimes[0] < 5 * 60_000 || observedTimes[2] - observedTimes[0] < 15 * 60_000) throw new Error("short monitoring window");
 
   const supabase = record.supabase || {};
   if (supabase.project_status !== "ACTIVE_HEALTHY" || supabase.persistent_preview_count !== 1) throw new Error("Supabase read-only status mismatch");
   if (supabase.unexpected_writes !== 0) throw new Error("unexpected write detected in Supabase aggregates");
   if (supabase.mutation_authorized !== false) throw new Error("mutation authorization must remain false");
+  const aggregateKeys = ["raw_uploads_created", "rate_staging_created", "rate_staging_updated", "rfx_events_created", "rfx_events_updated"];
+  if (!supabase.aggregate_checks || aggregateKeys.some((key) => supabase.aggregate_checks[key] !== 0)) throw new Error("unexpected write detected in aggregate checks");
+  const boundaryKeys = ["production_data_mutation", "upload_created", "row_approved", "supabase_changed", "manual_promotion"];
+  if (!record.boundaries || boundaryKeys.some((key) => record.boundaries[key] !== false)) throw new Error("production boundary violation");
   if (record.verdict !== "GO") throw new Error("production verdict must be GO");
   return record;
 }

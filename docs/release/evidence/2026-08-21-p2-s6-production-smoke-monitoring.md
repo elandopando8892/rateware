@@ -10,7 +10,7 @@ Verdict: GO
 - Deployment URL: `rateware-gk93pxg5n-elandopando8892s-projects.vercel.app`
 - Production alias: `rateware.vercel.app`
 - State at final observation: `READY`
-- Record SHA-256: `45164a0bedf16be926f6ad4979c76a232c4f8adb4c38e0b584bab371f7d17540`
+- Record SHA-256: `e04f2099329121f3eeb60312dad7403730fc2c782649adc906fd09ee02f7db12`
 
 The deployment was created by the authorized squash merge of PR #68. No manual promotion occurred.
 
@@ -43,13 +43,13 @@ No upload was created, no staging row was approved, and no application mutation 
 
 The checkpoint clock started at the first production observation, not at deployment creation.
 
-| Checkpoint | Observed at UTC | Deployment | Runtime errors | Unexpected writes |
-| --- | --- | --- | ---: | ---: |
-| T+0 | `2026-08-23T23:21:41.048Z` | READY | 0 | 0 |
-| T+5 | `2026-08-23T23:28:40.072Z` | READY | 0 | 0 |
-| T+15 | `2026-08-23T23:37:07.022Z` | READY | 0 | 0 |
+| Checkpoint | Observed at UTC | Alias SHA | Routes | HTTP 4xx/5xx | Client errors | Runtime errors | Unexpected writes |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| T+0 | `2026-08-23T23:56:36.641Z` | `7a146765ac38bd18a320f32f7e3ed7a7f13c8da7` | 7/7 | 0 | 0 | 0 | 0 |
+| T+5 | `2026-08-24T00:01:54.251Z` | `7a146765ac38bd18a320f32f7e3ed7a7f13c8da7` | 7/7 | 0 | 0 | 0 | 0 |
+| T+15 | `2026-08-24T00:11:57.881Z` | `7a146765ac38bd18a320f32f7e3ed7a7f13c8da7` | 7/7 | 0 | 0 | 0 | 0 |
 
-Vercel's runtime-error aggregation returned no errors for the observation window. This is a static deployment, so grouped runtime request logs contained no status rows; successful browser navigation, expected headings, exact shell identity, and zero console errors provide the route-level HTTP evidence.
+Vercel's runtime-error aggregation returned no errors for the observation window. Each checkpoint also repeated direct HTTP checks for all seven exact paths and returned `200` for every path. Authenticated browser navigation independently confirmed the expected headings, shell identity, landmarks, active-route state, and zero client console errors.
 
 Aggregate-only Supabase SELECT checks remained zero for `raw_uploads.created_at`, `rate_staging.created_at`, `rate_staging.updated_at`, `rfx_events.created_at`, and `rfx_events.updated_at` during the smoke window. The production project remained `ACTIVE_HEALTHY`; exactly one persistent non-default preview branch remained. No private rows were selected.
 

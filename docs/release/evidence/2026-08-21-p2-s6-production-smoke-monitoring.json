@@ -128,23 +128,38 @@
   "monitoring": [
     {
       "checkpoint": "T+0",
-      "observed_at": "2026-08-23T23:21:41.048Z",
+      "observed_at": "2026-08-23T23:56:36.641Z",
       "deployment_ready": true,
+      "alias_sha": "7a146765ac38bd18a320f32f7e3ed7a7f13c8da7",
+      "production_alias": "rateware.vercel.app",
       "runtime_errors": 0,
+      "client_errors": 0,
+      "http_4xx_5xx": 0,
+      "routes_available": 7,
       "unexpected_writes": 0
     },
     {
       "checkpoint": "T+5",
-      "observed_at": "2026-08-23T23:28:40.072Z",
+      "observed_at": "2026-08-24T00:01:54.251Z",
       "deployment_ready": true,
+      "alias_sha": "7a146765ac38bd18a320f32f7e3ed7a7f13c8da7",
+      "production_alias": "rateware.vercel.app",
       "runtime_errors": 0,
+      "client_errors": 0,
+      "http_4xx_5xx": 0,
+      "routes_available": 7,
       "unexpected_writes": 0
     },
     {
       "checkpoint": "T+15",
-      "observed_at": "2026-08-23T23:37:07.022Z",
+      "observed_at": "2026-08-24T00:11:57.881Z",
       "deployment_ready": true,
+      "alias_sha": "7a146765ac38bd18a320f32f7e3ed7a7f13c8da7",
+      "production_alias": "rateware.vercel.app",
       "runtime_errors": 0,
+      "client_errors": 0,
+      "http_4xx_5xx": 0,
+      "routes_available": 7,
       "unexpected_writes": 0
     }
   ],
