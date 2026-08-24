@@ -158,6 +158,10 @@
   gap: 8px;
 }
 
+.p55-vp-page--review-queue .p55-vp-scope-strip.is-empty {
+  display: flex;
+}
+
 .p55-vp-state-panel {
   min-width: 0;
   scroll-margin-top: 16px;
