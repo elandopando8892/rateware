@@ -26,6 +26,7 @@
 - Selected-page and filtered-database scopes remain visibly distinct. Never relabel or visually merge them.
 - Screenshots are insufficient alone: DOM semantics, accessible names, keyboard/focus, contrast, overflow, console/HTTP errors, external requests, and unexpected writes are mandatory gates.
 - Product, evidence, accreditation, and independent-review commits are separate immutable stages. Rewriting a product SHA invalidates its evidence.
+- The P2-S2 historical evidence remains immutable. While route HTML is changing, run its shell/server boundary tests separately; the historical source-parity assertion is expected to reject until Task 6 records the exact P3-V2 source-supersession contract.
 
 ---
 
@@ -239,7 +240,8 @@ The context copy must state that originals are preserved and interpretation rema
 ```powershell
 npm run test:platform55:p3v2
 node tests/upload-center.test.mjs
-npm run test:platform55:operate
+node tests/platform55-operate-shell.test.mjs
+node --test --test-name-pattern="serves actual Operate routes" tests/platform55-operate-evidence-server.test.mjs
 git diff --check
 ```
 
@@ -300,7 +302,8 @@ Do not reinterpret, delete, retry, or mutate a source merely by rendering the pa
 
 ```powershell
 npm run test:platform55:p3v2
-npm run test:platform55:operate
+node tests/platform55-operate-shell.test.mjs
+node --test --test-name-pattern="serves actual Operate routes" tests/platform55-operate-evidence-server.test.mjs
 node --check src/upload-history.js
 git diff --check
 git add upload-history.html src/platform55-operate.css tests/platform55-p3v-v2-contract.test.mjs
@@ -359,7 +362,8 @@ The primary page action may visually point to the existing `bulk-approve-button`
 
 ```powershell
 npm run test:platform55:p3v2
-npm run test:platform55:operate
+node tests/platform55-operate-shell.test.mjs
+node --test --test-name-pattern="serves actual Operate routes" tests/platform55-operate-evidence-server.test.mjs
 node tests/rateware-stability.test.mjs
 node --check src/staging-review.js
 git diff --check
@@ -374,7 +378,69 @@ git commit -m "style: align Review Queue with Platform55"
 
 ---
 
-### Task 6: Build Deterministic P3-V2 Browser Certification
+### Task 6: Supersede Only the Three Reviewed Operate Sources
+
+**Files:**
+- Create: `docs/release/evidence/2026-08-24-p3v2-source-supersession.json`
+- Create: `tools/platform55-p3v2-source-supersession.mjs`
+- Create: `tests/platform55-p3v2-source-supersession.test.mjs`
+- Modify: `tools/platform55-s6-source-supersession.mjs`
+- Modify: `package.json`
+
+**Interfaces:**
+- Consumes: the frozen P3-V2 product SHA/tree and exactly `upload-center.html`, `upload-history.html`, `staging-review.html`.
+- Produces: a content-addressed exception that preserves P2-S2 evidence while proving the three current source blobs are intentional and reviewed.
+
+- [ ] **Step 1: Write RED tests for exact source scope**
+
+Require schema version 1, sprint `P3-V2`, exact product SHA/tree, exactly three unique source paths, Git blob SHA for each path, normalized record digest, and no other runtime path. Reject missing/extra/duplicate paths, working-tree drift, HEAD drift, wrong product tree, stale record digest, absolute/traversal paths, and an untracked record.
+
+- [ ] **Step 2: Run RED**
+
+```powershell
+node --test tests/platform55-p3v2-source-supersession.test.mjs
+```
+
+Expected: fail because the validator and record do not exist.
+
+- [ ] **Step 3: Freeze the product source commit**
+
+Commit the three completed HTML/CSS compositions and tests, require a clean worktree, then record:
+
+```powershell
+git rev-parse HEAD
+git rev-parse 'HEAD^{tree}'
+git rev-parse 'HEAD:upload-center.html'
+git rev-parse 'HEAD:upload-history.html'
+git rev-parse 'HEAD:staging-review.html'
+```
+
+Do not amend this product commit after creating the record.
+
+- [ ] **Step 4: Implement fail-closed supersession validation**
+
+Follow the existing P3-V1 content-addressed pattern, but accept only `sprint === "P3-V2"` and the exact three-path set. Update `validateHistoricalSourceParity()` to accept current source divergence only when the matching P3-V2 record validates against both product Git objects and current working bytes. It must continue validating the historical P2-S2 subject and evidence unchanged.
+
+- [ ] **Step 5: Run GREEN including the previously failing gate**
+
+```powershell
+node --test tests/platform55-p3v2-source-supersession.test.mjs
+npm run test:platform55:operate
+npm run test:platform55:certification
+git diff --check
+```
+
+- [ ] **Step 6: Commit the supersession contract**
+
+```powershell
+git add docs/release/evidence/2026-08-24-p3v2-source-supersession.json tools/platform55-p3v2-source-supersession.mjs tools/platform55-s6-source-supersession.mjs tests/platform55-p3v2-source-supersession.test.mjs package.json
+git diff --cached --check
+git commit -m "test: bind P3-V2 source supersession"
+```
+
+---
+
+### Task 7: Build Deterministic P3-V2 Browser Certification
 
 **Files:**
 - Create: `tools/platform55-p3v-v2-browser-certification.mjs`
@@ -450,7 +516,7 @@ git commit -m "test: certify P3-V2 governed operate visuals"
 
 ---
 
-### Task 7: Freeze Product, Generate Evidence, Score, and Review
+### Task 8: Freeze Product, Generate Evidence, Score, and Review
 
 **Files:**
 - Create: `docs/platform55-visual-parity/evidence/p3v2/<product-sha>/manifest.json`
@@ -558,5 +624,5 @@ The resulting branch remains local. Push, draft PR, Vercel preview, callback/COR
 
 - Spec coverage: all three P3-V2 routes, governed-operation archetype, required states/viewports, source retention, staging-first intake, approval boundaries, bulk scopes, evidence binding, independent review, and 40% gate are assigned to explicit tasks.
 - Placeholder scan: no TODO, TBD, “similar to,” or unspecified test step remains.
-- Interface consistency: Tasks 3-5 consume Task 2 hooks; Task 6 consumes all three route compositions; Task 7 consumes the exact Task 6 manifest/capture contract.
+- Interface consistency: Tasks 3-5 consume Task 2 hooks; Task 6 binds their exact source blobs; Task 7 consumes all three route compositions; Task 8 consumes the exact Task 7 manifest/capture contract.
 - Scope: HTML/CSS/tests/tools/docs only; controller edits require stopping and revising this plan after a failing presentation-adapter regression.
