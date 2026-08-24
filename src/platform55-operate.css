@@ -150,6 +150,133 @@
   cursor: progress;
 }
 
+.p55-vp-page--governed-operations .rateware-workspace {
+  display: grid;
+  min-width: 0;
+  overflow: clip;
+}
+
+.p55-vp-page--governed-operations .rateware-workspace.p55-vp-workspace-card {
+  padding: 0;
+}
+
+.p55-vp-page--governed-operations .workbench-header {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 2.3fr);
+  align-items: end;
+  gap: 18px;
+  min-height: 139px;
+  padding: 18px;
+  border-bottom: 1px solid var(--rw-slate-200);
+}
+
+.p55-vp-page--governed-operations .workbench-header > div:first-child {
+  align-self: center;
+}
+
+.p55-vp-page--governed-operations .workbench-header h2 {
+  margin-block: 4px 0;
+  color: var(--rw-navy-950);
+}
+
+.p55-vp-page--governed-operations .rateware-summary-strip {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.p55-vp-page--governed-operations .rateware-summary-strip > article {
+  min-height: 76px;
+  padding: 12px;
+  border-radius: var(--rw-radius-md);
+  background: var(--rw-slate-25);
+  box-shadow: none;
+}
+
+.p55-vp-page--governed-operations .rateware-command-bar {
+  min-height: 111px;
+  margin: 0 14px 12px;
+  padding: 12px;
+  border: 1px solid var(--rw-slate-200);
+  border-radius: 12px;
+  background: var(--rw-slate-50);
+}
+
+.p55-vp-page--governed-operations .rateware-view-tabs {
+  margin-block-end: 10px;
+  padding-block-end: 4px;
+}
+
+.p55-vp-page--governed-operations .rateware-main-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 2fr) repeat(2, minmax(150px, 1fr)) auto auto auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.p55-vp-page--governed-operations .rateware-main-toolbar > label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.p55-vp-page--governed-operations .rateware-main-toolbar :is(input, select) {
+  width: 100%;
+  min-width: 0;
+}
+
+.p55-vp-page--governed-operations .bulk-action-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding-block-start: 10px;
+}
+
+.p55-vp-page--governed-operations .bulk-scope-strip {
+  min-width: min(100%, 520px);
+}
+
+.p55-vp-page--governed-operations .sheet-more-actions {
+  max-width: 100%;
+}
+
+.p55-vp-page--governed-operations .sheet-more-actions[open] > div {
+  max-width: min(720px, calc(100vw - 56px));
+  max-height: min(460px, calc(100vh - 160px));
+  overflow: auto;
+}
+
+.p55-vp-page--governed-operations .sheet-pagination-bar,
+.p55-vp-page--governed-operations .sheet-helper-strip {
+  margin-inline: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--rw-slate-200);
+  border-radius: var(--rw-radius-md);
+}
+
+.p55-vp-page--governed-operations .sheet-helper-strip {
+  margin-block: 0 12px;
+}
+
+.p55-vp-page--governed-operations .rw-operate-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-top: 1px solid var(--rw-slate-200);
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  border-radius: 0;
+}
+
+.p55-vp-page--governed-operations .rateware-workbench-disclosure {
+  margin: 0;
+  padding: 14px 18px;
+}
+
 @media (max-width: 900px) {
   .rw-operate-page.upload-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -178,6 +305,80 @@
 
   .rw-operate-panel {
     padding: var(--rw-operate-space-3);
+  }
+
+  .p55-vp-page--governed-operations .workbench-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .p55-vp-page--governed-operations .rateware-summary-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow-x: visible;
+  }
+
+  .p55-vp-page--governed-operations .rateware-summary-strip > article {
+    flex: initial;
+  }
+
+  .p55-vp-page--governed-operations .rateware-main-toolbar {
+    grid-template-columns: minmax(200px, 2fr) repeat(2, minmax(130px, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .p55-vp-page--governed-operations .workbench-header {
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .p55-vp-page--governed-operations .rateware-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .p55-vp-page--governed-operations .rateware-summary-strip > article:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .p55-vp-page--governed-operations .rateware-command-bar {
+    min-height: 0;
+    margin: 0 10px 10px;
+    padding: 10px;
+  }
+
+  .p55-vp-page--governed-operations .rateware-view-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .p55-vp-page--governed-operations .rateware-main-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .p55-vp-page--governed-operations .rateware-main-toolbar > label:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .p55-vp-page--governed-operations .rateware-main-toolbar > details {
+    grid-column: 1 / -1;
+  }
+
+  .p55-vp-page--governed-operations .bulk-action-bar {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .p55-vp-page--governed-operations .bulk-scope-strip {
+    min-width: 100%;
+  }
+
+  .p55-vp-page--governed-operations .sheet-pagination-bar,
+  .p55-vp-page--governed-operations .sheet-helper-strip {
+    margin-inline: 10px;
+  }
+
+  .p55-vp-page--governed-operations .rw-operate-table-scroll {
+    overflow-x: auto;
   }
 }
 

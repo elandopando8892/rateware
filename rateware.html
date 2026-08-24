@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-operate.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="rateware">
     <div class="rw-app" data-platform55-app>
@@ -21,7 +22,7 @@
           </form>
         </header>
         <main class="rw-main" id="main-content">
-          <div class="rw-operate-page history-layout" data-platform55-page-content>
+          <div class="rw-operate-page history-layout p55-vp-page p55-vp-page--governed-operations" data-platform55-page-content>
             <header class="rw-operate-heading" data-platform55-page-header>
               <div>
                 <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Operate · Rateware</p>
@@ -30,13 +31,20 @@
               </div>
               <button class="page-primary-action" type="button" data-click-target="#export-filtered-button" data-platform55-action="export-matching" title="Export every rate matching the active database filters">Export matching</button>
             </header>
-          <section class="workspace-panel spreadsheet-workbench rateware-workspace rw-operate-panel">
-            <div class="workbench-header">
+            <aside class="p55-vp-context-banner" data-p55-vp-context-banner role="note" aria-label="Approved rate boundary">
+              <span class="p55-vp-context-banner__icon" aria-hidden="true"><rw-icon name="check"></rw-icon></span>
+              <div class="p55-vp-context-banner__copy">
+                <strong>Approved-rate workspace</strong>
+                <p>These records passed human review. Return-to-staging, bulk changes, exports, and lifecycle actions remain explicit controlled operations.</p>
+              </div>
+            </aside>
+          <section class="workspace-panel spreadsheet-workbench rateware-workspace rw-operate-panel p55-vp-workspace-card">
+            <div class="workbench-header p55-vp-workspace-header">
               <div>
                 <p class="eyebrow">Spreadsheet workbench</p>
                 <h2>Approved rate book</h2>
               </div>
-              <div class="rateware-summary-strip rw-operate-metrics" aria-label="Approved Rateware summary">
+              <div class="rateware-summary-strip rw-operate-metrics p55-vp-metric-grid" data-p55-vp-metrics aria-label="Approved Rateware summary">
                 <article>
                   <span>Rates</span>
                   <strong id="rateware-metric-total">0</strong>
@@ -59,8 +67,8 @@
                 </article>
               </div>
             </div>
-            <div class="sheet-command-bar rateware-command-bar">
-              <div class="review-filter-row compact-filter-row rateware-view-tabs" aria-label="Rateware views">
+            <div class="sheet-command-bar rateware-command-bar p55-vp-toolbar-card">
+              <div class="review-filter-row compact-filter-row rateware-view-tabs p55-vp-tabs" data-p55-vp-filters aria-label="Rateware views">
                 <button class="review-filter is-active" type="button" data-rateware-filter="all">All</button>
                 <button class="review-filter" type="button" data-rateware-filter="cross-border">Cross-border</button>
                 <button class="review-filter" type="button" data-rateware-filter="all-in">All-in</button>
@@ -94,7 +102,7 @@
               </div>
               <div id="rateware-active-filters" class="active-filter-strip hidden" aria-live="polite"></div>
 
-              <div class="bulk-action-bar is-empty" aria-live="polite">
+              <div class="bulk-action-bar p55-vp-bulk-surface is-empty" data-p55-vp-bulk-actions aria-live="polite">
                 <div class="bulk-scope-strip" aria-label="Bulk action scope">
                   <span id="rateware-selection-count" class="bulk-scope-pill">Page selected: 0</span>
                   <span id="rateware-page-count" class="bulk-scope-pill">Page rows: 0</span>
@@ -128,7 +136,7 @@
                 <span id="rateware-action-status" class="row-save-status"></span>
               </div>
             </div>
-            <div class="sheet-pagination-bar" aria-label="Rateware pagination">
+            <div class="sheet-pagination-bar p55-vp-pagination" data-p55-vp-pagination aria-label="Rateware pagination">
               <span id="rateware-page-summary">Page 1</span>
               <div class="sheet-pagination-controls">
                 <button id="rateware-first-page" type="button" class="secondary small-button">First</button>
@@ -152,7 +160,7 @@
               </div>
             </div>
 
-            <div class="sheet-helper-strip" aria-live="polite">
+            <div class="sheet-helper-strip p55-vp-helper-strip" data-p55-vp-helper aria-live="polite">
               <strong id="rateware-grid-selection">Ready</strong>
               <div class="sheet-issue-nav" aria-label="Visible validation issues">
                 <button id="rateware-next-issue" type="button" class="secondary small-button" disabled>Next issue</button>
@@ -183,7 +191,7 @@
               </details>
             </div>
 
-            <div class="table-wrap sheet-table-wrap rw-operate-table-scroll" aria-label="Approved Rateware rows">
+            <div class="table-wrap sheet-table-wrap rw-operate-table-scroll p55-vp-table-shell" data-p55-vp-table aria-label="Approved Rateware rows">
               <table class="rateware-table">
                 <thead>
                   <tr>
@@ -234,7 +242,7 @@
                 </tbody>
               </table>
             </div>
-            <details class="rateware-workbench-disclosure">
+            <details class="rateware-workbench-disclosure p55-vp-secondary-tools">
               <summary>Analysis tools: compare lanes, snapshots, exports</summary>
               <div class="rateware-workbench" aria-label="Rateware workbench">
                 <section class="rateware-tool-panel">
