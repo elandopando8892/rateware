@@ -122,5 +122,7 @@ for (const selector of [
 }
 
 assert.doesNotMatch(commandCss, /font-size:\s*(?:7|8)px\b/, "operational labels must not fall below the Platform55 readable scale");
+assert.equal(declarationsFor(baseCommandCss, ".rw-command-priority .priority-alert > div")["min-width"], "0");
+assert.equal(declarationsFor(baseCommandCss, ".rw-command-priority .priority-alert small")["overflow-wrap"], "anywhere");
 assert.match(commandCss, /@media\s*\(max-width:\s*1180px\)[\s\S]*?grid-template-areas:\s*"header"\s*"hero"\s*"priority"\s*"lifecycle"\s*"work"\s*"pulse"\s*"health"\s*"shortcuts"/);
 assert.match(commandCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
