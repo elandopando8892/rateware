@@ -428,6 +428,40 @@ test("rejects a P3-V1 closure summary that only names the evidence directory", a
   );
 });
 
+test("rejects noncanonical route sets before P3-V1 semantic accreditation", async () => {
+  assert.ifError(evidenceImportError);
+  const rows = structuredClone(await canonicalRows());
+  const extra = [
+    ...structuredClone(rows),
+    { ...structuredClone(rows.at(-1)), route: "extra.html", page_key: "extra" },
+  ];
+  const missing = structuredClone(rows.slice(0, -1));
+  const duplicate = [
+    ...structuredClone(rows.slice(0, -1)),
+    structuredClone(rows[1]),
+  ];
+
+  const rejected = [];
+  for (const [label, candidateRows] of [
+    ["extra full-shape route", extra],
+    ["missing canonical route", missing],
+    ["duplicate canonical route", duplicate],
+  ]) {
+    try {
+      evidence.validateP3V1ClosureAccreditation({
+        rootDir: ROOT,
+        rows: candidateRows,
+        requireTracked: true,
+      });
+      rejected.push(false);
+    } catch (error) {
+      assert.match(error.message, /route matrix/i, label);
+      rejected.push(true);
+    }
+  }
+  assert.deepEqual(rejected, [true, true, true]);
+});
+
 test("binds P3-V1 semantic accreditation to the exact independent GO review", async () => {
   assert.ifError(evidenceImportError);
   const rows = await canonicalRows();

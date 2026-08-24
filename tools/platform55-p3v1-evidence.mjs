@@ -8,7 +8,10 @@ import {
   P3V1_SPECS,
   validateP3V1Manifest,
 } from "./platform55-p3v-v1-browser-certification.mjs";
-import { evaluateVisualParityScore } from "./platform55-visual-parity-contract.mjs";
+import {
+  evaluateVisualParityScore,
+  validateRouteMatrix,
+} from "./platform55-visual-parity-contract.mjs";
 
 export const P3V1_PRODUCT_SHA = "e962b54ee1ed049b0c020fd8278f48711105477e";
 export const P3V1_PRODUCT_TREE = "db331c5d482e629df24feb5e02697066ecf2282f";
@@ -158,6 +161,11 @@ export function validateP3V1ClosureAccreditation({
   requireTracked = false,
 }) {
   const root = resolve(rootDir);
+  if (!Array.isArray(rows)) throw new Error("P3-V1 semantic accreditation requires route rows");
+  const routeMatrixResult = validateRouteMatrix(rows, { rootDir: root });
+  if (!routeMatrixResult.ok) {
+    throw new Error(`P3-V1 route matrix accreditation mismatch: ${routeMatrixResult.errors.join(", ")}`);
+  }
   const loaded = loadP3V1Evidence(root);
   const evidenceResult = validateP3V1Evidence({
     rootDir: root,
@@ -199,7 +207,6 @@ export function validateP3V1ClosureAccreditation({
     git(root, ["merge-base", "--is-ancestor", P3V1_REVIEWED_EVIDENCE_COMMIT, "HEAD"]);
   }
 
-  if (!Array.isArray(rows)) throw new Error("P3-V1 semantic accreditation requires route rows");
   const accepted = rows.filter((row) => row?.parity_status === "accepted");
   if (
     accepted.length !== 2 ||
