@@ -1,15 +1,57 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const contractUrl = new URL("../tools/platform55-visual-parity-contract.mjs", import.meta.url);
 let contract = Object.freeze({});
 let contractImportError = null;
+const evidenceUrl = new URL("../tools/platform55-p3v1-evidence.mjs", import.meta.url);
+let evidence = Object.freeze({});
+let evidenceImportError = null;
 
 try {
   contract = await import(contractUrl);
 } catch (error) {
   contractImportError = error;
+}
+
+try {
+  evidence = await import(evidenceUrl);
+} catch (error) {
+  evidenceImportError = error;
+}
+
+const ROOT = fileURLToPath(new URL("../", import.meta.url));
+const PRODUCT_SHA = "e962b54ee1ed049b0c020fd8278f48711105477e";
+const PRODUCT_TREE = "db331c5d482e629df24feb5e02697066ecf2282f";
+const REVIEWED_EVIDENCE_COMMIT = "83ea271e2e93ddc7c99b22be1458cad2549f82c2";
+const EVIDENCE_DIRECTORY = `docs/platform55-visual-parity/evidence/p3v1/${PRODUCT_SHA}`;
+const INDEPENDENT_REVIEW_PATH = `${EVIDENCE_DIRECTORY}/independent-review.md`;
+const INDEPENDENT_REVIEW_SHA256 = "9c46da3be7c39632584c2de04a87ff5f834a6f06294fb6e65867d214fc426479";
+const EXPECTED_CAPTURE_FILES = Object.freeze([
+  ...["data", "loading", "empty", "error"].flatMap((state) => ["1440x900", "1024x768", "390x844"].map((viewport) => `app-${state}-${viewport}.png`)),
+  ...["loaded", "error"].flatMap((state) => ["1440x900", "1024x768", "390x844"].map((viewport) => `rateware-${state}-${viewport}.png`)),
+].sort());
+
+function git(...args) {
+  return execFileSync("git", ["-C", ROOT, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+function trackedIndexBlob(path) {
+  git("ls-files", "--error-unmatch", "--", path);
+  const indexBlob = git("rev-parse", `:${path}`);
+  const workingBlob = git("hash-object", "--", path);
+  assert.equal(workingBlob, indexBlob, `${path} must match its tracked index blob`);
+  return indexBlob;
+}
+
+function exactReviewField(body, name) {
+  const matches = [...body.matchAll(new RegExp(`^${name}:\\s*(\\S+)\\s*$`, "gm"))];
+  assert.equal(matches.length, 1, `${name} must occur exactly once`);
+  return matches[0][1];
 }
 
 const EXPECTED_FIELDS = Object.freeze([
@@ -282,4 +324,84 @@ test("fails closed for invalid top-level score inputs without throwing", () => {
     assert.equal(result.status, "blocked");
     assert.ok(result.errors.length > 0);
   }
+});
+
+test("accredits P3-V1 only from the exact independently reviewed product and evidence", async () => {
+  assert.ifError(evidenceImportError);
+  assert.equal(typeof evidence.loadP3V1Evidence, "function");
+  assert.equal(typeof evidence.validateP3V1Evidence, "function");
+
+  git("cat-file", "-e", `${PRODUCT_SHA}^{commit}`);
+  assert.equal(git("rev-parse", `${PRODUCT_SHA}^{tree}`), PRODUCT_TREE);
+  git("cat-file", "-e", `${REVIEWED_EVIDENCE_COMMIT}^{commit}`);
+  execFileSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", REVIEWED_EVIDENCE_COMMIT, "HEAD"], { stdio: "pipe" });
+
+  const loaded = evidence.loadP3V1Evidence(ROOT);
+  const result = evidence.validateP3V1Evidence({
+    rootDir: ROOT,
+    manifest: loaded.manifest,
+    designReview: loaded.designReview,
+    evidenceDirectory: loaded.evidenceDirectory,
+    requireTracked: true,
+  });
+  assert.deepEqual(result, { captures: 18, scores: { "app.html": 91, "rateware.html": 90 } });
+  assert.deepEqual(loaded.manifest.captures.map((capture) => capture.file).sort(), EXPECTED_CAPTURE_FILES);
+
+  const reviewedEvidencePaths = [
+    `${EVIDENCE_DIRECTORY}/manifest.json`,
+    `${EVIDENCE_DIRECTORY}/design-review.md`,
+    ...loaded.manifest.captures.map((capture) => `${EVIDENCE_DIRECTORY}/${capture.file}`),
+  ];
+  for (const path of reviewedEvidencePaths) {
+    assert.equal(
+      git("rev-parse", `HEAD:${path}`),
+      git("rev-parse", `${REVIEWED_EVIDENCE_COMMIT}:${path}`),
+      `${path} must remain byte-identical to the independently reviewed commit`,
+    );
+  }
+  for (const path of [
+    ...reviewedEvidencePaths,
+    ...Object.keys(loaded.manifest.source_blobs),
+    ...loaded.manifest.captures.map((capture) => capture.reference_path),
+  ]) {
+    git("ls-files", "--error-unmatch", "--", path);
+  }
+
+  const independentReview = await readFile(new URL(`../${INDEPENDENT_REVIEW_PATH}`, import.meta.url), "utf8");
+  const normalizedReview = independentReview.replace(/\r\n/g, "\n");
+  assert.equal(createHash("sha256").update(normalizedReview).digest("hex"), INDEPENDENT_REVIEW_SHA256);
+  trackedIndexBlob(INDEPENDENT_REVIEW_PATH);
+  assert.equal(exactReviewField(normalizedReview, "reviewed_product_sha"), PRODUCT_SHA);
+  assert.equal(exactReviewField(normalizedReview, "reviewed_product_tree"), PRODUCT_TREE);
+  assert.equal(exactReviewField(normalizedReview, "reviewed_evidence_commit"), REVIEWED_EVIDENCE_COMMIT);
+  assert.equal(exactReviewField(normalizedReview, "reviewer_verdict"), "GO");
+  assert.equal(exactReviewField(normalizedReview, "p0"), "0");
+  assert.equal(exactReviewField(normalizedReview, "p1"), "0");
+  assert.equal(exactReviewField(normalizedReview, "p2"), "0");
+  assert.match(normalizedReview, /Capture matrix:\s*`18\/18`/);
+  assert.match(normalizedReview, /Command Center \(`app\.html`\):\s*`91\/100`/);
+  assert.match(normalizedReview, /Rateware \(`rateware\.html`\):\s*`90\/100`/);
+
+  const rows = await canonicalRows();
+  assert.deepEqual(
+    rows.filter((row) => row.parity_status === "accepted").map((row) => row.route).sort(),
+    ["app.html", "rateware.html"],
+    "P3-V1 closure must accredit only the two independently reviewed routes",
+  );
+  for (const [route, representative] of [["app.html", "app-data-1440x900.png"], ["rateware.html", "rateware-loaded-1440x900.png"]]) {
+    const row = rows.find((candidate) => candidate.route === route);
+    assert.equal(row.parity_status, "accepted", `${route} must be accepted only after independent GO`);
+    assert.equal(row.verification, "accepted", `${route} verification must be accepted`);
+    assert.equal(row.current_baseline, `${EVIDENCE_DIRECTORY}/${representative}`);
+    assert.match(row.gap_summary, new RegExp(EVIDENCE_DIRECTORY.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+
+  const board = await readFile(new URL("../docs/platform55-visual-parity/README.md", import.meta.url), "utf8");
+  assert.match(board, /P3-V visual parity track:\s*`25%`/);
+  assert.match(board, /Formal release progress:\s*General `83%`; P0-P2 `100%`; P3-P5 `0%`/);
+
+  const ledger = JSON.parse(await readFile(new URL("../docs/release/production-readiness-ledger.json", import.meta.url), "utf8"));
+  const p3 = ledger.sprints.find((sprint) => sprint.id === "P3");
+  assert.equal(p3.progress, 0);
+  assert.deepEqual(p3.evidence, {});
 });

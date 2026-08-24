@@ -57,8 +57,8 @@ The current Rateware page uses the shell but retains a legacy interior: repeated
 ## Progress
 
 - Formal release progress: General `83%`; P0-P2 `100%`; P3-P5 `0%`.
-- P3-V visual parity track: `10%` after this source, route, and scoring contract is independently accepted.
-- First implementation vertical: Command Center + Rateware.
+- P3-V visual parity track: `25%` after P3-V1 independent GO and evidence-bound closure.
+- First implementation vertical: Command Center + Rateware, `2/2` routes accepted.
 
 The canonical route board is [`p3v-route-matrix.csv`](p3v-route-matrix.csv). No route is considered visually complete merely because it uses the shared shell.
 
