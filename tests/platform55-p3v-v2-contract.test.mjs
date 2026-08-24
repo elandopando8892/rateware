@@ -103,3 +103,17 @@ test("Source Files exposes provenance and processing states without changing con
   assert.match(source, /id="select-all-uploads"[^>]*aria-label="Select all visible uploads"/);
   assert.match(source, /id="reprocess-selected-uploads"[^>]*disabled/);
 });
+
+test("Review Queue exposes human approval and unambiguous action scopes", async () => {
+  const source = await read("staging-review.html");
+  assert.match(source, /data-p3v2-human-approval-boundary/);
+  assert.match(source, /class="[^"]*p55-vp-review-brief/);
+  assert.match(source, /id="staging-body"[^>]*data-p3v2-state="loaded"/);
+  assert.match(source, /data-p3v2-state="review-required"/);
+  assert.match(source, /id="bulk-selection-count"[^>]*data-p3v2-selection-scope="page"/);
+  assert.match(source, /id="staging-filtered-count"[^>]*data-p3v2-selection-scope="filtered-database"/);
+  assert.match(source, /id="bulk-approve-button"[^>]*disabled/);
+  assert.match(source, /id="bulk-approve-filtered-button"[^>]*title="Approve every staged row matching the active database filters"/);
+  assert.match(source, /id="staging-drawer"[^>]*class="[^"]*profile-drawer/);
+  assert.match(source, /id="staging-bulk-drawer"[^>]*class="[^"]*profile-drawer/);
+});
