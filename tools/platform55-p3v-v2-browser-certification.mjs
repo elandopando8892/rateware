@@ -241,11 +241,20 @@ async function applyStateFixture(page, route, state) {
       const form = document.querySelector("#upload-form");
       const list = document.querySelector("#file-list");
       const status = document.querySelector("#status-message");
+      const metrics = document.querySelector(".rw-operate-metrics");
+      const workflow = document.querySelector(".upload-flow-steps");
       if (stateName === "loaded") {
         form?.setAttribute("data-p3v2-active-state", stateName);
       } else if (stateName === "empty") {
+        if (metrics) metrics.hidden = true;
+        if (workflow) workflow.hidden = true;
+        if (form) form.hidden = true;
         if (list) { list.dataset.p3v2ActiveState = stateName; list.innerHTML = "<li><strong>No files selected</strong><span>Select the original carrier quotation to preserve its source filename.</span></li>"; }
       } else if (status) {
+        if (metrics) metrics.hidden = true;
+        if (workflow) workflow.hidden = true;
+        form?.prepend(status);
+        for (const child of form?.children || []) if (child !== status) child.hidden = true;
         status.dataset.p3v2ActiveState = stateName;
         status.classList.remove("hidden");
         status.setAttribute("role", "alert");
@@ -342,6 +351,11 @@ async function collectMetrics(page, route, state, viewport) {
     const overflowOwners = [...document.querySelectorAll(".p55-vp-table-shell,.rw-operate-table-scroll,.table-scroll")].filter(visible);
     const uncontainedOverflow = overflowOwners.filter((element) => element.scrollWidth > element.clientWidth + 1 && !["auto", "scroll", "hidden", "clip"].includes(getComputedStyle(element).overflowX));
     const scopes = routeName === "staging-review.html" ? [document.querySelector("[data-p3v2-selection-scope='page']"), document.querySelector("[data-p3v2-selection-scope='filtered-database']")] : [];
+    const geometry = (element) => {
+      if (!element) return null;
+      const rect = element.getBoundingClientRect();
+      return { top: Math.round(rect.top), bottom: Math.round(rect.bottom), height: Math.round(rect.height) };
+    };
     return {
       page_heading_visible: visible(document.querySelector("h1")),
       page_heading_intersects_viewport: intersects(document.querySelector("h1")),
@@ -349,6 +363,7 @@ async function collectMetrics(page, route, state, viewport) {
       state_surface_intersects_viewport: intersects(stateSurface),
       source_retention_visible: visible(sourceBoundary),
       source_retention_intersects_viewport: intersects(sourceBoundary),
+      evidence_geometry: { heading: geometry(document.querySelector("h1")), state_surface: geometry(stateSurface), source_retention: geometry(sourceBoundary), viewport_height: innerHeight, scroll_y: Math.round(scrollY) },
       source_filename_visible: routeName !== "upload-history.html" || stateName !== "loaded" || document.body.innerText.includes("lane-quote.xlsx"),
       selection_scopes_distinct: routeName !== "staging-review.html" || (scopes.every(visible) && scopes[0].textContent.trim() !== scopes[1].textContent.trim()),
       page_overflow: document.documentElement.scrollWidth > width + 1,
@@ -454,7 +469,7 @@ async function runCli() {
           source_blobs: sourceBlobs,
         };
         const validation = validateP3V2Capture(record);
-        assert.equal(validation.ok, true, `${captureKey(record)} failed: ${validation.errors.join(", ")} internal=${JSON.stringify(metrics.internal_overflow_elements)}`);
+        assert.equal(validation.ok, true, `${captureKey(record)} failed: ${validation.errors.join(", ")} geometry=${JSON.stringify(metrics.evidence_geometry)} internal=${JSON.stringify(metrics.internal_overflow_elements)}`);
         captures.push(record);
       } finally {
         await context.close();
