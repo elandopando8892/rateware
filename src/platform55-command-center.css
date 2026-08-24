@@ -156,7 +156,7 @@
 .rw-hero-metrics small,
 .rw-hero-metrics strong,
 .rw-hero-metrics em { display: block; }
-.rw-hero-metrics small { color: rgba(255, 255, 255, 0.52); font-size: 9px; font-weight: 850; letter-spacing: 0.65px; text-transform: uppercase; }
+.rw-hero-metrics small { color: rgba(255, 255, 255, 0.72); font-size: 9px; font-weight: 850; letter-spacing: 0.65px; text-transform: uppercase; }
 .rw-hero-metrics strong { margin-top: 7px; overflow: hidden; color: var(--rw-white); font-size: 19px; letter-spacing: -0.35px; text-overflow: ellipsis; white-space: nowrap; }
 .rw-hero-metrics em { margin-top: 4px; overflow: hidden; color: rgba(255, 255, 255, 0.56); font-size: 9px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -247,7 +247,7 @@
 .rw-command-priority .priority-alert small { display: block; }
 .rw-command-priority .priority-alert > div > span { color: var(--rw-brand-700); font-size: 9px; font-weight: 850; text-transform: uppercase; }
 .rw-command-priority .priority-alert strong { margin-top: 3px; font-size: 10px; }
-.rw-command-priority .priority-alert small { margin-top: 3px; color: var(--rw-slate-500); font-size: 9px; }
+.rw-command-priority .priority-alert small { margin-top: 3px; color: var(--rw-slate-600); font-size: 9px; }
 .rw-command-priority .priority-alert > b { min-width: 38px; padding: 7px 8px; border: 1px solid var(--rw-slate-200); border-radius: 8px; background: var(--rw-white); color: var(--rw-slate-700); text-align: center; font-size: 9px; }
 
 .rw-lifecycle .workflow-progress-panel {
@@ -271,9 +271,9 @@
   background: var(--rw-slate-25);
   text-decoration: none;
 }
-.rw-lifecycle .workflow-progress-step > span { color: var(--rw-slate-400); font-size: 9px; font-weight: 850; }
+.rw-lifecycle .workflow-progress-step > span { color: var(--rw-slate-600); font-size: 9px; font-weight: 850; }
 .rw-lifecycle .workflow-progress-step > strong { margin-top: 5px; font-size: 12px; line-height: 1.05; }
-.rw-lifecycle .workflow-progress-step > small { margin-top: 5px; color: var(--rw-slate-500); font-size: 9px; line-height: 1.25; }
+.rw-lifecycle .workflow-progress-step > small { margin-top: 5px; color: var(--rw-slate-600); font-size: 9px; line-height: 1.25; }
 .rw-lifecycle .workflow-progress-step::after { content: ""; width: 18px; height: 3px; margin-top: 8px; border-radius: 2px; background: var(--rw-brand-500); }
 
 .rw-network-pulse .metric-grid {
@@ -309,9 +309,9 @@
 .rw-my-work .my-work-copy small,
 .rw-my-work .my-work-copy strong,
 .rw-my-work .my-work-copy em { display: block; }
-.rw-my-work .my-work-copy small { color: var(--rw-slate-400); font-size: 9px; font-style: normal; text-transform: uppercase; }
+.rw-my-work .my-work-copy small { color: var(--rw-slate-600); font-size: 9px; font-style: normal; text-transform: uppercase; }
 .rw-my-work .my-work-copy strong { margin-top: 3px; font-size: 10px; }
-.rw-my-work .my-work-copy em { margin-top: 3px; overflow: hidden; color: var(--rw-slate-500); font-size: 9px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.rw-my-work .my-work-copy em { margin-top: 3px; overflow: hidden; color: var(--rw-slate-600); font-size: 9px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .rw-my-work .my-work-item > b { color: var(--rw-slate-600); font-size: 9px; }
 
 .rw-command-health .rate-health-layout { padding: 12px; }
