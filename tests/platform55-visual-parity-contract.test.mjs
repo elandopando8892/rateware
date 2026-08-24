@@ -370,8 +370,11 @@ test("validates P3-V1 in a shallow squash-only repository without historical fea
   }).trim();
 
   fixtureGit("init");
-  fixtureGit("fetch", "--depth", "2", ROOT, "HEAD");
+  const releaseDepth = Number(git("rev-list", "--count", `${PRODUCTION_RELEASE_SHA}..HEAD`)) + 1;
+  assert.ok(releaseDepth >= 2, "the squash fixture must include the release and every closure commit above it");
+  fixtureGit("fetch", "--depth", String(releaseDepth), ROOT, "HEAD");
   fixtureGit("checkout", "--detach", "FETCH_HEAD");
+  fixtureGit("cat-file", "-e", `${PRODUCTION_RELEASE_SHA}^{commit}`);
   assert.throws(() => fixtureGit("cat-file", "-e", `${REVIEWED_CLOSURE_SHA}^{commit}`), /Command failed/);
 
   assert.deepEqual(
