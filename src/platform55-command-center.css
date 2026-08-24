@@ -334,7 +334,7 @@
 
 @media (max-width: 680px) {
   .rw-command-center { gap: 10px; }
-  .rw-hero { min-height: 0; grid-template-columns: 1fr; padding: 18px; }
+  .rw-hero { min-height: 0; max-height: none; grid-template-columns: 1fr; padding: 18px; }
   .rw-hero .page-primary-action { width: 100%; }
   .rw-command-center > .rw-page-header { display: block; }
   .rw-page-actions { margin-top: 12px; }
