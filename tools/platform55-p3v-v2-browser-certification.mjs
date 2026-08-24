@@ -204,9 +204,9 @@ function gitValue(root, ...args) {
   return execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
 }
 
-function readSourceBlobs(root) {
+function readSourceBlobs(root, productSha) {
   return Object.fromEntries(P3V2_SOURCE_PATHS.map((path) => {
-    const committed = gitValue(root, "rev-parse", `HEAD:${path}`);
+    const committed = gitValue(root, "rev-parse", `${productSha}:${path}`);
     const working = gitValue(root, "hash-object", "--", path);
     assert.equal(working, committed, `${path} working bytes must match the P3-V2 candidate`);
     return [path, committed];
@@ -380,9 +380,11 @@ async function verifyInteractions(page, viewport) {
 
 async function runCli() {
   const root = await realpath(resolve(process.env.RATEWARE_P3V2_ROOT || process.cwd()));
-  const productSha = gitValue(root, "rev-parse", "HEAD");
-  const productTree = gitValue(root, "rev-parse", "HEAD^{tree}");
-  const sourceBlobs = readSourceBlobs(root);
+  const productSha = gitValue(root, "rev-parse", process.env.RATEWARE_P3V2_PRODUCT_SHA || "HEAD");
+  assert.match(productSha, /^[0-9a-f]{40}$/, "P3-V2 product SHA must be exact");
+  execFileSync("git", ["-C", root, "merge-base", "--is-ancestor", productSha, "HEAD"], { stdio: "ignore" });
+  const productTree = gitValue(root, "rev-parse", `${productSha}^{tree}`);
+  const sourceBlobs = readSourceBlobs(root, productSha);
   const outputDirectory = await prepareOutputDirectory(root, productSha);
   const require = createRequire(import.meta.url);
   const { chromium } = require(process.env.RATEWARE_PLAYWRIGHT_MODULE || "playwright");
