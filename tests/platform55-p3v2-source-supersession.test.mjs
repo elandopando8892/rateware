@@ -65,6 +65,6 @@ test("accepts P3-V2 drift only for its exact source blobs", () => {
 
 test("binds the checked-in P3-V2 record to the frozen product and working tree", () => {
   const record = loadP3V2SourceSupersession();
-  assert.equal(record.product_candidate_sha, "3a7fbb6a1a6d4840b6e1f9500c865b66b05ff27b");
+  assert.equal(record.product_candidate_sha, "c4009df2f27b7e286ad8d9607a5a2ded7c40635b");
   assert.equal(validateP3V2SourceGitState(process.cwd(), record), record);
 });
