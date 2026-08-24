@@ -13,7 +13,7 @@ import {
   evaluateVisualParityScore,
   validateRouteMatrix,
 } from "./platform55-visual-parity-contract.mjs";
-import { validateP3V1SourceGitState } from "./platform55-p3v1-source-supersession.mjs";
+import { loadP3V1SourceSupersession } from "./platform55-p3v1-source-supersession.mjs";
 
 export const P3V1_PRODUCT_SHA = "e962b54ee1ed049b0c020fd8278f48711105477e";
 export const P3V1_PRODUCT_TREE = "db331c5d482e629df24feb5e02697066ecf2282f";
@@ -106,10 +106,13 @@ export function validateP3V1Evidence({
     throw new Error("P3-V1 product candidate identity mismatch");
   }
 
-  const sourceSupersession = validateP3V1SourceGitState(root);
+  const sourceSupersession = loadP3V1SourceSupersession(root);
   for (const path of P3V1_SOURCE_PATHS) {
     const expected = manifest.source_blobs[path];
-    if (sourceSupersession.source_blobs[path] !== expected) {
+    if (
+      sourceSupersession.source_blobs[path] !== expected
+      || git(root, ["rev-parse", `${sourceSupersession.product_candidate_sha}:${path}`]) !== expected
+    ) {
       throw new Error(`P3-V1 source blob mismatch: ${path}`);
     }
   }
