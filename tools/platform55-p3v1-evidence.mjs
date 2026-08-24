@@ -17,9 +17,11 @@ export const P3V1_PRODUCT_SHA = "e962b54ee1ed049b0c020fd8278f48711105477e";
 export const P3V1_PRODUCT_TREE = "db331c5d482e629df24feb5e02697066ecf2282f";
 export const P3V1_EVIDENCE_DIRECTORY = `docs/platform55-visual-parity/evidence/p3v1/${P3V1_PRODUCT_SHA}`;
 export const P3V1_REVIEWED_EVIDENCE_COMMIT = "83ea271e2e93ddc7c99b22be1458cad2549f82c2";
+export const P3V1_REVIEWED_CLOSURE_SHA = "e4e6371afcf451ab264ee164a23e4134b1ed047d";
+export const P3V1_REVIEWED_CLOSURE_TREE = "3bd0e06864daac4405387bad1b62853b5c256c31";
 export const P3V1_INDEPENDENT_REVIEW_PATH = `${P3V1_EVIDENCE_DIRECTORY}/independent-review.md`;
 
-const P3V1_INDEPENDENT_REVIEW_SHA256 = "9c46da3be7c39632584c2de04a87ff5f834a6f06294fb6e65867d214fc426479";
+const P3V1_INDEPENDENT_REVIEW_SHA256 = "e7b3fa0e872d62c67eb9b3e8788016549211b6c8417ab370849a470295058d30";
 
 const EXPECTED_SCORES = Object.freeze({ "app.html": 91, "rateware.html": 90 });
 const REPRESENTATIVE = Object.freeze({
@@ -183,6 +185,8 @@ export function validateP3V1ClosureAccreditation({
     exactReviewField(normalizedReview, "reviewed_product_sha") !== P3V1_PRODUCT_SHA ||
     exactReviewField(normalizedReview, "reviewed_product_tree") !== P3V1_PRODUCT_TREE ||
     exactReviewField(normalizedReview, "reviewed_evidence_commit") !== P3V1_REVIEWED_EVIDENCE_COMMIT ||
+    exactReviewField(normalizedReview, "reviewed_closure_sha") !== P3V1_REVIEWED_CLOSURE_SHA ||
+    exactReviewField(normalizedReview, "reviewed_closure_tree") !== P3V1_REVIEWED_CLOSURE_TREE ||
     exactReviewField(normalizedReview, "reviewer_verdict") !== "GO" ||
     exactReviewField(normalizedReview, "p0") !== "0" ||
     exactReviewField(normalizedReview, "p1") !== "0" ||
@@ -205,6 +209,11 @@ export function validateP3V1ClosureAccreditation({
     }
     git(root, ["cat-file", "-e", `${P3V1_REVIEWED_EVIDENCE_COMMIT}^{commit}`]);
     git(root, ["merge-base", "--is-ancestor", P3V1_REVIEWED_EVIDENCE_COMMIT, "HEAD"]);
+    git(root, ["cat-file", "-e", `${P3V1_REVIEWED_CLOSURE_SHA}^{commit}`]);
+    if (git(root, ["rev-parse", `${P3V1_REVIEWED_CLOSURE_SHA}^{tree}`]) !== P3V1_REVIEWED_CLOSURE_TREE) {
+      throw new Error("P3-V1 reviewed closure tree mismatch");
+    }
+    git(root, ["merge-base", "--is-ancestor", P3V1_REVIEWED_CLOSURE_SHA, "HEAD"]);
   }
 
   const accepted = rows.filter((row) => row?.parity_status === "accepted");

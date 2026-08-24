@@ -28,9 +28,11 @@ const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const PRODUCT_SHA = "e962b54ee1ed049b0c020fd8278f48711105477e";
 const PRODUCT_TREE = "db331c5d482e629df24feb5e02697066ecf2282f";
 const REVIEWED_EVIDENCE_COMMIT = "83ea271e2e93ddc7c99b22be1458cad2549f82c2";
+const REVIEWED_CLOSURE_SHA = "e4e6371afcf451ab264ee164a23e4134b1ed047d";
+const REVIEWED_CLOSURE_TREE = "3bd0e06864daac4405387bad1b62853b5c256c31";
 const EVIDENCE_DIRECTORY = `docs/platform55-visual-parity/evidence/p3v1/${PRODUCT_SHA}`;
 const INDEPENDENT_REVIEW_PATH = `${EVIDENCE_DIRECTORY}/independent-review.md`;
-const INDEPENDENT_REVIEW_SHA256 = "9c46da3be7c39632584c2de04a87ff5f834a6f06294fb6e65867d214fc426479";
+const INDEPENDENT_REVIEW_SHA256 = "e7b3fa0e872d62c67eb9b3e8788016549211b6c8417ab370849a470295058d30";
 const EXPECTED_CAPTURE_FILES = Object.freeze([
   ...["data", "loading", "empty", "error"].flatMap((state) => ["1440x900", "1024x768", "390x844"].map((viewport) => `app-${state}-${viewport}.png`)),
   ...["loaded", "error"].flatMap((state) => ["1440x900", "1024x768", "390x844"].map((viewport) => `rateware-${state}-${viewport}.png`)),
@@ -335,6 +337,9 @@ test("accredits P3-V1 only from the exact independently reviewed product and evi
   assert.equal(git("rev-parse", `${PRODUCT_SHA}^{tree}`), PRODUCT_TREE);
   git("cat-file", "-e", `${REVIEWED_EVIDENCE_COMMIT}^{commit}`);
   execFileSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", REVIEWED_EVIDENCE_COMMIT, "HEAD"], { stdio: "pipe" });
+  git("cat-file", "-e", `${REVIEWED_CLOSURE_SHA}^{commit}`);
+  assert.equal(git("rev-parse", `${REVIEWED_CLOSURE_SHA}^{tree}`), REVIEWED_CLOSURE_TREE);
+  execFileSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", REVIEWED_CLOSURE_SHA, "HEAD"], { stdio: "pipe" });
 
   const loaded = evidence.loadP3V1Evidence(ROOT);
   const result = evidence.validateP3V1Evidence({
@@ -374,6 +379,8 @@ test("accredits P3-V1 only from the exact independently reviewed product and evi
   assert.equal(exactReviewField(normalizedReview, "reviewed_product_sha"), PRODUCT_SHA);
   assert.equal(exactReviewField(normalizedReview, "reviewed_product_tree"), PRODUCT_TREE);
   assert.equal(exactReviewField(normalizedReview, "reviewed_evidence_commit"), REVIEWED_EVIDENCE_COMMIT);
+  assert.equal(exactReviewField(normalizedReview, "reviewed_closure_sha"), REVIEWED_CLOSURE_SHA);
+  assert.equal(exactReviewField(normalizedReview, "reviewed_closure_tree"), REVIEWED_CLOSURE_TREE);
   assert.equal(exactReviewField(normalizedReview, "reviewer_verdict"), "GO");
   assert.equal(exactReviewField(normalizedReview, "p0"), "0");
   assert.equal(exactReviewField(normalizedReview, "p1"), "0");
@@ -467,6 +474,9 @@ test("binds P3-V1 semantic accreditation to the exact independent GO review", as
   const rows = await canonicalRows();
   const independentReview = await readFile(new URL(`../${INDEPENDENT_REVIEW_PATH}`, import.meta.url), "utf8");
 
+  assert.equal(evidence.P3V1_REVIEWED_CLOSURE_SHA, REVIEWED_CLOSURE_SHA);
+  assert.equal(evidence.P3V1_REVIEWED_CLOSURE_TREE, REVIEWED_CLOSURE_TREE);
+
   assert.deepEqual(
     evidence.validateP3V1ClosureAccreditation({
       rootDir: ROOT,
@@ -485,6 +495,20 @@ test("binds P3-V1 semantic accreditation to the exact independent GO review", as
     }),
     /independent review|verdict|digest/i,
   );
+  for (const mutation of [
+    independentReview.replace(REVIEWED_CLOSURE_SHA, "f".repeat(40)),
+    independentReview.replace(REVIEWED_CLOSURE_TREE, "e".repeat(40)),
+  ]) {
+    assert.throws(
+      () => evidence.validateP3V1ClosureAccreditation({
+        rootDir: ROOT,
+        rows,
+        independentReview: mutation,
+        requireTracked: true,
+      }),
+      /independent review|closure|digest/i,
+    );
+  }
 });
 
 test("binds P3-V1 semantic accreditation to the validated visual result", async () => {
