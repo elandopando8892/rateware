@@ -193,6 +193,8 @@
 }
 
 .p55-vp-page--governed-operations .rateware-command-bar {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
   min-height: 111px;
   margin: 0 14px 12px;
   padding: 12px;

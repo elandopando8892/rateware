@@ -159,6 +159,7 @@ test("Rateware desktop fidelity reserves hierarchy and contains wide controls", 
   assert.equal(metrics["grid-template-columns"], "repeat(5, minmax(0, 1fr))");
 
   const commands = declarationsFor(source, ".p55-vp-page--governed-operations .rateware-command-bar");
+  assert.equal(commands["grid-template-columns"], "minmax(0, 1fr)");
   assert.equal(commands["min-height"], "111px");
   assert.equal(commands.background, "var(--rw-slate-50)");
 
