@@ -145,6 +145,18 @@
   min-width: 0;
 }
 
+.rw-operate-page.p55-vp-page--upload-center {
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, .8fr);
+  grid-template-areas:
+    "heading heading"
+    "boundary boundary"
+    "upload queue";
+}
+
+.rw-operate-page.p55-vp-page--upload-center > [data-p3v2-source-boundary] {
+  grid-area: boundary;
+}
+
 .p55-vp-page--upload-center .upload-flow-steps :is(strong, small) {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -213,6 +225,17 @@
 
   .p55-vp-scope-strip > * {
     max-width: 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .rw-operate-page.p55-vp-page--upload-center {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "heading"
+      "boundary"
+      "upload"
+      "queue";
   }
 }
 

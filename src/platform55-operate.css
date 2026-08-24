@@ -13,11 +13,9 @@
 }
 
 .rw-operate-page.upload-layout {
-  grid-template-columns: minmax(0, 1.7fr) minmax(320px, .8fr);
   grid-template-areas:
-    "heading heading"
-    "boundary boundary"
-    "upload queue";
+    "heading upload"
+    "queue upload";
   align-items: start;
 }
 
@@ -27,10 +25,6 @@
 
 .rw-operate-page.upload-layout > .workspace-panel {
   grid-area: upload;
-}
-
-.rw-operate-page.upload-layout > [data-p3v2-source-boundary] {
-  grid-area: boundary;
 }
 
 .rw-operate-page.upload-layout > .queue-panel {
@@ -290,7 +284,6 @@
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       "heading"
-      "boundary"
       "upload"
       "queue";
   }
