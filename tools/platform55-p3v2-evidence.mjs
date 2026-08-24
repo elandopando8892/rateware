@@ -74,9 +74,10 @@ export function validateP3V2Evidence({ rootDir = process.cwd(), manifest, design
 export function validateP3V2ClosureAccreditation({
   rootDir = process.cwd(), rows, manifest, designReview, evidenceDirectory,
   independentReview = readFileSync(resolve(rootDir, P3V2_INDEPENDENT_REVIEW_PATH), "utf8"),
-  requireTracked = false,
+  requireTracked = true,
 }) {
   const root = resolve(rootDir);
+  if (requireTracked !== true) throw new Error("P3-V2 closure accreditation requires tracked evidence");
   if (!Array.isArray(rows)) throw new Error("P3-V2 semantic accreditation requires route rows");
   const routeResult = validateRouteMatrix(rows, { rootDir: root });
   if (!routeResult.ok) throw new Error(`P3-V2 route matrix accreditation mismatch: ${routeResult.errors.join(", ")}`);
