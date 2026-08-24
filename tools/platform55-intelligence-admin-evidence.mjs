@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 import {
-  loadP2S6SourceSupersession,
+  loadPlatform55SourceSupersessions,
   validateHistoricalSourceParity,
 } from "./platform55-s6-source-supersession.mjs";
 
@@ -342,7 +342,7 @@ export async function validateP2S5Evidence({ rootDir = process.cwd() } = {}) {
     subjectBlobs,
     currentBlobs,
     workingBlobs,
-    supersession: loadP2S6SourceSupersession(root),
+    supersession: loadPlatform55SourceSupersessions(root),
   });
 
   for (const capture of manifest.captures) {

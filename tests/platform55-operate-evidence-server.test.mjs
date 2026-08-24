@@ -5,7 +5,7 @@ import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import { startOperateEvidenceServer } from "../tools/platform55-operate-evidence-server.mjs";
 import {
-  loadP2S6SourceSupersession,
+  loadPlatform55SourceSupersessions,
   validateHistoricalSourceParity,
 } from "../tools/platform55-s6-source-supersession.mjs";
 
@@ -85,7 +85,7 @@ test("anchors the complete actual-route capture matrix to its immutable subject"
     subjectBlobs,
     currentBlobs,
     workingBlobs,
-    supersession: loadP2S6SourceSupersession(),
+    supersession: loadPlatform55SourceSupersessions(),
   });
 
   for (const capture of manifest.captures) {

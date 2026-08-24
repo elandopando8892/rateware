@@ -44,7 +44,8 @@
 
 .rw-hero {
   grid-area: hero;
-  min-height: 164px;
+  min-height: clamp(200px, 25vh, 248px);
+  max-height: 320px;
   margin: 0;
   padding: 22px 24px;
   display: grid;
@@ -78,7 +79,7 @@
   border-radius: 999px;
   color: #ffe4a7;
   background: rgba(231, 164, 58, 0.12);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 850;
   letter-spacing: 0.7px;
   text-transform: uppercase;
@@ -155,9 +156,9 @@
 .rw-hero-metrics small,
 .rw-hero-metrics strong,
 .rw-hero-metrics em { display: block; }
-.rw-hero-metrics small { color: rgba(255, 255, 255, 0.52); font-size: 8px; font-weight: 850; letter-spacing: 0.65px; text-transform: uppercase; }
+.rw-hero-metrics small { color: rgba(255, 255, 255, 0.72); font-size: 9px; font-weight: 850; letter-spacing: 0.65px; text-transform: uppercase; }
 .rw-hero-metrics strong { margin-top: 7px; overflow: hidden; color: var(--rw-white); font-size: 19px; letter-spacing: -0.35px; text-overflow: ellipsis; white-space: nowrap; }
-.rw-hero-metrics em { margin-top: 4px; overflow: hidden; color: rgba(255, 255, 255, 0.56); font-size: 7px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.rw-hero-metrics em { margin-top: 4px; overflow: hidden; color: rgba(255, 255, 255, 0.56); font-size: 9px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 
 .rw-command-priority { grid-area: priority; }
 .rw-lifecycle { grid-area: lifecycle; }
@@ -174,7 +175,7 @@
 .rw-command-shortcuts {
   margin: 0;
   border-color: var(--rw-slate-200);
-  border-radius: var(--rw-radius-lg);
+  border-radius: 14px;
   box-shadow: var(--rw-shadow-sm);
 }
 
@@ -242,12 +243,16 @@
 .rw-command-priority .priority-alert-icon rw-icon { width: 17px; height: 17px; }
 .rw-command-priority .priority-alert-icon rw-icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; }
 
+.rw-command-priority .priority-alert > div {
+  min-width: 0;
+}
+
 .rw-command-priority .priority-alert strong,
 .rw-command-priority .priority-alert small { display: block; }
-.rw-command-priority .priority-alert > div > span { color: var(--rw-brand-700); font-size: 7px; font-weight: 850; text-transform: uppercase; }
+.rw-command-priority .priority-alert > div > span { color: var(--rw-brand-700); font-size: 9px; font-weight: 850; text-transform: uppercase; }
 .rw-command-priority .priority-alert strong { margin-top: 3px; font-size: 10px; }
-.rw-command-priority .priority-alert small { margin-top: 3px; color: var(--rw-slate-500); font-size: 8px; }
-.rw-command-priority .priority-alert > b { min-width: 38px; padding: 7px 8px; border: 1px solid var(--rw-slate-200); border-radius: 8px; background: var(--rw-white); color: var(--rw-slate-700); text-align: center; font-size: 8px; }
+.rw-command-priority .priority-alert small { margin-top: 3px; color: var(--rw-slate-600); font-size: 9px; white-space: normal; overflow-wrap: anywhere; }
+.rw-command-priority .priority-alert > b { min-width: 38px; padding: 7px 8px; border: 1px solid var(--rw-slate-200); border-radius: 8px; background: var(--rw-white); color: var(--rw-slate-700); text-align: center; font-size: 9px; }
 
 .rw-lifecycle .workflow-progress-panel {
   display: grid;
@@ -270,9 +275,9 @@
   background: var(--rw-slate-25);
   text-decoration: none;
 }
-.rw-lifecycle .workflow-progress-step > span { color: var(--rw-slate-400); font-size: 7px; font-weight: 850; }
+.rw-lifecycle .workflow-progress-step > span { color: var(--rw-slate-600); font-size: 9px; font-weight: 850; }
 .rw-lifecycle .workflow-progress-step > strong { margin-top: 5px; font-size: 12px; line-height: 1.05; }
-.rw-lifecycle .workflow-progress-step > small { margin-top: 5px; color: var(--rw-slate-500); font-size: 7px; line-height: 1.25; }
+.rw-lifecycle .workflow-progress-step > small { margin-top: 5px; color: var(--rw-slate-600); font-size: 9px; line-height: 1.25; }
 .rw-lifecycle .workflow-progress-step::after { content: ""; width: 18px; height: 3px; margin-top: 8px; border-radius: 2px; background: var(--rw-brand-500); }
 
 .rw-network-pulse .metric-grid {
@@ -289,7 +294,7 @@
   background: var(--rw-slate-25);
   box-shadow: none;
 }
-.rw-network-pulse .metric-card > span { color: var(--rw-slate-500); font-size: 7px; font-weight: 850; letter-spacing: 0.5px; text-transform: uppercase; }
+.rw-network-pulse .metric-card > span { color: var(--rw-slate-500); font-size: 9px; font-weight: 850; letter-spacing: 0.5px; text-transform: uppercase; }
 .rw-network-pulse .metric-card > strong { margin-top: 9px; color: var(--rw-navy-950); font-size: 23px; letter-spacing: -0.5px; }
 
 .rw-my-work .my-work-list { padding: 0 14px 12px; }
@@ -304,14 +309,14 @@
   color: var(--rw-slate-800);
   text-decoration: none;
 }
-.rw-my-work .my-work-order { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8px; color: var(--rw-brand-700); background: var(--rw-brand-50); font-size: 8px; font-weight: 850; }
+.rw-my-work .my-work-order { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8px; color: var(--rw-brand-700); background: var(--rw-brand-50); font-size: 9px; font-weight: 850; }
 .rw-my-work .my-work-copy small,
 .rw-my-work .my-work-copy strong,
 .rw-my-work .my-work-copy em { display: block; }
-.rw-my-work .my-work-copy small { color: var(--rw-slate-400); font-size: 7px; font-style: normal; text-transform: uppercase; }
+.rw-my-work .my-work-copy small { color: var(--rw-slate-600); font-size: 9px; font-style: normal; text-transform: uppercase; }
 .rw-my-work .my-work-copy strong { margin-top: 3px; font-size: 10px; }
-.rw-my-work .my-work-copy em { margin-top: 3px; overflow: hidden; color: var(--rw-slate-500); font-size: 8px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
-.rw-my-work .my-work-item > b { color: var(--rw-slate-600); font-size: 8px; }
+.rw-my-work .my-work-copy em { margin-top: 3px; overflow: hidden; color: var(--rw-slate-600); font-size: 9px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.rw-my-work .my-work-item > b { color: var(--rw-slate-600); font-size: 9px; }
 
 .rw-command-health .rate-health-layout { padding: 12px; }
 .rw-command-shortcuts .core-workflow-grid { padding: 12px; }
@@ -319,7 +324,7 @@
 @media (max-width: 1180px) {
   .rw-command-center {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "header" "hero" "priority" "lifecycle" "pulse" "work" "health" "shortcuts";
+    grid-template-areas: "header" "hero" "priority" "lifecycle" "work" "pulse" "health" "shortcuts";
   }
   .rw-command-center > .rw-page-header { align-items: flex-start; }
   .rw-page-actions > span { display: none; }
@@ -329,7 +334,7 @@
 
 @media (max-width: 680px) {
   .rw-command-center { gap: 10px; }
-  .rw-hero { min-height: 0; grid-template-columns: 1fr; padding: 18px; }
+  .rw-hero { min-height: 0; max-height: none; grid-template-columns: 1fr; padding: 18px; }
   .rw-hero .page-primary-action { width: 100%; }
   .rw-command-center > .rw-page-header { display: block; }
   .rw-page-actions { margin-top: 12px; }

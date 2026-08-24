@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-command-center.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="app">
     <div class="rw-app" data-platform55-app>
@@ -21,8 +22,8 @@
           </form>
         </header>
         <main class="rw-main" id="main-content">
-          <div class="rw-command-center rw-page" data-platform55-page-content>
-            <header class="rw-page-header">
+          <div class="rw-command-center rw-page p55-vp-page p55-vp-page--command" data-platform55-page-content>
+            <header class="rw-page-header p55-vp-page-header">
               <div>
                 <p class="rw-page-eyebrow">Home · Today</p>
                 <h1>Command Center</h1>
@@ -51,7 +52,7 @@
             </div>
           </section>
 
-          <section class="rw-command-priority workspace-panel dashboard-priority-panel" aria-labelledby="priority-queue-title">
+          <section class="rw-command-priority workspace-panel dashboard-priority-panel p55-vp-workspace-card" aria-labelledby="priority-queue-title">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Priority queue</p>
@@ -67,7 +68,7 @@
             </div>
           </section>
 
-          <section class="rw-my-work workspace-panel dashboard-my-work-panel" aria-labelledby="my-work-title">
+          <section class="rw-my-work workspace-panel dashboard-my-work-panel p55-vp-workspace-card" aria-labelledby="my-work-title">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">My Work</p>
@@ -83,7 +84,7 @@
             </div>
           </section>
 
-          <section id="business-lifecycle" class="rw-lifecycle workspace-panel dashboard-workflow-panel dashboard-workflow-panel--progress" aria-label="Business lifecycle">
+          <section id="business-lifecycle" class="rw-lifecycle workspace-panel dashboard-workflow-panel dashboard-workflow-panel--progress p55-vp-workspace-card" aria-label="Business lifecycle">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Business lifecycle</p>
@@ -117,7 +118,7 @@
             </div>
           </section>
 
-          <section id="rate-book-health" class="rw-command-health workspace-panel rate-book-health-panel hidden" aria-label="Rate book health">
+          <section id="rate-book-health" class="rw-command-health workspace-panel rate-book-health-panel p55-vp-workspace-card hidden" aria-label="Rate book health">
             <div class="section-heading compact split-heading">
               <div>
                 <p class="eyebrow">Rate book health</p>
@@ -155,7 +156,7 @@
             </div>
           </section>
 
-          <section id="network-pulse" class="rw-network-pulse workspace-panel dashboard-metrics-panel" aria-label="Network pulse">
+          <section id="network-pulse" class="rw-network-pulse workspace-panel dashboard-metrics-panel p55-vp-workspace-card" aria-label="Network pulse">
             <div class="section-heading compact">
               <p class="eyebrow">Network pulse</p>
               <h2>Scoped operational signals</h2>
@@ -180,7 +181,7 @@
             </div>
           </section>
 
-          <section class="rw-command-shortcuts workspace-panel dashboard-workflow-panel">
+          <section class="rw-command-shortcuts workspace-panel dashboard-workflow-panel p55-vp-workspace-card">
             <div class="section-heading compact">
               <p class="eyebrow">Shortcuts</p>
               <h2>Workspaces</h2>

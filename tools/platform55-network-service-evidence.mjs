@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import {
-  loadP2S6SourceSupersession,
+  loadPlatform55SourceSupersessions,
   validateHistoricalSourceParity,
 } from "./platform55-s6-source-supersession.mjs";
 
@@ -185,7 +185,7 @@ export function validateP2S4EvidenceFiles(rootDir, manifest) {
     subjectBlobs,
     currentBlobs: headBlobs,
     workingBlobs,
-    supersession: loadP2S6SourceSupersession(root),
+    supersession: loadPlatform55SourceSupersessions(root),
   });
 
   const evidenceDirectory = dirname(P2_S4_CLOSURE.manifest);

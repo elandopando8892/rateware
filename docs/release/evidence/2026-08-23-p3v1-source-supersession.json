@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "sprint": "P3-V1",
+  "verdict": "LOCAL-GO",
+  "release_credit": "withheld",
+  "product_candidate_sha": "5cfe55e6a8693d9e3acd32f0ad4093165b7739c2",
+  "product_candidate_tree": "78131c49e6aaff4e685c632afc8f28e7768ee0bf",
+  "product_base_sha": "df04136db139fd37ff9b19fe981a45f9158f620d",
+  "source_paths": [
+    "app.html",
+    "rateware.html",
+    "src/platform55-command-center.css",
+    "src/platform55-operate.css",
+    "src/platform55-visual-parity.css"
+  ],
+  "source_blobs": {
+    "app.html": "5f8f0a3cad3847a270c0d24b31e37b2513de1cdb",
+    "rateware.html": "92209e714e9f48aeb90cfb78f4add796abe3a806",
+    "src/platform55-command-center.css": "21fad4172444d8eed60a1112234e3327f5597c7c",
+    "src/platform55-operate.css": "846516ae4f38d8dd7905d88e2a94c9d9b6b1d4a8",
+    "src/platform55-visual-parity.css": "b49422bfe4396be51c1085572ddf5063324f5588"
+  }
+}
