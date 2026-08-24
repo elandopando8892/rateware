@@ -378,7 +378,7 @@ git commit -m "style: align Review Queue with Platform55"
 
 ---
 
-### Task 6: Supersede Only the Three Reviewed Operate Sources
+### Task 6: Supersede Only the Reviewed Operate Sources
 
 **Files:**
 - Create: `docs/release/evidence/2026-08-24-p3v2-source-supersession.json`
@@ -388,12 +388,12 @@ git commit -m "style: align Review Queue with Platform55"
 - Modify: `package.json`
 
 **Interfaces:**
-- Consumes: the frozen P3-V2 product SHA/tree and exactly `upload-center.html`, `upload-history.html`, `staging-review.html`.
-- Produces: a content-addressed exception that preserves P2-S2 evidence while proving the three current source blobs are intentional and reviewed.
+- Consumes: the frozen P3-V2 product SHA/tree and exactly `upload-center.html`, `upload-history.html`, `staging-review.html`, and the shared `src/platform55-visual-parity.css` layer extended by P3-V2.
+- Produces: a content-addressed exception that preserves P2-S2 and P3-V1 evidence while proving the four current source blobs are intentional and reviewed.
 
 - [ ] **Step 1: Write RED tests for exact source scope**
 
-Require schema version 1, sprint `P3-V2`, exact product SHA/tree, exactly three unique source paths, Git blob SHA for each path, normalized record digest, and no other runtime path. Reject missing/extra/duplicate paths, working-tree drift, HEAD drift, wrong product tree, stale record digest, absolute/traversal paths, and an untracked record.
+Require schema version 1, sprint `P3-V2`, exact product SHA/tree, exactly four unique source paths, Git blob SHA for each path, normalized record digest, and no other runtime path. Reject missing/extra/duplicate paths, working-tree drift, HEAD drift, wrong product tree, stale record digest, absolute/traversal paths, and an untracked record.
 
 - [ ] **Step 2: Run RED**
 
@@ -413,13 +413,14 @@ git rev-parse 'HEAD^{tree}'
 git rev-parse 'HEAD:upload-center.html'
 git rev-parse 'HEAD:upload-history.html'
 git rev-parse 'HEAD:staging-review.html'
+git rev-parse 'HEAD:src/platform55-visual-parity.css'
 ```
 
 Do not amend this product commit after creating the record.
 
 - [ ] **Step 4: Implement fail-closed supersession validation**
 
-Follow the existing P3-V1 content-addressed pattern, but accept only `sprint === "P3-V2"` and the exact three-path set. Update `validateHistoricalSourceParity()` to accept current source divergence only when the matching P3-V2 record validates against both product Git objects and current working bytes. It must continue validating the historical P2-S2 subject and evidence unchanged.
+Follow the existing P3-V1 content-addressed pattern, but accept only `sprint === "P3-V2"` and the exact four-path set. Update `validateHistoricalSourceParity()` to accept current source divergence only when the matching P3-V2 record validates against both product Git objects and current working bytes. It must continue validating the historical P2-S2 and P3-V1 subjects and evidence unchanged.
 
 - [ ] **Step 5: Run GREEN including the previously failing gate**
 
