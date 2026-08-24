@@ -18,7 +18,7 @@ import {
   validateP2S5SurfaceReconciliation,
 } from "./platform55-intelligence-admin-evidence.mjs";
 import {
-  loadP2S6SourceSupersession,
+  loadPlatform55SourceSupersessions,
   validateHistoricalSourceParity,
   validateP2S6SourceGitState,
 } from "./platform55-s6-source-supersession.mjs";
@@ -258,7 +258,7 @@ export function validateP2S3Manifest(manifest) {
   return manifest;
 }
 
-export function validateP2S3SourceBlobParity(manifestBlobs, currentBlobs, workingBlobs = currentBlobs, supersession = loadP2S6SourceSupersession()) {
+export function validateP2S3SourceBlobParity(manifestBlobs, currentBlobs, workingBlobs = currentBlobs, supersession = loadPlatform55SourceSupersessions()) {
   if (!manifestBlobs || currentBlobs?.length !== P2_S3_SOURCE_PATHS.length || workingBlobs?.length !== P2_S3_SOURCE_PATHS.length) {
     throw new Error("P2-S3 source blob parity requires all 25 source paths");
   }
@@ -786,7 +786,7 @@ const validateP2S2Closure = (sprint, rootDir) => {
     subjectBlobs: gitBlobs(P2_S2_CLOSURE.visualSubject),
     currentBlobs: gitBlobs("HEAD"),
     workingBlobs,
-    supersession: loadP2S6SourceSupersession(root),
+    supersession: loadPlatform55SourceSupersessions(root),
   });
 };
 
@@ -973,7 +973,7 @@ const validateP2S5Closure = (sprint, rootDir) => {
     subjectBlobs: sourcePaths.map((path) => manifest.source_git_blobs[path]),
     currentBlobs,
     workingBlobs,
-    supersession: loadP2S6SourceSupersession(root),
+    supersession: loadPlatform55SourceSupersessions(root),
   });
   const evidenceDirectory = dirname(manifestPath);
   for (const capture of manifest.captures) {

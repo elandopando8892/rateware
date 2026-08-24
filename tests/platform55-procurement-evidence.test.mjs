@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { access, readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 import {
-  loadP2S6SourceSupersession,
+  loadPlatform55SourceSupersessions,
   validateHistoricalSourceParity,
 } from "../tools/platform55-s6-source-supersession.mjs";
 
@@ -124,7 +124,7 @@ test("anchors the complete Procurement capture matrix without requiring historic
     subjectBlobs,
     currentBlobs,
     workingBlobs,
-    supersession: loadP2S6SourceSupersession(),
+    supersession: loadPlatform55SourceSupersessions(),
   });
 
   const actualPngs = (await readdir(directory)).filter((file) => file.endsWith(".png")).sort();

@@ -2,6 +2,10 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  loadP3V1SourceSupersession,
+  validateP3V1SourceSupersession,
+} from "./platform55-p3v1-source-supersession.mjs";
 
 const SHA1 = /^[0-9a-f]{40}$/;
 
@@ -93,6 +97,13 @@ export function validateP2S6SourceGitState(rootDir, record = loadP2S6SourceSuper
   return record;
 }
 
+export function loadPlatform55SourceSupersessions(rootDir = process.cwd()) {
+  return Object.freeze([
+    loadP2S6SourceSupersession(rootDir),
+    loadP3V1SourceSupersession(rootDir),
+  ]);
+}
+
 export function validateHistoricalSourceParity({
   sourcePaths,
   manifestBlobs,
@@ -101,7 +112,13 @@ export function validateHistoricalSourceParity({
   workingBlobs = currentBlobs,
   supersession,
 }) {
-  validateP2S6SourceSupersession(supersession);
+  const supersessions = Array.isArray(supersession) ? supersession : [supersession];
+  if (supersessions.length === 0) throw new Error("historical source parity requires source supersession contracts");
+  for (const record of supersessions) {
+    if (record?.sprint === "P2-S6") validateP2S6SourceSupersession(record);
+    else if (record?.sprint === "P3-V1") validateP3V1SourceSupersession(record);
+    else throw new Error("unknown source supersession contract");
+  }
   if (
     !Array.isArray(sourcePaths) ||
     !manifestBlobs ||
@@ -124,11 +141,12 @@ export function validateHistoricalSourceParity({
       throw new Error(`working tree source drift: ${path}`);
     }
     if (currentBlob === historicalBlob) continue;
-    if (!P2_S6_SOURCE_PATHS.includes(path)) {
+    const approval = supersessions.find((record) => record.source_paths.includes(path));
+    if (!approval) {
       throw new Error(`unapproved current drift: ${path}`);
     }
-    if (supersession.source_blobs[path] !== currentBlob) {
-      throw new Error(`P2-S6 supersession blob mismatch: ${path}`);
+    if (approval.source_blobs[path] !== currentBlob) {
+      throw new Error(`${approval.sprint} supersession blob mismatch: ${path}`);
     }
   }
   return manifestBlobs;

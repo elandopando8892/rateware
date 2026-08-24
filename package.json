@@ -19,7 +19,7 @@
     "test:platform55:network-service": "node tests/platform55-network-service-shell.test.mjs && node --test tests/platform55-network-service-evidence-server.test.mjs tests/platform55-network-service-evidence.test.mjs",
     "test:platform55:intelligence-admin": "node tests/platform55-intelligence-admin-shell.test.mjs && node --test tests/platform55-intelligence-admin-evidence-server.test.mjs tests/platform55-intelligence-admin-evidence.test.mjs",
     "test:platform55:adoption": "node tests/platform55-shell-adoption.test.mjs",
-    "test:platform55:certification": "node tests/platform55-shell-certification.test.mjs && node tests/platform55-s6-accessibility-certification.test.mjs && node --test tests/platform55-s6-evidence-server.test.mjs tests/platform55-s6-source-supersession.test.mjs",
+    "test:platform55:certification": "node tests/platform55-shell-certification.test.mjs && node tests/platform55-s6-accessibility-certification.test.mjs && node --test tests/platform55-s6-evidence-server.test.mjs tests/platform55-s6-source-supersession.test.mjs tests/platform55-p3v1-source-supersession.test.mjs",
     "test:platform55:browser-certification": "node tools/platform55-s6-browser-certification.mjs",
     "audit:platform55:shell": "node tools/platform55-shell-audit.mjs",
     "test:platform55-shell": "node tests/platform55-build-matrix.test.mjs && node tests/platform55-shell-contract.test.mjs",
