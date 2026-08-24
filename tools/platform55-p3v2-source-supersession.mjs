@@ -6,9 +6,9 @@ import { resolve } from "node:path";
 const SHA1 = /^[0-9a-f]{40}$/;
 
 export const P3V2_SOURCE_SUPERSESSION_PATH = "docs/release/evidence/2026-08-24-p3v2-source-supersession.json";
-export const P3V2_SOURCE_SUPERSESSION_SHA256 = "9d4184e229a5db2e7d8e1c82aa3d6512861efd9ed3b51107ac1910ef2c6dd395";
-export const P3V2_PRODUCT_CANDIDATE = "f9574630f7cde73b9521db553860270960ff418d";
-export const P3V2_PRODUCT_TREE = "4a327a8c7865c4f99ac6f10615a9fa8035453c79";
+export const P3V2_SOURCE_SUPERSESSION_SHA256 = "21514b7ef41322e7e93e965d2e6a4b8d2b46f805d1441e104caabf05eee69d5d";
+export const P3V2_PRODUCT_CANDIDATE = "3a7fbb6a1a6d4840b6e1f9500c865b66b05ff27b";
+export const P3V2_PRODUCT_TREE = "4eb371e5b64da2d0ea26d7f0f3d08f499512689a";
 export const P3V2_PRODUCT_BASE = "7b76ba36dae4e0fa26e1b6605b6bb398581051e5";
 
 export const P3V2_SOURCE_PATHS = Object.freeze([
