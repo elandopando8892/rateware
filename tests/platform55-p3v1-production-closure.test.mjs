@@ -101,3 +101,17 @@ test("rejects coordinated JSON and report byte drift even when the embedded dige
     /canonical|digest|reviewed/i,
   );
 });
+
+test("rejects report-only byte drift with canonical JSON, digest, and markers", () => {
+  const loaded = canonical();
+  const driftedReport = loaded.report.replace(
+    "## Progress boundary",
+    "Additional unreviewed production claim.\n\n## Progress boundary",
+  );
+
+  assert.notEqual(driftedReport, loaded.report);
+  assert.throws(
+    () => production.validateP3V1ProductionReport(driftedReport, loaded.recordBytes),
+    /canonical|digest|reviewed/i,
+  );
+});
