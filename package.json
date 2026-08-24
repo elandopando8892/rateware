@@ -30,6 +30,8 @@
     "test:platform55:p3v1-production": "node --test tests/platform55-p3v1-production-closure.test.mjs",
     "test:platform55:p3v2": "node --test tests/platform55-p3v-v2-contract.test.mjs",
     "test:platform55:p3v2-source": "node --test tests/platform55-p3v2-source-supersession.test.mjs",
+    "test:platform55:p3v2-browser": "node --test tests/platform55-p3v-v2-browser-certification.test.mjs",
+    "certify:platform55:p3v2": "node tools/platform55-p3v-v2-browser-certification.mjs",
     "certify:platform55:p3v1": "node tools/platform55-p3v-v1-browser-certification.mjs",
     "test:provider-service": "node tools/run-provider-service-tests.mjs",
     "test:shadow-hardening": "node tests/phase0-shadow-hardening.test.mjs",
