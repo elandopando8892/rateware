@@ -79,3 +79,14 @@ test("P3-V2 exposes route-neutral governed operation primitives", async () => {
   assert.match(parity, /@media \(max-width: 1100px\)/);
   assert.match(parity, /@media \(max-width: 680px\)/);
 });
+
+test("Upload Center exposes source retention without changing intake controls", async () => {
+  const source = await read("upload-center.html");
+  assert.match(source, /data-p3v2-source-boundary/);
+  assert.match(source, /id="drop-zone"[\s\S]*p55-vp-source-dropzone/);
+  assert.match(source, /id="upload-form"[\s\S]*data-p3v2-state="loaded"/);
+  assert.match(source, /id="file-list"[\s\S]*data-p3v2-state="empty"/);
+  assert.match(source, /id="status-message"[\s\S]*data-p3v2-state="validation-error"/);
+  assert.match(source, /id="file-input"[\s\S]*multiple[\s\S]*accept="\.xlsx,[^"]*\.pdf,[^"]*image\/\*,\.eml,message\/rfc822"/);
+  assert.match(source, /id="upload-button"[^>]*type="submit"/);
+});

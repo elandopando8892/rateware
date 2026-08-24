@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-operate.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="upload-center">
     <div class="rw-app" data-platform55-app>
@@ -21,8 +22,8 @@
           </form>
         </header>
         <main class="rw-main" id="main-content">
-          <div class="rw-operate-page upload-layout" data-platform55-page-content data-source-field="source_filename">
-            <header class="rw-operate-heading" data-platform55-page-header>
+          <div class="rw-operate-page upload-layout p55-vp-page p55-vp-page--upload-center p55-vp-operation-flow" data-platform55-page-content data-source-field="source_filename">
+            <header class="rw-operate-heading p55-vp-page-header" data-platform55-page-header>
               <div>
                 <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Operate · Import</p>
                 <h1 data-platform55-page-title>Upload Center</h1>
@@ -33,6 +34,12 @@
                 <button class="page-primary-action" type="button" data-click-target="#file-input" data-platform55-action="select-files">Select files</button>
               </div>
             </header>
+          <section class="p55-vp-context-banner" data-p3v2-source-boundary aria-label="Source retention boundary">
+            <div class="p55-vp-context-banner__copy">
+              <strong>Original evidence stays attached</strong>
+              <p>Rateware preserves each source file and filename before interpretation. Extracted rows remain staged until a person reviews and approves them.</p>
+            </div>
+          </section>
           <section class="workspace-panel rw-operate-panel">
             <div class="review-insight-grid rw-operate-metrics" aria-label="Upload queue summary">
               <article>
@@ -74,10 +81,10 @@
                 <small>Publish to Rateware</small>
               </article>
             </div>
-            <form id="upload-form" class="upload-form">
+            <form id="upload-form" class="upload-form p55-vp-state-panel" data-p3v2-state="loaded">
               <label
                 id="drop-zone"
-                class="drop-zone"
+                class="drop-zone p55-vp-source-dropzone"
                 for="file-input"
                 tabindex="0"
                 aria-describedby="file-help"
@@ -113,7 +120,7 @@
 
               <div class="action-row">
                 <button id="upload-button" type="submit">Upload originals</button>
-                <p id="status-message" class="status-message" role="status"></p>
+                <p id="status-message" class="status-message p55-vp-state-panel" role="status" data-p3v2-state="validation-error"></p>
               </div>
             </form>
           </section>
@@ -123,7 +130,7 @@
               <p class="eyebrow">Queue</p>
               <h2>Files</h2>
             </div>
-            <ul id="file-list" class="file-list empty">
+            <ul id="file-list" class="file-list empty p55-vp-state-panel" data-p3v2-state="empty">
               <li>No files selected</li>
             </ul>
             <div class="next-step-strip">
