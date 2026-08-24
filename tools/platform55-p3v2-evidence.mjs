@@ -7,9 +7,9 @@ import { P3V2_SOURCE_PATHS, P3V2_SPECS, validateP3V2Manifest } from "./platform5
 import { validateP3V2SourceGitState } from "./platform55-p3v2-source-supersession.mjs";
 import { evaluateVisualParityScore } from "./platform55-visual-parity-contract.mjs";
 
-export const P3V2_PRODUCT_SHA = "c4009df2f27b7e286ad8d9607a5a2ded7c40635b";
-export const P3V2_PRODUCT_TREE = "2b481c63034739faf47422f0b3a340e74b32423e";
-export const P3V2_MANIFEST_SHA256 = "b6746221a96c2338fc8af264fc31f4ef4478565d16f7435dc2a0144c82c3d67c";
+export const P3V2_PRODUCT_SHA = "cfe0ddb198d4bf9bf2e93654a7a3e05f0ba606f7";
+export const P3V2_PRODUCT_TREE = "0d8c548d03dbf76f219f0969cddc94edff941b5c";
+export const P3V2_MANIFEST_SHA256 = "01feeb5e4ffa093417b1378ea238445b989d0b4f8e5626ca0ac35fdfa0977ec1";
 export const P3V2_EVIDENCE_DIRECTORY = `docs/platform55-visual-parity/evidence/p3v2/${P3V2_PRODUCT_SHA}`;
 const EXPECTED_SCORES = Object.freeze({ "upload-center.html": 92, "upload-history.html": 90, "staging-review.html": 93 });
 const REPRESENTATIVE = Object.freeze({ "upload-center.html": "upload-center-loaded-1440x900.png", "upload-history.html": "upload-history-loaded-1440x900.png", "staging-review.html": "staging-review-loaded-1440x900.png" });
