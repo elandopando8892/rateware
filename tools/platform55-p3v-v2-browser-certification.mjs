@@ -269,7 +269,7 @@ async function applyStateFixture(page, route, state) {
       return;
     }
     const body = document.querySelector("#staging-body");
-    const brief = document.querySelector("#staging-approval-brief");
+    const brief = document.querySelector("[data-p3v2-state='review-required']");
     if (stateName === "review-required") {
       brief?.setAttribute("data-p3v2-active-state", stateName);
       return;
