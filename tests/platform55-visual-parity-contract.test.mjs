@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -539,4 +541,54 @@ test("binds P3-V1 semantic accreditation to the validated visual result", async 
     }),
     /score|accepted/i,
   );
+});
+
+test("rejects coherently changed visual evidence after the reviewed evidence commit", async () => {
+  assert.ifError(evidenceImportError);
+  const rows = await canonicalRows();
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "rateware-p3v1-reviewed-evidence-"));
+  const captureFile = "app-data-1024x768.png";
+  const capturePath = `${EVIDENCE_DIRECTORY}/${captureFile}`;
+  const manifestPath = `${EVIDENCE_DIRECTORY}/manifest.json`;
+
+  try {
+    execFileSync("git", ["clone", "--quiet", "--shared", ROOT, fixtureRoot], { stdio: "pipe" });
+    execFileSync("git", ["-C", fixtureRoot, "checkout", "--detach", git("rev-parse", "HEAD")], { stdio: "pipe" });
+
+    const changedCapture = Buffer.concat([
+      await readFile(join(fixtureRoot, capturePath)),
+      Buffer.from([0]),
+    ]);
+    await writeFile(join(fixtureRoot, capturePath), changedCapture);
+
+    const manifest = JSON.parse(await readFile(join(fixtureRoot, manifestPath), "utf8"));
+    const capture = manifest.captures.find((candidate) => candidate.file === captureFile);
+    assert.ok(capture, `${captureFile} must exist in the reviewed manifest`);
+    capture.screenshot_byte_length = changedCapture.length;
+    capture.screenshot_sha256 = createHash("sha256").update(changedCapture).digest("hex");
+    capture.screenshot_git_blob = execFileSync(
+      "git",
+      ["-C", fixtureRoot, "hash-object", "--no-filters", "--", capturePath],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    ).trim();
+    await writeFile(join(fixtureRoot, manifestPath), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    execFileSync("git", ["-C", fixtureRoot, "add", "--", capturePath, manifestPath], { stdio: "pipe" });
+    execFileSync(
+      "git",
+      ["-C", fixtureRoot, "-c", "user.name=Rateware Test", "-c", "user.email=rateware-test@example.invalid", "commit", "--quiet", "-m", "test: drift reviewed visual evidence"],
+      { stdio: "pipe" },
+    );
+
+    assert.throws(
+      () => evidence.validateP3V1ClosureAccreditation({
+        rootDir: fixtureRoot,
+        rows,
+        requireTracked: true,
+      }),
+      /reviewed evidence|blob mismatch/i,
+    );
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
 });

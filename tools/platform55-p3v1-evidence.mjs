@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   P3V1_SOURCE_PATHS,
@@ -17,6 +18,7 @@ export const P3V1_PRODUCT_SHA = "e962b54ee1ed049b0c020fd8278f48711105477e";
 export const P3V1_PRODUCT_TREE = "db331c5d482e629df24feb5e02697066ecf2282f";
 export const P3V1_EVIDENCE_DIRECTORY = `docs/platform55-visual-parity/evidence/p3v1/${P3V1_PRODUCT_SHA}`;
 export const P3V1_REVIEWED_EVIDENCE_COMMIT = "83ea271e2e93ddc7c99b22be1458cad2549f82c2";
+export const P3V1_REVIEWED_EVIDENCE_TREE = "b210cb9df1eca9f347f4a20e3107e68830cf0029";
 export const P3V1_REVIEWED_CLOSURE_SHA = "e4e6371afcf451ab264ee164a23e4134b1ed047d";
 export const P3V1_REVIEWED_CLOSURE_TREE = "3bd0e06864daac4405387bad1b62853b5c256c31";
 export const P3V1_INDEPENDENT_REVIEW_PATH = `${P3V1_EVIDENCE_DIRECTORY}/independent-review.md`;
@@ -56,6 +58,22 @@ function exactReviewField(body, name) {
   const matches = [...body.matchAll(new RegExp(`^${name}:\\s*(\\S+)\\s*$`, "gm"))];
   if (matches.length !== 1) throw new Error(`P3-V1 independent review must contain exactly one ${name}`);
   return matches[0][1];
+}
+
+function validateReviewedEvidenceBlobs(root, manifest) {
+  const paths = [
+    `${P3V1_EVIDENCE_DIRECTORY}/manifest.json`,
+    `${P3V1_EVIDENCE_DIRECTORY}/design-review.md`,
+    ...manifest.captures.map((capture) => `${P3V1_EVIDENCE_DIRECTORY}/${capture.file}`),
+  ];
+  for (const path of paths) {
+    const reviewedBlob = git(root, ["rev-parse", `${P3V1_REVIEWED_EVIDENCE_COMMIT}:${path}`]);
+    const headBlob = git(root, ["rev-parse", `HEAD:${path}`]);
+    const workingBlob = git(root, ["hash-object", "--", resolve(root, path)]);
+    if (reviewedBlob !== headBlob || headBlob !== workingBlob) {
+      throw new Error(`P3-V1 reviewed evidence blob mismatch: ${path}`);
+    }
+  }
 }
 
 export function loadP3V1Evidence(rootDir = process.cwd()) {
@@ -139,6 +157,10 @@ export function validateP3V1Evidence({
   }
 
   if (requireTracked) {
+    const trackedManifest = JSON.parse(readFileSync(resolve(root, P3V1_EVIDENCE_DIRECTORY, "manifest.json"), "utf8"));
+    if (!isDeepStrictEqual(manifest, trackedManifest)) {
+      throw new Error("P3-V1 evaluated manifest is not the exact tracked manifest");
+    }
     for (const file of ["manifest.json", "design-review.md"]) {
       const path = `${P3V1_EVIDENCE_DIRECTORY}/${file}`;
       git(root, ["cat-file", "-e", `HEAD:${path}`]);
@@ -169,9 +191,10 @@ export function validateP3V1ClosureAccreditation({
     throw new Error(`P3-V1 route matrix accreditation mismatch: ${routeMatrixResult.errors.join(", ")}`);
   }
   const loaded = loadP3V1Evidence(root);
+  const evaluatedManifest = manifest ?? loaded.manifest;
   const evidenceResult = validateP3V1Evidence({
     rootDir: root,
-    manifest: manifest ?? loaded.manifest,
+    manifest: evaluatedManifest,
     designReview: designReview ?? loaded.designReview,
     evidenceDirectory: evidenceDirectory ?? loaded.evidenceDirectory,
     requireTracked,
@@ -207,8 +230,16 @@ export function validateP3V1ClosureAccreditation({
     ) {
       throw new Error("P3-V1 independent review is not tracked exactly");
     }
+    git(root, ["cat-file", "-e", `${P3V1_PRODUCT_SHA}^{commit}`]);
+    if (git(root, ["rev-parse", `${P3V1_PRODUCT_SHA}^{tree}`]) !== P3V1_PRODUCT_TREE) {
+      throw new Error("P3-V1 reviewed product tree mismatch");
+    }
     git(root, ["cat-file", "-e", `${P3V1_REVIEWED_EVIDENCE_COMMIT}^{commit}`]);
+    if (git(root, ["rev-parse", `${P3V1_REVIEWED_EVIDENCE_COMMIT}^{tree}`]) !== P3V1_REVIEWED_EVIDENCE_TREE) {
+      throw new Error("P3-V1 reviewed evidence tree mismatch");
+    }
     git(root, ["merge-base", "--is-ancestor", P3V1_REVIEWED_EVIDENCE_COMMIT, "HEAD"]);
+    validateReviewedEvidenceBlobs(root, evaluatedManifest);
     git(root, ["cat-file", "-e", `${P3V1_REVIEWED_CLOSURE_SHA}^{commit}`]);
     if (git(root, ["rev-parse", `${P3V1_REVIEWED_CLOSURE_SHA}^{tree}`]) !== P3V1_REVIEWED_CLOSURE_TREE) {
       throw new Error("P3-V1 reviewed closure tree mismatch");
