@@ -111,7 +111,7 @@ export function validateP3V1Evidence({
     const expected = manifest.source_blobs[path];
     if (
       sourceSupersession.source_blobs[path] !== expected
-      || git(root, ["rev-parse", `${sourceSupersession.product_candidate_sha}:${path}`]) !== expected
+      || git(root, ["rev-parse", `${P3V1_PRODUCTION_RELEASE_SHA}:${path}`]) !== expected
     ) {
       throw new Error(`P3-V1 source blob mismatch: ${path}`);
     }
