@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { dirname, join } from "node:path";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import test from "node:test";
 
 import {
@@ -78,4 +82,35 @@ test("binds the checked-in supersession to the exact product candidate and curre
   const record = loadP2S6SourceSupersession();
   assert.equal(record.product_candidate_sha, "31ca1105865570acd575ae17eeb25c236df45c7c");
   assert.equal(validateP2S6SourceGitState(process.cwd(), record), record);
+});
+
+test("validates the certified source blobs in a squash-only repository without historical candidate objects", (t) => {
+  const record = loadP2S6SourceSupersession();
+  const root = mkdtempSync(join(tmpdir(), "rateware-p2-s6-squash-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const git = (args, options = {}) => execFileSync("git", ["-C", root, ...args], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    ...options,
+  }).trim();
+
+  git(["init"]);
+  git(["config", "user.name", "Rateware test"]);
+  git(["config", "user.email", "rateware-test@example.invalid"]);
+  git(["config", "core.autocrlf", "false"]);
+  for (const path of P2_S6_SOURCE_PATHS) {
+    const target = join(root, path);
+    mkdirSync(dirname(target), { recursive: true });
+    const bytes = execFileSync("git", ["cat-file", "blob", record.source_blobs[path]], { encoding: null });
+    writeFileSync(target, bytes);
+  }
+  git(["add", "."]);
+  git(["commit", "--no-gpg-sign", "-m", "squash-only source tree"]);
+
+  assert.throws(
+    () => git(["cat-file", "-e", `${record.product_candidate_sha}^{commit}`]),
+    /Command failed/,
+  );
+  assert.equal(validateP2S6SourceGitState(root, record), record);
 });

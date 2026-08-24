@@ -71,19 +71,19 @@ export function loadP2S6SourceSupersession(rootDir = process.cwd()) {
 }
 
 export function validateP2S6SourceGitState(rootDir, record = loadP2S6SourceSupersession(rootDir)) {
+  validateP2S6SourceSupersession(record);
+  if (
+    record.product_candidate_sha !== P2_S6_PRODUCT_CANDIDATE ||
+    record.product_candidate_tree !== P2_S6_PRODUCT_TREE ||
+    record.product_base_sha !== P2_S6_PRODUCT_BASE
+  ) {
+    throw new Error("P2-S6 source supersession candidate identity mismatch");
+  }
   const root = resolve(rootDir);
   const git = (args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-  if (git(["rev-parse", `${record.product_candidate_sha}^{tree}`]) !== record.product_candidate_tree) {
-    throw new Error("P2-S6 product candidate tree mismatch");
-  }
-  if (git(["rev-parse", `${record.product_candidate_sha}^`]) !== record.product_base_sha) {
-    throw new Error("P2-S6 product candidate base mismatch");
-  }
-  execFileSync("git", ["-C", root, "merge-base", "--is-ancestor", record.product_candidate_sha, "HEAD"], { stdio: "ignore" });
   for (const path of P2_S6_SOURCE_PATHS) {
     const expected = record.source_blobs[path];
     if (
-      git(["rev-parse", `${record.product_candidate_sha}:${path}`]) !== expected ||
       git(["rev-parse", `HEAD:${path}`]) !== expected ||
       git(["hash-object", "--", path]) !== expected
     ) {

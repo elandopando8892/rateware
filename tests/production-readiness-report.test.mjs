@@ -405,7 +405,7 @@ test("keeps the persisted P1 production closure backed while P2 advances", () =>
   }
   for (const path of trackedEvidence) execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   validateLedger(persisted);
-  assert.equal(computeOverallProgress(persisted), 82);
+  assert.equal(computeOverallProgress(persisted), 83);
 });
 
 test("preserves P2-S2 immutable actual-route evidence and independent GO while P2 advances", () => {
@@ -413,7 +413,7 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
   const p2 = p2Ledger.sprints.find((sprint) => sprint.id === "P2");
 
   validateLedger(p2Ledger);
-  assert.equal(p2.progress, 85);
+  assert.equal(p2.progress, 100);
   assert.deepEqual(p2.evidence.scope, [
     "docs/superpowers/specs/2026-08-21-rateware-platform55-shell-migration-design.md"
   ]);
@@ -432,6 +432,8 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
     "docs/release/evidence/2026-08-21-p2-s4-network-service.md",
     P2_S5_CLOSURE.implementation,
     productionReadiness.P2_S6_CLOSURE.implementation,
+    productionReadiness.P2_S6_PRODUCTION_CLOSURE.record,
+    productionReadiness.P2_S6_PRODUCTION_CLOSURE.report,
   ]);
   assert.deepEqual(p2.evidence.independent_review, [
     "docs/release/evidence/2026-08-21-p2-s2-independent-review.md",
@@ -453,6 +455,7 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
     "npm test PASS on exact P2-S5 reviewed head e159cd205c631220613809aef0d21f7e1ec4f19b",
     "npm run test:platform55:intelligence-admin PASS with 36 of 36 actual-route captures and 56 of 56 reconciled surfaces",
     ...productionReadiness.P2_S6_CLOSURE.automatedSuite,
+    "npm test PASS after the production squash with 46 of 46 production-readiness gates",
   ]);
   const review = readFileSync(p2.evidence.independent_review[0], "utf8");
   assert.match(review, /Verdict:\s*GO/i);
@@ -462,8 +465,8 @@ test("preserves P2-S2 immutable actual-route evidence and independent GO while P
   for (const path of [...p2.evidence.scope, ...p2.evidence.evidence_plan, ...p2.evidence.implementation, ...p2.evidence.independent_review]) {
     execFileSync("git", ["ls-files", "--error-unmatch", "--", path], { encoding: "utf8" });
   }
-  assert.equal(computeOverallProgress(p2Ledger), 82);
-  assert.match(formatProgressReport(p2Ledger), /P2:\s+85%/);
+  assert.equal(computeOverallProgress(p2Ledger), 83);
+  assert.match(formatProgressReport(p2Ledger), /P2:\s+100%/);
 });
 
 test("credits P2-S3 only from the immutable Procurement matrix and exact local gates", () => {
@@ -471,7 +474,7 @@ test("credits P2-S3 only from the immutable Procurement matrix and exact local g
   const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
 
   validateLedger(persisted);
-  assert.equal(p2.progress, 85);
+  assert.equal(p2.progress, 100);
   const evidence = readFileSync("docs/release/evidence/2026-08-21-p2-s3-procurement.md", "utf8");
   assert.match(evidence, /Visual subject SHA:\s*`6917246927a6a13e82abf9e1e84b00b27f172ab7`/i);
   assert.match(evidence, /Evidence and full-gate HEAD:\s*`23584f218d094a622608c813715247cf16190375`/i);
@@ -531,7 +534,7 @@ test("credits P2-S4 only after semantic fidelity and visual accessibility are in
   const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
   validateLedger(persisted);
-  assert.equal(p2.progress, 85);
+  assert.equal(p2.progress, 100);
   assert.ok(p2.evidence.evidence_plan.includes(P2_S4_CLOSURE.plan));
   assert.ok(p2.evidence.implementation.includes(P2_S4_CLOSURE.implementation));
   assert.ok(P2_S4_CLOSURE.automatedSuite.every((entry) => p2.evidence.automated_suite.includes(entry)));
@@ -564,8 +567,8 @@ test("records the exact accepted mixed P2-S4 semantic review before granting mil
   )));
   assert.equal(record.mappings.filter((mapping) => mapping.matrix_status === "verified").length, 1);
   assert.equal(record.mappings.filter((mapping) => mapping.matrix_status === "dispositioned").length, 12);
-  assert.equal(p2.progress, 85);
-  assert.equal(computeOverallProgress(persisted), 82);
+  assert.equal(p2.progress, 100);
+  assert.equal(computeOverallProgress(persisted), 83);
 });
 
 test("rejects P2 at 70 without the exact P2-S4 Network and Service closure", () => {
@@ -655,8 +658,8 @@ test("credits P2-S5 only from the exact candidate, review, captures, and detache
   const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
   const p2 = persisted.sprints.find((sprint) => sprint.id === "P2");
   validateLedger(persisted);
-  assert.equal(p2.progress, 85);
-  assert.equal(computeOverallProgress(persisted), 82);
+  assert.equal(p2.progress, 100);
+  assert.equal(computeOverallProgress(persisted), 83);
   assert.ok(p2.evidence.evidence_plan.includes(P2_S5_CLOSURE.plan));
   assert.ok(p2.evidence.implementation.includes(P2_S5_CLOSURE.implementation));
   assert.ok(p2.evidence.independent_review.includes(P2_S5_CLOSURE.candidate));
@@ -678,8 +681,8 @@ test("credits P2-S6 only from the exact accessible product candidate and detache
   const closure = productionReadiness.P2_S6_CLOSURE;
 
   validateLedger(persisted);
-  assert.equal(p2.progress, 85);
-  assert.equal(computeOverallProgress(persisted), 82);
+  assert.equal(p2.progress, 100);
+  assert.equal(computeOverallProgress(persisted), 83);
   assert.ok(p2.evidence.evidence_plan.includes(closure.plan));
   assert.ok(p2.evidence.implementation.includes(closure.implementation));
   assert.ok(p2.evidence.independent_review.includes(closure.independentReview));
@@ -718,6 +721,139 @@ test("credits P2-S6 only from the exact accessible product candidate and detache
     () => productionReadiness.validateP2S6IndependentReviewBody(reviewBody.replace("Minimum contrast: `4.521:1`", "Minimum contrast: `1:1`")),
     /digest mismatch|contrast/i,
   );
+});
+
+const validP2S6ProductionRecord = () => ({
+  schema_version: 1,
+  mode: "read_only",
+  environment: "production",
+  release: {
+    sha: "7a146765ac38bd18a320f32f7e3ed7a7f13c8da7",
+    tree: "f044987b224c54578a0ee19db398f612d67e4b76",
+    deployment_id: "dpl_3P6nWwoaqUeDktTMi7HifGG6XAwk",
+    deployment_url: "rateware-gk93pxg5n-elandopando8892s-projects.vercel.app",
+    production_alias: "rateware.vercel.app",
+    state: "READY",
+    manual_promotion: false,
+  },
+  routes: [
+    ["command-center", "/app", "tenant", "Command Center", true, 1],
+    ["operate", "/rateware", "tenant", "Rateware", true, 1],
+    ["procurement", "/rfx-events", "tenant", "Bid Room", true, 1],
+    ["network-service", "/provider-service", "tenant", "Provider Service", true, 1],
+    ["intelligence", "/business-intelligence?view=brief", "tenant", "Analyze", true, 1],
+    ["administration", "/settings?view=governance", "tenant", "Settings", true, 1],
+    ["public-carrier", "/carrier-profile", "public", "Se requiere liga de perfil", false, 0],
+  ].map(([id, path, shell, heading, authenticated, active_routes]) => ({
+    id, path, shell, heading, authenticated, active_routes, main_landmarks: 1,
+    passed: true, overflow: false, console_errors: 0,
+  })),
+  responsive: {
+    viewports: ["1440x900", "1024x768", "390x844"],
+    routes_per_viewport: 7,
+    mobile_navigation: true,
+    focus_trap: true,
+    focus_restoration: true,
+    viewport_overflow: 0,
+    table_checks: [
+      { route: "operate", tables: 1, viewport_overflow: false },
+      { route: "procurement", tables: 8, viewport_overflow: false },
+    ],
+    dialogs: ["global-search", "notifications"],
+  },
+  monitoring: [
+    ["T+0", "2026-08-23T23:21:00.000Z"],
+    ["T+5", "2026-08-23T23:26:00.000Z"],
+    ["T+15", "2026-08-23T23:36:00.000Z"],
+  ].map(([checkpoint, observed_at]) => ({
+    checkpoint,
+    observed_at,
+    deployment_ready: true,
+    alias_sha: "7a146765ac38bd18a320f32f7e3ed7a7f13c8da7",
+    production_alias: "rateware.vercel.app",
+    runtime_errors: 0,
+    client_errors: 0,
+    http_4xx_5xx: 0,
+    routes_available: 7,
+    unexpected_writes: 0,
+  })),
+  supabase: {
+    project_status: "ACTIVE_HEALTHY",
+    persistent_preview_count: 1,
+    unexpected_writes: 0,
+    mutation_authorized: false,
+    aggregate_checks: {
+      raw_uploads_created: 0,
+      rate_staging_created: 0,
+      rate_staging_updated: 0,
+      rfx_events_created: 0,
+      rfx_events_updated: 0,
+    },
+  },
+  boundaries: {
+    production_data_mutation: false,
+    upload_created: false,
+    row_approved: false,
+    supabase_changed: false,
+    manual_promotion: false,
+  },
+  verdict: "GO",
+});
+
+test("requires exact fail-closed production evidence before crediting P2 at 100", () => {
+  const record = validP2S6ProductionRecord();
+  assert.deepEqual(productionReadiness.validateP2S6ProductionRecord(record), record);
+
+  for (const [label, mutate] of [
+    ["release SHA", (value) => { value.release.sha = "0".repeat(40); }],
+    ["deployment state", (value) => { value.release.state = "ERROR"; }],
+    ["manual promotion", (value) => { value.release.manual_promotion = true; }],
+    ["route failure", (value) => { value.routes[2].passed = false; }],
+    ["route evidence", (value) => { value.routes[0] = { ...value.routes[0], path: "/wrong", heading: "", main_landmarks: 0, active_routes: 0, authenticated: false }; }],
+    ["console error", (value) => { value.routes[4].console_errors = 1; }],
+    ["missing viewport", (value) => { value.responsive.viewports.pop(); }],
+    ["responsive coverage", (value) => { value.responsive.routes_per_viewport = 0; value.responsive.table_checks = []; value.responsive.dialogs = []; }],
+    ["runtime error", (value) => { value.monitoring[1].runtime_errors = 1; }],
+    ["client error", (value) => { value.monitoring[1].client_errors = 1; }],
+    ["route availability or HTTP status", (value) => { value.monitoring[1].http_4xx_5xx = 1; value.monitoring[1].routes_available = 6; }],
+    ["monitoring alias SHA", (value) => { value.monitoring[1].alias_sha = "0000000000000000000000000000000000000000"; }],
+    ["short monitoring window", (value) => { value.monitoring[2].observed_at = "2026-08-23T23:30:00.000Z"; }],
+    ["monitoring order", (value) => { value.monitoring[1].observed_at = "2026-08-23T23:41:00.000Z"; }],
+    ["unexpected write", (value) => { value.supabase.unexpected_writes = 1; }],
+    ["unexpected write", (value) => { value.supabase.aggregate_checks.raw_uploads_created = 99; }],
+    ["mutation authorization", (value) => { value.supabase.mutation_authorized = true; }],
+    ["production boundary", (value) => { value.boundaries.production_data_mutation = true; value.boundaries.upload_created = true; }],
+    ["verdict", (value) => { value.verdict = "NO-GO"; }],
+  ]) {
+    const changed = structuredClone(record);
+    mutate(changed);
+    assert.throws(() => productionReadiness.validateP2S6ProductionRecord(changed), new RegExp(label, "i"));
+  }
+
+  const persisted = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const persistedP2 = persisted.sprints.find((sprint) => sprint.id === "P2");
+  validateLedger(persisted);
+  assert.equal(persistedP2.progress, 100);
+  assert.equal(computeOverallProgress(persisted), 83);
+  assert.ok(persistedP2.evidence.implementation.includes(productionReadiness.P2_S6_PRODUCTION_CLOSURE.record));
+  assert.ok(persistedP2.evidence.implementation.includes(productionReadiness.P2_S6_PRODUCTION_CLOSURE.report));
+  assert.ok(persistedP2.evidence.preview_smoke.includes(productionReadiness.P2_S6_PRODUCTION_CLOSURE.previewSmoke));
+  assert.ok(persistedP2.evidence.deployment.includes(productionReadiness.P2_S6_PRODUCTION_CLOSURE.deployment));
+  assert.ok(persistedP2.evidence.production_smoke.includes(productionReadiness.P2_S6_PRODUCTION_CLOSURE.productionSmoke));
+  assert.ok(persistedP2.evidence.monitoring.includes(productionReadiness.P2_S6_PRODUCTION_CLOSURE.monitoring));
+  assert.equal(persistedP2.verdicts.production_release, "GO");
+  assert.deepEqual(
+    productionReadiness.validateP2S6ProductionRecord(JSON.parse(readFileSync(productionReadiness.P2_S6_PRODUCTION_CLOSURE.record, "utf8"))),
+    JSON.parse(readFileSync(productionReadiness.P2_S6_PRODUCTION_CLOSURE.record, "utf8")),
+  );
+
+  const fabricated = JSON.parse(readFileSync("docs/release/production-readiness-ledger.json", "utf8"));
+  const p2 = fabricated.sprints.find((sprint) => sprint.id === "P2");
+  p2.progress = 100;
+  p2.evidence.production_smoke = ["generic smoke PASS"];
+  p2.evidence.monitoring = ["generic monitoring PASS"];
+  p2.verdicts.production_release = "GO";
+  assert.throws(() => validateLedger(fabricated), /production/i);
 });
 
 test("accepts a complete mixed P2-S4 semantic candidate without granting independent credit", () => {

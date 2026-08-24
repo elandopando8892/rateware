@@ -20,6 +20,7 @@ import {
 import {
   loadP2S6SourceSupersession,
   validateHistoricalSourceParity,
+  validateP2S6SourceGitState,
 } from "./platform55-s6-source-supersession.mjs";
 
 export const P2_S6_CLOSURE = Object.freeze({
@@ -28,6 +29,9 @@ export const P2_S6_CLOSURE = Object.freeze({
   independentReview: "docs/release/evidence/2026-08-21-p2-s6-independent-review.md",
   reviewedClosure: "4bc7498805dc313c49ec7917dff8f454b0642303",
   reviewedClosureTree: "d5c4c460cc3aa690c500e91a3063423e4c332471",
+  releaseMerge: "7a146765ac38bd18a320f32f7e3ed7a7f13c8da7",
+  releaseTree: "f044987b224c54578a0ee19db398f612d67e4b76",
+  releaseParent: "2ea24dfdcb31df5aa8152c8e8f232fffd34720c8",
   productCandidate: "31ca1105865570acd575ae17eeb25c236df45c7c",
   productTree: "1421417c0f737d8bbd4a420300812f11c38af628",
   productParent: "512c15679957abd5dcbfeee4afe3208d76edab92",
@@ -48,6 +52,95 @@ export const P2_S6_CLOSURE = Object.freeze({
     "node --test tests/platform55-s6-source-supersession.test.mjs PASS with 6 of 6 exact source blobs",
   ]),
 });
+
+export const P2_S6_PRODUCTION_CLOSURE = Object.freeze({
+  record: "docs/release/evidence/2026-08-21-p2-s6-production-smoke-monitoring.json",
+  report: "docs/release/evidence/2026-08-21-p2-s6-production-smoke-monitoring.md",
+  releaseSha: "7a146765ac38bd18a320f32f7e3ed7a7f13c8da7",
+  releaseTree: "f044987b224c54578a0ee19db398f612d67e4b76",
+  deploymentId: "dpl_3P6nWwoaqUeDktTMi7HifGG6XAwk",
+  deploymentUrl: "rateware-gk93pxg5n-elandopando8892s-projects.vercel.app",
+  productionAlias: "rateware.vercel.app",
+  productionSmoke: "Production smoke PASS on release 7a146765ac38bd18a320f32f7e3ed7a7f13c8da7 across 7 routes and 3 viewports",
+  monitoring: "T+0/T+5/T+15 production monitoring PASS with 0 runtime errors and 0 unexpected writes",
+  deployment: "Vercel production deployment dpl_3P6nWwoaqUeDktTMi7HifGG6XAwk READY at rateware.vercel.app",
+  previewSmoke: "Authenticated PR #68 preview smoke PASS before squash merge",
+});
+
+const P2_S6_PRODUCTION_ROUTES = new Map([
+  ["command-center", { path: "/app", shell: "tenant", heading: "Command Center", authenticated: true, activeRoutes: 1 }],
+  ["operate", { path: "/rateware", shell: "tenant", heading: "Rateware", authenticated: true, activeRoutes: 1 }],
+  ["procurement", { path: "/rfx-events", shell: "tenant", heading: "Bid Room", authenticated: true, activeRoutes: 1 }],
+  ["network-service", { path: "/provider-service", shell: "tenant", heading: "Provider Service", authenticated: true, activeRoutes: 1 }],
+  ["intelligence", { path: "/business-intelligence?view=brief", shell: "tenant", heading: "Analyze", authenticated: true, activeRoutes: 1 }],
+  ["administration", { path: "/settings?view=governance", shell: "tenant", heading: "Settings", authenticated: true, activeRoutes: 1 }],
+  ["public-carrier", { path: "/carrier-profile", shell: "public", heading: "Se requiere liga de perfil", authenticated: false, activeRoutes: 0 }],
+]);
+
+export function validateP2S6ProductionRecord(record) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) throw new Error("production record must be an object");
+  if (record.schema_version !== 1 || record.mode !== "read_only" || record.environment !== "production") throw new Error("production record header mismatch");
+  const release = record.release || {};
+  if (release.sha !== P2_S6_PRODUCTION_CLOSURE.releaseSha || release.tree !== P2_S6_PRODUCTION_CLOSURE.releaseTree) throw new Error("release SHA/tree mismatch");
+  if (release.deployment_id !== P2_S6_PRODUCTION_CLOSURE.deploymentId || release.deployment_url !== P2_S6_PRODUCTION_CLOSURE.deploymentUrl || release.production_alias !== P2_S6_PRODUCTION_CLOSURE.productionAlias) throw new Error("production deployment identity mismatch");
+  if (release.state !== "READY") throw new Error("deployment state must be READY");
+  if (release.manual_promotion !== false) throw new Error("manual promotion must remain false");
+
+  if (!Array.isArray(record.routes) || record.routes.length !== P2_S6_PRODUCTION_ROUTES.size) throw new Error("production route matrix must contain 7 routes");
+  const seenRoutes = new Set();
+  for (const route of record.routes) {
+    const expected = P2_S6_PRODUCTION_ROUTES.get(route?.id);
+    if (!expected || seenRoutes.has(route.id) || route.shell !== expected.shell) throw new Error("production route identity mismatch");
+    seenRoutes.add(route.id);
+    if (
+      route.path !== expected.path || route.heading !== expected.heading ||
+      route.main_landmarks !== 1 || route.active_routes !== expected.activeRoutes ||
+      route.authenticated !== expected.authenticated
+    ) throw new Error(`route evidence mismatch: ${route.id}`);
+    if (route.passed !== true || route.overflow !== false) throw new Error(`route failure: ${route.id}`);
+    if (route.console_errors !== 0) throw new Error(`console error: ${route.id}`);
+  }
+
+  const responsive = record.responsive || {};
+  const exactViewports = ["1440x900", "1024x768", "390x844"];
+  if (!Array.isArray(responsive.viewports) || responsive.viewports.join(",") !== exactViewports.join(",")) throw new Error("missing viewport certification");
+  if (responsive.mobile_navigation !== true || responsive.focus_trap !== true || responsive.focus_restoration !== true || responsive.viewport_overflow !== 0) throw new Error("responsive interaction certification mismatch");
+  const expectedTables = [["operate", 1], ["procurement", 8]];
+  if (
+    responsive.routes_per_viewport !== 7 ||
+    !Array.isArray(responsive.table_checks) || responsive.table_checks.length !== expectedTables.length ||
+    expectedTables.some(([route, tables], index) => responsive.table_checks[index]?.route !== route || responsive.table_checks[index]?.tables !== tables || responsive.table_checks[index]?.viewport_overflow !== false) ||
+    !Array.isArray(responsive.dialogs) || responsive.dialogs.join(",") !== "global-search,notifications"
+  ) throw new Error("responsive coverage mismatch");
+
+  if (!Array.isArray(record.monitoring) || record.monitoring.length !== 3) throw new Error("monitoring must contain T+0, T+5 and T+15");
+  const expectedCheckpoints = ["T+0", "T+5", "T+15"];
+  const observedTimes = record.monitoring.map((checkpoint, index) => {
+    if (checkpoint?.checkpoint !== expectedCheckpoints[index]) throw new Error("monitoring checkpoint identity mismatch");
+    if (checkpoint.deployment_ready !== true) throw new Error("deployment state must remain READY");
+    if (checkpoint.alias_sha !== P2_S6_PRODUCTION_CLOSURE.releaseSha || checkpoint.production_alias !== P2_S6_PRODUCTION_CLOSURE.productionAlias) throw new Error("monitoring alias SHA mismatch");
+    if (checkpoint.runtime_errors !== 0) throw new Error("runtime error detected during monitoring");
+    if (checkpoint.client_errors !== 0) throw new Error("client error detected during monitoring");
+    if (checkpoint.http_4xx_5xx !== 0 || checkpoint.routes_available !== P2_S6_PRODUCTION_ROUTES.size) throw new Error("route availability or HTTP status mismatch");
+    if (checkpoint.unexpected_writes !== 0) throw new Error("unexpected write detected during monitoring");
+    const timestamp = Date.parse(checkpoint.observed_at);
+    if (!Number.isFinite(timestamp)) throw new Error("monitoring timestamp invalid");
+    return timestamp;
+  });
+  if (!(observedTimes[0] < observedTimes[1] && observedTimes[1] < observedTimes[2])) throw new Error("monitoring order mismatch");
+  if (observedTimes[1] - observedTimes[0] < 5 * 60_000 || observedTimes[2] - observedTimes[0] < 15 * 60_000) throw new Error("short monitoring window");
+
+  const supabase = record.supabase || {};
+  if (supabase.project_status !== "ACTIVE_HEALTHY" || supabase.persistent_preview_count !== 1) throw new Error("Supabase read-only status mismatch");
+  if (supabase.unexpected_writes !== 0) throw new Error("unexpected write detected in Supabase aggregates");
+  if (supabase.mutation_authorized !== false) throw new Error("mutation authorization must remain false");
+  const aggregateKeys = ["raw_uploads_created", "rate_staging_created", "rate_staging_updated", "rfx_events_created", "rfx_events_updated"];
+  if (!supabase.aggregate_checks || aggregateKeys.some((key) => supabase.aggregate_checks[key] !== 0)) throw new Error("unexpected write detected in aggregate checks");
+  const boundaryKeys = ["production_data_mutation", "upload_created", "row_approved", "supabase_changed", "manual_promotion"];
+  if (!record.boundaries || boundaryKeys.some((key) => record.boundaries[key] !== false)) throw new Error("production boundary violation");
+  if (record.verdict !== "GO") throw new Error("production verdict must be GO");
+  return record;
+}
 
 const IDS = ["P0", "P1", "P2", "P3", "P4", "P5"];
 const WEIGHTS = { P0: 4, P1: 9, P2: 7, P3: 7, P4: 6, P5: 4 };
@@ -903,14 +996,33 @@ const validateP2S6Closure = (sprint, rootDir) => {
   const root = realpathSync(resolve(rootDir));
   const reviewBody = readFileSync(resolve(root, P2_S6_CLOSURE.independentReview), "utf8");
   validateP2S6IndependentReviewBody(reviewBody);
-  execFileSync("git", ["-C", root, "merge-base", "--is-ancestor", P2_S6_CLOSURE.base, P2_S6_CLOSURE.productCandidate]);
-  execFileSync("git", ["-C", root, "merge-base", "--is-ancestor", P2_S6_CLOSURE.productCandidate, P2_S6_CLOSURE.reviewedClosure]);
-  execFileSync("git", ["-C", root, "merge-base", "--is-ancestor", P2_S6_CLOSURE.reviewedClosure, "HEAD"]);
-  if (execFileSync("git", ["-C", root, "rev-parse", `${P2_S6_CLOSURE.productCandidate}^`], { encoding: "utf8" }).trim() !== P2_S6_CLOSURE.productParent) throw new Error("P2-S6 product parent mismatch");
-  if (execFileSync("git", ["-C", root, "rev-parse", `${P2_S6_CLOSURE.productCandidate}^{tree}`], { encoding: "utf8" }).trim() !== P2_S6_CLOSURE.productTree) throw new Error("P2-S6 product tree mismatch");
-  if (execFileSync("git", ["-C", root, "rev-parse", `${P2_S6_CLOSURE.reviewedClosure}^{tree}`], { encoding: "utf8" }).trim() !== P2_S6_CLOSURE.reviewedClosureTree) throw new Error("P2-S6 reviewed closure tree mismatch");
-  const closurePaths = execFileSync("git", ["-C", root, "diff", "--name-only", `${P2_S6_CLOSURE.productCandidate}..${P2_S6_CLOSURE.reviewedClosure}`], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean).sort();
-  if (JSON.stringify(closurePaths) !== JSON.stringify([...P2_S6_CLOSURE.closurePaths].sort())) throw new Error("P2-S6 reviewed closure path mismatch");
+  execFileSync("git", ["-C", root, "merge-base", "--is-ancestor", P2_S6_CLOSURE.releaseMerge, "HEAD"]);
+  if (execFileSync("git", ["-C", root, "rev-parse", `${P2_S6_CLOSURE.releaseMerge}^`], { encoding: "utf8" }).trim() !== P2_S6_CLOSURE.releaseParent) throw new Error("P2-S6 release parent mismatch");
+  if (execFileSync("git", ["-C", root, "rev-parse", `${P2_S6_CLOSURE.releaseMerge}^{tree}`], { encoding: "utf8" }).trim() !== P2_S6_CLOSURE.releaseTree) throw new Error("P2-S6 release tree mismatch");
+  validateP2S6SourceGitState(root);
+};
+
+const validateP2S6ProductionClosure = (sprint, rootDir) => {
+  if (sprint.id !== "P2" || sprint.progress < 100) return;
+  const evidence = sprint.evidence || {};
+  if (!evidence.implementation?.includes(P2_S6_PRODUCTION_CLOSURE.record) || !evidence.implementation?.includes(P2_S6_PRODUCTION_CLOSURE.report)) throw new Error("P2-S6 production implementation evidence is incomplete");
+  if (!evidence.preview_smoke?.includes(P2_S6_PRODUCTION_CLOSURE.previewSmoke)) throw new Error("P2-S6 production preview smoke is missing");
+  if (!evidence.deployment?.includes(P2_S6_PRODUCTION_CLOSURE.deployment)) throw new Error("P2-S6 production deployment evidence is missing");
+  if (!evidence.production_smoke?.includes(P2_S6_PRODUCTION_CLOSURE.productionSmoke)) throw new Error("P2-S6 production smoke evidence is missing");
+  if (!evidence.monitoring?.includes(P2_S6_PRODUCTION_CLOSURE.monitoring)) throw new Error("P2-S6 production monitoring evidence is missing");
+  if (sprint.verdicts?.production_release !== "GO") throw new Error("P2-S6 production release verdict must be GO");
+
+  const root = realpathSync(resolve(rootDir));
+  const recordBytes = readFileSync(resolve(root, P2_S6_PRODUCTION_CLOSURE.record));
+  const record = validateP2S6ProductionRecord(JSON.parse(recordBytes.toString("utf8")));
+  const reportBody = readFileSync(resolve(root, P2_S6_PRODUCTION_CLOSURE.report), "utf8");
+  const recordSha256 = createHash("sha256").update(recordBytes).digest("hex");
+  requireText(reportBody, new RegExp(P2_S6_PRODUCTION_CLOSURE.releaseSha, "i"), "P2-S6 production report must name the exact release SHA");
+  requireText(reportBody, new RegExp(P2_S6_PRODUCTION_CLOSURE.deploymentId, "i"), "P2-S6 production report must name the exact deployment");
+  requireText(reportBody, new RegExp(recordSha256, "i"), "P2-S6 production report must bind the exact machine record");
+  requireText(reportBody, /Verdict:\s*GO/i, "P2-S6 production report must record GO");
+  requireText(reportBody, /No manual promotion/i, "P2-S6 production report must preserve the no-manual-promotion boundary");
+  return record;
 };
 
 export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
@@ -926,6 +1038,7 @@ export function validateLedger(ledger, { rootDir = process.cwd() } = {}) {
     validateP2S4Closure(sprint, rootDir);
     validateP2S5Closure(sprint, rootDir);
     validateP2S6Closure(sprint, rootDir);
+    validateP2S6ProductionClosure(sprint, rootDir);
     if (sprint.progress >= 85 && sprint.verdicts?.independent_review !== "GO") throw new Error(`${sprint.id} requires independent_review GO verdict`);
     for (const [threshold, key] of GATES) if (sprint.progress >= threshold && !hasEvidence(sprint.evidence, key)) throw new Error(`${sprint.id} requires ${key}`);
   }
