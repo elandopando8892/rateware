@@ -12,7 +12,7 @@ import {
 
 test("accepts the exact P3-V1 product-addressed visual evidence", () => {
   const evidence = loadP3V1Evidence();
-  const result = validateP3V1Evidence({ ...evidence, rootDir: process.cwd() });
+  const result = validateP3V1Evidence({ ...evidence, rootDir: process.cwd(), requireTracked: true });
   assert.equal(result.captures, 18);
   assert.deepEqual(result.scores, { "app.html": 91, "rateware.html": 90 });
 });
@@ -47,4 +47,21 @@ test("rejects screenshot byte, source blob, viewport, state, score, and candidat
   const candidateDrift = structuredClone(evidence.manifest);
   candidateDrift.product_sha = "f".repeat(40);
   assert.throws(() => validateP3V1Evidence({ ...evidence, rootDir: process.cwd(), manifest: candidateDrift }), /candidate|product/i);
+
+  const scoreCandidateDrift = evidence.designReview.replaceAll(
+    `"candidate_sha":"${evidence.manifest.product_sha}"`,
+    `"candidate_sha":"${"f".repeat(40)}"`,
+  );
+  assert.throws(
+    () => validateP3V1Evidence({ ...evidence, rootDir: process.cwd(), designReview: scoreCandidateDrift, requireTracked: true }),
+    /candidate|product/i,
+  );
+});
+
+test("binds the evaluated design review to the tracked file bytes", () => {
+  const evidence = loadP3V1Evidence();
+  assert.throws(
+    () => validateP3V1Evidence({ ...evidence, rootDir: process.cwd(), designReview: `${evidence.designReview}\n`, requireTracked: true }),
+    /tracked|exact/i,
+  );
 });

@@ -102,6 +102,9 @@ export function validateP3V1Evidence({
   for (const record of scoreRecords) {
     const { route, ...scoreInput } = record;
     if (!(route in EXPECTED_SCORES)) throw new Error(`P3-V1 score route is unknown: ${route}`);
+    if (scoreInput.candidate_sha !== manifest.product_sha || scoreInput.candidate_sha !== P3V1_PRODUCT_SHA) {
+      throw new Error(`P3-V1 score candidate identity mismatch: ${route}`);
+    }
     const representative = manifest.captures.find((capture) => capture.file === REPRESENTATIVE[route]);
     if (!representative || scoreInput.reference_sha256 !== representative.reference_sha256 || scoreInput.screenshot_sha256 !== representative.screenshot_sha256) {
       throw new Error(`P3-V1 score evidence mismatch: ${route}`);
@@ -123,6 +126,9 @@ export function validateP3V1Evidence({
       if (git(root, ["hash-object", "--", resolve(root, path)]) !== git(root, ["rev-parse", `HEAD:${path}`])) {
         throw new Error(`P3-V1 evidence file is not tracked exactly: ${file}`);
       }
+    }
+    if (designReview !== readFileSync(resolve(root, P3V1_EVIDENCE_DIRECTORY, "design-review.md"), "utf8")) {
+      throw new Error("P3-V1 evaluated design review is not the exact tracked file");
     }
   }
   return Object.freeze({ captures: manifest.captures.length, scores: Object.freeze(scores) });
