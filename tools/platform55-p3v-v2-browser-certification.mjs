@@ -97,6 +97,23 @@ function validSourceBlobs(value) {
   return keys.every((path) => sha(dataValue(descriptors, path), 40));
 }
 
+function validEvidenceGeometry(value, viewport) {
+  const descriptors = ownDataRecord(value);
+  if (!descriptors || JSON.stringify(Object.keys(descriptors).sort()) !== JSON.stringify(["heading", "scroll_y", "source_retention", "state_surface", "viewport_height"])) return false;
+  const viewportHeight = dataValue(descriptors, "viewport_height");
+  if (!Number.isSafeInteger(viewportHeight) || viewportHeight !== viewport?.[1] || dataValue(descriptors, "scroll_y") !== 0) return false;
+  for (const name of ["heading", "state_surface", "source_retention"]) {
+    const rect = ownDataRecord(dataValue(descriptors, name));
+    if (!rect || JSON.stringify(Object.keys(rect).sort()) !== JSON.stringify(["bottom", "height", "top"])) return false;
+    const top = dataValue(rect, "top");
+    const bottom = dataValue(rect, "bottom");
+    const height = dataValue(rect, "height");
+    if (![top, bottom, height].every(Number.isSafeInteger) || height <= 0 || bottom <= top || Math.abs((bottom - top) - height) > 1) return false;
+    if (!(bottom > 0 && top < viewportHeight)) return false;
+  }
+  return true;
+}
+
 function result(errors) {
   const unique = Object.freeze([...new Set(errors)]);
   return Object.freeze({ ok: unique.length === 0, errors: unique });
@@ -131,6 +148,7 @@ export function validateP3V2Capture(record) {
   ]) if (dataValue(descriptors, field) !== true) errors.push(code);
   if (route === "upload-history.html" && state === "loaded" && dataValue(descriptors, "source_filename_visible") !== true) errors.push("source_filename:hidden");
   if (route === "staging-review.html" && dataValue(descriptors, "selection_scopes_distinct") !== true) errors.push("selection_scopes:not_distinct");
+  if (!validEvidenceGeometry(dataValue(descriptors, "evidence_geometry"), viewport)) errors.push("evidence_geometry:invalid");
   if (dataValue(descriptors, "page_overflow") !== false) errors.push("layout:page_overflow");
   for (const [field, code] of [["unnamed_controls", "a11y:unnamed_controls"], ["contrast_failures", "a11y:contrast"]]) {
     const entries = dataValue(descriptors, field);
