@@ -1,0 +1,222 @@
+- main:
+  - paragraph: Operate · Review Queue
+  - heading "Staging Review" [level=1]
+  - paragraph: Human approval is required before any production Rateware insert.
+  - button "Approve selected"
+  - region "Human approval boundary":
+    - strong: Staged rates remain outside production
+    - paragraph: Evidence, validation gaps, and selection scope stay visible. Only an explicit human approval can publish an eligible row to Rateware.
+  - heading "Quote normalization" [level=2]
+  - generic "Staging quality summary":
+    - article:
+      - generic: Visible
+      - strong: "0"
+    - article:
+      - generic: Location gaps
+      - strong: "0"
+    - article:
+      - generic: Rate gaps
+      - strong: "0"
+    - article:
+      - generic: Critical cells
+      - strong: "0"
+    - article:
+      - generic: Selected
+      - strong: "0"
+  - region "Human review keeps source evidence in control":
+    - paragraph: Approval gate
+    - heading "Human review keeps source evidence in control" [level=3]
+    - status: Loading the visible review scope.
+    - button "Review ready rows"
+    - link "Open source files":
+      - /url: ./upload-history.html
+    - generic "Approval gate summary":
+      - article:
+        - generic: Source evidence
+        - strong: "0"
+      - article:
+        - generic: Ready to approve
+        - strong: "0"
+      - article:
+        - generic: Needs correction
+        - strong: "0"
+      - article:
+        - generic: Selected now
+        - strong: "0"
+  - generic "Staging review views":
+    - button "All"
+    - button "Location gaps"
+    - button "Rate gaps"
+    - button "Vendor gaps"
+    - button "Conflicts"
+    - button "Source audit"
+    - button "Ready"
+    - button "All-in"
+    - button "Split"
+  - text: Search
+  - searchbox "Search"
+  - text: Status
+  - combobox "Status":
+    - option "Pending review" [selected]
+    - option "Approved"
+    - option "Rejected"
+    - option "Archived"
+    - option "All"
+  - button "Refresh" [disabled]
+  - button "Clear filters"
+  - button "View Custom layout local layout":
+    - generic: View
+    - strong: Custom layout
+    - generic: local layout
+  - generic "Columns"
+  - generic "Bulk action scope":
+    - generic: "Page selected: 0"
+    - generic: "Page rows: 0"
+    - generic: "Database matches: 0"
+  - generic: Filtered actions use every matching database row.
+  - generic "Staging pagination":
+    - generic: No matching staged rows. Use Clear filters above to reset the database view.
+    - button "First" [disabled]
+    - button "Prev" [disabled]
+    - text: Page
+    - spinbutton "Page" [disabled]: "1"
+    - button "Next" [disabled]
+    - button "Last" [disabled]
+    - text: Rows
+    - combobox "Rows" [disabled]:
+      - option "50"
+      - option "100" [selected]
+      - option "200"
+      - option "500"
+      - option "1,000"
+  - strong: Ready
+  - generic "Visible validation issues":
+    - button "Next issue" [disabled]
+    - button "Select issue rows" [disabled]
+    - generic: No visible issues
+  - generic "⌨ Shortcuts"
+  - generic "Staging review rows":
+    - table:
+      - rowgroup:
+        - row "Select all visible staging rows Vendor Origin Destination All-in Quote date RFx O ZIP O ST O market O region D ZIP D ST D market D region Equipment Trailer Hazmat Temp ctrl Config Operation Service MX crossing US crossing MX linehaul US linehaul FSC Border fee Currency Capacity Status Carrier cost Board rate Commercial model Bid revision Bid outcome Shipment ID":
+          - columnheader "Select all visible staging rows":
+            - checkbox "Select all visible staging rows"
+          - columnheader "Vendor": Vendor
+          - columnheader "Origin": Origin
+          - columnheader "Destination": Destination
+          - columnheader "All-in": All-in
+          - columnheader "Quote date": Quote date
+          - columnheader "RFx": RFx
+          - columnheader "O ZIP": O ZIP
+          - columnheader "O ST": O ST
+          - columnheader "O market": O market
+          - columnheader "O region": O region
+          - columnheader "D ZIP": D ZIP
+          - columnheader "D ST": D ST
+          - columnheader "D market": D market
+          - columnheader "D region": D region
+          - columnheader "Equipment": Equipment
+          - columnheader "Trailer": Trailer
+          - columnheader "Hazmat": Hazmat
+          - columnheader "Temp ctrl": Temp ctrl
+          - columnheader "Config": Config
+          - columnheader "Operation": Operation
+          - columnheader "Service": Service
+          - columnheader "MX crossing": MX crossing
+          - columnheader "US crossing": US crossing
+          - columnheader "MX linehaul": MX linehaul
+          - columnheader "US linehaul": US linehaul
+          - columnheader "FSC": FSC
+          - columnheader "Border fee": Border fee
+          - columnheader "Currency": Currency
+          - columnheader "Capacity": Capacity
+          - columnheader "Status": Status
+          - columnheader "Carrier cost": Carrier cost
+          - columnheader "Board rate": Board rate
+          - columnheader "Commercial model": Commercial model
+          - columnheader "Bid revision": Bid revision
+          - columnheader "Bid outcome": Bid outcome
+          - columnheader "Shipment ID": Shipment ID
+        - row "Clear all All All All All All All All All All All All All All All All All All All All All All All All All All All All All All All All All All All All All":
+          - columnheader "Clear all":
+            - button "Clear all"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+          - columnheader "All":
+            - button "All"
+      - rowgroup:
+        - row "Loading staging rows Reading interpreted quotes, catalog matches, validation flags, and editable spreadsheet columns.":
+          - cell "Loading staging rows Reading interpreted quotes, catalog matches, validation flags, and editable spreadsheet columns.":
+            - strong: Loading staging rows
+            - paragraph: Reading interpreted quotes, catalog matches, validation flags, and editable spreadsheet columns.
+  - generic: After approval
+  - link "Open Rateware":
+    - /url: ./rateware.html

@@ -1,0 +1,26 @@
+{
+  "schema_version": 2,
+  "retrieved_at": "2026-08-25T18:31:26.637Z",
+  "source": "vercel-rest-api-v13",
+  "capture_tool": "vercel-cli@54.4.1",
+  "endpoint": "/v13/deployments/dpl_AvCeNfRhG3T5YzgehByP53h7Kcnc",
+  "raw_response_sha256": "da74c806fce709e65fa5f376a930016e3bdd54702b626eeaba6a6a983cb1c95f",
+  "raw_response_controlled_location": "private-local-evidence",
+  "deployment": {
+    "id": "dpl_AvCeNfRhG3T5YzgehByP53h7Kcnc",
+    "name": "rateware",
+    "target": "production",
+    "status": "READY",
+    "ready_state": "READY",
+    "source": "git",
+    "created_at_epoch_ms": 1787678684077,
+    "ready_at_epoch_ms": 1787678691859,
+    "deployment_url_ref": "deployment-e913e2d4d2bae70f",
+    "production_alias": "rateware.vercel.app",
+    "git_source": {
+      "type": "github",
+      "ref": "main",
+      "sha": "f329b3c580ba9a7c3bf9f7836d2af4986f946f3f"
+    }
+  }
+}

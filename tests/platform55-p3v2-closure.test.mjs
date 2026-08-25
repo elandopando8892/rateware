@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -10,6 +11,28 @@ const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const MATRIX = new URL("../docs/platform55-visual-parity/p3v-route-matrix.csv", import.meta.url);
 const REVIEW = new URL(`../docs/platform55-visual-parity/evidence/p3v2/${evidence.P3V2_PRODUCT_SHA}/independent-review.md`, import.meta.url);
 const rows = async () => parseRouteMatrix(await readFile(MATRIX, "utf8"));
+
+test("binds P3-V2 to the exact squash release without requiring feature-commit ancestry", async () => {
+  const git = (...args) => execFileSync("git", ["-C", ROOT, ...args], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+
+  assert.equal(git("rev-parse", `${evidence.P3V2_FINAL_REVIEWED_HEAD}^{tree}`), evidence.P3V2_FINAL_REVIEWED_TREE);
+  assert.equal(git("rev-parse", `${evidence.P3V2_PRODUCTION_RELEASE_SHA}^{tree}`), evidence.P3V2_PRODUCTION_RELEASE_TREE);
+  assert.equal(evidence.P3V2_PRODUCTION_RELEASE_TREE, evidence.P3V2_FINAL_REVIEWED_TREE);
+  execFileSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", evidence.P3V2_PRODUCTION_RELEASE_SHA, "HEAD"], { stdio: "pipe" });
+  assert.throws(
+    () => execFileSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", evidence.P3V2_FINAL_REVIEWED_HEAD, "HEAD"], { stdio: "pipe" }),
+    /Command failed/,
+    "the accepted squash path must not depend on feature-commit ancestry",
+  );
+
+  assert.deepEqual(
+    evidence.validateP3V2ClosureAccreditation({ rootDir: ROOT, rows: await rows(), requireTracked: true }),
+    { captures: 39, scores: { "upload-center.html": 92, "upload-history.html": 90, "staging-review.html": 93 }, routes: ["staging-review.html", "upload-center.html", "upload-history.html"] },
+  );
+});
 
 test("accredits exactly the three independently reviewed P3-V2 routes", async () => {
   assert.deepEqual(
