@@ -8,8 +8,9 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-operate.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
-  <body data-platform55-shell="tenant" data-platform55-page="staging-review">
+  <body data-platform55-shell="tenant" data-platform55-page="staging-review" data-p3v2-states="loaded loading empty review-required error">
     <div class="rw-app" data-platform55-app>
       <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
       <div class="rw-workspace">
@@ -21,8 +22,8 @@
           </form>
         </header>
         <main class="rw-main" id="main-content">
-          <div class="rw-operate-page history-layout" data-platform55-page-content>
-            <header class="rw-operate-heading" data-platform55-page-header>
+          <div class="rw-operate-page history-layout p55-vp-page p55-vp-page--review-queue p55-vp-operation-flow" data-platform55-page-content>
+            <header class="rw-operate-heading p55-vp-page-header" data-platform55-page-header>
               <div>
                 <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Operate · Review Queue</p>
                 <h1 data-platform55-page-title>Staging Review</h1>
@@ -30,6 +31,12 @@
               </div>
               <button class="page-primary-action" type="button" data-click-target="#bulk-approve-button" data-platform55-action="approve-selected">Approve selected</button>
             </header>
+            <section class="p55-vp-context-banner" data-p3v2-human-approval-boundary aria-label="Human approval boundary">
+              <div class="p55-vp-context-banner__copy">
+                <strong>Staged rates remain outside production</strong>
+                <p>Evidence, validation gaps, and selection scope stay visible. Only an explicit human approval can publish an eligible row to Rateware.</p>
+              </div>
+            </section>
           <section class="workspace-panel spreadsheet-workbench review-queue-workspace rw-operate-panel">
             <div class="workbench-header">
               <div>
@@ -59,7 +66,7 @@
                 </article>
               </div>
             </div>
-            <section class="staging-approval-brief rw-operate-review-state" data-state="blocked" aria-labelledby="staging-approval-brief-title">
+            <section class="staging-approval-brief rw-operate-review-state p55-vp-review-brief p55-vp-state-panel" data-state="blocked" data-p3v2-state="review-required" aria-labelledby="staging-approval-brief-title">
               <div class="staging-approval-brief-copy">
                 <p class="eyebrow">Approval gate</p>
                 <h3 id="staging-approval-brief-title">Human review keeps source evidence in control</h3>
@@ -89,7 +96,7 @@
               </div>
             </section>
             <div id="staging-upload-scope" class="scope-banner hidden"></div>
-            <div class="sheet-command-bar review-queue-command-bar">
+            <div class="sheet-command-bar review-queue-command-bar p55-vp-filter-surface">
               <div class="review-filter-row compact-filter-row review-mode-tabs" aria-label="Staging review views">
                 <button class="review-filter is-active" type="button" data-staging-filter="all">All</button>
                 <button class="review-filter" type="button" data-staging-filter="needs-location">Location gaps</button>
@@ -125,11 +132,11 @@
               </div>
               <div id="staging-active-filters" class="active-filter-strip hidden" aria-live="polite"></div>
 
-              <div class="bulk-action-bar is-empty" aria-live="polite">
+              <div class="bulk-action-bar is-empty p55-vp-scope-strip" aria-live="polite">
                 <div class="bulk-scope-strip" aria-label="Bulk action scope">
-                  <span id="bulk-selection-count" class="bulk-scope-pill">Page selected: 0</span>
+                  <span id="bulk-selection-count" class="bulk-scope-pill" data-p3v2-selection-scope="page">Page selected: 0</span>
                   <span id="staging-page-count" class="bulk-scope-pill">Page rows: 0</span>
-                  <span id="staging-filtered-count" class="bulk-scope-pill">Database matches: 0</span>
+                  <span id="staging-filtered-count" class="bulk-scope-pill" data-p3v2-selection-scope="filtered-database">Database matches: 0</span>
                   <button id="select-staging-page" type="button" class="secondary small-button">Select page</button>
                   <button id="clear-staging-selection" type="button" class="secondary small-button" disabled>Clear selection</button>
                 </div>
@@ -256,7 +263,7 @@
                     <th data-col="status">Status</th>
                   </tr>
                 </thead>
-                <tbody id="staging-body">
+                <tbody id="staging-body" data-p3v2-state="loaded">
                   <tr>
                     <td colspan="37"><div class="ui-state ui-state-loading" data-tone="loading"><strong>Loading staging rows</strong><p>Reading rates awaiting review.</p><div class="ui-skeleton-list" aria-hidden="true"><i><b></b><b></b><b></b></i></div></div></td>
                   </tr>

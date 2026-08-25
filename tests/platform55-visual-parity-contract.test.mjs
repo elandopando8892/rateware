@@ -447,7 +447,7 @@ test("accredits P3-V1 only from the exact independently reviewed product and evi
 
   const rows = await canonicalRows();
   assert.deepEqual(
-    rows.filter((row) => row.parity_status === "accepted").map((row) => row.route).sort(),
+    rows.filter((row) => row.parity_status === "accepted" && row.p3v_wave === "P3-V1").map((row) => row.route).sort(),
     ["app.html", "rateware.html"],
     "P3-V1 closure must accredit only the two independently reviewed routes",
   );
@@ -460,7 +460,7 @@ test("accredits P3-V1 only from the exact independently reviewed product and evi
   }
 
   const board = await readFile(new URL("../docs/platform55-visual-parity/README.md", import.meta.url), "utf8");
-  assert.match(board, /P3-V visual parity track:\s*`25%`/);
+  assert.match(board, /P3-V visual parity track:\s*`40%`/);
   assert.match(board, /Formal release progress:\s*General `83%`; P0-P2 `100%`; P3-P5 `0%`/);
 
   const ledger = JSON.parse(await readFile(new URL("../docs/release/production-readiness-ledger.json", import.meta.url), "utf8"));

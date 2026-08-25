@@ -46,7 +46,7 @@ const fail = () => { if (state() === "error") throw new Error("Deterministic upl
 const blocked = () => { throw new Error("QA boundary blocks mutations"); };
 export async function fetchUploadHistory() {
   fail();
-  return [{ id: "00000000-0000-4000-8000-000000000101", source_filename: "lane-quote.xlsx", document_type: "xlsx", status: "staged", created_at: "2026-08-21T12:00:00Z", vendor: "Northstar Carrier", rfx: "RFQ-2026-081", staged_rows: 12, approved_rows: 0, rejected_rows: 0 }];
+  return [{ id: "00000000-0000-4000-8000-000000000101", original_filename: "lane-quote.xlsx", source_filename: "lane-quote.xlsx", storage_path: "qa/preserved/lane-quote.xlsx", document_type: "xlsx", status: "staged", created_at: "2026-08-21T12:00:00Z", vendor_hint: "Northstar Carrier", rfx_hint: "RFQ-2026-081", staged_rows: 12, approved_rows: 0, rejected_rows: 0 }];
 }
 export async function fetchUploadStagedRows() { fail(); return []; }
 export async function getUploadSourceUrl() { blocked(); }

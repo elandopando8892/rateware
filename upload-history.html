@@ -8,8 +8,9 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-operate.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
-  <body data-platform55-shell="tenant" data-platform55-page="upload-history">
+  <body data-platform55-shell="tenant" data-platform55-page="upload-history" data-p3v2-states="loaded empty loading processing-error">
     <div class="rw-app" data-platform55-app>
       <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
       <div class="rw-workspace">
@@ -21,8 +22,8 @@
           </form>
         </header>
         <main class="rw-main" id="main-content">
-          <div class="rw-operate-page history-layout" data-platform55-page-content>
-            <header class="rw-operate-heading" data-platform55-page-header>
+          <div class="rw-operate-page history-layout p55-vp-page p55-vp-page--source-files p55-vp-operation-flow" data-platform55-page-content>
+            <header class="rw-operate-heading p55-vp-page-header" data-platform55-page-header>
               <div>
                 <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Operate · Source Files</p>
                 <h1 data-platform55-page-title>Upload History</h1>
@@ -30,7 +31,13 @@
               </div>
               <a class="page-primary-action" href="./upload-center.html" data-platform55-action="import-files">Import files</a>
             </header>
-          <section class="workspace-panel source-files-workspace rw-operate-panel">
+          <section class="p55-vp-context-banner" data-p3v2-provenance-boundary aria-label="Source provenance boundary">
+            <div class="p55-vp-context-banner__copy">
+              <strong>Every staged row remains traceable</strong>
+              <p>Source filenames, interpretation status, and evidence stay linked. Reprocessing creates reviewed staging output; it does not bypass approval.</p>
+            </div>
+          </section>
+          <section class="workspace-panel source-files-workspace rw-operate-panel p55-vp-workspace-card">
             <div class="module-workspace-heading">
               <div>
                 <p class="eyebrow">Source files</p>
@@ -80,7 +87,7 @@
                 </article>
               </div>
             </details>
-            <div class="review-filter-row" aria-label="Upload quick filters">
+            <div class="review-filter-row p55-vp-filter-surface" aria-label="Upload quick filters">
               <button class="review-filter is-active" type="button" data-upload-filter="all">All visible</button>
               <button class="review-filter" type="button" data-upload-filter="needs-interpretation">Needs interpretation</button>
               <button class="review-filter" type="button" data-upload-filter="needs-audit">Audit needed</button>
@@ -116,10 +123,10 @@
               <button type="button" class="secondary small-button" data-download-bulk-template>Download template</button>
               <button id="archive-selected-uploads" type="button" class="secondary small-button" disabled>Archive selected</button>
               <button id="remove-selected-uploads" type="button" class="danger small-button" disabled>Remove selected</button>
-              <span id="upload-bulk-status" class="row-save-status"></span>
+              <span id="upload-bulk-status" class="row-save-status" aria-live="polite"></span>
             </div>
 
-            <div class="table-wrap">
+            <div class="table-wrap p55-vp-table-shell">
               <table>
                 <thead>
                   <tr>
@@ -136,7 +143,7 @@
                     <th>Actions</th>
                   </tr>
                 </thead>
-                <tbody id="history-body">
+                <tbody id="history-body" data-p3v2-state="loaded">
                   <tr>
                     <td colspan="9"><div class="ui-state ui-state-loading" data-tone="loading"><strong>Loading upload history</strong><p>Reading source files, interpretation status and staged rows.</p><div class="ui-skeleton-list" aria-hidden="true"><i><b></b><b></b><b></b></i></div></div></td>
                   </tr>

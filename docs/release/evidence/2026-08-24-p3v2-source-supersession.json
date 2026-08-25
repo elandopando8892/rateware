@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "sprint": "P3-V2",
+  "verdict": "LOCAL-GO",
+  "release_credit": "withheld",
+  "product_candidate_sha": "c4009df2f27b7e286ad8d9607a5a2ded7c40635b",
+  "product_candidate_tree": "2b481c63034739faf47422f0b3a340e74b32423e",
+  "product_base_sha": "7b76ba36dae4e0fa26e1b6605b6bb398581051e5",
+  "source_paths": [
+    "upload-center.html",
+    "upload-history.html",
+    "staging-review.html",
+    "src/platform55-visual-parity.css"
+  ],
+  "source_blobs": {
+    "upload-center.html": "91c0660ea76d51bb04fe57e5989ebaf610457884",
+    "upload-history.html": "571f1774a5b0e0fc43b5e7271a8d95ba7e8d3232",
+    "staging-review.html": "1db62bd9a479f3da944f15f08b09ce05fb7cf8cf",
+    "src/platform55-visual-parity.css": "7af40be6c38eb79f2fa5fd52e183d9b689f1b566"
+  }
+}
