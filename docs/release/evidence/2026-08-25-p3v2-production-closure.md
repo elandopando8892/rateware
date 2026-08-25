@@ -11,7 +11,7 @@ Verdict: GO
 - Vercel deployment: `dpl_AvCeNfRhG3T5YzgehByP53h7Kcnc`
 - Deployment URL reference: `deployment-e913e2d4d2bae70f`
 - Production alias: `rateware.vercel.app`
-- Record SHA-256: `edc6c424bdb9ca47bb9c3f987c24e0ad9ed44f0ea464d8feaf0149f3a5bd2fd3`
+- Record SHA-256: `c528d71ae17ef90a227c76888cf53cc23154166272dcefe85a12d74ee891b9a5`
 
 The independently reviewed feature tree is byte-identical to the squash release tree. Vercel reports the exact release SHA as `READY` in production under the production alias. No manual promotion occurred.
 

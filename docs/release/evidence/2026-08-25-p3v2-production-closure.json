@@ -35,7 +35,7 @@
   "source_evidence": {
     "vercel": {
       "path": "docs/release/evidence/p3v2-production-source/vercel-deployment.json",
-      "sha256": "fd74ff9d2e2e15649a4c2529abea422e693c247135d1d38d3bb3bf90ed874b34"
+      "sha256": "248a583b7a8ffadf5cb0b798676f5a7033b7f5089ce6437bf18c49f3d5bca36c"
     },
     "authenticated_routes": {
       "path": "docs/release/evidence/p3v2-production-source/browser-artifact-manifest.json",

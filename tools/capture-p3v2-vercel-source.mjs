@@ -8,6 +8,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const deploymentId = "dpl_AvCeNfRhG3T5YzgehByP53h7Kcnc";
 const endpoint = `/v13/deployments/${deploymentId}`;
 const vercelCli = resolve(process.env.APPDATA, "npm/vercel.ps1");
+const expectedCliVersion = "54.4.1";
+const cliVersionOutput = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `& '${vercelCli.replaceAll("'", "''")}' '--version'`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+const cliVersion = cliVersionOutput.match(/(?:Vercel CLI\s+)?(\d+\.\d+\.\d+)/)?.[1];
+if (cliVersion !== expectedCliVersion) throw new Error(`Vercel CLI version mismatch: expected ${expectedCliVersion}, received ${cliVersion ?? "unknown"}`);
 const raw = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `& '${vercelCli.replaceAll("'", "''")}' 'api' '${endpoint}'`], { encoding: null, stdio: ["ignore", "pipe", "pipe"] });
 const parsed = JSON.parse(raw.toString("utf8"));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
@@ -20,7 +24,7 @@ const sanitized = {
   schema_version: 2,
   retrieved_at: new Date().toISOString(),
   source: "vercel-rest-api-v13",
-  capture_tool: "vercel-cli@59.5.0",
+  capture_tool: `vercel-cli@${cliVersion}`,
   endpoint,
   raw_response_sha256: sha256(raw),
   raw_response_controlled_location: "private-local-evidence",

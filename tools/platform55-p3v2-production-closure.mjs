@@ -16,11 +16,11 @@ export const P3V2_PRODUCTION = Object.freeze({
   productionDeploymentUrlRef: "deployment-e913e2d4d2bae70f",
   productionAlias: "rateware.vercel.app",
   vercelSourcePath: "docs/release/evidence/p3v2-production-source/vercel-deployment.json",
-  vercelSourceSha256: "fd74ff9d2e2e15649a4c2529abea422e693c247135d1d38d3bb3bf90ed874b34",
+  vercelSourceSha256: "248a583b7a8ffadf5cb0b798676f5a7033b7f5089ce6437bf18c49f3d5bca36c",
   routeSourcePath: "docs/release/evidence/p3v2-production-source/browser-artifact-manifest.json",
   routeSourceSha256: "069c553ccf9f6733de6c21977fe7a540bb65e9c6c7c506db283892e79bd25de1",
-  recordSha256: "edc6c424bdb9ca47bb9c3f987c24e0ad9ed44f0ea464d8feaf0149f3a5bd2fd3",
-  reportSha256: "9f7deced6dcc649172dd3a8a2ffdc89e9f40802829d7e8ef2106b7aaba4766ec",
+  recordSha256: "c528d71ae17ef90a227c76888cf53cc23154166272dcefe85a12d74ee891b9a5",
+  reportSha256: "205ae48caf5a094a04f52a634a38a7b96eee915b77b78aadb5b73b09cbe16491",
 });
 
 const ROUTES = new Map([
@@ -118,7 +118,7 @@ export function validateP3V2ProductionSourceEvidence(record, vercelBytes, routeB
   exactObject(vercel, ["schema_version", "retrieved_at", "source", "capture_tool", "endpoint", "raw_response_sha256", "raw_response_controlled_location", "deployment"], "Vercel source");
   const deployment = exactObject(vercel.deployment, ["id", "name", "target", "status", "ready_state", "source", "created_at_epoch_ms", "ready_at_epoch_ms", "deployment_url_ref", "production_alias", "git_source"], "Vercel deployment source");
   const gitSource = exactObject(deployment.git_source, ["type", "ref", "sha"], "Vercel Git source");
-  if (vercel.schema_version !== 2 || vercel.source !== "vercel-rest-api-v13" || vercel.capture_tool !== "vercel-cli@59.5.0" || vercel.endpoint !== `/v13/deployments/${P3V2_PRODUCTION.productionDeploymentId}` || !/^[a-f0-9]{64}$/.test(vercel.raw_response_sha256) || vercel.raw_response_controlled_location !== "private-local-evidence" || !Number.isFinite(Date.parse(vercel.retrieved_at)) || deployment.id !== P3V2_PRODUCTION.productionDeploymentId || deployment.target !== "production" || deployment.status !== "READY" || deployment.ready_state !== "READY" || deployment.source !== "git" || deployment.deployment_url_ref !== P3V2_PRODUCTION.productionDeploymentUrlRef || deployment.production_alias !== P3V2_PRODUCTION.productionAlias || gitSource.type !== "github" || gitSource.ref !== "main" || gitSource.sha !== P3V2_PRODUCTION.releaseSha) throw new Error("Vercel source evidence mismatch");
+  if (vercel.schema_version !== 2 || vercel.source !== "vercel-rest-api-v13" || vercel.capture_tool !== "vercel-cli@54.4.1" || vercel.endpoint !== `/v13/deployments/${P3V2_PRODUCTION.productionDeploymentId}` || !/^[a-f0-9]{64}$/.test(vercel.raw_response_sha256) || vercel.raw_response_controlled_location !== "private-local-evidence" || !Number.isFinite(Date.parse(vercel.retrieved_at)) || deployment.id !== P3V2_PRODUCTION.productionDeploymentId || deployment.target !== "production" || deployment.status !== "READY" || deployment.ready_state !== "READY" || deployment.source !== "git" || deployment.deployment_url_ref !== P3V2_PRODUCTION.productionDeploymentUrlRef || deployment.production_alias !== P3V2_PRODUCTION.productionAlias || gitSource.type !== "github" || gitSource.ref !== "main" || gitSource.sha !== P3V2_PRODUCTION.releaseSha) throw new Error("Vercel source evidence mismatch");
 
   const routes = JSON.parse(routeText);
   exactObject(routes, ["schema_version", "captured_at", "source", "raw_artifacts_controlled_location", "read_only", "mutation_actions", "routes"], "authenticated route source");

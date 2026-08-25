@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
-  "retrieved_at": "2026-08-25T18:21:59.432Z",
+  "retrieved_at": "2026-08-25T18:31:26.637Z",
   "source": "vercel-rest-api-v13",
-  "capture_tool": "vercel-cli@59.5.0",
+  "capture_tool": "vercel-cli@54.4.1",
   "endpoint": "/v13/deployments/dpl_AvCeNfRhG3T5YzgehByP53h7Kcnc",
   "raw_response_sha256": "da74c806fce709e65fa5f376a930016e3bdd54702b626eeaba6a6a983cb1c95f",
   "raw_response_controlled_location": "private-local-evidence",
