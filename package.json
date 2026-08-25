@@ -33,7 +33,7 @@
     "test:platform55:p3v2-browser": "node --test tests/platform55-p3v-v2-browser-certification.test.mjs",
     "test:platform55:p3v2-evidence": "node --test tests/platform55-p3v2-evidence.test.mjs",
     "test:platform55:p3v2-closure": "node --test tests/platform55-p3v2-closure.test.mjs",
-    "test:platform55:p3v3": "node --test tests/platform55-p3v-v3-contract.test.mjs",
+    "test:platform55:p3v3": "node --test tests/platform55-p3v-v3-contract.test.mjs tests/platform55-p3v3-source-supersession.test.mjs",
     "certify:platform55:p3v2": "node tools/platform55-p3v-v2-browser-certification.mjs",
     "certify:platform55:p3v1": "node tools/platform55-p3v-v1-browser-certification.mjs",
     "test:provider-service": "node tools/run-provider-service-tests.mjs",

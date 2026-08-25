@@ -5,6 +5,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { P3V2_SOURCE_PATHS, P3V2_SPECS, validateP3V2Manifest } from "./platform55-p3v-v2-browser-certification.mjs";
 import { validateP3V2SourceGitState } from "./platform55-p3v2-source-supersession.mjs";
+import { loadPlatform55SourceSupersessions, validateHistoricalSourceParity } from "./platform55-s6-source-supersession.mjs";
 import { evaluateVisualParityScore, validateRouteMatrix } from "./platform55-visual-parity-contract.mjs";
 
 export const P3V2_PRODUCT_SHA = "cfe0ddb198d4bf9bf2e93654a7a3e05f0ba606f7";
@@ -13,6 +14,8 @@ export const P3V2_MANIFEST_SHA256 = "01feeb5e4ffa093417b1378ea238445b989d0b4f8e5
 export const P3V2_EVIDENCE_DIRECTORY = `docs/platform55-visual-parity/evidence/p3v2/${P3V2_PRODUCT_SHA}`;
 export const P3V2_REVIEWED_EVIDENCE_SHA = "e3e1c0bc0c89d76e4c8d595e4054a749164b2eff";
 export const P3V2_REVIEWED_EVIDENCE_TREE = "b427f06631a6df017036adc119f3cb2f07b8901f";
+export const P3V2_RELEASE_SQUASH_SHA = "f329b3c580ba9a7c3bf9f7836d2af4986f946f3f";
+export const P3V2_RELEASE_SQUASH_TREE = "82e053ac9979b8ec86430708870a79346fd70202";
 export const P3V2_INDEPENDENT_REVIEW_PATH = `${P3V2_EVIDENCE_DIRECTORY}/independent-review.md`;
 const P3V2_INDEPENDENT_REVIEW_SHA256 = "aad4dec4b6aeb4b45fb8cc7ed9613d1c1691eeee2b25a5f0fdbe9c87d5631182";
 const EXPECTED_SCORES = Object.freeze({ "upload-center.html": 92, "upload-history.html": 90, "staging-review.html": 93 });
@@ -45,8 +48,19 @@ export function validateP3V2Evidence({ rootDir = process.cwd(), manifest, design
   if (!checked.ok) throw new Error(`invalid P3-V2 manifest: ${checked.errors.join(", ")}`);
   if (manifest.product_sha !== P3V2_PRODUCT_SHA || manifest.product_tree !== P3V2_PRODUCT_TREE) throw new Error("P3-V2 product candidate identity mismatch");
   if (sha256(JSON.stringify(manifest)) !== P3V2_MANIFEST_SHA256) throw new Error("P3-V2 manifest digest mismatch");
-  const source = validateP3V2SourceGitState(root);
-  for (const path of P3V2_SOURCE_PATHS) { const expected = manifest.source_blobs[path]; if (source.source_blobs[path] !== expected || git(root, ["rev-parse", `${P3V2_PRODUCT_SHA}:${path}`]) !== expected || git(root, ["rev-parse", `HEAD:${path}`]) !== expected) throw new Error(`P3-V2 source blob mismatch: ${path}`); }
+  const source = validateP3V2SourceGitState(root, undefined, { requireCurrent: false });
+  const subjectBlobs = [];
+  const currentBlobs = [];
+  const workingBlobs = [];
+  for (const path of P3V2_SOURCE_PATHS) {
+    const expected = manifest.source_blobs[path];
+    const subjectBlob = git(root, ["rev-parse", `${P3V2_PRODUCT_SHA}:${path}`]);
+    if (source.source_blobs[path] !== expected || subjectBlob !== expected) throw new Error(`P3-V2 source blob mismatch: ${path}`);
+    subjectBlobs.push(subjectBlob);
+    currentBlobs.push(git(root, ["rev-parse", `HEAD:${path}`]));
+    workingBlobs.push(git(root, ["hash-object", "--", path]));
+  }
+  validateHistoricalSourceParity({ sourcePaths: P3V2_SOURCE_PATHS, manifestBlobs: source.source_blobs, subjectBlobs, currentBlobs, workingBlobs, supersession: loadPlatform55SourceSupersessions(root) });
   for (const capture of manifest.captures) {
     const spec = P3V2_SPECS.find(({ route }) => route === capture.route); const target = resolve(directory, capture.file);
     if (!inside(directory, target)) throw new Error(`P3-V2 screenshot escaped evidence directory: ${capture.file}`);
@@ -106,7 +120,8 @@ export function validateP3V2ClosureAccreditation({
     if (independentReview !== trackedBody) throw new Error("P3-V2 independent review is not the exact tracked body");
     git(root, ["ls-files", "--error-unmatch", "--", P3V2_INDEPENDENT_REVIEW_PATH]);
     if (git(root, ["hash-object", "--", P3V2_INDEPENDENT_REVIEW_PATH]) !== git(root, ["rev-parse", `HEAD:${P3V2_INDEPENDENT_REVIEW_PATH}`])) throw new Error("P3-V2 independent review is not tracked exactly");
-    git(root, ["merge-base", "--is-ancestor", P3V2_REVIEWED_EVIDENCE_SHA, "HEAD"]);
+    git(root, ["merge-base", "--is-ancestor", P3V2_RELEASE_SQUASH_SHA, "HEAD"]);
+    if (git(root, ["rev-parse", `${P3V2_RELEASE_SQUASH_SHA}^{tree}`]) !== P3V2_RELEASE_SQUASH_TREE) throw new Error("P3-V2 release squash tree mismatch");
     if (git(root, ["rev-parse", `${P3V2_REVIEWED_EVIDENCE_SHA}^{tree}`]) !== P3V2_REVIEWED_EVIDENCE_TREE) throw new Error("P3-V2 reviewed evidence tree mismatch");
   }
   const accepted = rows.filter((row) => row?.parity_status === "accepted");

@@ -83,7 +83,7 @@ Only deterministic local fixture data was used. No production write, Supabase mu
 - P3-V3 contract: 7/7 passed.
 - Existing Procurement shell contract: passed.
 - Existing Platform 55 shell contract: passed.
-- Historical Procurement evidence suite: its server checks pass, but the frozen P2 evidence parity check intentionally rejects the modified working tree until a P3-V3 source-supersession record is bound to an immutable candidate commit.
-- Historical P3-V2 closure on current `main`: pre-existing failure because the validator requires the pre-squash evidence commit `e3e1c0bc0c89d76e4c8d595e4054a749164b2eff` to be an ancestor, while `main` contains the squash commit `f329b3c580ba9a7c3bf9f7836d2af4986f946f3f`.
+- Historical Procurement evidence suite: 4/4 passed after the exact five route blobs were bound to immutable product candidate `5c3c1b54d3ad7c6a572c7a49f0e85faa4ed32d19` through the P3-V3 source-supersession contract. Release credit remains withheld.
+- Historical P3-V2 closure: 4/4 passed after the gate was rebound to the exact release squash `f329b3c580ba9a7c3bf9f7836d2af4986f946f3f` and the canonical supersession chain was made blob-exact for shared visual sources. The reviewed evidence commit and tree remain independently verified.
 
 Final result: passed for the local P3-V3 visual prototype; production/release credit withheld pending immutable candidate evidence, supersession wiring, independent review, preview authentication smoke, merge, and automatic production verification.

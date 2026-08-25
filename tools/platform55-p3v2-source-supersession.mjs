@@ -58,7 +58,7 @@ export function loadP3V2SourceSupersession(rootDir = process.cwd()) {
   return record;
 }
 
-export function validateP3V2SourceGitState(rootDir, record = loadP3V2SourceSupersession(rootDir)) {
+export function validateP3V2SourceGitState(rootDir, record = loadP3V2SourceSupersession(rootDir), { requireCurrent = true } = {}) {
   validateP3V2SourceSupersession(record);
   if (
     record.product_candidate_sha !== P3V2_PRODUCT_CANDIDATE ||
@@ -73,7 +73,10 @@ export function validateP3V2SourceGitState(rootDir, record = loadP3V2SourceSuper
   }).trim();
   for (const path of P3V2_SOURCE_PATHS) {
     const expected = record.source_blobs[path];
-    if (git(["rev-parse", `HEAD:${path}`]) !== expected || git(["hash-object", "--", path]) !== expected) {
+    if (git(["rev-parse", `${record.product_candidate_sha}:${path}`]) !== expected) {
+      throw new Error(`P3-V2 candidate source blob mismatch: ${path}`);
+    }
+    if (requireCurrent && (git(["rev-parse", `HEAD:${path}`]) !== expected || git(["hash-object", "--", path]) !== expected)) {
       throw new Error(`P3-V2 current source blob mismatch: ${path}`);
     }
   }
