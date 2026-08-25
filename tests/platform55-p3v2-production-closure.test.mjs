@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -57,4 +58,24 @@ test("binds the report to exact record bytes and release boundaries", () => {
   ]) {
     assert.throws(() => production.validateP3V2ProductionReport(loaded.report.replace(marker, "REMOVED"), loaded.recordBytes));
   }
+});
+
+test("requires source-derived pseudonymized deployment and authenticated-route evidence", () => {
+  const loaded = canonical();
+  const vercelBytes = readFileSync(resolve(ROOT, loaded.record.source_evidence.vercel.path));
+  const routeBytes = readFileSync(resolve(ROOT, loaded.record.source_evidence.authenticated_routes.path));
+  assert.equal(production.rawSha256(vercelBytes), loaded.record.source_evidence.vercel.sha256);
+  assert.equal(production.rawSha256(routeBytes), loaded.record.source_evidence.authenticated_routes.sha256);
+  const sources = production.validateP3V2ProductionSourceEvidence(loaded.record, vercelBytes, routeBytes);
+  assert.equal(sources.vercel.deployment.git_source.sha, loaded.record.release.sha);
+  assert.equal(sources.routes.routes.length, 3);
+  assert.match(sources.routes.routes[0].subject_ref, /^subject-[a-f0-9]{16}$/);
+
+  const fabricated = Buffer.from(vercelBytes);
+  fabricated[0] ^= 1;
+  assert.throws(() => production.validateP3V2ProductionSourceEvidence(loaded.record, fabricated, routeBytes));
+});
+
+test("raw evidence digests reject line-ending drift", () => {
+  assert.notEqual(production.rawSha256(Buffer.from("a\r\n")), production.rawSha256(Buffer.from("a\n")));
 });

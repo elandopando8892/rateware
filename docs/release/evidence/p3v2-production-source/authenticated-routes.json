@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-25T18:05:12.083Z",
+  "source": "authenticated-browser-runtime",
+  "browser_surface": "selected-browser-profile",
+  "tab_id": "2",
+  "production_origin": "https://rateware.vercel.app",
+  "read_only": true,
+  "mutation_actions": [],
+  "routes": [
+    {
+      "id": "upload-center",
+      "path": "/upload-center",
+      "url": "https://rateware.vercel.app/upload-center",
+      "document_title": "Rateware Import",
+      "heading": "Upload Center",
+      "expected_heading": "Upload Center",
+      "main_present": true,
+      "document_ready_state": "complete",
+      "authenticated": true,
+      "subject_ref": "subject-1ccea46b0012017a",
+      "dev_logs": []
+    },
+    {
+      "id": "upload-history",
+      "path": "/upload-history",
+      "url": "https://rateware.vercel.app/upload-history",
+      "document_title": "Rateware Source Files",
+      "heading": "Upload History",
+      "expected_heading": "Upload History",
+      "main_present": true,
+      "document_ready_state": "complete",
+      "authenticated": true,
+      "subject_ref": "subject-1ccea46b0012017a",
+      "dev_logs": []
+    },
+    {
+      "id": "staging-review",
+      "path": "/staging-review",
+      "url": "https://rateware.vercel.app/staging-review",
+      "document_title": "Rateware Review Queue",
+      "heading": "Staging Review",
+      "expected_heading": "Staging Review",
+      "main_present": true,
+      "document_ready_state": "complete",
+      "authenticated": true,
+      "subject_ref": "subject-1ccea46b0012017a",
+      "dev_logs": []
+    }
+  ]
+}

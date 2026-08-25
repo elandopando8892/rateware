@@ -32,13 +32,23 @@
     "cors_origins_verified": 13,
     "supabase_preview_check": "SKIPPED"
   },
+  "source_evidence": {
+    "vercel": {
+      "path": "docs/release/evidence/p3v2-production-source/vercel-deployment.json",
+      "sha256": "6b05f659cf6ddf2f96dea22f0c3e9306d5d4e9c80e8e80308dec9759363ba4f3"
+    },
+    "authenticated_routes": {
+      "path": "docs/release/evidence/p3v2-production-source/authenticated-routes.json",
+      "sha256": "d4c56f128566c0f0bb1442c898c42988fa62eb68f8b0532dc01e17436cd363ca"
+    }
+  },
   "routes": [
     {
       "id": "upload-center",
       "path": "/upload-center",
       "heading": "Upload Center",
       "authenticated": true,
-      "tenant_context": true,
+      "subject_ref": "subject-1ccea46b0012017a",
       "passed": true,
       "read_only": true,
       "console_errors": 0,
@@ -49,7 +59,7 @@
       "path": "/upload-history",
       "heading": "Upload History",
       "authenticated": true,
-      "tenant_context": true,
+      "subject_ref": "subject-1ccea46b0012017a",
       "passed": true,
       "read_only": true,
       "console_errors": 0,
@@ -60,7 +70,7 @@
       "path": "/staging-review",
       "heading": "Staging Review",
       "authenticated": true,
-      "tenant_context": true,
+      "subject_ref": "subject-1ccea46b0012017a",
       "passed": true,
       "read_only": true,
       "console_errors": 0,
@@ -71,7 +81,7 @@
     "project_status": "ACTIVE_HEALTHY",
     "default_branch": "main",
     "persistent_preview_count": 1,
-    "persistent_preview_name": "fcm-gmail-staging",
+    "persistent_preview_ref": "persistent-preview-1",
     "second_preview_created": false,
     "mutation_authorized": false,
     "changed": false
