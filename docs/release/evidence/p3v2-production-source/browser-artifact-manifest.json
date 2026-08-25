@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-25T18:18:01.219Z",
+  "source": "browser-accessibility-snapshot",
+  "raw_artifacts_controlled_location": "private-local-evidence",
+  "read_only": true,
+  "mutation_actions": [],
+  "routes": [
+    {
+      "id": "upload-center",
+      "path": "/upload-center",
+      "expected_heading": "Upload Center",
+      "raw_snapshot_sha256": "33deab787ae7627905e782c0570bd4039d081b3d99fcaf8927b5097be44e71c4",
+      "sanitized_snapshot_file": "docs/release/evidence/p3v2-production-source/upload-center-main-a11y.txt",
+      "sanitized_snapshot_sha256": "e6a223b224cfaa701d3ab1f0ee9aaf2f16866be9b0583f7d85a5fd6a59275018",
+      "dev_logs_file": "docs/release/evidence/p3v2-production-source/upload-center-dev-logs.json",
+      "dev_logs_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "dev_log_count": 0
+    },
+    {
+      "id": "upload-history",
+      "path": "/upload-history",
+      "expected_heading": "Upload History",
+      "raw_snapshot_sha256": "aa65829730b011ea2237d1b29f4514028b02d4fe0422c9b9f87bd9745e3f68ee",
+      "sanitized_snapshot_file": "docs/release/evidence/p3v2-production-source/upload-history-main-a11y.txt",
+      "sanitized_snapshot_sha256": "146a1b75b61e9288354fc9d933d2c87bf928c6891bd4ab2daf3756cf9f8a7524",
+      "dev_logs_file": "docs/release/evidence/p3v2-production-source/upload-history-dev-logs.json",
+      "dev_logs_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "dev_log_count": 0
+    },
+    {
+      "id": "staging-review",
+      "path": "/staging-review",
+      "expected_heading": "Staging Review",
+      "raw_snapshot_sha256": "294693cfb5fd6da15ee294da33f8b2ab96a49c004d342f3059de99f1d9c72103",
+      "sanitized_snapshot_file": "docs/release/evidence/p3v2-production-source/staging-review-main-a11y.txt",
+      "sanitized_snapshot_sha256": "2d2428ed39f1315581e8c43acf0f4c8b7b93d1fb1eb7cd435123e844643a6d7e",
+      "dev_logs_file": "docs/release/evidence/p3v2-production-source/staging-review-dev-logs.json",
+      "dev_logs_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "dev_log_count": 0
+    }
+  ]
+}

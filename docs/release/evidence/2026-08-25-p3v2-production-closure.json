@@ -17,7 +17,7 @@
     "pr_number": 72,
     "merged_at": "2026-08-25T17:24:39Z",
     "deployment_id": "dpl_AvCeNfRhG3T5YzgehByP53h7Kcnc",
-    "deployment_url": "rateware-bdto3t0uq-elandopando8892s-projects.vercel.app",
+    "deployment_url_ref": "deployment-e913e2d4d2bae70f",
     "production_alias": "rateware.vercel.app",
     "state": "READY",
     "source": "git",
@@ -35,11 +35,11 @@
   "source_evidence": {
     "vercel": {
       "path": "docs/release/evidence/p3v2-production-source/vercel-deployment.json",
-      "sha256": "6b05f659cf6ddf2f96dea22f0c3e9306d5d4e9c80e8e80308dec9759363ba4f3"
+      "sha256": "fd74ff9d2e2e15649a4c2529abea422e693c247135d1d38d3bb3bf90ed874b34"
     },
     "authenticated_routes": {
-      "path": "docs/release/evidence/p3v2-production-source/authenticated-routes.json",
-      "sha256": "d4c56f128566c0f0bb1442c898c42988fa62eb68f8b0532dc01e17436cd363ca"
+      "path": "docs/release/evidence/p3v2-production-source/browser-artifact-manifest.json",
+      "sha256": "069c553ccf9f6733de6c21977fe7a540bb65e9c6c7c506db283892e79bd25de1"
     }
   },
   "routes": [

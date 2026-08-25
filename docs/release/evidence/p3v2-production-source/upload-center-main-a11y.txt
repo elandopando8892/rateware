@@ -1,0 +1,61 @@
+- main:
+  - paragraph: Operate · Import
+  - heading "Upload Center" [level=1]
+  - paragraph: Preserve source files before interpretation and human review.
+  - button "Download bulk template"
+  - button "Select files"
+  - region "Source retention boundary":
+    - strong: Original evidence stays attached
+    - paragraph: Rateware preserves each source file and filename before interpretation. Extracted rows remain staged until a person reviews and approves them.
+  - generic "Upload queue summary":
+    - article:
+      - generic: Total files
+      - strong: "0"
+    - article:
+      - generic: Ready
+      - strong: "0"
+    - article:
+      - generic: Rejected
+      - strong: "0"
+    - article:
+      - generic: Total size
+      - strong: 0 B
+  - generic "Upload workflow":
+    - article:
+      - generic: "1"
+      - strong: Upload
+      - generic: Preserve source files
+    - article:
+      - generic: "2"
+      - strong: Interpret
+      - generic: Extract carrier rates
+    - article:
+      - generic: "3"
+      - strong: Review
+      - generic: Audit staged rows
+    - article:
+      - generic: "4"
+      - strong: Approve
+      - generic: Publish to Rateware
+  - generic: +
+  - generic: Drop quotation files here
+  - generic: XLSX, PDF, images, EML email files
+  - text: RFx
+  - textbox "RFx":
+    - /placeholder: Optional RFx name or number
+  - text: Vendor assignment
+  - combobox "Vendor assignment":
+    - option "Auto-detect vendor" [selected]
+  - text: Vendor hint
+  - textbox "Vendor hint":
+    - /placeholder: Optional carrier/vendor
+  - button "Upload originals"
+  - status
+  - complementary "Selected files":
+    - paragraph: Queue
+    - heading "Files" [level=2]
+    - list:
+      - listitem: No files selected
+    - generic: After upload
+    - link "Open Upload History":
+      - /url: ./upload-history.html

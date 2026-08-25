@@ -66,14 +66,14 @@ test("requires source-derived pseudonymized deployment and authenticated-route e
   const routeBytes = readFileSync(resolve(ROOT, loaded.record.source_evidence.authenticated_routes.path));
   assert.equal(production.rawSha256(vercelBytes), loaded.record.source_evidence.vercel.sha256);
   assert.equal(production.rawSha256(routeBytes), loaded.record.source_evidence.authenticated_routes.sha256);
-  const sources = production.validateP3V2ProductionSourceEvidence(loaded.record, vercelBytes, routeBytes);
+  const sources = production.validateP3V2ProductionSourceEvidence(loaded.record, vercelBytes, routeBytes, loaded.browserArtifacts);
   assert.equal(sources.vercel.deployment.git_source.sha, loaded.record.release.sha);
   assert.equal(sources.routes.routes.length, 3);
-  assert.match(sources.routes.routes[0].subject_ref, /^subject-[a-f0-9]{16}$/);
+  assert.match(sources.routes.routes[0].raw_snapshot_sha256, /^[a-f0-9]{64}$/);
 
   const fabricated = Buffer.from(vercelBytes);
   fabricated[0] ^= 1;
-  assert.throws(() => production.validateP3V2ProductionSourceEvidence(loaded.record, fabricated, routeBytes));
+  assert.throws(() => production.validateP3V2ProductionSourceEvidence(loaded.record, fabricated, routeBytes, loaded.browserArtifacts));
 });
 
 test("raw evidence digests reject line-ending drift", () => {

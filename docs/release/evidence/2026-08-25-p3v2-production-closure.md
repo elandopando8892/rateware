@@ -9,9 +9,9 @@ Verdict: GO
 - Production release: `f329b3c580ba9a7c3bf9f7836d2af4986f946f3f`
 - Pull request: `#72`
 - Vercel deployment: `dpl_AvCeNfRhG3T5YzgehByP53h7Kcnc`
-- Deployment URL: `rateware-bdto3t0uq-elandopando8892s-projects.vercel.app`
+- Deployment URL reference: `deployment-e913e2d4d2bae70f`
 - Production alias: `rateware.vercel.app`
-- Record SHA-256: `a71999fa5fa573d982359bafe1d4aa373725ee64f68d78dd267292af212c5014`
+- Record SHA-256: `edc6c424bdb9ca47bb9c3f987c24e0ad9ed44f0ea464d8feaf0149f3a5bd2fd3`
 
 The independently reviewed feature tree is byte-identical to the squash release tree. Vercel reports the exact release SHA as `READY` in production under the production alias. No manual promotion occurred.
 
@@ -21,7 +21,7 @@ The independently reviewed feature tree is byte-identical to the squash release 
 - Production `/upload-center`: authenticated Upload Center rendered pseudonymized subject `subject-1ccea46b0012017a` with zero captured browser diagnostics.
 - Production `/upload-history`: authenticated Upload History rendered the same pseudonymized subject with zero captured browser diagnostics.
 - Production `/staging-review`: authenticated Staging Review rendered the same pseudonymized subject with zero captured browser diagnostics.
-- Source-derived evidence: `p3v2-production-source/vercel-deployment.json` and `p3v2-production-source/authenticated-routes.json`, bound by raw-byte SHA-256 digests in the closure record.
+- Source-derived evidence: reproducible Vercel API extraction plus a browser artifact manifest, three sanitized main-landmark accessibility snapshots, three browser diagnostic exports, and controlled raw-source digests. Every repository artifact is bound by raw-byte SHA-256.
 - No mutating control was activated.
 
 ## Supabase and release boundaries

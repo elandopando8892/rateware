@@ -1,0 +1,66 @@
+- main:
+  - paragraph: Operate · Source Files
+  - heading "Upload History" [level=1]
+  - paragraph: Trace preserved sources and their staged interpretation results.
+  - link "Import files":
+    - /url: ./upload-center.html
+  - region "Source provenance boundary":
+    - strong: Every staged row remains traceable
+    - paragraph: Source filenames, interpretation status, and evidence stay linked. Reprocessing creates reviewed staging output; it does not bypass approval.
+  - paragraph: Source files
+  - heading "Processing queue" [level=2]
+  - generic "Upload history summary":
+    - article:
+      - generic: Visible
+      - strong: "0"
+    - article:
+      - generic: Staged
+      - strong: "0"
+    - article:
+      - generic: Failed
+      - strong: "0"
+    - article:
+      - generic: Needs audit
+      - strong: "0"
+  - 'generic "Workflow: Upload -> Interpret -> Review -> Approve"'
+  - generic "Upload quick filters":
+    - button "All visible"
+    - button "Needs interpretation"
+    - button "Audit needed"
+    - button "Failed"
+    - button "PDF"
+    - button "Spreadsheets"
+    - button "Images"
+  - text: Search
+  - searchbox "Search"
+  - text: Status
+  - combobox "Status":
+    - option "Current" [selected]
+    - option "Uploaded"
+    - option "Staged"
+    - option "Failed"
+    - option "Archived"
+    - option "All"
+  - button "Refresh" [disabled]
+  - button "Clear filters"
+  - table:
+    - rowgroup:
+      - row "Select all visible uploads Uploaded Source file Vendor / RFx Status Audit Next step Storage Actions":
+        - columnheader "Select all visible uploads":
+          - checkbox "Select all visible uploads"
+        - columnheader "Uploaded"
+        - columnheader "Source file"
+        - columnheader "Vendor / RFx"
+        - columnheader "Status"
+        - columnheader "Audit"
+        - columnheader "Next step"
+        - columnheader "Storage"
+        - columnheader "Actions"
+    - rowgroup:
+      - row "Loading source files Reading preserved uploads, staged row counts, and audit signals.":
+        - cell "Loading source files Reading preserved uploads, staged row counts, and audit signals.":
+          - strong: Loading source files
+          - paragraph: Reading preserved uploads, staged row counts, and audit signals.
+  - generic: After interpretation
+  - link "Open Staging Review":
+    - /url: ./staging-review.html
