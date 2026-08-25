@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-procurement.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body class="app-shell-page" data-platform55-shell="tenant" data-platform55-page="ratebook">
     <div class="rw-app" data-platform55-app>
@@ -21,8 +22,8 @@
           </form>
         </header>
 
-      <main class="page-frame ratebook-workspace rw-main rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="ratebook-review">
-        <header class="page-header" data-platform55-page-header>
+      <main class="page-frame ratebook-workspace rw-main rw-procurement-page p55-vp-page p55-vp-page--ratebook" data-platform55-page-content data-platform55-procurement-state="ratebook-review" data-p3v3-states="loaded empty validity-warning">
+        <header class="page-header p55-vp-page-header" data-platform55-page-header>
           <div>
             <p class="eyebrow">RFx Route Books</p>
             <h1>Ratebook</h1>
@@ -32,6 +33,13 @@
             <button class="button button-secondary" id="refresh-ratebooks" type="button">Refresh</button>
           </div>
         </header>
+
+        <section class="p55-vp-context-banner p55-vp-evidence-boundary" data-p3v3-boundary="rate-validity">
+          <div class="p55-vp-context-banner__copy">
+            <strong>Published rates remain source-bound, effective-dated, and reviewable.</strong>
+            <p>Validity, equipment, geography, and customer constraints remain visible before export or controlled carrier distribution.</p>
+          </div>
+        </section>
 
         <section class="ratebook-toolbar" aria-label="Ratebook filters">
           <label class="ratebook-filter-field ratebook-search-field">
@@ -80,14 +88,14 @@
           <p class="ratebook-toolbar-status" id="ratebook-status" role="status">Loading route books...</p>
         </section>
 
-        <section class="ratebook-overview" aria-label="Ratebook scope">
+        <section class="ratebook-overview p55-vp-identity-grid" aria-label="Ratebook scope">
           <article><span>Ratebooks</span><strong id="ratebook-overview-books">0</strong></article>
           <article><span>Shippers</span><strong id="ratebook-overview-shippers">0</strong></article>
           <article><span>Routes in scope</span><strong id="ratebook-overview-routes">0</strong></article>
           <article><span>Published</span><strong id="ratebook-overview-published">0</strong></article>
         </section>
 
-        <section class="ratebook-health" aria-label="Ratebook health and decision queue">
+        <section class="ratebook-health p55-vp-lifecycle-rail" aria-label="Ratebook health and decision queue">
           <div class="ratebook-health-summary">
             <article><span>Priority issues</span><strong id="ratebook-health-priority">0</strong></article>
             <article><span>Validity attention</span><strong id="ratebook-health-expiring">0</strong></article>
@@ -99,7 +107,7 @@
           </div>
         </section>
 
-        <section class="ratebook-layout" aria-label="Ratebook workspace">
+        <section class="ratebook-layout p55-vp-procurement-workspace" aria-label="Ratebook workspace">
           <aside class="ratebook-list-panel">
             <div class="ratebook-panel-heading">
               <div>

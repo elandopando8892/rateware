@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-procurement.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="vendors">
     <div class="rw-app" data-platform55-app>
@@ -21,8 +22,8 @@
           </form>
         </header>
 
-        <main class="vendors-layout rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="vendor-directory">
-          <header class="rw-operate-heading" data-platform55-page-header>
+        <main class="vendors-layout rw-procurement-page p55-vp-page p55-vp-page--carrier-network" data-platform55-page-content data-platform55-procurement-state="vendor-directory" data-p3v3-states="loaded empty duplicate-review">
+          <header class="rw-operate-heading p55-vp-page-header" data-platform55-page-header>
             <div>
               <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Source · Carrier CRM</p>
               <h1 data-platform55-page-title>Carrier CRM</h1>
@@ -30,7 +31,13 @@
             </div>
             <button class="page-primary-action" type="button" data-vendor-open="wizard">Add vendor</button>
           </header>
-          <section class="vendor-metrics wide-section rw-procurement-milestones" aria-label="Vendor health">
+          <section class="p55-vp-context-banner p55-vp-evidence-boundary" data-p3v3-boundary="canonical-carrier-identity">
+            <div class="p55-vp-context-banner__copy">
+              <strong>Canonical carrier identity and procurement readiness remain separate.</strong>
+              <p>Canonical identity does not grant procurement eligibility; current compliance, capability, and human review still govern RFx access.</p>
+            </div>
+          </section>
+          <section class="vendor-metrics wide-section rw-procurement-milestones p55-vp-identity-grid" aria-label="Vendor health">
             <article>
               <span>Total vendors</span>
               <strong id="vendor-metric-total">0</strong>
@@ -53,7 +60,7 @@
             </article>
           </section>
 
-          <section class="vendor-tabs vendor-workflow-tabs wide-section" aria-label="Vendor workflows">
+          <section class="vendor-tabs vendor-workflow-tabs wide-section p55-vp-lifecycle-rail" aria-label="Vendor workflows">
             <button class="vendor-tab is-active" type="button" data-vendor-tab="funnel">
               <strong>Pipeline</strong>
               <span>Procurement board</span>
@@ -83,7 +90,7 @@
             </details>
           </section>
 
-          <section class="workspace-panel wide-section" data-tab-panel="funnel">
+          <section class="workspace-panel wide-section p55-vp-procurement-workspace" data-tab-panel="funnel">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Procurement conversion</p>
@@ -843,7 +850,7 @@
             </div>
           </section>
 
-          <aside id="vendor-drawer" class="profile-drawer vendor-profile-drawer hidden" data-mode="view" aria-live="polite">
+          <aside id="vendor-drawer" class="profile-drawer vendor-profile-drawer p55-vp-network-detail hidden" data-mode="view" aria-live="polite">
             <div class="drawer-header">
               <div class="drawer-brand-line">
                 <span id="drawer-logo-preview" class="drawer-logo-preview"></span>

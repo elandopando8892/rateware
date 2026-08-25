@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-procurement.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body class="bid-room-page" data-platform55-shell="tenant" data-platform55-page="rfx-events">
     <div class="rw-app" data-platform55-app>
@@ -21,8 +22,8 @@
           </form>
         </header>
 
-        <main class="bid-room-product rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="event-lifecycle">
-          <header class="rw-operate-heading" data-platform55-page-header>
+        <main class="bid-room-product rw-procurement-page p55-vp-page p55-vp-page--bid-room" data-platform55-page-content data-platform55-procurement-state="event-lifecycle" data-p3v3-states="loaded empty launch-blocked">
+          <header class="rw-operate-heading p55-vp-page-header" data-platform55-page-header>
             <div>
               <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Source · Procurement Base · Bid Room</p>
               <h1 data-platform55-page-title>Bid Room</h1>
@@ -33,7 +34,13 @@
               <a class="secondary-link" href="./bid-room-board.html" target="_blank" rel="noreferrer">Public board</a>
             </div>
           </header>
-          <aside class="bid-room-event-rail" aria-label="Bid events">
+          <section class="p55-vp-context-banner p55-vp-evidence-boundary" data-p3v3-boundary="human-award-authority">
+            <div class="p55-vp-context-banner__copy">
+              <strong>Eligibility and price evidence support the decision; they do not make it.</strong>
+              <p>A human owns award approval. Event setup, invitations, bids, and ranking remain distinct from the final governed award.</p>
+            </div>
+          </section>
+          <aside class="bid-room-event-rail p55-vp-lifecycle-rail" aria-label="Bid events">
             <section class="bid-room-rail-card">
               <div class="bid-room-event-filter-strip" aria-label="Filter bid events">
                 <label class="bid-room-event-filter-search">
@@ -86,7 +93,7 @@
             </section>
           </aside>
 
-          <section class="bid-room-workspace">
+          <section class="bid-room-workspace p55-vp-procurement-workspace">
             <section class="bid-room-control-panel">
               <div class="bid-room-event-overview">
                 <div class="bid-room-title-row">

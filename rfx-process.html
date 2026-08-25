@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-procurement.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="rfx-process">
     <div class="rw-app" data-platform55-app>
@@ -21,8 +22,8 @@
           </form>
         </header>
 
-        <main class="rfx-process-layout rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="process-readiness">
-          <header class="rw-operate-heading" data-platform55-page-header>
+        <main class="rfx-process-layout rw-procurement-page p55-vp-page p55-vp-page--rfx-process" data-platform55-page-content data-platform55-procurement-state="process-readiness" data-p3v3-states="loaded empty readiness-blocked">
+          <header class="rw-operate-heading p55-vp-page-header" data-platform55-page-header>
             <div>
               <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Source · Carrier CRM · RFx Process</p>
               <h1 data-platform55-page-title>RFx Process</h1>
@@ -30,7 +31,13 @@
             </div>
             <button id="new-rfx-project" class="page-primary-action" type="button">New RFx Project</button>
           </header>
-          <section class="rfx-process-list-panel rfx-process-directory">
+          <section class="p55-vp-context-banner p55-vp-evidence-boundary" data-p3v3-boundary="rfx-readiness">
+            <div class="p55-vp-context-banner__copy">
+              <strong>RFx readiness is evidence, not release authority.</strong>
+              <p>Customer context, lanes, sourcing scope, and operating constraints must be complete before the event can advance.</p>
+            </div>
+          </section>
+          <section class="rfx-process-list-panel rfx-process-directory p55-vp-lifecycle-rail">
             <div class="split-heading compact">
               <div>
                 <p class="eyebrow">Consultative RFx</p>
@@ -58,7 +65,7 @@
             <div id="rfx-process-project-list" class="rfx-process-project-list" aria-live="polite"></div>
           </section>
 
-          <section class="rfx-process-workspace">
+          <section class="rfx-process-workspace p55-vp-procurement-workspace">
             <section id="rfx-process-empty" class="empty-state compact-empty">
               <h2>Select or create an RFx Project</h2>
               <p>Manage the consultative sales workflow from Customer RFI to RFx Design, public marketplace preview, launch, and implementation package.</p>

@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-procurement.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="outreach">
     <div class="rw-app" data-platform55-app>
@@ -21,8 +22,8 @@
           </form>
         </header>
 
-        <main class="outreach-layout rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="outreach-drafts">
-          <header class="rw-operate-heading" data-platform55-page-header>
+        <main class="outreach-layout rw-procurement-page p55-vp-page p55-vp-page--outreach" data-platform55-page-content data-platform55-procurement-state="outreach-drafts" data-p3v3-states="loaded empty review-required">
+          <header class="rw-operate-heading p55-vp-page-header" data-platform55-page-header>
             <div>
               <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Source · Bid Room · Invitation Admin</p>
               <h1 data-platform55-page-title>Invitation Admin</h1>
@@ -30,14 +31,20 @@
             </div>
             <button class="page-primary-action" type="button" data-click-target="#create-campaign-button">Create campaign</button>
           </header>
-          <section class="review-insight-grid" aria-label="Invitation admin summary">
+          <section class="p55-vp-context-banner p55-vp-evidence-boundary" data-p3v3-boundary="communication-review">
+            <div class="p55-vp-context-banner__copy">
+              <strong>Drafting and delivery remain separate governed actions.</strong>
+              <p>Drafting does not authorize delivery; recipient scope, channel readiness, and human confirmation remain explicit.</p>
+            </div>
+          </section>
+          <section class="review-insight-grid p55-vp-identity-grid" aria-label="Invitation admin summary">
             <article><span>Campaigns</span><strong id="outreach-metric-campaigns">0</strong></article>
             <article><span>Drafts</span><strong id="outreach-metric-drafts">0</strong></article>
             <article><span>Sent</span><strong id="outreach-metric-sent">0</strong></article>
             <article><span>History</span><strong id="outreach-metric-history">0</strong></article>
           </section>
 
-          <section id="outreach-ops-strip" class="workspace-panel outreach-ops-strip">
+          <section id="outreach-ops-strip" class="workspace-panel outreach-ops-strip p55-vp-procurement-workspace">
             <div class="split-heading">
               <div>
                 <p class="eyebrow">Invitation admin</p>
@@ -57,7 +64,7 @@
             </div>
           </section>
 
-          <nav class="module-workbench-nav" role="tablist" aria-label="Invitation admin workbench">
+          <nav class="module-workbench-nav p55-vp-lifecycle-rail" role="tablist" aria-label="Invitation admin workbench">
             <button type="button" role="tab" aria-selected="true" data-workbench-view-button="campaigns" data-workbench-focus-target="#campaign-name">Campaigns</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="drafts">Draft Queue</button>
             <button type="button" role="tab" aria-selected="false" data-workbench-view-button="templates" data-workbench-focus-target="#template-name">Templates</button>

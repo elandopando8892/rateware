@@ -186,6 +186,73 @@
   scroll-margin-top: 16px;
 }
 
+.p55-vp-identity-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.p55-vp-identity-grid > article {
+  min-width: 0;
+  border: 1px solid var(--rw-slate-200);
+  border-radius: var(--rw-radius-md);
+  background: var(--rw-white);
+  box-shadow: var(--rw-shadow-sm);
+}
+
+.p55-vp-lifecycle-rail {
+  min-width: 0;
+  border: 1px solid var(--rw-slate-200);
+  border-radius: var(--rw-radius-lg);
+  background: var(--rw-white);
+  box-shadow: var(--rw-shadow-sm);
+}
+
+.p55-vp-procurement-workspace {
+  min-width: 0;
+  border: 1px solid var(--rw-slate-200);
+  border-radius: var(--rw-radius-lg);
+  background: var(--rw-white);
+  box-shadow: var(--rw-shadow-sm);
+}
+
+.p55-vp-evidence-boundary {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr);
+  border-left: 4px solid var(--rw-brand-500);
+}
+
+.p55-vp-network-detail {
+  border-left: 1px solid var(--rw-slate-200);
+  background: var(--rw-white);
+  box-shadow: var(--rw-shadow-lg);
+}
+
+.p55-vp-page--bid-room > .p55-vp-page-header,
+.p55-vp-page--bid-room > .p55-vp-evidence-boundary {
+  grid-column: 1 / -1;
+}
+
+.p55-vp-page--carrier-network .vendor-tabs,
+.p55-vp-page--outreach .module-workbench-nav {
+  padding: 8px;
+}
+
+.p55-vp-page--rfx-process .rfx-process-list-panel,
+.p55-vp-page--rfx-process .rfx-process-workspace,
+.p55-vp-page--ratebook .ratebook-health,
+.p55-vp-page--ratebook .ratebook-layout {
+  overflow: hidden;
+}
+
+.p55-vp-page--ratebook .ratebook-toolbar {
+  border: 1px solid var(--rw-slate-200);
+  border-radius: var(--rw-radius-lg);
+  background: var(--rw-white);
+  box-shadow: var(--rw-shadow-sm);
+}
+
 .p55-vp-page :where(a, button, input, select, summary):focus-visible {
   outline: 3px solid var(--rw-brand-100);
   outline-offset: 2px;
@@ -197,6 +264,10 @@
   }
 
   .p55-vp-metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .p55-vp-identity-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
@@ -217,6 +288,16 @@
 
   .p55-vp-metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .p55-vp-identity-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .p55-vp-lifecycle-rail {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
   }
 
   .p55-vp-scope-strip {
