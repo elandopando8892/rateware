@@ -333,11 +333,6 @@ const carrierTemplatePreviewBody = document.querySelector("#rfx-carrier-template
 const carrierTemplateStatus = document.querySelector("#rfx-carrier-template-status");
 const rfxLaunchWorkspaceTabs = document.querySelector("#rfx-launch-workspace-tabs");
 const rfxLaunchWorkspacePanels = [...document.querySelectorAll("[data-rfx-launch-workspace-panel]")];
-const rfxLaunchCarrierWorkspace = document.querySelector("#rfx-launch-carrier-workspace");
-const rfxOpenThisRfxDrawerButton = document.querySelector("#rfx-open-this-rfx-drawer");
-const rfxCloseThisRfxDrawerButton = document.querySelector("#rfx-close-this-rfx-drawer");
-const rfxThisRfxBackdrop = document.querySelector("#rfx-this-rfx-backdrop");
-const rfxOutreachAudienceBuilder = document.querySelector("#rfx-outreach-audience-builder");
 const rfxOutreachForm = document.querySelector("#rfx-outreach-form");
 const rfxOutreachCampaignName = document.querySelector("#rfx-outreach-campaign-name");
 const rfxOutreachTemplate = document.querySelector("#rfx-outreach-template");
@@ -830,22 +825,6 @@ function normalizeRfxLaunchWorkspace(value) {
   return RFX_LAUNCH_WORKSPACE_KEYS.has(value) ? value : "carrier";
 }
 
-function setThisRfxDrawerOpen(open, { restoreFocus = true } = {}) {
-  const shouldOpen = Boolean(open) && rfxLaunchWorkspace === "carrier";
-  rfxLaunchCarrierWorkspace?.classList.toggle("is-this-rfx-drawer-open", shouldOpen);
-  rfxOpenThisRfxDrawerButton?.setAttribute("aria-expanded", String(shouldOpen));
-  if (rfxOutreachAudienceBuilder) {
-    rfxOutreachAudienceBuilder.toggleAttribute("inert", !shouldOpen);
-    rfxOutreachAudienceBuilder.setAttribute("aria-hidden", String(!shouldOpen));
-  }
-  if (rfxThisRfxBackdrop) rfxThisRfxBackdrop.hidden = !shouldOpen;
-  if (shouldOpen) {
-    rfxCloseThisRfxDrawerButton?.focus();
-  } else if (restoreFocus) {
-    rfxOpenThisRfxDrawerButton?.focus();
-  }
-}
-
 function activateRfxLaunchWorkspace(workspace, options = {}) {
   const { persist = true, refresh = false } = options;
   const requestedWorkspace = normalizeRfxLaunchWorkspace(workspace);
@@ -864,7 +843,6 @@ function activateRfxLaunchWorkspace(workspace, options = {}) {
   rfxLaunchWorkspacePanels.forEach((panel) => {
     panel.hidden = panel.dataset.rfxLaunchWorkspacePanel !== rfxLaunchWorkspace;
   });
-  if (rfxLaunchWorkspace !== "carrier") setThisRfxDrawerOpen(false, { restoreFocus: false });
   if (rfxLaunchWorkspace === "message") renderOutreachPreview();
   if (rfxLaunchWorkspace === "delivery") {
     renderDeliveryParticipation();
@@ -7184,11 +7162,6 @@ function renderOutreachAudience() {
     ? "Loading this RFx invitation history..."
     : `${formatNumber(selectedCount)} selected for the next queue | ${formatNumber(outreachAudienceTotal)} carrier${outreachAudienceTotal === 1 ? "" : "s"} in this RFx`;
   rfxOutreachAudienceSummary.className = `status-pill ${selectedCount ? "success" : "muted"}`;
-  if (rfxOpenThisRfxDrawerButton) {
-    rfxOpenThisRfxDrawerButton.textContent = outreachAudienceLoading
-      ? "Open RFx workspace · Loading"
-      : `Open RFx workspace · ${formatNumber(outreachAudienceTotal)} carrier${outreachAudienceTotal === 1 ? "" : "s"}`;
-  }
   // Keep the Message workspace truthful when the next delivery wave changes here.
   if (rfxLaunchWorkspace === "message") renderOutreachPreview();
   if (rfxSaveOutreachAudienceSegmentButton) {
@@ -8940,8 +8913,11 @@ function outreachCarrierCandidateRows() {
   if (scope === "procurement") rows = rows.filter(isProcurementCarrier);
   const existingParticipantIds = currentRfxManagedVendorIds();
   const candidates = rows
-    .filter((vendor) => !existingParticipantIds.has(String(vendor.id || "")))
-    .map((vendor) => ({ vendor, fit: fitCarrierToOutreachLanes(vendor) }))
+    .map((vendor) => ({
+      vendor,
+      fit: fitCarrierToOutreachLanes(vendor),
+      alreadyInRfx: existingParticipantIds.has(String(vendor.id || ""))
+    }))
     .filter(({ fit }) => {
     if (scope === "recommended" && !fit.hasRecommendedFit) return false;
     if (fitFilter === "equipment") return fit.matches.equipment;
@@ -9119,6 +9095,7 @@ function renderActiveCarrierTemplateAdder() {
             const displayName = row.unavailable
               ? `Unavailable carrier ${vendorId}`
               : vendorDisplayName(row);
+            const rowFit = row.unavailable ? null : fitCarrierToOutreachLanes(row);
             const detail = row.primary_state === "eligible"
               ? "Current profile and contact are eligible for this RFx."
               : row.primary_state === "already_in_rfx"
@@ -9127,13 +9104,19 @@ function renderActiveCarrierTemplateAdder() {
                   ? "Add a usable email or WhatsApp contact in Carrier CRM before selecting."
                   : "The exact template ID is archived, deleted, missing, or otherwise unavailable.";
             return `
-              <label class="rfx-outreach-carrier-row rfx-carrier-template-member is-${escapeHtml(row.primary_state)} ${selected ? "is-selected" : ""}">
-                <input type="checkbox" data-rfx-carrier-template-select value="${escapeHtml(vendorId)}" ${selected ? "checked" : ""} ${selectable && !materializationLocked ? "" : "disabled"} />
+              <label class="rfx-outreach-carrier-row rfx-carrier-fit-row rfx-carrier-template-member is-${escapeHtml(row.primary_state)} ${selected ? "is-selected" : ""}">
                 <span class="rfx-outreach-carrier-row-main">
                   <strong>${escapeHtml(displayName)}</strong>
                   <small>${escapeHtml(detail)}</small>
+                  <details class="rfx-carrier-fit-evidence">
+                    <summary>Why this carrier</summary>
+                    <small>${escapeHtml(rowFit?.summary || detail)}</small>
+                  </details>
                 </span>
-                <span class="status-pill ${selectable ? "success" : row.primary_state === "missing_contact" ? "warning" : "muted"}">${escapeHtml(carrierTemplateStateLabel(row.primary_state))}</span>
+                <span class="rfx-carrier-fit-cell"><strong>${escapeHtml(rowFit?.label || "Template member")}</strong><small>Current RFx lane evaluation</small></span>
+                <span class="rfx-carrier-fit-cell"><span class="status-pill ${row.primary_state === "missing_contact" ? "warning" : "success"}">${row.primary_state === "missing_contact" ? "Missing contact" : "Contact ready"}</span></span>
+                <span class="rfx-carrier-fit-cell"><span class="status-pill ${row.primary_state === "already_in_rfx" ? "muted" : row.primary_state === "unavailable" ? "warning" : "neutral"}">${row.primary_state === "already_in_rfx" ? "Already in this RFx" : row.primary_state === "unavailable" ? "Unavailable" : "Not in RFx"}</span></span>
+                <span class="rfx-carrier-fit-selection"><input type="checkbox" aria-label="Select ${escapeHtml(displayName)}" data-rfx-carrier-template-select value="${escapeHtml(vendorId)}" ${selected ? "checked" : ""} ${selectable && !materializationLocked ? "" : "disabled"} /></span>
               </label>
             `;
           }).join("")
@@ -9220,9 +9203,11 @@ function renderOutreachCarrierAdder() {
   const visibleRows = candidates.slice(0, 50);
   const deliveryChannel = selectedOutreachChannel();
   const deliveryChannelLabel = outreachChannelLabel(deliveryChannel);
-  const contactReadyCandidates = candidates.filter(({ vendor }) => carrierCanReceiveOutreachChannel(vendor, deliveryChannel));
-  const contactReviewCount = Math.max(candidates.length - contactReadyCandidates.length, 0);
-  const visibleContactReadyRows = visibleRows.filter(({ vendor }) => carrierCanReceiveOutreachChannel(vendor, deliveryChannel));
+  const selectableCandidates = candidates.filter(({ alreadyInRfx }) => !alreadyInRfx);
+  const contactReadyCandidates = selectableCandidates.filter(({ vendor }) => carrierCanReceiveOutreachChannel(vendor, deliveryChannel));
+  const contactReviewCount = Math.max(selectableCandidates.length - contactReadyCandidates.length, 0);
+  const visibleSelectableRows = visibleRows.filter(({ alreadyInRfx }) => !alreadyInRfx);
+  const visibleContactReadyRows = visibleSelectableRows.filter(({ vendor }) => carrierCanReceiveOutreachChannel(vendor, deliveryChannel));
   const scopeLabel = {
     recommended: "recommended",
     procurement: "procurement/pipeline",
@@ -9269,7 +9254,7 @@ function renderOutreachCarrierAdder() {
   rfxOutreachCarrierCandidates.innerHTML = vendorOptionsLoading
     ? '<p class="rfx-outreach-carrier-empty">Loading the first Carrier CRM profiles. Search remains available as soon as the first page arrives.</p>'
     : visibleRows.length
-      ? visibleRows.map(({ vendor, fit }) => {
+      ? visibleRows.map(({ vendor, fit, alreadyInRfx }) => {
         const selected = selectedManualVendorIdsState.has(String(vendor.id || ""));
         const fitCopy = fit.reasons.length ? fit.reasons.join(" | ") : "No equipment, operation, or service coverage declared in Carrier CRM";
         const profileCopy = fit.evidence.profileSignals.length
@@ -9290,17 +9275,21 @@ function renderOutreachCarrierAdder() {
           fit.contactable ? "contact ready" : "no verified contact",
           fit.hasHistoricBidEvidence ? "prior RFx evidence" : fit.hasRatewareEvidence ? "Rateware evidence" : "CRM evidence"
         ].join(" | ");
+        const contactReady = carrierCanReceiveOutreachChannel(vendor, deliveryChannel);
         return `
-          <article class="rfx-outreach-carrier-row ${selected ? "is-selected" : ""}">
+          <article class="rfx-outreach-carrier-row rfx-carrier-fit-row ${alreadyInRfx ? "is-already-in-rfx" : selected ? "is-selected" : ""}">
             <div class="rfx-outreach-carrier-row-main">
               <strong>${escapeHtml(vendorDisplayName(vendor))}</strong>
-              <small class="rfx-outreach-fit-summary" title="${escapeHtml(`${fitCopy} | ${profileCopy} | ${evidenceCopy} | ${priorBidCopy}`)}">${escapeHtml(fitSummary)}</small>
-              <details class="rfx-outreach-fit-detail">
+              <small>${escapeHtml(vendor.domain || vendor.vendor_domain || vendor.primary_email || "Carrier CRM")}</small>
+              <details class="rfx-carrier-fit-evidence">
                 <summary>Why this carrier</summary>
-                <span>${escapeHtml(`${fitCopy} | ${profileCopy} | ${evidenceCopy} | ${priorBidCopy}`)}</span>
+                <small>${escapeHtml(`${fitCopy} | ${profileCopy} | ${evidenceCopy} | ${priorBidCopy}`)}</small>
               </details>
             </div>
-            <button class="secondary small-button" type="button" data-rfx-outreach-add-carrier="${escapeHtml(String(vendor.id || ""))}" ${selected ? "disabled" : ""}>${selected ? "Selected" : "Select"}</button>
+            <div class="rfx-carrier-fit-cell"><strong>${escapeHtml(fit.label)}</strong><small title="${escapeHtml(`${fitCopy} | ${profileCopy} | ${evidenceCopy} | ${priorBidCopy}`)}">${escapeHtml(fitSummary)}</small></div>
+            <div class="rfx-carrier-fit-cell"><span class="status-pill ${contactReady ? "success" : "warning"}">${contactReady ? "Contact ready" : "Missing contact"}</span></div>
+            <div class="rfx-carrier-fit-cell"><span class="status-pill ${alreadyInRfx ? "muted" : "neutral"}">${alreadyInRfx ? "Already in this RFx" : "Not in RFx"}</span></div>
+            <div class="rfx-carrier-fit-selection"><button class="secondary small-button" type="button" data-rfx-outreach-add-carrier="${escapeHtml(String(vendor.id || ""))}" ${alreadyInRfx || selected || !contactReady ? "disabled" : ""}>${alreadyInRfx ? "Added" : selected ? "Selected" : !contactReady ? "Review" : "Select"}</button></div>
           </article>
         `;
       }).join("")
@@ -11044,15 +11033,6 @@ rfxLaunchWorkspaceTabs?.addEventListener("click", (event) => {
     return;
   }
   activateRfxLaunchWorkspace(button.dataset.rfxLaunchWorkspace);
-});
-
-rfxOpenThisRfxDrawerButton?.addEventListener("click", () => setThisRfxDrawerOpen(true));
-rfxCloseThisRfxDrawerButton?.addEventListener("click", () => setThisRfxDrawerOpen(false));
-rfxThisRfxBackdrop?.addEventListener("click", () => setThisRfxDrawerOpen(false));
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && rfxLaunchCarrierWorkspace?.classList.contains("is-this-rfx-drawer-open")) {
-    setThisRfxDrawerOpen(false);
-  }
 });
 
 rfxCustomerInput?.addEventListener("focus", () => {
@@ -12852,7 +12832,7 @@ rfxSelectVisibleOutreachCarriersButton?.addEventListener("click", () => {
     setStatus(rfxOutreachCarrierStatus, `${formatNumber(ids.length)} visible eligible template carrier(s) selected.`, ids.length ? "success" : "neutral");
     return;
   }
-  const allVisibleCandidates = outreachCarrierCandidateRows().slice(0, 50);
+  const allVisibleCandidates = outreachCarrierCandidateRows().slice(0, 50).filter(({ alreadyInRfx }) => !alreadyInRfx);
   const channel = selectedOutreachChannel();
   const channelLabel = outreachChannelLabel(channel);
   const visibleCandidates = allVisibleCandidates.filter(({ vendor }) => carrierCanReceiveOutreachChannel(vendor, channel));
@@ -12875,7 +12855,7 @@ rfxSelectAllOutreachCarriersButton?.addEventListener("click", () => {
     setStatus(rfxOutreachCarrierStatus, `${formatNumber(ids.length)} visible eligible template carrier(s) selected.`, ids.length ? "success" : "neutral");
     return;
   }
-  const allCandidates = outreachCarrierCandidateRows();
+  const allCandidates = outreachCarrierCandidateRows().filter(({ alreadyInRfx }) => !alreadyInRfx);
   const channel = selectedOutreachChannel();
   const channelLabel = outreachChannelLabel(channel);
   const candidates = allCandidates.filter(({ vendor }) => carrierCanReceiveOutreachChannel(vendor, channel));

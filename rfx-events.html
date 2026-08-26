@@ -533,7 +533,6 @@
                   <div class="rfx-outreach-carrier-heading-actions">
                     <span id="rfx-outreach-carrier-fit-summary" class="status-pill muted">Loading Carrier CRM</span>
                     <button id="rfx-refresh-outreach-carrier-fit" class="secondary small-button" type="button" title="Refresh Carrier CRM and Rateware fit signals">Refresh fit</button>
-                    <button id="rfx-open-this-rfx-drawer" class="secondary small-button rfx-this-rfx-trigger" type="button" aria-controls="rfx-outreach-audience-builder" aria-expanded="false">Open RFx workspace · 0 carriers</button>
                   </div>
                 </div>
                 <div class="rfx-outreach-carrier-adder-body">
@@ -619,27 +618,28 @@
                       <button id="rfx-clear-outreach-carrier-selection" class="secondary" type="button" disabled>Clear selection</button>
                     </div>
                   </div>
-                  <div class="rfx-outreach-carrier-picker-grid">
-                    <section>
+                  <div class="rfx-carrier-fit-table-shell">
+                    <section aria-label="Carrier Fit results">
                       <div class="rfx-outreach-carrier-picker-heading">
                         <strong>Compatible carriers</strong>
                         <span id="rfx-outreach-carrier-match-count">Loading CRM</span>
                       </div>
-                      <div id="rfx-outreach-carrier-candidates" class="rfx-outreach-carrier-list"></div>
-                    </section>
-                    <section>
-                      <div class="rfx-outreach-carrier-picker-heading">
-                        <strong>Add to this RFx</strong>
-                        <span id="rfx-outreach-carrier-selected-count">0 selected</span>
+                      <div class="rfx-carrier-fit-table-header" aria-hidden="true">
+                        <span>Carrier</span>
+                        <span>Lane fit</span>
+                        <span>Contact readiness</span>
+                        <span>RFx status</span>
+                        <span>Selection</span>
                       </div>
-                      <div id="rfx-outreach-carrier-selected" class="rfx-outreach-carrier-list"></div>
+                      <div id="rfx-outreach-carrier-candidates" class="rfx-outreach-carrier-list rfx-carrier-fit-table"></div>
                     </section>
+                    <div id="rfx-outreach-carrier-selected" hidden></div>
+                    <span id="rfx-outreach-carrier-selected-count" class="sr-only">0 selected</span>
                   </div>
                   <p id="rfx-outreach-carrier-status" class="status-message" role="status"></p>
                 </div>
               </section>
-              <button id="rfx-this-rfx-backdrop" class="rfx-this-rfx-backdrop" type="button" aria-label="Close RFx workspace" tabindex="-1" hidden></button>
-              <section id="rfx-outreach-audience-builder" class="rfx-outreach-control-center rfx-this-rfx-drawer" aria-labelledby="rfx-outreach-audience-title" aria-hidden="true" inert>
+              <section id="rfx-outreach-audience-builder" class="rfx-outreach-control-center" aria-labelledby="rfx-outreach-audience-title" hidden>
                 <div class="rfx-outreach-control-heading">
                   <div class="rfx-outreach-control-title">
                     <p class="eyebrow">RFx workspace</p>
@@ -653,7 +653,6 @@
                     <span><strong id="rfx-outreach-audience-attention-count">0</strong> attention</span>
                   </div>
                   <div class="rfx-outreach-audience-actions">
-                    <button id="rfx-close-this-rfx-drawer" type="button" class="secondary small-button rfx-this-rfx-close" aria-label="Close RFx workspace">Close</button>
                     <button id="rfx-select-ready-outreach-audience" type="button" class="secondary small-button" title="Select all carriers ready for a new queue">Select ready to queue</button>
                     <button id="rfx-use-outreach-audience-in-message" type="button" class="small-button" disabled title="Use the selected carriers in the next invitation wave">Prepare selected wave</button>
                     <button id="rfx-clear-outreach-audience-selection" type="button" class="secondary small-button" title="Clear selected carriers">Clear</button>
