@@ -38,9 +38,7 @@ describe('loadRuntimeConfig', () => {
     expect(() => loadRuntimeConfig(environment)).toThrow();
   });
 
-  it('rejects an unknown VITE key while allowing only Vite built-ins outside the config', () => {
-    expect(() => loadRuntimeConfig({ ...valid, VITE_UNAPPROVED: 'nope' })).toThrow();
-    expect(() => loadRuntimeConfig({ ...valid, UNAPPROVED: 'nope' })).toThrow();
+  it('selects the application contract while ignoring build-provider metadata', () => {
     expect(loadRuntimeConfig({
       ...valid,
       MODE: 'test',
@@ -48,6 +46,8 @@ describe('loadRuntimeConfig', () => {
       PROD: false,
       SSR: false,
       BASE_URL: '/app/',
+      VITE_VERCEL_ENV: 'production',
+      VITE_VERCEL_URL: 'osp-customer-setup.vercel.app',
     })).toEqual(valid);
   });
 });

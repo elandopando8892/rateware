@@ -23,14 +23,19 @@ export type OspBuildProfile = 'local-e2e' | 'preview-synthetic' | 'production-re
 
 const previewDeploymentOrigin = /^https:\/\/osp-customer-setup(?:-[a-z0-9-]+)?-elandopando8892s-projects\.vercel\.app$/;
 
-const viteBuiltInKeys = new Set(['MODE', 'DEV', 'PROD', 'SSR', 'BASE_URL']);
-
 export type RuntimeConfig = z.infer<typeof runtimeConfigSchema>;
 
 export function loadRuntimeConfig(env: Record<string, unknown>): RuntimeConfig {
-  const runtimeEntries = Object.fromEntries(
-    Object.entries(env).filter(([key]) => !viteBuiltInKeys.has(key)),
-  );
+  // Vercel injects additional VITE_* metadata during its production build.
+  // Select only the application's contract keys so provider metadata cannot
+  // make the strict runtime schema reject an otherwise valid deployment.
+  const runtimeEntries = {
+    VITE_KINDE_DOMAIN: env.VITE_KINDE_DOMAIN,
+    VITE_KINDE_CLIENT_ID: env.VITE_KINDE_CLIENT_ID,
+    VITE_KINDE_AUDIENCE: env.VITE_KINDE_AUDIENCE,
+    VITE_SUPABASE_URL: env.VITE_SUPABASE_URL,
+    VITE_OSP_BUILD_PROFILE: env.VITE_OSP_BUILD_PROFILE,
+  };
 
   return runtimeConfigSchema.parse(runtimeEntries);
 }

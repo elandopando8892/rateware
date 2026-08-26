@@ -96,7 +96,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/config/runtime.ts",
-      "sha256": "862ed4a30b32a3c6dedb7111262a4645697d7967b08091138b09e25fbba8b8f8"
+      "sha256": "5f9083cb7fa39de511b2221443aef54a6b6c2254e0a1a2f89f6a99e1ed0b427b"
     },
     {
       "kind": "production-ui",
