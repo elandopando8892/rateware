@@ -2,6 +2,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import type { WorkspaceUser } from "../_shared/workspace.ts";
+import {
+  carrierTemplateNameKey,
+  normalizeCarrierTemplateInput,
+  normalizeCarrierTemplateVendorIds,
+  requireCarrierTemplateManagePermission,
+  resolveCarrierTemplateImportRows
+} from "./carrier-list-templates.ts";
 import { handleGrowthAction, isGrowthAction } from "./growth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -108,6 +115,40 @@ function normalizeOutreachChannel(value: unknown) {
 const BULK_SHORTLIST_VENDOR_LIMIT = 1000;
 const BULK_FILTER_LIMIT = 100000;
 const BULK_FILTER_CONFIRM_THRESHOLD = 250;
+export const CARRIER_LIST_TEMPLATE_ACTIONS = [
+  "list_carrier_list_templates",
+  "get_carrier_list_template",
+  "resolve_carrier_list_template_rows",
+  "create_carrier_list_template",
+  "update_carrier_list_template",
+  "duplicate_carrier_list_template",
+  "archive_carrier_list_template",
+  "restore_carrier_list_template"
+] as const;
+export const CARRIER_LIST_TEMPLATES_V2_ENABLED =
+  (Deno.env.get("CARRIER_LIST_TEMPLATES_V2_ENABLED") || "false").trim().toLowerCase() === "true";
+
+export function carrierTemplateLegacyReadScope(
+  enabled: boolean,
+  requestedSegmentType: string | null,
+  user: { owner_email: string | null; organization_id: string | null }
+) {
+  if (requestedSegmentType !== "participant_template") return null;
+  return enabled
+    ? { column: "organization_id", value: cleanText(user.organization_id) }
+    : { column: "owner_email", value: cleanText(user.owner_email) };
+}
+
+export function carrierTemplateLegacyMutationBlocked(
+  enabled: boolean,
+  requestedSegmentType: string | null,
+  currentSegmentType: string | null
+) {
+  return enabled && (
+    requestedSegmentType === "participant_template" ||
+    currentSegmentType === "participant_template"
+  );
+}
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -118,6 +159,603 @@ function getClient() {
 }
 
 type RatewareSupabaseClient = ReturnType<typeof getClient>;
+
+type RatewareIdentityDependencies = {
+  resolveUser: (
+    client: RatewareSupabaseClient,
+    claims: Record<string, unknown>,
+    options: { persistLegacyIdentity: boolean }
+  ) => Promise<RuntimeWorkspaceUser>;
+};
+
+export async function resolveRatewareApiPrincipal(
+  supabase: RatewareSupabaseClient,
+  claims: Record<string, unknown>,
+  dependencies: RatewareIdentityDependencies = {
+    resolveUser: resolveRuntimeWorkspaceUser
+  }
+) {
+  const user = dependencies.resolveUser === resolveRuntimeWorkspaceUser
+    ? await resolveRuntimeWorkspaceUser(supabase, claims, { persistLegacyIdentity: false })
+    : await dependencies.resolveUser(supabase, claims, { persistLegacyIdentity: false });
+  return { claims, user };
+}
+
+type CarrierTemplateActionResult = {
+  status: number;
+  body: Record<string, unknown>;
+};
+
+type CarrierTemplateActionOptions = {
+  enabled?: boolean;
+};
+
+const CARRIER_LIST_TEMPLATE_WRITE_ACTIONS = new Set([
+  "create_carrier_list_template",
+  "update_carrier_list_template",
+  "duplicate_carrier_list_template",
+  "archive_carrier_list_template",
+  "restore_carrier_list_template"
+]);
+
+function carrierTemplateResult(
+  status: number,
+  body: Record<string, unknown>
+): CarrierTemplateActionResult {
+  return { status, body: { enabled: true, ...body } };
+}
+
+function carrierTemplateId(input: Record<string, unknown>) {
+  const id = cleanText(input.template_id || input.id);
+  return id && UUID_PATTERN.test(id) ? id : null;
+}
+
+function carrierTemplateExpectedVersion(value: unknown) {
+  const version = Number(value);
+  return Number.isSafeInteger(version) && version >= 1 ? version : null;
+}
+
+function carrierTemplateActor(
+  user: RuntimeWorkspaceUser,
+  claims: Record<string, unknown>
+) {
+  const ownerUserId = cleanText(user.owner_user_id) || cleanText(user.owner_email);
+  const ownerEmail = cleanText(user.owner_email) || ownerUserId;
+  const userId = cleanText(claims.sub || claims.id) || ownerUserId;
+  const claimEmail = cleanText(claims.email || claims.preferred_email || claims["https://kinde.com/email"]);
+  const email = claimEmail?.toLowerCase() || ownerEmail || userId;
+  const organizationId = cleanText(user.organization_id);
+  if (!ownerUserId || !ownerEmail || !userId || !email || !organizationId) return null;
+  return {
+    user_id: userId,
+    email,
+    organization_id: organizationId,
+    owner_user_id: ownerUserId,
+    owner_email: ownerEmail
+  };
+}
+
+function carrierTemplateDatabaseConflict(error: unknown) {
+  return cleanText(objectRecord(error).code) === "23505";
+}
+
+function carrierTemplateDuplicateNameResult() {
+  return carrierTemplateResult(409, {
+    error: "A carrier list template with that name already exists in this organization."
+  });
+}
+
+function carrierTemplateVersionConflict(row: Record<string, unknown>) {
+  return carrierTemplateResult(409, {
+    error: "Carrier list template changed since it was loaded.",
+    current_version: Number(row.template_version) || 1,
+    current_updated_at: cleanText(row.updated_at),
+    template_id: cleanText(row.id)
+  });
+}
+
+async function loadCarrierTemplate(
+  supabase: RatewareSupabaseClient,
+  organizationId: string,
+  templateId: string
+) {
+  const result = await supabase
+    .from("vendor_segments")
+    .select("*")
+    .eq("id", templateId)
+    .eq("organization_id", organizationId)
+    .eq("segment_type", "participant_template")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return (result.data || null) as Record<string, unknown> | null;
+}
+
+async function validateCarrierTemplateMembers(
+  supabase: RatewareSupabaseClient,
+  organizationId: string,
+  vendorIds: string[]
+) {
+  if (!vendorIds.length) return true;
+  const result = await supabase
+    .from("vendors")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .in("id", vendorIds);
+  if (result.error) throw result.error;
+  const found = new Set((result.data || []).map((row: Record<string, unknown>) => cleanText(row.id)).filter(Boolean));
+  return vendorIds.every((id) => found.has(id));
+}
+
+async function hasCurrentCarrierTemplateMember(
+  supabase: RatewareSupabaseClient,
+  organizationId: string,
+  vendorIds: string[]
+) {
+  if (!vendorIds.length) return false;
+  const result = await supabase
+    .from("vendors")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .in("id", vendorIds);
+  if (result.error) throw result.error;
+  return Boolean(result.data?.length);
+}
+
+async function findCarrierTemplateNameConflict(
+  supabase: RatewareSupabaseClient,
+  organizationId: string,
+  segmentName: string,
+  excludeId = ""
+) {
+  const nameKey = carrierTemplateNameKey(segmentName);
+  const pageSize = 1000;
+  for (let offset = 0; offset < 200000; offset += pageSize) {
+    const result = await supabase
+      .from("vendor_segments")
+      .select("id,segment_name")
+      .eq("organization_id", organizationId)
+      .eq("segment_type", "participant_template")
+      .order("id", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (result.error) throw result.error;
+    const rows = result.data || [];
+    if (rows.some((row: Record<string, unknown>) =>
+      cleanText(row.id) !== excludeId && carrierTemplateNameKey(row.segment_name) === nameKey
+    )) return true;
+    if (rows.length < pageSize) return false;
+  }
+  throw new Error("Carrier list template name validation exceeded its safe row limit.");
+}
+
+function carrierTemplateInsertRow(
+  normalized: Record<string, unknown>,
+  actor: {
+    user_id: string;
+    email: string;
+    organization_id: string;
+    owner_user_id: string;
+    owner_email: string;
+  },
+  now: string
+) {
+  return {
+    segment_name: normalized.segment_name,
+    segment_type: "participant_template",
+    lifecycle_status: normalized.lifecycle_status,
+    status: normalized.lifecycle_status,
+    vendor_ids: normalized.vendor_ids,
+    owner_user_id: actor.owner_user_id,
+    owner_email: actor.owner_email,
+    organization_id: actor.organization_id,
+    template_version: 1,
+    created_by_user_id: actor.user_id,
+    created_by_email: actor.email,
+    updated_by_user_id: actor.user_id,
+    updated_by_email: actor.email,
+    archived_at: null,
+    archived_by_user_id: null,
+    archived_by_email: null,
+    updated_at: now
+  };
+}
+
+async function writeCarrierTemplateAudit(
+  supabase: RatewareSupabaseClient,
+  user: RuntimeWorkspaceUser,
+  action: string,
+  templateId: string,
+  metadata: Record<string, unknown>
+) {
+  await tryWriteAuditLog(
+    supabase,
+    user,
+    action,
+    "vendor_segments",
+    templateId,
+    action,
+    metadata
+  );
+}
+
+async function conditionalCarrierTemplateUpdate(
+  supabase: RatewareSupabaseClient,
+  organizationId: string,
+  templateId: string,
+  expectedVersion: number,
+  patch: Record<string, unknown>
+) {
+  const result = await supabase
+    .from("vendor_segments")
+    .update(patch)
+    .eq("id", templateId)
+    .eq("organization_id", organizationId)
+    .eq("segment_type", "participant_template")
+    .eq("template_version", expectedVersion)
+    .select()
+    .maybeSingle();
+  if (result.error) {
+    if (carrierTemplateDatabaseConflict(result.error)) return carrierTemplateDuplicateNameResult();
+    throw result.error;
+  }
+  if (result.data) {
+    return carrierTemplateResult(200, { row: result.data });
+  }
+  const current = await loadCarrierTemplate(supabase, organizationId, templateId);
+  return current
+    ? carrierTemplateVersionConflict(current)
+    : carrierTemplateResult(404, { error: "Carrier list template was not found." });
+}
+
+function carrierTemplateAuditMetadata(
+  templateId: string,
+  oldVersion: number,
+  newVersion: number,
+  oldVendorIds: string[],
+  newVendorIds: string[]
+) {
+  return {
+    template_id: templateId,
+    old_version: oldVersion,
+    new_version: newVersion,
+    old_member_count: oldVendorIds.length,
+    new_member_count: newVendorIds.length
+  };
+}
+
+export async function handleCarrierTemplateApiAction(
+  supabase: RatewareSupabaseClient,
+  user: RuntimeWorkspaceUser,
+  claims: Record<string, unknown>,
+  input: Record<string, unknown>,
+  options: CarrierTemplateActionOptions = {}
+): Promise<CarrierTemplateActionResult | null> {
+  const action = cleanText(input.action) || "";
+  if (!(CARRIER_LIST_TEMPLATE_ACTIONS as readonly string[]).includes(action)) return null;
+
+  const enabled = options.enabled ?? CARRIER_LIST_TEMPLATES_V2_ENABLED;
+  if (!enabled) {
+    return {
+      status: 404,
+      body: { enabled: false, error: "Carrier list templates are not enabled." }
+    };
+  }
+
+  const actor = carrierTemplateActor(user, claims);
+  if (!actor) return carrierTemplateResult(403, { error: "An organization-scoped workspace is required." });
+
+  if (CARRIER_LIST_TEMPLATE_WRITE_ACTIONS.has(action)) {
+    try {
+      requireCarrierTemplateManagePermission(claims);
+    } catch (error) {
+      return carrierTemplateResult(403, {
+        error: error instanceof Error ? error.message : "Missing required permission: vendors:manage"
+      });
+    }
+  }
+
+  if (action === "list_carrier_list_templates") {
+    const requestedLimit = Number(input.limit);
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(Math.floor(requestedLimit), 200)
+      : 50;
+    const offset = Math.max(Math.floor(Number(input.offset) || 0), 0);
+    const lifecycleStatus = cleanText(input.lifecycle_status)?.toLowerCase() || "";
+    if (lifecycleStatus && !["draft", "active", "archived"].includes(lifecycleStatus)) {
+      return carrierTemplateResult(400, { error: "Invalid carrier template lifecycle." });
+    }
+    const search = cleanText(input.search)?.slice(0, 120) || "";
+    let query = supabase
+      .from("vendor_segments")
+      .select("*", { count: "exact" })
+      .eq("organization_id", actor.organization_id)
+      .eq("segment_type", "participant_template");
+    if (lifecycleStatus) query = query.eq("lifecycle_status", lifecycleStatus);
+    if (search) query = query.ilike("segment_name", `%${search}%`);
+    const result = await query
+      .order("updated_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (result.error) throw result.error;
+    const rows = result.data || [];
+    const total = result.count || 0;
+    return carrierTemplateResult(200, {
+      rows,
+      total,
+      limit,
+      offset,
+      has_more: offset + rows.length < total
+    });
+  }
+
+  if (action === "get_carrier_list_template") {
+    const templateId = carrierTemplateId(input);
+    if (!templateId) return carrierTemplateResult(400, { error: "A valid carrier list template id is required." });
+    const usageContext = cleanText(input.usage_context);
+    if (usageContext && usageContext !== "carrier_fit") {
+      return carrierTemplateResult(400, { error: "Unsupported carrier list template usage context." });
+    }
+    const row = await loadCarrierTemplate(supabase, actor.organization_id, templateId);
+    if (!row) return carrierTemplateResult(404, { error: "Carrier list template was not found." });
+    if (usageContext === "carrier_fit") {
+      await writeCarrierTemplateAudit(
+        supabase,
+        user,
+        "carrier_template.load_in_carrier_fit",
+        templateId,
+        {
+          template_id: templateId,
+          template_version: Number(row.template_version) || 1,
+          member_count: normalizeCarrierTemplateVendorIds(row.vendor_ids || []).length
+        }
+      );
+    }
+    return carrierTemplateResult(200, { row });
+  }
+
+  if (action === "resolve_carrier_list_template_rows") {
+    const rows = Array.isArray(input.rows)
+      ? input.rows.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object" && !Array.isArray(row))
+      : [];
+    if (!rows.length) return carrierTemplateResult(400, { error: "At least one carrier import row is required." });
+    if (rows.length > 1000) return carrierTemplateResult(400, { error: "Resolve up to 1,000 carrier rows at a time." });
+    const vendorResult = await supabase
+      .from("vendors")
+      .select("id,vendor_name,legal_name,primary_email,secondary_emails,profile_data,status,base_stage,organization_id")
+      .eq("organization_id", actor.organization_id);
+    if (vendorResult.error) throw vendorResult.error;
+    const resolution = resolveCarrierTemplateImportRows(rows, vendorResult.data || [], actor.organization_id);
+    const templateId = carrierTemplateId(input) || "import";
+    await writeCarrierTemplateAudit(
+      supabase,
+      user,
+      "carrier_template.resolve_import",
+      templateId,
+      { template_id: templateId === "import" ? null : templateId, ...resolution.summary }
+    );
+    return carrierTemplateResult(200, resolution);
+  }
+
+  if (action === "create_carrier_list_template") {
+    const templateInput = objectRecord(input.template || input);
+    let normalized: Record<string, unknown>;
+    try {
+      normalized = normalizeCarrierTemplateInput(templateInput, actor);
+    } catch (error) {
+      return carrierTemplateResult(400, { error: error instanceof Error ? error.message : "Invalid carrier list template." });
+    }
+    if (normalized.lifecycle_status === "archived") {
+      return carrierTemplateResult(400, { error: "Create a draft or active template, then use the explicit archive action." });
+    }
+    const vendorIds = normalized.vendor_ids as string[];
+    if (!await validateCarrierTemplateMembers(supabase, actor.organization_id, vendorIds)) {
+      return carrierTemplateResult(400, { error: "One or more selected carriers are unavailable in this organization." });
+    }
+    if (await findCarrierTemplateNameConflict(supabase, actor.organization_id, String(normalized.segment_name))) {
+      return carrierTemplateDuplicateNameResult();
+    }
+    const row = carrierTemplateInsertRow(normalized, actor, new Date().toISOString());
+    const result = await supabase.from("vendor_segments").insert(row).select().single();
+    if (result.error) {
+      if (carrierTemplateDatabaseConflict(result.error)) return carrierTemplateDuplicateNameResult();
+      throw result.error;
+    }
+    const templateId = String(result.data.id);
+    const auditAction = normalized.lifecycle_status === "active"
+      ? "carrier_template.activate"
+      : "carrier_template.create_draft";
+    await writeCarrierTemplateAudit(supabase, user, auditAction, templateId, {
+      template_id: templateId,
+      old_version: null,
+      new_version: 1,
+      old_member_count: 0,
+      new_member_count: vendorIds.length
+    });
+    return carrierTemplateResult(201, { row: result.data });
+  }
+
+  if (action === "update_carrier_list_template") {
+    const templateId = carrierTemplateId(input);
+    if (!templateId) return carrierTemplateResult(400, { error: "A valid carrier list template id is required." });
+    const expectedVersion = carrierTemplateExpectedVersion(input.expected_version);
+    if (!expectedVersion) return carrierTemplateResult(400, { error: "expected_version is required." });
+    const current = await loadCarrierTemplate(supabase, actor.organization_id, templateId);
+    if (!current) return carrierTemplateResult(404, { error: "Carrier list template was not found." });
+    if ((Number(current.template_version) || 1) !== expectedVersion) return carrierTemplateVersionConflict(current);
+
+    const patchInput = objectRecord(input.template || input.patch || input);
+    const oldVendorIds = normalizeCarrierTemplateVendorIds(current.vendor_ids || []);
+    const mergedInput = {
+      segment_name: patchInput.segment_name ?? current.segment_name,
+      lifecycle_status: patchInput.lifecycle_status ?? patchInput.status ?? current.lifecycle_status ?? current.status,
+      vendor_ids: patchInput.vendor_ids ?? oldVendorIds
+    };
+    let normalized: Record<string, unknown>;
+    try {
+      normalized = normalizeCarrierTemplateInput(mergedInput, actor);
+    } catch (error) {
+      return carrierTemplateResult(400, { error: error instanceof Error ? error.message : "Invalid carrier list template." });
+    }
+    const oldLifecycle = cleanText(current.lifecycle_status || current.status);
+    const newLifecycle = cleanText(normalized.lifecycle_status);
+    if (oldLifecycle !== "archived" && newLifecycle === "archived") {
+      return carrierTemplateResult(400, { error: "Use the explicit archive action to archive a carrier list template." });
+    }
+    if (oldLifecycle === "archived" && newLifecycle !== "archived") {
+      return carrierTemplateResult(400, { error: "Use the explicit restore action to reactivate an archived carrier list template." });
+    }
+    const newVendorIds = normalized.vendor_ids as string[];
+    const addedVendorIds = newVendorIds.filter((id) => !oldVendorIds.includes(id));
+    const removedVendorIds = oldVendorIds.filter((id) => !newVendorIds.includes(id));
+    if (!await validateCarrierTemplateMembers(supabase, actor.organization_id, addedVendorIds)) {
+      return carrierTemplateResult(400, { error: "One or more selected carriers are unavailable in this organization." });
+    }
+    const nameChanged = carrierTemplateNameKey(normalized.segment_name) !== carrierTemplateNameKey(current.segment_name);
+    if (
+      nameChanged &&
+      await findCarrierTemplateNameConflict(supabase, actor.organization_id, String(normalized.segment_name), templateId)
+    ) {
+      return carrierTemplateDuplicateNameResult();
+    }
+
+    const now = new Date().toISOString();
+    const newVersion = expectedVersion + 1;
+    const updateResult = await conditionalCarrierTemplateUpdate(
+      supabase,
+      actor.organization_id,
+      templateId,
+      expectedVersion,
+      {
+        segment_name: normalized.segment_name,
+        lifecycle_status: normalized.lifecycle_status,
+        status: normalized.lifecycle_status,
+        vendor_ids: newVendorIds,
+        organization_id: actor.organization_id,
+        template_version: newVersion,
+        updated_by_user_id: actor.user_id,
+        updated_by_email: actor.email,
+        updated_at: now
+      }
+    );
+    if (updateResult.status !== 200) return updateResult;
+
+    const metadata = carrierTemplateAuditMetadata(templateId, expectedVersion, newVersion, oldVendorIds, newVendorIds);
+    if (newLifecycle === "active" && oldLifecycle !== "active") {
+      await writeCarrierTemplateAudit(supabase, user, "carrier_template.activate", templateId, metadata);
+    } else if (nameChanged || newLifecycle !== oldLifecycle) {
+      await writeCarrierTemplateAudit(supabase, user, "carrier_template.update_details", templateId, metadata);
+    }
+    if (addedVendorIds.length) {
+      await writeCarrierTemplateAudit(supabase, user, "carrier_template.add_members", templateId, {
+        ...metadata,
+        added_vendor_ids: addedVendorIds
+      });
+    }
+    if (removedVendorIds.length) {
+      await writeCarrierTemplateAudit(supabase, user, "carrier_template.remove_members", templateId, {
+        ...metadata,
+        removed_vendor_ids: removedVendorIds
+      });
+    }
+    return updateResult;
+  }
+
+  if (action === "duplicate_carrier_list_template") {
+    const sourceId = carrierTemplateId(input);
+    if (!sourceId) return carrierTemplateResult(400, { error: "A valid carrier list template id is required." });
+    const source = await loadCarrierTemplate(supabase, actor.organization_id, sourceId);
+    if (!source) return carrierTemplateResult(404, { error: "Carrier list template was not found." });
+    const requestedName = cleanText(input.segment_name || objectRecord(input.template).segment_name);
+    if (!requestedName) return carrierTemplateResult(400, { error: "segment_name is required." });
+    const vendorIds = normalizeCarrierTemplateVendorIds(source.vendor_ids || []);
+    if (!await validateCarrierTemplateMembers(supabase, actor.organization_id, vendorIds)) {
+      return carrierTemplateResult(400, { error: "One or more selected carriers are unavailable in this organization." });
+    }
+    if (await findCarrierTemplateNameConflict(supabase, actor.organization_id, requestedName)) {
+      return carrierTemplateDuplicateNameResult();
+    }
+    const normalized = normalizeCarrierTemplateInput({
+      segment_name: requestedName,
+      lifecycle_status: "draft",
+      vendor_ids: vendorIds
+    }, actor, { lifecycle: "draft" });
+    const row = carrierTemplateInsertRow(normalized, actor, new Date().toISOString());
+    const result = await supabase.from("vendor_segments").insert(row).select().single();
+    if (result.error) {
+      if (carrierTemplateDatabaseConflict(result.error)) return carrierTemplateDuplicateNameResult();
+      throw result.error;
+    }
+    const newId = String(result.data.id);
+    await writeCarrierTemplateAudit(supabase, user, "carrier_template.duplicate", newId, {
+      template_id: newId,
+      source_template_id: sourceId,
+      old_version: Number(source.template_version) || 1,
+      new_version: 1,
+      old_member_count: vendorIds.length,
+      new_member_count: vendorIds.length
+    });
+    return carrierTemplateResult(201, { row: result.data });
+  }
+
+  if (action === "archive_carrier_list_template" || action === "restore_carrier_list_template") {
+    const templateId = carrierTemplateId(input);
+    if (!templateId) return carrierTemplateResult(400, { error: "A valid carrier list template id is required." });
+    const expectedVersion = carrierTemplateExpectedVersion(input.expected_version);
+    if (!expectedVersion) return carrierTemplateResult(400, { error: "expected_version is required." });
+    const current = await loadCarrierTemplate(supabase, actor.organization_id, templateId);
+    if (!current) return carrierTemplateResult(404, { error: "Carrier list template was not found." });
+    if ((Number(current.template_version) || 1) !== expectedVersion) return carrierTemplateVersionConflict(current);
+    const vendorIds = normalizeCarrierTemplateVendorIds(current.vendor_ids || []);
+    const restoring = action === "restore_carrier_list_template";
+    if (restoring) {
+      if (!await hasCurrentCarrierTemplateMember(supabase, actor.organization_id, vendorIds)) {
+        return carrierTemplateResult(400, { error: "Restore requires at least one current carrier in this organization." });
+      }
+    }
+    const now = new Date().toISOString();
+    const newVersion = expectedVersion + 1;
+    const patch = restoring
+      ? {
+        lifecycle_status: "active",
+        status: "active",
+        vendor_ids: vendorIds,
+        template_version: newVersion,
+        updated_by_user_id: actor.user_id,
+        updated_by_email: actor.email,
+        archived_at: null,
+        archived_by_user_id: null,
+        archived_by_email: null,
+        updated_at: now
+      }
+      : {
+        lifecycle_status: "archived",
+        status: "archived",
+        template_version: newVersion,
+        updated_by_user_id: actor.user_id,
+        updated_by_email: actor.email,
+        archived_at: now,
+        archived_by_user_id: actor.user_id,
+        archived_by_email: actor.email,
+        updated_at: now
+      };
+    const result = await conditionalCarrierTemplateUpdate(
+      supabase,
+      actor.organization_id,
+      templateId,
+      expectedVersion,
+      patch
+    );
+    if (result.status !== 200) return result;
+    await writeCarrierTemplateAudit(
+      supabase,
+      user,
+      restoring ? "carrier_template.restore" : "carrier_template.archive",
+      templateId,
+      carrierTemplateAuditMetadata(templateId, expectedVersion, newVersion, vendorIds, vendorIds)
+    );
+    return result;
+  }
+
+  return null;
+}
 
 const CARRIER_INTELLIGENCE_SCHEMA = {
   type: "object",
@@ -23865,11 +24503,8 @@ Deno.serve(async (request) => {
     const supabase = getClient();
     auditSupabase = supabase;
     const authenticationStartedAt = performance.now();
-    const user: RuntimeWorkspaceUser = await resolveRuntimeWorkspaceUser(
-      supabase,
-      await requireKindeUser(request),
-      { persistLegacyIdentity: false }
-    );
+    const claims = await requireKindeUser(request);
+    const { user } = await resolveRatewareApiPrincipal(supabase, claims);
     const authenticationCompletedAt = performance.now();
     auditUser = user;
     body = await request.json();
@@ -23878,6 +24513,11 @@ Deno.serve(async (request) => {
     const growthAction = typeof body.action === "string" ? body.action : "";
     if (isGrowthAction(growthAction)) {
       return jsonResponse(await handleGrowthAction(supabase, user, body));
+    }
+
+    const carrierTemplateAction = await handleCarrierTemplateApiAction(supabase, user, claims, body);
+    if (carrierTemplateAction) {
+      return jsonResponse(carrierTemplateAction.body, carrierTemplateAction.status);
     }
 
     if (body.action === "list_rfx_process_projects") {
@@ -26442,7 +27082,9 @@ Deno.serve(async (request) => {
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
       if (requestedSegmentType === "participant_template") {
-        query = query.eq("owner_email", user.owner_email).eq("segment_type", "participant_template");
+        const scope = carrierTemplateLegacyReadScope(CARRIER_LIST_TEMPLATES_V2_ENABLED, requestedSegmentType, user);
+        if (!scope?.value) return jsonResponse({ error: "An organization-scoped workspace is required." }, 403);
+        query = query.eq(scope.column, scope.value).eq("segment_type", "participant_template");
       } else {
         query = query.or(`owner_email.is.null,owner_email.eq.${user.owner_email}`);
       }
@@ -26455,6 +27097,9 @@ Deno.serve(async (request) => {
 
     if (body.action === "create_vendor_segment") {
       const row = normalizeSegment(objectRecord(body.segment), user);
+      if (carrierTemplateLegacyMutationBlocked(CARRIER_LIST_TEMPLATES_V2_ENABLED, row.segment_type, null)) {
+        return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+      }
       if (row.segment_type === "participant_template") {
         if (!row.vendor_ids.length) return jsonResponse({ error: "Participant templates must include at least one carrier." }, 400);
         const conflict = await findParticipantTemplateNameConflict(supabase, user, row.segment_name);
@@ -26475,6 +27120,21 @@ Deno.serve(async (request) => {
     if (body.action === "update_vendor_segment") {
       if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
       const patch = normalizeSegment(objectRecord(body.segment || body.patch), user);
+      if (carrierTemplateLegacyMutationBlocked(CARRIER_LIST_TEMPLATES_V2_ENABLED, patch.segment_type, null)) {
+        return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+      }
+      if (CARRIER_LIST_TEMPLATES_V2_ENABLED && user.organization_id) {
+        const currentSegment = await supabase
+          .from("vendor_segments")
+          .select("segment_type")
+          .eq("id", body.id)
+          .eq("organization_id", user.organization_id)
+          .maybeSingle();
+        if (currentSegment.error) throw currentSegment.error;
+        if (carrierTemplateLegacyMutationBlocked(true, patch.segment_type, cleanText(currentSegment.data?.segment_type))) {
+          return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+        }
+      }
       if (patch.segment_type === "participant_template") {
         if (!patch.vendor_ids.length) return jsonResponse({ error: "Participant templates must include at least one carrier." }, 400);
         const conflict = await findParticipantTemplateNameConflict(supabase, user, patch.segment_name, String(body.id));
@@ -26500,8 +27160,23 @@ Deno.serve(async (request) => {
 
     if (body.action === "delete_vendor_segment") {
       if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
-      requireBulkConfirmation(body, { action: "delete_vendor_segment", label: "Vendor segment deletion", count: 1 });
       const requestedSegmentType = cleanText(body.segment_type)?.toLowerCase();
+      if (carrierTemplateLegacyMutationBlocked(CARRIER_LIST_TEMPLATES_V2_ENABLED, requestedSegmentType || null, null)) {
+        return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+      }
+      if (CARRIER_LIST_TEMPLATES_V2_ENABLED && user.organization_id) {
+        const currentSegment = await supabase
+          .from("vendor_segments")
+          .select("segment_type")
+          .eq("id", body.id)
+          .eq("organization_id", user.organization_id)
+          .maybeSingle();
+        if (currentSegment.error) throw currentSegment.error;
+        if (carrierTemplateLegacyMutationBlocked(true, requestedSegmentType || null, cleanText(currentSegment.data?.segment_type))) {
+          return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+        }
+      }
+      requireBulkConfirmation(body, { action: "delete_vendor_segment", label: "Vendor segment deletion", count: 1 });
       let query = supabase.from("vendor_segments").delete().eq("owner_email", user.owner_email).eq("id", body.id);
       if (requestedSegmentType) query = query.eq("segment_type", requestedSegmentType);
       const result = await query.select().single();
