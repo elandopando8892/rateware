@@ -241,12 +241,14 @@ function carrierTemplateDatabaseConflict(error: unknown) {
 
 function carrierTemplateDuplicateNameResult() {
   return carrierTemplateResult(409, {
+    code: "template_name_conflict",
     error: "A carrier list template with that name already exists in this organization."
   });
 }
 
 function carrierTemplateVersionConflict(row: Record<string, unknown>) {
   return carrierTemplateResult(409, {
+    code: "template_version_conflict",
     error: "Carrier list template changed since it was loaded.",
     current_version: Number(row.template_version) || 1,
     current_updated_at: cleanText(row.updated_at),
@@ -670,37 +672,49 @@ export async function handleCarrierTemplateApiAction(
     }
     const requestedName = canonicalName || legacyName;
     if (!requestedName) return carrierTemplateResult(400, { error: "name is required." });
-    const source = await loadCarrierTemplate(supabase, actor.organization_id, sourceId);
-    if (!source) return carrierTemplateResult(404, { error: "Carrier list template was not found." });
-    if ((Number(source.template_version) || 1) !== expectedVersion) return carrierTemplateVersionConflict(source);
-    const vendorIds = normalizeCarrierTemplateVendorIds(source.vendor_ids || []);
-    if (!await validateCarrierTemplateMembers(supabase, actor.organization_id, vendorIds)) {
-      return carrierTemplateResult(400, { error: "One or more selected carriers are unavailable in this organization." });
-    }
-    if (await findCarrierTemplateNameConflict(supabase, actor.organization_id, requestedName)) {
-      return carrierTemplateDuplicateNameResult();
-    }
-    const normalized = normalizeCarrierTemplateInput({
-      segment_name: requestedName,
-      lifecycle_status: "draft",
-      vendor_ids: vendorIds
-    }, actor, { lifecycle: "draft" });
-    const row = carrierTemplateInsertRow(normalized, actor, new Date().toISOString());
-    const result = await supabase.from("vendor_segments").insert(row).select().single();
+    const normalizedName = requestedName.replace(/\s+/g, " ").trim();
+    const result = await supabase.rpc("rateware_duplicate_carrier_list_template", {
+      p_organization_id: actor.organization_id,
+      p_source_template_id: sourceId,
+      p_expected_version: expectedVersion,
+      p_name: normalizedName,
+      p_owner_user_id: actor.owner_user_id,
+      p_owner_email: actor.owner_email,
+      p_actor_user_id: actor.user_id,
+      p_actor_email: actor.email
+    });
     if (result.error) {
       if (carrierTemplateDatabaseConflict(result.error)) return carrierTemplateDuplicateNameResult();
       throw result.error;
     }
-    const newId = String(result.data.id);
+    const rpcRow = objectRecord(Array.isArray(result.data) ? result.data[0] : result.data);
+    const outcome = cleanText(rpcRow.outcome);
+    if (outcome === "not_found") {
+      return carrierTemplateResult(404, { error: "Carrier list template was not found." });
+    }
+    if (outcome === "version_conflict") {
+      return carrierTemplateVersionConflict({
+        id: sourceId,
+        template_version: rpcRow.current_version,
+        updated_at: rpcRow.current_updated_at
+      });
+    }
+    if (outcome === "name_conflict") return carrierTemplateDuplicateNameResult();
+    const row = objectRecord(rpcRow.row_data);
+    const newId = cleanText(row.id);
+    if (outcome !== "success" || !newId) {
+      throw new Error("Carrier list template duplicate transaction returned an invalid outcome.");
+    }
+    const vendorIds = normalizeCarrierTemplateVendorIds(row.vendor_ids || []);
     await writeCarrierTemplateAudit(supabase, user, "carrier_template.duplicate", newId, {
       template_id: newId,
       source_template_id: sourceId,
-      old_version: Number(source.template_version) || 1,
+      old_version: expectedVersion,
       new_version: 1,
       old_member_count: vendorIds.length,
       new_member_count: vendorIds.length
     });
-    return carrierTemplateResult(201, { row: result.data });
+    return carrierTemplateResult(201, { row });
   }
 
   if (action === "archive_carrier_list_template" || action === "restore_carrier_list_template") {

@@ -138,6 +138,157 @@ create unique index vendor_segments_participant_template_org_name_uidx
   on public.vendor_segments (organization_id, public.rateware_vendor_search_key(segment_name))
   where segment_type = 'participant_template';
 
+-- Duplicate under one PostgreSQL transaction so the source version and ordered
+-- membership cannot change between validation and copy. The edge function passes
+-- only organization and actor values resolved from the authenticated session.
+create or replace function public.rateware_duplicate_carrier_list_template(
+  p_organization_id text,
+  p_source_template_id uuid,
+  p_expected_version bigint,
+  p_name text,
+  p_owner_user_id text,
+  p_owner_email text,
+  p_actor_user_id text,
+  p_actor_email text
+)
+returns table (
+  outcome text,
+  row_data jsonb,
+  current_version bigint,
+  current_updated_at timestamptz
+)
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  source_template public.vendor_segments%rowtype;
+  created_template public.vendor_segments%rowtype;
+  normalized_name text;
+  violated_constraint text;
+begin
+  if nullif(btrim(p_organization_id), '') is null
+    or p_source_template_id is null
+    or p_expected_version is null
+    or p_expected_version < 1
+    or nullif(btrim(p_name), '') is null
+    or nullif(btrim(p_owner_user_id), '') is null
+    or nullif(btrim(p_owner_email), '') is null
+    or nullif(btrim(p_actor_user_id), '') is null
+    or nullif(btrim(p_actor_email), '') is null
+  then
+    raise exception 'invalid carrier template duplicate arguments';
+  end if;
+
+  normalized_name := regexp_replace(btrim(p_name), '\s+', ' ', 'g');
+
+  select segment.*
+  into source_template
+  from public.vendor_segments segment
+  where segment.id = p_source_template_id
+    and segment.organization_id = p_organization_id
+    and segment.segment_type = 'participant_template'
+  for update;
+
+  if not found then
+    outcome := 'not_found';
+    row_data := null;
+    current_version := null;
+    current_updated_at := null;
+    return next;
+    return;
+  end if;
+
+  if source_template.template_version <> p_expected_version then
+    outcome := 'version_conflict';
+    row_data := null;
+    current_version := source_template.template_version;
+    current_updated_at := source_template.updated_at;
+    return next;
+    return;
+  end if;
+
+  if exists (
+    select 1
+    from public.vendor_segments candidate
+    where candidate.organization_id = p_organization_id
+      and candidate.segment_type = 'participant_template'
+      and public.rateware_vendor_search_key(candidate.segment_name) = public.rateware_vendor_search_key(normalized_name)
+  ) then
+    outcome := 'name_conflict';
+    row_data := null;
+    current_version := source_template.template_version;
+    current_updated_at := source_template.updated_at;
+    return next;
+    return;
+  end if;
+
+  begin
+    insert into public.vendor_segments (
+      segment_name,
+      segment_type,
+      lifecycle_status,
+      status,
+      vendor_ids,
+      owner_user_id,
+      owner_email,
+      organization_id,
+      template_version,
+      created_by_user_id,
+      created_by_email,
+      updated_by_user_id,
+      updated_by_email,
+      archived_at,
+      archived_by_user_id,
+      archived_by_email,
+      updated_at
+    ) values (
+      normalized_name,
+      'participant_template',
+      'draft',
+      'draft',
+      source_template.vendor_ids,
+      btrim(p_owner_user_id),
+      lower(btrim(p_owner_email)),
+      btrim(p_organization_id),
+      1,
+      btrim(p_actor_user_id),
+      lower(btrim(p_actor_email)),
+      btrim(p_actor_user_id),
+      lower(btrim(p_actor_email)),
+      null,
+      null,
+      null,
+      now()
+    )
+    returning * into created_template;
+  exception
+    when unique_violation then
+      get stacked diagnostics violated_constraint = constraint_name;
+      if violated_constraint <> 'vendor_segments_participant_template_org_name_uidx' then
+        raise;
+      end if;
+      outcome := 'name_conflict';
+      row_data := null;
+      current_version := source_template.template_version;
+      current_updated_at := source_template.updated_at;
+      return next;
+      return;
+  end;
+
+  outcome := 'success';
+  row_data := to_jsonb(created_template);
+  current_version := created_template.template_version;
+  current_updated_at := created_template.updated_at;
+  return next;
+end;
+$$;
+
+revoke execute on function public.rateware_duplicate_carrier_list_template(text, uuid, bigint, text, text, text, text, text)
+  from public, anon, authenticated;
+grant execute on function public.rateware_duplicate_carrier_list_template(text, uuid, bigint, text, text, text, text, text)
+  to service_role;
+
 create or replace function public.rateware_validate_participant_template_membership()
 returns trigger
 language plpgsql

@@ -1,4 +1,5 @@
 import { getAccessContext } from "./auth.js";
+import { createCarrierListTemplateController } from "./carrier-list-template-controller.js";
 import { humanizeError } from "./error-copy.js";
 import {
   archiveCarrierListTemplate,
@@ -87,16 +88,17 @@ function writeControlAttributes(canManage) {
 
 function actionButtons(row, canManage) {
   const id = escapeHtml(templateId(row));
+  const name = escapeHtml(templateName(row));
   const version = displayedTemplateVersion(row);
   const lifecycle = templateLifecycle(row);
   const writeAttributes = writeControlAttributes(canManage);
   const lifecycleAction = lifecycle === "archived"
-    ? `<button class="secondary small-button" type="button" data-template-action="restore" data-template-id="${id}" data-template-version="${version}"${writeAttributes}>Restore</button>`
-    : `<button class="secondary small-button" type="button" data-template-action="archive" data-template-id="${id}" data-template-version="${version}"${writeAttributes}>Archive</button>`;
+    ? `<button class="secondary small-button" type="button" data-template-action="restore" data-template-id="${id}" data-template-version="${version}" aria-label="Restore ${name}"${writeAttributes}>Restore</button>`
+    : `<button class="secondary small-button" type="button" data-template-action="archive" data-template-id="${id}" data-template-version="${version}" aria-label="Archive ${name}"${writeAttributes}>Archive</button>`;
   return `
     <div class="carrier-template-actions">
-      <button class="secondary small-button" type="button" data-template-action="open" data-template-id="${id}">Open</button>
-      <button class="secondary small-button" type="button" data-template-action="duplicate" data-template-id="${id}" data-template-version="${version}"${writeAttributes}>Duplicate</button>
+      <button class="secondary small-button" type="button" data-template-action="open" data-template-id="${id}" aria-label="Open ${name}">Open</button>
+      <button class="secondary small-button" type="button" data-template-action="duplicate" data-template-id="${id}" data-template-version="${version}" aria-label="Duplicate ${name}"${writeAttributes}>Duplicate</button>
       ${lifecycleAction}
     </div>
   `;
@@ -155,6 +157,9 @@ export async function initCarrierListTemplateLibrary({
   const detail = workspace?.querySelector("[data-template-detail]");
   const status = workspace?.querySelector("[data-template-library-status]");
   const newButton = workspace?.querySelector('[data-template-action="new"]');
+  const capabilityError = document.querySelector("[data-template-capability-error]");
+  const capabilityErrorMessage = capabilityError?.querySelector("[data-template-capability-message]");
+  const capabilityRetry = capabilityError?.querySelector("[data-template-capability-retry]");
 
   let templates = [];
   let selectedTemplateId = "";
@@ -162,6 +167,10 @@ export async function initCarrierListTemplateLibrary({
   let capabilityEnabled = false;
   let mutationRunning = false;
   let searchTimer = null;
+  const requestController = createCarrierListTemplateController({
+    fetchList: fetchEveryTemplatePage,
+    fetchDetail: getCarrierListTemplate
+  });
 
   function setStatus(message = "", tone = "neutral") {
     if (!status) return;
@@ -174,6 +183,37 @@ export async function initCarrierListTemplateLibrary({
     if (tab) tab.hidden = !capabilityEnabled;
     if (workspace) workspace.hidden = !capabilityEnabled;
     onCapabilityChange(capabilityEnabled);
+  }
+
+  function hideCapabilityError() {
+    if (capabilityError) capabilityError.hidden = true;
+  }
+
+  function showCapabilityError(error) {
+    capabilityEnabled = false;
+    if (tab) tab.hidden = true;
+    if (workspace) workspace.hidden = true;
+    if (capabilityErrorMessage) {
+      capabilityErrorMessage.textContent = `List Templates could not be verified: ${humanizeError(error)}`;
+    }
+    if (capabilityError) capabilityError.hidden = false;
+  }
+
+  function applyRequestState(state, { renderState = true } = {}) {
+    templates = [...state.rows];
+    selectedTemplateId = state.selectedId;
+    if (state.capability === "enabled") {
+      hideCapabilityError();
+      setCapability(true);
+      if (renderState) render();
+      return;
+    }
+    if (state.capability === "disabled") {
+      hideCapabilityError();
+      setCapability(false);
+      return;
+    }
+    if (state.capability === "error") showCapabilityError(state.error);
   }
 
   function setManageAffordances() {
@@ -267,41 +307,29 @@ export async function initCarrierListTemplateLibrary({
   }
 
   function replaceTemplateRow(row) {
-    const id = templateId(row);
-    const existingIndex = templates.findIndex((item) => templateId(item) === id);
-    if (existingIndex >= 0) templates.splice(existingIndex, 1, row);
-    else templates.unshift(row);
-  }
-
-  async function reloadCurrentTemplate(id) {
-    const result = await getCarrierListTemplate(id);
-    if (!result?.row) throw new Error("The current carrier template could not be reloaded.");
-    replaceTemplateRow(result.row);
-    selectedTemplateId = id;
-    render();
-    return result.row;
+    requestController.replaceRow(row);
+    templates = requestController.snapshot().rows;
   }
 
   async function handleConflict(error, id, displayedVersion, action) {
-    selectedTemplateId = id;
-    let current = null;
-    if (error?.status === 409) {
-      try {
-        current = await getCarrierListTemplate(id);
-        if (current?.row) replaceTemplateRow(current.row);
-      } catch {
-        // Selection stays intact even when the follow-up read also fails.
-      }
-    }
+    const current = await requestController.handleConflict(error, { id, displayedVersion, action });
+    if (!current.current) return;
+    applyRequestState(current.state, { renderState: false });
     render();
-    const currentVersion = current?.row ? displayedTemplateVersion(current.row) : "current";
-    setStatus(
-      `This template changed after displayed v${displayedVersion}. Review the refreshed ${currentVersion === "current" ? "current version" : `v${currentVersion}`} against your intended ${action}, then retry manually. No mutation was retried.`,
-      "warning"
-    );
+    if (current.kind === "name") {
+      setStatus(current.message, "warning");
+      focusSelectedAction("duplicate");
+      return;
+    }
+    if (current.kind !== "version") {
+      setStatus(humanizeError(error), "error");
+      focusSelectedAction(action);
+      return;
+    }
+    setStatus(current.message, "warning");
     const retryAction = action === "duplicate"
       ? "duplicate"
-      : current?.row
+      : current.row
         ? (templateLifecycle(current.row) === "archived" ? "restore" : "archive")
         : action;
     focusSelectedAction(retryAction);
@@ -311,43 +339,33 @@ export async function initCarrierListTemplateLibrary({
     if (!workspace || !tab || !tableHost || !detail) return false;
     workspace.setAttribute("aria-busy", "true");
     if (announce) setStatus("Loading carrier list templates...");
+    let currentRequest = false;
     try {
-      const result = await fetchEveryTemplatePage(text(statusFilter?.value) || "active");
-      if (!result.enabled) {
-        setCapability(false);
-        return false;
+      const outcome = await requestController.load(text(statusFilter?.value) || "active");
+      currentRequest = outcome.current;
+      if (!outcome.current) return false;
+      applyRequestState(outcome.state);
+      if (outcome.state.capability === "enabled") {
+        if (announce) setStatus(`${templates.length.toLocaleString()} template(s) loaded.`, "success");
+        return true;
       }
-      templates = result.rows;
-      setCapability(true);
-      render();
-      if (announce) setStatus(`${templates.length.toLocaleString()} template(s) loaded.`, "success");
-      return true;
-    } catch (error) {
-      if (error?.status === 404) {
-        setCapability(false);
-        return false;
-      }
-      setCapability(false);
       return false;
     } finally {
-      workspace.setAttribute("aria-busy", "false");
+      if (currentRequest) workspace.setAttribute("aria-busy", "false");
     }
   }
 
   async function selectTemplate(id, { focus = false, updateHistory = false } = {}) {
     if (!capabilityEnabled || !id) return false;
-    selectedTemplateId = id;
-    if (!selectedTemplate()) {
-      try {
-        await reloadCurrentTemplate(id);
-      } catch (error) {
-        selectedTemplateId = "";
-        render();
-        setStatus(humanizeError(error), "error");
-        return false;
-      }
-    } else {
-      render();
+    const selection = requestController.select(id);
+    applyRequestState(requestController.snapshot(), { renderState: false });
+    const outcome = await selection;
+    if (!outcome.current) return false;
+    applyRequestState(outcome.state, { renderState: false });
+    render();
+    if (outcome.error) {
+      setStatus(humanizeError(outcome.error), "error");
+      return false;
     }
     if (updateHistory) onSelectionChange(id, { replace: false });
     if (focus) detail?.focus();
@@ -356,6 +374,7 @@ export async function initCarrierListTemplateLibrary({
 
   function showNewTemplateGuidance() {
     selectedTemplateId = "";
+    requestController.select("");
     renderTable();
     if (detail) {
       detail.innerHTML = `
@@ -408,6 +427,7 @@ export async function initCarrierListTemplateLibrary({
       if (!result?.row) throw new Error("The carrier template action returned no current row.");
       replaceTemplateRow(result.row);
       selectedTemplateId = templateId(result.row);
+      await requestController.select(selectedTemplateId);
       render();
       if (action === "duplicate") onSelectionChange(selectedTemplateId, { replace: false });
       setStatus(
@@ -418,7 +438,7 @@ export async function initCarrierListTemplateLibrary({
       );
       focusSelectedAction(action === "archive" ? "restore" : action === "restore" ? "archive" : "open");
     } catch (error) {
-      if (error?.status === 409) {
+      if (error?.status === 409 && ["template_version_conflict", "template_name_conflict"].includes(error?.code)) {
         await handleConflict(error, id, displayedVersion, action);
       } else {
         render();
@@ -457,8 +477,18 @@ export async function initCarrierListTemplateLibrary({
 
   statusFilter?.addEventListener("change", async () => {
     selectedTemplateId = "";
+    await requestController.select("");
     onSelectionChange("", { replace: true });
     await loadLibrary();
+  });
+
+  capabilityRetry?.addEventListener("click", async () => {
+    capabilityRetry.disabled = true;
+    try {
+      await loadLibrary();
+    } finally {
+      capabilityRetry.disabled = false;
+    }
   });
 
   try {
@@ -479,6 +509,7 @@ export async function initCarrierListTemplateLibrary({
     activate: ({ templateId: requestedId = "" } = {}) => {
       if (requestedId) return selectTemplate(requestedId, { focus: false, updateHistory: false });
       selectedTemplateId = "";
+      requestController.select("");
       render();
       return Promise.resolve(capabilityEnabled);
     },

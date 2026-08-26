@@ -14330,6 +14330,22 @@ body.bid-editor-open {
   display: none !important;
 }
 
+.carrier-template-capability-error {
+  align-items: center;
+  background: var(--warning-soft, #fff7df);
+  border: 1px solid var(--warning, #b7791f);
+  border-radius: 10px;
+  color: var(--text, #172033);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+
+.carrier-template-capability-error[hidden] {
+  display: none;
+}
+
 .carrier-template-workspace {
   display: grid;
   gap: 12px;

@@ -457,6 +457,17 @@ class ScriptedSupabase {
     return new ScriptedQuery(this, trace);
   }
 
+  rpc(name: string, payload: unknown) {
+    const trace: QueryTrace = {
+      table: name,
+      operation: "rpc",
+      payload,
+      filters: [],
+    };
+    this.traces.push(trace);
+    return this.take(trace);
+  }
+
   take(trace: QueryTrace) {
     const response = this.responses.shift();
     assert(response, `Unexpected ${trace.table}.${trace.operation} query`);
@@ -736,9 +747,51 @@ Deno.test("real duplicate request requires and enforces the displayed source ver
   });
   assertEquals(missingVersionDb.traces, []);
 
-  const staleVersionDb = new ScriptedSupabase([
-    { table: "vendor_segments", operation: "select", data: source },
-  ]);
+  const notFoundDb = new ScriptedSupabase([{
+    table: "rateware_duplicate_carrier_list_template",
+    operation: "rpc",
+    data: [{ outcome: "not_found", row_data: null }],
+  }]);
+  const notFoundHandler = createTestRatewareApiHandler(notFoundDb);
+  assert(notFoundHandler);
+  const notFoundResponse = await notFoundHandler(jsonActionRequest({
+    action: "duplicate_carrier_list_template",
+    id: source.id,
+    name: "Source Copy",
+    expected_version: 4,
+    organization_id: "body-org-must-be-ignored",
+    owner_user_id: "body-owner-must-be-ignored",
+    owner_email: "attacker@example.com",
+    actor_user_id: "body-actor-must-be-ignored",
+    actor_email: "attacker@example.com",
+  }));
+  assertEquals(notFoundResponse.status, 404);
+  assertEquals(await notFoundResponse.json(), {
+    enabled: true,
+    error: "Carrier list template was not found.",
+  });
+  assertEquals(notFoundDb.traces[0].payload, {
+    p_organization_id: "org-a",
+    p_source_template_id: source.id,
+    p_expected_version: 4,
+    p_name: "Source Copy",
+    p_owner_user_id: "kp_1",
+    p_owner_email: "org:org-a",
+    p_actor_user_id: "kp_1",
+    p_actor_email: "buyer@example.com",
+  });
+  assertEquals(notFoundDb.traces.some((trace) => trace.table === "saas_audit_log"), false);
+
+  const staleVersionDb = new ScriptedSupabase([{
+    table: "rateware_duplicate_carrier_list_template",
+    operation: "rpc",
+    data: [{
+      outcome: "version_conflict",
+      row_data: null,
+      current_version: 4,
+      current_updated_at: source.updated_at,
+    }],
+  }]);
   const staleVersionHandler = createTestRatewareApiHandler(staleVersionDb);
   assert(staleVersionHandler);
   const staleVersionResponse = await staleVersionHandler(jsonActionRequest({
@@ -750,6 +803,7 @@ Deno.test("real duplicate request requires and enforces the displayed source ver
   assertEquals(staleVersionResponse.status, 409);
   assertEquals(await staleVersionResponse.json(), {
     enabled: true,
+    code: "template_version_conflict",
     error: "Carrier list template changed since it was loaded.",
     current_version: 4,
     current_updated_at: source.updated_at,
@@ -770,10 +824,16 @@ Deno.test("real duplicate request requires and enforces the displayed source ver
     template_version: 1,
   };
   const currentVersionDb = new ScriptedSupabase([
-    { table: "vendor_segments", operation: "select", data: source },
-    { table: "vendors", operation: "select", data: [vendorA, vendorB] },
-    { table: "vendor_segments", operation: "select", data: [] },
-    { table: "vendor_segments", operation: "insert", data: duplicate },
+    {
+      table: "rateware_duplicate_carrier_list_template",
+      operation: "rpc",
+      data: [{
+        outcome: "success",
+        row_data: duplicate,
+        current_version: 1,
+        current_updated_at: duplicate.updated_at,
+      }],
+    },
     { table: "saas_audit_log", operation: "insert", data: null },
   ]);
   const currentVersionHandler = createTestRatewareApiHandler(currentVersionDb);
@@ -781,7 +841,7 @@ Deno.test("real duplicate request requires and enforces the displayed source ver
   const currentVersionResponse = await currentVersionHandler(jsonActionRequest({
     action: "duplicate_carrier_list_template",
     id: source.id,
-    name: "Source Copy",
+    name: " Source   Copy ",
     expected_version: 4,
   }));
   assertEquals(currentVersionResponse.status, 201);
@@ -789,16 +849,41 @@ Deno.test("real duplicate request requires and enforces the displayed source ver
     enabled: true,
     row: duplicate,
   });
-  const insert = currentVersionDb.traces.find((trace) =>
-    trace.table === "vendor_segments" && trace.operation === "insert"
-  );
-  const insertPayload = insert?.payload as Record<string, unknown>;
-  assertEquals(insertPayload.segment_name, "Source Copy");
-  assertEquals(insertPayload.lifecycle_status, "draft");
-  assertEquals(insertPayload.template_version, 1);
-  assertEquals(insertPayload.vendor_ids, [vendorB.id, vendorA.id]);
+  const rpc = currentVersionDb.traces.find((trace) => trace.operation === "rpc");
+  assertEquals(rpc?.table, "rateware_duplicate_carrier_list_template");
+  assertEquals(rpc?.payload, {
+    p_organization_id: "org-a",
+    p_source_template_id: source.id,
+    p_expected_version: 4,
+    p_name: "Source Copy",
+    p_owner_user_id: "kp_1",
+    p_owner_email: "org:org-a",
+    p_actor_user_id: "kp_1",
+    p_actor_email: "buyer@example.com",
+  });
   const audit = currentVersionDb.traces.find((trace) => trace.table === "saas_audit_log");
   assertEquals((audit?.payload as Record<string, unknown>).action, "carrier_template.duplicate");
+
+  const nameConflictDb = new ScriptedSupabase([{
+    table: "rateware_duplicate_carrier_list_template",
+    operation: "rpc",
+    data: [{ outcome: "name_conflict", row_data: null }],
+  }]);
+  const nameConflictHandler = createTestRatewareApiHandler(nameConflictDb);
+  assert(nameConflictHandler);
+  const nameConflictResponse = await nameConflictHandler(jsonActionRequest({
+    action: "duplicate_carrier_list_template",
+    id: source.id,
+    name: "Existing Name",
+    expected_version: 4,
+  }));
+  assertEquals(nameConflictResponse.status, 409);
+  assertEquals(await nameConflictResponse.json(), {
+    enabled: true,
+    code: "template_name_conflict",
+    error: "A carrier list template with that name already exists in this organization.",
+  });
+  assertEquals(nameConflictDb.traces.some((trace) => trace.table === "saas_audit_log"), false);
 });
 
 Deno.test("enabled legacy generic mutations guard the final dynamic row mutation", async () => {
@@ -1103,6 +1188,7 @@ Deno.test("create returns a stable duplicate-name conflict", async () => {
   });
   assertEquals(result?.status, 409);
   assertEquals(result?.body.enabled, true);
+  assertEquals(result?.body.code, "template_name_conflict");
   assertEquals(db.traces.some((trace) => trace.operation === "insert"), false);
 });
 
@@ -1180,6 +1266,7 @@ Deno.test("update uses an expected-version barrier and reports the current versi
     status: 409,
     body: {
       enabled: true,
+      code: "template_version_conflict",
       error: "Carrier list template changed since it was loaded.",
       current_version: 3,
       current_updated_at: raced.updated_at,
@@ -1321,10 +1408,11 @@ Deno.test("duplicate copies ordered members into a new draft", async () => {
     template_version: 1,
   };
   const db = new ScriptedSupabase([
-    { table: "vendor_segments", operation: "select", data: source },
-    { table: "vendors", operation: "select", data: [vendorA, vendorB] },
-    { table: "vendor_segments", operation: "select", data: [] },
-    { table: "vendor_segments", operation: "insert", data: duplicate },
+    {
+      table: "rateware_duplicate_carrier_list_template",
+      operation: "rpc",
+      data: [{ outcome: "success", row_data: duplicate }],
+    },
     { table: "saas_audit_log", operation: "insert", data: null },
   ]);
   const result = await callCarrierTemplateAction(db, {
@@ -1337,16 +1425,17 @@ Deno.test("duplicate copies ordered members into a new draft", async () => {
     status: 201,
     body: { enabled: true, row: duplicate },
   });
-  const insert = db.traces.find((trace) =>
-    trace.table === "vendor_segments" && trace.operation === "insert"
-  );
-  const payload = insert?.payload as Record<string, unknown>;
-  assertEquals(payload.lifecycle_status, "draft");
-  assertEquals(payload.vendor_ids, [vendorB.id, vendorA.id]);
-  assertEquals(payload.organization_id, "org-a");
-  assertEquals(payload.owner_user_id, "kp_1");
-  assertEquals(payload.owner_email, "org:org-a");
-  assertEquals(payload.created_by_email, "buyer@example.com");
+  const rpc = db.traces.find((trace) => trace.operation === "rpc");
+  assertEquals(rpc?.payload, {
+    p_organization_id: "org-a",
+    p_source_template_id: source.id,
+    p_expected_version: 4,
+    p_name: "Source Copy",
+    p_owner_user_id: "kp_1",
+    p_owner_email: "org:org-a",
+    p_actor_user_id: "kp_1",
+    p_actor_email: "buyer@example.com",
+  });
 });
 
 Deno.test("archive and restore increment versions while restore preserves missing member ids", async () => {
@@ -1366,6 +1455,25 @@ Deno.test("archive and restore increment versions while restore preserves missin
     status: "archived",
     template_version: 5,
   };
+  for (const action of [
+    "archive_carrier_list_template",
+    "restore_carrier_list_template",
+  ]) {
+    const staleDb = new ScriptedSupabase([{
+      table: "vendor_segments",
+      operation: "select",
+      data: action === "archive_carrier_list_template" ? active : archived,
+    }]);
+    const stale = await callCarrierTemplateAction(staleDb, {
+      action,
+      id: templateId,
+      expected_version: 3,
+    });
+    assertEquals(stale?.status, 409);
+    assertEquals(stale?.body.code, "template_version_conflict");
+    assertEquals(staleDb.traces.some((trace) => trace.operation === "update"), false);
+    assertEquals(staleDb.traces.some((trace) => trace.table === "saas_audit_log"), false);
+  }
   const archiveDb = new ScriptedSupabase([
     { table: "vendor_segments", operation: "select", data: active },
     {
