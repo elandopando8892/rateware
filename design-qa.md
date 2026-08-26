@@ -107,45 +107,46 @@ No actionable P0, P1, or P2 finding remains.
 
 final result: passed
 
-## Carrier Fit canvas + This RFx drawer — 2026-08-26
+## Carrier Fit canvas + RFx workspace drawer — 2026-08-26
 
 - Source visual truth: `C:\Users\andre\.codex\generated_images\01a03ae9-d638-7f70-8972-7ab3b891bf74\exec-261c260d-0b3c-4f50-876a-346c1feb7338.png` — 1707 x 922 px.
 - Original production evidence: `C:\Users\andre\AppData\Local\Temp\codex-clipboard-78ac0679-f276-4e43-aab8-ac2051ad92d1.png`.
-- Intended implementation route: `http://localhost:4173/rfx-events.html` at 1440 x 1000 CSS px, `deviceScaleFactor: 1`.
-- Implementation screenshot: unavailable. The protected route redirected to the unauthenticated Rateware landing page.
-- State: full-width Carrier Fit canvas, with This RFx drawer closed and open.
+- Authenticated cloud route: `https://rateware-git-codex-carrier-lis-ede02d-elandopando8892s-projects.vercel.app/rfx-events?rfx_event_id=e6f6fdc6-b484-46a7-8c0b-26ea2dbd4c4c&view=outreach`.
+- State: full-width Carrier Fit canvas, with the RFx workspace drawer closed and open against the neutral backdrop.
 
 ### Findings
 
-- [P1] The authenticated implementation cannot yet be compared visually. Static evidence confirms the intended layout and accessible drawer contract, but typography, spacing, geometry, responsive behavior, and interaction fidelity require a protected-route render.
+No actionable P0, P1, or P2 finding remains in the authenticated desktop state.
 
 ### Required fidelity surfaces
 
-- Fonts and typography: blocked pending authenticated render; the implementation retains Rateware's Inter-compatible stack.
-- Spacing and layout rhythm: static contract confirms one full-width canvas and a bounded 420 px right drawer; visual acceptance is blocked.
-- Colors and visual tokens: existing Rateware surfaces, lines, and teal accents are reused; rendered contrast is blocked.
+- Fonts and typography: the implementation retains Rateware's existing compact operational hierarchy.
+- Spacing and layout rhythm: Carrier Fit owns the full canvas and the event-scoped carrier workspace uses a bounded 420 px right drawer.
+- Colors and visual tokens: the drawer uses the existing white surface and a neutral `rgba(28, 28, 28, 0.12)` backdrop instead of a blue modal wash.
 - Image quality and asset fidelity: no application imagery is required by this operational interface.
-- Copy and content: static checks cover Carrier Fit, View RFx, Invitation status, and Message workflow labels.
+- Copy and content: the trigger and panel now use `RFx workspace` and `Carriers in this RFx`, describing an operational workspace rather than a passive dossier.
 
 ### Interaction evidence
 
-- Automated checks passed for `aria-expanded`, `aria-hidden`, `inert`, backdrop close, close button, Escape close, focus entry, and focus restoration contracts.
-- Browser-rendered interactions and console scan for the protected state are blocked by authentication.
+- The authenticated preview loaded 60 bid events, the selected 12-lane RFx, 543 matching carriers, and the active 332-member template.
+- Browser checks passed for close button, backdrop close, Escape close, `aria-expanded`, `aria-hidden`, and focus restoration.
+- Browser console warnings/errors: none.
 
 ### Comparison history
 
 1. The approved source and original screenshot were available.
 2. The local protected route was opened, but auth redirected it to `/`; no same-state implementation capture could be produced.
-3. Preview deployment `rateware-nnyyitc90-elandopando8892s-projects.vercel.app` reached Ready, but Kinde rejected its `/app` callback as unregistered, so the authenticated preview smoke could not continue.
+3. The stable preview alias was registered in Kinde and the additive Supabase CORS allowlist; authenticated data and interactions then passed.
+4. User review identified the blue-toned backdrop and dossier-like framing; the backdrop was changed to neutral gray and the panel was renamed as an RFx workspace.
 
 ### Implementation checklist
 
-- Capture authenticated Carrier Fit with the drawer closed.
-- Open View RFx and capture the drawer state.
-- Exercise close button, backdrop, Escape, focus return, and mobile width.
-- Compare both captures with the approved source and resolve any P0/P1/P2 differences.
+- [x] Authenticate on the stable cloud preview.
+- [x] Load the selected RFx and live Carrier CRM data.
+- [x] Open and close the RFx workspace with button, backdrop, and Escape.
+- [x] Verify focus return and a clean browser console.
 
-final result: blocked
+final result: passed
 
 ## Invitation Wave Review iteration — 2026-08-26
 
@@ -185,9 +186,8 @@ No actionable P0, P1, or P2 finding remains.
 Focused crops were not required because the combined 1487 x 1058 comparison keeps the new panel copy, metrics, controls, and source hierarchy legible. Interaction behavior and the responsive breakpoint were verified separately in the browser.
 
 final result: passed
-
 ## Current design gate
 
-The latest Carrier Fit canvas + This RFx drawer iteration remains blocked pending the authenticated captures and interaction checks listed above.
+The latest Carrier Fit canvas + RFx workspace drawer iteration passed its authenticated stable-preview data, interaction, accessibility, and console checks.
 
-final result: blocked
+final result: passed
