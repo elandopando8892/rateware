@@ -12,6 +12,7 @@ import { OutboundPayloadPage } from '../features/communications/OutboundPayloadP
 import { QuarterlyDocumentVault } from '../features/documents/QuarterlyDocumentVault';
 import { CaseWorkspace } from '../features/cases/CaseWorkspace';
 import { FormTemplateLibrary, XBF_STARTER_SURVEY } from '../features/forms/FormTemplateLibrary';
+import { CaseFormWorkspace } from '../features/forms/CaseFormWorkspace';
 import { PipelineOverview } from '../features/pipeline/PipelineOverview';
 import { OperationsReviewPage } from '../features/review/OperationsReviewPage';
 import { AppShell } from './AppShell';
@@ -59,6 +60,15 @@ const caseWorkspaceRoute = createRoute({
     const context = caseWorkspaceRoute.useRouteContext();
     const { caseId } = caseWorkspaceRoute.useParams();
     return <CaseWorkspace client={context.apiClient} caseId={caseId} />;
+  },
+});
+const caseFormRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'cases/$caseId/form',
+  component: function CaseFormRoute() {
+    const context = caseFormRoute.useRouteContext();
+    const { caseId } = caseFormRoute.useParams();
+    return <CaseFormWorkspace client={context.apiClient} caseId={caseId} />;
   },
 });
 function FormBuilderWorkspace() {
@@ -235,7 +245,7 @@ function OutboundPayloadWorkspace() {
 const outboundPayloadRoute = createRoute({ getParentRoute: () => appRoute, path: 'cases/$caseId/communications/$payloadId', component: OutboundPayloadWorkspace });
 
 const routeTree = rootRoute.addChildren([appRoute.addChildren([
-  appIndexRoute, pipelineRoute, caseWorkspaceRoute, formBuilderRoute, documentsRoute, clarificationsRoute,
+  appIndexRoute, pipelineRoute, caseWorkspaceRoute, caseFormRoute, formBuilderRoute, documentsRoute, clarificationsRoute,
   operationsReviewRoute, signatureApprovalRoute, salesAuthorizationRoute, outboundPayloadRoute,
 ])]);
 

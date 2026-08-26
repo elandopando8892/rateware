@@ -29,13 +29,39 @@ export type PublishFormInput = {
 
 export type FormMutationReceipt = { template: FormTemplateCatalogItem; replayed: boolean };
 
+export type CaseFormInstance = { id: string; version: number; values: Record<string, unknown>; updatedAt: string };
+export type CaseFormWorkspaceRecord = {
+  caseId: string;
+  supplierName: string;
+  caseVersion: number;
+  caseState: string;
+  templateName: string | null;
+  template: FormTemplateVersion | null;
+  instance: CaseFormInstance | null;
+  saveDraftAllowed: boolean;
+};
+export type SaveCaseFormDraftInput = {
+  organizationId: string;
+  subject: string;
+  idempotencyKey: string;
+  caseId: string;
+  templateVersionId: string;
+  instanceId: string | null;
+  expectedVersion: number;
+  values: Record<string, unknown>;
+};
+export type CaseFormMutationReceipt = { instance: CaseFormInstance; replayed: boolean };
+
 export interface FormStore {
   list(organizationId: string): Promise<readonly FormTemplateCatalogItem[]>;
   saveDraft(input: SaveFormDraftInput): Promise<FormMutationReceipt>;
   publish(input: PublishFormInput): Promise<FormMutationReceipt>;
+  getCaseFormWorkspace(organizationId: string, caseId: string): Promise<CaseFormWorkspaceRecord>;
+  saveCaseFormDraft(input: SaveCaseFormDraftInput): Promise<CaseFormMutationReceipt>;
 }
 
-type Receipt = { hash: string; value: FormMutationReceipt };
+type Receipt = { hash: string; value: FormMutationReceipt | CaseFormMutationReceipt };
+type SeedCase = { organizationId: string; caseId: string; supplierName: string; caseVersion: number; caseState: string };
 
 function fail(code: string): never { throw new Error(code); }
 
@@ -58,8 +84,10 @@ async function locked<T>(lock: { current: Promise<void> }, action: () => Promise
   try { return await action(); } finally { release(); }
 }
 
-export function createInMemoryFormStore(now: () => Date = () => new Date('2026-08-26T20:00:00.000Z')): FormStore {
+export function createInMemoryFormStore(now: () => Date = () => new Date('2026-08-26T20:00:00.000Z'), seedCases: readonly SeedCase[] = []): FormStore {
   const byOrganization = new Map<string, Map<string, FormTemplateCatalogItem>>();
+  const cases = new Map(seedCases.map((item) => [`${item.organizationId}\u0000${item.caseId}`, structuredClone(item)]));
+  const caseInstances = new Map<string, CaseFormInstance>();
   const receipts = new Map<string, Receipt>();
   const lock = { current: Promise.resolve() };
   const templates = (organizationId: string) => {
@@ -69,18 +97,18 @@ export function createInMemoryFormStore(now: () => Date = () => new Date('2026-0
   };
   const receiptKey = (organizationId: string, operation: string, idempotencyKey: string) => `${organizationId}\u0000${operation}\u0000${idempotencyKey}`;
 
-  async function replayOrRun(input: { organizationId: string; idempotencyKey: string }, operation: string, request: unknown, action: () => FormMutationReceipt): Promise<FormMutationReceipt> {
+  async function replayOrRun<T extends FormMutationReceipt | CaseFormMutationReceipt>(input: { organizationId: string; idempotencyKey: string }, operation: string, request: unknown, action: () => T): Promise<T> {
     return await locked(lock, async () => {
       const key = receiptKey(input.organizationId, operation, input.idempotencyKey);
       const requestHash = await hash(request);
       const prior = receipts.get(key);
       if (prior) {
         if (prior.hash !== requestHash) fail('IDEMPOTENCY_CONFLICT');
-        return structuredClone({ ...prior.value, replayed: true });
+        return structuredClone({ ...prior.value, replayed: true }) as T;
       }
       const value = action();
       receipts.set(key, { hash: requestHash, value: structuredClone(value) });
-      return structuredClone(value);
+      return structuredClone(value) as T;
     });
   }
 
@@ -115,6 +143,38 @@ export function createInMemoryFormStore(now: () => Date = () => new Date('2026-0
         item.latest = { ...item.latest, status: 'published' };
         item.updatedAt = now().toISOString();
         return { template: item, replayed: false };
+      });
+    },
+    async getCaseFormWorkspace(organizationId: string, caseId: string) {
+      const registrationCase = cases.get(`${organizationId}\u0000${caseId}`);
+      if (!registrationCase) fail('CASE_NOT_FOUND');
+      const published = [...templates(organizationId).values()].filter((item) => item.latest.status === 'published').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ?? null;
+      const instance = published ? caseInstances.get(`${organizationId}\u0000${caseId}\u0000${published.latest.id}`) ?? null : null;
+      return structuredClone({
+        caseId, supplierName: registrationCase.supplierName, caseVersion: registrationCase.caseVersion, caseState: registrationCase.caseState,
+        templateName: published?.name ?? null, template: published?.latest ?? null, instance,
+        saveDraftAllowed: ['awaiting_xbf_information', 'preparing'].includes(registrationCase.caseState),
+      });
+    },
+    async saveCaseFormDraft(input: SaveCaseFormDraftInput) {
+      return await replayOrRun(input, 'save_case_form_draft', input, () => {
+        const registrationCase = cases.get(`${input.organizationId}\u0000${input.caseId}`);
+        if (!registrationCase) fail('CASE_NOT_FOUND');
+        if (!['awaiting_xbf_information', 'preparing'].includes(registrationCase.caseState)) fail('CASE_FORM_LOCKED');
+        const template = [...templates(input.organizationId).values()].find((item) => item.latest.id === input.templateVersionId && item.latest.status === 'published');
+        if (!template) fail('FORM_NOT_FOUND');
+        const allowedFields = new Set(template.latest.fields.map((field) => field.id));
+        if (Object.keys(input.values).some((key) => !allowedFields.has(key))) fail('FORM_SCHEMA_INVALID');
+        const key = `${input.organizationId}\u0000${input.caseId}\u0000${input.templateVersionId}`;
+        const current = caseInstances.get(key) ?? null;
+        if (input.instanceId === null) {
+          if (current || input.expectedVersion !== 0) fail('VERSION_CONFLICT');
+        } else if (!current || current.id !== input.instanceId || current.version !== input.expectedVersion) fail('VERSION_CONFLICT');
+        const instance = current && stable(current.values) === stable(input.values)
+          ? current
+          : { id: current?.id ?? crypto.randomUUID(), version: (current?.version ?? 0) + 1, values: structuredClone(input.values), updatedAt: now().toISOString() };
+        caseInstances.set(key, instance);
+        return { instance, replayed: false };
       });
     },
   });

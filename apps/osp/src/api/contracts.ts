@@ -366,6 +366,36 @@ export const FormTemplateMutationResponseSchema = z.strictObject({
   version: z.literal(1), data: z.strictObject({ template: FormTemplateCatalogItemSchema, replayed: z.boolean() }),
 });
 
+function isSafeFormValue(value: unknown, depth = 0): boolean {
+  if (depth > 4) return false;
+  if (value === null || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'string') return value.length <= 10_000;
+  if (Array.isArray(value)) return value.length <= 100 && value.every((item) => isSafeFormValue(item, depth + 1));
+  if (!value || typeof value !== 'object') return false;
+  const entries = Object.entries(value as Record<string, unknown>);
+  return entries.length <= 50 && entries.every(([key, item]) => /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(key) && isSafeFormValue(item, depth + 1));
+}
+
+export const FormValuesSchema = z.record(z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/), z.unknown())
+  .refine((value) => Object.keys(value).length <= 200 && Object.values(value).every((item) => isSafeFormValue(item)), 'Unsafe form values');
+
+export const CaseFormInstanceSchema = z.strictObject({
+  id: z.uuid(), version: z.number().int().min(1).max(2_147_483_647), values: FormValuesSchema, updatedAt: utcDate,
+});
+
+export const CaseFormWorkspaceResponseSchema = z.strictObject({
+  version: z.literal(1), data: z.strictObject({
+    caseId: z.uuid(), supplierName: z.string().min(1).max(256), caseVersion: z.number().int().min(0).max(2_147_483_647),
+    caseState: CaseStateSchema, templateName: z.string().min(3).max(128).nullable(), template: FormTemplateVersionSchema.nullable(),
+    instance: CaseFormInstanceSchema.nullable(), capabilities: z.strictObject({ saveDraft: z.boolean() }),
+  }),
+});
+
+export const CaseFormMutationResponseSchema = z.strictObject({
+  version: z.literal(1), data: z.strictObject({ instance: CaseFormInstanceSchema, replayed: z.boolean() }),
+});
+
 export type PipelineReadModel = z.infer<typeof PipelineReadModelSchema>;
 export type GmailReadModel = z.infer<typeof GmailReadModelSchema>;
 export type GmailSyncResult = z.infer<typeof GmailSyncSuccessResponseSchema>['data'];
@@ -382,3 +412,7 @@ export type ApprovalCommunicationsWorkspace = z.infer<typeof ApprovalCommunicati
 export type FormTemplateCatalog = z.infer<typeof FormTemplateCatalogResponseSchema>['data'];
 export type FormTemplateCatalogItem = z.infer<typeof FormTemplateCatalogItemSchema>;
 export type FormTemplateMutationReceipt = z.infer<typeof FormTemplateMutationResponseSchema>['data'];
+export type FormValues = z.infer<typeof FormValuesSchema>;
+export type CaseFormInstance = z.infer<typeof CaseFormInstanceSchema>;
+export type CaseFormWorkspace = z.infer<typeof CaseFormWorkspaceResponseSchema>['data'];
+export type CaseFormMutationReceipt = z.infer<typeof CaseFormMutationResponseSchema>['data'];

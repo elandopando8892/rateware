@@ -16,9 +16,14 @@ describe('synthetic preview runtime', () => {
     await expect(runtime.apiClient.listClarificationReviews()).resolves.toHaveLength(1);
     await expect(runtime.apiClient.listFormTemplates()).resolves.toMatchObject({ templates: [{ latest: { status: 'published' } }, { latest: { status: 'draft' } }] });
     const cases = await runtime.apiClient.listCustomerRegistrationCases();
-    expect(cases).toHaveLength(4);
+    expect(cases).toHaveLength(5);
     await expect(runtime.apiClient.getCustomerRegistrationCase(cases[0].case_id)).resolves.toMatchObject({
       supplier_name: 'Northstar Components', state: 'ready_to_send', message_count: '4',
+    });
+    const formCase = cases.find((item) => item.supplier_name === 'Sierra Retail México');
+    expect(formCase).toBeDefined();
+    await expect(runtime.apiClient.getCaseFormWorkspace(formCase!.case_id)).resolves.toMatchObject({
+      supplierName: 'Sierra Retail México', instance: { version: 2, values: { legal_name: 'Sierra Retail México' } }, capabilities: { saveDraft: true },
     });
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();

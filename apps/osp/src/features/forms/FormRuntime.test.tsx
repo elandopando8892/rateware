@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -32,5 +32,15 @@ describe('FormRuntime', () => {
 
   it('rejects mutable draft execution', () => {
     expect(() => render(<FormRuntime template={{ ...template, status: 'draft' }} onComplete={vi.fn()} />)).toThrow(/FORM_VERSION_NOT_PUBLISHED/);
+  });
+
+  it('hydrates a saved draft and reports edits without exposing the complete action', async () => {
+    const change = vi.fn();
+    render(<FormRuntime template={template} initialValues={{ legal_name: 'Saved supplier' }} showCompleteButton={false} onChange={change} onComplete={vi.fn()} />);
+    const input = screen.getByLabelText(/legal name/i);
+    expect(input).toHaveValue('Saved supplier');
+    expect(screen.queryByRole('button', { name: /complete/i })).not.toBeInTheDocument();
+    await userEvent.type(input, ' updated');
+    await waitFor(() => expect(change).toHaveBeenLastCalledWith({ legal_name: 'Saved supplier updated' }));
   });
 });

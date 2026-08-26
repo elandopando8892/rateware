@@ -1,5 +1,5 @@
 import type { OspClient } from '../api/osp-client';
-import type { ApprovalCommunicationsWorkspace, CaseDetail, CaseSummary, ClarificationReview, DocumentVersion, FormTemplateCatalog } from '../api/contracts';
+import type { ApprovalCommunicationsWorkspace, CaseDetail, CaseFormWorkspace, CaseSummary, ClarificationReview, DocumentVersion, FormTemplateCatalog } from '../api/contracts';
 import type { AuthPort, BoundSession } from '../auth/auth-port';
 import { surveyJsonToCanonical } from '../features/forms/surveyjs-canonical-adapter';
 
@@ -16,6 +16,7 @@ const previewSession: BoundSession = Object.freeze({
 });
 
 const caseId = '11111111-1111-4111-8111-111111111111';
+const caseFormCaseId = '11111111-1111-4111-8111-111111111115';
 const payloadId = '22222222-2222-4222-8222-222222222222';
 const shaA = 'a'.repeat(64);
 const shaB = 'b'.repeat(64);
@@ -40,6 +41,11 @@ const previewCases: readonly CaseSummary[] = Object.freeze([
     case_id: '11111111-1111-4111-8111-111111111114', supplier_name: 'Meridian Freight Systems', state: 'received', aggregate_version: 1,
     blocked_by_duplicate_review: false, created_at: '2026-08-26T14:05:00.000Z', updated_at: '2026-08-26T14:05:00.000Z',
     message_count: '1', attachment_count: '3', document_count: '0',
+  },
+  {
+    case_id: caseFormCaseId, supplier_name: 'Sierra Retail México', state: 'preparing', aggregate_version: 4,
+    blocked_by_duplicate_review: false, created_at: '2026-08-25T19:30:00.000Z', updated_at: '2026-08-26T20:10:00.000Z',
+    message_count: '2', attachment_count: '4', document_count: '3',
   },
 ]);
 
@@ -147,6 +153,21 @@ function createPreviewClient(): OspClient {
       },
     ],
   };
+  let caseFormWorkspace: CaseFormWorkspace = {
+    caseId: caseFormCaseId,
+    supplierName: 'Sierra Retail México',
+    caseVersion: 4,
+    caseState: 'preparing',
+    templateName: 'XBF customer setup — Core',
+    template: structuredClone(formCatalog.templates[0].latest),
+    instance: {
+      id: '73111111-1111-4111-8111-111111111111',
+      version: 2,
+      values: { legal_name: 'Sierra Retail México', registered_address: 'Av. Insurgentes Sur 1602, Ciudad de México' },
+      updatedAt: '2026-08-26T20:10:00.000Z',
+    },
+    capabilities: { saveDraft: true },
+  };
   const client: OspClient = {
     listOnboardingWorkspace: async () => ({ requests_total: '26', documents_pending: '7', under_review: '5', ready_for_approval: '3' }),
     getGmailStatus: async () => ({
@@ -207,6 +228,17 @@ function createPreviewClient(): OspClient {
       const template = { ...current, updatedAt: new Date().toISOString(), latest: { ...current.latest, status: 'published' as const } };
       formCatalog = { ...formCatalog, templates: formCatalog.templates.map((item) => item.templateId === template.templateId ? template : item) };
       return { template, replayed: false };
+    },
+    getCaseFormWorkspace: async (requestedCaseId) => {
+      if (requestedCaseId === caseFormCaseId) return structuredClone(caseFormWorkspace);
+      const caseRecord = previewCases.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCases[0];
+      return { caseId: requestedCaseId, supplierName: caseRecord.supplier_name, caseVersion: caseRecord.aggregate_version, caseState: caseRecord.state, templateName: caseFormWorkspace.templateName, template: structuredClone(caseFormWorkspace.template), instance: null, capabilities: { saveDraft: false } };
+    },
+    saveCaseFormDraft: async (input) => {
+      if (input.caseId !== caseFormCaseId || input.templateVersionId !== caseFormWorkspace.template?.id || input.instanceId !== caseFormWorkspace.instance?.id || input.expectedVersion !== caseFormWorkspace.instance.version) throw new Error('VERSION_CONFLICT');
+      const instance = { ...caseFormWorkspace.instance, version: caseFormWorkspace.instance.version + 1, values: structuredClone(input.values), updatedAt: new Date().toISOString() };
+      caseFormWorkspace = { ...caseFormWorkspace, instance };
+      return { instance: structuredClone(instance), replayed: false };
     },
     getApprovalCommunicationsWorkspace: async () => previewWorkspace,
     completeOperationsReview: async (input) => ({ caseId: input.caseId, state: 'signature_approval', caseVersion: input.expectedVersion + 1, replayed: false }),

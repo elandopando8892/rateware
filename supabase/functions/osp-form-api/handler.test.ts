@@ -4,6 +4,7 @@ import { createFormApiHandler } from './handler.ts';
 import { createInMemoryFormStore } from './store.ts';
 
 const organizationId = '11111111-1111-4111-8111-111111111111';
+const caseId = '41111111-1111-4111-8111-111111111111';
 const origin = 'http://localhost:8791';
 const surveyJson = {
   title: 'XBF customer setup', pages: [{ name: 'company', elements: [
@@ -19,7 +20,7 @@ function request(body: unknown, token = 'operate-token') {
 
 function handler() {
   return createFormApiHandler({
-    store: createInMemoryFormStore(),
+    store: createInMemoryFormStore(() => new Date('2026-08-26T20:00:00.000Z'), [{ organizationId, caseId, supplierName: 'Synthetic supplier', caseVersion: 4, caseState: 'preparing' }]),
     canonicalFieldIds: ['supplier.legalName', 'supplier.address', 'fiscal.taxIdentifier', 'banking.accountNumber'],
     verifyToken: async (token: string) => ({
       identity: { issuer: 'https://auth.example.test', authorizedParty: 'client', subject: 'operator', organization: token === 'second-org-token' ? '33333333-3333-4333-8333-333333333333' : organizationId, email: 'operator@example.test', emailVerified: true as const },
@@ -70,4 +71,33 @@ Deno.test('form API exposes an exact browser preflight without credentials', asy
   assert.equal(response.status, 204);
   assert.equal(response.headers.get('access-control-allow-origin'), origin);
   assert.equal(response.headers.has('access-control-allow-credentials'), false);
+});
+
+Deno.test('form API binds a published template to a case and saves an idempotent draft', async () => {
+  const subject = handler();
+  const saved = await subject(request({ version: 1, action: 'save_form_template_draft', idempotency_key: 'case-template-save', template_id: null, expected_version: 0, name: 'Customer setup — Case', survey_json: surveyJson }));
+  const template = (await saved.json()).data.template;
+  await subject(request({ version: 1, action: 'publish_form_template', idempotency_key: 'case-template-publish', template_id: template.templateId, template_version_id: template.latest.id, expected_version: 1 }));
+
+  const workspace = await subject(request({ version: 1, action: 'get_case_form_workspace', case_id: caseId }, 'read-token'));
+  const workspaceBody = (await workspace.json()).data;
+  assert.equal(workspaceBody.supplierName, 'Synthetic supplier');
+  assert.equal(workspaceBody.template.status, 'published');
+  assert.deepEqual(workspaceBody.capabilities, { saveDraft: false });
+
+  const command = { version: 1, action: 'save_case_form_draft', idempotency_key: 'case-form-save', case_id: caseId, template_version_id: template.latest.id, instance_id: null, expected_version: 0, values: { legal_name: 'Synthetic supplier' } };
+  const first = await subject(request(command));
+  assert.equal(first.status, 200);
+  const firstBody = (await first.json()).data;
+  assert.equal(firstBody.instance.version, 1);
+  const replay = await subject(request(command));
+  assert.equal((await replay.json()).data.replayed, true);
+
+  const unchanged = await subject(request({ ...command, idempotency_key: 'case-form-save-unchanged', instance_id: firstBody.instance.id, expected_version: 1 }));
+  assert.equal((await unchanged.json()).data.instance.version, 1);
+  const changed = await subject(request({ ...command, idempotency_key: 'case-form-save-changed', instance_id: firstBody.instance.id, expected_version: 1, values: { legal_name: 'Synthetic supplier updated' } }));
+  assert.equal((await changed.json()).data.instance.version, 2);
+
+  const current = await subject(request({ version: 1, action: 'get_case_form_workspace', case_id: caseId }));
+  assert.deepEqual((await current.json()).data.instance.values, { legal_name: 'Synthetic supplier updated' });
 });

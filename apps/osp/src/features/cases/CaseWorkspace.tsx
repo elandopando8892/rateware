@@ -39,6 +39,7 @@ export function CaseWorkspace({ client, caseId }: { client: OspCaseReadClient; c
         <p className="eyebrow">Next gate</p>
         <h2 id="next-gate-title">{caseStateLabels[caseRecord.state]}</h2>
         <p>{caseNextGates[caseRecord.state]}</p>
+        <Link className="case-primary-action" to="/app/cases/$caseId/form" params={{ caseId }}>Open XBF case form</Link>
       </section>
 
       <dl className="case-metrics" aria-label="Case evidence counts">

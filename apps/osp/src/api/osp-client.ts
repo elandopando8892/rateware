@@ -15,6 +15,12 @@ import {
   type ClarificationReview,
   FormTemplateCatalogResponseSchema,
   FormTemplateMutationResponseSchema,
+  CaseFormWorkspaceResponseSchema,
+  CaseFormMutationResponseSchema,
+  FormValuesSchema,
+  type CaseFormWorkspace,
+  type CaseFormMutationReceipt,
+  type FormValues,
   type FormTemplateCatalog,
   type FormTemplateMutationReceipt,
   GmailSyncSuccessResponseSchema,
@@ -47,6 +53,7 @@ export type DocumentApprovalInput = { versionId: string; expectedVersion: number
 export type ClarificationReviewInput = { draftId: string; expectedCaseVersion: number; expectedCanonicalSha256: string; questions: readonly ClarificationQuestion[] };
 export type SaveFormTemplateDraftInput = { idempotencyKey: string; templateId: string | null; expectedVersion: number; name: string; surveyJson: unknown };
 export type PublishFormTemplateInput = { idempotencyKey: string; templateId: string; templateVersionId: string; expectedVersion: number };
+export type SaveCaseFormDraftInput = { idempotencyKey: string; caseId: string; templateVersionId: string; instanceId: string | null; expectedVersion: number; values: FormValues };
 
 export interface OspClient extends OspReadClient, OspCaseReadClient, WorkflowClient {
   syncGmailInbox?(): Promise<GmailSyncResult>;
@@ -58,6 +65,8 @@ export interface OspClient extends OspReadClient, OspCaseReadClient, WorkflowCli
   listFormTemplates(): Promise<FormTemplateCatalog>;
   saveFormTemplateDraft(input: SaveFormTemplateDraftInput): Promise<FormTemplateMutationReceipt>;
   publishFormTemplate(input: PublishFormTemplateInput): Promise<FormTemplateMutationReceipt>;
+  getCaseFormWorkspace(caseId: string): Promise<CaseFormWorkspace>;
+  saveCaseFormDraft(input: SaveCaseFormDraftInput): Promise<CaseFormMutationReceipt>;
 }
 
 export type OspClientErrorCode = OspPublicErrorCode | 'NO_SESSION' | 'NETWORK_UNAVAILABLE' | 'INVALID_RESPONSE' | 'STALE_SESSION';
@@ -432,6 +441,14 @@ export function createOspClient(options: ClientOptions): OspClient {
     publishFormTemplate: async (input: PublishFormTemplateInput) => {
       if (!OPAQUE.test(input.idempotencyKey) || !UUID.test(input.templateId) || !UUID.test(input.templateVersionId) || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1 || input.expectedVersion > 2_147_483_647) throw new OspClientError('INVALID_REQUEST');
       return (await formRequest({ version: 1, action: 'publish_form_template', idempotency_key: input.idempotencyKey, template_id: input.templateId, template_version_id: input.templateVersionId, expected_version: input.expectedVersion }, FormTemplateMutationResponseSchema)).data;
+    },
+    getCaseFormWorkspace: async (caseId: string) => {
+      if (!UUID.test(caseId)) throw new OspClientError('INVALID_REQUEST');
+      return (await formRequest({ version: 1, action: 'get_case_form_workspace', case_id: caseId }, CaseFormWorkspaceResponseSchema)).data;
+    },
+    saveCaseFormDraft: async (input: SaveCaseFormDraftInput) => {
+      if (!OPAQUE.test(input.idempotencyKey) || !UUID.test(input.caseId) || !UUID.test(input.templateVersionId) || !(input.instanceId === null || UUID.test(input.instanceId)) || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 0 || input.expectedVersion > 2_147_483_647 || !FormValuesSchema.safeParse(input.values).success || (input.instanceId === null) !== (input.expectedVersion === 0)) throw new OspClientError('INVALID_REQUEST');
+      return (await formRequest({ version: 1, action: 'save_case_form_draft', idempotency_key: input.idempotencyKey, case_id: input.caseId, template_version_id: input.templateVersionId, instance_id: input.instanceId, expected_version: input.expectedVersion, values: input.values }, CaseFormMutationResponseSchema)).data;
     },
   });
 }

@@ -32,6 +32,24 @@ function integer(value: unknown, minimum: number): number {
   return value as number;
 }
 
+function safeFormValue(value: unknown, depth = 0): boolean {
+  if (depth > 4) return false;
+  if (value === null || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'string') return value.length <= 10_000;
+  if (Array.isArray(value)) return value.length <= 100 && value.every((item) => safeFormValue(item, depth + 1));
+  if (!value || typeof value !== 'object') return false;
+  const entries = Object.entries(value as Record<string, unknown>);
+  return entries.length <= 50 && entries.every(([key, item]) => /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(key) && safeFormValue(item, depth + 1));
+}
+
+function formValues(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new OspApiError('INVALID_REQUEST');
+  const values = value as Record<string, unknown>;
+  if (Object.keys(values).length > 200 || Object.entries(values).some(([key, item]) => !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(key) || !safeFormValue(item))) throw new OspApiError('INVALID_REQUEST');
+  return values;
+}
+
 function origin(request: Request): string {
   const value = request.headers.get('origin');
   if (!value || !ORIGINS.has(value)) throw new OspApiError('INVALID_REQUEST');
@@ -64,7 +82,7 @@ async function body(request: Request): Promise<unknown> {
 
 function serviceError(error: unknown): OspApiError {
   const code = error instanceof Error ? error.message : '';
-  if (/^(FORM_|VERSION_|IDEMPOTENCY_)/.test(code)) return new OspApiError('INVALID_REQUEST');
+  if (/^(FORM_|CASE_|VERSION_|IDEMPOTENCY_)/.test(code)) return new OspApiError('INVALID_REQUEST');
   if (/^(DATABASE_|PERSISTENCE_)/.test(code)) return new OspApiError('DEPENDENCY_UNAVAILABLE');
   return new OspApiError('INTERNAL_ERROR');
 }
@@ -94,6 +112,13 @@ export function createFormApiHandler(options: FormApiHandlerOptions): (request: 
         if ((payload as { version?: unknown }).version !== 1) throw new OspApiError('INVALID_REQUEST');
         return jsonResponse({ version: 1, data: { templates: await options.store.list(verified.identity.organization), capabilities: { saveDraft: canOperate(verified), publish: canOperate(verified) } } }, 200, postCorsHeaders(allowed));
       }
+      if ((payload as { action?: unknown })?.action === 'get_case_form_workspace') {
+        const row = exact(payload, ['action', 'case_id', 'version']);
+        if (row.version !== 1 || row.action !== 'get_case_form_workspace' || typeof row.case_id !== 'string' || !UUID.test(row.case_id)) throw new OspApiError('INVALID_REQUEST');
+        const result = await options.store.getCaseFormWorkspace(verified.identity.organization, row.case_id);
+        const { saveDraftAllowed, ...workspace } = result;
+        return jsonResponse({ version: 1, data: { ...workspace, capabilities: { saveDraft: canOperate(verified) && saveDraftAllowed } } }, 200, postCorsHeaders(allowed));
+      }
       if (!canOperate(verified)) throw new OspApiError('FORBIDDEN');
       if ((payload as { action?: unknown })?.action === 'save_form_template_draft') {
         const row = exact(payload, ['action', 'expected_version', 'idempotency_key', 'name', 'survey_json', 'template_id', 'version']);
@@ -111,6 +136,14 @@ export function createFormApiHandler(options: FormApiHandlerOptions): (request: 
         const row = exact(payload, ['action', 'expected_version', 'idempotency_key', 'template_id', 'template_version_id', 'version']);
         if (row.version !== 1 || row.action !== 'publish_form_template' || typeof row.idempotency_key !== 'string' || !OPAQUE.test(row.idempotency_key) || typeof row.template_id !== 'string' || !UUID.test(row.template_id) || typeof row.template_version_id !== 'string' || !UUID.test(row.template_version_id)) throw new OspApiError('INVALID_REQUEST');
         const result = await options.store.publish({ organizationId: verified.identity.organization, subject: verified.identity.subject, idempotencyKey: row.idempotency_key, templateId: row.template_id, templateVersionId: row.template_version_id, expectedVersion: integer(row.expected_version, 1) });
+        return jsonResponse({ version: 1, data: result }, 200, postCorsHeaders(allowed));
+      }
+      if ((payload as { action?: unknown })?.action === 'save_case_form_draft') {
+        const row = exact(payload, ['action', 'case_id', 'expected_version', 'idempotency_key', 'instance_id', 'template_version_id', 'values', 'version']);
+        if (row.version !== 1 || row.action !== 'save_case_form_draft' || typeof row.idempotency_key !== 'string' || !OPAQUE.test(row.idempotency_key) || typeof row.case_id !== 'string' || !UUID.test(row.case_id) || typeof row.template_version_id !== 'string' || !UUID.test(row.template_version_id) || !(row.instance_id === null || typeof row.instance_id === 'string' && UUID.test(row.instance_id))) throw new OspApiError('INVALID_REQUEST');
+        const expectedVersion = integer(row.expected_version, row.instance_id === null ? 0 : 1);
+        if ((row.instance_id === null) !== (expectedVersion === 0)) throw new OspApiError('INVALID_REQUEST');
+        const result = await options.store.saveCaseFormDraft({ organizationId: verified.identity.organization, subject: verified.identity.subject, idempotencyKey: row.idempotency_key, caseId: row.case_id, templateVersionId: row.template_version_id, instanceId: row.instance_id as string | null, expectedVersion, values: formValues(row.values) });
         return jsonResponse({ version: 1, data: result }, 200, postCorsHeaders(allowed));
       }
       throw new OspApiError('INVALID_REQUEST');

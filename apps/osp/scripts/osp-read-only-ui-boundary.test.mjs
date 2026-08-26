@@ -49,6 +49,7 @@ const expectedProductionSourcePaths = [
   'apps/osp/src/features/communications/ClarificationReview.tsx',
   'apps/osp/src/features/communications/OutboundPayloadPage.tsx',
   'apps/osp/src/features/documents/QuarterlyDocumentVault.tsx',
+  'apps/osp/src/features/forms/CaseFormWorkspace.tsx',
   'apps/osp/src/features/forms/FormRuntime.tsx',
   'apps/osp/src/features/forms/FormTemplateLibrary.tsx',
   'apps/osp/src/features/forms/surveyjs-canonical-adapter.ts',

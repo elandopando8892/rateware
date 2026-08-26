@@ -257,3 +257,36 @@ it('uses the dedicated form endpoint for strict catalog reads and idempotent dra
   ]);
   expect(JSON.parse(String((h.fetch.mock.calls[1][1] as RequestInit).body))).toEqual({ version: 1, action: 'save_form_template_draft', idempotency_key: 'form-save:1', template_id: template.templateId, expected_version: 1, name: template.name, survey_json: surveyJson });
 });
+
+it('loads and saves one case form through exact tenant-scoped form actions', async () => {
+  const caseId = '33333333-3333-4333-8333-333333333333';
+  const templateVersionId = '22222222-2222-4222-8222-222222222222';
+  const instance = {
+    id: '44444444-4444-4444-8444-444444444444', version: 3,
+    values: { legal_name: 'Sierra Retail Mexico', tax_id: 'SRM010101AA1' },
+    updatedAt: '2026-08-26T20:00:00.000Z',
+  };
+  const template = {
+    id: templateVersionId, templateId: '11111111-1111-4111-8111-111111111111', version: 2, status: 'published', schemaSha256: 'a'.repeat(64),
+    fields: [{ id: 'legal_name', label: 'Legal name', required: true, canonicalFieldId: 'supplier.legalName', supplierAliases: [], visibility: null, definition: { kind: 'text', minLength: 1, maxLength: 256 } }],
+  };
+  const workspace = {
+    caseId, supplierName: 'Sierra Retail Mexico', caseVersion: 5, caseState: 'preparing',
+    templateName: 'XBF customer setup', template, instance: { ...instance, version: 2 }, capabilities: { saveDraft: true },
+  };
+  const h = harness([
+    json({ version: 1, data: workspace }),
+    json({ version: 1, data: { instance, replayed: false } }),
+  ]);
+
+  await expect(h.client.getCaseFormWorkspace(caseId)).resolves.toEqual(workspace);
+  await expect(h.client.saveCaseFormDraft({
+    idempotencyKey: 'case-form-save:1', caseId, templateVersionId,
+    instanceId: instance.id, expectedVersion: 2, values: instance.values,
+  })).resolves.toEqual({ instance, replayed: false });
+
+  expect(h.fetch.mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit).body)))).toEqual([
+    { version: 1, action: 'get_case_form_workspace', case_id: caseId },
+    { version: 1, action: 'save_case_form_draft', idempotency_key: 'case-form-save:1', case_id: caseId, template_version_id: templateVersionId, instance_id: instance.id, expected_version: 2, values: instance.values },
+  ]);
+});
