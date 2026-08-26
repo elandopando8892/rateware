@@ -1,5 +1,6 @@
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
 import { initCarrierListTemplateLibrary } from "./carrier-list-templates.js";
+import { createCarrierTemplateNavigationCoordinator } from "./carrier-list-template-domain.js";
 import { createVendorTemplateNavigationGuard } from "./vendor-template-navigation.js";
 import { humanizeError } from "./error-copy.js";
 import {
@@ -232,6 +233,33 @@ let vendorFunnelLoadVersion = 0;
 let vendorFunnelLoadRequest = null;
 let vendorDrawerContextVersion = 0;
 let carrierListTemplateLibraryController = null;
+const VENDOR_HISTORY_POSITION_KEY = "ratewareVendorHistoryPosition";
+let vendorHistoryPosition = Number(window.history.state?.[VENDOR_HISTORY_POSITION_KEY]);
+if (!Number.isSafeInteger(vendorHistoryPosition)) {
+  vendorHistoryPosition = 0;
+  window.history.replaceState({
+    ...window.history.state,
+    [VENDOR_HISTORY_POSITION_KEY]: vendorHistoryPosition
+  }, "", window.location.href);
+}
+let acceptedVendorHistoryPosition = vendorHistoryPosition;
+let acceptedVendorHref = window.location.href;
+let vendorPopRestoreInFlight = false;
+const carrierTemplateNavigationCoordinator = createCarrierTemplateNavigationCoordinator({
+  beforeLeave: () => carrierListTemplateLibraryController?.beforeLeave?.() !== false,
+  commit: () => {},
+  restore: (route) => {
+    if (Number.isSafeInteger(route?.targetPosition) && route.targetPosition !== acceptedVendorHistoryPosition) {
+      vendorPopRestoreInFlight = true;
+      window.history.go(acceptedVendorHistoryPosition - route.targetPosition);
+      return;
+    }
+    window.history.pushState({
+      ...window.history.state,
+      [VENDOR_HISTORY_POSITION_KEY]: acceptedVendorHistoryPosition
+    }, "", route?.href || acceptedVendorHref);
+  }
+});
 let vendorDrawerSupportLoadVersion = 0;
 let vendorDrawerRelationshipLoadVersion = 0;
 const vendorDrawerSupportRequests = new Map();
@@ -1502,11 +1530,31 @@ function updateVendorTabUrl(tabName, { templateId = "", historyMode = "push" } =
   if (tabName === "list-templates" && templateId) url.searchParams.set("template", templateId);
   else url.searchParams.delete("template");
   const method = historyMode === "replace" ? "replaceState" : "pushState";
-  window.history[method]({ tab: tabName, template: templateId || null }, "", url);
+  const nextPosition = historyMode === "replace"
+    ? acceptedVendorHistoryPosition
+    : acceptedVendorHistoryPosition + 1;
+  window.history[method]({
+    ...window.history.state,
+    tab: tabName,
+    template: templateId || null,
+    [VENDOR_HISTORY_POSITION_KEY]: nextPosition
+  }, "", url);
+  vendorHistoryPosition = nextPosition;
+  acceptedVendorHistoryPosition = nextPosition;
+  acceptedVendorHref = url.href;
 }
 
-function activateVendorTab(tabName, { historyMode = "", templateId = "" } = {}) {
+function activateVendorTab(tabName, { historyMode = "", templateId = "", skipBeforeLeave = false } = {}) {
   if (!VENDOR_WORKSPACE_TABS.has(tabName)) tabName = "funnel";
+  const acceptedTemplateId = new URL(acceptedVendorHref).searchParams.get("template") || "";
+  const leavesTemplateWorkspace = activeVendorTab === "list-templates" && (
+    tabName !== "list-templates" || templateId !== acceptedTemplateId
+  );
+  if (
+    leavesTemplateWorkspace &&
+    !skipBeforeLeave &&
+    carrierTemplateNavigationCoordinator.click({ tab: tabName, templateId }) === false
+  ) return false;
   if (tabName === "list-templates" && vendorTemplateNavigationGuard.capability !== "enabled") {
     const fallbackHistoryMode = vendorTemplateNavigationGuard.capability === "disabled" ? "replace" : "";
     return activateVendorTab("funnel", { historyMode: fallbackHistoryMode });
@@ -1542,6 +1590,7 @@ function activateVendorTab(tabName, { historyMode = "", templateId = "" } = {}) 
   }
   if (isVendorBaseTab(tabName) && (previousTab !== tabName || !allVendors.length)) loadVendors();
   syncCrmViewButtons();
+  return true;
 }
 
 const vendorTemplateNavigationGuard = createVendorTemplateNavigationGuard({
@@ -5533,19 +5582,44 @@ clearVendorSelectionButton.addEventListener("click", clearVendorSelection);
 vendorTabs.forEach((button) => {
   button.addEventListener("click", () => {
     if (button.dataset.vendorTab === "sourcing") {
+      if (!activateVendorTab("sourcing", { historyMode: "push" })) return;
       setCrmView("spreadsheet");
-      updateVendorTabUrl("sourcing", { historyMode: "push" });
       return;
     }
     activateVendorTab(button.dataset.vendorTab, { historyMode: "push" });
   });
 });
-window.addEventListener("popstate", () => {
-  if (vendorTemplateNavigationGuard.handlePopState().handled) return;
+window.addEventListener("popstate", (event) => {
+  const targetPosition = Number(event.state?.[VENDOR_HISTORY_POSITION_KEY]);
+  if (vendorPopRestoreInFlight) {
+    vendorPopRestoreInFlight = false;
+    if (Number.isSafeInteger(targetPosition)) vendorHistoryPosition = targetPosition;
+    return;
+  }
   const params = new URLSearchParams(window.location.search);
   const tabName = VENDOR_WORKSPACE_TABS.has(params.get("tab")) ? params.get("tab") : "funnel";
   const templateId = tabName === "list-templates" ? params.get("template") || "" : "";
-  activateVendorTab(tabName, { templateId });
+  const acceptedTemplateId = new URL(acceptedVendorHref).searchParams.get("template") || "";
+  const leavesTemplateWorkspace = activeVendorTab === "list-templates" && (
+    tabName !== "list-templates" || templateId !== acceptedTemplateId
+  );
+  if (leavesTemplateWorkspace && carrierTemplateNavigationCoordinator.popstate(
+    { tab: tabName, templateId, targetPosition },
+    { href: acceptedVendorHref, targetPosition }
+  ) === false) return;
+  let activated;
+  if (tabName === "list-templates" && vendorTemplateNavigationGuard.capability !== "enabled") {
+    activated = activateVendorTab("funnel", { skipBeforeLeave: true });
+    if (activated && vendorTemplateNavigationGuard.capability === "disabled") {
+      if (Number.isSafeInteger(targetPosition)) acceptedVendorHistoryPosition = targetPosition;
+      updateVendorTabUrl("funnel", { historyMode: "replace" });
+    }
+  } else {
+    activated = activateVendorTab(tabName, { templateId, skipBeforeLeave: true });
+  }
+  vendorHistoryPosition = Number.isSafeInteger(targetPosition) ? targetPosition : vendorHistoryPosition;
+  acceptedVendorHistoryPosition = vendorHistoryPosition;
+  acceptedVendorHref = window.location.href;
 });
 crmViewButtons.forEach((button) => {
   button.addEventListener("click", () => setCrmView(button.dataset.crmView));

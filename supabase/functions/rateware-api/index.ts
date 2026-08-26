@@ -3,6 +3,7 @@ import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from 
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import type { WorkspaceUser } from "../_shared/workspace.ts";
 import {
+  CARRIER_TEMPLATE_IMPORT_MAX_ROWS,
   carrierTemplateNameKey,
   normalizeCarrierTemplateInput,
   normalizeCarrierTemplateVendorIds,
@@ -296,6 +297,35 @@ async function validateCarrierTemplateMembers(
   return vendorIds.every((id) => found.has(id));
 }
 
+const CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE = 1000;
+const CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT = 200000;
+
+async function fetchCarrierTemplateResolverVendors(
+  supabase: RatewareSupabaseClient,
+  organizationId: string
+) {
+  const vendors: Record<string, unknown>[] = [];
+  for (
+    let offset = 0;
+    offset < CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT;
+    offset += CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE
+  ) {
+    const result = await supabase
+      .from("vendors")
+      .select("id,vendor_name,name,legal_name,primary_email,secondary_emails,profile_data,status,base_stage,organization_id")
+      .eq("organization_id", organizationId)
+      .order("id", { ascending: true })
+      .range(offset, offset + CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE - 1);
+    if (result.error) throw result.error;
+    const page = (result.data || []) as Record<string, unknown>[];
+    vendors.push(...page);
+    if (page.length < CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE) return vendors;
+  }
+  throw new Error(
+    `Carrier import resolution exceeded the ${CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT.toLocaleString()}-vendor safety limit; no rows were resolved.`
+  );
+}
+
 async function hasCurrentCarrierTemplateMember(
   supabase: RatewareSupabaseClient,
   organizationId: string,
@@ -350,6 +380,7 @@ function carrierTemplateInsertRow(
 ) {
   return {
     segment_name: normalized.segment_name,
+    description: normalized.description,
     segment_type: "participant_template",
     lifecycle_status: normalized.lifecycle_status,
     status: normalized.lifecycle_status,
@@ -526,13 +557,13 @@ export async function handleCarrierTemplateApiAction(
       ? input.rows.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object" && !Array.isArray(row))
       : [];
     if (!rows.length) return carrierTemplateResult(400, { error: "At least one carrier import row is required." });
-    if (rows.length > 1000) return carrierTemplateResult(400, { error: "Resolve up to 1,000 carrier rows at a time." });
-    const vendorResult = await supabase
-      .from("vendors")
-      .select("id,vendor_name,legal_name,primary_email,secondary_emails,profile_data,status,base_stage,organization_id")
-      .eq("organization_id", actor.organization_id);
-    if (vendorResult.error) throw vendorResult.error;
-    const resolution = resolveCarrierTemplateImportRows(rows, vendorResult.data || [], actor.organization_id);
+    if (rows.length > CARRIER_TEMPLATE_IMPORT_MAX_ROWS) {
+      return carrierTemplateResult(400, {
+        error: `Resolve up to ${CARRIER_TEMPLATE_IMPORT_MAX_ROWS.toLocaleString()} carrier rows at a time.`
+      });
+    }
+    const vendors = await fetchCarrierTemplateResolverVendors(supabase, actor.organization_id);
+    const resolution = resolveCarrierTemplateImportRows(rows, vendors, actor.organization_id);
     const templateId = carrierTemplateId(input) || "import";
     await writeCarrierTemplateAudit(
       supabase,
@@ -595,12 +626,22 @@ export async function handleCarrierTemplateApiAction(
     const oldVendorIds = normalizeCarrierTemplateVendorIds(current.vendor_ids || []);
     const mergedInput = {
       segment_name: patchInput.segment_name ?? current.segment_name,
+      ...(Object.prototype.hasOwnProperty.call(patchInput, "segment_description")
+        ? { segment_description: patchInput.segment_description }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(patchInput, "description")
+        ? { description: patchInput.description }
+        : {}),
+      ...(!Object.prototype.hasOwnProperty.call(patchInput, "segment_description") &&
+          !Object.prototype.hasOwnProperty.call(patchInput, "description")
+        ? { description: current.description }
+        : {}),
       lifecycle_status: patchInput.lifecycle_status ?? patchInput.status ?? current.lifecycle_status ?? current.status,
       vendor_ids: patchInput.vendor_ids ?? oldVendorIds
     };
     let normalized: Record<string, unknown>;
     try {
-      normalized = normalizeCarrierTemplateInput(mergedInput, actor);
+      normalized = normalizeCarrierTemplateInput(mergedInput, actor, { existing: current });
     } catch (error) {
       return carrierTemplateResult(400, { error: error instanceof Error ? error.message : "Invalid carrier list template." });
     }
@@ -635,6 +676,7 @@ export async function handleCarrierTemplateApiAction(
       expectedVersion,
       {
         segment_name: normalized.segment_name,
+        description: normalized.description,
         lifecycle_status: normalized.lifecycle_status,
         status: normalized.lifecycle_status,
         vendor_ids: newVendorIds,
@@ -650,7 +692,11 @@ export async function handleCarrierTemplateApiAction(
     const metadata = carrierTemplateAuditMetadata(templateId, expectedVersion, newVersion, oldVendorIds, newVendorIds);
     if (newLifecycle === "active" && oldLifecycle !== "active") {
       await writeCarrierTemplateAudit(supabase, user, "carrier_template.activate", templateId, metadata);
-    } else if (nameChanged || newLifecycle !== oldLifecycle) {
+    } else if (
+      nameChanged ||
+      newLifecycle !== oldLifecycle ||
+      cleanText(normalized.description) !== cleanText(current.description)
+    ) {
       await writeCarrierTemplateAudit(supabase, user, "carrier_template.update_details", templateId, metadata);
     }
     if (addedVendorIds.length) {
@@ -26250,88 +26296,105 @@ export function createRatewareApiHandler(
       const vendorSelect = lightweight
         ? "id,vendor_name,name,legal_name,contact_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,whatsapp_permission_basis,whatsapp_do_not_contact,whatsapp_opt_in_status,whatsapp_group_url,whatsapp_group_name,whatsapp_meta_group_id,whatsapp_group_status,whatsapp_notes,base_stage,funnel_stage,status,tags,coverage_notes,notes,logo_url,created_at,updated_at"
         : "*";
-      let searchIds: string[] | null = null;
       let searchTotal = 0;
-      let searchCapped = false;
+      let filteredTotal = 0;
+      let rows: Record<string, unknown>[] = [];
+
+      const applyVendorFilters = (unfilteredQuery: any) => {
+        let filteredQuery = unfilteredQuery;
+        if (body.status) filteredQuery = filteredQuery.eq("status", body.status);
+        if (effectiveBaseStage) filteredQuery = filteredQuery.eq("base_stage", effectiveBaseStage);
+        if (view === "missing-contact") {
+          filteredQuery = filteredQuery.is("primary_email", null).is("whatsapp_phone", null);
+        }
+        if (view === "cross-border") {
+          filteredQuery = filteredQuery.or("coverage_notes.ilike.%Cross-border%,notes.ilike.%Cross-border%");
+        }
+        if (view === "high-confidence") filteredQuery = filteredQuery.contains("tags", ["alta"]);
+        if (view === "procurement-ready") {
+          filteredQuery = filteredQuery.not("primary_email", "is", null).not("domain", "is", null).not("coverage_notes", "is", null);
+        }
+        if (body.channel) {
+          filteredQuery = filteredQuery.eq("preferred_channel", String(body.channel).trim().toLowerCase());
+        }
+        if (body.tag) {
+          const tag = String(body.tag).trim().toLowerCase();
+          if (tag) filteredQuery = filteredQuery.contains("tags", [tag]);
+        }
+        if (body.coverage) {
+          const coverage = String(body.coverage).trim();
+          if (coverage) filteredQuery = filteredQuery.or(`coverage_notes.ilike.%${coverage}%,notes.ilike.%${coverage}%`);
+        }
+        return filteredQuery;
+      };
 
       if (vendorSearch) {
-        const searchResult = await supabase.rpc("search_workspace_vendors", {
-          p_owner_email: user.owner_email,
-          p_search: vendorSearch,
-          p_limit: 1000,
-          p_offset: 0
-        });
-        if (searchResult.error) throw new Error(`Vendor search failed: ${searchResult.error.message}`);
-        const matches = (searchResult.data || []) as Array<Record<string, unknown>>;
-        searchIds = matches.map((row) => cleanText(row.id)).filter((id): id is string => Boolean(id));
-        searchTotal = Number(matches[0]?.total_count || searchIds.length);
-        searchCapped = searchTotal > searchIds.length;
-        if (!searchIds.length) {
-          return jsonResponse({ rows: [], total: 0, limit, offset, warnings: [], search_total: 0, search_capped: false });
+        const searchPageSize = 1000;
+        const searchSafetyLimit = 200000;
+        const requestedIdSet = requestedIds.length ? new Set(requestedIds) : null;
+        const rankedRows: Array<{ rank: number; row: Record<string, unknown> }> = [];
+        let searchComplete = false;
+        for (let searchOffset = 0; searchOffset < searchSafetyLimit; searchOffset += searchPageSize) {
+          const searchResult = await supabase.rpc("search_workspace_vendors", {
+            p_owner_email: user.owner_email,
+            p_search: vendorSearch,
+            p_limit: searchPageSize,
+            p_offset: searchOffset
+          });
+          if (searchResult.error) throw new Error(`Vendor search failed: ${searchResult.error.message}`);
+          const matches = (searchResult.data || []) as Array<Record<string, unknown>>;
+          if (searchOffset === 0) searchTotal = Number(matches[0]?.total_count || matches.length);
+          if (searchTotal > searchSafetyLimit) {
+            throw new Error(`Vendor search exceeds the ${searchSafetyLimit.toLocaleString()}-row safety limit; refine the search.`);
+          }
+          const rankedIds = matches
+            .map((match, index) => ({ id: cleanText(match.id), rank: searchOffset + index }))
+            .filter((match): match is { id: string; rank: number } => Boolean(match.id));
+          const scopedRankedIds = requestedIdSet
+            ? rankedIds.filter((match) => requestedIdSet.has(match.id))
+            : rankedIds;
+          if (scopedRankedIds.length) {
+            let vendorQuery = supabase
+              .from("vendors")
+              .select(vendorSelect)
+              .eq("owner_email", user.owner_email)
+              .order("created_at", { ascending: false })
+              .order("id", { ascending: false })
+              .in("id", scopedRankedIds.map((match) => match.id));
+            vendorQuery = applyVendorFilters(vendorQuery);
+            const vendorResult = await vendorQuery;
+            if (vendorResult.error) throw vendorResult.error;
+            const rankById = new Map(scopedRankedIds.map((match) => [match.id, match.rank]));
+            for (const row of (vendorResult.data || []) as unknown as Record<string, unknown>[]) {
+              const id = cleanText(row.id);
+              if (id && rankById.has(id)) rankedRows.push({ rank: rankById.get(id) as number, row });
+            }
+          }
+          if (matches.length < searchPageSize || searchOffset + matches.length >= searchTotal) {
+            searchComplete = true;
+            break;
+          }
         }
-      }
-      const shouldPageSearchInMemory = Boolean(searchIds);
-      let query = supabase
-        .from("vendors")
-        .select(vendorSelect, { count: "exact" })
-        .eq("owner_email", user.owner_email)
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false });
-
-      const scopedIds = requestedIds.length && searchIds
-        ? requestedIds.filter((id) => searchIds?.includes(id))
-        : requestedIds.length
-          ? requestedIds
-          : searchIds;
-      if (scopedIds) {
-        if (!scopedIds.length) return jsonResponse({ rows: [], total: 0, limit, offset, warnings: [], search_total: searchTotal, search_capped: searchCapped });
-        query = query.in("id", scopedIds);
-      }
-
-      if (body.status) query = query.eq("status", body.status);
-      if (effectiveBaseStage) {
-        query = query.eq("base_stage", effectiveBaseStage);
-      }
-      if (view === "missing-contact") {
-        query = query.is("primary_email", null).is("whatsapp_phone", null);
-      }
-      if (view === "cross-border") {
-        query = query.or("coverage_notes.ilike.%Cross-border%,notes.ilike.%Cross-border%");
-      }
-      if (view === "high-confidence") {
-        query = query.contains("tags", ["alta"]);
-      }
-      if (view === "procurement-ready") {
-        query = query.not("primary_email", "is", null).not("domain", "is", null).not("coverage_notes", "is", null);
-      }
-      if (body.channel) {
-        query = query.eq("preferred_channel", String(body.channel).trim().toLowerCase());
-      }
-      if (body.tag) {
-        const tag = String(body.tag).trim().toLowerCase();
-        if (tag) query = query.contains("tags", [tag]);
-      }
-      if (body.coverage) {
-        const coverage = String(body.coverage).trim();
-        if (coverage) query = query.or(`coverage_notes.ilike.%${coverage}%,notes.ilike.%${coverage}%`);
-      }
-      if (shouldPageSearchInMemory) {
-        query = query.limit(1000);
+        if (!searchComplete) {
+          throw new Error(`Vendor search did not complete within the ${searchSafetyLimit.toLocaleString()}-row safety limit.`);
+        }
+        rankedRows.sort((left, right) => left.rank - right.rank);
+        filteredTotal = rankedRows.length;
+        rows = rankedRows.slice(offset, offset + limit).map((entry) => entry.row);
       } else {
-        query = query.range(offset, offset + limit - 1);
-      }
-      const result = await query;
-      if (result.error) throw result.error;
-      let rows = (result.data || []) as unknown as Record<string, unknown>[];
-      const filteredTotal = result.count || rows.length;
-      if (shouldPageSearchInMemory && searchIds) {
-        const rankById = new Map(searchIds.map((id, index) => [id, index]));
-        rows = rows
-          .sort((left, right) =>
-            (rankById.get(cleanText(left.id) || "") ?? Number.MAX_SAFE_INTEGER)
-            - (rankById.get(cleanText(right.id) || "") ?? Number.MAX_SAFE_INTEGER)
-          )
-          .slice(offset, offset + limit);
+        let query = supabase
+          .from("vendors")
+          .select(vendorSelect, { count: "exact" })
+          .eq("owner_email", user.owner_email)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false });
+        if (requestedIds.length) query = query.in("id", requestedIds);
+        query = applyVendorFilters(query).range(offset, offset + limit - 1);
+        const result = await query;
+        if (result.error) throw result.error;
+        rows = (result.data || []) as unknown as Record<string, unknown>[];
+        filteredTotal = result.count || rows.length;
+        searchTotal = filteredTotal;
       }
       let enrichedRows = rows;
       let warnings: string[] = [];
@@ -26351,12 +26414,12 @@ export function createRatewareApiHandler(
       }
       return jsonResponse({
         rows: enrichedRows,
-        total: vendorSearch ? searchTotal : filteredTotal,
+        total: filteredTotal,
         limit,
         offset,
         warnings,
         search_total: vendorSearch ? searchTotal : filteredTotal,
-        search_capped: searchCapped
+        search_capped: false
       });
     }
 

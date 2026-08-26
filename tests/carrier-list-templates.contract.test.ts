@@ -5,6 +5,7 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  CARRIER_TEMPLATE_IMPORT_MAX_ROWS as SERVER_CARRIER_TEMPLATE_IMPORT_MAX_ROWS,
   carrierTemplateNameKey,
   normalizeCarrierTemplateInput,
   normalizeCarrierTemplateVendorIds,
@@ -13,6 +14,9 @@ import {
   resolveCarrierTemplateImportRows,
 } from "../supabase/functions/rateware-api/carrier-list-templates.ts";
 import { normalizeCarrierTemplateRows } from "../src/carrier-list-template-file.js";
+import {
+  CARRIER_TEMPLATE_IMPORT_MAX_ROWS as BROWSER_CARRIER_TEMPLATE_IMPORT_MAX_ROWS,
+} from "../src/carrier-list-template-domain.js";
 
 let registeredHandler: ((request: Request) => Promise<Response>) | null = null;
 const originalServe = Deno.serve;
@@ -213,6 +217,57 @@ Deno.test("draft may be empty but active may not", () => {
   assertEquals(row.owner_email, actor.email);
   assertEquals(row.organization_id, actor.organization_id);
   assertEquals(row.created_by, actor.user_id);
+});
+
+Deno.test("template descriptions normalize aliases and preserve omission while allowing an explicit clear", () => {
+  const actor = {
+    user_id: "kp_1",
+    email: "buyer@example.com",
+    organization_id: "org-a",
+  };
+  assertEquals(
+    normalizeCarrierTemplateInput({
+      segment_name: "Mexico Core",
+      description: " Legacy description ",
+      segment_description: " Preferred description ",
+      vendor_ids: [],
+    }, actor).description,
+    "Preferred description",
+  );
+  assertEquals(
+    normalizeCarrierTemplateInput({
+      segment_name: "Mexico Core",
+      description: "Nullish fallback description",
+      segment_description: null,
+      vendor_ids: [],
+    }, actor).description,
+    "Nullish fallback description",
+  );
+  assertEquals(
+    normalizeCarrierTemplateInput({
+      segment_name: "Mexico Core",
+      vendor_ids: [],
+    }, actor, { existing: { description: "Keep this description" } })
+      .description,
+    "Keep this description",
+  );
+  assertEquals(
+    normalizeCarrierTemplateInput({
+      segment_name: "Mexico Core",
+      segment_description: "",
+      vendor_ids: [],
+    }, actor, { existing: { description: "Clear this description" } })
+      .description,
+    "",
+  );
+});
+
+Deno.test("browser and server enforce one 1,000-row carrier import contract", () => {
+  assertEquals(SERVER_CARRIER_TEMPLATE_IMPORT_MAX_ROWS, 1000);
+  assertEquals(
+    BROWSER_CARRIER_TEMPLATE_IMPORT_MAX_ROWS,
+    SERVER_CARRIER_TEMPLATE_IMPORT_MAX_ROWS,
+  );
 });
 
 const vendorA = {
@@ -529,6 +584,26 @@ class ScriptedQuery {
     return this;
   }
 
+  is(column: string, value: unknown) {
+    this.trace.filters.push(["is", column, value]);
+    return this;
+  }
+
+  or(value: string) {
+    this.trace.filters.push(["or", "", value]);
+    return this;
+  }
+
+  contains(column: string, value: unknown) {
+    this.trace.filters.push(["contains", column, value]);
+    return this;
+  }
+
+  not(column: string, operator: string, value: unknown) {
+    this.trace.filters.push(["not", column, [operator, value]]);
+    return this;
+  }
+
   order(column: string, value: unknown) {
     this.trace.filters.push(["order", column, value]);
     return this;
@@ -688,6 +763,85 @@ Deno.test("real request dispatcher preserves raw claims and resolved organizatio
   ]);
 });
 
+Deno.test("filtered vendor search scans every RPC page and returns a complete deterministic total", async () => {
+  const searchIds = Array.from({ length: 1002 }, (_, index) =>
+    `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`
+  );
+  const matchingRows = [
+    { id: searchIds[10], vendor_name: "First filtered match" },
+    { id: searchIds[1000], vendor_name: "Second filtered match" },
+    { id: searchIds[1001], vendor_name: "Third filtered match" },
+  ];
+  const db = new ScriptedSupabase([
+    {
+      table: "search_workspace_vendors",
+      operation: "rpc",
+      data: searchIds.slice(0, 1000).map((id, index) => ({
+        id,
+        match_rank: index < 20 ? 0 : 4,
+        total_count: 1002,
+      })),
+    },
+    { table: "vendors", operation: "select", data: [matchingRows[0]], count: 1 },
+    {
+      table: "search_workspace_vendors",
+      operation: "rpc",
+      data: searchIds.slice(1000).map((id) => ({ id, match_rank: 4, total_count: 1002 })),
+    },
+    { table: "vendors", operation: "select", data: matchingRows.slice(1), count: 2 },
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+  const response = await handler(jsonActionRequest({
+    action: "list_vendors",
+    search: "Mexico",
+    status: "active",
+    base_stage: "procurement",
+    channel: "email",
+    tag: "alta",
+    coverage: "Cross-border",
+    lightweight: true,
+    limit: 2,
+    offset: 1,
+  }));
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.rows, matchingRows.slice(1));
+  assertEquals(body.total, 3);
+  assertEquals(body.search_total, 1002);
+  assertEquals(body.search_capped, false);
+  const rpcTraces = db.traces.filter((trace) =>
+    trace.table === "search_workspace_vendors"
+  );
+  assertEquals(rpcTraces.map((trace) => trace.payload), [
+    { p_owner_email: "org:org-a", p_search: "Mexico", p_limit: 1000, p_offset: 0 },
+    { p_owner_email: "org:org-a", p_search: "Mexico", p_limit: 1000, p_offset: 1000 },
+  ]);
+  const vendorTraces = db.traces.filter((trace) => trace.table === "vendors");
+  assertEquals(
+    (vendorTraces[0].filters.find((filter) => filter[0] === "in")?.[2] as unknown[]).length,
+    1000,
+  );
+  assertEquals(
+    (vendorTraces[1].filters.find((filter) => filter[0] === "in")?.[2] as unknown[]).length,
+    2,
+  );
+  for (const trace of vendorTraces) {
+    assert(trace.filters.some((filter) =>
+      filter[0] === "eq" && filter[1] === "owner_email" && filter[2] === "org:org-a"
+    ));
+    assert(trace.filters.some((filter) =>
+      filter[0] === "eq" && filter[1] === "status" && filter[2] === "active"
+    ));
+    assert(trace.filters.some((filter) =>
+      filter[0] === "eq" && filter[1] === "base_stage" && filter[2] === "procurement"
+    ));
+    assert(trace.filters.some((filter) => filter[0] === "contains" && filter[1] === "tags"));
+    assert(trace.filters.some((filter) => filter[0] === "or"));
+  }
+});
+
 Deno.test("real request dispatcher honors feature flag and raw-claim write permission", async () => {
   const disabledDb = new ScriptedSupabase();
   const disabledHandler = createTestRatewareApiHandler(disabledDb, {
@@ -719,6 +873,138 @@ Deno.test("real request dispatcher honors feature flag and raw-claim write permi
     error: "Missing required permission: vendors:manage",
   });
   assertEquals(deniedDb.traces, []);
+});
+
+Deno.test("real create request persists the normalized template description", async () => {
+  const saved = {
+    id: "aaaaaaaa-1111-4111-8111-111111111111",
+    segment_name: "Mexico Core",
+    description: "Operations-owned shortlist",
+    lifecycle_status: "draft",
+    status: "draft",
+    vendor_ids: [],
+    template_version: 1,
+  };
+  const db = new ScriptedSupabase([
+    { table: "vendor_segments", operation: "select", data: [] },
+    { table: "vendor_segments", operation: "insert", data: saved },
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+
+  const response = await handler(jsonActionRequest({
+    action: "create_carrier_list_template",
+    template: {
+      segment_name: "Mexico Core",
+      segment_description: " Operations-owned shortlist ",
+      lifecycle_status: "draft",
+      vendor_ids: [],
+    },
+  }));
+
+  assertEquals(response.status, 201);
+  assertEquals((await response.json()).row.description, saved.description);
+  const insert = db.traces.find((trace) =>
+    trace.table === "vendor_segments" && trace.operation === "insert"
+  );
+  assertEquals(
+    (insert?.payload as Record<string, unknown>).description,
+    saved.description,
+  );
+});
+
+Deno.test("real update requests preserve an omitted description and allow an explicit clear", async () => {
+  const templateId = "aaaaaaaa-1111-4111-8111-111111111111";
+  const current = {
+    id: templateId,
+    segment_name: "Mexico Core",
+    description: "Keep until explicitly cleared",
+    lifecycle_status: "draft",
+    status: "draft",
+    vendor_ids: [],
+    template_version: 4,
+  };
+
+  const preserveDb = new ScriptedSupabase([
+    { table: "vendor_segments", operation: "select", data: current },
+    {
+      table: "vendor_segments",
+      operation: "update",
+      data: { ...current, template_version: 5 },
+    },
+  ]);
+  const preserveHandler = createTestRatewareApiHandler(preserveDb);
+  assert(preserveHandler);
+  const preserveResponse = await preserveHandler(jsonActionRequest({
+    action: "update_carrier_list_template",
+    id: templateId,
+    expected_version: 4,
+    template: {
+      segment_name: "Mexico Core",
+      lifecycle_status: "draft",
+      vendor_ids: [],
+    },
+  }));
+  assertEquals(preserveResponse.status, 200);
+  assertEquals(
+    (preserveDb.traces.find((trace) => trace.operation === "update")
+      ?.payload as Record<string, unknown>).description,
+    current.description,
+  );
+
+  const clearDb = new ScriptedSupabase([
+    { table: "vendor_segments", operation: "select", data: current },
+    {
+      table: "vendor_segments",
+      operation: "update",
+      data: { ...current, description: "", template_version: 5 },
+    },
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const clearHandler = createTestRatewareApiHandler(clearDb);
+  assert(clearHandler);
+  const clearResponse = await clearHandler(jsonActionRequest({
+    action: "update_carrier_list_template",
+    id: templateId,
+    expected_version: 4,
+    template: {
+      segment_name: "Mexico Core",
+      segment_description: "",
+      lifecycle_status: "draft",
+      vendor_ids: [],
+    },
+  }));
+  assertEquals(clearResponse.status, 200);
+  assertEquals(
+    (clearDb.traces.find((trace) => trace.operation === "update")
+      ?.payload as Record<string, unknown>).description,
+    "",
+  );
+  assertEquals(
+    (clearDb.traces.find((trace) => trace.table === "saas_audit_log")
+      ?.payload as Record<string, unknown>).action,
+    "carrier_template.update_details",
+  );
+});
+
+Deno.test("resolve rejects rows beyond the shared limit before any vendor query", async () => {
+  const db = new ScriptedSupabase();
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+  const response = await handler(jsonActionRequest({
+    action: "resolve_carrier_list_template_rows",
+    rows: Array.from(
+      { length: SERVER_CARRIER_TEMPLATE_IMPORT_MAX_ROWS + 1 },
+      (_, index) => ({ source_row_number: index + 2, vendor_name: `Carrier ${index}` }),
+    ),
+  }));
+  assertEquals(response.status, 400);
+  assertEquals(await response.json(), {
+    enabled: true,
+    error: "Resolve up to 1,000 carrier rows at a time.",
+  });
+  assertEquals(db.traces, []);
 });
 
 Deno.test("real duplicate request requires and enforces the displayed source version", async () => {
@@ -1720,7 +2006,11 @@ Deno.test("resolve is read-only for vendors and keeps name-only matches manual",
   const vendorQueries = db.traces.filter((trace) => trace.table === "vendors");
   assertEquals(vendorQueries.length, 1);
   assertEquals(vendorQueries[0].operation, "select");
-  assertEquals(vendorQueries[0].filters, [["eq", "organization_id", "org-a"]]);
+  assertEquals(vendorQueries[0].filters, [
+    ["eq", "organization_id", "org-a"],
+    ["order", "id", { ascending: true }],
+    ["range", "0", 999],
+  ]);
   const audit = db.traces.find((trace) => trace.table === "saas_audit_log");
   assertEquals(
     (audit?.payload as Record<string, unknown>).action,
@@ -1736,6 +2026,53 @@ Deno.test("resolve is read-only for vendors and keeps name-only matches manual",
     not_found: 0,
     duplicates: 0,
   });
+});
+
+Deno.test("resolver scans stable organization pages until a match beyond page one is reached", async () => {
+  const firstPage = Array.from({ length: 1000 }, (_, index) => ({
+    id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    organization_id: "org-a",
+    vendor_name: `Page one ${index}`,
+  }));
+  const db = new ScriptedSupabase([
+    { table: "vendors", operation: "select", data: firstPage },
+    { table: "vendors", operation: "select", data: [vendorA] },
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const result = await callCarrierTemplateAction(db, {
+    action: "resolve_carrier_list_template_rows",
+    rows: [
+      { source_row_number: 8, vendor_id: vendorA.id },
+      { source_row_number: 9, vendor_id: firstPage[10].id },
+      { source_row_number: 10, vendor_id: vendorA.id },
+    ],
+  });
+  assertEquals(result?.status, 200);
+  assertEquals(
+    (result?.body.rows as Array<Record<string, unknown>>).map((row) => [
+      row.source_row_number,
+      row.status,
+      row.vendor_id,
+    ]),
+    [
+      [8, "matched", vendorA.id],
+      [9, "matched", firstPage[10].id],
+      [10, "duplicate", null],
+    ],
+  );
+  const vendorQueries = db.traces.filter((trace) => trace.table === "vendors");
+  assertEquals(vendorQueries.map((trace) => trace.filters), [
+    [
+      ["eq", "organization_id", "org-a"],
+      ["order", "id", { ascending: true }],
+      ["range", "0", 999],
+    ],
+    [
+      ["eq", "organization_id", "org-a"],
+      ["order", "id", { ascending: true }],
+      ["range", "1000", 1999],
+    ],
+  ]);
 });
 
 Deno.test("legacy participant-template reads switch from owner to organization only when enabled", () => {

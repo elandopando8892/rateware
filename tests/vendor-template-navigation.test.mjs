@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createCarrierTemplateCapabilityView } from "../src/carrier-list-template-capability.js";
+import { createCarrierTemplateNavigationCoordinator } from "../src/carrier-list-template-domain.js";
 import { createVendorTemplateNavigationGuard } from "../src/vendor-template-navigation.js";
 
 function createHarness(initialHref) {
@@ -129,4 +130,78 @@ test("real capability callback wiring handles enabled to error to disabled witho
   assert.equal(new URL(harness.state().href).searchParams.has("template"), false);
   assert.equal(harness.state().replacements, 1);
   assert.deepEqual(transitions, ["enabled", "error", "disabled"]);
+});
+
+test("dirty template click navigation declines without changing URL, panel, or editor", () => {
+  const state = {
+    href: "https://rateware.test/vendors.html?tab=list-templates&template=a",
+    tab: "list-templates",
+    editorOpen: true,
+  };
+  let accept = false;
+  let invalidations = 0;
+  const coordinator = createCarrierTemplateNavigationCoordinator({
+    beforeLeave: () => {
+      if (!accept) return false;
+      invalidations += 1;
+      state.editorOpen = false;
+      return true;
+    },
+    commit: (route) => Object.assign(state, route),
+    restore: (route) => Object.assign(state, route),
+  });
+
+  assert.equal(coordinator.click({ href: "https://rateware.test/vendors.html?tab=funnel", tab: "funnel" }), false);
+  assert.deepEqual(state, {
+    href: "https://rateware.test/vendors.html?tab=list-templates&template=a",
+    tab: "list-templates",
+    editorOpen: true,
+  });
+  assert.equal(invalidations, 0);
+
+  accept = true;
+  assert.equal(coordinator.click({ href: "https://rateware.test/vendors.html?tab=funnel", tab: "funnel" }), true);
+  assert.equal(state.tab, "funnel");
+  assert.equal(state.editorOpen, false);
+  assert.equal(invalidations, 1);
+});
+
+test("dirty Back and Forward decline restores the accepted route and acceptance commits once", () => {
+  const accepted = {
+    href: "https://rateware.test/vendors.html?tab=list-templates&template=a",
+    tab: "list-templates",
+    editorOpen: true,
+  };
+  const state = { ...accepted };
+  let accept = false;
+  let restores = 0;
+  let commits = 0;
+  const coordinator = createCarrierTemplateNavigationCoordinator({
+    beforeLeave: () => accept,
+    commit: (route) => {
+      commits += 1;
+      Object.assign(state, route, { editorOpen: false });
+    },
+    restore: (route) => {
+      restores += 1;
+      Object.assign(state, route);
+    },
+  });
+
+  for (const tab of ["funnel", "procurement"]) {
+    state.href = `https://rateware.test/vendors.html?tab=${tab}`;
+    state.tab = tab;
+    assert.equal(coordinator.popstate({ href: state.href, tab }, accepted), false);
+    assert.deepEqual(state, accepted);
+  }
+  assert.equal(restores, 2);
+  assert.equal(commits, 0);
+
+  accept = true;
+  const target = { href: "https://rateware.test/vendors.html?tab=funnel", tab: "funnel" };
+  assert.equal(coordinator.popstate(target, accepted), true);
+  assert.equal(state.href, target.href);
+  assert.equal(state.tab, "funnel");
+  assert.equal(state.editorOpen, false);
+  assert.equal(commits, 1);
 });

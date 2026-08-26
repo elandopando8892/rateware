@@ -2,6 +2,139 @@ function trimmedText(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+export const CARRIER_TEMPLATE_IMPORT_MAX_ROWS = 1000;
+
+export function createCarrierTemplateWizardAsyncController() {
+  let session = 0;
+  let context = Object.freeze({ open: false, template_id: "", expected_version: null });
+  const operationVersions = new Map();
+
+  function replaceContext(nextContext = {}, open) {
+    session += 1;
+    operationVersions.clear();
+    context = Object.freeze({
+      open,
+      template_id: trimmedText(nextContext.template_id || nextContext.id),
+      expected_version: templateVersion(nextContext)
+    });
+    return snapshot();
+  }
+
+  function snapshot() {
+    return Object.freeze({ session, ...context });
+  }
+
+  function begin(operation) {
+    const operationName = trimmedText(operation);
+    if (!operationName) throw new Error("Wizard async operation name is required.");
+    const operation_token = (operationVersions.get(operationName) || 0) + 1;
+    operationVersions.set(operationName, operation_token);
+    return Object.freeze({
+      ...snapshot(),
+      operation: operationName,
+      operation_token
+    });
+  }
+
+  function isCurrent(token) {
+    return Boolean(
+      token &&
+      context.open &&
+      token.open &&
+      token.session === session &&
+      token.template_id === context.template_id &&
+      token.expected_version === context.expected_version &&
+      operationVersions.get(token.operation) === token.operation_token
+    );
+  }
+
+  async function run(operation, task, apply = () => {}) {
+    const token = begin(operation);
+    try {
+      const value = await task(token);
+      if (!isCurrent(token)) return { current: false, value };
+      apply(value, token);
+      return { current: true, value };
+    } catch (error) {
+      if (!isCurrent(token)) return { current: false, error };
+      throw error;
+    }
+  }
+
+  return Object.freeze({
+    open: (nextContext = {}) => replaceContext(nextContext, true),
+    close: () => replaceContext({}, false),
+    begin,
+    isCurrent,
+    run,
+    snapshot
+  });
+}
+
+export function createCarrierTemplateModalFocusController({
+  getActiveElement,
+  getFocusable,
+  focusElement
+} = {}) {
+  let opener = null;
+  const activeElement = typeof getActiveElement === "function" ? getActiveElement : () => null;
+  const focusableElements = typeof getFocusable === "function" ? getFocusable : () => [];
+  const focus = typeof focusElement === "function" ? focusElement : (element) => element?.focus?.();
+
+  return Object.freeze({
+    open(initialFocus, openerOverride = null) {
+      opener = openerOverride || activeElement();
+      focus(initialFocus || focusableElements()[0] || null);
+    },
+    close() {
+      const restoreTarget = opener;
+      opener = null;
+      if (restoreTarget) focus(restoreTarget);
+    },
+    trapTab(event = {}) {
+      if (event.key !== "Tab") return false;
+      const elements = focusableElements().filter(Boolean);
+      if (!elements.length) return false;
+      const current = activeElement();
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && current === first) {
+        event.preventDefault?.();
+        focus(last);
+        return true;
+      }
+      if (!event.shiftKey && current === last) {
+        event.preventDefault?.();
+        focus(first);
+        return true;
+      }
+      return false;
+    }
+  });
+}
+
+export function createCarrierTemplateNavigationCoordinator({
+  beforeLeave,
+  commit,
+  restore
+} = {}) {
+  if (typeof beforeLeave !== "function" || typeof commit !== "function" || typeof restore !== "function") {
+    throw new TypeError("Carrier template navigation requires leave, commit, and restore adapters.");
+  }
+  const attempt = (route, restoreRoute = null) => {
+    if (beforeLeave(route) === false) {
+      if (restoreRoute) restore(restoreRoute);
+      return false;
+    }
+    commit(route);
+    return true;
+  };
+  return Object.freeze({
+    click: (route) => attempt(route),
+    popstate: (route, restoreRoute) => attempt(route, restoreRoute)
+  });
+}
+
 function defaultContactUsable(vendor) {
   return Boolean(trimmedText(vendor?.primary_email));
 }
@@ -238,8 +371,12 @@ export function carrierTemplateConflictSummary(localState = {}, currentTemplate 
 export function carrierTemplateImportValidation(file = {}, {
   row_count: rowCount = null,
   max_bytes: maxBytes = 5 * 1024 * 1024,
-  max_rows: maxRows = 5000
+  max_rows: maxRows = CARRIER_TEMPLATE_IMPORT_MAX_ROWS
 } = {}) {
+  const enforcedMaxRows = Math.min(
+    Math.max(Number(maxRows) || CARRIER_TEMPLATE_IMPORT_MAX_ROWS, 1),
+    CARRIER_TEMPLATE_IMPORT_MAX_ROWS
+  );
   const name = trimmedText(file?.name).toLowerCase();
   const supported = name.endsWith(".csv") || name.endsWith(".xlsx");
   if (!supported) {
@@ -248,8 +385,8 @@ export function carrierTemplateImportValidation(file = {}, {
   if (Number(file?.size) > maxBytes) {
     return { valid: false, code: "file_too_large", message: `The file exceeds the ${Math.floor(maxBytes / (1024 * 1024))} MB limit.` };
   }
-  if (rowCount !== null && Number(rowCount) > maxRows) {
-    return { valid: false, code: "too_many_rows", message: `The file exceeds the ${maxRows.toLocaleString()} row limit.` };
+  if (rowCount !== null && Number(rowCount) > enforcedMaxRows) {
+    return { valid: false, code: "too_many_rows", message: `The file exceeds the ${enforcedMaxRows.toLocaleString()} row limit.` };
   }
   return { valid: true, code: "", message: "" };
 }

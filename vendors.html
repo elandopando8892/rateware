@@ -281,7 +281,7 @@
                   <button type="button" data-template-wizard-step="3" aria-controls="carrier-template-step-save">Save</button>
                 </nav>
 
-                <div class="carrier-template-wizard-panel" id="carrier-template-step-details" data-template-wizard-panel="0">
+                <div class="carrier-template-wizard-panel" id="carrier-template-step-details" data-template-wizard-panel="0" tabindex="-1">
                   <div class="carrier-template-details-grid">
                     <label>
                       Template name
@@ -295,7 +295,7 @@
                   <p class="carrier-template-static-note">Membership is an exact ordered UUID list. Later carrier-profile edits do not change it.</p>
                 </div>
 
-                <div class="carrier-template-wizard-panel" id="carrier-template-step-add" data-template-wizard-panel="1" hidden>
+                <div class="carrier-template-wizard-panel" id="carrier-template-step-add" data-template-wizard-panel="1" tabindex="-1" hidden>
                   <div class="carrier-template-builder-grid">
                     <div class="carrier-template-builder-card">
                       <div class="section-heading compact">
@@ -367,7 +367,7 @@
                     </div>
                     <label class="import-zone compact" for="carrier-template-import-file">
                       <span>Choose reconciliation file</span>
-                      <small>First sheet only · maximum 5 MB and 5,000 data rows</small>
+                      <small>First sheet only · maximum 5 MB and 1,000 data rows</small>
                       <input id="carrier-template-import-file" type="file" data-template-import-file data-unsaved-ignore accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
                     </label>
                     <p class="status-message" data-template-import-status role="status"></p>
@@ -377,11 +377,11 @@
                   </div>
                 </div>
 
-                <div class="carrier-template-wizard-panel" id="carrier-template-step-review" data-template-wizard-panel="2" hidden>
+                <div class="carrier-template-wizard-panel" id="carrier-template-step-review" data-template-wizard-panel="2" tabindex="-1" hidden>
                   <div class="carrier-template-review" data-template-review></div>
                 </div>
 
-                <div class="carrier-template-wizard-panel" id="carrier-template-step-save" data-template-wizard-panel="3" hidden>
+                <div class="carrier-template-wizard-panel" id="carrier-template-step-save" data-template-wizard-panel="3" tabindex="-1" hidden>
                   <div class="carrier-template-save-summary" data-template-save-summary></div>
                   <div class="carrier-template-conflict" data-template-conflict role="alert" hidden></div>
                   <div class="action-row">

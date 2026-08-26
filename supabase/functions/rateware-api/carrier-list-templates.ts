@@ -1,4 +1,5 @@
 export const CARRIER_TEMPLATE_MANAGE_PERMISSION = "vendors:manage";
+export const CARRIER_TEMPLATE_IMPORT_MAX_ROWS = 1000;
 export const CARRIER_TEMPLATE_LIFECYCLES = new Set([
   "draft",
   "active",
@@ -105,10 +106,16 @@ export function normalizeCarrierTemplateInput(
   const existing = options.existing && typeof options.existing === "object"
     ? options.existing
     : {};
+  const requestedDescription = input.segment_description ?? input.description ??
+    existing.description;
+  const description = typeof requestedDescription === "string"
+    ? requestedDescription.trim()
+    : "";
   const canonicalName = segmentName.replace(/\s+/g, " ").trim();
   return {
     ...existing,
     segment_name: canonicalName,
+    description,
     name_key: carrierTemplateNameKey(canonicalName),
     segment_type: "participant_template",
     lifecycle_status: lifecycle,

@@ -91,7 +91,10 @@ export function normalizeCarrierTemplateRows(rows = []) {
 }
 
 function csvCell(value) {
-  const text = String(value ?? "");
+  const original = String(value ?? "");
+  const text = typeof value === "string" && /^[ ]*[=+\-@\t\r]/.test(original)
+    ? `'${original}`
+    : original;
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 

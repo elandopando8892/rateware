@@ -5,6 +5,9 @@ import {
   carrierTemplateDraftDiff,
   carrierTemplateDraftPayload,
   carrierTemplateImportValidation,
+  createCarrierTemplateModalFocusController,
+  createCarrierTemplateNavigationCoordinator,
+  createCarrierTemplateWizardAsyncController,
   createCarrierTemplateDraftState,
   mergeCarrierTemplateResolutionRows,
   partitionCarrierTemplateMembers,
@@ -36,6 +39,127 @@ const activeVendor = (id, extra = {}) => ({
   primary_email: "pricing@example.com",
   ...extra
 });
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+// These executable races catch late async completions mutating or rendering a
+// different editor session. Each operation receives immutable template context.
+{
+  const applied = [];
+  const controller = createCarrierTemplateWizardAsyncController();
+  controller.open({ template_id: "template-a", expected_version: 4 });
+  const firstFile = deferred();
+  const secondFile = deferred();
+  const firstRun = controller.run("file-import", () => firstFile.promise, (value, token) => {
+    applied.push({ value, token });
+  });
+  const secondRun = controller.run("file-import", () => secondFile.promise, (value, token) => {
+    applied.push({ value, token });
+  });
+  secondFile.resolve("second-file");
+  assert.equal((await secondRun).current, true);
+  firstFile.resolve("first-file");
+  assert.equal((await firstRun).current, false);
+  assert.deepEqual(applied.map((entry) => entry.value), ["second-file"]);
+  assert.equal(applied[0].token.template_id, "template-a");
+  assert.equal(applied[0].token.expected_version, 4);
+  assert.equal(Object.isFrozen(applied[0].token), true);
+}
+
+// This executable focus harness catches delayed initial focus, escaping the
+// modal with Tab/Shift+Tab, and failure to restore the opener on close.
+{
+  const opener = { id: "opener" };
+  const first = { id: "first" };
+  const last = { id: "last" };
+  let active = opener;
+  const focus = createCarrierTemplateModalFocusController({
+    getActiveElement: () => active,
+    getFocusable: () => [first, last],
+    focusElement: (element) => {
+      active = element;
+    }
+  });
+  focus.open(first);
+  assert.equal(active, first, "opening focus must move inside synchronously");
+  active = last;
+  let prevented = false;
+  assert.equal(focus.trapTab({ key: "Tab", shiftKey: false, preventDefault: () => prevented = true }), true);
+  assert.equal(prevented, true);
+  assert.equal(active, first);
+  active = first;
+  focus.trapTab({ key: "Tab", shiftKey: true, preventDefault() {} });
+  assert.equal(active, last);
+  focus.close();
+  assert.equal(active, opener);
+}
+
+// These click/popstate/back-forward attempts prove a declined dirty guard
+// leaves route, panel, and editor untouched; acceptance commits exactly once.
+{
+  const state = { url: "?tab=list-templates&template=a", tab: "list-templates", editorOpen: true };
+  let accept = false;
+  let invalidations = 0;
+  const navigation = createCarrierTemplateNavigationCoordinator({
+    beforeLeave: () => {
+      if (!accept) return false;
+      invalidations += 1;
+      state.editorOpen = false;
+      return true;
+    },
+    commit: (route) => {
+      state.url = route.url;
+      state.tab = route.tab;
+    },
+    restore: (route) => {
+      state.url = route.url;
+      state.tab = route.tab;
+    }
+  });
+  assert.equal(navigation.click({ url: "?tab=funnel", tab: "funnel" }), false);
+  assert.deepEqual(state, { url: "?tab=list-templates&template=a", tab: "list-templates", editorOpen: true });
+  assert.equal(invalidations, 0);
+
+  const acceptedRoute = { ...state };
+  state.url = "?tab=funnel";
+  assert.equal(navigation.popstate(
+    { url: "?tab=funnel", tab: "funnel" },
+    { url: acceptedRoute.url, tab: acceptedRoute.tab }
+  ), false);
+  assert.deepEqual(state, acceptedRoute);
+  accept = true;
+  assert.equal(navigation.popstate({ url: "?tab=funnel", tab: "funnel" }, acceptedRoute), true);
+  assert.deepEqual(state, { url: "?tab=funnel", tab: "funnel", editorOpen: false });
+  assert.equal(invalidations, 1);
+}
+
+{
+  const applied = [];
+  const controller = createCarrierTemplateWizardAsyncController();
+  controller.open({ template_id: "template-a", expected_version: 7 });
+  const oldSave = deferred();
+  const saving = controller.run("save", () => oldSave.promise, (row) => applied.push(row));
+  controller.open({ template_id: "template-b", expected_version: 2 });
+  oldSave.resolve({ id: "template-a", template_version: 8 });
+  assert.equal((await saving).current, false);
+  assert.deepEqual(applied, [], "an old save must not mutate or render the new draft");
+
+  const staleCurrentFetch = deferred();
+  const fetching = controller.run("current-fetch", () => staleCurrentFetch.promise, (row) => applied.push(row));
+  controller.close();
+  controller.open({ template_id: "template-a", expected_version: 9 });
+  staleCurrentFetch.resolve({ id: "template-b", template_version: 3 });
+  assert.equal((await fetching).current, false);
+  assert.deepEqual(applied, [], "a stale 409 fetch must not render after close/reopen");
+}
 
 // These reducer tests catch order loss, accidental duplicate membership, stale
 // removals, and edits that fail to participate in the unsaved-changes contract.
@@ -180,10 +304,12 @@ const activeVendor = (id, extra = {}) => ({
     name: "carriers.xlsx",
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     size: 1024
-  }, { row_count: 5000 }), { valid: true, code: "", message: "" });
+  }, { row_count: 1000 }), { valid: true, code: "", message: "" });
   assert.equal(carrierTemplateImportValidation({ name: "carriers.xls", size: 1024 }).code, "unsupported_file_type");
   assert.equal(carrierTemplateImportValidation({ name: "carriers.csv", size: 5 * 1024 * 1024 + 1 }).code, "file_too_large");
-  assert.equal(carrierTemplateImportValidation({ name: "carriers.csv", size: 1024 }, { row_count: 5001 }).code, "too_many_rows");
+  const overLimit = carrierTemplateImportValidation({ name: "carriers.csv", size: 1024 }, { row_count: 1001 });
+  assert.equal(overLimit.code, "too_many_rows");
+  assert.match(overLimit.message, /1,000 row limit/);
 }
 
 // This catches server resolution output replacing source evidence or injecting
@@ -330,6 +456,31 @@ const activeVendor = (id, extra = {}) => ({
     `source_row_number,status,reason,vendor_id,crm_id,usdot_number,mc_number,primary_email,vendor_name,candidate_vendor_ids,chosen_vendor_id,requires_manual_confirmation\r\n4,ambiguous,"Name, ""Acme"" needs review",uploaded-crm-key,legacy-7,123456,MC-765,"quote,desk@example.com","Acme, ""North""",${ids.eligible};${ids.filtered},${ids.filtered},true\r\n`
   );
   assert.doesNotMatch(csv, /CRM-only secret contact|\+1 555 0100/);
+}
+
+// This catches spreadsheet formula execution without corrupting genuine numeric
+// values that happen to be negative.
+{
+  const csv = carrierTemplateExceptionCsv([{
+    source_row_number: -5,
+    status: "normal",
+    reason: "@SUM(A1:A2)",
+    candidate_vendor_ids: ["+candidate"],
+    chosen_vendor_id: "=chosen",
+    requires_manual_confirmation: false,
+    source_row: {
+      vendor_id: "=HYPERLINK(\"https://attacker.test\")",
+      crm_id: "\t=cmd",
+      usdot_number: -700,
+      mc_number: "-2+3",
+      primary_email: "\r@cmd",
+      vendor_name: "  +hidden"
+    }
+  }]);
+  assert.match(csv, /\r\n-5,normal,'@SUM\(A1:A2\)/, "numeric source rows must remain numeric");
+  assert.match(csv, /,"'=HYPERLINK\(""https:\/\/attacker\.test""\)",/);
+  assert.match(csv, /,'\t=cmd,-700,'-2\+3,/);
+  assert.match(csv, /"'\r@cmd",'  \+hidden,'\+candidate,'=chosen,false\r\n$/);
 }
 
 console.log("carrier-list-template browser domain tests passed");

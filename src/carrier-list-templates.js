@@ -6,7 +6,9 @@ import {
   carrierTemplateDraftDiff,
   carrierTemplateDraftPayload,
   carrierTemplateImportValidation,
+  createCarrierTemplateModalFocusController,
   createCarrierTemplateDraftState,
+  createCarrierTemplateWizardAsyncController,
   mergeCarrierTemplateResolutionRows,
   reduceCarrierTemplateDraft,
   validateCarrierTemplateDraft
@@ -120,15 +122,20 @@ async function parseCarrierTemplateFile(file) {
 }
 
 function downloadTextFile(filename, contents, type = "text/plain;charset=utf-8") {
-  const blob = new Blob([contents], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  let url = "";
+  let link = null;
+  try {
+    const blob = new Blob([contents], { type });
+    url = URL.createObjectURL(blob);
+    link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+  } finally {
+    link?.remove();
+    if (url) window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
 }
 
 function permissionNames(access = {}) {
@@ -266,17 +273,23 @@ export async function initCarrierListTemplateLibrary({
   let searchTimer = null;
   let draftState = createCarrierTemplateDraftState();
   let wizardOpen = false;
+  let editorLaunchToken = 0;
   let wizardSaveRunning = false;
   let wizardConflictCurrent = null;
   let crmRows = [];
   let crmTotal = 0;
   let crmPageOffset = 0;
-  let crmRequestToken = 0;
-  let wizardSessionToken = 0;
   let crmSearchTimer = null;
   const vendorCache = new Map();
   const ambiguousChoices = new Map();
-  const ambiguousRequestTokens = new Map();
+  const wizardAsync = createCarrierTemplateWizardAsyncController();
+  const modalFocus = createCarrierTemplateModalFocusController({
+    getActiveElement: () => document.activeElement,
+    getFocusable: () => [...(wizard?.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+    ) || [])].filter((element) => !element.closest("[hidden]")),
+    focusElement: (element) => element?.focus?.()
+  });
   const requestController = createCarrierListTemplateController({
     fetchList: fetchEveryTemplatePage,
     fetchDetail: getCarrierListTemplate
@@ -517,37 +530,50 @@ export async function initCarrierListTemplateLibrary({
     renderConflict();
   }
 
+  function focusActiveWizardPanel() {
+    const panel = wizardPanels.find((item) => Number(item.dataset.templateWizardPanel) === draftState.step);
+    panel?.focus();
+  }
+
   async function hydrateMemberVendors(ids = draftState.vendor_ids) {
-    const missingIds = ids.filter((id) => !vendorCache.has(id));
+    const operation = wizardAsync.begin("hydration");
+    const missingIds = [...ids].filter((id) => !vendorCache.has(id));
+    const fetchedRows = [];
     for (let offset = 0; offset < missingIds.length; offset += 500) {
       const batch = missingIds.slice(offset, offset + 500);
       if (!batch.length) continue;
       const result = await fetchVendors({ ids: batch, view: "all", lightweight: true, limit: 500, offset: 0 });
-      cacheVendorRows(result?.rows);
+      if (!wizardAsync.isCurrent(operation)) return false;
+      fetchedRows.push(...(Array.isArray(result?.rows) ? result.rows : []));
     }
+    if (!wizardAsync.isCurrent(operation)) return false;
+    cacheVendorRows(fetchedRows);
+    return true;
   }
 
   async function loadCrmPage({ announce = true } = {}) {
     if (!wizardOpen) return false;
-    const requestToken = ++crmRequestToken;
+    const operation = wizardAsync.begin("crm-page");
+    const requestedOffset = crmPageOffset;
+    const request = Object.freeze({
+      search: text(crmSearchInput?.value),
+      status: text(crmStatusFilter?.value),
+      view: "all",
+      channel: text(crmChannelFilter?.value),
+      tag: text(crmTagFilter?.value),
+      coverage: text(crmCoverageFilter?.value),
+      lightweight: true,
+      limit: CRM_PAGE_SIZE,
+      offset: requestedOffset
+    });
     if (announce && crmStatusMessage) crmStatusMessage.textContent = "Loading Carrier CRM records...";
     if (crmResults) crmResults.setAttribute("aria-busy", "true");
     try {
-      const result = await fetchVendors({
-        search: text(crmSearchInput?.value),
-        status: text(crmStatusFilter?.value),
-        view: "all",
-        channel: text(crmChannelFilter?.value),
-        tag: text(crmTagFilter?.value),
-        coverage: text(crmCoverageFilter?.value),
-        lightweight: true,
-        limit: CRM_PAGE_SIZE,
-        offset: crmPageOffset
-      });
-      if (requestToken !== crmRequestToken || !wizardOpen) return false;
+      const result = await fetchVendors(request);
+      if (!wizardAsync.isCurrent(operation)) return false;
       crmRows = Array.isArray(result?.rows) ? result.rows : [];
       crmTotal = Number(result?.total) || crmRows.length;
-      if (!crmRows.length && crmTotal > 0 && crmPageOffset >= crmTotal) {
+      if (!crmRows.length && crmTotal > 0 && requestedOffset >= crmTotal) {
         crmPageOffset = Math.max(0, Math.floor((crmTotal - 1) / CRM_PAGE_SIZE) * CRM_PAGE_SIZE);
         return await loadCrmPage({ announce: false });
       }
@@ -556,7 +582,7 @@ export async function initCarrierListTemplateLibrary({
       if (crmStatusMessage) crmStatusMessage.textContent = `${crmRows.length.toLocaleString()} existing carrier(s) loaded.`;
       return true;
     } catch (error) {
-      if (requestToken !== crmRequestToken || !wizardOpen) return false;
+      if (!wizardAsync.isCurrent(operation)) return false;
       crmRows = [];
       crmTotal = 0;
       renderCrmResults();
@@ -566,7 +592,7 @@ export async function initCarrierListTemplateLibrary({
       }
       return false;
     } finally {
-      if (requestToken === crmRequestToken) crmResults?.setAttribute("aria-busy", "false");
+      if (wizardAsync.isCurrent(operation)) crmResults?.setAttribute("aria-busy", "false");
     }
   }
 
@@ -575,14 +601,19 @@ export async function initCarrierListTemplateLibrary({
     if (draftDescriptionInput) draftDescriptionInput.value = draftState.description;
   }
 
-  async function openTemplateWizard(template = {}) {
+  async function openTemplateWizard(template = {}, { opener = document.activeElement } = {}) {
     if (!canManage || !wizard || !wizardForm) {
       setStatus("Creating or editing templates requires vendors:manage.", "warning");
       return false;
     }
-    const sessionToken = ++wizardSessionToken;
+    editorLaunchToken += 1;
     draftState = createCarrierTemplateDraftState(template);
+    const session = wizardAsync.open({
+      template_id: draftState.id,
+      expected_version: draftState.expected_version
+    });
     wizardConflictCurrent = null;
+    wizardSaveRunning = false;
     ambiguousChoices.clear();
     crmPageOffset = 0;
     wizardOpen = true;
@@ -591,16 +622,16 @@ export async function initCarrierListTemplateLibrary({
     window.ratewareMarkFormClean?.(wizardForm);
     setWizardStatus(draftState.id ? `Editing loaded v${draftState.expected_version}.` : "New template draft. Nothing has been saved yet.");
     renderWizard();
+    modalFocus.open(draftNameInput || wizardCloseButton, opener);
     try {
-      await hydrateMemberVendors();
-      if (sessionToken !== wizardSessionToken || !wizardOpen) return false;
+      if (!await hydrateMemberVendors()) return false;
+      if (wizardAsync.snapshot().session !== session.session) return false;
       renderWizard();
       await loadCrmPage();
     } catch (error) {
-      if (sessionToken === wizardSessionToken) setWizardStatus(humanizeError(error), "error");
+      if (wizardAsync.snapshot().session === session.session) setWizardStatus(humanizeError(error), "error");
     }
-    draftNameInput?.focus();
-    return true;
+    return wizardAsync.snapshot().session === session.session;
   }
 
   function closeTemplateWizard({ confirmUnsaved = true } = {}) {
@@ -612,24 +643,29 @@ export async function initCarrierListTemplateLibrary({
       if (!confirmed) return false;
     }
     wizardOpen = false;
-    wizardSessionToken += 1;
-    crmRequestToken += 1;
+    editorLaunchToken += 1;
+    wizardSaveRunning = false;
+    wizardAsync.close();
     wizardConflictCurrent = null;
     window.ratewareMarkFormClean?.(wizardForm);
     renderWizard();
+    modalFocus.close();
     return true;
   }
 
   async function handleCarrierTemplateImport(file) {
     if (!file || !wizardOpen) return;
+    const operation = wizardAsync.begin("file-import");
     if (importStatus) {
       importStatus.textContent = "Reading the first sheet...";
       importStatus.dataset.tone = "neutral";
     }
     try {
       const normalizedRows = await parseCarrierTemplateFile(file);
+      if (!wizardAsync.isCurrent(operation)) return;
       if (importStatus) importStatus.textContent = `Resolving ${normalizedRows.length.toLocaleString()} row(s) against Carrier CRM...`;
       const resolution = await resolveCarrierListTemplateRows(normalizedRows);
+      if (!wizardAsync.isCurrent(operation)) return;
       const mergedRows = mergeCarrierTemplateResolutionRows(normalizedRows, resolution?.rows);
       const autoMatchedCount = mergedRows.filter((row) => row.status === "matched").length;
       setDraftState(reduceCarrierTemplateDraft(draftState, {
@@ -637,13 +673,14 @@ export async function initCarrierListTemplateLibrary({
         rows: mergedRows
       }));
       await hydrateMemberVendors(draftState.vendor_ids);
+      if (!wizardAsync.isCurrent(operation)) return;
       renderWizard();
       if (importStatus) {
         importStatus.textContent = `${autoMatchedCount.toLocaleString()} deterministic match(es) added. Ambiguous, not-found, and duplicate rows remain excluded.`;
         importStatus.dataset.tone = "success";
       }
     } catch (error) {
-      if (importStatus) {
+      if (wizardAsync.isCurrent(operation) && importStatus) {
         importStatus.textContent = humanizeError(error);
         importStatus.dataset.tone = "error";
       }
@@ -670,19 +707,18 @@ export async function initCarrierListTemplateLibrary({
       input?.focus();
       return;
     }
-    const requestToken = (ambiguousRequestTokens.get(rowNumber) || 0) + 1;
-    ambiguousRequestTokens.set(rowNumber, requestToken);
+    const operation = wizardAsync.begin(`ambiguity-search:${rowNumber}`);
     setWizardStatus(`Searching Carrier CRM for source row ${rowNumber}...`);
     try {
       const result = await fetchVendors({ search: query, view: "all", lightweight: true, limit: 20, offset: 0 });
-      if (ambiguousRequestTokens.get(rowNumber) !== requestToken || !wizardOpen) return;
+      if (!wizardAsync.isCurrent(operation)) return;
       const rows = Array.isArray(result?.rows) ? result.rows : [];
       cacheVendorRows(rows);
       ambiguousChoices.set(rowNumber, rows);
       renderWizard();
       setWizardStatus(`${rows.length.toLocaleString()} existing carrier choice(s) found for source row ${rowNumber}.`);
     } catch (error) {
-      if (ambiguousRequestTokens.get(rowNumber) === requestToken) setWizardStatus(humanizeError(error), "error");
+      if (wizardAsync.isCurrent(operation)) setWizardStatus(humanizeError(error), "error");
     }
   }
 
@@ -696,51 +732,80 @@ export async function initCarrierListTemplateLibrary({
     wizardSaveRunning = true;
     wizardConflictCurrent = null;
     renderWizard();
-    const payload = carrierTemplateDraftPayload(draftState, lifecycleStatus);
+    const draftPayload = carrierTemplateDraftPayload(draftState, lifecycleStatus);
+    const payload = Object.freeze({
+      ...draftPayload,
+      vendor_ids: Object.freeze([...draftPayload.vendor_ids])
+    });
+    const savedTemplateId = draftState.id;
+    const savedExpectedVersion = draftState.expected_version;
+    const operation = wizardAsync.begin("save");
     setWizardStatus(lifecycleStatus === "active" ? "Activating template..." : "Saving draft...");
     try {
-      const result = draftState.id
-        ? await updateCarrierListTemplate(draftState.id, payload, draftState.expected_version)
+      const result = savedTemplateId
+        ? await updateCarrierListTemplate(savedTemplateId, payload, savedExpectedVersion)
         : await createCarrierListTemplate(payload);
+      if (!wizardAsync.isCurrent(operation)) return;
       if (!result?.row) throw new Error("The carrier template save returned no current row.");
       setDraftState(reduceCarrierTemplateDraft(draftState, { type: "accept_saved", template: result.row }), { renderState: false });
+      wizardSaveRunning = false;
+      const savedSession = wizardAsync.open({
+        template_id: draftState.id,
+        expected_version: draftState.expected_version
+      });
       replaceTemplateRow(result.row);
       selectedTemplateId = templateId(result.row);
       await requestController.select(selectedTemplateId);
+      if (wizardAsync.snapshot().session !== savedSession.session) return;
       templates = requestController.snapshot().rows;
       render();
       renderWizard();
       onSelectionChange(selectedTemplateId, { replace: false });
       setWizardStatus(`${templateName(result.row)} saved as ${templateLifecycle(result.row)} v${displayedTemplateVersion(result.row)}.`, "success");
     } catch (error) {
-      if (String(error?.code) === "template_version_conflict" && draftState.id) {
+      if (!wizardAsync.isCurrent(operation)) return;
+      if (String(error?.code) === "template_version_conflict" && savedTemplateId) {
+        const currentFetch = wizardAsync.begin("current-fetch");
         try {
-          const current = await getCarrierListTemplate(draftState.id);
+          const current = await getCarrierListTemplate(savedTemplateId);
+          if (!wizardAsync.isCurrent(operation) || !wizardAsync.isCurrent(currentFetch)) return;
           wizardConflictCurrent = current?.row || null;
           setDraftState(reduceCarrierTemplateDraft(draftState, { type: "go_to_step", step: 3 }), { renderState: false });
           renderWizard();
+          focusActiveWizardPanel();
           setWizardStatus("The local draft is retained. Compare it with the current server version, then choose Reload current only if you intend to discard local edits. No retry occurred.", "warning");
         } catch (reloadError) {
-          setWizardStatus(`The local draft is retained, but the current server template could not be fetched: ${humanizeError(reloadError)}`, "error");
+          if (wizardAsync.isCurrent(operation) && wizardAsync.isCurrent(currentFetch)) {
+            setWizardStatus(`The local draft is retained, but the current server template could not be fetched: ${humanizeError(reloadError)}`, "error");
+          }
         }
       } else {
         setWizardStatus(humanizeError(error), "error");
       }
     } finally {
-      wizardSaveRunning = false;
-      renderWizard();
+      if (wizardAsync.isCurrent(operation)) {
+        wizardSaveRunning = false;
+        renderWizard();
+      }
     }
   }
 
   async function reloadCurrentTemplate() {
     if (!wizardConflictCurrent) return;
-    draftState = createCarrierTemplateDraftState(wizardConflictCurrent);
+    const current = wizardConflictCurrent;
+    draftState = createCarrierTemplateDraftState(current);
+    const session = wizardAsync.open({
+      template_id: draftState.id,
+      expected_version: draftState.expected_version
+    });
     wizardConflictCurrent = null;
     ambiguousChoices.clear();
     syncDraftDetailInputs();
     window.ratewareMarkFormClean?.(wizardForm);
-    await hydrateMemberVendors(draftState.vendor_ids);
+    if (!await hydrateMemberVendors(draftState.vendor_ids)) return;
+    if (wizardAsync.snapshot().session !== session.session) return;
     renderWizard();
+    focusActiveWizardPanel();
     setWizardStatus(`Reloaded current server v${draftState.expected_version}. The previous local draft was discarded by your explicit choice.`, "success");
   }
 
@@ -917,6 +982,9 @@ export async function initCarrierListTemplateLibrary({
   }
 
   async function showNewTemplateGuidance() {
+    const opener = document.activeElement;
+    editorLaunchToken += 1;
+    if (wizardOpen && !closeTemplateWizard()) return false;
     selectedTemplateId = "";
     requestController.select("");
     renderTable();
@@ -932,7 +1000,8 @@ export async function initCarrierListTemplateLibrary({
     onSelectionChange("", { replace: false });
     workspace?.dispatchEvent(new CustomEvent("carrier-template:new", { bubbles: true }));
     setStatus("Ready to start a template from existing CRM carriers.");
-    await openTemplateWizard();
+    await openTemplateWizard({}, { opener });
+    return true;
   }
 
   async function mutateTemplate(action, button) {
@@ -1006,13 +1075,18 @@ export async function initCarrierListTemplateLibrary({
     }
     const id = text(button.dataset.templateId);
     if (action === "open") {
+      const opener = button;
+      if (wizardOpen && !closeTemplateWizard()) return;
+      const launchToken = ++editorLaunchToken;
       const selected = await selectTemplate(id, { focus: true, updateHistory: true });
+      if (launchToken !== editorLaunchToken) return;
       if (selected) {
         try {
           const current = await getCarrierListTemplate(id);
-          await openTemplateWizard(current?.row || selectedTemplate());
+          if (launchToken !== editorLaunchToken) return;
+          await openTemplateWizard(current?.row || selectedTemplate(), { opener });
         } catch (error) {
-          setStatus(humanizeError(error), "error");
+          if (launchToken === editorLaunchToken) setStatus(humanizeError(error), "error");
         }
       }
       return;
@@ -1041,9 +1115,11 @@ export async function initCarrierListTemplateLibrary({
   wizardCloseButton?.addEventListener("click", () => closeTemplateWizard());
   wizardBackButton?.addEventListener("click", () => {
     setDraftState(reduceCarrierTemplateDraft(draftState, { type: "go_to_step", step: draftState.step - 1 }));
+    focusActiveWizardPanel();
   });
   wizardNextButton?.addEventListener("click", () => {
     setDraftState(reduceCarrierTemplateDraft(draftState, { type: "go_to_step", step: draftState.step + 1 }));
+    focusActiveWizardPanel();
   });
   wizardStepButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -1051,7 +1127,17 @@ export async function initCarrierListTemplateLibrary({
         type: "go_to_step",
         step: Number(button.dataset.templateWizardStep)
       }));
+      focusActiveWizardPanel();
     });
+  });
+
+  wizard?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeTemplateWizard();
+      return;
+    }
+    modalFocus.trapTab(event);
   });
 
   wizard?.addEventListener("click", async (event) => {
@@ -1137,20 +1223,6 @@ export async function initCarrierListTemplateLibrary({
     loadCrmPage();
   });
 
-  document.addEventListener("click", (event) => {
-    const tabButton = event.target.closest('[data-vendor-tab]:not([data-vendor-tab="list-templates"])');
-    if (!tabButton || !wizardOpen || !draftState.dirty) return;
-    const confirmed = typeof window.ratewareConfirmUnsavedChanges === "function"
-      ? window.ratewareConfirmUnsavedChanges()
-      : window.confirm("You have unsaved template changes. Leave the builder?");
-    if (!confirmed) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      return;
-    }
-    closeTemplateWizard({ confirmUnsaved: false });
-  }, true);
-
   searchInput?.addEventListener("input", () => {
     if (searchTimer) window.clearTimeout(searchTimer);
     searchTimer = window.setTimeout(() => {
@@ -1200,6 +1272,7 @@ export async function initCarrierListTemplateLibrary({
       render();
       return Promise.resolve(capabilityView.enabled);
     },
+    beforeLeave: () => closeTemplateWizard(),
     selectTemplate
   };
 }
