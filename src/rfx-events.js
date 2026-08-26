@@ -333,6 +333,11 @@ const carrierTemplatePreviewBody = document.querySelector("#rfx-carrier-template
 const carrierTemplateStatus = document.querySelector("#rfx-carrier-template-status");
 const rfxLaunchWorkspaceTabs = document.querySelector("#rfx-launch-workspace-tabs");
 const rfxLaunchWorkspacePanels = [...document.querySelectorAll("[data-rfx-launch-workspace-panel]")];
+const rfxLaunchCarrierWorkspace = document.querySelector("#rfx-launch-carrier-workspace");
+const rfxOpenThisRfxDrawerButton = document.querySelector("#rfx-open-this-rfx-drawer");
+const rfxCloseThisRfxDrawerButton = document.querySelector("#rfx-close-this-rfx-drawer");
+const rfxThisRfxBackdrop = document.querySelector("#rfx-this-rfx-backdrop");
+const rfxOutreachAudienceBuilder = document.querySelector("#rfx-outreach-audience-builder");
 const rfxOutreachForm = document.querySelector("#rfx-outreach-form");
 const rfxOutreachCampaignName = document.querySelector("#rfx-outreach-campaign-name");
 const rfxOutreachTemplate = document.querySelector("#rfx-outreach-template");
@@ -825,6 +830,22 @@ function normalizeRfxLaunchWorkspace(value) {
   return RFX_LAUNCH_WORKSPACE_KEYS.has(value) ? value : "carrier";
 }
 
+function setThisRfxDrawerOpen(open, { restoreFocus = true } = {}) {
+  const shouldOpen = Boolean(open) && rfxLaunchWorkspace === "carrier";
+  rfxLaunchCarrierWorkspace?.classList.toggle("is-this-rfx-drawer-open", shouldOpen);
+  rfxOpenThisRfxDrawerButton?.setAttribute("aria-expanded", String(shouldOpen));
+  if (rfxOutreachAudienceBuilder) {
+    rfxOutreachAudienceBuilder.toggleAttribute("inert", !shouldOpen);
+    rfxOutreachAudienceBuilder.setAttribute("aria-hidden", String(!shouldOpen));
+  }
+  if (rfxThisRfxBackdrop) rfxThisRfxBackdrop.hidden = !shouldOpen;
+  if (shouldOpen) {
+    rfxCloseThisRfxDrawerButton?.focus();
+  } else if (restoreFocus) {
+    rfxOpenThisRfxDrawerButton?.focus();
+  }
+}
+
 function activateRfxLaunchWorkspace(workspace, options = {}) {
   const { persist = true, refresh = false } = options;
   const requestedWorkspace = normalizeRfxLaunchWorkspace(workspace);
@@ -843,6 +864,7 @@ function activateRfxLaunchWorkspace(workspace, options = {}) {
   rfxLaunchWorkspacePanels.forEach((panel) => {
     panel.hidden = panel.dataset.rfxLaunchWorkspacePanel !== rfxLaunchWorkspace;
   });
+  if (rfxLaunchWorkspace !== "carrier") setThisRfxDrawerOpen(false, { restoreFocus: false });
   if (rfxLaunchWorkspace === "message") renderOutreachPreview();
   if (rfxLaunchWorkspace === "delivery") {
     renderDeliveryParticipation();
@@ -7162,6 +7184,11 @@ function renderOutreachAudience() {
     ? "Loading this RFx invitation history..."
     : `${formatNumber(selectedCount)} selected for the next queue | ${formatNumber(outreachAudienceTotal)} carrier${outreachAudienceTotal === 1 ? "" : "s"} in this RFx`;
   rfxOutreachAudienceSummary.className = `status-pill ${selectedCount ? "success" : "muted"}`;
+  if (rfxOpenThisRfxDrawerButton) {
+    rfxOpenThisRfxDrawerButton.textContent = outreachAudienceLoading
+      ? "View RFx · Loading"
+      : `View RFx · ${formatNumber(outreachAudienceTotal)} carrier${outreachAudienceTotal === 1 ? "" : "s"}`;
+  }
   // Keep the Message workspace truthful when the next delivery wave changes here.
   if (rfxLaunchWorkspace === "message") renderOutreachPreview();
   if (rfxSaveOutreachAudienceSegmentButton) {
@@ -11017,6 +11044,15 @@ rfxLaunchWorkspaceTabs?.addEventListener("click", (event) => {
     return;
   }
   activateRfxLaunchWorkspace(button.dataset.rfxLaunchWorkspace);
+});
+
+rfxOpenThisRfxDrawerButton?.addEventListener("click", () => setThisRfxDrawerOpen(true));
+rfxCloseThisRfxDrawerButton?.addEventListener("click", () => setThisRfxDrawerOpen(false));
+rfxThisRfxBackdrop?.addEventListener("click", () => setThisRfxDrawerOpen(false));
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && rfxLaunchCarrierWorkspace?.classList.contains("is-this-rfx-drawer-open")) {
+    setThisRfxDrawerOpen(false);
+  }
 });
 
 rfxCustomerInput?.addEventListener("focus", () => {

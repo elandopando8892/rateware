@@ -1538,7 +1538,13 @@ assert.match(rfxEventsSource, /const lanes = activeOutreachCarrierLanes\(\);/, "
 assert.match(rfxEventsSource, /rfxOutreachCarrierLane\?\.addEventListener\("change", \(\) => \{[\s\S]*loadRfxCarrierFitEvidence\(\{ force: true \}\)/, "Changing the Carrier fit lane should refresh its Rateware evidence");
 assert.match(rfxEventsHtml, /Find carriers for this opportunity/, "Bid Room Launch should name candidate selection by the operational task");
 assert.match(rfxEventsHtml, /Invitation status/, "Bid Room Launch should keep event invitation status separate from CRM candidate selection");
-assert.match(rfxEventsHtml, /rfx-outreach-launch-grid/, "Bid Room Launch should place Carrier fit and event invitation status in a clear two-column workflow");
+assert.match(rfxEventsHtml, /rfx-outreach-launch-grid/, "Bid Room Launch should keep Carrier fit and event invitation status in one coordinated workspace");
+assert.match(rfxEventsHtml, /id="rfx-open-this-rfx-drawer"[\s\S]*?aria-expanded="false"/, "Carrier fit should expose event invitation status without permanently consuming canvas width");
+assert.match(rfxEventsHtml, /id="rfx-outreach-audience-builder"[\s\S]*?rfx-this-rfx-drawer[\s\S]*?aria-hidden="true"[\s\S]*?inert/, "This RFx should start as an inaccessible closed drawer");
+assert.match(rfxEventsSource, /function setThisRfxDrawerOpen\(open,[\s\S]*?toggleAttribute\("inert", !shouldOpen\)[\s\S]*?setAttribute\("aria-hidden", String\(!shouldOpen\)\)/, "This RFx drawer should keep keyboard and screen-reader state aligned with its visual state");
+assert.match(rfxEventsSource, /event\.key === "Escape"[\s\S]*?setThisRfxDrawerOpen\(false\)/, "This RFx drawer should close with Escape");
+assert.match(stylesSource, /\.rfx-outreach-launch-grid \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/, "Carrier fit should own the full Launch canvas");
+assert.match(stylesSource, /\.rfx-this-rfx-drawer \{[\s\S]*?position: fixed[\s\S]*?width: min\(420px, calc\(100vw - 36px\)\)/, "This RFx should use a bounded right-side drawer");
 assert.match(rfxEventsHtml, /data-rfx-launch-workspace="carrier"/, "Bid Room Launch should provide a dedicated Carrier fit workspace");
 assert.match(rfxEventsHtml, /data-rfx-launch-workspace="message"/, "Bid Room Launch should provide a dedicated Message workspace");
 assert.match(rfxEventsHtml, /data-rfx-launch-workspace="delivery"/, "Bid Room Launch should provide a dedicated Delivery queue workspace");

@@ -107,6 +107,45 @@ No actionable P0, P1, or P2 finding remains.
 
 final result: passed
 
+## Carrier Fit canvas + This RFx drawer — 2026-08-26
+
+- Source visual truth: `C:\Users\andre\.codex\generated_images\01a03ae9-d638-7f70-8972-7ab3b891bf74\exec-261c260d-0b3c-4f50-876a-346c1feb7338.png` — 1707 x 922 px.
+- Original production evidence: `C:\Users\andre\AppData\Local\Temp\codex-clipboard-78ac0679-f276-4e43-aab8-ac2051ad92d1.png`.
+- Intended implementation route: `http://localhost:4173/rfx-events.html` at 1440 x 1000 CSS px, `deviceScaleFactor: 1`.
+- Implementation screenshot: unavailable. The protected route redirected to the unauthenticated Rateware landing page.
+- State: full-width Carrier Fit canvas, with This RFx drawer closed and open.
+
+### Findings
+
+- [P1] The authenticated implementation cannot yet be compared visually. Static evidence confirms the intended layout and accessible drawer contract, but typography, spacing, geometry, responsive behavior, and interaction fidelity require a protected-route render.
+
+### Required fidelity surfaces
+
+- Fonts and typography: blocked pending authenticated render; the implementation retains Rateware's Inter-compatible stack.
+- Spacing and layout rhythm: static contract confirms one full-width canvas and a bounded 420 px right drawer; visual acceptance is blocked.
+- Colors and visual tokens: existing Rateware surfaces, lines, and teal accents are reused; rendered contrast is blocked.
+- Image quality and asset fidelity: no application imagery is required by this operational interface.
+- Copy and content: static checks cover Carrier Fit, View RFx, Invitation status, and Message workflow labels.
+
+### Interaction evidence
+
+- Automated checks passed for `aria-expanded`, `aria-hidden`, `inert`, backdrop close, close button, Escape close, focus entry, and focus restoration contracts.
+- Browser-rendered interactions and console scan for the protected state are blocked by authentication.
+
+### Comparison history
+
+1. The approved source and original screenshot were available.
+2. The local protected route was opened, but auth redirected it to `/`; no same-state implementation capture could be produced.
+
+### Implementation checklist
+
+- Capture authenticated Carrier Fit with the drawer closed.
+- Open View RFx and capture the drawer state.
+- Exercise close button, backdrop, Escape, focus return, and mobile width.
+- Compare both captures with the approved source and resolve any P0/P1/P2 differences.
+
+final result: blocked
+
 ## Invitation Wave Review iteration — 2026-08-26
 
 - Source visual truth: `docs/superpowers/specs/assets/carrier-list-templates/03-carrier-fit.png` — 1487 x 1058 px.
@@ -145,3 +184,9 @@ No actionable P0, P1, or P2 finding remains.
 Focused crops were not required because the combined 1487 x 1058 comparison keeps the new panel copy, metrics, controls, and source hierarchy legible. Interaction behavior and the responsive breakpoint were verified separately in the browser.
 
 final result: passed
+
+## Current design gate
+
+The latest Carrier Fit canvas + This RFx drawer iteration remains blocked pending the authenticated captures and interaction checks listed above.
+
+final result: blocked
