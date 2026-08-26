@@ -468,6 +468,8 @@ export function createCarrierTemplateMaterializationController({ createOperation
     : () => globalThis.crypto?.randomUUID?.() || fallbackOperationId();
   let generation = 0;
   let activeOperation = null;
+  let mutationMayHaveBeenIssued = false;
+  let requestInFlight = false;
 
   return Object.freeze({
     get active() {
@@ -475,6 +477,12 @@ export function createCarrierTemplateMaterializationController({ createOperation
     },
     get generation() {
       return generation;
+    },
+    get mutationMayHaveBeenIssued() {
+      return mutationMayHaveBeenIssued;
+    },
+    get requestInFlight() {
+      return requestInFlight;
     },
     begin(context = {}) {
       const snapshot = materializationContextSnapshot(context);
@@ -491,6 +499,8 @@ export function createCarrierTemplateMaterializationController({ createOperation
       }
       if (activeOperation) return activeOperation.context_key === contextKey ? activeOperation : null;
       generation += 1;
+      mutationMayHaveBeenIssued = false;
+      requestInFlight = false;
       activeOperation = Object.freeze({
         ...snapshot,
         materialization_operation_id: trimmedText(operationId()),
@@ -507,15 +517,30 @@ export function createCarrierTemplateMaterializationController({ createOperation
       if (!token || token !== activeOperation) return false;
       return context === null || token.context_key === materializationContextKey(context);
     },
+    markRequestStarted(token) {
+      if (!token || token !== activeOperation || requestInFlight) return false;
+      mutationMayHaveBeenIssued = true;
+      requestInFlight = true;
+      return true;
+    },
+    markRequestSettled(token) {
+      if (!token || token !== activeOperation || !requestInFlight) return false;
+      requestInFlight = false;
+      return true;
+    },
     cancel(token = activeOperation) {
-      if (!token || token !== activeOperation) return false;
+      if (!token || token !== activeOperation || requestInFlight) return false;
       activeOperation = null;
+      mutationMayHaveBeenIssued = false;
+      requestInFlight = false;
       generation += 1;
       return true;
     },
     finish(token) {
-      if (!token || token !== activeOperation) return false;
+      if (!token || token !== activeOperation || requestInFlight) return false;
       activeOperation = null;
+      mutationMayHaveBeenIssued = false;
+      requestInFlight = false;
       return true;
     }
   });
@@ -533,6 +558,51 @@ export function carrierTemplateMaterializationEligibleVendorIds(operation = {}, 
     return membership.has(vendorId) &&
       carrierTemplateVendorIsAvailable(vendor) &&
       carrierTemplateVendorHasUsableContact(vendor);
+  });
+}
+
+export function carrierTemplateMaterializationSubmissionVendorIds(
+  operation = {},
+  template = {},
+  vendors = [],
+  {
+    mutationMayHaveBeenIssued = false,
+    participantVendorIds = [],
+    passesFilters = () => true
+  } = {}
+) {
+  const originalIds = templateMemberIds({ vendor_ids: operation.selected_vendor_ids });
+  if (mutationMayHaveBeenIssued) return originalIds;
+  const primaryEligible = new Set(carrierTemplateMaterializationEligibleVendorIds(operation, template, vendors));
+  const participants = new Set(templateMemberIds({ vendor_ids: participantVendorIds }));
+  const byId = new Map(
+    (Array.isArray(vendors) ? vendors : [])
+      .filter((vendor) => trimmedText(vendor?.id))
+      .map((vendor) => [trimmedText(vendor.id), vendor])
+  );
+  return originalIds.filter((vendorId) => {
+    const vendor = byId.get(vendorId);
+    return primaryEligible.has(vendorId) &&
+      !participants.has(vendorId) &&
+      passesFilters(vendor, operation.filter_context || {}) !== false;
+  });
+}
+
+export function carrierTemplateMaterializationSelectionIds(operation = null, mutableSelection = []) {
+  const source = operation?.selected_vendor_ids || (
+    mutableSelection instanceof Set ? [...mutableSelection] : mutableSelection
+  );
+  return templateMemberIds({ vendor_ids: source });
+}
+
+export function carrierTemplateMaterializationNavigationDecision(operation = null, target = {}) {
+  const workbenchView = trimmedText(target.workbench_view) || "outreach";
+  const launchWorkspace = trimmedText(target.launch_workspace) || "carrier";
+  const allowed = !operation || (workbenchView === "outreach" && launchWorkspace === "carrier");
+  return Object.freeze({
+    allowed,
+    workbench_view: allowed ? workbenchView : "outreach",
+    launch_workspace: allowed ? launchWorkspace : "carrier"
   });
 }
 

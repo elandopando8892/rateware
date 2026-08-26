@@ -7,6 +7,9 @@ import {
   carrierTemplateDraftPayload,
   carrierTemplateImportValidation,
   carrierTemplateMaterializationEligibleVendorIds,
+  carrierTemplateMaterializationNavigationDecision,
+  carrierTemplateMaterializationSelectionIds,
+  carrierTemplateMaterializationSubmissionVendorIds,
   carrierTemplateVendorHasUsableContact,
   carrierTemplateVendorIsAvailable,
   confirmCarrierTemplateMaterializationResponse,
@@ -866,6 +869,91 @@ function deferred() {
 
   const generatedOperation = createCarrierTemplateMaterializationController().begin(context);
   assert.match(generatedOperation.materialization_operation_id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+}
+
+// A first attempt applies the fresh participant and immutable filter snapshot
+// before any mutation request. Once a request may have been issued, retries
+// preserve the exact original audience so an uncertain commit can reconcile.
+{
+  const controller = createCarrierTemplateMaterializationController({
+    createOperationId: () => "88888888-8888-4888-8888-888888888888"
+  });
+  const context = {
+    event_id: "event-a",
+    scope: "saved_segment",
+    lane_ids: ["lane-a"],
+    template_id: "template-a",
+    template_version: 9,
+    filter_context: { fit: "equipment", lane: "lane-a", search: "mexico" },
+    selected_vendor_ids: [ids.eligible, ids.filtered, ids.participant]
+  };
+  const operation = controller.begin(context);
+  const vendors = [
+    activeVendor(ids.eligible),
+    activeVendor(ids.filtered),
+    activeVendor(ids.participant)
+  ];
+  const firstAttemptIds = carrierTemplateMaterializationSubmissionVendorIds(
+    operation,
+    { vendor_ids: context.selected_vendor_ids },
+    vendors,
+    {
+      mutationMayHaveBeenIssued: controller.mutationMayHaveBeenIssued,
+      participantVendorIds: [ids.participant],
+      passesFilters: (vendor) => vendor.id !== ids.filtered
+    }
+  );
+  assert.deepEqual(firstAttemptIds, [ids.eligible]);
+  const staleMutableSelection = new Set(context.selected_vendor_ids);
+  staleMutableSelection.clear();
+  staleMutableSelection.add(ids.deleted);
+  const renderedSnapshotIds = carrierTemplateMaterializationSelectionIds(operation, staleMutableSelection);
+  assert.deepEqual(
+    renderedSnapshotIds,
+    context.selected_vendor_ids,
+    "stale shared-selection clear/select actions must not change the retained operation snapshot"
+  );
+  assert.equal(renderedSnapshotIds.length, 3, "CTA counts use the immutable operation snapshot");
+  assert.deepEqual(carrierTemplateMaterializationNavigationDecision(operation, {
+    workbench_view: "carriers",
+    launch_workspace: "carrier"
+  }), {
+    allowed: false,
+    workbench_view: "outreach",
+    launch_workspace: "carrier"
+  });
+  assert.deepEqual(carrierTemplateMaterializationNavigationDecision(operation, {
+    workbench_view: "outreach",
+    launch_workspace: "carrier"
+  }), {
+    allowed: true,
+    workbench_view: "outreach",
+    launch_workspace: "carrier"
+  });
+
+  assert.equal(controller.markRequestStarted(operation), true);
+  assert.equal(controller.mutationMayHaveBeenIssued, true);
+  assert.equal(controller.requestInFlight, true);
+  assert.equal(controller.cancel(operation), false, "an in-flight operation cannot be explicitly cancelled");
+  assert.deepEqual(carrierTemplateMaterializationSubmissionVendorIds(
+    operation,
+    { vendor_ids: context.selected_vendor_ids },
+    vendors,
+    {
+      mutationMayHaveBeenIssued: controller.mutationMayHaveBeenIssued,
+      participantVendorIds: context.selected_vendor_ids,
+      passesFilters: () => false
+    }
+  ), context.selected_vendor_ids, "uncertain retry retains participants and filter-hidden IDs for reconciliation");
+
+  assert.equal(controller.markRequestSettled(operation), true);
+  assert.equal(controller.requestInFlight, false);
+  assert.equal(controller.cancel(operation), true);
+  assert.deepEqual(
+    carrierTemplateMaterializationSelectionIds(controller.active, [ids.deleted]),
+    [ids.deleted],
+    "normal mutable selection resumes after explicit cancellation"
+  );
 }
 
 // Only the server-confirmed full-lane audience can flow into Message. A

@@ -520,6 +520,12 @@ function carrierTemplateVendorIneligibleReason(vendor: Record<string, unknown> |
 const CARRIER_TEMPLATE_MATERIALIZATION_WRITE_BATCH_SIZE = 500;
 const CARRIER_TEMPLATE_MATERIALIZATION_READ_BATCH_SIZE = 250;
 const CARRIER_TEMPLATE_MATERIALIZATION_MATRIX_LIMIT = 50000;
+const CARRIER_TEMPLATE_MATERIALIZATION_FINAL_RESULT_CEILING = 900;
+const CARRIER_TEMPLATE_MATERIALIZATION_FINAL_LANE_BATCH_SIZE = 25;
+const CARRIER_TEMPLATE_MATERIALIZATION_FINAL_VENDOR_BATCH_SIZE = Math.floor(
+  CARRIER_TEMPLATE_MATERIALIZATION_FINAL_RESULT_CEILING /
+    CARRIER_TEMPLATE_MATERIALIZATION_FINAL_LANE_BATCH_SIZE
+);
 
 type CarrierTemplateMaterializationResult = {
   status: number;
@@ -550,22 +556,55 @@ function carrierTemplateInvitationKey(laneId: unknown, vendorId: unknown) {
 
 async function fetchFinalCarrierTemplateInvitations(
   supabase: RatewareSupabaseClient,
+  organizationId: string,
   eventId: string,
   laneIds: string[],
   vendorIds: string[]
 ) {
-  const rows: Record<string, unknown>[] = [];
-  for (const vendorBatch of chunkValues(vendorIds, CARRIER_TEMPLATE_MATERIALIZATION_READ_BATCH_SIZE)) {
-    const result = await supabase
-      .from("rfx_lane_vendors")
-      .select("id,rfx_event_id,rfx_lane_id,vendor_id")
-      .eq("rfx_event_id", eventId)
-      .in("rfx_lane_id", laneIds)
-      .in("vendor_id", vendorBatch);
-    if (result.error) throw result.error;
-    rows.push(...((result.data || []) as Record<string, unknown>[]));
+  const rowByKey = new Map<string, Record<string, unknown>>();
+  const expectedLaneIds = new Set(laneIds);
+  const expectedVendorIds = new Set(vendorIds);
+  for (const laneBatch of chunkValues(laneIds, CARRIER_TEMPLATE_MATERIALIZATION_FINAL_LANE_BATCH_SIZE)) {
+    for (const vendorBatch of chunkValues(vendorIds, CARRIER_TEMPLATE_MATERIALIZATION_FINAL_VENDOR_BATCH_SIZE)) {
+      if (laneBatch.length * vendorBatch.length > CARRIER_TEMPLATE_MATERIALIZATION_FINAL_RESULT_CEILING) {
+        throw new Error("Carrier template reconciliation query exceeded its provider result ceiling.");
+      }
+      const result = await supabase
+        .from("rfx_lane_vendors")
+        .select("id,rfx_event_id,rfx_lane_id,vendor_id,rfx_events!inner(organization_id)")
+        .eq("rfx_event_id", eventId)
+        .eq("rfx_events.organization_id", organizationId)
+        .in("rfx_lane_id", laneBatch)
+        .in("vendor_id", vendorBatch);
+      if (result.error) throw result.error;
+      for (const row of (result.data || []) as Record<string, unknown>[]) {
+        const rowEventId = cleanText(row.rfx_event_id) || "";
+        const laneId = cleanText(row.rfx_lane_id) || "";
+        const vendorId = cleanText(row.vendor_id) || "";
+        if (
+          rowEventId !== eventId ||
+          !expectedLaneIds.has(laneId) ||
+          !expectedVendorIds.has(vendorId) ||
+          !laneBatch.includes(laneId) ||
+          !vendorBatch.includes(vendorId)
+        ) {
+          throw new Error("Carrier template reconciliation returned a row outside its organization/event matrix.");
+        }
+        const key = carrierTemplateInvitationKey(laneId, vendorId);
+        if (rowByKey.has(key)) {
+          throw new Error("Carrier template reconciliation returned a duplicate carrier/lane outcome.");
+        }
+        rowByKey.set(key, row);
+      }
+    }
   }
-  return rows;
+  const expectedCount = laneIds.length * vendorIds.length;
+  if (rowByKey.size !== expectedCount) {
+    throw new Error(`Carrier template reconciliation was incomplete: expected ${expectedCount} rows and received ${rowByKey.size}.`);
+  }
+  return laneIds.flatMap((laneId) => vendorIds.map((vendorId) =>
+    rowByKey.get(carrierTemplateInvitationKey(laneId, vendorId))!
+  ));
 }
 
 async function materializeCarrierTemplateRfxParticipants(
@@ -740,58 +779,7 @@ async function materializeCarrierTemplateRfxParticipants(
     };
   }
 
-  const insertRows = await Promise.all(laneIds.flatMap((laneId) => eligibleVendorIds.map(async (vendorId) => ({
-    rfx_event_id: eventId,
-    rfx_lane_id: laneId,
-    vendor_id: vendorId,
-    invitation_status: "drafted",
-    ...(await newRfxInvitationTokenFields())
-  }))));
-  const insertedRows: Record<string, unknown>[] = [];
-  let committedBatchCount = 0;
-  for (const batch of chunkValues(insertRows, CARRIER_TEMPLATE_MATERIALIZATION_WRITE_BATCH_SIZE)) {
-    const result = await supabase
-      .from("rfx_lane_vendors")
-      .upsert(batch, { onConflict: "rfx_lane_id,vendor_id", ignoreDuplicates: true })
-      .select("id,rfx_event_id,rfx_lane_id,vendor_id");
-    if (result.error) {
-      if (!committedBatchCount) throw result.error;
-      const correlationId = crypto.randomUUID();
-      const pendingCount = eligibleVendorIds.length * laneIds.length;
-      await writeCarrierTemplateRfxMaterializationAudit(supabase, user, {
-        template_id: templateId,
-        template_version: templateVersion,
-        rfx_event_id: eventId,
-        selected_count: selectedMatrixCount,
-        confirmed_count: 0,
-        already_present_count: 0,
-        inserted_count: 0,
-        rejected_count: rejectedCount,
-        pending_count: pendingCount,
-        result: "reconcile_required"
-      });
-      return {
-        status: 202,
-        body: {
-          ...responseContext,
-          code: "carrier_template_reconcile_required",
-          error: "Carrier additions may have committed and require reconciliation. Retry the same operation.",
-          correlation_id: correlationId,
-          result: "reconcile_required",
-          counts: carrierTemplateMaterializationCounts(selectedMatrixCount, 0, 0, 0, rejectedCount, pendingCount),
-          outcomes: [...pendingOutcomes, ...rejectedOutcomes],
-          confirmed_audience_vendor_ids: []
-        }
-      };
-    }
-    committedBatchCount += 1;
-    insertedRows.push(...((result.data || []) as Record<string, unknown>[]));
-  }
-
-  let finalRows: Record<string, unknown>[];
-  try {
-    finalRows = await fetchFinalCarrierTemplateInvitations(supabase, eventId, laneIds, eligibleVendorIds);
-  } catch (_) {
+  const reconcileRequired = async (message: string): Promise<CarrierTemplateMaterializationResult> => {
     const correlationId = crypto.randomUUID();
     const pendingCount = eligibleVendorIds.length * laneIds.length;
     await writeCarrierTemplateRfxMaterializationAudit(supabase, user, {
@@ -811,7 +799,7 @@ async function materializeCarrierTemplateRfxParticipants(
       body: {
         ...responseContext,
         code: "carrier_template_reconcile_required",
-        error: "Carrier additions committed but their final audience could not be confirmed. Retry the same operation.",
+        error: message,
         correlation_id: correlationId,
         result: "reconcile_required",
         counts: carrierTemplateMaterializationCounts(selectedMatrixCount, 0, 0, 0, rejectedCount, pendingCount),
@@ -819,6 +807,46 @@ async function materializeCarrierTemplateRfxParticipants(
         confirmed_audience_vendor_ids: []
       }
     };
+  };
+
+  const insertRows = await Promise.all(laneIds.flatMap((laneId) => eligibleVendorIds.map(async (vendorId) => ({
+    rfx_event_id: eventId,
+    rfx_lane_id: laneId,
+    vendor_id: vendorId,
+    invitation_status: "drafted",
+    ...(await newRfxInvitationTokenFields())
+  }))));
+  const insertedRows: Record<string, unknown>[] = [];
+  for (const batch of chunkValues(insertRows, CARRIER_TEMPLATE_MATERIALIZATION_WRITE_BATCH_SIZE)) {
+    let result: { data: unknown; error: unknown };
+    try {
+      result = await supabase
+        .from("rfx_lane_vendors")
+        .upsert(batch, { onConflict: "rfx_lane_id,vendor_id", ignoreDuplicates: true })
+        .select("id,rfx_event_id,rfx_lane_id,vendor_id");
+    } catch (_) {
+      // A transport or response error after issuing any upsert, including the
+      // first batch, cannot prove zero mutation. Stop issuing new writes and
+      // reconcile the complete server-scoped matrix below.
+      break;
+    }
+    if (result.error) break;
+    insertedRows.push(...((result.data || []) as Record<string, unknown>[]));
+  }
+
+  let finalRows: Record<string, unknown>[];
+  try {
+    finalRows = await fetchFinalCarrierTemplateInvitations(
+      supabase,
+      organizationId,
+      eventId,
+      laneIds,
+      eligibleVendorIds
+    );
+  } catch (_) {
+    return await reconcileRequired(
+      "Carrier additions may have committed but their complete final audience could not be confirmed. Retry the same operation."
+    );
   }
 
   const finalByKey = new Map<string, Record<string, unknown>>();
@@ -828,33 +856,9 @@ async function materializeCarrierTemplateRfxParticipants(
   }
   const expectedEligibleKeys = laneIds.flatMap((laneId) => eligibleVendorIds.map((vendorId) => carrierTemplateInvitationKey(laneId, vendorId)));
   if (!expectedEligibleKeys.every((key) => finalByKey.has(key))) {
-    const correlationId = crypto.randomUUID();
-    const pendingCount = expectedEligibleKeys.length;
-    await writeCarrierTemplateRfxMaterializationAudit(supabase, user, {
-      template_id: templateId,
-      template_version: templateVersion,
-      rfx_event_id: eventId,
-      selected_count: selectedMatrixCount,
-      confirmed_count: 0,
-      already_present_count: 0,
-      inserted_count: 0,
-      rejected_count: rejectedCount,
-      pending_count: pendingCount,
-      result: "reconcile_required"
-    });
-    return {
-      status: 202,
-      body: {
-        ...responseContext,
-        code: "carrier_template_reconcile_required",
-        error: "Carrier additions did not reconcile to a complete final RFx audience. Retry the same operation.",
-        correlation_id: correlationId,
-        result: "reconcile_required",
-        counts: carrierTemplateMaterializationCounts(selectedMatrixCount, 0, 0, 0, rejectedCount, pendingCount),
-        outcomes: [...pendingOutcomes, ...rejectedOutcomes],
-        confirmed_audience_vendor_ids: []
-      }
-    };
+    return await reconcileRequired(
+      "Carrier additions did not reconcile to a complete final RFx audience. Retry the same operation."
+    );
   }
 
   const insertedKeys = new Set(insertedRows.map((row) => carrierTemplateInvitationKey(row.rfx_lane_id, row.vendor_id)));

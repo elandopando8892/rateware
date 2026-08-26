@@ -499,6 +499,7 @@ type ScriptedResponse = {
   operation: string;
   data?: unknown;
   error?: unknown;
+  throws?: unknown;
   count?: number | null;
   filters?: QueryTrace["filters"];
 };
@@ -513,9 +514,14 @@ type QueryTrace = {
 class ScriptedSupabase {
   responses: ScriptedResponse[];
   traces: QueryTrace[] = [];
+  maxResultRows: number;
 
-  constructor(responses: ScriptedResponse[] = []) {
+  constructor(
+    responses: ScriptedResponse[] = [],
+    { maxResultRows = Number.POSITIVE_INFINITY }: { maxResultRows?: number } = {},
+  ) {
     this.responses = [...responses];
+    this.maxResultRows = maxResultRows;
   }
 
   from(table: string) {
@@ -540,11 +546,25 @@ class ScriptedSupabase {
   }
 
   take(trace: QueryTrace) {
+    if (trace.table === "rfx_lane_vendors" && trace.operation === "select") {
+      const laneIds = trace.filters.find(([kind, column]) => kind === "in" && column === "rfx_lane_id")?.[2];
+      const vendorIds = trace.filters.find(([kind, column]) => kind === "in" && column === "vendor_id")?.[2];
+      if (Array.isArray(laneIds) && Array.isArray(vendorIds)) {
+        assert(
+          laneIds.length * vendorIds.length <= this.maxResultRows,
+          `Unsafe reconciliation query can return ${laneIds.length * vendorIds.length} rows`,
+        );
+      }
+    }
     const response = this.responses.shift();
     assert(response, `Unexpected ${trace.table}.${trace.operation} query`);
     assertEquals(response.table, trace.table);
     assertEquals(response.operation, trace.operation);
     if (response.filters) assertEquals(trace.filters, response.filters);
+    if (Array.isArray(response.data)) {
+      assert(response.data.length <= this.maxResultRows, "Scripted provider row cap exceeded");
+    }
+    if (response.throws) return Promise.reject(response.throws);
     return Promise.resolve({
       data: response.data ?? null,
       error: response.error ?? null,
@@ -865,6 +885,7 @@ function finalInvitationRead(
     error,
     filters: [
       ["eq", "rfx_event_id", materializationEventId],
+      ["eq", "rfx_events.organization_id", "org-a"],
       ["in", "rfx_lane_id", laneIds],
       ["in", "vendor_id", vendorIds],
     ],
@@ -1052,6 +1073,122 @@ Deno.test("Task 7 lost-response retry reconciles an already-present operation au
     result: "reconciled",
   });
   assertEquals(/primary_email|secondary_emails|whatsapp|contact/i.test(JSON.stringify(auditPayload)), false);
+});
+
+Deno.test("Task 7 first-upsert lost response reconciles rows visible in final committed reads", async () => {
+  const finalRow = {
+    id: "invitation-first-batch-committed",
+    rfx_event_id: materializationEventId,
+    rfx_lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+  };
+  const db = new ScriptedSupabase([
+    templateRead(),
+    vendorRead([vendorA.id], [materializationVendor()]),
+    laneRead([materializationLaneA]),
+    { table: "rfx_lane_vendors", operation: "upsert", throws: new Error("transport response lost") },
+    finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+  const response = await handler(jsonActionRequest(materializationAction()));
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.result, "reconciled");
+  assertEquals(body.counts, {
+    selected: 1,
+    confirmed: 1,
+    inserted: 0,
+    already_present: 1,
+    rejected: 0,
+    pending: 0,
+  });
+  assertEquals(body.confirmed_audience_vendor_ids, [vendorA.id]);
+});
+
+Deno.test("Task 7 first-upsert uncertainty with incomplete final reads returns audited reconcile_required", async () => {
+  const db = new ScriptedSupabase([
+    templateRead(),
+    vendorRead([vendorA.id], [materializationVendor()]),
+    laneRead([materializationLaneA]),
+    { table: "rfx_lane_vendors", operation: "upsert", error: { message: "transport response lost" } },
+    finalInvitationRead([materializationLaneA], [vendorA.id], []),
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+  const response = await handler(jsonActionRequest(materializationAction()));
+  assertEquals(response.status, 202);
+  const body = await response.json();
+  assertEquals(body.result, "reconcile_required");
+  assertEquals(body.materialization_operation_id, materializationOperationId);
+  assertMatch(body.correlation_id, /^[0-9a-f-]{36}$/i);
+  assertEquals(body.outcomes, [{
+    lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+    outcome: "pending_reconciliation",
+  }]);
+  const audit = db.traces.find((trace) => trace.table === "saas_audit_log");
+  assertEquals(
+    ((audit?.payload as Record<string, unknown>).metadata as Record<string, unknown>).result,
+    "reconcile_required",
+  );
+});
+
+function matrixUuid(kind: number, index: number) {
+  return `${kind.toString(16).padStart(8, "0")}-0000-4000-8000-${index.toString(16).padStart(12, "0")}`;
+}
+
+Deno.test("Task 7 final reconciliation batches both dimensions below provider row limits", async () => {
+  const vendorIds = Array.from({ length: 40 }, (_, index) => matrixUuid(0x10000000, index + 1));
+  const laneIds = Array.from({ length: 30 }, (_, index) => matrixUuid(0x20000000, index + 1));
+  const finalRows = laneIds.flatMap((laneId, laneIndex) => vendorIds.map((vendorId, vendorIndex) => ({
+    id: `invitation-${laneIndex}-${vendorIndex}`,
+    rfx_event_id: materializationEventId,
+    rfx_lane_id: laneId,
+    vendor_id: vendorId,
+  })));
+  const laneBatches = [laneIds.slice(0, 25), laneIds.slice(25)];
+  const vendorBatches = [vendorIds.slice(0, 36), vendorIds.slice(36)];
+  const finalReadResponses = laneBatches.flatMap((laneBatch) => vendorBatches.map((vendorBatch) =>
+    finalInvitationRead(
+      laneBatch,
+      vendorBatch,
+      finalRows.filter((row) => laneBatch.includes(row.rfx_lane_id) && vendorBatch.includes(row.vendor_id)).reverse(),
+    )
+  ));
+  const db = new ScriptedSupabase([
+    templateRead(vendorIds),
+    vendorRead(vendorIds, vendorIds.map((id) => materializationVendor({ id, primary_email: `${id}@example.com` }))),
+    laneRead(laneIds),
+    { table: "rfx_lane_vendors", operation: "upsert", data: finalRows.slice(0, 500) },
+    { table: "rfx_lane_vendors", operation: "upsert", data: finalRows.slice(500, 1000) },
+    { table: "rfx_lane_vendors", operation: "upsert", data: finalRows.slice(1000) },
+    ...finalReadResponses,
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ], { maxResultRows: 900 });
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+  const response = await handler(jsonActionRequest(materializationAction(vendorIds, laneIds)));
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.counts, {
+    selected: 1200,
+    confirmed: 1200,
+    inserted: 1200,
+    already_present: 0,
+    rejected: 0,
+    pending: 0,
+  });
+  assertEquals(body.outcomes.length, 1200);
+  assertEquals(body.confirmed_audience_vendor_ids, vendorIds);
+  assertEquals(
+    body.rows.map((row: Record<string, unknown>) => `${row.rfx_lane_id}:${row.vendor_id}`),
+    finalRows.map((row) => `${row.rfx_lane_id}:${row.vendor_id}`),
+  );
+  const finalReads = db.traces.filter((trace) => trace.table === "rfx_lane_vendors" && trace.operation === "select");
+  assertEquals(finalReads.length, 4);
 });
 
 Deno.test("Task 7 materialization canonicalizes UUID input before scoped reconciliation", async () => {
