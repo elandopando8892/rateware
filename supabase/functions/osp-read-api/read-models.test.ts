@@ -152,6 +152,25 @@ Deno.test('case read models expose bounded metadata, canonical counts and no mes
   expectDependency(() => normalizeCaseDetail({ ...caseSummary, latest_subject: 'Only subject', latest_sender_domain: null, latest_received_at: null, recent_events: [] }));
 });
 
+Deno.test('case detail decodes RFC 2047 subjects and safely preserves malformed or unsafe values', () => {
+  const detail = (latestSubject: string) => normalizeCaseDetail({
+    ...caseSummary,
+    latest_subject: latestSubject,
+    latest_sender_domain: 'supplier.example',
+    latest_received_at: '2030-01-01T00:00:00Z',
+    recent_events: [],
+  }).latest_request.subject;
+
+  assert.equal(
+    detail('=?UTF-8?Q?OSP_shadow_certification_=E2=80=94_Supplier_setup_test?='),
+    'OSP shadow certification — Supplier setup test',
+  );
+  assert.equal(detail('=?UTF-8?B?U3VwcGxpZXIgc2V0dXA=?='), 'Supplier setup');
+  assert.equal(detail('Customer setup request'), 'Customer setup request');
+  assert.equal(detail('=?UTF-8?Q?unfinished'), '=?UTF-8?Q?unfinished');
+  assert.equal(detail('=?UTF-8?B?AA==?='), '=?UTF-8?B?AA==?=');
+});
+
 for (const [name, value] of [
   ['disconnected non-null field', {
     connection_exists: false, pubsub_configured: false, watch_configured: null,

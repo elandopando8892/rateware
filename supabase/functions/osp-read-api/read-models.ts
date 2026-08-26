@@ -1,3 +1,5 @@
+import { decodeWords } from 'npm:postal-mime@3.0.0';
+
 import { OspApiError } from './http.ts';
 import type { CaseDetailSeamRow, CaseSummarySeamRow, GmailSeamRow, OspReadStore, PipelineSeamRow } from './store.ts';
 
@@ -169,6 +171,16 @@ function normalizeBoundedText(value: unknown, maximum: number, nullable = false)
   return value;
 }
 
+function normalizeMimeHeader(value: unknown): string | null {
+  const raw = normalizeBoundedText(value, 998, true);
+  if (raw === null) return null;
+  try {
+    return normalizeBoundedText(decodeWords(raw).trim(), 998) as string;
+  } catch {
+    return raw;
+  }
+}
+
 function normalizeSafeInteger(value: unknown, minimum: number): number {
   const number = typeof value === 'string' && /^(?:0|[1-9][0-9]*)$/.test(value) ? Number(value) : value;
   if (!Number.isSafeInteger(number) || (number as number) < minimum || (number as number) > 2_147_483_647) {
@@ -213,7 +225,7 @@ function normalizeRecentEvents(value: unknown): readonly CaseEventReadModel[] {
 export function normalizeCaseDetail(value: unknown): CaseDetailReadModel {
   const row = recordWithExactKeys(value, CASE_DETAIL_FIELDS);
   const summary = normalizeCaseSummary(Object.fromEntries(CASE_SUMMARY_FIELDS.map((key) => [key, row[key]])));
-  const subject = normalizeBoundedText(row.latest_subject, 998, true);
+  const subject = normalizeMimeHeader(row.latest_subject);
   const senderDomain = normalizeBoundedText(row.latest_sender_domain, 253, true);
   const receivedAt = normalizeUtcDate(row.latest_received_at);
   if ((subject === null || senderDomain === null || receivedAt === null) &&
