@@ -11,6 +11,284 @@ function defaultVendorAvailable(vendor) {
   return Boolean(vendor) && status !== "archived" && status !== "deleted";
 }
 
+function templateName(template = {}) {
+  return trimmedText(template.segment_name || template.name);
+}
+
+function templateDescription(template = {}) {
+  return trimmedText(template.segment_description || template.description);
+}
+
+function templateId(template = {}) {
+  return trimmedText(template.id || template.template_id);
+}
+
+function templateVersion(template = {}) {
+  const version = Number(template.template_version || template.expected_version);
+  return Number.isSafeInteger(version) && version >= 1 ? version : null;
+}
+
+function cloneResolutionRows(rows = []) {
+  return (Array.isArray(rows) ? rows : []).map((row) => ({
+    ...row,
+    candidate_vendor_ids: Array.isArray(row?.candidate_vendor_ids) ? [...row.candidate_vendor_ids] : []
+  }));
+}
+
+function cloneMemberSources(sources = {}) {
+  return Object.fromEntries(
+    Object.entries(sources).map(([id, values]) => [id, [...(Array.isArray(values) ? values : [])]])
+  );
+}
+
+function draftContentKey(state = {}) {
+  return JSON.stringify({
+    name: trimmedText(state.name),
+    description: trimmedText(state.description),
+    vendor_ids: templateMemberIds({ vendor_ids: state.vendor_ids }),
+    resolution_rows: cloneResolutionRows(state.resolution_rows),
+    manual_resolutions: { ...(state.manual_resolutions || {}) }
+  });
+}
+
+function refreshDirty(state) {
+  return {
+    ...state,
+    dirty: draftContentKey(state) !== state.loaded_content_key
+  };
+}
+
+function cloneDraftState(state) {
+  return {
+    ...state,
+    vendor_ids: [...state.vendor_ids],
+    resolution_rows: cloneResolutionRows(state.resolution_rows),
+    manual_resolutions: { ...state.manual_resolutions },
+    member_sources: cloneMemberSources(state.member_sources)
+  };
+}
+
+function addMemberSource(state, vendorId, source) {
+  const id = trimmedText(vendorId);
+  if (!id) return;
+  if (!state.vendor_ids.includes(id)) state.vendor_ids.push(id);
+  const sources = new Set(state.member_sources[id] || []);
+  sources.add(source);
+  state.member_sources[id] = [...sources];
+}
+
+function removeMemberSource(state, vendorId, source) {
+  const id = trimmedText(vendorId);
+  if (!id || !state.member_sources[id]) return;
+  state.member_sources[id] = state.member_sources[id].filter((value) => value !== source);
+  if (!state.member_sources[id].length) {
+    delete state.member_sources[id];
+    state.vendor_ids = state.vendor_ids.filter((value) => value !== id);
+  }
+}
+
+function removeResolutionSources(state) {
+  for (const [vendorId, sources] of Object.entries(state.member_sources)) {
+    for (const source of [...sources]) {
+      if (source.startsWith("import:") || source.startsWith("manual-resolution:")) {
+        removeMemberSource(state, vendorId, source);
+      }
+    }
+  }
+}
+
+function resolutionRowNumber(row = {}, index = 0) {
+  const rowNumber = Number(row.source_row_number);
+  return Number.isFinite(rowNumber) && rowNumber > 0 ? rowNumber : index + 2;
+}
+
+export function createCarrierTemplateDraftState(template = {}) {
+  const vendorIds = templateMemberIds(template);
+  const state = {
+    step: 0,
+    id: templateId(template),
+    expected_version: templateVersion(template),
+    lifecycle_status: trimmedText(template.lifecycle_status || template.status).toLowerCase() || "draft",
+    name: templateName(template),
+    description: templateDescription(template),
+    vendor_ids: vendorIds,
+    resolution_rows: cloneResolutionRows(template.resolution_rows),
+    manual_resolutions: { ...(template.manual_resolutions || {}) },
+    member_sources: Object.fromEntries(vendorIds.map((id) => [id, ["loaded"]])),
+    loaded_content_key: "",
+    dirty: false
+  };
+  state.loaded_content_key = draftContentKey(state);
+  return state;
+}
+
+export function reduceCarrierTemplateDraft(state, action = {}) {
+  const next = cloneDraftState(state);
+  if (action.type === "set_details") {
+    next.name = typeof action.name === "string" ? action.name : next.name;
+    next.description = typeof action.description === "string" ? action.description : next.description;
+  } else if (action.type === "add_members") {
+    for (const id of Array.isArray(action.vendor_ids) ? action.vendor_ids : []) {
+      addMemberSource(next, id, "direct");
+    }
+  } else if (action.type === "remove_member") {
+    const id = trimmedText(action.vendor_id);
+    next.vendor_ids = next.vendor_ids.filter((value) => value !== id);
+    delete next.member_sources[id];
+  } else if (action.type === "reorder_member") {
+    const id = trimmedText(action.vendor_id);
+    const fromIndex = next.vendor_ids.indexOf(id);
+    const requestedIndex = Number(action.to_index);
+    if (fromIndex >= 0 && Number.isInteger(requestedIndex)) {
+      const toIndex = Math.max(0, Math.min(requestedIndex, next.vendor_ids.length - 1));
+      next.vendor_ids.splice(fromIndex, 1);
+      next.vendor_ids.splice(toIndex, 0, id);
+    }
+  } else if (action.type === "apply_resolution_preview") {
+    removeResolutionSources(next);
+    next.resolution_rows = cloneResolutionRows(action.rows);
+    next.manual_resolutions = {};
+    next.resolution_rows.forEach((row, index) => {
+      if (row.status !== "matched") return;
+      const rowNumber = resolutionRowNumber(row, index);
+      addMemberSource(next, row.vendor_id, `import:${rowNumber}`);
+    });
+  } else if (action.type === "confirm_manual_match") {
+    const rowNumber = Number(action.source_row_number);
+    const vendorId = trimmedText(action.vendor_id);
+    const index = next.resolution_rows.findIndex((row, rowIndex) => resolutionRowNumber(row, rowIndex) === rowNumber);
+    if (vendorId && index >= 0 && next.resolution_rows[index].status === "ambiguous") {
+      const source = `manual-resolution:${rowNumber}`;
+      for (const memberId of [...next.vendor_ids]) removeMemberSource(next, memberId, source);
+      addMemberSource(next, vendorId, source);
+      next.manual_resolutions[String(rowNumber)] = vendorId;
+      next.resolution_rows[index] = { ...next.resolution_rows[index], chosen_vendor_id: vendorId };
+    }
+  } else if (action.type === "go_to_step") {
+    const requestedStep = Number(action.step);
+    if (Number.isInteger(requestedStep)) next.step = Math.max(0, Math.min(requestedStep, 3));
+    return next;
+  } else if (action.type === "accept_saved") {
+    const saved = action.template || {};
+    next.id = templateId(saved) || next.id;
+    next.expected_version = templateVersion(saved) || next.expected_version;
+    next.lifecycle_status = trimmedText(saved.lifecycle_status || saved.status).toLowerCase() || next.lifecycle_status;
+    if (saved.segment_name !== undefined || saved.name !== undefined) next.name = templateName(saved);
+    if (saved.segment_description !== undefined || saved.description !== undefined) next.description = templateDescription(saved);
+    if (Array.isArray(saved.vendor_ids)) next.vendor_ids = templateMemberIds(saved);
+    next.member_sources = Object.fromEntries(next.vendor_ids.map((id) => [id, ["loaded"]]));
+    next.loaded_content_key = draftContentKey(next);
+    next.dirty = false;
+    return next;
+  }
+  return refreshDirty(next);
+}
+
+export function validateCarrierTemplateDraft(state = {}, lifecycleStatus = "draft") {
+  const errors = [];
+  if (!trimmedText(state.name)) {
+    errors.push({ code: "name_required", message: "Template name is required." });
+  }
+  if (trimmedText(lifecycleStatus).toLowerCase() === "active" && !templateMemberIds({ vendor_ids: state.vendor_ids }).length) {
+    errors.push({ code: "active_requires_member", message: "Activate template requires at least one carrier." });
+  }
+  return { valid: errors.length === 0, errors };
+}
+
+export function carrierTemplateDraftPayload(state = {}, lifecycleStatus = "draft") {
+  return {
+    segment_name: trimmedText(state.name),
+    segment_description: trimmedText(state.description),
+    lifecycle_status: trimmedText(lifecycleStatus).toLowerCase() || "draft",
+    vendor_ids: templateMemberIds({ vendor_ids: state.vendor_ids })
+  };
+}
+
+export function carrierTemplateDraftDiff(state = {}) {
+  let loadedVendorIds = [];
+  try {
+    loadedVendorIds = JSON.parse(state.loaded_content_key || "{}").vendor_ids || [];
+  } catch {
+    loadedVendorIds = [];
+  }
+  const currentVendorIds = templateMemberIds({ vendor_ids: state.vendor_ids });
+  const loadedSet = new Set(loadedVendorIds);
+  const currentSet = new Set(currentVendorIds);
+  return {
+    added_vendor_ids: currentVendorIds.filter((id) => !loadedSet.has(id)),
+    removed_vendor_ids: loadedVendorIds.filter((id) => !currentSet.has(id))
+  };
+}
+
+export function carrierTemplateConflictSummary(localState = {}, currentTemplate = {}) {
+  const localIds = templateMemberIds({ vendor_ids: localState.vendor_ids });
+  const currentIds = templateMemberIds(currentTemplate);
+  const localSet = new Set(localIds);
+  const currentSet = new Set(currentIds);
+  return {
+    local_version: localState.expected_version,
+    current_version: templateVersion(currentTemplate),
+    local_member_count: localIds.length,
+    current_member_count: currentIds.length,
+    only_local_vendor_ids: localIds.filter((id) => !currentSet.has(id)),
+    only_current_vendor_ids: currentIds.filter((id) => !localSet.has(id))
+  };
+}
+
+export function carrierTemplateImportValidation(file = {}, {
+  row_count: rowCount = null,
+  max_bytes: maxBytes = 5 * 1024 * 1024,
+  max_rows: maxRows = 5000
+} = {}) {
+  const name = trimmedText(file?.name).toLowerCase();
+  const supported = name.endsWith(".csv") || name.endsWith(".xlsx");
+  if (!supported) {
+    return { valid: false, code: "unsupported_file_type", message: "Choose a CSV or XLSX file." };
+  }
+  if (Number(file?.size) > maxBytes) {
+    return { valid: false, code: "file_too_large", message: `The file exceeds the ${Math.floor(maxBytes / (1024 * 1024))} MB limit.` };
+  }
+  if (rowCount !== null && Number(rowCount) > maxRows) {
+    return { valid: false, code: "too_many_rows", message: `The file exceeds the ${maxRows.toLocaleString()} row limit.` };
+  }
+  return { valid: true, code: "", message: "" };
+}
+
+function sourceRowEvidence(row = {}, index = 0) {
+  return {
+    source_row_number: resolutionRowNumber(row, index),
+    vendor_id: trimmedText(row.vendor_id),
+    crm_id: trimmedText(row.crm_id),
+    usdot_number: trimmedText(row.usdot_number || row.usdot),
+    mc_number: trimmedText(row.mc_number || row.mc),
+    primary_email: trimmedText(row.primary_email || row.email),
+    vendor_name: trimmedText(row.vendor_name || row.name)
+  };
+}
+
+export function mergeCarrierTemplateResolutionRows(sourceRows = [], resolutionRows = []) {
+  const sources = Array.isArray(sourceRows) ? sourceRows : [];
+  const sourceByNumber = new Map(
+    sources.map((row, index) => [resolutionRowNumber(row, index), sourceRowEvidence(row, index)])
+  );
+  return (Array.isArray(resolutionRows) ? resolutionRows : []).map((row, index) => {
+    const sourceRowNumber = resolutionRowNumber(row, index);
+    const merged = {
+      source_row_number: sourceRowNumber,
+      status: trimmedText(row?.status),
+      reason: trimmedText(row?.reason),
+      candidate_vendor_ids: Array.isArray(row?.candidate_vendor_ids) ? [...row.candidate_vendor_ids] : [],
+      source_row: sourceByNumber.get(sourceRowNumber) || sourceRowEvidence(sources[index], index)
+    };
+    if (row?.vendor_id !== undefined) merged.vendor_id = row.vendor_id;
+    if (row?.requires_manual_confirmation !== undefined) {
+      merged.requires_manual_confirmation = Boolean(row.requires_manual_confirmation);
+    }
+    if (row?.chosen_vendor_id !== undefined) merged.chosen_vendor_id = row.chosen_vendor_id;
+    return merged;
+  });
+}
+
 export function templateMemberIds(template = {}) {
   const seen = new Set();
   const ids = [];

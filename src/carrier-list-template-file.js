@@ -96,14 +96,36 @@ function csvCell(value) {
 }
 
 export function carrierTemplateExceptionCsv(resolutionRows = []) {
-  const headers = ["source_row_number", "status", "reason", "vendor_id", "candidate_vendor_ids", "requires_manual_confirmation"];
-  const data = (Array.isArray(resolutionRows) ? resolutionRows : []).map((row) => [
-    row?.source_row_number ?? "",
-    row?.status ?? "",
-    row?.reason ?? "",
-    row?.vendor_id ?? "",
-    Array.isArray(row?.candidate_vendor_ids) ? row.candidate_vendor_ids.join(";") : row?.candidate_vendor_ids ?? "",
-    row?.requires_manual_confirmation ?? ""
-  ].map(csvCell).join(","));
+  const headers = [
+    "source_row_number",
+    "status",
+    "reason",
+    "vendor_id",
+    "crm_id",
+    "usdot_number",
+    "mc_number",
+    "primary_email",
+    "vendor_name",
+    "candidate_vendor_ids",
+    "chosen_vendor_id",
+    "requires_manual_confirmation"
+  ];
+  const data = (Array.isArray(resolutionRows) ? resolutionRows : []).map((row) => {
+    const sourceRow = row?.source_row && typeof row.source_row === "object" ? row.source_row : {};
+    return [
+      row?.source_row_number ?? sourceRow.source_row_number ?? "",
+      row?.status ?? "",
+      row?.reason ?? "",
+      sourceRow.vendor_id ?? "",
+      sourceRow.crm_id ?? "",
+      sourceRow.usdot_number ?? sourceRow.usdot ?? "",
+      sourceRow.mc_number ?? sourceRow.mc ?? "",
+      sourceRow.primary_email ?? sourceRow.email ?? "",
+      sourceRow.vendor_name ?? sourceRow.name ?? "",
+      Array.isArray(row?.candidate_vendor_ids) ? row.candidate_vendor_ids.join(";") : row?.candidate_vendor_ids ?? "",
+      row?.chosen_vendor_id ?? "",
+      row?.requires_manual_confirmation ?? ""
+    ].map(csvCell).join(",");
+  });
   return `${headers.join(",")}\r\n${data.join("\r\n")}${data.length ? "\r\n" : ""}`;
 }

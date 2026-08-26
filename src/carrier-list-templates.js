@@ -1,18 +1,40 @@
 import { getAccessContext } from "./auth.js";
 import { createCarrierTemplateCapabilityView } from "./carrier-list-template-capability.js";
 import { createCarrierListTemplateController } from "./carrier-list-template-controller.js";
+import {
+  carrierTemplateConflictSummary,
+  carrierTemplateDraftDiff,
+  carrierTemplateDraftPayload,
+  carrierTemplateImportValidation,
+  createCarrierTemplateDraftState,
+  mergeCarrierTemplateResolutionRows,
+  reduceCarrierTemplateDraft,
+  validateCarrierTemplateDraft
+} from "./carrier-list-template-domain.js";
+import {
+  carrierTemplateExceptionCsv,
+  normalizeCarrierTemplateRows,
+  rowsFromCarrierTemplateMatrix
+} from "./carrier-list-template-file.js";
 import { humanizeError } from "./error-copy.js";
 import {
   archiveCarrierListTemplate,
+  createCarrierListTemplate,
   duplicateCarrierListTemplate,
   fetchCarrierListTemplates,
+  fetchVendors,
   getCarrierListTemplate,
+  resolveCarrierListTemplateRows,
+  updateCarrierListTemplate,
   restoreCarrierListTemplate
 } from "./vendor-service.js";
 
 const MANAGE_PERMISSION = "vendors:manage";
 const LIST_PAGE_SIZE = 200;
 const LIST_SAFETY_LIMIT = 5000;
+const CRM_PAGE_SIZE = 50;
+const XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
+let xlsxModulePromise = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -64,6 +86,49 @@ function formatModifiedAt(value) {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(date);
+}
+
+function vendorId(row = {}) {
+  return text(row.id || row.vendor_id);
+}
+
+function vendorName(row = {}) {
+  return text(row.vendor_name || row.name || row.legal_name) || vendorId(row) || "Unavailable carrier";
+}
+
+function resolutionReason(row = {}) {
+  return text(row.reason).replaceAll("_", " ") || "No reason provided";
+}
+
+async function loadXlsxModule() {
+  if (!xlsxModulePromise) xlsxModulePromise = import(XLSX_MODULE_URL);
+  return await xlsxModulePromise;
+}
+
+async function parseCarrierTemplateFile(file) {
+  const initialValidation = carrierTemplateImportValidation(file);
+  if (!initialValidation.valid) throw Object.assign(new Error(initialValidation.message), { code: initialValidation.code });
+  const XLSX = await loadXlsxModule();
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!firstSheet) throw Object.assign(new Error("The file has no readable first sheet."), { code: "missing_first_sheet" });
+  const matrix = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
+  const normalizedRows = normalizeCarrierTemplateRows(rowsFromCarrierTemplateMatrix(matrix));
+  const rowValidation = carrierTemplateImportValidation(file, { row_count: normalizedRows.length });
+  if (!rowValidation.valid) throw Object.assign(new Error(rowValidation.message), { code: rowValidation.code });
+  return normalizedRows;
+}
+
+function downloadTextFile(filename, contents, type = "text/plain;charset=utf-8") {
+  const blob = new Blob([contents], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function permissionNames(access = {}) {
@@ -161,12 +226,57 @@ export async function initCarrierListTemplateLibrary({
   const capabilityError = document.querySelector("[data-template-capability-error]");
   const capabilityErrorMessage = capabilityError?.querySelector("[data-template-capability-message]");
   const capabilityRetry = capabilityError?.querySelector("[data-template-capability-retry]");
+  const wizard = workspace?.querySelector("[data-template-wizard]");
+  const wizardForm = wizard?.querySelector("[data-template-wizard-form]");
+  const wizardCloseButton = wizard?.querySelector("[data-template-wizard-close]");
+  const wizardStepButtons = [...(wizard?.querySelectorAll("[data-template-wizard-step]") || [])];
+  const wizardPanels = [...(wizard?.querySelectorAll("[data-template-wizard-panel]") || [])];
+  const wizardBackButton = wizard?.querySelector("[data-template-wizard-back]");
+  const wizardNextButton = wizard?.querySelector("[data-template-wizard-next]");
+  const wizardStatus = wizard?.querySelector("[data-template-wizard-status]");
+  const dirtySignal = wizard?.querySelector("[data-template-dirty-signal]");
+  const draftNameInput = wizard?.querySelector("[data-template-draft-name]");
+  const draftDescriptionInput = wizard?.querySelector("[data-template-draft-description]");
+  const crmSearchInput = wizard?.querySelector("[data-template-crm-search]");
+  const crmStatusFilter = wizard?.querySelector("[data-template-crm-status]");
+  const crmChannelFilter = wizard?.querySelector("[data-template-crm-channel]");
+  const crmTagFilter = wizard?.querySelector("[data-template-crm-tag]");
+  const crmCoverageFilter = wizard?.querySelector("[data-template-crm-coverage]");
+  const crmStatusMessage = wizard?.querySelector("[data-template-crm-status-message]");
+  const crmResults = wizard?.querySelector("[data-template-crm-results]");
+  const crmPageStatus = wizard?.querySelector("[data-template-crm-page-status]");
+  const crmPreviousButton = wizard?.querySelector('[data-template-crm-page="previous"]');
+  const crmNextButton = wizard?.querySelector('[data-template-crm-page="next"]');
+  const selectedMembersHost = wizard?.querySelector("[data-template-selected-members]");
+  const importInput = wizard?.querySelector("[data-template-import-file]");
+  const importStatus = wizard?.querySelector("[data-template-import-status]");
+  const resolutionSummary = wizard?.querySelector("[data-template-resolution-summary]");
+  const resolutionRowsHost = wizard?.querySelector("[data-template-resolution-rows]");
+  const downloadExceptionsButton = wizard?.querySelector("[data-template-download-exceptions]");
+  const reviewHost = wizard?.querySelector("[data-template-review]");
+  const saveSummary = wizard?.querySelector("[data-template-save-summary]");
+  const conflictHost = wizard?.querySelector("[data-template-conflict]");
+  const saveDraftButton = wizard?.querySelector('[data-template-save="draft"]');
+  const activateTemplateButton = wizard?.querySelector('[data-template-save="active"]');
 
   let templates = [];
   let selectedTemplateId = "";
   let canManage = false;
   let mutationRunning = false;
   let searchTimer = null;
+  let draftState = createCarrierTemplateDraftState();
+  let wizardOpen = false;
+  let wizardSaveRunning = false;
+  let wizardConflictCurrent = null;
+  let crmRows = [];
+  let crmTotal = 0;
+  let crmPageOffset = 0;
+  let crmRequestToken = 0;
+  let wizardSessionToken = 0;
+  let crmSearchTimer = null;
+  const vendorCache = new Map();
+  const ambiguousChoices = new Map();
+  const ambiguousRequestTokens = new Map();
   const requestController = createCarrierListTemplateController({
     fetchList: fetchEveryTemplatePage,
     fetchDetail: getCarrierListTemplate
@@ -185,6 +295,453 @@ export async function initCarrierListTemplateLibrary({
     if (!status) return;
     status.textContent = message;
     status.dataset.tone = tone;
+  }
+
+  function setWizardStatus(message = "", tone = "neutral") {
+    if (!wizardStatus) return;
+    wizardStatus.textContent = message;
+    wizardStatus.dataset.tone = tone;
+  }
+
+  function cacheVendorRows(rows = []) {
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const id = vendorId(row);
+      if (id) vendorCache.set(id, row);
+    }
+  }
+
+  function syncWizardDirtyGuard() {
+    if (!wizardForm) return;
+    if (!draftState.dirty) {
+      window.ratewareMarkFormClean?.(wizardForm);
+      return;
+    }
+    if (wizardForm.dataset.unsaved === "true") return;
+    if (dirtySignal) {
+      dirtySignal.value = String(Number(dirtySignal.value || 0) + 1);
+      dirtySignal.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+
+  function setDraftState(nextState, { renderState = true } = {}) {
+    draftState = nextState;
+    syncWizardDirtyGuard();
+    if (renderState) renderWizard();
+  }
+
+  function renderSelectedMembers() {
+    if (!selectedMembersHost) return;
+    selectedMembersHost.innerHTML = draftState.vendor_ids.length
+      ? draftState.vendor_ids.map((id, index) => {
+          const vendor = vendorCache.get(id);
+          const label = vendorName(vendor || { id });
+          return `
+            <article class="carrier-template-member" data-template-member-id="${escapeHtml(id)}">
+              <span class="carrier-template-member-order" aria-label="Position ${index + 1}">${index + 1}</span>
+              <div><strong>${escapeHtml(label)}</strong><small>${escapeHtml(id)}</small></div>
+              <div class="carrier-template-member-actions">
+                <button class="secondary small-button" type="button" data-template-member-action="up" data-template-member-id="${escapeHtml(id)}" aria-label="Move ${escapeHtml(label)} up"${index === 0 ? " disabled" : ""}>↑</button>
+                <button class="secondary small-button" type="button" data-template-member-action="down" data-template-member-id="${escapeHtml(id)}" aria-label="Move ${escapeHtml(label)} down"${index === draftState.vendor_ids.length - 1 ? " disabled" : ""}>↓</button>
+                <button class="secondary small-button" type="button" data-template-member-action="remove" data-template-member-id="${escapeHtml(id)}" aria-label="Remove ${escapeHtml(label)} from this template">Exclude</button>
+              </div>
+            </article>
+          `;
+        }).join("")
+      : '<p class="muted-text">No carriers selected. A draft may remain empty.</p>';
+  }
+
+  function renderCrmResults() {
+    if (!crmResults) return;
+    crmResults.innerHTML = crmRows.length
+      ? crmRows.map((vendor) => {
+          const id = vendorId(vendor);
+          const selected = draftState.vendor_ids.includes(id);
+          const label = vendorName(vendor);
+          return `
+            <article class="carrier-template-crm-row">
+              <div>
+                <strong>${escapeHtml(label)}</strong>
+                <small>${escapeHtml(vendor.domain || vendor.primary_email || id)}</small>
+              </div>
+              <span class="status-pill">${escapeHtml(vendor.status || "unknown")}</span>
+              <button class="secondary small-button" type="button" data-template-add-member="${escapeHtml(id)}" aria-label="Add ${escapeHtml(label)}"${selected ? " disabled" : ""}>${selected ? "Added" : "Add"}</button>
+            </article>
+          `;
+        }).join("")
+      : '<p class="muted-text">No Carrier CRM records match the current filters.</p>';
+    const start = crmTotal && crmRows.length ? crmPageOffset + 1 : 0;
+    const end = crmTotal ? Math.min(crmPageOffset + crmRows.length, crmTotal) : 0;
+    if (crmPageStatus) crmPageStatus.textContent = `Showing ${start}-${end} of ${crmTotal}`;
+    if (crmPreviousButton) crmPreviousButton.disabled = crmPageOffset <= 0;
+    if (crmNextButton) crmNextButton.disabled = crmPageOffset + CRM_PAGE_SIZE >= crmTotal;
+  }
+
+  function resolutionCounts() {
+    const counts = { matched: 0, ambiguous: 0, not_found: 0, duplicate: 0 };
+    for (const row of draftState.resolution_rows) {
+      if (Object.hasOwn(counts, row.status)) counts[row.status] += 1;
+    }
+    return counts;
+  }
+
+  function sourceIdentifierSummary(row = {}) {
+    const source = row.source_row || {};
+    return [
+      source.vendor_id && `vendor_id ${source.vendor_id}`,
+      source.crm_id && `crm_id ${source.crm_id}`,
+      source.usdot_number && `USDOT ${source.usdot_number}`,
+      source.mc_number && `MC ${source.mc_number}`,
+      source.primary_email,
+      source.vendor_name
+    ].filter(Boolean).join(" · ") || "No usable identifier supplied";
+  }
+
+  function renderResolutionRows() {
+    const counts = resolutionCounts();
+    if (resolutionSummary) {
+      resolutionSummary.innerHTML = ["matched", "ambiguous", "not_found", "duplicate"].map((statusName) => `
+        <article><span>${escapeHtml(statusName.replaceAll("_", " "))}</span><strong>${counts[statusName]}</strong></article>
+      `).join("");
+    }
+    if (resolutionRowsHost) {
+      resolutionRowsHost.innerHTML = draftState.resolution_rows.length
+        ? draftState.resolution_rows.map((row) => {
+            const rowNumber = Number(row.source_row_number) || 0;
+            const chosenId = text(row.chosen_vendor_id || draftState.manual_resolutions[String(rowNumber)]);
+            const choices = ambiguousChoices.get(rowNumber) || [];
+            const manualControls = row.status === "ambiguous"
+              ? `
+                <div class="carrier-template-manual-resolution">
+                  <label>
+                    Search existing Carrier CRM
+                    <input type="search" data-template-ambiguous-search="${rowNumber}" data-unsaved-ignore placeholder="Carrier name, domain, or email" />
+                  </label>
+                  <button class="secondary small-button" type="button" data-template-ambiguous-search-button="${rowNumber}">Search</button>
+                  <div class="carrier-template-ambiguous-choices">
+                    ${choices.map((vendor) => {
+                      const id = vendorId(vendor);
+                      const label = vendorName(vendor);
+                      return `<button class="secondary small-button" type="button" data-template-ambiguous-choice-row="${rowNumber}" data-template-ambiguous-choice-id="${escapeHtml(id)}" aria-label="Choose ${escapeHtml(label)} for source row ${rowNumber}">${escapeHtml(label)}</button>`;
+                    }).join("")}
+                  </div>
+                  ${chosenId ? `<p class="status-message" data-tone="success">Human choice: ${escapeHtml(vendorName(vendorCache.get(chosenId) || { id: chosenId }))} · ${escapeHtml(chosenId)}</p>` : '<p class="muted-text">No human choice recorded; this row remains excluded.</p>'}
+                </div>
+              `
+              : "";
+            return `
+              <article class="carrier-template-resolution-row" data-resolution-status="${escapeHtml(row.status)}">
+                <header><strong>Row ${rowNumber}</strong><span class="status-pill">${escapeHtml(row.status)}</span></header>
+                <p>${escapeHtml(resolutionReason(row))}</p>
+                <small>${escapeHtml(sourceIdentifierSummary(row))}</small>
+                ${manualControls}
+              </article>
+            `;
+          }).join("")
+        : '<p class="muted-text">Upload a CSV/XLSX to preview reconciliation outcomes.</p>';
+    }
+    const exceptionRows = draftState.resolution_rows.filter((row) => row.status !== "matched");
+    if (downloadExceptionsButton) downloadExceptionsButton.hidden = !exceptionRows.length;
+  }
+
+  function memberList(ids = []) {
+    return ids.length
+      ? `<ol>${ids.map((id) => `<li><strong>${escapeHtml(vendorName(vendorCache.get(id) || { id }))}</strong><small>${escapeHtml(id)}</small></li>`).join("")}</ol>`
+      : '<p class="muted-text">None</p>';
+  }
+
+  function renderReview() {
+    if (!reviewHost) return;
+    const diff = carrierTemplateDraftDiff(draftState);
+    const exceptions = draftState.resolution_rows.filter((row) => row.status !== "matched");
+    reviewHost.innerHTML = `
+      <div class="carrier-template-review-grid">
+        <article><p class="eyebrow">Exact members</p><h3>${draftState.vendor_ids.length.toLocaleString()} carrier(s)</h3>${memberList(draftState.vendor_ids)}</article>
+        <article><p class="eyebrow">Added</p><h3>${diff.added_vendor_ids.length.toLocaleString()}</h3>${memberList(diff.added_vendor_ids)}</article>
+        <article><p class="eyebrow">Removed</p><h3>${diff.removed_vendor_ids.length.toLocaleString()}</h3>${memberList(diff.removed_vendor_ids)}</article>
+        <article><p class="eyebrow">Exceptions</p><h3>${exceptions.length.toLocaleString()}</h3><p>${exceptions.length ? "Review unresolved, ambiguous, and duplicate source rows before saving." : "No import exceptions."}</p></article>
+      </div>
+    `;
+  }
+
+  function renderConflict() {
+    if (!conflictHost) return;
+    if (!wizardConflictCurrent) {
+      conflictHost.hidden = true;
+      conflictHost.innerHTML = "";
+      return;
+    }
+    const summary = carrierTemplateConflictSummary(draftState, wizardConflictCurrent);
+    conflictHost.hidden = false;
+    conflictHost.innerHTML = `
+      <strong>Another editor saved a newer version.</strong>
+      <p>Your local v${escapeHtml(summary.local_version || "new")} draft is retained: ${summary.local_member_count} members. Current server v${escapeHtml(summary.current_version || "unknown")} has ${summary.current_member_count} members.</p>
+      <p>Only local: ${summary.only_local_vendor_ids.length}. Only current: ${summary.only_current_vendor_ids.length}. No merge, overwrite, or retry was attempted.</p>
+      <button class="secondary" type="button" data-template-conflict-reload>Reload current</button>
+    `;
+  }
+
+  function renderSaveSummary() {
+    if (!saveSummary) return;
+    const draftValidation = validateCarrierTemplateDraft(draftState, "draft");
+    const activeValidation = validateCarrierTemplateDraft(draftState, "active");
+    saveSummary.innerHTML = `
+      <p class="eyebrow">Save decision</p>
+      <h3>${escapeHtml(draftState.name || "Untitled template")}</h3>
+      <p>${draftState.vendor_ids.length.toLocaleString()} exact member(s). Draft may be empty; activation requires at least one member.</p>
+      ${draftValidation.valid ? "" : `<p class="status-message" data-tone="error">${escapeHtml(draftValidation.errors.map((item) => item.message).join(" "))}</p>`}
+    `;
+    if (saveDraftButton) saveDraftButton.disabled = wizardSaveRunning || !canManage || !draftValidation.valid;
+    if (activateTemplateButton) activateTemplateButton.disabled = wizardSaveRunning || !canManage || !activeValidation.valid;
+  }
+
+  function renderWizard() {
+    if (!wizard) return;
+    wizard.hidden = !wizardOpen;
+    if (!wizardOpen) return;
+    wizardStepButtons.forEach((button) => {
+      const active = Number(button.dataset.templateWizardStep) === draftState.step;
+      button.classList.toggle("is-active", active);
+      if (active) button.setAttribute("aria-current", "step");
+      else button.removeAttribute("aria-current");
+    });
+    wizardPanels.forEach((panel) => {
+      panel.hidden = Number(panel.dataset.templateWizardPanel) !== draftState.step;
+    });
+    if (wizardBackButton) wizardBackButton.disabled = draftState.step === 0;
+    if (wizardNextButton) wizardNextButton.hidden = draftState.step === 3;
+    renderCrmResults();
+    renderSelectedMembers();
+    renderResolutionRows();
+    renderReview();
+    renderSaveSummary();
+    renderConflict();
+  }
+
+  async function hydrateMemberVendors(ids = draftState.vendor_ids) {
+    const missingIds = ids.filter((id) => !vendorCache.has(id));
+    for (let offset = 0; offset < missingIds.length; offset += 500) {
+      const batch = missingIds.slice(offset, offset + 500);
+      if (!batch.length) continue;
+      const result = await fetchVendors({ ids: batch, view: "all", lightweight: true, limit: 500, offset: 0 });
+      cacheVendorRows(result?.rows);
+    }
+  }
+
+  async function loadCrmPage({ announce = true } = {}) {
+    if (!wizardOpen) return false;
+    const requestToken = ++crmRequestToken;
+    if (announce && crmStatusMessage) crmStatusMessage.textContent = "Loading Carrier CRM records...";
+    if (crmResults) crmResults.setAttribute("aria-busy", "true");
+    try {
+      const result = await fetchVendors({
+        search: text(crmSearchInput?.value),
+        status: text(crmStatusFilter?.value),
+        view: "all",
+        channel: text(crmChannelFilter?.value),
+        tag: text(crmTagFilter?.value),
+        coverage: text(crmCoverageFilter?.value),
+        lightweight: true,
+        limit: CRM_PAGE_SIZE,
+        offset: crmPageOffset
+      });
+      if (requestToken !== crmRequestToken || !wizardOpen) return false;
+      crmRows = Array.isArray(result?.rows) ? result.rows : [];
+      crmTotal = Number(result?.total) || crmRows.length;
+      if (!crmRows.length && crmTotal > 0 && crmPageOffset >= crmTotal) {
+        crmPageOffset = Math.max(0, Math.floor((crmTotal - 1) / CRM_PAGE_SIZE) * CRM_PAGE_SIZE);
+        return await loadCrmPage({ announce: false });
+      }
+      cacheVendorRows(crmRows);
+      renderWizard();
+      if (crmStatusMessage) crmStatusMessage.textContent = `${crmRows.length.toLocaleString()} existing carrier(s) loaded.`;
+      return true;
+    } catch (error) {
+      if (requestToken !== crmRequestToken || !wizardOpen) return false;
+      crmRows = [];
+      crmTotal = 0;
+      renderCrmResults();
+      if (crmStatusMessage) {
+        crmStatusMessage.textContent = humanizeError(error);
+        crmStatusMessage.dataset.tone = "error";
+      }
+      return false;
+    } finally {
+      if (requestToken === crmRequestToken) crmResults?.setAttribute("aria-busy", "false");
+    }
+  }
+
+  function syncDraftDetailInputs() {
+    if (draftNameInput) draftNameInput.value = draftState.name;
+    if (draftDescriptionInput) draftDescriptionInput.value = draftState.description;
+  }
+
+  async function openTemplateWizard(template = {}) {
+    if (!canManage || !wizard || !wizardForm) {
+      setStatus("Creating or editing templates requires vendors:manage.", "warning");
+      return false;
+    }
+    const sessionToken = ++wizardSessionToken;
+    draftState = createCarrierTemplateDraftState(template);
+    wizardConflictCurrent = null;
+    ambiguousChoices.clear();
+    crmPageOffset = 0;
+    wizardOpen = true;
+    if (importInput) importInput.value = "";
+    syncDraftDetailInputs();
+    window.ratewareMarkFormClean?.(wizardForm);
+    setWizardStatus(draftState.id ? `Editing loaded v${draftState.expected_version}.` : "New template draft. Nothing has been saved yet.");
+    renderWizard();
+    try {
+      await hydrateMemberVendors();
+      if (sessionToken !== wizardSessionToken || !wizardOpen) return false;
+      renderWizard();
+      await loadCrmPage();
+    } catch (error) {
+      if (sessionToken === wizardSessionToken) setWizardStatus(humanizeError(error), "error");
+    }
+    draftNameInput?.focus();
+    return true;
+  }
+
+  function closeTemplateWizard({ confirmUnsaved = true } = {}) {
+    if (!wizardOpen) return true;
+    if (confirmUnsaved && draftState.dirty) {
+      const confirmed = typeof window.ratewareConfirmUnsavedChanges === "function"
+        ? window.ratewareConfirmUnsavedChanges()
+        : window.confirm("You have unsaved template changes. Close without saving?");
+      if (!confirmed) return false;
+    }
+    wizardOpen = false;
+    wizardSessionToken += 1;
+    crmRequestToken += 1;
+    wizardConflictCurrent = null;
+    window.ratewareMarkFormClean?.(wizardForm);
+    renderWizard();
+    return true;
+  }
+
+  async function handleCarrierTemplateImport(file) {
+    if (!file || !wizardOpen) return;
+    if (importStatus) {
+      importStatus.textContent = "Reading the first sheet...";
+      importStatus.dataset.tone = "neutral";
+    }
+    try {
+      const normalizedRows = await parseCarrierTemplateFile(file);
+      if (importStatus) importStatus.textContent = `Resolving ${normalizedRows.length.toLocaleString()} row(s) against Carrier CRM...`;
+      const resolution = await resolveCarrierListTemplateRows(normalizedRows);
+      const mergedRows = mergeCarrierTemplateResolutionRows(normalizedRows, resolution?.rows);
+      const autoMatchedCount = mergedRows.filter((row) => row.status === "matched").length;
+      setDraftState(reduceCarrierTemplateDraft(draftState, {
+        type: "apply_resolution_preview",
+        rows: mergedRows
+      }));
+      await hydrateMemberVendors(draftState.vendor_ids);
+      renderWizard();
+      if (importStatus) {
+        importStatus.textContent = `${autoMatchedCount.toLocaleString()} deterministic match(es) added. Ambiguous, not-found, and duplicate rows remain excluded.`;
+        importStatus.dataset.tone = "success";
+      }
+    } catch (error) {
+      if (importStatus) {
+        importStatus.textContent = humanizeError(error);
+        importStatus.dataset.tone = "error";
+      }
+    }
+  }
+
+  function downloadCarrierTemplateExceptions() {
+    const exceptionRows = draftState.resolution_rows.filter((row) => row.status !== "matched");
+    if (!exceptionRows.length) return;
+    const csv = carrierTemplateExceptionCsv(exceptionRows);
+    downloadTextFile(
+      `carrier-template-exceptions-${new Date().toISOString().slice(0, 10)}.csv`,
+      csv,
+      "text/csv;charset=utf-8"
+    );
+    setWizardStatus(`${exceptionRows.length.toLocaleString()} exception row(s) downloaded.`, "success");
+  }
+
+  async function searchAmbiguousRow(rowNumber) {
+    const input = wizard?.querySelector(`[data-template-ambiguous-search="${rowNumber}"]`);
+    const query = text(input?.value);
+    if (!query) {
+      setWizardStatus("Enter a Carrier CRM search for the ambiguous row.", "warning");
+      input?.focus();
+      return;
+    }
+    const requestToken = (ambiguousRequestTokens.get(rowNumber) || 0) + 1;
+    ambiguousRequestTokens.set(rowNumber, requestToken);
+    setWizardStatus(`Searching Carrier CRM for source row ${rowNumber}...`);
+    try {
+      const result = await fetchVendors({ search: query, view: "all", lightweight: true, limit: 20, offset: 0 });
+      if (ambiguousRequestTokens.get(rowNumber) !== requestToken || !wizardOpen) return;
+      const rows = Array.isArray(result?.rows) ? result.rows : [];
+      cacheVendorRows(rows);
+      ambiguousChoices.set(rowNumber, rows);
+      renderWizard();
+      setWizardStatus(`${rows.length.toLocaleString()} existing carrier choice(s) found for source row ${rowNumber}.`);
+    } catch (error) {
+      if (ambiguousRequestTokens.get(rowNumber) === requestToken) setWizardStatus(humanizeError(error), "error");
+    }
+  }
+
+  async function saveTemplateDraft(lifecycleStatus) {
+    if (wizardSaveRunning || !canManage) return;
+    const validation = validateCarrierTemplateDraft(draftState, lifecycleStatus);
+    if (!validation.valid) {
+      setWizardStatus(validation.errors.map((item) => item.message).join(" "), "error");
+      return;
+    }
+    wizardSaveRunning = true;
+    wizardConflictCurrent = null;
+    renderWizard();
+    const payload = carrierTemplateDraftPayload(draftState, lifecycleStatus);
+    setWizardStatus(lifecycleStatus === "active" ? "Activating template..." : "Saving draft...");
+    try {
+      const result = draftState.id
+        ? await updateCarrierListTemplate(draftState.id, payload, draftState.expected_version)
+        : await createCarrierListTemplate(payload);
+      if (!result?.row) throw new Error("The carrier template save returned no current row.");
+      setDraftState(reduceCarrierTemplateDraft(draftState, { type: "accept_saved", template: result.row }), { renderState: false });
+      replaceTemplateRow(result.row);
+      selectedTemplateId = templateId(result.row);
+      await requestController.select(selectedTemplateId);
+      templates = requestController.snapshot().rows;
+      render();
+      renderWizard();
+      onSelectionChange(selectedTemplateId, { replace: false });
+      setWizardStatus(`${templateName(result.row)} saved as ${templateLifecycle(result.row)} v${displayedTemplateVersion(result.row)}.`, "success");
+    } catch (error) {
+      if (String(error?.code) === "template_version_conflict" && draftState.id) {
+        try {
+          const current = await getCarrierListTemplate(draftState.id);
+          wizardConflictCurrent = current?.row || null;
+          setDraftState(reduceCarrierTemplateDraft(draftState, { type: "go_to_step", step: 3 }), { renderState: false });
+          renderWizard();
+          setWizardStatus("The local draft is retained. Compare it with the current server version, then choose Reload current only if you intend to discard local edits. No retry occurred.", "warning");
+        } catch (reloadError) {
+          setWizardStatus(`The local draft is retained, but the current server template could not be fetched: ${humanizeError(reloadError)}`, "error");
+        }
+      } else {
+        setWizardStatus(humanizeError(error), "error");
+      }
+    } finally {
+      wizardSaveRunning = false;
+      renderWizard();
+    }
+  }
+
+  async function reloadCurrentTemplate() {
+    if (!wizardConflictCurrent) return;
+    draftState = createCarrierTemplateDraftState(wizardConflictCurrent);
+    wizardConflictCurrent = null;
+    ambiguousChoices.clear();
+    syncDraftDetailInputs();
+    window.ratewareMarkFormClean?.(wizardForm);
+    await hydrateMemberVendors(draftState.vendor_ids);
+    renderWizard();
+    setWizardStatus(`Reloaded current server v${draftState.expected_version}. The previous local draft was discarded by your explicit choice.`, "success");
   }
 
   function applyRequestState(state, { renderState = true } = {}) {
@@ -359,7 +916,7 @@ export async function initCarrierListTemplateLibrary({
     return true;
   }
 
-  function showNewTemplateGuidance() {
+  async function showNewTemplateGuidance() {
     selectedTemplateId = "";
     requestController.select("");
     renderTable();
@@ -375,6 +932,7 @@ export async function initCarrierListTemplateLibrary({
     onSelectionChange("", { replace: false });
     workspace?.dispatchEvent(new CustomEvent("carrier-template:new", { bubbles: true }));
     setStatus("Ready to start a template from existing CRM carriers.");
+    await openTemplateWizard();
   }
 
   async function mutateTemplate(action, button) {
@@ -443,16 +1001,155 @@ export async function initCarrierListTemplateLibrary({
     if (!button || !workspace.contains(button) || button.disabled) return;
     const action = text(button.dataset.templateAction);
     if (action === "new") {
-      showNewTemplateGuidance();
+      await showNewTemplateGuidance();
       return;
     }
     const id = text(button.dataset.templateId);
     if (action === "open") {
-      await selectTemplate(id, { focus: true, updateHistory: true });
+      const selected = await selectTemplate(id, { focus: true, updateHistory: true });
+      if (selected) {
+        try {
+          const current = await getCarrierListTemplate(id);
+          await openTemplateWizard(current?.row || selectedTemplate());
+        } catch (error) {
+          setStatus(humanizeError(error), "error");
+        }
+      }
       return;
     }
     if (["duplicate", "archive", "restore"].includes(action)) await mutateTemplate(action, button);
   });
+
+  wizardForm?.addEventListener("submit", (event) => event.preventDefault());
+
+  draftNameInput?.addEventListener("input", () => {
+    setDraftState(reduceCarrierTemplateDraft(draftState, {
+      type: "set_details",
+      name: draftNameInput.value,
+      description: draftDescriptionInput?.value || ""
+    }));
+  });
+
+  draftDescriptionInput?.addEventListener("input", () => {
+    setDraftState(reduceCarrierTemplateDraft(draftState, {
+      type: "set_details",
+      name: draftNameInput?.value || "",
+      description: draftDescriptionInput.value
+    }));
+  });
+
+  wizardCloseButton?.addEventListener("click", () => closeTemplateWizard());
+  wizardBackButton?.addEventListener("click", () => {
+    setDraftState(reduceCarrierTemplateDraft(draftState, { type: "go_to_step", step: draftState.step - 1 }));
+  });
+  wizardNextButton?.addEventListener("click", () => {
+    setDraftState(reduceCarrierTemplateDraft(draftState, { type: "go_to_step", step: draftState.step + 1 }));
+  });
+  wizardStepButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      setDraftState(reduceCarrierTemplateDraft(draftState, {
+        type: "go_to_step",
+        step: Number(button.dataset.templateWizardStep)
+      }));
+    });
+  });
+
+  wizard?.addEventListener("click", async (event) => {
+    const addButton = event.target.closest("[data-template-add-member]");
+    if (addButton) {
+      const id = text(addButton.dataset.templateAddMember);
+      if (!crmRows.some((row) => vendorId(row) === id)) return;
+      setDraftState(reduceCarrierTemplateDraft(draftState, { type: "add_members", vendor_ids: [id] }));
+      setWizardStatus(`${vendorName(vendorCache.get(id) || { id })} added to the local draft.`);
+      return;
+    }
+
+    const memberButton = event.target.closest("[data-template-member-action]");
+    if (memberButton) {
+      const id = text(memberButton.dataset.templateMemberId);
+      const action = text(memberButton.dataset.templateMemberAction);
+      const index = draftState.vendor_ids.indexOf(id);
+      if (action === "remove") {
+        setDraftState(reduceCarrierTemplateDraft(draftState, { type: "remove_member", vendor_id: id }));
+      } else if (index >= 0 && ["up", "down"].includes(action)) {
+        setDraftState(reduceCarrierTemplateDraft(draftState, {
+          type: "reorder_member",
+          vendor_id: id,
+          to_index: index + (action === "up" ? -1 : 1)
+        }));
+      }
+      return;
+    }
+
+    const ambiguousSearchButton = event.target.closest("[data-template-ambiguous-search-button]");
+    if (ambiguousSearchButton) {
+      await searchAmbiguousRow(Number(ambiguousSearchButton.dataset.templateAmbiguousSearchButton));
+      return;
+    }
+
+    const ambiguousChoiceButton = event.target.closest("[data-template-ambiguous-choice-row]");
+    if (ambiguousChoiceButton) {
+      const rowNumber = Number(ambiguousChoiceButton.dataset.templateAmbiguousChoiceRow);
+      const id = text(ambiguousChoiceButton.dataset.templateAmbiguousChoiceId);
+      if (!(ambiguousChoices.get(rowNumber) || []).some((row) => vendorId(row) === id)) return;
+      setDraftState(reduceCarrierTemplateDraft(draftState, {
+        type: "confirm_manual_match",
+        source_row_number: rowNumber,
+        vendor_id: id
+      }));
+      setWizardStatus(`Source row ${rowNumber} was manually resolved to one existing Carrier CRM record.`, "success");
+      return;
+    }
+
+    if (event.target.closest("[data-template-conflict-reload]")) await reloadCurrentTemplate();
+  });
+
+  importInput?.addEventListener("change", async () => {
+    const [file] = [...(importInput.files || [])];
+    await handleCarrierTemplateImport(file);
+  });
+  downloadExceptionsButton?.addEventListener("click", downloadCarrierTemplateExceptions);
+  saveDraftButton?.addEventListener("click", () => saveTemplateDraft("draft"));
+  activateTemplateButton?.addEventListener("click", () => saveTemplateDraft("active"));
+
+  function resetCrmPageAndLoad() {
+    crmPageOffset = 0;
+    return loadCrmPage();
+  }
+
+  crmSearchInput?.addEventListener("input", () => {
+    if (crmSearchTimer) window.clearTimeout(crmSearchTimer);
+    crmSearchTimer = window.setTimeout(resetCrmPageAndLoad, 300);
+  });
+  for (const filter of [crmStatusFilter, crmChannelFilter, crmTagFilter, crmCoverageFilter]) {
+    filter?.addEventListener(filter === crmTagFilter || filter === crmCoverageFilter ? "input" : "change", () => {
+      if (crmSearchTimer) window.clearTimeout(crmSearchTimer);
+      crmSearchTimer = window.setTimeout(resetCrmPageAndLoad, 250);
+    });
+  }
+  crmPreviousButton?.addEventListener("click", () => {
+    crmPageOffset = Math.max(0, crmPageOffset - CRM_PAGE_SIZE);
+    loadCrmPage();
+  });
+  crmNextButton?.addEventListener("click", () => {
+    if (crmPageOffset + CRM_PAGE_SIZE >= crmTotal) return;
+    crmPageOffset += CRM_PAGE_SIZE;
+    loadCrmPage();
+  });
+
+  document.addEventListener("click", (event) => {
+    const tabButton = event.target.closest('[data-vendor-tab]:not([data-vendor-tab="list-templates"])');
+    if (!tabButton || !wizardOpen || !draftState.dirty) return;
+    const confirmed = typeof window.ratewareConfirmUnsavedChanges === "function"
+      ? window.ratewareConfirmUnsavedChanges()
+      : window.confirm("You have unsaved template changes. Leave the builder?");
+    if (!confirmed) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    closeTemplateWizard({ confirmUnsaved: false });
+  }, true);
 
   searchInput?.addEventListener("input", () => {
     if (searchTimer) window.clearTimeout(searchTimer);

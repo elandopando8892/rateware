@@ -3764,7 +3764,11 @@ assert.match(carrierListTemplatesSource, /template_version/, "Carrier template r
 assert.match(carrierListTemplatesSource, /const displayedVersion = Number\(button\.dataset\.templateVersion\)[\s\S]+duplicateCarrierListTemplate\(id, duplicateName, displayedVersion\)[\s\S]+archiveCarrierListTemplate\(id, displayedVersion\)[\s\S]+restoreCarrierListTemplate\(id, displayedVersion\)/, "Duplicate, archive, and restore should send the exact version displayed on the clicked control");
 assert.match(carrierListTemplatesSource, /template_version_conflict/, "Carrier template version conflicts should use the stable API conflict code");
 assert.match(carrierListTemplatesSource, /template_name_conflict/, "Carrier template duplicate-name conflicts should present separate rename guidance");
-assert.doesNotMatch(carrierListTemplatesSource, /error\?\.status === 409[\s\S]+getCarrierListTemplate/, "Carrier template UI must not refresh every generic 409 as if it were a version conflict");
+const carrierTemplateLibraryMutationSource = carrierListTemplatesSource.slice(
+  carrierListTemplatesSource.indexOf("async function mutateTemplate"),
+  carrierListTemplatesSource.indexOf('workspace?.addEventListener("click"')
+);
+assert.doesNotMatch(carrierTemplateLibraryMutationSource, /error\?\.status === 409[\s\S]+getCarrierListTemplate/, "Carrier template library must not refresh every generic 409 as if it were a version conflict");
 assert.match(carrierListTemplatesSource, /createCarrierListTemplateController/, "Carrier template UI should use the executable request-order controller");
 for (const state of ["pending", "enabled", "error", "disabled"]) {
   assert.match(carrierTemplateCapabilitySource, new RegExp(`"${state}"`), `Carrier template capability should preserve the explicit ${state} state`);
@@ -3776,6 +3780,25 @@ assert.doesNotMatch(vendorsSource, /resolveCapability/, "Carrier CRM navigation 
 assert.match(carrierListTemplatesSource, /const lifecycleFilter = [^;]+[\s\S]+templateLifecycle\(row\) !== lifecycleFilter/, "Carrier template client rendering should keep deep-linked or newly mutated rows out of the wrong lifecycle filter");
 assert.match(carrierListTemplatesSource, /activate:[\s\S]+selectedTemplateId = "";[\s\S]+render\(\)/, "Carrier template history navigation without a template id should clear stale detail selection");
 assert.match(carrierListTemplatesSource, /const retryAction = action === "duplicate"[\s\S]+templateLifecycle\(current\.row\)[\s\S]+: action;[\s\S]+focusSelectedAction\(retryAction\)/, "Carrier template version-conflict recovery should return keyboard focus to the refreshed action or the original action when refresh fails");
+const carrierTemplateWizardHtml = vendorsHtml.match(/<form[^>]*data-template-wizard-form[\s\S]*?<\/form>/)?.[0] || "";
+assert.deepEqual(
+  [...carrierTemplateWizardHtml.matchAll(/<button[^>]*data-template-wizard-step="\d"[^>]*>\s*([^<]+?)\s*<\/button>/g)].map((match) => match[1]),
+  ["Details", "Add carriers", "Review", "Save"],
+  "Carrier template builder should expose exactly the four approved labelled steps"
+);
+assert.match(carrierTemplateWizardHtml, /data-template-wizard-form[^>]+data-unsaved-guard/, "Carrier template builder should participate in the existing unsaved-changes guard");
+assert.match(vendorsHtml, /data-template-wizard-close[^>]+aria-label="Close template builder"/, "Carrier template builder close control should have an accessible name");
+assert.match(carrierTemplateWizardHtml, /data-template-import-file[^>]+accept="\.csv,\.xlsx,text\/csv,application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet"/, "Carrier template import should advertise only supported CSV and XLSX types");
+assert.match(carrierTemplateWizardHtml, /data-template-save="draft"[^>]*>Save draft<\/button>[\s\S]+data-template-save="active"[^>]*>Activate template<\/button>/, "Carrier template Save step should keep draft and activation decisions separate");
+assert.match(carrierListTemplatesSource, /fetchVendors\(\{[\s\S]+lightweight: true,[\s\S]+limit: CRM_PAGE_SIZE,[\s\S]+offset: crmPageOffset/, "Template membership search should use bounded paginated Carrier CRM reads");
+assert.match(carrierListTemplatesSource, /carrierTemplateImportValidation\(file\)[\s\S]+sheet_to_json\(firstSheet, \{ header: 1, defval: "" \}\)[\s\S]+carrierTemplateImportValidation\(file, \{ row_count: normalizedRows\.length \}\)[\s\S]+resolveCarrierListTemplateRows\(normalizedRows\)/, "Template import should validate file bounds, parse only a matrix, bound rows, then call only the resolver");
+assert.match(carrierListTemplatesSource, /status === "matched"[\s\S]+apply_resolution_preview/, "Only matched reconciliation rows should flow into automatic membership");
+assert.match(carrierListTemplatesSource, /confirm_manual_match/, "Ambiguous rows should require an explicit manual existing-carrier choice");
+assert.match(carrierListTemplatesSource, /carrierTemplateExceptionCsv\(exceptionRows\)/, "Template exception downloads should use the shared audited serializer");
+assert.match(carrierListTemplatesSource, /updateCarrierListTemplate\(draftState\.id, payload, draftState\.expected_version\)/, "Template edits should send the exact loaded expected version");
+assert.match(carrierListTemplatesSource, /template_version_conflict[\s\S]+getCarrierListTemplate\(draftState\.id\)[\s\S]+Reload current/, "Template update conflicts should preserve local state and fetch current state for explicit reload");
+assert.match(carrierListTemplatesSource, /ratewareConfirmUnsavedChanges/, "Template close/navigation should invoke the existing unsaved-changes confirmation");
+assert.doesNotMatch(carrierListTemplatesSource, /\b(?:createVendor|updateVendor|importVendors|importVendorOnboardingCorrections|applyVendorTemplateUpdates)\b/, "Template builder must not import or call Carrier CRM master-data mutations");
 assert.match(stylesSource, /\.carrier-template-workspace\.hidden\s*\{\s*display:\s*none;/, "Inactive Carrier CRM template workspace should remain hidden after capability discovery");
 assert.match(vendorsSource, /URLSearchParams[\s\S]+template[\s\S]+popstate/, "Carrier CRM should preserve template deep links and browser history navigation");
 assert.match(vendorsSource, /createVendorTemplateNavigationGuard/, "Carrier CRM should route List Templates history through the capability-aware navigation guard");
