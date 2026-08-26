@@ -52,8 +52,8 @@ Deno.test('createOspReadRuntime connects validated env, verifier, Postgres store
     const sql = ((strings: TemplateStringsArray) => {
       queries += 1;
       const text = strings.join('$');
-      if (text.includes('osp_identity_workspace_v1')) return Promise.resolve([{ organization_id: organizationId }]);
-      if (text.includes('osp_provider_onboarding_metrics_v1')) {
+      if (text.includes('public.external_identities')) return Promise.resolve([{ organization_id: organizationId }]);
+      if (text.includes('osp_private.customer_registration_cases')) {
         return Promise.resolve([{
           requests_total: '1', documents_pending: '2', under_review: '3', ready_for_approval: '4',
         }]);

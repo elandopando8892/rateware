@@ -88,18 +88,22 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
   assert.equal((await store.readGmail(organizationId)).connection_exists, false);
 
   assert.equal(fake.calls.length, 3);
-  assert.match(fake.calls[0].text, /SELECT\s+organization_id\s+FROM\s+osp_identity_workspace_v1/i);
-  assert.match(fake.calls[0].text, /issuer\s*=\s*\$/i);
-  assert.match(fake.calls[0].text, /subject\s*=\s*\$/i);
-  assert.match(fake.calls[0].text, /organization_code\s*=\s*\$/i);
-  assert.match(fake.calls[0].text, /lower\(btrim\(email\)\)\s*=\s*\$/i);
-  assert.match(fake.calls[0].text, /identity_active\s*=\s*true/i);
-  assert.match(fake.calls[0].text, /organization_reviewed\s*=\s*true/i);
-  assert.match(fake.calls[0].text, /workspace_active\s*=\s*true/i);
-  assert.deepEqual(fake.calls[0].values, [identity.issuer, identity.subject, identity.organization, identity.email]);
+  assert.match(fake.calls[0].text, /FROM\s+public\.external_identities\s+identity_record/i);
+  assert.match(fake.calls[0].text, /JOIN\s+public\.external_organization_links\s+organization_link/i);
+  assert.match(fake.calls[0].text, /identity_record\.external_subject\s*=\s*\$/i);
+  assert.match(fake.calls[0].text, /lower\(btrim\(identity_record\.email\)\)\s*=\s*\$/i);
+  assert.match(fake.calls[0].text, /identity_record\.status\s*=\s*'kinde'|identity_record\.provider\s*=\s*'kinde'/i);
+  assert.match(fake.calls[0].text, /identity_record\.status\s*=\s*'active'/i);
+  assert.match(fake.calls[0].text, /organization_link\.external_organization_id\s*=\s*\$/i);
+  assert.match(fake.calls[0].text, /organization_link\.organization_id\s*=\s*\$/i);
+  assert.match(fake.calls[0].text, /organization_link\.status\s*=\s*'active'/i);
+  assert.deepEqual(fake.calls[0].values, [identity.subject, identity.email, identity.organization, identity.organization]);
 
-  assert.match(fake.calls[1].text, /SELECT\s+requests_total,\s*documents_pending,\s*under_review,\s*ready_for_approval\s+FROM\s+osp_provider_onboarding_metrics_v1/i);
-  assert.match(fake.calls[2].text, /SELECT\s+connection_exists,\s*pubsub_configured,\s*watch_configured,\s*token_expires_at,\s*watch_expires_at,\s*error_present,\s*error_code\s+FROM\s+osp_provider_gmail_health_v1/i);
+  assert.match(fake.calls[1].text, /FROM\s+osp_private\.customer_registration_cases/i);
+  assert.match(fake.calls[1].text, /count\(\*\)\s+FILTER\s*\(WHERE\s+state\s*=\s*'operations_review'\)/i);
+  assert.match(fake.calls[2].text, /FROM\s+public\.provider_gmail_connections/i);
+  assert.match(fake.calls[2].text, /purpose\s*=\s*'provider_onboarding'/i);
+  assert.match(fake.calls[2].text, /mailbox_email\s*=\s*'carriers@xbfreight\.com'/i);
   for (const call of fake.calls.slice(1)) {
     assert.match(call.text, /WHERE\s+organization_id\s*=\s*\$/i);
     assert.deepEqual(call.values, [organizationId]);
@@ -121,10 +125,10 @@ Deno.test('createPostgresOspReadStore resolves a canonical tenant through its re
   };
   assert.equal(await store.resolveWorkspace(canonicalIdentity), organizationId);
   assert.deepEqual(fake.calls[0].values, [
-    identity.issuer,
     identity.subject,
-    'org_dbc2fd12c76',
     identity.email,
+    'org_dbc2fd12c76',
+    organizationId,
   ]);
 });
 

@@ -114,18 +114,22 @@ export function createPostgresOspReadStore({
 
   return Object.freeze({
     async resolveWorkspace(identity: OspAuthorizationIdentity, signal?: AbortSignal): Promise<string> {
-      const { issuer, subject, organization, externalOrganization, email } = identity;
+      const { subject, organization, externalOrganization, email } = identity;
       const organizationCode = externalOrganization ?? organization;
       const rows = await executeTaggedQuery(() => sql`
-        SELECT organization_id
-        FROM osp_identity_workspace_v1
-        WHERE issuer = ${issuer}
-          AND subject = ${subject}
-          AND organization_code = ${organizationCode}
-          AND lower(btrim(email)) = ${email}
-          AND identity_active = true
-          AND organization_reviewed = true
-          AND workspace_active = true
+        SELECT organization_link.organization_id
+        FROM public.external_identities identity_record
+        JOIN public.external_organization_links organization_link
+          ON organization_link.provider = identity_record.provider
+        WHERE identity_record.provider = 'kinde'
+          AND identity_record.external_subject = ${subject}
+          AND lower(btrim(identity_record.email)) = ${email}
+          AND identity_record.status = 'active'
+          AND identity_record.reviewed_at IS NOT NULL
+          AND organization_link.external_organization_id = ${organizationCode}
+          AND organization_link.organization_id = ${organization}
+          AND organization_link.status = 'active'
+          AND organization_link.reviewed_at IS NOT NULL
       `, signal, STATEMENT_TIMEOUT_MS);
       const row = exactlyOneRow(rows, 'WORKSPACE_UNAVAILABLE');
       if (typeof row.organization_id !== 'string' || !UUID_PATTERN.test(row.organization_id)) {
@@ -136,8 +140,17 @@ export function createPostgresOspReadStore({
 
     async readPipeline(organizationId: string, signal?: AbortSignal): Promise<PipelineSeamRow> {
       const rows = await executeTaggedQuery(() => sql`
-        SELECT requests_total, documents_pending, under_review, ready_for_approval
-        FROM osp_provider_onboarding_metrics_v1
+        SELECT
+          count(*)::bigint AS requests_total,
+          count(*) FILTER (WHERE state IN (
+            'received', 'analyzing_requirements', 'awaiting_clarification',
+            'awaiting_xbf_information', 'preparing'
+          ))::bigint AS documents_pending,
+          count(*) FILTER (WHERE state = 'operations_review')::bigint AS under_review,
+          count(*) FILTER (WHERE state IN (
+            'signature_approval', 'sales_authorization'
+          ))::bigint AS ready_for_approval
+        FROM osp_private.customer_registration_cases
         WHERE organization_id = ${organizationId}
       `, signal, STATEMENT_TIMEOUT_MS);
       return exactlyOneRow(rows, 'DEPENDENCY_UNAVAILABLE') as PipelineSeamRow;
@@ -145,10 +158,32 @@ export function createPostgresOspReadStore({
 
     async readGmail(organizationId: string, signal?: AbortSignal): Promise<GmailSeamRow> {
       const rows = await executeTaggedQuery(() => sql`
-        SELECT connection_exists, pubsub_configured, watch_configured,
-               token_expires_at, watch_expires_at, error_present, error_code
-        FROM osp_provider_gmail_health_v1
+        SELECT
+          count(*) > 0 AS connection_exists,
+          CASE WHEN count(*) = 0 THEN NULL
+            ELSE bool_or(status = 'watching' OR watch_expiration_at IS NOT NULL)
+          END AS pubsub_configured,
+          CASE WHEN count(*) = 0 THEN NULL
+            ELSE bool_or(status = 'watching' AND watch_expiration_at > statement_timestamp())
+          END AS watch_configured,
+          CASE WHEN count(*) = 0 THEN NULL ELSE max(token_expires_at) END AS token_expires_at,
+          CASE WHEN bool_or(status = 'watching' AND watch_expiration_at > statement_timestamp())
+            THEN max(watch_expiration_at) FILTER (
+              WHERE status = 'watching' AND watch_expiration_at > statement_timestamp()
+            )
+            ELSE NULL
+          END AS watch_expires_at,
+          CASE WHEN count(*) = 0 THEN false
+            ELSE bool_or(status = 'error' OR last_error IS NOT NULL)
+          END AS error_present,
+          CASE WHEN bool_or(status = 'error' OR last_error IS NOT NULL)
+            THEN 'PROVIDER_CONNECTION_ERROR'
+            ELSE NULL
+          END AS error_code
+        FROM public.provider_gmail_connections
         WHERE organization_id = ${organizationId}
+          AND purpose = 'provider_onboarding'
+          AND mailbox_email = 'carriers@xbfreight.com'
       `, signal, STATEMENT_TIMEOUT_MS);
       return exactlyOneRow(rows, 'DEPENDENCY_UNAVAILABLE') as GmailSeamRow;
     },
