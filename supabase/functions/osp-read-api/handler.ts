@@ -7,7 +7,7 @@ import {
   postCorsHeaders,
   safeErrorResponse,
 } from './http.ts';
-import { getGmailHealth, listOnboardingWorkspace } from './read-models.ts';
+import { getCustomerRegistrationCase, getGmailHealth, listCustomerRegistrationCases, listOnboardingWorkspace } from './read-models.ts';
 import type { OspReadStore } from './store.ts';
 import { resolveWorkspace } from './workspace.ts';
 
@@ -245,9 +245,18 @@ export function createOspReadHandler({
       const identity = await verifyToken(requireBearer(request), request.signal);
       const parsed = parseOspReadRequest(await readStrictJson(request, declaredLength));
       const organizationId = await resolveWorkspace(store, identity, request.signal);
-      const data = parsed.action === 'list_provider_onboarding_workspace'
-        ? await listOnboardingWorkspace(store, organizationId, request.signal)
-        : await getGmailHealth(store, organizationId, request.signal);
+      let data;
+      if (parsed.action === 'list_provider_onboarding_workspace') {
+        data = await listOnboardingWorkspace(store, organizationId, request.signal);
+      } else if (parsed.action === 'provider_gmail_status') {
+        data = await getGmailHealth(store, organizationId, request.signal);
+      } else if (parsed.action === 'list_customer_registration_cases') {
+        data = await listCustomerRegistrationCases(store, organizationId, request.signal);
+      } else if ('case_id' in parsed) {
+        data = await getCustomerRegistrationCase(store, organizationId, parsed.case_id, request.signal);
+      } else {
+        throw new OspApiError('INVALID_REQUEST');
+      }
       return jsonResponse({ version: 1, data }, 200, postCorsHeaders(origin));
     } catch (error) {
       const cors = allowedOrigin ? postCorsHeaders(allowedOrigin) : {};

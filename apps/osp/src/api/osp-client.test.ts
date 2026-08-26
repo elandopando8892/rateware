@@ -12,7 +12,9 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 
 function harness(responses: Array<Response | Error>, current = session()) {
   let active: BoundSession | null = current;
-  const fetch = vi.fn(async () => {
+  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    void input;
+    void init;
     const next = responses.shift();
     if (next instanceof Error) throw next;
     if (!next) throw new Error('unexpected request');
@@ -120,6 +122,25 @@ it('validates the Gmail success envelope with the second exact action', async ()
   await expect(h.client.getGmailStatus()).resolves.toEqual(data);
   const [, init] = h.fetch.mock.calls[0] as unknown as [string, RequestInit];
   expect(JSON.parse(String(init.body))).toEqual({ version: 1, action: 'provider_gmail_status' });
+});
+
+it('lists cases and loads one case through strict read-only action bodies', async () => {
+  const summary = {
+    case_id: '22222222-2222-4222-8222-222222222222', supplier_name: 'Synthetic Supplier', state: 'received', aggregate_version: 1,
+    blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T01:00:00.000Z',
+    message_count: '1', attachment_count: '2', document_count: '0',
+  } as const;
+  const detail = { ...summary, latest_request: { subject: null, sender_domain: null, received_at: null }, recent_events: [] };
+  const h = harness([json({ version: 1, data: { cases: [summary] } }), json({ version: 1, data: detail })]);
+  await expect(h.client.listCustomerRegistrationCases()).resolves.toEqual([summary]);
+  await expect(h.client.getCustomerRegistrationCase(summary.case_id)).resolves.toEqual(detail);
+  const bodies = h.fetch.mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit).body)));
+  expect(bodies).toEqual([
+    { version: 1, action: 'list_customer_registration_cases' },
+    { version: 1, action: 'get_customer_registration_case', case_id: summary.case_id },
+  ]);
+  await expect(h.client.getCustomerRegistrationCase('not-a-uuid')).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+  expect(h.fetch).toHaveBeenCalledTimes(2);
 });
 
 it('runs one bounded Gmail sync through the dedicated OSP endpoint without automatic mutation retry', async () => {

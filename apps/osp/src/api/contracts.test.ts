@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   CanonicalCountSchema,
+  CaseDetailSuccessResponseSchema,
+  CaseListSuccessResponseSchema,
   GmailReadModelSchema,
   OspErrorResponseSchema,
   OspReadRequestSchema,
@@ -26,6 +28,30 @@ it('accepts only the exact version-one action request', () => {
   });
   expect(OspReadRequestSchema.safeParse({ version: 2, action: 'provider_gmail_status' }).success).toBe(false);
   expect(OspReadRequestSchema.safeParse({ version: 1, action: 'provider_gmail_status', organization: 'x' }).success).toBe(false);
+  expect(OspReadRequestSchema.parse({ version: 1, action: 'get_customer_registration_case', case_id: '22222222-2222-4222-8222-222222222222' })).toEqual({
+    version: 1, action: 'get_customer_registration_case', case_id: '22222222-2222-4222-8222-222222222222',
+  });
+  expect(OspReadRequestSchema.safeParse({ version: 1, action: 'get_customer_registration_case' }).success).toBe(false);
+});
+
+it('validates exact case summaries and keeps request bodies outside the read model', () => {
+  const summary = {
+    case_id: '22222222-2222-4222-8222-222222222222', supplier_name: 'Synthetic Supplier', state: 'received', aggregate_version: 1,
+    blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T01:00:00.000Z',
+    message_count: '1', attachment_count: '2', document_count: '0',
+  };
+  expect(CaseListSuccessResponseSchema.parse({ version: 1, data: { cases: [summary] } }).data.cases).toEqual([summary]);
+  const detail = {
+    version: 1,
+    data: {
+      ...summary,
+      latest_request: { subject: 'Customer setup request', sender_domain: 'supplier.example', received_at: '2030-01-01T00:00:00.000Z' },
+      recent_events: [{ sequence: 1, state: 'received', occurred_at: '2030-01-01T00:00:00.000Z', reason_code: 'case_received' }],
+    },
+  };
+  expect(CaseDetailSuccessResponseSchema.parse(detail)).toEqual(detail);
+  expect(CaseDetailSuccessResponseSchema.safeParse({ ...detail, data: { ...detail.data, safe_body: 'private' } }).success).toBe(false);
+  expect(CaseDetailSuccessResponseSchema.safeParse({ ...detail, data: { ...detail.data, latest_request: { ...detail.data.latest_request, sender_domain: null } } }).success).toBe(false);
 });
 
 it('requires the exact four pipeline keys inside a strict success envelope', () => {

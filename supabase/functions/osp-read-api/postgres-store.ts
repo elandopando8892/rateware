@@ -2,7 +2,7 @@ import postgres from 'npm:postgres@3.4.7';
 
 import type { OspAuthorizationIdentity } from './auth-policy.ts';
 import { OspApiError } from './http.ts';
-import type { GmailSeamRow, OspReadStore, PipelineSeamRow } from './store.ts';
+import type { CaseDetailSeamRow, CaseSummarySeamRow, GmailSeamRow, OspReadStore, PipelineSeamRow } from './store.ts';
 
 type QueryLike<T> = PromiseLike<T>;
 type SqlPort = (strings: TemplateStringsArray, ...values: unknown[]) => QueryLike<unknown[]>;
@@ -186,6 +186,78 @@ export function createPostgresOspReadStore({
           AND mailbox_email = 'carriers@xbfreight.com'
       `, signal, STATEMENT_TIMEOUT_MS);
       return exactlyOneRow(rows, 'DEPENDENCY_UNAVAILABLE') as GmailSeamRow;
+    },
+
+    async readCases(organizationId: string, signal?: AbortSignal): Promise<readonly CaseSummarySeamRow[]> {
+      const rows = await executeTaggedQuery(() => sql`
+        SELECT
+          case_record.id AS case_id,
+          supplier.legal_name AS supplier_name,
+          case_record.state,
+          case_record.aggregate_version,
+          case_record.blocked_by_duplicate_review,
+          case_record.created_at,
+          case_record.updated_at,
+          (SELECT count(*)::bigint FROM osp_private.gmail_messages message
+            WHERE message.organization_id = case_record.organization_id AND message.case_id = case_record.id) AS message_count,
+          (SELECT count(*)::bigint FROM osp_private.gmail_attachments attachment
+            JOIN osp_private.gmail_messages message ON message.organization_id = attachment.organization_id AND message.id = attachment.gmail_message_id
+            WHERE message.organization_id = case_record.organization_id AND message.case_id = case_record.id) AS attachment_count,
+          (SELECT count(*)::bigint FROM osp_private.documents document
+            WHERE document.organization_id = case_record.organization_id AND document.case_id = case_record.id) AS document_count
+        FROM osp_private.customer_registration_cases case_record
+        JOIN osp_private.supplier_counterparties supplier
+          ON supplier.organization_id = case_record.organization_id AND supplier.id = case_record.supplier_id
+        WHERE case_record.organization_id = ${organizationId}
+        ORDER BY case_record.updated_at DESC, case_record.id ASC
+        LIMIT 100
+      `, signal, STATEMENT_TIMEOUT_MS);
+      return rows as CaseSummarySeamRow[];
+    },
+
+    async readCase(organizationId: string, caseId: string, signal?: AbortSignal): Promise<CaseDetailSeamRow> {
+      const rows = await executeTaggedQuery(() => sql`
+        SELECT
+          case_record.id AS case_id,
+          supplier.legal_name AS supplier_name,
+          case_record.state,
+          case_record.aggregate_version,
+          case_record.blocked_by_duplicate_review,
+          case_record.created_at,
+          case_record.updated_at,
+          (SELECT count(*)::bigint FROM osp_private.gmail_messages message
+            WHERE message.organization_id = case_record.organization_id AND message.case_id = case_record.id) AS message_count,
+          (SELECT count(*)::bigint FROM osp_private.gmail_attachments attachment
+            JOIN osp_private.gmail_messages message ON message.organization_id = attachment.organization_id AND message.id = attachment.gmail_message_id
+            WHERE message.organization_id = case_record.organization_id AND message.case_id = case_record.id) AS attachment_count,
+          (SELECT count(*)::bigint FROM osp_private.documents document
+            WHERE document.organization_id = case_record.organization_id AND document.case_id = case_record.id) AS document_count,
+          latest_message.subject AS latest_subject,
+          latest_message.sender_domain AS latest_sender_domain,
+          latest_message.received_at AS latest_received_at,
+          COALESCE((
+            SELECT jsonb_agg(to_jsonb(recent_event) ORDER BY recent_event.sequence DESC)
+            FROM (
+              SELECT event.sequence, event.state, event.occurred_at, event.reason_code
+              FROM osp_private.case_events event
+              WHERE event.organization_id = case_record.organization_id AND event.case_id = case_record.id
+              ORDER BY event.sequence DESC
+              LIMIT 20
+            ) recent_event
+          ), '[]'::jsonb) AS recent_events
+        FROM osp_private.customer_registration_cases case_record
+        JOIN osp_private.supplier_counterparties supplier
+          ON supplier.organization_id = case_record.organization_id AND supplier.id = case_record.supplier_id
+        LEFT JOIN LATERAL (
+          SELECT NULLIF(btrim(message.subject), '') AS subject, message.sender_domain, message.received_at
+          FROM osp_private.gmail_messages message
+          WHERE message.organization_id = case_record.organization_id AND message.case_id = case_record.id
+          ORDER BY message.received_at DESC, message.id ASC
+          LIMIT 1
+        ) latest_message ON true
+        WHERE case_record.organization_id = ${organizationId} AND case_record.id = ${caseId}
+      `, signal, STATEMENT_TIMEOUT_MS);
+      return exactlyOneRow(rows, 'DEPENDENCY_UNAVAILABLE') as CaseDetailSeamRow;
     },
   });
 }

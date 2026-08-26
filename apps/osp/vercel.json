@@ -9,6 +9,7 @@
     { "source": "/app/forms/builder", "destination": "/app/index.html" },
     { "source": "/app/documents", "destination": "/app/index.html" },
     { "source": "/app/clarifications", "destination": "/app/index.html" },
+    { "source": "/app/cases/:caseId", "destination": "/app/index.html" },
     { "source": "/app/cases/:caseId/review", "destination": "/app/index.html" },
     { "source": "/app/cases/:caseId/signature", "destination": "/app/index.html" },
     { "source": "/app/cases/:caseId/authorization", "destination": "/app/index.html" },

@@ -78,6 +78,13 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
       connection_exists: false, pubsub_configured: null, watch_configured: null,
       token_expires_at: null, watch_expires_at: null, error_present: false, error_code: null,
     }],
+    [],
+    [{
+      case_id: '22222222-2222-4222-8222-222222222222', supplier_name: 'Synthetic Supplier', state: 'received',
+      aggregate_version: '1', blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00Z', updated_at: '2030-01-01T00:00:00Z',
+      message_count: '1', attachment_count: '0', document_count: '0', latest_subject: null, latest_sender_domain: null,
+      latest_received_at: null, recent_events: [],
+    }],
   ]);
   const store = createPostgresOspReadStore({
     databaseUrl: 'postgresql://synthetic.example.test/db',
@@ -86,8 +93,10 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
   assert.equal(await store.resolveWorkspace(identity), organizationId);
   assert.equal((await store.readPipeline(organizationId)).requests_total, '1');
   assert.equal((await store.readGmail(organizationId)).connection_exists, false);
+  assert.deepEqual(await store.readCases(organizationId), []);
+  assert.equal((await store.readCase(organizationId, '22222222-2222-4222-8222-222222222222')).state, 'received');
 
-  assert.equal(fake.calls.length, 3);
+  assert.equal(fake.calls.length, 5);
   assert.match(fake.calls[0].text, /FROM\s+public\.external_identities\s+identity_record/i);
   assert.match(fake.calls[0].text, /JOIN\s+public\.external_organization_links\s+organization_link/i);
   assert.match(fake.calls[0].text, /identity_record\.external_subject\s*=\s*\$/i);
@@ -104,10 +113,14 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
   assert.match(fake.calls[2].text, /FROM\s+public\.provider_gmail_connections/i);
   assert.match(fake.calls[2].text, /purpose\s*=\s*'provider_onboarding'/i);
   assert.match(fake.calls[2].text, /mailbox_email\s*=\s*'carriers@xbfreight\.com'/i);
-  for (const call of fake.calls.slice(1)) {
-    assert.match(call.text, /WHERE\s+organization_id\s*=\s*\$/i);
-    assert.deepEqual(call.values, [organizationId]);
-  }
+  assert.match(fake.calls[3].text, /FROM\s+osp_private\.customer_registration_cases\s+case_record/i);
+  assert.match(fake.calls[3].text, /LIMIT\s+100/i);
+  assert.match(fake.calls[4].text, /case_record\.organization_id\s*=\s*\$/i);
+  assert.match(fake.calls[4].text, /case_record\.id\s*=\s*\$/i);
+  assert.deepEqual(fake.calls[1].values, [organizationId]);
+  assert.deepEqual(fake.calls[2].values, [organizationId]);
+  assert.deepEqual(fake.calls[3].values, [organizationId]);
+  assert.deepEqual(fake.calls[4].values, [organizationId, '22222222-2222-4222-8222-222222222222']);
   assert.equal(fake.calls.some((call) => /\b(?:insert|update|delete|merge|call)\b/i.test(call.text)), false);
   assert.equal(fake.calls.some((call) => /select\s+\*/i.test(call.text)), false);
 });

@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { OspApiError } from './http.ts';
 import {
   getGmailHealth,
+  getCustomerRegistrationCase,
+  listCustomerRegistrationCases,
   listOnboardingWorkspace,
+  normalizeCaseDetail,
+  normalizeCaseSummary,
   normalizeCanonicalDecimal,
   normalizeGmailReadModel,
   normalizePipelineReadModel,
@@ -11,6 +15,13 @@ import {
 import type { OspReadStore } from './store.ts';
 
 const organizationId = '11111111-1111-4111-8111-111111111111';
+const caseId = '22222222-2222-4222-8222-222222222222';
+
+const caseSummary = {
+  case_id: caseId, supplier_name: 'Synthetic Supplier', state: 'received', aggregate_version: '1',
+  blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00Z', updated_at: '2030-01-01T01:00:00Z',
+  message_count: '1', attachment_count: 2, document_count: '0',
+};
 
 function expectDependency(fn: () => unknown) {
   assert.throws(fn, (error) => error instanceof OspApiError && error.code === 'DEPENDENCY_UNAVAILABLE');
@@ -122,6 +133,25 @@ Deno.test('normalizeGmailReadModel rejects Date values outside an exact four-dig
   }));
 });
 
+Deno.test('case read models expose bounded metadata, canonical counts and no message body', () => {
+  assert.deepEqual(normalizeCaseSummary(caseSummary), {
+    ...caseSummary, aggregate_version: 1, attachment_count: '2',
+    created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T01:00:00.000Z',
+  });
+  const detail = normalizeCaseDetail({
+    ...caseSummary,
+    latest_subject: 'Customer setup request', latest_sender_domain: 'supplier.example', latest_received_at: '2030-01-01T00:00:00Z',
+    recent_events: [{ sequence: '1', state: 'received', occurred_at: '2030-01-01T00:00:00Z', reason_code: 'case_received' }],
+  });
+  assert.deepEqual(detail.latest_request, {
+    subject: 'Customer setup request', sender_domain: 'supplier.example', received_at: '2030-01-01T00:00:00.000Z',
+  });
+  assert.equal('safe_body' in detail, false);
+  assert.equal(detail.recent_events[0].sequence, 1);
+  expectDependency(() => normalizeCaseSummary({ ...caseSummary, supplier_name: ' Synthetic Supplier' }));
+  expectDependency(() => normalizeCaseDetail({ ...caseSummary, latest_subject: 'Only subject', latest_sender_domain: null, latest_received_at: null, recent_events: [] }));
+});
+
 for (const [name, value] of [
   ['disconnected non-null field', {
     connection_exists: false, pubsub_configured: false, watch_configured: null,
@@ -175,8 +205,15 @@ Deno.test('listOnboardingWorkspace and getGmailHealth scope each read to the res
         token_expires_at: null, watch_expires_at: null, error_present: false, error_code: null,
       };
     },
+    async readCases(id: string) { seen.push(id); return [caseSummary]; },
+    async readCase(id: string) {
+      seen.push(id);
+      return { ...caseSummary, latest_subject: null, latest_sender_domain: null, latest_received_at: null, recent_events: [] };
+    },
   };
   assert.equal((await listOnboardingWorkspace(store, organizationId)).requests_total, '1');
   assert.equal((await getGmailHealth(store, organizationId)).connection_exists, false);
-  assert.deepEqual(seen, [organizationId, organizationId]);
+  assert.equal((await listCustomerRegistrationCases(store, organizationId)).cases.length, 1);
+  assert.equal((await getCustomerRegistrationCase(store, organizationId, caseId)).case_id, caseId);
+  assert.deepEqual(seen, [organizationId, organizationId, organizationId, organizationId]);
 });

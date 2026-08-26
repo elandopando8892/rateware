@@ -3,12 +3,12 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { OspReadClient } from '../../api/osp-client';
+import type { OspCaseReadClient, OspClient, OspReadClient } from '../../api/osp-client';
 import { PipelineOverview } from './PipelineOverview';
 
 afterEach(() => { cleanup(); onlineManager.setOnline(true); });
 
-function renderOverview(client: OspReadClient) {
+function renderOverview(client: OspReadClient & Partial<OspCaseReadClient> & Partial<Pick<OspClient, 'syncGmailInbox'>>) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={queryClient}><PipelineOverview client={client} /></QueryClientProvider>);
 }

@@ -1,6 +1,8 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 
-import type { OspClient, OspReadClient } from '../../api/osp-client';
+import type { OspCaseReadClient, OspClient, OspReadClient } from '../../api/osp-client';
+import { caseNextGates, caseStateLabels, caseStateTone, formatCaseDate } from '../cases/case-presenter';
 import { deriveMailboxHealth, type MailboxHealth } from './pipeline-health';
 import { pipelineOverviewQueryKey, usePipelineOverview } from './use-pipeline-overview';
 
@@ -19,11 +21,17 @@ const healthLabels: Record<MailboxHealth, string> = {
   degraded: 'Degraded',
 };
 
-type PipelineClient = OspReadClient & Partial<Pick<OspClient, 'syncGmailInbox'>>;
+type PipelineClient = OspReadClient & Partial<OspCaseReadClient> & Partial<Pick<OspClient, 'syncGmailInbox'>>;
 
 export function PipelineOverview({ client }: { client: PipelineClient }) {
   const queryClient = useQueryClient();
   const { pipeline, gmail } = usePipelineOverview(client);
+  const cases = useQuery({
+    queryKey: pipelineOverviewQueryKey.cases,
+    queryFn: () => client.listCustomerRegistrationCases?.() ?? Promise.resolve([]),
+    retry: false,
+    staleTime: 0,
+  });
   const health = gmail.data ? deriveMailboxHealth(gmail.data) : 'unknown';
   const sync = useMutation({
     mutationFn: async () => {
@@ -34,6 +42,7 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: pipelineOverviewQueryKey.pipeline }),
         queryClient.invalidateQueries({ queryKey: pipelineOverviewQueryKey.gmail }),
+        queryClient.invalidateQueries({ queryKey: pipelineOverviewQueryKey.cases }),
       ]);
     },
   });
@@ -71,6 +80,34 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
               </div>
             ))}
           </dl>
+        ) : null}
+      </section>
+
+      <section className="panel cases-panel" aria-labelledby="cases-title">
+        <div className="panel-heading">
+          <div><p className="eyebrow">Work queue</p><h2 id="cases-title">Customer setup cases</h2></div>
+          <span className="case-count">{cases.data?.length ?? '—'} visible</span>
+        </div>
+        {cases.isPending ? <p role="status">Loading customer setup cases…</p> : null}
+        {cases.isError ? <p role="alert">Cases are temporarily unavailable.</p> : null}
+        {cases.data?.length === 0 ? <p className="empty-cases">No cases have been captured yet. Sync the connected inbox to check for new requests.</p> : null}
+        {cases.data && cases.data.length > 0 ? (
+          <div className="case-list">
+            {cases.data.map((caseRecord) => (
+              <Link className="case-card" key={caseRecord.case_id} to="/app/cases/$caseId" params={{ caseId: caseRecord.case_id }}>
+                <div className="case-card-main">
+                  <span className={`case-state case-state-${caseStateTone(caseRecord.state)}`}>{caseStateLabels[caseRecord.state]}</span>
+                  <h3>{caseRecord.supplier_name}</h3>
+                  <p>{caseNextGates[caseRecord.state]}</p>
+                </div>
+                <dl className="case-card-meta">
+                  <div><dt>Updated</dt><dd>{formatCaseDate(caseRecord.updated_at)}</dd></div>
+                  <div><dt>Evidence</dt><dd>{caseRecord.message_count} email · {caseRecord.attachment_count} files</dd></div>
+                </dl>
+                <span className="case-open">Open case →</span>
+              </Link>
+            ))}
+          </div>
         ) : null}
       </section>
 

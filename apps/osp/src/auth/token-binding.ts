@@ -183,7 +183,7 @@ function validateAccessClaims(
     subject,
     organization: productionReadonly
       ? PRODUCTION_RATEWARE_ORGANIZATION
-      : externalOrganization,
+      : externalOrganization as string,
     email,
     emailVerified: true,
   };

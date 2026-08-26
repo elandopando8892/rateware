@@ -1,5 +1,5 @@
 import type { OspClient } from '../api/osp-client';
-import type { ApprovalCommunicationsWorkspace, ClarificationReview, DocumentVersion } from '../api/contracts';
+import type { ApprovalCommunicationsWorkspace, CaseDetail, CaseSummary, ClarificationReview, DocumentVersion } from '../api/contracts';
 import type { AuthPort, BoundSession } from '../auth/auth-port';
 
 const previewSession: BoundSession = Object.freeze({
@@ -18,6 +18,44 @@ const caseId = '11111111-1111-4111-8111-111111111111';
 const payloadId = '22222222-2222-4222-8222-222222222222';
 const shaA = 'a'.repeat(64);
 const shaB = 'b'.repeat(64);
+
+const previewCases: readonly CaseSummary[] = Object.freeze([
+  {
+    case_id: caseId, supplier_name: 'Northstar Components', state: 'ready_to_send', aggregate_version: 12,
+    blocked_by_duplicate_review: false, created_at: '2026-08-22T14:30:00.000Z', updated_at: '2026-08-26T18:20:00.000Z',
+    message_count: '4', attachment_count: '8', document_count: '8',
+  },
+  {
+    case_id: '11111111-1111-4111-8111-111111111112', supplier_name: 'Altura Industrial', state: 'operations_review', aggregate_version: 6,
+    blocked_by_duplicate_review: false, created_at: '2026-08-24T16:15:00.000Z', updated_at: '2026-08-26T16:40:00.000Z',
+    message_count: '2', attachment_count: '5', document_count: '4',
+  },
+  {
+    case_id: '11111111-1111-4111-8111-111111111113', supplier_name: 'Lumen Packaging', state: 'awaiting_clarification', aggregate_version: 3,
+    blocked_by_duplicate_review: false, created_at: '2026-08-25T15:05:00.000Z', updated_at: '2026-08-26T15:15:00.000Z',
+    message_count: '3', attachment_count: '2', document_count: '1',
+  },
+  {
+    case_id: '11111111-1111-4111-8111-111111111114', supplier_name: 'Meridian Freight Systems', state: 'received', aggregate_version: 1,
+    blocked_by_duplicate_review: false, created_at: '2026-08-26T14:05:00.000Z', updated_at: '2026-08-26T14:05:00.000Z',
+    message_count: '1', attachment_count: '3', document_count: '0',
+  },
+]);
+
+const previewCaseDetail: CaseDetail = Object.freeze({
+  ...previewCases[0],
+  latest_request: {
+    subject: 'Customer setup package and compliance questionnaire',
+    sender_domain: 'northstar.example',
+    received_at: '2026-08-26T17:55:00.000Z',
+  },
+  recent_events: [
+    { sequence: 12, state: 'ready_to_send' as const, occurred_at: '2026-08-26T18:20:00.000Z', reason_code: 'sales_authorized' },
+    { sequence: 11, state: 'sales_authorization' as const, occurred_at: '2026-08-26T17:40:00.000Z', reason_code: 'signature_applied' },
+    { sequence: 10, state: 'signature_approval' as const, occurred_at: '2026-08-26T16:25:00.000Z', reason_code: 'operations_review_completed' },
+    { sequence: 1, state: 'received' as const, occurred_at: '2026-08-22T14:30:00.000Z', reason_code: 'case_received' },
+  ],
+});
 
 const previewDocuments: readonly DocumentVersion[] = Object.freeze([
   { id: '30000000-0000-4000-8000-000000000001', documentType: 'proof_of_address', version: 3, status: 'approved', validFrom: '2026-08-01', expiresAt: '2026-10-30' },
@@ -101,6 +139,18 @@ function createPreviewClient(): OspClient {
       error_code: null,
       outbound_enabled: false,
     }),
+    listCustomerRegistrationCases: async () => previewCases,
+    getCustomerRegistrationCase: async (requestedCaseId) => requestedCaseId === caseId
+      ? previewCaseDetail
+      : {
+          ...(previewCases.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCases[3]),
+          latest_request: {
+            subject: 'Supplier onboarding request — synthetic preview',
+            sender_domain: 'example.test',
+            received_at: '2026-08-26T14:05:00.000Z',
+          },
+          recent_events: [{ sequence: 1, state: 'received' as const, occurred_at: '2026-08-26T14:05:00.000Z', reason_code: 'case_received' }],
+        },
     syncGmailInbox: async () => ({
       discovered: 2,
       inserted_messages: 1,

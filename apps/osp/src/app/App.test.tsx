@@ -53,6 +53,8 @@ function client(): OspClient {
       token_expires_at: null, watch_expires_at: null, error_present: false as const,
       error_code: null, outbound_enabled: false as const,
     })),
+    listCustomerRegistrationCases: vi.fn(async () => []),
+    getCustomerRegistrationCase: vi.fn(async () => { throw new Error('not used'); }),
     listDocumentVersions: vi.fn(async () => []),
     uploadDocumentVersion: vi.fn(async () => ({ id: '22222222-2222-4222-8222-222222222222', version: 1, expiresAt: '2026-11-24' })),
     approveDocumentVersion: vi.fn(async (input) => ({ id: input.versionId, status: 'approved' as const })),
@@ -76,6 +78,24 @@ describe('App authentication and routing', () => {
     render(<App authPort={authPort(session)} apiClient={client()} buildProfile="preview-synthetic" routerHistory={history} />);
     expect(screen.getByText(/Preview sintética/)).toBeInTheDocument();
     expect(await screen.findByText('operator@example.test')).toBeInTheDocument();
+  });
+
+  it('opens a read-only case workspace with the next gate and redacted request summary', async () => {
+    const api = client();
+    vi.mocked(api.getCustomerRegistrationCase).mockResolvedValue({
+      case_id: '22222222-2222-4222-8222-222222222222', supplier_name: 'Synthetic Supplier', state: 'received', aggregate_version: 1,
+      blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T01:00:00.000Z',
+      message_count: '1', attachment_count: '2', document_count: '0',
+      latest_request: { subject: 'Customer setup request', sender_domain: 'supplier.example', received_at: '2030-01-01T00:00:00.000Z' },
+      recent_events: [{ sequence: 1, state: 'received', occurred_at: '2030-01-01T00:00:00.000Z', reason_code: 'case_received' }],
+    });
+    const history = createMemoryHistory({ initialEntries: ['/app/cases/22222222-2222-4222-8222-222222222222'] });
+    render(<App authPort={authPort(session)} apiClient={api} routerHistory={history} />);
+    expect(await screen.findByRole('heading', { name: 'Synthetic Supplier' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Received', level: 2 })).toBeInTheDocument();
+    expect(screen.getByText('Analyze the request and identify required documents.')).toBeInTheDocument();
+    expect(screen.getByText('Message bodies and private files stay outside this summary.')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).toHaveTextContent('Sign out');
   });
 
   it('hides workspace data while authentication is checking', () => {
@@ -264,7 +284,9 @@ describe('App authentication and routing', () => {
       getApprovalCommunicationsWorkspace: vi.fn(() => pending), completeOperationsReview: vi.fn(() => pending),
       approveAndApplySignature: vi.fn(() => pending), freezeOutboundPayload: vi.fn(() => pending),
       authorizeOutboundPayload: vi.fn(() => pending), requestAuthorizedSend: vi.fn(() => pending),
-      listOnboardingWorkspace: vi.fn(() => pending), getGmailStatus: vi.fn(() => pending), listDocumentVersions: vi.fn(() => pending),
+      listOnboardingWorkspace: vi.fn(() => pending), getGmailStatus: vi.fn(() => pending),
+      listCustomerRegistrationCases: vi.fn(() => pending), getCustomerRegistrationCase: vi.fn(() => pending),
+      listDocumentVersions: vi.fn(() => pending),
       uploadDocumentVersion: vi.fn(() => pending), approveDocumentVersion: vi.fn(() => pending), listClarificationReviews: vi.fn(() => pending),
       saveClarificationReview: vi.fn(() => pending),
     };

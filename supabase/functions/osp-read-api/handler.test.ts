@@ -9,6 +9,7 @@ const origins = [
   'https://osp.heymarksman.com',
 ] as const;
 const organizationId = '11111111-1111-4111-8111-111111111111';
+const caseId = '22222222-2222-4222-8222-222222222222';
 const identity = {
   issuer: 'https://auth.heymarksman.com',
   authorizedParty: 'synthetic-public-client',
@@ -38,6 +39,16 @@ function baseStore(overrides: Partial<OspReadStore> = {}): OspReadStore {
         watch_expires_at: '2030-01-02T00:00:00Z',
         error_present: false,
         error_code: null,
+      };
+    },
+    async readCases() { return []; },
+    async readCase() {
+      return {
+        case_id: caseId, supplier_name: 'Synthetic Supplier', state: 'received', aggregate_version: 1,
+        blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00Z', updated_at: '2030-01-01T01:00:00Z',
+        message_count: 1, attachment_count: 2, document_count: 0,
+        latest_subject: 'Customer setup request', latest_sender_domain: 'supplier.example', latest_received_at: '2030-01-01T00:00:00Z',
+        recent_events: [{ sequence: 1, state: 'received', occurred_at: '2030-01-01T00:00:00Z', reason_code: 'case_received' }],
       };
     },
     ...overrides,
@@ -81,7 +92,7 @@ function assertExactPostCors(response: Response, origin: string) {
   assert.equal(response.headers.has('access-control-allow-headers'), false);
 }
 
-Deno.test('createOspReadHandler returns the exact pipeline and Gmail read responses', async () => {
+Deno.test('createOspReadHandler returns the exact pipeline, Gmail and case read responses', async () => {
   const subject = handler();
   const pipeline = await subject(post(JSON.stringify({
     version: 1,
@@ -116,6 +127,23 @@ Deno.test('createOspReadHandler returns the exact pipeline and Gmail read respon
       outbound_enabled: false,
     },
   });
+
+  const cases = await subject(post(JSON.stringify({ version: 1, action: 'list_customer_registration_cases' })));
+  assert.equal(cases.status, 200);
+  assert.deepEqual(await json(cases), { version: 1, data: { cases: [] } });
+
+  const detail = await subject(post(JSON.stringify({ version: 1, action: 'get_customer_registration_case', case_id: caseId })));
+  assert.equal(detail.status, 200);
+  assert.deepEqual(await json(detail), {
+    version: 1,
+    data: {
+      case_id: caseId, supplier_name: 'Synthetic Supplier', state: 'received', aggregate_version: 1,
+      blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T01:00:00.000Z',
+      message_count: '1', attachment_count: '2', document_count: '0',
+      latest_request: { subject: 'Customer setup request', sender_domain: 'supplier.example', received_at: '2030-01-01T00:00:00.000Z' },
+      recent_events: [{ sequence: 1, state: 'received', occurred_at: '2030-01-01T00:00:00.000Z', reason_code: 'case_received' }],
+    },
+  });
 });
 
 for (const action of [
@@ -141,6 +169,9 @@ for (const body of [
   { version: 1, action: 'provider_gmail_status', extra: true },
   { version: 1, action: 'provider_gmail_status', organization_id: organizationId },
   { version: 1, action: 'provider_gmail_status', tenant: 'synthetic-org' },
+  { version: 1, action: 'get_customer_registration_case' },
+  { version: 1, action: 'get_customer_registration_case', case_id: 'not-a-uuid' },
+  { version: 1, action: 'list_customer_registration_cases', case_id: caseId },
 ]) {
   Deno.test(`createOspReadHandler rejects strict-request violation ${JSON.stringify(body)}`, async () => {
     const response = await handler()(post(JSON.stringify(body)));

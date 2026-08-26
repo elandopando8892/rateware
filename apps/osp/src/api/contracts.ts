@@ -3,14 +3,27 @@ import { z } from 'zod';
 export const OSP_READ_ACTIONS = [
   'list_provider_onboarding_workspace',
   'provider_gmail_status',
+  'list_customer_registration_cases',
+  'get_customer_registration_case',
 ] as const;
 
 export const CanonicalCountSchema = z.string().regex(/^(0|[1-9]\d*)$/);
 
-export const OspReadRequestSchema = z.strictObject({
-  version: z.literal(1),
-  action: z.enum(OSP_READ_ACTIONS),
-});
+export const OspReadRequestSchema = z.union([
+  z.strictObject({
+    version: z.literal(1),
+    action: z.enum([
+      'list_provider_onboarding_workspace',
+      'provider_gmail_status',
+      'list_customer_registration_cases',
+    ]),
+  }),
+  z.strictObject({
+    version: z.literal(1),
+    action: z.literal('get_customer_registration_case'),
+    case_id: z.uuid(),
+  }),
+]);
 
 export const PipelineReadModelSchema = z.strictObject({
   requests_total: CanonicalCountSchema,
@@ -76,6 +89,55 @@ export const PipelineSuccessResponseSchema = z.strictObject({
 export const GmailSuccessResponseSchema = z.strictObject({
   version: z.literal(1),
   data: GmailReadModelSchema,
+});
+
+export const CaseStateSchema = z.enum([
+  'received', 'analyzing_requirements', 'awaiting_clarification',
+  'awaiting_xbf_information', 'preparing', 'operations_review',
+  'signature_approval', 'sales_authorization', 'ready_to_send',
+  'sent', 'manual_reconciliation_required', 'accepted', 'rejected', 'closed',
+]);
+
+export const CaseSummarySchema = z.strictObject({
+  case_id: z.uuid(),
+  supplier_name: z.string().min(1).max(256),
+  state: CaseStateSchema,
+  aggregate_version: z.number().int().min(0).max(2_147_483_647),
+  blocked_by_duplicate_review: z.boolean(),
+  created_at: utcDate,
+  updated_at: utcDate,
+  message_count: CanonicalCountSchema,
+  attachment_count: CanonicalCountSchema,
+  document_count: CanonicalCountSchema,
+});
+
+export const CaseEventSchema = z.strictObject({
+  sequence: z.number().int().min(1).max(2_147_483_647),
+  state: CaseStateSchema,
+  occurred_at: utcDate,
+  reason_code: z.string().min(1).max(128),
+});
+
+export const CaseDetailSchema = CaseSummarySchema.extend({
+  latest_request: z.strictObject({
+    subject: z.string().min(1).max(998).nullable(),
+    sender_domain: z.string().min(1).max(253).nullable(),
+    received_at: utcDate.nullable(),
+  }).refine((value) => {
+    const populated = [value.subject, value.sender_domain, value.received_at].filter((item) => item !== null).length;
+    return populated === 0 || populated === 3;
+  }, 'Latest request fields must be populated together'),
+  recent_events: z.array(CaseEventSchema).max(20),
+});
+
+export const CaseListSuccessResponseSchema = z.strictObject({
+  version: z.literal(1),
+  data: z.strictObject({ cases: z.array(CaseSummarySchema).max(100) }),
+});
+
+export const CaseDetailSuccessResponseSchema = z.strictObject({
+  version: z.literal(1),
+  data: CaseDetailSchema,
 });
 
 export const GmailSyncSuccessResponseSchema = z.strictObject({
@@ -259,8 +321,11 @@ export const SendCommandReceiptSchema = z.strictObject({
 export type PipelineReadModel = z.infer<typeof PipelineReadModelSchema>;
 export type GmailReadModel = z.infer<typeof GmailReadModelSchema>;
 export type GmailSyncResult = z.infer<typeof GmailSyncSuccessResponseSchema>['data'];
-export type OspReadAction = z.infer<typeof OspReadRequestSchema>['action'];
+export type OspReadRequest = z.infer<typeof OspReadRequestSchema>;
 export type OspPublicErrorCode = z.infer<typeof OspPublicErrorCodeSchema>;
+export type CaseState = z.infer<typeof CaseStateSchema>;
+export type CaseSummary = z.infer<typeof CaseSummarySchema>;
+export type CaseDetail = z.infer<typeof CaseDetailSchema>;
 export type QuarterlyDocumentType = z.infer<typeof QuarterlyDocumentTypeSchema>;
 export type DocumentVersion = z.infer<typeof DocumentVersionSchema>;
 export type ClarificationQuestion = z.infer<typeof ClarificationQuestionSchema>;

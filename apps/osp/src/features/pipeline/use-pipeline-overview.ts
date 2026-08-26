@@ -6,6 +6,7 @@ import type { OspReadClient } from '../../api/osp-client';
 export const pipelineOverviewQueryKey = Object.freeze({
   pipeline: ['osp', 'pipeline-overview'] as const,
   gmail: ['osp', 'gmail-health'] as const,
+  cases: ['osp', 'customer-registration-cases'] as const,
 });
 
 function hideStaleData<T>(query: UseQueryResult<T, Error>): UseQueryResult<T, Error> {

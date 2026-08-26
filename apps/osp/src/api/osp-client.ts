@@ -2,6 +2,10 @@ import type { AuthPort, BoundSession } from '../auth/auth-port';
 import { createWorkflowClient, type WorkflowClient } from './workflow-client';
 import type { ZodType } from 'zod';
 import {
+  CaseDetailSuccessResponseSchema,
+  CaseListSuccessResponseSchema,
+  type CaseDetail,
+  type CaseSummary,
   DocumentApprovalResponseSchema,
   DocumentUploadResponseSchema,
   DocumentVersionsResponseSchema,
@@ -16,7 +20,7 @@ import {
   type GmailReadModel,
   OspErrorResponseSchema,
   type OspPublicErrorCode,
-  type OspReadAction,
+  type OspReadRequest,
   PipelineSuccessResponseSchema,
   type PipelineReadModel,
   type QuarterlyDocumentType,
@@ -29,11 +33,16 @@ export interface OspReadClient {
   getGmailStatus(): Promise<GmailReadModel>;
 }
 
+export interface OspCaseReadClient {
+  listCustomerRegistrationCases(): Promise<readonly CaseSummary[]>;
+  getCustomerRegistrationCase(caseId: string): Promise<CaseDetail>;
+}
+
 export type DocumentUploadInput = { documentType: QuarterlyDocumentType; validFrom: string; contentType: string; bytes: Uint8Array };
 export type DocumentApprovalInput = { versionId: string; expectedVersion: number; reviewBeforeSha256: string; reviewAfterSha256: string };
 export type ClarificationReviewInput = { draftId: string; expectedCaseVersion: number; expectedCanonicalSha256: string; questions: readonly ClarificationQuestion[] };
 
-export interface OspClient extends OspReadClient, WorkflowClient {
+export interface OspClient extends OspReadClient, OspCaseReadClient, WorkflowClient {
   syncGmailInbox?(): Promise<GmailSyncResult>;
   listDocumentVersions(): Promise<readonly DocumentVersion[]>;
   uploadDocumentVersion(input: DocumentUploadInput): Promise<{ id: string; version: number; expiresAt: string }>;
@@ -105,7 +114,7 @@ export function createOspClient(options: ClientOptions): OspClient {
   const caseEndpoint = `${options.supabaseUrl.replace(/\/+$/, '')}/functions/v1/osp-case-api`;
   const workflow = createWorkflowClient(options);
 
-  async function read<T>(action: OspReadAction): Promise<T> {
+  async function read<T>(request: OspReadRequest, schema: ZodType<{ version: 1; data: T }>): Promise<T> {
     const captured = options.getCurrentSession();
     if (!captured) throw new OspClientError('NO_SESSION');
     let refreshed = false;
@@ -131,7 +140,7 @@ export function createOspClient(options: ClientOptions): OspClient {
             authorization: `Bearer ${token}`,
             'content-type': 'application/json',
           },
-          body: JSON.stringify({ version: 1, action }),
+          body: JSON.stringify(request),
         });
       } catch {
         assertCurrent(options, captured);
@@ -166,9 +175,6 @@ export function createOspClient(options: ClientOptions): OspClient {
       const body = await safeJson(response);
       assertCurrent(options, captured);
 
-      const schema = action === 'list_provider_onboarding_workspace'
-        ? PipelineSuccessResponseSchema
-        : GmailSuccessResponseSchema;
       const parsed = schema.safeParse(body);
       if (!parsed.success) throw new OspClientError('INVALID_RESPONSE');
       assertCurrent(options, captured);
@@ -311,8 +317,19 @@ export function createOspClient(options: ClientOptions): OspClient {
 
   return Object.freeze({
     ...workflow,
-    listOnboardingWorkspace: () => read<PipelineReadModel>('list_provider_onboarding_workspace'),
-    getGmailStatus: () => read<GmailReadModel>('provider_gmail_status'),
+    listOnboardingWorkspace: () => read<PipelineReadModel>(
+      { version: 1, action: 'list_provider_onboarding_workspace' }, PipelineSuccessResponseSchema,
+    ),
+    getGmailStatus: () => read<GmailReadModel>(
+      { version: 1, action: 'provider_gmail_status' }, GmailSuccessResponseSchema,
+    ),
+    listCustomerRegistrationCases: async () => (await read(
+      { version: 1, action: 'list_customer_registration_cases' }, CaseListSuccessResponseSchema,
+    )).cases,
+    getCustomerRegistrationCase: (caseId: string) => {
+      if (!UUID.test(caseId)) return Promise.reject(new OspClientError('INVALID_REQUEST'));
+      return read({ version: 1, action: 'get_customer_registration_case', case_id: caseId }, CaseDetailSuccessResponseSchema);
+    },
     syncGmailInbox,
     listDocumentVersions: async () => (await documentRequest({
       query: [['action', 'list_document_versions']], expectedStatus: 200, schema: DocumentVersionsResponseSchema,
