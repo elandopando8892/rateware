@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   carrierTemplateConflictSummary,
@@ -1163,6 +1164,32 @@ for (const changedContext of [
   assert.match(csv, /,"'=HYPERLINK\(""https:\/\/attacker\.test""\)",/);
   assert.match(csv, /,'\t=cmd,-700,'-2\+3,/);
   assert.match(csv, /"'\r@cmd",'  \+hidden,'\+candidate,'=chosen,false\r\n$/);
+}
+
+// The API always uses the server-side service role for saved lists and carrier
+// templates. Keep browser roles off the base table and preserve the legacy
+// dynamic-list CRUD operations required by that server path.
+{
+  const migration = readFileSync(
+    new URL("../supabase/migrations/20260825160000_carrier_list_templates.sql", import.meta.url),
+    "utf8"
+  );
+  assert.match(
+    migration,
+    /revoke all on table public\.vendor_segments\s+from public, anon, authenticated;/i
+  );
+  assert.doesNotMatch(
+    migration,
+    /create policy "authenticated users can read vendor segments"/i
+  );
+  assert.match(
+    migration,
+    /revoke all on table public\.vendor_segments\s+from service_role;/i
+  );
+  assert.match(
+    migration,
+    /grant select, insert, update, delete on table public\.vendor_segments\s+to service_role;/i
+  );
 }
 
 console.log("carrier-list-template browser domain tests passed");

@@ -6,6 +6,7 @@ const previewHtmlUrl = new URL("../output/carrier-list-templates-preview.html", 
 const previewJsUrl = new URL("../src/carrier-list-templates-preview.js", import.meta.url);
 const previewStylesUrl = new URL("../src/styles.css", import.meta.url);
 const vercelIgnoreUrl = new URL("../.vercelignore", import.meta.url);
+const bidRoomE2eUrl = new URL("../tools/bid-room-e2e.mjs", import.meta.url);
 
 test("preview deployment allowlists only the approved public HTML artifact", async () => {
   const vercelIgnore = await readFile(vercelIgnoreUrl, "utf8");
@@ -13,6 +14,17 @@ test("preview deployment allowlists only the approved public HTML artifact", asy
   assert.doesNotMatch(vercelIgnore, /^output\/$/m, "the whole output directory cannot be excluded");
   assert.match(vercelIgnore, /^output\/\*$/m, "generated output remains excluded by default");
   assert.match(vercelIgnore, /^!output\/carrier-list-templates-preview\.html$/m);
+});
+
+test("Bid Room E2E exposes a fail-closed, no-write carrier-template preview mode", async () => {
+  const source = await readFile(bidRoomE2eUrl, "utf8");
+
+  assert.match(source, /--carrier-list-templates-preview/);
+  assert.match(source, /Refusing carrier-template preview verification against production/i);
+  assert.match(source, /carrier-list-templates-preview/);
+  assert.match(source, /noindex,\\s\*noarchive/i);
+  assert.match(source, /Preview con datos simulados · sin acciones externas/);
+  assert.match(source, /No API, persistence, invitation, draft, Delivery, or provider call was issued/);
 });
 
 test("preview source is public, noindex, local-only, and uses the approved domain and icon systems", async () => {

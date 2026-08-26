@@ -2,7 +2,7 @@
 
 **Fecha:** 2026-08-25
 
-**Estado:** diseño visual y flujo aprobados; pendiente de plan de implementación
+**Estado:** implementación completa y componentes verificados localmente; pendiente de smoke integrado autenticado en no producción y del release autorizado
 
 **Producto:** Rateware — Carrier CRM y Bid Room
 
@@ -331,3 +331,29 @@ Cada evento incluye request ID, organización, actor, template ID, versión ante
 ## 14. Resultado esperado
 
 Carrier CRM se convierte en la única fuente de verdad para listas reutilizables de carriers. Bid Room consume esas listas sin alterarlas, Carrier Fit conserva la selección humana y Message/Delivery queue mantienen separadas la preparación y la ejecución de las invitaciones.
+
+## 15. Handoff de release — 2026-08-26
+
+La implementación está aislada en `codex/carrier-list-templates`. No se ha hecho push, migración remota, deployment de producción ni activación del flag.
+
+Evidencia cerrada antes del handoff:
+
+- la migración completa se aplicó en Supabase local PostgreSQL 17;
+- un probe transaccional con dos organizaciones validó constraints, grants, RLS, RPCs, orden estable, scope de workspace, conflicto de versión y journal; terminó en `ROLLBACK`;
+- el preview simulado en navegador validó Library → Builder → Carrier Fit → Message, creación sólo desde carriers CRM, preview de archivo, lifecycle, cuatro estados de elegibilidad, selección parcial y las compuertas de Message/Delivery; el smoke integrado autenticado queda en la secuencia no productiva;
+- el navegador terminó con cero errores o warnings y el verificador local confirmó cero primitivas de red en el preview;
+- las suites enfocadas, Deno check, action contract, Rateware stability y Bid Room multi-lane pasan;
+- el `npm test` raíz conserva el mismo stop de la línea base en P3-V2 closure: `e3e1c0b...` no es ancestro del squash productivo;
+- `supabase db advisors --local` no encontró errores; conserva dos warnings preexistentes ajenos a este feature;
+- `supabase db lint --local` conserva un error preexistente ajeno a este feature: `consolidate_exact_workspace_vendor_duplicates` referencia `public.rates`, tabla ausente en la pila local.
+
+Orden autorizado posteriormente, sin ejecutarlo desde este handoff:
+
+1. Push/revisión de la rama y merge del commit aprobado.
+2. Aplicar la migración en un ambiente no productivo y verificarla.
+3. Desplegar API y estáticos con `CARRIER_LIST_TEMPLATES_V2_ENABLED=false`.
+4. Ejecutar smoke autenticado y probes de tenant/permisos en no producción.
+5. Activar el flag sólo en no producción y repetir Carrier CRM → Carrier Fit → Message.
+6. Obtener autorización explícita para migración, deploy y flag de producción.
+7. Aplicar migración y desplegar en producción manteniendo el flag apagado; ejecutar smoke.
+8. Activar el flag durante la ventana aprobada y monitorear auditoría/errores antes de declarar disponibilidad.
