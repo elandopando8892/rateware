@@ -7186,8 +7186,8 @@ function renderOutreachAudience() {
   rfxOutreachAudienceSummary.className = `status-pill ${selectedCount ? "success" : "muted"}`;
   if (rfxOpenThisRfxDrawerButton) {
     rfxOpenThisRfxDrawerButton.textContent = outreachAudienceLoading
-      ? "View RFx · Loading"
-      : `View RFx · ${formatNumber(outreachAudienceTotal)} carrier${outreachAudienceTotal === 1 ? "" : "s"}`;
+      ? "Open RFx workspace · Loading"
+      : `Open RFx workspace · ${formatNumber(outreachAudienceTotal)} carrier${outreachAudienceTotal === 1 ? "" : "s"}`;
   }
   // Keep the Message workspace truthful when the next delivery wave changes here.
   if (rfxLaunchWorkspace === "message") renderOutreachPreview();

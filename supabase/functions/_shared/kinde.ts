@@ -7,7 +7,11 @@ const DEFAULT_CORS_ORIGINS = [
   "http://127.0.0.1:3000",
   "http://localhost:3000"
 ];
-const configuredCorsOrigins = (Deno.env.get("RATEWARE_CORS_ORIGINS") || Deno.env.get("RATEWARE_CORS_ORIGIN") || DEFAULT_CORS_ORIGINS.join(","))
+const configuredCorsOrigins = [
+  Deno.env.get("RATEWARE_CORS_ORIGINS") || Deno.env.get("RATEWARE_CORS_ORIGIN") || DEFAULT_CORS_ORIGINS.join(","),
+  Deno.env.get("RATEWARE_CORS_EXTRA_ORIGINS") || ""
+]
+  .join(",")
   .split(",")
   .map((origin) => origin.trim())
   .filter((origin) => /^https?:\/\/[^\s,]+$/i.test(origin));
