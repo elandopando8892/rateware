@@ -29,9 +29,25 @@ function origin(value: string): string {
   }
 }
 
+function databaseConnection(value: string): string {
+  try {
+    const parsed = new URL(value);
+    const sslMode = parsed.searchParams.get("sslmode");
+    const allowedSslQuery = parsed.searchParams.size === 1 &&
+      ["require", "prefer"].includes(sslMode ?? "");
+    if (
+      !["postgres:", "postgresql:"].includes(parsed.protocol) ||
+      !parsed.hostname || (parsed.search && !allowedSslQuery) || parsed.hash
+    ) throw new Error("INVALID_RUNTIME_CONFIGURATION");
+    return value.replace(/\?sslmode=(?:require|prefer)$/, "");
+  } catch {
+    throw new Error("INVALID_RUNTIME_CONFIGURATION");
+  }
+}
+
 const supabaseUrl = origin(required("SUPABASE_URL"));
 const serviceRoleKey = required("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
-const databaseUrl = required("SUPABASE_DB_URL");
+const databaseUrl = databaseConnection(required("SUPABASE_DB_URL"));
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: {
     persistSession: false,
