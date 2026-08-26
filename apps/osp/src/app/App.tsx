@@ -14,7 +14,12 @@ function AuthenticatedApp({ apiClient, routerHistory }: { apiClient: OspClient; 
     return <main className="auth-page"><p role="status" aria-label="Checking access">Checking access…</p></main>;
   }
   if (auth.state.status === 'error') {
-    return <main className="auth-page"><p role="alert">We could not verify access. Please try again.</p></main>;
+    return (
+      <main className="auth-page">
+        <p role="alert">We could not verify access. Please try again.</p>
+        <button type="button" onClick={() => void auth.refresh()}>Retry access</button>
+      </main>
+    );
   }
   if (auth.state.status === 'anonymous') {
     const login = async () => {

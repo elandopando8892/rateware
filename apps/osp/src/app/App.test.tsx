@@ -111,6 +111,10 @@ describe('App authentication and routing', () => {
     render(<App authPort={port} apiClient={client()} />);
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not verify access/i);
     expect(screen.queryByText(/private callback detail/i)).not.toBeInTheDocument();
+    vi.mocked(port.revalidate).mockResolvedValueOnce(session);
+    await userEvent.click(screen.getByRole('button', { name: /retry access/i }));
+    expect(port.revalidate).toHaveBeenCalledWith('refresh');
+    expect(await screen.findByRole('heading', { name: /onboarding pipeline/i })).toBeInTheDocument();
   });
 
   it('redirects authenticated /app to pipeline and controls unknown /app routes', async () => {

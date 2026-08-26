@@ -46,7 +46,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/App.tsx",
-      "sha256": "78f9f54ee41c2d9273f1c43fb948b775807cc4164704c0fb98939be5a1d9054e"
+      "sha256": "e9459d6455e2232b5e150b74319e654c23ad4569a96917d6ed44829c16c5de97"
     },
     {
       "kind": "production-ui",
