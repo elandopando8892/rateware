@@ -12,19 +12,16 @@ const survey = { title: 'Registration', pages: [{ name: 'page_1', elements: [{ t
 
 describe('VisualFormBuilder', () => {
   it('fails closed before rendering the commercial creator without approved license evidence', () => {
-    render(<VisualFormBuilder initialSurvey={survey} canonicalFieldIds={['supplier.legalName']} licenseEvidence={{ approved: false, licenseKey: '' }} onSaveDraft={vi.fn()} onPublish={vi.fn()} />);
+    render(<VisualFormBuilder initialSurvey={survey} canonicalFieldIds={['supplier.legalName']} licenseEvidence={{ approved: false, licenseKey: '' }} templateContext={{ templateId: '11111111-1111-4111-8111-111111111111', versionId: '22222222-2222-4222-8222-222222222222', version: 1 }} onSaveDraft={vi.fn()} />);
     expect(screen.getByRole('alert')).toHaveTextContent(/license approval required/i);
     expect(screen.queryByRole('application')).not.toBeInTheDocument();
   });
 
-  it('offers accessible preview, draft, and publish actions over canonical output', async () => {
+  it('offers accessible preview and immutable draft creation over canonical output', async () => {
     const save = vi.fn();
-    const publish = vi.fn();
-    render(<VisualFormBuilder initialSurvey={survey} canonicalFieldIds={['supplier.legalName']} licenseEvidence={{ approved: true, licenseKey: 'synthetic-local-license' }} onSaveDraft={save} onPublish={publish} />);
+    render(<VisualFormBuilder initialSurvey={survey} canonicalFieldIds={['supplier.legalName']} licenseEvidence={{ approved: true, licenseKey: 'synthetic-local-license' }} templateContext={{ templateId: '11111111-1111-4111-8111-111111111111', versionId: '22222222-2222-4222-8222-222222222222', version: 1 }} onSaveDraft={save} />);
     expect(screen.getByRole('application', { name: /visual form canvas/i })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /save draft/i }));
-    fireEvent.click(screen.getByRole('button', { name: /publish version/i }));
-    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft', fields: expect.any(Array) })));
-    await waitFor(() => expect(publish).toHaveBeenCalledWith(expect.objectContaining({ status: 'published', fields: expect.any(Array) })));
+    fireEvent.click(screen.getByRole('button', { name: /save as new draft/i }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ status: 'draft', fields: expect.any(Array) })));
   });
 });

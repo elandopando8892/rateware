@@ -6,21 +6,18 @@ import 'survey-creator-core/survey-creator-core.min.css';
 import { surveyJsonToCanonical, type FormTemplateVersion } from './surveyjs-canonical-adapter';
 import { createRestrictedSurveyCreator, type SurveyLicenseEvidence } from './surveyjs-preset';
 
-const LOCAL_TEMPLATE_ID = '11111111-1111-4111-8111-111111111111';
-const LOCAL_VERSION_ID = '22222222-2222-4222-8222-222222222222';
-
 export function VisualFormBuilder({
   initialSurvey,
   canonicalFieldIds,
   licenseEvidence,
+  templateContext,
   onSaveDraft,
-  onPublish,
 }: {
   initialSurvey: unknown;
   canonicalFieldIds: readonly string[];
   licenseEvidence: SurveyLicenseEvidence;
-  onSaveDraft(template: FormTemplateVersion): void | Promise<void>;
-  onPublish(template: FormTemplateVersion): void | Promise<void>;
+  templateContext: { templateId: string; versionId: string; version: number };
+  onSaveDraft(surveyJson: unknown, template: FormTemplateVersion): void | Promise<void>;
 }) {
   const [notice, setNotice] = useState<string | null>(null);
   const creator = useMemo(() => {
@@ -32,19 +29,18 @@ export function VisualFormBuilder({
 
   if (!creator) return <p role="alert">SurveyJS license approval required before the visual builder can run.</p>;
 
-  const emit = async (status: 'draft' | 'published') => {
+  const emit = async () => {
     setNotice(null);
     try {
       const template = await surveyJsonToCanonical(creator.JSON, {
-        templateId: LOCAL_TEMPLATE_ID,
-        versionId: LOCAL_VERSION_ID,
-        version: 1,
-        status,
+        templateId: templateContext.templateId,
+        versionId: templateContext.versionId,
+        version: templateContext.version,
+        status: 'draft',
         canonicalFieldIds,
       });
-      if (status === 'draft') await onSaveDraft(template);
-      else await onPublish(template);
-      setNotice(status === 'draft' ? 'Draft validated.' : 'Published version validated.');
+      await onSaveDraft(creator.JSON, template);
+      setNotice('Draft validated and saved as a new version.');
     } catch {
       setNotice('The form contains an unsupported or unsafe setting.');
     }
@@ -57,8 +53,7 @@ export function VisualFormBuilder({
         <p>Build from the restricted toolbox. Raw JSON, executable logic, uploads, and arbitrary URLs are disabled.</p>
         <div className="form-builder-actions" aria-label="Form version actions">
           <button type="button" onClick={() => { creator.activeTab = 'preview'; }}>Preview</button>
-          <button type="button" onClick={() => { void emit('draft'); }}>Save draft</button>
-          <button type="button" onClick={() => { void emit('published'); }}>Publish version</button>
+          <button type="button" onClick={() => { void emit(); }}>Save as new draft</button>
         </div>
       </header>
       {notice ? <p role="status">{notice}</p> : null}

@@ -31,12 +31,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/contracts.ts",
-      "sha256": "9acd69ee1cb197e8902e1a856e75e6e57cfdea3639a385a42e659ea6ff6287a9"
+      "sha256": "bb9b343b5d65abcb911e5266cfe886dfc7cf2f808ef2a28e2ef5f27d682b6191"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/osp-client.ts",
-      "sha256": "81f85780dbde12b899d0b8a435c70a9267235f3dbdd544d6ed20a9a350395ba7"
+      "sha256": "3d55254ddd8eff75dea975a22861876fc2c7986f8dadc52ea00d5208beb2a5ca"
     },
     {
       "kind": "production-ui",
@@ -56,7 +56,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/router.tsx",
-      "sha256": "f630ba32a5ca0b026f2db9e32fc27e70c00061b2818ddeddf0ace8ff676b3444"
+      "sha256": "7b6ed4ba47e3228aa3f5f3aecac16c0cc57b3ecae128541a99eefad326cb16ad"
     },
     {
       "kind": "production-ui",
@@ -140,6 +140,11 @@
     },
     {
       "kind": "production-ui",
+      "path": "apps/osp/src/features/forms/FormTemplateLibrary.tsx",
+      "sha256": "46512927cc910fa89a49d3bb81561fa7a2b4dbeb31f714a5b4457a0b8384d331"
+    },
+    {
+      "kind": "production-ui",
       "path": "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
       "sha256": "e97f009bff0b44ca542ad42b3babaf0b3f9483112a3eead3d626682046f8d5fd"
     },
@@ -151,7 +156,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/VisualFormBuilder.tsx",
-      "sha256": "1e5ca94b811e927c0bf00031da0e314f80ad4b8fc1cf239d0118c0ed8665c720"
+      "sha256": "42aa9510afdee9723f528ff64caa8d1ea1e770a7c6b652a5d4782883df4f7f2e"
     },
     {
       "kind": "production-ui",
@@ -176,12 +181,17 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/main.tsx",
-      "sha256": "e553a44f167a09fefb53f3c93adf637ba1dad7d7034141a1e7b0ec4be7979ea7"
+      "sha256": "8a2bd3527e2bbbb4c9b1962efc1761506cb3eaf59319d90c23e5ba881fa0977a"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "cb3b42e107db21db9409ac753aa6ca9d01abd10afeba22a71233cf8892e4bb42"
+      "sha256": "f71d2ded207037b32c414db3dc7f0285975a6e6a71a84cc372b581cec22261c0"
+    },
+    {
+      "kind": "production-ui",
+      "path": "apps/osp/src/styles/forms.css",
+      "sha256": "477b1942e8e22451946444c8e4974271c1d76f514caca9ad98c21f3a8653c1ac"
     },
     {
       "kind": "production-ui",
@@ -196,7 +206,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/shell.css",
-      "sha256": "ff582f9b387f2948cb9f3683c353ee4e6f80d1a742bbe21a4d105b0e5084fde1"
+      "sha256": "efac09688dc45b70e0a5a370f2996cc24c7ad7e684105eb0d3a829e0f8e6af5b"
     },
     {
       "kind": "production-ui",

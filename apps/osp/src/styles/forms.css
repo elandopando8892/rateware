@@ -1,0 +1,24 @@
+.form-library { display: grid; gap: 1.25rem; }
+.form-library-hero { position: relative; display: flex; align-items: end; justify-content: space-between; gap: 2rem; padding: clamp(1.5rem, 4vw, 3rem); border-top: .45rem solid var(--xbf-navy); border-radius: var(--radius); overflow: hidden; background: var(--surface); box-shadow: var(--shadow); }
+.form-library-hero::after { content: ""; position: absolute; inset: 0 0 0 auto; width: 32%; opacity: .08; background: repeating-linear-gradient(135deg, var(--xbf-navy) 0 2px, transparent 2px 18px); }
+.form-library-hero > * { position: relative; z-index: 1; }
+.form-library-hero h1 { max-width: 12ch; margin: .2rem 0 .7rem; font-family: var(--font-display); font-size: clamp(2.4rem, 6vw, 4.8rem); line-height: .9; letter-spacing: -.05em; text-transform: uppercase; }
+.form-library-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 0; padding: 1px; border-radius: 16px; overflow: hidden; background: var(--line); }
+.form-library-metrics div { padding: 1rem 1.25rem; background: var(--surface); }
+.form-library-metrics dd { font-family: var(--font-display); font-size: 2rem; font-weight: 900; }
+.form-license-notice { margin: 0; padding: 1rem 1.25rem; border-left: 4px solid #d4a72c; border-radius: 0 12px 12px 0; background: #fff4cf; color: var(--xbf-navy-deep); }
+.form-library-layout { display: grid; grid-template-columns: minmax(17rem, .72fr) minmax(0, 1.5fr); gap: 1.25rem; align-items: start; }
+.form-template-list { display: grid; gap: .65rem; }
+.form-template-list button { display: flex; align-items: center; justify-content: space-between; gap: 1rem; width: 100%; padding: 1rem; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); text-align: left; }
+.form-template-list button.selected { border-color: var(--brand); box-shadow: inset 4px 0 0 var(--brand), 0 8px 20px rgb(15 35 55 / 8%); }
+.form-template-list button span:first-child { display: grid; gap: .3rem; }
+.form-template-list small, .form-template-detail header p, .form-field-list small { display: block; color: var(--muted); }
+.form-status { flex: none; border-radius: 999px; padding: .28rem .55rem; background: #eef2f6; color: var(--muted); font-size: .7rem; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
+.form-status.published { background: #e4f2ee; color: var(--brand-dark); }
+.form-template-detail, .form-empty { padding: clamp(1.25rem, 3vw, 2rem); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+.form-template-detail > header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.form-template-detail h2, .form-empty h2 { margin: .15rem 0; font-family: var(--font-display); font-size: clamp(1.7rem, 4vw, 2.7rem); line-height: 1; }
+.form-field-list { display: grid; gap: 1px; margin: 1.5rem 0 0; padding: 1px; list-style: none; background: var(--line); }
+.form-field-list li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .9rem 1rem; background: var(--surface); }
+.form-field-list li > span:last-child { color: var(--muted); font-size: .75rem; font-weight: 800; text-transform: uppercase; }
+@media (max-width: 760px) { .form-library-hero, .form-template-detail > header { align-items: stretch; flex-direction: column; } .form-library-layout { grid-template-columns: 1fr; } }

@@ -1,6 +1,6 @@
 import { Link, Outlet, createRootRouteWithContext, createRoute, createRouter, redirect, type RouterHistory } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { lazy, Suspense, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 
 import type { OspClient } from '../api/osp-client';
 import { OspWorkflowError } from '../api/workflow-client';
@@ -11,13 +11,10 @@ import { ClarificationReview } from '../features/communications/ClarificationRev
 import { OutboundPayloadPage } from '../features/communications/OutboundPayloadPage';
 import { QuarterlyDocumentVault } from '../features/documents/QuarterlyDocumentVault';
 import { CaseWorkspace } from '../features/cases/CaseWorkspace';
-import type { FormTemplateVersion } from '../features/forms/surveyjs-canonical-adapter';
+import { FormTemplateLibrary, XBF_STARTER_SURVEY } from '../features/forms/FormTemplateLibrary';
 import { PipelineOverview } from '../features/pipeline/PipelineOverview';
 import { OperationsReviewPage } from '../features/review/OperationsReviewPage';
 import { AppShell } from './AppShell';
-
-const VisualFormBuilder = lazy(() => import('../features/forms/VisualFormBuilder').then((module) => ({ default: module.VisualFormBuilder })));
-const FormRuntime = lazy(() => import('../features/forms/FormRuntime').then((module) => ({ default: module.FormRuntime })));
 
 type AppRouterContext = { apiClient: OspClient; email: string; logout(): Promise<void> };
 
@@ -31,7 +28,7 @@ const appRoute = createRoute({
       <AppShell email={context.email} onLogout={context.logout} homeLink={
         <nav className="primary-navigation" aria-label="Workspace">
           <Link className="wordmark" to="/app/pipeline" aria-label="XBF OSP pipeline home"><span aria-hidden="true">XBF</span><small>Powering Freight Logistics</small></Link>
-          <Link to="/app/forms/builder">Form builder</Link>
+          <Link to="/app/forms/builder">Forms</Link>
           <Link to="/app/documents">Documents</Link>
           <Link to="/app/clarifications">Clarifications</Link>
         </nav>
@@ -65,24 +62,24 @@ const caseWorkspaceRoute = createRoute({
   },
 });
 function FormBuilderWorkspace() {
-  const [published, setPublished] = useState<FormTemplateVersion | null>(null);
+  const { apiClient } = formBuilderRoute.useRouteContext();
+  const query = useQuery({ queryKey: ['form-template-catalog'], queryFn: () => apiClient.listFormTemplates(), retry: false, refetchOnWindowFocus: false });
+  const [busy, setBusy] = useState(false);
   const licenseEvidence = {
     approved: import.meta.env.VITE_OSP_SURVEYJS_LICENSE_APPROVED === 'true',
     licenseKey: import.meta.env.VITE_OSP_SURVEYJS_LICENSE_KEY ?? '',
   };
-  if (!licenseEvidence.approved || !licenseEvidence.licenseKey) {
-    return <section aria-labelledby="form-builder-title"><h1 id="form-builder-title">Visual form builder</h1><p role="alert">SurveyJS license approval required before the visual builder can run.</p></section>;
-  }
-  return <Suspense fallback={<p role="status">Loading visual form builder…</p>}>
-    <VisualFormBuilder
-      initialSurvey={{ title: 'Supplier registration', pages: [{ name: 'page_1', elements: [{ type: 'text', name: 'legal_name', title: 'Legal name', ospKind: 'text', ospCanonicalFieldId: 'supplier.legalName' }] }] }}
-      canonicalFieldIds={['supplier.legalName', 'supplier.address', 'fiscal.taxIdentifier', 'banking.accountNumber']}
-      licenseEvidence={licenseEvidence}
-      onSaveDraft={() => undefined}
-      onPublish={setPublished}
-    />
-    {published ? <section aria-labelledby="form-preview-title"><h2 id="form-preview-title">Published preview</h2><FormRuntime template={published} onComplete={() => undefined} /></section> : null}
-  </Suspense>;
+  if (query.isPending || query.fetchStatus !== 'idle') return <section className="workflow-page"><h1>Form template library</h1><p role="status">Loading controlled form versions…</p></section>;
+  if (query.isError || !query.data) return <section className="workflow-page"><h1>Form template library</h1><p role="alert">Form templates are unavailable. Reload and retry.</p></section>;
+  const mutate = async (operation: () => Promise<unknown>) => {
+    setBusy(true);
+    try { await operation(); await query.refetch(); } finally { setBusy(false); }
+  };
+  return <FormTemplateLibrary catalog={query.data} licenseEvidence={licenseEvidence} busy={busy}
+    onCreateStarter={() => mutate(() => apiClient.saveFormTemplateDraft({ idempotencyKey: `form-create:${crypto.randomUUID()}`, templateId: null, expectedVersion: 0, name: 'XBF customer setup', surveyJson: XBF_STARTER_SURVEY }))}
+    onSaveDraft={(input) => mutate(() => apiClient.saveFormTemplateDraft({ idempotencyKey: `form-save:${crypto.randomUUID()}`, ...input }))}
+    onPublish={(input) => mutate(() => apiClient.publishFormTemplate({ idempotencyKey: `form-publish:${crypto.randomUUID()}`, ...input }))}
+  />;
 }
 const formBuilderRoute = createRoute({
   getParentRoute: () => appRoute,

@@ -318,6 +318,54 @@ export const SendCommandReceiptSchema = z.strictObject({
   }),
 });
 
+const FormRuleConditionSchema = z.strictObject({
+  fieldId: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/),
+  operator: z.enum(['equals', 'not_equals', 'in', 'not_in', 'is_blank', 'is_present']),
+  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string()).min(1).max(20)]).optional(),
+});
+
+const FormDefinitionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.enum(['section', 'instruction']), text: z.string().min(1).max(2_000) }),
+  z.strictObject({ kind: z.enum(['text', 'textarea', 'email', 'phone', 'canonical_identifier']), minLength: z.number().int().min(0).max(10_000), maxLength: z.number().int().min(1).max(10_000) }),
+  z.strictObject({ kind: z.enum(['date', 'number', 'currency']), minimum: z.number().finite().nullable(), maximum: z.number().finite().nullable() }),
+  z.strictObject({ kind: z.enum(['single_select', 'multi_select']), options: z.array(z.strictObject({ value: z.string().min(1).max(64), label: z.string().min(1).max(128) })).min(1).max(100) }),
+  z.strictObject({ kind: z.enum(['yes_no', 'checkbox']) }),
+  z.strictObject({ kind: z.literal('repeating_table'), columns: z.array(z.strictObject({ id: z.string().min(1).max(64), label: z.string().min(1).max(128), valueType: z.enum(['text', 'number', 'date']) })).min(1).max(20), maxRows: z.number().int().min(1).max(100) }),
+  z.strictObject({ kind: z.literal('document_request'), documentType: z.string().min(1).max(128) }),
+  z.strictObject({ kind: z.literal('derived_readonly'), sourceFieldIds: z.array(z.string().min(1).max(64)).min(1).max(20), operation: z.enum(['join', 'sum', 'copy']) }),
+  z.strictObject({ kind: z.literal('signature_position'), page: z.number().int().min(1), anchor: z.string().min(1).max(128), x: z.number().finite().min(0), y: z.number().finite().min(0), width: z.number().finite().positive(), height: z.number().finite().positive() }),
+]);
+
+export const FormComponentSchema = z.strictObject({
+  id: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/),
+  label: z.string().min(1).max(256),
+  required: z.boolean(),
+  canonicalFieldId: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/).nullable(),
+  supplierAliases: z.array(z.string().min(1).max(128)).max(20),
+  visibility: z.strictObject({ all: z.array(FormRuleConditionSchema).min(1).max(10) }).nullable(),
+  definition: FormDefinitionSchema,
+});
+
+export const FormTemplateVersionSchema = z.strictObject({
+  id: z.uuid(), templateId: z.uuid(), version: z.number().int().min(1).max(2_147_483_647),
+  status: z.enum(['draft', 'published']), fields: z.array(FormComponentSchema).min(1).max(200), schemaSha256: z.string().regex(/^[0-9a-f]{64}$/),
+});
+
+export const FormTemplateCatalogItemSchema = z.strictObject({
+  templateId: z.uuid(), name: z.string().min(3).max(128), updatedAt: utcDate, latest: FormTemplateVersionSchema,
+});
+
+export const FormTemplateCatalogResponseSchema = z.strictObject({
+  version: z.literal(1), data: z.strictObject({
+    templates: z.array(FormTemplateCatalogItemSchema).max(100),
+    capabilities: z.strictObject({ saveDraft: z.boolean(), publish: z.boolean() }),
+  }),
+});
+
+export const FormTemplateMutationResponseSchema = z.strictObject({
+  version: z.literal(1), data: z.strictObject({ template: FormTemplateCatalogItemSchema, replayed: z.boolean() }),
+});
+
 export type PipelineReadModel = z.infer<typeof PipelineReadModelSchema>;
 export type GmailReadModel = z.infer<typeof GmailReadModelSchema>;
 export type GmailSyncResult = z.infer<typeof GmailSyncSuccessResponseSchema>['data'];
@@ -331,3 +379,6 @@ export type DocumentVersion = z.infer<typeof DocumentVersionSchema>;
 export type ClarificationQuestion = z.infer<typeof ClarificationQuestionSchema>;
 export type ClarificationReview = z.infer<typeof ClarificationReviewSchema>;
 export type ApprovalCommunicationsWorkspace = z.infer<typeof ApprovalCommunicationsWorkspaceSchema>;
+export type FormTemplateCatalog = z.infer<typeof FormTemplateCatalogResponseSchema>['data'];
+export type FormTemplateCatalogItem = z.infer<typeof FormTemplateCatalogItemSchema>;
+export type FormTemplateMutationReceipt = z.infer<typeof FormTemplateMutationResponseSchema>['data'];

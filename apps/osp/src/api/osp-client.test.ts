@@ -236,3 +236,24 @@ it('saves an exact clarification review without automatic network retry', async 
   expect(init.headers).toEqual({ authorization: 'Bearer bound-token', 'content-type': 'application/json' });
   expect(JSON.parse(String(init.body))).toEqual({ questions: input.questions });
 });
+
+it('uses the dedicated form endpoint for strict catalog reads and idempotent draft writes', async () => {
+  const template = {
+    templateId: '11111111-1111-4111-8111-111111111111', name: 'XBF customer setup', updatedAt: '2026-08-26T20:00:00.000Z',
+    latest: { id: '22222222-2222-4222-8222-222222222222', templateId: '11111111-1111-4111-8111-111111111111', version: 1, status: 'draft', schemaSha256: 'a'.repeat(64), fields: [
+      { id: 'legal_name', label: 'Legal name', required: true, canonicalFieldId: 'supplier.legalName', supplierAliases: [], visibility: null, definition: { kind: 'text', minLength: 1, maxLength: 256 } },
+    ] },
+  };
+  const h = harness([
+    json({ version: 1, data: { templates: [template], capabilities: { saveDraft: true, publish: true } } }),
+    json({ version: 1, data: { template, replayed: false } }, 201),
+  ]);
+  await expect(h.client.listFormTemplates()).resolves.toMatchObject({ templates: [template] });
+  const surveyJson = { title: 'XBF customer setup', pages: [{ name: 'company', elements: [{ type: 'text', name: 'legal_name', title: 'Legal name', ospKind: 'text' }] }] };
+  await expect(h.client.saveFormTemplateDraft({ idempotencyKey: 'form-save:1', templateId: template.templateId, expectedVersion: 1, name: template.name, surveyJson })).resolves.toMatchObject({ template, replayed: false });
+  expect(h.fetch.mock.calls.map((call) => call[0])).toEqual([
+    'https://synthetic.supabase.co/functions/v1/osp-form-api',
+    'https://synthetic.supabase.co/functions/v1/osp-form-api',
+  ]);
+  expect(JSON.parse(String((h.fetch.mock.calls[1][1] as RequestInit).body))).toEqual({ version: 1, action: 'save_form_template_draft', idempotency_key: 'form-save:1', template_id: template.templateId, expected_version: 1, name: template.name, survey_json: surveyJson });
+});

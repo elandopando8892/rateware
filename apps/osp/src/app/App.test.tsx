@@ -64,6 +64,9 @@ function client(): OspClient {
       version: 2, status: 'operations_reviewed' as const, questions: input.questions, evidenceIds: ['ev-1'],
       canonicalSha256: 'b'.repeat(64), authorizationMailbox: 'sales@heymarksman.com' as const,
     })),
+    listFormTemplates: vi.fn(async () => ({ templates: [], capabilities: { saveDraft: false, publish: false } })),
+    saveFormTemplateDraft: vi.fn(async () => { throw new Error('not used'); }),
+    publishFormTemplate: vi.fn(async () => { throw new Error('not used'); }),
   };
 }
 
@@ -177,7 +180,7 @@ describe('App authentication and routing', () => {
     expect(controls).toEqual([
       { tag: 'a', name: 'Skip to content', href: '#main-content', type: null },
       { tag: 'a', name: 'XBF OSP pipeline home', href: '/app/pipeline', type: null },
-      { tag: 'a', name: 'Form builder', href: '/app/forms/builder', type: null },
+      { tag: 'a', name: 'Forms', href: '/app/forms/builder', type: null },
       { tag: 'a', name: 'Documents', href: '/app/documents', type: null },
       { tag: 'a', name: 'Clarifications', href: '/app/clarifications', type: null },
       { tag: 'button', name: 'Sign out', href: null, type: 'button' },
@@ -289,6 +292,7 @@ describe('App authentication and routing', () => {
       listDocumentVersions: vi.fn(() => pending),
       uploadDocumentVersion: vi.fn(() => pending), approveDocumentVersion: vi.fn(() => pending), listClarificationReviews: vi.fn(() => pending),
       saveClarificationReview: vi.fn(() => pending),
+      listFormTemplates: vi.fn(() => pending), saveFormTemplateDraft: vi.fn(() => pending), publishFormTemplate: vi.fn(() => pending),
     };
     const history = createMemoryHistory({ initialEntries: ['/app/pipeline'] });
     const view = render(<App authPort={port} apiClient={clientA} routerHistory={history} />);

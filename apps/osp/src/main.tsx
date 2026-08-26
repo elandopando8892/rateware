@@ -10,6 +10,7 @@ import './styles/tokens.css';
 import './styles/global.css';
 import './styles/shell.css';
 import './styles/pipeline.css';
+import './styles/forms.css';
 
 const config = loadRuntimeConfig(import.meta.env);
 assertAllowedAppOrigin(window.location.origin, config.VITE_OSP_BUILD_PROFILE);

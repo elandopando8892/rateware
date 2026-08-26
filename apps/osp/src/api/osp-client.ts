@@ -13,6 +13,10 @@ import {
   ClarificationReviewsResponseSchema,
   type ClarificationQuestion,
   type ClarificationReview,
+  FormTemplateCatalogResponseSchema,
+  FormTemplateMutationResponseSchema,
+  type FormTemplateCatalog,
+  type FormTemplateMutationReceipt,
   GmailSyncSuccessResponseSchema,
   type GmailSyncResult,
   GmailSuccessResponseSchema,
@@ -41,6 +45,8 @@ export interface OspCaseReadClient {
 export type DocumentUploadInput = { documentType: QuarterlyDocumentType; validFrom: string; contentType: string; bytes: Uint8Array };
 export type DocumentApprovalInput = { versionId: string; expectedVersion: number; reviewBeforeSha256: string; reviewAfterSha256: string };
 export type ClarificationReviewInput = { draftId: string; expectedCaseVersion: number; expectedCanonicalSha256: string; questions: readonly ClarificationQuestion[] };
+export type SaveFormTemplateDraftInput = { idempotencyKey: string; templateId: string | null; expectedVersion: number; name: string; surveyJson: unknown };
+export type PublishFormTemplateInput = { idempotencyKey: string; templateId: string; templateVersionId: string; expectedVersion: number };
 
 export interface OspClient extends OspReadClient, OspCaseReadClient, WorkflowClient {
   syncGmailInbox?(): Promise<GmailSyncResult>;
@@ -49,6 +55,9 @@ export interface OspClient extends OspReadClient, OspCaseReadClient, WorkflowCli
   approveDocumentVersion(input: DocumentApprovalInput): Promise<{ id: string; status: 'approved' }>;
   listClarificationReviews(): Promise<readonly ClarificationReview[]>;
   saveClarificationReview(input: ClarificationReviewInput): Promise<ClarificationReview>;
+  listFormTemplates(): Promise<FormTemplateCatalog>;
+  saveFormTemplateDraft(input: SaveFormTemplateDraftInput): Promise<FormTemplateMutationReceipt>;
+  publishFormTemplate(input: PublishFormTemplateInput): Promise<FormTemplateMutationReceipt>;
 }
 
 export type OspClientErrorCode = OspPublicErrorCode | 'NO_SESSION' | 'NETWORK_UNAVAILABLE' | 'INVALID_RESPONSE' | 'STALE_SESSION';
@@ -94,8 +103,13 @@ function gmailSyncEndpointFor(supabaseUrl: string): string {
   return `${supabaseUrl.replace(/\/+$/, '')}/functions/v1/osp-gmail-sync-api`;
 }
 
+function formEndpointFor(supabaseUrl: string): string {
+  return `${supabaseUrl.replace(/\/+$/, '')}/functions/v1/osp-form-api`;
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
+const OPAQUE = /^[A-Za-z0-9:_-]{1,256}$/;
 const DATE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 const DOCUMENT_CONTENT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']);
 const DOCUMENT_TYPES = new Set(['proof_of_address', 'sat_compliance_opinion', 'tax_status_certificate', 'bank_statement']);
@@ -111,8 +125,37 @@ export function createOspClient(options: ClientOptions): OspClient {
   const endpoint = endpointFor(options.supabaseUrl);
   const documentEndpoint = documentEndpointFor(options.supabaseUrl);
   const gmailSyncEndpoint = gmailSyncEndpointFor(options.supabaseUrl);
+  const formEndpoint = formEndpointFor(options.supabaseUrl);
   const caseEndpoint = `${options.supabaseUrl.replace(/\/+$/, '')}/functions/v1/osp-case-api`;
   const workflow = createWorkflowClient(options);
+
+  async function formRequest<T>(request: unknown, schema: ZodType<T>, expectedStatus = 200): Promise<T> {
+    const captured = options.getCurrentSession();
+    if (!captured) throw new OspClientError('NO_SESSION');
+    let refreshed = false;
+    for (;;) {
+      let token: string;
+      try { token = await options.getAccessToken(captured, refreshed); }
+      catch { throw new OspClientError('NO_SESSION'); }
+      assertCurrent(options, captured);
+      let response: Response;
+      try {
+        response = await fetchImplementation(formEndpoint, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(request) });
+      } catch { assertCurrent(options, captured); throw new OspClientError('NETWORK_UNAVAILABLE'); }
+      assertCurrent(options, captured);
+      if (!response.ok) {
+        const error = parseSafeError(await safeJson(response), response.status);
+        assertCurrent(options, captured);
+        if (error.code === 'UNAUTHORIZED' && !refreshed) { refreshed = true; continue; }
+        throw error;
+      }
+      if (response.status !== expectedStatus || response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'application/json') throw new OspClientError('INVALID_RESPONSE');
+      const parsed = schema.safeParse(await safeJson(response));
+      assertCurrent(options, captured);
+      if (!parsed.success) throw new OspClientError('INVALID_RESPONSE');
+      return parsed.data;
+    }
+  }
 
   async function read<T>(request: OspReadRequest, schema: ZodType<{ version: 1; data: T }>): Promise<T> {
     const captured = options.getCurrentSession();
@@ -380,6 +423,15 @@ export function createOspClient(options: ClientOptions): OspClient {
         body: JSON.stringify({ questions: input.questions }),
       });
       return response.data;
+    },
+    listFormTemplates: async () => (await formRequest({ version: 1, action: 'list_form_templates' }, FormTemplateCatalogResponseSchema)).data,
+    saveFormTemplateDraft: async (input: SaveFormTemplateDraftInput) => {
+      if (!OPAQUE.test(input.idempotencyKey) || !(input.templateId === null || UUID.test(input.templateId)) || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 0 || input.expectedVersion > 2_147_483_647 || typeof input.name !== 'string' || input.name.trim() !== input.name || input.name.length < 3 || input.name.length > 128 || !input.surveyJson || typeof input.surveyJson !== 'object') throw new OspClientError('INVALID_REQUEST');
+      return (await formRequest({ version: 1, action: 'save_form_template_draft', idempotency_key: input.idempotencyKey, template_id: input.templateId, expected_version: input.expectedVersion, name: input.name, survey_json: input.surveyJson }, FormTemplateMutationResponseSchema, 201)).data;
+    },
+    publishFormTemplate: async (input: PublishFormTemplateInput) => {
+      if (!OPAQUE.test(input.idempotencyKey) || !UUID.test(input.templateId) || !UUID.test(input.templateVersionId) || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1 || input.expectedVersion > 2_147_483_647) throw new OspClientError('INVALID_REQUEST');
+      return (await formRequest({ version: 1, action: 'publish_form_template', idempotency_key: input.idempotencyKey, template_id: input.templateId, template_version_id: input.templateVersionId, expected_version: input.expectedVersion }, FormTemplateMutationResponseSchema)).data;
     },
   });
 }

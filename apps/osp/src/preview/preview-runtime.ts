@@ -1,6 +1,7 @@
 import type { OspClient } from '../api/osp-client';
-import type { ApprovalCommunicationsWorkspace, CaseDetail, CaseSummary, ClarificationReview, DocumentVersion } from '../api/contracts';
+import type { ApprovalCommunicationsWorkspace, CaseDetail, CaseSummary, ClarificationReview, DocumentVersion, FormTemplateCatalog } from '../api/contracts';
 import type { AuthPort, BoundSession } from '../auth/auth-port';
+import { surveyJsonToCanonical } from '../features/forms/surveyjs-canonical-adapter';
 
 const previewSession: BoundSession = Object.freeze({
   generation: 'osp-preview-synthetic-v1',
@@ -127,6 +128,25 @@ function createPreviewAuthPort(): AuthPort {
 }
 
 function createPreviewClient(): OspClient {
+  let formCatalog: FormTemplateCatalog = {
+    capabilities: { saveDraft: true, publish: true },
+    templates: [
+      {
+        templateId: '71111111-1111-4111-8111-111111111111', name: 'XBF customer setup — Core', updatedAt: '2026-08-26T18:00:00.000Z',
+        latest: { id: '72111111-1111-4111-8111-111111111111', templateId: '71111111-1111-4111-8111-111111111111', version: 3, status: 'published', schemaSha256: 'c'.repeat(64), fields: [
+          { id: 'legal_name', label: 'Legal name', required: true, canonicalFieldId: 'supplier.legalName', supplierAliases: ['Razón social'], visibility: null, definition: { kind: 'text', minLength: 1, maxLength: 256 } },
+          { id: 'tax_identifier', label: 'Tax identifier', required: true, canonicalFieldId: 'fiscal.taxIdentifier', supplierAliases: ['RFC', 'Tax ID'], visibility: null, definition: { kind: 'canonical_identifier', minLength: 8, maxLength: 32 } },
+          { id: 'registered_address', label: 'Registered address', required: true, canonicalFieldId: 'supplier.address', supplierAliases: [], visibility: null, definition: { kind: 'textarea', minLength: 8, maxLength: 500 } },
+        ] },
+      },
+      {
+        templateId: '71111111-1111-4111-8111-111111111112', name: 'XBF customer setup — Banking', updatedAt: '2026-08-26T19:00:00.000Z',
+        latest: { id: '72111111-1111-4111-8111-111111111112', templateId: '71111111-1111-4111-8111-111111111112', version: 1, status: 'draft', schemaSha256: 'd'.repeat(64), fields: [
+          { id: 'bank_account', label: 'Bank account', required: true, canonicalFieldId: 'banking.accountNumber', supplierAliases: ['CLABE'], visibility: null, definition: { kind: 'text', minLength: 4, maxLength: 34 } },
+        ] },
+      },
+    ],
+  };
   const client: OspClient = {
     listOnboardingWorkspace: async () => ({ requests_total: '26', documents_pending: '7', under_review: '5', ready_for_approval: '3' }),
     getGmailStatus: async () => ({
@@ -171,6 +191,23 @@ function createPreviewClient(): OspClient {
       status: 'operations_reviewed',
       questions: input.questions.map((question) => ({ ...question, evidenceIds: [...question.evidenceIds] })),
     }),
+    listFormTemplates: async () => structuredClone(formCatalog),
+    saveFormTemplateDraft: async (input) => {
+      const current = input.templateId === null ? null : formCatalog.templates.find((item) => item.templateId === input.templateId) ?? null;
+      const templateId = current?.templateId ?? crypto.randomUUID();
+      const version = (current?.latest.version ?? 0) + 1;
+      const canonical = await surveyJsonToCanonical(input.surveyJson, { templateId, versionId: crypto.randomUUID(), version, status: 'draft', canonicalFieldIds: ['supplier.legalName', 'supplier.address', 'fiscal.taxIdentifier', 'banking.accountNumber'] });
+      const template: FormTemplateCatalog['templates'][number] = { templateId, name: input.name, updatedAt: new Date().toISOString(), latest: structuredClone(canonical) as FormTemplateCatalog['templates'][number]['latest'] };
+      formCatalog = { ...formCatalog, templates: [template, ...formCatalog.templates.filter((item) => item.templateId !== templateId)] };
+      return { template, replayed: false };
+    },
+    publishFormTemplate: async (input) => {
+      const current = formCatalog.templates.find((item) => item.templateId === input.templateId);
+      if (!current || current.latest.id !== input.templateVersionId || current.latest.version !== input.expectedVersion) throw new Error('VERSION_CONFLICT');
+      const template = { ...current, updatedAt: new Date().toISOString(), latest: { ...current.latest, status: 'published' as const } };
+      formCatalog = { ...formCatalog, templates: formCatalog.templates.map((item) => item.templateId === template.templateId ? template : item) };
+      return { template, replayed: false };
+    },
     getApprovalCommunicationsWorkspace: async () => previewWorkspace,
     completeOperationsReview: async (input) => ({ caseId: input.caseId, state: 'signature_approval', caseVersion: input.expectedVersion + 1, replayed: false }),
     approveAndApplySignature: async (input) => ({ caseId: input.caseId, state: 'sales_authorization', caseVersion: input.expectedVersion + 1, replayed: false, approvalId: '50000000-0000-4000-8000-000000000001' }),

@@ -14,6 +14,7 @@ describe('synthetic preview runtime', () => {
     });
     await expect(runtime.apiClient.listDocumentVersions()).resolves.toHaveLength(3);
     await expect(runtime.apiClient.listClarificationReviews()).resolves.toHaveLength(1);
+    await expect(runtime.apiClient.listFormTemplates()).resolves.toMatchObject({ templates: [{ latest: { status: 'published' } }, { latest: { status: 'draft' } }] });
     const cases = await runtime.apiClient.listCustomerRegistrationCases();
     expect(cases).toHaveLength(4);
     await expect(runtime.apiClient.getCustomerRegistrationCase(cases[0].case_id)).resolves.toMatchObject({
