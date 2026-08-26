@@ -91,7 +91,9 @@ function canonicalPayload(payload: Record<string, string>): string {
   if (
     pairs.length === 0 ||
     pairs.some(([key, value]) =>
-      !/^[A-Za-z][A-Za-z0-9]*Id$/.test(key) || typeof value !== "string" ||
+      (!/^[A-Za-z][A-Za-z0-9]*Id$/.test(key) &&
+        key !== "deliveryIdempotencyKey") ||
+      typeof value !== "string" ||
       !/^[A-Za-z0-9:_-]{1,256}$/.test(value)
     )
   ) {

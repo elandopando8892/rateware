@@ -1,0 +1,51 @@
+{
+  "expected": {
+    "requiredDocuments": [
+      "proof_of_address",
+      "sat_compliance_opinion",
+      "tax_status_certificate",
+      "bank_statement"
+    ],
+    "classifications": [
+      "supplier_registration",
+      "proof_of_address",
+      "sat_compliance_opinion",
+      "tax_status_certificate",
+      "bank_statement"
+    ]
+  },
+  "actual": {
+    "suppliedEvidenceIds": ["ev-1", "ev-2", "ev-3", "ev-4", "ev-5"],
+    "requiredDocuments": [
+      "proof_of_address",
+      "sat_compliance_opinion",
+      "tax_status_certificate",
+      "bank_statement"
+    ],
+    "classifications": [
+      {
+        "expected": "supplier_registration",
+        "predicted": "supplier_registration"
+      },
+      { "expected": "proof_of_address", "predicted": "proof_of_address" },
+      {
+        "expected": "sat_compliance_opinion",
+        "predicted": "sat_compliance_opinion"
+      },
+      {
+        "expected": "tax_status_certificate",
+        "predicted": "tax_status_certificate"
+      },
+      { "expected": "bank_statement", "predicted": "bank_statement" }
+    ],
+    "values": [
+      {
+        "fieldKey": "supplier.legalName",
+        "value": "Synthetic Supplier",
+        "expectedValue": "Synthetic Supplier",
+        "evidenceIds": ["ev-1"]
+      }
+    ],
+    "proposedTransitions": []
+  }
+}

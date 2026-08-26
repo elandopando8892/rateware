@@ -443,6 +443,7 @@ verify_jwt = false
 
 [functions.osp-worker]
 verify_jwt = false
+entrypoint = "./functions/osp-worker/edge.ts"
 
 [functions.osp-document-api]
 verify_jwt = false

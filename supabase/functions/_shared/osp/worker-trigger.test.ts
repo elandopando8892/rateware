@@ -1,0 +1,42 @@
+import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
+
+import { triggerOspGmailWorker } from "./worker-trigger.ts";
+
+Deno.test("Rateware invokes the exact authenticated OSP worker endpoint", async () => {
+  let seen: Request | undefined;
+  const result = await triggerOspGmailWorker({
+    supabaseUrl: "https://project.supabase.co",
+    serviceRoleKey: "k".repeat(64),
+    limit: 7,
+    fetch: async (input, init) => {
+      seen = new Request(input, init);
+      return new Response(JSON.stringify({ enqueued: 1, processed: 1 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+  assertEquals(result, { enqueued: 1, processed: 1 });
+  assertEquals(
+    seen?.url,
+    "https://project.supabase.co/functions/v1/osp-worker",
+  );
+  assertEquals(seen?.headers.get("authorization"), `Bearer ${"k".repeat(64)}`);
+  assertEquals(await seen?.json(), {
+    action: "drain_rateware_gmail",
+    limit: 7,
+  });
+});
+
+Deno.test("Rateware treats worker failures as retryable sync failures", async () => {
+  await assertRejects(
+    () =>
+      triggerOspGmailWorker({
+        supabaseUrl: "https://project.supabase.co",
+        serviceRoleKey: "k".repeat(64),
+        fetch: async () => new Response(null, { status: 503 }),
+      }),
+    Error,
+    "OSP_WORKER_UNAVAILABLE",
+  );
+});

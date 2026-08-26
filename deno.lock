@@ -566,6 +566,10 @@
       "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="
     }
   },
+  "remote": {
+    "https://esm.sh/@supabase/supabase-js@2.57.4": "05a369085eb4a4c99d85ccece97f0cf1e05357122e0e74373da1f0e91b014902",
+    "https://esm.sh/jose@5.9.6": "8c535558ee938997693933217d3f71cdbb97f968cc9b5385ab442664458aa576"
+  },
   "workspace": {
     "dependencies": [
       "npm:@supabase/supabase-js@2.112.3",
@@ -575,6 +579,11 @@
       "npm:postal-mime@3.0.0",
       "npm:postgres@3.4.7",
       "npm:zod@4.4.3"
-    ]
+    ],
+    "packageJson": {
+      "dependencies": [
+        "npm:@babel/parser@7.29.8"
+      ]
+    }
   }
 }
