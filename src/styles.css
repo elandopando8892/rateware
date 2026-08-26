@@ -4253,6 +4253,14 @@ a {
   cursor: default;
 }
 
+.rfx-this-rfx-backdrop:hover,
+.rfx-this-rfx-backdrop:focus,
+.rfx-this-rfx-backdrop:active {
+  background: rgba(28, 28, 28, 0.12);
+  box-shadow: none;
+  transform: none;
+}
+
 .rfx-this-rfx-backdrop[hidden] {
   display: none;
 }

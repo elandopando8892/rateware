@@ -1545,6 +1545,7 @@ assert.match(rfxEventsSource, /function setThisRfxDrawerOpen\(open,[\s\S]*?toggl
 assert.match(rfxEventsSource, /event\.key === "Escape"[\s\S]*?setThisRfxDrawerOpen\(false\)/, "This RFx drawer should close with Escape");
 assert.match(stylesSource, /\.rfx-outreach-launch-grid \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/, "Carrier fit should own the full Launch canvas");
 assert.match(stylesSource, /\.rfx-this-rfx-drawer \{[\s\S]*?position: fixed[\s\S]*?width: min\(420px, calc\(100vw - 36px\)\)/, "This RFx should use a bounded right-side drawer");
+assert.match(stylesSource, /\.rfx-this-rfx-backdrop:hover,[\s\S]*?\.rfx-this-rfx-backdrop:focus,[\s\S]*?\.rfx-this-rfx-backdrop:active[\s\S]*?background: rgba\(28, 28, 28, 0\.12\)/, "RFx workspace backdrop interaction states should stay neutral instead of inheriting the global blue button treatment");
 assert.match(rfxEventsHtml, /data-rfx-launch-workspace="carrier"/, "Bid Room Launch should provide a dedicated Carrier fit workspace");
 assert.match(rfxEventsHtml, /data-rfx-launch-workspace="message"/, "Bid Room Launch should provide a dedicated Message workspace");
 assert.match(rfxEventsHtml, /data-rfx-launch-workspace="delivery"/, "Bid Room Launch should provide a dedicated Delivery queue workspace");
