@@ -78,8 +78,21 @@ function exactQuery(url: URL, names: readonly string[]): Record<string, string> 
   return Object.fromEntries(entries);
 }
 
-function requireEmptyBody(request: Request): void {
-  if (request.body || (request.headers.get('content-length') !== null && request.headers.get('content-length') !== '0') || request.headers.has('content-type')) throw new OspApiError('INVALID_REQUEST');
+async function requireEmptyBody(request: Request): Promise<void> {
+  const declared = request.headers.get('content-length');
+  if (
+    request.headers.has('content-type') ||
+    request.headers.has('content-encoding') ||
+    request.headers.has('transfer-encoding') ||
+    (declared !== null && declared !== '0')
+  ) throw new OspApiError('INVALID_REQUEST');
+  if (!request.body) return;
+  const reader = request.body.getReader();
+  const first = await reader.read();
+  if (!first.done) {
+    try { void reader.cancel().catch(() => undefined); } catch { /* request is already rejected */ }
+    throw new OspApiError('INVALID_REQUEST');
+  }
 }
 
 function declaredLength(request: Request): number | undefined {
@@ -154,7 +167,7 @@ export function createDocumentApiHandler(options: DocumentApiHandlerOptions): (r
       const action = url.searchParams.get('action');
       if (action === 'list_document_versions') {
         exactQuery(url, ['action']);
-        requireEmptyBody(request);
+        await requireEmptyBody(request);
         const authority = permission(verified, 'read');
         const versions = await options.listVersions(authority.organizationId);
         return jsonResponse({ data: { versions } }, 200, postCorsHeaders(allowed));
@@ -170,7 +183,7 @@ export function createDocumentApiHandler(options: DocumentApiHandlerOptions): (r
       }
       if (action === 'approve_document_version') {
         const query = exactQuery(url, ['action', 'version_id', 'expected_version', 'review_before_sha256', 'review_after_sha256']);
-        requireEmptyBody(request);
+        await requireEmptyBody(request);
         const authority = permission(verified, 'operate');
         const expectedVersion = Number(query.expected_version);
         if (!UUID.test(query.version_id) || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1 || !SHA.test(query.review_before_sha256) || !SHA.test(query.review_after_sha256)) throw new OspApiError('INVALID_REQUEST');

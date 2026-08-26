@@ -224,11 +224,23 @@ function exactPreflightHeaders(
     names.sort().join(",") === [...expected].sort().join(",");
 }
 
-function requireEmptyBody(request: Request): void {
+async function requireEmptyBody(request: Request): Promise<void> {
+  const declared = request.headers.get("content-length");
   if (
-    request.body || request.headers.has("content-type") ||
-    ![null, "0"].includes(request.headers.get("content-length"))
+    request.headers.has("content-type") ||
+    request.headers.has("content-encoding") ||
+    request.headers.has("transfer-encoding") ||
+    (declared !== null && declared !== "0")
   ) throw new OspApiError("INVALID_REQUEST");
+  if (!request.body) return;
+  const reader = request.body.getReader();
+  const first = await reader.read();
+  if (!first.done) {
+    try {
+      void reader.cancel().catch(() => undefined);
+    } catch { /* request is already rejected */ }
+    throw new OspApiError("INVALID_REQUEST");
+  }
 }
 
 function safeQuestion(value: unknown): ClarificationQuestion {
@@ -492,7 +504,7 @@ export function createCaseApiHandler(
       if (action === "get_approval_communications_workspace") {
         if (!options.workflowView) throw new OspApiError("INVALID_REQUEST");
         const query = exactQuery(url, ["action", "case_id", "payload_id"]);
-        requireEmptyBody(request);
+        await requireEmptyBody(request);
         if (
           !UUID.test(query.case_id) ||
           (query.payload_id !== "none" && !UUID.test(query.payload_id))
@@ -519,7 +531,7 @@ export function createCaseApiHandler(
           request.signal,
         );
         exactQuery(url, ["action"]);
-        requireEmptyBody(request);
+        await requireEmptyBody(request);
         const scope = authority(verified, "read");
         return jsonResponse(
           {
@@ -585,7 +597,7 @@ export function createCaseApiHandler(
             "idempotency_key",
           ];
         const query = exactQuery(url, names);
-        requireEmptyBody(request);
+        await requireEmptyBody(request);
         const expectedCaseVersion = Number(query.expected_case_version);
         if (
           !UUID.test(query.case_id) ||
@@ -676,7 +688,7 @@ export function createCaseApiHandler(
           "expected_case_version",
           "idempotency_key",
         ]);
-        requireEmptyBody(request);
+        await requireEmptyBody(request);
         const expectedCaseVersion = Number(query.expected_case_version);
         if (
           !UUID.test(query.case_id) || !UUID.test(query.payload_id) ||
@@ -727,7 +739,7 @@ export function createCaseApiHandler(
           "payload_id",
           "payload_sha256",
         ]);
-        requireEmptyBody(request);
+        await requireEmptyBody(request);
         const expectedCaseVersion = Number(query.expected_case_version);
         if (
           !UUID.test(query.case_id) || !UUID.test(query.payload_id) ||
@@ -763,7 +775,7 @@ export function createCaseApiHandler(
           "payload_sha256",
           "sales_authorization_id",
         ]);
-        requireEmptyBody(request);
+        await requireEmptyBody(request);
         const expectedCaseVersion = Number(query.expected_case_version);
         if (
           !UUID.test(query.case_id) ||

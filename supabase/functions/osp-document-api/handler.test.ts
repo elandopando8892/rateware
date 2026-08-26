@@ -40,6 +40,32 @@ Deno.test('document API lists safe metadata and uploads reviewed bytes under ver
   assertEquals((uploads[0] as { input: { bytes: Uint8Array } }).input.bytes, body);
 });
 
+Deno.test('document API accepts a gateway-normalized zero-byte stream and rejects any body bytes', async () => {
+  const handler = createDocumentApiHandler({
+    verifyToken: async () => identity,
+    listVersions: async () => [],
+    documentService: {
+      upload: async () => ({ id: 'unused', version: 1, expiresAt: '2026-11-24' }),
+      approve: async () => ({ id: 'unused', status: 'approved' as const }),
+    },
+    incidentId: () => 'incident-empty-stream',
+  });
+  const stream = (payload?: Uint8Array) => new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (payload) controller.enqueue(payload);
+      controller.close();
+    },
+  });
+  assertEquals(
+    (await handler(request('action=list_document_versions', { body: stream() }))).status,
+    200,
+  );
+  assertEquals(
+    (await handler(request('action=list_document_versions', { body: stream(new Uint8Array([1])) }))).status,
+    400,
+  );
+});
+
 Deno.test('document API approves only exact reviewed hashes and contains unsafe requests', async () => {
   const approvals: unknown[] = [];
   const handler = createDocumentApiHandler({

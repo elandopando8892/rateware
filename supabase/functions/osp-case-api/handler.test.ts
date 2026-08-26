@@ -92,6 +92,38 @@ Deno.test("case API lists tenant-safe clarification reviews and exposes no send 
   assertEquals(forbidden.status, 400);
 });
 
+Deno.test("case API accepts a gateway-normalized zero-byte stream and rejects any body bytes", async () => {
+  const handler = createCaseApiHandler({
+    verifyToken: async () => identity,
+    clarificationStore: {
+      listForReview: async () => [],
+      saveOperationsReview: async () => row,
+    },
+    incidentId: () => "incident-empty-stream",
+  });
+  const stream = (payload?: Uint8Array) =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        if (payload) controller.enqueue(payload);
+        controller.close();
+      },
+    });
+  assertEquals(
+    (await handler(
+      request("action=list_clarification_reviews", { body: stream() }),
+    )).status,
+    200,
+  );
+  assertEquals(
+    (await handler(
+      request("action=list_clarification_reviews", {
+        body: stream(new Uint8Array([1])),
+      }),
+    )).status,
+    400,
+  );
+});
+
 Deno.test("case API saves only an exact Operations review under operate authority", async () => {
   const saved: unknown[] = [];
   const handler = createCaseApiHandler({
