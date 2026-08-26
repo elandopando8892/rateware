@@ -117,6 +117,14 @@ describe('App authentication and routing', () => {
     expect(await screen.findByRole('heading', { name: /onboarding pipeline/i })).toBeInTheDocument();
   });
 
+  it('can discard an unverifiable session and return to sign in', async () => {
+    const port = authPort(null, Promise.reject(new Error('stale token')));
+    render(<App authPort={port} apiClient={client()} />);
+    await userEvent.click(await screen.findByRole('button', { name: /start new session/i }));
+    expect(port.logout).toHaveBeenCalledOnce();
+    expect(await screen.findByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
+  });
+
   it('redirects authenticated /app to pipeline and controls unknown /app routes', async () => {
     const port = authPort(session);
     const api = client();
