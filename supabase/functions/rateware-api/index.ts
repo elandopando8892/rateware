@@ -235,8 +235,11 @@ function carrierTemplateActor(
   };
 }
 
-function carrierTemplateDatabaseConflict(error: unknown) {
-  return cleanText(objectRecord(error).code) === "23505";
+function carrierTemplateNameDatabaseConflict(error: unknown) {
+  const databaseError = objectRecord(error);
+  const constraint = cleanText(databaseError.constraint || databaseError.constraint_name);
+  return cleanText(databaseError.code) === "23505" &&
+    constraint === "vendor_segments_participant_template_org_name_uidx";
 }
 
 function carrierTemplateDuplicateNameResult() {
@@ -396,7 +399,7 @@ async function conditionalCarrierTemplateUpdate(
     .select()
     .maybeSingle();
   if (result.error) {
-    if (carrierTemplateDatabaseConflict(result.error)) return carrierTemplateDuplicateNameResult();
+    if (carrierTemplateNameDatabaseConflict(result.error)) return carrierTemplateDuplicateNameResult();
     throw result.error;
   }
   if (result.data) {
@@ -557,7 +560,7 @@ export async function handleCarrierTemplateApiAction(
     const row = carrierTemplateInsertRow(normalized, actor, new Date().toISOString());
     const result = await supabase.from("vendor_segments").insert(row).select().single();
     if (result.error) {
-      if (carrierTemplateDatabaseConflict(result.error)) return carrierTemplateDuplicateNameResult();
+      if (carrierTemplateNameDatabaseConflict(result.error)) return carrierTemplateDuplicateNameResult();
       throw result.error;
     }
     const templateId = String(result.data.id);
@@ -684,7 +687,7 @@ export async function handleCarrierTemplateApiAction(
       p_actor_email: actor.email
     });
     if (result.error) {
-      if (carrierTemplateDatabaseConflict(result.error)) return carrierTemplateDuplicateNameResult();
+      if (carrierTemplateNameDatabaseConflict(result.error)) return carrierTemplateDuplicateNameResult();
       throw result.error;
     }
     const rpcRow = objectRecord(Array.isArray(result.data) ? result.data[0] : result.data);

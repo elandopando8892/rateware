@@ -13,6 +13,16 @@ alter table public.vendor_segments
   add column if not exists archived_by_user_id text,
   add column if not exists archived_by_email text;
 
+-- The original permissive SELECT policy would OR with any additional policy and
+-- expose participant templates directly to authenticated browser clients. Replace
+-- it so dynamic/non-template saved-list compatibility remains while templates are
+-- available only through the server API's service-role path.
+drop policy if exists "authenticated users can read vendor segments" on public.vendor_segments;
+create policy "authenticated users can read vendor segments"
+  on public.vendor_segments for select
+  to authenticated
+  using (segment_type <> 'participant_template');
+
 -- Preserve the legacy owner as the best available provenance for participant
 -- templates. Dynamic segments retain their existing behavior and need no rewrite.
 update public.vendor_segments

@@ -179,10 +179,12 @@ export async function initCarrierListTemplateLibrary({
   }
 
   function setCapability(enabled) {
-    capabilityEnabled = enabled === true;
+    const nextCapability = enabled === true;
+    const changed = capabilityEnabled !== nextCapability;
+    capabilityEnabled = nextCapability;
     if (tab) tab.hidden = !capabilityEnabled;
     if (workspace) workspace.hidden = !capabilityEnabled;
-    onCapabilityChange(capabilityEnabled);
+    if (changed) onCapabilityChange(capabilityEnabled);
   }
 
   function hideCapabilityError() {
@@ -505,6 +507,9 @@ export async function initCarrierListTemplateLibrary({
   return {
     get enabled() {
       return capabilityEnabled;
+    },
+    get capability() {
+      return requestController.snapshot().capability;
     },
     activate: ({ templateId: requestedId = "" } = {}) => {
       if (requestedId) return selectTemplate(requestedId, { focus: false, updateHistory: false });

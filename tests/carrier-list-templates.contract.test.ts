@@ -886,6 +886,38 @@ Deno.test("real duplicate request requires and enforces the displayed source ver
   assertEquals(nameConflictDb.traces.some((trace) => trace.table === "saas_audit_log"), false);
 });
 
+Deno.test("real duplicate request propagates a non-name 23505 instead of mislabeling it", async () => {
+  const sourceId = "aaaaaaaa-1111-4111-8111-111111111111";
+  const db = new ScriptedSupabase([
+    {
+      table: "rateware_duplicate_carrier_list_template",
+      operation: "rpc",
+      error: {
+        code: "23505",
+        constraint: "unrelated_unique_constraint",
+        message: "duplicate key value violates unrelated unique constraint",
+      },
+    },
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+
+  const response = await handler(jsonActionRequest({
+    action: "duplicate_carrier_list_template",
+    id: sourceId,
+    name: "Source Copy",
+    expected_version: 4,
+  }));
+
+  assertEquals(response.status, 500);
+  const auditActions = db.traces
+    .filter((trace) => trace.table === "saas_audit_log")
+    .map((trace) => (trace.payload as Record<string, unknown>).action);
+  assertEquals(auditActions.includes("carrier_template.duplicate"), false);
+  assertEquals(auditActions, ["api.error"]);
+});
+
 Deno.test("enabled legacy generic mutations guard the final dynamic row mutation", async () => {
   const segmentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const dynamicSegment = {

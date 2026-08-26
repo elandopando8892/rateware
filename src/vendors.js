@@ -1,5 +1,6 @@
 import { applyPermissionState, initAuthControls, requirePrivatePage } from "./auth.js";
 import { initCarrierListTemplateLibrary } from "./carrier-list-templates.js";
+import { createVendorTemplateNavigationGuard } from "./vendor-template-navigation.js";
 import { humanizeError } from "./error-copy.js";
 import {
   applyVendorTemplateUpdates,
@@ -202,14 +203,14 @@ const VENDOR_QUICK_FILTER_KEYS = new Set(["all", "missing-contact", "cross-borde
 const VENDOR_PAGE_SIZES = [75, 150, 250];
 const storedVendorWorkspaceContext = readVendorWorkspaceContext(VENDOR_WORKSPACE_CONTEXT_STORAGE_KEY);
 const requestedVendorTab = new URLSearchParams(window.location.search).get("tab");
-const requestedVendorTemplateId = new URLSearchParams(window.location.search).get("template") || "";
-let activeQuickFilter = VENDOR_QUICK_FILTER_KEYS.has(storedVendorWorkspaceContext.quickFilter) ? storedVendorWorkspaceContext.quickFilter : "all";
-let activeBaseStage = VENDOR_WORKSPACE_BASE_STAGES.includes(storedVendorWorkspaceContext.baseStage) ? storedVendorWorkspaceContext.baseStage : "sourcing";
-let activeVendorTab = VENDOR_WORKSPACE_TABS.has(requestedVendorTab)
+const preferredVendorTab = VENDOR_WORKSPACE_TABS.has(requestedVendorTab)
   ? requestedVendorTab
   : VENDOR_WORKSPACE_TABS.has(storedVendorWorkspaceContext.activeTab)
     ? storedVendorWorkspaceContext.activeTab
     : "funnel";
+let activeQuickFilter = VENDOR_QUICK_FILTER_KEYS.has(storedVendorWorkspaceContext.quickFilter) ? storedVendorWorkspaceContext.quickFilter : "all";
+let activeBaseStage = VENDOR_WORKSPACE_BASE_STAGES.includes(storedVendorWorkspaceContext.baseStage) ? storedVendorWorkspaceContext.baseStage : "sourcing";
+let activeVendorTab = preferredVendorTab === "list-templates" ? "funnel" : preferredVendorTab;
 let activeDirectoryView = storedVendorWorkspaceContext.directoryView === "cards" || storedVendorWorkspaceContext.directoryView === "spreadsheet"
   ? storedVendorWorkspaceContext.directoryView
   : window.localStorage.getItem("rateware.vendorDirectoryView") || "spreadsheet";
@@ -1506,6 +1507,10 @@ function updateVendorTabUrl(tabName, { templateId = "", historyMode = "push" } =
 
 function activateVendorTab(tabName, { historyMode = "", templateId = "" } = {}) {
   if (!VENDOR_WORKSPACE_TABS.has(tabName)) tabName = "funnel";
+  if (tabName === "list-templates" && vendorTemplateNavigationGuard.capability !== "enabled") {
+    const fallbackHistoryMode = vendorTemplateNavigationGuard.capability === "disabled" ? "replace" : "";
+    return activateVendorTab("funnel", { historyMode: fallbackHistoryMode });
+  }
   const previousTab = activeVendorTab;
   activeVendorTab = tabName;
   if (isVendorBaseTab(tabName)) {
@@ -1538,6 +1543,14 @@ function activateVendorTab(tabName, { historyMode = "", templateId = "" } = {}) 
   if (isVendorBaseTab(tabName) && (previousTab !== tabName || !allVendors.length)) loadVendors();
   syncCrmViewButtons();
 }
+
+const vendorTemplateNavigationGuard = createVendorTemplateNavigationGuard({
+  readHref: () => window.location.href,
+  activateTab: activateVendorTab,
+  initialRoute: preferredVendorTab === "list-templates"
+    ? { tab: "list-templates", templateId: "" }
+    : null
+});
 
 function setCrmView(view) {
   if (view === "pipeline") {
@@ -5528,6 +5541,7 @@ vendorTabs.forEach((button) => {
   });
 });
 window.addEventListener("popstate", () => {
+  if (vendorTemplateNavigationGuard.handlePopState().handled) return;
   const params = new URLSearchParams(window.location.search);
   const tabName = VENDOR_WORKSPACE_TABS.has(params.get("tab")) ? params.get("tab") : "funnel";
   const templateId = tabName === "list-templates" ? params.get("template") || "" : "";
@@ -5821,11 +5835,10 @@ requirePrivatePage()
       "vendors:manage"
     );
     carrierListTemplateLibraryController = await initCarrierListTemplateLibrary({
-      initialTemplateId: requestedVendorTemplateId,
+      initialTemplateId: "",
       onCapabilityChange: (enabled) => {
-        if (!enabled && activeVendorTab === "list-templates") {
-          activateVendorTab("funnel", { historyMode: "replace" });
-        }
+        if (!enabled) vendorTemplateNavigationGuard.resolveCapability(false);
+        else if (carrierListTemplateLibraryController) vendorTemplateNavigationGuard.resolveCapability(true);
       },
       onSelectionChange: (templateId, { replace = false } = {}) => {
         updateVendorTabUrl("list-templates", {
@@ -5834,8 +5847,10 @@ requirePrivatePage()
         });
       }
     });
-    if (activeVendorTab === "list-templates") {
-      await carrierListTemplateLibraryController.activate({ templateId: requestedVendorTemplateId });
+    if (carrierListTemplateLibraryController.capability === "enabled") {
+      vendorTemplateNavigationGuard.resolveCapability(true);
+    } else if (carrierListTemplateLibraryController.capability === "disabled") {
+      vendorTemplateNavigationGuard.resolveCapability(false);
     }
   })
   .catch(() => {});
