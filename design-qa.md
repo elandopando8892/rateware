@@ -107,6 +107,47 @@ No actionable P0, P1, or P2 finding remains.
 
 final result: passed
 
+## Carrier Fit canvas + RFx workspace drawer — 2026-08-26
+
+- Source visual truth: `C:\Users\andre\.codex\generated_images\01a03ae9-d638-7f70-8972-7ab3b891bf74\exec-261c260d-0b3c-4f50-876a-346c1feb7338.png` — 1707 x 922 px.
+- Original production evidence: `C:\Users\andre\AppData\Local\Temp\codex-clipboard-78ac0679-f276-4e43-aab8-ac2051ad92d1.png`.
+- Authenticated cloud route: `https://rateware-git-codex-carrier-lis-ede02d-elandopando8892s-projects.vercel.app/rfx-events?rfx_event_id=e6f6fdc6-b484-46a7-8c0b-26ea2dbd4c4c&view=outreach`.
+- State: full-width Carrier Fit canvas, with the RFx workspace drawer closed and open against the neutral backdrop.
+
+### Findings
+
+No actionable P0, P1, or P2 finding remains in the authenticated desktop state.
+
+### Required fidelity surfaces
+
+- Fonts and typography: the implementation retains Rateware's existing compact operational hierarchy.
+- Spacing and layout rhythm: Carrier Fit owns the full canvas and the event-scoped carrier workspace uses a bounded 420 px right drawer.
+- Colors and visual tokens: the drawer uses the existing white surface and a neutral `rgba(28, 28, 28, 0.12)` backdrop instead of a blue modal wash.
+- Image quality and asset fidelity: no application imagery is required by this operational interface.
+- Copy and content: the trigger and panel now use `RFx workspace` and `Carriers in this RFx`, describing an operational workspace rather than a passive dossier.
+
+### Interaction evidence
+
+- The authenticated preview loaded 60 bid events, the selected 12-lane RFx, 543 matching carriers, and the active 332-member template.
+- Browser checks passed for close button, backdrop close, Escape close, `aria-expanded`, `aria-hidden`, and focus restoration.
+- Browser console warnings/errors: none.
+
+### Comparison history
+
+1. The approved source and original screenshot were available.
+2. The local protected route was opened, but auth redirected it to `/`; no same-state implementation capture could be produced.
+3. The stable preview alias was registered in Kinde and the additive Supabase CORS allowlist; authenticated data and interactions then passed.
+4. User review identified the blue-toned backdrop and dossier-like framing; the backdrop was changed to neutral gray and the panel was renamed as an RFx workspace.
+
+### Implementation checklist
+
+- [x] Authenticate on the stable cloud preview.
+- [x] Load the selected RFx and live Carrier CRM data.
+- [x] Open and close the RFx workspace with button, backdrop, and Escape.
+- [x] Verify focus return and a clean browser console.
+
+final result: passed
+
 ## Invitation Wave Review iteration — 2026-08-26
 
 - Source visual truth: `docs/superpowers/specs/assets/carrier-list-templates/03-carrier-fit.png` — 1487 x 1058 px.
@@ -143,5 +184,10 @@ No actionable P0, P1, or P2 finding remains.
 3. Post-change combined comparison: the new review preserves the approved shell, typography, controls, semantic colors, and persistent CTA. The carrier table moves lower by design because the new human decision gate now precedes selection confirmation.
 
 Focused crops were not required because the combined 1487 x 1058 comparison keeps the new panel copy, metrics, controls, and source hierarchy legible. Interaction behavior and the responsive breakpoint were verified separately in the browser.
+
+final result: passed
+## Current design gate
+
+The latest Carrier Fit canvas + RFx workspace drawer iteration passed its authenticated stable-preview data, interaction, accessibility, and console checks.
 
 final result: passed
