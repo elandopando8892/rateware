@@ -411,7 +411,7 @@
                       <input id="manual-shortlist-search" placeholder="Carrier, domain, email, coverage..." />
                     </label>
                     <label>
-                      Saved list / segment
+                      Carrier CRM scope
                       <select id="manual-shortlist-segment">
                         <option value="all">All active CRM carriers</option>
                         <option value="procurement">Procurement / Pipeline</option>
@@ -419,7 +419,7 @@
                     </label>
                     <div class="action-row">
                       <button id="select-visible-carriers" class="secondary small-button" type="button">Select visible</button>
-                      <button id="select-segment-carriers" class="secondary small-button" type="button">Select segment</button>
+                      <button id="select-segment-carriers" class="secondary small-button" type="button">Select scope</button>
                       <button id="clear-carrier-selection" class="secondary small-button" type="button">Clear</button>
                     </div>
                   </div>
@@ -443,45 +443,10 @@
                     <button id="manual-shortlist-button" class="page-primary-action" type="button" disabled>Add selected to bid</button>
                     <p id="manual-shortlist-status" class="status-message" role="status"></p>
                   </div>
-                  <details class="bid-room-participant-template-actions">
-                    <summary>Saved carrier list</summary>
-                    <label>
-                      Save selected list as template
-                      <input id="manual-shortlist-template-name" placeholder="Template name, e.g. Crossborder NL targets" />
-                    </label>
-                    <div class="action-row">
-                      <button id="save-manual-shortlist-template" class="secondary small-button" type="button" disabled>Save template</button>
-                      <button id="load-manual-shortlist-template" class="secondary small-button" type="button" disabled>Load saved list</button>
-                      <button id="update-manual-shortlist-template" class="secondary small-button" type="button" disabled>Update template</button>
-                      <button id="delete-manual-shortlist-template" class="danger small-button" type="button" disabled>Delete template</button>
-                    </div>
-                  </details>
-                  <details class="bid-room-participant-template">
-                    <summary>Bulk import participant template</summary>
-                    <div>
-                      <span>Upload CRM participant catalog</span>
-                      <button id="download-rfx-carrier-template" class="secondary small-button" type="button">Download template</button>
-                    </div>
-                    <label>
-                      Mark TRUE/FALSE in the catalog, then upload it
-                      <input id="rfx-carrier-template-file" type="file" accept=".xlsx,.xls,.csv,.tsv" />
-                    </label>
-                    <div id="rfx-carrier-template-preview" class="bid-room-carrier-template-preview" hidden>
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Participates</th>
-                            <th>Carrier</th>
-                            <th>CRM match</th>
-                            <th>Status</th>
-                          </tr>
-                        </thead>
-                        <tbody id="rfx-carrier-template-preview-body"></tbody>
-                      </table>
-                    </div>
-                    <button id="import-rfx-carrier-template" class="secondary" type="button" disabled>Import matched carriers</button>
-                    <p id="rfx-carrier-template-status" class="status-message" role="status"></p>
-                  </details>
+                  <div class="bid-room-participant-template-actions" role="note">
+                    <p>Reusable carrier lists are managed in Carrier CRM and used from Launch / Carrier Fit.</p>
+                    <a href="./vendors.html?tab=list-templates">Manage carrier list templates in Carrier CRM</a>
+                  </div>
                 </section>
               </div>
               </details>

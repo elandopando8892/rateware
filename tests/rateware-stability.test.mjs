@@ -311,14 +311,6 @@ for (const mutationName of [
   assert.match(mutationSource, /const eventId = selectedEventId;/, `${mutationName} should capture its initiating Bid Room`);
   assert.match(mutationSource, /selectedEventId !== eventId/, `${mutationName} should stop stale updates after navigation`);
 }
-for (const listenerName of ["importCarrierTemplateButton"]) {
-  const start = rfxEventsSource.indexOf(`${listenerName}?.addEventListener`);
-  const end = rfxEventsSource.indexOf("\n\n", start + 1);
-  const listenerSource = rfxEventsSource.slice(start, end > start ? end : undefined);
-  assert.ok(start >= 0, `${listenerName} handler should exist`);
-  assert.match(listenerSource, /const eventId = selectedEventId;/, `${listenerName} should capture its initiating Bid Room`);
-  assert.match(listenerSource, /selectedEventId !== eventId/, `${listenerName} should stop stale updates after navigation`);
-}
 const addParticipantsStart = rfxEventsSource.indexOf("async function addSelectedManualCarriersToBid");
 const addParticipantsEnd = rfxEventsSource.indexOf("\nasync function ", addParticipantsStart + 1);
 const addParticipantsSource = rfxEventsSource.slice(addParticipantsStart, addParticipantsEnd > addParticipantsStart ? addParticipantsEnd : undefined);
@@ -1031,17 +1023,42 @@ assert.match(spreadsheetGridSource, /control\.dataset\.gridInvalidOption = text/
 assert.match(stylesSource, /sheet-issue-nav/, "Spreadsheet issue navigator should have compact styling");
 assert.match(apiSource, /vendor_ids: vendorIds/, "Vendor segments should support exact participant template vendor ids");
 assert.match(apiSource, /update_vendor_segment/, "API should support updating reusable vendor participant templates");
-assert.match(rfxEventsSource, /createVendorSegment/, "Bid Room should save selected participants as reusable vendor templates");
-assert.match(rfxEventsSource, /updateVendorSegment/, "Bid Room should update saved participant templates after carrier changes");
-assert.match(rfxEventsSource, /deleteVendorSegment/, "Bid Room should delete saved participant templates without touching CRM carriers");
-assert.match(rfxEventsSource, /segmentVendorIds/, "Bid Room should preload exact vendor id templates");
-assert.match(rfxEventsSource, /fetchVendorSegments\(\{ segmentType: "participant_template" \}\)/, "Bid Room should load only reusable participant templates, not unrelated CRM segments");
-assert.match(rfxEventsSource, /participantTemplateNameKey/, "Bid Room should normalize participant template names before creating duplicates");
-assert.match(rfxEventsSource, /participantTemplateMutationRunning/, "Bid Room should serialize participant template save, update, and delete actions");
-assert.match(rfxEventsHtml, /manual-shortlist-template-name/, "Bid Room should render a named participant template input");
-assert.match(rfxEventsHtml, /load-manual-shortlist-template/, "Bid Room should render a saved participant template loader");
-assert.match(rfxEventsHtml, /update-manual-shortlist-template/, "Bid Room should render an update button for selected participant templates");
-assert.match(rfxEventsHtml, /delete-manual-shortlist-template/, "Bid Room should render a delete button for selected participant templates");
+for (const retiredParticipantTemplateControlId of [
+  "manual-shortlist-template-name",
+  "save-manual-shortlist-template",
+  "load-manual-shortlist-template",
+  "update-manual-shortlist-template",
+  "delete-manual-shortlist-template",
+  "download-rfx-carrier-template",
+  "rfx-carrier-template-file",
+  "rfx-carrier-template-preview",
+  "rfx-carrier-template-preview-body",
+  "import-rfx-carrier-template",
+  "rfx-carrier-template-status"
+]) {
+  assert.doesNotMatch(rfxEventsHtml, new RegExp(`id=["']${retiredParticipantTemplateControlId}["']`), `Bid Room should retire legacy participant-template control #${retiredParticipantTemplateControlId}`);
+}
+assert.match(rfxEventsHtml, /<a href="\.\/vendors\.html\?tab=list-templates">Manage carrier list templates in Carrier CRM<\/a>/, "Build Participants should link to the single Carrier CRM template editor");
+assert.doesNotMatch(rfxEventsHtml, /Bulk import participant template|Upload CRM participant catalog|Delete template/i, "Build Participants should not retain importer or hard-delete copy");
+for (const retiredParticipantTemplateSource of [
+  "createVendorSegment",
+  "updateVendorSegment",
+  "deleteVendorSegment",
+  "fetchVendorSegments",
+  "participantTemplateMutationRunning",
+  "participantTemplatePayload",
+  "participantTemplateNameKey",
+  "parseCarrierTemplateFile",
+  "downloadRfxCarrierTemplate",
+  "clearCarrierTemplateImport",
+  "pendingCarrierTemplateRows"
+]) {
+  assert.doesNotMatch(rfxEventsSource, new RegExp(`\\b${retiredParticipantTemplateSource}\\b`), `Bid Room should remove dead legacy participant-template source ${retiredParticipantTemplateSource}`);
+}
+assert.match(rfxEventsHtml, /id="manual-shortlist-search"/, "Build Participants should preserve manual Carrier CRM search");
+assert.match(rfxEventsHtml, /id="manual-shortlist-button"/, "Build Participants should preserve the manual RFx add action");
+assert.match(rfxEventsHtml, /id="rfx-lane-template-file"/, "Build should preserve the unrelated RFx lane template import");
+assert.match(rfxEventsSource, /async function parseLaneTemplateFile/, "Bid Room should preserve the unrelated RFx lane template parser");
 assert.match(apiSource, /findParticipantTemplateNameConflict/, "Rateware API should reject duplicate participant template names server-side");
 assert.match(apiSource, /vendor\.segment\.create/, "Rateware API should audit participant template creation");
 assert.match(apiSource, /vendor\.segment\.update/, "Rateware API should audit participant template updates");
@@ -1275,7 +1292,7 @@ assert.match(rfxEventsHtml, /id="rfx-chat-signal-queue"[\s\S]+No communication s
 assert.match(rfxEventsHtml, /id="rfx-chat-thread-list"[\s\S]+Select a bid event/, "Bid Room threads should explain their required context");
 assert.match(stylesSource, /\.priority-queue > \.ui-state[\s\S]+\.bid-room-chat-thread-list > \.ui-state/, "Command Center and chat states should share compact spacing");
 assert.match(rfxEventsSource, /let carrierWorkspaceLoadPromise = null;/, "Bid Room should track deferred carrier workspace loading");
-assert.match(rfxEventsSource, /function loadCarrierWorkspaceData\(\{ force = false \} = \{\}\)[\s\S]+loadVendorOptions\(\{ force \}\)[\s\S]+loadVendorSegments\(\)/, "Bid Room should load CRM carriers and segments as one deferred request with an explicit refresh path");
+assert.match(rfxEventsSource, /function loadCarrierWorkspaceData\(\{ force = false \} = \{\}\)[\s\S]+loadVendorOptions\(\{ force \}\)[\s\S]+loadActiveCarrierTemplates\(\)/, "Bid Room should load CRM carriers and active Carrier Fit templates as one deferred request with an explicit refresh path");
 assert.match(rfxEventsSource, /const initialView = rfxWorkbench\?\.current\(\) \|\| "setup";[\s\S]+if \(initialView === "carriers"\) loadCarrierWorkspaceData\(\)/, "Bid Room should avoid carrier CRM loading on the default Event view");
 assert.match(rfxEventsSource, /data-workbench-view-button='carriers'[\s\S]+loadCarrierWorkspaceData\(\)/, "Bid Room should load carrier CRM when Participants is opened");
 assert.match(rfxEventsSource, /data-workbench-view-button='outreach'[\s\S]+loadOutreachAssets\(\)[\s\S]+loadWhatsappConnectionReadiness\(\)[\s\S]+loadCarrierWorkspaceData\(\)/, "Bid Room should load outreach assets, WhatsApp readiness, and non-blocking CRM fit when Launch is opened");
@@ -1610,7 +1627,7 @@ const carrierTemplateMaterializationSource = rfxEventsSource.slice(
   rfxEventsSource.indexOf("rfxSelectVisibleOutreachCarriersButton?.addEventListener")
 );
 assert.doesNotMatch(carrierTemplateMaterializationSource, /generateOutreachDrafts|sendOutreachMessages|sendWhatsappOutreachMessages/, "Carrier Fit template materialization must not draft or send communication");
-assert.doesNotMatch(rfxEventsSource.slice(rfxEventsSource.indexOf("function renderOutreachCarrierFitControls"), rfxEventsSource.indexOf("function updateParticipantTemplateControls")), /createCarrierListTemplate|updateCarrierListTemplate|archiveCarrierListTemplate|restoreCarrierListTemplate|deleteVendorSegment/, "Carrier Fit must not expose template mutations");
+assert.doesNotMatch(rfxEventsSource.slice(rfxEventsSource.indexOf("function renderOutreachCarrierFitControls"), rfxEventsSource.indexOf("function renderManualShortlistControls")), /createCarrierListTemplate|updateCarrierListTemplate|archiveCarrierListTemplate|restoreCarrierListTemplate|deleteVendorSegment/, "Carrier Fit must not expose template mutations");
 assert.match(stylesSource, /\.rfx-outreach-carrier-wave-actions \{[\s\S]*?position: sticky/, "Carrier Fit should keep the selected-wave action visible while reviewing a long candidate list");
 assert.match(rfxEventsHtml, /rfx-message-wave-context/, "Message setup should explain the exact carrier wave that will receive drafts");
 assert.match(rfxEventsHtml, /id="rfx-message-readiness"/, "Message setup should keep a compact delivery preflight visible before queue preparation");
@@ -3767,7 +3784,7 @@ assert.match(vendorPagePerformanceMigration, /vendors_refresh_search_document/, 
 assert.match(vendorPagePerformanceMigration, /vendor_rate_metrics_for_owner_ids/, "Vendor rate enrichment should be scoped to requested CRM rows");
 assert.match(vendorPagePerformanceMigration, /vendor_bid_metrics_for_owner_ids/, "Bid Room enrichment should aggregate requested CRM rows server-side");
 assert.match(listVendorsSource, /const vendorIds = rows\.map\(\(row\) => row\.id\)/, "Carrier CRM should request metrics only for the current page");
-assert.match(rfxEventsSource, /rawTerm\.length >= 2\s*\? segmentRows/, "Bid Room should trust server-side vendor search matches");
+assert.match(rfxEventsSource, /rawTerm\.length >= 2\s*\? scopeRows/, "Bid Room should trust server-side vendor search matches");
 assert.match(vendorImprovementSource, /const matchingRows = rows;/, "Vendor CI should trust server-side vendor search matches");
 assert.match(listVendorsSource, /if \(!lightweight && rows\.length\)/, "Bid Room carrier selector should be able to skip heavy CRM metric enrichment");
 assert.match(listVendorsSource, /rows: enrichedRows,[\s\S]*warnings,/, "Carrier CRM directory should surface partial metric warnings");
@@ -3963,15 +3980,13 @@ assert.match(rfxEventsSource, /const vendorOptionCache = new Map\(\)/, "Bid Room
 assert.doesNotMatch(rfxEventsSource, /selectedManualVendorIdsState = new Set\(\[\.\.\.selectedManualVendorIdsState\]\.filter\(/, "Changing the CRM search must not discard selected bid participants");
 assert.match(rfxEventsSource, /vendorSearchRows = sortedVendorOptions\(rows\)/, "Bid Room should render server-side CRM search results instead of waiting for the complete CRM preload");
 assert.match(rfxEventsSource, /async function hydrateRemainingVendorOptions[\s\S]+limit: CRM_VENDOR_PAGE_SIZE/, "Bid Room should hydrate further Carrier CRM pages in the background after the initial page is usable");
-assert.match(vendorServiceSource, /ids = \[\]/, "Vendor service should support resolving saved participant IDs without relying on the visible list");
+assert.match(vendorServiceSource, /ids = \[\]/, "Vendor service should support resolving retained participant and Carrier Fit template IDs without relying on the visible list");
 assert.match(listVendorsSource, /const requestedIds = normalizeUuidList\(body\.ids \|\| body\.vendor_ids\)/, "Vendor API should support owner-scoped vendor resolution by ID");
-assert.match(rfxEventsSource, /async function hydrateVendorOptionIds\(ids = \[\]\)/, "Bid Room should hydrate saved participant templates by ID from Carrier CRM");
-assert.match(rfxEventsSource, /ids: requestedIds\.slice\(offset, offset \+ CRM_VENDOR_SEARCH_LIMIT\)/, "Saved participant hydration should use bounded CRM requests");
-assert.match(rfxEventsSource, /async function loadSegmentCandidateRows\(segmentId = selectedSegmentId\(\)\)/, "Bid Room should resolve saved or procurement participants through Carrier CRM before selecting them");
+assert.match(rfxEventsSource, /async function hydrateVendorOptionIds\(ids = \[\]\)/, "Bid Room should hydrate retained manual participant IDs from Carrier CRM");
+assert.match(rfxEventsSource, /ids: requestedIds\.slice\(offset, offset \+ CRM_VENDOR_SEARCH_LIMIT\)/, "Retained participant hydration should use bounded CRM requests");
+assert.match(rfxEventsSource, /async function loadManualScopeCandidateRows\(scopeId = selectedManualScopeId\(\)\)/, "Bid Room should resolve the manual all-active or procurement scope before selecting carriers");
 assert.match(rfxEventsSource, /base_stage: "procurement"[\s\S]*lightweight: true/, "Procurement participant loading should use the server-side CRM procurement filter");
-assert.match(rfxEventsSource, /const rows = await loadSegmentCandidateRows\(segmentId\);/, "Loading a saved participant list should not depend on the currently visible CRM rows");
-assert.match(rfxEventsSource, /loadSegmentCandidateRows\(segmentId\)[\s\S]*selectManualVendorIds\(rows\.map\(\(vendor\) => vendor\.id\)\)/, "Selecting a participant segment should hydrate CRM rows before selecting carrier ids");
-assert.match(rfxEventsSource, /const savedIds = segmentVendorIds\(selectedSegment\);/, "Saved templates should remain loadable even when their vendors are outside the initial CRM page");
+assert.match(rfxEventsSource, /loadManualScopeCandidateRows\(scopeId\)[\s\S]*selectManualVendorIds\(rows\.map\(\(vendor\) => vendor\.id\)\)/, "Selecting a manual Carrier CRM scope should hydrate rows before selecting carrier ids");
 assert.match(rfxEventsSource, /row\.contact_name/, "Bid Room participant search should include CRM contact names");
 assert.match(rfxEventsSource, /\.normalize\("NFD"\)/, "Bid Room participant search should normalize accents for Spanish names");
 assert.match(rfxEventsSource, /<strong>\$\{escapeHtml\(vendorDisplayName\(row\)\)\}<\/strong>/, "Bid Room participant cards should stay focused on vendor name only");
