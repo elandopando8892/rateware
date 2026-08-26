@@ -710,6 +710,97 @@ Deno.test("real request dispatcher honors feature flag and raw-claim write permi
   assertEquals(deniedDb.traces, []);
 });
 
+Deno.test("real duplicate request requires and enforces the displayed source version", async () => {
+  const source = {
+    id: "aaaaaaaa-1111-4111-8111-111111111111",
+    segment_name: "Source",
+    lifecycle_status: "active",
+    status: "active",
+    vendor_ids: [vendorB.id, vendorA.id],
+    template_version: 4,
+    updated_at: "2026-08-25T10:00:00.000Z",
+  };
+
+  const missingVersionDb = new ScriptedSupabase();
+  const missingVersionHandler = createTestRatewareApiHandler(missingVersionDb);
+  assert(missingVersionHandler);
+  const missingVersionResponse = await missingVersionHandler(jsonActionRequest({
+    action: "duplicate_carrier_list_template",
+    id: source.id,
+    name: "Source Copy",
+  }));
+  assertEquals(missingVersionResponse.status, 400);
+  assertEquals(await missingVersionResponse.json(), {
+    enabled: true,
+    error: "expected_version is required.",
+  });
+  assertEquals(missingVersionDb.traces, []);
+
+  const staleVersionDb = new ScriptedSupabase([
+    { table: "vendor_segments", operation: "select", data: source },
+  ]);
+  const staleVersionHandler = createTestRatewareApiHandler(staleVersionDb);
+  assert(staleVersionHandler);
+  const staleVersionResponse = await staleVersionHandler(jsonActionRequest({
+    action: "duplicate_carrier_list_template",
+    id: source.id,
+    name: "Source Copy",
+    expected_version: 3,
+  }));
+  assertEquals(staleVersionResponse.status, 409);
+  assertEquals(await staleVersionResponse.json(), {
+    enabled: true,
+    error: "Carrier list template changed since it was loaded.",
+    current_version: 4,
+    current_updated_at: source.updated_at,
+    template_id: source.id,
+  });
+  assertEquals(
+    staleVersionDb.traces.some((trace) => ["insert", "update", "delete"].includes(trace.operation)),
+    false,
+  );
+  assertEquals(staleVersionDb.traces.some((trace) => trace.table === "saas_audit_log"), false);
+
+  const duplicate = {
+    ...source,
+    id: "bbbbbbbb-2222-4222-8222-222222222222",
+    segment_name: "Source Copy",
+    lifecycle_status: "draft",
+    status: "draft",
+    template_version: 1,
+  };
+  const currentVersionDb = new ScriptedSupabase([
+    { table: "vendor_segments", operation: "select", data: source },
+    { table: "vendors", operation: "select", data: [vendorA, vendorB] },
+    { table: "vendor_segments", operation: "select", data: [] },
+    { table: "vendor_segments", operation: "insert", data: duplicate },
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const currentVersionHandler = createTestRatewareApiHandler(currentVersionDb);
+  assert(currentVersionHandler);
+  const currentVersionResponse = await currentVersionHandler(jsonActionRequest({
+    action: "duplicate_carrier_list_template",
+    id: source.id,
+    name: "Source Copy",
+    expected_version: 4,
+  }));
+  assertEquals(currentVersionResponse.status, 201);
+  assertEquals(await currentVersionResponse.json(), {
+    enabled: true,
+    row: duplicate,
+  });
+  const insert = currentVersionDb.traces.find((trace) =>
+    trace.table === "vendor_segments" && trace.operation === "insert"
+  );
+  const insertPayload = insert?.payload as Record<string, unknown>;
+  assertEquals(insertPayload.segment_name, "Source Copy");
+  assertEquals(insertPayload.lifecycle_status, "draft");
+  assertEquals(insertPayload.template_version, 1);
+  assertEquals(insertPayload.vendor_ids, [vendorB.id, vendorA.id]);
+  const audit = currentVersionDb.traces.find((trace) => trace.table === "saas_audit_log");
+  assertEquals((audit?.payload as Record<string, unknown>).action, "carrier_template.duplicate");
+});
+
 Deno.test("enabled legacy generic mutations guard the final dynamic row mutation", async () => {
   const segmentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const dynamicSegment = {
@@ -1239,7 +1330,8 @@ Deno.test("duplicate copies ordered members into a new draft", async () => {
   const result = await callCarrierTemplateAction(db, {
     action: "duplicate_carrier_list_template",
     id: source.id,
-    segment_name: "Source Copy",
+    name: "Source Copy",
+    expected_version: 4,
   });
   assertEquals(result, {
     status: 201,

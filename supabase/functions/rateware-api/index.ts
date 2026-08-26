@@ -661,10 +661,18 @@ export async function handleCarrierTemplateApiAction(
   if (action === "duplicate_carrier_list_template") {
     const sourceId = carrierTemplateId(input);
     if (!sourceId) return carrierTemplateResult(400, { error: "A valid carrier list template id is required." });
+    const expectedVersion = carrierTemplateExpectedVersion(input.expected_version);
+    if (!expectedVersion) return carrierTemplateResult(400, { error: "expected_version is required." });
+    const canonicalName = cleanText(input.name);
+    const legacyName = cleanText(input.segment_name || objectRecord(input.template).segment_name);
+    if (canonicalName && legacyName && carrierTemplateNameKey(canonicalName) !== carrierTemplateNameKey(legacyName)) {
+      return carrierTemplateResult(400, { error: "Conflicting carrier list template names were provided." });
+    }
+    const requestedName = canonicalName || legacyName;
+    if (!requestedName) return carrierTemplateResult(400, { error: "name is required." });
     const source = await loadCarrierTemplate(supabase, actor.organization_id, sourceId);
     if (!source) return carrierTemplateResult(404, { error: "Carrier list template was not found." });
-    const requestedName = cleanText(input.segment_name || objectRecord(input.template).segment_name);
-    if (!requestedName) return carrierTemplateResult(400, { error: "segment_name is required." });
+    if ((Number(source.template_version) || 1) !== expectedVersion) return carrierTemplateVersionConflict(source);
     const vendorIds = normalizeCarrierTemplateVendorIds(source.vendor_ids || []);
     if (!await validateCarrierTemplateMembers(supabase, actor.organization_id, vendorIds)) {
       return carrierTemplateResult(400, { error: "One or more selected carriers are unavailable in this organization." });

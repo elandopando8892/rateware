@@ -35,6 +35,10 @@ const ratewareHtml = readFileSync(new URL("../rateware.html", import.meta.url), 
 const vendorsSource = readFileSync(new URL("../src/vendors.js", import.meta.url), "utf8");
 const vendorsHtml = readFileSync(new URL("../vendors.html", import.meta.url), "utf8");
 const vendorServiceSource = readFileSync(new URL("../src/vendor-service.js", import.meta.url), "utf8");
+const carrierListTemplatesUrl = new URL("../src/carrier-list-templates.js", import.meta.url);
+const carrierListTemplatesSource = existsSync(carrierListTemplatesUrl)
+  ? readFileSync(carrierListTemplatesUrl, "utf8")
+  : "";
 const vendorSupportSource = readFileSync(new URL("../src/vendor-support.js", import.meta.url), "utf8");
 const vendorSupportServiceSource = readFileSync(new URL("../src/vendor-support-service.js", import.meta.url), "utf8");
 const vendorSupportHtml = readFileSync(new URL("../vendor-support.html", import.meta.url), "utf8");
@@ -3729,6 +3733,38 @@ assert.match(apiSource, /secondary_emails: emails\.slice\(1\)/, "Rateware API sh
 assert.match(vendorsSource, /function renderDrawerRatewareEvidence/, "Vendor drawer should explain Rateware evidence");
 assert.match(vendorsHtml, /drawer-rateware-evidence/, "Vendor drawer should have a Rateware evidence section");
 assert.match(vendorSegmentsCoverageMigration, /coverage_filter text/, "Vendor saved lists should persist a coverage filter");
+const vendorWorkflowTabsHtml = vendorsHtml.match(/<section class="vendor-tabs vendor-workflow-tabs[\s\S]*?<\/section>/)?.[0] || "";
+const dynamicSegmentsPanelHtml = vendorsHtml.match(/<section[^>]*data-tab-panel="segments"[\s\S]*?<\/section>/)?.[0] || "";
+const carrierTemplateWorkspaceHtml = vendorsHtml.match(/<section[^>]*data-vendor-workspace="list-templates"[\s\S]*?<\/section>/)?.[0] || "";
+assert.match(
+  vendorWorkflowTabsHtml,
+  /data-vendor-tab="intelligence"[\s\S]*data-vendor-tab="list-templates"/,
+  "Carrier CRM should expose List Templates as a top-level workflow tab immediately after Intelligence"
+);
+assert.doesNotMatch(dynamicSegmentsPanelHtml, /data-vendor-tab="list-templates"|data-vendor-workspace="list-templates"/, "Carrier templates must not be nested in the dynamic Saved vendor lists panel");
+assert.match(carrierTemplateWorkspaceHtml, /data-template-action="new"/, "Carrier template library should expose New template");
+assert.match(carrierTemplateWorkspaceHtml, /data-template-search[^>]+aria-label="Search templates"/, "Carrier template library search should have an accessible name");
+assert.match(carrierTemplateWorkspaceHtml, /data-template-status[^>]+aria-label="Template status"/, "Carrier template lifecycle filter should have an accessible name");
+for (const action of ["open", "duplicate", "archive", "restore"]) {
+  assert.match(carrierListTemplatesSource, new RegExp(`data-template-action="${action}"`), `Carrier template library should render ${action} controls`);
+}
+assert.doesNotMatch(
+  `${carrierTemplateWorkspaceHtml}\n${carrierListTemplatesSource}`,
+  /data-template-action="(?:delete|remove)"|>\s*(?:Delete|Remove)(?:\s+template)?\s*</i,
+  "Carrier template library must use reversible archive and restore controls, never hard delete"
+);
+assert.match(vendorsSource, /initCarrierListTemplateLibrary/, "Carrier CRM should initialize the shared template library controller");
+assert.match(carrierListTemplatesSource, /fetchCarrierListTemplates/, "Carrier template list action should provide capability discovery");
+assert.match(carrierListTemplatesSource, /getAccessContext/, "Carrier template write affordances should use the current Kinde access context");
+assert.doesNotMatch(carrierListTemplatesSource, /\bcanUse\s*\(/, "Carrier template UI must not change or depend on global canUse semantics");
+assert.match(carrierListTemplatesSource, /template_version/, "Carrier template rows should display and retain their optimistic-lock version");
+assert.match(carrierListTemplatesSource, /const displayedVersion = Number\(button\.dataset\.templateVersion\)[\s\S]+duplicateCarrierListTemplate\(id, duplicateName, displayedVersion\)[\s\S]+archiveCarrierListTemplate\(id, displayedVersion\)[\s\S]+restoreCarrierListTemplate\(id, displayedVersion\)/, "Duplicate, archive, and restore should send the exact version displayed on the clicked control");
+assert.match(carrierListTemplatesSource, /error\?\.status === 409[\s\S]+getCarrierListTemplate/, "Carrier template conflicts should reload the current row without automatic mutation retry");
+assert.match(carrierListTemplatesSource, /const lifecycleFilter = [^;]+[\s\S]+templateLifecycle\(row\) !== lifecycleFilter/, "Carrier template client rendering should keep deep-linked or newly mutated rows out of the wrong lifecycle filter");
+assert.match(carrierListTemplatesSource, /activate:[\s\S]+selectedTemplateId = "";[\s\S]+render\(\)/, "Carrier template history navigation without a template id should clear stale detail selection");
+assert.match(carrierListTemplatesSource, /const retryAction = action === "duplicate"[\s\S]+templateLifecycle\(current\.row\)[\s\S]+: action;[\s\S]+focusSelectedAction\(retryAction\)/, "Carrier template conflict recovery should return keyboard focus to the refreshed action or the original action when refresh fails");
+assert.match(stylesSource, /\.carrier-template-workspace\.hidden\s*\{\s*display:\s*none;/, "Inactive Carrier CRM template workspace should remain hidden after capability discovery");
+assert.match(vendorsSource, /URLSearchParams[\s\S]+template[\s\S]+popstate/, "Carrier CRM should preserve template deep links and browser history navigation");
 for (const field of ['lifecycle_status', 'template_version', 'created_by_user_id', 'updated_by_user_id', 'archived_at']) {
   assert.match(carrierTemplateMigration, new RegExp(field), `carrier template migration must define ${field}`);
 }

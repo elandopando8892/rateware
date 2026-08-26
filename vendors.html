@@ -74,6 +74,10 @@
               <strong>Intelligence</strong>
               <span>Signals and fit</span>
             </button>
+            <button class="vendor-tab" type="button" data-vendor-tab="list-templates" hidden>
+              <strong>List Templates</strong>
+              <span>Static carrier lists</span>
+            </button>
             <details class="vendor-secondary-tools">
               <summary>More tools</summary>
               <button class="vendor-secondary-tool" type="button" data-vendor-tab="matching">
@@ -218,6 +222,41 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </section>
+
+          <section class="workspace-panel wide-section hidden carrier-template-workspace" data-tab-panel="list-templates" data-vendor-workspace="list-templates" hidden>
+            <header class="split-heading">
+              <div>
+                <p class="eyebrow">Carrier CRM</p>
+                <h2>List Templates</h2>
+                <p>Static carrier lists built only from carriers already in this workspace.</p>
+              </div>
+              <button type="button" data-template-action="new">New template</button>
+            </header>
+            <div class="carrier-template-toolbar" aria-label="Template library filters">
+              <label>
+                Search
+                <input type="search" data-template-search aria-label="Search templates" placeholder="Name or description" />
+              </label>
+              <label>
+                Status
+                <select data-template-status aria-label="Template status">
+                  <option value="active">Active</option>
+                  <option value="draft">Draft</option>
+                  <option value="archived">Archived</option>
+                  <option value="all">All</option>
+                </select>
+              </label>
+              <p class="status-message" data-template-library-status role="status" aria-live="polite"></p>
+            </div>
+            <div class="carrier-template-library-layout">
+              <div class="table-wrap carrier-template-library-table" data-template-library-table></div>
+              <aside class="carrier-template-detail" data-template-detail aria-live="polite" tabindex="-1">
+                <p class="eyebrow">Template detail</p>
+                <h3>Select a template</h3>
+                <p>Open a row to review its static membership and current version.</p>
+              </aside>
             </div>
           </section>
 
