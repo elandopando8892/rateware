@@ -136,6 +136,7 @@ final result: passed
 
 1. The approved source and original screenshot were available.
 2. The local protected route was opened, but auth redirected it to `/`; no same-state implementation capture could be produced.
+3. Preview deployment `rateware-nnyyitc90-elandopando8892s-projects.vercel.app` reached Ready, but Kinde rejected its `/app` callback as unregistered, so the authenticated preview smoke could not continue.
 
 ### Implementation checklist
 
