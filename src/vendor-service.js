@@ -157,6 +157,15 @@ export async function deleteVendorSegment(id, { segmentType = "" } = {}) {
   })).row;
 }
 
+export const fetchCarrierListTemplates = (filters = {}) => callRatewareApi("list_carrier_list_templates", filters);
+export const getCarrierListTemplate = (id, { usageContext = "" } = {}) => callRatewareApi("get_carrier_list_template", { id, usage_context: usageContext });
+export const resolveCarrierListTemplateRows = (rows) => callRatewareApi("resolve_carrier_list_template_rows", { rows });
+export const createCarrierListTemplate = (template) => callRatewareApi("create_carrier_list_template", { template });
+export const updateCarrierListTemplate = (id, template, expectedVersion) => callRatewareApi("update_carrier_list_template", { id, template, expected_version: expectedVersion });
+export const duplicateCarrierListTemplate = (id, name, expectedVersion) => callRatewareApi("duplicate_carrier_list_template", { id, name, expected_version: expectedVersion });
+export const archiveCarrierListTemplate = (id, expectedVersion) => callRatewareApi("archive_carrier_list_template", { id, expected_version: expectedVersion });
+export const restoreCarrierListTemplate = (id, expectedVersion) => callRatewareApi("restore_carrier_list_template", { id, expected_version: expectedVersion });
+
 export async function fetchVendorSupportTickets(filters = {}) {
   return await callRatewareApi("list_vendor_support_tickets", filters);
 }
