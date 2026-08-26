@@ -356,6 +356,9 @@ const rfxOutreachCarrierTemplateCounts = document.querySelector("#rfx-outreach-c
 const rfxOutreachLaunchReadiness = document.querySelector("#rfx-outreach-launch-readiness");
 const rfxOutreachLaunchReadinessMetrics = document.querySelector("#rfx-outreach-launch-readiness-metrics");
 const rfxOutreachLaunchReadinessNote = document.querySelector("#rfx-outreach-launch-readiness-note");
+const rfxOutreachWaveCoverageSummary = document.querySelector("#rfx-outreach-wave-coverage-summary");
+const rfxOutreachWaveCoverage = document.querySelector("#rfx-outreach-wave-coverage");
+const rfxOutreachWaveExceptions = document.querySelector("#rfx-outreach-wave-exceptions");
 const rfxOutreachCarrierFit = document.querySelector("#rfx-outreach-carrier-fit");
 const rfxOutreachCarrierLane = document.querySelector("#rfx-outreach-carrier-lane");
 const rfxOutreachCarrierFitSummary = document.querySelector("#rfx-outreach-carrier-fit-summary");
@@ -8935,6 +8938,20 @@ function carrierTemplateStateLabel(state) {
   }[state] || "Unavailable";
 }
 
+function carrierTemplateWaveLaneLabel(lane = {}, index = 0) {
+  const origin = String(lane.origin || "Origin").trim();
+  const destination = String(lane.destination || "Destination").trim();
+  return `#${index + 1} ${origin} → ${destination}`;
+}
+
+function carrierTemplateWaveCoverage(selectedRows = []) {
+  return currentLanes.map((lane, index) => {
+    const selectedCount = selectedRows.filter((row) => fitCarrierToLanes(row, [lane]).hasAnyLaneFit).length;
+    const tone = selectedCount === 0 ? "danger" : selectedCount < 3 ? "warning" : "success";
+    return { lane, index, selectedCount, tone };
+  });
+}
+
 function renderActiveCarrierTemplateAdder() {
   const materializationOperation = carrierTemplateMaterializationController.active;
   const materializationLocked = Boolean(materializationOperation);
@@ -8981,6 +8998,48 @@ function renderActiveCarrierTemplateAdder() {
         <span data-tone="neutral"><strong>v${formatNumber(templateVersion)}</strong> template snapshot</span>
       `
       : '<span data-tone="neutral"><strong>Pending</strong> Select an active template</span>';
+  }
+  const waveCoverage = carrierTemplateWaveCoverage(selectedRows);
+  const uncoveredLaneCount = waveCoverage.filter((row) => row.selectedCount === 0).length;
+  const thinLaneCount = waveCoverage.filter((row) => row.selectedCount > 0 && row.selectedCount < 3).length;
+  if (rfxOutreachWaveCoverageSummary) {
+    rfxOutreachWaveCoverageSummary.className = `status-pill ${!selectedIds.length ? "muted" : uncoveredLaneCount ? "warning" : "success"}`;
+    rfxOutreachWaveCoverageSummary.textContent = !selectedIds.length
+      ? "No selection"
+      : uncoveredLaneCount
+        ? `${formatNumber(uncoveredLaneCount)} uncovered`
+        : thinLaneCount
+          ? `${formatNumber(thinLaneCount)} thin`
+          : "Every lane covered";
+  }
+  if (rfxOutreachWaveCoverage) {
+    rfxOutreachWaveCoverage.innerHTML = !templateReady
+      ? '<p class="rfx-outreach-wave-empty">Choose an active template to calculate lane coverage.</p>'
+      : !currentLanes.length
+        ? '<p class="rfx-outreach-wave-empty">Load RFx lanes to calculate coverage.</p>'
+        : waveCoverage.map(({ lane, index, selectedCount, tone }) => `
+          <article data-tone="${tone}">
+            <span><strong>${escapeHtml(carrierTemplateWaveLaneLabel(lane, index))}</strong><small>${escapeHtml([lane.equipment, lane.operation, lane.service].filter(Boolean).join(" · ") || "Lane requirements")}</small></span>
+            <span><b>${formatNumber(selectedCount)}</b> selected</span>
+            <button class="secondary small-button" type="button" data-rfx-review-wave-lane="${escapeHtml(String(lane.id || ""))}" ${materializationLocked ? "disabled" : ""}>Review lane</button>
+          </article>
+        `).join("");
+  }
+  if (rfxOutreachWaveExceptions) {
+    const exceptionRows = [
+      ["already_in_rfx", partition.counts.already_in_rfx, "Already participating; never duplicated."],
+      ["missing_contact", partition.counts.missing_contact, "Needs a usable delivery contact in Carrier CRM."],
+      ["unavailable", partition.counts.unavailable, "Archived, missing, or unavailable CRM record."],
+      ["filtered_out", partition.counts.filtered_out, "Hidden by the current Carrier Fit filters."]
+    ];
+    rfxOutreachWaveExceptions.innerHTML = templateReady
+      ? exceptionRows.map(([state, count, detail]) => `
+        <article data-tone="${count ? "warning" : "success"}">
+          <span><strong>${escapeHtml(state === "filtered_out" ? "Filtered out" : carrierTemplateStateLabel(state))}</strong><small>${escapeHtml(detail)}</small></span>
+          <b>${formatNumber(count)}</b>
+        </article>
+      `).join("")
+      : '<p class="rfx-outreach-wave-empty">Template exceptions appear after exact membership loads.</p>';
   }
   if (rfxOutreachLaunchReadinessNote) {
     const selectedCount = selectedIds.length;
@@ -12106,6 +12165,15 @@ rfxOutreachCarrierSegment?.addEventListener("change", async () => {
     return;
   }
   await loadSelectedActiveCarrierTemplate();
+});
+rfxOutreachLaunchReadiness?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-rfx-review-wave-lane]");
+  if (!button || !rfxOutreachCarrierLane || carrierTemplateSelectionMutationBlocked(rfxOutreachCarrierStatus)) return;
+  rfxOutreachCarrierLane.value = String(button.dataset.rfxReviewWaveLane || "all");
+  renderOutreachCarrierAdder();
+  void loadRfxCarrierFitEvidence({ force: true });
+  rfxOutreachCarrierLane.focus();
+  setStatus(rfxOutreachCarrierStatus, "Carrier Fit is focused on the selected lane. Review the visible audience before confirming the wave.", "neutral");
 });
 rfxOutreachCarrierCandidates?.addEventListener("change", (event) => {
   const input = event.target.closest("[data-rfx-carrier-template-select]");

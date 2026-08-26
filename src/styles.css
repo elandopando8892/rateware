@@ -4731,6 +4731,103 @@ a {
   background: #fffaf0;
 }
 
+.rfx-outreach-wave-review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(220px, 0.65fr);
+  gap: 8px;
+}
+
+.rfx-outreach-wave-review-grid > section {
+  min-width: 0;
+  border: 1px solid #d5e2dc;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.rfx-outreach-wave-review-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.rfx-outreach-wave-review-heading h6,
+.rfx-outreach-wave-review-heading p {
+  margin: 0;
+}
+
+.rfx-outreach-wave-review-heading h6 {
+  color: #233b34;
+  font-size: 0.72rem;
+}
+
+.rfx-outreach-wave-coverage,
+.rfx-outreach-wave-exceptions {
+  display: grid;
+  gap: 5px;
+  max-height: 190px;
+  overflow: auto;
+}
+
+.rfx-outreach-wave-coverage article,
+.rfx-outreach-wave-exceptions article {
+  display: grid;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #e2e9e5;
+  border-radius: 6px;
+  background: #fbfcfc;
+  padding: 6px 7px;
+}
+
+.rfx-outreach-wave-coverage article {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.rfx-outreach-wave-exceptions article {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.rfx-outreach-wave-coverage article > span:first-child,
+.rfx-outreach-wave-exceptions article > span:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.rfx-outreach-wave-coverage strong,
+.rfx-outreach-wave-exceptions strong {
+  overflow: hidden;
+  color: #273c35;
+  font-size: 0.66rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rfx-outreach-wave-coverage small,
+.rfx-outreach-wave-exceptions small {
+  overflow: hidden;
+  color: #697873;
+  font-size: 0.59rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rfx-outreach-wave-coverage article[data-tone="danger"],
+.rfx-outreach-wave-coverage article[data-tone="warning"],
+.rfx-outreach-wave-exceptions article[data-tone="warning"] {
+  border-color: #ead8b2;
+  background: #fffaf1;
+}
+
+.rfx-outreach-wave-empty {
+  margin: 0;
+  color: #697873;
+  font-size: 0.66rem;
+}
+
 .clt-launch-readiness {
   display: grid;
   gap: 10px;
@@ -4989,6 +5086,10 @@ a {
 
   .rfx-outreach-launch-readiness-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rfx-outreach-wave-review-grid {
+    grid-template-columns: 1fr;
   }
 
   .clt-launch-readiness-metrics {

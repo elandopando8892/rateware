@@ -487,6 +487,26 @@ function renderPreview(state, root) {
           <span><b>${exceptionCount}</b> exceptions</span>
           <span><b>v${fit.template.template_version || 1}</b> template snapshot</span>
         </div>
+        <div class="rfx-outreach-wave-review-grid">
+          <section aria-label="Selected audience by lane">
+            <div class="rfx-outreach-wave-review-heading"><div><p>LANE COVERAGE</p><h6>Selected audience by lane</h6></div><span class="clt-fit-label ${selectedCount ? "is-ready" : "is-warning"}">${selectedCount ? "Every lane covered" : "No selection"}</span></div>
+            <div class="rfx-outreach-wave-coverage">
+              ${[
+                ["#1 Monterrey, MX → Laredo, TX", "Dry Van · D2D Export", selectedCount],
+                ["#2 Saltillo, MX → Dallas, TX", "Dry Van · D2D Export", Math.max(0, selectedCount - 1)],
+                ["#3 Querétaro, MX → Houston, TX", "Flatbed · D2D Export", Math.max(0, selectedCount - 2)]
+              ].map(([label, detail, count]) => `<article data-tone="${count === 0 ? "danger" : count < 3 ? "warning" : "success"}"><span><strong>${label}</strong><small>${detail}</small></span><span><b>${count}</b> selected</span><button class="clt-secondary" type="button" data-clt-shell-feedback="Lane review is focused without adding carriers">Review lane</button></article>`).join("")}
+            </div>
+          </section>
+          <section aria-label="Template exceptions">
+            <div class="rfx-outreach-wave-review-heading"><div><p>EXCEPTIONS</p><h6>Why members stay out</h6></div></div>
+            <div class="rfx-outreach-wave-exceptions">
+              <article data-tone="${fit.counts.already_in_rfx ? "warning" : "success"}"><span><strong>Already in this RFx</strong><small>Already participating; never duplicated.</small></span><b>${fit.counts.already_in_rfx}</b></article>
+              <article data-tone="${fit.counts.missing_contact ? "warning" : "success"}"><span><strong>Missing contact</strong><small>Needs a usable Carrier CRM contact.</small></span><b>${fit.counts.missing_contact}</b></article>
+              <article data-tone="${fit.counts.unavailable ? "warning" : "success"}"><span><strong>Unavailable</strong><small>Archived or unavailable CRM record.</small></span><b>${fit.counts.unavailable}</b></article>
+            </div>
+          </section>
+        </div>
         <p>${selectedCount
           ? `${selectedCount} carrier(s) will be revalidated against the active template and current RFx lanes. Carrier Fit will not draft or send messages.`
           : "Select eligible carriers. Already-in-RFx, missing-contact, and unavailable members remain excluded."}</p>
