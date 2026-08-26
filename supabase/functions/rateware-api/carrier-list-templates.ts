@@ -200,12 +200,17 @@ export function resolveCarrierTemplateImportRows(
     resolved.push(result);
   };
   for (const row of rows) {
-    const id = text(row.vendor_id ?? row.id);
+    const requestedId = text(row.vendor_id) ?? text(row.id) ?? text(row.crm_id);
+    const id = requestedId &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+          .test(requestedId)
+      ? requestedId.toLowerCase()
+      : null;
     const hasExternalIdentifier =
       !!(row.usdot || row.USDOT || row.mc_number || row.mc || row.MC ||
         row.email || row.primary_email);
     const hasName = !!text(row.vendor_name ?? row.name);
-    if (!id && !hasExternalIdentifier && !hasName) {
+    if (!requestedId && !hasExternalIdentifier && !hasName) {
       finish(row, "not_found", "missing_identifier", [], false);
       continue;
     }
@@ -257,7 +262,7 @@ export function resolveCarrierTemplateImportRows(
     } else {finish(
         row,
         "not_found",
-        id ? "not_found_in_organization" : "not_found",
+        requestedId ? "not_found_in_organization" : "not_found",
         [],
         false,
       );}

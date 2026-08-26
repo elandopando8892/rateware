@@ -157,14 +157,28 @@ export async function deleteVendorSegment(id, { segmentType = "" } = {}) {
   })).row;
 }
 
-export const fetchCarrierListTemplates = (filters = {}) => callRatewareApi("list_carrier_list_templates", filters);
-export const getCarrierListTemplate = (id, { usageContext = "" } = {}) => callRatewareApi("get_carrier_list_template", { id, usage_context: usageContext });
-export const resolveCarrierListTemplateRows = (rows) => callRatewareApi("resolve_carrier_list_template_rows", { rows });
-export const createCarrierListTemplate = (template) => callRatewareApi("create_carrier_list_template", { template });
-export const updateCarrierListTemplate = (id, template, expectedVersion) => callRatewareApi("update_carrier_list_template", { id, template, expected_version: expectedVersion });
-export const duplicateCarrierListTemplate = (id, name, expectedVersion) => callRatewareApi("duplicate_carrier_list_template", { id, name, expected_version: expectedVersion });
-export const archiveCarrierListTemplate = (id, expectedVersion) => callRatewareApi("archive_carrier_list_template", { id, expected_version: expectedVersion });
-export const restoreCarrierListTemplate = (id, expectedVersion) => callRatewareApi("restore_carrier_list_template", { id, expected_version: expectedVersion });
+export function createCarrierListTemplateService(callApi = callRatewareApi) {
+  return {
+    fetchCarrierListTemplates: (filters = {}) => callApi("list_carrier_list_templates", filters),
+    getCarrierListTemplate: (id, { usageContext = "" } = {}) => callApi("get_carrier_list_template", { id, usage_context: usageContext }),
+    resolveCarrierListTemplateRows: (rows) => callApi("resolve_carrier_list_template_rows", { rows }),
+    createCarrierListTemplate: (template) => callApi("create_carrier_list_template", { template }),
+    updateCarrierListTemplate: (id, template, expectedVersion) => callApi("update_carrier_list_template", { id, template, expected_version: expectedVersion }),
+    duplicateCarrierListTemplate: (id, name, expectedVersion) => callApi("duplicate_carrier_list_template", { id, name, expected_version: expectedVersion }),
+    archiveCarrierListTemplate: (id, expectedVersion) => callApi("archive_carrier_list_template", { id, expected_version: expectedVersion }),
+    restoreCarrierListTemplate: (id, expectedVersion) => callApi("restore_carrier_list_template", { id, expected_version: expectedVersion })
+  };
+}
+
+const carrierListTemplateService = createCarrierListTemplateService();
+export const fetchCarrierListTemplates = carrierListTemplateService.fetchCarrierListTemplates;
+export const getCarrierListTemplate = carrierListTemplateService.getCarrierListTemplate;
+export const resolveCarrierListTemplateRows = carrierListTemplateService.resolveCarrierListTemplateRows;
+export const createCarrierListTemplate = carrierListTemplateService.createCarrierListTemplate;
+export const updateCarrierListTemplate = carrierListTemplateService.updateCarrierListTemplate;
+export const duplicateCarrierListTemplate = carrierListTemplateService.duplicateCarrierListTemplate;
+export const archiveCarrierListTemplate = carrierListTemplateService.archiveCarrierListTemplate;
+export const restoreCarrierListTemplate = carrierListTemplateService.restoreCarrierListTemplate;
 
 export async function fetchVendorSupportTickets(filters = {}) {
   return await callRatewareApi("list_vendor_support_tickets", filters);

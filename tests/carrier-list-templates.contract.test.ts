@@ -12,6 +12,7 @@ import {
   requireCarrierTemplateManagePermission,
   resolveCarrierTemplateImportRows,
 } from "../supabase/functions/rateware-api/carrier-list-templates.ts";
+import { normalizeCarrierTemplateRows } from "../src/carrier-list-template-file.js";
 
 let registeredHandler: ((request: Request) => Promise<Response>) | null = null;
 const originalServe = Deno.serve;
@@ -306,6 +307,91 @@ Deno.test("blank import rows are row-level not_found results", () => {
   assertEquals(result.rows[0].status, "not_found");
   assertEquals(result.rows[0].reason, "missing_identifier");
   assertEquals(result.rows[0].requires_manual_confirmation, false);
+});
+
+Deno.test("browser-normalized CRM UUID rows resolve only within the workspace", () => {
+  const normalizedRows = normalizeCarrierTemplateRows([
+    { source_row_number: 14, crm_id: vendorA.id },
+    { source_row_number: 15, crm_id: foreign.id },
+    { source_row_number: 16, crm_id: "not-a-uuid" },
+  ]);
+  const result = resolveCarrierTemplateImportRows(
+    normalizedRows,
+    [vendorA, foreign, { ...vendorA, id: "not-a-uuid" }],
+    "org-a",
+  );
+  assertEquals(result.rows, [
+    {
+      source_row_number: 14,
+      status: "matched",
+      reason: "workspace_uuid",
+      vendor_id: vendorA.id,
+      candidate_vendor_ids: [vendorA.id],
+      requires_manual_confirmation: false,
+    },
+    {
+      source_row_number: 15,
+      status: "not_found",
+      reason: "not_found_in_organization",
+      vendor_id: null,
+      candidate_vendor_ids: [],
+      requires_manual_confirmation: false,
+    },
+    {
+      source_row_number: 16,
+      status: "not_found",
+      reason: "not_found_in_organization",
+      vendor_id: null,
+      candidate_vendor_ids: [],
+      requires_manual_confirmation: false,
+    },
+  ]);
+});
+
+Deno.test("carrier list template service sends every explicit action with its exact payload", async () => {
+  Object.assign(globalThis as Record<string, unknown>, {
+    window: globalThis,
+    document: {
+    addEventListener() {},
+    querySelector() {
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
+    documentElement: { dataset: {} },
+    body: { dataset: {} },
+    },
+  });
+  const vendorService = await import(`../src/vendor-service.js?transport-contract=${crypto.randomUUID()}`);
+  const calls: Array<{ action: string; payload: Record<string, unknown> }> = [];
+  const service = vendorService.createCarrierListTemplateService((action: string, payload: Record<string, unknown>) => {
+    calls.push({ action, payload });
+    return Promise.resolve({ action, payload });
+  });
+  const template = { segment_name: "MX Core", vendor_ids: [vendorA.id] };
+
+  await Promise.all([
+    service.fetchCarrierListTemplates({ lifecycle_status: "active" }),
+    service.getCarrierListTemplate(vendorA.id, { usageContext: "carrier_fit" }),
+    service.resolveCarrierListTemplateRows([{ crm_id: vendorA.id }]),
+    service.createCarrierListTemplate(template),
+    service.updateCarrierListTemplate(vendorA.id, template, 3),
+    service.duplicateCarrierListTemplate(vendorA.id, "MX Core copy", 3),
+    service.archiveCarrierListTemplate(vendorA.id, 3),
+    service.restoreCarrierListTemplate(vendorA.id, 4),
+  ]);
+
+  assertEquals(calls, [
+    { action: "list_carrier_list_templates", payload: { lifecycle_status: "active" } },
+    { action: "get_carrier_list_template", payload: { id: vendorA.id, usage_context: "carrier_fit" } },
+    { action: "resolve_carrier_list_template_rows", payload: { rows: [{ crm_id: vendorA.id }] } },
+    { action: "create_carrier_list_template", payload: { template } },
+    { action: "update_carrier_list_template", payload: { id: vendorA.id, template, expected_version: 3 } },
+    { action: "duplicate_carrier_list_template", payload: { id: vendorA.id, name: "MX Core copy", expected_version: 3 } },
+    { action: "archive_carrier_list_template", payload: { id: vendorA.id, expected_version: 3 } },
+    { action: "restore_carrier_list_template", payload: { id: vendorA.id, expected_version: 4 } },
+  ]);
 });
 
 Deno.test("unique name-only matches remain manual candidates", () => {

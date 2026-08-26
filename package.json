@@ -10,7 +10,7 @@
     "validate:action-contract": "node tools/validate-action-contract.mjs",
     "release:progress": "node tools/production-readiness-report.mjs",
     "test:action-contract": "node tests/action-contract.test.mjs",
-    "test:carrier-list-templates": "node tests/carrier-list-template-domain.test.mjs && deno test --allow-env --node-modules-dir=none --no-lock tests/carrier-list-templates.contract.test.ts",
+    "test:carrier-list-templates": "node tests/carrier-list-template-domain.test.mjs && deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/carrier-list-templates.contract.test.ts",
     "test:fcm-gmail": "node tests/fcm-customer-quote-email.test.mjs && deno test --allow-env --node-modules-dir=none --no-lock tests/fcm-customer-quote-email.contract.test.ts",
     "test:identity-contract": "node --test tests/phase0-identity.test.mjs",
     "test:migration-ledger": "node --test tests/supabase-migration-ledger.test.mjs",
