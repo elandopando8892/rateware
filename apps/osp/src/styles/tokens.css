@@ -1,4 +1,21 @@
 :root {
   color-scheme: light;
-  font-family: system-ui, sans-serif;
+  --xbf-navy-deep: #000d3a;
+  --xbf-navy: #1a3375;
+  --xbf-steel: #39495c;
+  --xbf-ash: #2f2f2b;
+  --xbf-silver: #c8c8c8;
+  --font-display: Lustra, "Arial Narrow", Arial, sans-serif;
+  --font-body: Flama, "Segoe UI", Arial, sans-serif;
+  --ink: var(--xbf-navy-deep);
+  --muted: var(--xbf-steel);
+  --canvas: #f4f6fa;
+  --surface: #ffffff;
+  --line: var(--xbf-silver);
+  --brand: var(--xbf-navy);
+  --brand-dark: var(--xbf-navy-deep);
+  --warning: #8a5100;
+  --danger: #a1262f;
+  --radius: 12px;
+  --shadow: 0 16px 36px rgb(0 13 58 / 10%);
 }

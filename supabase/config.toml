@@ -435,3 +435,20 @@ verify_jwt = false
 # Pub/Sub authenticates with a Google-signed OIDC token verified inside the function.
 [functions.provider-gmail-push]
 verify_jwt = false
+
+# OSP validates Kinde identities and internal worker/release credentials inside
+# each function because the Edge gateway cannot validate Kinde access tokens.
+[functions.osp-read-api]
+verify_jwt = false
+
+[functions.osp-worker]
+verify_jwt = false
+
+[functions.osp-document-api]
+verify_jwt = false
+
+[functions.osp-case-api]
+verify_jwt = false
+
+[functions.osp-release-control]
+verify_jwt = false

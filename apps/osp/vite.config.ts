@@ -1,32 +1,37 @@
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
-import { configDefaults } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   base: '/app/',
   plugins: [
     react(),
     {
-      name: 'osp-dev-app-base-redirect',
+      name: 'redirect-development-app-base',
       configureServer(server) {
         server.middlewares.use((request, response, next) => {
-          const requestUrl = new URL(request.url ?? '/', 'http://localhost');
-          if (requestUrl.pathname !== '/app') {
-            next();
+          if (request.url === '/app') {
+            response.writeHead(302, { Location: '/app/' });
+            response.end();
             return;
           }
-          response.statusCode = 307;
-          response.setHeader('Location', `/app/${requestUrl.search}`);
-          response.end();
+
+          next();
         });
       },
     },
   ],
-  build: { outDir: 'dist/app', emptyOutDir: true },
+  server: {
+    host: 'localhost',
+    port: 8791,
+    strictPort: true,
+  },
+  build: {
+    outDir: 'dist/app',
+    emptyOutDir: true,
+  },
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
-    globals: true,
-    exclude: [...configDefaults.exclude, 'e2e/**', 'scripts/verify-build.test.mjs'],
+    exclude: [...configDefaults.exclude, 'e2e/**', 'scripts/**/*.test.mjs'],
   },
 });

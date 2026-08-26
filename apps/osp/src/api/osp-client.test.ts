@@ -1,270 +1,203 @@
-import { describe, expect, test, vi } from 'vitest';
-import type { AuthPort } from '../auth/auth-port';
-import { createOspClient, OspApiError } from './osp-client';
+import { expect, it, vi } from 'vitest';
 
-const workspaceFixture = {
-  data: {
-    rows: [
-      {
-        id: 'eb39d173-a4a9-46af-b613-283bf9ee70fb',
-        program_code: 'XBF-MX',
-        jurisdiction_code: 'MX',
-        legal_entity_kind: 'corporation',
-        case_status: 'evidence_collection',
-        revision: '3',
-        blocking_task_count: '1',
-        overdue_task_count: 0,
-        updated_at: '2026-08-21T12:00:00.000Z',
-      },
-    ],
-    total: '4',
-    limit: 10,
-    offset: 0,
-    queue: 'all',
-    metrics: { total: '4', blocked: 1, approval: '2', overdue: 0 },
-  },
-};
+import type { BoundSession } from '../auth/auth-port';
+import { createOspClient, OspClientError } from './osp-client';
 
-const gmailFixture = {
-  data: {
-    mailbox_email: 'carriers@xbfreight.com',
-    required_scope: 'https://www.googleapis.com/auth/gmail.readonly',
-    legal_entities: [
-      {
-        id: '1c37a64a-506d-434d-990c-a8e28f07a7fb',
-        entity_code: 'XBF',
-        legal_name: 'XBorder Freight LLC',
-        country_code: 'US',
-        default_currency: 'USD',
-        status: 'active',
-      },
-    ],
-    connections: [
-      {
-        status: 'watching',
-        mailbox_email: 'carriers@xbfreight.com',
-        watch_expiration_at: null,
-        last_error: null,
-      },
-    ],
-    outbound_enabled: false,
-    pubsub_configured: true,
-  },
-};
+const session = (generation = 'generation-a'): BoundSession => ({
+  generation,
+  identity: { issuer: 'https://issuer.example.test', authorizedParty: 'osp-client', subject: 'subject-a', organization: 'org-a', email: 'person@example.test', emailVerified: true },
+});
+const pipeline = { version: 1, data: { requests_total: '4', documents_pending: '3', under_review: '2', ready_for_approval: '1' } };
+const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 
-function fakeAuthPort(tokens: string[] = ['test-token']): AuthPort {
-  let tokenIndex = 0;
-  return {
-    initialize: vi.fn().mockResolvedValue(undefined),
-    isAuthenticated: vi.fn().mockResolvedValue(true),
-    login: vi.fn().mockResolvedValue(undefined),
-    logout: vi.fn().mockResolvedValue(undefined),
-    getAccessToken: vi.fn().mockImplementation(async () => {
-      const token = tokens[Math.min(tokenIndex, tokens.length - 1)];
-      tokenIndex += 1;
-      return token;
-    }),
-    getUser: vi.fn().mockResolvedValue({
-      subject: 'kp_operator',
-      email: 'operator@example.test',
-      displayName: 'OSP Operator',
-    }),
+function harness(responses: Array<Response | Error>, current = session()) {
+  let active: BoundSession | null = current;
+  const fetch = vi.fn(async () => {
+    const next = responses.shift();
+    if (next instanceof Error) throw next;
+    if (!next) throw new Error('unexpected request');
+    return next;
+  });
+  const getAccessToken = vi.fn(async (_expected: BoundSession, force?: boolean) => force ? 'fresh-bound-token' : 'bound-token');
+  const client = createOspClient({ supabaseUrl: 'https://synthetic.supabase.co/', getCurrentSession: () => active, getAccessToken, fetch });
+  return { client, fetch, getAccessToken, setSession(value: BoundSession | null) { active = value; } };
+}
+
+it('uses one endpoint, exact action body, bearer token, and never transmits generation', async () => {
+  const h = harness([json(pipeline)]);
+  await expect(h.client.listOnboardingWorkspace()).resolves.toEqual(pipeline.data);
+  const [url, init] = h.fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(url).toBe('https://synthetic.supabase.co/functions/v1/osp-read-api');
+  expect(init.headers).toEqual({ authorization: 'Bearer bound-token', 'content-type': 'application/json' });
+  expect(JSON.parse(String(init.body))).toEqual({ version: 1, action: 'list_provider_onboarding_workspace' });
+  expect(String(init.body)).not.toContain('generation-a');
+});
+
+it('forces exactly one bound-token refresh after 401', async () => {
+  const h = harness([json({ error: { code: 'UNAUTHORIZED', incident_id: 'i1' } }, 401), json(pipeline)]);
+  await expect(h.client.listOnboardingWorkspace()).resolves.toEqual(pipeline.data);
+  expect(h.getAccessToken.mock.calls.map((call) => call[1])).toEqual([false, true]);
+  expect(h.fetch).toHaveBeenCalledTimes(2);
+});
+
+it('uses forced token refresh exactly once across a later transient retry', async () => {
+  const h = harness([
+    json({ error: { code: 'UNAUTHORIZED', incident_id: 'i1' } }, 401),
+    new TypeError('offline'),
+    json(pipeline),
+  ]);
+  await expect(h.client.listOnboardingWorkspace()).resolves.toEqual(pipeline.data);
+  expect(h.getAccessToken.mock.calls.map((call) => call[1])).toEqual([false, true, false]);
+  expect(h.fetch).toHaveBeenCalledTimes(3);
+});
+
+it.each([
+  ['network', [new TypeError('offline'), json(pipeline)]],
+  ['server', [json({ error: { code: 'INTERNAL_ERROR', incident_id: 'i1' } }, 500), json(pipeline)]],
+])('retries a read-only %s failure at most once', async (_name, responses) => {
+  const h = harness(responses as Array<Response | Error>);
+  await expect(h.client.listOnboardingWorkspace()).resolves.toEqual(pipeline.data);
+  expect(h.fetch).toHaveBeenCalledTimes(2);
+  expect(h.getAccessToken).toHaveBeenCalledTimes(2);
+});
+
+it.each([
+  [418, 'FORBIDDEN'],
+  [403, 'UNAUTHORIZED'],
+])('rejects mismatched HTTP status %s and wire error %s without retry', async (status, code) => {
+  const h = harness([json({ error: { code, incident_id: 'i1' } }, status)]);
+  await expect(h.client.listOnboardingWorkspace()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  expect(h.fetch).toHaveBeenCalledOnce();
+});
+
+it.each([
+  [401, { error: { code: 'FORBIDDEN', incident_id: 'i1' } }],
+  [500, { error: { code: 'FORBIDDEN', incident_id: 'i1' } }],
+  [503, { error: { code: 'INTERNAL_ERROR', incident_id: 'i1' } }],
+  [500, { malformed: true }],
+])('validates error/status before retry policy for HTTP %s', async (status, body) => {
+  const h = harness([json(body, status), json(pipeline)]);
+  await expect(h.client.listOnboardingWorkspace()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  expect(h.fetch).toHaveBeenCalledOnce();
+  expect(h.getAccessToken.mock.calls.map((call) => call[1])).toEqual([false]);
+});
+
+it.each([
+  ['schema', json({ ...pipeline, extra: true })],
+  ['forbidden', json({ error: { code: 'FORBIDDEN', incident_id: 'i1' } }, 403)],
+  ['bad-request', json({ error: { code: 'INVALID_REQUEST', incident_id: 'i1' } }, 400)],
+])('does not retry %s failures and exposes only a safe client error', async (_name, response) => {
+  const h = harness([response]);
+  await expect(h.client.listOnboardingWorkspace()).rejects.toBeInstanceOf(OspClientError);
+  expect(h.fetch).toHaveBeenCalledOnce();
+});
+
+it('rejects a response when the captured generation is stale before return', async () => {
+  let resolve!: (value: Response) => void;
+  const response = new Promise<Response>((done) => { resolve = done; });
+  const h = harness([]);
+  h.fetch.mockImplementationOnce(() => response);
+  const pending = h.client.listOnboardingWorkspace();
+  h.setSession(session('generation-b'));
+  resolve(json(pipeline));
+  await expect(pending).rejects.toMatchObject({ code: 'STALE_SESSION' });
+});
+
+it('rejects a response when authorization scope changes without a generation change', async () => {
+  let resolve!: (value: Response) => void;
+  const response = new Promise<Response>((done) => { resolve = done; });
+  const h = harness([]);
+  h.fetch.mockImplementationOnce(() => response);
+  const pending = h.client.listDocumentVersions();
+  h.setSession({ ...session(), identity: { ...session().identity, organization: 'org-b' } });
+  resolve(json({ data: { versions: [] } }));
+  await expect(pending).rejects.toMatchObject({ code: 'STALE_SESSION' });
+});
+
+it('validates the Gmail success envelope with the second exact action', async () => {
+  const data = { connection_exists: false, pubsub_configured: null, watch_configured: null, token_expires_at: null, watch_expires_at: null, error_present: false, error_code: null, outbound_enabled: false };
+  const h = harness([json({ version: 1, data })]);
+  await expect(h.client.getGmailStatus()).resolves.toEqual(data);
+  const [, init] = h.fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(JSON.parse(String(init.body))).toEqual({ version: 1, action: 'provider_gmail_status' });
+});
+
+it('lists quarterly document versions through the authenticated document endpoint', async () => {
+  const version = { id: '22222222-2222-4222-8222-222222222222', documentType: 'proof_of_address', version: 1, status: 'approved', validFrom: '2026-08-24', expiresAt: '2026-11-24' };
+  const h = harness([json({ data: { versions: [version] } })]);
+  await expect(h.client.listDocumentVersions()).resolves.toEqual([version]);
+  const [url, init] = h.fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(url).toBe('https://synthetic.supabase.co/functions/v1/osp-document-api?action=list_document_versions');
+  expect(init).toEqual({ method: 'POST', headers: { authorization: 'Bearer bound-token' } });
+});
+
+it('uploads an immutable quarterly document without automatic network retry', async () => {
+  const h = harness([new TypeError('ambiguous network failure'), json({ data: { id: '22222222-2222-4222-8222-222222222222', version: 1, expiresAt: '2026-11-24' } }, 201)]);
+  await expect(h.client.uploadDocumentVersion({
+    documentType: 'bank_statement', validFrom: '2026-08-24', contentType: 'application/pdf', bytes: new Uint8Array([1, 2, 3]),
+  })).rejects.toMatchObject({ code: 'NETWORK_UNAVAILABLE' });
+  expect(h.fetch).toHaveBeenCalledOnce();
+  const [url, init] = h.fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(url).toBe('https://synthetic.supabase.co/functions/v1/osp-document-api?action=upload_document_version&document_type=bank_statement&valid_from=2026-08-24');
+  expect(init.method).toBe('POST');
+  expect(init.headers).toEqual({ authorization: 'Bearer bound-token', 'content-type': 'application/pdf' });
+  expect(new Uint8Array(init.body as ArrayBuffer)).toEqual(new Uint8Array([1, 2, 3]));
+});
+
+it('approves only an explicit reviewed version and refreshes only after a verified 401', async () => {
+  const sha = 'a'.repeat(64);
+  const unauthorized = json({ error: { code: 'UNAUTHORIZED', incident_id: 'i1' } }, 401);
+  const approved = json({ data: { id: '22222222-2222-4222-8222-222222222222', status: 'approved' } });
+  const h = harness([unauthorized, approved]);
+  await expect(h.client.approveDocumentVersion({
+    versionId: '22222222-2222-4222-8222-222222222222', expectedVersion: 1, reviewBeforeSha256: sha, reviewAfterSha256: sha,
+  })).resolves.toEqual({ id: '22222222-2222-4222-8222-222222222222', status: 'approved' });
+  expect(h.fetch).toHaveBeenCalledTimes(2);
+  expect(h.getAccessToken.mock.calls.map((call) => call[1])).toEqual([false, true]);
+  const [url, init] = h.fetch.mock.calls[1] as unknown as [string, RequestInit];
+  expect(url).toContain('action=approve_document_version');
+  expect(url).toContain(`review_before_sha256=${sha}`);
+  expect(init).toEqual({ method: 'POST', headers: { authorization: 'Bearer fresh-bound-token' } });
+});
+
+it('rejects malformed document mutation inputs before token or network access', async () => {
+  const h = harness([]);
+  await expect(h.client.uploadDocumentVersion({
+    documentType: 'bank_statement', validFrom: '2026-02-31', contentType: 'application/pdf', bytes: new Uint8Array([1]),
+  })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+  await expect(h.client.approveDocumentVersion({
+    versionId: '22222222-2222-4222-8222-222222222222', expectedVersion: 2_147_483_648,
+    reviewBeforeSha256: 'a'.repeat(64), reviewAfterSha256: 'a'.repeat(64),
+  })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+  expect(h.getAccessToken).not.toHaveBeenCalled();
+  expect(h.fetch).not.toHaveBeenCalled();
+});
+
+it('lists grounded clarification reviews through the authenticated case endpoint', async () => {
+  const draft = {
+    id: '44444444-4444-4444-8444-444444444444', caseId: '33333333-3333-4333-8333-333333333333',
+    caseVersion: 4, version: 1, status: 'operations_review_required',
+    questions: [{ kind: 'missing', fieldId: 'supplier.address', question: 'Please confirm the registered address.', evidenceIds: ['ev-1'] }],
+    evidenceIds: ['ev-1'], canonicalSha256: 'a'.repeat(64), authorizationMailbox: 'sales@heymarksman.com',
   };
-}
+  const h = harness([json({ data: { drafts: [draft] } })]);
+  await expect(h.client.listClarificationReviews()).resolves.toEqual([draft]);
+  const [url, init] = h.fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(url).toBe('https://synthetic.supabase.co/functions/v1/osp-case-api?action=list_clarification_reviews');
+  expect(init).toEqual({ method: 'POST', headers: { authorization: 'Bearer bound-token' } });
+});
 
-function jsonResponse(body: unknown, init: ResponseInit = { status: 200 }): Response {
-  return new Response(JSON.stringify(body), {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...init.headers },
-  });
-}
-
-function makeClient(fetchImpl: typeof fetch, auth = fakeAuthPort()) {
-  return createOspClient({
-    supabaseUrl: 'https://alqjqzqagdmcywpjtnnr.supabase.co',
-    auth,
-    fetchImpl,
-  });
-}
-
-describe('OSP Edge Function client', () => {
-  test('posts the exact onboarding read action with bearer and JSON headers', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(workspaceFixture));
-    const client = makeClient(fetchImpl);
-
-    const result = await client.listOnboardingWorkspace({
-      queue: 'all',
-      limit: 1,
-      offset: 0,
-    });
-
-    expect(fetchImpl).toHaveBeenCalledWith(
-      'https://alqjqzqagdmcywpjtnnr.supabase.co/functions/v1/provider-onboarding-api',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: 'Bearer test-token',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'list_provider_onboarding_workspace',
-          queue: 'all',
-          limit: 1,
-          offset: 0,
-        }),
-      },
-    );
-    expect(result.data.limit).toBe(10);
-    expect(result.data.metrics).toEqual({ total: 4, blocked: 1, approval: 2, overdue: 0 });
-  });
-
-  test('posts Gmail status only to the Gmail intake read action', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(gmailFixture));
-    const client = makeClient(fetchImpl);
-
-    const result = await client.getGmailStatus();
-
-    expect(fetchImpl).toHaveBeenCalledWith(
-      'https://alqjqzqagdmcywpjtnnr.supabase.co/functions/v1/provider-gmail-intake-api',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ action: 'provider_gmail_status' }),
-      }),
-    );
-    expect(result.data.mailbox_email).toBe('carriers@xbfreight.com');
-    expect(Object.keys(client).sort()).toEqual(['getGmailStatus', 'listOnboardingWorkspace']);
-  });
-
-  test('refreshes the token once after a first 401 and retries with the new token', async () => {
-    const auth = fakeAuthPort(['expired-token', 'refreshed-token']);
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: 'expired' }, { status: 401 }))
-      .mockResolvedValueOnce(jsonResponse(workspaceFixture));
-    const client = makeClient(fetchImpl, auth);
-
-    await client.listOnboardingWorkspace({ queue: 'all', limit: 1, offset: 0 });
-
-    expect(auth.getAccessToken).toHaveBeenNthCalledWith(1);
-    expect(auth.getAccessToken).toHaveBeenNthCalledWith(2, true);
-    expect(auth.getAccessToken).toHaveBeenCalledTimes(2);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(fetchImpl.mock.calls[1]?.[1]).toEqual(expect.objectContaining({
-      headers: expect.objectContaining({ Authorization: 'Bearer refreshed-token' }),
-    }));
-  });
-
-  test('stops after a second 401 and returns only safe correlation metadata', async () => {
-    const auth = fakeAuthPort(['expired-secret-token', 'refreshed-secret-token']);
-    const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse(
-        {
-          error: 'Bearer refreshed-secret-token failed against internal policy',
-          code: 'AUTH_REJECTED',
-          incident_id: 'incident-json',
-        },
-        { status: 401, headers: { 'x-request-id': 'incident-header' } },
-      ),
-    );
-    const client = makeClient(fetchImpl, auth);
-
-    const error = await client
-      .listOnboardingWorkspace({ queue: 'all', limit: 1, offset: 0 })
-      .catch((caught: unknown) => caught);
-
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(auth.getAccessToken).toHaveBeenCalledTimes(2);
-    expect(error).toBeInstanceOf(OspApiError);
-    expect(error).toMatchObject({
-      status: 401,
-      code: 'AUTH_REJECTED',
-      incidentId: 'incident-json',
-      action: 'list_provider_onboarding_workspace',
-      stage: 'response',
-    });
-    expect(String(error)).toMatch(/sign in/i);
-    expect(`${String(error)} ${JSON.stringify(error)}`).not.toMatch(/secret-token|internal policy/i);
-  });
-
-  test('does not retry a non-401 failure and makes non-JSON responses understandable', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(
-      'upstream gateway included private request content',
-      { status: 502, headers: { 'x-request-id': 'request-502' } },
-    ));
-    const client = makeClient(fetchImpl);
-
-    const error = await client.getGmailStatus().catch((caught: unknown) => caught);
-
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(error).toBeInstanceOf(OspApiError);
-    expect(error).toMatchObject({
-      status: 502,
-      code: 'HTTP_502',
-      incidentId: 'request-502',
-      action: 'provider_gmail_status',
-      stage: 'response',
-    });
-    expect(String(error)).toMatch(/temporarily unavailable|http 502/i);
-    expect(String(error)).not.toContain('private request content');
-  });
-
-  test('removes restricted or unapproved onboarding row fields from validated output', async () => {
-    const restrictedFixture = structuredClone(workspaceFixture);
-    Object.assign(restrictedFixture.data.rows[0], {
-      tax_id: 'RFC-SECRET',
-      bank_account: 'BANK-SECRET',
-      attachment_contents: 'DOCUMENT-SECRET',
-      storage_path: 'private/path',
-      arbitrary_backend_field: 'not-approved',
-    });
-    const client = makeClient(vi.fn().mockResolvedValue(jsonResponse(restrictedFixture)));
-
-    const result = await client.listOnboardingWorkspace({ queue: 'all', limit: 1, offset: 0 });
-
-    expect(result.data.rows[0]).toEqual({
-      id: 'eb39d173-a4a9-46af-b613-283bf9ee70fb',
-      program_code: 'XBF-MX',
-      jurisdiction_code: 'MX',
-      legal_entity_kind: 'corporation',
-      case_status: 'evidence_collection',
-      revision: 3,
-      blocking_task_count: 1,
-      overdue_task_count: 0,
-      updated_at: '2026-08-21T12:00:00.000Z',
-    });
-    expect(JSON.stringify(result)).not.toMatch(/RFC-SECRET|BANK-SECRET|DOCUMENT-SECRET|private\/path/);
-  });
-
-  test('rejects malformed success envelopes instead of fabricating data', async () => {
-    const invalidFixture = structuredClone(workspaceFixture);
-    invalidFixture.data.metrics.total = '-1';
-    const client = makeClient(vi.fn().mockResolvedValue(jsonResponse(invalidFixture)));
-
-    await expect(
-      client.listOnboardingWorkspace({ queue: 'all', limit: 1, offset: 0 }),
-    ).rejects.toMatchObject({ name: 'ZodError' });
-  });
-
-  test('sanitizes token acquisition and network failures', async () => {
-    const auth = fakeAuthPort();
-    vi.mocked(auth.getAccessToken).mockRejectedValueOnce(
-      new Error('token acquisition leaked bearer auth-secret'),
-    );
-    const neverFetch = vi.fn();
-    const authClient = makeClient(neverFetch, auth);
-
-    const authError = await authClient.getGmailStatus().catch((caught: unknown) => caught);
-
-    expect(neverFetch).not.toHaveBeenCalled();
-    expect(authError).toMatchObject({ code: 'AUTH_TOKEN_UNAVAILABLE', stage: 'auth' });
-    expect(String(authError)).not.toMatch(/auth-secret|token acquisition leaked/i);
-
-    const networkClient = makeClient(vi.fn().mockRejectedValue(
-      new Error('request headers included Bearer network-secret'),
-    ));
-    const networkError = await networkClient.getGmailStatus().catch((caught: unknown) => caught);
-
-    expect(networkError).toMatchObject({ code: 'NETWORK_ERROR', stage: 'transport' });
-    expect(String(networkError)).not.toMatch(/network-secret|request headers/i);
-  });
+it('saves an exact clarification review without automatic network retry', async () => {
+  const input = {
+    draftId: '44444444-4444-4444-8444-444444444444', expectedCaseVersion: 4, expectedCanonicalSha256: 'a'.repeat(64),
+    questions: [{ kind: 'missing' as const, fieldId: 'supplier.address', question: 'Please provide the current registered address.', evidenceIds: ['ev-1'] }],
+  };
+  const h = harness([new TypeError('ambiguous network failure'), json({ data: {} })]);
+  await expect(h.client.saveClarificationReview(input)).rejects.toMatchObject({ code: 'NETWORK_UNAVAILABLE' });
+  expect(h.fetch).toHaveBeenCalledOnce();
+  const [url, init] = h.fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(url).toContain('action=save_clarification_review');
+  expect(url).toContain(`expected_canonical_sha256=${'a'.repeat(64)}`);
+  expect(init.headers).toEqual({ authorization: 'Bearer bound-token', 'content-type': 'application/json' });
+  expect(JSON.parse(String(init.body))).toEqual({ questions: input.questions });
 });

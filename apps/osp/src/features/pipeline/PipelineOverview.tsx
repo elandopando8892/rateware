@@ -1,108 +1,73 @@
-import { OspApiError, type OspClient } from '../../api/osp-client';
-import '../../styles/pipeline.css';
-import { deriveMailboxHealth } from './pipeline-health';
+import type { OspReadClient } from '../../api/osp-client';
+import { deriveMailboxHealth, type MailboxHealth } from './pipeline-health';
 import { usePipelineOverview } from './use-pipeline-overview';
 
-const SAFE_INCIDENT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const metrics = [
+  ['requests_total', 'Requests total'],
+  ['documents_pending', 'Documents pending'],
+  ['under_review', 'Under review'],
+  ['ready_for_approval', 'Ready for approval'],
+] as const;
 
-function safeIncidentId(error: unknown): string {
-  if (!(error instanceof OspApiError)) return '';
-  const incidentId = error.incidentId.trim();
-  if (/bearer|token|authorization/i.test(incidentId)) return '';
-  return SAFE_INCIDENT_ID.test(incidentId) ? incidentId : '';
-}
+const healthLabels: Record<MailboxHealth, string> = {
+  unknown: 'Unknown',
+  disconnected: 'Disconnected',
+  connected: 'Connected',
+  watching: 'Watching',
+  degraded: 'Degraded',
+};
 
-function ReadAlert({
-  label,
-  guidance,
-  retryLabel,
-  error,
-  onRetry,
-}: {
-  label: string;
-  guidance: string;
-  retryLabel: string;
-  error: unknown;
-  onRetry: () => void;
-}) {
-  const incidentId = safeIncidentId(error);
-  return (
-    <div className="pipeline-alert" role="alert" aria-label={label}>
-      <p>{guidance}</p>
-      {incidentId ? <p>ID de incidente: {incidentId}</p> : null}
-      <button type="button" onClick={onRetry}>{retryLabel}</button>
-    </div>
-  );
-}
-
-export function PipelineOverview({ client }: { client: OspClient }) {
+export function PipelineOverview({ client }: { client: OspReadClient }) {
   const { pipeline, gmail } = usePipelineOverview(client);
-  const mailboxHealth = deriveMailboxHealth(gmail.data?.data.connections);
-
+  const health = gmail.data ? deriveMailboxHealth(gmail.data) : 'unknown';
+  const pipelineActivity = pipeline.fetchStatus === 'paused'
+    ? ['Pipeline loading paused', 'Pipeline loading paused.']
+    : pipeline.isFetched
+      ? ['Revalidating pipeline', 'Revalidating pipeline…']
+      : ['Loading pipeline', 'Loading pipeline…'];
+  const gmailActivity = gmail.fetchStatus === 'paused'
+    ? ['Gmail health loading paused', 'Gmail health loading paused.']
+    : gmail.isFetched
+      ? ['Revalidating Gmail health', 'Revalidating Gmail health…']
+      : ['Loading Gmail health', 'Loading Gmail health…'];
   return (
-    <section className="pipeline-overview" aria-labelledby="pipeline-overview-title">
-      <header className="pipeline-overview__header">
-        <p className="pipeline-overview__eyebrow">Pipeline OSP</p>
-        <h2>Pipeline</h2>
-        <h3 id="pipeline-overview-title">Vista global de la organización</h3>
-        <p>
-          Los conteos provienen del modelo de lectura del servidor; esta consulta no representa
-          una lista completa de expedientes.
-        </p>
+    <div className="pipeline-page">
+      <header className="page-heading">
+        <p className="eyebrow">Customer onboarding</p>
+        <h1>Onboarding pipeline</h1>
+        <p>Read-only status for provider setup requests and mailbox intake.</p>
       </header>
 
-      <section className="pipeline-panel" aria-labelledby="pipeline-counts-title">
-        <h3 id="pipeline-counts-title">Conteos del pipeline</h3>
-        {pipeline.isPending ? (
-          <p role="status" aria-label="Cargando conteos del pipeline">Cargando conteos…</p>
-        ) : null}
-        {pipeline.data && !pipeline.isError ? (
-          <dl className="pipeline-metrics" role="group" aria-label="Conteos del pipeline">
-            <div><dt>Total</dt><dd>{pipeline.data.data.metrics.total}</dd></div>
-            <div><dt>Bloqueados</dt><dd>{pipeline.data.data.metrics.blocked}</dd></div>
-            <div><dt>Requieren aprobación</dt><dd>{pipeline.data.data.metrics.approval}</dd></div>
-            <div><dt>Vencidos</dt><dd>{pipeline.data.data.metrics.overdue}</dd></div>
+      <section className="panel" aria-labelledby="pipeline-title">
+        <div className="panel-heading">
+          <h2 id="pipeline-title">Pipeline</h2>
+          <span className="read-only-badge">Read only</span>
+        </div>
+        {!pipeline.data && !pipeline.isError ? <p role="status" aria-label={pipelineActivity[0]}>{pipelineActivity[1]}</p> : null}
+        {pipeline.isError ? <p role="alert" aria-label="Pipeline unavailable">Pipeline data is temporarily unavailable.</p> : null}
+        {pipeline.data ? (
+          <dl className="metric-grid">
+            {metrics.map(([key, label]) => (
+              <div className="metric" key={key}>
+                <dt>{label}</dt>
+                <dd data-testid={`metric-${key}`} aria-label={pipeline.data?.[key] === undefined ? `${label}: data unavailable` : undefined}>{pipeline.data?.[key] ?? '—'}</dd>
+              </div>
+            ))}
           </dl>
-        ) : null}
-        {pipeline.isError ? (
-          <ReadAlert
-            label="Error de conteos del pipeline"
-            guidance="No se pudieron cargar los conteos. Selecciona Reintentar conteos del pipeline; si persiste, comparte el ID de incidente con soporte."
-            retryLabel="Reintentar conteos del pipeline"
-            error={pipeline.error}
-            onRetry={() => { void pipeline.refetch(); }}
-          />
         ) : null}
       </section>
 
-      <section className="pipeline-panel" aria-labelledby="mailbox-status-title">
-        <h3 id="mailbox-status-title">Estado del buzón de captura</h3>
-        {gmail.isPending ? (
-          <p role="status" aria-label="Cargando estado del buzón">Cargando estado del buzón…</p>
-        ) : null}
+      <section className="panel health-panel" aria-labelledby="gmail-title">
+        <div className="panel-heading"><h2 id="gmail-title">Gmail intake health</h2></div>
+        {!gmail.data && !gmail.isError ? <p role="status" aria-label={gmailActivity[0]}>{gmailActivity[1]}</p> : null}
+        {gmail.isError ? <p role="alert" aria-label="Gmail health unavailable">Gmail health is temporarily unavailable.</p> : null}
         {gmail.data ? (
-          <dl className="mailbox-status">
-            <div><dt>Buzón</dt><dd>{gmail.data.data.mailbox_email}</dd></div>
-            <div><dt>Estado</dt><dd>{gmail.isError ? 'unknown' : mailboxHealth}</dd></div>
-          </dl>
-        ) : null}
-        {gmail.isError ? (
-          <>
-            {!gmail.data ? (
-              <dl className="mailbox-status">
-                <div><dt>Estado</dt><dd>unknown</dd></div>
-              </dl>
-            ) : null}
-            <ReadAlert
-              label="Error de estado del buzón"
-              guidance="No se pudo verificar el buzón. Selecciona Reintentar estado del buzón; si persiste, comparte el ID de incidente con soporte."
-              retryLabel="Reintentar estado del buzón"
-              error={gmail.error}
-              onRetry={() => { void gmail.refetch(); }}
-            />
-          </>
+          <div className={`health health-${health}`} role="status" aria-label={`Gmail status: ${healthLabels[health]}`}>
+            <span className="health-dot" aria-hidden="true" />
+            <div><strong>{healthLabels[health]}</strong><p>Inbound connection evidence only.</p></div>
+          </div>
         ) : null}
       </section>
-    </section>
+    </div>
   );
 }

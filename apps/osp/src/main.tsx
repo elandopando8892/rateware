@@ -1,35 +1,31 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+
 import { createOspClient } from './api/osp-client';
 import { App } from './app/App';
-import type { RouterContext } from './app/router';
 import { createKindeAuthPort } from './auth/kinde-auth-port';
-import { getRuntimeConfig } from './config/runtime';
+import { assertAllowedAppOrigin, loadRuntimeConfig } from './config/runtime';
+import { createPreviewRuntime } from './preview/preview-runtime';
 import './styles/tokens.css';
 import './styles/global.css';
 import './styles/shell.css';
+import './styles/pipeline.css';
 
-declare global {
-  interface Window {
-    __OSP_E2E_RUNTIME__?: RouterContext;
-  }
-}
-
-const runtime = import.meta.env.DEV && window.__OSP_E2E_RUNTIME__
-  ? window.__OSP_E2E_RUNTIME__
+const config = loadRuntimeConfig(import.meta.env);
+assertAllowedAppOrigin(window.location.origin, config.VITE_OSP_BUILD_PROFILE);
+const runtime = config.VITE_OSP_BUILD_PROFILE === 'preview-synthetic'
+  ? createPreviewRuntime()
   : (() => {
-      const config = getRuntimeConfig();
-      const auth = createKindeAuthPort(config);
+      const authPort = createKindeAuthPort(config);
       return {
-        auth,
-        ospClient: createOspClient({
+        authPort,
+        apiClient: createOspClient({
           supabaseUrl: config.VITE_SUPABASE_URL,
-          auth,
-          fetchImpl: window.fetch.bind(window),
+          getCurrentSession: () => authPort.getCurrentSession(),
+          getAccessToken: (session, forceRefresh) => authPort.getAccessToken(session, forceRefresh),
         }),
       };
     })();
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode><App auth={runtime.auth} ospClient={runtime.ospClient} /></StrictMode>,
-);
+const root = document.getElementById('root');
+if (!root) throw new Error('OSP root element is missing');
+createRoot(root).render(<StrictMode><App authPort={runtime.authPort} apiClient={runtime.apiClient} buildProfile={config.VITE_OSP_BUILD_PROFILE} /></StrictMode>);

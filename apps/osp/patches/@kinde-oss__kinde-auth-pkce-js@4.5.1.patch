@@ -1,13 +1,73 @@
 diff --git a/dist/kinde-auth-pkce-js.esm.js b/dist/kinde-auth-pkce-js.esm.js
-index 6cf84bc5d65411863784575f51acde7af23c5aa7..603a0c8c1bb77241a1d3f2c539d3ae910123bef0 100644
+index 6cf84bc5d65411863784575f51acde7af23c5aa7..08973e2bd560421379509510d7968e07ce542be4 100644
 --- a/dist/kinde-auth-pkce-js.esm.js
 +++ b/dist/kinde-auth-pkce-js.esm.js
-@@ -1753,7 +1753,7 @@ const createKindeClient = async (options) => {
+@@ -1302,7 +1302,6 @@ const isTokenValid = (token, config) => {
+ const CHANNEL_NAME = 'kinde-auth-pkce';
+ const LOCK_NAME = 'kinde-token-refresh';
+ const LS_LOCK_KEY = 'kinde_refresh_lock';
+-const LS_SYNC_KEY = 'kinde_token_sync';
+ const LOCK_TTL_MS = 30_000;
+ const BROADCAST_WAIT_MS = 10_000;
+ const isBrowser = () => typeof window !== 'undefined' &&
+@@ -1339,7 +1338,6 @@ const createTabSync = (options) => {
+     const { store, insecureStorage, useInsecureForRefreshToken = false } = options;
+     const tabId = getTabId();
+     let channel = null;
+-    let lsListener = null;
+     const pendingBroadcastWaits = new Set();
+     const getChannel = () => {
+         if (!isBrowser() || typeof BroadcastChannel === 'undefined') {
+@@ -1361,16 +1359,6 @@ const createTabSync = (options) => {
+         const ch = getChannel();
+         if (ch) {
+             ch.postMessage(message);
+-            return;
+-        }
+-        if (!isBrowser())
+-            return;
+-        try {
+-            localStorage.setItem(LS_SYNC_KEY, JSON.stringify({ ...message, at: Date.now() }));
+-            localStorage.removeItem(LS_SYNC_KEY);
+-        }
+-        catch {
+-            // localStorage may be unavailable
+         }
+     };
+     const clearMirroredRefreshToken = () => {
+@@ -1544,26 +1532,8 @@ const createTabSync = (options) => {
+         if (ch) {
+             ch.addEventListener('message', onChannelMessage);
+         }
+-        lsListener = (event) => {
+-            if (event.key !== LS_SYNC_KEY || !event.newValue)
+-                return;
+-            try {
+-                const message = JSON.parse(event.newValue);
+-                dispatchMessage(message, handlers);
+-            }
+-            catch {
+-                // ignore malformed payloads
+-            }
+-        };
+-        if (isBrowser()) {
+-            window.addEventListener('storage', lsListener);
+-        }
+         return () => {
+             ch?.removeEventListener('message', onChannelMessage);
+-            if (lsListener) {
+-                window.removeEventListener('storage', lsListener);
+-                lsListener = null;
+-            }
+         };
+     };
+     const setupVisibilitySync = (onVisible) => {
+@@ -1753,7 +1723,7 @@ const createKindeClient = async (options) => {
      const isUseCookie = !isDevelopment &&
          !is_dangerously_use_local_storage &&
          C(domain);
 -    const isUseLocalStorage = isDevelopment || is_dangerously_use_local_storage;
-+    const isUseLocalStorage = Boolean(is_dangerously_use_local_storage);
++    const isUseLocalStorage = is_dangerously_use_local_storage;
      // Use LocalStorage from @kinde/js-utils for persistent storage
      const localStorageAdapter = new ce();
      Je(localStorageAdapter);

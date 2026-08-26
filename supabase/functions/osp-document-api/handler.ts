@@ -1,0 +1,186 @@
+import type { VerifiedWorkflowIdentity } from '../_shared/osp/workflow-authority.ts';
+import { jsonResponse, NO_CACHE_HEADERS, OspApiError, postCorsHeaders, safeErrorResponse } from '../osp-read-api/http.ts';
+import type { DocumentApprovalInput, DocumentAuthority, DocumentUploadInput } from './document-service.ts';
+import type { DocumentVersionSummary } from './postgres-document-store.ts';
+
+const BODY_LIMIT_BYTES = 26_214_400;
+const ORIGINS = new Set(['http://localhost:8791', 'https://osp.heymarksman.com']);
+const DOCUMENT_TYPES = new Set(['proof_of_address', 'sat_compliance_opinion', 'tax_status_certificate', 'bank_statement']);
+const CONTENT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SHA = /^[0-9a-f]{64}$/;
+const DATE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
+
+type DocumentServicePort = {
+  upload(authority: DocumentAuthority, input: DocumentUploadInput): Promise<{ id: string; version: number; expiresAt: string }>;
+  approve(authority: DocumentAuthority, input: DocumentApprovalInput): Promise<{ id: string; status: 'approved' }>;
+};
+
+export type DocumentApiHandlerOptions = {
+  verifyToken(token: string, signal?: AbortSignal): Promise<VerifiedWorkflowIdentity>;
+  listVersions(organizationId: string): Promise<readonly DocumentVersionSummary[]>;
+  documentService: DocumentServicePort;
+  incidentId?: () => string;
+};
+
+function incident(factory: () => string): string {
+  try { const value = factory(); if (/^[A-Za-z0-9_-]{1,128}$/.test(value)) return value; } catch { /* use generated incident */ }
+  return crypto.randomUUID();
+}
+
+function origin(request: Request): string {
+  const value = request.headers.get('origin');
+  if (!value || !ORIGINS.has(value)) throw new OspApiError('INVALID_REQUEST');
+  return value;
+}
+
+function bearer(request: Request): string {
+  const value = request.headers.get('authorization');
+  const match = value ? /^Bearer ([^\s,]+)$/.exec(value) : null;
+  if (!match) throw new OspApiError('UNAUTHORIZED');
+  return match[1];
+}
+
+function exactPreflightHeaders(value: string | null, required: readonly string[]): boolean {
+  if (value === null) return false;
+  const names = value.split(',').map((name) => name.trim().toLowerCase());
+  return names.length === required.length && new Set(names).size === names.length && names.sort().join(',') === [...required].sort().join(',');
+}
+
+function preflightHeaders(url: URL): readonly string[] {
+  const action = url.searchParams.get('action');
+  if (action === 'list_document_versions') {
+    exactQuery(url, ['action']);
+    return ['authorization'];
+  }
+  if (action === 'upload_document_version') {
+    exactQuery(url, ['action', 'document_type', 'valid_from']);
+    return ['authorization', 'content-type'];
+  }
+  if (action === 'approve_document_version') {
+    exactQuery(url, ['action', 'version_id', 'expected_version', 'review_before_sha256', 'review_after_sha256']);
+    return ['authorization'];
+  }
+  throw new OspApiError('INVALID_REQUEST');
+}
+
+function permission(verified: VerifiedWorkflowIdentity, required: 'read' | 'operate'): DocumentAuthority {
+  const permissions = verified.permissions;
+  if (!Array.isArray(permissions) || (required === 'operate' ? !permissions.includes('osp:operate') : !permissions.some((value) => value === 'osp:read' || value === 'osp:operate'))) throw new OspApiError('FORBIDDEN');
+  return Object.freeze({ organizationId: verified.identity.organization, subject: verified.identity.subject, permissions });
+}
+
+function exactQuery(url: URL, names: readonly string[]): Record<string, string> {
+  const entries = [...url.searchParams.entries()];
+  if (entries.length !== names.length || new Set(entries.map(([name]) => name)).size !== entries.length) throw new OspApiError('INVALID_REQUEST');
+  const actual = entries.map(([name]) => name).sort();
+  if (actual.join('\u0000') !== [...names].sort().join('\u0000')) throw new OspApiError('INVALID_REQUEST');
+  return Object.fromEntries(entries);
+}
+
+function requireEmptyBody(request: Request): void {
+  if (request.body || (request.headers.get('content-length') !== null && request.headers.get('content-length') !== '0') || request.headers.has('content-type')) throw new OspApiError('INVALID_REQUEST');
+}
+
+function declaredLength(request: Request): number | undefined {
+  const value = request.headers.get('content-length');
+  if (value === null) return undefined;
+  if (!/^[0-9]+$/.test(value)) throw new OspApiError('INVALID_REQUEST');
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) throw new OspApiError('INVALID_REQUEST');
+  if (parsed > BODY_LIMIT_BYTES) throw new OspApiError('CONTENT_TOO_LARGE');
+  return parsed;
+}
+
+async function bytes(request: Request): Promise<Uint8Array> {
+  const expected = declaredLength(request);
+  if (!request.body) throw new OspApiError('INVALID_REQUEST');
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > BODY_LIMIT_BYTES) {
+      try { void reader.cancel().catch(() => undefined); } catch { /* limit result is already fixed */ }
+      throw new OspApiError('CONTENT_TOO_LARGE');
+    }
+    chunks.push(value);
+  }
+  if (total < 1 || (expected !== undefined && expected !== total)) throw new OspApiError('INVALID_REQUEST');
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; }
+  return result;
+}
+
+function serviceError(error: unknown): OspApiError {
+  const code = error instanceof Error ? error.message : '';
+  if (code === 'FORBIDDEN') return new OspApiError('FORBIDDEN');
+  if (/^(DOCUMENT_UPLOAD_REJECTED|DOCUMENT_APPROVAL_REJECTED|DOCUMENT_REVIEW_HASH_MISMATCH|DOCUMENT_VERSION_CONFLICT|DOCUMENT_NOT_FOUND|DOCUMENT_STORAGE_REJECTED)$/.test(code)) return new OspApiError('INVALID_REQUEST');
+  if (/^(DOCUMENT_PERSISTENCE_FAILED|DOCUMENT_STORAGE_(?:TEMPORARY|INTEGRITY)|MALWARE_SCAN_UNAVAILABLE)$/.test(code)) return new OspApiError('DEPENDENCY_UNAVAILABLE');
+  return new OspApiError('INTERNAL_ERROR');
+}
+
+function errorResponse(error: unknown, incidentId: string, allowedOrigin?: string): Response {
+  const response = safeErrorResponse(error, incidentId, allowedOrigin ? postCorsHeaders(allowedOrigin) : {});
+  if (response.status === 401) response.headers.set('www-authenticate', 'Bearer realm="osp-document-api"');
+  return response;
+}
+
+export function createDocumentApiHandler(options: DocumentApiHandlerOptions): (request: Request) => Promise<Response> {
+  const nextIncident = options.incidentId ?? crypto.randomUUID;
+  return async (request: Request): Promise<Response> => {
+    if (request.method === 'OPTIONS') {
+      try {
+        const allowedOrigin = origin(request);
+        const url = new URL(request.url);
+        if (!url.pathname.endsWith('/osp-document-api') || url.hash) throw new OspApiError('INVALID_REQUEST');
+        const requiredHeaders = preflightHeaders(url);
+        if (request.headers.get('access-control-request-method') !== 'POST' || !exactPreflightHeaders(request.headers.get('access-control-request-headers'), requiredHeaders)) throw new OspApiError('INVALID_REQUEST');
+        return new Response(null, { status: 204, headers: { ...NO_CACHE_HEADERS, 'access-control-allow-origin': allowedOrigin, 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': requiredHeaders.join(', '), 'access-control-max-age': '600', vary: 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers' } });
+      } catch (error) { return errorResponse(error, incident(nextIncident)); }
+    }
+    const requestOrigin = request.headers.get('origin');
+    const allowedOrigin = requestOrigin && ORIGINS.has(requestOrigin) ? requestOrigin : undefined;
+    try {
+      if (request.method !== 'POST') throw new OspApiError('METHOD_NOT_ALLOWED');
+      const allowed = origin(request);
+      const url = new URL(request.url);
+      if (!url.pathname.endsWith('/osp-document-api') || url.hash) throw new OspApiError('INVALID_REQUEST');
+      const token = bearer(request);
+      const verified = await options.verifyToken(token, request.signal);
+      const action = url.searchParams.get('action');
+      if (action === 'list_document_versions') {
+        exactQuery(url, ['action']);
+        requireEmptyBody(request);
+        const authority = permission(verified, 'read');
+        const versions = await options.listVersions(authority.organizationId);
+        return jsonResponse({ data: { versions } }, 200, postCorsHeaders(allowed));
+      }
+      if (action === 'upload_document_version') {
+        const query = exactQuery(url, ['action', 'document_type', 'valid_from']);
+        const authority = permission(verified, 'operate');
+        const contentType = request.headers.get('content-type');
+        const encoding = request.headers.get('content-encoding');
+        if (!contentType || !CONTENT_TYPES.has(contentType) || (encoding && encoding.toLowerCase() !== 'identity') || request.headers.has('transfer-encoding') || !DOCUMENT_TYPES.has(query.document_type) || !DATE.test(query.valid_from)) throw new OspApiError('UNSUPPORTED_MEDIA_TYPE');
+        const result = await options.documentService.upload(authority, { documentType: query.document_type as DocumentUploadInput['documentType'], contentType, validFrom: query.valid_from, bytes: await bytes(request) });
+        return jsonResponse({ data: result }, 201, postCorsHeaders(allowed));
+      }
+      if (action === 'approve_document_version') {
+        const query = exactQuery(url, ['action', 'version_id', 'expected_version', 'review_before_sha256', 'review_after_sha256']);
+        requireEmptyBody(request);
+        const authority = permission(verified, 'operate');
+        const expectedVersion = Number(query.expected_version);
+        if (!UUID.test(query.version_id) || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1 || !SHA.test(query.review_before_sha256) || !SHA.test(query.review_after_sha256)) throw new OspApiError('INVALID_REQUEST');
+        const result = await options.documentService.approve(authority, { versionId: query.version_id, expectedVersion, reviewBeforeSha256: query.review_before_sha256, reviewAfterSha256: query.review_after_sha256 });
+        return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+      }
+      throw new OspApiError('INVALID_REQUEST');
+    } catch (error) {
+      const normalized = error instanceof OspApiError ? error : serviceError(error);
+      return errorResponse(normalized, incident(nextIncident), allowedOrigin);
+    }
+  };
+}

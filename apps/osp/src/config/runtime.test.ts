@@ -1,49 +1,87 @@
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
+  assertAllowedAppOrigin,
   authRedirectUri,
-  getRuntimeConfig,
-  parseRuntimeConfig,
+  loadRuntimeConfig,
 } from './runtime';
 
-const validEnv = {
+const valid = {
   VITE_KINDE_DOMAIN: 'https://auth.heymarksman.com',
-  VITE_KINDE_CLIENT_ID: '25b7de39865b49308cf4d670d1c9a3cf',
-  VITE_SUPABASE_URL: 'https://alqjqzqagdmcywpjtnnr.supabase.co',
+  VITE_KINDE_CLIENT_ID: 'synthetic-public-client',
+  VITE_KINDE_AUDIENCE: 'https://osp.heymarksman.com/api',
+  VITE_SUPABASE_URL: 'https://project.example.test',
+  VITE_OSP_BUILD_PROFILE: 'local-e2e',
 };
+const preview = { ...valid, VITE_OSP_BUILD_PROFILE: 'preview-synthetic' as const };
 
-describe('runtime configuration', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
+describe('loadRuntimeConfig', () => {
+  it('accepts only the complete approved synthetic local-e2e configuration', () => {
+    expect(loadRuntimeConfig(valid)).toEqual(valid);
+    expect(loadRuntimeConfig(preview)).toEqual(preview);
   });
 
-  test('accepts the approved public configuration values', () => {
-    expect(parseRuntimeConfig(validEnv)).toEqual(validEnv);
+  it.each([
+    ['VITE_KINDE_DOMAIN', 'https://auth.example.test'],
+    ['VITE_KINDE_CLIENT_ID', 'another-synthetic-client'],
+    ['VITE_KINDE_AUDIENCE', 'https://osp.heymarksman.com/api/v2'],
+    ['VITE_SUPABASE_URL', 'http://localhost:54321'],
+    ['VITE_OSP_BUILD_PROFILE', 'production'],
+  ] as const)('rejects an unapproved %s value', (key, value) => {
+    expect(() => loadRuntimeConfig({ ...valid, [key]: value })).toThrow();
   });
 
-  test('rejects configuration without the Kinde domain', () => {
-    expect(() => parseRuntimeConfig({})).toThrow(/VITE_KINDE_DOMAIN/);
+  it.each(Object.keys(valid) as Array<keyof typeof valid>)('rejects missing %s', (key) => {
+    const environment = { ...valid } as Partial<typeof valid>;
+    delete environment[key];
+
+    expect(() => loadRuntimeConfig(environment)).toThrow();
   });
 
-  test('reads the public configuration from Vite runtime environment', () => {
-    vi.stubEnv('VITE_KINDE_DOMAIN', validEnv.VITE_KINDE_DOMAIN);
-    vi.stubEnv('VITE_KINDE_CLIENT_ID', validEnv.VITE_KINDE_CLIENT_ID);
-    vi.stubEnv('VITE_SUPABASE_URL', validEnv.VITE_SUPABASE_URL);
-
-    expect(getRuntimeConfig()).toEqual(validEnv);
+  it('rejects an unknown VITE key while allowing only Vite built-ins outside the config', () => {
+    expect(() => loadRuntimeConfig({ ...valid, VITE_UNAPPROVED: 'nope' })).toThrow();
+    expect(() => loadRuntimeConfig({ ...valid, UNAPPROVED: 'nope' })).toThrow();
+    expect(loadRuntimeConfig({
+      ...valid,
+      MODE: 'test',
+      DEV: true,
+      PROD: false,
+      SSR: false,
+      BASE_URL: '/app/',
+    })).toEqual(valid);
   });
 });
 
-describe('OSP auth callback', () => {
-  test('uses the app path for local development', () => {
-    expect(authRedirectUri('http://localhost:8791')).toBe('http://localhost:8791/app');
+describe('application origins', () => {
+  it('allows only the local origin for local-e2e', () => {
+    expect(authRedirectUri('http://localhost:8791', 'local-e2e')).toBe('http://localhost:8791/app');
   });
 
-  test('uses the app path for the production origin', () => {
-    expect(authRedirectUri('https://osp.heymarksman.com')).toBe('https://osp.heymarksman.com/app');
+  it.each([
+    'http://localhost:8791',
+    'https://osp-customer-setup-elandopando8892s-projects.vercel.app',
+    'https://osp-customer-setup-a1b2c3-elandopando8892s-projects.vercel.app',
+  ])('allows an owned Vercel deployment origin for preview-synthetic: %s', (origin) => {
+    expect(() => assertAllowedAppOrigin(origin, 'preview-synthetic')).not.toThrow();
   });
 
-  test('rejects an unexpected production origin', () => {
-    expect(() => authRedirectUri('https://partners.heymarksman.com', true)).toThrow(/production origin/i);
+  it.each([
+    'http://localhost:8790',
+    'http://localhost:8791/',
+    'http://localhost:8791.evil.example.test',
+    'https://osp.heymarksman.com',
+    'https://osp.heymarksman.com.evil.example.test',
+  ])('rejects a non-approved local-e2e origin: %s', (origin) => {
+    expect(() => assertAllowedAppOrigin(origin, 'local-e2e')).toThrow();
+    expect(() => authRedirectUri(origin, 'local-e2e')).toThrow();
+  });
+
+  it.each([
+    'https://osp.heymarksman.com',
+    'https://osp-customer-setup.vercel.app',
+    'https://osp-customer-setup-a1b2c3-attacker-projects.vercel.app',
+    'https://osp-customer-setup-a1b2c3-elandopando8892s-projects.vercel.app.evil.test',
+  ])('rejects a non-owned preview origin: %s', (origin) => {
+    expect(() => assertAllowedAppOrigin(origin, 'preview-synthetic')).toThrow();
   });
 });

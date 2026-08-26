@@ -1,56 +1,56 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, type RouterHistory } from '@tanstack/react-router';
-import { type ReactNode, useEffect, useMemo } from 'react';
-import { type OspClient } from '../api/osp-client';
+import { useMemo, useState } from 'react';
+import type { OspClient } from '../api/osp-client';
+import type { AuthPort } from '../auth/auth-port';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
-import { createOspRouter, type RouterContext } from './router';
+import { SessionScopedQueryProvider, sessionQueryScopeKey } from '../auth/SessionScopedQueryProvider';
+import { createAppRouter } from './router';
+import type { OspBuildProfile } from '../config/runtime';
 
-type AppProps = RouterContext & {
-  history?: RouterHistory;
-};
-
-let nextQueryScopeId = 0;
-
-export function SessionScopedQueryProvider({
-  ospClient,
-  children,
-}: {
-  ospClient: OspClient;
-  children: ReactNode;
-}) {
-  const { state } = useAuth();
-  const sessionScope = state.status === 'authenticated'
-    ? `authenticated:${state.user.subject}`
-    : state.status;
-  const queryScope = useMemo(
-    () => ({
-      id: ++nextQueryScopeId,
-      client: new QueryClient(),
-      owner: { ospClient, sessionScope },
-    }),
-    [ospClient, sessionScope],
-  );
-
-  useEffect(() => () => queryScope.client.clear(), [queryScope]);
-
-  return (
-    <QueryClientProvider key={queryScope.id} client={queryScope.client}>
-      {children}
-    </QueryClientProvider>
-  );
+function AuthenticatedApp({ apiClient, routerHistory }: { apiClient: OspClient; routerHistory?: RouterHistory }) {
+  const auth = useAuth();
+  const [loginFailed, setLoginFailed] = useState(false);
+  if (auth.state.status === 'loading') {
+    return <main className="auth-page"><p role="status" aria-label="Checking access">Checking access…</p></main>;
+  }
+  if (auth.state.status === 'error') {
+    return <main className="auth-page"><p role="alert">We could not verify access. Please try again.</p></main>;
+  }
+  if (auth.state.status === 'anonymous') {
+    const login = async () => {
+      setLoginFailed(false);
+      try { await auth.login('/app/pipeline'); } catch { setLoginFailed(true); }
+    };
+    return (
+      <main className="auth-page">
+        <p className="eyebrow">OSP customer setup</p>
+        <h1>Provider onboarding workspace</h1>
+        <p>Sign in to view your organization’s read-only request status.</p>
+        {auth.logoutFailed ? <p role="alert">We could not sign out. Please retry.</p> : null}
+        {loginFailed ? <p role="alert">We could not start sign in. Please retry.</p> : null}
+        {auth.logoutFailed
+          ? <button type="button" onClick={() => void auth.logout().catch(() => undefined)}>Retry sign out</button>
+          : <button type="button" onClick={() => void login()}>{loginFailed ? 'Retry sign in' : 'Sign in'}</button>}
+      </main>
+    );
+  }
+  return <AuthenticatedRouter apiClient={apiClient} email={auth.state.session.identity.email} logout={auth.logout} routerHistory={routerHistory} sessionKey={sessionQueryScopeKey(auth.state, apiClient, auth.scopeVersion)} />;
 }
 
-export function App({ auth, ospClient, history }: AppProps) {
-  const router = useMemo(
-    () => createOspRouter({ auth, ospClient }, history),
-    [auth, history, ospClient],
-  );
+function AuthenticatedRouter({ apiClient, email, logout, routerHistory, sessionKey }: { apiClient: OspClient; email: string; logout(): Promise<void>; routerHistory?: RouterHistory; sessionKey: string }) {
+  const router = useMemo(() => createAppRouter(routerHistory), [apiClient, routerHistory, sessionKey]);
+  return <RouterProvider router={router} context={{ apiClient, email, logout }} />;
+}
 
+export function App({ authPort, apiClient, buildProfile = 'local-e2e', routerHistory }: { authPort: AuthPort; apiClient: OspClient; buildProfile?: OspBuildProfile; routerHistory?: RouterHistory }) {
   return (
-    <AuthProvider port={auth}>
-      <SessionScopedQueryProvider ospClient={ospClient}>
-        <RouterProvider router={router} />
-      </SessionScopedQueryProvider>
-    </AuthProvider>
+    <>
+      {buildProfile === 'preview-synthetic' ? <aside className="synthetic-preview-banner" role="status">Preview sintética — usa datos demostrativos y no ejecuta envíos, aprobaciones ni cambios productivos.</aside> : null}
+      <AuthProvider port={authPort}>
+        <SessionScopedQueryProvider apiClient={apiClient}>
+          <AuthenticatedApp apiClient={apiClient} routerHistory={routerHistory} />
+        </SessionScopedQueryProvider>
+      </AuthProvider>
+    </>
   );
 }

@@ -1,196 +1,350 @@
-import type { z } from 'zod';
-import type { AuthPort } from '../auth/auth-port';
-import type { RuntimeConfig } from '../config/runtime';
+import type { AuthPort, BoundSession } from '../auth/auth-port';
+import { createWorkflowClient, type WorkflowClient } from './workflow-client';
+import type { ZodType } from 'zod';
 import {
-  GmailStatusResponseSchema,
-  OnboardingWorkspaceResponseSchema,
-  type GmailStatusResponse,
-  type OnboardingWorkspaceResponse,
+  DocumentApprovalResponseSchema,
+  DocumentUploadResponseSchema,
+  DocumentVersionsResponseSchema,
+  ClarificationReviewResponseSchema,
+  ClarificationReviewsResponseSchema,
+  type ClarificationQuestion,
+  type ClarificationReview,
+  GmailSuccessResponseSchema,
+  type DocumentVersion,
+  type GmailReadModel,
+  OspErrorResponseSchema,
+  type OspPublicErrorCode,
+  type OspReadAction,
+  PipelineSuccessResponseSchema,
+  type PipelineReadModel,
+  type QuarterlyDocumentType,
 } from './contracts';
 
-type OnboardingQueue =
-  | 'all'
-  | 'draft'
-  | 'evidence_collection'
-  | 'blocked'
-  | 'ready_for_approval'
-  | 'closed'
-  | 'overdue';
+type OspClientAuth = Pick<AuthPort, 'getCurrentSession' | 'getAccessToken'>;
 
-type OnboardingWorkspaceInput = {
-  queue: OnboardingQueue;
-  search?: string;
-  limit: number;
-  offset: number;
-};
-
-export interface OspClient {
-  listOnboardingWorkspace(input: OnboardingWorkspaceInput): Promise<OnboardingWorkspaceResponse>;
-  getGmailStatus(): Promise<GmailStatusResponse>;
+export interface OspReadClient {
+  listOnboardingWorkspace(): Promise<PipelineReadModel>;
+  getGmailStatus(): Promise<GmailReadModel>;
 }
 
-export class OspApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly code: string,
-    readonly incidentId: string,
-    readonly action: string,
-    readonly stage: string,
-  ) {
-    super(message);
-    this.name = 'OspApiError';
+export type DocumentUploadInput = { documentType: QuarterlyDocumentType; validFrom: string; contentType: string; bytes: Uint8Array };
+export type DocumentApprovalInput = { versionId: string; expectedVersion: number; reviewBeforeSha256: string; reviewAfterSha256: string };
+export type ClarificationReviewInput = { draftId: string; expectedCaseVersion: number; expectedCanonicalSha256: string; questions: readonly ClarificationQuestion[] };
+
+export interface OspClient extends OspReadClient, WorkflowClient {
+  listDocumentVersions(): Promise<readonly DocumentVersion[]>;
+  uploadDocumentVersion(input: DocumentUploadInput): Promise<{ id: string; version: number; expiresAt: string }>;
+  approveDocumentVersion(input: DocumentApprovalInput): Promise<{ id: string; status: 'approved' }>;
+  listClarificationReviews(): Promise<readonly ClarificationReview[]>;
+  saveClarificationReview(input: ClarificationReviewInput): Promise<ClarificationReview>;
+}
+
+export type OspClientErrorCode = OspPublicErrorCode | 'NO_SESSION' | 'NETWORK_UNAVAILABLE' | 'INVALID_RESPONSE' | 'STALE_SESSION';
+
+export class OspClientError extends Error {
+  readonly code: OspClientErrorCode;
+  readonly incidentId?: string;
+
+  constructor(code: OspClientErrorCode, incidentId?: string) {
+    super(code);
+    this.name = 'OspClientError';
+    this.code = code;
+    this.incidentId = incidentId;
   }
 }
 
-type CreateOspClientOptions = {
-  supabaseUrl: RuntimeConfig['VITE_SUPABASE_URL'];
-  auth: Pick<AuthPort, 'getAccessToken'>;
-  fetchImpl: typeof fetch;
+const STATUS_BY_ERROR_CODE: Readonly<Record<OspPublicErrorCode, number>> = Object.freeze({
+  INVALID_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  METHOD_NOT_ALLOWED: 405,
+  CONTENT_TOO_LARGE: 413,
+  UNSUPPORTED_MEDIA_TYPE: 415,
+  WORKSPACE_UNAVAILABLE: 403,
+  DEPENDENCY_UNAVAILABLE: 503,
+  INTERNAL_ERROR: 500,
+});
+
+type ClientOptions = OspClientAuth & {
+  supabaseUrl: string;
+  fetch?: typeof globalThis.fetch;
 };
 
-type EdgeFunction = 'provider-onboarding-api' | 'provider-gmail-intake-api';
-
-const SAFE_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
-const SAFE_INCIDENT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-
-function safeMetadata(value: unknown, pattern: RegExp): string {
-  if (typeof value !== 'string') return '';
-  const trimmed = value.trim();
-  if (/bearer|token|authorization/i.test(trimmed)) return '';
-  return pattern.test(trimmed) ? trimmed : '';
+function endpointFor(supabaseUrl: string): string {
+  return `${supabaseUrl.replace(/\/+$/, '')}/functions/v1/osp-read-api`;
 }
 
-function safeResponseMessage(status: number): string {
-  if (status === 401) return 'Your OSP session expired. Please sign in again.';
-  if (status === 403) return 'You do not have access to this OSP resource.';
-  if (status === 404) return 'The requested OSP resource was not found.';
-  if (status >= 500) return `The OSP service is temporarily unavailable (HTTP ${status}).`;
-  return `The OSP request could not be completed (HTTP ${status}).`;
+function documentEndpointFor(supabaseUrl: string): string {
+  return `${supabaseUrl.replace(/\/+$/, '')}/functions/v1/osp-document-api`;
 }
 
-async function readErrorMetadata(response: Response): Promise<Record<string, unknown>> {
-  if (!response.headers.get('content-type')?.toLowerCase().includes('application/json')) return {};
-  try {
-    const body: unknown = await response.json();
-    return body && typeof body === 'object' && !Array.isArray(body)
-      ? body as Record<string, unknown>
-      : {};
-  } catch {
-    return {};
-  }
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SHA = /^[0-9a-f]{64}$/;
+const DATE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
+const DOCUMENT_CONTENT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']);
+const DOCUMENT_TYPES = new Set(['proof_of_address', 'sat_compliance_opinion', 'tax_status_certificate', 'bank_statement']);
+
+function isRealDate(value: string): boolean {
+  if (!DATE.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
-async function responseError(response: Response, action: string): Promise<OspApiError> {
-  const metadata = await readErrorMetadata(response);
-  const code = safeMetadata(metadata.code, SAFE_CODE) || `HTTP_${response.status}`;
-  const incidentId = safeMetadata(metadata.incident_id, SAFE_INCIDENT_ID)
-    || safeMetadata(response.headers.get('x-request-id'), SAFE_INCIDENT_ID);
-  return new OspApiError(
-    safeResponseMessage(response.status),
-    response.status,
-    code,
-    incidentId,
-    action,
-    'response',
-  );
-}
+export function createOspClient(options: ClientOptions): OspClient {
+  const fetchImplementation = options.fetch ?? globalThis.fetch;
+  const endpoint = endpointFor(options.supabaseUrl);
+  const documentEndpoint = documentEndpointFor(options.supabaseUrl);
+  const caseEndpoint = `${options.supabaseUrl.replace(/\/+$/, '')}/functions/v1/osp-case-api`;
+  const workflow = createWorkflowClient(options);
 
-export function createOspClient(options: CreateOspClientOptions): OspClient {
-  const edgeBaseUrl = `${options.supabaseUrl.replace(/\/+$/, '')}/functions/v1`;
+  async function read<T>(action: OspReadAction): Promise<T> {
+    const captured = options.getCurrentSession();
+    if (!captured) throw new OspClientError('NO_SESSION');
+    let refreshed = false;
+    let forceNextToken = false;
+    let transientRetried = false;
 
-  async function accessToken(action: string, forceRefresh?: boolean): Promise<string> {
-    try {
-      const token = forceRefresh === undefined
-        ? await options.auth.getAccessToken()
-        : await options.auth.getAccessToken(forceRefresh);
-      if (!token.trim()) throw new Error('Empty access token.');
-      return token;
-    } catch {
-      throw new OspApiError(
-        'Your OSP session could not be authorized. Please sign in again.',
-        0,
-        'AUTH_TOKEN_UNAVAILABLE',
-        '',
-        action,
-        'auth',
-      );
+    for (;;) {
+      const forceRefresh = forceNextToken;
+      forceNextToken = false;
+      let token: string;
+      try {
+        token = await options.getAccessToken(captured, forceRefresh);
+      } catch {
+        throw new OspClientError('NO_SESSION');
+      }
+      assertCurrent(options, captured);
+
+      let response: Response;
+      try {
+        response = await fetchImplementation(endpoint, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ version: 1, action }),
+        });
+      } catch {
+        assertCurrent(options, captured);
+        if (!transientRetried) {
+          transientRetried = true;
+          continue;
+        }
+        throw new OspClientError('NETWORK_UNAVAILABLE');
+      }
+
+      assertCurrent(options, captured);
+      if (!response.ok) {
+        const errorBody = await safeJson(response);
+        assertCurrent(options, captured);
+        const error = parseSafeError(errorBody, response.status);
+        if (error.code === 'INVALID_RESPONSE') throw error;
+        if (error.code === 'UNAUTHORIZED' && !refreshed) {
+          refreshed = true;
+          forceNextToken = true;
+          continue;
+        }
+        if (
+          (error.code === 'INTERNAL_ERROR' || error.code === 'DEPENDENCY_UNAVAILABLE')
+          && !transientRetried
+        ) {
+          transientRetried = true;
+          continue;
+        }
+        throw error;
+      }
+
+      const body = await safeJson(response);
+      assertCurrent(options, captured);
+
+      const schema = action === 'list_provider_onboarding_workspace'
+        ? PipelineSuccessResponseSchema
+        : GmailSuccessResponseSchema;
+      const parsed = schema.safeParse(body);
+      if (!parsed.success) throw new OspClientError('INVALID_RESPONSE');
+      assertCurrent(options, captured);
+      return parsed.data.data as T;
     }
   }
 
-  async function request(
-    edgeFunction: EdgeFunction,
-    action: string,
-    payload: Record<string, unknown>,
-    token: string,
-  ): Promise<Response> {
-    try {
-      return await options.fetchImpl(`${edgeBaseUrl}/${edgeFunction}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action, ...payload }),
+  async function documentRequest<T>(input: {
+    query: readonly (readonly [string, string])[];
+    expectedStatus: number;
+    schema: ZodType<T>;
+    body?: ArrayBuffer;
+    contentType?: string;
+  }): Promise<T> {
+    const captured = options.getCurrentSession();
+    if (!captured) throw new OspClientError('NO_SESSION');
+    let refreshed = false;
+    for (;;) {
+      let token: string;
+      try {
+        token = await options.getAccessToken(captured, refreshed);
+      } catch {
+        throw new OspClientError('NO_SESSION');
+      }
+      assertCurrent(options, captured);
+      const url = new URL(documentEndpoint);
+      for (const [name, value] of input.query) url.searchParams.append(name, value);
+      const headers: Record<string, string> = { authorization: `Bearer ${token}` };
+      if (input.contentType) headers['content-type'] = input.contentType;
+      let response: Response;
+      try {
+        response = await fetchImplementation(url.toString(), { method: 'POST', headers, ...(input.body ? { body: input.body } : {}) });
+      } catch {
+        assertCurrent(options, captured);
+        throw new OspClientError('NETWORK_UNAVAILABLE');
+      }
+      assertCurrent(options, captured);
+      if (!response.ok) {
+        const errorBody = await safeJson(response);
+        assertCurrent(options, captured);
+        const error = parseSafeError(errorBody, response.status);
+        if (error.code === 'UNAUTHORIZED' && !refreshed) {
+          refreshed = true;
+          continue;
+        }
+        throw error;
+      }
+      if (response.status !== input.expectedStatus || response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'application/json') throw new OspClientError('INVALID_RESPONSE');
+      const body = await safeJson(response);
+      assertCurrent(options, captured);
+      const parsed = input.schema.safeParse(body);
+      if (!parsed.success) throw new OspClientError('INVALID_RESPONSE');
+      return parsed.data;
+    }
+  }
+
+  async function caseRequest<T>(input: {
+    query: readonly (readonly [string, string])[];
+    schema: ZodType<T>;
+    body?: string;
+  }): Promise<T> {
+    const captured = options.getCurrentSession();
+    if (!captured) throw new OspClientError('NO_SESSION');
+    let refreshed = false;
+    for (;;) {
+      let token: string;
+      try { token = await options.getAccessToken(captured, refreshed); }
+      catch { throw new OspClientError('NO_SESSION'); }
+      assertCurrent(options, captured);
+      const url = new URL(caseEndpoint);
+      for (const [name, value] of input.query) url.searchParams.append(name, value);
+      const headers: Record<string, string> = { authorization: `Bearer ${token}` };
+      if (input.body !== undefined) headers['content-type'] = 'application/json';
+      let response: Response;
+      try { response = await fetchImplementation(url.toString(), { method: 'POST', headers, ...(input.body !== undefined ? { body: input.body } : {}) }); }
+      catch { assertCurrent(options, captured); throw new OspClientError('NETWORK_UNAVAILABLE'); }
+      assertCurrent(options, captured);
+      if (!response.ok) {
+        const errorBody = await safeJson(response);
+        assertCurrent(options, captured);
+        const error = parseSafeError(errorBody, response.status);
+        if (error.code === 'UNAUTHORIZED' && !refreshed) { refreshed = true; continue; }
+        throw error;
+      }
+      if (response.status !== 200 || response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'application/json') throw new OspClientError('INVALID_RESPONSE');
+      const body = await safeJson(response);
+      assertCurrent(options, captured);
+      const parsed = input.schema.safeParse(body);
+      if (!parsed.success) throw new OspClientError('INVALID_RESPONSE');
+      return parsed.data;
+    }
+  }
+
+  function validClarificationQuestion(value: ClarificationQuestion): boolean {
+    return !!value && typeof value === 'object' && Object.keys(value).sort().join(',') === 'evidenceIds,fieldId,kind,question' &&
+      (value.kind === 'missing' || value.kind === 'contradiction') && /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(value.fieldId) &&
+      typeof value.question === 'string' && value.question.trim() === value.question && value.question.length >= 3 && value.question.length <= 500 &&
+      !/[<>]|(?:javascript|data):|https?:\/\//i.test(value.question) && Array.isArray(value.evidenceIds) && value.evidenceIds.length >= 1 && value.evidenceIds.length <= 20 &&
+      new Set(value.evidenceIds).size === value.evidenceIds.length && value.evidenceIds.every((id) => /^[A-Za-z0-9:_-]{1,256}$/.test(id));
+  }
+
+  return Object.freeze({
+    ...workflow,
+    listOnboardingWorkspace: () => read<PipelineReadModel>('list_provider_onboarding_workspace'),
+    getGmailStatus: () => read<GmailReadModel>('provider_gmail_status'),
+    listDocumentVersions: async () => (await documentRequest({
+      query: [['action', 'list_document_versions']], expectedStatus: 200, schema: DocumentVersionsResponseSchema,
+    })).data.versions,
+    uploadDocumentVersion: async (input: DocumentUploadInput) => {
+      if (!DOCUMENT_TYPES.has(input.documentType) || !isRealDate(input.validFrom) || !DOCUMENT_CONTENT_TYPES.has(input.contentType) || !(input.bytes instanceof Uint8Array) || input.bytes.byteLength < 1 || input.bytes.byteLength > 26_214_400) throw new OspClientError('INVALID_REQUEST');
+      const response = await documentRequest({
+        query: [['action', 'upload_document_version'], ['document_type', input.documentType], ['valid_from', input.validFrom]],
+        expectedStatus: 201,
+        schema: DocumentUploadResponseSchema,
+        contentType: input.contentType,
+        body: input.bytes.slice().buffer,
       });
-    } catch {
-      throw new OspApiError(
-        'The OSP service could not be reached. Check your connection and try again.',
-        0,
-        'NETWORK_ERROR',
-        '',
-        action,
-        'transport',
-      );
-    }
-  }
-
-  async function call<T>(
-    edgeFunction: EdgeFunction,
-    action: string,
-    payload: Record<string, unknown>,
-    schema: z.ZodType<T>,
-  ): Promise<T> {
-    let token = await accessToken(action);
-    let response = await request(edgeFunction, action, payload, token);
-
-    if (response.status === 401) {
-      token = await accessToken(action, true);
-      response = await request(edgeFunction, action, payload, token);
-    }
-
-    if (!response.ok) throw await responseError(response, action);
-
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      throw new OspApiError(
-        'The OSP service returned an unreadable response.',
-        response.status,
-        'INVALID_JSON_RESPONSE',
-        safeMetadata(response.headers.get('x-request-id'), SAFE_INCIDENT_ID),
-        action,
-        'decode',
-      );
-    }
-    return schema.parse(body);
-  }
-
-  return {
-    listOnboardingWorkspace: (input) => call(
-      'provider-onboarding-api',
-      'list_provider_onboarding_workspace',
-      input,
-      OnboardingWorkspaceResponseSchema,
-    ),
-    getGmailStatus: () => call(
-      'provider-gmail-intake-api',
-      'provider_gmail_status',
-      {},
-      GmailStatusResponseSchema,
-    ),
-  };
+      return response.data;
+    },
+    approveDocumentVersion: async (input: DocumentApprovalInput) => {
+      if (!UUID.test(input.versionId) || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1 || input.expectedVersion > 2_147_483_647 || !SHA.test(input.reviewBeforeSha256) || input.reviewBeforeSha256 !== input.reviewAfterSha256) throw new OspClientError('INVALID_REQUEST');
+      const response = await documentRequest({
+        query: [
+          ['action', 'approve_document_version'],
+          ['version_id', input.versionId],
+          ['expected_version', String(input.expectedVersion)],
+          ['review_before_sha256', input.reviewBeforeSha256],
+          ['review_after_sha256', input.reviewAfterSha256],
+        ],
+        expectedStatus: 200,
+        schema: DocumentApprovalResponseSchema,
+      });
+      return response.data;
+    },
+    listClarificationReviews: async () => (await caseRequest({
+      query: [['action', 'list_clarification_reviews']], schema: ClarificationReviewsResponseSchema,
+    })).data.drafts,
+    saveClarificationReview: async (input: ClarificationReviewInput) => {
+      if (!UUID.test(input.draftId) || !Number.isSafeInteger(input.expectedCaseVersion) || input.expectedCaseVersion < 0 || input.expectedCaseVersion > 2_147_483_647 ||
+          !SHA.test(input.expectedCanonicalSha256) || !Array.isArray(input.questions) || input.questions.length < 1 || input.questions.length > 50 ||
+          input.questions.some((question) => !validClarificationQuestion(question)) || new Set(input.questions.map((question) => question.fieldId)).size !== input.questions.length) {
+        throw new OspClientError('INVALID_REQUEST');
+      }
+      const response = await caseRequest({
+        query: [
+          ['action', 'save_clarification_review'],
+          ['draft_id', input.draftId],
+          ['expected_case_version', String(input.expectedCaseVersion)],
+          ['expected_canonical_sha256', input.expectedCanonicalSha256],
+        ],
+        schema: ClarificationReviewResponseSchema,
+        body: JSON.stringify({ questions: input.questions }),
+      });
+      return response.data;
+    },
+  });
 }
 
-export type { GmailStatusResponse, OnboardingWorkspaceResponse } from './contracts';
+function assertCurrent(options: OspClientAuth, captured: BoundSession): void {
+  const current = options.getCurrentSession();
+  if (!current || current.generation !== captured.generation ||
+      current.identity.issuer !== captured.identity.issuer ||
+      current.identity.authorizedParty !== captured.identity.authorizedParty ||
+      current.identity.subject !== captured.identity.subject ||
+      current.identity.organization !== captured.identity.organization ||
+      current.identity.email !== captured.identity.email ||
+      current.identity.emailVerified !== captured.identity.emailVerified) {
+    throw new OspClientError('STALE_SESSION');
+  }
+}
+
+async function safeJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    throw new OspClientError('INVALID_RESPONSE');
+  }
+}
+
+function parseSafeError(value: unknown, status: number): OspClientError {
+  const parsed = OspErrorResponseSchema.safeParse(value);
+  if (!parsed.success) return new OspClientError('INVALID_RESPONSE');
+  if (STATUS_BY_ERROR_CODE[parsed.data.error.code] !== status) {
+    return new OspClientError('INVALID_RESPONSE');
+  }
+  return new OspClientError(parsed.data.error.code, parsed.data.error.incident_id);
+}

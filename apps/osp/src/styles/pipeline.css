@@ -1,74 +1,19 @@
-.pipeline-overview {
-  display: grid;
-  gap: 1.5rem;
-}
-
-.pipeline-overview__header {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.pipeline-overview__header > * {
-  margin: 0;
-}
-
-.pipeline-overview__eyebrow {
-  color: #0c4dcc;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.pipeline-panel {
-  background: #ffffff;
-  border: 1px solid #d6deeb;
-  border-radius: 0.75rem;
-  padding: 1.25rem;
-}
-
-.pipeline-panel h3 {
-  margin-top: 0;
-}
-
-.pipeline-metrics {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
-  margin: 0;
-}
-
-.pipeline-metrics div,
-.mailbox-status div {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.pipeline-metrics dd,
-.mailbox-status dd {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin: 0;
-}
-
-.pipeline-metrics dt,
-.mailbox-status dt {
-  color: #4b5f7f;
-  font-size: 0.875rem;
-}
-
-.mailbox-status {
-  display: grid;
-  gap: 1rem;
-  margin: 0;
-}
-
-.pipeline-alert {
-  border-left: 0.25rem solid #b42318;
-  margin-top: 1rem;
-  padding-left: 1rem;
-}
-
-.pipeline-alert button {
-  cursor: pointer;
-}
+.pipeline-page { display: grid; gap: 1.25rem; }
+.page-heading { padding: 0 0 1rem; }
+.page-heading h1 { margin: .25rem 0; font-size: clamp(2rem, 5vw, 3.4rem); letter-spacing: -.045em; }
+.page-heading > p:last-child { color: var(--muted); }
+.panel { padding: clamp(1.25rem, 3vw, 2rem); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+.panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.panel h2 { margin: 0 0 1rem; }
+.read-only-badge { border-radius: 999px; padding: .3rem .6rem; background: #e4f2ee; color: var(--brand-dark); font-size: .75rem; font-weight: 800; text-transform: uppercase; }
+.metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 1rem 0 0; }
+.metric { padding: 1.1rem; border-radius: 14px; background: var(--canvas); }
+.metric dt { color: var(--muted); font-size: .85rem; }
+.metric dd { margin: .35rem 0 0; font-size: 2rem; font-weight: 800; }
+.health { display: flex; align-items: center; gap: .85rem; }
+.health-dot { width: .8rem; height: .8rem; border-radius: 50%; background: var(--muted); }
+.health p { margin: .2rem 0 0; color: var(--muted); }
+.health-watching .health-dot, .health-connected .health-dot { background: var(--brand); }
+.health-degraded .health-dot { background: var(--warning); }
+.health-unknown .health-dot { background: var(--danger); }
+@media (max-width: 720px) { .metric-grid { grid-template-columns: repeat(2, 1fr); } }

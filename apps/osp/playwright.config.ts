@@ -1,20 +1,17 @@
 import { defineConfig } from '@playwright/test';
 
-process.env.PLAYWRIGHT_BROWSERS_PATH ??= '0';
-
 export default defineConfig({
   testDir: './e2e',
-  use: {
-    baseURL: 'http://localhost:8791',
-    trace: 'retain-on-failure',
-  },
+  testMatch: /approval-communications\.spec\.ts/,
+  fullyParallel: false,
+  workers: 1,
+  retries: 0,
+  reporter: 'line',
+  use: { baseURL: 'http://localhost:8791', channel: 'chrome', trace: 'retain-on-failure' },
   webServer: {
     command: 'pnpm dev',
-    url: 'http://localhost:8791/app',
+    url: 'http://localhost:8791',
     reuseExistingServer: false,
+    timeout: 60_000,
   },
-  projects: [
-    { name: 'desktop', use: { viewport: { width: 1440, height: 900 } } },
-    { name: 'mobile', use: { viewport: { width: 390, height: 844 } } },
-  ],
 });

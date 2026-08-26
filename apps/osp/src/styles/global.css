@@ -1,9 +1,25 @@
-body {
-  margin: 0;
-}
-
-main {
-  margin: 0 auto;
-  max-width: 48rem;
-  padding: 2rem;
-}
+* { box-sizing: border-box; }
+html { font-family: var(--font-body); background: var(--canvas); color: var(--ink); }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, a { font: inherit; }
+a { color: var(--brand); }
+button { border: 0; border-radius: 999px; padding: .7rem 1rem; background: var(--brand); color: white; cursor: pointer; }
+button:hover { background: var(--brand-dark); }
+button:focus-visible, a:focus-visible, input:focus-visible, main:focus-visible { outline: 3px solid var(--xbf-navy); outline-offset: 3px; }
+.workflow-page { position: relative; max-width: 64rem; padding: clamp(1.25rem, 3vw, 2.5rem); border: 1px solid var(--line); border-top: .4rem solid var(--xbf-navy); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
+.workflow-page::after { content: ""; position: absolute; inset: 0 0 auto auto; width: 14rem; height: 7rem; pointer-events: none; opacity: .08; background-image: linear-gradient(var(--xbf-navy) 1px, transparent 1px), linear-gradient(90deg, var(--xbf-navy) 1px, transparent 1px); background-size: 16px 16px; }
+.workflow-page h1 { position: relative; margin: .3rem 0; font-family: var(--font-display); font-size: clamp(2rem, 5vw, 3.6rem); line-height: .98; letter-spacing: -.035em; text-transform: uppercase; }
+.lede { max-width: 44rem; color: var(--muted); font-size: 1.05rem; }
+.evidence-grid, .payload-review { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1px; margin: 2rem 0; padding: 1px; background: var(--line); }
+.evidence-grid div, .payload-review div { min-width: 0; padding: 1rem; background: var(--surface); }
+.payload-review div:nth-child(4), .payload-review div:nth-child(5), .payload-review div:nth-child(6), .payload-review div:nth-child(7) { grid-column: 1 / -1; }
+dt { color: var(--muted); font-size: .75rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+dd { margin: .35rem 0 0; overflow-wrap: anywhere; }
+code { display: inline-block; max-width: 100%; color: var(--xbf-navy); font-family: ui-monospace, Consolas, monospace; font-size: .8rem; overflow-wrap: anywhere; }
+.control-confirmation { display: flex; align-items: flex-start; gap: .75rem; margin: 1.5rem 0; padding: 1rem; border-left: 4px solid var(--xbf-navy); background: #eef1f8; font-weight: 700; }
+.control-confirmation input { width: 1.2rem; height: 1.2rem; margin-top: .1rem; accent-color: var(--xbf-navy); }
+.workflow-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+.critical-action { background: var(--xbf-navy-deep); }
+.message-preview { white-space: pre-wrap; }
+.eyebrow { color: var(--brand); font-size: .76rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.auth-page { max-width: 42rem; margin: 12vh auto; padding: 2rem; }

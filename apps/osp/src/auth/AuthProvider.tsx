@@ -1,106 +1,177 @@
-import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
-import { type AuthPort, type OspUser } from './auth-port';
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+
+import type { AuthPort, BoundSession } from './auth-port';
 
 export type AuthState =
-  | { status: 'checking'; user: null; error: null }
-  | { status: 'anonymous'; user: null; error: null }
-  | { status: 'authenticated'; user: OspUser; error: null }
-  | { status: 'error'; user: null; error: string };
+  | { status: 'loading' }
+  | { status: 'anonymous' }
+  | { status: 'authenticated'; session: BoundSession }
+  | { status: 'error'; error: Error };
 
 type AuthContextValue = {
   state: AuthState;
-  login(returnTo?: string): Promise<void>;
+  scopeVersion: number;
+  logoutFailed: boolean;
+  login(returnTo: string): Promise<void>;
   logout(): Promise<void>;
+  refresh(): Promise<void>;
+  getAccessToken(forceRefresh?: boolean): Promise<string>;
 };
 
-const safeSessionError = 'Unable to verify your session. Please try again.';
-const safeActionError = 'Unable to complete that authentication action. Please try again.';
-const checkingState: AuthState = { status: 'checking', user: null, error: null };
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-export const AuthContext = createContext<AuthContextValue | null>(null);
+type PortOwnership = {
+  port: AuthPort;
+  version: number;
+};
 
-export function safeReturnTo(value: string | undefined, origin = window.location.origin): string {
-  if (!value) {
-    return '/app';
-  }
-
-  try {
-    const parsed = new URL(value, origin);
-    if (parsed.origin !== origin || (parsed.pathname !== '/app' && !parsed.pathname.startsWith('/app/'))) {
-      return '/app';
-    }
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  } catch {
-    return '/app';
-  }
+function stateForSession(session: BoundSession | null): AuthState {
+  return session ? { status: 'authenticated', session } : { status: 'anonymous' };
 }
 
 export function AuthProvider({ port, children }: { port: AuthPort; children: ReactNode }) {
-  const [session, setSession] = useState<{ port: AuthPort; state: AuthState }>({ port, state: checkingState });
-  const state = session.port === port ? session.state : checkingState;
+  const [logoutFailed, setLogoutFailed] = useState(false);
+  const [snapshot, setSnapshot] = useState<{ ownership: PortOwnership; state: AuthState }>({
+    ownership: { port, version: 0 },
+    state: { status: 'loading' },
+  });
+  const ownership = snapshot.ownership;
+  const isPortTransition = ownership.port !== port;
+  const state: AuthState = isPortTransition ? { status: 'loading' } : snapshot.state;
+  const scopeVersion = isPortTransition ? ownership.version + 1 : ownership.version;
+  const ownershipRef = useRef(ownership);
+  const stateRef = useRef(state);
+  const validationSequence = useRef(0);
+
+  useLayoutEffect(() => {
+    if (snapshot.ownership.port !== port) {
+      const nextOwnership: PortOwnership = {
+        port,
+        version: snapshot.ownership.version + 1,
+      };
+      ownershipRef.current = nextOwnership;
+      stateRef.current = { status: 'loading' };
+      setLogoutFailed(false);
+      setSnapshot({ ownership: nextOwnership, state: { status: 'loading' } });
+      return;
+    }
+    ownershipRef.current = snapshot.ownership;
+    stateRef.current = snapshot.state;
+  }, [port, snapshot]);
+
+  const runValidation = useCallback(async (
+    targetOwnership: PortOwnership,
+    validation: () => Promise<BoundSession | null>,
+  ) => {
+    const sequence = ++validationSequence.current;
+    try {
+      const session = await validation();
+      if (
+        targetOwnership === ownershipRef.current
+        && sequence === validationSequence.current
+      ) {
+        setSnapshot({ ownership: targetOwnership, state: stateForSession(session) });
+      }
+    } catch (error) {
+      if (
+        targetOwnership === ownershipRef.current
+        && sequence === validationSequence.current
+      ) {
+        setSnapshot({
+          ownership: targetOwnership,
+          state: {
+            status: 'error',
+            error: error instanceof Error ? error : new Error(String(error)),
+          },
+        });
+      }
+    }
+  }, []);
 
   useEffect(() => {
+    if (ownership.port !== port) return undefined;
     let active = true;
-    const setStateForPort = (nextState: AuthState) => {
-      setSession({ port, state: nextState });
-    };
-
-    void (async () => {
-      try {
-        await port.initialize();
-        const authenticated = await port.isAuthenticated();
-        if (!active) {
-          return;
-        }
-        if (!authenticated) {
-          setStateForPort({ status: 'anonymous', user: null, error: null });
-          return;
-        }
-
-        const user = await port.getUser();
-        if (!active) {
-          return;
-        }
-        if (!user) {
-          throw new Error('Authenticated session did not provide a user.');
-        }
-        setStateForPort({ status: 'authenticated', user, error: null });
-      } catch {
-        if (active) {
-          setStateForPort({ status: 'error', user: null, error: safeSessionError });
-        }
+    void runValidation(ownership, async () => {
+      if ('activate' in port && typeof port.activate === 'function') {
+        const activation = port.activate();
+        if (activation) await activation;
       }
-    })();
+      const session = await port.initialize();
+      return active ? session : null;
+    });
 
+    const unsubscribe = port.subscribe(() => {
+      validationSequence.current += 1;
+      if (active && ownership === ownershipRef.current) {
+        setSnapshot({ ownership, state: stateForSession(port.getCurrentSession()) });
+      }
+    });
+    const onFocus = () => void runValidation(ownership, () => port.revalidate('focus'));
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void runValidation(ownership, () => port.revalidate('visible'));
+      }
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       active = false;
+      validationSequence.current += 1;
+      unsubscribe();
+      if ('deactivate' in port && typeof port.deactivate === 'function') {
+        port.deactivate();
+      }
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [port]);
+  }, [ownership, port, runValidation]);
 
-  async function login(returnTo?: string) {
-    try {
-      await port.login(safeReturnTo(returnTo));
-    } catch {
-      setSession({ port, state: { status: 'error', user: null, error: safeActionError } });
-    }
-  }
+  const value = useMemo<AuthContextValue>(() => ({
+    state,
+    scopeVersion,
+    logoutFailed,
+    login: (returnTo) => port.login(returnTo),
+    async logout() {
+      setLogoutFailed(false);
+      const sequence = ++validationSequence.current;
+      const targetPort = port;
+      const targetOwnership = ownership;
+      try {
+        await targetPort.logout();
+      } catch (error) {
+        if (targetOwnership === ownershipRef.current) setLogoutFailed(true);
+        throw error;
+      }
+      if (
+        targetOwnership === ownershipRef.current
+        && sequence === validationSequence.current
+      ) {
+        setSnapshot({ ownership: targetOwnership, state: { status: 'anonymous' } });
+      }
+    },
+    refresh: () => runValidation(ownership, () => port.revalidate('refresh')),
+    async getAccessToken(forceRefresh) {
+      const current = stateRef.current;
+      if (current.status !== 'authenticated') throw new Error('No authenticated session');
+      return port.getAccessToken(current.session, forceRefresh);
+    },
+  }), [logoutFailed, ownership, port, runValidation, scopeVersion, state]);
 
-  async function logout() {
-    try {
-      await port.logout();
-      setSession({ port, state: { status: 'anonymous', user: null, error: null } });
-    } catch {
-      setSession({ port, state: { status: 'error', user: null, error: safeActionError } });
-    }
-  }
-
-  return <AuthContext.Provider value={{ state, login, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthContextValue {
-  const value = useContext(AuthContext);
-  if (!value) {
-    throw new Error('useAuth must be used within an AuthProvider.');
-  }
-  return value;
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  return context;
 }
