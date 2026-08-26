@@ -30,11 +30,11 @@ Implemented the public, no-auth, noindex Carrier List Templates QA preview again
 ## Verification
 
 - `node --check src/carrier-list-templates-preview.js` — passed.
-- `node --test tests/carrier-list-templates-preview.test.mjs` — 4 passed, 0 failed.
+- `node --test tests/carrier-list-templates-preview.test.mjs` — 7 passed, 0 failed.
 - `npm run test:carrier-list-templates` — browser domain tests passed; Deno contract suite 71 passed, 0 failed.
 - `git diff --check` — passed.
 
-Browser/design QA was intentionally not launched by this implementation agent; the controller owns the approved browser verification pass. No server, browser automation, deployment, or external action was started.
+The controller completed browser/design QA against all three approved references, exercised the core local-only flow, and recorded a passing project-root `design-qa.md`. The published artifact remains a Vercel Preview deployment only; no production promotion, live migration, feature-flag enablement, communication, or data mutation occurred.
 
 ## Fix round 1
 
@@ -75,3 +75,12 @@ Browser/design QA was intentionally not launched by this implementation agent; t
 - Preview-scoped hover styling preserves the neutral slate hover treatment, while `.is-active` continues to use the approved brand foreground and background for Carrier CRM or Bid Room only.
 - A focused stylesheet contract verifies the exact inactive, hover, and active declarations without changing global button behavior or another page.
 - `node --test tests/carrier-list-templates-preview.test.mjs` — 6 passed, 0 failed.
+
+## Preview deployment evidence
+
+- The first Vercel Preview build was `READY`, but the public route correctly failed verification because the repository-wide `.vercelignore` excluded `output/`. No production target was involved.
+- A red/green packaging contract now requires generated output to remain excluded by default while allowlisting only `output/carrier-list-templates-preview.html`.
+- Commit `fe5b5c278fab02596eaa02bfb3dcb66d1f105c1a` deployed as Vercel Preview `dpl_8MMYQRYmrKnAbFaLVhoidoUjidJP` at `https://rateware-fe4i8zx18-elandopando8892s-projects.vercel.app/output/carrier-list-templates-preview`.
+- `vercel inspect` reports target `preview`, status `Ready`; authenticated `vercel curl` returned HTTP 200 for both the clean HTML route and its JavaScript module.
+- The in-app browser opened the deployed URL, confirmed the Rateware title, persistent simulated-data/no-external-actions notice, library state, and Builder transition.
+- Final focused verification: preview 7/7; carrier-template contracts 71/71; `git diff --check` passed.
