@@ -471,6 +471,28 @@ function renderPreview(state, root) {
     : state.screen === "builder" ? renderBuilder(state)
       : state.screen === "carrier-fit" ? renderCarrierFit(state)
         : renderMessage(state);
+  if (state.screen === "carrier-fit") {
+    const fit = previewCarrierFitSnapshot(state);
+    const selectedCount = state.fit.selectedVendorIds.length;
+    const exceptionCount = fit.counts.already_in_rfx + fit.counts.missing_contact + fit.counts.unavailable;
+    root.querySelector(".clt-starting-set")?.insertAdjacentHTML("afterend", `
+      <section class="clt-panel clt-launch-readiness" aria-label="Launch readiness">
+        <header>
+          <div><p>LAUNCH READINESS</p><h2>Review this template wave before adding carriers</h2></div>
+          <span class="clt-fit-label ${selectedCount ? "is-ready" : "is-warning"}">${selectedCount ? "Ready for review" : "Selection required"}</span>
+        </header>
+        <div class="clt-launch-readiness-metrics">
+          <span><b>${selectedCount}</b> selected to add</span>
+          <span><b>3</b> RFx lanes</span>
+          <span><b>${exceptionCount}</b> exceptions</span>
+          <span><b>v${fit.template.template_version || 1}</b> template snapshot</span>
+        </div>
+        <p>${selectedCount
+          ? `${selectedCount} carrier(s) will be revalidated against the active template and current RFx lanes. Carrier Fit will not draft or send messages.`
+          : "Select eligible carriers. Already-in-RFx, missing-contact, and unavailable members remain excluded."}</p>
+      </section>
+    `);
+  }
   applyPreviewFocusKeys(root);
   document.querySelectorAll("[data-preview-nav-key]").forEach((link) => link.classList.remove("is-active"));
   document.querySelector(state.screen === "carrier-fit" || state.screen === "message" ? '[data-preview-nav-key="bid-room"]' : '[data-preview-nav-key="carrier-crm"]')?.classList.add("is-active");

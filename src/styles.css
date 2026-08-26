@@ -4675,6 +4675,122 @@ a {
   color: #687681;
 }
 
+.rfx-outreach-launch-readiness {
+  display: grid;
+  gap: 7px;
+  border: 1px solid #bdd6c9;
+  border-radius: 7px;
+  background: #f4faf7;
+  padding: 9px 10px;
+}
+
+.rfx-outreach-launch-readiness[hidden] {
+  display: none;
+}
+
+.rfx-outreach-launch-readiness h5,
+.rfx-outreach-launch-readiness p {
+  margin: 0;
+}
+
+.rfx-outreach-launch-readiness h5 {
+  color: #173f35;
+  font-size: 0.82rem;
+}
+
+.rfx-outreach-launch-readiness > p:last-child {
+  color: #4d655e;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.rfx-outreach-launch-readiness-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.rfx-outreach-launch-readiness-metrics span {
+  display: grid;
+  gap: 1px;
+  border: 1px solid #d5e2dc;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #53645f;
+  padding: 6px 7px;
+  font-size: 0.65rem;
+}
+
+.rfx-outreach-launch-readiness-metrics strong {
+  color: #233b34;
+  font-size: 0.78rem;
+}
+
+.rfx-outreach-launch-readiness-metrics span[data-tone="warning"] {
+  border-color: #e8d6aa;
+  background: #fffaf0;
+}
+
+.clt-launch-readiness {
+  display: grid;
+  gap: 10px;
+  border-color: #b9d8ca;
+  background: #f4faf7;
+}
+
+.clt-launch-readiness > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.clt-launch-readiness > header p,
+.clt-launch-readiness > header h2,
+.clt-launch-readiness > p {
+  margin: 0;
+}
+
+.clt-launch-readiness > header p {
+  color: #477064;
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.clt-launch-readiness > header h2 {
+  color: #173f35;
+  font-size: 0.92rem;
+}
+
+.clt-launch-readiness > p {
+  color: #4d655e;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.clt-launch-readiness-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.clt-launch-readiness-metrics span {
+  display: grid;
+  gap: 2px;
+  border: 1px solid #d5e2dc;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #53645f;
+  padding: 8px;
+  font-size: 0.68rem;
+}
+
+.clt-launch-readiness-metrics b {
+  color: #233b34;
+  font-size: 0.86rem;
+}
+
 .rfx-outreach-carrier-search-field {
   grid-column: span 2;
 }
@@ -4868,6 +4984,14 @@ a {
   }
 
   .rfx-outreach-carrier-filter-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rfx-outreach-launch-readiness-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .clt-launch-readiness-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
