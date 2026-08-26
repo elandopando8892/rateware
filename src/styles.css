@@ -14499,6 +14499,14 @@ body.bid-editor-open {
   display: none !important;
 }
 
+body.carrier-template-modal-open::before {
+  content: "";
+  position: fixed;
+  z-index: 1199;
+  inset: 0;
+  background: rgb(15 23 42 / 0.52);
+}
+
 .carrier-template-wizard {
   position: fixed;
   z-index: 1200;
@@ -14510,6 +14518,10 @@ body.bid-editor-open {
   border-radius: var(--radius-card);
   background: var(--panel);
   box-shadow: 0 24px 80px rgb(15 23 42 / 0.28);
+}
+
+.carrier-template-wizard.is-capability-recovery {
+  border-color: var(--warning, #b45309);
 }
 
 .carrier-template-wizard-heading {

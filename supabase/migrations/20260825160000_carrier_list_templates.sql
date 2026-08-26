@@ -336,3 +336,128 @@ before insert or update of segment_type, vendor_ids, organization_id
 on public.vendor_segments
 for each row
 execute function public.rateware_validate_participant_template_membership();
+
+-- Carrier CRM filtered search must traverse a mutable vendor workspace without
+-- offset shifts. The caller fixes p_snapshot_at for the complete scan and moves
+-- only through the unique UUID keyset. Ranking metadata is returned for a final
+-- deterministic global sort after the existing status/channel/tag/coverage
+-- filters have been applied in bounded batches.
+create index if not exists vendors_organization_id_id_created_at_idx
+  on public.vendors (organization_id, id, created_at);
+
+create or replace function public.search_workspace_vendors_keyset(
+  p_owner_email text,
+  p_organization_id text,
+  p_search text,
+  p_snapshot_at timestamptz,
+  p_after_id uuid default null,
+  p_limit integer default 1000
+)
+returns table (
+  id uuid,
+  match_rank integer,
+  sort_key text,
+  total_count bigint,
+  has_more boolean
+)
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  with input as (
+    select public.rateware_vendor_search_key(p_search) as search_key
+  ),
+  tokens as (
+    select array_remove(regexp_split_to_array(search_key, '[[:space:]]+'), '') as values
+    from input
+  ),
+  anchor as (
+    select token
+    from tokens
+    cross join lateral unnest(tokens.values) as token
+    where token <> ''
+    order by length(token) desc, token
+    limit 1
+  ),
+  scoped as materialized (
+    select
+      vendor.id,
+      coalesce(vendor.search_document, '') as search_text,
+      public.rateware_vendor_search_key(vendor.vendor_name) as vendor_name_key,
+      public.rateware_vendor_search_key(vendor.name) as name_key,
+      public.rateware_vendor_search_key(vendor.legal_name) as legal_name_key,
+      public.rateware_vendor_search_key(vendor.domain) as domain_key,
+      public.rateware_vendor_search_key(vendor.primary_email) as primary_email_key,
+      array(
+        select public.rateware_vendor_search_key(email)
+        from unnest(coalesce(vendor.secondary_emails, '{}'::text[])) as email
+      ) as secondary_email_keys
+    from public.vendors vendor
+    cross join anchor
+    where lower(vendor.owner_email) = lower(p_owner_email)
+      and vendor.organization_id = p_organization_id
+      and vendor.created_at <= p_snapshot_at
+      and vendor.search_document like '%' || anchor.token || '%'
+  ),
+  matches as materialized (
+    select
+      scoped.id,
+      case
+        when scoped.domain_key = input.search_key
+          or scoped.primary_email_key = input.search_key
+          or input.search_key = any(scoped.secondary_email_keys) then 0
+        when scoped.vendor_name_key = input.search_key
+          or scoped.name_key = input.search_key
+          or scoped.legal_name_key = input.search_key then 1
+        when scoped.domain_key like input.search_key || '%'
+          or scoped.primary_email_key like input.search_key || '%'
+          or exists (
+            select 1 from unnest(scoped.secondary_email_keys) as secondary_key
+            where secondary_key like input.search_key || '%'
+          ) then 2
+        when scoped.vendor_name_key like input.search_key || '%'
+          or scoped.name_key like input.search_key || '%'
+          or scoped.legal_name_key like input.search_key || '%' then 3
+        else 4
+      end as match_rank,
+      coalesce(
+        nullif(scoped.vendor_name_key, ''),
+        nullif(scoped.name_key, ''),
+        nullif(scoped.legal_name_key, ''),
+        nullif(scoped.domain_key, ''),
+        scoped.id::text
+      ) as sort_key
+    from scoped
+    cross join input
+    cross join tokens
+    where input.search_key <> ''
+      and not exists (
+        select 1
+        from unnest(tokens.values) as token
+        where token <> '' and scoped.search_text not like '%' || token || '%'
+      )
+  ),
+  keyset_page as (
+    select
+      matches.*,
+      count(*) over () as remaining_count
+    from matches
+    where p_after_id is null or matches.id > p_after_id
+    order by matches.id
+    limit least(greatest(coalesce(p_limit, 1000), 1), 1000)
+  )
+  select
+    keyset_page.id,
+    keyset_page.match_rank,
+    keyset_page.sort_key,
+    (select count(*) from matches) as total_count,
+    keyset_page.remaining_count > least(greatest(coalesce(p_limit, 1000), 1), 1000) as has_more
+  from keyset_page
+  order by keyset_page.id;
+$$;
+
+revoke execute on function public.search_workspace_vendors_keyset(text, text, text, timestamptz, uuid, integer)
+  from public, anon, authenticated;
+grant execute on function public.search_workspace_vendors_keyset(text, text, text, timestamptz, uuid, integer)
+  to service_role;

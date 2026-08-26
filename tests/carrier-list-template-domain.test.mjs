@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 
 import {
   carrierTemplateConflictSummary,
+  carrierTemplateDraftContentKey,
   carrierTemplateDraftDiff,
   carrierTemplateDraftPayload,
   carrierTemplateImportValidation,
+  createCarrierTemplateDraftMutationController,
   createCarrierTemplateModalFocusController,
   createCarrierTemplateNavigationCoordinator,
+  createCarrierTemplateReconciliationController,
   createCarrierTemplateWizardAsyncController,
   createCarrierTemplateDraftState,
   mergeCarrierTemplateResolutionRows,
@@ -50,6 +53,112 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+// A dispatched save owns an immutable content identity. Every UI action must
+// go through the same mutation controller, and a late success cannot replace a
+// newer local draft even if an integration accidentally bypasses that guard.
+{
+  let draft = createCarrierTemplateDraftState({
+    id: "template-a",
+    template_version: 4,
+    segment_name: "MX Core",
+    vendor_ids: [ids.eligible]
+  });
+  const controller = createCarrierTemplateDraftMutationController({
+    readDraft: () => draft,
+    writeDraft: (action) => {
+      draft = reduceCarrierTemplateDraft(draft, action);
+    }
+  });
+  const pending = deferred();
+  const dispatch = controller.beginSave({ session: 7, template_id: draft.id, expected_version: draft.expected_version });
+  const saving = pending.promise.then((row) => controller.completeSave(dispatch, {
+    session: 7,
+    template_id: "template-a",
+    expected_version: 4,
+    serverRow: row,
+    acceptSaved: (saved) => {
+      draft = reduceCarrierTemplateDraft(draft, { type: "accept_saved", template: saved });
+    }
+  }));
+
+  assert.equal(controller.mutate({ type: "set_details", name: "Late name" }), false);
+  assert.equal(controller.mutate({ type: "add_members", vendor_ids: [ids.filtered] }), false);
+  assert.equal(draft.name, "MX Core");
+  assert.deepEqual(draft.vendor_ids, [ids.eligible]);
+  pending.resolve({ id: "template-a", template_version: 5, segment_name: "MX Core", vendor_ids: [ids.eligible] });
+  assert.equal(await saving, true);
+  assert.equal(draft.expected_version, 5);
+
+  const secondDispatch = controller.beginSave({ session: 8, template_id: draft.id, expected_version: draft.expected_version });
+  const savedSnapshot = { id: "template-a", template_version: 6, segment_name: "MX Core", vendor_ids: [ids.eligible] };
+  draft = reduceCarrierTemplateDraft(draft, { type: "set_details", name: "Newer local name" });
+  let comparison = null;
+  assert.equal(controller.completeSave(secondDispatch, {
+    session: 8,
+    template_id: "template-a",
+    expected_version: 5,
+    serverRow: savedSnapshot,
+    acceptSaved: () => assert.fail("newer local content must not be overwritten"),
+    retainComparison: (row) => comparison = row
+  }), false);
+  assert.equal(draft.name, "Newer local name");
+  assert.equal(draft.dirty, true);
+  assert.deepEqual(comparison, savedSnapshot);
+  assert.equal(carrierTemplateDraftContentKey(draft).includes("Newer local name"), true);
+}
+
+// Reconciliation choices and async search results are scoped to both the
+// upload generation and an immutable row identity. Starting file B makes every
+// file-A preview/search completion ineligible to commit.
+{
+  const reconciliation = createCarrierTemplateReconciliationController();
+  const generationA = reconciliation.startUpload();
+  const [rowA] = reconciliation.identifyRows(generationA, [{
+    source_row_number: 2,
+    status: "ambiguous",
+    source_row: { vendor_name: "Carrier A" }
+  }]);
+  assert.equal(reconciliation.storeChoices({
+    generation: generationA,
+    row_identity: rowA.resolution_row_identity
+  }, [activeVendor(ids.eligible)]), true);
+  assert.equal(reconciliation.choicesFor(rowA).length, 1);
+
+  const pendingSearch = deferred();
+  const staleSearch = pendingSearch.promise.then((rows) => reconciliation.storeChoices({
+    generation: generationA,
+    row_identity: rowA.resolution_row_identity
+  }, rows));
+  const generationB = reconciliation.startUpload();
+  assert.equal(reconciliation.choicesFor(rowA).length, 0, "file B must clear stored file-A choices immediately");
+  const [rowB] = reconciliation.identifyRows(generationB, [{
+    source_row_number: 2,
+    status: "ambiguous",
+    source_row: { vendor_name: "Carrier B" }
+  }]);
+  assert.notEqual(rowB.resolution_row_identity, rowA.resolution_row_identity);
+  assert.equal(reconciliation.commitPreview(generationA, () => assert.fail("file A preview must be stale")), false);
+  let committed = false;
+  assert.equal(reconciliation.commitPreview(generationB, () => committed = true), true);
+  assert.equal(committed, true);
+  pendingSearch.resolve([activeVendor(ids.filtered)]);
+  assert.equal(await staleSearch, false);
+  assert.equal(reconciliation.choicesFor(rowB).length, 0);
+
+  const currentDraft = reduceCarrierTemplateDraft(
+    createCarrierTemplateDraftState({ segment_name: "Generation B" }),
+    { type: "apply_resolution_preview", rows: [rowB] }
+  );
+  const staleChoice = reduceCarrierTemplateDraft(currentDraft, {
+    type: "confirm_manual_match",
+    source_row_number: 2,
+    reconciliation_generation: generationA,
+    resolution_row_identity: rowA.resolution_row_identity,
+    vendor_id: ids.eligible
+  });
+  assert.deepEqual(staleChoice.vendor_ids, [], "a file-A choice must not resolve file B's row 2");
+}
+
 // These executable races catch late async completions mutating or rendering a
 // different editor session. Each operation receives immutable template context.
 {
@@ -75,21 +184,33 @@ function deferred() {
 }
 
 // This executable focus harness catches delayed initial focus, escaping the
-// modal with Tab/Shift+Tab, and failure to restore the opener on close.
+// modal with Tab/Shift+Tab, background focus, leaked inert state, and detached
+// opener restoration after a table re-render.
 {
-  const opener = { id: "opener" };
+  let opener = { id: "opener", isConnected: true };
+  const fallback = { id: "list-templates-tab", isConnected: true };
   const first = { id: "first" };
   const last = { id: "last" };
+  const background = { id: "background", inert: false, ariaHidden: "false" };
   let active = opener;
   const focus = createCarrierTemplateModalFocusController({
     getActiveElement: () => active,
     getFocusable: () => [first, last],
+    getBackgroundElements: () => [background],
+    getBackgroundState: (element) => ({ inert: element.inert, ariaHidden: element.ariaHidden }),
+    setBackgroundState: (element, state) => Object.assign(element, state),
+    isConnected: (element) => element?.isConnected !== false,
+    fallbackFocus: () => fallback,
     focusElement: (element) => {
       active = element;
     }
   });
-  focus.open(first);
+  focus.open(first, { resolveOpener: () => opener });
   assert.equal(active, first, "opening focus must move inside synchronously");
+  assert.deepEqual({ inert: background.inert, ariaHidden: background.ariaHidden }, { inert: true, ariaHidden: "true" });
+  active = background;
+  assert.equal(focus.containFocus(), true);
+  assert.equal(active, first);
   active = last;
   let prevented = false;
   assert.equal(focus.trapTab({ key: "Tab", shiftKey: false, preventDefault: () => prevented = true }), true);
@@ -98,8 +219,16 @@ function deferred() {
   active = first;
   focus.trapTab({ key: "Tab", shiftKey: true, preventDefault() {} });
   assert.equal(active, last);
+  const detachedOpener = opener;
+  detachedOpener.isConnected = false;
+  opener = { id: "opener-rerendered", isConnected: true };
   focus.close();
-  assert.equal(active, opener);
+  assert.equal(active, opener, "close must re-query the attached opener");
+  assert.deepEqual({ inert: background.inert, ariaHidden: background.ariaHidden }, { inert: false, ariaHidden: "false" });
+
+  focus.open(first, { resolveOpener: () => detachedOpener });
+  focus.close();
+  assert.equal(active, fallback, "a detached opener must fall back to List Templates");
 }
 
 // These click/popstate/back-forward attempts prove a declined dirty guard

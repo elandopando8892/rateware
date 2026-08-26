@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createCarrierTemplateCapabilityView } from "../src/carrier-list-template-capability.js";
-import { createCarrierTemplateNavigationCoordinator } from "../src/carrier-list-template-domain.js";
+import {
+  createCarrierTemplateCapabilityRecoveryController,
+  createCarrierTemplateModalFocusController,
+  createCarrierTemplateNavigationCoordinator
+} from "../src/carrier-list-template-domain.js";
 import { createVendorTemplateNavigationGuard } from "../src/vendor-template-navigation.js";
 
 function createHarness(initialHref) {
@@ -132,6 +136,53 @@ test("real capability callback wiring handles enabled to error to disabled witho
   assert.deepEqual(transitions, ["enabled", "error", "disabled"]);
 });
 
+for (const lostCapability of ["error", "disabled"]) {
+  test(`dirty editor declines enabled to ${lostCapability} capability loss and remains accessible read-only over Funnel`, () => {
+    const harness = createHarness("https://rateware.test/vendors.html?tab=list-templates&template=template-a");
+    const tab = { hidden: true };
+    const workspace = { hidden: true };
+    const errorRegion = { hidden: true };
+    const errorMessage = { textContent: "" };
+    const editor = { open: true, dirty: true, recoveryVisible: false };
+    let writable = true;
+    let serverMutations = 0;
+    const recovery = createCarrierTemplateCapabilityRecoveryController({
+      isEditorOpen: () => editor.open,
+      isDirty: () => editor.dirty,
+      requestClose: () => false,
+      retainRecovery: (visible) => editor.recoveryVisible = visible,
+      setWritable: (value) => writable = value
+    });
+    const capabilityView = createCarrierTemplateCapabilityView({
+      tab,
+      workspace,
+      errorRegion,
+      errorMessage,
+      onTransition: (capability) => {
+        recovery.transition(capability);
+        harness.guard.transitionCapability(capability);
+      }
+    });
+
+    capabilityView.transition("enabled");
+    assert.equal(harness.state().activeTab, "list-templates");
+    capabilityView.transition(lostCapability, { error: new Error("capability unavailable") });
+
+    assert.equal(harness.state().activeTab, "funnel");
+    assert.equal(harness.state().panels.funnel.hidden, false);
+    assert.equal(tab.hidden, true);
+    assert.equal(workspace.hidden, true);
+    assert.equal(editor.open, true);
+    assert.equal(editor.recoveryVisible, true, "the declined local draft must remain accessible outside the hidden workspace");
+    assert.equal(writable, false);
+    if (recovery.canMutate) serverMutations += 1;
+    assert.equal(serverMutations, 0);
+    const url = new URL(harness.state().href);
+    assert.equal(url.searchParams.get("tab"), lostCapability === "disabled" ? "funnel" : "list-templates");
+    assert.equal(url.searchParams.has("template"), lostCapability === "error");
+  });
+}
+
 test("dirty template click navigation declines without changing URL, panel, or editor", () => {
   const state = {
     href: "https://rateware.test/vendors.html?tab=list-templates&template=a",
@@ -204,4 +255,47 @@ test("dirty Back and Forward decline restores the accepted route and acceptance 
   assert.equal(state.tab, "funnel");
   assert.equal(state.editorOpen, false);
   assert.equal(commits, 1);
+});
+
+test("accepted tab and Back navigation suppress detached opener restoration and focus the destination", () => {
+  const detachedOpener = { id: "old-open", isConnected: false };
+  const modalFirst = { id: "modal-first", isConnected: true };
+  const funnelTab = { id: "funnel-tab", isConnected: true };
+  const procurementTab = { id: "procurement-tab", isConnected: true };
+  let active = detachedOpener;
+  let editorOpen = true;
+  const modal = createCarrierTemplateModalFocusController({
+    getActiveElement: () => active,
+    getFocusable: () => [modalFirst],
+    isInside: (element) => element === modalFirst,
+    isConnected: (element) => element?.isConnected !== false,
+    fallbackFocus: () => ({ id: "list-tab", isConnected: true }),
+    focusElement: (element) => active = element
+  });
+  modal.open(modalFirst, { resolveOpener: () => detachedOpener });
+  const navigation = createCarrierTemplateNavigationCoordinator({
+    beforeLeave: () => {
+      editorOpen = false;
+      modal.close({ restoreFocus: false });
+      return true;
+    },
+    commit: (route) => {
+      (route.tab === "funnel" ? funnelTab : procurementTab).focus = () => {
+        active = route.tab === "funnel" ? funnelTab : procurementTab;
+      };
+      (route.tab === "funnel" ? funnelTab : procurementTab).focus();
+    },
+    restore: () => assert.fail("accepted navigation must not restore the previous route")
+  });
+
+  assert.equal(navigation.click({ tab: "funnel" }), true);
+  assert.equal(editorOpen, false);
+  assert.equal(active, funnelTab);
+  assert.notEqual(active, detachedOpener);
+
+  editorOpen = true;
+  modal.open(modalFirst, { resolveOpener: () => detachedOpener });
+  assert.equal(navigation.popstate({ tab: "procurement" }, { tab: "list-templates" }), true);
+  assert.equal(editorOpen, false);
+  assert.equal(active, procurementTab);
 });

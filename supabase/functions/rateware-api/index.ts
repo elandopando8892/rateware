@@ -281,20 +281,26 @@ async function loadCarrierTemplate(
   return (result.data || null) as Record<string, unknown> | null;
 }
 
-async function validateCarrierTemplateMembers(
+const CARRIER_TEMPLATE_MEMBER_VALIDATION_BATCH_SIZE = 500;
+
+export async function validateCarrierTemplateMembers(
   supabase: RatewareSupabaseClient,
   organizationId: string,
   vendorIds: string[]
 ) {
   if (!vendorIds.length) return true;
-  const result = await supabase
-    .from("vendors")
-    .select("id")
-    .eq("organization_id", organizationId)
-    .in("id", vendorIds);
-  if (result.error) throw result.error;
-  const found = new Set((result.data || []).map((row: Record<string, unknown>) => cleanText(row.id)).filter(Boolean));
-  return vendorIds.every((id) => found.has(id));
+  for (let offset = 0; offset < vendorIds.length; offset += CARRIER_TEMPLATE_MEMBER_VALIDATION_BATCH_SIZE) {
+    const batch = vendorIds.slice(offset, offset + CARRIER_TEMPLATE_MEMBER_VALIDATION_BATCH_SIZE);
+    const result = await supabase
+      .from("vendors")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .in("id", batch);
+    if (result.error) throw result.error;
+    const found = new Set((result.data || []).map((row: Record<string, unknown>) => cleanText(row.id)).filter(Boolean));
+    if (!batch.every((id) => found.has(id))) return false;
+  }
+  return true;
 }
 
 const CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE = 1000;
@@ -305,21 +311,28 @@ async function fetchCarrierTemplateResolverVendors(
   organizationId: string
 ) {
   const vendors: Record<string, unknown>[] = [];
-  for (
-    let offset = 0;
-    offset < CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT;
-    offset += CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE
-  ) {
-    const result = await supabase
+  const snapshotAt = new Date().toISOString();
+  let afterId = "";
+  while (vendors.length < CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT) {
+    let query = supabase
       .from("vendors")
       .select("id,vendor_name,name,legal_name,primary_email,secondary_emails,profile_data,status,base_stage,organization_id")
       .eq("organization_id", organizationId)
+      .lte("created_at", snapshotAt);
+    if (afterId) query = query.gt("id", afterId);
+    const result = await query
       .order("id", { ascending: true })
-      .range(offset, offset + CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE - 1);
+      .limit(CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE);
     if (result.error) throw result.error;
     const page = (result.data || []) as Record<string, unknown>[];
+    if (!page.length) return vendors;
+    const nextAfterId = cleanText(page[page.length - 1]?.id);
+    if (!nextAfterId || (afterId && nextAfterId <= afterId)) {
+      throw new Error("Carrier import resolution keyset did not advance; no rows were resolved.");
+    }
     vendors.push(...page);
     if (page.length < CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE) return vendors;
+    afterId = nextAfterId;
   }
   throw new Error(
     `Carrier import resolution exceeded the ${CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT.toLocaleString()}-vendor safety limit; no rows were resolved.`
@@ -26332,24 +26345,37 @@ export function createRatewareApiHandler(
         const searchPageSize = 1000;
         const searchSafetyLimit = 200000;
         const requestedIdSet = requestedIds.length ? new Set(requestedIds) : null;
-        const rankedRows: Array<{ rank: number; row: Record<string, unknown> }> = [];
+        const rankedRows: Array<{ matchRank: number; sortKey: string; id: string; row: Record<string, unknown> }> = [];
+        const seenSearchIds = new Set<string>();
+        const searchSnapshotAt = new Date().toISOString();
+        let searchAfterId = "";
         let searchComplete = false;
-        for (let searchOffset = 0; searchOffset < searchSafetyLimit; searchOffset += searchPageSize) {
-          const searchResult = await supabase.rpc("search_workspace_vendors", {
+        while (seenSearchIds.size < searchSafetyLimit) {
+          const searchResult = await supabase.rpc("search_workspace_vendors_keyset", {
             p_owner_email: user.owner_email,
+            p_organization_id: user.organization_id,
             p_search: vendorSearch,
+            p_snapshot_at: searchSnapshotAt,
+            p_after_id: searchAfterId || null,
             p_limit: searchPageSize,
-            p_offset: searchOffset
           });
           if (searchResult.error) throw new Error(`Vendor search failed: ${searchResult.error.message}`);
           const matches = (searchResult.data || []) as Array<Record<string, unknown>>;
-          if (searchOffset === 0) searchTotal = Number(matches[0]?.total_count || matches.length);
+          if (!searchAfterId) searchTotal = Number(matches[0]?.total_count || matches.length);
           if (searchTotal > searchSafetyLimit) {
             throw new Error(`Vendor search exceeds the ${searchSafetyLimit.toLocaleString()}-row safety limit; refine the search.`);
           }
           const rankedIds = matches
-            .map((match, index) => ({ id: cleanText(match.id), rank: searchOffset + index }))
-            .filter((match): match is { id: string; rank: number } => Boolean(match.id));
+            .map((match) => ({
+              id: cleanText(match.id),
+              matchRank: Number(match.match_rank) || 0,
+              sortKey: cleanText(match.sort_key) || cleanText(match.id) || "",
+            }))
+            .filter((match): match is { id: string; matchRank: number; sortKey: string } => Boolean(match.id));
+          if (rankedIds.some((match) => seenSearchIds.has(match.id))) {
+            throw new Error("Vendor search keyset returned a duplicate carrier; no partial result was returned.");
+          }
+          for (const match of rankedIds) seenSearchIds.add(match.id);
           const scopedRankedIds = requestedIdSet
             ? rankedIds.filter((match) => requestedIdSet.has(match.id))
             : rankedIds;
@@ -26358,27 +26384,40 @@ export function createRatewareApiHandler(
               .from("vendors")
               .select(vendorSelect)
               .eq("owner_email", user.owner_email)
+              .eq("organization_id", user.organization_id)
               .order("created_at", { ascending: false })
               .order("id", { ascending: false })
               .in("id", scopedRankedIds.map((match) => match.id));
             vendorQuery = applyVendorFilters(vendorQuery);
             const vendorResult = await vendorQuery;
             if (vendorResult.error) throw vendorResult.error;
-            const rankById = new Map(scopedRankedIds.map((match) => [match.id, match.rank]));
+            const rankById = new Map(scopedRankedIds.map((match) => [match.id, match]));
             for (const row of (vendorResult.data || []) as unknown as Record<string, unknown>[]) {
               const id = cleanText(row.id);
-              if (id && rankById.has(id)) rankedRows.push({ rank: rankById.get(id) as number, row });
+              if (!id) continue;
+              const rank = rankById.get(id);
+              if (rank) rankedRows.push({ ...rank, row });
             }
           }
-          if (matches.length < searchPageSize || searchOffset + matches.length >= searchTotal) {
+          const hasMore = matches.some((match) => match.has_more === true);
+          if (!hasMore) {
             searchComplete = true;
             break;
           }
+          const nextAfterId = rankedIds[rankedIds.length - 1]?.id || "";
+          if (!nextAfterId || (searchAfterId && nextAfterId <= searchAfterId)) {
+            throw new Error("Vendor search keyset did not advance; no partial result was returned.");
+          }
+          searchAfterId = nextAfterId;
         }
         if (!searchComplete) {
           throw new Error(`Vendor search did not complete within the ${searchSafetyLimit.toLocaleString()}-row safety limit.`);
         }
-        rankedRows.sort((left, right) => left.rank - right.rank);
+        rankedRows.sort((left, right) => (
+          left.matchRank - right.matchRank ||
+          left.sortKey.localeCompare(right.sortKey) ||
+          left.id.localeCompare(right.id)
+        ));
         filteredTotal = rankedRows.length;
         rows = rankedRows.slice(offset, offset + limit).map((entry) => entry.row);
       } else {

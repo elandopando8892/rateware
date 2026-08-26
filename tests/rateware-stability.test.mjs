@@ -3687,9 +3687,10 @@ assert.match(listVendorsSource, /fetchVendorRateMetricsSafe/, "Carrier CRM direc
 assert.match(listVendorsSource, /buildVendorIntelligenceRows\(rows, metricsResult\.metrics, bidMetricsResult\.metrics\)/, "Carrier CRM directory should share the unified quote and Bid Room scoring model");
 assert.match(listVendorsSource, /const lightweight =/, "Carrier CRM vendor list should support lightweight selector loading");
 assert.match(listVendorsSource, /contact_name/, "Lightweight Carrier CRM loading should include contact names for Bid Room search");
-assert.match(listVendorsSource, /search_workspace_vendors/, "Carrier CRM search should use the workspace-scoped vendor search RPC");
-assert.match(listVendorsSource, /for \(let searchOffset = 0; searchOffset < searchSafetyLimit; searchOffset \+= searchPageSize\)/, "Carrier CRM search should scan every bounded search RPC page");
-assert.match(listVendorsSource, /p_offset: searchOffset/, "Carrier CRM search should advance the RPC offset instead of stopping at 1,000 matches");
+assert.match(listVendorsSource, /search_workspace_vendors_keyset/, "Carrier CRM search should use the fixed-snapshot workspace vendor keyset RPC");
+assert.match(listVendorsSource, /while \(seenSearchIds\.size < searchSafetyLimit\)/, "Carrier CRM search should scan every bounded keyset RPC page");
+assert.match(listVendorsSource, /p_snapshot_at: searchSnapshotAt[\s\S]+p_after_id: searchAfterId \|\| null/, "Carrier CRM search should keep one snapshot cutoff and advance a unique UUID keyset");
+assert.doesNotMatch(listVendorsSource, /p_offset: searchOffset/, "Carrier CRM search must not traverse mutable matches by offset");
 assert.match(listVendorsSource, /rankById/, "Carrier CRM search should sort returned vendors by search match rank");
 assert.match(listVendorsSource, /\.slice\(offset, offset \+ limit\)/, "Carrier CRM search should page after relevance sorting");
 assert.match(listVendorsSource, /total: filteredTotal/, "Carrier CRM search should report the complete post-filter total to CRM and Bid Room");
@@ -3800,16 +3801,16 @@ assert.match(carrierListTemplatesSource, /function downloadTextFile[\s\S]+try \{
 assert.match(carrierListTemplatesSource, /updateCarrierListTemplate\(savedTemplateId, payload, savedExpectedVersion\)/, "Template edits should send the exact immutable loaded expected version");
 assert.match(carrierListTemplatesSource, /template_version_conflict[\s\S]+getCarrierListTemplate\(savedTemplateId\)[\s\S]+Reload current/, "Template update conflicts should preserve local state and fetch current state for explicit reload");
 assert.match(carrierListTemplatesSource, /ratewareConfirmUnsavedChanges/, "Template close/navigation should invoke the existing unsaved-changes confirmation");
-assert.match(carrierListTemplatesSource, /beforeLeave: \(\) => closeTemplateWizard\(\)/, "Template library should expose one guarded beforeLeave contract");
-assert.match(carrierListTemplatesSource, /wizardAsync\.begin\("file-import"\)[\s\S]+wizardAsync\.begin\(`ambiguity-search:\$\{rowNumber\}`\)[\s\S]+wizardAsync\.begin\("save"\)[\s\S]+wizardAsync\.begin\("current-fetch"\)/, "Wizard async operations should be session and operation gated");
+assert.match(carrierListTemplatesSource, /beforeLeave: \(\{ restoreFocus = false \} = \{\}\) => closeTemplateWizard\(\{ restoreFocus \}\)/, "Template library should expose one guarded beforeLeave contract that suppresses stale opener focus during navigation");
+assert.match(carrierListTemplatesSource, /wizardAsync\.begin\("file-import"\)[\s\S]+wizardAsync\.begin\(`ambiguity-search:\$\{generation\}:\$\{rowIdentity\}`\)[\s\S]+wizardAsync\.begin\("save"\)[\s\S]+wizardAsync\.begin\("current-fetch"\)/, "Wizard async operations should be session, reconciliation-generation, and operation gated");
 assert.match(carrierListTemplatesSource, /renderWizard\(\);\s*modalFocus\.open\(/, "Template modal should move focus inside synchronously before hydration");
 assert.match(carrierListTemplatesSource, /modalFocus\.trapTab\(event\)/, "Template modal should trap Tab and Shift+Tab");
-assert.match(carrierListTemplatesSource, /modalFocus\.close\(\)/, "Template modal should restore its opener on close");
+assert.match(carrierListTemplatesSource, /modalFocus\.close\(\{ restoreFocus \}\)/, "Template modal should restore its re-resolved opener only on ordinary close");
 assert.match(carrierTemplateWizardHtml, /maximum 5 MB and 1,000 data rows/, "Template import copy should disclose the shared 1,000-row limit");
 assert.doesNotMatch(carrierListTemplatesSource, /\b(?:createVendor|updateVendor|importVendors|importVendorOnboardingCorrections|applyVendorTemplateUpdates)\b/, "Template builder must not import or call Carrier CRM master-data mutations");
 assert.match(stylesSource, /\.carrier-template-workspace\.hidden\s*\{\s*display:\s*none;/, "Inactive Carrier CRM template workspace should remain hidden after capability discovery");
 assert.match(vendorsSource, /URLSearchParams[\s\S]+template[\s\S]+popstate/, "Carrier CRM should preserve template deep links and browser history navigation");
-assert.match(vendorsSource, /createCarrierTemplateNavigationCoordinator\([\s\S]+carrierListTemplateLibraryController\?\.beforeLeave\?\.\(\) !== false/, "Carrier CRM tab and deep-link navigation should pass through the wizard beforeLeave contract");
+assert.match(vendorsSource, /createCarrierTemplateNavigationCoordinator\([\s\S]+carrierListTemplateLibraryController\?\.beforeLeave\?\.\(\{[\s\S]+restoreFocus: false/, "Carrier CRM tab and deep-link navigation should pass through the wizard beforeLeave contract without stale opener restoration");
 assert.match(vendorsSource, /vendorPopRestoreInFlight[\s\S]+window\.history\.go\(acceptedVendorHistoryPosition - route\.targetPosition\)/, "Declined Back or Forward navigation should restore the accepted history entry without a popstate loop");
 assert.match(vendorsSource, /createVendorTemplateNavigationGuard/, "Carrier CRM should route List Templates history through the capability-aware navigation guard");
 assert.match(vendorsSource, /tabName === "list-templates" && vendorTemplateNavigationGuard\.capability !== "enabled"[\s\S]+activateVendorTab\("funnel"/, "Every List Templates activation should fail back to Funnel until capability is enabled");
@@ -3819,6 +3820,8 @@ for (const field of ['lifecycle_status', 'template_version', 'created_by_user_id
 }
 assert.match(carrierTemplateMigration, /segment_type\s*=\s*'participant_template'/);
 assert.match(carrierTemplateMigration, /workspace_identity_aliases/);
+assert.match(carrierTemplateMigration, /search_workspace_vendors_keyset\([\s\S]+security invoker/, "Carrier template migration should add the fixed-snapshot vendor search keyset RPC as security invoker");
+assert.match(carrierTemplateMigration, /revoke execute on function public\.search_workspace_vendors_keyset[\s\S]+from public, anon, authenticated;[\s\S]+grant execute[\s\S]+to service_role;/, "Vendor search keyset RPC should be callable only by the service role");
 assert.match(carrierTemplateMigration, /raise exception/i);
 assert.match(carrierTemplateMigration, /select organization_id, public\.rateware_vendor_search_key\(segment_name\) as normalized_segment_name[\s\S]+group by organization_id, public\.rateware_vendor_search_key\(segment_name\)/i, "Carrier template legacy duplicate preflight must use the canonical SQL search key");
 assert.match(carrierTemplateMigration, /create unique index vendor_segments_participant_template_org_name_uidx[\s\S]+\(organization_id, public\.rateware_vendor_search_key\(segment_name\)\)[\s\S]+where segment_type = 'participant_template'/i, "Carrier template uniqueness must use the same canonical SQL search key as the API");

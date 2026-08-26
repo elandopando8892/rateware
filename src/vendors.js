@@ -246,7 +246,10 @@ let acceptedVendorHistoryPosition = vendorHistoryPosition;
 let acceptedVendorHref = window.location.href;
 let vendorPopRestoreInFlight = false;
 const carrierTemplateNavigationCoordinator = createCarrierTemplateNavigationCoordinator({
-  beforeLeave: () => carrierListTemplateLibraryController?.beforeLeave?.() !== false,
+  beforeLeave: (route) => carrierListTemplateLibraryController?.beforeLeave?.({
+    restoreFocus: false,
+    navigationTarget: route
+  }) !== false,
   commit: () => {},
   restore: (route) => {
     if (Number.isSafeInteger(route?.targetPosition) && route.targetPosition !== acceptedVendorHistoryPosition) {
@@ -1544,7 +1547,21 @@ function updateVendorTabUrl(tabName, { templateId = "", historyMode = "push" } =
   acceptedVendorHref = url.href;
 }
 
-function activateVendorTab(tabName, { historyMode = "", templateId = "", skipBeforeLeave = false } = {}) {
+function focusVendorDestination(tabName) {
+  const visibleTab = visibleVendorTab(tabName);
+  const tabButton = [...vendorTabs].find((button) => button.dataset.vendorTab === visibleTab && !button.hidden);
+  const panel = [...tabPanels].find((candidate) => (
+    candidate.dataset.tabPanel === tabName || (isVendorBaseTab(tabName) && candidate.dataset.tabPanel === "sourcing")
+  ));
+  (tabButton || panel)?.focus?.();
+}
+
+function activateVendorTab(tabName, {
+  historyMode = "",
+  templateId = "",
+  skipBeforeLeave = false,
+  focusDestination = false
+} = {}) {
   if (!VENDOR_WORKSPACE_TABS.has(tabName)) tabName = "funnel";
   const acceptedTemplateId = new URL(acceptedVendorHref).searchParams.get("template") || "";
   const leavesTemplateWorkspace = activeVendorTab === "list-templates" && (
@@ -1590,12 +1607,17 @@ function activateVendorTab(tabName, { historyMode = "", templateId = "", skipBef
   }
   if (isVendorBaseTab(tabName) && (previousTab !== tabName || !allVendors.length)) loadVendors();
   syncCrmViewButtons();
+  if (focusDestination || (leavesTemplateWorkspace && !skipBeforeLeave)) focusVendorDestination(tabName);
   return true;
 }
 
+let vendorCapabilityTransitionInProgress = false;
 const vendorTemplateNavigationGuard = createVendorTemplateNavigationGuard({
   readHref: () => window.location.href,
-  activateTab: activateVendorTab,
+  activateTab: (tabName, options = {}) => activateVendorTab(tabName, {
+    ...options,
+    skipBeforeLeave: vendorCapabilityTransitionInProgress
+  }),
   initialRoute: preferredVendorTab === "list-templates"
     ? { tab: "list-templates", templateId: "" }
     : null
@@ -5615,7 +5637,7 @@ window.addEventListener("popstate", (event) => {
       updateVendorTabUrl("funnel", { historyMode: "replace" });
     }
   } else {
-    activated = activateVendorTab(tabName, { templateId, skipBeforeLeave: true });
+    activated = activateVendorTab(tabName, { templateId, skipBeforeLeave: true, focusDestination: true });
   }
   vendorHistoryPosition = Number.isSafeInteger(targetPosition) ? targetPosition : vendorHistoryPosition;
   acceptedVendorHistoryPosition = vendorHistoryPosition;
@@ -5911,7 +5933,15 @@ requirePrivatePage()
     carrierListTemplateLibraryController = await initCarrierListTemplateLibrary({
       initialTemplateId: "",
       onCapabilityChange: (capability) => {
-        vendorTemplateNavigationGuard.transitionCapability(capability);
+        vendorCapabilityTransitionInProgress = true;
+        try {
+          vendorTemplateNavigationGuard.transitionCapability(capability);
+        } finally {
+          vendorCapabilityTransitionInProgress = false;
+        }
+        if (capability !== "enabled" && !carrierListTemplateLibraryController?.recoveryOpen) {
+          focusVendorDestination("funnel");
+        }
       },
       onSelectionChange: (templateId, { replace = false } = {}) => {
         updateVendorTabUrl("list-templates", {

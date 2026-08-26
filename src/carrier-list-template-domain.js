@@ -61,10 +61,17 @@ export function createCarrierTemplateWizardAsyncController() {
     }
   }
 
+  function invalidateOperations(predicate = () => true) {
+    for (const operation of [...operationVersions.keys()]) {
+      if (predicate(operation)) operationVersions.delete(operation);
+    }
+  }
+
   return Object.freeze({
     open: (nextContext = {}) => replaceContext(nextContext, true),
     close: () => replaceContext({}, false),
     begin,
+    invalidateOperations,
     isCurrent,
     run,
     snapshot
@@ -74,22 +81,79 @@ export function createCarrierTemplateWizardAsyncController() {
 export function createCarrierTemplateModalFocusController({
   getActiveElement,
   getFocusable,
-  focusElement
+  getBackgroundElements,
+  getBackgroundState,
+  setBackgroundState,
+  focusElement,
+  fallbackFocus,
+  isConnected,
+  isInside
 } = {}) {
-  let opener = null;
+  let openerResolver = null;
+  let open = false;
+  let backgroundSnapshot = [];
   const activeElement = typeof getActiveElement === "function" ? getActiveElement : () => null;
   const focusableElements = typeof getFocusable === "function" ? getFocusable : () => [];
+  const backgroundElements = typeof getBackgroundElements === "function" ? getBackgroundElements : () => [];
+  const readBackgroundState = typeof getBackgroundState === "function"
+    ? getBackgroundState
+    : (element) => ({
+        inert: Boolean(element?.inert),
+        ariaHidden: element?.getAttribute?.("aria-hidden")
+      });
+  const writeBackgroundState = typeof setBackgroundState === "function"
+    ? setBackgroundState
+    : (element, state) => {
+        if (!element) return;
+        element.inert = Boolean(state.inert);
+        if (state.ariaHidden === null || state.ariaHidden === undefined) element.removeAttribute?.("aria-hidden");
+        else element.setAttribute?.("aria-hidden", String(state.ariaHidden));
+      };
   const focus = typeof focusElement === "function" ? focusElement : (element) => element?.focus?.();
+  const fallback = typeof fallbackFocus === "function" ? fallbackFocus : () => null;
+  const connected = typeof isConnected === "function" ? isConnected : (element) => element?.isConnected !== false;
+  const inside = typeof isInside === "function"
+    ? isInside
+    : (element) => focusableElements().includes(element);
+
+  function restoreBackground() {
+    for (const { element, state } of backgroundSnapshot) writeBackgroundState(element, state);
+    backgroundSnapshot = [];
+  }
 
   return Object.freeze({
-    open(initialFocus, openerOverride = null) {
-      opener = openerOverride || activeElement();
+    open(initialFocus, openerOptions = {}) {
+      restoreBackground();
+      const initialOpener = activeElement();
+      if (typeof openerOptions === "function") openerResolver = openerOptions;
+      else if (typeof openerOptions?.resolveOpener === "function") openerResolver = openerOptions.resolveOpener;
+      else if (openerOptions && !Object.keys(openerOptions).length) openerResolver = () => initialOpener;
+      else openerResolver = () => openerOptions || initialOpener;
+      backgroundSnapshot = backgroundElements().filter(Boolean).map((element) => ({
+        element,
+        state: readBackgroundState(element)
+      }));
+      for (const { element } of backgroundSnapshot) {
+        writeBackgroundState(element, { inert: true, ariaHidden: "true" });
+      }
+      open = true;
       focus(initialFocus || focusableElements()[0] || null);
     },
-    close() {
-      const restoreTarget = opener;
-      opener = null;
+    close({ restoreFocus = true } = {}) {
+      const resolvedOpener = openerResolver?.() || null;
+      openerResolver = null;
+      open = false;
+      restoreBackground();
+      if (!restoreFocus) return;
+      const restoreTarget = connected(resolvedOpener) ? resolvedOpener : fallback();
       if (restoreTarget) focus(restoreTarget);
+    },
+    containFocus() {
+      if (!open || inside(activeElement())) return false;
+      const target = focusableElements().filter(Boolean)[0] || null;
+      if (!target) return false;
+      focus(target);
+      return true;
     },
     trapTab(event = {}) {
       if (event.key !== "Tab") return false;
@@ -109,6 +173,42 @@ export function createCarrierTemplateModalFocusController({
         return true;
       }
       return false;
+    }
+  });
+}
+
+export function createCarrierTemplateCapabilityRecoveryController({
+  isEditorOpen,
+  isDirty,
+  requestClose,
+  retainRecovery,
+  setWritable
+} = {}) {
+  let writable = false;
+  const editorOpen = typeof isEditorOpen === "function" ? isEditorOpen : () => false;
+  const dirty = typeof isDirty === "function" ? isDirty : () => false;
+  const close = typeof requestClose === "function" ? requestClose : () => true;
+  const retain = typeof retainRecovery === "function" ? retainRecovery : () => {};
+  const updateWritable = typeof setWritable === "function" ? setWritable : () => {};
+
+  return Object.freeze({
+    get canMutate() {
+      return writable;
+    },
+    transition(capability) {
+      writable = capability === "enabled";
+      updateWritable(writable);
+      if (writable) {
+        retain(false);
+        return { retained: false, closed: false };
+      }
+      if (!editorOpen()) {
+        retain(false);
+        return { retained: false, closed: false };
+      }
+      const closed = dirty() ? close({ restoreFocus: false }) !== false : close({ confirmUnsaved: false, restoreFocus: false }) !== false;
+      retain(!closed);
+      return { retained: !closed, closed };
     }
   });
 }
@@ -174,7 +274,7 @@ function cloneMemberSources(sources = {}) {
   );
 }
 
-function draftContentKey(state = {}) {
+export function carrierTemplateDraftContentKey(state = {}) {
   return JSON.stringify({
     name: trimmedText(state.name),
     description: trimmedText(state.description),
@@ -187,7 +287,7 @@ function draftContentKey(state = {}) {
 function refreshDirty(state) {
   return {
     ...state,
-    dirty: draftContentKey(state) !== state.loaded_content_key
+    dirty: carrierTemplateDraftContentKey(state) !== state.loaded_content_key
   };
 }
 
@@ -251,7 +351,7 @@ export function createCarrierTemplateDraftState(template = {}) {
     loaded_content_key: "",
     dirty: false
   };
-  state.loaded_content_key = draftContentKey(state);
+  state.loaded_content_key = carrierTemplateDraftContentKey(state);
   return state;
 }
 
@@ -289,7 +389,13 @@ export function reduceCarrierTemplateDraft(state, action = {}) {
   } else if (action.type === "confirm_manual_match") {
     const rowNumber = Number(action.source_row_number);
     const vendorId = trimmedText(action.vendor_id);
-    const index = next.resolution_rows.findIndex((row, rowIndex) => resolutionRowNumber(row, rowIndex) === rowNumber);
+    const requiredIdentity = trimmedText(action.resolution_row_identity);
+    const requiredGeneration = Number(action.reconciliation_generation);
+    const index = next.resolution_rows.findIndex((row, rowIndex) => (
+      resolutionRowNumber(row, rowIndex) === rowNumber &&
+      (!requiredIdentity || trimmedText(row.resolution_row_identity) === requiredIdentity) &&
+      (!Number.isFinite(requiredGeneration) || Number(row.reconciliation_generation) === requiredGeneration)
+    ));
     if (vendorId && index >= 0 && next.resolution_rows[index].status === "ambiguous") {
       const source = `manual-resolution:${rowNumber}`;
       for (const memberId of [...next.vendor_ids]) removeMemberSource(next, memberId, source);
@@ -310,11 +416,136 @@ export function reduceCarrierTemplateDraft(state, action = {}) {
     if (saved.segment_description !== undefined || saved.description !== undefined) next.description = templateDescription(saved);
     if (Array.isArray(saved.vendor_ids)) next.vendor_ids = templateMemberIds(saved);
     next.member_sources = Object.fromEntries(next.vendor_ids.map((id) => [id, ["loaded"]]));
-    next.loaded_content_key = draftContentKey(next);
+    next.loaded_content_key = carrierTemplateDraftContentKey(next);
     next.dirty = false;
     return next;
   }
   return refreshDirty(next);
+}
+
+export function createCarrierTemplateDraftMutationController({ readDraft, writeDraft } = {}) {
+  if (typeof readDraft !== "function" || typeof writeDraft !== "function") {
+    throw new TypeError("Carrier template draft mutation control requires readDraft and writeDraft adapters.");
+  }
+  let saveSequence = 0;
+  let activeSave = null;
+
+  function beginSave(context = {}) {
+    if (activeSave) return null;
+    activeSave = Object.freeze({
+      save_sequence: ++saveSequence,
+      session: Number(context.session),
+      template_id: trimmedText(context.template_id),
+      expected_version: context.expected_version ?? null,
+      content_key: carrierTemplateDraftContentKey(readDraft())
+    });
+    return activeSave;
+  }
+
+  function sameSave(token, context = {}) {
+    return Boolean(
+      token &&
+      token === activeSave &&
+      token.session === Number(context.session) &&
+      token.template_id === trimmedText(context.template_id) &&
+      token.expected_version === (context.expected_version ?? null) &&
+      token.content_key === carrierTemplateDraftContentKey(readDraft())
+    );
+  }
+
+  return Object.freeze({
+    get saving() {
+      return Boolean(activeSave);
+    },
+    mutate(action) {
+      if (activeSave) return false;
+      writeDraft(action);
+      return true;
+    },
+    beginSave,
+    matchesSave: sameSave,
+    completeSave(token, context = {}) {
+      if (token !== activeSave) return false;
+      const accepted = sameSave(token, context);
+      activeSave = null;
+      if (accepted) context.acceptSaved?.(context.serverRow);
+      else context.retainComparison?.(context.serverRow);
+      return accepted;
+    },
+    cancelSave(token) {
+      if (token !== activeSave) return false;
+      activeSave = null;
+      return true;
+    },
+    invalidate() {
+      activeSave = null;
+    }
+  });
+}
+
+function reconciliationRowIdentity(generation, row = {}, index = 0) {
+  const evidence = JSON.stringify({
+    source_row_number: resolutionRowNumber(row, index),
+    source_row: row.source_row || {},
+    status: trimmedText(row.status),
+    reason: trimmedText(row.reason),
+    candidate_vendor_ids: Array.isArray(row.candidate_vendor_ids) ? row.candidate_vendor_ids : []
+  });
+  let hash = 2166136261;
+  for (let offset = 0; offset < evidence.length; offset += 1) {
+    hash ^= evidence.charCodeAt(offset);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${generation}:${resolutionRowNumber(row, index)}:${(hash >>> 0).toString(36)}`;
+}
+
+export function createCarrierTemplateReconciliationController() {
+  let generation = 0;
+  const choices = new Map();
+
+  function startUpload() {
+    generation += 1;
+    choices.clear();
+    return generation;
+  }
+
+  function identifyRows(uploadGeneration, rows = []) {
+    return (Array.isArray(rows) ? rows : []).map((row, index) => ({
+      ...row,
+      reconciliation_generation: uploadGeneration,
+      resolution_row_identity: reconciliationRowIdentity(uploadGeneration, row, index)
+    }));
+  }
+
+  function tokenCurrent(token = {}) {
+    return Number(token.generation) === generation && Boolean(trimmedText(token.row_identity));
+  }
+
+  return Object.freeze({
+    get generation() {
+      return generation;
+    },
+    startUpload,
+    identifyRows,
+    commitPreview(uploadGeneration, commit) {
+      if (Number(uploadGeneration) !== generation) return false;
+      commit?.();
+      return true;
+    },
+    storeChoices(token, rows = []) {
+      if (!tokenCurrent(token)) return false;
+      choices.set(trimmedText(token.row_identity), [...(Array.isArray(rows) ? rows : [])]);
+      return true;
+    },
+    choicesFor(row = {}) {
+      if (Number(row.reconciliation_generation) !== generation) return [];
+      return [...(choices.get(trimmedText(row.resolution_row_identity)) || [])];
+    },
+    isCurrent(token = {}) {
+      return tokenCurrent(token);
+    },
+    reset: startUpload
+  });
 }
 
 export function validateCarrierTemplateDraft(state = {}, lifecycleStatus = "draft") {

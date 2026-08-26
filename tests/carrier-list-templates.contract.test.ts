@@ -569,6 +569,16 @@ class ScriptedQuery {
     return this;
   }
 
+  gt(column: string, value: unknown) {
+    this.trace.filters.push(["gt", column, value]);
+    return this;
+  }
+
+  lte(column: string, value: unknown) {
+    this.trace.filters.push(["lte", column, value]);
+    return this;
+  }
+
   neq(column: string, value: unknown) {
     this.trace.filters.push(["neq", column, value]);
     return this;
@@ -763,7 +773,7 @@ Deno.test("real request dispatcher preserves raw claims and resolved organizatio
   ]);
 });
 
-Deno.test("filtered vendor search scans every RPC page and returns a complete deterministic total", async () => {
+Deno.test("filtered vendor search uses a fixed-snapshot keyset RPC and returns a complete deterministic total", async () => {
   const searchIds = Array.from({ length: 1002 }, (_, index) =>
     `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`
   );
@@ -774,19 +784,27 @@ Deno.test("filtered vendor search scans every RPC page and returns a complete de
   ];
   const db = new ScriptedSupabase([
     {
-      table: "search_workspace_vendors",
+      table: "search_workspace_vendors_keyset",
       operation: "rpc",
       data: searchIds.slice(0, 1000).map((id, index) => ({
         id,
         match_rank: index < 20 ? 0 : 4,
+        sort_key: id,
         total_count: 1002,
+        has_more: true,
       })),
     },
     { table: "vendors", operation: "select", data: [matchingRows[0]], count: 1 },
     {
-      table: "search_workspace_vendors",
+      table: "search_workspace_vendors_keyset",
       operation: "rpc",
-      data: searchIds.slice(1000).map((id) => ({ id, match_rank: 4, total_count: 1002 })),
+      data: searchIds.slice(1000).map((id) => ({
+        id,
+        match_rank: 4,
+        sort_key: id,
+        total_count: 1002,
+        has_more: false,
+      })),
     },
     { table: "vendors", operation: "select", data: matchingRows.slice(1), count: 2 },
   ]);
@@ -812,12 +830,21 @@ Deno.test("filtered vendor search scans every RPC page and returns a complete de
   assertEquals(body.search_total, 1002);
   assertEquals(body.search_capped, false);
   const rpcTraces = db.traces.filter((trace) =>
-    trace.table === "search_workspace_vendors"
+    trace.table === "search_workspace_vendors_keyset"
   );
-  assertEquals(rpcTraces.map((trace) => trace.payload), [
-    { p_owner_email: "org:org-a", p_search: "Mexico", p_limit: 1000, p_offset: 0 },
-    { p_owner_email: "org:org-a", p_search: "Mexico", p_limit: 1000, p_offset: 1000 },
+  const rpcPayloads = rpcTraces.map((trace) => trace.payload as Record<string, unknown>);
+  assertEquals(rpcPayloads.map((payload) => ({
+    owner: payload.p_owner_email,
+    organization: payload.p_organization_id,
+    search: payload.p_search,
+    limit: payload.p_limit,
+    after: payload.p_after_id,
+  })), [
+    { owner: "org:org-a", organization: "org-a", search: "Mexico", limit: 1000, after: null },
+    { owner: "org:org-a", organization: "org-a", search: "Mexico", limit: 1000, after: searchIds[999] },
   ]);
+  assertEquals(typeof rpcPayloads[0].p_snapshot_at, "string");
+  assertEquals(rpcPayloads[1].p_snapshot_at, rpcPayloads[0].p_snapshot_at);
   const vendorTraces = db.traces.filter((trace) => trace.table === "vendors");
   assertEquals(
     (vendorTraces[0].filters.find((filter) => filter[0] === "in")?.[2] as unknown[]).length,
@@ -832,6 +859,9 @@ Deno.test("filtered vendor search scans every RPC page and returns a complete de
       filter[0] === "eq" && filter[1] === "owner_email" && filter[2] === "org:org-a"
     ));
     assert(trace.filters.some((filter) =>
+      filter[0] === "eq" && filter[1] === "organization_id" && filter[2] === "org-a"
+    ));
+    assert(trace.filters.some((filter) =>
       filter[0] === "eq" && filter[1] === "status" && filter[2] === "active"
     ));
     assert(trace.filters.some((filter) =>
@@ -840,6 +870,44 @@ Deno.test("filtered vendor search scans every RPC page and returns a complete de
     assert(trace.filters.some((filter) => filter[0] === "contains" && filter[1] === "tags"));
     assert(trace.filters.some((filter) => filter[0] === "or"));
   }
+});
+
+Deno.test("member validation batches more than one thousand exact organization-scoped UUIDs", async () => {
+  const validateMembers = ratewareApi.validateCarrierTemplateMembers;
+  assertEquals(typeof validateMembers, "function");
+  if (typeof validateMembers !== "function") return;
+  const ids = Array.from({ length: 1001 }, (_, index) =>
+    `10000000-0000-4000-8000-${String(index).padStart(12, "0")}`
+  );
+  const db = new ScriptedSupabase([
+    { table: "vendors", operation: "select", data: ids.slice(0, 500).map((id) => ({ id })) },
+    { table: "vendors", operation: "select", data: ids.slice(500, 1000).map((id) => ({ id })) },
+    { table: "vendors", operation: "select", data: ids.slice(1000).map((id) => ({ id })) },
+  ]);
+  assertEquals(await validateMembers(db, "org-a", ids), true);
+  assertEquals(db.traces.map((trace) => trace.filters), [
+    [["eq", "organization_id", "org-a"], ["in", "id", ids.slice(0, 500)]],
+    [["eq", "organization_id", "org-a"], ["in", "id", ids.slice(500, 1000)]],
+    [["eq", "organization_id", "org-a"], ["in", "id", ids.slice(1000)]],
+  ]);
+});
+
+Deno.test("member validation rejects a missing or foreign UUID in a later bounded batch", async () => {
+  const validateMembers = ratewareApi.validateCarrierTemplateMembers;
+  assertEquals(typeof validateMembers, "function");
+  if (typeof validateMembers !== "function") return;
+  const ids = Array.from({ length: 750 }, (_, index) =>
+    `20000000-0000-4000-8000-${String(index).padStart(12, "0")}`
+  );
+  const db = new ScriptedSupabase([
+    { table: "vendors", operation: "select", data: ids.slice(0, 500).map((id) => ({ id })) },
+    { table: "vendors", operation: "select", data: ids.slice(500, 749).map((id) => ({ id })) },
+  ]);
+  assertEquals(await validateMembers(db, "org-a", ids), false);
+  assertEquals(db.traces.length, 2);
+  assert(db.traces.every((trace) => trace.filters.some((filter) =>
+    filter[0] === "eq" && filter[1] === "organization_id" && filter[2] === "org-a"
+  )));
 });
 
 Deno.test("real request dispatcher honors feature flag and raw-claim write permission", async () => {
@@ -2006,11 +2074,14 @@ Deno.test("resolve is read-only for vendors and keeps name-only matches manual",
   const vendorQueries = db.traces.filter((trace) => trace.table === "vendors");
   assertEquals(vendorQueries.length, 1);
   assertEquals(vendorQueries[0].operation, "select");
-  assertEquals(vendorQueries[0].filters, [
+  assertEquals(vendorQueries[0].filters.filter((filter) => filter[0] !== "lte"), [
     ["eq", "organization_id", "org-a"],
     ["order", "id", { ascending: true }],
-    ["range", "0", 999],
+    ["limit", "", 1000],
   ]);
+  const snapshotFilter = vendorQueries[0].filters.find((filter) => filter[0] === "lte");
+  assertEquals(snapshotFilter?.[1], "created_at");
+  assertEquals(typeof snapshotFilter?.[2], "string");
   const audit = db.traces.find((trace) => trace.table === "saas_audit_log");
   assertEquals(
     (audit?.payload as Record<string, unknown>).action,
@@ -2028,7 +2099,7 @@ Deno.test("resolve is read-only for vendors and keeps name-only matches manual",
   });
 });
 
-Deno.test("resolver scans stable organization pages until a match beyond page one is reached", async () => {
+Deno.test("resolver scans a fixed-snapshot organization keyset until a match beyond page one is reached", async () => {
   const firstPage = Array.from({ length: 1000 }, (_, index) => ({
     id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
     organization_id: "org-a",
@@ -2061,18 +2132,55 @@ Deno.test("resolver scans stable organization pages until a match beyond page on
     ],
   );
   const vendorQueries = db.traces.filter((trace) => trace.table === "vendors");
+  const firstSnapshot = vendorQueries[0].filters.find((filter) => filter[0] === "lte")?.[2];
+  assertEquals(typeof firstSnapshot, "string");
   assertEquals(vendorQueries.map((trace) => trace.filters), [
     [
       ["eq", "organization_id", "org-a"],
+      ["lte", "created_at", firstSnapshot],
       ["order", "id", { ascending: true }],
-      ["range", "0", 999],
+      ["limit", "", 1000],
     ],
     [
       ["eq", "organization_id", "org-a"],
+      ["lte", "created_at", firstSnapshot],
+      ["gt", "id", firstPage[999].id],
       ["order", "id", { ascending: true }],
-      ["range", "1000", 1999],
+      ["limit", "", 1000],
     ],
   ]);
+  assertEquals(vendorQueries.some((trace) => trace.filters.some((filter) => filter[0] === "range")), false);
+});
+
+Deno.test("resolver keyset tolerates insert/delete page shifts without skipping or duplicating later matches", async () => {
+  const firstPage = Array.from({ length: 1000 }, (_, index) => ({
+    id: `30000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    organization_id: "org-a",
+    vendor_name: `Snapshot page one ${index}`,
+  }));
+  const laterMatch = {
+    ...vendorA,
+    id: "40000000-0000-4000-8000-000000000001",
+  };
+  // Between calls the conceptual source deletes an early row and inserts a
+  // post-snapshot row. The scripted second page contains only ids beyond the
+  // first cursor; no offset shift can hide laterMatch or duplicate page one.
+  const db = new ScriptedSupabase([
+    { table: "vendors", operation: "select", data: firstPage },
+    { table: "vendors", operation: "select", data: [laterMatch] },
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const result = await callCarrierTemplateAction(db, {
+    action: "resolve_carrier_list_template_rows",
+    rows: [{ source_row_number: 2, vendor_id: laterMatch.id }],
+  });
+  assertEquals(result?.status, 200);
+  assertEquals((result?.body.rows as Array<Record<string, unknown>>)[0].vendor_id, laterMatch.id);
+  const vendorQueries = db.traces.filter((trace) => trace.table === "vendors");
+  assertEquals(vendorQueries[1].filters.some((filter) =>
+    filter[0] === "gt" && filter[1] === "id" && filter[2] === firstPage[999].id
+  ), true);
+  assertEquals(vendorQueries[1].filters.some((filter) => filter[0] === "range"), false);
 });
 
 Deno.test("legacy participant-template reads switch from owner to organization only when enabled", () => {

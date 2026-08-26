@@ -6,8 +6,11 @@ import {
   carrierTemplateDraftDiff,
   carrierTemplateDraftPayload,
   carrierTemplateImportValidation,
+  createCarrierTemplateCapabilityRecoveryController,
+  createCarrierTemplateDraftMutationController,
   createCarrierTemplateModalFocusController,
   createCarrierTemplateDraftState,
+  createCarrierTemplateReconciliationController,
   createCarrierTemplateWizardAsyncController,
   mergeCarrierTemplateResolutionRows,
   reduceCarrierTemplateDraft,
@@ -273,26 +276,68 @@ export async function initCarrierListTemplateLibrary({
   let searchTimer = null;
   let draftState = createCarrierTemplateDraftState();
   let wizardOpen = false;
+  let wizardCapabilityWritable = false;
+  let wizardRecoveryMode = false;
   let editorLaunchToken = 0;
   let wizardSaveRunning = false;
   let wizardConflictCurrent = null;
+  let wizardConflictReason = "";
   let crmRows = [];
   let crmTotal = 0;
   let crmPageOffset = 0;
   let crmSearchTimer = null;
   const vendorCache = new Map();
-  const ambiguousChoices = new Map();
   const wizardAsync = createCarrierTemplateWizardAsyncController();
+  const reconciliation = createCarrierTemplateReconciliationController();
+  const wizardHome = Object.freeze({
+    parent: wizard?.parentNode || null,
+    nextSibling: wizard?.nextSibling || null
+  });
   const modalFocus = createCarrierTemplateModalFocusController({
     getActiveElement: () => document.activeElement,
     getFocusable: () => [...(wizard?.querySelectorAll(
       'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
     ) || [])].filter((element) => !element.closest("[hidden]")),
+    getBackgroundElements: () => [...document.body.children].filter((element) => element !== wizard),
+    getBackgroundState: (element) => ({
+      inert: Boolean(element.inert),
+      ariaHidden: element.getAttribute("aria-hidden")
+    }),
+    setBackgroundState: (element, state) => {
+      element.inert = Boolean(state.inert);
+      if (state.ariaHidden === null || state.ariaHidden === undefined) element.removeAttribute("aria-hidden");
+      else element.setAttribute("aria-hidden", String(state.ariaHidden));
+    },
+    fallbackFocus: () => document.querySelector('[data-vendor-tab="list-templates"]'),
+    isConnected: (element) => Boolean(element?.isConnected),
+    isInside: (element) => Boolean(element && wizard?.contains(element)),
     focusElement: (element) => element?.focus?.()
+  });
+  const draftMutations = createCarrierTemplateDraftMutationController({
+    readDraft: () => draftState,
+    writeDraft: (action) => setDraftState(reduceCarrierTemplateDraft(draftState, action))
   });
   const requestController = createCarrierListTemplateController({
     fetchList: fetchEveryTemplatePage,
     fetchDetail: getCarrierListTemplate
+  });
+  const capabilityRecovery = createCarrierTemplateCapabilityRecoveryController({
+    isEditorOpen: () => wizardOpen,
+    isDirty: () => draftState.dirty,
+    requestClose: (options) => closeTemplateWizard(options),
+    retainRecovery: (visible) => {
+      wizardRecoveryMode = visible;
+      wizard?.classList.toggle("is-capability-recovery", visible);
+      if (visible) {
+        mountWizardModalLayer();
+        setWizardStatus("Template access is unavailable. Your unsaved local draft is retained read-only over Funnel.", "warning");
+      }
+      renderWizard();
+    },
+    setWritable: (value) => {
+      wizardCapabilityWritable = value;
+      if (!value) wizardAsync.invalidateOperations();
+    }
   });
   const capabilityView = createCarrierTemplateCapabilityView({
     tab,
@@ -300,7 +345,10 @@ export async function initCarrierListTemplateLibrary({
     errorRegion: capabilityError,
     errorMessage: capabilityErrorMessage,
     formatError: (error) => `List Templates could not be verified: ${humanizeError(error)}`,
-    onTransition: onCapabilityChange
+    onTransition: (capability, metadata) => {
+      capabilityRecovery.transition(capability);
+      onCapabilityChange(capability, metadata);
+    }
   });
   capabilityView.transition("pending");
 
@@ -340,6 +388,77 @@ export async function initCarrierListTemplateLibrary({
     draftState = nextState;
     syncWizardDirtyGuard();
     if (renderState) renderWizard();
+  }
+
+  function mountWizardModalLayer() {
+    if (!wizard) return;
+    if (wizard.parentNode !== document.body) document.body.append(wizard);
+    document.body.classList.add("carrier-template-modal-open");
+  }
+
+  function restoreWizardHome() {
+    document.body.classList.remove("carrier-template-modal-open");
+    if (!wizard || !wizardHome.parent || wizard.parentNode === wizardHome.parent) return;
+    const sibling = wizardHome.nextSibling;
+    if (sibling?.parentNode === wizardHome.parent) wizardHome.parent.insertBefore(wizard, sibling);
+    else wizardHome.parent.append(wizard);
+  }
+
+  function stableTemplateOpener(templateId = "") {
+    const id = text(templateId);
+    return () => {
+      if (!id) return workspace?.querySelector('[data-template-action="new"]') || tab;
+      return [...(workspace?.querySelectorAll('[data-template-action="open"]') || [])]
+        .find((button) => text(button.dataset.templateId) === id) || tab;
+    };
+  }
+
+  function canMutateDraft({ announce = true } = {}) {
+    const allowed = Boolean(
+      wizardOpen &&
+      canManage &&
+      wizardCapabilityWritable &&
+      capabilityRecovery.canMutate &&
+      !wizardSaveRunning &&
+      !draftMutations.saving
+    );
+    if (!allowed && announce) {
+      const message = wizardSaveRunning || draftMutations.saving
+        ? "Wait for the current save to finish before changing this draft."
+        : "Template changes are unavailable while List Templates access is not enabled.";
+      setWizardStatus(message, "warning");
+    }
+    return allowed;
+  }
+
+  function applyDraftAction(action, options = {}) {
+    if (!canMutateDraft(options)) {
+      syncDraftDetailInputs();
+      renderWizard();
+      return false;
+    }
+    return draftMutations.mutate(action);
+  }
+
+  function syncDraftMutationControls() {
+    const disabled = !canMutateDraft({ announce: false });
+    for (const control of [draftNameInput, draftDescriptionInput, importInput]) {
+      if (control) control.disabled = disabled;
+    }
+    wizardStepButtons.forEach((control) => control.disabled = disabled);
+    if (wizardBackButton) wizardBackButton.disabled = disabled || draftState.step === 0;
+    if (wizardNextButton) wizardNextButton.disabled = disabled;
+    for (const control of [crmSearchInput, crmStatusFilter, crmChannelFilter, crmTagFilter, crmCoverageFilter]) {
+      if (control) control.disabled = !wizardCapabilityWritable;
+    }
+    if (!wizardCapabilityWritable) {
+      if (crmPreviousButton) crmPreviousButton.disabled = true;
+      if (crmNextButton) crmNextButton.disabled = true;
+    }
+    if (!disabled) return;
+    wizard?.querySelectorAll(
+      "[data-template-add-member], [data-template-member-action], [data-template-ambiguous-search], [data-template-ambiguous-search-button], [data-template-ambiguous-choice-row], [data-template-conflict-reload]"
+    ).forEach((control) => control.disabled = true);
   }
 
   function renderSelectedMembers() {
@@ -421,20 +540,22 @@ export async function initCarrierListTemplateLibrary({
         ? draftState.resolution_rows.map((row) => {
             const rowNumber = Number(row.source_row_number) || 0;
             const chosenId = text(row.chosen_vendor_id || draftState.manual_resolutions[String(rowNumber)]);
-            const choices = ambiguousChoices.get(rowNumber) || [];
+            const rowIdentity = text(row.resolution_row_identity);
+            const generation = Number(row.reconciliation_generation) || 0;
+            const choices = reconciliation.choicesFor(row);
             const manualControls = row.status === "ambiguous"
               ? `
                 <div class="carrier-template-manual-resolution">
                   <label>
                     Search existing Carrier CRM
-                    <input type="search" data-template-ambiguous-search="${rowNumber}" data-unsaved-ignore placeholder="Carrier name, domain, or email" />
+                    <input type="search" data-template-ambiguous-search="${rowNumber}" data-template-ambiguous-row-identity="${escapeHtml(rowIdentity)}" data-template-reconciliation-generation="${generation}" data-unsaved-ignore placeholder="Carrier name, domain, or email" />
                   </label>
-                  <button class="secondary small-button" type="button" data-template-ambiguous-search-button="${rowNumber}">Search</button>
+                  <button class="secondary small-button" type="button" data-template-ambiguous-search-button="${rowNumber}" data-template-ambiguous-row-identity="${escapeHtml(rowIdentity)}" data-template-reconciliation-generation="${generation}">Search</button>
                   <div class="carrier-template-ambiguous-choices">
                     ${choices.map((vendor) => {
                       const id = vendorId(vendor);
                       const label = vendorName(vendor);
-                      return `<button class="secondary small-button" type="button" data-template-ambiguous-choice-row="${rowNumber}" data-template-ambiguous-choice-id="${escapeHtml(id)}" aria-label="Choose ${escapeHtml(label)} for source row ${rowNumber}">${escapeHtml(label)}</button>`;
+                      return `<button class="secondary small-button" type="button" data-template-ambiguous-choice-row="${rowNumber}" data-template-ambiguous-choice-id="${escapeHtml(id)}" data-template-ambiguous-row-identity="${escapeHtml(rowIdentity)}" data-template-reconciliation-generation="${generation}" aria-label="Choose ${escapeHtml(label)} for source row ${rowNumber}">${escapeHtml(label)}</button>`;
                     }).join("")}
                   </div>
                   ${chosenId ? `<p class="status-message" data-tone="success">Human choice: ${escapeHtml(vendorName(vendorCache.get(chosenId) || { id: chosenId }))} · ${escapeHtml(chosenId)}</p>` : '<p class="muted-text">No human choice recorded; this row remains excluded.</p>'}
@@ -484,9 +605,10 @@ export async function initCarrierListTemplateLibrary({
       return;
     }
     const summary = carrierTemplateConflictSummary(draftState, wizardConflictCurrent);
+    const savedSnapshot = wizardConflictReason === "saved_snapshot";
     conflictHost.hidden = false;
     conflictHost.innerHTML = `
-      <strong>Another editor saved a newer version.</strong>
+      <strong>${savedSnapshot ? "The dispatched snapshot was saved, but newer local edits were retained." : "Another editor saved a newer version."}</strong>
       <p>Your local v${escapeHtml(summary.local_version || "new")} draft is retained: ${summary.local_member_count} members. Current server v${escapeHtml(summary.current_version || "unknown")} has ${summary.current_member_count} members.</p>
       <p>Only local: ${summary.only_local_vendor_ids.length}. Only current: ${summary.only_current_vendor_ids.length}. No merge, overwrite, or retry was attempted.</p>
       <button class="secondary" type="button" data-template-conflict-reload>Reload current</button>
@@ -503,8 +625,8 @@ export async function initCarrierListTemplateLibrary({
       <p>${draftState.vendor_ids.length.toLocaleString()} exact member(s). Draft may be empty; activation requires at least one member.</p>
       ${draftValidation.valid ? "" : `<p class="status-message" data-tone="error">${escapeHtml(draftValidation.errors.map((item) => item.message).join(" "))}</p>`}
     `;
-    if (saveDraftButton) saveDraftButton.disabled = wizardSaveRunning || !canManage || !draftValidation.valid;
-    if (activateTemplateButton) activateTemplateButton.disabled = wizardSaveRunning || !canManage || !activeValidation.valid;
+    if (saveDraftButton) saveDraftButton.disabled = wizardSaveRunning || !canManage || !wizardCapabilityWritable || !draftValidation.valid;
+    if (activateTemplateButton) activateTemplateButton.disabled = wizardSaveRunning || !canManage || !wizardCapabilityWritable || !activeValidation.valid;
   }
 
   function renderWizard() {
@@ -528,6 +650,7 @@ export async function initCarrierListTemplateLibrary({
     renderReview();
     renderSaveSummary();
     renderConflict();
+    syncDraftMutationControls();
   }
 
   function focusActiveWizardPanel() {
@@ -536,6 +659,7 @@ export async function initCarrierListTemplateLibrary({
   }
 
   async function hydrateMemberVendors(ids = draftState.vendor_ids) {
+    if (!wizardCapabilityWritable) return false;
     const operation = wizardAsync.begin("hydration");
     const missingIds = [...ids].filter((id) => !vendorCache.has(id));
     const fetchedRows = [];
@@ -552,7 +676,7 @@ export async function initCarrierListTemplateLibrary({
   }
 
   async function loadCrmPage({ announce = true } = {}) {
-    if (!wizardOpen) return false;
+    if (!wizardOpen || !wizardCapabilityWritable) return false;
     const operation = wizardAsync.begin("crm-page");
     const requestedOffset = crmPageOffset;
     const request = Object.freeze({
@@ -601,28 +725,35 @@ export async function initCarrierListTemplateLibrary({
     if (draftDescriptionInput) draftDescriptionInput.value = draftState.description;
   }
 
-  async function openTemplateWizard(template = {}, { opener = document.activeElement } = {}) {
+  async function openTemplateWizard(template = {}, { openerResolver = null } = {}) {
     if (!canManage || !wizard || !wizardForm) {
       setStatus("Creating or editing templates requires vendors:manage.", "warning");
       return false;
     }
     editorLaunchToken += 1;
+    draftMutations.invalidate();
+    reconciliation.reset();
     draftState = createCarrierTemplateDraftState(template);
     const session = wizardAsync.open({
       template_id: draftState.id,
       expected_version: draftState.expected_version
     });
     wizardConflictCurrent = null;
+    wizardConflictReason = "";
     wizardSaveRunning = false;
-    ambiguousChoices.clear();
+    wizardRecoveryMode = false;
+    wizard.classList.remove("is-capability-recovery");
     crmPageOffset = 0;
     wizardOpen = true;
     if (importInput) importInput.value = "";
     syncDraftDetailInputs();
     window.ratewareMarkFormClean?.(wizardForm);
     setWizardStatus(draftState.id ? `Editing loaded v${draftState.expected_version}.` : "New template draft. Nothing has been saved yet.");
+    mountWizardModalLayer();
     renderWizard();
-    modalFocus.open(draftNameInput || wizardCloseButton, opener);
+    modalFocus.open(draftNameInput || wizardCloseButton, {
+      resolveOpener: typeof openerResolver === "function" ? openerResolver : stableTemplateOpener(draftState.id)
+    });
     try {
       if (!await hydrateMemberVendors()) return false;
       if (wizardAsync.snapshot().session !== session.session) return false;
@@ -634,7 +765,7 @@ export async function initCarrierListTemplateLibrary({
     return wizardAsync.snapshot().session === session.session;
   }
 
-  function closeTemplateWizard({ confirmUnsaved = true } = {}) {
+  function closeTemplateWizard({ confirmUnsaved = true, restoreFocus = true } = {}) {
     if (!wizardOpen) return true;
     if (confirmUnsaved && draftState.dirty) {
       const confirmed = typeof window.ratewareConfirmUnsavedChanges === "function"
@@ -646,16 +777,25 @@ export async function initCarrierListTemplateLibrary({
     editorLaunchToken += 1;
     wizardSaveRunning = false;
     wizardAsync.close();
+    draftMutations.invalidate();
+    reconciliation.reset();
     wizardConflictCurrent = null;
+    wizardConflictReason = "";
+    wizardRecoveryMode = false;
+    wizard?.classList.remove("is-capability-recovery");
     window.ratewareMarkFormClean?.(wizardForm);
     renderWizard();
-    modalFocus.close();
+    modalFocus.close({ restoreFocus });
+    restoreWizardHome();
     return true;
   }
 
   async function handleCarrierTemplateImport(file) {
-    if (!file || !wizardOpen) return;
+    if (!file || !wizardOpen || !canMutateDraft()) return;
+    wizardAsync.invalidateOperations((name) => name === "file-import" || name.startsWith("ambiguity-search:"));
+    const uploadGeneration = reconciliation.startUpload();
     const operation = wizardAsync.begin("file-import");
+    renderWizard();
     if (importStatus) {
       importStatus.textContent = "Reading the first sheet...";
       importStatus.dataset.tone = "neutral";
@@ -665,15 +805,18 @@ export async function initCarrierListTemplateLibrary({
       if (!wizardAsync.isCurrent(operation)) return;
       if (importStatus) importStatus.textContent = `Resolving ${normalizedRows.length.toLocaleString()} row(s) against Carrier CRM...`;
       const resolution = await resolveCarrierListTemplateRows(normalizedRows);
-      if (!wizardAsync.isCurrent(operation)) return;
-      const mergedRows = mergeCarrierTemplateResolutionRows(normalizedRows, resolution?.rows);
+      if (!wizardAsync.isCurrent(operation) || reconciliation.generation !== uploadGeneration) return;
+      const mergedRows = reconciliation.identifyRows(
+        uploadGeneration,
+        mergeCarrierTemplateResolutionRows(normalizedRows, resolution?.rows)
+      );
       const autoMatchedCount = mergedRows.filter((row) => row.status === "matched").length;
-      setDraftState(reduceCarrierTemplateDraft(draftState, {
+      if (!reconciliation.commitPreview(uploadGeneration, () => applyDraftAction({
         type: "apply_resolution_preview",
         rows: mergedRows
-      }));
+      }))) return;
       await hydrateMemberVendors(draftState.vendor_ids);
-      if (!wizardAsync.isCurrent(operation)) return;
+      if (!wizardAsync.isCurrent(operation) || reconciliation.generation !== uploadGeneration) return;
       renderWizard();
       if (importStatus) {
         importStatus.textContent = `${autoMatchedCount.toLocaleString()} deterministic match(es) added. Ambiguous, not-found, and duplicate rows remain excluded.`;
@@ -699,39 +842,48 @@ export async function initCarrierListTemplateLibrary({
     setWizardStatus(`${exceptionRows.length.toLocaleString()} exception row(s) downloaded.`, "success");
   }
 
-  async function searchAmbiguousRow(rowNumber) {
-    const input = wizard?.querySelector(`[data-template-ambiguous-search="${rowNumber}"]`);
+  async function searchAmbiguousRow({ rowNumber, rowIdentity, generation }) {
+    if (!canMutateDraft()) return;
+    const resolutionRow = draftState.resolution_rows.find((row) => (
+      Number(row.source_row_number) === Number(rowNumber) &&
+      text(row.resolution_row_identity) === text(rowIdentity) &&
+      Number(row.reconciliation_generation) === Number(generation)
+    ));
+    if (!resolutionRow || !reconciliation.isCurrent({ generation, row_identity: rowIdentity })) return;
+    const input = [...(wizard?.querySelectorAll("[data-template-ambiguous-search]") || [])].find((element) => (
+      text(element.dataset.templateAmbiguousRowIdentity) === text(rowIdentity) &&
+      Number(element.dataset.templateReconciliationGeneration) === Number(generation)
+    ));
     const query = text(input?.value);
     if (!query) {
       setWizardStatus("Enter a Carrier CRM search for the ambiguous row.", "warning");
       input?.focus();
       return;
     }
-    const operation = wizardAsync.begin(`ambiguity-search:${rowNumber}`);
+    const operation = wizardAsync.begin(`ambiguity-search:${generation}:${rowIdentity}`);
     setWizardStatus(`Searching Carrier CRM for source row ${rowNumber}...`);
     try {
       const result = await fetchVendors({ search: query, view: "all", lightweight: true, limit: 20, offset: 0 });
-      if (!wizardAsync.isCurrent(operation)) return;
+      if (!wizardAsync.isCurrent(operation) || !reconciliation.isCurrent({ generation, row_identity: rowIdentity })) return;
       const rows = Array.isArray(result?.rows) ? result.rows : [];
       cacheVendorRows(rows);
-      ambiguousChoices.set(rowNumber, rows);
+      if (!reconciliation.storeChoices({ generation, row_identity: rowIdentity }, rows)) return;
       renderWizard();
       setWizardStatus(`${rows.length.toLocaleString()} existing carrier choice(s) found for source row ${rowNumber}.`);
     } catch (error) {
-      if (wizardAsync.isCurrent(operation)) setWizardStatus(humanizeError(error), "error");
+      if (wizardAsync.isCurrent(operation) && reconciliation.isCurrent({ generation, row_identity: rowIdentity })) {
+        setWizardStatus(humanizeError(error), "error");
+      }
     }
   }
 
   async function saveTemplateDraft(lifecycleStatus) {
-    if (wizardSaveRunning || !canManage) return;
+    if (wizardSaveRunning || !canMutateDraft()) return;
     const validation = validateCarrierTemplateDraft(draftState, lifecycleStatus);
     if (!validation.valid) {
       setWizardStatus(validation.errors.map((item) => item.message).join(" "), "error");
       return;
     }
-    wizardSaveRunning = true;
-    wizardConflictCurrent = null;
-    renderWizard();
     const draftPayload = carrierTemplateDraftPayload(draftState, lifecycleStatus);
     const payload = Object.freeze({
       ...draftPayload,
@@ -739,7 +891,19 @@ export async function initCarrierListTemplateLibrary({
     });
     const savedTemplateId = draftState.id;
     const savedExpectedVersion = draftState.expected_version;
+    wizardAsync.invalidateOperations();
+    const saveContext = wizardAsync.snapshot();
+    const saveDispatch = draftMutations.beginSave({
+      session: saveContext.session,
+      template_id: savedTemplateId,
+      expected_version: savedExpectedVersion
+    });
+    if (!saveDispatch) return;
     const operation = wizardAsync.begin("save");
+    wizardSaveRunning = true;
+    wizardConflictCurrent = null;
+    wizardConflictReason = "";
+    renderWizard();
     setWizardStatus(lifecycleStatus === "active" ? "Activating template..." : "Saving draft...");
     try {
       const result = savedTemplateId
@@ -747,8 +911,30 @@ export async function initCarrierListTemplateLibrary({
         : await createCarrierListTemplate(payload);
       if (!wizardAsync.isCurrent(operation)) return;
       if (!result?.row) throw new Error("The carrier template save returned no current row.");
-      setDraftState(reduceCarrierTemplateDraft(draftState, { type: "accept_saved", template: result.row }), { renderState: false });
+      const currentContext = wizardAsync.snapshot();
+      const accepted = draftMutations.completeSave(saveDispatch, {
+        session: currentContext.session,
+        template_id: savedTemplateId,
+        expected_version: savedExpectedVersion,
+        serverRow: result.row,
+        acceptSaved: (saved) => {
+          setDraftState(reduceCarrierTemplateDraft(draftState, { type: "accept_saved", template: saved }), { renderState: false });
+        },
+        retainComparison: (saved) => {
+          wizardConflictCurrent = saved;
+          wizardConflictReason = "saved_snapshot";
+          setDraftState(reduceCarrierTemplateDraft(draftState, { type: "go_to_step", step: 3 }), { renderState: false });
+        }
+      });
       wizardSaveRunning = false;
+      if (!accepted) {
+        replaceTemplateRow(result.row);
+        render();
+        renderWizard();
+        focusActiveWizardPanel();
+        setWizardStatus("The server saved the dispatched snapshot, but newer local edits were detected and retained. Compare local with current; no overwrite, merge, or retry occurred.", "warning");
+        return;
+      }
       const savedSession = wizardAsync.open({
         template_id: draftState.id,
         expected_version: draftState.expected_version
@@ -770,6 +956,7 @@ export async function initCarrierListTemplateLibrary({
           const current = await getCarrierListTemplate(savedTemplateId);
           if (!wizardAsync.isCurrent(operation) || !wizardAsync.isCurrent(currentFetch)) return;
           wizardConflictCurrent = current?.row || null;
+          wizardConflictReason = "version_conflict";
           setDraftState(reduceCarrierTemplateDraft(draftState, { type: "go_to_step", step: 3 }), { renderState: false });
           renderWizard();
           focusActiveWizardPanel();
@@ -783,6 +970,7 @@ export async function initCarrierListTemplateLibrary({
         setWizardStatus(humanizeError(error), "error");
       }
     } finally {
+      draftMutations.cancelSave(saveDispatch);
       if (wizardAsync.isCurrent(operation)) {
         wizardSaveRunning = false;
         renderWizard();
@@ -791,7 +979,7 @@ export async function initCarrierListTemplateLibrary({
   }
 
   async function reloadCurrentTemplate() {
-    if (!wizardConflictCurrent) return;
+    if (!wizardConflictCurrent || !canMutateDraft()) return;
     const current = wizardConflictCurrent;
     draftState = createCarrierTemplateDraftState(current);
     const session = wizardAsync.open({
@@ -799,7 +987,8 @@ export async function initCarrierListTemplateLibrary({
       expected_version: draftState.expected_version
     });
     wizardConflictCurrent = null;
-    ambiguousChoices.clear();
+    wizardConflictReason = "";
+    reconciliation.reset();
     syncDraftDetailInputs();
     window.ratewareMarkFormClean?.(wizardForm);
     if (!await hydrateMemberVendors(draftState.vendor_ids)) return;
@@ -982,7 +1171,6 @@ export async function initCarrierListTemplateLibrary({
   }
 
   async function showNewTemplateGuidance() {
-    const opener = document.activeElement;
     editorLaunchToken += 1;
     if (wizardOpen && !closeTemplateWizard()) return false;
     selectedTemplateId = "";
@@ -1000,7 +1188,7 @@ export async function initCarrierListTemplateLibrary({
     onSelectionChange("", { replace: false });
     workspace?.dispatchEvent(new CustomEvent("carrier-template:new", { bubbles: true }));
     setStatus("Ready to start a template from existing CRM carriers.");
-    await openTemplateWizard({}, { opener });
+    await openTemplateWizard({}, { openerResolver: stableTemplateOpener("") });
     return true;
   }
 
@@ -1075,7 +1263,6 @@ export async function initCarrierListTemplateLibrary({
     }
     const id = text(button.dataset.templateId);
     if (action === "open") {
-      const opener = button;
       if (wizardOpen && !closeTemplateWizard()) return;
       const launchToken = ++editorLaunchToken;
       const selected = await selectTemplate(id, { focus: true, updateHistory: true });
@@ -1084,7 +1271,7 @@ export async function initCarrierListTemplateLibrary({
         try {
           const current = await getCarrierListTemplate(id);
           if (launchToken !== editorLaunchToken) return;
-          await openTemplateWizard(current?.row || selectedTemplate(), { opener });
+          await openTemplateWizard(current?.row || selectedTemplate(), { openerResolver: stableTemplateOpener(id) });
         } catch (error) {
           if (launchToken === editorLaunchToken) setStatus(humanizeError(error), "error");
         }
@@ -1097,36 +1284,36 @@ export async function initCarrierListTemplateLibrary({
   wizardForm?.addEventListener("submit", (event) => event.preventDefault());
 
   draftNameInput?.addEventListener("input", () => {
-    setDraftState(reduceCarrierTemplateDraft(draftState, {
+    applyDraftAction({
       type: "set_details",
       name: draftNameInput.value,
       description: draftDescriptionInput?.value || ""
-    }));
+    });
   });
 
   draftDescriptionInput?.addEventListener("input", () => {
-    setDraftState(reduceCarrierTemplateDraft(draftState, {
+    applyDraftAction({
       type: "set_details",
       name: draftNameInput?.value || "",
       description: draftDescriptionInput.value
-    }));
+    });
   });
 
   wizardCloseButton?.addEventListener("click", () => closeTemplateWizard());
   wizardBackButton?.addEventListener("click", () => {
-    setDraftState(reduceCarrierTemplateDraft(draftState, { type: "go_to_step", step: draftState.step - 1 }));
+    if (!applyDraftAction({ type: "go_to_step", step: draftState.step - 1 })) return;
     focusActiveWizardPanel();
   });
   wizardNextButton?.addEventListener("click", () => {
-    setDraftState(reduceCarrierTemplateDraft(draftState, { type: "go_to_step", step: draftState.step + 1 }));
+    if (!applyDraftAction({ type: "go_to_step", step: draftState.step + 1 })) return;
     focusActiveWizardPanel();
   });
   wizardStepButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      setDraftState(reduceCarrierTemplateDraft(draftState, {
+      if (!applyDraftAction({
         type: "go_to_step",
         step: Number(button.dataset.templateWizardStep)
-      }));
+      })) return;
       focusActiveWizardPanel();
     });
   });
@@ -1140,49 +1327,75 @@ export async function initCarrierListTemplateLibrary({
     modalFocus.trapTab(event);
   });
 
+  document.addEventListener("focusin", () => {
+    if (wizardOpen) modalFocus.containFocus();
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!wizardOpen || wizard?.contains(event.target)) return;
+    event.preventDefault();
+    modalFocus.containFocus();
+  }, true);
+
   wizard?.addEventListener("click", async (event) => {
     const addButton = event.target.closest("[data-template-add-member]");
     if (addButton) {
+      if (!canMutateDraft()) return;
       const id = text(addButton.dataset.templateAddMember);
       if (!crmRows.some((row) => vendorId(row) === id)) return;
-      setDraftState(reduceCarrierTemplateDraft(draftState, { type: "add_members", vendor_ids: [id] }));
+      if (!applyDraftAction({ type: "add_members", vendor_ids: [id] })) return;
       setWizardStatus(`${vendorName(vendorCache.get(id) || { id })} added to the local draft.`);
       return;
     }
 
     const memberButton = event.target.closest("[data-template-member-action]");
     if (memberButton) {
+      if (!canMutateDraft()) return;
       const id = text(memberButton.dataset.templateMemberId);
       const action = text(memberButton.dataset.templateMemberAction);
       const index = draftState.vendor_ids.indexOf(id);
       if (action === "remove") {
-        setDraftState(reduceCarrierTemplateDraft(draftState, { type: "remove_member", vendor_id: id }));
+        applyDraftAction({ type: "remove_member", vendor_id: id });
       } else if (index >= 0 && ["up", "down"].includes(action)) {
-        setDraftState(reduceCarrierTemplateDraft(draftState, {
+        applyDraftAction({
           type: "reorder_member",
           vendor_id: id,
           to_index: index + (action === "up" ? -1 : 1)
-        }));
+        });
       }
       return;
     }
 
     const ambiguousSearchButton = event.target.closest("[data-template-ambiguous-search-button]");
     if (ambiguousSearchButton) {
-      await searchAmbiguousRow(Number(ambiguousSearchButton.dataset.templateAmbiguousSearchButton));
+      await searchAmbiguousRow({
+        rowNumber: Number(ambiguousSearchButton.dataset.templateAmbiguousSearchButton),
+        rowIdentity: text(ambiguousSearchButton.dataset.templateAmbiguousRowIdentity),
+        generation: Number(ambiguousSearchButton.dataset.templateReconciliationGeneration)
+      });
       return;
     }
 
     const ambiguousChoiceButton = event.target.closest("[data-template-ambiguous-choice-row]");
     if (ambiguousChoiceButton) {
+      if (!canMutateDraft()) return;
       const rowNumber = Number(ambiguousChoiceButton.dataset.templateAmbiguousChoiceRow);
       const id = text(ambiguousChoiceButton.dataset.templateAmbiguousChoiceId);
-      if (!(ambiguousChoices.get(rowNumber) || []).some((row) => vendorId(row) === id)) return;
-      setDraftState(reduceCarrierTemplateDraft(draftState, {
+      const rowIdentity = text(ambiguousChoiceButton.dataset.templateAmbiguousRowIdentity);
+      const generation = Number(ambiguousChoiceButton.dataset.templateReconciliationGeneration);
+      const resolutionRow = draftState.resolution_rows.find((row) => (
+        Number(row.source_row_number) === rowNumber &&
+        text(row.resolution_row_identity) === rowIdentity &&
+        Number(row.reconciliation_generation) === generation
+      ));
+      if (!resolutionRow || !reconciliation.isCurrent({ generation, row_identity: rowIdentity })) return;
+      if (!reconciliation.choicesFor(resolutionRow).some((row) => vendorId(row) === id)) return;
+      if (!applyDraftAction({
         type: "confirm_manual_match",
         source_row_number: rowNumber,
+        resolution_row_identity: rowIdentity,
+        reconciliation_generation: generation,
         vendor_id: id
-      }));
+      })) return;
       setWizardStatus(`Source row ${rowNumber} was manually resolved to one existing Carrier CRM record.`, "success");
       return;
     }
@@ -1191,6 +1404,10 @@ export async function initCarrierListTemplateLibrary({
   });
 
   importInput?.addEventListener("change", async () => {
+    if (!canMutateDraft()) {
+      importInput.value = "";
+      return;
+    }
     const [file] = [...(importInput.files || [])];
     await handleCarrierTemplateImport(file);
   });
@@ -1265,6 +1482,9 @@ export async function initCarrierListTemplateLibrary({
     get capability() {
       return capabilityView.capability;
     },
+    get recoveryOpen() {
+      return wizardOpen && wizardRecoveryMode;
+    },
     activate: ({ templateId: requestedId = "" } = {}) => {
       if (requestedId) return selectTemplate(requestedId, { focus: false, updateHistory: false });
       selectedTemplateId = "";
@@ -1272,7 +1492,7 @@ export async function initCarrierListTemplateLibrary({
       render();
       return Promise.resolve(capabilityView.enabled);
     },
-    beforeLeave: () => closeTemplateWizard(),
+    beforeLeave: ({ restoreFocus = false } = {}) => closeTemplateWizard({ restoreFocus }),
     selectTemplate
   };
 }
