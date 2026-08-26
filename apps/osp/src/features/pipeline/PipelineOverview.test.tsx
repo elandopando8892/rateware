@@ -1,5 +1,6 @@
 import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { OspReadClient } from '../../api/osp-client';
@@ -101,5 +102,28 @@ describe('PipelineOverview', () => {
     expect(await screen.findByRole('status', { name: /revalidating pipeline/i })).toBeInTheDocument();
     expect(screen.getByRole('status', { name: /revalidating gmail health/i })).toBeInTheDocument();
     expect(screen.queryByRole('status', { name: /^loading pipeline$/i })).not.toBeInTheDocument();
+  });
+
+  it('offers one manual no-Pub/Sub sync and reports only safe counts', async () => {
+    const syncGmailInbox = vi.fn(async () => ({
+      discovered: 2, inserted_messages: 1, duplicates: 1, attachment_metadata_rows: 0,
+      osp_enqueued: 1, osp_processed: 1, outbound_enabled: false as const,
+    }));
+    renderOverview({
+      listOnboardingWorkspace: vi.fn(async () => ({
+        requests_total: '1', documents_pending: '1', under_review: '0', ready_for_approval: '0',
+      })),
+      getGmailStatus: vi.fn(async () => ({
+        connection_exists: true as const, pubsub_configured: false, watch_configured: false,
+        token_expires_at: '2099-01-01T00:00:00.000Z', watch_expires_at: null,
+        error_present: false, error_code: null, outbound_enabled: false as const,
+      })),
+      syncGmailInbox,
+    });
+    expect(await screen.findByRole('status', { name: /gmail status: connected/i })).toBeInTheDocument();
+    expect(screen.getByText(/manual · no pub\/sub/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /sync inbox now/i }));
+    expect(await screen.findByText(/1 new gmail message.*osp processed 1 job/i)).toBeInTheDocument();
+    expect(syncGmailInbox).toHaveBeenCalledOnce();
   });
 });

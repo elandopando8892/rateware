@@ -35,26 +35,26 @@ test('Pub/Sub authentication verifies Google signature and explicit identity cla
 });
 
 test('push receiver only accepts POST and exact allowed mailbox notifications', () => {
-  assert.match(push, /request\.method !== 'POST'/);
+  assert.match(push, /request\.method !== ["']POST["']/);
   assert.match(push, /verifyProviderPubSubRequest\(request\)/);
   assert.match(push, /emailAddress/);
   assert.match(push, /historyId/);
   assert.match(push, /providerGmailAllowedAccount\(\)/);
   assert.match(push, /notification\.emailAddress !== allowedMailbox/);
-  assert.match(push, /\.eq\('mailbox_email', allowedMailbox\)/);
+  assert.match(push, /\.eq\(["']mailbox_email["'], allowedMailbox\)/);
   assert.match(push, /\.limit\(2\)/);
   assert.match(push, /routing is ambiguous/);
 });
 
 test('push receiver deduplicates, ignores stale history, claims work, and retries failures', () => {
-  assert.match(push, /onConflict: 'connection_id,pubsub_message_id'/);
+  assert.match(push, /onConflict: ["']connection_id,pubsub_message_id["']/);
   assert.match(push, /ignoreDuplicates: true/);
   assert.match(push, /BigInt\(candidate\) <= BigInt\(currentText\)/);
   assert.match(push, /ignored_stale/);
-  assert.match(push, /\.in\('status', \['received', 'failed'\]\)/);
+  assert.match(push, /\.in\(["']status["'], \[["']received["'], ["']failed["']\]\)/);
   assert.match(push, /already processing/);
-  assert.match(push, /status: 'completed'/);
-  assert.match(push, /status: 'failed'/);
+  assert.match(push, /status: ["']completed["']/);
+  assert.match(push, /status: ["']failed["']/);
   assert.match(push, /return response\(500/);
   assert.match(push, /return response\(204\)/);
 });
@@ -63,8 +63,8 @@ test('manual and push paths share the same bounded Gmail sync engine', () => {
   assert.match(manualApi, /syncProviderGmailConnection/);
   assert.match(push, /syncProviderGmailConnection/);
   assert.match(push, /limit: 25/);
-  assert.match(push, /trigger: 'pubsub'/);
-  assert.match(manualApi, /trigger: 'manual'/);
+  assert.match(push, /trigger: ["']pubsub["']/);
+  assert.match(manualApi, /trigger: ["']manual["']/);
   assert.match(sync, /historyTypes: 'messageAdded'/);
   assert.match(sync, /newer_than:7d/);
   assert.match(sync, /outbound_enabled: false/);

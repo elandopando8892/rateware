@@ -16,4 +16,15 @@
 .health-watching .health-dot, .health-connected .health-dot { background: var(--brand); }
 .health-degraded .health-dot { background: var(--warning); }
 .health-unknown .health-dot { background: var(--danger); }
+.manual-mode-badge { border-radius: 999px; padding: .3rem .65rem; background: #eef2f6; color: var(--muted); font-size: .75rem; font-weight: 800; text-transform: uppercase; }
+.sync-card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.25rem; padding: 1rem; border: 1px solid var(--line); border-radius: 14px; background: var(--canvas); }
+.sync-card p { max-width: 62ch; margin: .3rem 0 0; color: var(--muted); }
+.sync-button { flex: 0 0 auto; min-width: 9.5rem; border: 0; border-radius: 12px; padding: .8rem 1rem; background: var(--brand); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+.sync-button:hover:not(:disabled) { background: var(--brand-dark); }
+.sync-button:focus-visible { outline: 3px solid color-mix(in srgb, var(--brand), transparent 60%); outline-offset: 2px; }
+.sync-button:disabled { cursor: not-allowed; opacity: .55; }
+.sync-result { min-height: 1.5rem; color: var(--muted); }
+.sync-result p { margin: .75rem 0 0; }
+.sync-result [role="alert"] { color: var(--danger); }
 @media (max-width: 720px) { .metric-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .sync-card { align-items: stretch; flex-direction: column; } .sync-button { width: 100%; } }

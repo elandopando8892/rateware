@@ -78,6 +78,19 @@ export const GmailSuccessResponseSchema = z.strictObject({
   data: GmailReadModelSchema,
 });
 
+export const GmailSyncSuccessResponseSchema = z.strictObject({
+  version: z.literal(1),
+  data: z.strictObject({
+    discovered: z.number().int().min(0).max(100_000),
+    inserted_messages: z.number().int().min(0).max(100_000),
+    duplicates: z.number().int().min(0).max(100_000),
+    attachment_metadata_rows: z.number().int().min(0).max(100_000),
+    osp_enqueued: z.number().int().min(0).max(100_000),
+    osp_processed: z.number().int().min(0).max(100_000),
+    outbound_enabled: z.literal(false),
+  }),
+});
+
 export const OspPublicErrorCodeSchema = z.enum([
   'INVALID_REQUEST',
   'UNAUTHORIZED',
@@ -245,6 +258,7 @@ export const SendCommandReceiptSchema = z.strictObject({
 
 export type PipelineReadModel = z.infer<typeof PipelineReadModelSchema>;
 export type GmailReadModel = z.infer<typeof GmailReadModelSchema>;
+export type GmailSyncResult = z.infer<typeof GmailSyncSuccessResponseSchema>['data'];
 export type OspReadAction = z.infer<typeof OspReadRequestSchema>['action'];
 export type OspPublicErrorCode = z.infer<typeof OspPublicErrorCodeSchema>;
 export type QuarterlyDocumentType = z.infer<typeof QuarterlyDocumentTypeSchema>;

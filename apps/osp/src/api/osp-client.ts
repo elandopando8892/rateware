@@ -9,6 +9,8 @@ import {
   ClarificationReviewsResponseSchema,
   type ClarificationQuestion,
   type ClarificationReview,
+  GmailSyncSuccessResponseSchema,
+  type GmailSyncResult,
   GmailSuccessResponseSchema,
   type DocumentVersion,
   type GmailReadModel,
@@ -32,6 +34,7 @@ export type DocumentApprovalInput = { versionId: string; expectedVersion: number
 export type ClarificationReviewInput = { draftId: string; expectedCaseVersion: number; expectedCanonicalSha256: string; questions: readonly ClarificationQuestion[] };
 
 export interface OspClient extends OspReadClient, WorkflowClient {
+  syncGmailInbox?(): Promise<GmailSyncResult>;
   listDocumentVersions(): Promise<readonly DocumentVersion[]>;
   uploadDocumentVersion(input: DocumentUploadInput): Promise<{ id: string; version: number; expiresAt: string }>;
   approveDocumentVersion(input: DocumentApprovalInput): Promise<{ id: string; status: 'approved' }>;
@@ -78,6 +81,10 @@ function documentEndpointFor(supabaseUrl: string): string {
   return `${supabaseUrl.replace(/\/+$/, '')}/functions/v1/osp-document-api`;
 }
 
+function gmailSyncEndpointFor(supabaseUrl: string): string {
+  return `${supabaseUrl.replace(/\/+$/, '')}/functions/v1/osp-gmail-sync-api`;
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
 const DATE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
@@ -94,6 +101,7 @@ export function createOspClient(options: ClientOptions): OspClient {
   const fetchImplementation = options.fetch ?? globalThis.fetch;
   const endpoint = endpointFor(options.supabaseUrl);
   const documentEndpoint = documentEndpointFor(options.supabaseUrl);
+  const gmailSyncEndpoint = gmailSyncEndpointFor(options.supabaseUrl);
   const caseEndpoint = `${options.supabaseUrl.replace(/\/+$/, '')}/functions/v1/osp-case-api`;
   const workflow = createWorkflowClient(options);
 
@@ -217,6 +225,45 @@ export function createOspClient(options: ClientOptions): OspClient {
     }
   }
 
+  async function syncGmailInbox(): Promise<GmailSyncResult> {
+    const captured = options.getCurrentSession();
+    if (!captured) throw new OspClientError('NO_SESSION');
+    let refreshed = false;
+    for (;;) {
+      let token: string;
+      try { token = await options.getAccessToken(captured, refreshed); }
+      catch { throw new OspClientError('NO_SESSION'); }
+      assertCurrent(options, captured);
+      let response: Response;
+      try {
+        response = await fetchImplementation(gmailSyncEndpoint, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ version: 1, action: 'sync_provider_gmail_inbox' }),
+        });
+      } catch {
+        assertCurrent(options, captured);
+        throw new OspClientError('NETWORK_UNAVAILABLE');
+      }
+      assertCurrent(options, captured);
+      if (!response.ok) {
+        const body = await safeJson(response);
+        assertCurrent(options, captured);
+        const error = parseSafeError(body, response.status);
+        if (error.code === 'UNAUTHORIZED' && !refreshed) { refreshed = true; continue; }
+        throw error;
+      }
+      if (response.status !== 200 || response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
+        throw new OspClientError('INVALID_RESPONSE');
+      }
+      const body = await safeJson(response);
+      assertCurrent(options, captured);
+      const parsed = GmailSyncSuccessResponseSchema.safeParse(body);
+      if (!parsed.success) throw new OspClientError('INVALID_RESPONSE');
+      return parsed.data.data;
+    }
+  }
+
   async function caseRequest<T>(input: {
     query: readonly (readonly [string, string])[];
     schema: ZodType<T>;
@@ -266,6 +313,7 @@ export function createOspClient(options: ClientOptions): OspClient {
     ...workflow,
     listOnboardingWorkspace: () => read<PipelineReadModel>('list_provider_onboarding_workspace'),
     getGmailStatus: () => read<GmailReadModel>('provider_gmail_status'),
+    syncGmailInbox,
     listDocumentVersions: async () => (await documentRequest({
       query: [['action', 'list_document_versions']], expectedStatus: 200, schema: DocumentVersionsResponseSchema,
     })).data.versions,

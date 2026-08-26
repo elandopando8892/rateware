@@ -122,6 +122,20 @@ it('validates the Gmail success envelope with the second exact action', async ()
   expect(JSON.parse(String(init.body))).toEqual({ version: 1, action: 'provider_gmail_status' });
 });
 
+it('runs one bounded Gmail sync through the dedicated OSP endpoint without automatic mutation retry', async () => {
+  const data = { discovered: 2, inserted_messages: 1, duplicates: 1, attachment_metadata_rows: 0, osp_enqueued: 1, osp_processed: 1, outbound_enabled: false } as const;
+  const h = harness([json({ version: 1, data })]);
+  await expect(h.client.syncGmailInbox?.()).resolves.toEqual(data);
+  const [url, init] = h.fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(url).toBe('https://synthetic.supabase.co/functions/v1/osp-gmail-sync-api');
+  expect(init.headers).toEqual({ authorization: 'Bearer bound-token', 'content-type': 'application/json' });
+  expect(JSON.parse(String(init.body))).toEqual({ version: 1, action: 'sync_provider_gmail_inbox' });
+
+  const ambiguous = harness([new TypeError('response lost'), json({ version: 1, data })]);
+  await expect(ambiguous.client.syncGmailInbox?.()).rejects.toMatchObject({ code: 'NETWORK_UNAVAILABLE' });
+  expect(ambiguous.fetch).toHaveBeenCalledOnce();
+});
+
 it('lists quarterly document versions through the authenticated document endpoint', async () => {
   const version = { id: '22222222-2222-4222-8222-222222222222', documentType: 'proof_of_address', version: 1, status: 'approved', validFrom: '2026-08-24', expiresAt: '2026-11-24' };
   const h = harness([json({ data: { versions: [version] } })]);

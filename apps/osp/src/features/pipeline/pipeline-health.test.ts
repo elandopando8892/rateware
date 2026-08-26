@@ -25,16 +25,17 @@ describe('deriveMailboxHealth', () => {
 
   it.each([
     { ...connected, error_present: true, error_code: 'AUTH_REQUIRED' },
-    { ...connected, pubsub_configured: false },
     { ...connected, token_expires_at: null },
     { ...connected, token_expires_at: now.toISOString() },
     { ...connected, watch_expires_at: null },
     { ...connected, watch_expires_at: now.toISOString() },
+    { ...connected, pubsub_configured: false, watch_configured: true },
   ])('returns degraded for explicit connection defects', (value) => {
     expect(deriveMailboxHealth(value, () => now)).toBe('degraded');
   });
 
-  it('distinguishes a valid connection without watch from a future watch', () => {
+  it('distinguishes manual no-Pub/Sub mode, a valid connection without watch and a future watch', () => {
+    expect(deriveMailboxHealth({ ...connected, pubsub_configured: false, watch_configured: false, watch_expires_at: null }, () => now)).toBe('connected');
     expect(deriveMailboxHealth({ ...connected, watch_configured: false, watch_expires_at: null }, () => now)).toBe('connected');
     expect(deriveMailboxHealth(connected, () => now)).toBe('watching');
   });

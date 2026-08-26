@@ -70,8 +70,8 @@ test('shared Gmail sync remains bounded, idempotent, confidential, and increment
 
 test('watch registration is INBOX-only and stores returned history/expiration', () => {
   assert.match(api, /topicName: PROVIDER_GMAIL_PUBSUB_TOPIC/);
-  assert.match(api, /labelIds: \['INBOX'\]/);
-  assert.match(api, /labelFilterBehavior: 'INCLUDE'/);
+  assert.match(api, /labelIds: \[["']INBOX["']\]/);
+  assert.match(api, /labelFilterBehavior: ["']INCLUDE["']/);
   assert.match(api, /history_id: historyId/);
   assert.match(api, /watch_expiration_at: watchExpirationAt/);
 });

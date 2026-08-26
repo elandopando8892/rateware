@@ -441,6 +441,9 @@ verify_jwt = false
 [functions.osp-read-api]
 verify_jwt = false
 
+[functions.osp-gmail-sync-api]
+verify_jwt = false
+
 [functions.osp-worker]
 verify_jwt = false
 entrypoint = "./functions/osp-worker/edge.ts"
