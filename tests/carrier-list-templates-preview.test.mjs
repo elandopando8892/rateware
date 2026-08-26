@@ -16,11 +16,21 @@ test("preview source is public, noindex, local-only, and uses the approved domai
   assert.match(html, /carrier-list-templates-preview\.js/);
   assert.doesNotMatch(html, /target="_blank"|https?:\/\//i);
 
-  assert.match(source, /import\s*\{[\s\S]*partitionCarrierTemplateMembers[\s\S]*reduceCarrierTemplateDraft[\s\S]*\}\s*from\s*["']\.\/carrier-list-template-domain\.js["']/);
+  assert.match(source, /import\s*\{[\s\S]*partitionCarrierTemplateMembers[\s\S]*reduceCarrierTemplateDraft[\s\S]*validateCarrierTemplateDraft[\s\S]*\}\s*from\s*["']\.\/carrier-list-template-domain\.js["']/);
   assert.match(source, /import\s*\{\s*registerPlatform55Icons\s*\}\s*from\s*["']\.\/platform55-icons\.js["']/);
   assert.doesNotMatch(source, /from\s*["'][^"']*(?:auth|api|vendor-service|supabase|kinde)[^"']*["']/i);
   assert.doesNotMatch(source, /\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\s*\(/);
   assert.doesNotMatch(source, /\b(?:serviceWorker|localStorage|sessionStorage|indexedDB|caches)\b/);
+  assert.doesNotMatch(source, /Untitled carrier list/i);
+  assert.doesNotMatch(source, /data-clt-close-detail/);
+  assert.match(source, /function\s+restorePreviewFocus\s*\(/);
+  assert.match(source, /data-clt-focus-key=["']screen-heading["']/);
+  assert.match(source, /data-clt-focus-key=["']builder-step-/);
+  assert.match(source, /\.focus\(\{\s*preventScroll:\s*true\s*\}\)/);
+  assert.match(source, /data-clt-save=["']draft["'][^>]*disabled/);
+  assert.match(source, /data-clt-save=["']active["'][^>]*disabled/);
+  assert.match(source, /role=["']alert["']/);
+  assert.doesNotMatch(source, /data-clt-save=["'][^"']+["'][^>]*role=["']tab["']/);
 });
 
 test("preview reducer completes Library to Builder to Carrier Fit to Message locally", async () => {
@@ -107,5 +117,68 @@ test("preview reducer completes Library to Builder to Carrier Fit to Message loc
   state = reduceCarrierTemplatePreview(state, { type: "fit_submit" });
   assert.equal(state.screen, "message");
   assert.equal(state.message.selectedCount, 1);
+  const submittedVendorIds = [...state.message.selectedVendorIds];
+  assert(submittedVendorIds.every((id) => state.fit.participantVendorIds.includes(id)), "submitted audience materializes into local RFx participants");
   assert.match(state.message.detail, /no draft, send, invitation, persistence, or Delivery action occurred/i);
+
+  state = reduceCarrierTemplatePreview(state, { type: "navigate", screen: "carrier-fit" });
+  fit = previewCarrierFitSnapshot(state);
+  assert.deepEqual(fit.rows.already_in_rfx.map((row) => row.vendor_id), submittedVendorIds);
+  state = reduceCarrierTemplatePreview(state, { type: "fit_toggle", vendorId: submittedVendorIds[0] });
+  assert.deepEqual(state.fit.selectedVendorIds, [], "submitted carrier cannot be selected again");
+});
+
+test("preview fails closed for invalid saves and archived Carrier Fit templates", async () => {
+  const {
+    createCarrierTemplatePreviewState,
+    previewCarrierFitSnapshot,
+    reduceCarrierTemplatePreview
+  } = await import(previewJsUrl);
+
+  let state = createCarrierTemplatePreviewState();
+  const initialCount = state.templates.length;
+  state = reduceCarrierTemplatePreview(state, { type: "builder_new" });
+  state = reduceCarrierTemplatePreview(state, { type: "builder_save", lifecycleStatus: "draft" });
+  assert.equal(state.screen, "builder");
+  assert.equal(state.templates.length, initialCount);
+  assert.deepEqual(state.builder.validationErrors.map((error) => error.code), ["name_required"]);
+
+  state = reduceCarrierTemplatePreview(state, { type: "builder_set_details", name: "Valid local draft", description: "" });
+  state = reduceCarrierTemplatePreview(state, { type: "builder_save", lifecycleStatus: "active" });
+  assert.equal(state.screen, "builder");
+  assert.deepEqual(state.builder.validationErrors.map((error) => error.code), ["active_requires_member"]);
+
+  state = createCarrierTemplatePreviewState();
+  const selectedFitId = state.fit.templateId;
+  const nextActiveId = state.templates.find((template) => template.lifecycle_status === "active" && template.id !== selectedFitId).id;
+  state = reduceCarrierTemplatePreview(state, { type: "library_archive", templateId: selectedFitId });
+  assert.equal(state.fit.templateId, nextActiveId, "archiving the selected Fit template deterministically selects the next active template");
+  assert.equal(previewCarrierFitSnapshot(state).template.id, nextActiveId);
+  assert.equal(previewCarrierFitSnapshot(state).template.lifecycle_status, "active");
+
+  state = reduceCarrierTemplatePreview(state, { type: "library_archive", templateId: nextActiveId });
+  assert.equal(state.fit.templateId, "");
+  assert.equal(previewCarrierFitSnapshot(state).template.id, "");
+  assert.equal(previewCarrierFitSnapshot(state).counts.total, 0, "no archived or draft fallback is admitted to Carrier Fit");
+});
+
+test("library detail selection always belongs to the filtered result set", async () => {
+  const {
+    createCarrierTemplatePreviewState,
+    filteredPreviewTemplates,
+    reduceCarrierTemplatePreview
+  } = await import(previewJsUrl);
+
+  let state = createCarrierTemplatePreviewState();
+  state = reduceCarrierTemplatePreview(state, { type: "library_filter_query", value: "Manzanillo" });
+  assert.equal(filteredPreviewTemplates(state).length, 1);
+  assert.equal(state.library.selectedTemplateId, filteredPreviewTemplates(state)[0].id);
+
+  state = reduceCarrierTemplatePreview(state, { type: "library_filter_status", value: "archived" });
+  assert(filteredPreviewTemplates(state).every((template) => template.lifecycle_status === "archived"));
+  assert.equal(state.library.selectedTemplateId, filteredPreviewTemplates(state)[0]?.id || "");
+
+  state = reduceCarrierTemplatePreview(state, { type: "library_filter_query", value: "no such local template" });
+  assert.deepEqual(filteredPreviewTemplates(state), []);
+  assert.equal(state.library.selectedTemplateId, "");
 });

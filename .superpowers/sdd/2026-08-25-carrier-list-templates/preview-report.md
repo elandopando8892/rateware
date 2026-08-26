@@ -30,8 +30,16 @@ Implemented the public, no-auth, noindex Carrier List Templates QA preview again
 ## Verification
 
 - `node --check src/carrier-list-templates-preview.js` — passed.
-- `node --test tests/carrier-list-templates-preview.test.mjs` — 2 passed, 0 failed.
+- `node --test tests/carrier-list-templates-preview.test.mjs` — 4 passed, 0 failed.
 - `npm run test:carrier-list-templates` — browser domain tests passed; Deno contract suite 71 passed, 0 failed.
 - `git diff --check` — passed.
 
 Browser/design QA was intentionally not launched by this implementation agent; the controller owns the approved browser verification pass. No server, browser automation, deployment, or external action was started.
+
+## Fix round 1
+
+- The simulated Add handoff now materializes its exact selected audience into local RFx participant state before opening Message; returning to Carrier Fit classifies those carriers as `already_in_rfx` and prevents re-selection.
+- Archiving the current Carrier Fit template deterministically selects the first remaining active template or an empty blocked state. Carrier Fit rejects draft and archived templates instead of silently falling back.
+- Draft and active saves use the real `validateCarrierTemplateDraft` helper. Invalid saves remain in Builder, expose the domain validation messages, and never create an unnamed fallback template.
+- Library filtering reconciles the selected detail to the visible result set; the misleading unimplemented detail-close control was removed.
+- Render cycles restore focus by stable action key or the new screen heading, with explicit focus targets for route and builder-step transitions. Draft and Activate remain ordinary action buttons rather than incomplete tabs.

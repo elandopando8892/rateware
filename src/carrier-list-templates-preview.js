@@ -1,7 +1,8 @@
 import {
   createCarrierTemplateDraftState,
   partitionCarrierTemplateMembers,
-  reduceCarrierTemplateDraft
+  reduceCarrierTemplateDraft,
+  validateCarrierTemplateDraft
 } from "./carrier-list-template-domain.js";
 import { registerPlatform55Icons } from "./platform55-icons.js";
 
@@ -52,6 +53,7 @@ function createEmptyBuilder() {
     mode: "crm",
     query: "",
     selectedCandidateIds: [],
+    validationErrors: [],
     draft: createCarrierTemplateDraftState()
   };
 }
@@ -97,7 +99,13 @@ function fitFilterPasses(filters, row) {
 }
 
 export function previewCarrierFitSnapshot(state) {
-  const template = state.templates.find((row) => row.id === state.fit.templateId) || state.templates.find((row) => row.lifecycle_status === "active") || { vendor_ids: [] };
+  const template = state.templates.find((row) => row.id === state.fit.templateId && row.lifecycle_status === "active") || {
+    id: "",
+    segment_name: "",
+    description: "",
+    lifecycle_status: "",
+    vendor_ids: []
+  };
   const partition = partitionCarrierTemplateMembers({
     template,
     vendors: state.carriers,
@@ -122,6 +130,7 @@ function cloneState(state) {
       ...state.builder,
       steps: [...state.builder.steps],
       selectedCandidateIds: [...state.builder.selectedCandidateIds],
+      validationErrors: state.builder.validationErrors.map((error) => ({ ...error })),
       draft: {
         ...state.builder.draft,
         vendor_ids: [...state.builder.draft.vendor_ids],
@@ -137,6 +146,20 @@ function cloneState(state) {
 
 function updateFitCta(state) {
   state.fit.cta = `Add ${state.fit.selectedVendorIds.length} carriers to this RFx and open Message`;
+}
+
+function reconcileLibrarySelection(state) {
+  const visible = filteredPreviewTemplates(state);
+  if (!visible.some((template) => template.id === state.library.selectedTemplateId)) {
+    state.library.selectedTemplateId = visible[0]?.id || "";
+  }
+}
+
+function reconcileFitTemplate(state) {
+  const current = state.templates.find((template) => template.id === state.fit.templateId && template.lifecycle_status === "active");
+  if (current) return;
+  state.fit.templateId = state.templates.find((template) => template.lifecycle_status === "active")?.id || "";
+  state.fit.selectedVendorIds = [];
 }
 
 export function reduceCarrierTemplatePreview(state, action = {}) {
@@ -172,6 +195,7 @@ export function reduceCarrierTemplatePreview(state, action = {}) {
     }
   } else if (action.type === "builder_set_details") {
     next.builder.draft = reduceCarrierTemplateDraft(next.builder.draft, { type: "set_details", name: action.name, description: action.description });
+    next.builder.validationErrors = [];
   } else if (action.type === "builder_go_to_step") {
     next.builder.draft.step = Math.max(0, Math.min(3, Number(action.step) || 0));
   } else if (action.type === "builder_set_mode") {
@@ -188,8 +212,10 @@ export function reduceCarrierTemplatePreview(state, action = {}) {
   } else if (action.type === "builder_add_selected") {
     next.builder.draft = reduceCarrierTemplateDraft(next.builder.draft, { type: "add_members", vendor_ids: next.builder.selectedCandidateIds });
     next.builder.selectedCandidateIds = [];
+    next.builder.validationErrors = [];
   } else if (action.type === "builder_remove") {
     next.builder.draft = reduceCarrierTemplateDraft(next.builder.draft, { type: "remove_member", vendor_id: action.vendorId });
+    next.builder.validationErrors = [];
   } else if (action.type === "builder_reorder") {
     next.builder.draft = reduceCarrierTemplateDraft(next.builder.draft, { type: "reorder_member", vendor_id: action.vendorId, to_index: action.toIndex });
   } else if (action.type === "builder_import_preview") {
@@ -197,25 +223,34 @@ export function reduceCarrierTemplatePreview(state, action = {}) {
     next.builder.draft = reduceCarrierTemplateDraft(next.builder.draft, { type: "begin_reconciliation", generation });
     next.builder.draft = reduceCarrierTemplateDraft(next.builder.draft, { type: "apply_resolution_preview", generation, rows: IMPORT_RESOLUTION_ROWS });
     next.builder.mode = "upload";
+    next.builder.validationErrors = [];
   } else if (action.type === "builder_save") {
     const lifecycleStatus = action.lifecycleStatus === "active" ? "active" : "draft";
-    const savedId = next.builder.draft.id || nextTemplateId(next.templates);
-    const saved = {
-      id: savedId,
-      segment_name: next.builder.draft.name.trim() || "Untitled carrier list",
-      description: next.builder.draft.description.trim(),
-      vendor_ids: [...next.builder.draft.vendor_ids],
-      lifecycle_status: lifecycleStatus,
-      updated_at: "Just now",
-      owner: "Jose Andres"
-    };
-    const index = next.templates.findIndex((row) => row.id === savedId);
-    if (index >= 0) next.templates[index] = saved;
-    else next.templates.push(saved);
-    next.library.selectedTemplateId = savedId;
-    if (lifecycleStatus === "active") next.fit.templateId = savedId;
-    next.screen = "library";
-    next.notice = `${saved.segment_name} saved as ${lifecycleStatus}. No external action occurred.`;
+    const validation = validateCarrierTemplateDraft(next.builder.draft, lifecycleStatus);
+    next.builder.validationErrors = validation.errors.map((error) => ({ ...error }));
+    if (!validation.valid) {
+      next.screen = "builder";
+      next.builder.draft.step = 3;
+      next.notice = validation.errors.map((error) => error.message).join(" ");
+    } else {
+      const savedId = next.builder.draft.id || nextTemplateId(next.templates);
+      const saved = {
+        id: savedId,
+        segment_name: next.builder.draft.name.trim(),
+        description: next.builder.draft.description.trim(),
+        vendor_ids: [...next.builder.draft.vendor_ids],
+        lifecycle_status: lifecycleStatus,
+        updated_at: "Just now",
+        owner: "Jose Andres"
+      };
+      const index = next.templates.findIndex((row) => row.id === savedId);
+      if (index >= 0) next.templates[index] = saved;
+      else next.templates.push(saved);
+      next.library.selectedTemplateId = savedId;
+      if (lifecycleStatus === "active") next.fit.templateId = savedId;
+      next.screen = "library";
+      next.notice = `${saved.segment_name} saved as ${lifecycleStatus}. No external action occurred.`;
+    }
   } else if (action.type === "fit_choose_template") {
     const template = next.templates.find((row) => row.id === action.templateId && row.lifecycle_status === "active");
     if (template) {
@@ -238,13 +273,20 @@ export function reduceCarrierTemplatePreview(state, action = {}) {
   } else if (action.type === "fit_clear") {
     next.fit.selectedVendorIds = [];
   } else if (action.type === "fit_submit" && next.fit.selectedVendorIds.length) {
-    next.screen = "message";
-    next.message = {
-      selectedCount: next.fit.selectedVendorIds.length,
-      selectedVendorIds: [...next.fit.selectedVendorIds],
-      detail: "Simulation complete: no draft, send, invitation, persistence, or Delivery action occurred."
-    };
+    const eligibleIds = new Set(previewCarrierFitSnapshot(next).visible.eligible.map((row) => row.vendor_id));
+    const audience = next.fit.selectedVendorIds.filter((id) => eligibleIds.has(id));
+    if (audience.length) {
+      next.fit.participantVendorIds = [...new Set([...next.fit.participantVendorIds, ...audience])];
+      next.screen = "message";
+      next.message = {
+        selectedCount: audience.length,
+        selectedVendorIds: [...audience],
+        detail: "Simulation complete: no draft, send, invitation, persistence, or Delivery action occurred."
+      };
+    }
   }
+  reconcileLibrarySelection(next);
+  reconcileFitTemplate(next);
   updateFitCta(next);
   return next;
 }
@@ -268,23 +310,23 @@ function lifecycleBadge(status) {
 
 function renderLibrary(state) {
   const templates = filteredPreviewTemplates(state);
-  const selected = state.templates.find((row) => row.id === state.library.selectedTemplateId) || templates[0] || null;
+  const selected = templates.find((row) => row.id === state.library.selectedTemplateId) || null;
   const rows = templates.map((template) => {
     const isSelected = selected?.id === template.id;
     const archiveAction = template.lifecycle_status === "archived"
-      ? `<button class="clt-link" type="button" data-clt-action="restore" data-template-id="${template.id}">Restore</button>`
-      : `<button class="clt-link" type="button" data-clt-action="archive" data-template-id="${template.id}">Archive</button>`;
+      ? `<button class="clt-link" type="button" data-clt-action="restore" data-template-id="${template.id}" data-clt-focus-key="library-lifecycle-${template.id}">Restore</button>`
+      : `<button class="clt-link" type="button" data-clt-action="archive" data-template-id="${template.id}" data-clt-focus-key="library-lifecycle-${template.id}">Archive</button>`;
     return `<tr class="${isSelected ? "is-selected" : ""}" data-clt-select-template="${template.id}" tabindex="0" aria-selected="${isSelected}">
       <td><strong>${escapeHtml(template.segment_name)}</strong><small>${escapeHtml(template.description)}</small></td>
       <td><b>${template.vendor_ids.length}</b></td>
       <td><span>${escapeHtml(template.updated_at.split(" · ")[0])}</span><small>${escapeHtml(template.updated_at.split(" · ")[1] || "")}</small></td>
       <td><span class="clt-owner"><b>${escapeHtml(template.owner.split(" ").map((part) => part[0]).join(""))}</b>${escapeHtml(template.owner)}</span></td>
       <td>${lifecycleBadge(template.lifecycle_status)}</td>
-      <td><div class="clt-row-actions"><button class="clt-link" type="button" data-clt-action="open" data-template-id="${template.id}">Open</button><button class="clt-link" type="button" data-clt-action="duplicate" data-template-id="${template.id}">Duplicate</button>${archiveAction}</div></td>
+      <td><div class="clt-row-actions"><button class="clt-link" type="button" data-clt-action="open" data-template-id="${template.id}" data-clt-focus-key="library-open-${template.id}">Open</button><button class="clt-link" type="button" data-clt-action="duplicate" data-template-id="${template.id}" data-clt-focus-key="library-duplicate-${template.id}">Duplicate</button>${archiveAction}</div></td>
     </tr>`;
   }).join("");
   return `<section class="clt-screen clt-library-screen" aria-labelledby="clt-library-title">
-    <header class="clt-page-heading"><p>SOURCE · CARRIER CRM</p><h1>Carrier CRM</h1><span>Source, qualify, and prepare carriers for governed procurement.</span></header>
+    <header class="clt-page-heading"><p>SOURCE · CARRIER CRM</p><h1 tabindex="-1" data-clt-focus-key="screen-heading">Carrier CRM</h1><span>Source, qualify, and prepare carriers for governed procurement.</span></header>
     <nav class="clt-workspace-tabs" aria-label="Carrier CRM workspaces">
       <button type="button">Pipeline <small>Procurement board</small></button><button type="button">Directory <small>Editable carrier grid</small></button><button type="button">Import <small>Sheets and quick create</small></button><button type="button">Duplicates <small>Merge review</small></button><button type="button">Intelligence <small>Signals and fit</small></button><button class="is-active" type="button">List Templates <small>Reusable lists</small></button><button type="button">More tools</button>
     </nav>
@@ -292,15 +334,15 @@ function renderLibrary(state) {
       <article class="clt-panel clt-library-panel">
         <header class="clt-panel-heading"><div><h2 id="clt-library-title">Carrier list templates</h2><p>Build reusable invitation lists from carriers already in your CRM.</p></div></header>
         <div class="clt-toolbar">
-          <label class="clt-search">${previewIcon("search")}<span class="sr-only">Search templates</span><input type="search" value="${escapeHtml(state.library.query)}" placeholder="Search templates…" data-clt-library-query /></label>
-          <label><span class="sr-only">Template status</span><select data-clt-library-status><option value="all" ${state.library.status === "all" ? "selected" : ""}>Status: All</option><option value="active" ${state.library.status === "active" ? "selected" : ""}>Status: Active</option><option value="draft" ${state.library.status === "draft" ? "selected" : ""}>Status: Draft</option><option value="archived" ${state.library.status === "archived" ? "selected" : ""}>Status: Archived</option></select></label>
-          <button class="clt-primary" type="button" data-clt-action="new">New template</button>
+          <label class="clt-search">${previewIcon("search")}<span class="sr-only">Search templates</span><input type="search" value="${escapeHtml(state.library.query)}" placeholder="Search templates…" data-clt-library-query data-clt-focus-key="library-query" /></label>
+          <label><span class="sr-only">Template status</span><select data-clt-library-status data-clt-focus-key="library-status"><option value="all" ${state.library.status === "all" ? "selected" : ""}>Status: All</option><option value="active" ${state.library.status === "active" ? "selected" : ""}>Status: Active</option><option value="draft" ${state.library.status === "draft" ? "selected" : ""}>Status: Draft</option><option value="archived" ${state.library.status === "archived" ? "selected" : ""}>Status: Archived</option></select></label>
+          <button class="clt-primary" type="button" data-clt-action="new" data-clt-focus-key="library-new">New template</button>
         </div>
         <div class="clt-table-scroll"><table class="clt-table"><thead><tr><th>Template</th><th>Members</th><th>Updated</th><th>Owner</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows || `<tr><td colspan="6"><div class="clt-empty">No templates match these filters.</div></td></tr>`}</tbody></table></div>
         <footer class="clt-table-footer"><span>${previewIcon("warning")} Templates use only existing Carrier CRM carrier IDs.</span><span>${templates.length} of ${state.templates.length} templates</span></footer>
       </article>
       <aside class="clt-panel clt-detail-panel" aria-label="Selected template details">
-        ${selected ? `<header><h2>${escapeHtml(selected.segment_name)}</h2><button type="button" data-clt-close-detail aria-label="Close details">${previewIcon("close")}</button></header><section><h3>Template details</h3><dl><dt>Description</dt><dd>${escapeHtml(selected.description)}</dd><dt>Members</dt><dd>${selected.vendor_ids.length} carriers</dd><dt>Status</dt><dd>${lifecycleBadge(selected.lifecycle_status)}<small>${selected.lifecycle_status === "active" ? "Used for new RFx" : "Not shown in Carrier Fit"}</small></dd><dt>Last updated</dt><dd>${escapeHtml(selected.updated_at.replace(" · ", " at "))}</dd><dt>Owner</dt><dd>${escapeHtml(selected.owner)}</dd></dl></section><p class="clt-callout">${previewIcon("warning")}<span>Membership is static. Editing a carrier profile does not change this list.</span></p>` : `<div class="clt-empty">Select a template to inspect its static membership.</div>`}
+        ${selected ? `<header><h2>${escapeHtml(selected.segment_name)}</h2></header><section><h3>Template details</h3><dl><dt>Description</dt><dd>${escapeHtml(selected.description)}</dd><dt>Members</dt><dd>${selected.vendor_ids.length} carriers</dd><dt>Status</dt><dd>${lifecycleBadge(selected.lifecycle_status)}<small>${selected.lifecycle_status === "active" ? "Used for new RFx" : "Not shown in Carrier Fit"}</small></dd><dt>Last updated</dt><dd>${escapeHtml(selected.updated_at.replace(" · ", " at "))}</dd><dt>Owner</dt><dd>${escapeHtml(selected.owner)}</dd></dl></section><p class="clt-callout">${previewIcon("warning")}<span>Membership is static. Editing a carrier profile does not change this list.</span></p>` : `<div class="clt-empty">No template in the current filters is selected.</div>`}
       </aside>
     </div>
   </section>`;
@@ -327,12 +369,15 @@ function renderBuilderStep(state) {
     const exceptions = draft.resolution_rows.filter((row) => row.status !== "matched");
     return `<div class="clt-review-grid"><section class="clt-panel"><header><h2>Review exact membership</h2><p>${members.length} Carrier CRM IDs will be stored in order.</p></header><div class="clt-review-list">${members.map((carrier, index) => `<span><b>${index + 1}</b><strong>${escapeHtml(carrier.name)}</strong><small>${escapeHtml(carrier.crm_id)} · ${escapeHtml(carrier.equipment)}</small></span>`).join("") || `<div class="clt-empty">No members selected yet.</div>`}</div></section><aside class="clt-panel"><header><h2>Import exceptions</h2><p>Excluded from membership</p></header>${exceptions.length ? `<ul class="clt-exception-list">${exceptions.map((row) => `<li>${lifecycleBadge(row.status)}<span><strong>Row ${row.source_row_number}: ${escapeHtml(row.source_value)}</strong><small>${escapeHtml(row.reason)}</small></span></li>`).join("")}</ul>` : `<div class="clt-empty">No import exceptions in this draft.</div>`}<p class="clt-callout">${previewIcon("warning")} Editing this template never edits any carrier profile.</p></aside></div>`;
   }
-  return `<div class="clt-save-grid"><section class="clt-panel"><header><h2>Ready to save</h2><p>Choose local draft or active status for this simulated template.</p></header><dl class="clt-save-summary"><dt>Name</dt><dd>${escapeHtml(draft.name || "Untitled carrier list")}</dd><dt>Description</dt><dd>${escapeHtml(draft.description || "No description")}</dd><dt>Exact members</dt><dd>${members.length} carriers</dd><dt>External actions</dt><dd>None</dd></dl></section><aside class="clt-panel"><h2>Choose lifecycle</h2><button class="clt-secondary clt-save-choice" type="button" data-clt-save="draft"><strong>Save draft</strong><span>Keep working. Drafts are hidden in Carrier Fit.</span></button><button class="clt-primary clt-save-choice" type="button" data-clt-save="active" ${!draft.name.trim() || !members.length ? "disabled" : ""}><strong>Activate template</strong><span>Make it available as a Carrier Fit starting set.</span></button><p class="clt-callout">${previewIcon("warning")} This preview stores changes only in memory until the page reloads.</p></aside></div>`;
+  const draftValidation = validateCarrierTemplateDraft(draft, "draft");
+  const activeValidation = validateCarrierTemplateDraft(draft, "active");
+  const validationErrors = [...new Map([...draftValidation.errors, ...activeValidation.errors].map((error) => [error.code, error])).values()];
+  return `<div class="clt-save-grid"><section class="clt-panel"><header><h2>Ready to save</h2><p>Choose local draft or active status for this simulated template.</p></header><dl class="clt-save-summary"><dt>Name</dt><dd>${escapeHtml(draft.name || "Name required")}</dd><dt>Description</dt><dd>${escapeHtml(draft.description || "No description")}</dd><dt>Exact members</dt><dd>${members.length} carriers</dd><dt>External actions</dt><dd>None</dd></dl></section><aside class="clt-panel"><h2>Choose lifecycle</h2><button class="clt-secondary clt-save-choice" type="button" data-clt-save="draft" data-clt-focus-key="save-draft" ${draftValidation.valid ? "" : "disabled"}><strong>Save draft</strong><span>Keep working. Drafts are hidden in Carrier Fit.</span></button><button class="clt-primary clt-save-choice" type="button" data-clt-save="active" data-clt-focus-key="save-active" ${activeValidation.valid ? "" : "disabled"}><strong>Activate template</strong><span>Make it available as a Carrier Fit starting set.</span></button>${validationErrors.length ? `<div class="clt-validation-errors" role="alert" tabindex="-1" data-clt-focus-key="builder-validation"><strong>Complete the save requirements</strong><ul>${validationErrors.map((error) => `<li>${escapeHtml(error.message)}</li>`).join("")}</ul></div>` : ""}<p class="clt-callout">${previewIcon("warning")} This preview stores changes only in memory until the page reloads.</p></aside></div>`;
 }
 
 function renderBuilder(state) {
   const step = state.builder.draft.step;
-  return `<section class="clt-screen clt-builder-screen" aria-labelledby="clt-builder-title"><header class="clt-page-heading"><p>SOURCE · CARRIER CRM &nbsp;/&nbsp; LIST TEMPLATES &nbsp;/&nbsp; ${state.builder.draft.id ? "EDIT" : "NEW TEMPLATE"}</p><h1 id="clt-builder-title">${state.builder.draft.id ? "Edit carrier list template" : "Create carrier list template"}</h1></header><ol class="clt-stepper">${state.builder.steps.map((label, index) => `<li class="${index === step ? "is-current" : index < step ? "is-complete" : ""}"><button type="button" data-clt-step="${index}" aria-current="${index === step ? "step" : "false"}"><span>${index < step ? previewIcon("check") : index + 1}</span>${label}</button></li>`).join("")}</ol><div class="clt-builder-stage">${renderBuilderStep(state)}</div><footer class="clt-builder-footer"><p>${previewIcon("warning")} This template edits only membership by existing Carrier CRM IDs.</p><div><button class="clt-secondary" type="button" data-preview-route="library">Cancel</button>${step > 0 ? `<button class="clt-secondary" type="button" data-clt-step="${step - 1}">Back</button>` : ""}${step < 3 ? `<button class="clt-primary" type="button" data-clt-step="${step + 1}">${step === 2 ? "Review save options" : "Continue"}</button>` : ""}</div></footer></section>`;
+  return `<section class="clt-screen clt-builder-screen" aria-labelledby="clt-builder-title"><header class="clt-page-heading"><p>SOURCE · CARRIER CRM &nbsp;/&nbsp; LIST TEMPLATES &nbsp;/&nbsp; ${state.builder.draft.id ? "EDIT" : "NEW TEMPLATE"}</p><h1 id="clt-builder-title" tabindex="-1" data-clt-focus-key="screen-heading">${state.builder.draft.id ? "Edit carrier list template" : "Create carrier list template"}</h1></header><ol class="clt-stepper">${state.builder.steps.map((label, index) => `<li class="${index === step ? "is-current" : index < step ? "is-complete" : ""}"><button type="button" data-clt-step="${index}" data-clt-focus-key="builder-step-${index}" aria-current="${index === step ? "step" : "false"}"><span>${index < step ? previewIcon("check") : index + 1}</span>${label}</button></li>`).join("")}</ol><div class="clt-builder-stage">${renderBuilderStep(state)}</div><footer class="clt-builder-footer"><p>${previewIcon("warning")} This template edits only membership by existing Carrier CRM IDs.</p><div><button class="clt-secondary" type="button" data-preview-route="library">Cancel</button>${step > 0 ? `<button class="clt-secondary" type="button" data-clt-step="${step - 1}" data-clt-focus-key="builder-back">Back</button>` : ""}${step < 3 ? `<button class="clt-primary" type="button" data-clt-step="${step + 1}" data-clt-focus-key="builder-continue">${step === 2 ? "Review save options" : "Continue"}</button>` : ""}</div></footer></section>`;
 }
 
 function fitStatusLabel(stateName) {
@@ -349,12 +394,12 @@ function renderCarrierFit(state) {
     const selected = state.fit.selectedVendorIds.includes(carrier.vendor_id);
     return `<tr class="is-${carrier.primary_state}"><td><strong>${escapeHtml(carrier.name || "Unavailable CRM carrier")}</strong></td><td>${escapeHtml(carrier.crm_id || carrier.vendor_id)}</td><td><span class="clt-fit-label ${carrier.lane_fit === "Recommended" ? "is-ready" : "is-warning"}">${eligible ? previewIcon(carrier.lane_fit === "Recommended" ? "check" : "warning") : ""}${escapeHtml(carrier.lane_fit || "—")}</span></td><td>${escapeHtml(carrier.equipment || "—")}</td><td><span class="${carrier.primary_email ? "is-ready" : "is-warning"}">${carrier.primary_state === "unavailable" ? "CRM archived" : carrier.primary_email ? "Contact ready" : "Missing contact"}</span></td><td>${fitStatusLabel(carrier.primary_state)}</td><td class="clt-selection-cell">${eligible ? `<input type="checkbox" data-clt-fit-toggle="${carrier.vendor_id}" ${selected ? "checked" : ""} aria-label="Select ${escapeHtml(carrier.name)}" />` : previewIcon(carrier.primary_state === "missing_contact" ? "warning" : "work")}</td></tr>`;
   }).join("");
-  return `<section class="clt-screen clt-fit-screen" aria-labelledby="clt-fit-title"><header class="clt-bid-heading"><div><p>PRIVATE PROCUREMENT ROOM</p><h1>Bid Room</h1><span>Command Center &nbsp;/&nbsp; Procurement Base &nbsp;/&nbsp; Bid Room &nbsp;/&nbsp; RFx-04302602</span></div><div><button class="clt-primary" type="button" data-clt-shell-feedback="New bid event is outside this preview">New bid event</button><button class="clt-link" type="button" data-clt-shell-feedback="Public board is outside this preview">Public board</button></div></header><ol class="clt-bid-stepper"><li><b>1</b><span><strong>Build</strong><small>Event | Book | CRM</small></span></li><li class="is-current"><b>2</b><span><strong>Launch</strong><small>Invites | Queue</small></span></li><li><b>3</b><span><strong>Operate</strong><small>Auction | Live</small></span></li><li><b>4</b><span><strong>Close</strong><small>Award | Rateware</small></span></li></ol><nav class="clt-bid-tabs" aria-label="Bid Room launch workspaces"><button class="is-active" type="button">Carrier fit</button><button type="button" data-clt-message-tab>Message</button><button type="button" data-clt-shell-feedback="Delivery queue is intentionally not active in this simulation">Delivery queue</button></nav><div class="clt-fit-content"><header class="clt-fit-title"><div><h2 id="clt-fit-title">Find carriers for this opportunity</h2><p>Use the exact-membership template to select eligible carriers for this RFx.</p></div><p class="clt-callout">${previewIcon("warning")} This template is unchanged. Your selections apply only to this RFx.</p><p class="clt-callout">${previewIcon("warning")} Nothing is sent until Delivery queue.</p></header><section class="clt-panel clt-starting-set"><div class="clt-starting-controls"><label>Starting set<select disabled><option>Saved carrier list</option></select></label><label><span class="sr-only">Active carrier template</span><select data-clt-fit-template>${activeTemplates.map((template) => `<option value="${template.id}" ${fit.template.id === template.id ? "selected" : ""}>${escapeHtml(template.segment_name)} (${template.vendor_ids.length} carriers)</option>`).join("")}</select></label><button class="clt-link" type="button" data-preview-route="library">Manage templates in Carrier CRM</button></div><div class="clt-fit-counts"><span><b>${fit.counts.total}</b> template members</span><span class="is-ready"><b>${fit.counts.eligible}</b> eligible</span><span><b>${fit.counts.already_in_rfx}</b> already in this RFx</span><span class="is-warning"><b>${fit.counts.missing_contact}</b> missing contact</span><span class="is-danger"><b>${fit.counts.unavailable}</b> unavailable</span>${fit.counts.filtered_out ? `<span class="is-overlay"><b>${fit.counts.filtered_out}</b> filtered out (membership unchanged)</span>` : ""}</div></section><section class="clt-panel clt-fit-table-panel"><div class="clt-fit-toolbar"><label class="clt-search">${previewIcon("search")}<span class="sr-only">Search template carriers</span><input type="search" value="${escapeHtml(state.fit.filters.search)}" placeholder="Search by carrier name or CRM ID" data-clt-fit-filter="search" /></label><label><span class="sr-only">Lane fit</span><select data-clt-fit-filter="lane_fit"><option value="all">Lane fit: All</option><option value="recommended" ${state.fit.filters.lane_fit === "recommended" ? "selected" : ""}>Recommended</option><option value="partial fit" ${state.fit.filters.lane_fit === "partial fit" ? "selected" : ""}>Partial fit</option></select></label><label><span class="sr-only">Equipment</span><select data-clt-fit-filter="equipment"><option value="all">Equipment: All</option><option value="dry van" ${state.fit.filters.equipment === "dry van" ? "selected" : ""}>Dry Van</option><option value="reefer" ${state.fit.filters.equipment === "reefer" ? "selected" : ""}>Reefer</option><option value="flatbed" ${state.fit.filters.equipment === "flatbed" ? "selected" : ""}>Flatbed</option></select></label><label><span class="sr-only">Contact readiness</span><select data-clt-fit-filter="contact"><option value="all">Contact readiness: All</option><option value="ready" ${state.fit.filters.contact === "ready" ? "selected" : ""}>Contact ready</option><option value="missing" ${state.fit.filters.contact === "missing" ? "selected" : ""}>Missing contact</option></select></label><label><span class="sr-only">RFx status</span><select data-clt-fit-filter="rfx_status"><option value="all">RFx status: All</option><option value="already" ${state.fit.filters.rfx_status === "already" ? "selected" : ""}>Already in RFx</option><option value="not-in-rfx" ${state.fit.filters.rfx_status === "not-in-rfx" ? "selected" : ""}>Not in RFx</option></select></label><button class="clt-link" type="button" data-clt-fit-select-all>Select all ${fit.visible.eligible.length} eligible</button><button class="clt-link" type="button" data-clt-fit-clear>Clear selection</button></div><div class="clt-table-scroll"><table class="clt-table clt-fit-table"><thead><tr><th>Carrier</th><th>CRM ID</th><th>Lane fit</th><th>Equipment</th><th>Contact readiness</th><th>RFx status</th><th>Selection</th></tr></thead><tbody>${rows || `<tr><td colspan="7"><div class="clt-empty">Every template member is hidden by the current filters.</div></td></tr>`}</tbody></table></div></section></div><footer class="clt-fit-footer"><div><strong>${state.fit.selectedVendorIds.length} carriers selected</strong><span>${previewIcon("warning")} Adding creates simulated RFx participation only. Message prepares no drafts here.</span></div><button class="clt-primary" type="button" data-clt-fit-submit ${state.fit.selectedVendorIds.length ? "" : "disabled"}>${escapeHtml(state.fit.cta)}</button></footer></section>`;
+  return `<section class="clt-screen clt-fit-screen" aria-labelledby="clt-fit-title"><header class="clt-bid-heading"><div><p>PRIVATE PROCUREMENT ROOM</p><h1>Bid Room</h1><span>Command Center &nbsp;/&nbsp; Procurement Base &nbsp;/&nbsp; Bid Room &nbsp;/&nbsp; RFx-04302602</span></div><div><button class="clt-primary" type="button" data-clt-shell-feedback="New bid event is outside this preview">New bid event</button><button class="clt-link" type="button" data-clt-shell-feedback="Public board is outside this preview">Public board</button></div></header><ol class="clt-bid-stepper"><li><b>1</b><span><strong>Build</strong><small>Event | Book | CRM</small></span></li><li class="is-current"><b>2</b><span><strong>Launch</strong><small>Invites | Queue</small></span></li><li><b>3</b><span><strong>Operate</strong><small>Auction | Live</small></span></li><li><b>4</b><span><strong>Close</strong><small>Award | Rateware</small></span></li></ol><nav class="clt-bid-tabs" aria-label="Bid Room launch workspaces"><button class="is-active" type="button">Carrier fit</button><button type="button" data-clt-message-tab>Message</button><button type="button" data-clt-shell-feedback="Delivery queue is intentionally not active in this simulation">Delivery queue</button></nav><div class="clt-fit-content"><header class="clt-fit-title"><div><h2 id="clt-fit-title" tabindex="-1" data-clt-focus-key="screen-heading">Find carriers for this opportunity</h2><p>Use the exact-membership template to select eligible carriers for this RFx.</p></div><p class="clt-callout">${previewIcon("warning")} This template is unchanged. Your selections apply only to this RFx.</p><p class="clt-callout">${previewIcon("warning")} Nothing is sent until Delivery queue.</p></header><section class="clt-panel clt-starting-set"><div class="clt-starting-controls"><label>Starting set<select disabled><option>Saved carrier list</option></select></label><label><span class="sr-only">Active carrier template</span><select data-clt-fit-template data-clt-focus-key="fit-template" ${activeTemplates.length ? "" : "disabled"}>${activeTemplates.length ? activeTemplates.map((template) => `<option value="${template.id}" ${fit.template.id === template.id ? "selected" : ""}>${escapeHtml(template.segment_name)} (${template.vendor_ids.length} carriers)</option>`).join("") : `<option value="">No active templates available</option>`}</select></label><button class="clt-link" type="button" data-preview-route="library">Manage templates in Carrier CRM</button></div><div class="clt-fit-counts"><span><b>${fit.counts.total}</b> template members</span><span class="is-ready"><b>${fit.counts.eligible}</b> eligible</span><span><b>${fit.counts.already_in_rfx}</b> already in this RFx</span><span class="is-warning"><b>${fit.counts.missing_contact}</b> missing contact</span><span class="is-danger"><b>${fit.counts.unavailable}</b> unavailable</span>${fit.counts.filtered_out ? `<span class="is-overlay"><b>${fit.counts.filtered_out}</b> filtered out (membership unchanged)</span>` : ""}</div></section><section class="clt-panel clt-fit-table-panel"><div class="clt-fit-toolbar"><label class="clt-search">${previewIcon("search")}<span class="sr-only">Search template carriers</span><input type="search" value="${escapeHtml(state.fit.filters.search)}" placeholder="Search by carrier name or CRM ID" data-clt-fit-filter="search" data-clt-focus-key="fit-filter-search" /></label><label><span class="sr-only">Lane fit</span><select data-clt-fit-filter="lane_fit" data-clt-focus-key="fit-filter-lane"><option value="all">Lane fit: All</option><option value="recommended" ${state.fit.filters.lane_fit === "recommended" ? "selected" : ""}>Recommended</option><option value="partial fit" ${state.fit.filters.lane_fit === "partial fit" ? "selected" : ""}>Partial fit</option></select></label><label><span class="sr-only">Equipment</span><select data-clt-fit-filter="equipment" data-clt-focus-key="fit-filter-equipment"><option value="all">Equipment: All</option><option value="dry van" ${state.fit.filters.equipment === "dry van" ? "selected" : ""}>Dry Van</option><option value="reefer" ${state.fit.filters.equipment === "reefer" ? "selected" : ""}>Reefer</option><option value="flatbed" ${state.fit.filters.equipment === "flatbed" ? "selected" : ""}>Flatbed</option></select></label><label><span class="sr-only">Contact readiness</span><select data-clt-fit-filter="contact" data-clt-focus-key="fit-filter-contact"><option value="all">Contact readiness: All</option><option value="ready" ${state.fit.filters.contact === "ready" ? "selected" : ""}>Contact ready</option><option value="missing" ${state.fit.filters.contact === "missing" ? "selected" : ""}>Missing contact</option></select></label><label><span class="sr-only">RFx status</span><select data-clt-fit-filter="rfx_status" data-clt-focus-key="fit-filter-rfx"><option value="all">RFx status: All</option><option value="already" ${state.fit.filters.rfx_status === "already" ? "selected" : ""}>Already in RFx</option><option value="not-in-rfx" ${state.fit.filters.rfx_status === "not-in-rfx" ? "selected" : ""}>Not in RFx</option></select></label><button class="clt-link" type="button" data-clt-fit-select-all data-clt-focus-key="fit-select-all">Select all ${fit.visible.eligible.length} eligible</button><button class="clt-link" type="button" data-clt-fit-clear data-clt-focus-key="fit-clear">Clear selection</button></div><div class="clt-table-scroll"><table class="clt-table clt-fit-table"><thead><tr><th>Carrier</th><th>CRM ID</th><th>Lane fit</th><th>Equipment</th><th>Contact readiness</th><th>RFx status</th><th>Selection</th></tr></thead><tbody>${rows || `<tr><td colspan="7"><div class="clt-empty">Every template member is hidden by the current filters.</div></td></tr>`}</tbody></table></div></section></div><footer class="clt-fit-footer"><div><strong>${state.fit.selectedVendorIds.length} carriers selected</strong><span>${previewIcon("warning")} Adding creates simulated RFx participation only. Message prepares no drafts here.</span></div><button class="clt-primary" type="button" data-clt-fit-submit data-clt-focus-key="fit-submit" ${state.fit.selectedVendorIds.length ? "" : "disabled"}>${escapeHtml(state.fit.cta)}</button></footer></section>`;
 }
 
 function renderMessage(state) {
   const selected = state.message.selectedVendorIds.map((id) => state.carriers.find((carrier) => carrier.id === id)).filter(Boolean);
-  return `<section class="clt-screen clt-message-screen" aria-labelledby="clt-message-title"><header class="clt-bid-heading"><div><p>PRIVATE PROCUREMENT ROOM</p><h1>Bid Room</h1><span>RFx-04302602 &nbsp;/&nbsp; Launch &nbsp;/&nbsp; Message</span></div></header><nav class="clt-bid-tabs" aria-label="Bid Room launch workspaces"><button type="button" data-preview-route="carrier-fit">Carrier fit</button><button class="is-active" type="button">Message</button><button type="button" data-clt-shell-feedback="Delivery queue is intentionally not active in this simulation">Delivery queue</button></nav><div class="clt-message-content"><article class="clt-panel clt-success-card"><span class="clt-success-icon">${previewIcon("check")}</span><p>LOCAL HANDOFF COMPLETE</p><h1 id="clt-message-title">${state.message.selectedCount} carrier${state.message.selectedCount === 1 ? "" : "s"} opened in Message</h1><p>${escapeHtml(state.message.detail)}</p><div class="clt-message-audience">${selected.map((carrier) => `<span><b>${escapeHtml(carrier.name)}</b><small>${escapeHtml(carrier.crm_id)}</small></span>`).join("")}</div><p class="clt-callout">${previewIcon("warning")} No draft was prepared, nothing was sent, and Delivery queue was not touched.</p><div><button class="clt-secondary" type="button" data-preview-route="carrier-fit">Back to Carrier Fit</button><button class="clt-primary" type="button" data-preview-route="library">Return to template library</button></div></article><aside class="clt-panel"><h2>Human gates preserved</h2><ol><li><b>1</b><span>Template membership remained unchanged.</span></li><li><b>2</b><span>Only visible eligible carriers could be selected.</span></li><li><b>3</b><span>Message and Delivery actions remain explicit next decisions.</span></li></ol></aside></div></section>`;
+  return `<section class="clt-screen clt-message-screen" aria-labelledby="clt-message-title"><header class="clt-bid-heading"><div><p>PRIVATE PROCUREMENT ROOM</p><h1>Bid Room</h1><span>RFx-04302602 &nbsp;/&nbsp; Launch &nbsp;/&nbsp; Message</span></div></header><nav class="clt-bid-tabs" aria-label="Bid Room launch workspaces"><button type="button" data-preview-route="carrier-fit">Carrier fit</button><button class="is-active" type="button">Message</button><button type="button" data-clt-shell-feedback="Delivery queue is intentionally not active in this simulation">Delivery queue</button></nav><div class="clt-message-content"><article class="clt-panel clt-success-card"><span class="clt-success-icon">${previewIcon("check")}</span><p>LOCAL HANDOFF COMPLETE</p><h1 id="clt-message-title" tabindex="-1" data-clt-focus-key="screen-heading">${state.message.selectedCount} carrier${state.message.selectedCount === 1 ? "" : "s"} opened in Message</h1><p>${escapeHtml(state.message.detail)}</p><div class="clt-message-audience">${selected.map((carrier) => `<span><b>${escapeHtml(carrier.name)}</b><small>${escapeHtml(carrier.crm_id)}</small></span>`).join("")}</div><p class="clt-callout">${previewIcon("warning")} No draft was prepared, nothing was sent, and Delivery queue was not touched.</p><div><button class="clt-secondary" type="button" data-preview-route="carrier-fit">Back to Carrier Fit</button><button class="clt-primary" type="button" data-preview-route="library">Return to template library</button></div></article><aside class="clt-panel"><h2>Human gates preserved</h2><ol><li><b>1</b><span>Template membership remained unchanged.</span></li><li><b>2</b><span>Only visible eligible carriers could be selected.</span></li><li><b>3</b><span>Message and Delivery actions remain explicit next decisions.</span></li></ol></aside></div></section>`;
 }
 
 function renderPreview(state, root) {
@@ -366,14 +411,27 @@ function renderPreview(state, root) {
   document.querySelector(state.screen === "carrier-fit" || state.screen === "message" ? '[data-preview-nav-key="bid-room"]' : '[data-preview-nav-key="carrier-crm"]')?.classList.add("is-active");
 }
 
+function restorePreviewFocus(root, state, action, previousFocusKey = "") {
+  let focusKey = previousFocusKey;
+  if (action.type === "builder_go_to_step") focusKey = `builder-step-${state.builder.draft.step}`;
+  else if (action.type === "builder_save" && state.screen === "builder" && state.builder.validationErrors.length) focusKey = "builder-validation";
+  else if (["navigate", "builder_new", "builder_open", "fit_submit"].includes(action.type)) focusKey = "screen-heading";
+  const focusTargets = [...root.querySelectorAll("[data-clt-focus-key]")];
+  const target = focusTargets.find((element) => element.dataset.cltFocusKey === focusKey)
+    || focusTargets.find((element) => element.dataset.cltFocusKey === "screen-heading");
+  target?.focus({ preventScroll: true });
+}
+
 function startCarrierTemplatePreview() {
   registerPlatform55Icons();
   const root = document.querySelector("#preview-content");
   if (!root) return;
   let state = createCarrierTemplatePreviewState();
   const dispatch = (action) => {
+    const previousFocusKey = document.activeElement?.closest?.("[data-clt-focus-key]")?.dataset.cltFocusKey || "";
     state = reduceCarrierTemplatePreview(state, action);
     renderPreview(state, root);
+    restorePreviewFocus(root, state, action, previousFocusKey);
     const live = document.querySelector("[data-preview-live]");
     if (live && state.notice) live.textContent = state.notice;
   };
