@@ -7,7 +7,11 @@ import {
   type JWTVerifyGetKey,
 } from 'npm:jose@5.9.6';
 
-import { requireOspIdentity, type OspAuthorizationIdentity } from './auth-policy.ts';
+import {
+  requireOspIdentity,
+  type OspAuthorizationIdentity,
+  type OspOrganizationBinding,
+} from './auth-policy.ts';
 import { OspApiError } from './http.ts';
 import type {
   VerifiedApprovalIdentity,
@@ -36,6 +40,7 @@ export type KindeJwtVerifierOptions = {
   clientId: string;
   audience?: string;
   allowedEmails?: readonly string[];
+  organizationBinding?: OspOrganizationBinding;
   jwksFetch: typeof fetch;
   clock?: () => number;
   elapsedClock?: () => number;
@@ -123,6 +128,7 @@ export function createKindeJwtVerifier({
   clientId,
   audience = OSP_API_AUDIENCE,
   allowedEmails = OSP_PRODUCTION_READONLY_EMAILS,
+  organizationBinding,
   jwksFetch,
   clock = Date.now,
   elapsedClock = () => performance.now(),
@@ -279,6 +285,7 @@ export function createKindeJwtVerifier({
         audience,
         clientId,
         allowedEmails,
+        organizationBinding,
         nowEpochSeconds: () => Math.floor(clock() / 1_000),
         clockToleranceSeconds: CLOCK_TOLERANCE_SECONDS,
       });

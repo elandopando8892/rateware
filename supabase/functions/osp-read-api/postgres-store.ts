@@ -114,13 +114,14 @@ export function createPostgresOspReadStore({
 
   return Object.freeze({
     async resolveWorkspace(identity: OspAuthorizationIdentity, signal?: AbortSignal): Promise<string> {
-      const { issuer, subject, organization, email } = identity;
+      const { issuer, subject, organization, externalOrganization, email } = identity;
+      const organizationCode = externalOrganization ?? organization;
       const rows = await executeTaggedQuery(() => sql`
         SELECT organization_id
         FROM osp_identity_workspace_v1
         WHERE issuer = ${issuer}
           AND subject = ${subject}
-          AND organization_code = ${organization}
+          AND organization_code = ${organizationCode}
           AND lower(btrim(email)) = ${email}
           AND identity_active = true
           AND organization_reviewed = true

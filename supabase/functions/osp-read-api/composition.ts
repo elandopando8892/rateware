@@ -1,5 +1,6 @@
 import { createOspReadHandler } from './handler.ts';
 import { createKindeJwtVerifier } from './kinde-jwt.ts';
+import { OSP_PRODUCTION_ORGANIZATION_BINDING } from './auth-policy.ts';
 import {
   createPostgresOspReadStore,
   type PostgresFactory,
@@ -63,7 +64,13 @@ export function createOspReadRuntime({
   const databaseUrl = requireDatabaseUrl(
     env.get('OSP_READ_DATABASE_URL')?.trim() || requiredEnvironment(env, 'SUPABASE_DB_URL'),
   );
-  const verifier = createKindeJwtVerifier({ issuer, clientId, jwksFetch, clock });
+  const verifier = createKindeJwtVerifier({
+    issuer,
+    clientId,
+    jwksFetch,
+    clock,
+    organizationBinding: OSP_PRODUCTION_ORGANIZATION_BINDING,
+  });
   const store = createPostgresOspReadStore({ databaseUrl, postgresFactory });
   return createOspReadHandler({
     verifyToken: (token, signal) => verifier.verify(token, signal),

@@ -86,7 +86,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/auth/token-binding.ts",
-      "sha256": "fad8bb36ae456229658b9118a22794b876cf0441104eea0e51a51f824aba941a"
+      "sha256": "48bb869440ab0017e57178db68b6209522583297963370f755a3a34f3fa635bf"
     },
     {
       "kind": "production-ui",

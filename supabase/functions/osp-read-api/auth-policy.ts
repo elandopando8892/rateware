@@ -7,15 +7,29 @@ export type OspAuthorizationIdentity = {
   authorizedParty: string;
   subject: string;
   organization: string;
+  externalOrganization?: string;
   email: string;
   emailVerified: true;
 };
+
+export type OspOrganizationBinding = {
+  externalOrganization: string;
+  canonicalOrganization: string;
+  allowMissingExternalClaim: boolean;
+};
+
+export const OSP_PRODUCTION_ORGANIZATION_BINDING: OspOrganizationBinding = Object.freeze({
+  externalOrganization: 'org_dbc2fd12c76',
+  canonicalOrganization: 'ca0a8f30-1382-4316-9bd5-cb76d9ab4920',
+  allowMissingExternalClaim: true,
+});
 
 export type OspClaimPolicy = {
   issuer: string;
   audience: string;
   clientId: string;
   allowedEmails: readonly string[];
+  organizationBinding?: OspOrganizationBinding;
   nowEpochSeconds: () => number;
   clockToleranceSeconds: number;
 };
@@ -79,10 +93,29 @@ export function requireOspIdentity(
     throw new OspApiError('UNAUTHORIZED');
   }
 
-  const organization = requiredExactText(payload, 'org_code', 'FORBIDDEN');
   const email = normalizedText(payload, 'email', 'FORBIDDEN').toLowerCase();
   if (!policy.allowedEmails.includes(email)) {
     throw new OspApiError('FORBIDDEN');
+  }
+
+  const binding = policy.organizationBinding;
+  const presentedOrganization = payload.org_code;
+  let organization: string;
+  let externalOrganization: string | undefined;
+  if (!binding) {
+    organization = requiredExactText(payload, 'org_code', 'FORBIDDEN');
+  } else {
+    if (presentedOrganization === undefined) {
+      if (!binding.allowMissingExternalClaim) throw new OspApiError('FORBIDDEN');
+    } else if (
+      typeof presentedOrganization !== 'string'
+      || presentedOrganization.trim() === ''
+      || presentedOrganization !== binding.externalOrganization
+    ) {
+      throw new OspApiError('FORBIDDEN');
+    }
+    organization = binding.canonicalOrganization;
+    externalOrganization = binding.externalOrganization;
   }
 
   return {
@@ -90,6 +123,7 @@ export function requireOspIdentity(
     authorizedParty,
     subject,
     organization,
+    ...(externalOrganization ? { externalOrganization } : {}),
     email,
     emailVerified: true,
   };

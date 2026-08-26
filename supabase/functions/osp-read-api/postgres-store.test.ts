@@ -108,6 +108,26 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
   assert.equal(fake.calls.some((call) => /select\s+\*/i.test(call.text)), false);
 });
 
+Deno.test('createPostgresOspReadStore resolves a canonical tenant through its reviewed external organization', async () => {
+  const fake = fakeFactory([[{ organization_id: organizationId }]]);
+  const store = createPostgresOspReadStore({
+    databaseUrl: 'postgresql://synthetic.example.test/db',
+    postgresFactory: fake.factory,
+  });
+  const canonicalIdentity = {
+    ...identity,
+    organization: organizationId,
+    externalOrganization: 'org_dbc2fd12c76',
+  };
+  assert.equal(await store.resolveWorkspace(canonicalIdentity), organizationId);
+  assert.deepEqual(fake.calls[0].values, [
+    identity.issuer,
+    identity.subject,
+    'org_dbc2fd12c76',
+    identity.email,
+  ]);
+});
+
 Deno.test('createPostgresOspReadStore requires exactly one row for every operation', async () => {
   for (const rows of [[], [{ organization_id: organizationId }, { organization_id: organizationId }]]) {
     const fake = fakeFactory([rows]);

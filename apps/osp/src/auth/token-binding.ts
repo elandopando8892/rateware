@@ -27,6 +27,8 @@ const PRODUCTION_READONLY_EMAILS = new Set([
   'carriers@xbfreight.com',
   'jgonzalez@xbfreight.com',
 ]);
+const PRODUCTION_KINDE_ORGANIZATION = 'org_dbc2fd12c76';
+const PRODUCTION_RATEWARE_ORGANIZATION = 'ca0a8f30-1382-4316-9bd5-cb76d9ab4920';
 
 export type KindeTokenVerifier = {
   verifyAccessToken(token: string): Promise<Record<string, unknown>>;
@@ -98,6 +100,34 @@ function normalizedEmail(claims: Record<string, unknown>, claim: string): string
   return requiredString(claims, claim).trim().toLowerCase();
 }
 
+function optionalExactString(claims: Record<string, unknown>, claim: string): string | undefined {
+  const value = claims[claim];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(`Invalid textual claim: ${claim}`);
+  }
+  return value;
+}
+
+function requireProductionOrganizationMembership(claims: Record<string, unknown>): void {
+  const organization = optionalExactString(claims, 'org_code');
+  const organizations = claims.org_codes;
+  if (
+    organizations !== undefined
+    && (!Array.isArray(organizations)
+      || organizations.length === 0
+      || organizations.some((entry) => typeof entry !== 'string' || entry.trim() === ''))
+  ) {
+    throw new Error('Invalid organization membership claim');
+  }
+  if (
+    organization !== PRODUCTION_KINDE_ORGANIZATION
+    && !(Array.isArray(organizations) && organizations.includes(PRODUCTION_KINDE_ORGANIZATION))
+  ) {
+    throw new Error('ID token is not a member of the approved production organization');
+  }
+}
+
 function requireAudience(claims: Record<string, unknown>, expected: string): void {
   const audience = claims.aud;
   if (typeof audience === 'string') {
@@ -124,8 +154,11 @@ function validateAccessClaims(
   const issuer = requiredString(claims, 'iss');
   const authorizedParty = requiredString(claims, 'azp');
   const subject = requiredString(claims, 'sub');
-  const organization = requiredString(claims, 'org_code');
   const email = normalizedEmail(claims, 'email');
+  const productionReadonly = config.VITE_OSP_BUILD_PROFILE === 'production-readonly';
+  const externalOrganization = productionReadonly
+    ? optionalExactString(claims, 'org_code')
+    : requiredString(claims, 'org_code');
 
   requireAudience(claims, config.VITE_KINDE_AUDIENCE);
   if (issuer !== config.VITE_KINDE_DOMAIN) {
@@ -135,17 +168,22 @@ function validateAccessClaims(
     throw new Error('Token authorized party mismatch');
   }
   if (
-    config.VITE_OSP_BUILD_PROFILE === 'production-readonly'
-    && !PRODUCTION_READONLY_EMAILS.has(email)
+    productionReadonly && !PRODUCTION_READONLY_EMAILS.has(email)
   ) {
     throw new Error('Email is not approved for the production read-only workspace');
+  }
+  if (productionReadonly && externalOrganization !== undefined
+      && externalOrganization !== PRODUCTION_KINDE_ORGANIZATION) {
+    throw new Error('Access token organization is not approved for production');
   }
 
   return {
     issuer,
     authorizedParty,
     subject,
-    organization,
+    organization: productionReadonly
+      ? PRODUCTION_RATEWARE_ORGANIZATION
+      : externalOrganization,
     email,
     emailVerified: true,
   };
@@ -160,8 +198,13 @@ function validateIdClaims(
   const issuer = requiredString(claims, 'iss');
   const authorizedParty = requiredString(claims, 'azp');
   const subject = requiredString(claims, 'sub');
-  const organization = requiredString(claims, 'org_code');
   const email = normalizedEmail(claims, 'email');
+  const productionReadonly = config.VITE_OSP_BUILD_PROFILE === 'production-readonly';
+  const organization = productionReadonly
+    ? PRODUCTION_RATEWARE_ORGANIZATION
+    : requiredString(claims, 'org_code');
+
+  if (productionReadonly) requireProductionOrganizationMembership(claims);
 
   if (
     issuer !== identity.issuer

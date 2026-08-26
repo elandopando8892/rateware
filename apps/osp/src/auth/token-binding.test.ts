@@ -158,16 +158,55 @@ describe('production read-only identity allowlist', () => {
     'jgonzalez@xbfreight.com',
   ])('accepts approved identity %s without paid Kinde permissions', (email) => {
     expect(bindVerifiedTokenPair({
-      accessClaims: { ...baseAccessClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, email },
-      idClaims: { ...baseIdClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, aud: productionRuntime.VITE_KINDE_CLIENT_ID, email },
+      accessClaims: { ...baseAccessClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, org_code: undefined, email },
+      idClaims: { ...baseIdClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, aud: productionRuntime.VITE_KINDE_CLIENT_ID, org_code: undefined, org_codes: ['org_dbc2fd12c76'], email },
       config: productionRuntime,
-    }).identity.email).toBe(email);
+    }).identity).toMatchObject({
+      email,
+      organization: 'ca0a8f30-1382-4316-9bd5-cb76d9ab4920',
+    });
+  });
+
+  it('accepts the exact production org_code when Kinde includes it in both tokens', () => {
+    const bound = bindVerifiedTokenPair({
+      accessClaims: { ...baseAccessClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, org_code: 'org_dbc2fd12c76', email: 'sales@heymarksman.com' },
+      idClaims: { ...baseIdClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, aud: productionRuntime.VITE_KINDE_CLIENT_ID, org_code: 'org_dbc2fd12c76', email: 'sales@heymarksman.com' },
+      config: productionRuntime,
+    });
+    expect(bound.identity.organization).toBe('ca0a8f30-1382-4316-9bd5-cb76d9ab4920');
+  });
+
+  it.each([
+    ['missing ID-token membership', { org_code: undefined }, { org_code: undefined, org_codes: undefined }],
+    ['wrong ID-token membership', { org_code: undefined }, { org_code: undefined, org_codes: ['org_other'] }],
+    ['wrong access-token organization', { org_code: 'org_other' }, { org_code: undefined, org_codes: ['org_dbc2fd12c76'] }],
+    ['ambiguous access-token organization', { org_code: ['org_dbc2fd12c76'] }, { org_code: undefined, org_codes: ['org_dbc2fd12c76'] }],
+  ])('rejects %s', (_label, accessOverrides, idOverrides) => {
+    expect(() => bindVerifiedTokenPair({
+      accessClaims: { ...baseAccessClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, email: 'sales@heymarksman.com', ...accessOverrides },
+      idClaims: { ...baseIdClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, aud: productionRuntime.VITE_KINDE_CLIENT_ID, email: 'sales@heymarksman.com', ...idOverrides },
+      config: productionRuntime,
+    })).toThrow();
+  });
+
+  it('normalizes a refreshed access token without org_code to the bound Rateware tenant', () => {
+    const bound = bindVerifiedTokenPair({
+      accessClaims: { ...baseAccessClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, org_code: undefined, email: 'sales@heymarksman.com' },
+      idClaims: { ...baseIdClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, aud: productionRuntime.VITE_KINDE_CLIENT_ID, org_code: undefined, org_codes: ['org_dbc2fd12c76'], email: 'sales@heymarksman.com' },
+      config: productionRuntime,
+    });
+    expect(assertVerifiedAccessTokenMatchesSession(
+      'verified-production-token',
+      { ...baseAccessClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, org_code: undefined, email: 'sales@heymarksman.com' },
+      bound.identity,
+      productionRuntime,
+    )).toBe('verified-production-token');
   });
 
   it('rejects an otherwise valid identity outside the approved production set', () => {
     expect(() => bindVerifiedTokenPair({
-      accessClaims: { ...baseAccessClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, email: 'other@example.test' },
-      idClaims: { ...baseIdClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, aud: productionRuntime.VITE_KINDE_CLIENT_ID, email: 'other@example.test' },
+      accessClaims: { ...baseAccessClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, org_code: undefined, email: 'other@example.test' },
+      idClaims: { ...baseIdClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, aud: productionRuntime.VITE_KINDE_CLIENT_ID, org_code: undefined, org_codes: ['org_dbc2fd12c76'], email: 'other@example.test' },
       config: productionRuntime,
     })).toThrow('Email is not approved');
   });

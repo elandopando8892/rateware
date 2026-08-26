@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { requireOspIdentity } from './auth-policy.ts';
+import { OSP_PRODUCTION_ORGANIZATION_BINDING, requireOspIdentity } from './auth-policy.ts';
 import { OspApiError } from './http.ts';
 
 const NOW = 1_800_000_000;
@@ -94,6 +94,30 @@ Deno.test('requireOspIdentity accepts a Kinde audience array and an omitted not-
     nbf: undefined,
   }), policy);
   assert.equal(identity.email, 'operator@example.test');
+});
+
+Deno.test('requireOspIdentity binds an approved production identity to the canonical Rateware tenant when Kinde omits org_code', () => {
+  assert.deepEqual(requireOspIdentity(claims({ org_code: undefined }), {
+    ...policy,
+    organizationBinding: OSP_PRODUCTION_ORGANIZATION_BINDING,
+  }), {
+    issuer: policy.issuer,
+    authorizedParty: policy.clientId,
+    subject: 'synthetic-subject',
+    organization: 'ca0a8f30-1382-4316-9bd5-cb76d9ab4920',
+    externalOrganization: 'org_dbc2fd12c76',
+    email: 'operator@example.test',
+    emailVerified: true,
+  });
+});
+
+Deno.test('requireOspIdentity rejects any non-reviewed production organization', () => {
+  for (const org_code of ['other-org', '', ['org_dbc2fd12c76']]) {
+    expectCode(() => requireOspIdentity(claims({ org_code }), {
+      ...policy,
+      organizationBinding: OSP_PRODUCTION_ORGANIZATION_BINDING,
+    }), 'FORBIDDEN');
+  }
 });
 
 Deno.test('requireOspIdentity matches jose at the exact 30-second clock boundaries', () => {
