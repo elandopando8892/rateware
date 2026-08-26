@@ -303,17 +303,29 @@ export async function validateCarrierTemplateMembers(
   return true;
 }
 
-const CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE = 1000;
-const CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT = 200000;
+export const CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE = 1000;
+export const CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT = 200000;
 
-async function fetchCarrierTemplateResolverVendors(
+export async function fetchCarrierTemplateResolverVendors(
   supabase: RatewareSupabaseClient,
-  organizationId: string
+  organizationId: string,
+  options: {
+    pageSize?: number;
+    safetyLimit?: number;
+    snapshotAt?: string;
+  } = {}
 ) {
+  const pageSize = Number.isSafeInteger(options.pageSize) && Number(options.pageSize) > 0
+    ? Number(options.pageSize)
+    : CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE;
+  const safetyLimit = Number.isSafeInteger(options.safetyLimit) && Number(options.safetyLimit) > 0
+    ? Number(options.safetyLimit)
+    : CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT;
   const vendors: Record<string, unknown>[] = [];
-  const snapshotAt = new Date().toISOString();
+  const snapshotAt = cleanText(options.snapshotAt) || new Date().toISOString();
   let afterId = "";
-  while (vendors.length < CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT) {
+  while (vendors.length < safetyLimit) {
+    const requestedPageSize = Math.min(pageSize, safetyLimit - vendors.length);
     let query = supabase
       .from("vendors")
       .select("id,vendor_name,name,legal_name,primary_email,secondary_emails,profile_data,status,base_stage,organization_id")
@@ -322,7 +334,7 @@ async function fetchCarrierTemplateResolverVendors(
     if (afterId) query = query.gt("id", afterId);
     const result = await query
       .order("id", { ascending: true })
-      .limit(CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE);
+      .limit(requestedPageSize);
     if (result.error) throw result.error;
     const page = (result.data || []) as Record<string, unknown>[];
     if (!page.length) return vendors;
@@ -331,11 +343,22 @@ async function fetchCarrierTemplateResolverVendors(
       throw new Error("Carrier import resolution keyset did not advance; no rows were resolved.");
     }
     vendors.push(...page);
-    if (page.length < CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE) return vendors;
+    if (page.length < requestedPageSize) return vendors;
     afterId = nextAfterId;
   }
+  let sentinelQuery = supabase
+    .from("vendors")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .lte("created_at", snapshotAt);
+  if (afterId) sentinelQuery = sentinelQuery.gt("id", afterId);
+  const sentinel = await sentinelQuery
+    .order("id", { ascending: true })
+    .limit(1);
+  if (sentinel.error) throw sentinel.error;
+  if (!(sentinel.data || []).length) return vendors;
   throw new Error(
-    `Carrier import resolution exceeded the ${CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT.toLocaleString()}-vendor safety limit; no rows were resolved.`
+    `Carrier import resolution exceeded the ${safetyLimit.toLocaleString()}-vendor safety limit; no rows were resolved.`
   );
 }
 

@@ -4,6 +4,183 @@ function trimmedText(value) {
 
 export const CARRIER_TEMPLATE_IMPORT_MAX_ROWS = 1000;
 
+function normalizedCandidateFilters(filters = {}) {
+  const normalized = {};
+  for (const key of Object.keys(filters || {}).sort()) {
+    const rawValue = filters[key];
+    if (rawValue === null || rawValue === undefined) continue;
+    if (Array.isArray(rawValue)) {
+      const values = rawValue.map((value) => trimmedText(String(value))).filter(Boolean).sort();
+      if (values.length) normalized[key] = values;
+      continue;
+    }
+    const collapsed = typeof rawValue === "string"
+      ? rawValue.trim().replace(/\s+/g, " ")
+      : rawValue;
+    if (collapsed === "") continue;
+    normalized[key] = ["status", "channel", "coverage", "view"].includes(key) && typeof collapsed === "string"
+      ? collapsed.toLowerCase()
+      : collapsed;
+  }
+  return normalized;
+}
+
+export function createCarrierTemplateCandidatePoolController({ maxCandidates = 1000 } = {}) {
+  const maximum = Number.isSafeInteger(Number(maxCandidates)) && Number(maxCandidates) > 0
+    ? Number(maxCandidates)
+    : 1000;
+  let version = 0;
+  let current = null;
+
+  function signatureFor(filters) {
+    return JSON.stringify(normalizedCandidateFilters(filters));
+  }
+
+  function emptyPage(offset = 0) {
+    return {
+      rows: [],
+      total: Number(current?.total) || 0,
+      offset: Math.max(0, Number(offset) || 0),
+      has_previous: false,
+      has_next: false,
+      requires_refinement: Boolean(current?.requires_refinement)
+    };
+  }
+
+  return Object.freeze({
+    get requiresRefinement() {
+      return Boolean(current?.requires_refinement);
+    },
+    get total() {
+      return Number(current?.total) || 0;
+    },
+    invalidate() {
+      version += 1;
+      current = null;
+    },
+    async materialize(filters, fetcher) {
+      if (typeof fetcher !== "function") throw new TypeError("Candidate materialization requires a fetch adapter.");
+      const normalized = normalizedCandidateFilters(filters);
+      const signature = signatureFor(normalized);
+      if (current?.signature === signature) {
+        if (current.promise) return await current.promise;
+        return current;
+      }
+      const requestVersion = ++version;
+      const request = Object.freeze({
+        ...normalized,
+        lightweight: true,
+        offset: 0,
+        limit: maximum
+      });
+      const pending = (async () => {
+        const result = await fetcher(request);
+        if (requestVersion !== version || current?.signature !== signature) return { current: false };
+        const returnedRows = Array.isArray(result?.rows)
+          ? result.rows.slice(0, maximum).map((row) => Object.freeze({ ...row }))
+          : [];
+        const total = Math.max(returnedRows.length, Number(result?.total) || 0);
+        const explicitlyIncomplete = Boolean(
+          result?.truncated ||
+          result?.incomplete ||
+          result?.has_more ||
+          result?.search_capped ||
+          result?.complete === false
+        );
+        const missingTotalAtLimit = result?.total === undefined && returnedRows.length === maximum;
+        const requiresRefinement = total > maximum || total > returnedRows.length || explicitlyIncomplete || missingTotalAtLimit;
+        current = Object.freeze({
+          signature,
+          total,
+          rows: Object.freeze(requiresRefinement ? [] : returnedRows),
+          requires_refinement: requiresRefinement
+        });
+        return current;
+      })();
+      current = { signature, promise: pending, total: 0, rows: [], requires_refinement: false };
+      try {
+        return await pending;
+      } catch (error) {
+        if (requestVersion === version && current?.signature === signature) current = null;
+        throw error;
+      }
+    },
+    page(offset = 0, pageSize = 50) {
+      if (!current || current.promise || current.requires_refinement) return emptyPage(offset);
+      const size = Number.isSafeInteger(Number(pageSize)) && Number(pageSize) > 0 ? Number(pageSize) : 50;
+      const requestedOffset = Math.max(0, Number(offset) || 0);
+      const safeOffset = current.rows.length && requestedOffset >= current.rows.length
+        ? Math.floor((current.rows.length - 1) / size) * size
+        : requestedOffset;
+      const rows = current.rows.slice(safeOffset, safeOffset + size);
+      return {
+        rows,
+        total: current.total,
+        offset: safeOffset,
+        has_previous: safeOffset > 0,
+        has_next: safeOffset + rows.length < current.rows.length,
+        requires_refinement: false
+      };
+    }
+  });
+}
+
+export function createCarrierTemplateSaveOwnershipController({ onRunningChange } = {}) {
+  const updateRunning = typeof onRunningChange === "function" ? onRunningChange : () => {};
+  let sequence = 0;
+  let active = null;
+  let activeValid = false;
+
+  function sameContext(token, context = {}) {
+    return Boolean(
+      token &&
+      token === active &&
+      activeValid &&
+      token.session === Number(context.session) &&
+      token.template_id === trimmedText(context.template_id) &&
+      token.expected_version === (context.expected_version ?? null)
+    );
+  }
+
+  return Object.freeze({
+    get running() {
+      return Boolean(active);
+    },
+    begin(context = {}) {
+      if (active) return null;
+      active = Object.freeze({
+        sequence: ++sequence,
+        session: Number(context.session),
+        template_id: trimmedText(context.template_id),
+        expected_version: context.expected_version ?? null
+      });
+      activeValid = true;
+      updateRunning(true);
+      return active;
+    },
+    canApply: sameContext,
+    invalidateValidity(token = active) {
+      if (!token || token !== active) return false;
+      activeValid = false;
+      return true;
+    },
+    finish(token) {
+      if (!token || token !== active) return false;
+      active = null;
+      activeValid = false;
+      updateRunning(false);
+      return true;
+    },
+    reset() {
+      if (!active) return false;
+      active = null;
+      activeValid = false;
+      updateRunning(false);
+      return true;
+    }
+  });
+}
+
 export function createCarrierTemplateWizardAsyncController() {
   let session = 0;
   let context = Object.freeze({ open: false, template_id: "", expected_version: null });
@@ -297,7 +474,10 @@ function cloneDraftState(state) {
     vendor_ids: [...state.vendor_ids],
     resolution_rows: cloneResolutionRows(state.resolution_rows),
     manual_resolutions: { ...state.manual_resolutions },
-    member_sources: cloneMemberSources(state.member_sources)
+    member_sources: cloneMemberSources(state.member_sources),
+    reconciliation_pending: Boolean(state.reconciliation_pending),
+    reconciliation_error: trimmedText(state.reconciliation_error),
+    reconciliation_generation: Number(state.reconciliation_generation) || 0
   };
 }
 
@@ -348,6 +528,9 @@ export function createCarrierTemplateDraftState(template = {}) {
     resolution_rows: cloneResolutionRows(template.resolution_rows),
     manual_resolutions: { ...(template.manual_resolutions || {}) },
     member_sources: Object.fromEntries(vendorIds.map((id) => [id, ["loaded"]])),
+    reconciliation_pending: false,
+    reconciliation_error: "",
+    reconciliation_generation: 0,
     loaded_content_key: "",
     dirty: false
   };
@@ -377,10 +560,36 @@ export function reduceCarrierTemplateDraft(state, action = {}) {
       next.vendor_ids.splice(fromIndex, 1);
       next.vendor_ids.splice(toIndex, 0, id);
     }
+  } else if (action.type === "begin_reconciliation") {
+    const generation = Number(action.generation);
+    if (!Number.isSafeInteger(generation) || generation < 1) return state;
+    removeResolutionSources(next);
+    next.resolution_rows = [];
+    next.manual_resolutions = {};
+    next.reconciliation_generation = generation;
+    next.reconciliation_pending = true;
+    next.reconciliation_error = "";
+  } else if (action.type === "fail_reconciliation") {
+    const generation = Number(action.generation);
+    if (generation !== next.reconciliation_generation || !next.reconciliation_pending) return state;
+    next.reconciliation_pending = false;
+    next.reconciliation_error = trimmedText(action.error) || "Carrier reconciliation failed.";
+  } else if (action.type === "dismiss_reconciliation") {
+    const generation = Number(action.generation);
+    if (generation !== next.reconciliation_generation) return state;
+    next.reconciliation_pending = false;
+    next.reconciliation_error = "";
   } else if (action.type === "apply_resolution_preview") {
+    const generation = Number(action.generation);
+    if (Number.isFinite(generation) && (
+      generation !== next.reconciliation_generation ||
+      !next.reconciliation_pending
+    )) return state;
     removeResolutionSources(next);
     next.resolution_rows = cloneResolutionRows(action.rows);
     next.manual_resolutions = {};
+    next.reconciliation_pending = false;
+    next.reconciliation_error = "";
     next.resolution_rows.forEach((row, index) => {
       if (row.status !== "matched") return;
       const rowNumber = resolutionRowNumber(row, index);
@@ -416,6 +625,8 @@ export function reduceCarrierTemplateDraft(state, action = {}) {
     if (saved.segment_description !== undefined || saved.description !== undefined) next.description = templateDescription(saved);
     if (Array.isArray(saved.vendor_ids)) next.vendor_ids = templateMemberIds(saved);
     next.member_sources = Object.fromEntries(next.vendor_ids.map((id) => [id, ["loaded"]]));
+    next.reconciliation_pending = false;
+    next.reconciliation_error = "";
     next.loaded_content_key = carrierTemplateDraftContentKey(next);
     next.dirty = false;
     return next;
@@ -555,6 +766,11 @@ export function validateCarrierTemplateDraft(state = {}, lifecycleStatus = "draf
   }
   if (trimmedText(lifecycleStatus).toLowerCase() === "active" && !templateMemberIds({ vendor_ids: state.vendor_ids }).length) {
     errors.push({ code: "active_requires_member", message: "Activate template requires at least one carrier." });
+  }
+  if (state.reconciliation_pending) {
+    errors.push({ code: "reconciliation_pending", message: "Wait for the current carrier reconciliation to finish before saving." });
+  } else if (trimmedText(state.reconciliation_error)) {
+    errors.push({ code: "reconciliation_failed", message: "Resolve, retry, or dismiss the failed carrier reconciliation before saving." });
   }
   return { valid: errors.length === 0, errors };
 }

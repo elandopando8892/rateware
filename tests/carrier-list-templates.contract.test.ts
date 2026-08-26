@@ -1,6 +1,7 @@
 import {
   assert,
   assertEquals,
+  assertRejects,
   assertStrictEquals,
   assertThrows,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
@@ -2150,6 +2151,58 @@ Deno.test("resolver scans a fixed-snapshot organization keyset until a match bey
     ],
   ]);
   assertEquals(vendorQueries.some((trace) => trace.filters.some((filter) => filter[0] === "range")), false);
+});
+
+Deno.test("resolver accepts the exact safety ceiling and rejects only a sentinel beyond it", async () => {
+  const fetchResolver = ratewareApi.fetchCarrierTemplateResolverVendors as (
+    supabase: unknown,
+    organizationId: string,
+    options: { pageSize: number; safetyLimit: number; snapshotAt: string },
+  ) => Promise<Array<Record<string, unknown>>>;
+  const pageOne = [
+    { id: "10000000-0000-4000-8000-000000000001", organization_id: "org-a" },
+    { id: "10000000-0000-4000-8000-000000000002", organization_id: "org-a" },
+  ];
+  const pageTwo = [
+    { id: "10000000-0000-4000-8000-000000000003", organization_id: "org-a" },
+    { id: "10000000-0000-4000-8000-000000000004", organization_id: "org-a" },
+  ];
+  const exact = new ScriptedSupabase([
+    { table: "vendors", operation: "select", data: pageOne },
+    { table: "vendors", operation: "select", data: pageTwo },
+    { table: "vendors", operation: "select", data: [] },
+  ]);
+  assertEquals(
+    (await fetchResolver(exact, "org-a", {
+      pageSize: 2,
+      safetyLimit: 4,
+      snapshotAt: "2026-08-26T00:00:00.000Z",
+    })).map((row: Record<string, unknown>) => row.id),
+    [...pageOne, ...pageTwo].map((row) => row.id),
+  );
+  assertEquals(exact.traces.at(-1)?.filters, [
+    ["eq", "organization_id", "org-a"],
+    ["lte", "created_at", "2026-08-26T00:00:00.000Z"],
+    ["gt", "id", pageTwo[1].id],
+    ["order", "id", { ascending: true }],
+    ["limit", "", 1],
+  ]);
+
+  const over = new ScriptedSupabase([
+    { table: "vendors", operation: "select", data: pageOne },
+    { table: "vendors", operation: "select", data: pageTwo },
+    { table: "vendors", operation: "select", data: [{ id: "10000000-0000-4000-8000-000000000005" }] },
+  ]);
+  await assertRejects(
+    () => fetchResolver(over, "org-a", {
+      pageSize: 2,
+      safetyLimit: 4,
+      snapshotAt: "2026-08-26T00:00:00.000Z",
+    }),
+    Error,
+    "exceeded the 4-vendor safety limit",
+  );
+  assertEquals(ratewareApi.CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT, 200000);
 });
 
 Deno.test("resolver keyset tolerates insert/delete page shifts without skipping or duplicating later matches", async () => {

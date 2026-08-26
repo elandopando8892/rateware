@@ -7,10 +7,12 @@ import {
   carrierTemplateDraftPayload,
   carrierTemplateImportValidation,
   createCarrierTemplateCapabilityRecoveryController,
+  createCarrierTemplateCandidatePoolController,
   createCarrierTemplateDraftMutationController,
   createCarrierTemplateModalFocusController,
   createCarrierTemplateDraftState,
   createCarrierTemplateReconciliationController,
+  createCarrierTemplateSaveOwnershipController,
   createCarrierTemplateWizardAsyncController,
   mergeCarrierTemplateResolutionRows,
   reduceCarrierTemplateDraft,
@@ -38,6 +40,7 @@ const MANAGE_PERMISSION = "vendors:manage";
 const LIST_PAGE_SIZE = 200;
 const LIST_SAFETY_LIMIT = 5000;
 const CRM_PAGE_SIZE = 50;
+const CRM_MATERIALIZATION_LIMIT = 1000;
 const XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
 let xlsxModulePromise = null;
 
@@ -285,9 +288,13 @@ export async function initCarrierListTemplateLibrary({
   let crmRows = [];
   let crmTotal = 0;
   let crmPageOffset = 0;
+  let crmRequiresRefinement = false;
   let crmSearchTimer = null;
   const vendorCache = new Map();
   const wizardAsync = createCarrierTemplateWizardAsyncController();
+  const crmCandidates = createCarrierTemplateCandidatePoolController({
+    maxCandidates: CRM_MATERIALIZATION_LIMIT
+  });
   const reconciliation = createCarrierTemplateReconciliationController();
   const wizardHome = Object.freeze({
     parent: wizard?.parentNode || null,
@@ -317,6 +324,11 @@ export async function initCarrierListTemplateLibrary({
     readDraft: () => draftState,
     writeDraft: (action) => setDraftState(reduceCarrierTemplateDraft(draftState, action))
   });
+  const wizardSaveOwnership = createCarrierTemplateSaveOwnershipController({
+    onRunningChange: (running) => {
+      wizardSaveRunning = running;
+    }
+  });
   const requestController = createCarrierListTemplateController({
     fetchList: fetchEveryTemplatePage,
     fetchDetail: getCarrierListTemplate
@@ -336,7 +348,15 @@ export async function initCarrierListTemplateLibrary({
     },
     setWritable: (value) => {
       wizardCapabilityWritable = value;
-      if (!value) wizardAsync.invalidateOperations();
+      if (!value) {
+        wizardAsync.invalidateOperations();
+        crmCandidates.invalidate();
+        crmRows = [];
+        crmTotal = 0;
+        crmPageOffset = 0;
+        crmRequiresRefinement = false;
+        wizardSaveOwnership.invalidateValidity();
+      }
     }
   });
   const capabilityView = createCarrierTemplateCapabilityView({
@@ -420,7 +440,8 @@ export async function initCarrierListTemplateLibrary({
       wizardCapabilityWritable &&
       capabilityRecovery.canMutate &&
       !wizardSaveRunning &&
-      !draftMutations.saving
+      !draftMutations.saving &&
+      wizardConflictReason !== "stale_saved_snapshot"
     );
     if (!allowed && announce) {
       const message = wizardSaveRunning || draftMutations.saving
@@ -445,11 +466,11 @@ export async function initCarrierListTemplateLibrary({
     for (const control of [draftNameInput, draftDescriptionInput, importInput]) {
       if (control) control.disabled = disabled;
     }
-    wizardStepButtons.forEach((control) => control.disabled = disabled);
-    if (wizardBackButton) wizardBackButton.disabled = disabled || draftState.step === 0;
-    if (wizardNextButton) wizardNextButton.disabled = disabled;
+    wizardStepButtons.forEach((control) => control.disabled = false);
+    if (wizardBackButton) wizardBackButton.disabled = draftState.step === 0;
+    if (wizardNextButton) wizardNextButton.disabled = false;
     for (const control of [crmSearchInput, crmStatusFilter, crmChannelFilter, crmTagFilter, crmCoverageFilter]) {
-      if (control) control.disabled = !wizardCapabilityWritable;
+      if (control) control.disabled = !wizardCapabilityWritable || wizardSaveRunning;
     }
     if (!wizardCapabilityWritable) {
       if (crmPreviousButton) crmPreviousButton.disabled = true;
@@ -457,7 +478,7 @@ export async function initCarrierListTemplateLibrary({
     }
     if (!disabled) return;
     wizard?.querySelectorAll(
-      "[data-template-add-member], [data-template-member-action], [data-template-ambiguous-search], [data-template-ambiguous-search-button], [data-template-ambiguous-choice-row], [data-template-conflict-reload]"
+      "[data-template-add-member], [data-template-member-action], [data-template-ambiguous-search], [data-template-ambiguous-search-button], [data-template-ambiguous-choice-row], [data-template-dismiss-reconciliation], [data-template-conflict-reload]"
     ).forEach((control) => control.disabled = true);
   }
 
@@ -484,7 +505,9 @@ export async function initCarrierListTemplateLibrary({
 
   function renderCrmResults() {
     if (!crmResults) return;
-    crmResults.innerHTML = crmRows.length
+    crmResults.innerHTML = crmRequiresRefinement
+      ? `<p class="status-message" data-tone="warning">More than ${CRM_MATERIALIZATION_LIMIT.toLocaleString()} carriers match. Refine the search or filters to create a complete candidate pool.</p>`
+      : crmRows.length
       ? crmRows.map((vendor) => {
           const id = vendorId(vendor);
           const selected = draftState.vendor_ids.includes(id);
@@ -501,11 +524,13 @@ export async function initCarrierListTemplateLibrary({
           `;
         }).join("")
       : '<p class="muted-text">No Carrier CRM records match the current filters.</p>';
-    const start = crmTotal && crmRows.length ? crmPageOffset + 1 : 0;
+    const start = !crmRequiresRefinement && crmTotal && crmRows.length ? crmPageOffset + 1 : 0;
     const end = crmTotal ? Math.min(crmPageOffset + crmRows.length, crmTotal) : 0;
-    if (crmPageStatus) crmPageStatus.textContent = `Showing ${start}-${end} of ${crmTotal}`;
-    if (crmPreviousButton) crmPreviousButton.disabled = crmPageOffset <= 0;
-    if (crmNextButton) crmNextButton.disabled = crmPageOffset + CRM_PAGE_SIZE >= crmTotal;
+    if (crmPageStatus) crmPageStatus.textContent = crmRequiresRefinement
+      ? `Refine the search; ${crmTotal.toLocaleString()} candidates cannot be traversed completely.`
+      : `Showing ${start}-${end} of ${crmTotal}`;
+    if (crmPreviousButton) crmPreviousButton.disabled = crmRequiresRefinement || crmPageOffset <= 0 || !wizardCapabilityWritable;
+    if (crmNextButton) crmNextButton.disabled = crmRequiresRefinement || crmPageOffset + CRM_PAGE_SIZE >= crmTotal || !wizardCapabilityWritable;
   }
 
   function resolutionCounts() {
@@ -536,7 +561,11 @@ export async function initCarrierListTemplateLibrary({
       `).join("");
     }
     if (resolutionRowsHost) {
-      resolutionRowsHost.innerHTML = draftState.resolution_rows.length
+      resolutionRowsHost.innerHTML = draftState.reconciliation_pending
+        ? '<p class="status-message">Carrier reconciliation is in progress. Saving and activation are blocked.</p>'
+        : draftState.reconciliation_error
+        ? `<div class="status-message" data-tone="error"><p>${escapeHtml(draftState.reconciliation_error)} The previous file preview was cleared.</p><button class="secondary small-button" type="button" data-template-dismiss-reconciliation>Dismiss failed reconciliation and keep only explicit CRM selections</button></div>`
+        : draftState.resolution_rows.length
         ? draftState.resolution_rows.map((row) => {
             const rowNumber = Number(row.source_row_number) || 0;
             const chosenId = text(row.chosen_vendor_id || draftState.manual_resolutions[String(rowNumber)]);
@@ -605,7 +634,7 @@ export async function initCarrierListTemplateLibrary({
       return;
     }
     const summary = carrierTemplateConflictSummary(draftState, wizardConflictCurrent);
-    const savedSnapshot = wizardConflictReason === "saved_snapshot";
+    const savedSnapshot = ["saved_snapshot", "stale_saved_snapshot"].includes(wizardConflictReason);
     conflictHost.hidden = false;
     conflictHost.innerHTML = `
       <strong>${savedSnapshot ? "The dispatched snapshot was saved, but newer local edits were retained." : "Another editor saved a newer version."}</strong>
@@ -625,8 +654,9 @@ export async function initCarrierListTemplateLibrary({
       <p>${draftState.vendor_ids.length.toLocaleString()} exact member(s). Draft may be empty; activation requires at least one member.</p>
       ${draftValidation.valid ? "" : `<p class="status-message" data-tone="error">${escapeHtml(draftValidation.errors.map((item) => item.message).join(" "))}</p>`}
     `;
-    if (saveDraftButton) saveDraftButton.disabled = wizardSaveRunning || !canManage || !wizardCapabilityWritable || !draftValidation.valid;
-    if (activateTemplateButton) activateTemplateButton.disabled = wizardSaveRunning || !canManage || !wizardCapabilityWritable || !activeValidation.valid;
+    const saveAllowed = canMutateDraft({ announce: false });
+    if (saveDraftButton) saveDraftButton.disabled = !saveAllowed || !draftValidation.valid;
+    if (activateTemplateButton) activateTemplateButton.disabled = !saveAllowed || !activeValidation.valid;
   }
 
   function renderWizard() {
@@ -658,6 +688,13 @@ export async function initCarrierListTemplateLibrary({
     panel?.focus();
   }
 
+  function navigateWizardStep(step) {
+    if (!wizardOpen) return false;
+    setDraftState(reduceCarrierTemplateDraft(draftState, { type: "go_to_step", step }));
+    focusActiveWizardPanel();
+    return true;
+  }
+
   async function hydrateMemberVendors(ids = draftState.vendor_ids) {
     if (!wizardCapabilityWritable) return false;
     const operation = wizardAsync.begin("hydration");
@@ -675,40 +712,47 @@ export async function initCarrierListTemplateLibrary({
     return true;
   }
 
+  function showLocalCrmPage() {
+    const page = crmCandidates.page(crmPageOffset, CRM_PAGE_SIZE);
+    crmPageOffset = page.offset;
+    crmRows = page.rows;
+    crmTotal = page.total;
+    crmRequiresRefinement = page.requires_refinement;
+    cacheVendorRows(crmRows);
+    renderWizard();
+    return page;
+  }
+
   async function loadCrmPage({ announce = true } = {}) {
-    if (!wizardOpen || !wizardCapabilityWritable) return false;
-    const operation = wizardAsync.begin("crm-page");
-    const requestedOffset = crmPageOffset;
-    const request = Object.freeze({
+    if (!wizardOpen || !wizardCapabilityWritable || wizardSaveRunning) return false;
+    const operation = wizardAsync.begin("crm-candidates");
+    const filters = Object.freeze({
       search: text(crmSearchInput?.value),
       status: text(crmStatusFilter?.value),
       view: "all",
       channel: text(crmChannelFilter?.value),
       tag: text(crmTagFilter?.value),
-      coverage: text(crmCoverageFilter?.value),
-      lightweight: true,
-      limit: CRM_PAGE_SIZE,
-      offset: requestedOffset
+      coverage: text(crmCoverageFilter?.value)
     });
     if (announce && crmStatusMessage) crmStatusMessage.textContent = "Loading Carrier CRM records...";
     if (crmResults) crmResults.setAttribute("aria-busy", "true");
     try {
-      const result = await fetchVendors(request);
+      await crmCandidates.materialize(filters, fetchVendors);
       if (!wizardAsync.isCurrent(operation)) return false;
-      crmRows = Array.isArray(result?.rows) ? result.rows : [];
-      crmTotal = Number(result?.total) || crmRows.length;
-      if (!crmRows.length && crmTotal > 0 && requestedOffset >= crmTotal) {
-        crmPageOffset = Math.max(0, Math.floor((crmTotal - 1) / CRM_PAGE_SIZE) * CRM_PAGE_SIZE);
-        return await loadCrmPage({ announce: false });
+      const page = showLocalCrmPage();
+      if (crmStatusMessage) {
+        crmStatusMessage.textContent = page.requires_refinement
+          ? `More than ${CRM_MATERIALIZATION_LIMIT.toLocaleString()} carriers match. Refine the search or filters; incomplete candidate traversal is blocked.`
+          : `${page.total.toLocaleString()} existing carrier(s) materialized for stable local paging.`;
+        crmStatusMessage.dataset.tone = page.requires_refinement ? "warning" : "neutral";
       }
-      cacheVendorRows(crmRows);
-      renderWizard();
-      if (crmStatusMessage) crmStatusMessage.textContent = `${crmRows.length.toLocaleString()} existing carrier(s) loaded.`;
       return true;
     } catch (error) {
       if (!wizardAsync.isCurrent(operation)) return false;
+      crmCandidates.invalidate();
       crmRows = [];
       crmTotal = 0;
+      crmRequiresRefinement = false;
       renderCrmResults();
       if (crmStatusMessage) {
         crmStatusMessage.textContent = humanizeError(error);
@@ -732,6 +776,8 @@ export async function initCarrierListTemplateLibrary({
     }
     editorLaunchToken += 1;
     draftMutations.invalidate();
+    wizardSaveOwnership.reset();
+    crmCandidates.invalidate();
     reconciliation.reset();
     draftState = createCarrierTemplateDraftState(template);
     const session = wizardAsync.open({
@@ -740,10 +786,12 @@ export async function initCarrierListTemplateLibrary({
     });
     wizardConflictCurrent = null;
     wizardConflictReason = "";
-    wizardSaveRunning = false;
     wizardRecoveryMode = false;
     wizard.classList.remove("is-capability-recovery");
     crmPageOffset = 0;
+    crmRows = [];
+    crmTotal = 0;
+    crmRequiresRefinement = false;
     wizardOpen = true;
     if (importInput) importInput.value = "";
     syncDraftDetailInputs();
@@ -775,7 +823,8 @@ export async function initCarrierListTemplateLibrary({
     }
     wizardOpen = false;
     editorLaunchToken += 1;
-    wizardSaveRunning = false;
+    wizardSaveOwnership.reset();
+    crmCandidates.invalidate();
     wizardAsync.close();
     draftMutations.invalidate();
     reconciliation.reset();
@@ -794,6 +843,7 @@ export async function initCarrierListTemplateLibrary({
     if (!file || !wizardOpen || !canMutateDraft()) return;
     wizardAsync.invalidateOperations((name) => name === "file-import" || name.startsWith("ambiguity-search:"));
     const uploadGeneration = reconciliation.startUpload();
+    if (!applyDraftAction({ type: "begin_reconciliation", generation: uploadGeneration })) return;
     const operation = wizardAsync.begin("file-import");
     renderWizard();
     if (importStatus) {
@@ -811,10 +861,14 @@ export async function initCarrierListTemplateLibrary({
         mergeCarrierTemplateResolutionRows(normalizedRows, resolution?.rows)
       );
       const autoMatchedCount = mergedRows.filter((row) => row.status === "matched").length;
-      if (!reconciliation.commitPreview(uploadGeneration, () => applyDraftAction({
-        type: "apply_resolution_preview",
-        rows: mergedRows
-      }))) return;
+      let previewCommitted = false;
+      if (!reconciliation.commitPreview(uploadGeneration, () => {
+        previewCommitted = applyDraftAction({
+          type: "apply_resolution_preview",
+          generation: uploadGeneration,
+          rows: mergedRows
+        });
+      }) || !previewCommitted) return;
       await hydrateMemberVendors(draftState.vendor_ids);
       if (!wizardAsync.isCurrent(operation) || reconciliation.generation !== uploadGeneration) return;
       renderWizard();
@@ -823,9 +877,17 @@ export async function initCarrierListTemplateLibrary({
         importStatus.dataset.tone = "success";
       }
     } catch (error) {
-      if (wizardAsync.isCurrent(operation) && importStatus) {
-        importStatus.textContent = humanizeError(error);
-        importStatus.dataset.tone = "error";
+      if (wizardAsync.isCurrent(operation)) {
+        const message = humanizeError(error);
+        applyDraftAction({
+          type: "fail_reconciliation",
+          generation: uploadGeneration,
+          error: message
+        }, { announce: false });
+        if (importStatus) {
+          importStatus.textContent = message;
+          importStatus.dataset.tone = "error";
+        }
       }
     }
   }
@@ -899,8 +961,16 @@ export async function initCarrierListTemplateLibrary({
       expected_version: savedExpectedVersion
     });
     if (!saveDispatch) return;
+    const saveOwner = wizardSaveOwnership.begin({
+      session: saveContext.session,
+      template_id: savedTemplateId,
+      expected_version: savedExpectedVersion
+    });
+    if (!saveOwner) {
+      draftMutations.cancelSave(saveDispatch);
+      return;
+    }
     const operation = wizardAsync.begin("save");
-    wizardSaveRunning = true;
     wizardConflictCurrent = null;
     wizardConflictReason = "";
     renderWizard();
@@ -909,9 +979,29 @@ export async function initCarrierListTemplateLibrary({
       const result = savedTemplateId
         ? await updateCarrierListTemplate(savedTemplateId, payload, savedExpectedVersion)
         : await createCarrierListTemplate(payload);
-      if (!wizardAsync.isCurrent(operation)) return;
-      if (!result?.row) throw new Error("The carrier template save returned no current row.");
       const currentContext = wizardAsync.snapshot();
+      const operationCurrent = wizardAsync.isCurrent(operation) && wizardSaveOwnership.canApply(saveOwner, currentContext);
+      if (!result?.row) {
+        if (!operationCurrent) return;
+        throw new Error("The carrier template save returned no current row.");
+      }
+      if (!operationCurrent) {
+        const sameEditor = Boolean(
+          wizardOpen &&
+          currentContext.session === operation.session &&
+          currentContext.template_id === operation.template_id &&
+          currentContext.expected_version === operation.expected_version
+        );
+        if (sameEditor) {
+          wizardConflictCurrent = result.row;
+          wizardConflictReason = "stale_saved_snapshot";
+          setDraftState(reduceCarrierTemplateDraft(draftState, { type: "go_to_step", step: 3 }), { renderState: false });
+          renderWizard();
+          focusActiveWizardPanel();
+          setWizardStatus("The dispatched snapshot was saved while access changed. Your local draft remains dirty and read-only for recovery; no follow-up read, merge, overwrite, or retry occurred.", "warning");
+        }
+        return;
+      }
       const accepted = draftMutations.completeSave(saveDispatch, {
         session: currentContext.session,
         template_id: savedTemplateId,
@@ -926,7 +1016,6 @@ export async function initCarrierListTemplateLibrary({
           setDraftState(reduceCarrierTemplateDraft(draftState, { type: "go_to_step", step: 3 }), { renderState: false });
         }
       });
-      wizardSaveRunning = false;
       if (!accepted) {
         replaceTemplateRow(result.row);
         render();
@@ -971,15 +1060,20 @@ export async function initCarrierListTemplateLibrary({
       }
     } finally {
       draftMutations.cancelSave(saveDispatch);
-      if (wizardAsync.isCurrent(operation)) {
-        wizardSaveRunning = false;
-        renderWizard();
-      }
+      const finished = wizardSaveOwnership.finish(saveOwner);
+      if (finished && wizardOpen) renderWizard();
     }
   }
 
   async function reloadCurrentTemplate() {
-    if (!wizardConflictCurrent || !canMutateDraft()) return;
+    if (
+      !wizardConflictCurrent ||
+      !wizardOpen ||
+      !canManage ||
+      !wizardCapabilityWritable ||
+      !capabilityRecovery.canMutate ||
+      wizardSaveRunning
+    ) return;
     const current = wizardConflictCurrent;
     draftState = createCarrierTemplateDraftState(current);
     const session = wizardAsync.open({
@@ -1301,20 +1395,14 @@ export async function initCarrierListTemplateLibrary({
 
   wizardCloseButton?.addEventListener("click", () => closeTemplateWizard());
   wizardBackButton?.addEventListener("click", () => {
-    if (!applyDraftAction({ type: "go_to_step", step: draftState.step - 1 })) return;
-    focusActiveWizardPanel();
+    navigateWizardStep(draftState.step - 1);
   });
   wizardNextButton?.addEventListener("click", () => {
-    if (!applyDraftAction({ type: "go_to_step", step: draftState.step + 1 })) return;
-    focusActiveWizardPanel();
+    navigateWizardStep(draftState.step + 1);
   });
   wizardStepButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      if (!applyDraftAction({
-        type: "go_to_step",
-        step: Number(button.dataset.templateWizardStep)
-      })) return;
-      focusActiveWizardPanel();
+      navigateWizardStep(Number(button.dataset.templateWizardStep));
     });
   });
 
@@ -1400,6 +1488,16 @@ export async function initCarrierListTemplateLibrary({
       return;
     }
 
+    if (event.target.closest("[data-template-dismiss-reconciliation]")) {
+      if (!applyDraftAction({
+        type: "dismiss_reconciliation",
+        generation: draftState.reconciliation_generation
+      })) return;
+      if (importInput) importInput.value = "";
+      setWizardStatus("The failed reconciliation was dismissed. Only explicit Carrier CRM selections remain in the draft.", "warning");
+      return;
+    }
+
     if (event.target.closest("[data-template-conflict-reload]")) await reloadCurrentTemplate();
   });
 
@@ -1420,24 +1518,37 @@ export async function initCarrierListTemplateLibrary({
     return loadCrmPage();
   }
 
+  function invalidateCrmCandidateSearch() {
+    wizardAsync.invalidateOperations((name) => name === "crm-candidates");
+    crmCandidates.invalidate();
+    crmRows = [];
+    crmTotal = 0;
+    crmPageOffset = 0;
+    crmRequiresRefinement = false;
+    renderCrmResults();
+  }
+
   crmSearchInput?.addEventListener("input", () => {
     if (crmSearchTimer) window.clearTimeout(crmSearchTimer);
+    invalidateCrmCandidateSearch();
     crmSearchTimer = window.setTimeout(resetCrmPageAndLoad, 300);
   });
   for (const filter of [crmStatusFilter, crmChannelFilter, crmTagFilter, crmCoverageFilter]) {
     filter?.addEventListener(filter === crmTagFilter || filter === crmCoverageFilter ? "input" : "change", () => {
       if (crmSearchTimer) window.clearTimeout(crmSearchTimer);
+      invalidateCrmCandidateSearch();
       crmSearchTimer = window.setTimeout(resetCrmPageAndLoad, 250);
     });
   }
   crmPreviousButton?.addEventListener("click", () => {
+    if (!wizardCapabilityWritable || crmRequiresRefinement) return;
     crmPageOffset = Math.max(0, crmPageOffset - CRM_PAGE_SIZE);
-    loadCrmPage();
+    showLocalCrmPage();
   });
   crmNextButton?.addEventListener("click", () => {
-    if (crmPageOffset + CRM_PAGE_SIZE >= crmTotal) return;
+    if (!wizardCapabilityWritable || crmRequiresRefinement || crmPageOffset + CRM_PAGE_SIZE >= crmTotal) return;
     crmPageOffset += CRM_PAGE_SIZE;
-    loadCrmPage();
+    showLocalCrmPage();
   });
 
   searchInput?.addEventListener("input", () => {

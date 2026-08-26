@@ -6,10 +6,13 @@ import {
   carrierTemplateDraftDiff,
   carrierTemplateDraftPayload,
   carrierTemplateImportValidation,
+  createCarrierTemplateCapabilityRecoveryController,
+  createCarrierTemplateCandidatePoolController,
   createCarrierTemplateDraftMutationController,
   createCarrierTemplateModalFocusController,
   createCarrierTemplateNavigationCoordinator,
   createCarrierTemplateReconciliationController,
+  createCarrierTemplateSaveOwnershipController,
   createCarrierTemplateWizardAsyncController,
   createCarrierTemplateDraftState,
   mergeCarrierTemplateResolutionRows,
@@ -51,6 +54,111 @@ function deferred() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+// A candidate search is materialized exactly once. Paging is then a local,
+// immutable operation so later server mutations cannot shift page boundaries.
+{
+  const serverRows = Array.from({ length: 120 }, (_, index) => ({
+    id: `candidate-${String(index).padStart(3, "0")}`,
+    vendor_name: `Candidate ${index}`
+  }));
+  let calls = 0;
+  const candidates = createCarrierTemplateCandidatePoolController({ maxCandidates: 1000 });
+  const filters = { search: "  Border   Haul ", status: "ACTIVE", channel: "email" };
+  const fetcher = async (request) => {
+    calls += 1;
+    assert.deepEqual(request, {
+      search: "Border Haul",
+      status: "active",
+      channel: "email",
+      lightweight: true,
+      offset: 0,
+      limit: 1000
+    });
+    return { rows: serverRows, total: 120 };
+  };
+
+  await candidates.materialize(filters, fetcher);
+  assert.deepEqual(candidates.page(0, 50).rows.map((row) => row.id), serverRows.slice(0, 50).map((row) => row.id));
+  serverRows.splice(50, 1, { id: "server-mutated", vendor_name: "Server mutation" });
+  assert.deepEqual(
+    candidates.page(50, 50).rows.map((row) => row.id),
+    Array.from({ length: 50 }, (_, index) => `candidate-${String(index + 50).padStart(3, "0")}`),
+    "page two must come from the captured pool"
+  );
+  assert.equal(candidates.page(50, 50).has_next, true);
+  await candidates.materialize({ status: "active", channel: "email", search: "Border Haul" }, fetcher);
+  assert.equal(calls, 1, "one normalized signature must make one server call");
+
+  await candidates.materialize({ ...filters, search: "Narrow exact" }, async () => {
+    calls += 1;
+    return { rows: [{ id: "exact" }], total: 1001 };
+  });
+  assert.equal(calls, 2);
+  assert.deepEqual(candidates.page(0, 50), {
+    rows: [],
+    total: 1001,
+    offset: 0,
+    has_previous: false,
+    has_next: false,
+    requires_refinement: true
+  });
+  await candidates.materialize({ ...filters, search: "Explicitly truncated" }, async () => ({
+    rows: [{ id: "partial" }],
+    total: 1,
+    truncated: true
+  }));
+  assert.equal(candidates.page(0, 50).requires_refinement, true);
+  assert.equal(candidates.page(0, 50).has_next, false);
+}
+
+// A matching dispatched save owns its spinner even after capability loss.
+// Completion may be retained for comparison, but must not mutate the draft or
+// issue any follow-up write/read while the recovery editor is read-only.
+{
+  const running = [];
+  const saveOwner = createCarrierTemplateSaveOwnershipController({
+    onRunningChange: (value) => running.push(value)
+  });
+  const owner = saveOwner.begin({ session: 5, template_id: "template-a", expected_version: 3 });
+  assert.equal(saveOwner.running, true);
+  assert.equal(saveOwner.invalidateValidity(owner), true);
+  assert.equal(saveOwner.running, true, "capability loss must not orphan spinner ownership");
+  assert.equal(saveOwner.canApply(owner, { session: 5, template_id: "template-a", expected_version: 3 }), false);
+  assert.equal(saveOwner.finish(owner), true);
+  assert.equal(saveOwner.running, false);
+  assert.deepEqual(running, [true, false]);
+
+  const newerOwner = saveOwner.begin({ session: 6, template_id: "template-b", expected_version: 1 });
+  assert.equal(saveOwner.finish(owner), false, "an old finally cannot clear a newer session's spinner");
+  assert.equal(saveOwner.running, true);
+  assert.equal(saveOwner.finish(newerOwner), true);
+
+  let recoveryDraft = reduceCarrierTemplateDraft(
+    createCarrierTemplateDraftState({ id: "template-a", template_version: 3, segment_name: "Saved locally" }),
+    { type: "set_details", description: "Unsaved evidence" }
+  );
+  const completion = deferred();
+  let comparison = null;
+  let followUpWritesOrReads = 0;
+  const recoveryOwner = saveOwner.begin({ session: 9, template_id: "template-a", expected_version: 3 });
+  const saving = completion.promise.then((row) => {
+    if (saveOwner.canApply(recoveryOwner, { session: 9, template_id: "template-a", expected_version: 3 })) {
+      followUpWritesOrReads += 1;
+    } else {
+      comparison = row;
+      recoveryDraft = reduceCarrierTemplateDraft(recoveryDraft, { type: "go_to_step", step: 3 });
+    }
+  }).finally(() => saveOwner.finish(recoveryOwner));
+  saveOwner.invalidateValidity(recoveryOwner);
+  completion.resolve({ id: "template-a", template_version: 4, segment_name: "Saved server snapshot" });
+  await saving;
+  assert.equal(saveOwner.running, false);
+  assert.equal(recoveryDraft.step, 3, "the retained draft must remain inspectable");
+  assert.equal(recoveryDraft.dirty, true);
+  assert.equal(comparison.template_version, 4);
+  assert.equal(followUpWritesOrReads, 0);
 }
 
 // A dispatched save owns an immutable content identity. Every UI action must
@@ -362,6 +470,86 @@ function deferred() {
   assert.deepEqual(state.manual_resolutions, { "3": ids.participant });
   assert.equal(state.resolution_rows[1].status, "ambiguous", "the source outcome must remain auditable");
   assert.equal(state.resolution_rows[1].chosen_vendor_id, ids.participant);
+}
+
+// File B begins by atomically removing every file-A reconciliation artifact.
+// Explicit CRM selections survive, but neither a pending nor failed file B is
+// saveable until the operator commits or explicitly dismisses that generation.
+{
+  let state = createCarrierTemplateDraftState({
+    segment_name: "Reconciliation reset",
+    vendor_ids: [ids.eligible]
+  });
+  state = reduceCarrierTemplateDraft(state, { type: "add_members", vendor_ids: [ids.filtered] });
+  state = reduceCarrierTemplateDraft(state, { type: "begin_reconciliation", generation: 1 });
+  state = reduceCarrierTemplateDraft(state, {
+    type: "apply_resolution_preview",
+    generation: 1,
+    rows: [
+      { source_row_number: 2, reconciliation_generation: 1, resolution_row_identity: "1:2:a", status: "matched", vendor_id: ids.participant },
+      { source_row_number: 3, reconciliation_generation: 1, resolution_row_identity: "1:3:b", status: "ambiguous", candidate_vendor_ids: [ids.missingContact] }
+    ]
+  });
+  state = reduceCarrierTemplateDraft(state, {
+    type: "confirm_manual_match",
+    source_row_number: 3,
+    reconciliation_generation: 1,
+    resolution_row_identity: "1:3:b",
+    vendor_id: ids.missingContact
+  });
+  assert.deepEqual(state.vendor_ids, [ids.eligible, ids.filtered, ids.participant, ids.missingContact]);
+
+  state = reduceCarrierTemplateDraft(state, { type: "begin_reconciliation", generation: 2 });
+  assert.deepEqual(state.vendor_ids, [ids.eligible, ids.filtered]);
+  assert.deepEqual(state.resolution_rows, []);
+  assert.deepEqual(state.manual_resolutions, {});
+  assert.equal(state.reconciliation_pending, true);
+  assert.equal(validateCarrierTemplateDraft(state, "draft").valid, false);
+  let saveApiCalls = 0;
+  if (validateCarrierTemplateDraft(state, "draft").valid) saveApiCalls += 1;
+  assert.equal(saveApiCalls, 0, "Save during reconciliation must not call the API");
+
+  const staleACommit = reduceCarrierTemplateDraft(state, {
+    type: "apply_resolution_preview",
+    generation: 1,
+    rows: [{ source_row_number: 2, status: "matched", vendor_id: ids.participant }]
+  });
+  assert.deepEqual(staleACommit, state);
+
+  state = reduceCarrierTemplateDraft(state, { type: "fail_reconciliation", generation: 2, error: "File B failed." });
+  assert.equal(state.reconciliation_pending, false);
+  assert.equal(state.reconciliation_error, "File B failed.");
+  assert.equal(validateCarrierTemplateDraft(state, "draft").valid, false);
+  state = reduceCarrierTemplateDraft(state, { type: "dismiss_reconciliation", generation: 2 });
+  assert.equal(validateCarrierTemplateDraft(state, "draft").valid, true);
+  assert.deepEqual(state.vendor_ids, [ids.eligible, ids.filtered]);
+}
+
+// Recovery mode keeps non-mutating step inspection available while every
+// content mutation remains rejected and the draft remains dirty.
+{
+  let state = reduceCarrierTemplateDraft(
+    createCarrierTemplateDraftState({ segment_name: "Recovery draft", vendor_ids: [ids.eligible] }),
+    { type: "set_details", description: "Unsaved local evidence" }
+  );
+  let writes = 0;
+  const recovery = createCarrierTemplateCapabilityRecoveryController({
+    isEditorOpen: () => true,
+    isDirty: () => state.dirty,
+    requestClose: () => false,
+    retainRecovery: () => {},
+    setWritable: () => {}
+  });
+  recovery.transition("enabled");
+  recovery.transition("disabled");
+  assert.equal(recovery.canMutate, false);
+  const contentBefore = carrierTemplateDraftContentKey(state);
+  state = reduceCarrierTemplateDraft(state, { type: "go_to_step", step: 3 });
+  assert.equal(state.step, 3);
+  assert.equal(carrierTemplateDraftContentKey(state), contentBefore);
+  assert.equal(state.dirty, true);
+  if (recovery.canMutate) writes += 1;
+  assert.equal(writes, 0);
 }
 
 // This catches a manual choice being treated as clean merely because the chosen
