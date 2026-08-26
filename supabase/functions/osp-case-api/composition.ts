@@ -37,6 +37,23 @@ function issuer(value: string): string {
   }
 }
 
+function databaseUrl(value: string): string {
+  try {
+    if (value.trim() !== value) throw new Error("INVALID_RUNTIME_CONFIGURATION");
+    const parsed = new URL(value);
+    const sslMode = parsed.searchParams.get("sslmode");
+    const allowedSslQuery = parsed.searchParams.size === 1 &&
+      ["require", "prefer"].includes(sslMode ?? "");
+    if (
+      !["postgres:", "postgresql:"].includes(parsed.protocol) ||
+      !parsed.hostname || (parsed.search && !allowedSslQuery) || parsed.hash
+    ) throw new Error("INVALID_RUNTIME_CONFIGURATION");
+    return value.replace(/\?sslmode=(?:require|prefer)$/, "");
+  } catch {
+    throw new Error("INVALID_RUNTIME_CONFIGURATION");
+  }
+}
+
 export function createCaseApiRuntime(options: {
   env: CaseApiEnvironment;
   fetch: typeof globalThis.fetch;
@@ -46,8 +63,10 @@ export function createCaseApiRuntime(options: {
 }): (request: Request) => Promise<Response> {
   const kindeIssuer = issuer(required(options.env, "OSP_KINDE_ISSUER"));
   const clientId = required(options.env, "OSP_KINDE_CLIENT_ID");
-  const databaseUrl = options.env.get("OSP_CASE_DATABASE_URL")?.trim() ||
-    required(options.env, "SUPABASE_DB_URL");
+  const databaseConnection = databaseUrl(
+    options.env.get("OSP_CASE_DATABASE_URL")?.trim() ||
+      required(options.env, "SUPABASE_DB_URL"),
+  );
   const verifier = createKindeJwtVerifier({
     issuer: kindeIssuer,
     clientId,
@@ -59,22 +78,22 @@ export function createCaseApiRuntime(options: {
   const sharedFactory: PostgresFactory = (url, config) =>
     sharedDatabase ??= options.postgresFactory(url, config);
   const clarificationStore = createPostgresClarificationStore({
-    databaseUrl,
+    databaseUrl: databaseConnection,
     postgresFactory: sharedFactory,
   });
   const approvalActions = createPostgresCaseApprovalActions({
-    databaseUrl,
+    databaseUrl: databaseConnection,
     postgresFactory: sharedFactory,
     now: () => new Date(options.clock?.() ?? Date.now()),
   });
   const outboundActions = createPostgresCaseOutboundActions({
-    databaseUrl,
+    databaseUrl: databaseConnection,
     postgresFactory: sharedFactory,
     storageClient: options.storageClient,
     now: () => new Date(options.clock?.() ?? Date.now()),
   });
   const workflowView = createPostgresWorkflowViewSource({
-    databaseUrl,
+    databaseUrl: databaseConnection,
     postgresFactory: sharedFactory,
   });
   return createCaseApiHandler({

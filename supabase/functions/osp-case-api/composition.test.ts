@@ -64,3 +64,17 @@ Deno.test("case API runtime fails closed when auth or database configuration is 
     );
   }
 });
+
+Deno.test("case API accepts only the standard TLS database query and relies on verify-full transport", () => {
+  let seenUrl = "";
+  createCaseApiRuntime({
+    env: environment({ OSP_CASE_DATABASE_URL: "postgres://localhost:55322/osp?sslmode=require" }),
+    fetch: async () => new Response(null, { status: 500 }),
+    postgresFactory: (url: string) => {
+      seenUrl = url;
+      return Object.assign(async () => [], { begin: async () => undefined });
+    },
+    storageClient: { upload: async () => undefined, download: async () => null },
+  });
+  assertEquals(seenUrl, "postgres://localhost:55322/osp");
+});

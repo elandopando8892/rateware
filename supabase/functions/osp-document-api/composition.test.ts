@@ -30,11 +30,42 @@ Deno.test('document API runtime composes verified auth, tenant Postgres, private
 });
 
 Deno.test('document API runtime fails closed on every absent external dependency', () => {
-  for (const name of ['OSP_KINDE_ISSUER', 'OSP_KINDE_CLIENT_ID', 'OSP_DOCUMENT_DATABASE_URL', 'OSP_MALWARE_SCANNER_ORIGIN', 'OSP_MALWARE_SCANNER_TOKEN']) {
+  for (const name of ['OSP_KINDE_ISSUER', 'OSP_KINDE_CLIENT_ID', 'OSP_DOCUMENT_DATABASE_URL']) {
     assertThrows(() => createDocumentApiRuntime({
       env: environment({ [name]: undefined }), fetch: async () => new Response(null, { status: 500 }),
       postgresFactory: () => Object.assign(async () => [], { begin: async () => undefined }),
       storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined },
     }), Error, 'INVALID_RUNTIME_CONFIGURATION');
   }
+});
+
+Deno.test('document API runtime keeps reads available and uploads fail closed when the scanner is unconfigured', () => {
+  const runtime = createDocumentApiRuntime({
+    env: environment({ OSP_MALWARE_SCANNER_ORIGIN: undefined, OSP_MALWARE_SCANNER_TOKEN: undefined }),
+    fetch: async () => new Response(null, { status: 500 }),
+    postgresFactory: () => Object.assign(async () => [], { begin: async () => undefined }),
+    storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined },
+  });
+  assertEquals(typeof runtime, 'function');
+  for (const name of ['OSP_MALWARE_SCANNER_ORIGIN', 'OSP_MALWARE_SCANNER_TOKEN']) {
+    assertThrows(() => createDocumentApiRuntime({
+      env: environment({ [name]: undefined }), fetch: async () => new Response(null, { status: 500 }),
+      postgresFactory: () => Object.assign(async () => [], { begin: async () => undefined }),
+      storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined },
+    }), Error, 'INVALID_RUNTIME_CONFIGURATION');
+  }
+});
+
+Deno.test('document API accepts only the standard TLS database query and relies on verify-full transport', () => {
+  let seenUrl = '';
+  createDocumentApiRuntime({
+    env: environment({ OSP_DOCUMENT_DATABASE_URL: 'postgres://localhost:55322/osp?sslmode=require' }),
+    fetch: async () => new Response(null, { status: 500 }),
+    postgresFactory: (url: string) => {
+      seenUrl = url;
+      return Object.assign(async () => [], { begin: async () => undefined });
+    },
+    storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined },
+  });
+  assertEquals(seenUrl, 'postgres://localhost:55322/osp');
 });
