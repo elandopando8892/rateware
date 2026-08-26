@@ -26,7 +26,6 @@ describe('deriveMailboxHealth', () => {
   it.each([
     { ...connected, error_present: true, error_code: 'AUTH_REQUIRED' },
     { ...connected, token_expires_at: null },
-    { ...connected, token_expires_at: now.toISOString() },
     { ...connected, watch_expires_at: null },
     { ...connected, watch_expires_at: now.toISOString() },
     { ...connected, pubsub_configured: false, watch_configured: true },
@@ -36,6 +35,7 @@ describe('deriveMailboxHealth', () => {
 
   it('distinguishes manual no-Pub/Sub mode, a valid connection without watch and a future watch', () => {
     expect(deriveMailboxHealth({ ...connected, pubsub_configured: false, watch_configured: false, watch_expires_at: null }, () => now)).toBe('connected');
+    expect(deriveMailboxHealth({ ...connected, pubsub_configured: false, watch_configured: false, watch_expires_at: null, token_expires_at: now.toISOString() }, () => now)).toBe('connected');
     expect(deriveMailboxHealth({ ...connected, watch_configured: false, watch_expires_at: null }, () => now)).toBe('connected');
     expect(deriveMailboxHealth(connected, () => now)).toBe('watching');
   });

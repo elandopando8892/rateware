@@ -23,7 +23,6 @@ export function deriveMailboxHealth(
   if (
     model.error_present
     || tokenExpiration === null
-    || tokenExpiration <= now
     || (model.watch_configured && !model.pubsub_configured)
     || (model.watch_configured && (watchExpiration === null || watchExpiration <= now))
   ) return 'degraded';
