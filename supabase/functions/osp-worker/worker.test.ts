@@ -2,6 +2,93 @@ import { assertEquals } from "jsr:@std/assert@1.0.14";
 
 import { deterministicRetryAt, runWorker } from "./worker.ts";
 import { createInMemoryBackgroundJobStore } from "../_shared/osp/background-jobs.ts";
+import { IntakeStageError } from "./intake-service.ts";
+
+Deno.test("worker reports a safe intake stage while preserving retry classification", async () => {
+  const reports: unknown[] = [];
+  const failures: unknown[] = [];
+  await runWorker({
+    workerId: "local-worker",
+    now: () => new Date("2026-08-22T00:00:00.000Z"),
+    jobs: {
+      claim: async () => [{
+        id: "job-stage",
+        organizationId: "org-1",
+        kind: "gmail_ingest",
+        opaquePayload: {
+          gmailMessageId: "message_1",
+          deliveryIdempotencyKey: "delivery_1",
+        },
+        attempt: 1,
+        leaseToken: "11111111-1111-4111-8111-111111111111",
+        leasedUntil: "2026-08-22T00:05:00.000Z",
+      }],
+      complete: async () => undefined,
+      fail: async (input) => {
+        failures.push(input);
+      },
+    },
+    intake: {
+      ingest: async () => {
+        throw new IntakeStageError(
+          "raw_store",
+          new Error("STORAGE_TEMPORARY"),
+        );
+      },
+      refreshDuplicateReview: async () => undefined,
+    },
+    reportFailure: (input) => reports.push(input),
+  });
+  assertEquals(reports, [{
+    jobId: "job-stage",
+    kind: "gmail_ingest",
+    attempt: 1,
+    code: "STORAGE_TEMPORARY",
+    stage: "raw_store",
+    errorName: "Error",
+  }]);
+  assertEquals(
+    (failures[0] as { errorCode: string }).errorCode,
+    "STORAGE_TEMPORARY",
+  );
+});
+
+Deno.test("worker persists the safe intake stage for an unknown terminal failure", async () => {
+  const failures: unknown[] = [];
+  await runWorker({
+    workerId: "local-worker",
+    now: () => new Date("2026-08-22T00:00:00.000Z"),
+    jobs: {
+      claim: async () => [{
+        id: "job-terminal-stage",
+        organizationId: "org-1",
+        kind: "gmail_ingest",
+        opaquePayload: {
+          gmailMessageId: "message_1",
+          deliveryIdempotencyKey: "delivery_1",
+        },
+        attempt: 1,
+        leaseToken: "11111111-1111-4111-8111-111111111111",
+        leasedUntil: "2026-08-22T00:05:00.000Z",
+      }],
+      complete: async () => undefined,
+      fail: async (input) => {
+        failures.push(input);
+      },
+    },
+    intake: {
+      ingest: async () => {
+        throw new IntakeStageError("mime_parse", new TypeError("opaque"));
+      },
+      refreshDuplicateReview: async () => undefined,
+    },
+    reportFailure: () => undefined,
+  });
+  assertEquals(
+    (failures[0] as { errorCode: string }).errorCode,
+    "MIME_PARSE_FAILURE",
+  );
+});
 
 Deno.test("worker retries only bounded temporary errors with deterministic capped backoff", async () => {
   assertEquals(

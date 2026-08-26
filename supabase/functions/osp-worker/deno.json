@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "postalMime": "npm:postal-mime@3.0.0",
+    "postgres": "npm:postgres@3.4.7",
+    "supabase": "npm:@supabase/supabase-js@2.112.3"
+  }
+}

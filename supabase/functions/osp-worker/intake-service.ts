@@ -119,6 +119,37 @@ export interface IntakeService {
   ): Promise<void>;
 }
 
+export type IntakeStage =
+  | "gmail_fetch"
+  | "receipt_capture"
+  | "mime_parse"
+  | "raw_store"
+  | "attachment_store"
+  | "duplicate_lookup"
+  | "case_persist"
+  | "duplicate_refresh";
+
+export class IntakeStageError extends Error {
+  readonly stage: IntakeStage;
+
+  constructor(stage: IntakeStage, cause: unknown) {
+    super("OSP_INTAKE_STAGE_FAILURE", { cause });
+    this.name = "IntakeStageError";
+    this.stage = stage;
+  }
+}
+
+async function atStage<T>(
+  stage: IntakeStage,
+  action: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await action();
+  } catch (error) {
+    throw new IntakeStageError(stage, error);
+  }
+}
+
 function requireOpaque(value: string, code: string): string {
   if (!/^[A-Za-z0-9:_-]{1,256}$/.test(value)) throw new Error(code);
   return value;
@@ -146,41 +177,59 @@ export function createIntakeService(
       const organizationId = input.organizationId;
       requireOpaque(input.gmailMessageId, "INVALID_GMAIL_MESSAGE_ID");
       requireOpaque(input.deliveryIdempotencyKey, "INVALID_DELIVERY_KEY");
-      const message = await deps.gmail.getMessage(input.gmailMessageId, signal);
+      const message = await atStage(
+        "gmail_fetch",
+        () => deps.gmail.getMessage(input.gmailMessageId, signal),
+      );
       if (
         message.gmailMessageId !== input.gmailMessageId ||
         !Number.isFinite(Date.parse(message.receivedAt))
       ) throw new Error("INVALID_GMAIL_MESSAGE");
       if (deps.receipts) {
         if (!input.jobId || !input.leaseToken) throw new Error("INVALID_INPUT");
-        const receipt = await deps.receipts.capture({
-          organizationId,
-          jobId: input.jobId,
-          leaseToken: input.leaseToken,
-          gmailMessageId: message.gmailMessageId,
-          gmailThreadId: message.gmailThreadId,
-          receivedAt: message.receivedAt,
-          rawMime: message.rawMime,
-        });
+        const receipt = await atStage(
+          "receipt_capture",
+          () =>
+            deps.receipts!.capture({
+              organizationId,
+              jobId: input.jobId!,
+              leaseToken: input.leaseToken!,
+              gmailMessageId: message.gmailMessageId,
+              gmailThreadId: message.gmailThreadId,
+              receivedAt: message.receivedAt,
+              rawMime: message.rawMime,
+            }),
+        );
         if (receipt.outcome !== "not_outbound") return receipt;
       }
-      const parsed = await parseCopiedRequest(message.rawMime);
-      const raw = await deps.objects.put({
-        organizationId,
-        bytes: message.rawMime,
-        contentType: "message/rfc822",
-      }, signal);
+      const parsed = await atStage(
+        "mime_parse",
+        () => parseCopiedRequest(message.rawMime),
+      );
+      const raw = await atStage(
+        "raw_store",
+        () =>
+          deps.objects.put({
+            organizationId,
+            bytes: message.rawMime,
+            contentType: "message/rfc822",
+          }, signal),
+      );
       const attachmentObjects: {
         objectKey: string;
         sha256: string;
         contentType: string;
       }[] = [];
       for (const attachment of parsed.attachments) {
-        const stored = await deps.objects.put({
-          organizationId,
-          bytes: attachment.bytes,
-          contentType: attachment.contentType,
-        }, signal);
+        const stored = await atStage(
+          "attachment_store",
+          () =>
+            deps.objects.put({
+              organizationId,
+              bytes: attachment.bytes,
+              contentType: attachment.contentType,
+            }, signal),
+        );
         attachmentObjects.push(
           Object.freeze({
             objectKey: stored.key,
@@ -213,47 +262,57 @@ export function createIntakeService(
         receivedAt: source.receivedAt,
         requirementTokens: parsed.requirementTokens,
       };
-      const assessment = assessDuplicates(
-        candidate,
-        await deps.persistence.findDuplicates(
-          organizationId,
-          candidate,
-          signal,
-        ),
+      const duplicateCandidates = await atStage(
+        "duplicate_lookup",
+        () =>
+          deps.persistence.findDuplicates(organizationId, candidate, signal),
       );
+      const assessment = assessDuplicates(candidate, duplicateCandidates);
       if (assessment.outcome === "exact") {
-        const attached = await deps.persistence.attachExact({
-          organizationId,
-          existingCaseId: assessment.existingCaseId,
-          deliveryIdempotencyKey: input.deliveryIdempotencyKey,
-          source,
-          parsed,
-          evidence: assessment.evidence,
-        }, signal);
+        const attached = await atStage(
+          "case_persist",
+          () =>
+            deps.persistence.attachExact({
+              organizationId,
+              existingCaseId: assessment.existingCaseId,
+              deliveryIdempotencyKey: input.deliveryIdempotencyKey,
+              source,
+              parsed,
+              evidence: assessment.evidence,
+            }, signal),
+        );
         return { outcome: "attached" as const, ...attached };
       }
       if (assessment.outcome === "probable") {
-        const held = await deps.persistence.holdForReview({
-          organizationId,
-          deliveryIdempotencyKey: input.deliveryIdempotencyKey,
-          candidateIds: assessment.candidateCaseIds,
-          source,
-          parsed,
-          evidence: assessment.evidence,
-        }, signal);
+        const held = await atStage(
+          "case_persist",
+          () =>
+            deps.persistence.holdForReview({
+              organizationId,
+              deliveryIdempotencyKey: input.deliveryIdempotencyKey,
+              candidateIds: assessment.candidateCaseIds,
+              source,
+              parsed,
+              evidence: assessment.evidence,
+            }, signal),
+        );
         return {
           outcome: "held_for_duplicate_review" as const,
           caseId: held.caseId,
           candidateIds: assessment.candidateCaseIds,
         };
       }
-      const created = await deps.persistence.createCase({
-        organizationId,
-        deliveryIdempotencyKey: input.deliveryIdempotencyKey,
-        source,
-        parsed,
-        blockedByDuplicateReview: false,
-      }, signal);
+      const created = await atStage(
+        "case_persist",
+        () =>
+          deps.persistence.createCase({
+            organizationId,
+            deliveryIdempotencyKey: input.deliveryIdempotencyKey,
+            source,
+            parsed,
+            blockedByDuplicateReview: false,
+          }, signal),
+      );
       await deps.jobs.enqueue({
         organizationId,
         kind: "duplicate_review_refresh",
@@ -268,7 +327,10 @@ export function createIntakeService(
     ) {
       requireOpaque(input.caseId, "INVALID_CASE_ID");
       requireOpaque(input.correlationId, "INVALID_CORRELATION_ID");
-      await deps.persistence.refreshDuplicateReview(input, signal);
+      await atStage(
+        "duplicate_refresh",
+        () => deps.persistence.refreshDuplicateReview(input, signal),
+      );
     },
   });
 }

@@ -3,12 +3,18 @@ import type {
   JobErrorCode,
   LeasedJob,
 } from "../_shared/osp/background-jobs.ts";
-import type { IntakeService } from "./intake-service.ts";
+import {
+  type IntakeService,
+  type IntakeStage,
+  IntakeStageError,
+} from "./intake-service.ts";
 import type { SignatureApplyReceipt } from "../_shared/osp/signature-port.ts";
 
 const TEMPORARY = new Set<JobErrorCode>([
   "GMAIL_TEMPORARY",
   "STORAGE_TEMPORARY",
+  "STORAGE_UPLOAD_TEMPORARY",
+  "STORAGE_DOWNLOAD_TEMPORARY",
   "DATABASE_TEMPORARY",
   "AZURE_TEMPORARY",
   "OPENAI_TEMPORARY",
@@ -61,7 +67,15 @@ export function deterministicRetryAt(now: Date, attempt: number): Date {
   }
   return new Date(now.getTime() + Math.min(5 * 2 ** (attempt - 1), 40) * 1000);
 }
+function rootError(error: unknown): unknown {
+  let current = error;
+  while (current instanceof IntakeStageError) current = current.cause;
+  return current;
+}
+
 function errorCode(error: unknown): JobErrorCode {
+  const stage = failureStage(error);
+  error = rootError(error);
   const postgresCode = typeof error === "object" && error !== null &&
       "code" in error
     ? (error as { code?: unknown }).code
@@ -72,12 +86,22 @@ function errorCode(error: unknown): JobErrorCode {
     return "DATABASE_TEMPORARY";
   }
   const code = error instanceof Error ? error.message : "";
-  return TEMPORARY.has(code as JobErrorCode)
+  const classified = TEMPORARY.has(code as JobErrorCode)
     ? code as JobErrorCode
+    : code === "SOURCE_HASH_MISMATCH"
+    ? "SOURCE_HASH_MISMATCH"
     : code === "INVALID_GMAIL_MESSAGE" ||
         code === "UNQUALIFIED_GMAIL_MESSAGE" || code === "MALFORMED_MIME"
     ? "INVALID_INPUT"
     : "PERMANENT_FAILURE";
+  if (classified !== "PERMANENT_FAILURE" || stage === "worker_execute") {
+    return classified;
+  }
+  return `${stage.toUpperCase()}_FAILURE` as JobErrorCode;
+}
+
+function failureStage(error: unknown): IntakeStage | "worker_execute" {
+  return error instanceof IntakeStageError ? error.stage : "worker_execute";
 }
 async function execute(
   job: LeasedJob,
@@ -171,6 +195,14 @@ export async function runWorker(
     quarterlyDocuments?: QuarterlyDocumentService;
     signatures?: SignatureJobService;
     outboundSends?: OutboundSendJobService;
+    reportFailure?: (input: {
+      jobId: string;
+      kind: string;
+      attempt: number;
+      code: JobErrorCode;
+      stage: IntakeStage | "worker_execute";
+      errorName: string;
+    }) => void;
     limit?: number;
   },
 ): Promise<number> {
@@ -199,6 +231,19 @@ export async function runWorker(
       });
     } catch (error) {
       const code = errorCode(error);
+      const original = rootError(error);
+      const diagnostic = {
+        jobId: job.id,
+        kind: job.kind,
+        attempt: job.attempt,
+        code,
+        stage: failureStage(error),
+        errorName: original instanceof Error ? original.name : typeof original,
+      };
+      if (deps.reportFailure) deps.reportFailure(diagnostic);
+      else {console.error(
+          JSON.stringify({ event: "osp_worker_job_failed", ...diagnostic }),
+        );}
       await deps.jobs.fail({
         jobId: job.id,
         leaseToken: job.leaseToken,
