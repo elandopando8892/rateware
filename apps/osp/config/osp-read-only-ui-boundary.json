@@ -171,7 +171,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "5a63c8ab76f5288453bbe94ecfec4b6382a54af0afa6ee9636543b1de8c466ae"
+      "sha256": "42fa771d879978070a91b0adad8c66f98959203ab97a32da079e267b43a784ff"
     },
     {
       "kind": "production-ui",
