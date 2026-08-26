@@ -73,6 +73,39 @@ begin
 end $$;
 
 do $$
+declare duplicate_member_template_count bigint;
+begin
+  select count(*) into duplicate_member_template_count
+  from public.vendor_segments segment
+  where segment.segment_type = 'participant_template'
+    and cardinality(segment.vendor_ids) <> (
+      select count(distinct member_id) from unnest(segment.vendor_ids) as member_id
+    );
+
+  if duplicate_member_template_count > 0 then
+    raise exception 'carrier template migration blocked: % participant templates contain duplicate vendor_ids', duplicate_member_template_count;
+  end if;
+end $$;
+
+do $$
+declare cross_organization_member_template_count bigint;
+begin
+  select count(*) into cross_organization_member_template_count
+  from public.vendor_segments segment
+  where segment.segment_type = 'participant_template'
+    and exists (
+      select 1
+      from public.vendors v
+      where v.id = any(segment.vendor_ids)
+        and v.organization_id is distinct from segment.organization_id
+    );
+
+  if cross_organization_member_template_count > 0 then
+    raise exception 'carrier template migration blocked: % participant templates include members from another organization', cross_organization_member_template_count;
+  end if;
+end $$;
+
+do $$
 declare duplicate_count bigint;
 begin
   select count(*) into duplicate_count

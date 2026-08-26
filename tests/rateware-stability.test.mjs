@@ -3735,6 +3735,8 @@ assert.match(carrierTemplateMigration, /workspace_identity_aliases/);
 assert.match(carrierTemplateMigration, /raise exception/i);
 assert.match(carrierTemplateMigration, /create unique index[\s\S]*lower\(btrim\(segment_name\)\)/i);
 assert.match(carrierTemplateMigration, /cardinality\(new\.vendor_ids\)/i);
+assert.match(carrierTemplateMigration, /from public\.vendor_segments segment[\s\S]+?unnest\(segment\.vendor_ids\)[\s\S]+?carrier template migration blocked: % participant templates contain duplicate vendor_ids/i, "Carrier template migration must fail closed when a legacy template has duplicate member UUIDs");
+assert.match(carrierTemplateMigration, /from public\.vendor_segments segment[\s\S]+?public\.vendors v[\s\S]+?v\.id = any\(segment\.vendor_ids\)[\s\S]+?v\.organization_id is distinct from segment\.organization_id[\s\S]+?carrier template migration blocked: % participant templates include members from another organization/i, "Carrier template migration must fail closed when an existing member belongs to another organization");
 assert.match(apiSource, /coverage_filter: coverageFilter/, "Vendor segment API should persist coverage filters");
 assert.match(vendorsSource, /segment\.coverage_filter/, "Vendor saved lists should apply coverage filters in the UI");
 assert.match(vendorProfileRequestsMigration, /create table if not exists public\.vendor_profile_requests/, "Carrier profile requests should have a token table");
