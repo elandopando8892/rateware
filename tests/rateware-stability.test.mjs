@@ -1715,8 +1715,11 @@ assert.match(rfxEventsSource, /data-rfx-carrier-template-select[\s\S]{0,300}disa
 assert.match(rfxEventsSource, /templateMemberRowsInOrder/, "Carrier Fit should render exact template members in source order, including unavailable placeholders");
 assert.match(rfxEventsHtml, /Add \{N\} carriers to this RFx and open Message/, "Carrier Fit should document the exact materialization CTA contract");
 assert.match(rfxEventsHtml, /id="rfx-outreach-launch-readiness"[\s\S]+Review this template wave before adding carriers/, "Carrier Fit should expose a visible launch-readiness review before materialization");
+assert.match(rfxEventsHtml, /rfx-outreach-wave-coverage[\s\S]+rfx-outreach-wave-exceptions/, "Carrier Fit should review lane coverage and excluded template members before materialization");
 assert.match(rfxEventsSource, /Ready for human confirmation:[\s\S]+Carrier Fit will not draft or send messages/, "Launch readiness should summarize the immutable template and lane scope without implying a send");
+assert.match(rfxEventsSource, /carrierTemplateWaveCoverage[\s\S]+Every lane covered[\s\S]+data-rfx-review-wave-lane/, "Carrier Fit should calculate selected coverage per RFx lane and expose a safe lane-review control");
 assert.match(carrierTemplatePreviewSource, /clt-launch-readiness[\s\S]+template snapshot[\s\S]+will not draft or send messages/, "The deterministic preview should expose the launch-readiness review with the same no-send boundary");
+assert.match(carrierTemplatePreviewSource, /LANE COVERAGE[\s\S]+Why members stay out/, "The deterministic preview should expose the Review Wave coverage and exception composition");
 assert.match(rfxEventsSource, /`Add \$\{formatNumber\(selectedIds\.length\)\} carriers to this RFx and open Message`/, "Carrier Fit should render the exact count-bearing materialization CTA");
 assert.match(rfxEventsSource, /carrier_template_context:[\s\S]{0,220}template_id:[\s\S]{0,220}template_version:[\s\S]{0,220}materialization_operation_id:/, "Carrier Fit should pass validated template identity/version and one retained operation id into the idempotent participant action");
 assert.match(rfxEventsSource, /requestRfxDetail\(operation\.event_id, \{ force: true \}\)[\s\S]{0,300}getCarrierListTemplate\(operation\.template_id/, "Carrier Fit should re-read RFx participants and template metadata immediately before add");

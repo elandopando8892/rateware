@@ -106,3 +106,42 @@ No actionable P0, P1, or P2 finding remains.
 3. Post-change browser evidence confirmed the panel remains above the fold at 1488 x 1059, preserves the carrier table, and keeps the persistent CTA visible.
 
 final result: passed
+
+## Invitation Wave Review iteration — 2026-08-26
+
+- Source visual truth: `docs/superpowers/specs/assets/carrier-list-templates/03-carrier-fit.png` — 1487 x 1058 px.
+- Browser-rendered implementation: `tmp/review-wave-implementation-viewport.png` — 1487 x 1058 px at `deviceScaleFactor: 1`.
+- Full-page implementation evidence: `tmp/review-wave-implementation.png`.
+- Combined comparison evidence: `tmp/review-wave-qa-comparison.png` — source and implementation placed side by side without density scaling.
+- Local implementation: `http://127.0.0.1:3111/output/carrier-list-templates-preview`.
+- State: Bid Room > Launch > Carrier Fit, exact-membership template loaded, four eligible carriers selected, Review Wave expanded.
+
+### Findings
+
+No actionable P0, P1, or P2 finding remains.
+
+- Fonts and typography: Review Wave reuses the approved Rateware type stack and hierarchy. Lane names, requirements, counts, and exception explanations remain legible without creating a competing display scale.
+- Spacing and layout rhythm: the review is intentionally inserted between template scope and the candidate table. It adds decision depth above the fold, but preserves the persistent materialization CTA and the original left-to-right Carrier Fit hierarchy.
+- Colors and visual tokens: coverage uses existing success, warning, and neutral tokens. Exceptions use the established warm warning surface; no new decorative palette was introduced.
+- Image quality and asset fidelity: this operational flow has no photographic or illustrative assets. Existing project icons and controls remain intact, and no placeholder, emoji, handcrafted SVG, or CSS-drawn asset was introduced.
+- Copy and content: every lane shows the selected audience, thin/uncovered states are explicit, exclusion reasons are human-readable, and the no-draft/no-send boundary remains adjacent to the final review.
+- Affordances and accessibility: coverage and exception regions have labelled headings. `Review lane` is a semantic button that focuses the existing lane filter without adding participants. Status remains available in text, not color alone.
+- Responsive behavior: at 900 x 900 CSS px the two-column review collapses to one column, `document.scrollWidth` is 890 for `window.innerWidth` 900, and no horizontal overflow or hidden persistent action was found.
+
+### Interaction evidence
+
+- `Select all 4 eligible` updated all three lane counts and the count-bearing materialization CTA.
+- Coverage displayed 4, 3, and 2 selected carriers across the three deterministic RFx lanes; the third lane used the thin-coverage warning treatment.
+- Exceptions displayed 2 already in RFx, 1 missing contact, and 2 unavailable members.
+- The CTA remained `Add 4 carriers to this RFx and open Message`; it was not executed during this QA pass.
+- Browser console warnings/errors: none.
+
+### Comparison history
+
+1. Approved Carrier Fit source: clear template selection and carrier table, but no per-lane audience review before materialization.
+2. First Review Wave implementation: added compact lane coverage and exception composition inside the established readiness panel.
+3. Post-change combined comparison: the new review preserves the approved shell, typography, controls, semantic colors, and persistent CTA. The carrier table moves lower by design because the new human decision gate now precedes selection confirmation.
+
+Focused crops were not required because the combined 1487 x 1058 comparison keeps the new panel copy, metrics, controls, and source hierarchy legible. Interaction behavior and the responsive breakpoint were verified separately in the browser.
+
+final result: passed
