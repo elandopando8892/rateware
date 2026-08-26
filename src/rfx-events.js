@@ -55,9 +55,13 @@ import {
 } from "./outreach-service.js?v=20260801-outreach-read-v1";
 import { fetchCarrierRecommendations } from "./business-intelligence-service.js";
 import {
+  createVendorSegment,
+  deleteVendorSegment,
   fetchCarrierListTemplates,
+  fetchVendorSegments,
   fetchVendors,
-  getCarrierListTemplate
+  getCarrierListTemplate,
+  updateVendorSegment
 } from "./vendor-service.js";
 import {
   carrierTemplateMaterializationSelectionIds,
@@ -91,6 +95,55 @@ const CARRIER_TEMPLATE_LIST_PAGE_SIZE = 200;
 const CARRIER_TEMPLATE_LIST_SAFETY_LIMIT = 50000;
 const RFX_CUSTOMER_SEARCH_LIMIT = 50;
 const RFX_CUSTOMER_SEARCH_DEBOUNCE_MS = 180;
+
+// BID_ROOM_TEMPLATE_CAPABILITY_CONTROLLER_START
+function createBidRoomCarrierTemplateCapabilityController({ onTransition = () => {} } = {}) {
+  let state = "pending";
+  let lastError = null;
+  let probeVersion = 0;
+
+  function transition(nextState, nextError = null) {
+    state = nextState;
+    lastError = nextError;
+    onTransition(state, lastError);
+  }
+
+  return {
+    get state() {
+      return state;
+    },
+    get error() {
+      return lastError;
+    },
+    beginProbe() {
+      const token = ++probeVersion;
+      transition("pending");
+      return token;
+    },
+    resolveProbe(token, envelope) {
+      if (token !== probeVersion) return false;
+      if (envelope?.enabled === true) transition("enabled");
+      else if (envelope?.enabled === false) transition("disabled");
+      else transition("error", new Error("Carrier list template capability did not return an explicit enabled state."));
+      return true;
+    },
+    rejectProbe(token, error) {
+      if (token !== probeVersion) return false;
+      if (error?.enabled === false) transition("disabled");
+      else transition("error", error);
+      return true;
+    },
+    runLegacyAction(action, callback) {
+      if (state !== "disabled") return false;
+      return callback(action);
+    }
+  };
+}
+
+function dispatchBidRoomLegacyTemplateEvent(controller, action, callback) {
+  return controller.runLegacyAction(action, callback);
+}
+// BID_ROOM_TEMPLATE_CAPABILITY_CONTROLLER_END
 
 function metaNotifierStatus(value = "NOT_PUBLISHED") {
   const normalized = String(value || "NOT_PUBLISHED").trim().toUpperCase().replace(/[\s-]+/g, "_");
@@ -229,8 +282,24 @@ const participantManager = document.querySelector("#rfx-participant-manager");
 const selectVisibleCarriersButton = document.querySelector("#select-visible-carriers");
 const selectSegmentCarriersButton = document.querySelector("#select-segment-carriers");
 const clearCarrierSelectionButton = document.querySelector("#clear-carrier-selection");
+const participantTemplateCapabilityState = document.querySelector("#rfx-participant-template-capability-state");
+const participantTemplateCapabilityStatus = document.querySelector("#rfx-participant-template-capability-status");
+const retryParticipantTemplateCapabilityButton = document.querySelector("#retry-rfx-participant-template-capability");
+const legacyParticipantTemplateFallback = document.querySelector("#rfx-participant-template-legacy-fallback");
+const participantTemplateCrmLink = document.querySelector("#rfx-participant-template-crm-link");
+const manualShortlistTemplateName = document.querySelector("#manual-shortlist-template-name");
+const saveManualShortlistTemplateButton = document.querySelector("#save-manual-shortlist-template");
+const loadManualShortlistTemplateButton = document.querySelector("#load-manual-shortlist-template");
+const updateManualShortlistTemplateButton = document.querySelector("#update-manual-shortlist-template");
+const deleteManualShortlistTemplateButton = document.querySelector("#delete-manual-shortlist-template");
 const manualShortlistButton = document.querySelector("#manual-shortlist-button");
 const manualShortlistStatus = document.querySelector("#manual-shortlist-status");
+const carrierTemplateFileInput = document.querySelector("#rfx-carrier-template-file");
+const downloadCarrierTemplateButton = document.querySelector("#download-rfx-carrier-template");
+const importCarrierTemplateButton = document.querySelector("#import-rfx-carrier-template");
+const carrierTemplatePreview = document.querySelector("#rfx-carrier-template-preview");
+const carrierTemplatePreviewBody = document.querySelector("#rfx-carrier-template-preview-body");
+const carrierTemplateStatus = document.querySelector("#rfx-carrier-template-status");
 const rfxLaunchWorkspaceTabs = document.querySelector("#rfx-launch-workspace-tabs");
 const rfxLaunchWorkspacePanels = [...document.querySelectorAll("[data-rfx-launch-workspace-panel]")];
 const rfxOutreachForm = document.querySelector("#rfx-outreach-form");
@@ -540,6 +609,8 @@ let pendingLaneEdits = new Map();
 let pendingLaneTemplateRows = [];
 let pendingLaneTemplateIssues = [];
 let manualLaneRows = [];
+let pendingCarrierTemplateRows = [];
+let pendingCarrierTemplateMatches = [];
 let vendorOptionsLoading = true;
 let vendorOptionsHydrating = false;
 let vendorOptionsError = "";
@@ -550,6 +621,9 @@ let vendorSearchSequence = 0;
 let carrierWorkspaceLoadPromise = null;
 let rfxCustomerRows = [];
 let rfxCustomerSearchTimer = null;
+let vendorSegmentsLoading = true;
+let savedVendorSegments = [];
+let vendorSegmentsLoadVersion = 0;
 let activeCarrierTemplates = [];
 let activeCarrierTemplatesLoading = true;
 let activeCarrierTemplatesError = "";
@@ -559,10 +633,14 @@ let loadedCarrierTemplateVendors = [];
 let carrierTemplateMembersLoading = false;
 let carrierTemplateMembersError = "";
 let carrierTemplateMembersLoadVersion = 0;
+let participantTemplateMutationRunning = false;
 let manualScopeLoadRunning = false;
 let participantAddRunning = false;
 let selectedManualVendorIdsState = new Set();
 const carrierTemplateMaterializationController = createCarrierTemplateMaterializationController();
+const bidRoomParticipantTemplateCapability = createBidRoomCarrierTemplateCapabilityController({
+  onTransition: renderBidRoomParticipantTemplateCapability
+});
 let rfxCarrierFitEvidenceByVendorId = new Map();
 let rfxCarrierFitEvidenceLoading = false;
 let rfxCarrierFitEvidenceError = "";
@@ -920,6 +998,19 @@ const EDITABLE_RFX_LANE_FIELDS = [
   "notes"
 ];
 
+const RFX_CARRIER_TEMPLATE_COLUMNS = [
+  { key: "participate", label: "Participate", example: "TRUE" },
+  { key: "vendor_id", label: "CRM Vendor ID", example: "" },
+  { key: "vendor_name", label: "Vendor Name", example: "Carrier Logistics" },
+  { key: "vendor_domain", label: "Vendor Domain", example: "carrier.com" },
+  { key: "vendor_email", label: "Vendor Email", example: "pricing@carrier.com" },
+  { key: "base_stage", label: "Base Stage", example: "procurement" },
+  { key: "status", label: "Status", example: "active" },
+  { key: "preferred_channel", label: "Preferred Channel", example: "email" },
+  { key: "coverage_notes", label: "Coverage Notes", example: "Cross-border MX-US" },
+  { key: "tags", label: "Tags", example: "flatbed; cross-border" },
+  { key: "notes", label: "Notes", example: "Target invite wave 1" }
+];
 const BID_ROOM_EVENT_THREAD_TYPE = "event_group";
 
 function escapeHtml(value) {
@@ -1901,10 +1992,66 @@ function downloadRfxLaneTemplate() {
   XLSX.writeFile(workbook, `rateware-rfx-${suffix}-template-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
+function mapCarrierHeader(header) {
+  const aliases = {
+    participate: "participate",
+    participates: "participate",
+    participant: "participate",
+    include: "participate",
+    included: "participate",
+    invite: "participate",
+    invited: "participate",
+    selected: "participate",
+    select: "participate",
+    true_false: "participate",
+    y_n: "participate",
+    yes_no: "participate",
+    vendor_id: "vendor_id",
+    crm_vendor_id: "vendor_id",
+    id: "vendor_id",
+    carrier: "vendor_name",
+    carrier_name: "vendor_name",
+    vendor: "vendor_name",
+    vendor_name: "vendor_name",
+    name: "vendor_name",
+    company: "vendor_name",
+    company_name: "vendor_name",
+    domain: "vendor_domain",
+    vendor_domain: "vendor_domain",
+    carrier_domain: "vendor_domain",
+    website: "vendor_domain",
+    email: "vendor_email",
+    vendor_email: "vendor_email",
+    carrier_email: "vendor_email",
+    primary_email: "vendor_email",
+    contact_email: "vendor_email",
+    stage: "base_stage",
+    crm_stage: "base_stage",
+    base: "base_stage",
+    channel: "preferred_channel",
+    coverage: "coverage_notes",
+    coverage_note: "coverage_notes",
+    tag: "tags"
+  };
+  const key = cleanHeader(header);
+  return aliases[key] || key;
+}
+
 function parseBooleanFlag(value) {
   const text = String(value ?? "").trim().toLowerCase();
   if (!text) return false;
   return ["true", "yes", "y", "1", "x", "si", "sí", "selected", "include", "included", "invite"].includes(text);
+}
+
+function normalizeDomain(value) {
+  const text = String(value || "").trim().toLowerCase();
+  const fromEmail = text.includes("@") ? text.split("@").pop() : text;
+  return fromEmail
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split(/[/?#]/)[0]
+    .replace(/[^a-z0-9.-]/g, "")
+    .replace(/^\.+|\.+$/g, "");
 }
 
 function normalizeLookupText(value) {
@@ -1918,6 +2065,117 @@ function normalizeLookupText(value) {
     .replace(/\b(inc|llc|ltd|sa|de|cv|sapi|corp|corporation|company|co)\b/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function rowsFromCarrierTemplateMatrix(matrix = []) {
+  const headerIndex = matrix.findIndex((row) => {
+    const headers = row.map(mapCarrierHeader);
+    return headers.includes("participate")
+      && headers.some((header) => ["vendor_id", "vendor_domain", "vendor_email", "vendor_name"].includes(header));
+  });
+  if (headerIndex < 0) {
+    throw new Error("Carrier catalog template headers not found. Use participate plus vendor_id, vendor_domain, vendor_email or vendor_name.");
+  }
+  const headers = matrix[headerIndex].map(mapCarrierHeader);
+  return matrix.slice(headerIndex + 1)
+    .map((row) => {
+      const item = {};
+      headers.forEach((header, cellIndex) => {
+        if (!header) return;
+        item[header] = row[cellIndex] ?? "";
+      });
+      return item;
+    })
+    .filter((row) => Object.values(row).some((value) => String(value ?? "").trim()));
+}
+
+function normalizeCarrierTemplateRows(rows = []) {
+  return rows.map((row) => {
+    const normalized = {};
+    RFX_CARRIER_TEMPLATE_COLUMNS.forEach((column) => {
+      const value = row[column.key] ?? row[mapCarrierHeader(column.label)] ?? "";
+      normalized[column.key] = typeof value === "string" ? value.trim() : value;
+    });
+    normalized.participate = parseBooleanFlag(normalized.participate);
+    normalized.vendor_id = String(normalized.vendor_id || "").trim();
+    normalized.vendor_domain = normalizeDomain(normalized.vendor_domain || normalized.vendor_email);
+    normalized.vendor_email = String(normalized.vendor_email || "").trim().toLowerCase();
+    normalized.vendor_name = String(normalized.vendor_name || "").trim();
+    normalized.base_stage = String(normalized.base_stage || "").trim();
+    normalized.status = String(normalized.status || "").trim();
+    normalized.preferred_channel = String(normalized.preferred_channel || "").trim();
+    normalized.coverage_notes = String(normalized.coverage_notes || "").trim();
+    normalized.tags = String(Array.isArray(normalized.tags) ? normalized.tags.join("; ") : normalized.tags || "").trim();
+    normalized.notes = String(normalized.notes || "").trim();
+    return normalized;
+  });
+}
+
+async function parseCarrierTemplateFile(file) {
+  if (!file) return [];
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  if (extension === "csv" || extension === "tsv" || file.type === "text/csv") {
+    return normalizeCarrierTemplateRows(rowsFromCarrierTemplateMatrix(parseDelimitedRows(await file.text())));
+  }
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+  const sheetName = workbook.SheetNames.find((name) => /carrier|vendor|participant|shortlist|target/i.test(name)) || workbook.SheetNames[0];
+  if (!sheetName) throw new Error("No sheets were found in this CRM participant catalog.");
+  const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+    header: 1,
+    defval: "",
+    blankrows: false,
+    raw: false
+  });
+  return normalizeCarrierTemplateRows(rowsFromCarrierTemplateMatrix(matrix));
+}
+
+function downloadRfxCarrierTemplate() {
+  if (!vendorOptions.length) {
+    setStatus(carrierTemplateStatus, "Carrier CRM is still loading. Wait a moment and download the catalog again.", "error");
+    return;
+  }
+  const headers = RFX_CARRIER_TEMPLATE_COLUMNS.map((column) => column.key);
+  const segmentId = selectedManualScopeId();
+  const selectedIds = selectedManualVendorIds();
+  const presetList = segmentId !== "all";
+  const sourceRows = shortlistCandidateRows();
+  if (!sourceRows.length) {
+    setStatus(carrierTemplateStatus, "No carriers match the current CRM list or search.", "error");
+    return;
+  }
+  const rows = sourceRows.map((vendor) => ({
+    participate: selectedIds.includes(vendor.id) || (presetList && !selectedIds.length) ? "TRUE" : "FALSE",
+    vendor_id: vendor.id || "",
+    vendor_name: vendor.vendor_name || "",
+    vendor_domain: vendor.domain || normalizeDomain(vendor.primary_email || ""),
+    vendor_email: vendor.primary_email || "",
+    base_stage: vendor.base_stage || "",
+    status: vendor.status || "",
+    preferred_channel: vendor.preferred_channel || "",
+    coverage_notes: vendor.coverage_notes || "",
+    tags: Array.isArray(vendor.tags) ? vendor.tags.join("; ") : vendor.tags || "",
+    notes: vendor.notes || ""
+  }));
+  const workbook = XLSX.utils.book_new();
+  const templateSheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+  templateSheet["!cols"] = RFX_CARRIER_TEMPLATE_COLUMNS.map((column) => ({ wch: Math.max(column.key.length + 2, 18) }));
+  templateSheet["!autofilter"] = { ref: `A1:${XLSX.utils.encode_col(headers.length - 1)}1` };
+  XLSX.utils.book_append_sheet(workbook, templateSheet, "Carrier CRM Catalog");
+  const referenceRows = [
+    ["Column", "How to use"],
+    ["participate", "Set TRUE for carriers that should receive this bid invitation. FALSE rows stay as catalog reference."],
+    ["vendor_id", "Best match key exported from Carrier CRM. Do not edit if possible."],
+    ["vendor_domain", "Fallback match key if vendor_id is missing."],
+    ["vendor_email", "Fallback match key if vendor_id/domain are missing."],
+    ["vendor_name", "Fallback exact-name match when id/domain/email are not available."],
+    ["base_stage/status/channel/coverage/tags", "Read-only CRM context to help decide who participates."],
+    ["notes", "Optional operator notes; not required for import."]
+  ];
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(referenceRows), "Field Reference");
+  const segment = savedVendorSegments.find((item) => item.id === segmentId);
+  const listName = segment?.segment_name || (segmentId === "procurement" ? "procurement" : "all-crm");
+  XLSX.writeFile(workbook, `rateware-bid-carrier-catalog-${slugify(listName)}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  setStatus(carrierTemplateStatus, `${formatNumber(rows.length)} carrier(s) exported from ${listName}.`, "success");
 }
 
 function portalUrl(token, laneCount = 1) {
@@ -7407,8 +7665,93 @@ function updateSelectionControls() {
   if (archiveSelectedButton) archiveSelectedButton.disabled = participantBulkMutationRunning || !inviteCount;
 }
 
+function splitTags(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
+  return String(value || "")
+    .split(/[;,|]/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function renderBidRoomParticipantTemplateCapability(state, error = null) {
+  const legacyEnabled = state === "disabled";
+  const carrierCrmEnabled = state === "enabled";
+  if (legacyParticipantTemplateFallback) {
+    legacyParticipantTemplateFallback.hidden = !legacyEnabled;
+    legacyParticipantTemplateFallback.disabled = !legacyEnabled;
+  }
+  if (participantTemplateCrmLink) participantTemplateCrmLink.hidden = !carrierCrmEnabled;
+  if (participantTemplateCapabilityState) participantTemplateCapabilityState.hidden = legacyEnabled || carrierCrmEnabled;
+  if (retryParticipantTemplateCapabilityButton) retryParticipantTemplateCapabilityButton.disabled = state === "pending";
+  if (participantTemplateCapabilityStatus) {
+    participantTemplateCapabilityStatus.textContent = state === "pending"
+      ? "Checking carrier list template availability..."
+      : `Carrier list template availability could not be verified. ${humanizeError(error)}`;
+    participantTemplateCapabilityStatus.dataset.tone = state === "error" ? "error" : "neutral";
+  }
+
+  if (!legacyEnabled) {
+    vendorSegmentsLoadVersion += 1;
+    vendorSegmentsLoading = false;
+    savedVendorSegments = [];
+    if (manualShortlistSegment && !["all", "procurement"].includes(manualShortlistSegment.value)) {
+      manualShortlistSegment.value = "all";
+    }
+    clearCarrierTemplateImport();
+  }
+  renderManualShortlistControls();
+  renderOutreachCarrierAdder();
+  if (legacyEnabled) void loadVendorSegments();
+}
+
 function selectedManualScopeId() {
   return manualShortlistSegment?.value || "all";
+}
+
+function selectedSavedVendorSegment() {
+  const segmentId = selectedManualScopeId();
+  if (!segmentId || segmentId === "all" || segmentId === "procurement") return null;
+  return participantTemplates().find((item) => item.id === segmentId) || null;
+}
+
+function participantTemplates() {
+  if (bidRoomParticipantTemplateCapability.state !== "disabled") return [];
+  return savedVendorSegments.filter((segment) => String(segment?.segment_type || "").toLowerCase() === "participant_template");
+}
+
+function participantTemplateNameKey(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
+}
+
+function participantTemplateByName(name, exceptId = "") {
+  const key = participantTemplateNameKey(name);
+  if (!key) return null;
+  return participantTemplates().find((segment) => segment.id !== exceptId && participantTemplateNameKey(segment.segment_name) === key) || null;
+}
+
+function segmentVendorIds(segment) {
+  if (!segment) return [];
+  if (Array.isArray(segment.vendor_ids)) return segment.vendor_ids.map((id) => String(id)).filter(Boolean);
+  return String(segment.vendor_ids || "")
+    .split(/[,\s;|]+/)
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+function segmentMatchesVendor(segment, vendor) {
+  const vendorIds = segmentVendorIds(segment);
+  if (vendorIds.length) return vendorIds.includes(String(vendor.id || ""));
+  const vendorTags = splitTags(vendor.tags);
+  const requiredTags = splitTags(segment.tags);
+  const hasTags = requiredTags.every((tag) => vendorTags.includes(tag));
+  const hasStatus = !segment.status || vendor.status === segment.status;
+  const hasChannel = !segment.preferred_channel || vendor.preferred_channel === segment.preferred_channel;
+  return hasTags && hasStatus && hasChannel;
 }
 
 function vendorSearchText(row) {
@@ -7600,9 +7943,15 @@ function queueVendorSearchLoad() {
 function renderManualScopeOptions() {
   if (!manualShortlistSegment) return;
   const currentValue = manualShortlistSegment.value || "all";
+  const segmentOptions = participantTemplates().map((segment) => {
+    const savedCount = segmentVendorIds(segment).length;
+    const suffix = savedCount ? ` (${formatNumber(savedCount)})` : "";
+    return `<option value="${escapeHtml(segment.id)}">${escapeHtml(segment.segment_name || "Saved participant template")}${suffix}</option>`;
+  }).join("");
   manualShortlistSegment.innerHTML = `
     <option value="all">All active CRM carriers</option>
     <option value="procurement">Procurement / Pipeline (${formatNumber(vendorOptions.filter(isProcurementCarrier).length)})</option>
+    ${segmentOptions}
   `;
   if ([...manualShortlistSegment.options].some((option) => option.value === currentValue)) {
     manualShortlistSegment.value = currentValue;
@@ -7611,12 +7960,18 @@ function renderManualScopeOptions() {
 
 function manualScopeCandidateRows(scopeId = selectedManualScopeId()) {
   const activeRows = vendorOptions.filter((vendor) => vendorStageRank(vendor) < 9);
+  const segment = participantTemplates().find((item) => item.id === scopeId);
   return scopeId === "procurement"
     ? activeRows.filter(isProcurementCarrier)
-    : activeRows;
+    : segment
+      ? activeRows.filter((vendor) => segmentMatchesVendor(segment, vendor))
+      : activeRows;
 }
 
 async function loadManualScopeCandidateRows(scopeId = selectedManualScopeId()) {
+  const segment = participantTemplates().find((item) => item.id === scopeId);
+  const savedIds = segmentVendorIds(segment);
+  if (savedIds.length) return await hydrateVendorOptionIds(savedIds);
   if (scopeId === "procurement") {
     const result = await fetchVendors({
       limit: CRM_VENDOR_SEARCH_LIMIT,
@@ -7658,6 +8013,7 @@ function carrierTemplateLifecycle(template = {}) {
 async function loadActiveCarrierTemplates() {
   const loadVersion = ++activeCarrierTemplatesLoadVersion;
   const previousSelection = selectedCarrierTemplateId();
+  const capabilityProbe = bidRoomParticipantTemplateCapability.beginProbe();
   activeCarrierTemplatesLoading = true;
   activeCarrierTemplatesError = "";
   renderOutreachCarrierAdder();
@@ -7670,12 +8026,27 @@ async function loadActiveCarrierTemplates() {
         offset
       });
       if (loadVersion !== activeCarrierTemplatesLoadVersion) return;
+      if (offset === 0) {
+        bidRoomParticipantTemplateCapability.resolveProbe(capabilityProbe, page);
+        if (page?.enabled === false) {
+          activeCarrierTemplates = [];
+          activeCarrierTemplatesLoading = false;
+          activeCarrierTemplatesError = "";
+          loadedCarrierTemplate = null;
+          loadedCarrierTemplateVendors = [];
+          carrierTemplateMembersLoading = false;
+          renderOutreachCarrierAdder();
+          return;
+        }
+        if (page?.enabled !== true) throw bidRoomParticipantTemplateCapability.error;
+      } else if (page?.enabled !== true) {
+        throw new Error("Carrier list template capability changed while loading active templates.");
+      }
       if (carrierTemplateMaterializationController.active) {
         activeCarrierTemplatesLoading = false;
         renderOutreachCarrierAdder();
         return;
       }
-      if (page?.enabled === false) throw new Error("Carrier list templates are not enabled.");
       const pageRows = Array.isArray(page?.rows) ? page.rows : [];
       rows.push(...pageRows.filter((row) => carrierTemplateLifecycle(row) === "active"));
       if (!page?.has_more) {
@@ -7698,8 +8069,19 @@ async function loadActiveCarrierTemplates() {
     throw new Error(`Active carrier templates exceed the ${CARRIER_TEMPLATE_LIST_SAFETY_LIMIT.toLocaleString()}-template safety limit.`);
   } catch (error) {
     if (loadVersion !== activeCarrierTemplatesLoadVersion) return;
+    bidRoomParticipantTemplateCapability.rejectProbe(capabilityProbe, error);
     if (carrierTemplateMaterializationController.active) {
       activeCarrierTemplatesLoading = false;
+      renderOutreachCarrierAdder();
+      return;
+    }
+    if (bidRoomParticipantTemplateCapability.state === "disabled") {
+      activeCarrierTemplates = [];
+      activeCarrierTemplatesLoading = false;
+      activeCarrierTemplatesError = "";
+      loadedCarrierTemplate = null;
+      loadedCarrierTemplateVendors = [];
+      carrierTemplateMembersLoading = false;
       renderOutreachCarrierAdder();
       return;
     }
@@ -7709,10 +8091,6 @@ async function loadActiveCarrierTemplates() {
     loadedCarrierTemplate = null;
     loadedCarrierTemplateVendors = [];
     carrierTemplateMembersLoading = false;
-    if (String(rfxOutreachCarrierScope?.value || "") === "saved_segment") {
-      selectedManualVendorIdsState.clear();
-      persistManualParticipantSelection();
-    }
     renderOutreachCarrierAdder();
   }
 }
@@ -7740,6 +8118,11 @@ async function fetchExactCarrierTemplateVendors(template = {}, { guard = null } 
 
 async function loadSelectedActiveCarrierTemplate({ preserveSelection = false } = {}) {
   if (carrierTemplateSelectionMutationBlocked(rfxOutreachCarrierStatus)) return null;
+  if (bidRoomParticipantTemplateCapability.state !== "enabled") {
+    carrierTemplateMembersError = "Carrier list template availability is not enabled.";
+    renderOutreachCarrierAdder();
+    return null;
+  }
   const templateId = selectedCarrierTemplateId();
   const loadVersion = ++carrierTemplateMembersLoadVersion;
   if (!templateId) {
@@ -7763,14 +8146,18 @@ async function loadSelectedActiveCarrierTemplate({ preserveSelection = false } =
   renderOutreachCarrierAdder();
   try {
     const response = await getCarrierListTemplate(templateId, { usageContext: "carrier_fit" });
-    if (loadVersion !== carrierTemplateMembersLoadVersion || selectedCarrierTemplateId() !== templateId) return null;
+    if (loadVersion !== carrierTemplateMembersLoadVersion
+      || selectedCarrierTemplateId() !== templateId
+      || bidRoomParticipantTemplateCapability.state !== "enabled") return null;
     if (response?.enabled === false) throw new Error("Carrier list templates are not enabled.");
     const row = response?.row || null;
     if (!row || String(row.id || "") !== templateId || carrierTemplateLifecycle(row) !== "active") {
       throw new Error("This carrier template is no longer active. Choose another active template.");
     }
     const vendors = await fetchExactCarrierTemplateVendors(row);
-    if (loadVersion !== carrierTemplateMembersLoadVersion || selectedCarrierTemplateId() !== templateId) return null;
+    if (loadVersion !== carrierTemplateMembersLoadVersion
+      || selectedCarrierTemplateId() !== templateId
+      || bidRoomParticipantTemplateCapability.state !== "enabled") return null;
     loadedCarrierTemplate = row;
     loadedCarrierTemplateVendors = vendors;
     rememberSelectedVendorRows(vendors);
@@ -7778,7 +8165,9 @@ async function loadSelectedActiveCarrierTemplate({ preserveSelection = false } =
     renderOutreachCarrierAdder();
     return row;
   } catch (error) {
-    if (loadVersion !== carrierTemplateMembersLoadVersion || selectedCarrierTemplateId() !== templateId) return null;
+    if (loadVersion !== carrierTemplateMembersLoadVersion
+      || selectedCarrierTemplateId() !== templateId
+      || bidRoomParticipantTemplateCapability.state !== "enabled") return null;
     loadedCarrierTemplate = null;
     loadedCarrierTemplateVendors = [];
     carrierTemplateMembersLoading = false;
@@ -7952,6 +8341,116 @@ function shortlistCandidateRows() {
   return sortedVendorOptions(filtered);
 }
 
+function vendorLookupMaps() {
+  const byId = new Map();
+  const byDomain = new Map();
+  const byEmail = new Map();
+  const byName = new Map();
+  vendorOptions.forEach((vendor) => {
+    if (vendor.id && !byId.has(String(vendor.id))) byId.set(String(vendor.id), vendor);
+    const domain = normalizeDomain(vendor.domain || vendor.primary_email);
+    const email = String(vendor.primary_email || "").trim().toLowerCase();
+    const name = normalizeLookupText(vendor.vendor_name);
+    if (domain && !byDomain.has(domain)) byDomain.set(domain, vendor);
+    if (email && !byEmail.has(email)) byEmail.set(email, vendor);
+    if (name && !byName.has(name)) byName.set(name, vendor);
+  });
+  return { byId, byDomain, byEmail, byName };
+}
+
+function matchCarrierTemplateVendor(row, maps = vendorLookupMaps()) {
+  const id = String(row.vendor_id || "").trim();
+  if (id && maps.byId.has(id)) {
+    return { vendor: maps.byId.get(id), method: "crm id" };
+  }
+  const domain = normalizeDomain(row.vendor_domain || row.vendor_email);
+  if (domain && maps.byDomain.has(domain)) {
+    return { vendor: maps.byDomain.get(domain), method: "domain" };
+  }
+  const email = String(row.vendor_email || "").trim().toLowerCase();
+  if (email && maps.byEmail.has(email)) {
+    return { vendor: maps.byEmail.get(email), method: "email" };
+  }
+  const name = normalizeLookupText(row.vendor_name);
+  if (name && maps.byName.has(name)) {
+    return { vendor: maps.byName.get(name), method: "name" };
+  }
+  return { vendor: null, method: "" };
+}
+
+function evaluateCarrierTemplateRows(rows = pendingCarrierTemplateRows) {
+  const maps = vendorLookupMaps();
+  return rows.map((row, index) => {
+    const issues = [];
+    const vendorMatch = matchCarrierTemplateVendor(row, maps);
+    if (row.participate && !currentLanes.length) issues.push("no lanes in bid event");
+    if (row.participate && !vendorMatch.vendor) issues.push("carrier not found in CRM");
+    if (row.participate && !row.vendor_id && !row.vendor_domain && !row.vendor_email && !row.vendor_name) issues.push("carrier identifier missing");
+    return {
+      index,
+      row,
+      lanes: row.participate ? currentLanes : [],
+      laneLabel: row.participate ? "All event lanes" : "Not selected",
+      laneMethod: row.participate ? "event" : "not_selected",
+      vendor: vendorMatch.vendor,
+      vendorMethod: vendorMatch.method,
+      issues
+    };
+  });
+}
+
+function readyCarrierTemplateMatches() {
+  return pendingCarrierTemplateMatches.filter((item) => item.row.participate && !item.issues.length);
+}
+
+function updateCarrierTemplateButton() {
+  if (!importCarrierTemplateButton) return;
+  importCarrierTemplateButton.disabled = bidRoomParticipantTemplateCapability.state !== "disabled"
+    || !selectedEventId
+    || !readyCarrierTemplateMatches().length;
+}
+
+function renderCarrierTemplatePreview() {
+  if (!carrierTemplatePreview || !carrierTemplatePreviewBody) return;
+  pendingCarrierTemplateMatches = evaluateCarrierTemplateRows();
+  const readyRows = readyCarrierTemplateMatches();
+  const selectedRows = pendingCarrierTemplateMatches.filter((item) => item.row.participate);
+  const skippedRows = pendingCarrierTemplateMatches.length - selectedRows.length;
+  carrierTemplatePreview.hidden = !pendingCarrierTemplateMatches.length;
+  const previewRows = [
+    ...selectedRows,
+    ...pendingCarrierTemplateMatches.filter((item) => !item.row.participate)
+  ].slice(0, 18);
+  carrierTemplatePreviewBody.innerHTML = previewRows.map((item) => {
+    const input = item.row.vendor_domain || item.row.vendor_email || item.row.vendor_name || "-";
+    const match = item.vendor ? `${vendorDisplayName(item.vendor)} (${item.vendorMethod})` : "-";
+    const status = !item.row.participate ? "not selected" : item.issues.length ? item.issues.join(", ") : "ready";
+    return `
+      <tr class="${item.issues.length ? "is-muted-row" : ""}">
+        <td>${item.row.participate ? "TRUE" : "FALSE"}</td>
+        <td>${escapeHtml(input)}</td>
+        <td>${escapeHtml(match)}</td>
+        <td>${escapeHtml(status)}</td>
+      </tr>
+    `;
+  }).join("");
+  const blocked = selectedRows.length - readyRows.length;
+  const suffix = selectedEventId ? "" : " Select or create a bid event before import.";
+  const message = `${readyRows.length} selected carrier(s) ready. ${blocked} selected row(s) need CRM cleanup. ${skippedRows} catalog row(s) not selected.${suffix}`;
+  setStatus(carrierTemplateStatus, message, readyRows.length ? "success" : "error");
+  updateCarrierTemplateButton();
+}
+
+function clearCarrierTemplateImport({ preserveStatus = false } = {}) {
+  pendingCarrierTemplateRows = [];
+  pendingCarrierTemplateMatches = [];
+  if (carrierTemplateFileInput) carrierTemplateFileInput.value = "";
+  if (carrierTemplatePreview) carrierTemplatePreview.hidden = true;
+  if (carrierTemplatePreviewBody) carrierTemplatePreviewBody.innerHTML = "";
+  if (!preserveStatus) setStatus(carrierTemplateStatus, "Upload the edited CRM catalog to import TRUE participant carriers.");
+  updateCarrierTemplateButton();
+}
+
 function renderCrmVendorCandidate(row) {
   const materializationLocked = Boolean(carrierTemplateMaterializationController.active);
   const isSelected = selectedManualVendorIds().includes(String(row.id));
@@ -8041,6 +8540,19 @@ function selectOutreachCarrierCandidates(candidates = []) {
   return selectedManualVendorIds().length;
 }
 
+function participantTemplatePayload(segment, vendorIds, name) {
+  return {
+    segment_name: name || segment?.segment_name || "Bid participant template",
+    segment_type: "participant_template",
+    vendor_ids: vendorIds,
+    tags: Array.isArray(segment?.tags) && segment.tags.length ? segment.tags : ["bid-room-template"],
+    description: segment?.description || `Bid Room participant template with ${vendorIds.length} carrier(s).`,
+    notes: segment?.notes || "Saved from Bid Room selected participants.",
+    status: segment?.status || null,
+    preferred_channel: segment?.preferred_channel || null
+  };
+}
+
 function selectedManualVendorRows() {
   const selectedIds = selectedManualVendorIds();
   const rows = selectedIds
@@ -8058,7 +8570,7 @@ function renderSelectedManualVendors() {
     manualShortlistSelectedList.innerHTML = `
       <article class="bid-room-selected-empty">
         <strong>No carriers selected</strong>
-        <span>Select carriers from the CRM list below.</span>
+        <span>Use the CRM list or load a saved carrier list.</span>
       </article>
     `;
     return;
@@ -8306,8 +8818,14 @@ function fitCarrierToOutreachLanes(vendor) {
 }
 
 function renderOutreachCarrierFitControls() {
-  const scope = String(rfxOutreachCarrierScope?.value || "recommended");
+  const carrierTemplateEnabled = bidRoomParticipantTemplateCapability.state === "enabled";
   const materializationLocked = Boolean(carrierTemplateMaterializationController.active);
+  const carrierTemplateSurfaceAvailable = carrierTemplateEnabled || materializationLocked;
+  if (rfxOutreachCarrierScope) {
+    const savedTemplateOption = [...rfxOutreachCarrierScope.options].find((option) => option.value === "saved_segment");
+    if (savedTemplateOption) savedTemplateOption.disabled = !carrierTemplateEnabled && !materializationLocked;
+  }
+  const scope = String(rfxOutreachCarrierScope?.value || "recommended");
   const selectedLane = String(rfxOutreachCarrierLane?.value || "all");
   if (rfxOutreachCarrierLane) {
     rfxOutreachCarrierLane.innerHTML = [
@@ -8327,10 +8845,10 @@ function renderOutreachCarrierFitControls() {
     if (selectedSegment && [...rfxOutreachCarrierSegment.options].some((option) => option.value === selectedSegment)) {
       rfxOutreachCarrierSegment.value = selectedSegment;
     }
-    rfxOutreachCarrierSegment.disabled = materializationLocked || activeCarrierTemplatesLoading || Boolean(activeCarrierTemplatesError);
+    rfxOutreachCarrierSegment.disabled = !carrierTemplateSurfaceAvailable || materializationLocked || activeCarrierTemplatesLoading || Boolean(activeCarrierTemplatesError);
   }
-  if (rfxOutreachCarrierSegmentField) rfxOutreachCarrierSegmentField.hidden = scope !== "saved_segment";
-  if (rfxOutreachCarrierTemplateCounts) rfxOutreachCarrierTemplateCounts.hidden = scope !== "saved_segment";
+  if (rfxOutreachCarrierSegmentField) rfxOutreachCarrierSegmentField.hidden = !carrierTemplateSurfaceAvailable || scope !== "saved_segment";
+  if (rfxOutreachCarrierTemplateCounts) rfxOutreachCarrierTemplateCounts.hidden = !carrierTemplateSurfaceAvailable || scope !== "saved_segment";
   if (rfxOutreachCarrierScope) rfxOutreachCarrierScope.disabled = materializationLocked;
   if (rfxOutreachCarrierSearch) rfxOutreachCarrierSearch.disabled = materializationLocked;
   if (rfxOutreachCarrierFit) rfxOutreachCarrierFit.disabled = materializationLocked;
@@ -8374,6 +8892,7 @@ function carrierTemplateStateLabel(state) {
 function renderActiveCarrierTemplateAdder() {
   const materializationOperation = carrierTemplateMaterializationController.active;
   const materializationLocked = Boolean(materializationOperation);
+  const carrierTemplateSurfaceAvailable = bidRoomParticipantTemplateCapability.state === "enabled" || materializationLocked;
   const partition = currentCarrierTemplatePartition();
   const removedSelectionCount = pruneCarrierTemplateSelection(partition);
   const selectedIds = selectedManualVendorIds();
@@ -8385,7 +8904,11 @@ function renderActiveCarrierTemplateAdder() {
   const visibleEligibleSet = new Set(visibleEligibleIds);
   const selectedRows = orderedRows.filter((row) => selectedIdSet.has(String(row.vendor_id || row.id || "")));
   const templateSelected = Boolean(selectedCarrierTemplateId());
-  const templateReady = Boolean(loadedCarrierTemplate) && !carrierTemplateMembersLoading && !carrierTemplateMembersError;
+  const templateReady = carrierTemplateSurfaceAvailable
+    && Boolean(loadedCarrierTemplate)
+    && !activeCarrierTemplatesLoading
+    && !carrierTemplateMembersLoading
+    && !carrierTemplateMembersError;
 
   if (rfxOutreachCarrierTemplateCounts) {
     rfxOutreachCarrierTemplateCounts.innerHTML = templateReady
@@ -8423,7 +8946,9 @@ function renderActiveCarrierTemplateAdder() {
   }
   rfxOutreachCarrierAdder.classList.toggle("is-empty", !carrierTemplateMembersLoading && !visibleRows.length);
 
-  rfxOutreachCarrierCandidates.innerHTML = carrierTemplateMembersLoading
+  rfxOutreachCarrierCandidates.innerHTML = !carrierTemplateSurfaceAvailable
+    ? `<p class="rfx-outreach-carrier-empty">${escapeHtml(activeCarrierTemplatesLoading ? "Checking carrier list template availability..." : activeCarrierTemplatesError || "Carrier list templates are unavailable. Retry template availability before using Carrier Fit templates.")}</p>`
+    : carrierTemplateMembersLoading
     ? '<p class="rfx-outreach-carrier-empty">Loading every exact carrier ID in bounded batches. No carrier is selected automatically.</p>'
     : activeCarrierTemplatesError || carrierTemplateMembersError
       ? `<p class="rfx-outreach-carrier-empty">${escapeHtml(activeCarrierTemplatesError || carrierTemplateMembersError)}</p>`
@@ -8684,13 +9209,39 @@ function renderOutreachCarrierAdder() {
   }
 }
 
+function updateParticipantTemplateControls() {
+  const materializationLocked = Boolean(carrierTemplateMaterializationController.active);
+  const legacyEnabled = bidRoomParticipantTemplateCapability.state === "disabled";
+  const selectedCount = selectedManualVendorIds().length;
+  const selectedSegment = selectedSavedVendorSegment();
+  if (saveManualShortlistTemplateButton) {
+    saveManualShortlistTemplateButton.disabled = !legacyEnabled || materializationLocked || !selectedCount || vendorSegmentsLoading || participantTemplateMutationRunning;
+  }
+  if (loadManualShortlistTemplateButton) {
+    const segmentId = selectedManualScopeId();
+    const rows = segmentId === "all" ? [] : manualScopeCandidateRows(segmentId);
+    const savedIds = segmentVendorIds(selectedSegment);
+    const availableCount = savedIds.length || rows.length || (segmentId === "procurement" ? vendorInitialTotal : 0);
+    loadManualShortlistTemplateButton.disabled = !legacyEnabled || materializationLocked || vendorSegmentsLoading || participantTemplateMutationRunning || !availableCount;
+    loadManualShortlistTemplateButton.textContent = availableCount
+      ? `Load ${formatNumber(availableCount)} from saved list`
+      : "Load saved list";
+  }
+  if (updateManualShortlistTemplateButton) {
+    updateManualShortlistTemplateButton.disabled = !legacyEnabled || materializationLocked || !selectedSegment || !selectedCount || vendorSegmentsLoading || participantTemplateMutationRunning;
+  }
+  if (deleteManualShortlistTemplateButton) {
+    deleteManualShortlistTemplateButton.disabled = !legacyEnabled || materializationLocked || !selectedSegment || vendorSegmentsLoading || participantTemplateMutationRunning;
+  }
+}
+
 function renderManualShortlistControls() {
   if (!manualShortlistLane || !manualShortlistVendors) return;
   const materializationLocked = Boolean(carrierTemplateMaterializationController.active);
   renderSelectedManualVendors();
   renderManualScopeOptions();
   manualShortlistVendors.disabled = materializationLocked;
-  if (manualShortlistSegment) manualShortlistSegment.disabled = materializationLocked || manualScopeLoadRunning;
+  if (manualShortlistSegment) manualShortlistSegment.disabled = materializationLocked;
   manualShortlistLane.innerHTML = currentLanes.map((lane) => `
     <option value="${escapeHtml(lane.id)}">#${escapeHtml(lane.lane_number || "")} ${escapeHtml(lane.origin || "-")} -> ${escapeHtml(lane.destination || "-")}</option>
   `).join("");
@@ -8702,19 +9253,20 @@ function renderManualShortlistControls() {
       : vendorSearchLoading
         ? "Searching the full Carrier CRM..."
         : activeSearch.length >= 2
-          ? `${formatNumber(vendorSearchTotal)} CRM match(es) for "${activeSearch}"`
-          : `${formatNumber(vendorOptions.length)} of ${formatNumber(vendorInitialTotal || vendorOptions.length)} CRM carrier(s) ready | ${procurementCount} in Procurement/Pipeline`;
+          ? `${formatNumber(vendorSearchTotal)} CRM match(es) for "${activeSearch}" | ${vendorSegmentsLoading ? "loading segments" : `${savedVendorSegments.length} saved segment(s)`}`
+          : `${formatNumber(vendorOptions.length)} of ${formatNumber(vendorInitialTotal || vendorOptions.length)} CRM carrier(s) ready | ${procurementCount} in Procurement/Pipeline | ${vendorSegmentsLoading ? "loading segments" : `${savedVendorSegments.length} saved segment(s)}`}`;
   }
   if (vendorOptionsLoading && !vendorOptions.length) {
     if (selectVisibleCarriersButton) selectVisibleCarriersButton.disabled = true;
     if (selectSegmentCarriersButton) selectSegmentCarriersButton.disabled = true;
     if (clearCarrierSelectionButton) clearCarrierSelectionButton.disabled = true;
+    updateParticipantTemplateControls();
     manualShortlistVendors.innerHTML = "";
     if (manualShortlistVendorList) {
       manualShortlistVendorList.innerHTML = `
         <article class="bid-room-crm-vendor-empty">
           <strong>Loading Carrier CRM...</strong>
-          <span>Fetching active and procurement carriers.</span>
+          <span>Fetching carriers, procurement vendors, and saved segments.</span>
         </article>
       `;
     }
@@ -8726,6 +9278,7 @@ function renderManualShortlistControls() {
     if (selectVisibleCarriersButton) selectVisibleCarriersButton.disabled = true;
     if (selectSegmentCarriersButton) selectSegmentCarriersButton.disabled = true;
     if (clearCarrierSelectionButton) clearCarrierSelectionButton.disabled = true;
+    updateParticipantTemplateControls();
     manualShortlistVendors.innerHTML = "";
     if (manualShortlistVendorList) {
       manualShortlistVendorList.innerHTML = `
@@ -8770,6 +9323,7 @@ function renderManualShortlistControls() {
     manualShortlistVendorList.dataset.totalMatches = String(totalMatches);
   }
   updateManualShortlistButtonState();
+  updateParticipantTemplateControls();
   renderOutreachCarrierAdder();
 }
 
@@ -8779,6 +9333,7 @@ function renderLanes() {
   updateSelectionControls();
   updateLaneEditControls();
   renderManualShortlistControls();
+  if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
   renderEventDashboard();
   renderLaneCoverage();
   renderLaneDecision();
@@ -9003,6 +9558,7 @@ async function loadVendorOptions({ force = false } = {}) {
     mergeVendorOptionRows(rows);
     vendorOptionsLoading = false;
     renderManualShortlistControls();
+    if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
     if (rows.length < vendorInitialTotal) {
       void hydrateRemainingVendorOptions(loadVersion, vendorInitialTotal, rows.length);
     }
@@ -9013,6 +9569,7 @@ async function loadVendorOptions({ force = false } = {}) {
       ? `Carrier CRM partially loaded (${formatNumber(vendorOptions.length)} profiles ready).`
       : "Carrier CRM could not load.";
     renderManualShortlistControls();
+    if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
     setStatus(
       manualShortlistStatus,
       vendorOptions.length
@@ -9020,6 +9577,31 @@ async function loadVendorOptions({ force = false } = {}) {
         : `Carrier CRM could not load. ${humanizeError(error)}`,
       vendorOptions.length ? "warning" : "error"
     );
+  }
+}
+
+async function loadVendorSegments() {
+  if (bidRoomParticipantTemplateCapability.state !== "disabled") return;
+  const loadVersion = ++vendorSegmentsLoadVersion;
+  const previousSelection = selectedManualScopeId();
+  vendorSegmentsLoading = true;
+  renderManualShortlistControls();
+  try {
+    const rows = await fetchVendorSegments({ segmentType: "participant_template" });
+    if (loadVersion !== vendorSegmentsLoadVersion || bidRoomParticipantTemplateCapability.state !== "disabled") return;
+    savedVendorSegments = rows;
+    if (manualShortlistSegment && previousSelection !== "all" && previousSelection !== "procurement") {
+      manualShortlistSegment.value = participantTemplates().some((segment) => segment.id === previousSelection)
+        ? previousSelection
+        : "all";
+    }
+  } catch (error) {
+    if (loadVersion !== vendorSegmentsLoadVersion || bidRoomParticipantTemplateCapability.state !== "disabled") return;
+    setStatus(manualShortlistStatus, `Carrier segments could not load: ${humanizeError(error)}`, "error");
+  } finally {
+    if (loadVersion !== vendorSegmentsLoadVersion || bidRoomParticipantTemplateCapability.state !== "disabled") return;
+    vendorSegmentsLoading = false;
+    renderManualShortlistControls();
   }
 }
 
@@ -11533,6 +12115,30 @@ rfxClearOutreachCarrierSelectionButton?.addEventListener("click", () => {
   renderManualShortlistControls();
   setStatus(rfxOutreachCarrierStatus, "Temporary carrier selection cleared. Existing invitations and outreach were not changed.", "neutral");
 });
+retryParticipantTemplateCapabilityButton?.addEventListener("click", () => {
+  if (carrierTemplateMaterializationController.active) {
+    setStatus(participantTemplateCapabilityStatus, "Retry or cancel the pending Carrier Fit Add operation before checking template availability again.", "error");
+    return;
+  }
+  void loadCarrierWorkspaceData({ force: true });
+});
+legacyParticipantTemplateFallback?.addEventListener("click", (event) => {
+  const control = event.target.closest("[data-rfx-legacy-template-action]");
+  if (!control || !legacyParticipantTemplateFallback.contains(control)) return;
+  const allowed = dispatchBidRoomLegacyTemplateEvent(bidRoomParticipantTemplateCapability, control.dataset.rfxLegacyTemplateAction, () => true);
+  if (allowed) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}, true);
+legacyParticipantTemplateFallback?.addEventListener("change", (event) => {
+  const control = event.target.closest("[data-rfx-legacy-template-action='file']");
+  if (!control || !legacyParticipantTemplateFallback.contains(control)) return;
+  const allowed = dispatchBidRoomLegacyTemplateEvent(bidRoomParticipantTemplateCapability, "file", () => true);
+  if (allowed) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  control.value = "";
+}, true);
 manualShortlistSegment?.addEventListener("change", () => {
   renderManualShortlistControls();
 });
@@ -11554,7 +12160,7 @@ selectSegmentCarriersButton?.addEventListener("click", () => {
       if (carrierTemplateSelectionMutationBlocked(manualShortlistStatus)) return;
       rememberSelectedVendorRows(rows);
       selectManualVendorIds(rows.map((vendor) => vendor.id));
-      setStatus(manualShortlistStatus, rows.length ? `${formatNumber(rows.length)} carrier(s) selected from Carrier CRM.` : "No carriers match this scope.", rows.length ? "success" : "neutral");
+      setStatus(manualShortlistStatus, rows.length ? `${formatNumber(rows.length)} carrier(s) selected from Carrier CRM.` : "No carriers match this list.", rows.length ? "success" : "neutral");
     })
     .catch((error) => {
       setStatus(manualShortlistStatus, `Carrier CRM selection failed: ${humanizeError(error)}`, "error");
@@ -11571,8 +12177,146 @@ clearCarrierSelectionButton?.addEventListener("click", () => {
   renderManualShortlistControls();
   setStatus(manualShortlistStatus, "Carrier selection cleared.", "neutral");
 });
+saveManualShortlistTemplateButton?.addEventListener("click", async () => {
+  const vendorIds = selectedManualVendorIds();
+  const name = String(manualShortlistTemplateName?.value || "").trim();
+  if (!vendorIds.length) {
+    setStatus(manualShortlistStatus, "Select at least one carrier before saving a participant template.", "error");
+    return;
+  }
+  if (!name) {
+    setStatus(manualShortlistStatus, "Add a template name before saving this participant list.", "error");
+    manualShortlistTemplateName?.focus();
+    return;
+  }
+  if (participantTemplateMutationRunning) return;
+  const existingTemplate = participantTemplateByName(name);
+  participantTemplateMutationRunning = true;
+  saveManualShortlistTemplateButton.disabled = true;
+  setStatus(manualShortlistStatus, `${existingTemplate ? "Updating" : "Saving"} participant template "${name}"...`);
+  try {
+    const row = existingTemplate
+      ? await updateVendorSegment(existingTemplate.id, participantTemplatePayload(existingTemplate, vendorIds, name))
+      : await createVendorSegment(participantTemplatePayload(null, vendorIds, name));
+    if (manualShortlistSegment) manualShortlistSegment.value = row.id;
+    await loadVendorSegments();
+    if (manualShortlistSegment) manualShortlistSegment.value = row.id;
+    if (manualShortlistTemplateName) manualShortlistTemplateName.value = "";
+    renderManualShortlistControls();
+    setStatus(manualShortlistStatus, `Template "${row.segment_name || name}" ${existingTemplate ? "updated" : "saved"} with ${formatNumber(vendorIds.length)} carrier(s).`, "success");
+  } catch (error) {
+    setStatus(manualShortlistStatus, humanizeError(error), "error");
+  } finally {
+    participantTemplateMutationRunning = false;
+    renderManualShortlistControls();
+  }
+});
+loadManualShortlistTemplateButton?.addEventListener("click", async () => {
+  if (carrierTemplateSelectionMutationBlocked(manualShortlistStatus)) return;
+  const segmentId = selectedManualScopeId();
+  if (segmentId === "all") {
+    setStatus(manualShortlistStatus, "Choose a saved list or procurement segment before loading participants.", "error");
+    return;
+  }
+  const segment = participantTemplates().find((item) => item.id === segmentId);
+  const label = segment?.segment_name || (segmentId === "procurement" ? "Procurement / Pipeline" : "saved list");
+  const savedIds = segmentVendorIds(segment);
+  loadManualShortlistTemplateButton.disabled = true;
+  setStatus(manualShortlistStatus, savedIds.length ? `Loading ${formatNumber(savedIds.length)} saved carrier(s) from Carrier CRM...` : "Loading carriers from Carrier CRM...");
+  try {
+    const rows = await loadManualScopeCandidateRows(segmentId);
+    if (carrierTemplateSelectionMutationBlocked(manualShortlistStatus)) return;
+    if (!rows.length) {
+      setStatus(manualShortlistStatus, "No active carriers were found for the selected saved list.", "error");
+      return;
+    }
+    rememberSelectedVendorRows(rows);
+    selectedManualVendorIdsState = new Set(rows.map((vendor) => vendor.id).filter(Boolean));
+    persistManualParticipantSelection();
+    if (manualShortlistTemplateName && segment?.segment_name) manualShortlistTemplateName.value = segment.segment_name;
+    const missingCount = Math.max(savedIds.length - rows.length, 0);
+    renderManualShortlistControls();
+    setStatus(
+      manualShortlistStatus,
+      `${formatNumber(rows.length)} carrier(s) loaded from ${label}.${missingCount ? ` ${formatNumber(missingCount)} saved carrier(s) are no longer available in this workspace.` : ""}`,
+      missingCount ? "warning" : "success"
+    );
+  } catch (error) {
+    setStatus(manualShortlistStatus, `Saved list could not load from Carrier CRM. ${humanizeError(error)}`, "error");
+  } finally {
+    renderManualShortlistControls();
+  }
+});
+updateManualShortlistTemplateButton?.addEventListener("click", async () => {
+  const segment = selectedSavedVendorSegment();
+  const vendorIds = selectedManualVendorIds();
+  if (!segment) {
+    setStatus(manualShortlistStatus, "Choose a saved participant template before updating.", "error");
+    return;
+  }
+  if (!vendorIds.length) {
+    setStatus(manualShortlistStatus, "Keep at least one carrier selected before updating this template.", "error");
+    return;
+  }
+  const name = String(manualShortlistTemplateName?.value || segment.segment_name || "").trim();
+  if (!name) {
+    setStatus(manualShortlistStatus, "Template name is required before updating.", "error");
+    manualShortlistTemplateName?.focus();
+    return;
+  }
+  if (participantTemplateMutationRunning) return;
+  const duplicateTemplate = participantTemplateByName(name, segment.id);
+  if (duplicateTemplate) {
+    setStatus(manualShortlistStatus, `A participant template named "${duplicateTemplate.segment_name}" already exists. Select it or choose a different name.`, "error");
+    return;
+  }
+  participantTemplateMutationRunning = true;
+  updateManualShortlistTemplateButton.disabled = true;
+  setStatus(manualShortlistStatus, `Updating participant template "${name}"...`);
+  try {
+    const row = await updateVendorSegment(segment.id, participantTemplatePayload(segment, vendorIds, name));
+    if (manualShortlistSegment) manualShortlistSegment.value = row.id;
+    await loadVendorSegments();
+    if (manualShortlistSegment) manualShortlistSegment.value = row.id;
+    renderManualShortlistControls();
+    setStatus(manualShortlistStatus, `Template "${row.segment_name || name}" updated with ${formatNumber(vendorIds.length)} carrier(s).`, "success");
+  } catch (error) {
+    setStatus(manualShortlistStatus, humanizeError(error), "error");
+  } finally {
+    participantTemplateMutationRunning = false;
+    renderManualShortlistControls();
+  }
+});
+deleteManualShortlistTemplateButton?.addEventListener("click", async () => {
+  const segment = selectedSavedVendorSegment();
+  if (!segment) {
+    setStatus(manualShortlistStatus, "Choose a saved participant template before deleting.", "error");
+    return;
+  }
+  const label = segment.segment_name || "this participant template";
+  if (!window.confirm(`Delete "${label}"? This will not remove carriers from CRM or existing bid invitations.`)) return;
+  if (participantTemplateMutationRunning) return;
+  participantTemplateMutationRunning = true;
+  deleteManualShortlistTemplateButton.disabled = true;
+  setStatus(manualShortlistStatus, `Deleting participant template "${label}"...`);
+  try {
+    await deleteVendorSegment(segment.id, { segmentType: "participant_template" });
+    if (manualShortlistSegment) manualShortlistSegment.value = "all";
+    await loadVendorSegments();
+    if (manualShortlistSegment) manualShortlistSegment.value = "all";
+    if (manualShortlistTemplateName) manualShortlistTemplateName.value = "";
+    renderManualShortlistControls();
+    setStatus(manualShortlistStatus, `Template "${label}" deleted. Carriers and bid history were not changed.`, "success");
+  } catch (error) {
+    setStatus(manualShortlistStatus, humanizeError(error), "error");
+  } finally {
+    participantTemplateMutationRunning = false;
+    renderManualShortlistControls();
+  }
+});
 manualShortlistLane?.addEventListener("change", () => {
   updateManualShortlistButtonState();
+  if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
 });
 manualShortlistVendorList?.addEventListener("change", (event) => {
   if (carrierTemplateSelectionMutationBlocked(manualShortlistStatus)) return;
@@ -11941,6 +12685,77 @@ rfxSelectAllOutreachCarriersButton?.addEventListener("click", () => {
     `${formatNumber(count)} carrier(s) ready for ${channelLabel} selected. Add them to this RFx, then open Message to prepare their next delivery queue.${needsContact ? ` ${formatNumber(needsContact)} matching carrier${needsContact === 1 ? " needs" : "s need"} a compatible contact first.` : ""}`,
     "success"
   );
+});
+
+downloadCarrierTemplateButton?.addEventListener("click", downloadRfxCarrierTemplate);
+
+carrierTemplateFileInput?.addEventListener("change", async () => {
+  const file = carrierTemplateFileInput.files?.[0];
+  if (!file) {
+    clearCarrierTemplateImport();
+    return;
+  }
+  if (!vendorOptions.length) {
+    setStatus(carrierTemplateStatus, "Carrier CRM is still loading. Try again in a moment.", "error");
+    return;
+  }
+  setStatus(carrierTemplateStatus, `Reading ${file.name}...`);
+  if (importCarrierTemplateButton) importCarrierTemplateButton.disabled = true;
+  try {
+    pendingCarrierTemplateRows = await parseCarrierTemplateFile(file);
+    if (bidRoomParticipantTemplateCapability.state !== "disabled") {
+      clearCarrierTemplateImport();
+      return;
+    }
+    if (!pendingCarrierTemplateRows.length) {
+      setStatus(carrierTemplateStatus, "No CRM catalog rows found. Download the catalog, mark participate TRUE, then upload it.", "error");
+    }
+    renderCarrierTemplatePreview();
+  } catch (error) {
+    pendingCarrierTemplateRows = [];
+    pendingCarrierTemplateMatches = [];
+    renderCarrierTemplatePreview();
+    setStatus(carrierTemplateStatus, humanizeError(error), "error");
+  } finally {
+    updateCarrierTemplateButton();
+  }
+});
+
+importCarrierTemplateButton?.addEventListener("click", async () => {
+  const readyRows = readyCarrierTemplateMatches();
+  if (!selectedEventId || !readyRows.length) {
+    setStatus(carrierTemplateStatus, "Upload the edited CRM catalog with at least one TRUE carrier before importing.", "error");
+    return;
+  }
+  const eventId = selectedEventId;
+  const laneGroups = new Map();
+  readyRows.forEach((item) => {
+    item.lanes.forEach((lane) => {
+      if (!laneGroups.has(lane.id)) laneGroups.set(lane.id, new Set());
+      laneGroups.get(lane.id).add(item.vendor.id);
+    });
+  });
+  importCarrierTemplateButton.disabled = true;
+  setStatus(carrierTemplateStatus, `Adding ${readyRows.length} selected CRM carrier(s) to this bid...`);
+  try {
+    let inserted = 0;
+    for (const [laneId, vendorIds] of laneGroups.entries()) {
+      if (selectedEventId !== eventId || bidRoomParticipantTemplateCapability.state !== "disabled") return;
+      const lane = currentLanes.find((item) => String(item.id) === String(laneId));
+      inserted += await shortlistVendorsByLane(laneId, [...vendorIds], carrierTemplateStatus, {
+        eventId,
+        laneLabel: lane?.lane_id || "lane"
+      });
+    }
+    if (selectedEventId !== eventId) return;
+    setStatus(carrierTemplateStatus, `${inserted} invitation row(s) created from the CRM participant catalog.`, "success");
+    clearCarrierTemplateImport({ preserveStatus: true });
+    await loadEvents({ force: true });
+  } catch (error) {
+    if (selectedEventId === eventId) setStatus(carrierTemplateStatus, humanizeError(error), "error");
+  } finally {
+    updateCarrierTemplateButton();
+  }
 });
 
 rfxOutreachTemplate?.addEventListener("change", () => {

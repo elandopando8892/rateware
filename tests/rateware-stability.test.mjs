@@ -1023,7 +1023,22 @@ assert.match(spreadsheetGridSource, /control\.dataset\.gridInvalidOption = text/
 assert.match(stylesSource, /sheet-issue-nav/, "Spreadsheet issue navigator should have compact styling");
 assert.match(apiSource, /vendor_ids: vendorIds/, "Vendor segments should support exact participant template vendor ids");
 assert.match(apiSource, /update_vendor_segment/, "API should support updating reusable vendor participant templates");
-for (const retiredParticipantTemplateControlId of [
+const buildParticipantsHtml = rfxEventsHtml.slice(
+  rfxEventsHtml.indexOf('<details id="rfx-participant-manager"'),
+  rfxEventsHtml.indexOf('<section class="bid-room-stage-panel" data-workbench-view-panel="outreach"')
+);
+const legacyParticipantTemplateHtml = buildParticipantsHtml.slice(
+  buildParticipantsHtml.indexOf('id="rfx-participant-template-legacy-fallback"'),
+  buildParticipantsHtml.indexOf('id="rfx-participant-template-crm-link"')
+);
+const carrierCrmTemplateLinkHtml = buildParticipantsHtml.slice(
+  buildParticipantsHtml.indexOf('id="rfx-participant-template-crm-link"')
+);
+assert.match(buildParticipantsHtml, /id="rfx-participant-template-capability-status"[^>]*role="status"/, "Build Participants should expose a capability status without replacing manual carrier selection");
+assert.match(buildParticipantsHtml, /id="retry-rfx-participant-template-capability"/, "Build Participants should expose a safe capability retry");
+assert.match(legacyParticipantTemplateHtml, /^id="rfx-participant-template-legacy-fallback"[^>]*hidden[^>]*disabled/, "The legacy fallback should be an identifiable disabled fieldset hidden by default");
+assert.match(carrierCrmTemplateLinkHtml, /^id="rfx-participant-template-crm-link"[^>]*hidden/, "The Carrier CRM link surface should be identifiable and hidden by default");
+for (const legacyControlId of [
   "manual-shortlist-template-name",
   "save-manual-shortlist-template",
   "load-manual-shortlist-template",
@@ -1036,25 +1051,66 @@ for (const retiredParticipantTemplateControlId of [
   "import-rfx-carrier-template",
   "rfx-carrier-template-status"
 ]) {
-  assert.doesNotMatch(rfxEventsHtml, new RegExp(`id=["']${retiredParticipantTemplateControlId}["']`), `Bid Room should retire legacy participant-template control #${retiredParticipantTemplateControlId}`);
+  assert.match(legacyParticipantTemplateHtml, new RegExp(`id=["']${legacyControlId}["']`), `Disabled-mode fallback should contain #${legacyControlId}`);
+  assert.doesNotMatch(carrierCrmTemplateLinkHtml, new RegExp(`id=["']${legacyControlId}["']`), `The enabled-mode Carrier CRM surface should not contain #${legacyControlId}`);
 }
-assert.match(rfxEventsHtml, /<a href="\.\/vendors\.html\?tab=list-templates">Manage carrier list templates in Carrier CRM<\/a>/, "Build Participants should link to the single Carrier CRM template editor");
-assert.doesNotMatch(rfxEventsHtml, /Bulk import participant template|Upload CRM participant catalog|Delete template/i, "Build Participants should not retain importer or hard-delete copy");
-for (const retiredParticipantTemplateSource of [
-  "createVendorSegment",
-  "updateVendorSegment",
-  "deleteVendorSegment",
-  "fetchVendorSegments",
-  "participantTemplateMutationRunning",
-  "participantTemplatePayload",
-  "participantTemplateNameKey",
-  "parseCarrierTemplateFile",
-  "downloadRfxCarrierTemplate",
-  "clearCarrierTemplateImport",
-  "pendingCarrierTemplateRows"
-]) {
-  assert.doesNotMatch(rfxEventsSource, new RegExp(`\\b${retiredParticipantTemplateSource}\\b`), `Bid Room should remove dead legacy participant-template source ${retiredParticipantTemplateSource}`);
+assert.deepEqual(
+  [...legacyParticipantTemplateHtml.matchAll(/data-rfx-legacy-template-action="([^"]+)"/g)].map((match) => match[1]).sort(),
+  ["delete", "download", "file", "import", "load", "save", "update"],
+  "Disabled mode should expose exactly the legacy create/load/update/delete/download/file-import action set"
+);
+assert.equal([...carrierCrmTemplateLinkHtml.matchAll(/data-rfx-legacy-template-action=/g)].length, 0, "Enabled mode should expose zero legacy mutation/import actions");
+assert.match(carrierCrmTemplateLinkHtml, /<a href="\.\/vendors\.html\?tab=list-templates">Manage carrier list templates in Carrier CRM<\/a>/, "Enabled-mode Build Participants should link to the single Carrier CRM template editor");
+assert.doesNotMatch(legacyParticipantTemplateHtml, /vendors\.html\?tab=list-templates/, "Disabled-mode legacy fallback should not expose the V2 editor link");
+
+const capabilityControllerStart = rfxEventsSource.indexOf("// BID_ROOM_TEMPLATE_CAPABILITY_CONTROLLER_START");
+const capabilityControllerEnd = rfxEventsSource.indexOf("// BID_ROOM_TEMPLATE_CAPABILITY_CONTROLLER_END");
+assert.ok(capabilityControllerStart >= 0 && capabilityControllerEnd > capabilityControllerStart, "Bid Room should provide an executable template capability controller");
+const capabilityControllerSource = rfxEventsSource.slice(capabilityControllerStart, capabilityControllerEnd);
+const createCapabilityController = new Function(`${capabilityControllerSource}\nreturn createBidRoomCarrierTemplateCapabilityController;`)();
+const dispatchLegacyTemplateEvent = new Function(`${capabilityControllerSource}\nreturn dispatchBidRoomLegacyTemplateEvent;`)();
+const capabilityTransitions = [];
+const capabilityController = createCapabilityController({ onTransition: (state) => capabilityTransitions.push(state) });
+let legacyApiCalls = 0;
+const firstProbe = capabilityController.beginProbe();
+const secondProbe = capabilityController.beginProbe();
+assert.equal(capabilityController.resolveProbe(secondProbe, { enabled: true }), true, "The newest explicit enabled response should settle the gate");
+assert.equal(capabilityController.rejectProbe(firstProbe, Object.assign(new Error("late disabled"), { enabled: false })), false, "An out-of-order disabled response should be ignored");
+assert.equal(capabilityController.state, "enabled", "An out-of-order response must not race Carrier Fit into the opposite mode");
+for (const action of ["save", "update", "delete", "download", "file", "import"]) {
+  dispatchLegacyTemplateEvent(capabilityController, action, () => { legacyApiCalls += 1; });
 }
+assert.equal(legacyApiCalls, 0, "Enabled mode should keep every stale legacy mutation/import action inert");
+const successfulDisabledController = createCapabilityController();
+const successfulDisabledProbe = successfulDisabledController.beginProbe();
+successfulDisabledController.resolveProbe(successfulDisabledProbe, { enabled: false });
+assert.equal(successfulDisabledController.state, "disabled", "A successful explicit disabled envelope should enable only the legacy fallback");
+const pendingProbe = capabilityController.beginProbe();
+for (const action of ["save", "delete", "file", "import"]) {
+  dispatchLegacyTemplateEvent(capabilityController, action, () => { legacyApiCalls += 1; });
+}
+assert.equal(legacyApiCalls, 0, "Pending mode should keep stale delegated clicks and file events inert");
+capabilityController.rejectProbe(pendingProbe, Object.assign(new Error("ordinary outage"), { status: 500 }));
+for (const action of ["save", "delete", "file", "import"]) {
+  dispatchLegacyTemplateEvent(capabilityController, action, () => { legacyApiCalls += 1; });
+}
+assert.equal(capabilityController.state, "error", "An ordinary failure should fail closed instead of silently enabling legacy templates");
+assert.equal(legacyApiCalls, 0, "Error mode should keep stale delegated clicks and file events inert");
+const disabledProbe = capabilityController.beginProbe();
+capabilityController.rejectProbe(disabledProbe, Object.assign(new Error("structured disabled"), { enabled: false }));
+assert.equal(capabilityController.state, "disabled", "Only an explicit disabled capability error should enable the fallback");
+dispatchLegacyTemplateEvent(capabilityController, "save", () => { legacyApiCalls += 1; });
+assert.equal(legacyApiCalls, 1, "Disabled mode should permit the guarded fallback action");
+const malformedProbe = capabilityController.beginProbe();
+capabilityController.resolveProbe(malformedProbe, { rows: [] });
+assert.equal(capabilityController.state, "error", "A successful response without an explicit boolean capability should fail closed");
+assert.match(rfxEventsSource, /function renderBidRoomParticipantTemplateCapability[\s\S]+legacyParticipantTemplateFallback\.hidden = !legacyEnabled;[\s\S]+legacyParticipantTemplateFallback\.disabled = !legacyEnabled;[\s\S]+participantTemplateCrmLink\.hidden = !carrierCrmEnabled;/, "Capability rendering should make the legacy fallback and Carrier CRM link mutually exclusive and disable the inactive fieldset");
+assert.match(rfxEventsSource, /async function loadActiveCarrierTemplates\(\)[\s\S]+beginProbe\(\)[\s\S]+fetchCarrierListTemplates\([\s\S]+resolveProbe\(capabilityProbe, page\)[\s\S]+rejectProbe\(capabilityProbe, error\)/, "Carrier Fit and Build should share one ordered list-service capability probe");
+assert.match(rfxEventsSource, /async function loadVendorSegments\(\) \{[\s\S]{0,180}state !== "disabled"\) return;/, "Legacy template reads should run only in explicit disabled mode");
+assert.match(rfxEventsSource, /legacyParticipantTemplateFallback\?\.addEventListener\("click"[\s\S]+dispatchBidRoomLegacyTemplateEvent/, "Legacy click actions should use one delegated semantic guard");
+assert.match(rfxEventsSource, /legacyParticipantTemplateFallback\?\.addEventListener\("change"[\s\S]+dispatchBidRoomLegacyTemplateEvent/, "Legacy file actions should use one delegated semantic guard");
+assert.match(rfxEventsSource, /error\?\.enabled === false/, "Bid Room should recognize disabled fallback only from structured capability metadata");
+assert.doesNotMatch(rfxEventsSource, /status\s*===\s*404[\s\S]{0,160}disabled|message[\s\S]{0,160}not enabled/i, "Bid Room should not infer disabled mode from generic status or message text");
 assert.match(rfxEventsHtml, /id="manual-shortlist-search"/, "Build Participants should preserve manual Carrier CRM search");
 assert.match(rfxEventsHtml, /id="manual-shortlist-button"/, "Build Participants should preserve the manual RFx add action");
 assert.match(rfxEventsHtml, /id="rfx-lane-template-file"/, "Build should preserve the unrelated RFx lane template import");
