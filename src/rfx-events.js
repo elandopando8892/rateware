@@ -97,12 +97,27 @@ const RFX_CUSTOMER_SEARCH_LIMIT = 50;
 const RFX_CUSTOMER_SEARCH_DEBOUNCE_MS = 180;
 
 // BID_ROOM_TEMPLATE_CAPABILITY_CONTROLLER_START
-function createBidRoomCarrierTemplateCapabilityController({ onTransition = () => {} } = {}) {
+const BID_ROOM_LEGACY_TEMPLATE_ACTION_KEYS = Object.freeze([
+  "save",
+  "load",
+  "update",
+  "delete",
+  "download",
+  "file",
+  "import"
+]);
+
+function createBidRoomCarrierTemplateCapabilityController({ onTransition = () => {}, onLegacyOperation = () => {} } = {}) {
+  const allowedLegacyActions = new Set(BID_ROOM_LEGACY_TEMPLATE_ACTION_KEYS);
   let state = "pending";
   let lastError = null;
   let probeVersion = 0;
+  let capabilityGeneration = 0;
+  let legacyOperationGeneration = 0;
 
   function transition(nextState, nextError = null) {
+    capabilityGeneration += 1;
+    legacyOperationGeneration += 1;
     state = nextState;
     lastError = nextError;
     onTransition(state, lastError);
@@ -134,14 +149,30 @@ function createBidRoomCarrierTemplateCapabilityController({ onTransition = () =>
       return true;
     },
     runLegacyAction(action, callback) {
-      if (state !== "disabled") return false;
-      return callback(action);
+      if (state !== "disabled" || !allowedLegacyActions.has(action) || typeof callback !== "function") return false;
+      const operation = Object.freeze({
+        action,
+        capabilityGeneration,
+        legacyOperationGeneration: ++legacyOperationGeneration
+      });
+      onLegacyOperation(operation);
+      return callback(action, operation);
+    },
+    isLegacyOperationCurrent(operation) {
+      return Boolean(operation)
+        && state === "disabled"
+        && allowedLegacyActions.has(operation.action)
+        && operation.capabilityGeneration === capabilityGeneration
+        && operation.legacyOperationGeneration === legacyOperationGeneration;
     }
   };
 }
 
-function dispatchBidRoomLegacyTemplateEvent(controller, action, callback) {
-  return controller.runLegacyAction(action, callback);
+function dispatchBidRoomLegacyTemplateEvent(controller, event, callback) {
+  const control = event?.target?.closest?.("[data-rfx-legacy-template-action]");
+  const action = control?.dataset?.rfxLegacyTemplateAction;
+  if (!control || !action) return false;
+  return controller.runLegacyAction(action, (allowedAction, operation) => callback(allowedAction, operation, control));
 }
 // BID_ROOM_TEMPLATE_CAPABILITY_CONTROLLER_END
 
@@ -639,7 +670,10 @@ let participantAddRunning = false;
 let selectedManualVendorIdsState = new Set();
 const carrierTemplateMaterializationController = createCarrierTemplateMaterializationController();
 const bidRoomParticipantTemplateCapability = createBidRoomCarrierTemplateCapabilityController({
-  onTransition: renderBidRoomParticipantTemplateCapability
+  onTransition: renderBidRoomParticipantTemplateCapability,
+  onLegacyOperation: () => {
+    manualScopeLoadRunning = false;
+  }
 });
 let rfxCarrierFitEvidenceByVendorId = new Map();
 let rfxCarrierFitEvidenceLoading = false;
@@ -7691,6 +7725,7 @@ function renderBidRoomParticipantTemplateCapability(state, error = null) {
   }
 
   if (!legacyEnabled) {
+    manualScopeLoadRunning = false;
     vendorSegmentsLoadVersion += 1;
     vendorSegmentsLoading = false;
     savedVendorSegments = [];
@@ -7880,7 +7915,7 @@ function rememberSelectedVendorRows(rows = []) {
   });
 }
 
-async function hydrateVendorOptionIds(ids = []) {
+async function hydrateVendorOptionIds(ids = [], { guard = null } = {}) {
   const requestedIds = [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))];
   const rows = [];
   for (let offset = 0; offset < requestedIds.length; offset += CRM_VENDOR_SEARCH_LIMIT) {
@@ -7891,6 +7926,7 @@ async function hydrateVendorOptionIds(ids = []) {
       view: "all",
       lightweight: true
     });
+    if (typeof guard === "function" && !guard()) return [];
     const pageRows = result.rows || [];
     rows.push(...pageRows);
     mergeVendorOptionRows(pageRows);
@@ -7968,10 +8004,14 @@ function manualScopeCandidateRows(scopeId = selectedManualScopeId()) {
       : activeRows;
 }
 
-async function loadManualScopeCandidateRows(scopeId = selectedManualScopeId()) {
+async function loadManualScopeCandidateRows(scopeId = selectedManualScopeId(), { guard = null } = {}) {
   const segment = participantTemplates().find((item) => item.id === scopeId);
   const savedIds = segmentVendorIds(segment);
-  if (savedIds.length) return await hydrateVendorOptionIds(savedIds);
+  if (savedIds.length) {
+    const rows = await hydrateVendorOptionIds(savedIds, { guard });
+    if (typeof guard === "function" && !guard()) return [];
+    return rows;
+  }
   if (scopeId === "procurement") {
     const result = await fetchVendors({
       limit: CRM_VENDOR_SEARCH_LIMIT,
@@ -7980,12 +8020,14 @@ async function loadManualScopeCandidateRows(scopeId = selectedManualScopeId()) {
       base_stage: "procurement",
       lightweight: true
     });
+    if (typeof guard === "function" && !guard()) return [];
     const rows = result.rows || [];
     mergeVendorOptionRows(rows);
     return sortedVendorOptions(rows.filter(isProcurementCarrier));
   }
   if (scopeId === "all") {
     const result = await fetchVendors({ limit: CRM_VENDOR_SEARCH_LIMIT, offset: 0, view: "all", lightweight: true });
+    if (typeof guard === "function" && !guard()) return [];
     const rows = result.rows || [];
     mergeVendorOptionRows(rows);
     return sortedVendorOptions(rows.filter((vendor) => vendorStageRank(vendor) < 9));
@@ -12125,7 +12167,10 @@ retryParticipantTemplateCapabilityButton?.addEventListener("click", () => {
 legacyParticipantTemplateFallback?.addEventListener("click", (event) => {
   const control = event.target.closest("[data-rfx-legacy-template-action]");
   if (!control || !legacyParticipantTemplateFallback.contains(control)) return;
-  const allowed = dispatchBidRoomLegacyTemplateEvent(bidRoomParticipantTemplateCapability, control.dataset.rfxLegacyTemplateAction, () => true);
+  const allowed = dispatchBidRoomLegacyTemplateEvent(bidRoomParticipantTemplateCapability, event, (_action, operation) => {
+    event.rfxLegacyTemplateOperation = operation;
+    return true;
+  });
   if (allowed) return;
   event.preventDefault();
   event.stopImmediatePropagation();
@@ -12133,7 +12178,10 @@ legacyParticipantTemplateFallback?.addEventListener("click", (event) => {
 legacyParticipantTemplateFallback?.addEventListener("change", (event) => {
   const control = event.target.closest("[data-rfx-legacy-template-action='file']");
   if (!control || !legacyParticipantTemplateFallback.contains(control)) return;
-  const allowed = dispatchBidRoomLegacyTemplateEvent(bidRoomParticipantTemplateCapability, "file", () => true);
+  const allowed = dispatchBidRoomLegacyTemplateEvent(bidRoomParticipantTemplateCapability, event, (_action, operation) => {
+    event.rfxLegacyTemplateOperation = operation;
+    return true;
+  });
   if (allowed) return;
   event.preventDefault();
   event.stopImmediatePropagation();
@@ -12148,27 +12196,37 @@ selectVisibleCarriersButton?.addEventListener("click", () => {
   selectManualVendorIds(ids);
   setStatus(manualShortlistStatus, ids.length ? `${formatNumber(ids.length)} visible carrier(s) selected.` : "No visible carriers to select.", ids.length ? "success" : "neutral");
 });
-selectSegmentCarriersButton?.addEventListener("click", () => {
+selectSegmentCarriersButton?.addEventListener("click", async () => {
   if (carrierTemplateSelectionMutationBlocked(manualShortlistStatus)) return;
   const scopeId = selectedManualScopeId();
+  const legacyScope = !["all", "procurement"].includes(scopeId);
+  const legacyOperation = legacyScope
+    ? bidRoomParticipantTemplateCapability.runLegacyAction("load", (_action, operation) => operation)
+    : null;
+  if (legacyScope && !legacyOperation) return;
+  if (legacyScope && !participantTemplates().some((segment) => segment.id === scopeId)) return;
+  const legacyGuard = legacyOperation
+    ? () => bidRoomParticipantTemplateCapability.isLegacyOperationCurrent(legacyOperation)
+    : null;
   if (manualScopeLoadRunning) return;
   manualScopeLoadRunning = true;
   renderManualShortlistControls();
   setStatus(manualShortlistStatus, "Loading matching carriers from Carrier CRM...");
-  loadManualScopeCandidateRows(scopeId)
-    .then((rows) => {
-      if (carrierTemplateSelectionMutationBlocked(manualShortlistStatus)) return;
-      rememberSelectedVendorRows(rows);
-      selectManualVendorIds(rows.map((vendor) => vendor.id));
-      setStatus(manualShortlistStatus, rows.length ? `${formatNumber(rows.length)} carrier(s) selected from Carrier CRM.` : "No carriers match this list.", rows.length ? "success" : "neutral");
-    })
-    .catch((error) => {
-      setStatus(manualShortlistStatus, `Carrier CRM selection failed: ${humanizeError(error)}`, "error");
-    })
-    .finally(() => {
-      manualScopeLoadRunning = false;
-      renderManualShortlistControls();
-    });
+  try {
+    const rows = await loadManualScopeCandidateRows(scopeId, { guard: legacyGuard });
+    if (legacyOperation && !bidRoomParticipantTemplateCapability.isLegacyOperationCurrent(legacyOperation)) return;
+    if (carrierTemplateSelectionMutationBlocked(manualShortlistStatus)) return;
+    rememberSelectedVendorRows(rows);
+    selectManualVendorIds(rows.map((vendor) => vendor.id));
+    setStatus(manualShortlistStatus, rows.length ? `${formatNumber(rows.length)} carrier(s) selected from Carrier CRM.` : "No carriers match this list.", rows.length ? "success" : "neutral");
+  } catch (error) {
+    if (legacyOperation && !bidRoomParticipantTemplateCapability.isLegacyOperationCurrent(legacyOperation)) return;
+    setStatus(manualShortlistStatus, `Carrier CRM selection failed: ${humanizeError(error)}`, "error");
+  } finally {
+    if (legacyOperation && !bidRoomParticipantTemplateCapability.isLegacyOperationCurrent(legacyOperation)) return;
+    manualScopeLoadRunning = false;
+    renderManualShortlistControls();
+  }
 });
 clearCarrierSelectionButton?.addEventListener("click", () => {
   if (carrierTemplateSelectionMutationBlocked(manualShortlistStatus)) return;
@@ -12211,8 +12269,15 @@ saveManualShortlistTemplateButton?.addEventListener("click", async () => {
     renderManualShortlistControls();
   }
 });
-loadManualShortlistTemplateButton?.addEventListener("click", async () => {
+loadManualShortlistTemplateButton?.addEventListener("click", async (event) => {
   if (carrierTemplateSelectionMutationBlocked(manualShortlistStatus)) return;
+  const capturedOperation = event?.rfxLegacyTemplateOperation;
+  const legacyOperation = capturedOperation?.action === "load"
+    && bidRoomParticipantTemplateCapability.isLegacyOperationCurrent(capturedOperation)
+    ? capturedOperation
+    : bidRoomParticipantTemplateCapability.runLegacyAction("load", (_action, operation) => operation);
+  if (!legacyOperation) return;
+  const legacyGuard = () => bidRoomParticipantTemplateCapability.isLegacyOperationCurrent(legacyOperation);
   const segmentId = selectedManualScopeId();
   if (segmentId === "all") {
     setStatus(manualShortlistStatus, "Choose a saved list or procurement segment before loading participants.", "error");
@@ -12224,7 +12289,8 @@ loadManualShortlistTemplateButton?.addEventListener("click", async () => {
   loadManualShortlistTemplateButton.disabled = true;
   setStatus(manualShortlistStatus, savedIds.length ? `Loading ${formatNumber(savedIds.length)} saved carrier(s) from Carrier CRM...` : "Loading carriers from Carrier CRM...");
   try {
-    const rows = await loadManualScopeCandidateRows(segmentId);
+    const rows = await loadManualScopeCandidateRows(segmentId, { guard: legacyGuard });
+    if (!bidRoomParticipantTemplateCapability.isLegacyOperationCurrent(legacyOperation)) return;
     if (carrierTemplateSelectionMutationBlocked(manualShortlistStatus)) return;
     if (!rows.length) {
       setStatus(manualShortlistStatus, "No active carriers were found for the selected saved list.", "error");
@@ -12242,8 +12308,10 @@ loadManualShortlistTemplateButton?.addEventListener("click", async () => {
       missingCount ? "warning" : "success"
     );
   } catch (error) {
+    if (!bidRoomParticipantTemplateCapability.isLegacyOperationCurrent(legacyOperation)) return;
     setStatus(manualShortlistStatus, `Saved list could not load from Carrier CRM. ${humanizeError(error)}`, "error");
   } finally {
+    if (!bidRoomParticipantTemplateCapability.isLegacyOperationCurrent(legacyOperation)) return;
     renderManualShortlistControls();
   }
 });
@@ -12689,7 +12757,13 @@ rfxSelectAllOutreachCarriersButton?.addEventListener("click", () => {
 
 downloadCarrierTemplateButton?.addEventListener("click", downloadRfxCarrierTemplate);
 
-carrierTemplateFileInput?.addEventListener("change", async () => {
+carrierTemplateFileInput?.addEventListener("change", async (event) => {
+  const capturedOperation = event?.rfxLegacyTemplateOperation;
+  const legacyOperation = capturedOperation?.action === "file"
+    && bidRoomParticipantTemplateCapability.isLegacyOperationCurrent(capturedOperation)
+    ? capturedOperation
+    : bidRoomParticipantTemplateCapability.runLegacyAction("file", (_action, operation) => operation);
+  if (!legacyOperation) return;
   const file = carrierTemplateFileInput.files?.[0];
   if (!file) {
     clearCarrierTemplateImport();
@@ -12702,21 +12776,21 @@ carrierTemplateFileInput?.addEventListener("change", async () => {
   setStatus(carrierTemplateStatus, `Reading ${file.name}...`);
   if (importCarrierTemplateButton) importCarrierTemplateButton.disabled = true;
   try {
-    pendingCarrierTemplateRows = await parseCarrierTemplateFile(file);
-    if (bidRoomParticipantTemplateCapability.state !== "disabled") {
-      clearCarrierTemplateImport();
-      return;
-    }
+    const rows = await parseCarrierTemplateFile(file);
+    if (!bidRoomParticipantTemplateCapability.isLegacyOperationCurrent(legacyOperation)) return;
+    pendingCarrierTemplateRows = rows;
     if (!pendingCarrierTemplateRows.length) {
       setStatus(carrierTemplateStatus, "No CRM catalog rows found. Download the catalog, mark participate TRUE, then upload it.", "error");
     }
     renderCarrierTemplatePreview();
   } catch (error) {
+    if (!bidRoomParticipantTemplateCapability.isLegacyOperationCurrent(legacyOperation)) return;
     pendingCarrierTemplateRows = [];
     pendingCarrierTemplateMatches = [];
     renderCarrierTemplatePreview();
     setStatus(carrierTemplateStatus, humanizeError(error), "error");
   } finally {
+    if (!bidRoomParticipantTemplateCapability.isLegacyOperationCurrent(legacyOperation)) return;
     updateCarrierTemplateButton();
   }
 });

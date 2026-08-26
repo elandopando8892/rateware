@@ -1069,6 +1069,14 @@ assert.ok(capabilityControllerStart >= 0 && capabilityControllerEnd > capability
 const capabilityControllerSource = rfxEventsSource.slice(capabilityControllerStart, capabilityControllerEnd);
 const createCapabilityController = new Function(`${capabilityControllerSource}\nreturn createBidRoomCarrierTemplateCapabilityController;`)();
 const dispatchLegacyTemplateEvent = new Function(`${capabilityControllerSource}\nreturn dispatchBidRoomLegacyTemplateEvent;`)();
+const legacyTemplateActionKeys = new Function(`${capabilityControllerSource}\nreturn BID_ROOM_LEGACY_TEMPLATE_ACTION_KEYS;`)();
+const legacyTemplateEvent = (action) => ({
+  target: {
+    closest: (selector) => selector === "[data-rfx-legacy-template-action]"
+      ? { dataset: { rfxLegacyTemplateAction: action } }
+      : null
+  }
+});
 const capabilityTransitions = [];
 const capabilityController = createCapabilityController({ onTransition: (state) => capabilityTransitions.push(state) });
 let legacyApiCalls = 0;
@@ -1077,8 +1085,9 @@ const secondProbe = capabilityController.beginProbe();
 assert.equal(capabilityController.resolveProbe(secondProbe, { enabled: true }), true, "The newest explicit enabled response should settle the gate");
 assert.equal(capabilityController.rejectProbe(firstProbe, Object.assign(new Error("late disabled"), { enabled: false })), false, "An out-of-order disabled response should be ignored");
 assert.equal(capabilityController.state, "enabled", "An out-of-order response must not race Carrier Fit into the opposite mode");
-for (const action of ["save", "update", "delete", "download", "file", "import"]) {
-  dispatchLegacyTemplateEvent(capabilityController, action, () => { legacyApiCalls += 1; });
+assert.deepEqual([...legacyTemplateActionKeys].sort(), ["delete", "download", "file", "import", "load", "save", "update"], "The controller should derive one exact fallback action allowlist");
+for (const action of legacyTemplateActionKeys) {
+  dispatchLegacyTemplateEvent(capabilityController, legacyTemplateEvent(action), () => { legacyApiCalls += 1; });
 }
 assert.equal(legacyApiCalls, 0, "Enabled mode should keep every stale legacy mutation/import action inert");
 const successfulDisabledController = createCapabilityController();
@@ -1086,21 +1095,84 @@ const successfulDisabledProbe = successfulDisabledController.beginProbe();
 successfulDisabledController.resolveProbe(successfulDisabledProbe, { enabled: false });
 assert.equal(successfulDisabledController.state, "disabled", "A successful explicit disabled envelope should enable only the legacy fallback");
 const pendingProbe = capabilityController.beginProbe();
-for (const action of ["save", "delete", "file", "import"]) {
-  dispatchLegacyTemplateEvent(capabilityController, action, () => { legacyApiCalls += 1; });
+for (const action of ["save", "load", "delete", "file", "import"]) {
+  dispatchLegacyTemplateEvent(capabilityController, legacyTemplateEvent(action), () => { legacyApiCalls += 1; });
 }
 assert.equal(legacyApiCalls, 0, "Pending mode should keep stale delegated clicks and file events inert");
 capabilityController.rejectProbe(pendingProbe, Object.assign(new Error("ordinary outage"), { status: 500 }));
-for (const action of ["save", "delete", "file", "import"]) {
-  dispatchLegacyTemplateEvent(capabilityController, action, () => { legacyApiCalls += 1; });
+for (const action of ["save", "load", "delete", "file", "import"]) {
+  dispatchLegacyTemplateEvent(capabilityController, legacyTemplateEvent(action), () => { legacyApiCalls += 1; });
 }
 assert.equal(capabilityController.state, "error", "An ordinary failure should fail closed instead of silently enabling legacy templates");
 assert.equal(legacyApiCalls, 0, "Error mode should keep stale delegated clicks and file events inert");
 const disabledProbe = capabilityController.beginProbe();
 capabilityController.rejectProbe(disabledProbe, Object.assign(new Error("structured disabled"), { enabled: false }));
 assert.equal(capabilityController.state, "disabled", "Only an explicit disabled capability error should enable the fallback");
-dispatchLegacyTemplateEvent(capabilityController, "save", () => { legacyApiCalls += 1; });
+dispatchLegacyTemplateEvent(capabilityController, legacyTemplateEvent("save"), () => { legacyApiCalls += 1; });
 assert.equal(legacyApiCalls, 1, "Disabled mode should permit the guarded fallback action");
+for (const unknownAction of ["hard-delete", "remove", "DELETE", ""]) {
+  assert.equal(
+    dispatchLegacyTemplateEvent(capabilityController, legacyTemplateEvent(unknownAction), () => { legacyApiCalls += 1; }),
+    false,
+    `Disabled mode should block unknown delegated action alias ${unknownAction || "<blank>"}`
+  );
+}
+assert.equal(legacyApiCalls, 1, "Unknown delegated aliases should never invoke a callback, even while the fallback is enabled");
+
+function deferredLegacyResult() {
+  let resolve;
+  const promise = new Promise((settle) => { resolve = settle; });
+  return { promise, resolve };
+}
+
+async function assertStaleLegacyContinuation({ label, action, transition, delegated = false }) {
+  const controller = createCapabilityController();
+  const disabledToken = controller.beginProbe();
+  controller.resolveProbe(disabledToken, { enabled: false });
+  const deferred = deferredLegacyResult();
+  const selection = ["preserved-carrier"];
+  let selectionChanges = 0;
+  let stateChanges = 0;
+  let domChanges = 0;
+  const continuation = (_action, operation) => (async () => {
+    const rows = await deferred.promise;
+    if (!controller.isLegacyOperationCurrent(operation)) return false;
+    selection.splice(0, selection.length, ...rows);
+    selectionChanges += 1;
+    stateChanges += 1;
+    domChanges += 1;
+    return true;
+  })();
+  const pendingWork = delegated
+    ? dispatchLegacyTemplateEvent(controller, legacyTemplateEvent(action), continuation)
+    : controller.runLegacyAction(action, continuation);
+  const transitionToken = controller.beginProbe();
+  if (transition === "enabled") controller.resolveProbe(transitionToken, { enabled: true });
+  if (transition === "error") controller.rejectProbe(transitionToken, Object.assign(new Error("capability failed"), { status: 500 }));
+  deferred.resolve(["stale-carrier"]);
+  await pendingWork;
+  assert.deepEqual(selection, ["preserved-carrier"], `${label} should preserve manual selection after capability ${transition}`);
+  assert.equal(selectionChanges, 0, `${label} should make zero selection changes after capability ${transition}`);
+  assert.equal(stateChanges, 0, `${label} should make zero state changes after capability ${transition}`);
+  assert.equal(domChanges, 0, `${label} should make zero DOM changes after capability ${transition}`);
+}
+
+for (const transition of ["pending", "error", "enabled"]) {
+  await assertStaleLegacyContinuation({ label: "legacy load", action: "load", transition, delegated: true });
+  await assertStaleLegacyContinuation({ label: "legacy scope selection", action: "load", transition });
+  await assertStaleLegacyContinuation({ label: "legacy file parse", action: "file", transition, delegated: true });
+}
+const supersededController = createCapabilityController();
+const supersededDisabledProbe = supersededController.beginProbe();
+supersededController.resolveProbe(supersededDisabledProbe, { enabled: false });
+let olderOperation;
+let newerOperation;
+supersededController.runLegacyAction("load", (_action, operation) => { olderOperation = operation; });
+supersededController.runLegacyAction("load", (_action, operation) => { newerOperation = operation; });
+assert.equal(Number.isInteger(newerOperation.capabilityGeneration), true, "Legacy operations should capture the capability generation before awaiting");
+assert.equal(Number.isInteger(newerOperation.legacyOperationGeneration), true, "Legacy operations should capture their own operation generation before awaiting");
+assert.equal(supersededController.isLegacyOperationCurrent(olderOperation), false, "A newer disabled operation should invalidate older disabled work");
+assert.equal(supersededController.isLegacyOperationCurrent(newerOperation), true, "The newest disabled operation should retain both current generations");
 const malformedProbe = capabilityController.beginProbe();
 capabilityController.resolveProbe(malformedProbe, { rows: [] });
 assert.equal(capabilityController.state, "error", "A successful response without an explicit boolean capability should fail closed");
@@ -1109,6 +1181,10 @@ assert.match(rfxEventsSource, /async function loadActiveCarrierTemplates\(\)[\s\
 assert.match(rfxEventsSource, /async function loadVendorSegments\(\) \{[\s\S]{0,180}state !== "disabled"\) return;/, "Legacy template reads should run only in explicit disabled mode");
 assert.match(rfxEventsSource, /legacyParticipantTemplateFallback\?\.addEventListener\("click"[\s\S]+dispatchBidRoomLegacyTemplateEvent/, "Legacy click actions should use one delegated semantic guard");
 assert.match(rfxEventsSource, /legacyParticipantTemplateFallback\?\.addEventListener\("change"[\s\S]+dispatchBidRoomLegacyTemplateEvent/, "Legacy file actions should use one delegated semantic guard");
+assert.match(rfxEventsSource, /selectSegmentCarriersButton\?\.addEventListener\("click"[\s\S]+runLegacyAction\("load"[\s\S]+await loadManualScopeCandidateRows\(scopeId, \{ guard: legacyGuard \}\)[\s\S]+isLegacyOperationCurrent\(legacyOperation\)[\s\S]+selectManualVendorIds/, "Legacy scope selection should verify both operation generations after its await before selecting carriers");
+assert.match(rfxEventsSource, /loadManualShortlistTemplateButton\?\.addEventListener\("click", async \(event\)[\s\S]+await loadManualScopeCandidateRows\(segmentId, \{ guard: legacyGuard \}\)[\s\S]+isLegacyOperationCurrent\(legacyOperation\)[\s\S]+selectedManualVendorIdsState = new Set/, "Legacy load should verify both operation generations after its await before replacing manual selection");
+assert.match(rfxEventsSource, /carrierTemplateFileInput\?\.addEventListener\("change", async \(event\)[\s\S]+await parseCarrierTemplateFile\(file\)[\s\S]+isLegacyOperationCurrent\(legacyOperation\)[\s\S]+pendingCarrierTemplateRows = rows/, "Legacy file parsing should verify both operation generations after its await before changing preview state or DOM");
+assert.match(rfxEventsSource, /async function hydrateVendorOptionIds\([\s\S]+await fetchVendors\([\s\S]+if \(typeof guard === "function" && !guard\(\)\) return \[\];[\s\S]+mergeVendorOptionRows/, "Legacy saved-ID hydration should verify its operation guard after every vendor await before mutating the shared CRM cache");
 assert.match(rfxEventsSource, /error\?\.enabled === false/, "Bid Room should recognize disabled fallback only from structured capability metadata");
 assert.doesNotMatch(rfxEventsSource, /status\s*===\s*404[\s\S]{0,160}disabled|message[\s\S]{0,160}not enabled/i, "Bid Room should not infer disabled mode from generic status or message text");
 assert.match(rfxEventsHtml, /id="manual-shortlist-search"/, "Build Participants should preserve manual Carrier CRM search");
@@ -4038,11 +4114,11 @@ assert.match(rfxEventsSource, /vendorSearchRows = sortedVendorOptions\(rows\)/, 
 assert.match(rfxEventsSource, /async function hydrateRemainingVendorOptions[\s\S]+limit: CRM_VENDOR_PAGE_SIZE/, "Bid Room should hydrate further Carrier CRM pages in the background after the initial page is usable");
 assert.match(vendorServiceSource, /ids = \[\]/, "Vendor service should support resolving retained participant and Carrier Fit template IDs without relying on the visible list");
 assert.match(listVendorsSource, /const requestedIds = normalizeUuidList\(body\.ids \|\| body\.vendor_ids\)/, "Vendor API should support owner-scoped vendor resolution by ID");
-assert.match(rfxEventsSource, /async function hydrateVendorOptionIds\(ids = \[\]\)/, "Bid Room should hydrate retained manual participant IDs from Carrier CRM");
+assert.match(rfxEventsSource, /async function hydrateVendorOptionIds\(ids = \[\], \{ guard = null \} = \{\}\)/, "Bid Room should hydrate retained manual participant IDs from Carrier CRM with an optional stale-operation guard");
 assert.match(rfxEventsSource, /ids: requestedIds\.slice\(offset, offset \+ CRM_VENDOR_SEARCH_LIMIT\)/, "Retained participant hydration should use bounded CRM requests");
-assert.match(rfxEventsSource, /async function loadManualScopeCandidateRows\(scopeId = selectedManualScopeId\(\)\)/, "Bid Room should resolve the manual all-active or procurement scope before selecting carriers");
+assert.match(rfxEventsSource, /async function loadManualScopeCandidateRows\(scopeId = selectedManualScopeId\(\), \{ guard = null \} = \{\}\)/, "Bid Room should resolve the manual all-active or procurement scope before selecting carriers with an optional legacy guard");
 assert.match(rfxEventsSource, /base_stage: "procurement"[\s\S]*lightweight: true/, "Procurement participant loading should use the server-side CRM procurement filter");
-assert.match(rfxEventsSource, /loadManualScopeCandidateRows\(scopeId\)[\s\S]*selectManualVendorIds\(rows\.map\(\(vendor\) => vendor\.id\)\)/, "Selecting a manual Carrier CRM scope should hydrate rows before selecting carrier ids");
+assert.match(rfxEventsSource, /loadManualScopeCandidateRows\(scopeId, \{ guard: legacyGuard \}\)[\s\S]*selectManualVendorIds\(rows\.map\(\(vendor\) => vendor\.id\)\)/, "Selecting a manual Carrier CRM scope should hydrate guarded rows before selecting carrier ids");
 assert.match(rfxEventsSource, /row\.contact_name/, "Bid Room participant search should include CRM contact names");
 assert.match(rfxEventsSource, /\.normalize\("NFD"\)/, "Bid Room participant search should normalize accents for Spanish names");
 assert.match(rfxEventsSource, /<strong>\$\{escapeHtml\(vendorDisplayName\(row\)\)\}<\/strong>/, "Bid Room participant cards should stay focused on vendor name only");
