@@ -68,3 +68,10 @@ Browser/design QA was intentionally not launched by this implementation agent; t
 - The navigation collapse control exposes `Collapse navigation` while expanded and `Expand navigation` while collapsed, synchronized with `aria-expanded`.
 - Focused contracts cover the exact 13 product labels, collapse-state semantics, and exact zero/one/two Carrier Fit CTA strings.
 - `node --test tests/carrier-list-templates-preview.test.mjs` — 6 passed, 0 failed.
+
+## Fix round 5
+
+- The preview-scoped inactive sidebar rule now explicitly restores the neutral `var(--rw-slate-600)` color and transparent background, preventing later global button rules from painting every product link blue.
+- Preview-scoped hover styling preserves the neutral slate hover treatment, while `.is-active` continues to use the approved brand foreground and background for Carrier CRM or Bid Room only.
+- A focused stylesheet contract verifies the exact inactive, hover, and active declarations without changing global button behavior or another page.
+- `node --test tests/carrier-list-templates-preview.test.mjs` — 6 passed, 0 failed.

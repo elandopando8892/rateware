@@ -14908,7 +14908,8 @@ body.carrier-template-modal-open::before {
 .carrier-template-preview-page .rw-app { min-height: 100vh; }
 .carrier-template-preview-page .rw-sidebar { z-index: 25; }
 .carrier-template-preview-page .rw-brand { border: 0; background: transparent; cursor: pointer; }
-.carrier-template-preview-page .rw-nav-link { border: 0; text-align: left; cursor: pointer; }
+.carrier-template-preview-page .rw-nav-link { border: 0; color: var(--rw-slate-600); background: transparent; text-align: left; cursor: pointer; }
+.carrier-template-preview-page .rw-nav-link:hover { color: var(--rw-slate-900); background: var(--rw-slate-50); }
 .carrier-template-preview-page .rw-nav-link.is-active { color: var(--rw-brand-700); background: var(--rw-brand-50); }
 .carrier-template-preview-page .rw-workspace { display: grid; min-height: 100vh; grid-template-rows: var(--rw-topbar) auto minmax(0, 1fr); }
 .carrier-template-preview-page .preview-safety-banner { display: flex; min-height: 38px; align-items: center; justify-content: center; gap: 8px; padding: 8px 20px; border-bottom: 1px solid #b9c7ff; color: var(--rw-brand-700); background: var(--rw-brand-50); font-size: 13px; }

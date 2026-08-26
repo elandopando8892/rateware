@@ -4,11 +4,13 @@ import test from "node:test";
 
 const previewHtmlUrl = new URL("../output/carrier-list-templates-preview.html", import.meta.url);
 const previewJsUrl = new URL("../src/carrier-list-templates-preview.js", import.meta.url);
+const previewStylesUrl = new URL("../src/styles.css", import.meta.url);
 
 test("preview source is public, noindex, local-only, and uses the approved domain and icon systems", async () => {
-  const [html, source] = await Promise.all([
+  const [html, source, styles] = await Promise.all([
     readFile(previewHtmlUrl, "utf8"),
-    readFile(previewJsUrl, "utf8")
+    readFile(previewJsUrl, "utf8"),
+    readFile(previewStylesUrl, "utf8")
   ]);
 
   assert.match(html, /<meta\s+name="robots"\s+content="noindex,\s*noarchive"/i);
@@ -66,6 +68,16 @@ test("preview source is public, noindex, local-only, and uses the approved domai
   assert.doesNotMatch(source, /role=["']tablist["']|role=["']tab["']/);
   assert.doesNotMatch(source, /data-clt-builder-mode=["'][^"']+["'][^>]*aria-selected=/);
   assert.match(source, /root\.addEventListener\(["']input["']/);
+
+  const inactiveNavRule = styles.match(/\.carrier-template-preview-page \.rw-nav-link\s*\{([^}]*)\}/)?.[1] || "";
+  assert.match(inactiveNavRule, /color:\s*var\(--rw-slate-600\)/);
+  assert.match(inactiveNavRule, /background:\s*transparent/);
+  const hoverNavRule = styles.match(/\.carrier-template-preview-page \.rw-nav-link:hover\s*\{([^}]*)\}/)?.[1] || "";
+  assert.match(hoverNavRule, /color:\s*var\(--rw-slate-900\)/);
+  assert.match(hoverNavRule, /background:\s*var\(--rw-slate-50\)/);
+  const activeNavRule = styles.match(/\.carrier-template-preview-page \.rw-nav-link\.is-active\s*\{([^}]*)\}/)?.[1] || "";
+  assert.match(activeNavRule, /color:\s*var\(--rw-brand-700\)/);
+  assert.match(activeNavRule, /background:\s*var\(--rw-brand-50\)/);
 });
 
 test("preview reducer completes Library to Builder to Carrier Fit to Message locally", async () => {
