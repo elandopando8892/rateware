@@ -39,6 +39,7 @@ const carrierListTemplatesUrl = new URL("../src/carrier-list-templates.js", impo
 const carrierListTemplatesSource = existsSync(carrierListTemplatesUrl)
   ? readFileSync(carrierListTemplatesUrl, "utf8")
   : "";
+const carrierTemplateCapabilitySource = readFileSync(new URL("../src/carrier-list-template-capability.js", import.meta.url), "utf8");
 const vendorSupportSource = readFileSync(new URL("../src/vendor-support.js", import.meta.url), "utf8");
 const vendorSupportServiceSource = readFileSync(new URL("../src/vendor-support-service.js", import.meta.url), "utf8");
 const vendorSupportHtml = readFileSync(new URL("../vendor-support.html", import.meta.url), "utf8");
@@ -3765,7 +3766,13 @@ assert.match(carrierListTemplatesSource, /template_version_conflict/, "Carrier t
 assert.match(carrierListTemplatesSource, /template_name_conflict/, "Carrier template duplicate-name conflicts should present separate rename guidance");
 assert.doesNotMatch(carrierListTemplatesSource, /error\?\.status === 409[\s\S]+getCarrierListTemplate/, "Carrier template UI must not refresh every generic 409 as if it were a version conflict");
 assert.match(carrierListTemplatesSource, /createCarrierListTemplateController/, "Carrier template UI should use the executable request-order controller");
-assert.match(carrierListTemplatesSource, /const changed = capabilityEnabled !== nextCapability[\s\S]+if \(changed\) onCapabilityChange/, "Carrier template capability callbacks should fire only on transitions and avoid navigation recursion");
+for (const state of ["pending", "enabled", "error", "disabled"]) {
+  assert.match(carrierTemplateCapabilitySource, new RegExp(`"${state}"`), `Carrier template capability should preserve the explicit ${state} state`);
+}
+assert.match(carrierTemplateCapabilitySource, /const changed = previousCapability !== nextCapability[\s\S]+if \(changed\) onTransition\(capability/, "Carrier template capability callbacks should fire only on semantic transitions and avoid navigation recursion");
+assert.match(carrierListTemplatesSource, /capabilityView\.transition\("pending"\)/, "Carrier template loads should enter an inaccessible pending capability state");
+assert.match(vendorsSource, /onCapabilityChange: \(capability\) => \{[\s\S]+vendorTemplateNavigationGuard\.transitionCapability\(capability\)/, "Carrier CRM navigation should receive every explicit library capability transition");
+assert.doesNotMatch(vendorsSource, /resolveCapability/, "Carrier CRM navigation should not collapse semantic capability states back to a boolean");
 assert.match(carrierListTemplatesSource, /const lifecycleFilter = [^;]+[\s\S]+templateLifecycle\(row\) !== lifecycleFilter/, "Carrier template client rendering should keep deep-linked or newly mutated rows out of the wrong lifecycle filter");
 assert.match(carrierListTemplatesSource, /activate:[\s\S]+selectedTemplateId = "";[\s\S]+render\(\)/, "Carrier template history navigation without a template id should clear stale detail selection");
 assert.match(carrierListTemplatesSource, /const retryAction = action === "duplicate"[\s\S]+templateLifecycle\(current\.row\)[\s\S]+: action;[\s\S]+focusSelectedAction\(retryAction\)/, "Carrier template version-conflict recovery should return keyboard focus to the refreshed action or the original action when refresh fails");
@@ -3803,6 +3810,10 @@ assert.match(carrierTemplateDuplicateRpc, /revoke execute[\s\S]+from public, ano
 assert.match(apiSource, /supabase\.rpc\("rateware_duplicate_carrier_list_template"/, "The duplicate API must delegate the locked version-and-copy transaction to the RPC");
 const carrierTemplateDuplicateApi = apiSource.slice(apiSource.indexOf('if (action === "duplicate_carrier_list_template")'), apiSource.indexOf('if (action === "archive_carrier_list_template"'));
 assert.doesNotMatch(carrierTemplateDuplicateApi, /loadCarrierTemplate|\.from\("vendor_segments"\).*insert/s, "The duplicate API must not recreate an unlocked read-then-insert flow");
+const carrierTemplateNameConflictMatcher = apiSource.slice(apiSource.indexOf("function carrierTemplateNameDatabaseConflict"), apiSource.indexOf("function carrierTemplateDuplicateNameResult"));
+assert.match(carrierTemplateNameConflictMatcher, /databaseError\.message, databaseError\.details/, "Expected template-name conflicts should recognize production-shaped PostgREST message or details fields");
+assert.match(carrierTemplateNameConflictMatcher, /\[\^A-Za-z0-9_\]/, "Template-name conflict matching should require an exact constraint-name token boundary");
+assert.doesNotMatch(carrierTemplateNameConflictMatcher, /databaseError\.constraint|constraint_name/, "Template-name conflict matching should not depend on synthetic constraint fields omitted by PostgREST");
 assert.match(carrierTemplateMigration, /cardinality\(new\.vendor_ids\)/i);
 assert.match(carrierTemplateMigration, /from public\.vendor_segments segment[\s\S]+?unnest\(segment\.vendor_ids\)[\s\S]+?carrier template migration blocked: % participant templates contain duplicate vendor_ids/i, "Carrier template migration must fail closed when a legacy template has duplicate member UUIDs");
 assert.match(carrierTemplateMigration, /from public\.vendor_segments segment[\s\S]+?public\.vendors v[\s\S]+?v\.id = any\(segment\.vendor_ids\)[\s\S]+?v\.organization_id is distinct from segment\.organization_id[\s\S]+?carrier template migration blocked: % participant templates include members from another organization/i, "Carrier template migration must fail closed when an existing member belongs to another organization");

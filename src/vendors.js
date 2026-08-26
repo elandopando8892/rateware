@@ -5836,9 +5836,8 @@ requirePrivatePage()
     );
     carrierListTemplateLibraryController = await initCarrierListTemplateLibrary({
       initialTemplateId: "",
-      onCapabilityChange: (enabled) => {
-        if (!enabled) vendorTemplateNavigationGuard.resolveCapability(false);
-        else if (carrierListTemplateLibraryController) vendorTemplateNavigationGuard.resolveCapability(true);
+      onCapabilityChange: (capability) => {
+        vendorTemplateNavigationGuard.transitionCapability(capability);
       },
       onSelectionChange: (templateId, { replace = false } = {}) => {
         updateVendorTabUrl("list-templates", {
@@ -5847,11 +5846,7 @@ requirePrivatePage()
         });
       }
     });
-    if (carrierListTemplateLibraryController.capability === "enabled") {
-      vendorTemplateNavigationGuard.resolveCapability(true);
-    } else if (carrierListTemplateLibraryController.capability === "disabled") {
-      vendorTemplateNavigationGuard.resolveCapability(false);
-    }
+    vendorTemplateNavigationGuard.applyCurrentRoute();
   })
   .catch(() => {});
 renderWizard();

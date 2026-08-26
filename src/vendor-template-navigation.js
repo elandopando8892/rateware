@@ -1,5 +1,6 @@
 const TEMPLATE_TAB = "list-templates";
 const FALLBACK_TAB = "funnel";
+const CAPABILITY_STATES = new Set(["pending", "enabled", "error", "disabled"]);
 
 export function createVendorTemplateNavigationGuard({ readHref, activateTab, initialRoute = null }) {
   if (typeof readHref !== "function" || typeof activateTab !== "function") {
@@ -33,8 +34,11 @@ export function createVendorTemplateNavigationGuard({ readHref, activateTab, ini
     return { handled: true, capability, tab: FALLBACK_TAB, templateId: "" };
   }
 
-  function resolveCapability(enabled) {
-    capability = enabled === true ? "enabled" : "disabled";
+  function transitionCapability(nextCapability) {
+    if (!CAPABILITY_STATES.has(nextCapability)) {
+      throw new TypeError(`Unknown carrier template capability state: ${nextCapability}`);
+    }
+    capability = nextCapability;
     return applyCurrentRoute();
   }
 
@@ -42,7 +46,7 @@ export function createVendorTemplateNavigationGuard({ readHref, activateTab, ini
     get capability() {
       return capability;
     },
-    resolveCapability,
+    transitionCapability,
     handlePopState() {
       navigationObserved = true;
       return applyCurrentRoute();

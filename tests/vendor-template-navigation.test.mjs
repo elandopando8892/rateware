@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createCarrierTemplateCapabilityView } from "../src/carrier-list-template-capability.js";
 import { createVendorTemplateNavigationGuard } from "../src/vendor-template-navigation.js";
 
 function createHarness(initialHref) {
@@ -43,7 +44,7 @@ function createHarness(initialHref) {
 
 test("disabled List Templates popstate replaces the URL and keeps Funnel visible", () => {
   const harness = createHarness("https://rateware.test/vendors.html?tab=list-templates&template=template-a");
-  harness.guard.resolveCapability(false);
+  harness.guard.transitionCapability("disabled");
 
   assert.equal(harness.state().activeTab, "funnel");
   assert.equal(harness.state().panels.funnel.hidden, false);
@@ -68,9 +69,64 @@ test("capability resolution re-reads the latest popstate URL instead of module-l
   assert.equal(harness.state().activeTab, "funnel");
   assert.equal(harness.state().replacements, 0);
 
-  harness.guard.resolveCapability(true);
+  harness.guard.transitionCapability("enabled");
   assert.equal(harness.state().activeTab, "list-templates");
   assert.equal(harness.state().selectedTemplateId, "template-b");
   assert.equal(harness.state().panels.funnel.hidden, true);
   assert.equal(harness.state().panels["list-templates"].hidden, false);
+});
+
+test("real capability callback wiring handles enabled to error to disabled without stale navigation", () => {
+  const harness = createHarness("https://rateware.test/vendors.html?tab=list-templates&template=template-a");
+  const tab = { hidden: true };
+  const workspace = { hidden: true };
+  const errorRegion = { hidden: true };
+  const errorMessage = { textContent: "" };
+  const transitions = [];
+  const capabilityView = createCarrierTemplateCapabilityView({
+    tab,
+    workspace,
+    errorRegion,
+    errorMessage,
+    formatError: (error) => error.message,
+    onTransition: (state) => {
+      transitions.push(state);
+      harness.guard.transitionCapability(state);
+    }
+  });
+
+  capabilityView.transition("enabled");
+  assert.equal(harness.state().activeTab, "list-templates");
+  assert.equal(harness.state().panels.funnel.hidden, true);
+  assert.equal(harness.state().panels["list-templates"].hidden, false);
+  assert.equal(tab.hidden, false);
+  assert.equal(workspace.hidden, false);
+  assert.equal(errorRegion.hidden, true);
+  assert.equal(new URL(harness.state().href).searchParams.get("tab"), "list-templates");
+
+  capabilityView.transition("error", { error: new Error("Templates are temporarily unavailable") });
+  assert.equal(harness.guard.capability, "error");
+  assert.equal(harness.state().activeTab, "funnel");
+  assert.equal(harness.state().panels.funnel.hidden, false);
+  assert.equal(harness.state().panels["list-templates"].hidden, true);
+  assert.equal(tab.hidden, true);
+  assert.equal(workspace.hidden, true);
+  assert.equal(errorRegion.hidden, false);
+  assert.equal(errorMessage.textContent, "Templates are temporarily unavailable");
+  assert.equal(new URL(harness.state().href).searchParams.get("tab"), "list-templates");
+  assert.equal(new URL(harness.state().href).searchParams.get("template"), "template-a");
+  assert.equal(harness.state().replacements, 0);
+
+  capabilityView.transition("error", { error: new Error("Templates are still unavailable") });
+  assert.deepEqual(transitions, ["enabled", "error"]);
+  assert.equal(errorMessage.textContent, "Templates are still unavailable");
+
+  capabilityView.transition("disabled");
+  assert.equal(harness.guard.capability, "disabled");
+  assert.equal(harness.state().activeTab, "funnel");
+  assert.equal(errorRegion.hidden, true);
+  assert.equal(new URL(harness.state().href).searchParams.get("tab"), "funnel");
+  assert.equal(new URL(harness.state().href).searchParams.has("template"), false);
+  assert.equal(harness.state().replacements, 1);
+  assert.deepEqual(transitions, ["enabled", "error", "disabled"]);
 });

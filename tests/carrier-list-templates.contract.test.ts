@@ -886,7 +886,52 @@ Deno.test("real duplicate request requires and enforces the displayed source ver
   assertEquals(nameConflictDb.traces.some((trace) => trace.table === "saas_audit_log"), false);
 });
 
-Deno.test("real duplicate request propagates a non-name 23505 instead of mislabeling it", async () => {
+Deno.test("real duplicate request maps only production-shaped name-index 23505 errors", async () => {
+  const sourceId = "aaaaaaaa-1111-4111-8111-111111111111";
+  const expectedConflicts = [
+    {
+      code: "23505",
+      message:
+        'duplicate key value violates unique constraint "vendor_segments_participant_template_org_name_uidx"',
+      details: "Key (organization_id, rateware_vendor_search_key(segment_name))=(org-a, source copy) already exists.",
+      hint: null,
+    },
+    {
+      code: "23505",
+      message: "duplicate key value violates unique constraint",
+      details:
+        "constraint vendor_segments_participant_template_org_name_uidx rejected the duplicate key",
+      hint: null,
+    },
+  ];
+
+  for (const conflict of expectedConflicts) {
+    const db = new ScriptedSupabase([{
+      table: "rateware_duplicate_carrier_list_template",
+      operation: "rpc",
+      error: conflict,
+    }]);
+    const handler = createTestRatewareApiHandler(db);
+    assert(handler);
+
+    const response = await handler(jsonActionRequest({
+      action: "duplicate_carrier_list_template",
+      id: sourceId,
+      name: "Source Copy",
+      expected_version: 4,
+    }));
+
+    assertEquals(response.status, 409);
+    assertEquals(await response.json(), {
+      enabled: true,
+      code: "template_name_conflict",
+      error: "A carrier list template with that name already exists in this organization.",
+    });
+    assertEquals(db.traces.some((trace) => trace.table === "saas_audit_log"), false);
+  }
+});
+
+Deno.test("real duplicate request propagates a production-shaped non-name 23505", async () => {
   const sourceId = "aaaaaaaa-1111-4111-8111-111111111111";
   const db = new ScriptedSupabase([
     {
@@ -894,8 +939,10 @@ Deno.test("real duplicate request propagates a non-name 23505 instead of mislabe
       operation: "rpc",
       error: {
         code: "23505",
-        constraint: "unrelated_unique_constraint",
-        message: "duplicate key value violates unrelated unique constraint",
+        message:
+          'duplicate key value violates unique constraint "vendor_segments_participant_template_org_name_uidx_shadow"',
+        details: "Key (organization_id, status)=(org-a, active) already exists.",
+        hint: null,
       },
     },
     { table: "saas_audit_log", operation: "insert", data: null },

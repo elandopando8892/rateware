@@ -1,4 +1,5 @@
 import { getAccessContext } from "./auth.js";
+import { createCarrierTemplateCapabilityView } from "./carrier-list-template-capability.js";
 import { createCarrierListTemplateController } from "./carrier-list-template-controller.js";
 import { humanizeError } from "./error-copy.js";
 import {
@@ -164,13 +165,21 @@ export async function initCarrierListTemplateLibrary({
   let templates = [];
   let selectedTemplateId = "";
   let canManage = false;
-  let capabilityEnabled = false;
   let mutationRunning = false;
   let searchTimer = null;
   const requestController = createCarrierListTemplateController({
     fetchList: fetchEveryTemplatePage,
     fetchDetail: getCarrierListTemplate
   });
+  const capabilityView = createCarrierTemplateCapabilityView({
+    tab,
+    workspace,
+    errorRegion: capabilityError,
+    errorMessage: capabilityErrorMessage,
+    formatError: (error) => `List Templates could not be verified: ${humanizeError(error)}`,
+    onTransition: onCapabilityChange
+  });
+  capabilityView.transition("pending");
 
   function setStatus(message = "", tone = "neutral") {
     if (!status) return;
@@ -178,44 +187,19 @@ export async function initCarrierListTemplateLibrary({
     status.dataset.tone = tone;
   }
 
-  function setCapability(enabled) {
-    const nextCapability = enabled === true;
-    const changed = capabilityEnabled !== nextCapability;
-    capabilityEnabled = nextCapability;
-    if (tab) tab.hidden = !capabilityEnabled;
-    if (workspace) workspace.hidden = !capabilityEnabled;
-    if (changed) onCapabilityChange(capabilityEnabled);
-  }
-
-  function hideCapabilityError() {
-    if (capabilityError) capabilityError.hidden = true;
-  }
-
-  function showCapabilityError(error) {
-    capabilityEnabled = false;
-    if (tab) tab.hidden = true;
-    if (workspace) workspace.hidden = true;
-    if (capabilityErrorMessage) {
-      capabilityErrorMessage.textContent = `List Templates could not be verified: ${humanizeError(error)}`;
-    }
-    if (capabilityError) capabilityError.hidden = false;
-  }
-
   function applyRequestState(state, { renderState = true } = {}) {
     templates = [...state.rows];
     selectedTemplateId = state.selectedId;
     if (state.capability === "enabled") {
-      hideCapabilityError();
-      setCapability(true);
+      capabilityView.transition("enabled");
       if (renderState) render();
       return;
     }
     if (state.capability === "disabled") {
-      hideCapabilityError();
-      setCapability(false);
+      capabilityView.transition("disabled");
       return;
     }
-    if (state.capability === "error") showCapabilityError(state.error);
+    if (state.capability === "error") capabilityView.transition("error", { error: state.error });
   }
 
   function setManageAffordances() {
@@ -339,6 +323,7 @@ export async function initCarrierListTemplateLibrary({
 
   async function loadLibrary({ announce = true } = {}) {
     if (!workspace || !tab || !tableHost || !detail) return false;
+    capabilityView.transition("pending");
     workspace.setAttribute("aria-busy", "true");
     if (announce) setStatus("Loading carrier list templates...");
     let currentRequest = false;
@@ -358,7 +343,7 @@ export async function initCarrierListTemplateLibrary({
   }
 
   async function selectTemplate(id, { focus = false, updateHistory = false } = {}) {
-    if (!capabilityEnabled || !id) return false;
+    if (!capabilityView.enabled || !id) return false;
     const selection = requestController.select(id);
     applyRequestState(requestController.snapshot(), { renderState: false });
     const outcome = await selection;
@@ -506,17 +491,17 @@ export async function initCarrierListTemplateLibrary({
 
   return {
     get enabled() {
-      return capabilityEnabled;
+      return capabilityView.enabled;
     },
     get capability() {
-      return requestController.snapshot().capability;
+      return capabilityView.capability;
     },
     activate: ({ templateId: requestedId = "" } = {}) => {
       if (requestedId) return selectTemplate(requestedId, { focus: false, updateHistory: false });
       selectedTemplateId = "";
       requestController.select("");
       render();
-      return Promise.resolve(capabilityEnabled);
+      return Promise.resolve(capabilityView.enabled);
     },
     selectTemplate
   };

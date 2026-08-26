@@ -237,9 +237,11 @@ function carrierTemplateActor(
 
 function carrierTemplateNameDatabaseConflict(error: unknown) {
   const databaseError = objectRecord(error);
-  const constraint = cleanText(databaseError.constraint || databaseError.constraint_name);
-  return cleanText(databaseError.code) === "23505" &&
-    constraint === "vendor_segments_participant_template_org_name_uidx";
+  if (cleanText(databaseError.code) !== "23505") return false;
+  const constraintName = "vendor_segments_participant_template_org_name_uidx";
+  const exactConstraintToken = new RegExp(`(^|[^A-Za-z0-9_])${constraintName}($|[^A-Za-z0-9_])`);
+  return [databaseError.message, databaseError.details]
+    .some((value) => exactConstraintToken.test(cleanText(value) || ""));
 }
 
 function carrierTemplateDuplicateNameResult() {
