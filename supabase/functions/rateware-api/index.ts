@@ -239,9 +239,12 @@ function carrierTemplateNameDatabaseConflict(error: unknown) {
   const databaseError = objectRecord(error);
   if (cleanText(databaseError.code) !== "23505") return false;
   const constraintName = "vendor_segments_participant_template_org_name_uidx";
-  const exactConstraintToken = new RegExp(`(^|[^A-Za-z0-9_])${constraintName}($|[^A-Za-z0-9_])`);
-  return [databaseError.message, databaseError.details]
-    .some((value) => exactConstraintToken.test(cleanText(value) || ""));
+  const expectedMessage = `duplicate key value violates unique constraint "${constraintName}"`;
+  const message = cleanText(databaseError.message) || "";
+  if (message === expectedMessage) return true;
+  if (/^duplicate key value violates unique constraint "[^"]+"$/.test(message)) return false;
+  const details = cleanText(databaseError.details) || "";
+  return /^Key \(organization_id, rateware_vendor_search_key\(segment_name\)\)=\(.+\) already exists\.$/.test(details);
 }
 
 function carrierTemplateDuplicateNameResult() {

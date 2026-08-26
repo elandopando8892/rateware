@@ -3811,8 +3811,9 @@ assert.match(apiSource, /supabase\.rpc\("rateware_duplicate_carrier_list_templat
 const carrierTemplateDuplicateApi = apiSource.slice(apiSource.indexOf('if (action === "duplicate_carrier_list_template")'), apiSource.indexOf('if (action === "archive_carrier_list_template"'));
 assert.doesNotMatch(carrierTemplateDuplicateApi, /loadCarrierTemplate|\.from\("vendor_segments"\).*insert/s, "The duplicate API must not recreate an unlocked read-then-insert flow");
 const carrierTemplateNameConflictMatcher = apiSource.slice(apiSource.indexOf("function carrierTemplateNameDatabaseConflict"), apiSource.indexOf("function carrierTemplateDuplicateNameResult"));
-assert.match(carrierTemplateNameConflictMatcher, /databaseError\.message, databaseError\.details/, "Expected template-name conflicts should recognize production-shaped PostgREST message or details fields");
-assert.match(carrierTemplateNameConflictMatcher, /\[\^A-Za-z0-9_\]/, "Template-name conflict matching should require an exact constraint-name token boundary");
+assert.match(carrierTemplateNameConflictMatcher, /databaseError\.message[\s\S]+databaseError\.details/, "Expected template-name conflicts should recognize production-shaped PostgREST message or details fields");
+assert.match(carrierTemplateNameConflictMatcher, /message === expectedMessage[\s\S]+unique constraint/, "Template-name conflict matching should require the exact quoted PostgREST message and reject other named constraints before details fallback");
+assert.ok(carrierTemplateNameConflictMatcher.includes("/^Key \\(organization_id, rateware_vendor_search_key"), "Template-name conflict fallback should require the exact PostgREST details key label");
 assert.doesNotMatch(carrierTemplateNameConflictMatcher, /databaseError\.constraint|constraint_name/, "Template-name conflict matching should not depend on synthetic constraint fields omitted by PostgREST");
 assert.match(carrierTemplateMigration, /cardinality\(new\.vendor_ids\)/i);
 assert.match(carrierTemplateMigration, /from public\.vendor_segments segment[\s\S]+?unnest\(segment\.vendor_ids\)[\s\S]+?carrier template migration blocked: % participant templates contain duplicate vendor_ids/i, "Carrier template migration must fail closed when a legacy template has duplicate member UUIDs");

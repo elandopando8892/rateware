@@ -900,7 +900,7 @@ Deno.test("real duplicate request maps only production-shaped name-index 23505 e
       code: "23505",
       message: "duplicate key value violates unique constraint",
       details:
-        "constraint vendor_segments_participant_template_org_name_uidx rejected the duplicate key",
+        "Key (organization_id, rateware_vendor_search_key(segment_name))=(org-a, source copy) already exists.",
       hint: null,
     },
   ];
@@ -931,38 +931,48 @@ Deno.test("real duplicate request maps only production-shaped name-index 23505 e
   }
 });
 
-Deno.test("real duplicate request propagates a production-shaped non-name 23505", async () => {
+Deno.test("real duplicate request propagates production-shaped non-name 23505 identifiers", async () => {
   const sourceId = "aaaaaaaa-1111-4111-8111-111111111111";
-  const db = new ScriptedSupabase([
-    {
-      table: "rateware_duplicate_carrier_list_template",
-      operation: "rpc",
-      error: {
-        code: "23505",
-        message:
-          'duplicate key value violates unique constraint "vendor_segments_participant_template_org_name_uidx_shadow"',
-        details: "Key (organization_id, status)=(org-a, active) already exists.",
-        hint: null,
+  const unrelatedConstraints = [
+    "vendor_segments_participant_template_org_name_uidx_shadow",
+    "vendor_segments_participant_template_org_name_uidx$shadow",
+    "vendor_segments_participant_template_org_name_uidx-shadow",
+  ];
+  const statuses: number[] = [];
+  const auditActions: string[][] = [];
+
+  for (const constraintName of unrelatedConstraints) {
+    const db = new ScriptedSupabase([
+      {
+        table: "rateware_duplicate_carrier_list_template",
+        operation: "rpc",
+        error: {
+          code: "23505",
+          message: `duplicate key value violates unique constraint "${constraintName}"`,
+          details:
+            "Key (organization_id, rateware_vendor_search_key(segment_name))=(org-a, source copy) already exists.",
+          hint: null,
+        },
       },
-    },
-    { table: "saas_audit_log", operation: "insert", data: null },
-  ]);
-  const handler = createTestRatewareApiHandler(db);
-  assert(handler);
+      { table: "saas_audit_log", operation: "insert", data: null },
+    ]);
+    const handler = createTestRatewareApiHandler(db);
+    assert(handler);
 
-  const response = await handler(jsonActionRequest({
-    action: "duplicate_carrier_list_template",
-    id: sourceId,
-    name: "Source Copy",
-    expected_version: 4,
-  }));
+    const response = await handler(jsonActionRequest({
+      action: "duplicate_carrier_list_template",
+      id: sourceId,
+      name: "Source Copy",
+      expected_version: 4,
+    }));
+    statuses.push(response.status);
+    auditActions.push(db.traces
+      .filter((trace) => trace.table === "saas_audit_log")
+      .map((trace) => String((trace.payload as Record<string, unknown>).action)));
+  }
 
-  assertEquals(response.status, 500);
-  const auditActions = db.traces
-    .filter((trace) => trace.table === "saas_audit_log")
-    .map((trace) => (trace.payload as Record<string, unknown>).action);
-  assertEquals(auditActions.includes("carrier_template.duplicate"), false);
-  assertEquals(auditActions, ["api.error"]);
+  assertEquals(statuses, [500, 500, 500]);
+  assertEquals(auditActions, [["api.error"], ["api.error"], ["api.error"]]);
 });
 
 Deno.test("enabled legacy generic mutations guard the final dynamic row mutation", async () => {
