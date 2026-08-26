@@ -148,6 +148,14 @@ function updateFitCta(state) {
   state.fit.cta = `Add ${state.fit.selectedVendorIds.length} carriers to this RFx and open Message`;
 }
 
+export function previewFocusKeyAfterMemberRemoval(state, vendorId) {
+  const memberIds = Array.isArray(state?.builder?.draft?.vendor_ids) ? state.builder.draft.vendor_ids : [];
+  const index = memberIds.indexOf(vendorId);
+  if (index < 0) return "builder-add-selected";
+  const adjacentId = memberIds[index + 1] || memberIds[index - 1];
+  return adjacentId ? `builder-remove-${adjacentId}` : "builder-add-selected";
+}
+
 function reconcileLibrarySelection(state) {
   const visible = filteredPreviewTemplates(state);
   if (!visible.some((template) => template.id === state.library.selectedTemplateId)) {
@@ -316,7 +324,7 @@ function renderLibrary(state) {
     const archiveAction = template.lifecycle_status === "archived"
       ? `<button class="clt-link" type="button" data-clt-action="restore" data-template-id="${template.id}" data-clt-focus-key="library-lifecycle-${template.id}">Restore</button>`
       : `<button class="clt-link" type="button" data-clt-action="archive" data-template-id="${template.id}" data-clt-focus-key="library-lifecycle-${template.id}">Archive</button>`;
-    return `<tr class="${isSelected ? "is-selected" : ""}" data-clt-select-template="${template.id}" tabindex="0" aria-selected="${isSelected}">
+    return `<tr class="${isSelected ? "is-selected" : ""}" data-clt-select-template="${template.id}" data-clt-focus-key="library-row-${template.id}" tabindex="0" aria-selected="${isSelected}">
       <td><strong>${escapeHtml(template.segment_name)}</strong><small>${escapeHtml(template.description)}</small></td>
       <td><b>${template.vendor_ids.length}</b></td>
       <td><span>${escapeHtml(template.updated_at.split(" · ")[0])}</span><small>${escapeHtml(template.updated_at.split(" · ")[1] || "")}</small></td>
@@ -353,15 +361,15 @@ function renderBuilderStep(state) {
   const { draft } = builder;
   const members = draft.vendor_ids.map((id) => state.carriers.find((carrier) => carrier.id === id)).filter(Boolean);
   if (draft.step === 0) {
-    return `<div class="clt-form-card"><header><span>1</span><div><h2>Name this reusable carrier list</h2><p>Details describe the template. Membership stays tied to exact Carrier CRM IDs.</p></div></header><label>Template name<input type="text" value="${escapeHtml(draft.name)}" placeholder="e.g. US–Mexico Priority" data-clt-builder-name /></label><label>Description<textarea rows="4" placeholder="Describe when the team should use this list" data-clt-builder-description>${escapeHtml(draft.description)}</textarea></label><p class="clt-callout">${previewIcon("warning")} A draft requires a name. Activation also requires at least one valid carrier.</p></div>`;
+    return `<div class="clt-form-card"><header><span>1</span><div><h2>Name this reusable carrier list</h2><p>Details describe the template. Membership stays tied to exact Carrier CRM IDs.</p></div></header><label>Template name<input type="text" value="${escapeHtml(draft.name)}" placeholder="e.g. US–Mexico Priority" data-clt-builder-name data-clt-focus-key="builder-name" /></label><label>Description<textarea rows="4" placeholder="Describe when the team should use this list" data-clt-builder-description data-clt-focus-key="builder-description">${escapeHtml(draft.description)}</textarea></label><p class="clt-callout">${previewIcon("warning")} A draft requires a name. Activation also requires at least one valid carrier.</p></div>`;
   }
   if (draft.step === 1) {
     const query = builder.query.trim().toLowerCase();
     const candidates = state.carriers.filter((carrier) => !query || `${carrier.name} ${carrier.crm_id}`.toLowerCase().includes(query));
-    const candidateRows = candidates.map((carrier) => `<label class="clt-carrier-row"><input type="checkbox" data-clt-candidate="${carrier.id}" ${builder.selectedCandidateIds.includes(carrier.id) ? "checked" : ""} /><span><strong>${escapeHtml(carrier.name)}</strong><small>${escapeHtml(carrier.crm_id)}</small></span><span>${escapeHtml(carrier.coverage)}</span><span>${escapeHtml(carrier.equipment)}</span><span class="${carrier.primary_email ? "is-ready" : "is-warning"}">${carrier.primary_email ? "Yes" : "No"}</span></label>`).join("");
-    const memberRows = members.map((carrier, index) => `<div class="clt-member-row"><span class="clt-drag-handle" aria-hidden="true">${previewIcon("menu")}</span><span><strong>${escapeHtml(carrier.name)}</strong><small>${escapeHtml(carrier.crm_id)}</small></span><span>${escapeHtml(carrier.coverage)}</span><span>${escapeHtml(carrier.equipment)}</span><div><button type="button" data-clt-reorder="${carrier.id}" data-to-index="${Math.max(0, index - 1)}" ${index === 0 ? "disabled" : ""} aria-label="Move ${escapeHtml(carrier.name)} up">${previewIcon("chevron")}</button><button type="button" data-clt-reorder="${carrier.id}" data-to-index="${Math.min(members.length - 1, index + 1)}" ${index === members.length - 1 ? "disabled" : ""} aria-label="Move ${escapeHtml(carrier.name)} down">${previewIcon("chevron")}</button><button type="button" data-clt-remove="${carrier.id}" aria-label="Remove ${escapeHtml(carrier.name)}">${previewIcon("close")}</button></div></div>`).join("");
+    const candidateRows = candidates.map((carrier) => `<label class="clt-carrier-row"><input type="checkbox" data-clt-candidate="${carrier.id}" data-clt-focus-key="builder-candidate-${carrier.id}" ${builder.selectedCandidateIds.includes(carrier.id) ? "checked" : ""} /><span><strong>${escapeHtml(carrier.name)}</strong><small>${escapeHtml(carrier.crm_id)}</small></span><span>${escapeHtml(carrier.coverage)}</span><span>${escapeHtml(carrier.equipment)}</span><span class="${carrier.primary_email ? "is-ready" : "is-warning"}">${carrier.primary_email ? "Yes" : "No"}</span></label>`).join("");
+    const memberRows = members.map((carrier, index) => `<div class="clt-member-row"><span class="clt-drag-handle" aria-hidden="true">${previewIcon("menu")}</span><span><strong>${escapeHtml(carrier.name)}</strong><small>${escapeHtml(carrier.crm_id)}</small></span><span>${escapeHtml(carrier.coverage)}</span><span>${escapeHtml(carrier.equipment)}</span><div><button type="button" data-clt-reorder="${carrier.id}" data-to-index="${Math.max(0, index - 1)}" data-clt-focus-key="builder-reorder-up-${carrier.id}" ${index === 0 ? "disabled" : ""} aria-label="Move ${escapeHtml(carrier.name)} up">${previewIcon("chevron")}</button><button type="button" data-clt-reorder="${carrier.id}" data-to-index="${Math.min(members.length - 1, index + 1)}" data-clt-focus-key="builder-reorder-down-${carrier.id}" ${index === members.length - 1 ? "disabled" : ""} aria-label="Move ${escapeHtml(carrier.name)} down">${previewIcon("chevron")}</button><button type="button" data-clt-remove="${carrier.id}" data-clt-focus-key="builder-remove-${carrier.id}" aria-label="Remove ${escapeHtml(carrier.name)}">${previewIcon("close")}</button></div></div>`).join("");
     const resolution = draft.resolution_rows.map((row) => `<tr><td>${row.source_row_number}</td><td>${escapeHtml(row.source_value)}</td><td>${lifecycleBadge(row.status)}</td><td>${escapeHtml(row.reason)}</td></tr>`).join("");
-    return `<div class="clt-builder-mode-tabs" role="tablist"><button class="${builder.mode === "crm" ? "is-active" : ""}" type="button" data-clt-builder-mode="crm" role="tab" aria-selected="${builder.mode === "crm"}">Select from Carrier CRM</button><button class="${builder.mode === "upload" ? "is-active" : ""}" type="button" data-clt-builder-mode="upload" role="tab" aria-selected="${builder.mode === "upload"}">Upload CSV / XLSX</button></div>
+    return `<div class="clt-builder-mode-tabs" role="group" aria-label="Carrier source"><button class="${builder.mode === "crm" ? "is-active" : ""}" type="button" data-clt-builder-mode="crm" data-clt-focus-key="builder-mode-crm" aria-pressed="${builder.mode === "crm"}">Select from Carrier CRM</button><button class="${builder.mode === "upload" ? "is-active" : ""}" type="button" data-clt-builder-mode="upload" data-clt-focus-key="builder-mode-upload" aria-pressed="${builder.mode === "upload"}">Upload CSV / XLSX</button></div>
       <p class="clt-callout is-wide">${previewIcon("warning")} Only existing Carrier CRM profiles can be added.</p>
       ${builder.mode === "crm" ? `<div class="clt-member-builder"><section class="clt-panel"><header><h2>1. Select CRM carriers</h2><p>${state.carriers.length} existing carriers found</p></header><label class="clt-search">${previewIcon("search")}<span class="sr-only">Search carriers</span><input type="search" value="${escapeHtml(builder.query)}" placeholder="Search by carrier name, CRM ID" data-clt-builder-query /></label><div class="clt-carrier-list"><div class="clt-carrier-columns"><span>Carrier (CRM ID)</span><span>Coverage</span><span>Equipment</span><span>Contact ready</span></div>${candidateRows}</div></section><div class="clt-transfer-actions"><button class="clt-secondary" type="button" data-clt-add-selected>Add ${previewIcon("chevron")}</button><small>${builder.selectedCandidateIds.length} selected</small></div><section class="clt-panel"><header><h2>2. Template members</h2><p>${members.length} selected</p></header><div class="clt-member-list">${memberRows || `<div class="clt-empty">Add existing CRM carriers to build this exact membership.</div>`}</div></section></div>` : `<section class="clt-panel clt-upload-preview"><header><div><h2>Import reconciliation preview</h2><p>Upload simulation only. No carrier is created or changed.</p></div><button class="clt-primary" type="button" data-clt-import-preview>Preview carrier_import_aug25.xlsx</button></header>${resolution ? `<div class="clt-import-summary"><span><b>${draft.resolution_rows.filter((row) => row.status === "matched").length}</b> matched</span><span><b>${draft.resolution_rows.filter((row) => row.status === "ambiguous").length}</b> ambiguous</span><span><b>${draft.resolution_rows.filter((row) => row.status === "not_found").length}</b> not found</span><span><b>${draft.resolution_rows.filter((row) => row.status === "duplicate").length}</b> duplicate</span></div><div class="clt-table-scroll"><table class="clt-table"><thead><tr><th>Row</th><th>Source value</th><th>Result</th><th>Reason</th></tr></thead><tbody>${resolution}</tbody></table></div>` : `<div class="clt-upload-drop">${previewIcon("upload")}<strong>carrier_import_aug25.xlsx</strong><span>Run the deterministic preview to classify matched, ambiguous, not found, and duplicate rows.</span></div>`}<footer>Unmatched and ambiguous rows remain excluded. Upload previews never create new carriers.</footer></section>`}`;
   }
@@ -402,23 +410,38 @@ function renderMessage(state) {
   return `<section class="clt-screen clt-message-screen" aria-labelledby="clt-message-title"><header class="clt-bid-heading"><div><p>PRIVATE PROCUREMENT ROOM</p><h1>Bid Room</h1><span>RFx-04302602 &nbsp;/&nbsp; Launch &nbsp;/&nbsp; Message</span></div></header><nav class="clt-bid-tabs" aria-label="Bid Room launch workspaces"><button type="button" data-preview-route="carrier-fit">Carrier fit</button><button class="is-active" type="button">Message</button><button type="button" data-clt-shell-feedback="Delivery queue is intentionally not active in this simulation">Delivery queue</button></nav><div class="clt-message-content"><article class="clt-panel clt-success-card"><span class="clt-success-icon">${previewIcon("check")}</span><p>LOCAL HANDOFF COMPLETE</p><h1 id="clt-message-title" tabindex="-1" data-clt-focus-key="screen-heading">${state.message.selectedCount} carrier${state.message.selectedCount === 1 ? "" : "s"} opened in Message</h1><p>${escapeHtml(state.message.detail)}</p><div class="clt-message-audience">${selected.map((carrier) => `<span><b>${escapeHtml(carrier.name)}</b><small>${escapeHtml(carrier.crm_id)}</small></span>`).join("")}</div><p class="clt-callout">${previewIcon("warning")} No draft was prepared, nothing was sent, and Delivery queue was not touched.</p><div><button class="clt-secondary" type="button" data-preview-route="carrier-fit">Back to Carrier Fit</button><button class="clt-primary" type="button" data-preview-route="library">Return to template library</button></div></article><aside class="clt-panel"><h2>Human gates preserved</h2><ol><li><b>1</b><span>Template membership remained unchanged.</span></li><li><b>2</b><span>Only visible eligible carriers could be selected.</span></li><li><b>3</b><span>Message and Delivery actions remain explicit next decisions.</span></li></ol></aside></div></section>`;
 }
 
+function applyPreviewFocusKeys(root) {
+  const fixedKeys = [
+    ["[data-clt-builder-query]", "builder-query"],
+    ["[data-clt-add-selected]", "builder-add-selected"],
+    ["[data-clt-import-preview]", "builder-import-preview"]
+  ];
+  for (const [selector, focusKey] of fixedKeys) {
+    root.querySelector(selector)?.setAttribute("data-clt-focus-key", focusKey);
+  }
+  root.querySelectorAll("[data-clt-fit-toggle]").forEach((control) => {
+    control.setAttribute("data-clt-focus-key", `fit-carrier-${control.dataset.cltFitToggle}`);
+  });
+}
+
 function renderPreview(state, root) {
   root.innerHTML = state.screen === "library" ? renderLibrary(state)
     : state.screen === "builder" ? renderBuilder(state)
       : state.screen === "carrier-fit" ? renderCarrierFit(state)
         : renderMessage(state);
+  applyPreviewFocusKeys(root);
   document.querySelectorAll("[data-preview-nav-key]").forEach((link) => link.classList.remove("is-active"));
   document.querySelector(state.screen === "carrier-fit" || state.screen === "message" ? '[data-preview-nav-key="bid-room"]' : '[data-preview-nav-key="carrier-crm"]')?.classList.add("is-active");
 }
 
-function restorePreviewFocus(root, state, action, previousFocusKey = "") {
-  let focusKey = previousFocusKey;
+export function restorePreviewFocus(root, state, action, previousFocusKey = "") {
+  let focusKey = action.focusKey || previousFocusKey;
   if (action.type === "builder_go_to_step") focusKey = `builder-step-${state.builder.draft.step}`;
   else if (action.type === "builder_save" && state.screen === "builder" && state.builder.validationErrors.length) focusKey = "builder-validation";
   else if (["navigate", "builder_new", "builder_open", "fit_submit"].includes(action.type)) focusKey = "screen-heading";
   const focusTargets = [...root.querySelectorAll("[data-clt-focus-key]")];
-  const target = focusTargets.find((element) => element.dataset.cltFocusKey === focusKey)
-    || focusTargets.find((element) => element.dataset.cltFocusKey === "screen-heading");
+  const target = focusTargets.find((element) => element.dataset.cltFocusKey === focusKey && !element.disabled)
+    || focusTargets.find((element) => element.dataset.cltFocusKey === "screen-heading" && !element.disabled);
   target?.focus({ preventScroll: true });
 }
 
@@ -457,7 +480,7 @@ function startCarrierTemplatePreview() {
     if (candidate) return dispatch({ type: "builder_toggle_candidate", vendorId: candidate });
     if (event.target.closest("[data-clt-add-selected]")) return dispatch({ type: "builder_add_selected" });
     const remove = event.target.closest("[data-clt-remove]")?.dataset.cltRemove;
-    if (remove) return dispatch({ type: "builder_remove", vendorId: remove });
+    if (remove) return dispatch({ type: "builder_remove", vendorId: remove, focusKey: previewFocusKeyAfterMemberRemoval(state, remove) });
     const reorder = event.target.closest("[data-clt-reorder]");
     if (reorder) return dispatch({ type: "builder_reorder", vendorId: reorder.dataset.cltReorder, toIndex: Number(reorder.dataset.toIndex) });
     if (event.target.closest("[data-clt-import-preview]")) return dispatch({ type: "builder_import_preview" });

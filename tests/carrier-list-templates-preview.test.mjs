@@ -27,10 +27,25 @@ test("preview source is public, noindex, local-only, and uses the approved domai
   assert.match(source, /data-clt-focus-key=["']screen-heading["']/);
   assert.match(source, /data-clt-focus-key=["']builder-step-/);
   assert.match(source, /\.focus\(\{\s*preventScroll:\s*true\s*\}\)/);
+  assert.match(source, /data-clt-select-template=["'][^"']+["'][^>]*data-clt-focus-key=["']library-row-/);
+  assert.match(source, /data-clt-builder-name[^>]*data-clt-focus-key=["']builder-name["']/);
+  assert.match(source, /data-clt-builder-description[^>]*data-clt-focus-key=["']builder-description["']/);
+  assert.match(source, /\["\[data-clt-builder-query\]",\s*"builder-query"\]/);
+  assert.match(source, /data-clt-candidate=["'][^"']+["'][^>]*data-clt-focus-key=["']builder-candidate-/);
+  assert.match(source, /\["\[data-clt-add-selected\]",\s*"builder-add-selected"\]/);
+  assert.match(source, /data-clt-remove=["'][^"']+["'][^>]*data-clt-focus-key=["']builder-remove-/);
+  assert.match(source, /data-clt-reorder=["'][^"']+["'][^>]*data-clt-focus-key=["']builder-reorder-(?:up|down)-/);
+  assert.match(source, /\["\[data-clt-import-preview\]",\s*"builder-import-preview"\]/);
+  assert.match(source, /querySelectorAll\(["']\[data-clt-fit-toggle\]["']\)[\s\S]*setAttribute\(["']data-clt-focus-key["'],\s*`fit-carrier-/);
   assert.match(source, /data-clt-save=["']draft["'][^>]*disabled/);
   assert.match(source, /data-clt-save=["']active["'][^>]*disabled/);
   assert.match(source, /role=["']alert["']/);
   assert.doesNotMatch(source, /data-clt-save=["'][^"']+["'][^>]*role=["']tab["']/);
+  assert.match(source, /class=["']clt-builder-mode-tabs["'][^>]*role=["']group["'][^>]*aria-label=["']Carrier source["']/);
+  assert.match(source, /data-clt-builder-mode=["']crm["'][^>]*aria-pressed=/);
+  assert.match(source, /data-clt-builder-mode=["']upload["'][^>]*aria-pressed=/);
+  assert.doesNotMatch(source, /role=["']tablist["']|role=["']tab["']/);
+  assert.doesNotMatch(source, /data-clt-builder-mode=["'][^"']+["'][^>]*aria-selected=/);
 });
 
 test("preview reducer completes Library to Builder to Carrier Fit to Message locally", async () => {
@@ -181,4 +196,51 @@ test("library detail selection always belongs to the filtered result set", async
   state = reduceCarrierTemplatePreview(state, { type: "library_filter_query", value: "no such local template" });
   assert.deepEqual(filteredPreviewTemplates(state), []);
   assert.equal(state.library.selectedTemplateId, "");
+});
+
+test("focus restoration keeps stable controls and chooses an adjacent member after removal", async () => {
+  const {
+    createCarrierTemplatePreviewState,
+    previewFocusKeyAfterMemberRemoval,
+    reduceCarrierTemplatePreview,
+    restorePreviewFocus
+  } = await import(previewJsUrl);
+
+  let state = reduceCarrierTemplatePreview(createCarrierTemplatePreviewState(), { type: "builder_new" });
+  const memberIds = state.carriers.slice(2, 5).map((carrier) => carrier.id);
+  for (const vendorId of memberIds) {
+    state = reduceCarrierTemplatePreview(state, { type: "builder_toggle_candidate", vendorId });
+  }
+  state = reduceCarrierTemplatePreview(state, { type: "builder_add_selected" });
+
+  const middleId = memberIds[1];
+  const adjacentKey = previewFocusKeyAfterMemberRemoval(state, middleId);
+  assert.equal(adjacentKey, `builder-remove-${memberIds[2]}`);
+
+  const focusLog = [];
+  const focusElement = (key, { disabled = false } = {}) => ({
+    dataset: { cltFocusKey: key },
+    disabled,
+    focus(options) { focusLog.push({ key, options }); }
+  });
+  const heading = focusElement("screen-heading");
+  const adjacent = focusElement(adjacentKey);
+  const candidate = focusElement(`builder-candidate-${memberIds[0]}`);
+  const step = focusElement("builder-step-2");
+  const root = { querySelectorAll: () => [heading, adjacent, candidate, step] };
+
+  restorePreviewFocus(root, state, { type: "builder_remove", focusKey: adjacentKey }, `builder-remove-${middleId}`);
+  assert.deepEqual(focusLog.pop(), { key: adjacentKey, options: { preventScroll: true } });
+
+  restorePreviewFocus(root, state, { type: "builder_toggle_candidate" }, `builder-candidate-${memberIds[0]}`);
+  assert.deepEqual(focusLog.pop(), { key: `builder-candidate-${memberIds[0]}`, options: { preventScroll: true } });
+
+  state = reduceCarrierTemplatePreview(state, { type: "builder_go_to_step", step: 2 });
+  restorePreviewFocus(root, state, { type: "builder_go_to_step" }, "builder-continue");
+  assert.deepEqual(focusLog.pop(), { key: "builder-step-2", options: { preventScroll: true } });
+
+  const disabledTrigger = focusElement("fit-submit", { disabled: true });
+  const fallbackRoot = { querySelectorAll: () => [heading, disabledTrigger] };
+  restorePreviewFocus(fallbackRoot, state, { type: "fit_clear" }, "fit-submit");
+  assert.deepEqual(focusLog.pop(), { key: "screen-heading", options: { preventScroll: true } });
 });

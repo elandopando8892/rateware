@@ -43,3 +43,12 @@ Browser/design QA was intentionally not launched by this implementation agent; t
 - Draft and active saves use the real `validateCarrierTemplateDraft` helper. Invalid saves remain in Builder, expose the domain validation messages, and never create an unnamed fallback template.
 - Library filtering reconciles the selected detail to the visible result set; the misleading unimplemented detail-close control was removed.
 - Render cycles restore focus by stable action key or the new screen heading, with explicit focus targets for route and builder-step transitions. Draft and Activate remain ordinary action buttons rather than incomplete tabs.
+
+## Fix round 2
+
+- Stable action-specific focus keys now cover filtered library rows, builder detail and query inputs, source controls, candidate selection, add/remove/reorder actions, import preview, and Carrier Fit selection controls.
+- Removing a member restores focus to the next surviving member's Remove action, then the previous member when the removed row was last, and finally Add when no member remains.
+- Render focus restoration retains the triggering control when it remains enabled; missing or disabled targets fall back to the current route or step heading.
+- The builder source switch is an accessible labeled button group with ordinary `aria-pressed` buttons, with no incomplete tab semantics.
+- A deterministic fake-DOM regression test covers retained focus, adjacent focus after removal, step focus, and heading fallback because the repository has no DOM harness dependency.
+- `node --test tests/carrier-list-templates-preview.test.mjs` — 5 passed, 0 failed.
