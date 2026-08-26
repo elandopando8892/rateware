@@ -581,6 +581,14 @@ class ScriptedSupabase {
         ),
         "Participant mutation must be preceded by a server-loaded materialization journal context",
       );
+      assert(
+        priorTraces.some((candidate) =>
+          candidate.table === "carrier_template_materialization_operations" &&
+          candidate.operation === "update" &&
+          (candidate.payload as Record<string, unknown> | undefined)?.status === "mutation_issued"
+        ),
+        "Participant mutation must be preceded by the full-context pending to mutation_issued CAS",
+      );
       const rows = (trace.payload as { rows?: Array<Record<string, unknown>> } | undefined)?.rows || [];
       assert(
         rows.length > 0 && rows.every((row) =>
@@ -633,11 +641,16 @@ class ScriptedSupabase {
       assertEquals(typeof filter("eq", "selected_count"), "number");
       const allowedStatuses = filter("in", "status");
       const targetStatus = (trace.payload as Record<string, unknown>).status;
-      assertEquals(allowedStatuses, targetStatus === "reconciled"
-        ? ["pending", "mutation_issued", "reconcile_required"]
-        : targetStatus === "reconcile_required"
-          ? ["pending", "mutation_issued"]
-          : ["pending"]);
+      if (targetStatus === "mutation_issued") {
+        assertEquals(filter("eq", "status"), "pending");
+        assertEquals(allowedStatuses, undefined);
+      } else {
+        assertEquals(allowedStatuses, targetStatus === "reconciled"
+          ? ["pending", "mutation_issued", "reconcile_required"]
+          : targetStatus === "reconcile_required"
+            ? ["pending", "mutation_issued"]
+            : ["pending"]);
+      }
       assertMatch(trace.selection || "", /status/);
     }
     // Promise.all-backed read paths may start in a different microtask order.
@@ -1034,6 +1047,29 @@ function materializationJournalFinish(
   };
 }
 
+function materializationJournalClaim(
+  vendorIds = [vendorA.id],
+  laneIds = [materializationLaneA],
+  patch: Record<string, unknown> = {},
+): ScriptedResponse {
+  return {
+    table: "carrier_template_materialization_operations",
+    operation: "update",
+    data: materializationJournalRow(vendorIds, laneIds, {
+      status: "mutation_issued",
+      result: null,
+      confirmed_count: 0,
+      inserted_count: 0,
+      already_present_count: 0,
+      rejected_count: 0,
+      pending_count: vendorIds.length * laneIds.length,
+      confirmed_vendor_ids: [],
+      outcomes: [],
+      ...patch,
+    }),
+  };
+}
+
 function finalInvitationRead(
   laneIds: string[],
   vendorIds: string[],
@@ -1224,6 +1260,7 @@ Deno.test("Task 7 lost-response retry reconciles an already-present operation au
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead([materializationLaneA]),
     ...materializationJournalStart(),
+    materializationJournalClaim(),
     { table: "rfx_lane_vendors", operation: "upsert", data: [] },
     finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
     materializationJournalFinish([vendorA.id], [materializationLaneA], {
@@ -1256,7 +1293,9 @@ Deno.test("Task 7 lost-response retry reconciles an already-present operation au
   }]);
   assertEquals(body.confirmed_audience_vendor_ids, [vendorA.id]);
   const journalUpdate = db.traces.find((trace) =>
-    trace.table === "carrier_template_materialization_operations" && trace.operation === "update"
+    trace.table === "carrier_template_materialization_operations" &&
+    trace.operation === "update" &&
+    (trace.payload as Record<string, unknown>).status === "reconciled"
   );
   assertEquals(
     (journalUpdate?.payload as Record<string, unknown>).status,
@@ -1297,6 +1336,7 @@ Deno.test("Task 7 first-upsert lost response reconciles rows visible in final co
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead([materializationLaneA]),
     ...materializationJournalStart(),
+    materializationJournalClaim(),
     { table: "rfx_lane_vendors", operation: "upsert", throws: new Error("transport response lost") },
     finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
     materializationJournalFinish(),
@@ -1318,7 +1358,9 @@ Deno.test("Task 7 first-upsert lost response reconciles rows visible in final co
   });
   assertEquals(body.confirmed_audience_vendor_ids, [vendorA.id]);
   const journalUpdate = db.traces.find((trace) =>
-    trace.table === "carrier_template_materialization_operations" && trace.operation === "update"
+    trace.table === "carrier_template_materialization_operations" &&
+    trace.operation === "update" &&
+    (trace.payload as Record<string, unknown>).status === "reconciled"
   );
   assertEquals(
     (journalUpdate?.payload as Record<string, unknown>).status,
@@ -1348,6 +1390,7 @@ Deno.test("Task 7 returned first-upsert loss still attributes marked committed r
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead([materializationLaneA]),
     ...materializationJournalStart(),
+    materializationJournalClaim(),
     { table: "rfx_lane_vendors", operation: "upsert", error: { message: "response lost after commit" } },
     finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
     materializationJournalFinish(),
@@ -1375,6 +1418,7 @@ Deno.test("Task 7 first-upsert uncertainty with incomplete final reads returns a
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead([materializationLaneA]),
     ...materializationJournalStart(),
+    materializationJournalClaim(),
     { table: "rfx_lane_vendors", operation: "upsert", error: { message: "transport response lost" } },
     finalInvitationRead([materializationLaneA], [vendorA.id], []),
     materializationJournalFinish([vendorA.id], [materializationLaneA], {
@@ -1435,6 +1479,7 @@ Deno.test("Task 7 final reconciliation batches both dimensions below provider ro
     vendorRead(vendorIds, vendorIds.map((id) => materializationVendor({ id, primary_email: `${id}@example.com` }))),
     laneRead(laneIds),
     ...materializationJournalStart(vendorIds, laneIds),
+    materializationJournalClaim(vendorIds, laneIds),
     { table: "rfx_lane_vendors", operation: "upsert", data: finalRows.slice(0, 500) },
     { table: "rfx_lane_vendors", operation: "upsert", data: finalRows.slice(500, 1000) },
     { table: "rfx_lane_vendors", operation: "upsert", data: finalRows.slice(1000) },
@@ -1484,6 +1529,7 @@ Deno.test("Task 7 materialization canonicalizes UUID input before scoped reconci
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead([materializationLaneA]),
     ...materializationJournalStart(),
+    materializationJournalClaim(),
     { table: "rfx_lane_vendors", operation: "upsert", data: [finalRow] },
     finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
     materializationJournalFinish(),
@@ -1523,6 +1569,7 @@ Deno.test("Task 7 concurrent insertion derives mixed outcomes from the final com
     vendorRead(vendorIds, [materializationVendor(vendorA), materializationVendor(vendorB)]),
     laneRead([materializationLaneA]),
     ...materializationJournalStart(vendorIds),
+    materializationJournalClaim(vendorIds),
     { table: "rfx_lane_vendors", operation: "upsert", data: [insertedRow] },
     finalInvitationRead([materializationLaneA], vendorIds, [insertedRow, racedRow]),
     materializationJournalFinish(vendorIds, [materializationLaneA], {
@@ -1575,6 +1622,7 @@ Deno.test("Task 7 partial multi-lane retry completes and confirms only the full 
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead(laneIds),
     ...materializationJournalStart([vendorA.id], laneIds),
+    materializationJournalClaim([vendorA.id], laneIds),
     { table: "rfx_lane_vendors", operation: "upsert", data: [insertedRow] },
     finalInvitationRead(laneIds, [vendorA.id], [priorRow, insertedRow]),
     materializationJournalFinish([vendorA.id], laneIds, {
@@ -1617,6 +1665,7 @@ Deno.test("Task 7 post-commit read failure returns and audits reconcile_required
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead([materializationLaneA]),
     ...materializationJournalStart(),
+    materializationJournalClaim(),
     { table: "rfx_lane_vendors", operation: "upsert", data: [insertedRow] },
     finalInvitationRead([materializationLaneA], [vendorA.id], [], { message: "post-commit read failed" }),
     materializationJournalFinish([vendorA.id], [materializationLaneA], {
@@ -1694,17 +1743,26 @@ Deno.test("Task 7 late incomplete request adopts the reconciled CAS winner witho
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead([materializationLaneA]),
     ...materializationJournalStart(),
+    materializationJournalClaim(),
     { table: "rfx_lane_vendors", operation: "upsert", data: [] },
     {
       ...finalInvitationRead([materializationLaneA], [vendorA.id], []),
       wait: delayedReadGate,
       onTake: signalDelayedRead,
     },
-    // Request A observes the committed row and wins reconciled CAS.
+    // Request A loaded the same pending generation, loses its mutation claim,
+    // reloads mutation_issued, and then completes the idempotent operation.
     templateRead(),
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead([materializationLaneA]),
     ...materializationJournalStart(),
+    { table: "carrier_template_materialization_operations", operation: "update", data: null },
+    {
+      table: "carrier_template_materialization_operations",
+      operation: "select",
+      data: materializationJournalRow([vendorA.id], [materializationLaneA], { status: "mutation_issued" }),
+      filters: [["eq", "id", materializationOperationId]],
+    },
     { table: "rfx_lane_vendors", operation: "upsert", data: [finalRow] },
     finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
     materializationJournalFinish([vendorA.id], [materializationLaneA], {
@@ -1833,6 +1891,175 @@ Deno.test("Task 7 terminal rejected journal cannot be reopened by later eligibil
   assertEquals(db.traces.some((trace) => trace.table === "rfx_lane_vendors"), false);
   assertEquals(db.traces.some((trace) => trace.table === "carrier_template_materialization_operations" && trace.operation === "update"), false);
   assertEquals(db.traces.some((trace) => trace.table === "saas_audit_log"), false);
+  assertEquals(db.responses.length, 0);
+});
+
+Deno.test("Task 7 rejected-first interleaving prevents every eligible participant upsert", async () => {
+  let releaseRejectedClaim!: () => void;
+  let signalRejectedClaim!: () => void;
+  const rejectedClaimGate = new Promise<void>((resolve) => releaseRejectedClaim = resolve);
+  const rejectedClaimStarted = new Promise<void>((resolve) => signalRejectedClaim = resolve);
+  const rejectedOutcome = {
+    lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+    outcome: "rejected",
+    reason: "status_blocked",
+  };
+  const rejectedJournal = materializationJournalRow([vendorA.id], [materializationLaneA], {
+    status: "rejected",
+    result: "rejected",
+    confirmed_count: 0,
+    inserted_count: 0,
+    already_present_count: 0,
+    rejected_count: 1,
+    pending_count: 0,
+    confirmed_vendor_ids: [],
+    outcomes: [rejectedOutcome],
+  });
+  const db = new ScriptedSupabase([
+    // Request A observes blocked eligibility and wins pending -> rejected. Its
+    // response is delayed after the database transition has taken effect.
+    templateRead(),
+    vendorRead([vendorA.id], [materializationVendor(vendorA, { status: "blocked" })]),
+    laneRead([materializationLaneA]),
+    ...materializationJournalStart(),
+    {
+      ...materializationJournalFinish([vendorA.id], [materializationLaneA], {
+        status: "rejected",
+        result: "rejected",
+        confirmed_count: 0,
+        inserted_count: 0,
+        rejected_count: 1,
+        confirmed_vendor_ids: [],
+        outcomes: [rejectedOutcome],
+      }),
+      wait: rejectedClaimGate,
+      onTake: signalRejectedClaim,
+    },
+    // Request B's earlier eligibility snapshot cannot reopen the same UUID.
+    templateRead(),
+    vendorRead([vendorA.id], [materializationVendor()]),
+    laneRead([materializationLaneA]),
+    ...materializationJournalStart([vendorA.id], [materializationLaneA], {
+      ...rejectedJournal,
+    }),
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+
+  const rejectedResponsePromise = handler(jsonActionRequest(materializationAction()));
+  await rejectedClaimStarted;
+  const eligibleResponse = await handler(jsonActionRequest(materializationAction()));
+  releaseRejectedClaim();
+  const rejectedResponse = await rejectedResponsePromise;
+
+  assertEquals(rejectedResponse.status, 200);
+  assertEquals(eligibleResponse.status, 200);
+  assertEquals((await eligibleResponse.json()).result, "rejected");
+  assertEquals(db.traces.filter((trace) => trace.table === "rfx_lane_vendors" && trace.operation === "upsert").length, 0);
+  assertEquals(db.traces.filter((trace) => trace.table === "carrier_template_materialization_operations" && trace.operation === "update").length, 1);
+  assertEquals(db.traces.filter((trace) => trace.table === "saas_audit_log").length, 0);
+  assertEquals(db.responses.length, 0);
+});
+
+Deno.test("Task 7 mutation-issued-first interleaving makes rejection lose and converges once", async () => {
+  let releaseMutationClaim!: () => void;
+  let signalMutationClaim!: () => void;
+  let releaseBlockedFinalRead!: () => void;
+  let signalBlockedFinalRead!: () => void;
+  const mutationClaimGate = new Promise<void>((resolve) => releaseMutationClaim = resolve);
+  const mutationClaimStarted = new Promise<void>((resolve) => signalMutationClaim = resolve);
+  const blockedFinalReadGate = new Promise<void>((resolve) => releaseBlockedFinalRead = resolve);
+  const blockedFinalReadStarted = new Promise<void>((resolve) => signalBlockedFinalRead = resolve);
+  const finalRow = {
+    id: "invitation-mutation-claim-winner",
+    rfx_event_id: materializationEventId,
+    rfx_lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+    carrier_template_materialization_operation_id: materializationOperationId,
+  };
+  const canonicalOutcome = {
+    lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+    outcome: "inserted",
+    invitation_id: finalRow.id,
+  };
+  const canonicalJournal = materializationJournalRow([vendorA.id], [materializationLaneA], {
+    status: "reconciled",
+    result: "inserted",
+    confirmed_count: 1,
+    inserted_count: 1,
+    already_present_count: 0,
+    rejected_count: 0,
+    pending_count: 0,
+    confirmed_vendor_ids: [vendorA.id],
+    outcomes: [canonicalOutcome],
+  });
+  const db = new ScriptedSupabase([
+    // Eligible request A atomically claims mutation ownership before writing.
+    templateRead(),
+    vendorRead([vendorA.id], [materializationVendor()]),
+    laneRead([materializationLaneA]),
+    ...materializationJournalStart(),
+    {
+      ...materializationJournalClaim(),
+      wait: mutationClaimGate,
+      onTake: signalMutationClaim,
+    },
+    // Blocked request B cannot change mutation_issued to rejected. It reloads
+    // canonical operation context and waits on final reconciliation.
+    templateRead(),
+    vendorRead([vendorA.id], [materializationVendor(vendorA, { status: "blocked" })]),
+    laneRead([materializationLaneA]),
+    ...materializationJournalStart([vendorA.id], [materializationLaneA], { status: "mutation_issued" }),
+    {
+      ...finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
+      wait: blockedFinalReadGate,
+      onTake: signalBlockedFinalRead,
+    },
+    // A resumes, writes once, and wins terminal reconciliation/audit.
+    { table: "rfx_lane_vendors", operation: "upsert", data: [finalRow] },
+    finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
+    materializationJournalFinish([vendorA.id], [materializationLaneA], { outcomes: [canonicalOutcome] }),
+    { table: "saas_audit_log", operation: "insert", data: null },
+    // B's late reconciliation CAS loses and returns A's canonical success.
+    { table: "carrier_template_materialization_operations", operation: "update", data: null },
+    {
+      table: "carrier_template_materialization_operations",
+      operation: "select",
+      data: canonicalJournal,
+      filters: [["eq", "id", materializationOperationId]],
+    },
+    finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+
+  const eligibleResponsePromise = handler(jsonActionRequest(materializationAction()));
+  await mutationClaimStarted;
+  const blockedResponsePromise = handler(jsonActionRequest(materializationAction()));
+  await blockedFinalReadStarted;
+  releaseMutationClaim();
+  const eligibleResponse = await eligibleResponsePromise;
+  releaseBlockedFinalRead();
+  const blockedResponse = await blockedResponsePromise;
+
+  assertEquals(eligibleResponse.status, 200);
+  assertEquals(blockedResponse.status, 200);
+  const blockedBody = await blockedResponse.json();
+  assertEquals(blockedBody.result, "inserted");
+  assertEquals(blockedBody.outcomes, [canonicalOutcome]);
+  assertEquals(db.traces.filter((trace) => trace.table === "rfx_lane_vendors" && trace.operation === "upsert").length, 1);
+  assertEquals(db.traces.filter((trace) => trace.table === "saas_audit_log").length, 1);
+  assertEquals(
+    db.traces.filter((trace) =>
+      trace.table === "carrier_template_materialization_operations" &&
+      trace.operation === "update" &&
+      (trace.payload as Record<string, unknown>).status === "rejected"
+    ).length,
+    0,
+    "Blocked request observing mutation_issued must never attempt rejection",
+  );
   assertEquals(db.responses.length, 0);
 });
 

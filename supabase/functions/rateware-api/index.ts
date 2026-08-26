@@ -649,7 +649,6 @@ async function loadOrCreateCarrierTemplateMaterializationOperation(
       already_present_count: 0,
       rejected_count: 0,
       pending_count: 0,
-      mutation_started_at: now,
       updated_at: now
     }, { onConflict: "id", ignoreDuplicates: true });
   if (createResult.error) throw createResult.error;
@@ -667,6 +666,49 @@ async function loadOrCreateCarrierTemplateMaterializationOperation(
   return row.id && carrierTemplateMaterializationOperationMatches(row, context)
     ? { row, conflict: false }
     : { row, conflict: true };
+}
+
+async function claimCarrierTemplateMaterializationMutation(
+  supabase: RatewareSupabaseClient,
+  context: CarrierTemplateMaterializationOperationContext
+) {
+  const now = new Date().toISOString();
+  const claimResult = await supabase
+    .from("carrier_template_materialization_operations")
+    .update({
+      status: "mutation_issued",
+      pending_count: context.selected_count,
+      mutation_started_at: now,
+      updated_at: now
+    })
+    .eq("id", context.id)
+    .eq("organization_id", context.organization_id)
+    .eq("rfx_event_id", context.rfx_event_id)
+    .eq("template_id", context.template_id)
+    .eq("template_version", context.template_version)
+    .filter("lane_ids", "eq", carrierTemplateUuidArrayLiteral(context.lane_ids))
+    .filter("selected_vendor_ids", "eq", carrierTemplateUuidArrayLiteral(context.selected_vendor_ids))
+    .eq("actor_user_id", context.actor_user_id)
+    .eq("actor_email", context.actor_email)
+    .eq("selected_count", context.selected_count)
+    .eq("status", "pending")
+    .select(CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS)
+    .maybeSingle();
+  if (claimResult.error) throw claimResult.error;
+  const claimedRow = objectRecord(claimResult.data);
+  if (claimedRow.id) return { won: true, row: claimedRow };
+
+  const canonicalResult = await supabase
+    .from("carrier_template_materialization_operations")
+    .select(CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS)
+    .eq("id", context.id)
+    .maybeSingle();
+  if (canonicalResult.error) throw canonicalResult.error;
+  const canonicalRow = objectRecord(canonicalResult.data);
+  if (!canonicalRow.id || !carrierTemplateMaterializationOperationMatches(canonicalRow, context)) {
+    throw new Error("Carrier template materialization journal context changed during mutation claim.");
+  }
+  return { won: false, row: canonicalRow };
 }
 
 async function finalizeCarrierTemplateMaterializationOperation(
@@ -1045,11 +1087,6 @@ async function materializeCarrierTemplateRfxParticipants(
       outcome: "rejected",
       reason: rejectionReasonByVendorId.get(vendorId)
     })));
-  const pendingOutcomes = laneIds.flatMap((laneId) => eligibleVendorIds.map((vendorId) => ({
-    lane_id: laneId,
-    vendor_id: vendorId,
-    outcome: "pending_reconciliation"
-  })));
   const operationContext: CarrierTemplateMaterializationOperationContext = {
     id: materializationOperationId,
     organization_id: organizationId,
@@ -1080,17 +1117,45 @@ async function materializeCarrierTemplateRfxParticipants(
       }
     };
   }
-  if ((cleanText(operationJournal.row.status)?.toLowerCase() || "") === "rejected") {
-    // Rejected is a zero-mutation terminal. A later eligibility change cannot
-    // reuse the UUID to create participants that were never part of its result.
+  let canonicalJournal = operationJournal.row;
+  let journalStatus = (cleanText(canonicalJournal.status)?.toLowerCase() || "") as CarrierTemplateMaterializationJournalStatus | "";
+  let mutationIssued = ["mutation_issued", "reconcile_required"].includes(journalStatus);
+  let mutationClaimWon = false;
+
+  if (["rejected", "reconciled"].includes(journalStatus)) {
+    // Terminal operations cannot be reopened. In particular, an eligible
+    // request that lost the pending claim to rejection must issue no upsert.
     return await canonicalCarrierTemplateMaterializationResult(
       supabase,
       operationContext,
       responseContext,
-      operationJournal.row
+      canonicalJournal
     );
   }
-  if (!eligibleVendorIds.length) {
+
+  if (eligibleVendorIds.length && !mutationIssued) {
+    const mutationClaim = await claimCarrierTemplateMaterializationMutation(
+      supabase,
+      operationContext
+    );
+    canonicalJournal = mutationClaim.row;
+    journalStatus = (cleanText(canonicalJournal.status)?.toLowerCase() || "") as CarrierTemplateMaterializationJournalStatus | "";
+    if (mutationClaim.won) {
+      mutationIssued = true;
+      mutationClaimWon = true;
+    } else if (["rejected", "reconciled"].includes(journalStatus)) {
+      return await canonicalCarrierTemplateMaterializationResult(
+        supabase,
+        operationContext,
+        responseContext,
+        canonicalJournal
+      );
+    } else {
+      mutationIssued = ["mutation_issued", "reconcile_required"].includes(journalStatus);
+    }
+  }
+
+  if (!eligibleVendorIds.length && !mutationIssued) {
     const counts = carrierTemplateMaterializationCounts(selectedMatrixCount, 0, 0, 0, rejectedCount);
     const finalization = await finalizeCarrierTemplateMaterializationOperation(
       supabase,
@@ -1101,38 +1166,70 @@ async function materializeCarrierTemplateRfxParticipants(
       rejectedOutcomes,
       []
     );
-    if (!finalization.won) {
+    if (finalization.won) {
+      return {
+        status: 200,
+        body: {
+          ...responseContext,
+          result: "rejected",
+          counts,
+          outcomes: rejectedOutcomes,
+          confirmed_audience_vendor_ids: []
+        }
+      };
+    }
+    canonicalJournal = finalization.row;
+    journalStatus = (cleanText(canonicalJournal.status)?.toLowerCase() || "") as CarrierTemplateMaterializationJournalStatus | "";
+    if (["rejected", "reconciled"].includes(journalStatus)) {
       return await canonicalCarrierTemplateMaterializationResult(
         supabase,
         operationContext,
         responseContext,
-        finalization.row
+        canonicalJournal
       );
     }
-    return {
-      status: 200,
-      body: {
-        ...responseContext,
-        result: "rejected",
-        counts,
-        outcomes: rejectedOutcomes,
-        confirmed_audience_vendor_ids: []
-      }
-    };
+    mutationIssued = ["mutation_issued", "reconcile_required"].includes(journalStatus);
   }
+
+  if (!mutationIssued) {
+    // A missing claim is never permission to mutate. Return the canonical
+    // pending/current state and let a same-UUID retry resolve it.
+    return await canonicalCarrierTemplateMaterializationResult(
+      supabase,
+      operationContext,
+      responseContext,
+      canonicalJournal
+    );
+  }
+
+  // A request continuing someone else's issued mutation reconciles the
+  // immutable journal audience. It may idempotently upsert only members that
+  // still pass current primary eligibility; already-issued rows remain part of
+  // the final canonical matrix even if this concurrent read now sees blocked.
+  const canonicalContinuation = !mutationClaimWon;
+  const reconciliationVendorIds = canonicalContinuation
+    ? operationContext.selected_vendor_ids
+    : eligibleVendorIds;
+  const reconciliationRejectedOutcomes = canonicalContinuation ? [] : rejectedOutcomes;
+  const reconciliationRejectedCount = canonicalContinuation ? 0 : rejectedCount;
+  const reconciliationPendingOutcomes = laneIds.flatMap((laneId) => reconciliationVendorIds.map((vendorId) => ({
+    lane_id: laneId,
+    vendor_id: vendorId,
+    outcome: "pending_reconciliation"
+  })));
 
   const reconcileRequired = async (message: string): Promise<CarrierTemplateMaterializationResult> => {
     const correlationId = crypto.randomUUID();
-    const pendingCount = eligibleVendorIds.length * laneIds.length;
+    const pendingCount = reconciliationVendorIds.length * laneIds.length;
     const counts = carrierTemplateMaterializationCounts(
       selectedMatrixCount,
       0,
       0,
       0,
-      rejectedCount,
+      reconciliationRejectedCount,
       pendingCount
     );
-    const outcomes = [...pendingOutcomes, ...rejectedOutcomes];
+    const outcomes = [...reconciliationPendingOutcomes, ...reconciliationRejectedOutcomes];
     const finalization = await finalizeCarrierTemplateMaterializationOperation(
       supabase,
       operationContext,
@@ -1159,7 +1256,7 @@ async function materializeCarrierTemplateRfxParticipants(
       confirmed_count: 0,
       already_present_count: 0,
       inserted_count: 0,
-      rejected_count: rejectedCount,
+      rejected_count: reconciliationRejectedCount,
       pending_count: pendingCount,
       result: "reconcile_required"
     });
@@ -1187,6 +1284,9 @@ async function materializeCarrierTemplateRfxParticipants(
     ...(await newRfxInvitationTokenFields())
   }))));
   for (const batch of chunkValues(insertRows, CARRIER_TEMPLATE_MATERIALIZATION_WRITE_BATCH_SIZE)) {
+    if (!mutationIssued) {
+      throw new Error("Carrier template participant mutation requires an issued journal claim.");
+    }
     let result: { data: unknown; error: unknown };
     try {
       result = await supabase
@@ -1209,7 +1309,7 @@ async function materializeCarrierTemplateRfxParticipants(
       organizationId,
       eventId,
       laneIds,
-      eligibleVendorIds
+      reconciliationVendorIds
     );
   } catch (_) {
     return await reconcileRequired(
@@ -1222,14 +1322,14 @@ async function materializeCarrierTemplateRfxParticipants(
     const key = carrierTemplateInvitationKey(row.rfx_lane_id, row.vendor_id);
     if (key !== ":" && !finalByKey.has(key)) finalByKey.set(key, row);
   }
-  const expectedEligibleKeys = laneIds.flatMap((laneId) => eligibleVendorIds.map((vendorId) => carrierTemplateInvitationKey(laneId, vendorId)));
+  const expectedEligibleKeys = laneIds.flatMap((laneId) => reconciliationVendorIds.map((vendorId) => carrierTemplateInvitationKey(laneId, vendorId)));
   if (!expectedEligibleKeys.every((key) => finalByKey.has(key))) {
     return await reconcileRequired(
       "Carrier additions did not reconcile to a complete final RFx audience. Retry the same operation."
     );
   }
 
-  const eligibleOutcomes = laneIds.flatMap((laneId) => eligibleVendorIds.map((vendorId) => {
+  const eligibleOutcomes = laneIds.flatMap((laneId) => reconciliationVendorIds.map((vendorId) => {
     const key = carrierTemplateInvitationKey(laneId, vendorId);
     const invitation = finalByKey.get(key)!;
     return {
@@ -1245,7 +1345,7 @@ async function materializeCarrierTemplateRfxParticipants(
   const insertedCount = eligibleOutcomes.filter((row) => row.outcome === "inserted").length;
   const confirmedCount = eligibleOutcomes.length;
   const alreadyPresentCount = confirmedCount - insertedCount;
-  const resultName = rejectedCount
+  const resultName = reconciliationRejectedCount
     ? "partial"
     : insertedCount && alreadyPresentCount
       ? "mixed"
@@ -1257,9 +1357,9 @@ async function materializeCarrierTemplateRfxParticipants(
     confirmedCount,
     insertedCount,
     alreadyPresentCount,
-    rejectedCount
+    reconciliationRejectedCount
   );
-  const outcomes = [...eligibleOutcomes, ...rejectedOutcomes];
+  const outcomes = [...eligibleOutcomes, ...reconciliationRejectedOutcomes];
   const finalization = await finalizeCarrierTemplateMaterializationOperation(
     supabase,
     operationContext,
@@ -1267,7 +1367,7 @@ async function materializeCarrierTemplateRfxParticipants(
     resultName,
     counts,
     outcomes,
-    eligibleVendorIds
+    reconciliationVendorIds
   );
   if (!finalization.won) {
     return await canonicalCarrierTemplateMaterializationResult(
@@ -1285,7 +1385,7 @@ async function materializeCarrierTemplateRfxParticipants(
     confirmed_count: confirmedCount,
     already_present_count: alreadyPresentCount,
     inserted_count: insertedCount,
-    rejected_count: rejectedCount,
+    rejected_count: reconciliationRejectedCount,
     pending_count: 0,
     result: resultName
   });
@@ -1296,7 +1396,7 @@ async function materializeCarrierTemplateRfxParticipants(
       result: resultName,
       counts,
       outcomes,
-      confirmed_audience_vendor_ids: eligibleVendorIds,
+      confirmed_audience_vendor_ids: reconciliationVendorIds,
       rows: finalRows.map(publicRfxParticipantRow)
     }
   };
