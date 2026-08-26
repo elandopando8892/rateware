@@ -40,10 +40,13 @@ function requireIssuer(value: string): string {
 function requireDatabaseUrl(value: string): string {
   try {
     const url = new URL(value);
-    if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname || url.search || url.hash) {
+    const sslMode = url.searchParams.get('sslmode');
+    const allowedSslQuery = url.searchParams.size === 1 && ['require', 'prefer'].includes(sslMode ?? '');
+    if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname ||
+        (url.search && !allowedSslQuery) || url.hash) {
       throw new Error('INVALID_RUNTIME_CONFIGURATION');
     }
-    return value;
+    return sslMode === 'prefer' ? value.replace(/\?sslmode=prefer$/, '?sslmode=require') : value;
   } catch {
     throw new Error('INVALID_RUNTIME_CONFIGURATION');
   }

@@ -5,7 +5,7 @@ import {
   jwtVerify,
   type JSONWebKeySet,
   type JWTVerifyGetKey,
-} from 'jose';
+} from 'npm:jose@5.9.6';
 
 import { requireOspIdentity, type OspAuthorizationIdentity } from './auth-policy.ts';
 import { OspApiError } from './http.ts';

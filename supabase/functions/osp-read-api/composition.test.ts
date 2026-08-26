@@ -93,6 +93,34 @@ Deno.test('createOspReadRuntime connects validated env, verifier, Postgres store
   assert.equal(queries, 2);
 });
 
+Deno.test('createOspReadRuntime accepts only the standard required TLS database query', () => {
+  let seenUrl = '';
+  createOspReadRuntime({
+    env: env({ OSP_READ_DATABASE_URL: `${databaseUrl}?sslmode=require` }),
+    jwksFetch: (() => Promise.reject(new Error('must not fetch'))) as typeof fetch,
+    postgresFactory: (url: string) => {
+      seenUrl = url;
+      return (() => Promise.resolve([])) as unknown;
+    },
+    clock: () => NOW * 1_000,
+  });
+  assert.equal(seenUrl, `${databaseUrl}?sslmode=require`);
+});
+
+Deno.test('createOspReadRuntime upgrades a provider prefer mode to required TLS', () => {
+  let seenUrl = '';
+  createOspReadRuntime({
+    env: env({ OSP_READ_DATABASE_URL: `${databaseUrl}?sslmode=prefer` }),
+    jwksFetch: (() => Promise.reject(new Error('must not fetch'))) as typeof fetch,
+    postgresFactory: (url: string) => {
+      seenUrl = url;
+      return (() => Promise.resolve([])) as unknown;
+    },
+    clock: () => NOW * 1_000,
+  });
+  assert.equal(seenUrl, `${databaseUrl}?sslmode=require`);
+});
+
 for (const variable of ['OSP_KINDE_ISSUER', 'OSP_KINDE_CLIENT_ID', 'OSP_READ_DATABASE_URL']) {
   Deno.test(`createOspReadRuntime fails closed when ${variable} is absent`, () => {
     assert.throws(() => createOspReadRuntime({

@@ -1,4 +1,4 @@
-import postgres from 'postgres';
+import postgres from 'npm:postgres@3.4.7';
 
 import { withOrganizationTransaction, type SqlPort, type SqlRow } from '../_shared/osp/database-context.ts';
 import { assessDuplicates, type DuplicateCandidate, type DuplicateSignal } from '../_shared/osp/duplicate-engine.ts';

@@ -1,4 +1,4 @@
-import type { JWTPayload } from 'jose';
+import type { JWTPayload } from 'npm:jose@5.9.6';
 
 import { OspApiError } from './http.ts';
 
