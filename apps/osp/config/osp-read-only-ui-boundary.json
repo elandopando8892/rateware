@@ -46,7 +46,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/App.tsx",
-      "sha256": "827fb8aaafe3740f724e1d5769e3e306f41c3c31ad3362880f30e84adb7fd891"
+      "sha256": "5b43fc955ae646807ce65fc0a0fb575812967028b6538aabaa80c252ef0a727d"
     },
     {
       "kind": "production-ui",
@@ -71,7 +71,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/auth/kinde-auth-port.ts",
-      "sha256": "87b08d441f2fd5459c6c642b1a41c0ae71fa90f14672ae35f4227bbce0380460"
+      "sha256": "5ffff3b2e7d70c2144bfd744e1819bb291707be27bd2d4415f5c8093a596ba38"
     },
     {
       "kind": "production-ui",

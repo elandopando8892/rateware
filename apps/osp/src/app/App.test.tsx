@@ -111,6 +111,8 @@ describe('App authentication and routing', () => {
     render(<App authPort={port} apiClient={client()} />);
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not verify access/i);
     expect(screen.queryByText(/private callback detail/i)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /authorize workspace/i }));
+    expect(port.login).toHaveBeenCalledWith('/app/pipeline');
     vi.mocked(port.revalidate).mockResolvedValueOnce(session);
     await userEvent.click(screen.getByRole('button', { name: /retry access/i }));
     expect(port.revalidate).toHaveBeenCalledWith('refresh');

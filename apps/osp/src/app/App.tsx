@@ -18,6 +18,9 @@ function AuthenticatedApp({ apiClient, routerHistory }: { apiClient: OspClient; 
       <main className="auth-page">
         <p role="alert">We could not verify access. Please try again.</p>
         <button type="button" onClick={() => void auth.refresh()}>Retry access</button>
+        <button type="button" onClick={() => void auth.login('/app/pipeline').catch(() => undefined)}>
+          Authorize workspace
+        </button>
         <button type="button" onClick={() => void auth.logout().catch(() => undefined)}>
           {auth.logoutFailed ? 'Retry new session' : 'Start new session'}
         </button>

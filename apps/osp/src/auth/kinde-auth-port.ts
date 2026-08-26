@@ -690,7 +690,7 @@ export function createKindeAuthPort(
       await client.login({
         app_state: { returnTo: approvedReturnTo },
         ...(config.VITE_OSP_BUILD_PROFILE === 'production-readonly'
-          ? { org_code: PRODUCTION_KINDE_ORGANIZATION }
+          ? { orgCode: PRODUCTION_KINDE_ORGANIZATION }
           : {}),
       });
     },

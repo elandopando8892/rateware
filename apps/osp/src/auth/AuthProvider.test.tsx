@@ -1662,7 +1662,7 @@ describe('createKindeAuthPort', () => {
 
     expect(login).toHaveBeenCalledWith({
       app_state: { returnTo: '/app/pipeline' },
-      org_code: 'org_dbc2fd12c76',
+      orgCode: 'org_dbc2fd12c76',
     });
   });
 
