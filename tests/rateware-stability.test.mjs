@@ -123,6 +123,7 @@ const emailBounceResolutionMigration = readFileSync(new URL("../supabase/migrati
 const vendorContinuousImprovementMigration = readFileSync(new URL("../supabase/migrations/20260710100000_vendor_continuous_improvement.sql", import.meta.url), "utf8");
 const rfxProcessMigration = readFileSync(new URL("../supabase/migrations/20260710120000_rfx_process.sql", import.meta.url), "utf8");
 const vendorSegmentsCoverageMigration = readFileSync(new URL("../supabase/migrations/20260706143000_vendor_segments_coverage_filter.sql", import.meta.url), "utf8");
+const carrierTemplateMigration = readFileSync(new URL("../supabase/migrations/20260825160000_carrier_list_templates.sql", import.meta.url), "utf8");
 const vendorProfileRequestsMigration = readFileSync(new URL("../supabase/migrations/20260706152000_vendor_profile_requests.sql", import.meta.url), "utf8");
 const vendorProfileTokenMigration = readFileSync(new URL("../supabase/migrations/20260801021411_hash_vendor_profile_request_tokens.sql", import.meta.url), "utf8");
 const rfxInvitationTokenMigration = readFileSync(new URL("../supabase/migrations/20260801023832_hash_rfx_bid_invitation_tokens.sql", import.meta.url), "utf8");
@@ -3726,6 +3727,14 @@ assert.match(apiSource, /secondary_emails: emails\.slice\(1\)/, "Rateware API sh
 assert.match(vendorsSource, /function renderDrawerRatewareEvidence/, "Vendor drawer should explain Rateware evidence");
 assert.match(vendorsHtml, /drawer-rateware-evidence/, "Vendor drawer should have a Rateware evidence section");
 assert.match(vendorSegmentsCoverageMigration, /coverage_filter text/, "Vendor saved lists should persist a coverage filter");
+for (const field of ['lifecycle_status', 'template_version', 'created_by_user_id', 'updated_by_user_id', 'archived_at']) {
+  assert.match(carrierTemplateMigration, new RegExp(field), `carrier template migration must define ${field}`);
+}
+assert.match(carrierTemplateMigration, /segment_type\s*=\s*'participant_template'/);
+assert.match(carrierTemplateMigration, /workspace_identity_aliases/);
+assert.match(carrierTemplateMigration, /raise exception/i);
+assert.match(carrierTemplateMigration, /create unique index[\s\S]*lower\(btrim\(segment_name\)\)/i);
+assert.match(carrierTemplateMigration, /cardinality\(new\.vendor_ids\)/i);
 assert.match(apiSource, /coverage_filter: coverageFilter/, "Vendor segment API should persist coverage filters");
 assert.match(vendorsSource, /segment\.coverage_filter/, "Vendor saved lists should apply coverage filters in the UI");
 assert.match(vendorProfileRequestsMigration, /create table if not exists public\.vendor_profile_requests/, "Carrier profile requests should have a token table");
