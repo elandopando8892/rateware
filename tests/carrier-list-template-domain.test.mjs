@@ -6,9 +6,14 @@ import {
   carrierTemplateDraftDiff,
   carrierTemplateDraftPayload,
   carrierTemplateImportValidation,
+  carrierTemplateMaterializationEligibleVendorIds,
+  carrierTemplateVendorHasUsableContact,
+  carrierTemplateVendorIsAvailable,
+  confirmCarrierTemplateMaterializationResponse,
   createCarrierTemplateCapabilityRecoveryController,
   createCarrierTemplateCandidatePoolController,
   createCarrierTemplateDraftMutationController,
+  createCarrierTemplateMaterializationController,
   createCarrierTemplateModalFocusController,
   createCarrierTemplateNavigationCoordinator,
   createCarrierTemplateReconciliationController,
@@ -771,6 +776,169 @@ function deferred() {
 // This catches dropping the template's source order or duplicate/blank IDs.
 {
   assert.deepEqual(templateMemberIds({ vendor_ids: ["  a ", "b", "a", "", null] }), ["a", "b"]);
+}
+
+// Carrier Fit and the server must share one primary eligibility boundary. User
+// filters never make a blocked, inactive, archived, deleted, archived-base, or
+// contactless carrier eligible.
+{
+  assert.equal(carrierTemplateVendorHasUsableContact(activeVendor(ids.eligible)), true);
+  assert.equal(carrierTemplateVendorHasUsableContact(activeVendor(ids.eligible, {
+    primary_email: "",
+    secondary_emails: [" secondary@example.com "]
+  })), true);
+  assert.equal(carrierTemplateVendorHasUsableContact(activeVendor(ids.eligible, {
+    primary_email: "",
+    secondary_emails: [],
+    whatsapp_phone: " +52 867 123 4567 "
+  })), true);
+  assert.equal(carrierTemplateVendorHasUsableContact(activeVendor(ids.eligible, {
+    primary_email: " ",
+    secondary_emails: [" "],
+    whatsapp_phone: " "
+  })), false);
+  for (const status of ["blocked", "inactive", "archived", "deleted"]) {
+    assert.equal(carrierTemplateVendorIsAvailable(activeVendor(ids.eligible, { status })), false, status);
+  }
+  assert.equal(carrierTemplateVendorIsAvailable(activeVendor(ids.eligible, { base_stage: " archived " })), false);
+  assert.equal(carrierTemplateVendorIsAvailable(activeVendor(ids.eligible, { status: "active", base_stage: "procurement" })), true);
+
+  const primary = partitionCarrierTemplateMembers({
+    template: {
+      vendor_ids: [ids.eligible, ids.filtered, ids.participant, ids.missingContact, ids.archived, ids.deleted]
+    },
+    vendors: [
+      activeVendor(ids.eligible),
+      activeVendor(ids.filtered, { status: "blocked" }),
+      activeVendor(ids.participant, { status: "inactive" }),
+      activeVendor(ids.missingContact, { primary_email: "", secondary_emails: [], whatsapp_phone: "" }),
+      activeVendor(ids.archived, { base_stage: "archived" }),
+      activeVendor(ids.deleted, { status: "deleted" })
+    ],
+    passesFilters: () => true
+  });
+  assert.deepEqual(primary.rows.eligible.map((row) => row.vendor_id), [ids.eligible]);
+  assert.deepEqual(primary.rows.missing_contact.map((row) => row.vendor_id), [ids.missingContact]);
+  assert.deepEqual(primary.rows.unavailable.map((row) => row.vendor_id), [
+    ids.filtered,
+    ids.participant,
+    ids.archived,
+    ids.deleted
+  ]);
+}
+
+// A lost response must retain one immutable operation id and its original
+// audience. A participant refresh can classify those IDs as already_in_rfx, but
+// retry submission still contains the operation audience for reconciliation.
+{
+  const controller = createCarrierTemplateMaterializationController({
+    createOperationId: () => "99999999-9999-4999-8999-999999999999"
+  });
+  const context = {
+    event_id: "event-a",
+    scope: "saved_segment",
+    lane_ids: ["lane-a", "lane-b"],
+    template_id: "template-a",
+    template_version: 7,
+    filter_context: { fit: "contactable", lane: "all", search: "mexico" },
+    selected_vendor_ids: [ids.eligible, ids.filtered]
+  };
+  const operation = controller.begin(context);
+  assert(operation);
+  assert.equal(operation.materialization_operation_id, "99999999-9999-4999-8999-999999999999");
+  assert.deepEqual(operation.selected_vendor_ids, [ids.eligible, ids.filtered]);
+  assert.equal(controller.begin({ ...context, selected_vendor_ids: [...context.selected_vendor_ids] }), operation);
+
+  const refreshed = partitionCarrierTemplateMembers({
+    template: { vendor_ids: context.selected_vendor_ids },
+    vendors: [activeVendor(ids.eligible), activeVendor(ids.filtered)],
+    participantVendorIds: context.selected_vendor_ids
+  });
+  assert.deepEqual(refreshed.rows.already_in_rfx.map((row) => row.vendor_id), context.selected_vendor_ids);
+  assert.deepEqual(carrierTemplateMaterializationEligibleVendorIds(
+    operation,
+    { vendor_ids: context.selected_vendor_ids },
+    [activeVendor(ids.eligible), activeVendor(ids.filtered)]
+  ), context.selected_vendor_ids);
+  assert.equal(controller.isCurrent(operation, context), true);
+  assert.equal(controller.finish(operation), true);
+  assert.equal(controller.active, null);
+
+  const generatedOperation = createCarrierTemplateMaterializationController().begin(context);
+  assert.match(generatedOperation.materialization_operation_id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+}
+
+// Only the server-confirmed full-lane audience can flow into Message. A
+// zero-insert retry is valid reconciliation, while forged audience IDs fail.
+{
+  const operation = {
+    materialization_operation_id: "99999999-9999-4999-8999-999999999999",
+    event_id: "event-a",
+    lane_ids: ["lane-a", "lane-b"],
+    template_id: "template-a",
+    template_version: 7,
+    selected_vendor_ids: [ids.eligible, ids.filtered]
+  };
+  const response = {
+    materialization_operation_id: operation.materialization_operation_id,
+    rfx_event_id: operation.event_id,
+    lane_ids: operation.lane_ids,
+    template_id: operation.template_id,
+    template_version: operation.template_version,
+    counts: { selected: 4, confirmed: 2, inserted: 0, already_present: 2, rejected: 2, pending: 0 },
+    outcomes: [
+      { lane_id: "lane-a", vendor_id: ids.eligible, outcome: "reconciled" },
+      { lane_id: "lane-a", vendor_id: ids.filtered, outcome: "rejected", reason: "status_blocked" },
+      { lane_id: "lane-b", vendor_id: ids.eligible, outcome: "reconciled" },
+      { lane_id: "lane-b", vendor_id: ids.filtered, outcome: "rejected", reason: "status_blocked" }
+    ],
+    confirmed_audience_vendor_ids: [ids.eligible]
+  };
+  const confirmation = confirmCarrierTemplateMaterializationResponse(operation, response);
+  assert.deepEqual(confirmation.confirmed_vendor_ids, [ids.eligible]);
+  assert.deepEqual(confirmation.counts, response.counts);
+  assert.throws(
+    () => confirmCarrierTemplateMaterializationResponse(operation, {
+      ...response,
+      confirmed_audience_vendor_ids: [ids.eligible, ids.filtered]
+    }),
+    /confirmed audience/
+  );
+}
+
+// Deferred preflight completions from an old template or scope generation must
+// never reach the mutation adapter or overwrite current state.
+for (const changedContext of [
+  { template_id: "template-b", template_version: 1 },
+  { scope: "recommended" }
+]) {
+  const controller = createCarrierTemplateMaterializationController({
+    createOperationId: () => "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+  });
+  const context = {
+    event_id: "event-a",
+    scope: "saved_segment",
+    lane_ids: ["lane-a"],
+    template_id: "template-a",
+    template_version: 3,
+    filter_context: { fit: "any", lane: "all", search: "" },
+    selected_vendor_ids: [ids.eligible]
+  };
+  const operation = controller.begin(context);
+  const pending = deferred();
+  let mutationCalls = 0;
+  let appliedState = "current";
+  const flow = (async () => {
+    await pending.promise;
+    if (!controller.isCurrent(operation, { ...context, ...changedContext })) return;
+    mutationCalls += 1;
+    appliedState = "stale";
+  })();
+  controller.cancel(operation, "context_changed");
+  pending.resolve();
+  await flow;
+  assert.equal(mutationCalls, 0);
+  assert.equal(appliedState, "current");
 }
 
 // This catches header aliases that silently lose match evidence or source row provenance.

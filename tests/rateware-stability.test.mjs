@@ -1565,14 +1565,23 @@ assert.match(rfxEventsSource, /data-rfx-carrier-template-select[\s\S]{0,300}disa
 assert.match(rfxEventsSource, /templateMemberRowsInOrder/, "Carrier Fit should render exact template members in source order, including unavailable placeholders");
 assert.match(rfxEventsHtml, /Add \{N\} carriers to this RFx and open Message/, "Carrier Fit should document the exact materialization CTA contract");
 assert.match(rfxEventsSource, /`Add \$\{formatNumber\(selectedIds\.length\)\} carriers to this RFx and open Message`/, "Carrier Fit should render the exact count-bearing materialization CTA");
-assert.match(rfxEventsSource, /carrier_template_context:[\s\S]{0,180}template_id:[\s\S]{0,180}template_version:/, "Carrier Fit should pass only validated template identity/version context into the idempotent participant action");
-assert.match(rfxEventsSource, /requestRfxDetail\(eventId, \{ force: true \}\)[\s\S]{0,900}getCarrierListTemplate/, "Carrier Fit should re-read RFx participants and template metadata immediately before add");
+assert.match(rfxEventsSource, /carrier_template_context:[\s\S]{0,220}template_id:[\s\S]{0,220}template_version:[\s\S]{0,220}materialization_operation_id:/, "Carrier Fit should pass validated template identity/version and one retained operation id into the idempotent participant action");
+assert.match(rfxEventsSource, /requestRfxDetail\(operation\.event_id, \{ force: true \}\)[\s\S]{0,300}getCarrierListTemplate\(operation\.template_id/, "Carrier Fit should re-read RFx participants and template metadata immediately before add");
+assert.match(rfxEventsSource, /createCarrierTemplateMaterializationController\(\)/, "Carrier Fit should own one immutable materialization operation generation");
+assert.match(rfxEventsSource, /lane_ids: operation\.lane_ids,[\s\S]{0,120}vendor_ids: operation\.selected_vendor_ids/, "Carrier Fit retries the immutable all-lane operation audience instead of pruning newly reconciled participants");
+assert.match(rfxEventsSource, /confirmCarrierTemplateMaterializationResponse\(operation, response/, "Carrier Fit should validate exact per-lane outcomes before accepting a server audience");
+assert.match(rfxEventsSource, /selectedOutreachAudienceVendorIds = new Set\(materialization\.confirmation\.confirmed_vendor_ids\)/, "Message should receive only the server-confirmed operation audience");
+assert.match(rfxEventsSource, /const materializationLocked = Boolean\(carrierTemplateMaterializationController\.active\)/, "Carrier Fit should derive its control lock from the retained operation");
+assert.match(rfxEventsSource, /rfxOutreachCarrierScope\.disabled = materializationLocked[\s\S]{0,300}rfxOutreachCarrierSearch\.disabled = materializationLocked[\s\S]{0,300}rfxOutreachCarrierFit\.disabled = materializationLocked[\s\S]{0,300}rfxOutreachCarrierLane\.disabled = materializationLocked/, "Carrier Fit should lock scope, lane, and filters while an operation is retained");
 assert.match(rfxEventsSource, /incidentId[\s\S]{0,180}Correlation ID/, "Carrier Fit add failures should surface the server correlation id");
 assert.match(apiSource, /carrier_template\.add_selected_to_rfx/, "The existing RFx participant action should audit carrier-template materialization");
-assert.match(apiSource, /selected_count:[\s\S]{0,180}already_present_count:[\s\S]{0,180}inserted_count:[\s\S]{0,180}result:/, "Carrier-template participant audits should contain server-resolved counts and result only");
+assert.match(apiSource, /selected_count:[\s\S]{0,220}confirmed_count:[\s\S]{0,220}already_present_count:[\s\S]{0,220}inserted_count:[\s\S]{0,220}rejected_count:[\s\S]{0,220}pending_count:[\s\S]{0,220}result:/, "Carrier-template participant audits should contain final server-resolved counts and result only");
+assert.match(apiSource, /async function fetchFinalCarrierTemplateInvitations[\s\S]{0,1800}\.eq\("rfx_event_id", eventId\)[\s\S]{0,300}\.in\("rfx_lane_id", laneIds\)[\s\S]{0,300}\.in\("vendor_id", vendorBatch\)/, "Carrier-template final reconciliation should be scoped to the server-resolved event, lanes, and selected vendors");
+assert.match(apiSource, /expectedEligibleKeys\.every\(\(key\) => finalByKey\.has\(key\)\)/, "Carrier-template materialization should prove every expected committed lane/vendor outcome before success");
+assert.match(apiSource, /carrier_template_reconcile_required[\s\S]{0,500}correlation_id:/, "Post-commit enrichment uncertainty should return a retryable reconcile-required result with correlation context");
 const carrierTemplateRfxAuditSource = apiSource.slice(
   apiSource.indexOf("async function writeCarrierTemplateRfxMaterializationAudit"),
-  apiSource.indexOf("async function conditionalCarrierTemplateUpdate")
+  apiSource.indexOf("export function carrierTemplateVendorHasUsableContact")
 );
 assert.doesNotMatch(carrierTemplateRfxAuditSource, /primary_email|secondary_emails|whatsapp_phone|vendor_ids/, "Carrier-template RFx audits must never persist carrier contact contents or membership payloads");
 const carrierTemplateMaterializationSource = rfxEventsSource.slice(

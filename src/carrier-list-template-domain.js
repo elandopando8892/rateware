@@ -412,13 +412,202 @@ export function createCarrierTemplateNavigationCoordinator({
   });
 }
 
-function defaultContactUsable(vendor) {
-  return Boolean(trimmedText(vendor?.primary_email));
+export function carrierTemplateVendorHasUsableContact(vendor = {}) {
+  return Boolean(
+    trimmedText(vendor?.primary_email) ||
+    (Array.isArray(vendor?.secondary_emails) && vendor.secondary_emails.some((email) => trimmedText(email))) ||
+    trimmedText(vendor?.whatsapp_phone)
+  );
 }
 
-function defaultVendorAvailable(vendor) {
+export function carrierTemplateVendorIsAvailable(vendor = {}) {
   const status = trimmedText(vendor?.status).toLowerCase();
-  return Boolean(vendor) && status !== "archived" && status !== "deleted";
+  const baseStage = trimmedText(vendor?.base_stage).toLowerCase();
+  return Boolean(trimmedText(vendor?.id)) &&
+    !["blocked", "inactive", "archived", "deleted"].includes(status) &&
+    baseStage !== "archived";
+}
+
+const defaultContactUsable = carrierTemplateVendorHasUsableContact;
+const defaultVendorAvailable = carrierTemplateVendorIsAvailable;
+
+function materializationContextSnapshot(context = {}) {
+  const laneIds = templateMemberIds({ vendor_ids: context.lane_ids });
+  const selectedVendorIds = templateMemberIds({ vendor_ids: context.selected_vendor_ids });
+  const filterContext = Object.freeze({ ...normalizedCandidateFilters(context.filter_context || {}) });
+  const templateVersionValue = Number(context.template_version);
+  return Object.freeze({
+    event_id: trimmedText(context.event_id),
+    scope: trimmedText(context.scope),
+    lane_ids: Object.freeze(laneIds),
+    template_id: trimmedText(context.template_id),
+    template_version: Number.isSafeInteger(templateVersionValue) && templateVersionValue >= 1
+      ? templateVersionValue
+      : null,
+    filter_context: filterContext,
+    selected_vendor_ids: Object.freeze(selectedVendorIds)
+  });
+}
+
+function materializationContextKey(context = {}) {
+  return JSON.stringify(materializationContextSnapshot(context));
+}
+
+export function createCarrierTemplateMaterializationController({ createOperationId } = {}) {
+  const fallbackOperationId = () => {
+    const bytes = new Uint8Array(16);
+    if (typeof globalThis.crypto?.getRandomValues === "function") globalThis.crypto.getRandomValues(bytes);
+    else for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = [...bytes].map((value) => value.toString(16).padStart(2, "0"));
+    return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+  };
+  const operationId = typeof createOperationId === "function"
+    ? createOperationId
+    : () => globalThis.crypto?.randomUUID?.() || fallbackOperationId();
+  let generation = 0;
+  let activeOperation = null;
+
+  return Object.freeze({
+    get active() {
+      return activeOperation;
+    },
+    get generation() {
+      return generation;
+    },
+    begin(context = {}) {
+      const snapshot = materializationContextSnapshot(context);
+      const contextKey = JSON.stringify(snapshot);
+      if (
+        !snapshot.event_id ||
+        !snapshot.scope ||
+        !snapshot.lane_ids.length ||
+        !snapshot.template_id ||
+        !snapshot.template_version ||
+        !snapshot.selected_vendor_ids.length
+      ) {
+        throw new Error("Carrier template materialization requires an event, lane scope, active template version, and carrier selection.");
+      }
+      if (activeOperation) return activeOperation.context_key === contextKey ? activeOperation : null;
+      generation += 1;
+      activeOperation = Object.freeze({
+        ...snapshot,
+        materialization_operation_id: trimmedText(operationId()),
+        operation_generation: generation,
+        context_key: contextKey
+      });
+      if (!activeOperation.materialization_operation_id) {
+        activeOperation = null;
+        throw new Error("Carrier template materialization operation id is required.");
+      }
+      return activeOperation;
+    },
+    isCurrent(token, context = null) {
+      if (!token || token !== activeOperation) return false;
+      return context === null || token.context_key === materializationContextKey(context);
+    },
+    cancel(token = activeOperation) {
+      if (!token || token !== activeOperation) return false;
+      activeOperation = null;
+      generation += 1;
+      return true;
+    },
+    finish(token) {
+      if (!token || token !== activeOperation) return false;
+      activeOperation = null;
+      return true;
+    }
+  });
+}
+
+export function carrierTemplateMaterializationEligibleVendorIds(operation = {}, template = {}, vendors = []) {
+  const membership = new Set(templateMemberIds(template));
+  const byId = new Map(
+    (Array.isArray(vendors) ? vendors : [])
+      .filter((vendor) => trimmedText(vendor?.id))
+      .map((vendor) => [trimmedText(vendor.id), vendor])
+  );
+  return templateMemberIds({ vendor_ids: operation.selected_vendor_ids }).filter((vendorId) => {
+    const vendor = byId.get(vendorId);
+    return membership.has(vendorId) &&
+      carrierTemplateVendorIsAvailable(vendor) &&
+      carrierTemplateVendorHasUsableContact(vendor);
+  });
+}
+
+export function confirmCarrierTemplateMaterializationResponse(operation = {}, response = {}) {
+  const expectedVendorIds = templateMemberIds({ vendor_ids: operation.selected_vendor_ids });
+  const expectedLaneIds = templateMemberIds({ vendor_ids: operation.lane_ids });
+  const responseLaneIds = templateMemberIds({ vendor_ids: response.lane_ids });
+  if (
+    trimmedText(response.materialization_operation_id) !== trimmedText(operation.materialization_operation_id) ||
+    trimmedText(response.template_id) !== trimmedText(operation.template_id) ||
+    Number(response.template_version) !== Number(operation.template_version) ||
+    trimmedText(response.rfx_event_id) !== trimmedText(operation.event_id) ||
+    JSON.stringify(responseLaneIds) !== JSON.stringify(expectedLaneIds)
+  ) {
+    throw new Error("Carrier template materialization response does not match the active operation context.");
+  }
+
+  const outcomes = Array.isArray(response.outcomes) ? response.outcomes : [];
+  const outcomeByKey = new Map();
+  for (const row of outcomes) {
+    const laneId = trimmedText(row?.lane_id);
+    const vendorId = trimmedText(row?.vendor_id);
+    const outcome = trimmedText(row?.outcome).toLowerCase();
+    if (!expectedLaneIds.includes(laneId) || !expectedVendorIds.includes(vendorId)) {
+      throw new Error("Carrier template materialization returned an outcome outside the active operation audience.");
+    }
+    if (!["inserted", "reconciled", "rejected"].includes(outcome)) {
+      throw new Error("Carrier template materialization returned an unknown final outcome.");
+    }
+    const key = `${laneId}:${vendorId}`;
+    if (outcomeByKey.has(key)) throw new Error("Carrier template materialization returned a duplicate final outcome.");
+    outcomeByKey.set(key, { ...row, lane_id: laneId, vendor_id: vendorId, outcome });
+  }
+  const expectedKeys = expectedLaneIds.flatMap((laneId) => expectedVendorIds.map((vendorId) => `${laneId}:${vendorId}`));
+  if (!expectedKeys.every((key) => outcomeByKey.has(key)) || outcomeByKey.size !== expectedKeys.length) {
+    throw new Error("Carrier template materialization did not return one final outcome per carrier and lane.");
+  }
+
+  const inserted = [...outcomeByKey.values()].filter((row) => row.outcome === "inserted").length;
+  const reconciled = [...outcomeByKey.values()].filter((row) => row.outcome === "reconciled").length;
+  const rejected = [...outcomeByKey.values()].filter((row) => row.outcome === "rejected").length;
+  const confirmed = inserted + reconciled;
+  const counts = response.counts || {};
+  if (
+    Number(counts.selected) !== expectedKeys.length ||
+    Number(counts.confirmed) !== confirmed ||
+    Number(counts.inserted) !== inserted ||
+    Number(counts.already_present) !== reconciled ||
+    Number(counts.rejected) !== rejected ||
+    Number(counts.pending || 0) !== 0 ||
+    expectedKeys.length !== confirmed + rejected
+  ) {
+    throw new Error("Carrier template materialization counts do not reconcile to the final operation outcomes.");
+  }
+
+  const derivedAudience = expectedVendorIds.filter((vendorId) => expectedLaneIds.every((laneId) => {
+    const outcome = outcomeByKey.get(`${laneId}:${vendorId}`)?.outcome;
+    return outcome === "inserted" || outcome === "reconciled";
+  }));
+  const confirmedAudience = templateMemberIds({ vendor_ids: response.confirmed_audience_vendor_ids });
+  if (JSON.stringify(confirmedAudience) !== JSON.stringify(derivedAudience)) {
+    throw new Error("Carrier template materialization confirmed audience does not match final lane outcomes.");
+  }
+  return Object.freeze({
+    confirmed_vendor_ids: Object.freeze(confirmedAudience),
+    counts: Object.freeze({
+      selected: expectedKeys.length,
+      confirmed,
+      inserted,
+      already_present: reconciled,
+      rejected,
+      pending: 0
+    }),
+    outcomes: Object.freeze([...outcomeByKey.values()].map((row) => Object.freeze(row)))
+  });
 }
 
 function templateName(template = {}) {

@@ -1,6 +1,7 @@
 import {
   assert,
   assertEquals,
+  assertMatch,
   assertRejects,
   assertStrictEquals,
   assertThrows,
@@ -17,6 +18,8 @@ import {
 import { normalizeCarrierTemplateRows } from "../src/carrier-list-template-file.js";
 import {
   CARRIER_TEMPLATE_IMPORT_MAX_ROWS as BROWSER_CARRIER_TEMPLATE_IMPORT_MAX_ROWS,
+  carrierTemplateVendorHasUsableContact as browserCarrierTemplateVendorHasUsableContact,
+  carrierTemplateVendorIsAvailable as browserCarrierTemplateVendorIsAvailable,
 } from "../src/carrier-list-template-domain.js";
 
 let registeredHandler: ((request: Request) => Promise<Response>) | null = null;
@@ -24,7 +27,11 @@ const originalServe = Deno.serve;
 const originalCarrierTemplateFlag = Deno.env.get(
   "CARRIER_LIST_TEMPLATES_V2_ENABLED",
 );
+const originalInvitationTokenEncryptionKey = Deno.env.get(
+  "RFX_INVITATION_TOKEN_ENCRYPTION_KEY",
+);
 Deno.env.delete("CARRIER_LIST_TEMPLATES_V2_ENABLED");
+Deno.env.set("RFX_INVITATION_TOKEN_ENCRYPTION_KEY", "carrier-template-request-fixture-key");
 Object.defineProperty(Deno, "serve", {
   configurable: true,
   value: (handler: (request: Request) => Promise<Response>) => {
@@ -45,6 +52,14 @@ if (originalCarrierTemplateFlag === undefined) {
   Deno.env.set(
     "CARRIER_LIST_TEMPLATES_V2_ENABLED",
     originalCarrierTemplateFlag,
+  );
+}
+if (originalInvitationTokenEncryptionKey === undefined) {
+  Deno.env.delete("RFX_INVITATION_TOKEN_ENCRYPTION_KEY");
+} else {
+  Deno.env.set(
+    "RFX_INVITATION_TOKEN_ENCRYPTION_KEY",
+    originalInvitationTokenEncryptionKey,
   );
 }
 
@@ -560,6 +575,12 @@ class ScriptedQuery {
     return this;
   }
 
+  upsert(payload: unknown, options?: Record<string, unknown>) {
+    this.trace.operation = "upsert";
+    this.trace.payload = { rows: payload, options: options || {} };
+    return this;
+  }
+
   delete() {
     this.trace.operation = "delete";
     return this;
@@ -732,6 +753,462 @@ function jsonActionRequest(body: Record<string, unknown>) {
     body: JSON.stringify(body),
   });
 }
+
+const materializationTemplateId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
+const materializationOperationId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1";
+const materializationEventId = "cccccccc-cccc-4ccc-8ccc-ccccccccccc1";
+const materializationLaneA = "dddddddd-dddd-4ddd-8ddd-ddddddddddd1";
+const materializationLaneB = "dddddddd-dddd-4ddd-8ddd-ddddddddddd2";
+
+function materializationTemplate(
+  vendorIds = [vendorA.id],
+  patch: Record<string, unknown> = {},
+) {
+  return {
+    id: materializationTemplateId,
+    organization_id: "org-a",
+    segment_type: "participant_template",
+    lifecycle_status: "active",
+    status: "active",
+    template_version: 4,
+    vendor_ids: vendorIds,
+    ...patch,
+  };
+}
+
+function materializationVendor(
+  vendor: Record<string, unknown> = vendorA,
+  patch: Record<string, unknown> = {},
+) {
+  return {
+    ...vendor,
+    status: "active",
+    base_stage: "procurement",
+    whatsapp_phone: "",
+    ...patch,
+  };
+}
+
+function materializationLane(id: string) {
+  return {
+    id,
+    rfx_event_id: materializationEventId,
+    rfx_events: { id: materializationEventId, owner_email: workspaceUser.owner_email },
+  };
+}
+
+function materializationAction(
+  vendorIds = [vendorA.id],
+  laneIds = [materializationLaneA],
+  context: Record<string, unknown> = {},
+) {
+  return {
+    action: "shortlist_rfx_lane_vendors",
+    lane_ids: laneIds,
+    vendor_ids: vendorIds,
+    carrier_template_context: {
+      template_id: materializationTemplateId,
+      template_version: 4,
+      materialization_operation_id: materializationOperationId,
+      ...context,
+    },
+  };
+}
+
+function templateRead(vendorIds = [vendorA.id], patch: Record<string, unknown> = {}): ScriptedResponse {
+  return {
+    table: "vendor_segments",
+    operation: "select",
+    data: materializationTemplate(vendorIds, patch),
+    filters: [
+      ["eq", "id", materializationTemplateId],
+      ["eq", "organization_id", "org-a"],
+      ["eq", "segment_type", "participant_template"],
+    ],
+  };
+}
+
+function vendorRead(vendorIds: string[], rows: Record<string, unknown>[]): ScriptedResponse {
+  return {
+    table: "vendors",
+    operation: "select",
+    data: rows,
+    filters: [
+      ["eq", "organization_id", "org-a"],
+      ["in", "id", vendorIds],
+    ],
+  };
+}
+
+function laneRead(laneIds: string[]): ScriptedResponse {
+  return {
+    table: "rfx_lanes",
+    operation: "select",
+    data: laneIds.map(materializationLane),
+    filters: [
+      ["in", "id", laneIds],
+      ["eq", "rfx_events.owner_email", workspaceUser.owner_email],
+    ],
+  };
+}
+
+function finalInvitationRead(
+  laneIds: string[],
+  vendorIds: string[],
+  rows: Record<string, unknown>[],
+  error: unknown = null,
+): ScriptedResponse {
+  return {
+    table: "rfx_lane_vendors",
+    operation: "select",
+    data: rows,
+    error,
+    filters: [
+      ["eq", "rfx_event_id", materializationEventId],
+      ["in", "rfx_lane_id", laneIds],
+      ["in", "vendor_id", vendorIds],
+    ],
+  };
+}
+
+Deno.test("Task 7 canonical browser and server eligibility predicates agree", () => {
+  const serverAvailable = ratewareApi.carrierTemplateVendorIsAvailable;
+  const serverContact = ratewareApi.carrierTemplateVendorHasUsableContact;
+  assertEquals(typeof serverAvailable, "function");
+  assertEquals(typeof serverContact, "function");
+  if (typeof serverAvailable !== "function" || typeof serverContact !== "function") return;
+  const fixtures = [
+    materializationVendor(vendorA),
+    materializationVendor(vendorA, { status: "blocked" }),
+    materializationVendor(vendorA, { status: "inactive" }),
+    materializationVendor(vendorA, { status: "archived" }),
+    materializationVendor(vendorA, { status: "deleted" }),
+    materializationVendor(vendorA, { base_stage: "archived" }),
+    materializationVendor(vendorA, { primary_email: "", secondary_emails: [], whatsapp_phone: "+52 867 100 2000" }),
+    materializationVendor(vendorA, { primary_email: "", secondary_emails: ["secondary@example.com"], whatsapp_phone: "" }),
+    materializationVendor(vendorA, { primary_email: "", secondary_emails: [], whatsapp_phone: "" }),
+  ];
+  for (const vendor of fixtures) {
+    assertEquals(serverAvailable(vendor), browserCarrierTemplateVendorIsAvailable(vendor));
+    assertEquals(serverContact(vendor), browserCarrierTemplateVendorHasUsableContact(vendor));
+  }
+});
+
+Deno.test("Task 7 materialization fails closed for disabled and unauthorized workspaces", async () => {
+  const disabledDb = new ScriptedSupabase();
+  const disabledHandler = createTestRatewareApiHandler(disabledDb, { enabled: false });
+  assert(disabledHandler);
+  const disabledResponse = await disabledHandler(jsonActionRequest(materializationAction()));
+  assertEquals(disabledResponse.status, 404);
+  assertEquals(await disabledResponse.json(), {
+    enabled: false,
+    error: "Carrier list templates are not enabled.",
+  });
+  assertEquals(disabledDb.traces, []);
+
+  const unauthorizedDb = new ScriptedSupabase();
+  const unauthorizedHandler = createTestRatewareApiHandler(unauthorizedDb, {
+    user: { ...workspaceUser, organization_id: null },
+  });
+  assert(unauthorizedHandler);
+  const unauthorizedResponse = await unauthorizedHandler(jsonActionRequest(materializationAction()));
+  assertEquals(unauthorizedResponse.status, 403);
+  assertEquals(await unauthorizedResponse.json(), {
+    code: "carrier_template_workspace_required",
+    error: "An organization-scoped workspace is required.",
+  });
+  assertEquals(unauthorizedDb.traces, []);
+});
+
+Deno.test("Task 7 materialization rejects foreign, inactive, stale-version, and nonmember templates before mutation", async () => {
+  const foreignDb = new ScriptedSupabase([{
+    ...templateRead(),
+    data: null,
+  }]);
+  const foreignHandler = createTestRatewareApiHandler(foreignDb);
+  assert(foreignHandler);
+  const foreignResponse = await foreignHandler(jsonActionRequest(materializationAction()));
+  assertEquals(foreignResponse.status, 409);
+  assertEquals((await foreignResponse.json()).code, "carrier_template_unavailable");
+  assertEquals(foreignDb.traces.some((trace) => trace.operation === "upsert"), false);
+
+  for (const fixture of [
+    { patch: { lifecycle_status: "archived" }, context: {}, code: "carrier_template_inactive" },
+    { patch: {}, context: { template_version: 3 }, code: "template_version_conflict" },
+  ]) {
+    const db = new ScriptedSupabase([templateRead([vendorA.id], fixture.patch)]);
+    const handler = createTestRatewareApiHandler(db);
+    assert(handler);
+    const response = await handler(jsonActionRequest(materializationAction(
+      [vendorA.id],
+      [materializationLaneA],
+      fixture.context,
+    )));
+    assertEquals(response.status, 409);
+    assertEquals((await response.json()).code, fixture.code);
+    assertEquals(db.traces.some((trace) => trace.operation === "upsert"), false);
+    assertEquals(db.traces.some((trace) => trace.table === "saas_audit_log"), false);
+  }
+
+  const nonmemberDb = new ScriptedSupabase([templateRead([vendorA.id])]);
+  const nonmemberHandler = createTestRatewareApiHandler(nonmemberDb);
+  assert(nonmemberHandler);
+  const nonmemberResponse = await nonmemberHandler(jsonActionRequest(materializationAction([vendorB.id])));
+  assertEquals(nonmemberResponse.status, 400);
+  assertEquals((await nonmemberResponse.json()).code, "carrier_template_invalid_selection");
+  assertEquals(nonmemberDb.traces.some((trace) => trace.operation === "upsert"), false);
+  assertEquals(nonmemberDb.traces.some((trace) => trace.table === "saas_audit_log"), false);
+});
+
+for (const fixture of [
+  { patch: { status: "blocked" }, reason: "status_blocked" },
+  { patch: { status: "inactive" }, reason: "status_inactive" },
+  { patch: { base_stage: "archived" }, reason: "base_stage_archived" },
+  { patch: { primary_email: "", secondary_emails: [], whatsapp_phone: "" }, reason: "missing_contact" },
+]) {
+  Deno.test(`Task 7 materialization rejects ${fixture.reason} vendors without a success audit`, async () => {
+    const vendor = materializationVendor(vendorA, fixture.patch);
+    const db = new ScriptedSupabase([
+      templateRead(),
+      vendorRead([vendorA.id], [vendor]),
+      laneRead([materializationLaneA]),
+    ]);
+    const handler = createTestRatewareApiHandler(db);
+    assert(handler);
+    const response = await handler(jsonActionRequest(materializationAction()));
+    assertEquals(response.status, 200);
+    const body = await response.json();
+    assertEquals(body.result, "rejected");
+    assertEquals(body.counts, {
+      selected: 1,
+      confirmed: 0,
+      inserted: 0,
+      already_present: 0,
+      rejected: 1,
+      pending: 0,
+    });
+    assertEquals(body.outcomes, [{
+      lane_id: materializationLaneA,
+      vendor_id: vendorA.id,
+      outcome: "rejected",
+      reason: fixture.reason,
+    }]);
+    assertEquals(body.confirmed_audience_vendor_ids, []);
+    assertEquals(db.traces.some((trace) => trace.operation === "upsert"), false);
+    assertEquals(db.traces.some((trace) => trace.table === "saas_audit_log"), false);
+  });
+}
+
+Deno.test("Task 7 lost-response retry reconciles an already-present operation audience", async () => {
+  const finalRow = {
+    id: "invitation-a",
+    rfx_event_id: materializationEventId,
+    rfx_lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+  };
+  const db = new ScriptedSupabase([
+    templateRead(),
+    vendorRead([vendorA.id], [materializationVendor()]),
+    laneRead([materializationLaneA]),
+    { table: "rfx_lane_vendors", operation: "upsert", data: [] },
+    finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+  const response = await handler(jsonActionRequest(materializationAction()));
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.materialization_operation_id, materializationOperationId);
+  assertEquals(body.result, "reconciled");
+  assertEquals(body.counts, {
+    selected: 1,
+    confirmed: 1,
+    inserted: 0,
+    already_present: 1,
+    rejected: 0,
+    pending: 0,
+  });
+  assertEquals(body.outcomes, [{
+    lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+    outcome: "reconciled",
+    invitation_id: "invitation-a",
+  }]);
+  assertEquals(body.confirmed_audience_vendor_ids, [vendorA.id]);
+  const audit = db.traces.find((trace) => trace.table === "saas_audit_log");
+  const auditPayload = audit?.payload as Record<string, unknown>;
+  assertEquals(auditPayload.action, "carrier_template.add_selected_to_rfx");
+  assertEquals(auditPayload.metadata, {
+    template_id: materializationTemplateId,
+    template_version: 4,
+    rfx_event_id: materializationEventId,
+    selected_count: 1,
+    confirmed_count: 1,
+    already_present_count: 1,
+    inserted_count: 0,
+    rejected_count: 0,
+    pending_count: 0,
+    result: "reconciled",
+  });
+  assertEquals(/primary_email|secondary_emails|whatsapp|contact/i.test(JSON.stringify(auditPayload)), false);
+});
+
+Deno.test("Task 7 materialization canonicalizes UUID input before scoped reconciliation", async () => {
+  const finalRow = {
+    id: "invitation-canonical",
+    rfx_event_id: materializationEventId,
+    rfx_lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+  };
+  const db = new ScriptedSupabase([
+    templateRead(),
+    vendorRead([vendorA.id], [materializationVendor()]),
+    laneRead([materializationLaneA]),
+    { table: "rfx_lane_vendors", operation: "upsert", data: [finalRow] },
+    finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+  const response = await handler(jsonActionRequest(materializationAction(
+    [vendorA.id.toUpperCase()],
+    [materializationLaneA.toUpperCase()],
+  )));
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.confirmed_audience_vendor_ids, [vendorA.id]);
+  assertEquals(body.lane_ids, [materializationLaneA]);
+});
+
+Deno.test("Task 7 concurrent insertion derives mixed outcomes from the final committed scope", async () => {
+  const vendorIds = [vendorA.id, vendorB.id];
+  const insertedRow = {
+    id: "invitation-new",
+    rfx_event_id: materializationEventId,
+    rfx_lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+  };
+  const racedRow = {
+    id: "invitation-raced",
+    rfx_event_id: materializationEventId,
+    rfx_lane_id: materializationLaneA,
+    vendor_id: vendorB.id,
+  };
+  const db = new ScriptedSupabase([
+    templateRead(vendorIds),
+    vendorRead(vendorIds, [materializationVendor(vendorA), materializationVendor(vendorB)]),
+    laneRead([materializationLaneA]),
+    { table: "rfx_lane_vendors", operation: "upsert", data: [insertedRow] },
+    finalInvitationRead([materializationLaneA], vendorIds, [insertedRow, racedRow]),
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+  const response = await handler(jsonActionRequest(materializationAction(vendorIds)));
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.counts, {
+    selected: 2,
+    confirmed: 2,
+    inserted: 1,
+    already_present: 1,
+    rejected: 0,
+    pending: 0,
+  });
+  assertEquals(body.outcomes.map((row: Record<string, unknown>) => row.outcome), ["inserted", "reconciled"]);
+  assertEquals(body.confirmed_audience_vendor_ids, vendorIds);
+  const upsert = db.traces.find((trace) => trace.operation === "upsert");
+  assertEquals((upsert?.payload as Record<string, unknown>).options, {
+    onConflict: "rfx_lane_id,vendor_id",
+    ignoreDuplicates: true,
+  });
+});
+
+Deno.test("Task 7 partial multi-lane retry completes and confirms only the full operation audience", async () => {
+  const laneIds = [materializationLaneA, materializationLaneB];
+  const priorRow = {
+    id: "invitation-prior",
+    rfx_event_id: materializationEventId,
+    rfx_lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+  };
+  const insertedRow = {
+    id: "invitation-completed",
+    rfx_event_id: materializationEventId,
+    rfx_lane_id: materializationLaneB,
+    vendor_id: vendorA.id,
+  };
+  const db = new ScriptedSupabase([
+    templateRead(),
+    vendorRead([vendorA.id], [materializationVendor()]),
+    laneRead(laneIds),
+    { table: "rfx_lane_vendors", operation: "upsert", data: [insertedRow] },
+    finalInvitationRead(laneIds, [vendorA.id], [priorRow, insertedRow]),
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+  const response = await handler(jsonActionRequest(materializationAction([vendorA.id], laneIds)));
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.counts, {
+    selected: 2,
+    confirmed: 2,
+    inserted: 1,
+    already_present: 1,
+    rejected: 0,
+    pending: 0,
+  });
+  assertEquals(body.outcomes, [
+    { lane_id: materializationLaneA, vendor_id: vendorA.id, outcome: "reconciled", invitation_id: "invitation-prior" },
+    { lane_id: materializationLaneB, vendor_id: vendorA.id, outcome: "inserted", invitation_id: "invitation-completed" },
+  ]);
+  assertEquals(body.confirmed_audience_vendor_ids, [vendorA.id]);
+});
+
+Deno.test("Task 7 post-commit read failure returns and audits reconcile_required", async () => {
+  const insertedRow = {
+    id: "invitation-uncertain",
+    rfx_event_id: materializationEventId,
+    rfx_lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+  };
+  const db = new ScriptedSupabase([
+    templateRead(),
+    vendorRead([vendorA.id], [materializationVendor()]),
+    laneRead([materializationLaneA]),
+    { table: "rfx_lane_vendors", operation: "upsert", data: [insertedRow] },
+    finalInvitationRead([materializationLaneA], [vendorA.id], [], { message: "post-commit read failed" }),
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+  const response = await handler(jsonActionRequest(materializationAction()));
+  assertEquals(response.status, 202);
+  const body = await response.json();
+  assertEquals(body.result, "reconcile_required");
+  assertEquals(body.materialization_operation_id, materializationOperationId);
+  assertMatch(body.correlation_id, /^[0-9a-f-]{36}$/i);
+  assertEquals(body.counts, {
+    selected: 1,
+    confirmed: 0,
+    inserted: 0,
+    already_present: 0,
+    rejected: 0,
+    pending: 1,
+  });
+  assertEquals(body.outcomes, [{
+    lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+    outcome: "pending_reconciliation",
+  }]);
+  const audit = db.traces.find((trace) => trace.table === "saas_audit_log");
+  assertEquals(
+    ((audit?.payload as Record<string, unknown>).metadata as Record<string, unknown>).result,
+    "reconcile_required",
+  );
+});
 
 Deno.test("real request dispatcher preserves raw claims and resolved organization scope", async () => {
   const db = new ScriptedSupabase([{
