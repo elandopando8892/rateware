@@ -72,4 +72,37 @@ Intentional, non-blocking differences:
 - [x] Console checked for errors.
 - [x] Preview safety boundary remains visible and enforced.
 
+## Launch Readiness iteration — commit `913c7d5`
+
+- Source visual truth: `docs/superpowers/specs/assets/carrier-list-templates/03-carrier-fit.png` — 1487 x 1058 px.
+- Browser-rendered implementation screenshot: `tmp/launch-readiness-design-qa.png` — 1488 x 1059 px.
+- Combined comparison evidence: `tmp/launch-readiness-qa-comparison.png` — source and implementation rendered together at equal panel widths.
+- Cloud implementation: `https://rateware-qb5d51euy-elandopando8892s-projects.vercel.app/output/carrier-list-templates-preview`.
+- Viewport: 1488 x 1059 CSS px, desktop, `deviceScaleFactor: 1`.
+- State: Bid Room > Launch > Carrier fit, active exact-membership template loaded. The source shows its selected state; the persisted implementation screenshot intentionally captures the pre-selection state so the new readiness transition is visible. The cloud browser additionally verified the selected state with four carriers.
+
+### Findings
+
+No actionable P0, P1, or P2 finding remains.
+
+- Fonts and typography: the new eyebrow, heading, metrics, and explanatory note reuse the existing Rateware hierarchy without introducing a competing type scale.
+- Spacing and layout rhythm: the panel sits between Starting set and the carrier table, preserving the decision sequence. The four metrics remain one row on desktop and collapse to two columns below 900 px.
+- Colors and visual tokens: the restrained green review treatment is distinct from warning and destructive states while remaining compatible with the approved blue/slate shell.
+- Image quality and asset fidelity: the flow has no raster imagery. Existing project icons and controls remain unchanged; no replacement or placeholder asset was introduced.
+- Copy and content: template version, RFx lane count, selection, exceptions, revalidation, and the no-draft/no-send boundary are explicit.
+- Affordances and accessibility: the panel is a labelled section, its status changes with selection, and the original count-aware CTA remains the sole materialization action.
+
+### Interaction evidence
+
+- Empty state showed `Selection required`, zero selected, three lanes, five exceptions, and template snapshot `v1`.
+- `Select all 4 eligible` changed the panel to `Ready for review` and updated the CTA to `Add 4 carriers to this RFx and open Message`.
+- Simulated Add opened Message with four carriers, no draft, no send, and no Delivery queue mutation.
+- Browser DOM contained the expected controls and no framework error overlay was detected.
+
+### Comparison history
+
+1. The approved source had no dedicated preflight summary, so operators had to infer launch scope from counts and the footer CTA.
+2. Added a compact readiness panel using existing spacing, borders, status colors, and typography.
+3. Post-change browser evidence confirmed the panel remains above the fold at 1488 x 1059, preserves the carrier table, and keeps the persistent CTA visible.
+
 final result: passed

@@ -353,6 +353,9 @@ const rfxOutreachCarrierScope = document.querySelector("#rfx-outreach-carrier-sc
 const rfxOutreachCarrierSegment = document.querySelector("#rfx-outreach-carrier-segment");
 const rfxOutreachCarrierSegmentField = document.querySelector("#rfx-outreach-carrier-segment-field");
 const rfxOutreachCarrierTemplateCounts = document.querySelector("#rfx-outreach-carrier-template-counts");
+const rfxOutreachLaunchReadiness = document.querySelector("#rfx-outreach-launch-readiness");
+const rfxOutreachLaunchReadinessMetrics = document.querySelector("#rfx-outreach-launch-readiness-metrics");
+const rfxOutreachLaunchReadinessNote = document.querySelector("#rfx-outreach-launch-readiness-note");
 const rfxOutreachCarrierFit = document.querySelector("#rfx-outreach-carrier-fit");
 const rfxOutreachCarrierLane = document.querySelector("#rfx-outreach-carrier-lane");
 const rfxOutreachCarrierFitSummary = document.querySelector("#rfx-outreach-carrier-fit-summary");
@@ -8891,6 +8894,7 @@ function renderOutreachCarrierFitControls() {
   }
   if (rfxOutreachCarrierSegmentField) rfxOutreachCarrierSegmentField.hidden = !carrierTemplateSurfaceAvailable || scope !== "saved_segment";
   if (rfxOutreachCarrierTemplateCounts) rfxOutreachCarrierTemplateCounts.hidden = !carrierTemplateSurfaceAvailable || scope !== "saved_segment";
+  if (rfxOutreachLaunchReadiness) rfxOutreachLaunchReadiness.hidden = !carrierTemplateSurfaceAvailable || scope !== "saved_segment";
   if (rfxOutreachCarrierScope) rfxOutreachCarrierScope.disabled = materializationLocked;
   if (rfxOutreachCarrierSearch) rfxOutreachCarrierSearch.disabled = materializationLocked;
   if (rfxOutreachCarrierFit) rfxOutreachCarrierFit.disabled = materializationLocked;
@@ -8963,6 +8967,31 @@ function renderActiveCarrierTemplateAdder() {
         <span class="is-overlay"><strong>${formatNumber(partition.counts.filtered_out)}</strong> filtered out</span>
       `
       : `<span>${escapeHtml(activeCarrierTemplatesError || carrierTemplateMembersError || (carrierTemplateMembersLoading ? "Loading exact template membership..." : templateSelected ? "Template membership is unavailable." : "Choose an active template to review its exact membership."))}</span>`;
+  }
+  if (rfxOutreachLaunchReadinessMetrics) {
+    const selectedCount = selectedIds.length;
+    const laneCount = currentLanes.length;
+    const exceptionCount = partition.counts.already_in_rfx + partition.counts.missing_contact + partition.counts.unavailable;
+    const templateVersion = carrierTemplateVersion(loadedCarrierTemplate);
+    rfxOutreachLaunchReadinessMetrics.innerHTML = templateReady
+      ? `
+        <span data-tone="${selectedCount ? "success" : "neutral"}"><strong>${formatNumber(selectedCount)}</strong> selected to add</span>
+        <span data-tone="${laneCount ? "success" : "warning"}"><strong>${formatNumber(laneCount)}</strong> RFx lane${laneCount === 1 ? "" : "s"}</span>
+        <span data-tone="${exceptionCount ? "warning" : "success"}"><strong>${formatNumber(exceptionCount)}</strong> exception${exceptionCount === 1 ? "" : "s"}</span>
+        <span data-tone="neutral"><strong>v${formatNumber(templateVersion)}</strong> template snapshot</span>
+      `
+      : '<span data-tone="neutral"><strong>Pending</strong> Select an active template</span>';
+  }
+  if (rfxOutreachLaunchReadinessNote) {
+    const selectedCount = selectedIds.length;
+    const laneCount = currentLanes.length;
+    rfxOutreachLaunchReadinessNote.textContent = !templateReady
+      ? "Choose an active template to review its current membership and version."
+      : !laneCount
+        ? "Import or configure RFx lanes before adding this carrier wave."
+        : !selectedCount
+          ? "Select eligible carriers. Already-in-RFx, missing-contact, unavailable, and filtered members remain excluded."
+          : `Ready for human confirmation: ${formatNumber(selectedCount)} carrier(s) will be revalidated against template v${formatNumber(carrierTemplateVersion(loadedCarrierTemplate))} and ${formatNumber(laneCount)} RFx lane(s). Carrier Fit will not draft or send messages.`;
   }
   if (rfxOutreachCarrierMatchCount) {
     rfxOutreachCarrierMatchCount.textContent = carrierTemplateMembersLoading
