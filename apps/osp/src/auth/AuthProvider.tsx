@@ -83,6 +83,10 @@ export function AuthProvider({ port, children }: { port: AuthPort; children: Rea
         setSnapshot({ ownership: targetOwnership, state: stateForSession(session) });
       }
     } catch (error) {
+      console.warn(
+        '[OSP auth] Access validation failed:',
+        error instanceof Error ? error.message : 'Unknown authentication failure',
+      );
       if (
         targetOwnership === ownershipRef.current
         && sequence === validationSequence.current
