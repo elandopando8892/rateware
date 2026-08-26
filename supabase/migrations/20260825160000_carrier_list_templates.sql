@@ -461,3 +461,47 @@ revoke execute on function public.search_workspace_vendors_keyset(text, text, te
   from public, anon, authenticated;
 grant execute on function public.search_workspace_vendors_keyset(text, text, text, timestamptz, uuid, integer)
   to service_role;
+
+-- Materialization operation ids are retry tokens, not browser authority. Keep an
+-- immutable, server-resolved context journal so a lost PostgREST response can be
+-- reconciled against committed participant attribution instead of a transient
+-- response body. No client role receives table privileges or an RLS policy.
+create table if not exists public.carrier_template_materialization_operations (
+  id uuid primary key,
+  organization_id text not null,
+  rfx_event_id uuid not null references public.rfx_events(id) on delete cascade,
+  template_id uuid not null,
+  template_version bigint not null check (template_version >= 1),
+  lane_ids uuid[] not null check (cardinality(lane_ids) > 0),
+  selected_vendor_ids uuid[] not null check (cardinality(selected_vendor_ids) > 0),
+  actor_user_id text not null,
+  actor_email text not null,
+  status text not null default 'pending'
+    check (status in ('pending', 'mutation_issued', 'reconciled', 'reconcile_required', 'rejected')),
+  result text,
+  selected_count integer not null check (selected_count >= 0),
+  confirmed_count integer not null default 0 check (confirmed_count >= 0),
+  inserted_count integer not null default 0 check (inserted_count >= 0),
+  already_present_count integer not null default 0 check (already_present_count >= 0),
+  rejected_count integer not null default 0 check (rejected_count >= 0),
+  pending_count integer not null default 0 check (pending_count >= 0),
+  created_at timestamptz not null default now(),
+  mutation_started_at timestamptz,
+  reconciled_at timestamptz,
+  reconcile_required_at timestamptz,
+  finalized_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.carrier_template_materialization_operations enable row level security;
+
+revoke all on table public.carrier_template_materialization_operations from public, anon, authenticated;
+revoke all on table public.carrier_template_materialization_operations from service_role;
+grant select, insert, update on table public.carrier_template_materialization_operations to service_role;
+
+alter table public.rfx_lane_vendors
+  add column if not exists carrier_template_materialization_operation_id uuid
+    references public.carrier_template_materialization_operations(id) on delete set null;
+
+create index if not exists rfx_lane_vendors_carrier_template_materialization_operation_idx
+  on public.rfx_lane_vendors (carrier_template_materialization_operation_id);

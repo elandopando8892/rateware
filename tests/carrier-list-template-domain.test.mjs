@@ -956,6 +956,56 @@ function deferred() {
   );
 }
 
+// The launch workspace's central gate covers the colocated Message control,
+// programmatic Message transitions, and Delivery. Only Carrier Fit restoration
+// is allowed until the operation has been finalized and cleared.
+{
+  const controller = createCarrierTemplateMaterializationController({
+    createOperationId: () => "77777777-7777-4777-8777-777777777777"
+  });
+  const operation = controller.begin({
+    event_id: "event-a",
+    scope: "saved_segment",
+    lane_ids: ["lane-a"],
+    template_id: "template-a",
+    template_version: 2,
+    filter_context: { fit: "any", lane: "all", search: "" },
+    selected_vendor_ids: [ids.eligible]
+  });
+  const blockedMessageFromDirectControl = carrierTemplateMaterializationNavigationDecision(operation, {
+    workbench_view: "outreach",
+    launch_workspace: "message"
+  });
+  const blockedMessageProgrammatically = carrierTemplateMaterializationNavigationDecision(controller.active, {
+    workbench_view: "outreach",
+    launch_workspace: "message"
+  });
+  const blockedDeliveryProgrammatically = carrierTemplateMaterializationNavigationDecision(controller.active, {
+    workbench_view: "outreach",
+    launch_workspace: "delivery"
+  });
+  for (const decision of [
+    blockedMessageFromDirectControl,
+    blockedMessageProgrammatically,
+    blockedDeliveryProgrammatically
+  ]) {
+    assert.deepEqual(decision, {
+      allowed: false,
+      workbench_view: "outreach",
+      launch_workspace: "carrier"
+    });
+  }
+  assert.equal(controller.finish(operation), true);
+  assert.deepEqual(carrierTemplateMaterializationNavigationDecision(controller.active, {
+    workbench_view: "outreach",
+    launch_workspace: "message"
+  }), {
+    allowed: true,
+    workbench_view: "outreach",
+    launch_workspace: "message"
+  }, "the explicit success transition is available only after finalization cleared the operation");
+}
+
 // Only the server-confirmed full-lane audience can flow into Message. A
 // zero-insert retry is valid reconciliation, while forged audience IDs fail.
 {

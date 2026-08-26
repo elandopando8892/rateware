@@ -729,7 +729,13 @@ function normalizeRfxLaunchWorkspace(value) {
 
 function activateRfxLaunchWorkspace(workspace, options = {}) {
   const { persist = true, refresh = false } = options;
-  rfxLaunchWorkspace = normalizeRfxLaunchWorkspace(workspace);
+  const requestedWorkspace = normalizeRfxLaunchWorkspace(workspace);
+  const navigation = carrierTemplateMaterializationNavigationDecision(
+    carrierTemplateMaterializationController.active,
+    { workbench_view: "outreach", launch_workspace: requestedWorkspace }
+  );
+  const navigationBlocked = !navigation.allowed;
+  rfxLaunchWorkspace = normalizeRfxLaunchWorkspace(navigation.launch_workspace);
   rfxLaunchWorkspaceTabs?.querySelectorAll("[data-rfx-launch-workspace]").forEach((button) => {
     const active = button.dataset.rfxLaunchWorkspace === rfxLaunchWorkspace;
     button.classList.toggle("is-active", active);
@@ -751,6 +757,16 @@ function activateRfxLaunchWorkspace(workspace, options = {}) {
     }
   }
   if (persist) persistRfxWorkspaceContext();
+  if (navigationBlocked) {
+    renderOutreachCarrierAdder();
+    rfxClearOutreachCarrierSelectionButton?.focus();
+    setStatus(
+      rfxOutreachCarrierStatus,
+      "The pending Add operation is retained in Carrier Fit. Cancel pending add retains the selection and does not roll back invitations.",
+      "error"
+    );
+  }
+  return !navigationBlocked;
 }
 
 function normalizeRfxOperateWorkspace(value) {
@@ -8874,13 +8890,13 @@ function renderActiveCarrierTemplateAdder() {
       materializationLocked ? "Cancel pending add" : "Clear carrier selection"
     );
     rfxClearOutreachCarrierSelectionButton.title = materializationLocked
-      ? "Cancel the pending materialization operation and clear its immutable carrier selection."
+      ? "Cancel this pending add. The carrier selection is retained for review, and cancellation does not roll back invitations."
       : "Clear this temporary carrier selection.";
   }
   if (rfxOutreachCarrierWaveSummary) {
     rfxOutreachCarrierWaveSummary.textContent = selectedIds.length
       ? materializationLocked
-        ? `${formatNumber(selectedIds.length)} carrier(s) are locked to operation ${materializationOperation.materialization_operation_id}. Retry Add or clear the selection to cancel.`
+        ? `${formatNumber(selectedIds.length)} carrier(s) are locked to operation ${materializationOperation.materialization_operation_id}. Retry Add or use Cancel pending add; cancellation retains this selection and does not roll back invitations.`
         : `${formatNumber(selectedIds.length)} visible eligible template carrier(s) selected. Add revalidates before opening Message.`
       : templateReady
         ? `${formatNumber(visibleEligibleIds.length)} visible eligible carrier(s). Choose all or a subset; loading the template selected none.`
@@ -10747,7 +10763,7 @@ rfxCustomerInput?.addEventListener("change", normalizeSelectedRfxCustomer);
 eventForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (carrierTemplateMaterializationController.active) {
-    setStatus(rfxOutreachCarrierStatus, "Retry the pending Add operation or clear the selection to cancel before changing RFx events.", "error");
+    setStatus(rfxOutreachCarrierStatus, "Retry the pending Add operation or use Cancel pending add before changing RFx events. Cancellation retains the selection and does not roll back invitations.", "error");
     return;
   }
   normalizeSelectedRfxCustomer();
@@ -10920,7 +10936,7 @@ document.addEventListener("click", (event) => {
   const createButton = event.target.closest("[data-rfx-focus-create]");
   if (createButton) {
     if (carrierTemplateMaterializationController.active) {
-      setStatus(rfxOutreachCarrierStatus, "Retry the pending Add operation or clear the selection to cancel before changing RFx events.", "error");
+      setStatus(rfxOutreachCarrierStatus, "Retry the pending Add operation or use Cancel pending add before changing RFx events. Cancellation retains the selection and does not roll back invitations.", "error");
       return;
     }
     selectedEventId = null;
@@ -11164,7 +11180,7 @@ eventList?.addEventListener("click", async (event) => {
   const card = event.target.closest("[data-rfx-event-id]");
   if (!card) return;
   if (carrierTemplateMaterializationController.active && String(card.dataset.rfxEventId || "") !== String(selectedEventId || "")) {
-    setStatus(rfxOutreachCarrierStatus, "Retry the pending Add operation or clear the selection to cancel before changing RFx events.", "error");
+    setStatus(rfxOutreachCarrierStatus, "Retry the pending Add operation or use Cancel pending add before changing RFx events. Cancellation retains the selection and does not roll back invitations.", "error");
     return;
   }
   await loadDetail(card.dataset.rfxEventId);
@@ -11823,7 +11839,7 @@ rfxOutreachCarrierSearch?.addEventListener("input", () => {
 });
 rfxRefreshOutreachCarrierFitButton?.addEventListener("click", () => {
   if (carrierTemplateMaterializationController.active) {
-    setStatus(rfxOutreachCarrierStatus, "Retry the pending Add operation or clear the selection to cancel it before refreshing Carrier Fit.", "error");
+    setStatus(rfxOutreachCarrierStatus, "Retry the pending Add operation or use Cancel pending add before refreshing Carrier Fit. Cancellation retains the selection and does not roll back invitations.", "error");
     return;
   }
   setStatus(rfxOutreachCarrierStatus, "Refreshing Carrier CRM, coverage, and Rateware evidence...");
@@ -11940,7 +11956,7 @@ rfxOutreachCarrierSelected?.addEventListener("click", (event) => {
   const removeButton = event.target.closest("[data-rfx-outreach-remove-carrier]");
   if (!removeButton) return;
   if (carrierTemplateMaterializationController.active) {
-    setStatus(rfxOutreachCarrierStatus, "Retry the pending Add operation or clear the selection to cancel it before changing carriers.", "error");
+    setStatus(rfxOutreachCarrierStatus, "Retry the pending Add operation or use Cancel pending add before changing carriers. Cancellation retains the selection and does not roll back invitations.", "error");
     return;
   }
   selectedManualVendorIdsState.delete(removeButton.dataset.rfxOutreachRemoveCarrier);
@@ -11954,7 +11970,7 @@ rfxClearOutreachCarrierSelectionButton?.addEventListener("click", () => {
     renderManualShortlistControls();
     setStatus(
       rfxOutreachCarrierStatus,
-      "Pending Add operation cancelled. Its carrier selection is available for review; invitations that may already exist were not undone.",
+      "Pending Add operation cancelled. Cancellation retains its carrier selection for review and does not roll back invitations.",
       "neutral"
     );
     return;
@@ -12612,7 +12628,7 @@ rfxUseOutreachAudienceInMessageButton?.addEventListener("click", () => {
     setStatus(rfxOutreachAudienceStatus, "Select one or more carriers for this RFx before preparing an invitation wave.", "error");
     return;
   }
-  activateRfxLaunchWorkspace("message");
+  if (!activateRfxLaunchWorkspace("message")) return;
   const message = `${formatNumber(selectedCount)} carrier(s) selected. Step 2: review the message and prepare drafts. Nothing sends until Delivery queue.`;
   setStatus(rfxOutreachAudienceStatus, message, "success");
   setStatus(rfxOutreachStatus, message, "success");
@@ -12656,6 +12672,7 @@ rfxEventDeliveryOverview?.addEventListener("click", (event) => {
     : null;
   const filter = String(card?.dataset.rfxEventStatusFilter || "");
   if (!filter) return;
+  if (rfxLaunchWorkspace !== "delivery" && !activateRfxLaunchWorkspace("delivery")) return;
   deliveryParticipationStatus = filter;
   deliveryParticipationPage = 0;
   if (rfxLaunchWorkspace !== "delivery") {
@@ -12712,7 +12729,7 @@ rfxDeliveryWaveState?.addEventListener("click", (event) => {
     : null;
   const workspace = normalizeRfxLaunchWorkspace(button?.dataset.rfxOpenLaunchWorkspace || "");
   if (!button || !workspace) return;
-  activateRfxLaunchWorkspace(workspace, { focus: workspace === "message" });
+  if (!activateRfxLaunchWorkspace(workspace, { focus: workspace === "message" })) return;
 });
 rfxSaveOutreachAudienceSegmentButton?.addEventListener("click", () => {
   void saveCurrentOutreachAudienceSegment();

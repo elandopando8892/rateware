@@ -508,6 +508,7 @@ type QueryTrace = {
   table: string;
   operation: string;
   payload?: unknown;
+  selection?: string;
   filters: Array<[string, string, unknown]>;
 };
 
@@ -546,7 +547,52 @@ class ScriptedSupabase {
   }
 
   take(trace: QueryTrace) {
+    if (trace.table === "carrier_template_materialization_operations" && trace.operation === "upsert") {
+      const payload = trace.payload as {
+        rows?: Record<string, unknown>;
+        options?: Record<string, unknown>;
+      };
+      assertEquals(payload.options, { onConflict: "id", ignoreDuplicates: true });
+      assertEquals(payload.rows?.id, materializationOperationId);
+      assertEquals(payload.rows?.organization_id, "org-a");
+      assertEquals(payload.rows?.rfx_event_id, materializationEventId);
+      assertEquals(payload.rows?.template_id, materializationTemplateId);
+      assert(Array.isArray(payload.rows?.lane_ids) && payload.rows.lane_ids.length > 0);
+      assert(Array.isArray(payload.rows?.selected_vendor_ids) && payload.rows.selected_vendor_ids.length > 0);
+      assertEquals(payload.rows?.actor_user_id, manageClaims.sub);
+      assertEquals(payload.rows?.actor_email, manageClaims.email);
+    }
+    if (trace.table === "rfx_lane_vendors" && trace.operation === "upsert") {
+      const traceIndex = this.traces.indexOf(trace);
+      const priorTraces = this.traces.slice(0, traceIndex);
+      assert(
+        priorTraces.some((candidate) =>
+          candidate.table === "carrier_template_materialization_operations" &&
+          candidate.operation === "upsert"
+        ),
+        "Participant mutation must be preceded by durable materialization journal creation",
+      );
+      assert(
+        priorTraces.some((candidate) =>
+          candidate.table === "carrier_template_materialization_operations" &&
+          candidate.operation === "select"
+        ),
+        "Participant mutation must be preceded by a server-loaded materialization journal context",
+      );
+      const rows = (trace.payload as { rows?: Array<Record<string, unknown>> } | undefined)?.rows || [];
+      assert(
+        rows.length > 0 && rows.every((row) =>
+          row.carrier_template_materialization_operation_id === materializationOperationId
+        ),
+        "Every participant insert must carry the immutable materialization operation marker",
+      );
+    }
     if (trace.table === "rfx_lane_vendors" && trace.operation === "select") {
+      assertMatch(
+        trace.selection || "",
+        /carrier_template_materialization_operation_id/,
+        "Final reconciliation must read the durable participant attribution marker",
+      );
       const laneIds = trace.filters.find(([kind, column]) => kind === "in" && column === "rfx_lane_id")?.[2];
       const vendorIds = trace.filters.find(([kind, column]) => kind === "in" && column === "vendor_id")?.[2];
       if (Array.isArray(laneIds) && Array.isArray(vendorIds)) {
@@ -579,7 +625,8 @@ class ScriptedQuery {
     private readonly trace: QueryTrace,
   ) {}
 
-  select(_columns?: string, _options?: Record<string, unknown>) {
+  select(columns?: string, _options?: Record<string, unknown>) {
+    this.trace.selection = columns;
     return this;
   }
 
@@ -872,6 +919,59 @@ function laneRead(laneIds: string[]): ScriptedResponse {
   };
 }
 
+function materializationJournalRow(
+  vendorIds = [vendorA.id],
+  laneIds = [materializationLaneA],
+  patch: Record<string, unknown> = {},
+) {
+  return {
+    id: materializationOperationId,
+    organization_id: "org-a",
+    rfx_event_id: materializationEventId,
+    template_id: materializationTemplateId,
+    template_version: 4,
+    lane_ids: laneIds,
+    selected_vendor_ids: vendorIds,
+    actor_user_id: workspaceUser.owner_user_id,
+    actor_email: manageClaims.email,
+    status: "pending",
+    selected_count: vendorIds.length * laneIds.length,
+    ...patch,
+  };
+}
+
+function materializationJournalStart(
+  vendorIds = [vendorA.id],
+  laneIds = [materializationLaneA],
+  patch: Record<string, unknown> = {},
+): ScriptedResponse[] {
+  return [
+    {
+      table: "carrier_template_materialization_operations",
+      operation: "upsert",
+      data: null,
+    },
+    {
+      table: "carrier_template_materialization_operations",
+      operation: "select",
+      data: materializationJournalRow(vendorIds, laneIds, patch),
+      filters: [["eq", "id", materializationOperationId]],
+    },
+  ];
+}
+
+function materializationJournalFinish(): ScriptedResponse {
+  return {
+    table: "carrier_template_materialization_operations",
+    operation: "update",
+    data: null,
+    filters: [
+      ["eq", "id", materializationOperationId],
+      ["eq", "organization_id", "org-a"],
+    ],
+  };
+}
+
 function finalInvitationRead(
   laneIds: string[],
   vendorIds: string[],
@@ -993,6 +1093,8 @@ for (const fixture of [
       templateRead(),
       vendorRead([vendorA.id], [vendor]),
       laneRead([materializationLaneA]),
+      ...materializationJournalStart(),
+      materializationJournalFinish(),
     ]);
     const handler = createTestRatewareApiHandler(db);
     assert(handler);
@@ -1015,10 +1117,31 @@ for (const fixture of [
       reason: fixture.reason,
     }]);
     assertEquals(body.confirmed_audience_vendor_ids, []);
-    assertEquals(db.traces.some((trace) => trace.operation === "upsert"), false);
+    assertEquals(db.traces.some((trace) => trace.table === "rfx_lane_vendors" && trace.operation === "upsert"), false);
     assertEquals(db.traces.some((trace) => trace.table === "saas_audit_log"), false);
   });
 }
+
+Deno.test("Task 7 rejects reuse of a materialization UUID with mismatched immutable context before participant mutation", async () => {
+  const db = new ScriptedSupabase([
+    templateRead(),
+    vendorRead([vendorA.id], [materializationVendor()]),
+    laneRead([materializationLaneA]),
+    ...materializationJournalStart([vendorA.id], [materializationLaneA], {
+      template_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+    }),
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+  const response = await handler(jsonActionRequest(materializationAction()));
+  assertEquals(response.status, 409);
+  assertEquals((await response.json()).code, "carrier_template_materialization_operation_conflict");
+  assertEquals(
+    db.traces.some((trace) => trace.table === "rfx_lane_vendors" && trace.operation === "upsert"),
+    false,
+  );
+  assertEquals(db.traces.some((trace) => trace.table === "saas_audit_log"), false);
+});
 
 Deno.test("Task 7 lost-response retry reconciles an already-present operation audience", async () => {
   const finalRow = {
@@ -1031,8 +1154,10 @@ Deno.test("Task 7 lost-response retry reconciles an already-present operation au
     templateRead(),
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead([materializationLaneA]),
+    ...materializationJournalStart(),
     { table: "rfx_lane_vendors", operation: "upsert", data: [] },
     finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
+    materializationJournalFinish(),
     { table: "saas_audit_log", operation: "insert", data: null },
   ]);
   const handler = createTestRatewareApiHandler(db);
@@ -1057,6 +1182,17 @@ Deno.test("Task 7 lost-response retry reconciles an already-present operation au
     invitation_id: "invitation-a",
   }]);
   assertEquals(body.confirmed_audience_vendor_ids, [vendorA.id]);
+  const journalUpdate = db.traces.find((trace) =>
+    trace.table === "carrier_template_materialization_operations" && trace.operation === "update"
+  );
+  assertEquals(
+    (journalUpdate?.payload as Record<string, unknown>).status,
+    "reconciled",
+  );
+  assertEquals(
+    (journalUpdate?.payload as Record<string, unknown>).inserted_count,
+    0,
+  );
   const audit = db.traces.find((trace) => trace.table === "saas_audit_log");
   const auditPayload = audit?.payload as Record<string, unknown>;
   assertEquals(auditPayload.action, "carrier_template.add_selected_to_rfx");
@@ -1081,13 +1217,16 @@ Deno.test("Task 7 first-upsert lost response reconciles rows visible in final co
     rfx_event_id: materializationEventId,
     rfx_lane_id: materializationLaneA,
     vendor_id: vendorA.id,
+    carrier_template_materialization_operation_id: materializationOperationId,
   };
   const db = new ScriptedSupabase([
     templateRead(),
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead([materializationLaneA]),
+    ...materializationJournalStart(),
     { table: "rfx_lane_vendors", operation: "upsert", throws: new Error("transport response lost") },
     finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
+    materializationJournalFinish(),
     { table: "saas_audit_log", operation: "insert", data: null },
   ]);
   const handler = createTestRatewareApiHandler(db);
@@ -1095,16 +1234,66 @@ Deno.test("Task 7 first-upsert lost response reconciles rows visible in final co
   const response = await handler(jsonActionRequest(materializationAction()));
   assertEquals(response.status, 200);
   const body = await response.json();
-  assertEquals(body.result, "reconciled");
+  assertEquals(body.result, "inserted");
   assertEquals(body.counts, {
     selected: 1,
     confirmed: 1,
-    inserted: 0,
-    already_present: 1,
+    inserted: 1,
+    already_present: 0,
     rejected: 0,
     pending: 0,
   });
   assertEquals(body.confirmed_audience_vendor_ids, [vendorA.id]);
+  const journalUpdate = db.traces.find((trace) =>
+    trace.table === "carrier_template_materialization_operations" && trace.operation === "update"
+  );
+  assertEquals(
+    (journalUpdate?.payload as Record<string, unknown>).status,
+    "reconciled",
+  );
+  assertEquals(
+    (journalUpdate?.payload as Record<string, unknown>).inserted_count,
+    1,
+  );
+  const audit = db.traces.find((trace) => trace.table === "saas_audit_log");
+  assertEquals(
+    ((audit?.payload as Record<string, unknown>).metadata as Record<string, unknown>).inserted_count,
+    1,
+  );
+});
+
+Deno.test("Task 7 returned first-upsert loss still attributes marked committed rows to the operation", async () => {
+  const finalRow = {
+    id: "invitation-first-batch-returned-loss",
+    rfx_event_id: materializationEventId,
+    rfx_lane_id: materializationLaneA,
+    vendor_id: vendorA.id,
+    carrier_template_materialization_operation_id: materializationOperationId,
+  };
+  const db = new ScriptedSupabase([
+    templateRead(),
+    vendorRead([vendorA.id], [materializationVendor()]),
+    laneRead([materializationLaneA]),
+    ...materializationJournalStart(),
+    { table: "rfx_lane_vendors", operation: "upsert", error: { message: "response lost after commit" } },
+    finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
+    materializationJournalFinish(),
+    { table: "saas_audit_log", operation: "insert", data: null },
+  ]);
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+  const response = await handler(jsonActionRequest(materializationAction()));
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.result, "inserted");
+  assertEquals(body.counts.inserted, 1);
+  assertEquals(body.counts.already_present, 0);
+  assertEquals(body.confirmed_audience_vendor_ids, [vendorA.id]);
+  const audit = db.traces.find((trace) => trace.table === "saas_audit_log");
+  assertEquals(
+    ((audit?.payload as Record<string, unknown>).metadata as Record<string, unknown>).inserted_count,
+    1,
+  );
 });
 
 Deno.test("Task 7 first-upsert uncertainty with incomplete final reads returns audited reconcile_required", async () => {
@@ -1112,8 +1301,10 @@ Deno.test("Task 7 first-upsert uncertainty with incomplete final reads returns a
     templateRead(),
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead([materializationLaneA]),
+    ...materializationJournalStart(),
     { table: "rfx_lane_vendors", operation: "upsert", error: { message: "transport response lost" } },
     finalInvitationRead([materializationLaneA], [vendorA.id], []),
+    materializationJournalFinish(),
     { table: "saas_audit_log", operation: "insert", data: null },
   ]);
   const handler = createTestRatewareApiHandler(db);
@@ -1148,6 +1339,7 @@ Deno.test("Task 7 final reconciliation batches both dimensions below provider ro
     rfx_event_id: materializationEventId,
     rfx_lane_id: laneId,
     vendor_id: vendorId,
+    carrier_template_materialization_operation_id: materializationOperationId,
   })));
   const laneBatches = [laneIds.slice(0, 25), laneIds.slice(25)];
   const vendorBatches = [vendorIds.slice(0, 36), vendorIds.slice(36)];
@@ -1162,10 +1354,12 @@ Deno.test("Task 7 final reconciliation batches both dimensions below provider ro
     templateRead(vendorIds),
     vendorRead(vendorIds, vendorIds.map((id) => materializationVendor({ id, primary_email: `${id}@example.com` }))),
     laneRead(laneIds),
+    ...materializationJournalStart(vendorIds, laneIds),
     { table: "rfx_lane_vendors", operation: "upsert", data: finalRows.slice(0, 500) },
     { table: "rfx_lane_vendors", operation: "upsert", data: finalRows.slice(500, 1000) },
     { table: "rfx_lane_vendors", operation: "upsert", data: finalRows.slice(1000) },
     ...finalReadResponses,
+    materializationJournalFinish(),
     { table: "saas_audit_log", operation: "insert", data: null },
   ], { maxResultRows: 900 });
   const handler = createTestRatewareApiHandler(db);
@@ -1197,13 +1391,16 @@ Deno.test("Task 7 materialization canonicalizes UUID input before scoped reconci
     rfx_event_id: materializationEventId,
     rfx_lane_id: materializationLaneA,
     vendor_id: vendorA.id,
+    carrier_template_materialization_operation_id: materializationOperationId,
   };
   const db = new ScriptedSupabase([
     templateRead(),
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead([materializationLaneA]),
+    ...materializationJournalStart(),
     { table: "rfx_lane_vendors", operation: "upsert", data: [finalRow] },
     finalInvitationRead([materializationLaneA], [vendorA.id], [finalRow]),
+    materializationJournalFinish(),
     { table: "saas_audit_log", operation: "insert", data: null },
   ]);
   const handler = createTestRatewareApiHandler(db);
@@ -1220,24 +1417,29 @@ Deno.test("Task 7 materialization canonicalizes UUID input before scoped reconci
 
 Deno.test("Task 7 concurrent insertion derives mixed outcomes from the final committed scope", async () => {
   const vendorIds = [vendorA.id, vendorB.id];
+  const concurrentOperationId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1";
   const insertedRow = {
     id: "invitation-new",
     rfx_event_id: materializationEventId,
     rfx_lane_id: materializationLaneA,
     vendor_id: vendorA.id,
+    carrier_template_materialization_operation_id: materializationOperationId,
   };
   const racedRow = {
     id: "invitation-raced",
     rfx_event_id: materializationEventId,
     rfx_lane_id: materializationLaneA,
     vendor_id: vendorB.id,
+    carrier_template_materialization_operation_id: concurrentOperationId,
   };
   const db = new ScriptedSupabase([
     templateRead(vendorIds),
     vendorRead(vendorIds, [materializationVendor(vendorA), materializationVendor(vendorB)]),
     laneRead([materializationLaneA]),
+    ...materializationJournalStart(vendorIds),
     { table: "rfx_lane_vendors", operation: "upsert", data: [insertedRow] },
     finalInvitationRead([materializationLaneA], vendorIds, [insertedRow, racedRow]),
+    materializationJournalFinish(),
     { table: "saas_audit_log", operation: "insert", data: null },
   ]);
   const handler = createTestRatewareApiHandler(db);
@@ -1255,7 +1457,7 @@ Deno.test("Task 7 concurrent insertion derives mixed outcomes from the final com
   });
   assertEquals(body.outcomes.map((row: Record<string, unknown>) => row.outcome), ["inserted", "reconciled"]);
   assertEquals(body.confirmed_audience_vendor_ids, vendorIds);
-  const upsert = db.traces.find((trace) => trace.operation === "upsert");
+  const upsert = db.traces.find((trace) => trace.table === "rfx_lane_vendors" && trace.operation === "upsert");
   assertEquals((upsert?.payload as Record<string, unknown>).options, {
     onConflict: "rfx_lane_id,vendor_id",
     ignoreDuplicates: true,
@@ -1275,13 +1477,16 @@ Deno.test("Task 7 partial multi-lane retry completes and confirms only the full 
     rfx_event_id: materializationEventId,
     rfx_lane_id: materializationLaneB,
     vendor_id: vendorA.id,
+    carrier_template_materialization_operation_id: materializationOperationId,
   };
   const db = new ScriptedSupabase([
     templateRead(),
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead(laneIds),
+    ...materializationJournalStart([vendorA.id], laneIds),
     { table: "rfx_lane_vendors", operation: "upsert", data: [insertedRow] },
     finalInvitationRead(laneIds, [vendorA.id], [priorRow, insertedRow]),
+    materializationJournalFinish(),
     { table: "saas_audit_log", operation: "insert", data: null },
   ]);
   const handler = createTestRatewareApiHandler(db);
@@ -1315,8 +1520,10 @@ Deno.test("Task 7 post-commit read failure returns and audits reconcile_required
     templateRead(),
     vendorRead([vendorA.id], [materializationVendor()]),
     laneRead([materializationLaneA]),
+    ...materializationJournalStart(),
     { table: "rfx_lane_vendors", operation: "upsert", data: [insertedRow] },
     finalInvitationRead([materializationLaneA], [vendorA.id], [], { message: "post-commit read failed" }),
+    materializationJournalFinish(),
     { table: "saas_audit_log", operation: "insert", data: null },
   ]);
   const handler = createTestRatewareApiHandler(db);
