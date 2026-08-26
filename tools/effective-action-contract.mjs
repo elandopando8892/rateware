@@ -1,9 +1,12 @@
 import { ACTION_CONTRACT as BASE_ACTION_CONTRACT } from '../supabase/functions/_shared/action-contract.mjs';
+import { CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-carrier-list-templates.mjs';
 import { PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-provider-service.mjs';
 
 const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
+const carrierTemplateExtension = CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
+const carrierTemplateDelta = carrierTemplateExtension.expectedCountsDelta;
 
 // Provider Service is hosted inside the authenticated shipper-directory-api runtime.
 // Its local dependency changes that function's shared authorization envelope for
@@ -21,6 +24,30 @@ const legacyAuthorizationOverrides = Object.fromEntries([
   'edge.shipper-directory-api.shipper_intelligence',
   'edge.shipper-directory-api.shipper_relationship_pipeline',
 ].map((canonicalId) => [canonicalId, shipperDirectoryEnvelope]));
+
+// The Rateware API handler factory and Carrier List Templates imports change the
+// shared authorization envelope for every action hosted by rateware-api. This is
+// a static reviewed fingerprint; it is not derived from source at validation time.
+const ratewareApiEnvelope = '23ad51228f3cc24759f313a2d8a5210f6b677e5cd4ef99a73fd4adb8d790d963';
+const ratewareApiAuthorizationOverrides = Object.fromEntries([
+  ...BASE_ACTION_CONTRACT.surfaces,
+  ...carrierTemplateExtension.surfaces,
+].filter((entry) => entry.canonicalId.startsWith('edge.rateware-api.'))
+  .map((entry) => [entry.canonicalId, ratewareApiEnvelope]));
+
+// These eight pre-existing actions share reviewed code segments with the newly
+// added template dispatch and handler factory. Their behavior is unchanged, but
+// the scanner intentionally fingerprints the complete reachable action segment.
+const ratewareApiSourceFingerprintOverrides = {
+  'edge.rateware-api.create_vendor_segment': '8e6a444366bfa108430e02fdf8dffbbf11a0ab0e4e102d4687f6e589f809aa69',
+  'edge.rateware-api.delete_vendor_segment': '792ce2b10566c1be41064ef07f5e818088fb1f16596433d88fdb7c0fbec972d2',
+  'edge.rateware-api.generate_outreach_drafts': '05f5940c29b19b93b95466b0571fc160146d32e89e253e186e58eec647d270c5',
+  'edge.rateware-api.list_vendor_segments': '79d6ff15b7b7a0bcbf8e580baaed1b11575d56c38cc4034fb9b80a8891814128',
+  'edge.rateware-api.list_vendors': '6aaccab686ecae9b04492be99175863f452cd0633bbe426a651ed310968faeef',
+  'edge.rateware-api.send_bid_room_carrier_message': '3a8bc0f06e4f577effffd6e35350e73925fd9153db71a25266b35f40b81b7fe0',
+  'edge.rateware-api.shortlist_rfx_lane_vendors': '054559e7a40ff4c2946a3a6981ad70e5cd69e49bdf3fd9016072a559dbab4030',
+  'edge.rateware-api.update_vendor_segment': 'd73978185d8637b0b72028db2b30b7f5d3800a42f3d58949d25d2f4d2d978976',
+};
 
 // Phase 0 models every PostgreSQL RPC as internal/service-role + internal_only.
 // Twenty Provider Service guard/trigger functions are additionally made non-invocable
@@ -186,28 +213,38 @@ const gmailSurfaces = [
 export const ACTION_CONTRACT = {
   ...BASE_ACTION_CONTRACT,
   contractVersion,
-  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub`,
+  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6,
-    postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres,
-    ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge,
+    postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres,
+    ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi,
   },
   reviewedMetadataFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedMetadataFingerprints,
     ...extension.reviewedMetadataFingerprints,
     ...providerMetadataOverrides,
     ...gmailMetadataFingerprints,
+    ...carrierTemplateExtension.reviewedMetadataFingerprints,
   },
   reviewedAuthorizationFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedAuthorizationFingerprints,
     ...legacyAuthorizationOverrides,
     ...extension.reviewedAuthorizationFingerprints,
     ...gmailAuthorizationFingerprints,
+    ...ratewareApiAuthorizationOverrides,
+    ...carrierTemplateExtension.reviewedAuthorizationFingerprints,
   },
   surfaces: [
-    ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({ ...entry, contractVersion })),
+    ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({
+      ...entry,
+      contractVersion,
+      ...(ratewareApiSourceFingerprintOverrides[entry.canonicalId]
+        ? { sourceFingerprint: ratewareApiSourceFingerprintOverrides[entry.canonicalId] }
+        : {}),
+    })),
     ...providerSurfaces,
     ...gmailSurfaces,
+    ...carrierTemplateExtension.surfaces,
   ],
 };

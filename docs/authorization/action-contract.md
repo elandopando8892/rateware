@@ -12,7 +12,7 @@ Discovery starts from the committed repository structure:
 
 1. enumerate every directory under `supabase/functions`, excluding only `_shared`;
 2. treat each tracked `index.ts` as an Edge entrypoint candidate;
-3. recognize literal comparisons, static template literals, switch cases, deterministic object handler registries, deterministic `new Map` registries, direct or safely sanitized aliases of `body.action` (including literal bracket access), and reviewed fixed HTTP-method endpoints;
+3. recognize literal comparisons, static template literals, switch cases, deterministic object handler registries, deterministic `new Map` registries, direct or safely sanitized aliases of `body.action` (including literal bracket access), reviewed fixed HTTP-method endpoints, and a single statically resolvable named `Deno.serve` handler or handler factory;
 4. emit a blocking candidate for nonliteral templates in comparisons or switch cases (including comment-separated cases), spreads or computed registry keys, callback wrappers, conflicting handler attribution across registries, ambiguous fallbacks, unresolved registries, multiple dispatchers, mutable aliases, and entrypoints whose dispatch cannot be resolved safely;
 5. record directories without `index.ts` separately and require an explicit non-governable disposition;
 6. scan migration statements while respecting comments, strings, quoted identifiers, and dollar-quoted bodies, then replay `CREATE FUNCTION`, `CREATE OR REPLACE FUNCTION`, and `DROP FUNCTION` in filename and statement order.
@@ -60,21 +60,40 @@ An unresolved local dependency or non-determinable dispatch is a blocking error.
 
 Committed-source discovery produces:
 
-- 285 active Edge operations;
-- 68 active PostgreSQL/RPC signatures;
-- 353 active discovered surfaces;
-- 245 `rateware-api` actions.
+- 299 active Edge operations;
+- 111 active PostgreSQL/RPC signatures;
+- 410 active discovered surfaces;
+- 253 `rateware-api` actions.
 
-The contract retains 355 rows because two historically counted RPCs are now proven absent after committed `DROP FUNCTION` statements:
+The effective contract retains 412 rows because two historically counted RPCs are now proven absent after committed `DROP FUNCTION` statements:
 
 - `public.rateware_rfx_lane_rate_score(public.rfx_lanes,public.rate_staging)`;
 - `public.rateware_rfx_text_match_score(text,text,integer)`.
 
-H07 records both signatures as intentionally `removed`, with `public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)` as their functional replacement. The repository history, current API call, stability guard, and a read-only production catalog probe confirm that the old signatures are absent while the service-role-only replacement remains active. Historical rows remain in the 355-record contract; active discovery remains 353.
+H07 records both signatures as intentionally `removed`, with `public.rfx_benchmark_candidate_rate_ids(text,uuid,integer)` as their functional replacement. The repository history, current API call, stability guard, and a read-only production catalog probe confirm that the old signatures are absent while the service-role-only replacement remains active. Historical rows remain in the 412-record effective contract; active discovery remains 410.
+
+## Carrier List Templates increment
+
+Carrier List Templates is recorded through the static additive extension `supabase/functions/_shared/action-contract-carrier-list-templates.mjs`. The effective contract composes this reviewed increment without mechanically rewriting the frozen Phase 0 base artifact.
+
+The increment adds eight tenant-scoped human Edge actions under `rateware-api`:
+
+- `list`, `get`, and `resolve` are read actions proposed under `vendors.read`;
+- `create`, `update`, `duplicate`, `archive`, and `restore` are write actions proposed under `vendors.manage`.
+
+All eight remain `pending_human_approval`. Recording their proposed permission keys does not enable the feature, grant permission, or replace runtime authorization and RLS checks.
+
+Three PostgreSQL surfaces are recorded as `internal/service-role` and `internal_only`:
+
+- `public.rateware_duplicate_carrier_list_template(text,uuid,bigint,text,text,text,text,text)`;
+- `public.rateware_validate_participant_template_membership()`;
+- `public.search_workspace_vendors_keyset(text,text,text,timestamptz,uuid,integer)`.
+
+The named-handler-factory scanner coverage is regression-tested so `Deno.serve(createRatewareApiHandler())` cannot hide the factory body or collapse the `rateware-api` inventory.
 
 ## Decision and lifecycle boundary
 
-The contract preserves 257 `pending_human_approval`, 27 `explicitly_allowed`, and 71 `internal_only` rows. No pending surface is converted to allowed.
+The effective contract preserves 265 `pending_human_approval`, 33 `explicitly_allowed`, and 114 `internal_only` rows. No Carrier List Templates surface is converted to allowed.
 
 H07 is approved as an intentional retirement with functional replacement. This disposition changes lifecycle metadata only; it does not restore or drop database functions, modify grants, or alter runtime behavior.
 
