@@ -878,9 +878,12 @@ Expected: no old mutation control remains; Carrier Fit read/use behavior remains
 
 **Files:**
 
-- Modify/generated: `supabase/functions/_shared/action-contract.mjs`
+- Create: `supabase/functions/_shared/action-contract-carrier-list-templates.mjs`
+- Modify: `tools/effective-action-contract.mjs`
+- Modify: `tools/action-contract-lib.mjs`
 - Modify/generated: `docs/authorization/action-contract.md`
 - Modify: `tests/action-contract.test.mjs`
+- Modify: `tests/carrier-list-templates.contract.test.ts`
 - Modify: `package.json`
 
 **Interfaces:**
@@ -888,11 +891,11 @@ Expected: no old mutation control remains; Carrier Fit read/use behavior remains
 - Consumes: eight new Edge selector actions and the repository's action-contract generator/validator.
 - Produces: governed read/write surfaces, updated expected counts/fingerprints, and full local regression evidence.
 
-- [ ] **Step 1: Add failing action governance assertions**
+- [x] **Step 1: Add failing action governance assertions**
 
 Require all eight new actions in `ACTION_CONTRACT.surfaces`. Reads (`list`, `get`, `resolve`) must be `access: 'read'`; create/update/duplicate/archive/restore must be `access: 'write'`, tenant-scoped, and proposed permission `vendors:manage`.
 
-- [ ] **Step 2: Run the validator and confirm the expected drift**
+- [x] **Step 2: Run the validator and confirm the expected drift**
 
 ```powershell
 npm run validate:action-contract
@@ -901,15 +904,15 @@ npm run test:action-contract
 
 Expected: failure reports the new ungoverned actions/count/fingerprint drift.
 
-- [ ] **Step 3: Regenerate/reconcile the contract with repository tooling**
+- [x] **Step 3: Reconcile the effective contract with repository tooling**
 
-Use the existing validator's documented update path; do not hand-edit fingerprints. Review every generated diff. The resolve action is read-only even though it receives rows. Archive/restore are writes but not destructive hard deletes.
+The frozen Phase 0 base remains unchanged. A static additive extension records values produced by reproducible inventory, and the effective contract composes it with reviewed source, metadata, and authorization fingerprints. The resolve action is read-only even though it receives rows. Archive/restore are writes but not destructive hard deletes.
 
-- [ ] **Step 4: Add the new focused suite to root `npm test`**
+- [x] **Step 4: Add the new focused suite to root `npm test`**
 
 Place `npm run test:carrier-list-templates` before broad Bid Room regressions, without removing existing suites.
 
-- [ ] **Step 5: Run focused, type, and governance verification**
+- [x] **Step 5: Run focused, type, and governance verification**
 
 ```powershell
 npm run test:carrier-list-templates
@@ -920,7 +923,7 @@ node tests/rateware-stability.test.mjs
 node tests/rfx-multilane-e2e.test.mjs
 ```
 
-- [ ] **Step 6: Run the complete repository suite**
+- [x] **Step 6: Run the complete repository suite**
 
 ```powershell
 npm test
@@ -930,7 +933,9 @@ rg -n "^(<<<<<<<|=======|>>>>>>>)" . --glob '!node_modules/**' --glob '!tmp/**'
 
 Record exact results. Do not classify pre-existing failures as feature passes; compare to Task 0 baseline.
 
-- [ ] **Step 7: Commit governance and regression changes**
+Result: every suite before the frozen P3-V2 closure gate passes. Root `npm test` stops at the same Task 0 baseline: 2/4 P3-V2 closure tests fail because the exact production squash does not satisfy `merge-base --is-ancestor e3e1c0bc0c89d76e4c8d595e4054a749164b2eff HEAD`. Focused Carrier List Templates, Deno type-check, action governance, Rateware stability, Bid Room multi-lane, and preview suites pass independently.
+
+- [x] **Step 7: Commit governance and regression changes**
 
 ```powershell
 git add supabase/functions/_shared/action-contract.mjs docs/authorization/action-contract.md tests/action-contract.test.mjs package.json

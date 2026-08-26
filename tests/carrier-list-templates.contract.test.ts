@@ -798,6 +798,176 @@ class ScriptedQuery {
   }
 }
 
+type SharedMutableResult = {
+  data: {} | null;
+  error: null;
+  count: null;
+};
+
+class SharedMutableMaterializationDb extends ScriptedSupabase {
+  journal: Record<string, unknown> | null = null;
+  participants: Record<string, unknown>[] = [];
+  journalHistory: string[] = [];
+  pendingSnapshotReads = 0;
+  claimWins = 0;
+  finalizationWins = 0;
+  participantInsertCommits = 0;
+  auditInsertCommits = 0;
+  private pendingSnapshotsReleased = false;
+  private pendingSnapshotWaiters: Array<{
+    resolve: (result: SharedMutableResult) => void;
+    snapshot: Record<string, unknown>;
+  }> = [];
+
+  private result(data: {} | null): SharedMutableResult {
+    return { data, error: null, count: null };
+  }
+
+  private filter(trace: QueryTrace, kind: string, column: string) {
+    return trace.filters.find(([candidateKind, candidateColumn]) =>
+      candidateKind === kind && candidateColumn === column
+    )?.[2];
+  }
+
+  private arrayLiteral(value: unknown) {
+    const text = String(value || "");
+    return text.startsWith("{") && text.endsWith("}")
+      ? text.slice(1, -1).split(",").filter(Boolean)
+      : [];
+  }
+
+  private journalMatches(trace: QueryTrace) {
+    if (!this.journal) return false;
+    for (const [kind, column, expected] of trace.filters) {
+      if (kind === "eq" && this.journal[column] !== expected) return false;
+      if (
+        kind === "in" && Array.isArray(expected) &&
+        !expected.includes(this.journal[column])
+      ) return false;
+      if (kind === "filter") {
+        const [operator, literal] = expected as [string, unknown];
+        if (operator !== "eq") return false;
+        assertEquals(this.journal[column], this.arrayLiteral(literal));
+      }
+    }
+    return true;
+  }
+
+  private journalSelect(trace: QueryTrace) {
+    const snapshot = this.journal ? structuredClone(this.journal) : null;
+    if (
+      snapshot?.status === "pending" && !this.pendingSnapshotsReleased &&
+      this.filter(trace, "eq", "id") === materializationOperationId
+    ) {
+      this.pendingSnapshotReads += 1;
+      return new Promise<SharedMutableResult>((resolve) => {
+        this.pendingSnapshotWaiters.push({ resolve, snapshot });
+        if (this.pendingSnapshotWaiters.length === 2) {
+          this.pendingSnapshotsReleased = true;
+          const waiters = this.pendingSnapshotWaiters.splice(0);
+          queueMicrotask(() => {
+            for (const waiter of waiters) {
+              waiter.resolve(this.result(waiter.snapshot));
+            }
+          });
+        }
+      });
+    }
+    return Promise.resolve(this.result(snapshot));
+  }
+
+  override take(trace: QueryTrace): Promise<SharedMutableResult> {
+    if (trace.table === "vendor_segments" && trace.operation === "select") {
+      return Promise.resolve(this.result(materializationTemplate()));
+    }
+    if (trace.table === "vendors" && trace.operation === "select") {
+      return Promise.resolve(this.result([materializationVendor()]));
+    }
+    if (trace.table === "rfx_lanes" && trace.operation === "select") {
+      return Promise.resolve(this.result([materializationLane(materializationLaneA)]));
+    }
+    if (
+      trace.table === "carrier_template_materialization_operations" &&
+      trace.operation === "upsert"
+    ) {
+      const payload = trace.payload as {
+        rows: Record<string, unknown>;
+        options: Record<string, unknown>;
+      };
+      assertEquals(payload.options, { onConflict: "id", ignoreDuplicates: true });
+      if (!this.journal) {
+        this.journal = structuredClone(payload.rows);
+        this.journalHistory.push(String(this.journal.status));
+      }
+      return Promise.resolve(this.result(null));
+    }
+    if (
+      trace.table === "carrier_template_materialization_operations" &&
+      trace.operation === "select"
+    ) {
+      return this.journalSelect(trace);
+    }
+    if (
+      trace.table === "carrier_template_materialization_operations" &&
+      trace.operation === "update"
+    ) {
+      if (!this.journalMatches(trace)) return Promise.resolve(this.result(null));
+      const patch = structuredClone(trace.payload as Record<string, unknown>);
+      Object.assign(this.journal!, patch);
+      const status = String(patch.status);
+      this.journalHistory.push(status);
+      if (status === "mutation_issued") this.claimWins += 1;
+      if (status === "reconciled") this.finalizationWins += 1;
+      return Promise.resolve(this.result(structuredClone(this.journal)));
+    }
+    if (trace.table === "rfx_lane_vendors" && trace.operation === "upsert") {
+      const payload = trace.payload as {
+        rows: Record<string, unknown>[];
+        options: Record<string, unknown>;
+      };
+      assertEquals(payload.options, {
+        onConflict: "rfx_lane_id,vendor_id",
+        ignoreDuplicates: true,
+      });
+      const inserted: Record<string, unknown>[] = [];
+      for (const row of payload.rows) {
+        const exists = this.participants.some((candidate) =>
+          candidate.rfx_lane_id === row.rfx_lane_id &&
+          candidate.vendor_id === row.vendor_id
+        );
+        if (exists) continue;
+        const committed = {
+          ...structuredClone(row),
+          id: `shared-invitation-${this.participantInsertCommits + 1}`,
+        };
+        this.participants.push(committed);
+        inserted.push(structuredClone(committed));
+        this.participantInsertCommits += 1;
+      }
+      return Promise.resolve(this.result(inserted));
+    }
+    if (trace.table === "rfx_lane_vendors" && trace.operation === "select") {
+      const eventId = this.filter(trace, "eq", "rfx_event_id");
+      const laneIds = this.filter(trace, "in", "rfx_lane_id") as string[];
+      const vendorIds = this.filter(trace, "in", "vendor_id") as string[];
+      const rows = this.participants.filter((row) =>
+        row.rfx_event_id === eventId && laneIds.includes(String(row.rfx_lane_id)) &&
+        vendorIds.includes(String(row.vendor_id))
+      ).map((row) => structuredClone(row));
+      return Promise.resolve(this.result(rows));
+    }
+    if (trace.table === "saas_audit_log" && trace.operation === "insert") {
+      this.auditInsertCommits += 1;
+      return Promise.resolve(this.result(null));
+    }
+    throw new Error(`Unexpected shared mutable query ${trace.table}.${trace.operation}`);
+  }
+}
+
+function createSharedMutableMaterializationDb() {
+  return new SharedMutableMaterializationDb();
+}
+
 Deno.test("scripted Supabase rejects unsafe critical query shapes", () => {
   const db = new ScriptedSupabase([{
     table: "vendor_segments",
@@ -2061,6 +2231,47 @@ Deno.test("Task 7 mutation-issued-first interleaving makes rejection lose and co
     "Blocked request observing mutation_issued must never attempt rejection",
   );
   assertEquals(db.responses.length, 0);
+});
+
+Deno.test("Task 9 shared mutable journal lets one CAS result govern both concurrent requests", async () => {
+  const db = createSharedMutableMaterializationDb();
+  const handler = createTestRatewareApiHandler(db);
+  assert(handler);
+
+  const [firstResponse, secondResponse] = await Promise.all([
+    handler(jsonActionRequest(materializationAction())),
+    handler(jsonActionRequest(materializationAction())),
+  ]);
+
+  assertEquals(firstResponse.status, 200);
+  assertEquals(secondResponse.status, 200);
+  const [firstBody, secondBody] = await Promise.all([
+    firstResponse.json(),
+    secondResponse.json(),
+  ]);
+  assertEquals(firstBody.result, "inserted");
+  assertEquals(secondBody.result, "inserted");
+  assertEquals(firstBody.counts, secondBody.counts);
+  assertEquals(firstBody.outcomes, secondBody.outcomes);
+  assertEquals(db.pendingSnapshotReads, 2);
+  assertEquals(db.claimWins, 1);
+  assertEquals(db.finalizationWins, 1);
+  assertEquals(db.participantInsertCommits, 1);
+  assertEquals(db.auditInsertCommits, 1);
+  assertEquals(db.journal?.status, "reconciled");
+  assertEquals(db.journal?.inserted_count, 1);
+  assertEquals(db.journalHistory, ["pending", "mutation_issued", "reconciled"]);
+  assertEquals(db.participants.length, 1);
+  assertEquals(
+    db.participants[0].carrier_template_materialization_operation_id,
+    materializationOperationId,
+  );
+  assertEquals(
+    JSON.stringify([firstBody, secondBody]).includes(
+      "carrier_template_materialization_operation_id",
+    ),
+    false,
+  );
 });
 
 Deno.test("Task 7 normal RFx detail serialization never exposes the internal operation marker", async () => {

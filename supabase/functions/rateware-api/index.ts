@@ -1817,6 +1817,19 @@ export async function handleCarrierTemplateApiAction(
   return null;
 }
 
+async function carrierTemplateApiResponse(
+  supabase: RatewareSupabaseClient,
+  user: RuntimeWorkspaceUser,
+  claims: Record<string, unknown>,
+  input: Record<string, unknown>,
+  enabled: boolean,
+  request: Request
+) {
+  const result = await handleCarrierTemplateApiAction(supabase, user, claims, input, { enabled });
+  if (!result) throw new Error("Carrier list template action dispatch failed.");
+  return baseJsonResponse(result.body, result.status, request);
+}
+
 const CARRIER_INTELLIGENCE_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -25585,16 +25598,14 @@ export function createRatewareApiHandler(
       return jsonResponse(await handleGrowthAction(supabase, user, body));
     }
 
-    const carrierTemplateAction = await handleCarrierTemplateApiAction(
-      supabase,
-      user,
-      claims,
-      body,
-      { enabled: carrierTemplatesEnabled }
-    );
-    if (carrierTemplateAction) {
-      return jsonResponse(carrierTemplateAction.body, carrierTemplateAction.status);
-    }
+    if (body.action === "list_carrier_list_templates") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "get_carrier_list_template") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "resolve_carrier_list_template_rows") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "create_carrier_list_template") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "update_carrier_list_template") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "duplicate_carrier_list_template") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "archive_carrier_list_template") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "restore_carrier_list_template") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
 
     if (body.action === "list_rfx_process_projects") {
       return jsonResponse(await listRfxProcessProjects(supabase, user, body));
