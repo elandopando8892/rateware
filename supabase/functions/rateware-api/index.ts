@@ -7960,15 +7960,6 @@ function normalizeSegment(input: Record<string, unknown>, user?: { owner_user_id
   };
 }
 
-function participantTemplateNameKey(value: unknown) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLocaleLowerCase();
-}
-
 async function findParticipantTemplateNameConflict(
   supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
@@ -7982,9 +7973,9 @@ async function findParticipantTemplateNameConflict(
     .eq("segment_type", "participant_template")
     .limit(250);
   if (result.error) throw result.error;
-  const key = participantTemplateNameKey(segmentName);
+  const key = carrierTemplateNameKey(segmentName);
   return (result.data || []).find((segment) =>
-    segment.id !== excludeId && participantTemplateNameKey(segment.segment_name) === key
+    segment.id !== excludeId && carrierTemplateNameKey(segment.segment_name) === key
   ) || null;
 }
 
@@ -24490,7 +24481,22 @@ async function markRfxAwardPackageImplementationReady(
   return { row: awardUpdate.data, project_id: project.id, shipper_opportunity: shipperOpportunity };
 }
 
-Deno.serve(async (request) => {
+type RatewareApiHandlerDependencies = {
+  getClient?: () => RatewareSupabaseClient;
+  authenticate?: typeof requireKindeUser;
+  resolveUser?: RatewareIdentityDependencies["resolveUser"];
+  carrierTemplatesEnabled?: boolean;
+};
+
+export function createRatewareApiHandler(
+  dependencies: RatewareApiHandlerDependencies = {}
+) {
+  const clientFactory = dependencies.getClient ?? getClient;
+  const authenticate = dependencies.authenticate ?? requireKindeUser;
+  const resolveUser = dependencies.resolveUser ?? resolveRuntimeWorkspaceUser;
+  const carrierTemplatesEnabled = dependencies.carrierTemplatesEnabled ?? CARRIER_LIST_TEMPLATES_V2_ENABLED;
+
+  return async (request: Request) => {
   const requestStartedAt = performance.now();
   const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
@@ -24500,11 +24506,11 @@ Deno.serve(async (request) => {
   let body: Record<string, unknown> = {};
 
   try {
-    const supabase = getClient();
+    const supabase = clientFactory();
     auditSupabase = supabase;
     const authenticationStartedAt = performance.now();
-    const claims = await requireKindeUser(request);
-    const { user } = await resolveRatewareApiPrincipal(supabase, claims);
+    const claims = await authenticate(request);
+    const { user } = await resolveRatewareApiPrincipal(supabase, claims, { resolveUser });
     const authenticationCompletedAt = performance.now();
     auditUser = user;
     body = await request.json();
@@ -24515,7 +24521,13 @@ Deno.serve(async (request) => {
       return jsonResponse(await handleGrowthAction(supabase, user, body));
     }
 
-    const carrierTemplateAction = await handleCarrierTemplateApiAction(supabase, user, claims, body);
+    const carrierTemplateAction = await handleCarrierTemplateApiAction(
+      supabase,
+      user,
+      claims,
+      body,
+      { enabled: carrierTemplatesEnabled }
+    );
     if (carrierTemplateAction) {
       return jsonResponse(carrierTemplateAction.body, carrierTemplateAction.status);
     }
@@ -27082,7 +27094,7 @@ Deno.serve(async (request) => {
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
       if (requestedSegmentType === "participant_template") {
-        const scope = carrierTemplateLegacyReadScope(CARRIER_LIST_TEMPLATES_V2_ENABLED, requestedSegmentType, user);
+        const scope = carrierTemplateLegacyReadScope(carrierTemplatesEnabled, requestedSegmentType, user);
         if (!scope?.value) return jsonResponse({ error: "An organization-scoped workspace is required." }, 403);
         query = query.eq(scope.column, scope.value).eq("segment_type", "participant_template");
       } else {
@@ -27097,7 +27109,7 @@ Deno.serve(async (request) => {
 
     if (body.action === "create_vendor_segment") {
       const row = normalizeSegment(objectRecord(body.segment), user);
-      if (carrierTemplateLegacyMutationBlocked(CARRIER_LIST_TEMPLATES_V2_ENABLED, row.segment_type, null)) {
+      if (carrierTemplateLegacyMutationBlocked(carrierTemplatesEnabled, row.segment_type, null)) {
         return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
       }
       if (row.segment_type === "participant_template") {
@@ -27120,10 +27132,10 @@ Deno.serve(async (request) => {
     if (body.action === "update_vendor_segment") {
       if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
       const patch = normalizeSegment(objectRecord(body.segment || body.patch), user);
-      if (carrierTemplateLegacyMutationBlocked(CARRIER_LIST_TEMPLATES_V2_ENABLED, patch.segment_type, null)) {
+      if (carrierTemplateLegacyMutationBlocked(carrierTemplatesEnabled, patch.segment_type, null)) {
         return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
       }
-      if (CARRIER_LIST_TEMPLATES_V2_ENABLED && user.organization_id) {
+      if (carrierTemplatesEnabled && user.organization_id) {
         const currentSegment = await supabase
           .from("vendor_segments")
           .select("segment_type")
@@ -27142,14 +27154,21 @@ Deno.serve(async (request) => {
           return jsonResponse({ error: `A participant template named "${conflict.segment_name}" already exists. Choose a different name.` }, 409);
         }
       }
-      const result = await supabase
+      let mutation = supabase
         .from("vendor_segments")
         .update(patch)
         .eq("owner_email", user.owner_email)
-        .eq("id", body.id)
-        .select()
-        .single();
+        .eq("id", body.id);
+      if (carrierTemplatesEnabled) {
+        mutation = mutation.neq("segment_type", "participant_template");
+      }
+      const result = carrierTemplatesEnabled
+        ? await mutation.select().maybeSingle()
+        : await mutation.select().single();
       if (result.error) throw result.error;
+      if (carrierTemplatesEnabled && !result.data) {
+        return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+      }
       await tryWriteAuditLog(supabase, user, "vendor.segment.update", "vendor_segments", result.data.id,
         `Updated vendor segment ${cleanText(result.data.segment_name) || result.data.id}`, {
           segment_type: result.data.segment_type,
@@ -27161,10 +27180,10 @@ Deno.serve(async (request) => {
     if (body.action === "delete_vendor_segment") {
       if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
       const requestedSegmentType = cleanText(body.segment_type)?.toLowerCase();
-      if (carrierTemplateLegacyMutationBlocked(CARRIER_LIST_TEMPLATES_V2_ENABLED, requestedSegmentType || null, null)) {
+      if (carrierTemplateLegacyMutationBlocked(carrierTemplatesEnabled, requestedSegmentType || null, null)) {
         return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
       }
-      if (CARRIER_LIST_TEMPLATES_V2_ENABLED && user.organization_id) {
+      if (carrierTemplatesEnabled && user.organization_id) {
         const currentSegment = await supabase
           .from("vendor_segments")
           .select("segment_type")
@@ -27178,9 +27197,15 @@ Deno.serve(async (request) => {
       }
       requireBulkConfirmation(body, { action: "delete_vendor_segment", label: "Vendor segment deletion", count: 1 });
       let query = supabase.from("vendor_segments").delete().eq("owner_email", user.owner_email).eq("id", body.id);
+      if (carrierTemplatesEnabled) query = query.neq("segment_type", "participant_template");
       if (requestedSegmentType) query = query.eq("segment_type", requestedSegmentType);
-      const result = await query.select().single();
+      const result = carrierTemplatesEnabled
+        ? await query.select().maybeSingle()
+        : await query.select().single();
       if (result.error) throw result.error;
+      if (carrierTemplatesEnabled && !result.data) {
+        return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+      }
       await tryWriteAuditLog(supabase, user, "vendor.segment.delete", "vendor_segments", result.data.id,
         `Deleted vendor segment ${cleanText(result.data.segment_name || result.data.name) || result.data.id}`);
       return jsonResponse({ row: result.data });
@@ -32023,4 +32048,7 @@ Deno.serve(async (request) => {
       stage: errorStage
     }, errorStatus);
   }
-});
+  };
+}
+
+Deno.serve(createRatewareApiHandler());

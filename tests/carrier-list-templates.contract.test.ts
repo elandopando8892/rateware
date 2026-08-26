@@ -157,6 +157,21 @@ Deno.test("template names and vendor ids normalize deterministically", () => {
   );
 });
 
+Deno.test("template name keys mirror rateware_vendor_search_key SQL semantics", () => {
+  const fixtures: Array<[string, string]> = [
+    [
+      " ÁÀÄÂÃÅ ÉÈËÊ ÍÌÏÎ ÓÒÖÔÕ ÚÙÜÛ ÑÇ ",
+      "aaaaaa eeee iiii ooooo uuuu nc",
+    ],
+    ["Crème—Brûlée!!!   México", "creme brulee mexico"],
+    [" Alpha___---\t\nBeta ", "alpha beta"],
+    ["Dvořák / Straße", "dvo ak stra e"],
+  ];
+  for (const [input, expected] of fixtures) {
+    assertEquals(carrierTemplateNameKey(input), expected, input);
+  }
+});
+
 Deno.test("draft may be empty but active may not", () => {
   const actor = {
     user_id: "kp_1",
@@ -328,6 +343,7 @@ type ScriptedResponse = {
   data?: unknown;
   error?: unknown;
   count?: number | null;
+  filters?: QueryTrace["filters"];
 };
 
 type QueryTrace = {
@@ -360,6 +376,7 @@ class ScriptedSupabase {
     assert(response, `Unexpected ${trace.table}.${trace.operation} query`);
     assertEquals(response.table, trace.table);
     assertEquals(response.operation, trace.operation);
+    if (response.filters) assertEquals(trace.filters, response.filters);
     return Promise.resolve({
       data: response.data ?? null,
       error: response.error ?? null,
@@ -397,6 +414,11 @@ class ScriptedQuery {
 
   eq(column: string, value: unknown) {
     this.trace.filters.push(["eq", column, value]);
+    return this;
+  }
+
+  neq(column: string, value: unknown) {
+    this.trace.filters.push(["neq", column, value]);
     return this;
   }
 
@@ -441,6 +463,21 @@ class ScriptedQuery {
   }
 }
 
+Deno.test("scripted Supabase rejects unsafe critical query shapes", () => {
+  const db = new ScriptedSupabase([{
+    table: "vendor_segments",
+    operation: "update",
+    data: { id: "safe" },
+    filters: [["eq", "id", "safe"]],
+  }]);
+  assertThrows(() =>
+    db.from("vendor_segments")
+      .update({ segment_name: "Core" })
+      .eq("id", "unsafe")
+      .maybeSingle()
+  );
+});
+
 const workspaceUser = {
   owner_user_id: "kp_1",
   owner_email: "org:org-a",
@@ -466,6 +503,298 @@ async function callCarrierTemplateAction(
     body: Record<string, unknown>;
   } | null;
 }
+
+function createTestRatewareApiHandler(
+  db: ScriptedSupabase,
+  {
+    enabled = true,
+    claims = manageClaims,
+    user = workspaceUser,
+    onResolve,
+  }: {
+    enabled?: boolean;
+    claims?: Record<string, unknown>;
+    user?: {
+      owner_user_id: string;
+      owner_email: string;
+      organization_id: string | null;
+    };
+    onResolve?: (claims: Record<string, unknown>) => void;
+  } = {},
+) {
+  const factory = ratewareApi.createRatewareApiHandler;
+  assertEquals(typeof factory, "function");
+  if (typeof factory !== "function") return null;
+  return factory({
+    getClient: () => db,
+    authenticate: (_request: Request) => Promise.resolve(claims),
+    resolveUser: (
+      _client: unknown,
+      verifiedClaims: Record<string, unknown>,
+      options: Record<string, unknown>,
+    ) => {
+      assertStrictEquals(verifiedClaims, claims);
+      assertEquals(options, { persistLegacyIdentity: false });
+      onResolve?.(verifiedClaims);
+      return Promise.resolve(user);
+    },
+    carrierTemplatesEnabled: enabled,
+  }) as (request: Request) => Promise<Response>;
+}
+
+function jsonActionRequest(body: Record<string, unknown>) {
+  return new Request("https://rateware.test/functions/v1/rateware-api", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+Deno.test("real request dispatcher preserves raw claims and resolved organization scope", async () => {
+  const db = new ScriptedSupabase([{
+    table: "vendor_segments",
+    operation: "select",
+    data: [{ id: "template-a" }],
+    count: 1,
+  }]);
+  let resolvedClaims: Record<string, unknown> | null = null;
+  const rawClaims = {
+    ...manageClaims,
+    organization_id: "client-claim-org-must-not-scope",
+  };
+  const handler = createTestRatewareApiHandler(db, {
+    claims: rawClaims,
+    onResolve: (claims) => resolvedClaims = claims,
+  });
+  assert(handler);
+
+  const response = await handler(jsonActionRequest({
+    action: "list_carrier_list_templates",
+    organization_id: "client-body-org-must-not-scope",
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), {
+    enabled: true,
+    rows: [{ id: "template-a" }],
+    total: 1,
+    limit: 50,
+    offset: 0,
+    has_more: false,
+  });
+  assertStrictEquals(resolvedClaims, rawClaims);
+  assertEquals(db.traces[0].filters, [
+    ["eq", "organization_id", "org-a"],
+    ["eq", "segment_type", "participant_template"],
+    ["order", "updated_at", { ascending: false }],
+    ["range", "0", 49],
+  ]);
+});
+
+Deno.test("real request dispatcher honors feature flag and raw-claim write permission", async () => {
+  const disabledDb = new ScriptedSupabase();
+  const disabledHandler = createTestRatewareApiHandler(disabledDb, {
+    enabled: false,
+  });
+  assert(disabledHandler);
+  const disabledResponse = await disabledHandler(jsonActionRequest({
+    action: "list_carrier_list_templates",
+  }));
+  assertEquals(disabledResponse.status, 404);
+  assertEquals(await disabledResponse.json(), {
+    enabled: false,
+    error: "Carrier list templates are not enabled.",
+  });
+  assertEquals(disabledDb.traces, []);
+
+  const deniedDb = new ScriptedSupabase();
+  const deniedHandler = createTestRatewareApiHandler(deniedDb, {
+    claims: { sub: "kp_1", permissions: ["vendors:read"] },
+  });
+  assert(deniedHandler);
+  const deniedResponse = await deniedHandler(jsonActionRequest({
+    action: "create_carrier_list_template",
+    template: { segment_name: "Core", vendor_ids: [vendorA.id] },
+  }));
+  assertEquals(deniedResponse.status, 403);
+  assertEquals(await deniedResponse.json(), {
+    enabled: true,
+    error: "Missing required permission: vendors:manage",
+  });
+  assertEquals(deniedDb.traces, []);
+});
+
+Deno.test("enabled legacy generic mutations guard the final dynamic row mutation", async () => {
+  const segmentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const dynamicSegment = {
+    id: segmentId,
+    segment_name: "Dynamic Core",
+    segment_type: "dynamic",
+    vendor_ids: [],
+  };
+  const updateDb = new ScriptedSupabase([
+    {
+      table: "vendor_segments",
+      operation: "select",
+      data: dynamicSegment,
+      filters: [
+        ["eq", "id", segmentId],
+        ["eq", "organization_id", "org-a"],
+      ],
+    },
+    {
+      table: "vendor_segments",
+      operation: "update",
+      data: dynamicSegment,
+      filters: [
+        ["eq", "owner_email", "org:org-a"],
+        ["eq", "id", segmentId],
+        ["neq", "segment_type", "participant_template"],
+      ],
+    },
+    { table: "saas_audit_log", operation: "insert", data: {} },
+  ]);
+  const updateHandler = createTestRatewareApiHandler(updateDb);
+  assert(updateHandler);
+  const updateResponse = await updateHandler(jsonActionRequest({
+    action: "update_vendor_segment",
+    id: segmentId,
+    patch: { segment_name: "Dynamic Core" },
+  }));
+  assertEquals(updateResponse.status, 200);
+  const finalUpdate = updateDb.traces.find((trace) =>
+    trace.table === "vendor_segments" && trace.operation === "update"
+  );
+  assertEquals(finalUpdate?.filters, [
+    ["eq", "owner_email", "org:org-a"],
+    ["eq", "id", segmentId],
+    ["neq", "segment_type", "participant_template"],
+  ]);
+
+  const deleteDb = new ScriptedSupabase([
+    {
+      table: "vendor_segments",
+      operation: "select",
+      data: dynamicSegment,
+      filters: [
+        ["eq", "id", segmentId],
+        ["eq", "organization_id", "org-a"],
+      ],
+    },
+    {
+      table: "vendor_segments",
+      operation: "delete",
+      data: dynamicSegment,
+      filters: [
+        ["eq", "owner_email", "org:org-a"],
+        ["eq", "id", segmentId],
+        ["neq", "segment_type", "participant_template"],
+      ],
+    },
+    { table: "saas_audit_log", operation: "insert", data: {} },
+  ]);
+  const deleteHandler = createTestRatewareApiHandler(deleteDb);
+  assert(deleteHandler);
+  const deleteResponse = await deleteHandler(jsonActionRequest({
+    action: "delete_vendor_segment",
+    id: segmentId,
+    confirmed: true,
+    confirmation_action: "delete_vendor_segment",
+  }));
+  assertEquals(deleteResponse.status, 200);
+  const finalDelete = deleteDb.traces.find((trace) =>
+    trace.table === "vendor_segments" && trace.operation === "delete"
+  );
+  assertEquals(finalDelete?.filters, [
+    ["eq", "owner_email", "org:org-a"],
+    ["eq", "id", segmentId],
+    ["neq", "segment_type", "participant_template"],
+  ]);
+});
+
+Deno.test("enabled legacy final mutation guard fails closed after pre-read misses or races", async () => {
+  const segmentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const dynamicSegment = {
+    id: segmentId,
+    segment_name: "Dynamic Core",
+    segment_type: "dynamic",
+    vendor_ids: [],
+  };
+  for (const action of ["update_vendor_segment", "delete_vendor_segment"]) {
+    const operation = action === "update_vendor_segment" ? "update" : "delete";
+    const db = new ScriptedSupabase([
+      {
+        table: "vendor_segments",
+        operation: "select",
+        data: dynamicSegment,
+        filters: [
+          ["eq", "id", segmentId],
+          ["eq", "organization_id", "org-a"],
+        ],
+      },
+      {
+        table: "vendor_segments",
+        operation,
+        data: null,
+        filters: [
+          ["eq", "owner_email", "org:org-a"],
+          ["eq", "id", segmentId],
+          ["neq", "segment_type", "participant_template"],
+        ],
+      },
+    ]);
+    const handler = createTestRatewareApiHandler(db);
+    assert(handler);
+    const response = await handler(jsonActionRequest({
+      action,
+      id: segmentId,
+      patch: { segment_name: "Dynamic Core" },
+      confirmed: true,
+      confirmation_action: "delete_vendor_segment",
+    }));
+    assertEquals(response.status, 409);
+    assertEquals(await response.json(), {
+      error:
+        "Participant templates must use the explicit carrier list template actions.",
+    });
+    assertEquals(db.traces[1].filters, [
+      ["eq", "owner_email", "org:org-a"],
+      ["eq", "id", segmentId],
+      ["neq", "segment_type", "participant_template"],
+    ]);
+  }
+
+  const nullOrganizationDb = new ScriptedSupabase([
+    {
+      table: "vendor_segments",
+      operation: "update",
+      data: null,
+      filters: [
+        ["eq", "owner_email", "org:org-a"],
+        ["eq", "id", segmentId],
+        ["neq", "segment_type", "participant_template"],
+      ],
+    },
+  ]);
+  const nullOrganizationHandler = createTestRatewareApiHandler(
+    nullOrganizationDb,
+    { user: { ...workspaceUser, organization_id: null } },
+  );
+  assert(nullOrganizationHandler);
+  const nullOrganizationResponse = await nullOrganizationHandler(
+    jsonActionRequest({
+      action: "update_vendor_segment",
+      id: segmentId,
+      patch: { segment_name: "Dynamic Core" },
+    }),
+  );
+  assertEquals(nullOrganizationResponse.status, 409);
+  assertEquals(nullOrganizationDb.traces[0].filters, [
+    ["eq", "owner_email", "org:org-a"],
+    ["eq", "id", segmentId],
+    ["neq", "segment_type", "participant_template"],
+  ]);
+});
 
 Deno.test("explicit template actions fail closed while capability is disabled", async () => {
   const db = new ScriptedSupabase();
@@ -647,7 +976,17 @@ Deno.test("update uses an expected-version barrier and reports the current versi
   };
   const db = new ScriptedSupabase([
     { table: "vendor_segments", operation: "select", data: current },
-    { table: "vendor_segments", operation: "update", data: null },
+    {
+      table: "vendor_segments",
+      operation: "update",
+      data: null,
+      filters: [
+        ["eq", "id", current.id],
+        ["eq", "organization_id", "org-a"],
+        ["eq", "segment_type", "participant_template"],
+        ["eq", "template_version", 2],
+      ],
+    },
     { table: "vendor_segments", operation: "select", data: raced },
   ]);
   const result = await callCarrierTemplateAction(db, {
@@ -670,14 +1009,14 @@ Deno.test("update uses an expected-version barrier and reports the current versi
       template_id: current.id,
     },
   });
-  assert(
-    db.traces.some((trace) =>
-      trace.operation === "update" &&
-      trace.filters.some((filter) =>
-        filter[0] === "eq" && filter[1] === "template_version" &&
-        filter[2] === 2
-      )
-    ),
+  assertEquals(
+    db.traces.find((trace) => trace.operation === "update")?.filters,
+    [
+      ["eq", "id", current.id],
+      ["eq", "organization_id", "org-a"],
+      ["eq", "segment_type", "participant_template"],
+      ["eq", "template_version", 2],
+    ],
   );
 });
 
@@ -851,7 +1190,17 @@ Deno.test("archive and restore increment versions while restore preserves missin
   };
   const archiveDb = new ScriptedSupabase([
     { table: "vendor_segments", operation: "select", data: active },
-    { table: "vendor_segments", operation: "update", data: archived },
+    {
+      table: "vendor_segments",
+      operation: "update",
+      data: archived,
+      filters: [
+        ["eq", "id", templateId],
+        ["eq", "organization_id", "org-a"],
+        ["eq", "segment_type", "participant_template"],
+        ["eq", "template_version", 4],
+      ],
+    },
     { table: "saas_audit_log", operation: "insert", data: null },
   ]);
   assertEquals(
@@ -870,7 +1219,17 @@ Deno.test("archive and restore increment versions while restore preserves missin
   const restoreDb = new ScriptedSupabase([
     { table: "vendor_segments", operation: "select", data: archived },
     { table: "vendors", operation: "select", data: [vendorA] },
-    { table: "vendor_segments", operation: "update", data: restored },
+    {
+      table: "vendor_segments",
+      operation: "update",
+      data: restored,
+      filters: [
+        ["eq", "id", templateId],
+        ["eq", "organization_id", "org-a"],
+        ["eq", "segment_type", "participant_template"],
+        ["eq", "template_version", 5],
+      ],
+    },
     { table: "saas_audit_log", operation: "insert", data: null },
   ]);
   assertEquals(
@@ -886,6 +1245,24 @@ Deno.test("archive and restore increment versions while restore preserves missin
   )?.payload as Record<string, unknown>;
   assertEquals(restorePatch.vendor_ids, [vendorA.id, missingId]);
   assertEquals(restorePatch.template_version, 6);
+  assertEquals(
+    archiveDb.traces.find((trace) => trace.operation === "update")?.filters,
+    [
+      ["eq", "id", templateId],
+      ["eq", "organization_id", "org-a"],
+      ["eq", "segment_type", "participant_template"],
+      ["eq", "template_version", 4],
+    ],
+  );
+  assertEquals(
+    restoreDb.traces.find((trace) => trace.operation === "update")?.filters,
+    [
+      ["eq", "id", templateId],
+      ["eq", "organization_id", "org-a"],
+      ["eq", "segment_type", "participant_template"],
+      ["eq", "template_version", 5],
+    ],
+  );
 });
 
 Deno.test("get returns the same 404 for absent or foreign organization ids", async () => {

@@ -1100,7 +1100,9 @@ for (const [source, label] of [
   assert.match(source, /requirePrivatePage\(\)\.then\([\s\S]+\.catch\(\(\) => \{\}\);/, `${label} should absorb the expected unauthenticated redirect rejection`);
 }
 assert.match(supabaseConfigSource, /\[functions\.rateware-api\]\s*verify_jwt\s*=\s*false/, "Rateware API must bypass Supabase gateway JWT verification so its Kinde RS256 verifier can authenticate requests");
-assert.match(apiSource, /requireKindeUser\(request\)/, "Rateware API must authenticate every request with the custom Kinde verifier when gateway JWT verification is disabled");
+assert.match(apiSource, /const authenticate = dependencies\.authenticate \?\? requireKindeUser/, "Rateware API handler factory must default to the custom Kinde verifier when gateway JWT verification is disabled");
+assert.match(apiSource, /const claims = await authenticate\(request\)/, "Rateware API handler must preserve verified raw claims before workspace resolution");
+assert.match(apiSource, /Deno\.serve\(createRatewareApiHandler\(\)\)/, "Production serving must use the same injectable Rateware API handler factory as request tests");
 assert.match(ratewareApiClientSource, /import \{ authenticatedFetch \} from "\.\/auth\.js"/, "Rateware API calls should use the shared authenticated request executor");
 assert.doesNotMatch(ratewareApiClientSource, /getKindeToken|response\.status === 401/, "Rateware API calls should not duplicate token refresh and retry logic");
 assert.doesNotMatch(ratewareApiClientSource, /JSON\.stringify\(value\)/, "Rateware API client should not render opaque backend objects as raw JSON errors");
@@ -3585,9 +3587,9 @@ assert.match(workspaceIdentitySource, /WORKSPACE_IDENTITY_CACHE_TTL_MS = 5 \* 60
 assert.match(workspaceIdentitySource, /identityKeys\.every\(\(identityKey\) => cachedWorkspace\.identity_keys\.has\(identityKey\)\)/, "Workspace cache hits should avoid database work only when every authenticated identity is registered");
 assert.match(workspaceIdentitySource, /from\("workspace_registry"\)[\s\S]+\.select\("organization_id,canonical_owner_key"\)[\s\S]+if \(registryRow\)/, "Cold workspace resolution should read the registry before attempting a write");
 assert.match(workspaceIdentitySource, /const missingIdentityKeys = uncachedIdentityKeys\.filter/, "Workspace resolution should write only aliases that do not already exist");
-assert.match(apiSource, /resolveRuntimeWorkspaceUser\([\s\S]+?requireKindeUser/, "Rateware API should enforce the reviewed tenant identity before action routing");
+assert.match(apiSource, /const resolveUser = dependencies\.resolveUser \?\? resolveRuntimeWorkspaceUser/, "Rateware API handler factory should default to the reviewed runtime tenant resolver");
 assert.match(workspaceIdentitySource, /if \(options\.persistIdentity === false\)[\s\S]+owner_email: canonicalOwnerKey/, "Read-heavy APIs should derive the canonical organization owner without database identity writes");
-assert.match(apiSource, /resolveRuntimeWorkspaceUser\([\s\S]+await requireKindeUser\(request\)/, "Rateware API polling should use the staged runtime tenant resolver");
+assert.match(apiSource, /const claims = await authenticate\(request\)[\s\S]+resolveRatewareApiPrincipal\(supabase, claims, \{ resolveUser \}\)/, "Rateware API must preserve raw claims before the staged runtime tenant resolver scopes actions");
 assert.match(apiSource, /supabase\.rpc\("rateware_bid_room_chat_snapshot"/, "Bid Room polling should load its database snapshot through one backend RPC");
 assert.match(apiSource, /if \(input\.sync_google_chat === true\) return listBidRoomChatLegacy/, "Explicit Google Chat inbound sync should retain its external synchronization path");
 assert.match(apiSource, /isMissingBidRoomChatSnapshotRpc/, "Bid Room polling should fall back safely during a staged database deployment");
@@ -3733,7 +3735,9 @@ for (const field of ['lifecycle_status', 'template_version', 'created_by_user_id
 assert.match(carrierTemplateMigration, /segment_type\s*=\s*'participant_template'/);
 assert.match(carrierTemplateMigration, /workspace_identity_aliases/);
 assert.match(carrierTemplateMigration, /raise exception/i);
-assert.match(carrierTemplateMigration, /create unique index[\s\S]*lower\(btrim\(segment_name\)\)/i);
+assert.match(carrierTemplateMigration, /select organization_id, public\.rateware_vendor_search_key\(segment_name\) as normalized_segment_name[\s\S]+group by organization_id, public\.rateware_vendor_search_key\(segment_name\)/i, "Carrier template legacy duplicate preflight must use the canonical SQL search key");
+assert.match(carrierTemplateMigration, /create unique index vendor_segments_participant_template_org_name_uidx[\s\S]+\(organization_id, public\.rateware_vendor_search_key\(segment_name\)\)[\s\S]+where segment_type = 'participant_template'/i, "Carrier template uniqueness must use the same canonical SQL search key as the API");
+assert.doesNotMatch(carrierTemplateMigration, /organization_id, lower\(btrim\(segment_name\)\)/i, "Carrier template uniqueness must not retain the narrower legacy lower-trim key");
 assert.match(carrierTemplateMigration, /cardinality\(new\.vendor_ids\)/i);
 assert.match(carrierTemplateMigration, /from public\.vendor_segments segment[\s\S]+?unnest\(segment\.vendor_ids\)[\s\S]+?carrier template migration blocked: % participant templates contain duplicate vendor_ids/i, "Carrier template migration must fail closed when a legacy template has duplicate member UUIDs");
 assert.match(carrierTemplateMigration, /from public\.vendor_segments segment[\s\S]+?public\.vendors v[\s\S]+?v\.id = any\(segment\.vendor_ids\)[\s\S]+?v\.organization_id is distinct from segment\.organization_id[\s\S]+?carrier template migration blocked: % participant templates include members from another organization/i, "Carrier template migration must fail closed when an existing member belongs to another organization");

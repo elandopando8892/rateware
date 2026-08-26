@@ -47,10 +47,16 @@ export function requireCarrierTemplateManagePermission(
 }
 
 export function carrierTemplateNameKey(value: unknown): string {
-  const source = text(value);
-  if (!source) throw new Error("segment_name is required");
-  return source.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase().replace(/\s+/g, " ").trim();
+  const translatedCharacters = "áàäâãåéèëêíìïîóòöôõúùüûñç";
+  const asciiCharacters = "aaaaaaeeeeiiiiooooouuuunc";
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(
+      /[áàäâãåéèëêíìïîóòöôõúùüûñç]/g,
+      (character) => asciiCharacters[translatedCharacters.indexOf(character)],
+    )
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 export function normalizeCarrierTemplateVendorIds(value: unknown): string[] {

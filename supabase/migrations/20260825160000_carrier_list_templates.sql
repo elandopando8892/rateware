@@ -110,10 +110,10 @@ declare duplicate_count bigint;
 begin
   select count(*) into duplicate_count
   from (
-    select organization_id, lower(btrim(segment_name)) as normalized_segment_name
+    select organization_id, public.rateware_vendor_search_key(segment_name) as normalized_segment_name
     from public.vendor_segments
     where segment_type = 'participant_template'
-    group by organization_id, lower(btrim(segment_name))
+    group by organization_id, public.rateware_vendor_search_key(segment_name)
     having count(*) > 1
   ) duplicate_names;
 
@@ -135,7 +135,7 @@ alter table public.vendor_segments
     check (segment_type <> 'participant_template' or lifecycle_status <> 'active' or cardinality(vendor_ids) > 0);
 
 create unique index vendor_segments_participant_template_org_name_uidx
-  on public.vendor_segments (organization_id, lower(btrim(segment_name)))
+  on public.vendor_segments (organization_id, public.rateware_vendor_search_key(segment_name))
   where segment_type = 'participant_template';
 
 create or replace function public.rateware_validate_participant_template_membership()
