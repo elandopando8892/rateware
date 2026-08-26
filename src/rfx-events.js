@@ -54,7 +54,17 @@ import {
   updateOutreachTemplate
 } from "./outreach-service.js?v=20260801-outreach-read-v1";
 import { fetchCarrierRecommendations } from "./business-intelligence-service.js";
-import { createVendorSegment, deleteVendorSegment, fetchVendorSegments, fetchVendors, updateVendorSegment } from "./vendor-service.js";
+import {
+  createVendorSegment,
+  deleteVendorSegment,
+  fetchCarrierListTemplates,
+  fetchVendorSegments,
+  fetchVendors,
+  getCarrierListTemplate,
+  updateVendorSegment
+} from "./vendor-service.js";
+import { partitionCarrierTemplateMembers, templateMemberIds } from "./carrier-list-template-domain.js";
+import { callRatewareApi } from "./rateware-api.js";
 import { fetchShippers } from "./shipper-service.js";
 import { fetchWhatsappConnections } from "./settings-service.js";
 import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
@@ -70,6 +80,9 @@ const XBF_BUY_SELL_MAX_MARKUP_PCT = 15;
 const CRM_VENDOR_INITIAL_PAGE_SIZE = 200;
 const CRM_VENDOR_PAGE_SIZE = 1000;
 const CRM_VENDOR_SEARCH_LIMIT = 1000;
+const CARRIER_TEMPLATE_VENDOR_BATCH_SIZE = 250;
+const CARRIER_TEMPLATE_LIST_PAGE_SIZE = 200;
+const CARRIER_TEMPLATE_LIST_SAFETY_LIMIT = 50000;
 const RFX_CUSTOMER_SEARCH_LIMIT = 50;
 const RFX_CUSTOMER_SEARCH_DEBOUNCE_MS = 180;
 
@@ -244,6 +257,7 @@ const rfxOutreachCarrierSelectedCount = document.querySelector("#rfx-outreach-ca
 const rfxOutreachCarrierScope = document.querySelector("#rfx-outreach-carrier-scope");
 const rfxOutreachCarrierSegment = document.querySelector("#rfx-outreach-carrier-segment");
 const rfxOutreachCarrierSegmentField = document.querySelector("#rfx-outreach-carrier-segment-field");
+const rfxOutreachCarrierTemplateCounts = document.querySelector("#rfx-outreach-carrier-template-counts");
 const rfxOutreachCarrierFit = document.querySelector("#rfx-outreach-carrier-fit");
 const rfxOutreachCarrierLane = document.querySelector("#rfx-outreach-carrier-lane");
 const rfxOutreachCarrierFitSummary = document.querySelector("#rfx-outreach-carrier-fit-summary");
@@ -546,6 +560,15 @@ let rfxCustomerSearchTimer = null;
 let vendorSegmentsLoading = true;
 let savedVendorSegments = [];
 let vendorSegmentsLoadVersion = 0;
+let activeCarrierTemplates = [];
+let activeCarrierTemplatesLoading = true;
+let activeCarrierTemplatesError = "";
+let activeCarrierTemplatesLoadVersion = 0;
+let loadedCarrierTemplate = null;
+let loadedCarrierTemplateVendors = [];
+let carrierTemplateMembersLoading = false;
+let carrierTemplateMembersError = "";
+let carrierTemplateMembersLoadVersion = 0;
 let participantTemplateMutationRunning = false;
 let participantAddRunning = false;
 let selectedManualVendorIdsState = new Set();
@@ -7836,6 +7859,209 @@ async function loadSegmentCandidateRows(segmentId = selectedSegmentId()) {
   return sortedVendorOptions(segmentCandidateRows(segmentId));
 }
 
+function selectedCarrierTemplateId() {
+  return String(rfxOutreachCarrierSegment?.value || "").trim();
+}
+
+function activeCarrierTemplateById(templateId = selectedCarrierTemplateId()) {
+  return activeCarrierTemplates.find((template) => String(template?.id || "") === String(templateId || "")) || null;
+}
+
+function carrierTemplateVersion(template = {}) {
+  const version = Number(template?.template_version);
+  return Number.isSafeInteger(version) && version >= 1 ? version : null;
+}
+
+function carrierTemplateLifecycle(template = {}) {
+  return String(template?.lifecycle_status || template?.status || "").trim().toLowerCase();
+}
+
+async function loadActiveCarrierTemplates() {
+  const loadVersion = ++activeCarrierTemplatesLoadVersion;
+  const previousSelection = selectedCarrierTemplateId();
+  activeCarrierTemplatesLoading = true;
+  activeCarrierTemplatesError = "";
+  renderOutreachCarrierAdder();
+  try {
+    const rows = [];
+    for (let offset = 0; offset < CARRIER_TEMPLATE_LIST_SAFETY_LIMIT; offset += CARRIER_TEMPLATE_LIST_PAGE_SIZE) {
+      const page = await fetchCarrierListTemplates({
+        lifecycle_status: "active",
+        limit: CARRIER_TEMPLATE_LIST_PAGE_SIZE,
+        offset
+      });
+      if (loadVersion !== activeCarrierTemplatesLoadVersion) return;
+      if (page?.enabled === false) throw new Error("Carrier list templates are not enabled.");
+      const pageRows = Array.isArray(page?.rows) ? page.rows : [];
+      rows.push(...pageRows.filter((row) => carrierTemplateLifecycle(row) === "active"));
+      if (!page?.has_more) {
+        activeCarrierTemplates = rows;
+        activeCarrierTemplatesLoading = false;
+        if (previousSelection && !activeCarrierTemplateById(previousSelection)) {
+          if (rfxOutreachCarrierSegment) rfxOutreachCarrierSegment.value = "";
+          loadedCarrierTemplate = null;
+          loadedCarrierTemplateVendors = [];
+          carrierTemplateMembersError = "The selected template is no longer active. Choose another active template.";
+          if (String(rfxOutreachCarrierScope?.value || "") === "saved_segment") {
+            selectedManualVendorIdsState.clear();
+            persistManualParticipantSelection();
+          }
+        }
+        renderOutreachCarrierAdder();
+        return;
+      }
+    }
+    throw new Error(`Active carrier templates exceed the ${CARRIER_TEMPLATE_LIST_SAFETY_LIMIT.toLocaleString()}-template safety limit.`);
+  } catch (error) {
+    if (loadVersion !== activeCarrierTemplatesLoadVersion) return;
+    activeCarrierTemplates = [];
+    activeCarrierTemplatesLoading = false;
+    activeCarrierTemplatesError = humanizeError(error);
+    loadedCarrierTemplate = null;
+    loadedCarrierTemplateVendors = [];
+    carrierTemplateMembersLoading = false;
+    if (String(rfxOutreachCarrierScope?.value || "") === "saved_segment") {
+      selectedManualVendorIdsState.clear();
+      persistManualParticipantSelection();
+    }
+    renderOutreachCarrierAdder();
+  }
+}
+
+async function fetchExactCarrierTemplateVendors(template = {}) {
+  const ids = templateMemberIds(template);
+  const vendorsById = new Map();
+  for (let offset = 0; offset < ids.length; offset += CARRIER_TEMPLATE_VENDOR_BATCH_SIZE) {
+    const batch = ids.slice(offset, offset + CARRIER_TEMPLATE_VENDOR_BATCH_SIZE);
+    const page = await fetchVendors({
+      ids: batch,
+      lightweight: false,
+      limit: batch.length,
+      offset: 0,
+      view: "all"
+    });
+    for (const row of Array.isArray(page?.rows) ? page.rows : []) {
+      const id = String(row?.id || "").trim();
+      if (id && batch.includes(id)) vendorsById.set(id, row);
+    }
+  }
+  return ids.map((id) => vendorsById.get(id)).filter(Boolean);
+}
+
+async function loadSelectedActiveCarrierTemplate({ preserveSelection = false } = {}) {
+  const templateId = selectedCarrierTemplateId();
+  const loadVersion = ++carrierTemplateMembersLoadVersion;
+  if (!templateId) {
+    loadedCarrierTemplate = null;
+    loadedCarrierTemplateVendors = [];
+    carrierTemplateMembersLoading = false;
+    carrierTemplateMembersError = "";
+    renderOutreachCarrierAdder();
+    return null;
+  }
+  if (!preserveSelection) {
+    selectedManualVendorIdsState.clear();
+    persistManualParticipantSelection();
+  }
+  if (String(loadedCarrierTemplate?.id || "") !== templateId) {
+    loadedCarrierTemplate = null;
+    loadedCarrierTemplateVendors = [];
+  }
+  carrierTemplateMembersLoading = true;
+  carrierTemplateMembersError = "";
+  renderOutreachCarrierAdder();
+  try {
+    const response = await getCarrierListTemplate(templateId, { usageContext: "carrier_fit" });
+    if (loadVersion !== carrierTemplateMembersLoadVersion || selectedCarrierTemplateId() !== templateId) return null;
+    if (response?.enabled === false) throw new Error("Carrier list templates are not enabled.");
+    const row = response?.row || null;
+    if (!row || String(row.id || "") !== templateId || carrierTemplateLifecycle(row) !== "active") {
+      throw new Error("This carrier template is no longer active. Choose another active template.");
+    }
+    const vendors = await fetchExactCarrierTemplateVendors(row);
+    if (loadVersion !== carrierTemplateMembersLoadVersion || selectedCarrierTemplateId() !== templateId) return null;
+    loadedCarrierTemplate = row;
+    loadedCarrierTemplateVendors = vendors;
+    rememberSelectedVendorRows(vendors);
+    carrierTemplateMembersLoading = false;
+    renderOutreachCarrierAdder();
+    return row;
+  } catch (error) {
+    if (loadVersion !== carrierTemplateMembersLoadVersion || selectedCarrierTemplateId() !== templateId) return null;
+    loadedCarrierTemplate = null;
+    loadedCarrierTemplateVendors = [];
+    carrierTemplateMembersLoading = false;
+    carrierTemplateMembersError = humanizeError(error);
+    renderOutreachCarrierAdder();
+    return null;
+  }
+}
+
+function carrierTemplateContactUsable(vendor = {}) {
+  return Boolean(
+    String(vendor.primary_email || "").trim() ||
+    (Array.isArray(vendor.secondary_emails) && vendor.secondary_emails.some((email) => String(email || "").trim())) ||
+    String(vendor.whatsapp_phone || "").trim()
+  );
+}
+
+function carrierTemplateVendorAvailable(vendor = {}) {
+  const status = String(vendor.status || "").trim().toLowerCase();
+  const baseStage = String(vendor.base_stage || "").trim().toLowerCase();
+  return Boolean(vendor?.id) && !["archived", "deleted"].includes(status) && baseStage !== "archived";
+}
+
+function carrierTemplateMemberPassesFilters(row = {}) {
+  const search = normalizeLookupText(String(rfxOutreachCarrierSearch?.value || "").trim().replace(/\s+/g, " "));
+  if (search && !vendorSearchText(row).includes(search)) return false;
+  const fitFilter = String(rfxOutreachCarrierFit?.value || "any");
+  if (fitFilter === "any") return true;
+  if (!row?.id || row.unavailable) return false;
+  if (fitFilter === "contactable") return carrierTemplateContactUsable(row);
+  const fit = fitCarrierToOutreachLanes(row);
+  if (fitFilter === "equipment") return fit.matches.equipment;
+  if (fitFilter === "operation") return fit.matches.operation;
+  if (fitFilter === "service") return fit.matches.service;
+  return true;
+}
+
+function currentCarrierTemplatePartition({ template = loadedCarrierTemplate, vendors = loadedCarrierTemplateVendors, participantVendorIds = rfxParticipantVendorIdsFromDetail({ lanes: currentLanes }) } = {}) {
+  return partitionCarrierTemplateMembers({
+    template: template || {},
+    vendors,
+    participantVendorIds: [...participantVendorIds],
+    isContactUsable: carrierTemplateContactUsable,
+    isVendorAvailable: carrierTemplateVendorAvailable,
+    passesFilters: carrierTemplateMemberPassesFilters
+  });
+}
+
+function templateMemberRowsInOrder(partition = currentCarrierTemplatePartition()) {
+  const byId = new Map(
+    Object.values(partition.rows).flat().map((row) => [String(row.vendor_id || row.id || ""), row])
+  );
+  return templateMemberIds(loadedCarrierTemplate || {}).map((id) => byId.get(id)).filter(Boolean);
+}
+
+function visibleEligibleCarrierTemplateIds(partition = currentCarrierTemplatePartition()) {
+  const filteredOut = new Set(partition.filtered_out_ids || []);
+  return partition.rows.eligible
+    .map((row) => String(row.vendor_id || row.id || ""))
+    .filter((id) => id && !filteredOut.has(id));
+}
+
+function pruneCarrierTemplateSelection(partition = currentCarrierTemplatePartition()) {
+  if (String(rfxOutreachCarrierScope?.value || "") !== "saved_segment") return 0;
+  const allowed = new Set(visibleEligibleCarrierTemplateIds(partition));
+  const before = selectedManualVendorIdsState.size;
+  selectedManualVendorIdsState = new Set(
+    [...selectedManualVendorIdsState].filter((vendorId) => allowed.has(String(vendorId)))
+  );
+  const removed = before - selectedManualVendorIdsState.size;
+  if (removed) persistManualParticipantSelection();
+  return removed;
+}
+
 function shortlistCandidateRows() {
   const rawTerm = activeVendorSearchTerm();
   const term = normalizeLookupText(rawTerm);
@@ -8326,14 +8552,16 @@ function renderOutreachCarrierFitControls() {
   if (rfxOutreachCarrierSegment) {
     const selectedSegment = String(rfxOutreachCarrierSegment.value || "");
     rfxOutreachCarrierSegment.innerHTML = [
-      '<option value="">Choose a saved carrier list</option>',
-      ...participantTemplates().map((segment) => `<option value="${escapeHtml(segment.id)}">${escapeHtml(segment.segment_name || "Saved carrier list")} (${formatNumber(segmentVendorIds(segment).length)})</option>`)
+      `<option value="">${activeCarrierTemplatesLoading ? "Loading active templates..." : activeCarrierTemplatesError ? "Active templates unavailable" : "Choose an active template"}</option>`,
+      ...activeCarrierTemplates.map((template) => `<option value="${escapeHtml(template.id)}">${escapeHtml(template.segment_name || "Carrier list template")} (${formatNumber(templateMemberIds(template).length)})</option>`)
     ].join("");
     if (selectedSegment && [...rfxOutreachCarrierSegment.options].some((option) => option.value === selectedSegment)) {
       rfxOutreachCarrierSegment.value = selectedSegment;
     }
+    rfxOutreachCarrierSegment.disabled = activeCarrierTemplatesLoading || Boolean(activeCarrierTemplatesError);
   }
   if (rfxOutreachCarrierSegmentField) rfxOutreachCarrierSegmentField.hidden = scope !== "saved_segment";
+  if (rfxOutreachCarrierTemplateCounts) rfxOutreachCarrierTemplateCounts.hidden = scope !== "saved_segment";
 }
 
 function outreachCarrierCandidateRows() {
@@ -8366,9 +8594,155 @@ function outreachCarrierCandidateRows() {
   });
 }
 
+function carrierTemplateStateLabel(state) {
+  return {
+    eligible: "Eligible",
+    already_in_rfx: "Already in this RFx",
+    missing_contact: "Missing contact",
+    unavailable: "Unavailable"
+  }[state] || "Unavailable";
+}
+
+function renderActiveCarrierTemplateAdder() {
+  const partition = currentCarrierTemplatePartition();
+  const removedSelectionCount = pruneCarrierTemplateSelection(partition);
+  const selectedIds = selectedManualVendorIds();
+  const selectedIdSet = new Set(selectedIds.map(String));
+  const filteredOut = new Set(partition.filtered_out_ids || []);
+  const orderedRows = templateMemberRowsInOrder(partition);
+  const visibleRows = orderedRows.filter((row) => !filteredOut.has(String(row.vendor_id || row.id || "")));
+  const visibleEligibleIds = visibleEligibleCarrierTemplateIds(partition);
+  const visibleEligibleSet = new Set(visibleEligibleIds);
+  const selectedRows = orderedRows.filter((row) => selectedIdSet.has(String(row.vendor_id || row.id || "")));
+  const templateSelected = Boolean(selectedCarrierTemplateId());
+  const templateReady = Boolean(loadedCarrierTemplate) && !carrierTemplateMembersLoading && !carrierTemplateMembersError;
+
+  if (rfxOutreachCarrierTemplateCounts) {
+    rfxOutreachCarrierTemplateCounts.innerHTML = templateReady
+      ? `
+        <span><strong>${formatNumber(partition.counts.total)}</strong> total</span>
+        <span data-template-state-count="eligible"><strong>${formatNumber(partition.counts.eligible)}</strong> eligible</span>
+        <span data-template-state-count="already_in_rfx"><strong>${formatNumber(partition.counts.already_in_rfx)}</strong> already in RFx</span>
+        <span data-template-state-count="missing_contact"><strong>${formatNumber(partition.counts.missing_contact)}</strong> missing contact</span>
+        <span data-template-state-count="unavailable"><strong>${formatNumber(partition.counts.unavailable)}</strong> unavailable</span>
+        <span class="is-overlay"><strong>${formatNumber(partition.counts.filtered_out)}</strong> filtered out</span>
+      `
+      : `<span>${escapeHtml(activeCarrierTemplatesError || carrierTemplateMembersError || (carrierTemplateMembersLoading ? "Loading exact template membership..." : templateSelected ? "Template membership is unavailable." : "Choose an active template to review its exact membership."))}</span>`;
+  }
+  if (rfxOutreachCarrierMatchCount) {
+    rfxOutreachCarrierMatchCount.textContent = carrierTemplateMembersLoading
+      ? "Loading exact membership..."
+      : templateReady
+        ? `${formatNumber(visibleRows.length)} shown in template order`
+        : "No active template loaded";
+  }
+  if (rfxOutreachCarrierFitSummary) {
+    rfxOutreachCarrierFitSummary.textContent = activeCarrierTemplatesLoading
+      ? "Loading active templates"
+      : activeCarrierTemplatesError
+        ? "Templates unavailable"
+        : carrierTemplateMembersLoading
+          ? "Loading exact carrier IDs"
+          : templateReady
+            ? `${formatNumber(visibleEligibleIds.length)} visible eligible`
+            : "Choose an active template";
+    rfxOutreachCarrierFitSummary.className = `status-pill ${activeCarrierTemplatesError || carrierTemplateMembersError ? "warning" : templateReady ? "success" : "muted"}`;
+  }
+  if (rfxRefreshOutreachCarrierFitButton) {
+    rfxRefreshOutreachCarrierFitButton.disabled = activeCarrierTemplatesLoading || carrierTemplateMembersLoading;
+  }
+  rfxOutreachCarrierAdder.classList.toggle("is-empty", !carrierTemplateMembersLoading && !visibleRows.length);
+
+  rfxOutreachCarrierCandidates.innerHTML = carrierTemplateMembersLoading
+    ? '<p class="rfx-outreach-carrier-empty">Loading every exact carrier ID in bounded batches. No carrier is selected automatically.</p>'
+    : activeCarrierTemplatesError || carrierTemplateMembersError
+      ? `<p class="rfx-outreach-carrier-empty">${escapeHtml(activeCarrierTemplatesError || carrierTemplateMembersError)}</p>`
+      : !templateSelected
+        ? '<p class="rfx-outreach-carrier-empty">Choose one active Carrier CRM template. Its exact ordered IDs load immediately without selecting carriers.</p>'
+        : visibleRows.length
+          ? visibleRows.map((row) => {
+            const vendorId = String(row.vendor_id || row.id || "");
+            const selectable = row.primary_state === "eligible" && visibleEligibleSet.has(vendorId);
+            const selected = selectable && selectedIdSet.has(vendorId);
+            const displayName = row.unavailable
+              ? `Unavailable carrier ${vendorId}`
+              : vendorDisplayName(row);
+            const detail = row.primary_state === "eligible"
+              ? "Current profile and contact are eligible for this RFx."
+              : row.primary_state === "already_in_rfx"
+                ? "This carrier already belongs to the current RFx."
+                : row.primary_state === "missing_contact"
+                  ? "Add a usable email or WhatsApp contact in Carrier CRM before selecting."
+                  : "The exact template ID is archived, deleted, missing, or otherwise unavailable.";
+            return `
+              <label class="rfx-outreach-carrier-row rfx-carrier-template-member is-${escapeHtml(row.primary_state)} ${selected ? "is-selected" : ""}">
+                <input type="checkbox" data-rfx-carrier-template-select value="${escapeHtml(vendorId)}" ${selected ? "checked" : ""} ${selectable ? "" : "disabled"} />
+                <span class="rfx-outreach-carrier-row-main">
+                  <strong>${escapeHtml(displayName)}</strong>
+                  <small>${escapeHtml(detail)}</small>
+                </span>
+                <span class="status-pill ${selectable ? "success" : row.primary_state === "missing_contact" ? "warning" : "muted"}">${escapeHtml(carrierTemplateStateLabel(row.primary_state))}</span>
+              </label>
+            `;
+          }).join("")
+          : `<p class="rfx-outreach-carrier-empty">${partition.counts.filtered_out ? "Every template member is hidden by the current Carrier Fit filters." : "This active template has no current members to show."}</p>`;
+
+  rfxOutreachCarrierSelected.innerHTML = selectedRows.length
+    ? `<div class="rfx-outreach-carrier-wave-next-step"><strong>Next invitation wave: ${formatNumber(selectedRows.length)} selected</strong><span>Only these visible eligible carriers will be revalidated before add. Nothing drafts or sends here.</span></div>${selectedRows.map((row) => {
+      const vendorId = String(row.vendor_id || row.id || "");
+      return `
+        <article class="rfx-outreach-carrier-row is-selected">
+          <div class="rfx-outreach-carrier-row-main">
+            <strong>${escapeHtml(vendorDisplayName(row))}</strong>
+            <small>Eligible from ${escapeHtml(loadedCarrierTemplate?.segment_name || "active template")}</small>
+          </div>
+          <button class="secondary small-button" type="button" data-rfx-outreach-remove-carrier="${escapeHtml(vendorId)}">Remove</button>
+        </article>
+      `;
+    }).join("")}`
+    : '<p class="rfx-outreach-carrier-empty">No template carriers selected. Review the exclusive current states, then choose only visible eligible rows.</p>';
+
+  if (rfxOutreachCarrierSelectedCount) rfxOutreachCarrierSelectedCount.textContent = `${formatNumber(selectedIds.length)} selected`;
+  if (rfxSelectVisibleOutreachCarriersButton) rfxSelectVisibleOutreachCarriersButton.hidden = true;
+  if (rfxSelectAllOutreachCarriersButton) {
+    rfxSelectAllOutreachCarriersButton.hidden = false;
+    rfxSelectAllOutreachCarriersButton.disabled = participantAddRunning || !templateReady || !visibleEligibleIds.length;
+    rfxSelectAllOutreachCarriersButton.textContent = `Select all ${formatNumber(visibleEligibleIds.length)} eligible`;
+    rfxSelectAllOutreachCarriersButton.title = "Selects only eligible template members currently visible under the Carrier Fit filters.";
+  }
+  if (rfxAddOutreachCarriersButton) {
+    rfxAddOutreachCarriersButton.disabled = participantAddRunning || !selectedEventId || !currentLanes.length || !selectedIds.length || !templateReady;
+    rfxAddOutreachCarriersButton.textContent = `Add ${formatNumber(selectedIds.length)} carriers to this RFx and open Message`;
+    rfxAddOutreachCarriersButton.title = "Revalidates the active template and current RFx participants, adds only the still-eligible selection, and opens Message without drafting or sending.";
+  }
+  if (rfxClearOutreachCarrierSelectionButton) {
+    rfxClearOutreachCarrierSelectionButton.disabled = participantAddRunning || !selectedIds.length;
+  }
+  if (rfxOutreachCarrierWaveSummary) {
+    rfxOutreachCarrierWaveSummary.textContent = selectedIds.length
+      ? `${formatNumber(selectedIds.length)} visible eligible template carrier(s) selected. Add revalidates before opening Message.`
+      : templateReady
+        ? `${formatNumber(visibleEligibleIds.length)} visible eligible carrier(s). Choose all or a subset; loading the template selected none.`
+        : "Choose an active template to load its exact ordered carrier IDs.";
+  }
+  if (removedSelectionCount) {
+    setStatus(
+      rfxOutreachCarrierStatus,
+      `${formatNumber(removedSelectionCount)} stale selection${removedSelectionCount === 1 ? " was" : "s were"} removed after Carrier Fit filters or RFx participants changed.`,
+      "neutral"
+    );
+  }
+}
+
 function renderOutreachCarrierAdder() {
   if (!rfxOutreachCarrierAdder || !rfxOutreachCarrierCandidates || !rfxOutreachCarrierSelected) return;
   renderOutreachCarrierFitControls();
+  if (String(rfxOutreachCarrierScope?.value || "recommended") === "saved_segment") {
+    renderActiveCarrierTemplateAdder();
+    return;
+  }
+  if (rfxSelectVisibleOutreachCarriersButton) rfxSelectVisibleOutreachCarriersButton.hidden = false;
+  if (rfxSelectAllOutreachCarriersButton) rfxSelectAllOutreachCarriersButton.hidden = false;
   const removedExistingSelectionCount = removeExistingEventParticipantsFromSelection();
   const scope = String(rfxOutreachCarrierScope?.value || "recommended");
   const search = String(rfxOutreachCarrierSearch?.value || "").trim().replace(/\s+/g, " ");
@@ -8914,7 +9288,8 @@ function loadCarrierWorkspaceData({ force = false } = {}) {
   if (!carrierWorkspaceLoadPromise) {
     carrierWorkspaceLoadPromise = Promise.all([
       loadVendorOptions({ force }),
-      loadVendorSegments()
+      loadVendorSegments(),
+      loadActiveCarrierTemplates()
     ]).catch((error) => {
       carrierWorkspaceLoadPromise = null;
       throw error;
@@ -9149,7 +9524,16 @@ async function shortlistVendorsByLane(laneId, vendorIds = [], statusElement = ma
         `Adding carrier batch ${formatNumber(index + 1)} of ${formatNumber(batches.length)} (${formatNumber(batch.length)} carriers)${context.laneLabel ? ` to ${context.laneLabel}` : ""}...`
       );
     }
-    const result = await shortlistRfxLaneVendors(laneId, batch);
+    const result = context.carrierTemplateContext
+      ? await callRatewareApi("shortlist_rfx_lane_vendors", {
+        lane_id: laneId,
+        vendor_ids: batch,
+        carrier_template_context: {
+          template_id: context.carrierTemplateContext.template_id,
+          template_version: context.carrierTemplateContext.template_version
+        }
+      })
+      : await shortlistRfxLaneVendors(laneId, batch);
     inserted += Number(result.inserted || 0);
   }
   return inserted;
@@ -11215,14 +11599,30 @@ rfxRefreshOutreachCarrierFitButton?.addEventListener("click", () => {
   void Promise.all([
     loadCarrierWorkspaceData({ force: true }),
     loadRfxCarrierFitEvidence({ force: true })
-  ]).then(() => {
+  ]).then(async () => {
+    if (activeCarrierTemplatesError && String(rfxOutreachCarrierScope?.value || "") === "saved_segment") {
+      setStatus(rfxOutreachCarrierStatus, activeCarrierTemplatesError, "error");
+      return;
+    }
+    if (String(rfxOutreachCarrierScope?.value || "") === "saved_segment" && selectedCarrierTemplateId()) {
+      const refreshedTemplate = await loadSelectedActiveCarrierTemplate({ preserveSelection: true });
+      if (!refreshedTemplate) {
+        setStatus(rfxOutreachCarrierStatus, carrierTemplateMembersError || "The active template could not be refreshed.", "error");
+        return;
+      }
+    }
     setStatus(rfxOutreachCarrierStatus, "Carrier fit refreshed. Review profile, coverage, and Rateware evidence before adding carriers.", "success");
   }).catch((error) => {
     setStatus(rfxOutreachCarrierStatus, humanizeError(error), "error");
   });
 });
-rfxOutreachCarrierScope?.addEventListener("change", () => {
+rfxOutreachCarrierScope?.addEventListener("change", async () => {
+  selectedManualVendorIdsState.clear();
+  persistManualParticipantSelection();
   renderOutreachCarrierAdder();
+  if (String(rfxOutreachCarrierScope.value || "") === "saved_segment" && selectedCarrierTemplateId()) {
+    await loadSelectedActiveCarrierTemplate();
+  }
 });
 rfxOutreachCarrierFit?.addEventListener("change", renderOutreachCarrierAdder);
 rfxOutreachCarrierLane?.addEventListener("change", () => {
@@ -11230,16 +11630,24 @@ rfxOutreachCarrierLane?.addEventListener("change", () => {
   void loadRfxCarrierFitEvidence({ force: true });
 });
 rfxOutreachCarrierSegment?.addEventListener("change", async () => {
-  const segmentId = String(rfxOutreachCarrierSegment.value || "");
-  if (segmentId) {
-    try {
-      const rows = await loadSegmentCandidateRows(segmentId);
-      rememberSelectedVendorRows(rows);
-    } catch {
-      // Keep the existing CRM cache usable; the status below tells the user to retry if needed.
-      setStatus(rfxOutreachCarrierStatus, "Saved carrier list could not load. Try Refresh in Carrier CRM, then choose it again.", "error");
-    }
+  await loadSelectedActiveCarrierTemplate();
+});
+rfxOutreachCarrierCandidates?.addEventListener("change", (event) => {
+  const input = event.target.closest("[data-rfx-carrier-template-select]");
+  if (!input) return;
+  const vendorId = String(input.value || "");
+  const allowed = new Set(visibleEligibleCarrierTemplateIds());
+  if (!allowed.has(vendorId)) {
+    input.checked = false;
+    selectedManualVendorIdsState.delete(vendorId);
+    persistManualParticipantSelection();
+    renderOutreachCarrierAdder();
+    setStatus(rfxOutreachCarrierStatus, "Only currently visible eligible template carriers can be selected.", "error");
+    return;
   }
+  if (input.checked) selectedManualVendorIdsState.add(vendorId);
+  else selectedManualVendorIdsState.delete(vendorId);
+  persistManualParticipantSelection();
   renderOutreachCarrierAdder();
 });
 rfxOutreachCarrierCandidates?.addEventListener("click", (event) => {
@@ -11481,7 +11889,107 @@ manualShortlistSelectedList?.addEventListener("click", (event) => {
   setStatus(manualShortlistStatus, "Carrier moved back to CRM candidates.", "neutral");
 });
 
-async function addSelectedManualCarriersToBid(statusElement = manualShortlistStatus) {
+function rfxParticipantVendorIdsFromDetail(detail = {}) {
+  const ids = new Set();
+  for (const lane of Array.isArray(detail?.lanes) ? detail.lanes : []) {
+    for (const invitation of Array.isArray(lane?.invitations) ? lane.invitations : []) {
+      const vendorId = String(invitation?.vendor_id || "").trim();
+      if (vendorId) ids.add(vendorId);
+    }
+  }
+  rfxResponseVendorIds.forEach((vendorId) => ids.add(String(vendorId)));
+  outreachMessages.forEach((row) => {
+    if (String(row?.rfx_event_id || "") !== String(selectedEventId || "")) return;
+    const vendorId = String(row?.vendor_id || "").trim();
+    if (vendorId) ids.add(vendorId);
+  });
+  return ids;
+}
+
+async function revalidateCarrierTemplateMaterialization() {
+  const eventId = selectedEventId;
+  const templateId = String(loadedCarrierTemplate?.id || "");
+  const expectedVersion = carrierTemplateVersion(loadedCarrierTemplate);
+  const selectedIds = selectedManualVendorIds();
+  if (!eventId || !templateId || !expectedVersion || !selectedIds.length) {
+    throw new Error("Choose an active template and at least one visible eligible carrier before adding.");
+  }
+
+  const [detail, response] = await Promise.all([
+    requestRfxDetail(eventId, { force: true }),
+    getCarrierListTemplate(templateId, { usageContext: "carrier_fit" })
+  ]);
+  if (selectedEventId !== eventId) throw new Error("The active RFx changed before carriers could be added.");
+  const currentTemplate = response?.row || null;
+  const currentVersion = carrierTemplateVersion(currentTemplate);
+  if (!currentTemplate || carrierTemplateLifecycle(currentTemplate) !== "active" || currentVersion !== expectedVersion) {
+    const error = new Error(
+      !currentTemplate || carrierTemplateLifecycle(currentTemplate) !== "active"
+        ? "This carrier template was archived or is no longer active. Your selection was preserved; reload Carrier Fit before adding."
+        : `This carrier template changed from version ${expectedVersion} to ${currentVersion}. Your selection was preserved; reload Carrier Fit before adding.`
+    );
+    error.code = "carrier_template_changed";
+    throw error;
+  }
+
+  const currentVendors = await fetchExactCarrierTemplateVendors(currentTemplate);
+  if (selectedEventId !== eventId) throw new Error("The active RFx changed before carriers could be added.");
+  const participantVendorIds = rfxParticipantVendorIdsFromDetail(detail);
+  const partition = currentCarrierTemplatePartition({
+    template: currentTemplate,
+    vendors: currentVendors,
+    participantVendorIds
+  });
+  const stillEligible = new Set(visibleEligibleCarrierTemplateIds(partition));
+  const vendorIds = selectedIds.filter((vendorId) => stillEligible.has(String(vendorId)));
+
+  loadedCarrierTemplate = currentTemplate;
+  loadedCarrierTemplateVendors = currentVendors;
+  currentLanes = Array.isArray(detail?.lanes) ? detail.lanes : currentLanes;
+  selectedManualVendorIdsState = new Set(vendorIds);
+  rememberSelectedVendorRows(currentVendors);
+  persistManualParticipantSelection(eventId);
+  renderOutreachCarrierAdder();
+  if (!vendorIds.length) {
+    throw new Error("None of the selected template carriers remain visible and eligible after refreshing RFx participants. Review Carrier Fit and select again.");
+  }
+  return {
+    eventId,
+    vendorIds,
+    carrierTemplateContext: {
+      template_id: templateId,
+      template_version: expectedVersion
+    }
+  };
+}
+
+async function addSelectedManualCarriersToBid(statusElement = manualShortlistStatus, options = {}) {
+  if (
+    statusElement === rfxOutreachCarrierStatus &&
+    String(rfxOutreachCarrierScope?.value || "") === "saved_segment" &&
+    !options.carrierTemplateContext
+  ) {
+    if (participantAddRunning) return 0;
+    participantAddRunning = true;
+    renderOutreachCarrierAdder();
+    setStatus(rfxOutreachCarrierStatus, "Revalidating the active template and current RFx participants...");
+    try {
+      const materialization = await revalidateCarrierTemplateMaterialization();
+      return await addSelectedManualCarriersToBid(rfxOutreachCarrierStatus, {
+        carrierTemplateContext: materialization.carrierTemplateContext,
+        lockHeld: true
+      });
+    } catch (error) {
+      activateRfxLaunchWorkspace("carrier");
+      const correlationId = String(error?.incidentId || "").trim();
+      const correlationCopy = correlationId ? ` Correlation ID: ${correlationId}.` : "";
+      setStatus(rfxOutreachCarrierStatus, `${humanizeError(error)}${correlationCopy}`, "error");
+      return 0;
+    } finally {
+      participantAddRunning = false;
+      renderOutreachCarrierAdder();
+    }
+  }
   const existingParticipantIds = currentRfxManagedVendorIds();
   const vendorIds = selectedManualVendorIds().filter((vendorId) => !existingParticipantIds.has(String(vendorId)));
   if (vendorIds.length !== selectedManualVendorIdsState.size) {
@@ -11500,7 +12008,7 @@ async function addSelectedManualCarriersToBid(statusElement = manualShortlistSta
     setStatus(statusElement, "Import the lane book before creating bid invitations. Your selected carriers stay selected and can be saved as a template.", "error");
     return 0;
   }
-  if (participantAddRunning) return 0;
+  if (participantAddRunning && !options.lockHeld) return 0;
   const eventId = selectedEventId;
   const lanes = [...currentLanes];
   participantAddRunning = true;
@@ -11512,7 +12020,8 @@ async function addSelectedManualCarriersToBid(statusElement = manualShortlistSta
       if (selectedEventId !== eventId) return inserted;
       inserted += await shortlistVendorsByLane(lane.id, vendorIds, statusElement, {
         eventId,
-        laneLabel: lane.lane_id || "lane"
+        laneLabel: lane.lane_id || "lane",
+        carrierTemplateContext: options.carrierTemplateContext || null
       });
     }
     if (selectedEventId !== eventId) return inserted;
@@ -11536,7 +12045,12 @@ async function addSelectedManualCarriersToBid(statusElement = manualShortlistSta
     setStatus(statusElement, `${inserted} invitation row(s) created. Generate the draft queue to reach only new carriers; existing outreach stays unchanged.`, "success");
     return inserted;
   } catch (error) {
-    if (selectedEventId === eventId) setStatus(statusElement, humanizeError(error), "error");
+    if (selectedEventId === eventId) {
+      if (statusElement === rfxOutreachCarrierStatus) activateRfxLaunchWorkspace("carrier");
+      const correlationId = String(error?.incidentId || "").trim();
+      const correlationCopy = correlationId ? ` Correlation ID: ${correlationId}.` : "";
+      setStatus(statusElement, `${humanizeError(error)}${correlationCopy}`, "error");
+    }
     return 0;
   } finally {
     participantAddRunning = false;
@@ -11553,6 +12067,14 @@ rfxAddOutreachCarriersButton?.addEventListener("click", async () => {
 });
 
 rfxSelectVisibleOutreachCarriersButton?.addEventListener("click", () => {
+  if (String(rfxOutreachCarrierScope?.value || "") === "saved_segment") {
+    const ids = visibleEligibleCarrierTemplateIds();
+    selectedManualVendorIdsState = new Set(ids);
+    persistManualParticipantSelection();
+    renderOutreachCarrierAdder();
+    setStatus(rfxOutreachCarrierStatus, `${formatNumber(ids.length)} visible eligible template carrier(s) selected.`, ids.length ? "success" : "neutral");
+    return;
+  }
   const allVisibleCandidates = outreachCarrierCandidateRows().slice(0, 50);
   const channel = selectedOutreachChannel();
   const channelLabel = outreachChannelLabel(channel);
@@ -11567,6 +12089,14 @@ rfxSelectVisibleOutreachCarriersButton?.addEventListener("click", () => {
 });
 
 rfxSelectAllOutreachCarriersButton?.addEventListener("click", () => {
+  if (String(rfxOutreachCarrierScope?.value || "") === "saved_segment") {
+    const ids = visibleEligibleCarrierTemplateIds();
+    selectedManualVendorIdsState = new Set(ids);
+    persistManualParticipantSelection();
+    renderOutreachCarrierAdder();
+    setStatus(rfxOutreachCarrierStatus, `${formatNumber(ids.length)} visible eligible template carrier(s) selected.`, ids.length ? "success" : "neutral");
+    return;
+  }
   const allCandidates = outreachCarrierCandidateRows();
   const channel = selectedOutreachChannel();
   const channelLabel = outreachChannelLabel(channel);

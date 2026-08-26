@@ -1555,6 +1555,32 @@ assert.match(rfxEventsSource, /Generate the draft queue to reach only new carrie
 assert.match(rfxEventsHtml, /rfx-outreach-carrier-wave-summary/, "Carrier Fit should expose the next invitation-wave action above the candidate lists");
 assert.match(rfxEventsHtml, /1\. Select carriers\. 2\. Add them to this RFx\. 3\. Prepare their delivery queue from Message\./, "Carrier Fit should state that selected carriers are added to the current RFx before drafting outreach");
 assert.match(rfxEventsHtml, /Prepare their delivery queue from Message/, "Carrier Fit should explain the transition from participant selection to the delivery queue");
+assert.match(rfxEventsSource, /fetchCarrierListTemplates[\s\S]+getCarrierListTemplate[\s\S]+fetchVendors/, "Carrier Fit should import the explicit template list/get and exact vendor read services");
+assert.match(rfxEventsSource, /partitionCarrierTemplateMembers[\s\S]+templateMemberIds/, "Carrier Fit should consume the shared exact-membership partition domain");
+assert.match(rfxEventsSource, /fetchCarrierListTemplates\(\{[\s\S]{0,180}lifecycle_status: "active"/, "Carrier Fit should list only active carrier templates");
+assert.match(rfxEventsSource, /getCarrierListTemplate\([^\n]+\{ usageContext: "carrier_fit" \}\)/, "Carrier Fit template reads should use the audited carrier_fit usage context");
+assert.match(rfxEventsSource, /fetchVendors\(\{[\s\S]{0,220}ids: batch[\s\S]{0,220}lightweight: false/, "Carrier Fit should hydrate every exact template id in bounded full-profile batches");
+assert.match(rfxEventsSource, /function pruneCarrierTemplateSelection\([\s\S]{0,700}visibleEligibleCarrierTemplateIds/, "Carrier Fit should prune stale selections against visible eligible template members");
+assert.match(rfxEventsSource, /data-rfx-carrier-template-select[\s\S]{0,300}disabled/, "Carrier Fit template rows should disable noneligible selection controls");
+assert.match(rfxEventsSource, /templateMemberRowsInOrder/, "Carrier Fit should render exact template members in source order, including unavailable placeholders");
+assert.match(rfxEventsHtml, /Add \{N\} carriers to this RFx and open Message/, "Carrier Fit should document the exact materialization CTA contract");
+assert.match(rfxEventsSource, /`Add \$\{formatNumber\(selectedIds\.length\)\} carriers to this RFx and open Message`/, "Carrier Fit should render the exact count-bearing materialization CTA");
+assert.match(rfxEventsSource, /carrier_template_context:[\s\S]{0,180}template_id:[\s\S]{0,180}template_version:/, "Carrier Fit should pass only validated template identity/version context into the idempotent participant action");
+assert.match(rfxEventsSource, /requestRfxDetail\(eventId, \{ force: true \}\)[\s\S]{0,900}getCarrierListTemplate/, "Carrier Fit should re-read RFx participants and template metadata immediately before add");
+assert.match(rfxEventsSource, /incidentId[\s\S]{0,180}Correlation ID/, "Carrier Fit add failures should surface the server correlation id");
+assert.match(apiSource, /carrier_template\.add_selected_to_rfx/, "The existing RFx participant action should audit carrier-template materialization");
+assert.match(apiSource, /selected_count:[\s\S]{0,180}already_present_count:[\s\S]{0,180}inserted_count:[\s\S]{0,180}result:/, "Carrier-template participant audits should contain server-resolved counts and result only");
+const carrierTemplateRfxAuditSource = apiSource.slice(
+  apiSource.indexOf("async function writeCarrierTemplateRfxMaterializationAudit"),
+  apiSource.indexOf("async function conditionalCarrierTemplateUpdate")
+);
+assert.doesNotMatch(carrierTemplateRfxAuditSource, /primary_email|secondary_emails|whatsapp_phone|vendor_ids/, "Carrier-template RFx audits must never persist carrier contact contents or membership payloads");
+const carrierTemplateMaterializationSource = rfxEventsSource.slice(
+  rfxEventsSource.indexOf("async function revalidateCarrierTemplateMaterialization"),
+  rfxEventsSource.indexOf("rfxSelectVisibleOutreachCarriersButton?.addEventListener")
+);
+assert.doesNotMatch(carrierTemplateMaterializationSource, /generateOutreachDrafts|sendOutreachMessages|sendWhatsappOutreachMessages/, "Carrier Fit template materialization must not draft or send communication");
+assert.doesNotMatch(rfxEventsSource.slice(rfxEventsSource.indexOf("function renderOutreachCarrierFitControls"), rfxEventsSource.indexOf("function updateParticipantTemplateControls")), /createCarrierListTemplate|updateCarrierListTemplate|archiveCarrierListTemplate|restoreCarrierListTemplate|deleteVendorSegment/, "Carrier Fit must not expose template mutations");
 assert.match(stylesSource, /\.rfx-outreach-carrier-wave-actions \{[\s\S]*?position: sticky/, "Carrier Fit should keep the selected-wave action visible while reviewing a long candidate list");
 assert.match(rfxEventsHtml, /rfx-message-wave-context/, "Message setup should explain the exact carrier wave that will receive drafts");
 assert.match(rfxEventsHtml, /id="rfx-message-readiness"/, "Message setup should keep a compact delivery preflight visible before queue preparation");

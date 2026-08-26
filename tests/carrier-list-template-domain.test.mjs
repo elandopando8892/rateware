@@ -709,6 +709,65 @@ function deferred() {
   });
 }
 
+// Carrier Fit consumes the exact ordered membership, and a participant/filter
+// refresh must leave only currently visible eligible selections. The primary
+// partition remains exhaustive while filtered_out stays an overlay.
+{
+  const template = {
+    vendor_ids: [ids.eligible, ids.filtered, ids.participant, ids.missingContact, ids.deleted]
+  };
+  const vendors = [
+    activeVendor(ids.eligible, { vendor_name: "Visible eligible" }),
+    activeVendor(ids.filtered, { vendor_name: "Hidden eligible" }),
+    activeVendor(ids.participant, { vendor_name: "Current participant" }),
+    activeVendor(ids.missingContact, { primary_email: "", vendor_name: "Missing contact" })
+  ];
+  const initial = partitionCarrierTemplateMembers({
+    template,
+    vendors,
+    participantVendorIds: [ids.participant],
+    isContactUsable: (vendor) => Boolean(vendor.primary_email),
+    isVendorAvailable: (vendor) => vendor.status === "active",
+    passesFilters: (vendor) => vendor.id !== ids.filtered
+  });
+
+  assert.deepEqual(initial.counts, {
+    total: 5,
+    eligible: 2,
+    already_in_rfx: 1,
+    missing_contact: 1,
+    unavailable: 1,
+    filtered_out: 1
+  });
+  assert.deepEqual(initial.rows.eligible.map((row) => row.vendor_id), [ids.eligible, ids.filtered]);
+  assert.deepEqual(initial.rows.unavailable.map((row) => row.vendor_id), [ids.deleted]);
+  assert.deepEqual(initial.filtered_out_ids, [ids.filtered]);
+
+  const visibleEligible = new Set(
+    initial.rows.eligible
+      .map((row) => row.vendor_id)
+      .filter((vendorId) => !initial.filtered_out_ids.includes(vendorId))
+  );
+  const staleSelection = new Set([ids.eligible, ids.filtered, ids.missingContact, ids.deleted]);
+  assert.deepEqual([...staleSelection].filter((vendorId) => visibleEligible.has(vendorId)), [ids.eligible]);
+
+  const refreshed = partitionCarrierTemplateMembers({
+    template,
+    vendors,
+    participantVendorIds: [ids.participant, ids.eligible],
+    isContactUsable: (vendor) => Boolean(vendor.primary_email),
+    isVendorAvailable: (vendor) => vendor.status === "active",
+    passesFilters: () => true
+  });
+  assert.deepEqual(refreshed.rows.already_in_rfx.map((row) => row.vendor_id), [ids.eligible, ids.participant]);
+  assert.equal(
+    refreshed.counts.eligible + refreshed.counts.already_in_rfx + refreshed.counts.missing_contact + refreshed.counts.unavailable,
+    refreshed.counts.total
+  );
+  const refreshedVisibleEligible = new Set(refreshed.rows.eligible.map((row) => row.vendor_id));
+  assert.deepEqual([...visibleEligible].filter((vendorId) => refreshedVisibleEligible.has(vendorId)), []);
+}
+
 // This catches dropping the template's source order or duplicate/blank IDs.
 {
   assert.deepEqual(templateMemberIds({ vendor_ids: ["  a ", "b", "a", "", null] }), ["a", "b"]);

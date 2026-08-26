@@ -454,6 +454,38 @@ async function writeCarrierTemplateAudit(
   );
 }
 
+async function writeCarrierTemplateRfxMaterializationAudit(
+  supabase: RatewareSupabaseClient,
+  user: RuntimeWorkspaceUser,
+  context: {
+    template_id: string;
+    template_version: number;
+    rfx_event_id: string;
+    selected_count: number;
+    already_present_count: number;
+    inserted_count: number;
+    result: string;
+  }
+) {
+  await tryWriteAuditLog(
+    supabase,
+    user,
+    "carrier_template.add_selected_to_rfx",
+    "rfx_events",
+    context.rfx_event_id,
+    "Materialized selected carrier template members into an RFx",
+    {
+      template_id: context.template_id,
+      template_version: context.template_version,
+      rfx_event_id: context.rfx_event_id,
+      selected_count: context.selected_count,
+      already_present_count: context.already_present_count,
+      inserted_count: context.inserted_count,
+      result: context.result
+    }
+  );
+}
+
 async function conditionalCarrierTemplateUpdate(
   supabase: RatewareSupabaseClient,
   organizationId: string,
@@ -27932,26 +27964,124 @@ export function createRatewareApiHandler(
       const lane = await requireOwnedRfxLane(supabase, user, body.lane_id);
       const vendorIds = normalizeBulkIds(body.vendor_ids, { label: "Vendor ids", limit: BULK_SHORTLIST_VENDOR_LIMIT });
       if (!vendorIds.length) return jsonResponse({ inserted: 0, rows: [] });
-      const vendorsResult = await supabase
-        .from("vendors")
-        .select("id")
-        .eq("owner_email", user.owner_email)
-        .in("id", vendorIds);
-      if (vendorsResult.error) throw vendorsResult.error;
-      const insertRows = await Promise.all((vendorsResult.data || []).map(async (vendor) => ({
-        rfx_event_id: lane.rfx_event_id,
-        rfx_lane_id: lane.id,
-        vendor_id: vendor.id,
-        invitation_status: "drafted",
-        ...(await newRfxInvitationTokenFields())
-      })));
-      const result = await supabase
-        .from("rfx_lane_vendors")
-        .upsert(insertRows, { onConflict: "rfx_lane_id,vendor_id", ignoreDuplicates: true })
-        .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)");
-      if (result.error) throw result.error;
-      const rows = await hydrateRfxInvitationTokens(supabase, (result.data || []) as Record<string, unknown>[]);
-      return jsonResponse({ inserted: rows.length, rows });
+      const rawTemplateContext = objectRecord(body.carrier_template_context);
+      const hasTemplateContext = Object.keys(rawTemplateContext).length > 0;
+      let validatedTemplateContext: { template_id: string; template_version: number } | null = null;
+      let alreadyPresentCount = 0;
+
+      if (hasTemplateContext) {
+        if (!carrierTemplatesEnabled) {
+          return jsonResponse({ enabled: false, error: "Carrier list templates are not enabled." }, 404);
+        }
+        const templateId = carrierTemplateId(rawTemplateContext);
+        const templateVersion = carrierTemplateExpectedVersion(rawTemplateContext.template_version);
+        const organizationId = cleanText(user.organization_id);
+        if (!templateId || !templateVersion || !organizationId) {
+          return jsonResponse({ error: "Valid carrier template identity and version context are required." }, 400);
+        }
+        const template = await loadCarrierTemplate(supabase, organizationId, templateId);
+        if (!template) {
+          return jsonResponse({ code: "carrier_template_unavailable", error: "Carrier list template is unavailable." }, 409);
+        }
+        validatedTemplateContext = { template_id: templateId, template_version: templateVersion };
+        const auditBlocked = async (result: string) => {
+          await writeCarrierTemplateRfxMaterializationAudit(supabase, user, {
+            ...validatedTemplateContext!,
+            rfx_event_id: String(lane.rfx_event_id),
+            selected_count: vendorIds.length,
+            already_present_count: 0,
+            inserted_count: 0,
+            result
+          });
+        };
+        if (cleanText(template.lifecycle_status || template.status)?.toLowerCase() !== "active") {
+          await auditBlocked("blocked_inactive");
+          return jsonResponse({ code: "carrier_template_inactive", error: "Carrier list template is no longer active." }, 409);
+        }
+        const currentVersion = Number(template.template_version) || 1;
+        if (currentVersion !== templateVersion) {
+          await auditBlocked("blocked_version_changed");
+          return jsonResponse({
+            code: "template_version_conflict",
+            error: "Carrier list template changed since it was loaded.",
+            current_version: currentVersion,
+            template_id: templateId
+          }, 409);
+        }
+        const templateVendorIds = new Set(normalizeCarrierTemplateVendorIds(template.vendor_ids || []));
+        if (vendorIds.some((vendorId) => !templateVendorIds.has(vendorId.toLowerCase()))) {
+          await auditBlocked("blocked_invalid_selection");
+          return jsonResponse({ error: "Selected carriers must belong to the validated carrier template." }, 400);
+        }
+      }
+
+      try {
+        if (validatedTemplateContext) {
+          const existingResult = await supabase
+            .from("rfx_lane_vendors")
+            .select("vendor_id")
+            .eq("rfx_lane_id", lane.id)
+            .in("vendor_id", vendorIds);
+          if (existingResult.error) throw existingResult.error;
+          alreadyPresentCount = new Set(
+            (existingResult.data || []).map((row: Record<string, unknown>) => cleanText(row.vendor_id)).filter(Boolean)
+          ).size;
+        }
+
+        const vendorsResult = await supabase
+          .from("vendors")
+          .select("id")
+          .eq("owner_email", user.owner_email)
+          .in("id", vendorIds);
+        if (vendorsResult.error) throw vendorsResult.error;
+        if (validatedTemplateContext && (vendorsResult.data || []).length !== vendorIds.length) {
+          await writeCarrierTemplateRfxMaterializationAudit(supabase, user, {
+            ...validatedTemplateContext,
+            rfx_event_id: String(lane.rfx_event_id),
+            selected_count: vendorIds.length,
+            already_present_count: alreadyPresentCount,
+            inserted_count: 0,
+            result: "blocked_unavailable"
+          });
+          return jsonResponse({ error: "One or more selected template carriers are no longer available." }, 409);
+        }
+        const insertRows = await Promise.all((vendorsResult.data || []).map(async (vendor) => ({
+          rfx_event_id: lane.rfx_event_id,
+          rfx_lane_id: lane.id,
+          vendor_id: vendor.id,
+          invitation_status: "drafted",
+          ...(await newRfxInvitationTokenFields())
+        })));
+        const result = await supabase
+          .from("rfx_lane_vendors")
+          .upsert(insertRows, { onConflict: "rfx_lane_id,vendor_id", ignoreDuplicates: true })
+          .select("*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)");
+        if (result.error) throw result.error;
+        const rows = await hydrateRfxInvitationTokens(supabase, (result.data || []) as Record<string, unknown>[]);
+        if (validatedTemplateContext) {
+          await writeCarrierTemplateRfxMaterializationAudit(supabase, user, {
+            ...validatedTemplateContext,
+            rfx_event_id: String(lane.rfx_event_id),
+            selected_count: vendorIds.length,
+            already_present_count: alreadyPresentCount,
+            inserted_count: rows.length,
+            result: alreadyPresentCount ? "reconciled" : "inserted"
+          });
+        }
+        return jsonResponse({ inserted: rows.length, already_present: alreadyPresentCount, rows });
+      } catch (error) {
+        if (validatedTemplateContext) {
+          await writeCarrierTemplateRfxMaterializationAudit(supabase, user, {
+            ...validatedTemplateContext,
+            rfx_event_id: String(lane.rfx_event_id),
+            selected_count: vendorIds.length,
+            already_present_count: alreadyPresentCount,
+            inserted_count: 0,
+            result: "failed"
+          });
+        }
+        throw error;
+      }
     }
 
     if (body.action === "invite_rfx_lane_vendors") {
