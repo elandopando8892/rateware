@@ -30,6 +30,8 @@ type KindeClientBoundary = {
   logout(options?: string | { allSessions?: boolean; redirectUrl?: string }): Promise<void>;
 };
 
+const PRODUCTION_KINDE_ORGANIZATION = 'org_dbc2fd12c76';
+
 type KindeAuthPortDependencies = {
   origin?: string;
   createClient?: (options: KindeClientOptions) => Promise<KindeClientBoundary>;
@@ -685,7 +687,12 @@ export function createKindeAuthPort(
         throw new Error('Login operation is not current');
       }
       if (logoutBarrier) throw new Error('Auth port logout must complete successfully');
-      await client.login({ app_state: { returnTo: approvedReturnTo } });
+      await client.login({
+        app_state: { returnTo: approvedReturnTo },
+        ...(config.VITE_OSP_BUILD_PROFILE === 'production-readonly'
+          ? { org_code: PRODUCTION_KINDE_ORGANIZATION }
+          : {}),
+      });
     },
     logout() {
       if (logoutPromise) return logoutPromise;

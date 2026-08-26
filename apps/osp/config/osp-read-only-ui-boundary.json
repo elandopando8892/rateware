@@ -71,7 +71,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/auth/kinde-auth-port.ts",
-      "sha256": "47efaa4a055f2a833a6aae35548d067787cb2e8faccb92b834805a3214027c78"
+      "sha256": "87b08d441f2fd5459c6c642b1a41c0ae71fa90f14672ae35f4227bbce0380460"
     },
     {
       "kind": "production-ui",

@@ -1638,6 +1638,34 @@ describe('createKindeAuthPort', () => {
     });
   });
 
+  it('binds production login to the reviewed Rateware Kinde organization', async () => {
+    const login = vi.fn(async () => undefined);
+    const client = {
+      isAuthenticated: async () => false,
+      getAccessToken: async () => undefined,
+      getIdToken: async () => undefined,
+      getToken: async () => undefined,
+      login,
+      logout: async () => undefined,
+    };
+    const port = createKindeAuthPort({
+      ...runtime,
+      VITE_KINDE_CLIENT_ID: 'production-client',
+      VITE_OSP_BUILD_PROFILE: 'production-readonly',
+    }, {
+      origin: 'https://osp.heymarksman.com',
+      createClient: async () => client,
+      tokenVerifier: fixtureVerifier,
+    });
+
+    await port.login('/app/pipeline');
+
+    expect(login).toHaveBeenCalledWith({
+      app_state: { returnTo: '/app/pipeline' },
+      org_code: 'org_dbc2fd12c76',
+    });
+  });
+
   it('consumes an approved successful redirect callback exactly once without replay', async () => {
     const pair = tokenPair();
     const replaceUrl = vi.fn();
