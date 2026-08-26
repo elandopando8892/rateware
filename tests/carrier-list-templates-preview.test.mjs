@@ -5,6 +5,15 @@ import test from "node:test";
 const previewHtmlUrl = new URL("../output/carrier-list-templates-preview.html", import.meta.url);
 const previewJsUrl = new URL("../src/carrier-list-templates-preview.js", import.meta.url);
 const previewStylesUrl = new URL("../src/styles.css", import.meta.url);
+const vercelIgnoreUrl = new URL("../.vercelignore", import.meta.url);
+
+test("preview deployment allowlists only the approved public HTML artifact", async () => {
+  const vercelIgnore = await readFile(vercelIgnoreUrl, "utf8");
+
+  assert.doesNotMatch(vercelIgnore, /^output\/$/m, "the whole output directory cannot be excluded");
+  assert.match(vercelIgnore, /^output\/\*$/m, "generated output remains excluded by default");
+  assert.match(vercelIgnore, /^!output\/carrier-list-templates-preview\.html$/m);
+});
 
 test("preview source is public, noindex, local-only, and uses the approved domain and icon systems", async () => {
   const [html, source, styles] = await Promise.all([
