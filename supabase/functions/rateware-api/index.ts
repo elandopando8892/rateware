@@ -554,6 +554,10 @@ function carrierTemplateInvitationKey(laneId: unknown, vendorId: unknown) {
   return `${cleanText(laneId) || ""}:${cleanText(vendorId) || ""}`;
 }
 
+function carrierTemplateUuidArrayLiteral(values: string[]) {
+  return `{${values.join(",")}}`;
+}
+
 type CarrierTemplateMaterializationOperationContext = {
   id: string;
   organization_id: string;
@@ -565,6 +569,49 @@ type CarrierTemplateMaterializationOperationContext = {
   actor_user_id: string;
   actor_email: string;
   selected_count: number;
+};
+
+type CarrierTemplateMaterializationJournalStatus =
+  | "pending"
+  | "mutation_issued"
+  | "reconcile_required"
+  | "rejected"
+  | "reconciled";
+
+const CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS = [
+  "id",
+  "organization_id",
+  "rfx_event_id",
+  "template_id",
+  "template_version",
+  "lane_ids",
+  "selected_vendor_ids",
+  "actor_user_id",
+  "actor_email",
+  "status",
+  "result",
+  "selected_count",
+  "confirmed_count",
+  "inserted_count",
+  "already_present_count",
+  "rejected_count",
+  "pending_count",
+  "confirmed_vendor_ids",
+  "outcomes",
+  "correlation_id"
+].join(",");
+
+const CARRIER_TEMPLATE_MATERIALIZATION_ALLOWED_FINALIZATION_FROM: Record<
+  "reconciled" | "reconcile_required" | "rejected",
+  CarrierTemplateMaterializationJournalStatus[]
+> = {
+  // Success is terminal, but it may resolve either an initial write or a
+  // previously uncertain write whose committed matrix is now complete.
+  reconciled: ["pending", "mutation_issued", "reconcile_required"],
+  // Uncertainty can advance a pending/issued mutation, never terminal state.
+  reconcile_required: ["pending", "mutation_issued"],
+  // Zero-mutation rejection is valid only before any uncertain/success state.
+  rejected: ["pending"]
 };
 
 function carrierTemplateMaterializationOperationMatches(
@@ -612,7 +659,7 @@ async function loadOrCreateCarrierTemplateMaterializationOperation(
   // unique-key race without trusting client context.
   const loadResult = await supabase
     .from("carrier_template_materialization_operations")
-    .select("id,organization_id,rfx_event_id,template_id,template_version,lane_ids,selected_vendor_ids,actor_user_id,actor_email,status,result,selected_count,confirmed_count,inserted_count,already_present_count,rejected_count,pending_count")
+    .select(CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS)
     .eq("id", context.id)
     .maybeSingle();
   if (loadResult.error) throw loadResult.error;
@@ -622,13 +669,15 @@ async function loadOrCreateCarrierTemplateMaterializationOperation(
     : { row, conflict: true };
 }
 
-async function updateCarrierTemplateMaterializationOperation(
+async function finalizeCarrierTemplateMaterializationOperation(
   supabase: RatewareSupabaseClient,
-  organizationId: string,
-  operationId: string,
+  context: CarrierTemplateMaterializationOperationContext,
   status: "reconciled" | "reconcile_required" | "rejected",
   result: string,
-  counts: ReturnType<typeof carrierTemplateMaterializationCounts>
+  counts: ReturnType<typeof carrierTemplateMaterializationCounts>,
+  outcomes: Record<string, unknown>[],
+  confirmedVendorIds: string[],
+  correlationId: string | null = null
 ) {
   const now = new Date().toISOString();
   const patch: Record<string, unknown> = {
@@ -640,6 +689,9 @@ async function updateCarrierTemplateMaterializationOperation(
     already_present_count: counts.already_present,
     rejected_count: counts.rejected,
     pending_count: counts.pending,
+    outcomes,
+    confirmed_vendor_ids: confirmedVendorIds,
+    correlation_id: correlationId,
     updated_at: now
   };
   if (status === "reconciled") {
@@ -650,12 +702,139 @@ async function updateCarrierTemplateMaterializationOperation(
   } else {
     patch.finalized_at = now;
   }
-  const resultRow = await supabase
+  const updateResult = await supabase
     .from("carrier_template_materialization_operations")
     .update(patch)
-    .eq("id", operationId)
-    .eq("organization_id", organizationId);
-  if (resultRow.error) throw resultRow.error;
+    .eq("id", context.id)
+    .eq("organization_id", context.organization_id)
+    .eq("rfx_event_id", context.rfx_event_id)
+    .eq("template_id", context.template_id)
+    .eq("template_version", context.template_version)
+    // PostgREST array equality requires a PostgreSQL array literal. Using the
+    // scalar `.eq([...])` serializer would collapse UUIDs to an invalid CSV and
+    // would not reliably preserve ordered immutable context.
+    .filter("lane_ids", "eq", carrierTemplateUuidArrayLiteral(context.lane_ids))
+    .filter("selected_vendor_ids", "eq", carrierTemplateUuidArrayLiteral(context.selected_vendor_ids))
+    .eq("actor_user_id", context.actor_user_id)
+    .eq("actor_email", context.actor_email)
+    .eq("selected_count", context.selected_count)
+    .in("status", CARRIER_TEMPLATE_MATERIALIZATION_ALLOWED_FINALIZATION_FROM[status])
+    .select(CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS)
+    .maybeSingle();
+  if (updateResult.error) throw updateResult.error;
+  const wonRow = objectRecord(updateResult.data);
+  if (wonRow.id) return { won: true, row: wonRow };
+
+  // A no-row CAS is a concurrency result, not a mutation failure. Reload the
+  // authoritative journal so the losing request can converge on its winner.
+  const canonicalResult = await supabase
+    .from("carrier_template_materialization_operations")
+    .select(CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS)
+    .eq("id", context.id)
+    .maybeSingle();
+  if (canonicalResult.error) throw canonicalResult.error;
+  const canonicalRow = objectRecord(canonicalResult.data);
+  if (!canonicalRow.id || !carrierTemplateMaterializationOperationMatches(canonicalRow, context)) {
+    throw new Error("Carrier template materialization journal context changed during finalization.");
+  }
+  return { won: false, row: canonicalRow };
+}
+
+function carrierTemplateMaterializationJournalCounts(row: Record<string, unknown>) {
+  return carrierTemplateMaterializationCounts(
+    Number(row.selected_count) || 0,
+    Number(row.confirmed_count) || 0,
+    Number(row.inserted_count) || 0,
+    Number(row.already_present_count) || 0,
+    Number(row.rejected_count) || 0,
+    Number(row.pending_count) || 0
+  );
+}
+
+function carrierTemplateMaterializationJournalOutcomes(row: Record<string, unknown>) {
+  return Array.isArray(row.outcomes)
+    ? row.outcomes.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    : [];
+}
+
+async function canonicalCarrierTemplateMaterializationResult(
+  supabase: RatewareSupabaseClient,
+  context: CarrierTemplateMaterializationOperationContext,
+  responseContext: Record<string, unknown>,
+  journal: Record<string, unknown>
+): Promise<CarrierTemplateMaterializationResult> {
+  const status = cleanText(journal.status)?.toLowerCase() as CarrierTemplateMaterializationJournalStatus | null;
+  const counts = carrierTemplateMaterializationJournalCounts(journal);
+  const outcomes = carrierTemplateMaterializationJournalOutcomes(journal);
+  const confirmedVendorIds = (Array.isArray(journal.confirmed_vendor_ids) ? journal.confirmed_vendor_ids : [])
+    .map((value) => (cleanText(value) || "").toLowerCase())
+    .filter((value): value is string => Boolean(value));
+  const rejectedVendorIds = new Set(outcomes
+    .filter((outcome) => cleanText(outcome.outcome)?.toLowerCase() === "rejected")
+    .map((outcome) => (cleanText(outcome.vendor_id) || "").toLowerCase())
+    .filter(Boolean));
+  const matrixVendorIds = confirmedVendorIds.length
+    ? confirmedVendorIds
+    : context.selected_vendor_ids.filter((vendorId) => !rejectedVendorIds.has(vendorId));
+  let finalRows: Record<string, unknown>[] = [];
+  if (matrixVendorIds.length) {
+    try {
+      // Every CAS loser reloads the scoped matrix as well as the journal. The
+      // journal decides status; this read prevents a stale request from using
+      // its own pre-CAS snapshot as browser output.
+      finalRows = await fetchFinalCarrierTemplateInvitations(
+        supabase,
+        context.organization_id,
+        context.rfx_event_id,
+        context.lane_ids,
+        matrixVendorIds
+      );
+    } catch (_) {
+      // An incomplete current journal remains reconcile_required. A durable
+      // terminal success is never downgraded because optional hydration failed.
+    }
+  }
+
+  if (status === "reconciled") {
+    return {
+      status: 200,
+      body: {
+        ...responseContext,
+        result: cleanText(journal.result) || "reconciled",
+        counts,
+        outcomes,
+        confirmed_audience_vendor_ids: confirmedVendorIds,
+        rows: finalRows.map(publicRfxParticipantRow)
+      }
+    };
+  }
+
+  if (status === "rejected") {
+    return {
+      status: 200,
+      body: {
+        ...responseContext,
+        result: cleanText(journal.result) || "rejected",
+        counts,
+        outcomes,
+        confirmed_audience_vendor_ids: []
+      }
+    };
+  }
+
+  return {
+    status: 202,
+    body: {
+      ...responseContext,
+      code: "carrier_template_reconcile_required",
+      error: "Carrier additions are still awaiting canonical reconciliation. Retry the same operation.",
+      correlation_id: cleanText(journal.correlation_id) || context.id,
+      result: "reconcile_required",
+      counts,
+      outcomes,
+      confirmed_audience_vendor_ids: confirmedVendorIds
+    }
+  };
 }
 
 async function fetchFinalCarrierTemplateInvitations(
@@ -901,16 +1080,35 @@ async function materializeCarrierTemplateRfxParticipants(
       }
     };
   }
+  if ((cleanText(operationJournal.row.status)?.toLowerCase() || "") === "rejected") {
+    // Rejected is a zero-mutation terminal. A later eligibility change cannot
+    // reuse the UUID to create participants that were never part of its result.
+    return await canonicalCarrierTemplateMaterializationResult(
+      supabase,
+      operationContext,
+      responseContext,
+      operationJournal.row
+    );
+  }
   if (!eligibleVendorIds.length) {
     const counts = carrierTemplateMaterializationCounts(selectedMatrixCount, 0, 0, 0, rejectedCount);
-    await updateCarrierTemplateMaterializationOperation(
+    const finalization = await finalizeCarrierTemplateMaterializationOperation(
       supabase,
-      organizationId,
-      materializationOperationId,
+      operationContext,
       "rejected",
       "rejected",
-      counts
+      counts,
+      rejectedOutcomes,
+      []
     );
+    if (!finalization.won) {
+      return await canonicalCarrierTemplateMaterializationResult(
+        supabase,
+        operationContext,
+        responseContext,
+        finalization.row
+      );
+    }
     return {
       status: 200,
       body: {
@@ -934,14 +1132,25 @@ async function materializeCarrierTemplateRfxParticipants(
       rejectedCount,
       pendingCount
     );
-    await updateCarrierTemplateMaterializationOperation(
+    const outcomes = [...pendingOutcomes, ...rejectedOutcomes];
+    const finalization = await finalizeCarrierTemplateMaterializationOperation(
       supabase,
-      organizationId,
-      materializationOperationId,
+      operationContext,
       "reconcile_required",
       "reconcile_required",
-      counts
+      counts,
+      outcomes,
+      [],
+      correlationId
     );
+    if (!finalization.won) {
+      return await canonicalCarrierTemplateMaterializationResult(
+        supabase,
+        operationContext,
+        responseContext,
+        finalization.row
+      );
+    }
     await writeCarrierTemplateRfxMaterializationAudit(supabase, user, {
       template_id: templateId,
       template_version: templateVersion,
@@ -963,7 +1172,7 @@ async function materializeCarrierTemplateRfxParticipants(
         correlation_id: correlationId,
         result: "reconcile_required",
         counts,
-        outcomes: [...pendingOutcomes, ...rejectedOutcomes],
+        outcomes,
         confirmed_audience_vendor_ids: []
       }
     };
@@ -1050,14 +1259,24 @@ async function materializeCarrierTemplateRfxParticipants(
     alreadyPresentCount,
     rejectedCount
   );
-  await updateCarrierTemplateMaterializationOperation(
+  const outcomes = [...eligibleOutcomes, ...rejectedOutcomes];
+  const finalization = await finalizeCarrierTemplateMaterializationOperation(
     supabase,
-    organizationId,
-    materializationOperationId,
+    operationContext,
     "reconciled",
     resultName,
-    counts
+    counts,
+    outcomes,
+    eligibleVendorIds
   );
+  if (!finalization.won) {
+    return await canonicalCarrierTemplateMaterializationResult(
+      supabase,
+      operationContext,
+      responseContext,
+      finalization.row
+    );
+  }
   await writeCarrierTemplateRfxMaterializationAudit(supabase, user, {
     template_id: templateId,
     template_version: templateVersion,
@@ -1076,9 +1295,9 @@ async function materializeCarrierTemplateRfxParticipants(
       ...responseContext,
       result: resultName,
       counts,
-      outcomes: [...eligibleOutcomes, ...rejectedOutcomes],
+      outcomes,
       confirmed_audience_vendor_ids: eligibleVendorIds,
-      rows: finalRows
+      rows: finalRows.map(publicRfxParticipantRow)
     }
   };
 }
@@ -10421,8 +10640,8 @@ async function awardRfxLaneVendor(
   await setRfxBidRateHistoryOutcome(supabase, invitation, role === "primary" ? "awarded" : "backup", now);
 
   return {
-    row: withoutRfxInvitationTokenColumns(result.data),
-    before: withoutRfxInvitationTokenColumns(invitation),
+    row: publicRfxParticipantRow(result.data),
+    before: publicRfxParticipantRow(invitation),
     award_role: role
   };
 }
@@ -10472,8 +10691,8 @@ async function clearRfxAward(
   }
 
   return {
-    row: withoutRfxInvitationTokenColumns(result.data),
-    before: withoutRfxInvitationTokenColumns(invitation)
+    row: publicRfxParticipantRow(result.data),
+    before: publicRfxParticipantRow(invitation)
   };
 }
 
@@ -17336,12 +17555,17 @@ async function loadBidComparisonFxRate(supabase: RatewareSupabaseClient) {
   }
 }
 
-// `select("*")` on rfx_lane_vendors carries the stored token ciphertext and hash.
-// Neither belongs in an API response, so strip them before anything is returned.
-function withoutRfxInvitationTokenColumns<T>(row: T): T {
+// `select("*")` on rfx_lane_vendors carries server-only token material and the
+// durable materialization attribution marker. None belongs in a browser-facing
+// participant row; internal final reconciliation uses its own explicit select.
+function publicRfxParticipantRow<T>(row: T): T {
   if (!row || typeof row !== "object") return row;
-  const { invitation_token_encrypted: _encrypted, invitation_token_hash: _hash, ...safeRow } =
-    row as Record<string, unknown>;
+  const {
+    invitation_token_encrypted: _encrypted,
+    invitation_token_hash: _hash,
+    carrier_template_materialization_operation_id: _operationId,
+    ...safeRow
+  } = row as Record<string, unknown>;
   return safeRow as T;
 }
 
@@ -17370,8 +17594,7 @@ async function hydrateRfxBoardInvitationTokens(
         token = null;
       }
     }
-    const { invitation_token_encrypted: _encrypted, invitation_token_hash: _hash, ...safeRow } = row;
-    hydrated.push({ ...safeRow, invitation_token: token || "" });
+    hydrated.push({ ...publicRfxParticipantRow(row), invitation_token: token || "" });
   }
   return hydrated;
 }

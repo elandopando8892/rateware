@@ -485,6 +485,9 @@ create table if not exists public.carrier_template_materialization_operations (
   already_present_count integer not null default 0 check (already_present_count >= 0),
   rejected_count integer not null default 0 check (rejected_count >= 0),
   pending_count integer not null default 0 check (pending_count >= 0),
+  confirmed_vendor_ids uuid[] not null default '{}'::uuid[],
+  outcomes jsonb not null default '[]'::jsonb check (jsonb_typeof(outcomes) = 'array'),
+  correlation_id uuid,
   created_at timestamptz not null default now(),
   mutation_started_at timestamptz,
   reconciled_at timestamptz,
@@ -498,6 +501,9 @@ alter table public.carrier_template_materialization_operations enable row level 
 revoke all on table public.carrier_template_materialization_operations from public, anon, authenticated;
 revoke all on table public.carrier_template_materialization_operations from service_role;
 grant select, insert, update on table public.carrier_template_materialization_operations to service_role;
+
+create index if not exists carrier_template_materialization_operations_rfx_event_idx
+  on public.carrier_template_materialization_operations (rfx_event_id);
 
 alter table public.rfx_lane_vendors
   add column if not exists carrier_template_materialization_operation_id uuid
