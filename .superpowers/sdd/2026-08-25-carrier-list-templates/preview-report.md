@@ -52,3 +52,11 @@ Browser/design QA was intentionally not launched by this implementation agent; t
 - The builder source switch is an accessible labeled button group with ordinary `aria-pressed` buttons, with no incomplete tab semantics.
 - A deterministic fake-DOM regression test covers retained focus, adjacent focus after removal, step focus, and heading fallback because the repository has no DOM harness dependency.
 - `node --test tests/carrier-list-templates-preview.test.mjs` — 5 passed, 0 failed.
+
+## Fix round 3
+
+- Builder name and description now update the reducer state on every real `input` event without replacing the focused field, so the DOM node and caret remain stable while typing.
+- Leaving Details performs a final local field flush before step navigation, protecting the draft even when automation or autofill changes a value without its expected event sequence.
+- Library, builder-candidate, and Carrier Fit search fields now filter on `input`; result rerenders restore both the search focus key and its selection range.
+- The executable input-transition regression reproduces Details → Add carriers → Review → Save with `US–Mexico Priority`, its description, and three members, then proves the active template preserves all three values.
+- `node --test tests/carrier-list-templates-preview.test.mjs` — 6 passed, 0 failed.

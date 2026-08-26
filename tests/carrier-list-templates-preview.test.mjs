@@ -46,6 +46,7 @@ test("preview source is public, noindex, local-only, and uses the approved domai
   assert.match(source, /data-clt-builder-mode=["']upload["'][^>]*aria-pressed=/);
   assert.doesNotMatch(source, /role=["']tablist["']|role=["']tab["']/);
   assert.doesNotMatch(source, /data-clt-builder-mode=["'][^"']+["'][^>]*aria-selected=/);
+  assert.match(source, /root\.addEventListener\(["']input["']/);
 });
 
 test("preview reducer completes Library to Builder to Carrier Fit to Message locally", async () => {
@@ -243,4 +244,56 @@ test("focus restoration keeps stable controls and chooses an adjacent member aft
   const fallbackRoot = { querySelectorAll: () => [heading, disabledTrigger] };
   restorePreviewFocus(fallbackRoot, state, { type: "fit_clear" }, "fit-submit");
   assert.deepEqual(focusLog.pop(), { key: "screen-heading", options: { preventScroll: true } });
+});
+
+test("input transitions retain builder details through a three-member save flow", async () => {
+  const {
+    createCarrierTemplatePreviewState,
+    previewInputTransition,
+    reduceCarrierTemplatePreview
+  } = await import(previewJsUrl);
+
+  const inputTarget = (selector, value, dataset = {}) => ({
+    value,
+    dataset,
+    selectionStart: String(value).length,
+    selectionEnd: String(value).length,
+    matches(candidate) { return candidate === selector; }
+  });
+
+  let state = reduceCarrierTemplatePreview(createCarrierTemplatePreviewState(), { type: "builder_new" });
+  let transition = previewInputTransition(state, inputTarget("[data-clt-builder-name]", "US–Mexico Priority"));
+  assert.equal(transition.render, false, "details update state without replacing the focused input");
+  state = transition.state;
+
+  transition = previewInputTransition(state, inputTarget("[data-clt-builder-description]", "Priority cross-border carriers"));
+  assert.equal(transition.render, false, "description input keeps its DOM node and caret");
+  state = transition.state;
+  assert.equal(state.builder.draft.name, "US–Mexico Priority");
+  assert.equal(state.builder.draft.description, "Priority cross-border carriers");
+
+  transition = previewInputTransition(state, inputTarget("[data-clt-builder-query]", "Atlas"));
+  assert.equal(transition.render, true, "search input rerenders its result set");
+  assert.deepEqual(transition.selection, { start: 5, end: 5 }, "search input preserves its caret around rerender");
+  state = transition.state;
+  assert.equal(state.builder.query, "Atlas");
+
+  state = reduceCarrierTemplatePreview(state, { type: "builder_go_to_step", step: 1 });
+  const candidateIds = state.carriers.slice(2, 5).map((carrier) => carrier.id);
+  for (const vendorId of candidateIds) {
+    state = reduceCarrierTemplatePreview(state, { type: "builder_toggle_candidate", vendorId });
+  }
+  state = reduceCarrierTemplatePreview(state, { type: "builder_add_selected" });
+  state = reduceCarrierTemplatePreview(state, { type: "builder_go_to_step", step: 2 });
+  state = reduceCarrierTemplatePreview(state, { type: "builder_go_to_step", step: 3 });
+
+  assert.equal(state.builder.draft.name, "US–Mexico Priority");
+  assert.equal(state.builder.draft.description, "Priority cross-border carriers");
+  assert.deepEqual(state.builder.draft.vendor_ids, candidateIds);
+
+  state = reduceCarrierTemplatePreview(state, { type: "builder_save", lifecycleStatus: "active" });
+  assert.equal(state.screen, "library");
+  assert.equal(state.templates.at(-1).segment_name, "US–Mexico Priority");
+  assert.equal(state.templates.at(-1).description, "Priority cross-border carriers");
+  assert.deepEqual(state.templates.at(-1).vendor_ids, candidateIds);
 });

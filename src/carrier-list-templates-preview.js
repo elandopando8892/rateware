@@ -299,6 +299,34 @@ export function reduceCarrierTemplatePreview(state, action = {}) {
   return next;
 }
 
+export function previewInputTransition(state, target) {
+  const value = String(target?.value ?? "");
+  let action = null;
+  let render = true;
+  if (target?.matches?.("[data-clt-builder-name]")) {
+    action = { type: "builder_set_details", name: value, description: state.builder.draft.description };
+    render = false;
+  } else if (target?.matches?.("[data-clt-builder-description]")) {
+    action = { type: "builder_set_details", name: state.builder.draft.name, description: value };
+    render = false;
+  } else if (target?.matches?.("[data-clt-library-query]")) {
+    action = { type: "library_filter_query", value };
+  } else if (target?.matches?.("[data-clt-builder-query]")) {
+    action = { type: "builder_filter_query", value };
+  } else if (target?.matches?.('[data-clt-fit-filter="search"]')) {
+    action = { type: "fit_filter", key: "search", value };
+  }
+  if (!action) return null;
+  const start = Number.isInteger(target.selectionStart) ? target.selectionStart : value.length;
+  const end = Number.isInteger(target.selectionEnd) ? target.selectionEnd : start;
+  return {
+    action,
+    render,
+    selection: { start, end },
+    state: reduceCarrierTemplatePreview(state, action)
+  };
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -445,18 +473,37 @@ export function restorePreviewFocus(root, state, action, previousFocusKey = "") 
   target?.focus({ preventScroll: true });
 }
 
+function restorePreviewInputSelection(root, focusKey, selection) {
+  if (!selection || !focusKey) return;
+  const target = [...root.querySelectorAll("[data-clt-focus-key]")]
+    .find((element) => element.dataset.cltFocusKey === focusKey && !element.disabled);
+  if (typeof target?.setSelectionRange !== "function") return;
+  target.setSelectionRange(selection.start, selection.end);
+}
+
+function flushPreviewBuilderDetails(state, root) {
+  if (state.screen !== "builder" || state.builder.draft.step !== 0) return state;
+  const name = root.querySelector("[data-clt-builder-name]")?.value ?? state.builder.draft.name;
+  const description = root.querySelector("[data-clt-builder-description]")?.value ?? state.builder.draft.description;
+  return reduceCarrierTemplatePreview(state, { type: "builder_set_details", name, description });
+}
+
 function startCarrierTemplatePreview() {
   registerPlatform55Icons();
   const root = document.querySelector("#preview-content");
   if (!root) return;
   let state = createCarrierTemplatePreviewState();
+  const renderState = (action, previousFocusKey, selection = null) => {
+    renderPreview(state, root);
+    restorePreviewFocus(root, state, action, previousFocusKey);
+    restorePreviewInputSelection(root, previousFocusKey, selection);
+    const live = document.querySelector("[data-preview-live]");
+    if (live && state.notice) live.textContent = state.notice;
+  };
   const dispatch = (action) => {
     const previousFocusKey = document.activeElement?.closest?.("[data-clt-focus-key]")?.dataset.cltFocusKey || "";
     state = reduceCarrierTemplatePreview(state, action);
-    renderPreview(state, root);
-    restorePreviewFocus(root, state, action, previousFocusKey);
-    const live = document.querySelector("[data-preview-live]");
-    if (live && state.notice) live.textContent = state.notice;
+    renderState(action, previousFocusKey);
   };
   root.addEventListener("click", (event) => {
     const route = event.target.closest("[data-preview-route]")?.dataset.previewRoute;
@@ -473,7 +520,10 @@ function startCarrierTemplatePreview() {
       if (action.dataset.cltAction === "restore") dispatch({ type: "library_restore", templateId });
     }
     const step = event.target.closest("[data-clt-step]")?.dataset.cltStep;
-    if (step !== undefined) return dispatch({ type: "builder_go_to_step", step: Number(step) });
+    if (step !== undefined) {
+      state = flushPreviewBuilderDetails(state, root);
+      return dispatch({ type: "builder_go_to_step", step: Number(step) });
+    }
     const mode = event.target.closest("[data-clt-builder-mode]")?.dataset.cltBuilderMode;
     if (mode) return dispatch({ type: "builder_set_mode", value: mode });
     const candidate = event.target.closest("[data-clt-candidate]")?.dataset.cltCandidate;
@@ -498,13 +548,17 @@ function startCarrierTemplatePreview() {
     const feedback = event.target.closest("[data-clt-shell-feedback]")?.dataset.cltShellFeedback;
     if (feedback) document.querySelector("[data-preview-live]").textContent = feedback;
   });
+  root.addEventListener("input", (event) => {
+    const previousFocusKey = event.target.closest?.("[data-clt-focus-key]")?.dataset.cltFocusKey || "";
+    const transition = previewInputTransition(state, event.target);
+    if (!transition) return;
+    state = transition.state;
+    if (transition.render) renderState(transition.action, previousFocusKey, transition.selection);
+  });
   root.addEventListener("change", (event) => {
-    if (event.target.matches("[data-clt-library-query]")) dispatch({ type: "library_filter_query", value: event.target.value });
     if (event.target.matches("[data-clt-library-status]")) dispatch({ type: "library_filter_status", value: event.target.value });
-    if (event.target.matches("[data-clt-builder-name], [data-clt-builder-description]")) dispatch({ type: "builder_set_details", name: root.querySelector("[data-clt-builder-name]")?.value ?? state.builder.draft.name, description: root.querySelector("[data-clt-builder-description]")?.value ?? state.builder.draft.description });
-    if (event.target.matches("[data-clt-builder-query]")) dispatch({ type: "builder_filter_query", value: event.target.value });
     if (event.target.matches("[data-clt-fit-template]")) dispatch({ type: "fit_choose_template", templateId: event.target.value });
-    if (event.target.matches("[data-clt-fit-filter]")) dispatch({ type: "fit_filter", key: event.target.dataset.cltFitFilter, value: event.target.value });
+    if (event.target.matches("[data-clt-fit-filter]") && event.target.dataset.cltFitFilter !== "search") dispatch({ type: "fit_filter", key: event.target.dataset.cltFitFilter, value: event.target.value });
   });
   root.addEventListener("keydown", (event) => {
     const row = event.target.closest("[data-clt-select-template]");
