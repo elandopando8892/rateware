@@ -16,6 +16,25 @@ test("preview source is public, noindex, local-only, and uses the approved domai
   assert.match(html, /carrier-list-templates-preview\.js/);
   assert.doesNotMatch(html, /target="_blank"|https?:\/\//i);
 
+  const productNavigationLabels = [...html.matchAll(/<button class="rw-nav-link"[^>]*aria-label="([^"]+)"/g)]
+    .map((match) => match[1]);
+  assert.deepEqual(productNavigationLabels, [
+    "Command Center",
+    "Import",
+    "Source Files",
+    "Review Queue",
+    "Rateware",
+    "Analyze",
+    "Carrier CRM",
+    "RFx Process",
+    "Bid Room",
+    "Vendor Support",
+    "Vendor CI",
+    "Settings",
+    "Learning Rules"
+  ]);
+  assert.match(html, /data-preview-nav-collapse[^>]*aria-label="Collapse navigation"/);
+
   assert.match(source, /import\s*\{[\s\S]*partitionCarrierTemplateMembers[\s\S]*reduceCarrierTemplateDraft[\s\S]*validateCarrierTemplateDraft[\s\S]*\}\s*from\s*["']\.\/carrier-list-template-domain\.js["']/);
   assert.match(source, /import\s*\{\s*registerPlatform55Icons\s*\}\s*from\s*["']\.\/platform55-icons\.js["']/);
   assert.doesNotMatch(source, /from\s*["'][^"']*(?:auth|api|vendor-service|supabase|kinde)[^"']*["']/i);
@@ -55,12 +74,15 @@ test("preview reducer completes Library to Builder to Carrier Fit to Message loc
     PREVIEW_SCREENS,
     createCarrierTemplatePreviewState,
     filteredPreviewTemplates,
+    previewNavigationCollapseState,
     previewCarrierFitSnapshot,
     reduceCarrierTemplatePreview
   } = await import(previewJsUrl);
 
   assert.equal(PREVIEW_NOTICE, "Preview con datos simulados · sin acciones externas");
   assert.deepEqual(PREVIEW_SCREENS, ["library", "builder", "carrier-fit", "message"]);
+  assert.deepEqual(previewNavigationCollapseState(false), { collapsed: true, expanded: false, label: "Expand navigation" });
+  assert.deepEqual(previewNavigationCollapseState(true), { collapsed: false, expanded: true, label: "Collapse navigation" });
 
   let state = createCarrierTemplatePreviewState();
   assert.equal(state.screen, "library");
@@ -118,6 +140,14 @@ test("preview reducer completes Library to Builder to Carrier Fit to Message loc
   );
   assert.equal(fit.counts.filtered_out, 0);
   assert.equal(state.fit.selectedVendorIds.length, 0, "choosing a template does not select carriers automatically");
+  assert.equal(state.fit.cta, "Add 0 carriers to this RFx and open Message");
+
+  const eligibleIds = fit.visible.eligible.map((row) => row.vendor_id);
+  state = reduceCarrierTemplatePreview(state, { type: "fit_toggle", vendorId: eligibleIds[0] });
+  assert.equal(state.fit.cta, "Add 1 carrier to this RFx and open Message");
+  state = reduceCarrierTemplatePreview(state, { type: "fit_toggle", vendorId: eligibleIds[1] });
+  assert.equal(state.fit.cta, "Add 2 carriers to this RFx and open Message");
+  state = reduceCarrierTemplatePreview(state, { type: "fit_clear" });
 
   const blockedId = fit.rows.missing_contact[0].vendor_id;
   state = reduceCarrierTemplatePreview(state, { type: "fit_toggle", vendorId: blockedId });
@@ -128,7 +158,7 @@ test("preview reducer completes Library to Builder to Carrier Fit to Message loc
   assert(fit.counts.filtered_out > 0, "filters expose a non-destructive filtered-out overlay");
   state = reduceCarrierTemplatePreview(state, { type: "fit_select_all_visible" });
   assert.deepEqual(state.fit.selectedVendorIds, fit.visible.eligible.map((row) => row.vendor_id));
-  assert.equal(state.fit.cta, `Add ${state.fit.selectedVendorIds.length} carriers to this RFx and open Message`);
+  assert.equal(state.fit.cta, "Add 1 carrier to this RFx and open Message");
 
   state = reduceCarrierTemplatePreview(state, { type: "fit_submit" });
   assert.equal(state.screen, "message");

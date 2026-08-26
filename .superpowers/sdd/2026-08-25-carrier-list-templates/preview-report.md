@@ -60,3 +60,11 @@ Browser/design QA was intentionally not launched by this implementation agent; t
 - Library, builder-candidate, and Carrier Fit search fields now filter on `input`; result rerenders restore both the search focus key and its selection range.
 - The executable input-transition regression reproduces Details → Add carriers → Review → Save with `US–Mexico Priority`, its description, and three members, then proves the active template preserves all three values.
 - `node --test tests/carrier-list-templates-preview.test.mjs` — 6 passed, 0 failed.
+
+## Fix round 4
+
+- The Carrier Fit Add CTA now uses singular grammar only for one selected carrier and plural grammar for zero or two-or-more selections.
+- Every collapsed-sidebar product button has a stable accessible name matching its visible product label: Command Center, Import, Source Files, Review Queue, Rateware, Analyze, Carrier CRM, RFx Process, Bid Room, Vendor Support, Vendor CI, Settings, and Learning Rules.
+- The navigation collapse control exposes `Collapse navigation` while expanded and `Expand navigation` while collapsed, synchronized with `aria-expanded`.
+- Focused contracts cover the exact 13 product labels, collapse-state semantics, and exact zero/one/two Carrier Fit CTA strings.
+- `node --test tests/carrier-list-templates-preview.test.mjs` — 6 passed, 0 failed.

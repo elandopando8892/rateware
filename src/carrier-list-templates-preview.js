@@ -9,6 +9,20 @@ import { registerPlatform55Icons } from "./platform55-icons.js";
 export const PREVIEW_NOTICE = "Preview con datos simulados · sin acciones externas";
 export const PREVIEW_SCREENS = ["library", "builder", "carrier-fit", "message"];
 
+export function previewCarrierFitCta(selectedCount) {
+  const count = Math.max(0, Number(selectedCount) || 0);
+  return `Add ${count} carrier${count === 1 ? "" : "s"} to this RFx and open Message`;
+}
+
+export function previewNavigationCollapseState(currentCollapsed) {
+  const collapsed = !Boolean(currentCollapsed);
+  return {
+    collapsed,
+    expanded: !collapsed,
+    label: collapsed ? "Expand navigation" : "Collapse navigation"
+  };
+}
+
 const PREVIEW_CARRIERS = [
   { id: "b1000000-0000-4000-8000-000000000001", crm_id: "CRM-100245", name: "Premier Logistics Inc.", coverage: "National", equipment: "Dry Van, Reefer", primary_email: "dispatch@premier.example", status: "active", lane_fit: "Recommended" },
   { id: "b1000000-0000-4000-8000-000000000002", crm_id: "CRM-100312", name: "Summit Trucking LLC", coverage: "Regional", equipment: "Flatbed, Step Deck", primary_email: "ops@summit.example", status: "active", lane_fit: "Recommended" },
@@ -70,7 +84,7 @@ export function createCarrierTemplatePreviewState() {
       participantVendorIds: PREVIEW_CARRIERS.slice(0, 2).map((carrier) => carrier.id),
       filters: { search: "", lane_fit: "all", equipment: "all", contact: "all", rfx_status: "all" },
       selectedVendorIds: [],
-      cta: "Add 0 carriers to this RFx and open Message"
+      cta: previewCarrierFitCta(0)
     },
     message: { selectedCount: 0, selectedVendorIds: [], detail: "" },
     notice: ""
@@ -145,7 +159,7 @@ function cloneState(state) {
 }
 
 function updateFitCta(state) {
-  state.fit.cta = `Add ${state.fit.selectedVendorIds.length} carriers to this RFx and open Message`;
+  state.fit.cta = previewCarrierFitCta(state.fit.selectedVendorIds.length);
 }
 
 export function previewFocusKeyAfterMemberRemoval(state, vendorId) {
@@ -570,9 +584,10 @@ function startCarrierTemplatePreview() {
   document.querySelectorAll("[data-preview-route]").forEach((button) => button.addEventListener("click", () => dispatch({ type: "navigate", screen: button.dataset.previewRoute })));
   document.querySelector("[data-preview-nav-collapse]")?.addEventListener("click", (event) => {
     const app = document.querySelector("[data-platform55-app]");
-    const collapsed = app.dataset.navCollapsed !== "true";
-    app.dataset.navCollapsed = String(collapsed);
-    event.currentTarget.setAttribute("aria-expanded", String(!collapsed));
+    const collapseState = previewNavigationCollapseState(app.dataset.navCollapsed === "true");
+    app.dataset.navCollapsed = String(collapseState.collapsed);
+    event.currentTarget.setAttribute("aria-expanded", String(collapseState.expanded));
+    event.currentTarget.setAttribute("aria-label", collapseState.label);
   });
   document.querySelectorAll("[data-preview-mobile-nav]").forEach((button) => button.addEventListener("click", () => {
     document.querySelector("[data-platform55-app]").dataset.mobileNavOpen = String(button.dataset.previewMobileNav === "open");
