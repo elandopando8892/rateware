@@ -14,6 +14,7 @@ const NOW = 1_800_000_000;
 const issuer = 'https://auth.heymarksman.com';
 const audience = 'https://osp.heymarksman.com/api';
 const clientId = 'synthetic-public-client';
+const allowedEmails = ['operator@example.test'];
 
 function claims(overrides: Record<string, unknown> = {}) {
   return {
@@ -55,13 +56,14 @@ function verifier(jwksFetch: typeof fetch) {
     issuer,
     clientId,
     audience,
+    allowedEmails,
     jwksFetch,
     clock: () => NOW * 1_000,
   });
 }
 
 function verifierAt(jwksFetch: typeof fetch, clock: () => number) {
-  return createKindeJwtVerifier({ issuer, clientId, audience, jwksFetch, clock, elapsedClock: clock });
+  return createKindeJwtVerifier({ issuer, clientId, audience, allowedEmails, jwksFetch, clock, elapsedClock: clock });
 }
 
 function verifierWithElapsedClock(
@@ -69,7 +71,7 @@ function verifierWithElapsedClock(
   clock: () => number,
   elapsedClock: () => number,
 ) {
-  return createKindeJwtVerifier({ issuer, clientId, audience, jwksFetch, clock, elapsedClock });
+  return createKindeJwtVerifier({ issuer, clientId, audience, allowedEmails, jwksFetch, clock, elapsedClock });
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -181,10 +183,18 @@ for (const [label, permissions] of [
     const token = await sign(fixture.first.privateKey, 'first-kid', { permissions });
     const subject = verifier(jsonFetch({ keys: [fixture.firstJwk] }));
     await expectForbidden(subject.verifyWorkflow(token));
-    if (label === 'non-string') await expectForbidden(subject.verify(token));
-    else assert.equal((await subject.verify(token)).subject, 'synthetic-subject');
+    assert.equal((await subject.verify(token)).subject, 'synthetic-subject');
   });
 }
+
+Deno.test('createKindeJwtVerifier grants approved identities read-only workflow access without paid OSP permissions', async () => {
+  const fixture = await setup();
+  for (const permissions of [undefined, [], ['dashboard:read']]) {
+    const token = await sign(fixture.first.privateKey, 'first-kid', { permissions });
+    const workflow = await verifier(jsonFetch({ keys: [fixture.firstJwk] })).verifyWorkflow(token);
+    assert.deepEqual(workflow.permissions, ['osp:read']);
+  }
+});
 
 Deno.test('createKindeJwtVerifier rejects an altered real signature without leaking details', async () => {
   const fixture = await setup();

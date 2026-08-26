@@ -32,9 +32,6 @@ const baseAccessClaims: Record<string, unknown> = {
   sub: 'user-a',
   org_code: 'org-a',
   email: [' Operator', 'Example.TEST '].join('@'),
-  osp_email_verified: true,
-  osp_verified_email: 'operator@example.test',
-  permissions: ['osp:read'],
 };
 
 const baseIdClaims: Record<string, unknown> = {
@@ -60,7 +57,7 @@ function bind(
 }
 
 describe('bindVerifiedTokenPair', () => {
-  it('binds the exact issuer, audience, authorized party, subject, organization, verified email, and permission', () => {
+  it('binds the exact issuer, audience, authorized party, subject, organization, and ID-token-verified email', () => {
     expect(bind()).toEqual({
       identity: {
         issuer: 'https://auth.heymarksman.com',
@@ -86,10 +83,6 @@ describe('bindVerifiedTokenPair', () => {
     ['subject', { sub: '' }, {}],
     ['organization', { org_code: '' }, {}],
     ['multiple organizations', { org_code: ['org-a', 'org-b'] }, {}],
-    ['access email verification', { osp_email_verified: false }, {}],
-    ['verified access email identity', { osp_verified_email: 'other@example.test' }, {}],
-    ['ambiguous verified identities', { osp_verified_email: ['operator@example.test', 'other@example.test'] }, {}],
-    ['permission', { permissions: ['another:permission'] }, {}],
     ['native ID-token email verification', {}, { email_verified: false }],
     ['ID-token subject match', {}, { sub: 'user-b' }],
     ['ID-token organization match', {}, { org_code: 'org-b' }],
@@ -106,8 +99,6 @@ describe('bindVerifiedTokenPair', () => {
     ['sub', {}],
     ['org_code', ['org-a']],
     ['email', null],
-    ['osp_verified_email', 9],
-    ['permissions', 'osp:read'],
   ])('rejects a non-contractual access-token %s claim', (claim, value) => {
     expect(() => bind({ [claim]: value })).toThrow();
   });
@@ -139,7 +130,7 @@ describe('assertVerifiedAccessTokenMatchesSession', () => {
   it.each([
     ['subject', { sub: 'user-b' }],
     ['organization', { org_code: 'org-b' }],
-    ['email', { email: 'other@example.test', osp_verified_email: 'other@example.test' }],
+    ['email', { email: 'other@example.test' }],
     ['issuer', { iss: 'https://other.example.test' }],
     ['authorized party', { azp: 'another-client' }],
   ])('rejects a refreshed access token with a changed %s', (_name, overrides) => {
@@ -150,6 +141,35 @@ describe('assertVerifiedAccessTokenMatchesSession', () => {
       bound.identity,
       runtime,
     )).toThrow();
+  });
+});
+
+describe('production read-only identity allowlist', () => {
+  const productionRuntime: RuntimeConfig = {
+    ...runtime,
+    VITE_KINDE_CLIENT_ID: 'production-client',
+    VITE_SUPABASE_URL: 'https://alqjqzqagdmcywpjtnnr.supabase.co',
+    VITE_OSP_BUILD_PROFILE: 'production-readonly',
+  };
+
+  it.each([
+    'sales@heymarksman.com',
+    'carriers@xbfreight.com',
+    'jgonzalez@xbfreight.com',
+  ])('accepts approved identity %s without paid Kinde permissions', (email) => {
+    expect(bindVerifiedTokenPair({
+      accessClaims: { ...baseAccessClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, email },
+      idClaims: { ...baseIdClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, aud: productionRuntime.VITE_KINDE_CLIENT_ID, email },
+      config: productionRuntime,
+    }).identity.email).toBe(email);
+  });
+
+  it('rejects an otherwise valid identity outside the approved production set', () => {
+    expect(() => bindVerifiedTokenPair({
+      accessClaims: { ...baseAccessClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, email: 'other@example.test' },
+      idClaims: { ...baseIdClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, aud: productionRuntime.VITE_KINDE_CLIENT_ID, email: 'other@example.test' },
+      config: productionRuntime,
+    })).toThrow('Email is not approved');
   });
 });
 

@@ -8,6 +8,7 @@ const policy = {
   issuer: 'https://auth.heymarksman.com',
   audience: 'https://osp.heymarksman.com/api',
   clientId: 'synthetic-public-client',
+  allowedEmails: ['operator@example.test'],
   nowEpochSeconds: () => NOW,
   clockToleranceSeconds: 30,
 } as const;
@@ -19,9 +20,6 @@ const baseClaims: Record<string, unknown> = {
   sub: 'synthetic-subject',
   org_code: 'synthetic-org',
   email: [' Operator', 'Example.Test '].join('@'),
-  osp_email_verified: true,
-  osp_verified_email: 'operator@example.test',
-  permissions: ['osp:read'],
   exp: NOW + 60,
   nbf: NOW - 60,
 };
@@ -52,7 +50,7 @@ Deno.test('requireOspIdentity returns only the bound canonical authorization ide
 
 for (const [name, overrides] of [
   ['wrong audience', { aud: 'https://osp.heymarksman.com/other' }],
-  ['multiple audiences', { aud: [policy.audience, 'another-audience'] }],
+  ['audience array without OSP', { aud: ['another-audience'] }],
   ['wrong issuer', { iss: 'https://other.example.test' }],
   ['issuer with leading whitespace', { iss: ` ${policy.issuer}` }],
   ['missing authorized party', { azp: undefined }],
@@ -61,7 +59,7 @@ for (const [name, overrides] of [
   ['expired beyond tolerance', { exp: NOW - 31 }],
   ['future beyond tolerance', { nbf: NOW + 31 }],
   ['missing expiration', { exp: undefined }],
-  ['missing not-before', { nbf: undefined }],
+  ['malformed not-before', { nbf: 'soon' }],
   ['missing subject', { sub: undefined }],
   ['blank subject', { sub: '  ' }],
 ] as const) {
@@ -71,15 +69,10 @@ for (const [name, overrides] of [
 }
 
 for (const [name, overrides] of [
-  ['missing verified flag', { osp_email_verified: undefined }],
-  ['false verified flag', { osp_email_verified: false }],
-  ['missing verified email', { osp_verified_email: undefined }],
-  ['mismatched verified email', { osp_verified_email: 'other@example.test' }],
   ['missing email', { email: undefined }],
+  ['unapproved email', { email: 'other@example.test' }],
   ['missing organization', { org_code: undefined }],
   ['multiple organizations', { org_code: ['synthetic-org', 'other-org'] }],
-  ['missing permission', { permissions: [] }],
-  ['non-array permission', { permissions: 'osp:read' }],
 ] as const) {
   Deno.test(`requireOspIdentity rejects ${name}`, () => {
     expectCode(() => requireOspIdentity(claims(overrides), policy), 'FORBIDDEN');
@@ -93,6 +86,14 @@ Deno.test('requireOspIdentity preserves authoritative subject and organization b
   }), policy);
   assert.equal(identity.subject, ' synthetic-subject');
   assert.equal(identity.organization, 'synthetic-org ');
+});
+
+Deno.test('requireOspIdentity accepts a Kinde audience array and an omitted not-before claim', () => {
+  const identity = requireOspIdentity(claims({
+    aud: ['another-audience', policy.audience],
+    nbf: undefined,
+  }), policy);
+  assert.equal(identity.email, 'operator@example.test');
 });
 
 Deno.test('requireOspIdentity matches jose at the exact 30-second clock boundaries', () => {

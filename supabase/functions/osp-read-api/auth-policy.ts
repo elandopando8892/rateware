@@ -15,6 +15,7 @@ export type OspClaimPolicy = {
   issuer: string;
   audience: string;
   clientId: string;
+  allowedEmails: readonly string[];
   nowEpochSeconds: () => number;
   clockToleranceSeconds: number;
 };
@@ -47,6 +48,15 @@ function requiredEpoch(payload: Record<string, unknown>, claim: string): number 
   return value as number;
 }
 
+function hasAudience(value: unknown, expected: string): boolean {
+  return typeof value === 'string'
+    ? value === expected
+    : Array.isArray(value)
+      && value.length > 0
+      && value.every((entry) => typeof entry === 'string')
+      && value.includes(expected);
+}
+
 export function requireOspIdentity(
   verifiedPayload: JWTPayload | Record<string, unknown>,
   policy: OspClaimPolicy,
@@ -55,24 +65,23 @@ export function requireOspIdentity(
   const issuer = requiredExactText(payload, 'iss', 'UNAUTHORIZED');
   const authorizedParty = requiredExactText(payload, 'azp', 'UNAUTHORIZED');
   const subject = requiredExactText(payload, 'sub', 'UNAUTHORIZED');
-  if (issuer !== policy.issuer || payload.aud !== policy.audience || authorizedParty !== policy.clientId) {
+  if (issuer !== policy.issuer || !hasAudience(payload.aud, policy.audience) || authorizedParty !== policy.clientId) {
     throw new OspApiError('UNAUTHORIZED');
   }
 
   const now = policy.nowEpochSeconds();
   const exp = requiredEpoch(payload, 'exp');
-  const nbf = requiredEpoch(payload, 'nbf');
-  if (exp <= now - policy.clockToleranceSeconds || nbf > now + policy.clockToleranceSeconds) {
+  const nbf = payload.nbf;
+  if (
+    exp <= now - policy.clockToleranceSeconds
+    || (nbf !== undefined && (!Number.isSafeInteger(nbf) || (nbf as number) > now + policy.clockToleranceSeconds))
+  ) {
     throw new OspApiError('UNAUTHORIZED');
   }
 
   const organization = requiredExactText(payload, 'org_code', 'FORBIDDEN');
   const email = normalizedText(payload, 'email', 'FORBIDDEN').toLowerCase();
-  const verifiedEmail = normalizedText(payload, 'osp_verified_email', 'FORBIDDEN').toLowerCase();
-  const permissions = payload.permissions;
-  if (payload.osp_email_verified !== true || verifiedEmail !== email ||
-      !Array.isArray(permissions) || permissions.some((value) => typeof value !== 'string') ||
-      !permissions.includes('osp:read')) {
+  if (!policy.allowedEmails.includes(email)) {
     throw new OspApiError('FORBIDDEN');
   }
 

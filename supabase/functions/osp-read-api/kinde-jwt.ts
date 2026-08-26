@@ -19,6 +19,11 @@ const CLOCK_TOLERANCE_SECONDS = 30;
 const JWKS_FETCH_TIMEOUT_MS = 5_000;
 const JWKS_REFRESH_COOLDOWN_MS = 30_000;
 const JWKS_MAX_AGE_MS = 600_000;
+const OSP_PRODUCTION_READONLY_EMAILS = Object.freeze([
+  'sales@heymarksman.com',
+  'carriers@xbfreight.com',
+  'jgonzalez@xbfreight.com',
+]);
 
 export type KindeJwtVerifier = {
   verify(token: string, signal?: AbortSignal): Promise<OspAuthorizationIdentity>;
@@ -30,6 +35,7 @@ export type KindeJwtVerifierOptions = {
   issuer: string;
   clientId: string;
   audience?: string;
+  allowedEmails?: readonly string[];
   jwksFetch: typeof fetch;
   clock?: () => number;
   elapsedClock?: () => number;
@@ -64,16 +70,19 @@ function isRefreshableVerificationFailure(error: unknown): boolean {
 
 function canonicalWorkflowPermissions(payload: Record<string, unknown>): readonly string[] {
   const permissions = payload.permissions;
-  if (!Array.isArray(permissions) || permissions.length === 0 ||
+  if (permissions !== undefined && (!Array.isArray(permissions) ||
       permissions.some((permission) => typeof permission !== 'string' || permission.trim() === '' ||
-        permission.trim() !== permission || ![
-          'osp:read', 'osp:operate', 'osp:signature-approve',
-          'osp:sales-authorize', 'osp:send-authorized',
-        ].includes(permission))) {
+        permission.trim() !== permission))) {
     throw new OspApiError('FORBIDDEN');
   }
-  const canonical = [...permissions].sort();
-  if (new Set(canonical).size !== canonical.length) throw new OspApiError('FORBIDDEN');
+  const source = (permissions ?? []) as string[];
+  if (new Set(source).size !== source.length) throw new OspApiError('FORBIDDEN');
+  const ospPermissions = source.filter((permission) => permission.startsWith('osp:'));
+  if (ospPermissions.some((permission) => ![
+    'osp:read', 'osp:operate', 'osp:signature-approve',
+    'osp:sales-authorize', 'osp:send-authorized',
+  ].includes(permission))) throw new OspApiError('FORBIDDEN');
+  const canonical = [...new Set(['osp:read', ...ospPermissions])].sort();
   return Object.freeze(canonical);
 }
 
@@ -113,6 +122,7 @@ export function createKindeJwtVerifier({
   issuer,
   clientId,
   audience = OSP_API_AUDIENCE,
+  allowedEmails = OSP_PRODUCTION_READONLY_EMAILS,
   jwksFetch,
   clock = Date.now,
   elapsedClock = () => performance.now(),
@@ -268,6 +278,7 @@ export function createKindeJwtVerifier({
         issuer,
         audience,
         clientId,
+        allowedEmails,
         nowEpochSeconds: () => Math.floor(clock() / 1_000),
         clockToleranceSeconds: CLOCK_TOLERANCE_SECONDS,
       });

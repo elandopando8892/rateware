@@ -22,6 +22,12 @@ type BoundTokenPair = {
   displayProfile: OspDisplayProfile;
 };
 
+const PRODUCTION_READONLY_EMAILS = new Set([
+  'sales@heymarksman.com',
+  'carriers@xbfreight.com',
+  'jgonzalez@xbfreight.com',
+]);
+
 export type KindeTokenVerifier = {
   verifyAccessToken(token: string): Promise<Record<string, unknown>>;
   verifyIdToken(token: string): Promise<Record<string, unknown>>;
@@ -120,8 +126,6 @@ function validateAccessClaims(
   const subject = requiredString(claims, 'sub');
   const organization = requiredString(claims, 'org_code');
   const email = normalizedEmail(claims, 'email');
-  const verifiedEmail = normalizedEmail(claims, 'osp_verified_email');
-  const permissions = claims.permissions;
 
   requireAudience(claims, config.VITE_KINDE_AUDIENCE);
   if (issuer !== config.VITE_KINDE_DOMAIN) {
@@ -130,15 +134,11 @@ function validateAccessClaims(
   if (authorizedParty !== config.VITE_KINDE_CLIENT_ID) {
     throw new Error('Token authorized party mismatch');
   }
-  if (claims.osp_email_verified !== true || verifiedEmail !== email) {
-    throw new Error('Access-token email is not unambiguously verified');
-  }
   if (
-    !Array.isArray(permissions)
-    || permissions.some((permission) => typeof permission !== 'string')
-    || !permissions.includes('osp:read')
+    config.VITE_OSP_BUILD_PROFILE === 'production-readonly'
+    && !PRODUCTION_READONLY_EMAILS.has(email)
   ) {
-    throw new Error('Required osp:read permission missing');
+    throw new Error('Email is not approved for the production read-only workspace');
   }
 
   return {
