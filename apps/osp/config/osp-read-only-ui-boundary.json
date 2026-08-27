@@ -56,7 +56,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/router.tsx",
-      "sha256": "5b58039d6cc5b1107fe3aae5ee88782ef6e6e23e571509021053a501d42555d4"
+      "sha256": "e21fb2ca949b6bbc5b8631ee5f237b22ecaafc2db2fb1b35fe0d26a2e13d8aa3"
     },
     {
       "kind": "production-ui",
@@ -236,7 +236,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/vite.config.ts",
-      "sha256": "d347c921663fa5ff1270e13f891804e8267267309b5e06ccdd41a083283d3580"
+      "sha256": "5148c0a4186cac9edd651038f75d78f32707cdebc7f220ceebc1907fd742fce5"
     }
   ]
 }

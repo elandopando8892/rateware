@@ -1,21 +1,22 @@
-import { Link, Outlet, createRootRouteWithContext, createRoute, createRouter, redirect, type RouterHistory } from '@tanstack/react-router';
+import { Link, Outlet, createRootRouteWithContext, createRoute, createRouter, lazyRouteComponent, redirect, type RouterHistory } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 
 import type { OspClient } from '../api/osp-client';
 import { OspWorkflowError } from '../api/workflow-client';
 import { RoutePlaceholder } from '../components/RoutePlaceholder';
-import { SalesAuthorizationPage } from '../features/approval/SalesAuthorizationPage';
-import { SignatureApprovalPage } from '../features/approval/SignatureApprovalPage';
-import { ClarificationReview } from '../features/communications/ClarificationReview';
-import { OutboundPayloadPage } from '../features/communications/OutboundPayloadPage';
-import { QuarterlyDocumentVault } from '../features/documents/QuarterlyDocumentVault';
-import { CaseWorkspace } from '../features/cases/CaseWorkspace';
-import { FormTemplateLibrary, XBF_STARTER_SURVEY } from '../features/forms/FormTemplateLibrary';
-import { CaseFormWorkspace } from '../features/forms/CaseFormWorkspace';
 import { PipelineOverview } from '../features/pipeline/PipelineOverview';
-import { OperationsReviewPage } from '../features/review/OperationsReviewPage';
 import { AppShell } from './AppShell';
+
+const CaseWorkspace = lazyRouteComponent(() => import('../features/cases/CaseWorkspace'), 'CaseWorkspace');
+const CaseFormWorkspace = lazyRouteComponent(() => import('../features/forms/CaseFormWorkspace'), 'CaseFormWorkspace');
+const FormTemplateLibrary = lazyRouteComponent(() => import('../features/forms/FormTemplateLibrary'), 'FormTemplateLibrary');
+const QuarterlyDocumentVault = lazyRouteComponent(() => import('../features/documents/QuarterlyDocumentVault'), 'QuarterlyDocumentVault');
+const ClarificationReview = lazyRouteComponent(() => import('../features/communications/ClarificationReview'), 'ClarificationReview');
+const OperationsReviewPage = lazyRouteComponent(() => import('../features/review/OperationsReviewPage'), 'OperationsReviewPage');
+const SignatureApprovalPage = lazyRouteComponent(() => import('../features/approval/SignatureApprovalPage'), 'SignatureApprovalPage');
+const SalesAuthorizationPage = lazyRouteComponent(() => import('../features/approval/SalesAuthorizationPage'), 'SalesAuthorizationPage');
+const OutboundPayloadPage = lazyRouteComponent(() => import('../features/communications/OutboundPayloadPage'), 'OutboundPayloadPage');
 
 type AppRouterContext = { apiClient: OspClient; email: string; logout(): Promise<void> };
 
@@ -86,7 +87,10 @@ function FormBuilderWorkspace() {
     try { await operation(); await query.refetch(); } finally { setBusy(false); }
   };
   return <FormTemplateLibrary catalog={query.data} licenseEvidence={licenseEvidence} busy={busy}
-    onCreateStarter={() => mutate(() => apiClient.saveFormTemplateDraft({ idempotencyKey: `form-create:${crypto.randomUUID()}`, templateId: null, expectedVersion: 0, name: 'XBF customer setup', surveyJson: XBF_STARTER_SURVEY }))}
+    onCreateStarter={() => mutate(async () => {
+      const { XBF_STARTER_SURVEY } = await import('../features/forms/FormTemplateLibrary');
+      return apiClient.saveFormTemplateDraft({ idempotencyKey: `form-create:${crypto.randomUUID()}`, templateId: null, expectedVersion: 0, name: 'XBF customer setup', surveyJson: XBF_STARTER_SURVEY });
+    })}
     onSaveDraft={(input) => mutate(() => apiClient.saveFormTemplateDraft({ idempotencyKey: `form-save:${crypto.randomUUID()}`, ...input }))}
     onPublish={(input) => mutate(() => apiClient.publishFormTemplate({ idempotencyKey: `form-publish:${crypto.randomUUID()}`, ...input }))}
   />;
