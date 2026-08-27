@@ -31,7 +31,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/contracts.ts",
-      "sha256": "d519ead56d15a37ee9e6b21090ee340cf02f6144d0874bc6d77c8feae34a8d53"
+      "sha256": "5f48c9f2e9c0a0ad7e9a88fc74bfb8f262199ca93f9b2a263144be022f9829d0"
     },
     {
       "kind": "production-ui",
@@ -136,7 +136,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/CaseFormWorkspace.tsx",
-      "sha256": "8f445d1328f388e0475bab197858e6e0a625d4b66c24353b0c8573b0551b37c7"
+      "sha256": "ffebb9e77643c2e075f079587fb8d46d2183fd05cbd53a8e89db781134361613"
     },
     {
       "kind": "production-ui",
@@ -196,7 +196,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "aa8e2728bf120b8c09ac4f0d0102f817ace01162615e86522e679673715f08b0"
+      "sha256": "5722931e0fd88a3f8dda5a2727b5882218644c10eadcda4bca7cd615d003f3d0"
     },
     {
       "kind": "production-ui",

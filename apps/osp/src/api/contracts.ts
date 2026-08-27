@@ -413,7 +413,7 @@ export const CaseFormWorkspaceResponseSchema = z.strictObject({
   version: z.literal(1), data: z.strictObject({
     caseId: z.uuid(), supplierName: z.string().min(1).max(256), caseVersion: z.number().int().min(0).max(2_147_483_647),
     caseState: CaseStateSchema, templateName: z.string().min(3).max(128).nullable(), template: FormTemplateVersionSchema.nullable(),
-    instance: CaseFormInstanceSchema.nullable(), mappings: z.array(CaseFormMappingReviewSchema).max(100),
+    instance: CaseFormInstanceSchema.nullable(), mappings: z.array(CaseFormMappingReviewSchema).max(100), evidenceReady: z.boolean(),
     capabilities: z.strictObject({ saveDraft: z.boolean(), acceptMapping: z.boolean(), submitForReview: z.boolean() }),
   }),
 });

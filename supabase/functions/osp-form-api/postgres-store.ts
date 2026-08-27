@@ -144,6 +144,25 @@ async function readPublishedTemplate(tx: SqlPort, organizationId: string): Promi
   return catalogItem(templates[0], fields, new Map(ruleRows.map((row) => [String(row.target_field_id), row.rule_json])));
 }
 
+async function readEvidenceReady(tx: SqlPort, organizationId: string, caseId: string, templateVersionId: string): Promise<boolean> {
+  const documentRows = await tx`select version.id from osp_private.document_versions version join osp_private.documents document on document.organization_id = version.organization_id and document.id = version.document_id where version.organization_id = ${organizationId} and version.status = 'approved' and ((version.document_type = 'supplier_requirement' and document.case_id = ${caseId}) or (version.document_type in ('proof_of_address', 'sat_compliance_opinion', 'tax_status_certificate', 'bank_statement') and (document.case_id = ${caseId} or document.case_id is null) and version.valid_from <= current_date and current_date < version.expires_at)) order by version.document_type, version.id`;
+  const documentVersionIds = documentRows.map((row) => String(row.id));
+  if (documentVersionIds.length === 0) return false;
+  const extractionRows = await tx`select id from osp_private.document_extractions where organization_id = ${organizationId} and case_id = ${caseId} and source_version_id = any(${documentVersionIds}::uuid[]) and status = 'reviewed' order by id`;
+  const extractionIds = extractionRows.map((row) => String(row.id));
+  if (extractionIds.length === 0) return false;
+  const decisionRows = await tx`select subject_kind, subject_id from osp_private.review_decisions where organization_id = ${organizationId} and decision in ('accepted', 'corrected') and ((subject_kind = 'document_version' and subject_id = any(${documentVersionIds}::uuid[])) or (subject_kind = 'extraction_field' and exists (select 1 from osp_private.extraction_fields field where field.organization_id = ${organizationId} and field.id = subject_id and field.extraction_id = any(${extractionIds}::uuid[]))))`;
+  const reviewedDocuments = new Set(decisionRows.filter((row) => row.subject_kind === 'document_version').map((row) => String(row.subject_id)));
+  if (documentVersionIds.some((id) => !reviewedDocuments.has(id))) return false;
+  const mappingRows = await tx`select distinct mapping.extraction_id from osp_private.supplier_form_mappings mapping join osp_private.review_decisions decision on decision.organization_id = mapping.organization_id and decision.case_id = mapping.case_id and decision.id = mapping.review_decision_id and decision.subject_kind = 'form_mapping' and decision.subject_id = mapping.id and decision.decision = mapping.status and decision.before_sha256 = mapping.before_sha256 and decision.after_sha256 = mapping.after_sha256 where mapping.organization_id = ${organizationId} and mapping.case_id = ${caseId} and mapping.template_version_id = ${templateVersionId} and mapping.extraction_id = any(${extractionIds}::uuid[]) and mapping.status in ('accepted', 'corrected')`;
+  const mappedExtractions = new Set(mappingRows.map((row) => String(row.extraction_id)));
+  if (extractionIds.some((id) => !mappedExtractions.has(id))) return false;
+  const fieldRows = await tx`select id, field_key, validation, evidence_json from osp_private.extraction_fields where organization_id = ${organizationId} and extraction_id = any(${extractionIds}::uuid[])`;
+  if (fieldRows.length === 0 || fieldRows.some((row) => jsonArray(row.evidence_json).length === 0 || row.validation === 'invalid')) return false;
+  const reviewedFields = new Set(decisionRows.filter((row) => row.subject_kind === 'extraction_field').map((row) => String(row.subject_id)));
+  return fieldRows.every((row) => !(['low_confidence', 'contradictory'].includes(String(row.validation)) || /^(?:fiscal|banking)[.]/.test(String(row.field_key))) || reviewedFields.has(String(row.id)));
+}
+
 async function readCaseFormWorkspace(tx: SqlPort, organizationId: string, caseId: string): Promise<CaseFormWorkspaceRecord> {
   const cases = await tx`select case_row.id, supplier.legal_name as supplier_name, case_row.aggregate_version, case_row.state from osp_private.customer_registration_cases case_row join osp_private.supplier_counterparties supplier on supplier.organization_id = case_row.organization_id and supplier.id = case_row.supplier_id where case_row.organization_id = ${organizationId} and case_row.id = ${caseId}`;
   if (cases.length !== 1 || typeof cases[0].supplier_name !== 'string' || typeof cases[0].state !== 'string') fail('CASE_NOT_FOUND');
@@ -160,12 +179,13 @@ async function readCaseFormWorkspace(tx: SqlPort, organizationId: string, caseId
   }
   const mappingsAccepted = mappings.length > 0 && mappings.every((mapping) => ['accepted', 'corrected'].includes(mapping.status));
   const mappingAcceptable = mappings.some((mapping) => mapping.status === 'unresolved' && mapping.automaticStatus === 'ready_for_operations_review' && mapping.matchesCurrentDraft && mapping.fields.every((field) => field.status === 'prepared'));
+  const evidenceReady = template && mappingsAccepted ? await readEvidenceReady(tx, organizationId, caseId, template.latest.id) : false;
   return {
     caseId, supplierName: cases[0].supplier_name, caseVersion, caseState: cases[0].state,
-    templateName: template?.name ?? null, template: template?.latest ?? null, instance, mappings,
+    templateName: template?.name ?? null, template: template?.latest ?? null, instance, mappings, evidenceReady,
     saveDraftAllowed: ['awaiting_xbf_information', 'preparing'].includes(cases[0].state),
     acceptMappingAllowed: cases[0].state === 'preparing' && mappingAcceptable,
-    submitForReviewAllowed: cases[0].state === 'preparing' && mappingsAccepted,
+    submitForReviewAllowed: cases[0].state === 'preparing' && evidenceReady,
   };
 }
 

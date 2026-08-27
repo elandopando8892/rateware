@@ -72,3 +72,26 @@ Deno.test('Postgres form store rejects acceptance when the saved draft differs f
   assert.equal(fake.calls.some((call) => call.text.startsWith('insert into osp_private.review_decisions')), false);
   assert.equal(fake.calls.some((call) => call.text.startsWith('update osp_private.supplier_form_mappings')), false);
 });
+
+Deno.test('Postgres form workspace keeps submission closed when document evidence decisions are absent', async () => {
+  const templateId = '51111111-1111-4111-8111-111111111111';
+  const templateVersionId = '61111111-1111-4111-8111-111111111111';
+  const instanceId = '71111111-1111-4111-8111-111111111111';
+  const sql = Object.assign(async (strings: TemplateStringsArray, ..._values: unknown[]) => {
+    const text = strings.join('?').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (text.startsWith('set local role') || text.startsWith('select set_config')) return [];
+    if (text.includes('from osp_private.customer_registration_cases case_row')) return [{ supplier_name: 'Synthetic supplier', aggregate_version: 4, state: 'preparing' }];
+    if (text.includes('from osp_private.form_templates template') && text.includes("status = 'published'")) return [{ template_id: templateId, name: 'XBF customer setup', updated_at: '2026-08-27T12:00:00.000Z', version_id: templateVersionId, version: 1, status: 'published', schema_sha256: 'c'.repeat(64) }];
+    if (text.includes('from osp_private.form_fields')) return [{ id: '81111111-1111-4111-8111-111111111111', template_version_id: templateVersionId, position: 0, field_key: 'legal_name', definition_json: { label: 'Legal name', required: true, canonicalFieldId: 'supplier.legalName', supplierAliases: [], definition: { kind: 'text', minLength: 1, maxLength: 256 } } }];
+    if (text.includes('from osp_private.form_rules')) return [];
+    if (text.includes('from osp_private.case_form_instances')) return [{ id: instanceId, version: 1, values_json: { legal_name: 'Synthetic supplier' }, updated_at: '2026-08-27T12:00:00.000Z' }];
+    if (text.includes('distinct on (extraction_id)')) return [{ ...mappingRow({ legal_name: 'Synthetic supplier' }), status: 'accepted' }];
+    if (text.includes('from osp_private.document_versions version')) return [];
+    throw new Error(`UNEXPECTED_QUERY:${text}`);
+  }, { begin: async <T>(operation: (tx: typeof sql) => Promise<T>) => await operation(sql) });
+  const store = createPostgresFormStore({ databaseUrl: 'postgresql://synthetic.example.test/db', postgresFactory: () => sql });
+  const workspace = await store.getCaseFormWorkspace(organizationId, caseId);
+  assert.equal(workspace.mappings[0].status, 'accepted');
+  assert.equal(workspace.evidenceReady, false);
+  assert.equal(workspace.submitForReviewAllowed, false);
+});

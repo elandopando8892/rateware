@@ -23,6 +23,7 @@ const workspace = {
     { fieldId: 'legal_name', source: 'rateware' as const, status: 'prepared' as const, evidenceCount: 1 },
     { fieldId: 'tax_identifier', source: 'attachment' as const, status: 'prepared' as const, evidenceCount: 2 },
   ] }],
+  evidenceReady: true,
   capabilities: { saveDraft: true, acceptMapping: false, submitForReview: true },
 };
 
@@ -54,7 +55,7 @@ describe('CaseFormWorkspace', () => {
 
   it('shows safe prefill provenance and accepts the exact reviewed mapping', async () => {
     const mapping = { ...workspace.mappings[0], status: 'unresolved' as const };
-    const reviewWorkspace = { ...workspace, instance: { ...workspace.instance, values: { legal_name: 'Sierra Retail México', tax_identifier: 'XAXX010101000' } }, mappings: [mapping], capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false } };
+    const reviewWorkspace = { ...workspace, instance: { ...workspace.instance, values: { legal_name: 'Sierra Retail México', tax_identifier: 'XAXX010101000' } }, mappings: [mapping], evidenceReady: false, capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false } };
     const accept = vi.fn().mockResolvedValue({ mappingId: mapping.id, mappingVersion: 1, status: 'accepted', reviewDecisionId: '75111111-1111-4111-8111-111111111111', replayed: false });
     renderRoute({ getCaseFormWorkspace: vi.fn().mockResolvedValue(reviewWorkspace), saveCaseFormDraft: vi.fn(), acceptCaseFormMapping: accept, submitCaseFormForReview: vi.fn() });
     expect(await screen.findByRole('heading', { name: /automatic prefill review/i })).toBeInTheDocument();
@@ -64,4 +65,10 @@ describe('CaseFormWorkspace', () => {
     await userEvent.click(screen.getByRole('button', { name: /accept automatic prefill/i }));
     await waitFor(() => expect(accept).toHaveBeenCalledWith({ idempotencyKey: expect.stringMatching(/^case-mapping-accept:/), caseId, mappingId: mapping.id, expectedMappingVersion: 1, expectedAfterSha256: 'e'.repeat(64) }));
   }, 10_000);
+
+  it('does not claim submission readiness while protected evidence decisions remain open', async () => {
+    renderRoute({ getCaseFormWorkspace: vi.fn().mockResolvedValue({ ...workspace, instance: { ...workspace.instance, values: { legal_name: 'Sierra Retail México', tax_identifier: 'XAXX010101000' } }, evidenceReady: false, capabilities: { ...workspace.capabilities, submitForReview: false } }), saveCaseFormDraft: vi.fn(), acceptCaseFormMapping: vi.fn(), submitCaseFormForReview: vi.fn() });
+    expect(await screen.findByRole('heading', { name: /evidence review required/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /submit for operations review/i })).toBeDisabled();
+  });
 });

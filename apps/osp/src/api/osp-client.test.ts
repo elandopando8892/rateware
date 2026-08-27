@@ -290,7 +290,7 @@ it('loads and saves one case form through exact tenant-scoped form actions', asy
   const workspace = {
     caseId, supplierName: 'Sierra Retail Mexico', caseVersion: 5, caseState: 'preparing',
     templateName: 'XBF customer setup', template, instance: { ...instance, version: 2 },
-    mappings: [{ id: '55555555-5555-4555-8555-555555555555', version: 1, status: 'unresolved', automaticStatus: 'ready_for_operations_review', afterSha256: 'c'.repeat(64), matchesCurrentDraft: true, fields: [{ fieldId: 'legal_name', source: 'rateware', status: 'prepared', evidenceCount: 1 }], updatedAt: '2026-08-26T20:00:00.000Z' }],
+    mappings: [{ id: '55555555-5555-4555-8555-555555555555', version: 1, status: 'unresolved', automaticStatus: 'ready_for_operations_review', afterSha256: 'c'.repeat(64), matchesCurrentDraft: true, fields: [{ fieldId: 'legal_name', source: 'rateware', status: 'prepared', evidenceCount: 1 }], updatedAt: '2026-08-26T20:00:00.000Z' }], evidenceReady: false,
     capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false },
   };
   const h = harness([

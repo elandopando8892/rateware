@@ -56,6 +56,7 @@ export type CaseFormWorkspaceRecord = {
   template: FormTemplateVersion | null;
   instance: CaseFormInstance | null;
   mappings: readonly CaseFormMappingReview[];
+  evidenceReady: boolean;
   saveDraftAllowed: boolean;
   acceptMappingAllowed: boolean;
   submitForReviewAllowed: boolean;
@@ -221,6 +222,7 @@ export function createInMemoryFormStore(now: () => Date = () => new Date('2026-0
         caseId, supplierName: registrationCase.supplierName, caseVersion: registrationCase.caseVersion, caseState: registrationCase.caseState,
         templateName: published?.name ?? null, template: published?.latest ?? null, instance,
         mappings: [],
+        evidenceReady: true,
         saveDraftAllowed: ['awaiting_xbf_information', 'preparing'].includes(registrationCase.caseState),
         acceptMappingAllowed: false,
         submitForReviewAllowed: registrationCase.caseState === 'preparing',

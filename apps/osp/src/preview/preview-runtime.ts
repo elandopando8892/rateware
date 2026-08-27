@@ -195,6 +195,7 @@ function createPreviewClient(): OspClient {
         { fieldId: 'registered_address', source: 'attachment', status: 'prepared', evidenceCount: 1 },
       ],
     }],
+    evidenceReady: false,
     capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false },
   };
   const client: OspClient = {
@@ -266,19 +267,19 @@ function createPreviewClient(): OspClient {
     getCaseFormWorkspace: async (requestedCaseId) => {
       if (requestedCaseId === caseFormCaseId) return structuredClone(caseFormWorkspace);
       const caseRecord = previewCaseRows.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCaseRows[0];
-      return { caseId: requestedCaseId, supplierName: caseRecord.supplier_name, caseVersion: caseRecord.aggregate_version, caseState: caseRecord.state, templateName: caseFormWorkspace.templateName, template: structuredClone(caseFormWorkspace.template), instance: null, mappings: [], capabilities: { saveDraft: false, acceptMapping: false, submitForReview: false } };
+      return { caseId: requestedCaseId, supplierName: caseRecord.supplier_name, caseVersion: caseRecord.aggregate_version, caseState: caseRecord.state, templateName: caseFormWorkspace.templateName, template: structuredClone(caseFormWorkspace.template), instance: null, mappings: [], evidenceReady: false, capabilities: { saveDraft: false, acceptMapping: false, submitForReview: false } };
     },
     saveCaseFormDraft: async (input) => {
       if (input.caseId !== caseFormCaseId || input.templateVersionId !== caseFormWorkspace.template?.id || input.instanceId !== caseFormWorkspace.instance?.id || input.expectedVersion !== caseFormWorkspace.instance.version) throw new Error('VERSION_CONFLICT');
       const instance = { ...caseFormWorkspace.instance, version: caseFormWorkspace.instance.version + 1, values: structuredClone(input.values), updatedAt: new Date().toISOString() };
-      caseFormWorkspace = { ...caseFormWorkspace, instance, mappings: caseFormWorkspace.mappings.map((mapping) => ({ ...mapping, matchesCurrentDraft: false })), capabilities: { ...caseFormWorkspace.capabilities, acceptMapping: false, submitForReview: false } };
+      caseFormWorkspace = { ...caseFormWorkspace, instance, mappings: caseFormWorkspace.mappings.map((mapping) => ({ ...mapping, matchesCurrentDraft: false })), evidenceReady: false, capabilities: { ...caseFormWorkspace.capabilities, acceptMapping: false, submitForReview: false } };
       return { instance: structuredClone(instance), replayed: false };
     },
     acceptCaseFormMapping: async (input) => {
       const mapping = caseFormWorkspace.mappings.find((item) => item.id === input.mappingId);
       if (input.caseId !== caseFormCaseId || !mapping || mapping.status !== 'unresolved' || mapping.version !== input.expectedMappingVersion || mapping.afterSha256 !== input.expectedAfterSha256 || !mapping.matchesCurrentDraft) throw new Error('VERSION_CONFLICT');
       const reviewDecisionId = '75111111-1111-4111-8111-111111111111';
-      caseFormWorkspace = { ...caseFormWorkspace, mappings: caseFormWorkspace.mappings.map((item) => item.id === mapping.id ? { ...item, status: 'accepted' as const, updatedAt: new Date().toISOString() } : item), capabilities: { ...caseFormWorkspace.capabilities, acceptMapping: false, submitForReview: true } };
+      caseFormWorkspace = { ...caseFormWorkspace, mappings: caseFormWorkspace.mappings.map((item) => item.id === mapping.id ? { ...item, status: 'accepted' as const, updatedAt: new Date().toISOString() } : item), evidenceReady: true, capabilities: { ...caseFormWorkspace.capabilities, acceptMapping: false, submitForReview: true } };
       return { mappingId: mapping.id, mappingVersion: mapping.version, status: 'accepted', reviewDecisionId, replayed: false };
     },
     submitCaseFormForReview: async (input) => {
