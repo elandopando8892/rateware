@@ -169,6 +169,7 @@ Deno.test("intake persists opaque attachment object references with their hashes
     "",
   ].join("\r\n");
   let savedSource: unknown;
+  let savedAttachmentByteLength = 0;
   const service = createIntakeService({
     gmail: {
       getMessage: async (id: string) => ({
@@ -179,16 +180,19 @@ Deno.test("intake persists opaque attachment object references with their hashes
       }),
     },
     objects: {
-      put: async (input) =>
-        input.contentType === "message/rfc822"
-          ? {
+      put: async (input) => {
+        if (input.contentType === "message/rfc822") {
+          return {
             key: "22222222-2222-4222-8222-222222222222/raw",
             sha256: "a".repeat(64),
-          }
-          : {
-            key: "22222222-2222-4222-8222-222222222222/attachment",
-            sha256: "b".repeat(64),
-          },
+          };
+        }
+        savedAttachmentByteLength = input.bytes.byteLength;
+        return {
+          key: "22222222-2222-4222-8222-222222222222/attachment",
+          sha256: "b".repeat(64),
+        };
+      },
     },
     persistence: {
       findDuplicates: async () => [],
@@ -215,6 +219,7 @@ Deno.test("intake persists opaque attachment object references with their hashes
       contentType: "application/pdf",
     }],
   );
+  assertEquals(savedAttachmentByteLength, 11);
 });
 
 Deno.test("intake creates, attaches exact replay, and holds probable duplicates without auto merge", async () => {

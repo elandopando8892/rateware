@@ -17,6 +17,12 @@ function textTokens(value: string): readonly string[] {
   return Object.freeze([...new Set(value.toLowerCase().match(/[a-z0-9]{2,}/g) ?? [])].sort());
 }
 
+function attachmentBytes(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  return new Uint8Array();
+}
+
 export async function parseCopiedRequest(rawMime: Uint8Array): Promise<ParsedCopiedRequest> {
   const raw = new TextDecoder('utf-8', { fatal: true }).decode(rawMime);
   const from = header(raw, 'from'); const to = header(raw, 'to'); const cc = header(raw, 'cc'); const subject = header(raw, 'subject') ?? '';
@@ -32,7 +38,7 @@ export async function parseCopiedRequest(rawMime: Uint8Array): Promise<ParsedCop
   if (senderDomain !== 'xbfreight.com' || !parsedCc.includes('carriers@xbfreight.com')) throw new Error('UNQUALIFIED_GMAIL_MESSAGE');
   const text = typeof parsed.text === 'string' ? parsed.text : '';
   const safeBody = text.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 20000);
-  const attachments = (Array.isArray(parsed.attachments) ? parsed.attachments : []).map((attachment) => ({ bytes: attachment.content instanceof Uint8Array ? attachment.content : new Uint8Array(), contentType: typeof attachment.mimeType === 'string' ? attachment.mimeType : 'application/octet-stream' }));
+  const attachments = (Array.isArray(parsed.attachments) ? parsed.attachments : []).map((attachment) => ({ bytes: attachmentBytes(attachment.content), contentType: typeof attachment.mimeType === 'string' ? attachment.mimeType : 'application/octet-stream' }));
   const app = `${subject} ${safeBody}`.match(/\b(?:application|account)\s*(?:number|no\.?|#)?\s*[:#-]?\s*([A-Z0-9-]{3,})\b/i)?.[1] ?? null;
   return Object.freeze({ senderDomain, supplierDomain, to: Object.freeze(toMailboxes), cc: Object.freeze(parsedCc), subject, safeBody, attachments: Object.freeze(attachments), requirementTokens: textTokens(`${subject} ${safeBody}`), applicationReference: app });
 }
