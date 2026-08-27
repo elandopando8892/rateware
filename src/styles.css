@@ -38267,3 +38267,110 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+/* Delivery control: separate carrier participation from message release. */
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="delivery"] .rfx-draft-queue-panel {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.bid-room-page .rfx-delivery-control-header {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  align-items: center;
+  gap: 3px 12px;
+  border-bottom: 1px solid #dfe7eb;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.bid-room-page .rfx-delivery-control-header > div,
+.bid-room-page .rfx-delivery-control-header > small { min-width: 0; }
+
+.bid-room-page .rfx-delivery-control-header > span:not(.status-pill),
+.bid-room-page .rfx-delivery-control-header > small { grid-column: 1; }
+
+.bid-room-page .rfx-delivery-control-header > .status-pill {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+}
+
+.bid-room-page .rfx-delivery-view-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  border-bottom: 1px solid #dfe7eb;
+  padding: 7px 0;
+}
+
+.bid-room-page .rfx-delivery-view-tabs button {
+  display: grid;
+  gap: 1px;
+  border: 1px solid #d8e2e7;
+  border-radius: 5px;
+  background: #fff;
+  color: #31434d;
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.bid-room-page .rfx-delivery-view-tabs button span {
+  color: #71818a;
+  font-size: .63rem;
+  font-weight: 600;
+}
+
+.bid-room-page .rfx-delivery-view-tabs button.is-active {
+  border-color: #29434f;
+  background: #29434f;
+  color: #fff;
+}
+
+.bid-room-page .rfx-delivery-view-tabs button.is-active span { color: #cfe0e6; }
+.bid-room-page .rfx-delivery-view-panel[hidden] { display: none; }
+
+.bid-room-page .rfx-delivery-view-panel {
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.bid-room-page .rfx-delivery-queue-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+
+.bid-room-page .rfx-delivery-queue-heading > span,
+.bid-room-page .rfx-delivery-workspace-footer span {
+  color: #687983;
+  font-size: .64rem;
+}
+
+.bid-room-page .rfx-delivery-workspace-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 9px;
+  border-top: 1px solid #dfe7eb;
+  padding-top: 8px;
+}
+
+@media (max-width: 760px) {
+  .bid-room-page .rfx-delivery-control-header,
+  .bid-room-page .rfx-delivery-view-tabs { grid-template-columns: 1fr; }
+
+  .bid-room-page .rfx-delivery-control-header > .status-pill,
+  .bid-room-page .rfx-delivery-control-header > span:not(.status-pill),
+  .bid-room-page .rfx-delivery-control-header > small {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .bid-room-page .rfx-delivery-queue-heading,
+  .bid-room-page .rfx-delivery-workspace-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

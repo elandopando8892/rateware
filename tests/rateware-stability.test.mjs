@@ -1780,6 +1780,11 @@ assert.match(rfxEventsSource, /function renderMessageReadiness/, "Message setup 
 assert.match(rfxEventsSource, /rfxGmailSenderNote\.hidden = !emailChannel/, "Gmail sender guidance should only appear when Gmail is the selected delivery channel");
 assert.match(rfxEventsSource, /rfxWhatsappReadiness\.hidden = !whatsappChannel/, "Meta readiness should only appear when a WhatsApp delivery channel is selected");
 assert.match(rfxEventsHtml, /rfx-delivery-wave-state/, "Delivery queue should keep the currently selected carrier wave visible after queue preparation");
+assert.match(rfxEventsHtml, /data-rfx-delivery-view="participation"/, "Delivery queue should separate carrier participation into a focused view");
+assert.match(rfxEventsHtml, /data-rfx-delivery-view="queue"/, "Delivery queue should provide a focused message release view");
+assert.match(rfxEventsHtml, /Nothing sends without confirmation/, "Delivery control should keep the no-automatic-send boundary visible");
+assert.match(rfxEventsSource, /function activateRfxDeliveryView/, "Delivery queue views should be keyboard-accessible native controls with deterministic state");
+assert.match(rfxEventsSource, /activateRfxDeliveryView\("queue"\)/, "Opening a prepared delivery queue should focus the message queue without sending anything");
 assert.match(rfxEventsSource, /function renderDeliveryWaveState/, "Delivery queue should render a compact event-scoped status for the active carrier wave");
 assert.match(rfxEventsSource, /Only this selected wave belongs to this RFx delivery queue/, "Delivery queue should explain that selected-wave activity never mixes with other RFx history");
 assert.match(rfxEventsSource, /const nextWorkspace = activeDelivery \? "delivery" : ready \? "message" : "carrier"/, "Delivery queue should return an active carrier wave to Message without creating or sending drafts automatically");

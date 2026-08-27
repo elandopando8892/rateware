@@ -867,15 +867,23 @@
               </section>
               <section id="rfx-launch-delivery-workspace" class="rfx-launch-workspace-panel" data-rfx-launch-workspace-panel="delivery" role="tabpanel" hidden>
               <div class="rfx-touchpoint-panel rfx-draft-queue-panel">
-                <div class="rfx-draft-queue-intro">
-                  <p class="eyebrow">Delivery &amp; participation</p>
-                  <strong>Follow this RFx</strong>
+                <div class="rfx-draft-queue-intro rfx-delivery-control-header">
+                  <div>
+                    <p class="eyebrow">Delivery control</p>
+                    <strong>Review every carrier before release</strong>
+                  </div>
                   <span id="rfx-draft-summary">No drafts generated for this bid event.</span>
                   <small id="rfx-event-delivery-context">Every row is one carrier, one channel, and this RFx only. Re-invite, validate delivery, or follow a reply without changing sent history.</small>
+                  <span class="status-pill neutral">Nothing sends without confirmation</span>
                 </div>
                 <div class="rfx-draft-workbench">
                   <div id="rfx-event-delivery-overview" class="rfx-event-delivery-overview" aria-live="polite"></div>
                   <section id="rfx-delivery-wave-state" class="rfx-delivery-wave-state" aria-live="polite"></section>
+                  <div class="rfx-delivery-view-tabs" role="tablist" aria-label="Delivery queue views">
+                    <button type="button" class="is-active" role="tab" aria-selected="true" data-rfx-delivery-view="participation">Carrier status <span>Who needs action</span></button>
+                    <button type="button" role="tab" aria-selected="false" data-rfx-delivery-view="queue">Message queue <span>Review and release drafts</span></button>
+                  </div>
+                  <section class="rfx-delivery-view-panel" data-rfx-delivery-view-panel="participation" role="tabpanel">
                   <section class="rfx-delivery-participation-panel" aria-label="RFx carrier participation">
                     <div class="rfx-delivery-participation-heading">
                       <div>
@@ -910,6 +918,15 @@
                       </div>
                     </div>
                   </section>
+                  </section>
+                  <section class="rfx-delivery-view-panel" data-rfx-delivery-view-panel="queue" role="tabpanel" hidden>
+                  <div class="rfx-delivery-queue-heading">
+                    <div>
+                      <p class="eyebrow">Message queue</p>
+                      <strong>Release only the drafts you select</strong>
+                    </div>
+                    <span>Selection is required before any send action becomes available.</span>
+                  </div>
                   <div class="rfx-draft-filterbar">
                     <label>
                       <span>Message delivery log</span>
@@ -966,6 +983,11 @@
                       </tbody>
                     </table>
                   </div>
+                  </section>
+                  <footer class="rfx-delivery-workspace-footer">
+                    <button type="button" class="secondary" data-rfx-open-launch-workspace="message">Back to Message</button>
+                    <span>Carrier status and message history stay scoped to this RFx. Sent history is never rewritten.</span>
+                  </footer>
                 </div>
               </div>
               </section>
