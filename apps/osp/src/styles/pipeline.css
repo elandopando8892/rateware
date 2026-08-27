@@ -18,7 +18,7 @@
 .health-unknown .health-dot { background: var(--danger); }
 .manual-mode-badge { border-radius: 999px; padding: .3rem .65rem; background: #eef2f6; color: var(--muted); font-size: .75rem; font-weight: 800; text-transform: uppercase; }
 .automatic-mode-badge { border-radius: 999px; padding: .3rem .65rem; background: #dff6ee; color: var(--brand-dark); font-size: .75rem; font-weight: 800; text-transform: uppercase; }
-.automation-path { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; margin: 1.4rem 0 0; padding: 0; list-style: none; }
+.automation-path { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .75rem; margin: 1.4rem 0 0; padding: 0; list-style: none; }
 .automation-path li { position: relative; display: grid; grid-template-columns: 2rem 1fr; gap: .65rem; min-height: 8rem; padding: 1rem; border: 1px solid var(--line); border-radius: 14px; background: var(--canvas); }
 .automation-path li:not(:last-child)::after { position: absolute; z-index: 1; top: 1.9rem; right: -.78rem; width: .8rem; height: 2px; background: var(--line); content: ''; }
 .automation-step-marker { display: grid; place-items: center; width: 2rem; height: 2rem; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); background: var(--surface); font-size: .8rem; font-weight: 900; }

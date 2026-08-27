@@ -222,6 +222,11 @@ function createPreviewClient(): OspClient {
       osp_processed: 1,
       outbound_enabled: false,
     }),
+    renewGmailWatch: async () => ({
+      watch_configured: true,
+      watch_expires_at: '2099-01-08T00:00:00.000Z',
+      outbound_enabled: false,
+    }),
     listDocumentVersions: async () => previewDocuments,
     uploadDocumentVersion: async (input) => ({ id: '30000000-0000-4000-8000-000000000099', version: 1, expiresAt: input.validFrom }),
     approveDocumentVersion: async (input) => ({ id: input.versionId, status: 'approved' }),

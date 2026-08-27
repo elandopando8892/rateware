@@ -89,6 +89,7 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
   const store = createPostgresOspReadStore({
     databaseUrl: 'postgresql://synthetic.example.test/db',
     postgresFactory: fake.factory,
+    pubsubConfigured: true,
   });
   assert.equal(await store.resolveWorkspace(identity), organizationId);
   assert.equal((await store.readPipeline(organizationId)).requests_total, '1');
@@ -118,7 +119,7 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
   assert.match(fake.calls[4].text, /case_record\.organization_id\s*=\s*\$/i);
   assert.match(fake.calls[4].text, /case_record\.id\s*=\s*\$/i);
   assert.deepEqual(fake.calls[1].values, [organizationId]);
-  assert.deepEqual(fake.calls[2].values, [organizationId]);
+  assert.deepEqual(fake.calls[2].values, [true, organizationId]);
   assert.deepEqual(fake.calls[3].values, [organizationId]);
   assert.deepEqual(fake.calls[4].values, [organizationId, '22222222-2222-4222-8222-222222222222']);
   assert.equal(fake.calls.some((call) => /\b(?:insert|update|delete|merge|call)\b/i.test(call.text)), false);

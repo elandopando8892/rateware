@@ -5,10 +5,27 @@ import {
   CaseDetailSuccessResponseSchema,
   CaseListSuccessResponseSchema,
   GmailReadModelSchema,
+  GmailWatchSuccessResponseSchema,
   OspErrorResponseSchema,
   OspReadRequestSchema,
   PipelineSuccessResponseSchema,
 } from './contracts';
+
+it('accepts only a safe Gmail watch renewal receipt', () => {
+  const receipt = {
+    version: 1,
+    data: {
+      watch_configured: true,
+      watch_expires_at: '2030-01-07T00:00:00.000Z',
+      outbound_enabled: false,
+    },
+  } as const;
+  expect(GmailWatchSuccessResponseSchema.parse(receipt)).toEqual(receipt);
+  expect(GmailWatchSuccessResponseSchema.safeParse({
+    ...receipt,
+    data: { ...receipt.data, history_id: 'secret-history-id' },
+  }).success).toBe(false);
+});
 
 describe('CanonicalCountSchema', () => {
   it.each(['0', '1', '900719925474099300000'])('preserves canonical decimal %s', (value) => {

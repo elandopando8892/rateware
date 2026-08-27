@@ -64,6 +64,11 @@ export function createOspReadRuntime({
   const databaseUrl = requireDatabaseUrl(
     env.get('OSP_READ_DATABASE_URL')?.trim() || requiredEnvironment(env, 'SUPABASE_DB_URL'),
   );
+  const pubsubConfigured = [
+    'PROVIDER_GMAIL_PUBSUB_TOPIC',
+    'PROVIDER_GMAIL_PUBSUB_AUDIENCE',
+    'PROVIDER_GMAIL_PUBSUB_SERVICE_ACCOUNT',
+  ].every((name) => Boolean(env.get(name)?.trim()));
   const verifier = createKindeJwtVerifier({
     issuer,
     clientId,
@@ -71,7 +76,11 @@ export function createOspReadRuntime({
     clock,
     organizationBinding: OSP_PRODUCTION_ORGANIZATION_BINDING,
   });
-  const store = createPostgresOspReadStore({ databaseUrl, postgresFactory });
+  const store = createPostgresOspReadStore({
+    databaseUrl,
+    postgresFactory,
+    pubsubConfigured,
+  });
   return createOspReadHandler({
     verifyToken: (token, signal) => verifier.verify(token, signal),
     store,

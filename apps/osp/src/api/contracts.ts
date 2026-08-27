@@ -153,6 +153,15 @@ export const GmailSyncSuccessResponseSchema = z.strictObject({
   }),
 });
 
+export const GmailWatchSuccessResponseSchema = z.strictObject({
+  version: z.literal(1),
+  data: z.strictObject({
+    watch_configured: z.literal(true),
+    watch_expires_at: utcDate,
+    outbound_enabled: z.literal(false),
+  }),
+});
+
 export const OspPublicErrorCodeSchema = z.enum([
   'INVALID_REQUEST',
   'UNAUTHORIZED',
@@ -409,6 +418,7 @@ export const CaseFormSubmissionResponseSchema = z.strictObject({
 export type PipelineReadModel = z.infer<typeof PipelineReadModelSchema>;
 export type GmailReadModel = z.infer<typeof GmailReadModelSchema>;
 export type GmailSyncResult = z.infer<typeof GmailSyncSuccessResponseSchema>['data'];
+export type GmailWatchResult = z.infer<typeof GmailWatchSuccessResponseSchema>['data'];
 export type OspReadRequest = z.infer<typeof OspReadRequestSchema>;
 export type OspPublicErrorCode = z.infer<typeof OspPublicErrorCodeSchema>;
 export type CaseState = z.infer<typeof CaseStateSchema>;

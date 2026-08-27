@@ -28,6 +28,8 @@ import {
   GmailSyncSuccessResponseSchema,
   type GmailSyncResult,
   GmailSuccessResponseSchema,
+  GmailWatchSuccessResponseSchema,
+  type GmailWatchResult,
   type DocumentVersion,
   type GmailReadModel,
   OspErrorResponseSchema,
@@ -60,6 +62,7 @@ export type SubmitCaseFormForReviewInput = SaveCaseFormDraftInput & { expectedCa
 
 export interface OspClient extends OspReadClient, OspCaseReadClient, WorkflowClient {
   syncGmailInbox?(): Promise<GmailSyncResult>;
+  renewGmailWatch?(): Promise<GmailWatchResult>;
   listDocumentVersions(): Promise<readonly DocumentVersion[]>;
   uploadDocumentVersion(input: DocumentUploadInput): Promise<{ id: string; version: number; expiresAt: string }>;
   approveDocumentVersion(input: DocumentApprovalInput): Promise<{ id: string; status: 'approved' }>;
@@ -287,7 +290,10 @@ export function createOspClient(options: ClientOptions): OspClient {
     }
   }
 
-  async function syncGmailInbox(): Promise<GmailSyncResult> {
+  async function gmailMutation<T>(
+    action: 'sync_provider_gmail_inbox' | 'renew_provider_gmail_watch',
+    schema: ZodType<{ version: 1; data: T }>,
+  ): Promise<T> {
     const captured = options.getCurrentSession();
     if (!captured) throw new OspClientError('NO_SESSION');
     let refreshed = false;
@@ -301,7 +307,7 @@ export function createOspClient(options: ClientOptions): OspClient {
         response = await fetchImplementation(gmailSyncEndpoint, {
           method: 'POST',
           headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ version: 1, action: 'sync_provider_gmail_inbox' }),
+          body: JSON.stringify({ version: 1, action }),
         });
       } catch {
         assertCurrent(options, captured);
@@ -320,10 +326,18 @@ export function createOspClient(options: ClientOptions): OspClient {
       }
       const body = await safeJson(response);
       assertCurrent(options, captured);
-      const parsed = GmailSyncSuccessResponseSchema.safeParse(body);
+      const parsed = schema.safeParse(body);
       if (!parsed.success) throw new OspClientError('INVALID_RESPONSE');
       return parsed.data.data;
     }
+  }
+
+  function syncGmailInbox(): Promise<GmailSyncResult> {
+    return gmailMutation('sync_provider_gmail_inbox', GmailSyncSuccessResponseSchema);
+  }
+
+  function renewGmailWatch(): Promise<GmailWatchResult> {
+    return gmailMutation('renew_provider_gmail_watch', GmailWatchSuccessResponseSchema);
   }
 
   async function caseRequest<T>(input: {
@@ -387,6 +401,7 @@ export function createOspClient(options: ClientOptions): OspClient {
       return read({ version: 1, action: 'get_customer_registration_case', case_id: caseId }, CaseDetailSuccessResponseSchema);
     },
     syncGmailInbox,
+    renewGmailWatch,
     listDocumentVersions: async () => (await documentRequest({
       query: [['action', 'list_document_versions']], expectedStatus: 200, schema: DocumentVersionsResponseSchema,
     })).data.versions,

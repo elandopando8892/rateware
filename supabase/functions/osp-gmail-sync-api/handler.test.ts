@@ -50,6 +50,9 @@ Deno.test("manual Gmail sync authenticates before one bounded workspace sync and
         ospProcessed: 1,
       };
     },
+    renewWatch: async () => ({
+      watchExpiresAt: "2030-01-07T00:00:00.000Z",
+    }),
     incidentId: () => "incident-test",
   });
   const response = await handler(
@@ -99,6 +102,9 @@ Deno.test("manual Gmail sync rejects extra actions, disallowed origins and missi
         ospProcessed: 0,
       };
     },
+    renewWatch: async () => ({
+      watchExpiresAt: "2030-01-07T00:00:00.000Z",
+    }),
     incidentId: () => "incident-test",
   });
   const invalidBody = await handler(
@@ -135,6 +141,9 @@ Deno.test("manual Gmail sync maps dependency details to a safe unavailable error
     syncInbox: async () => {
       throw new Error("secret provider token failed");
     },
+    renewWatch: async () => ({
+      watchExpiresAt: "2030-01-07T00:00:00.000Z",
+    }),
     incidentId: () => "incident-safe",
   });
   const response = await handler(
@@ -148,5 +157,48 @@ Deno.test("manual Gmail sync maps dependency details to a safe unavailable error
       JSON.stringify({
         error: { code: "DEPENDENCY_UNAVAILABLE", incident_id: "incident-safe" },
       }),
+  );
+});
+
+Deno.test("Gmail watch renewal uses the same exact authorization seam and returns only safe state", async () => {
+  const calls: string[] = [];
+  const handler = createOspGmailSyncHandler({
+    verifyToken: async (token) => {
+      calls.push(`verify:${token}`);
+      return identity;
+    },
+    resolveWorkspace: async (actor) => {
+      calls.push(`workspace:${actor.subject}`);
+      return actor.organization;
+    },
+    syncInbox: async () => {
+      throw new Error("must not sync");
+    },
+    renewWatch: async (organizationId) => {
+      calls.push(`watch:${organizationId}`);
+      return { watchExpiresAt: "2030-01-07T00:00:00.000Z" };
+    },
+    incidentId: () => "incident-watch",
+  });
+  const response = await handler(
+    request(
+      JSON.stringify({ version: 1, action: "renew_provider_gmail_watch" }),
+    ),
+  );
+  assert(response.status === 200);
+  assert(
+    JSON.stringify(await response.json()) ===
+      JSON.stringify({
+        version: 1,
+        data: {
+          watch_configured: true,
+          watch_expires_at: "2030-01-07T00:00:00.000Z",
+          outbound_enabled: false,
+        },
+      }),
+  );
+  assert(
+    calls.join("|") ===
+      `verify:exact-token|workspace:subject-a|watch:${identity.organization}`,
   );
 });

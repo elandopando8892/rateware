@@ -157,6 +157,23 @@ it('runs one bounded Gmail sync through the dedicated OSP endpoint without autom
   expect(ambiguous.fetch).toHaveBeenCalledOnce();
 });
 
+it('renews the Gmail watch through the same dedicated endpoint without exposing provider details', async () => {
+  const data = {
+    watch_configured: true,
+    watch_expires_at: '2030-01-07T00:00:00.000Z',
+    outbound_enabled: false,
+  } as const;
+  const h = harness([json({ version: 1, data })]);
+  await expect(h.client.renewGmailWatch?.()).resolves.toEqual(data);
+  const [url, init] = h.fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(url).toBe('https://synthetic.supabase.co/functions/v1/osp-gmail-sync-api');
+  expect(JSON.parse(String(init.body))).toEqual({ version: 1, action: 'renew_provider_gmail_watch' });
+
+  const ambiguous = harness([new TypeError('response lost'), json({ version: 1, data })]);
+  await expect(ambiguous.client.renewGmailWatch?.()).rejects.toMatchObject({ code: 'NETWORK_UNAVAILABLE' });
+  expect(ambiguous.fetch).toHaveBeenCalledOnce();
+});
+
 it('lists quarterly document versions through the authenticated document endpoint', async () => {
   const version = { id: '22222222-2222-4222-8222-222222222222', documentType: 'proof_of_address', version: 1, status: 'approved', validFrom: '2026-08-24', expiresAt: '2026-11-24' };
   const h = harness([json({ data: { versions: [version] } })]);

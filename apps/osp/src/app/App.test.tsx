@@ -188,7 +188,7 @@ describe('App authentication and routing', () => {
     expect(window.location.pathname).toBe('/app/pipeline');
   });
 
-  it('keeps the authenticated surface limited to reviewed controls and the bounded Gmail sync', async () => {
+  it('keeps the authenticated surface limited to reviewed controls and bounded Gmail actions', async () => {
     window.history.replaceState(null, '', '/app/pipeline');
     const view = render(<App authPort={authPort(session)} apiClient={client()} />);
     await screen.findByRole('heading', { name: /onboarding pipeline/i });
@@ -206,6 +206,7 @@ describe('App authentication and routing', () => {
       { tag: 'a', name: 'Documents', href: '/app/documents', type: null },
       { tag: 'a', name: 'Clarifications', href: '/app/clarifications', type: null },
       { tag: 'button', name: 'Sign out', href: null, type: 'button' },
+      { tag: 'button', name: 'Connect Gmail first', href: null, type: 'button' },
       { tag: 'button', name: 'Sync inbox now', href: null, type: 'button' },
     ]);
     expect(view.container.querySelector('iframe')).toBeNull();

@@ -10,16 +10,15 @@ import {
 } from "../_shared/runtime-identity.ts";
 import {
   cleanProviderGmailText,
-  getProviderGmailAccessToken,
   PROVIDER_GMAIL_READONLY_SCOPE,
   providerGmailAllowedAccount,
 } from "../_shared/provider-gmail.ts";
 import {
   clampProviderGmailInteger,
-  gmailJson,
   requireProviderGmailConnection,
   syncProviderGmailConnection,
 } from "../_shared/provider-gmail-sync.ts";
+import { renewProviderGmailWatch } from "../_shared/provider-gmail-watch.ts";
 import { triggerOspGmailWorker } from "../_shared/osp/worker-trigger.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -29,6 +28,13 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get(
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
 const PROVIDER_GMAIL_PUBSUB_TOPIC = cleanProviderGmailText(
   Deno.env.get("PROVIDER_GMAIL_PUBSUB_TOPIC"),
+);
+const PROVIDER_GMAIL_PUBSUB_CONFIGURED = Boolean(
+  PROVIDER_GMAIL_PUBSUB_TOPIC &&
+    cleanProviderGmailText(Deno.env.get("PROVIDER_GMAIL_PUBSUB_AUDIENCE")) &&
+    cleanProviderGmailText(
+      Deno.env.get("PROVIDER_GMAIL_PUBSUB_SERVICE_ACCOUNT"),
+    ),
 );
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -164,7 +170,7 @@ async function listSafeStatus(supabase: any, organizationUuid: string) {
       legal_entities: entities.data || [],
       connections: connections.data || [],
       outbound_enabled: false,
-      pubsub_configured: Boolean(PROVIDER_GMAIL_PUBSUB_TOPIC),
+      pubsub_configured: PROVIDER_GMAIL_PUBSUB_CONFIGURED,
     },
   };
 }
@@ -264,43 +270,26 @@ async function renewWatch(
   organizationUuid: string,
   body: Record<string, unknown>,
 ) {
-  if (!PROVIDER_GMAIL_PUBSUB_TOPIC) {
-    throw new Error("PROVIDER_GMAIL_PUBSUB_TOPIC is not configured.");
+  if (!PROVIDER_GMAIL_PUBSUB_CONFIGURED || !PROVIDER_GMAIL_PUBSUB_TOPIC) {
+    throw new Error("Provider Gmail Pub/Sub configuration is incomplete.");
   }
   const connection = await requireProviderGmailConnection(
     supabase,
     organizationUuid,
     body.legal_entity_id,
   );
-  const accessToken = await getProviderGmailAccessToken(supabase, connection);
-  const watch = await gmailJson(accessToken, "/watch", {
-    method: "POST",
-    body: JSON.stringify({
-      topicName: PROVIDER_GMAIL_PUBSUB_TOPIC,
-      labelIds: ["INBOX"],
-      labelFilterBehavior: "INCLUDE",
-    }),
-  });
-  const historyId = cleanProviderGmailText(watch.historyId);
-  const expirationMillis = Number(watch.expiration);
-  if (!historyId || !Number.isFinite(expirationMillis)) {
-    throw new Error("Gmail watch response was incomplete.");
-  }
-  const watchExpirationAt = new Date(expirationMillis).toISOString();
-  const updated = await supabase.from("provider_gmail_connections").update({
-    status: "watching",
-    history_id: historyId,
-    watch_expiration_at: watchExpirationAt,
-    last_error: null,
-    updated_at: new Date().toISOString(),
-  }).eq("organization_id", organizationUuid).eq("id", connection.id);
-  if (updated.error) throw updated.error;
+  const renewed = await renewProviderGmailWatch(
+    supabase,
+    organizationUuid,
+    connection,
+    PROVIDER_GMAIL_PUBSUB_TOPIC,
+  );
   return {
     data: {
-      mailbox_email: connection.mailbox_email,
-      legal_entity_id: connection.legal_entity_id,
-      history_id: historyId,
-      watch_expiration_at: watchExpirationAt,
+      mailbox_email: renewed.mailboxEmail,
+      legal_entity_id: renewed.legalEntityId,
+      history_id: renewed.historyId,
+      watch_expiration_at: renewed.watchExpirationAt,
       outbound_enabled: false,
     },
   };

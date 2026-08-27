@@ -8,7 +8,8 @@ import { PipelineOverview } from './PipelineOverview';
 
 afterEach(() => { cleanup(); onlineManager.setOnline(true); });
 
-function renderOverview(client: OspReadClient & Partial<OspCaseReadClient> & Partial<Pick<OspClient, 'syncGmailInbox'>>) {
+function renderOverview(client: OspReadClient & Partial<OspCaseReadClient> &
+  Partial<Pick<OspClient, 'syncGmailInbox' | 'renewGmailWatch'>>) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={queryClient}><PipelineOverview client={client} /></QueryClientProvider>);
 }
@@ -121,7 +122,8 @@ describe('PipelineOverview', () => {
       syncGmailInbox,
     });
     expect(await screen.findByRole('status', { name: /gmail status: connected/i })).toBeInTheDocument();
-    expect(screen.getByText(/manual · no pub\/sub/i)).toBeInTheDocument();
+    expect(screen.getByText(/manual · no cloud trigger/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /pub\/sub required/i })).toBeDisabled();
     await userEvent.click(screen.getByRole('button', { name: /sync inbox now/i }));
     expect(await screen.findByText(/1 new gmail message.*osp processed 1 job/i)).toBeInTheDocument();
     expect(syncGmailInbox).toHaveBeenCalledOnce();
@@ -131,6 +133,9 @@ describe('PipelineOverview', () => {
     const syncGmailInbox = vi.fn(async () => ({
       discovered: 0, inserted_messages: 0, duplicates: 0, attachment_metadata_rows: 0,
       osp_enqueued: 0, osp_processed: 0, outbound_enabled: false as const,
+    }));
+    const renewGmailWatch = vi.fn(async () => ({
+      watch_configured: true as const, watch_expires_at: '2099-01-08T00:00:00.000Z', outbound_enabled: false as const,
     }));
     renderOverview({
       listOnboardingWorkspace: vi.fn(async () => ({
@@ -142,6 +147,7 @@ describe('PipelineOverview', () => {
         error_present: false, error_code: null, outbound_enabled: false as const,
       })),
       syncGmailInbox,
+      renewGmailWatch,
     });
 
     expect(await screen.findByText(/automatic · gmail watch/i)).toBeInTheDocument();
@@ -149,6 +155,32 @@ describe('PipelineOverview', () => {
     expect(screen.getByRole('list', { name: /automatic onboarding path/i })).toHaveTextContent(/operations handoff/i);
     expect(screen.getByRole('note')).toHaveTextContent(/no reply, signature, authorization or provider write/i);
     expect(screen.getByRole('button', { name: /run fallback sync/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /renew watch/i })).toBeEnabled();
     expect(syncGmailInbox).not.toHaveBeenCalled();
+    expect(renewGmailWatch).not.toHaveBeenCalled();
+  });
+
+  it('activates automatic intake only when the full cloud trigger is configured', async () => {
+    const renewGmailWatch = vi.fn(async () => ({
+      watch_configured: true as const,
+      watch_expires_at: '2099-01-08T00:00:00.000Z',
+      outbound_enabled: false as const,
+    }));
+    renderOverview({
+      listOnboardingWorkspace: vi.fn(async () => ({
+        requests_total: '1', documents_pending: '1', under_review: '0', ready_for_approval: '0',
+      })),
+      getGmailStatus: vi.fn(async () => ({
+        connection_exists: true as const, pubsub_configured: true, watch_configured: false,
+        token_expires_at: '2099-01-01T00:00:00.000Z', watch_expires_at: null,
+        error_present: false, error_code: null, outbound_enabled: false as const,
+      })),
+      renewGmailWatch,
+    });
+
+    expect(await screen.findByText(/ready · watch inactive/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /enable automatic intake/i }));
+    expect(renewGmailWatch).toHaveBeenCalledOnce();
+    expect(await screen.findByText(/automatic intake active until/i)).toBeInTheDocument();
   });
 });

@@ -14,6 +14,7 @@ export type PostgresFactory = (
 export type PostgresOspReadStoreOptions = {
   databaseUrl: string;
   postgresFactory?: PostgresFactory;
+  pubsubConfigured?: boolean;
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -95,6 +96,7 @@ function exactlyOneRow(
 export function createPostgresOspReadStore({
   databaseUrl,
   postgresFactory = postgres as unknown as PostgresFactory,
+  pubsubConfigured = false,
 }: PostgresOspReadStoreOptions): OspReadStore {
   const validatedDatabaseUrl = requireDatabaseUrl(databaseUrl);
   const created = postgresFactory(validatedDatabaseUrl, {
@@ -161,7 +163,7 @@ export function createPostgresOspReadStore({
         SELECT
           count(*) > 0 AS connection_exists,
           CASE WHEN count(*) = 0 THEN NULL
-            ELSE bool_or(status = 'watching' OR watch_expiration_at IS NOT NULL)
+            ELSE ${pubsubConfigured}
           END AS pubsub_configured,
           CASE WHEN count(*) = 0 THEN NULL
             ELSE bool_or(status = 'watching' AND watch_expiration_at > statement_timestamp())

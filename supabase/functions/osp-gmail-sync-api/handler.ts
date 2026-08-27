@@ -21,6 +21,14 @@ export type GmailSyncReceipt = Readonly<{
   ospProcessed: number;
 }>;
 
+export type GmailWatchReceipt = Readonly<{
+  watchExpiresAt: string;
+}>;
+
+type GmailAction =
+  | "sync_provider_gmail_inbox"
+  | "renew_provider_gmail_watch";
+
 export type OspGmailSyncHandlerOptions = {
   verifyToken(
     token: string,
@@ -34,6 +42,10 @@ export type OspGmailSyncHandlerOptions = {
     organizationId: string,
     signal?: AbortSignal,
   ): Promise<GmailSyncReceipt>;
+  renewWatch(
+    organizationId: string,
+    signal?: AbortSignal,
+  ): Promise<GmailWatchReceipt>;
   incidentId?: () => string;
 };
 
@@ -51,7 +63,7 @@ function bearer(request: Request): string {
   return match[1];
 }
 
-async function strictRequestBody(request: Request): Promise<void> {
+async function strictRequestBody(request: Request): Promise<GmailAction> {
   if (request.headers.get("transfer-encoding")) {
     throw new OspApiError("INVALID_REQUEST");
   }
@@ -80,10 +92,15 @@ async function strictRequestBody(request: Request): Promise<void> {
   const body = parsed as Record<string, unknown>;
   if (
     Object.keys(body).sort().join(",") !== "action,version" ||
-    body.version !== 1 || body.action !== "sync_provider_gmail_inbox"
+    body.version !== 1 ||
+    ![
+      "sync_provider_gmail_inbox",
+      "renew_provider_gmail_watch",
+    ].includes(String(body.action))
   ) {
     throw new OspApiError("INVALID_REQUEST");
   }
+  return body.action as GmailAction;
 }
 
 function preflight(request: Request): Response {
@@ -119,10 +136,27 @@ function safeReceipt(receipt: GmailSyncReceipt): GmailSyncReceipt {
   return receipt;
 }
 
+function safeWatchReceipt(receipt: GmailWatchReceipt): GmailWatchReceipt {
+  if (!receipt || typeof receipt !== "object") {
+    throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+  }
+  const expiration = new Date(receipt.watchExpiresAt);
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(
+      receipt.watchExpiresAt,
+    ) || !Number.isFinite(expiration.getTime()) ||
+    expiration.toISOString() !== receipt.watchExpiresAt
+  ) {
+    throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+  }
+  return receipt;
+}
+
 export function createOspGmailSyncHandler({
   verifyToken,
   resolveWorkspace,
   syncInbox,
+  renewWatch,
   incidentId = () => crypto.randomUUID(),
 }: OspGmailSyncHandlerOptions): (request: Request) => Promise<Response> {
   return async (request: Request): Promise<Response> => {
@@ -137,8 +171,31 @@ export function createOspGmailSyncHandler({
       }
       const origin = allowedOrigin(request);
       const identity = await verifyToken(bearer(request), request.signal);
-      await strictRequestBody(request);
+      const action = await strictRequestBody(request);
       const organizationId = await resolveWorkspace(identity, request.signal);
+      if (action === "renew_provider_gmail_watch") {
+        let receipt: GmailWatchReceipt;
+        try {
+          receipt = safeWatchReceipt(
+            await renewWatch(organizationId, request.signal),
+          );
+        } catch (error) {
+          if (error instanceof OspApiError) throw error;
+          throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+        }
+        return jsonResponse(
+          {
+            version: 1,
+            data: {
+              watch_configured: true,
+              watch_expires_at: receipt.watchExpiresAt,
+              outbound_enabled: false,
+            },
+          },
+          200,
+          postCorsHeaders(origin),
+        );
+      }
       let receipt: GmailSyncReceipt;
       try {
         receipt = safeReceipt(await syncInbox(organizationId, request.signal));

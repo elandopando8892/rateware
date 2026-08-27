@@ -5,6 +5,7 @@ import {
   requireProviderGmailConnection,
   syncProviderGmailConnection,
 } from "../_shared/provider-gmail-sync.ts";
+import { renewProviderGmailWatch } from "../_shared/provider-gmail-watch.ts";
 import { triggerOspGmailWorker } from "../_shared/osp/worker-trigger.ts";
 import { OSP_PRODUCTION_ORGANIZATION_BINDING } from "../osp-read-api/auth-policy.ts";
 import { OspApiError } from "../osp-read-api/http.ts";
@@ -48,27 +49,38 @@ try {
     postgresFactory: postgres,
   });
   const supabase = createClient(supabaseUrl, serviceRoleKey);
+  const pubsubTopic = Deno.env.get("PROVIDER_GMAIL_PUBSUB_TOPIC")?.trim() ||
+    null;
+  const pubsubReady = Boolean(
+    pubsubTopic &&
+      Deno.env.get("PROVIDER_GMAIL_PUBSUB_AUDIENCE")?.trim() &&
+      Deno.env.get("PROVIDER_GMAIL_PUBSUB_SERVICE_ACCOUNT")?.trim(),
+  );
+
+  const providerConnection = async (organizationId: string) => {
+    const selected = await supabase.from("provider_gmail_connections")
+      .select("legal_entity_id")
+      .eq("organization_id", organizationId)
+      .eq("purpose", "provider_onboarding")
+      .eq("mailbox_email", "carriers@xbfreight.com")
+      .in("status", ["connected", "watching"])
+      .limit(2);
+    if (selected.error || selected.data?.length !== 1) {
+      throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+    }
+    return await requireProviderGmailConnection(
+      supabase,
+      organizationId,
+      selected.data[0].legal_entity_id,
+    );
+  };
 
   runtime = createOspGmailSyncHandler({
     verifyToken: (token, signal) => verifier.verify(token, signal),
     resolveWorkspace: (identity, signal) =>
       store.resolveWorkspace(identity, signal),
     syncInbox: async (organizationId) => {
-      const selected = await supabase.from("provider_gmail_connections")
-        .select("legal_entity_id")
-        .eq("organization_id", organizationId)
-        .eq("purpose", "provider_onboarding")
-        .eq("mailbox_email", "carriers@xbfreight.com")
-        .in("status", ["connected", "watching"])
-        .limit(2);
-      if (selected.error || selected.data?.length !== 1) {
-        throw new OspApiError("DEPENDENCY_UNAVAILABLE");
-      }
-      const connection = await requireProviderGmailConnection(
-        supabase,
-        organizationId,
-        selected.data[0].legal_entity_id,
-      );
+      const connection = await providerConnection(organizationId);
       const synced = await syncProviderGmailConnection(
         supabase,
         organizationId,
@@ -91,6 +103,19 @@ try {
         ospEnqueued: osp.enqueued,
         ospProcessed: osp.processed,
       };
+    },
+    renewWatch: async (organizationId) => {
+      if (!pubsubReady || !pubsubTopic) {
+        throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+      }
+      const connection = await providerConnection(organizationId);
+      const receipt = await renewProviderGmailWatch(
+        supabase,
+        organizationId,
+        connection,
+        pubsubTopic,
+      );
+      return { watchExpiresAt: receipt.watchExpirationAt };
     },
   });
 } catch (error) {

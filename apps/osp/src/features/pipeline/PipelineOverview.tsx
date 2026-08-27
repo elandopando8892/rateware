@@ -36,7 +36,8 @@ const reviewStates = new Set<CaseState>([
   'ready_to_send', 'sent', 'accepted', 'closed',
 ]);
 
-type PipelineClient = OspReadClient & Partial<OspCaseReadClient> & Partial<Pick<OspClient, 'syncGmailInbox'>>;
+type PipelineClient = OspReadClient & Partial<OspCaseReadClient> &
+  Partial<Pick<OspClient, 'syncGmailInbox' | 'renewGmailWatch'>>;
 
 export function PipelineOverview({ client }: { client: PipelineClient }) {
   const queryClient = useQueryClient();
@@ -49,6 +50,8 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
   });
   const health = gmail.data ? deriveMailboxHealth(gmail.data) : 'unknown';
   const automaticWatch = health === 'watching';
+  const gmailConnected = gmail.data?.connection_exists === true;
+  const pubsubReady = gmailConnected && gmail.data.pubsub_configured;
   const visibleCases = cases.data ?? [];
   const preparedCases = visibleCases.filter((caseRecord) => preparedStates.has(caseRecord.state)).length;
   const evidenceCases = visibleCases.filter((caseRecord) => evidenceStates.has(caseRecord.state)).length;
@@ -64,6 +67,15 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
         queryClient.invalidateQueries({ queryKey: pipelineOverviewQueryKey.gmail }),
         queryClient.invalidateQueries({ queryKey: pipelineOverviewQueryKey.cases }),
       ]);
+    },
+  });
+  const watch = useMutation({
+    mutationFn: async () => {
+      if (!client.renewGmailWatch) throw new Error('Gmail watch renewal unavailable');
+      return await client.renewGmailWatch();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: pipelineOverviewQueryKey.gmail });
     },
   });
   const pipelineActivity = pipeline.fetchStatus === 'paused'
@@ -135,7 +147,7 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
         <div className="panel-heading">
           <div><p className="eyebrow">Automatic intake</p><h2 id="gmail-title">Email to Operations review</h2></div>
           <span className={automaticWatch ? 'automatic-mode-badge' : 'manual-mode-badge'}>
-            {automaticWatch ? 'Automatic · Gmail watch' : 'Manual · no Pub/Sub'}
+            {automaticWatch ? 'Automatic · Gmail watch' : pubsubReady ? 'Ready · watch inactive' : gmailConnected ? 'Manual · no cloud trigger' : 'Manual · Gmail disconnected'}
           </span>
         </div>
         {!gmail.data && !gmail.isError ? <p role="status" aria-label={gmailActivity[0]}>{gmailActivity[1]}</p> : null}
@@ -143,7 +155,13 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
         {gmail.data ? (
           <div className={`health health-${health}`} role="status" aria-label={`Gmail status: ${healthLabels[health]}`}>
             <span className="health-dot" aria-hidden="true" />
-            <div><strong>{healthLabels[health]}</strong><p>{automaticWatch ? 'New inbox notifications enter the preparation path without a manual sync.' : 'Connected for manual inbox synchronization.'}</p></div>
+            <div><strong>{healthLabels[health]}</strong><p>{automaticWatch
+              ? 'New inbox notifications enter the preparation path without a manual sync.'
+              : pubsubReady
+                ? 'The cloud trigger is configured; activate the Gmail watch to make intake automatic.'
+                : gmailConnected
+                  ? 'The mailbox is connected for manual sync, but the cloud trigger is not configured.'
+                  : 'Connect the approved Gmail mailbox before intake can run.'}</p></div>
           </div>
         ) : null}
 
@@ -173,6 +191,32 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
         <div className="effects-lock" role="note">
           <span aria-hidden="true">🔒</span>
           <div><strong>External delivery locked</strong><p>No reply, signature, authorization or provider write occurs in this automatic path.</p></div>
+        </div>
+
+        <div className={`sync-card watch-card${automaticWatch ? ' sync-card-fallback' : ''}`}>
+          <div>
+            <strong>{automaticWatch ? 'Automatic Gmail watch' : pubsubReady ? 'Enable automatic intake' : gmailConnected ? 'Cloud trigger not configured' : 'Gmail connection required'}</strong>
+            <p>{automaticWatch
+              ? `Active until ${formatCaseDate(gmail.data?.watch_expires_at ?? '')}. Renew it before expiration to avoid falling back to manual sync.`
+              : pubsubReady
+                ? 'Starts the existing INBOX-only Gmail watch. It captures new requests but never sends email or writes to a provider.'
+                : gmailConnected
+                  ? 'Google Pub/Sub topic, push identity and audience are still absent. Manual sync remains available without creating a paid provider.'
+                  : 'The approved carriers@xbfreight.com connection must exist before the automatic watch can be enabled.'}</p>
+          </div>
+          <button
+            className="sync-button"
+            type="button"
+            title={!gmailConnected ? 'Connect the approved Gmail mailbox first.' : !pubsubReady ? 'Configure the approved Google Pub/Sub trigger first.' : undefined}
+            disabled={!client.renewGmailWatch || !pubsubReady || watch.isPending}
+            onClick={() => watch.mutate()}
+          >
+            {watch.isPending ? 'Activating…' : !gmailConnected ? 'Connect Gmail first' : !pubsubReady ? 'Pub/Sub required' : automaticWatch ? 'Renew watch' : 'Enable automatic intake'}
+          </button>
+        </div>
+        <div className="sync-result" aria-live="polite">
+          {watch.isSuccess ? <p>Automatic intake active until {formatCaseDate(watch.data.watch_expires_at)}.</p> : null}
+          {watch.isError ? <p role="alert">Automatic intake could not be activated. No outgoing email was sent.</p> : null}
         </div>
 
         <div className={`sync-card${automaticWatch ? ' sync-card-fallback' : ''}`}>
