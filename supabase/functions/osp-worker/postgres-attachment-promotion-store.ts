@@ -132,8 +132,14 @@ export function createPostgresAttachmentPromotionStore(options: {
             : (() => {
               throw new Error("DATABASE_TEMPORARY");
             })();
+          const lockKey = JSON.stringify([
+            input.organizationId,
+            "attachment_promotion",
+            input.id,
+          ]);
+          await tx`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
           const existing =
-            await tx`select version.id as document_version_id, document.case_id, version.source_sha256, version.opaque_object_key, version.content_type from osp_private.document_versions version join osp_private.documents document on document.organization_id = version.organization_id and document.id = version.document_id where version.organization_id = ${input.organizationId} and version.id = ${input.id} for share`;
+            await tx`select version.id as document_version_id, document.case_id, version.source_sha256, version.opaque_object_key, version.content_type from osp_private.document_versions version join osp_private.documents document on document.organization_id = version.organization_id and document.id = version.document_id where version.organization_id = ${input.organizationId} and version.id = ${input.id}`;
           if (existing.length === 1) {
             const row = existing[0];
             if (
