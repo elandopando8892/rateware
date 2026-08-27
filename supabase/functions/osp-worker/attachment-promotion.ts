@@ -14,6 +14,10 @@ export type RegisteredRequirementDocument = Readonly<{
   templateVersionId: string | null;
 }>;
 
+export type SourceSafetyReason =
+  | "managed_malware_scan_clean"
+  | "strict_xlsx_package_policy";
+
 export interface AttachmentPromotionStore {
   listCaseAttachments(input: {
     organizationId: string;
@@ -22,6 +26,7 @@ export interface AttachmentPromotionStore {
   register(
     input: GmailAttachmentSource & {
       corporateObjectKey: string;
+      sourceSafetyReason: SourceSafetyReason;
     },
   ): Promise<RegisteredRequirementDocument>;
 }
@@ -90,6 +95,7 @@ export function createAttachmentPromotionService(deps: {
   store: AttachmentPromotionStore;
   storage: AttachmentPromotionStorage;
   scan: MalwareScanner;
+  sourceSafetyReason?: SourceSafetyReason;
   jobs: Pick<BackgroundJobStore, "enqueue">;
 }): AttachmentPromotionService {
   const service: AttachmentPromotionService = {
@@ -120,6 +126,8 @@ export function createAttachmentPromotionService(deps: {
         const registered = await deps.store.register({
           ...source,
           corporateObjectKey,
+          sourceSafetyReason: deps.sourceSafetyReason ??
+            "managed_malware_scan_clean",
         });
         await deps.jobs.enqueue({
           organizationId: input.organizationId,

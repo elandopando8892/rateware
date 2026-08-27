@@ -21,6 +21,14 @@ import { createAutomaticPreparationService } from "./automatic-preparation.ts";
 import { createPostgresAutomaticPreparationStore } from "./postgres-automatic-preparation.ts";
 import type { SupabaseClient } from "supabase";
 import type { GovernedAutomationConfiguration } from "./governed-automation-config.ts";
+import type { XlsxShadowConfiguration } from "./xlsx-shadow-config.ts";
+import { createStrictXlsxPackageScanner } from "./strict-xlsx-package-scanner.ts";
+import type { AttachmentPromotionService } from "./attachment-promotion.ts";
+import type { ManagedExtractionService } from "./worker.ts";
+import type { AutomaticPreparationService } from "./automatic-preparation.ts";
+
+const XLSX =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 function governedStorage(
   client: Parameters<typeof createSupabaseOriginalObjectStore>[0]["client"],
@@ -38,11 +46,15 @@ export function createShadowWorkerRuntime(input: {
   >[0]["client"];
   workerId: string;
   automation?: GovernedAutomationConfiguration;
+  xlsxShadow?: XlsxShadowConfiguration;
   fetch?: typeof globalThis.fetch;
 }): {
   enqueue(limit: number): Promise<number>;
   run(limit: number): Promise<number>;
 } {
+  if (input.automation && input.xlsxShadow) {
+    throw new Error("INVALID_RUNTIME_CONFIGURATION");
+  }
   const jobs = createPostgresBackgroundJobStore({
     databaseUrl: input.databaseUrl,
     postgresFactory: input.postgresFactory,
@@ -62,11 +74,12 @@ export function createShadowWorkerRuntime(input: {
     postgresFactory: input.postgresFactory,
   });
   const request = input.fetch ?? globalThis.fetch;
-  const automationStorage = input.automation
+  const automationStorage = input.automation || input.xlsxShadow
     ? governedStorage(input.storageClient)
     : undefined;
-  const attachmentPromotions = input.automation
-    ? createAttachmentPromotionService({
+  let attachmentPromotions: AttachmentPromotionService | undefined;
+  if (input.automation) {
+    attachmentPromotions = createAttachmentPromotionService({
       store: createPostgresAttachmentPromotionStore({
         databaseUrl: input.databaseUrl,
         postgresFactory: input.postgresFactory,
@@ -80,42 +93,103 @@ export function createShadowWorkerRuntime(input: {
         fetch: request,
       }),
       jobs,
-    })
-    : undefined;
-  const extraction = input.automation
-    ? createManagedExtractionService({
-      store: createPostgresManagedExtractionStore({
+    });
+  } else if (input.xlsxShadow) {
+    const promoted = createAttachmentPromotionService({
+      store: createPostgresAttachmentPromotionStore({
         databaseUrl: input.databaseUrl,
         postgresFactory: input.postgresFactory,
       }),
+      storage: createSupabaseAttachmentPromotionStorage({
+        client: automationStorage!,
+      }),
+      scan: createStrictXlsxPackageScanner(input.xlsxShadow.sourceSha256),
+      sourceSafetyReason: "strict_xlsx_package_policy",
+      jobs,
+    });
+    attachmentPromotions = Object.freeze({
+      promoteCase: (
+        request: Parameters<AttachmentPromotionService["promoteCase"]>[0],
+      ) =>
+        request.organizationId === input.xlsxShadow!.organizationId &&
+          request.caseId === input.xlsxShadow!.caseId
+          ? promoted.promoteCase(request)
+          : Promise.resolve(Object.freeze([])),
+    });
+  }
+  let extraction: ManagedExtractionService | undefined;
+  if (input.automation || input.xlsxShadow) {
+    const managedStore = createPostgresManagedExtractionStore({
+      databaseUrl: input.databaseUrl,
+      postgresFactory: input.postgresFactory,
+    });
+    const extractionStore = input.xlsxShadow
+      ? {
+        async load(
+          request: { organizationId: string; documentVersionId: string },
+        ) {
+          if (request.organizationId !== input.xlsxShadow!.organizationId) {
+            throw new Error("INVALID_INPUT");
+          }
+          const source = await managedStore.load(request);
+          if (
+            source.caseId !== input.xlsxShadow!.caseId ||
+            source.sourceSha256 !== input.xlsxShadow!.sourceSha256 ||
+            source.contentType !== XLSX
+          ) throw new Error("INVALID_INPUT");
+          return source;
+        },
+        persist: managedStore.persist,
+      }
+      : managedStore;
+    extraction = createManagedExtractionService({
+      store: extractionStore,
       storage: createSupabaseManagedExtractionStorage({
         client: automationStorage!,
       }),
-      layout: createAzureDocumentIntelligence({
-        endpoint: input.automation.azureDocumentEndpoint,
-        apiKey: input.automation.azureDocumentApiKey,
-        request,
-      }),
-      structured: {
-        modelVersion: input.automation.openAiModel,
-        extract: createOpenAiStructuredExtraction({
-          baseUrl: "https://api.openai.com",
-          apiKey: input.automation.openAiApiKey,
-          model: input.automation.openAiModel,
-          request,
-        }).extract,
-      },
+      ...(input.automation
+        ? {
+          layout: createAzureDocumentIntelligence({
+            endpoint: input.automation.azureDocumentEndpoint,
+            apiKey: input.automation.azureDocumentApiKey,
+            request,
+          }),
+          structured: {
+            modelVersion: input.automation.openAiModel,
+            extract: createOpenAiStructuredExtraction({
+              baseUrl: "https://api.openai.com",
+              apiKey: input.automation.openAiApiKey,
+              model: input.automation.openAiModel,
+              request,
+            }).extract,
+          },
+        }
+        : {}),
       jobs,
-    })
-    : undefined;
-  const formMappings = input.automation
-    ? createAutomaticPreparationService(
+    });
+  }
+  let formMappings: AutomaticPreparationService | undefined;
+  if (input.automation || input.xlsxShadow) {
+    const prepared = createAutomaticPreparationService(
       createPostgresAutomaticPreparationStore({
         databaseUrl: input.databaseUrl,
         postgresFactory: input.postgresFactory,
       }),
-    )
-    : undefined;
+    );
+    formMappings = input.xlsxShadow
+      ? Object.freeze({
+        prepare: (
+          request: Parameters<AutomaticPreparationService["prepare"]>[0],
+        ) => {
+          if (
+            request.organizationId !== input.xlsxShadow!.organizationId ||
+            request.caseId !== input.xlsxShadow!.caseId
+          ) throw new Error("INVALID_INPUT");
+          return prepared.prepare(request);
+        },
+      })
+      : prepared;
+  }
   return Object.freeze({
     enqueue: (limit: number) => bridge.enqueue(limit),
     run: (limit: number) =>

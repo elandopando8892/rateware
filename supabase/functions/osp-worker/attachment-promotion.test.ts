@@ -50,6 +50,10 @@ Deno.test("attachment promotion verifies, scans, registers and queues one determ
     (stored[0] as { objectKey: string }).objectKey,
     `${organizationId}/${attachmentId}`,
   );
+  assertEquals(
+    (stored[1] as { sourceSafetyReason: string }).sourceSafetyReason,
+    "managed_malware_scan_clean",
+  );
   const [job] = await jobs.claim({
     workerId: "test",
     now: new Date(),

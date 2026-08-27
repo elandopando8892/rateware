@@ -152,7 +152,7 @@ export function createPostgresAttachmentPromotionStore(options: {
           const documentId = crypto.randomUUID();
           await tx`insert into osp_private.documents (id, organization_id, case_id, version) values (${documentId}, ${input.organizationId}, ${input.caseId}, 0)`;
           await tx`insert into osp_private.document_versions (id, organization_id, document_id, version, document_type, status, source_sha256, bucket_id, opaque_object_key, content_type, valid_from, expires_at, uploaded_by_subject, review_before_sha256, review_after_sha256) values (${input.id}, ${input.organizationId}, ${documentId}, 1, 'supplier_requirement', 'uploaded', ${input.sourceSha256}, 'osp-corporate-documents', ${input.corporateObjectKey}, ${input.contentType}, null, null, 'osp-worker', ${input.sourceSha256}, ${input.sourceSha256})`;
-          await tx`insert into osp_private.source_safety_assessments (id, organization_id, document_version_id, version, status, content_sha256, reason_code, assessed_at) values (${crypto.randomUUID()}, ${input.organizationId}, ${input.id}, 1, 'safe', ${input.sourceSha256}, 'managed_malware_scan_clean', statement_timestamp())`;
+          await tx`insert into osp_private.source_safety_assessments (id, organization_id, document_version_id, version, status, content_sha256, reason_code, assessed_at) values (${crypto.randomUUID()}, ${input.organizationId}, ${input.id}, 1, 'safe', ${input.sourceSha256}, ${input.sourceSafetyReason}, statement_timestamp())`;
           const reviewRows =
             await tx`select id, status from osp_private.mark_document_review_required_command(${input.organizationId}, ${input.id})`;
           if (

@@ -151,7 +151,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/FormTemplateLibrary.tsx",
-      "sha256": "46512927cc910fa89a49d3bb81561fa7a2b4dbeb31f714a5b4457a0b8384d331"
+      "sha256": "f2cff4aa7fb8465cd291c21486a62fbe887ce52273959cb0f33e3d848d872f56"
     },
     {
       "kind": "production-ui",
@@ -167,6 +167,11 @@
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/VisualFormBuilder.tsx",
       "sha256": "42aa9510afdee9723f528ff64caa8d1ea1e770a7c6b652a5d4782883df4f7f2e"
+    },
+    {
+      "kind": "production-ui",
+      "path": "apps/osp/src/features/forms/xbf-starter-survey.ts",
+      "sha256": "f870fe1e3b4d6f905a64b202d48cfbbbc05489bcd1bf1c8339f49701235d503f"
     },
     {
       "kind": "production-ui",

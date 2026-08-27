@@ -7,6 +7,7 @@ import {
 import { createOspWorkerHandler } from "./handler.ts";
 import { createShadowWorkerRuntime } from "./shadow-runtime.ts";
 import { resolveGovernedAutomation } from "./governed-automation-config.ts";
+import { resolveXlsxShadow } from "./xlsx-shadow-config.ts";
 
 function required(name: string): string {
   const value = Deno.env.get(name)?.trim();
@@ -83,6 +84,7 @@ const runtime = createShadowWorkerRuntime({
   storageClient: supabase,
   workerId: `osp-edge:${crypto.randomUUID()}`,
   automation: resolveGovernedAutomation(Deno.env),
+  xlsxShadow: resolveXlsxShadow(Deno.env),
 });
 
 Deno.serve(createOspWorkerHandler({

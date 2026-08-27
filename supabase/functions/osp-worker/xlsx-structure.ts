@@ -8,9 +8,10 @@ const MAX_CELLS = 50_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type CellKind = 'string' | 'number' | 'boolean' | 'date' | 'formula';
-type ParsedCell = { address: string; kind: CellKind; value: string | number | boolean };
-type ParsedSheet = { name: string; mergedRanges: string[]; cells: ParsedCell[] };
-type XlsxEvidence = EvidenceItem & { locator: Extract<EvidenceLocator, { kind: 'xlsx_cell' }> };
+export type ParsedCell = { address: string; kind: CellKind; value: string | number | boolean };
+export type ParsedSheet = { name: string; mergedRanges: string[]; cells: ParsedCell[] };
+export type XlsxEvidence = EvidenceItem & { locator: Extract<EvidenceLocator, { kind: 'xlsx_cell' }> };
+export type XlsxStructure = { modelVersion: 'exceljs@4.4.0'; sheets: ParsedSheet[]; evidence: XlsxEvidence[] };
 
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
@@ -35,7 +36,7 @@ function cellValue(value: unknown): { kind: CellKind; value: string | number | b
   return null;
 }
 
-export async function parseXlsxStructure(input: { sourceVersionId: string; bytes: Uint8Array }): Promise<{ modelVersion: 'exceljs@4.4.0'; sheets: ParsedSheet[]; evidence: XlsxEvidence[] }> {
+export async function parseXlsxStructure(input: { sourceVersionId: string; bytes: Uint8Array }): Promise<XlsxStructure> {
   if (!UUID_PATTERN.test(input.sourceVersionId)) throw new Error('SOURCE_VERSION_ID_INVALID');
   if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength < 1 || input.bytes.byteLength > MAX_DOCUMENT_BYTES) throw new Error('DOCUMENT_SIZE_INVALID');
   const workbook = new ExcelJS.Workbook();

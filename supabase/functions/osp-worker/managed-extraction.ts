@@ -12,6 +12,7 @@ import type {
   StructuredFieldValue,
 } from "./openai-structured-extraction.ts";
 import { parseXlsxStructure } from "./xlsx-structure.ts";
+import { createXlsxStructuralSnapshot } from "./xlsx-structural-extraction.ts";
 import type { AzureAnalysis } from "./azure-document-intelligence.ts";
 
 export type ManagedExtractionSource = Readonly<{
@@ -212,8 +213,8 @@ async function snapshot(input: {
 export function createManagedExtractionService(deps: {
   store: ManagedExtractionStore;
   storage: ManagedExtractionStorage;
-  layout: LayoutAnalyzer;
-  structured: StructuredExtractor;
+  layout?: LayoutAnalyzer;
+  structured?: StructuredExtractor;
   jobs: Pick<BackgroundJobStore, "enqueue">;
 }) {
   return Object.freeze({
@@ -232,33 +233,40 @@ export function createManagedExtractionService(deps: {
         if (await sha256Hex(bytes) !== source.sourceSha256) {
           throw new Error("SOURCE_HASH_MISMATCH");
         }
-        const evidence = source.contentType === XLSX
-          ? (await parseXlsxStructure({
+        let created: ExtractionSnapshot;
+        if (source.contentType === XLSX) {
+          const structure = await parseXlsxStructure({
             sourceVersionId: source.documentVersionId,
             bytes,
-          })).evidence
-          : (await deps.layout.analyze({
+          });
+          created = await createXlsxStructuralSnapshot({ source, structure });
+        } else {
+          if (!deps.layout || !deps.structured) {
+            throw new Error("PROVIDER_CONFIGURATION_REQUIRED");
+          }
+          const evidence = (await deps.layout.analyze({
             sourceVersionId: source.documentVersionId,
             sourceSafety: source.sourceSafety,
             contentType: source.contentType,
             bytes,
           })).evidence;
-        if (evidence.length === 0) {
-          throw new Error("EXTRACTION_EVIDENCE_REQUIRED");
+          if (evidence.length === 0) {
+            throw new Error("EXTRACTION_EVIDENCE_REQUIRED");
+          }
+          const result = await deps.structured.extract({
+            evidence: evidence.map(({ id, locator, content }) => ({
+              id,
+              kind: locator.kind,
+              content,
+            })),
+          });
+          created = await snapshot({
+            source,
+            evidence,
+            result,
+            modelVersion: deps.structured.modelVersion,
+          });
         }
-        const result = await deps.structured.extract({
-          evidence: evidence.map(({ id, locator, content }) => ({
-            id,
-            kind: locator.kind,
-            content,
-          })),
-        });
-        const created = await snapshot({
-          source,
-          evidence,
-          result,
-          modelVersion: deps.structured.modelVersion,
-        });
         extractionId = await deps.store.persist({ source, snapshot: created });
       }
       if (source.templateVersionId) {

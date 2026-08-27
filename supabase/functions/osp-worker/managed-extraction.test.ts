@@ -1,4 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1.0.14";
+import ExcelJS from "exceljs";
 
 import { createInMemoryBackgroundJobStore } from "../_shared/osp/background-jobs.ts";
 import { sha256Hex } from "../_shared/osp/source-hash.ts";
@@ -163,4 +164,58 @@ Deno.test("managed extraction reuses a persisted extraction without provider or 
     limit: 1,
   });
   assertEquals(mapping.opaquePayload.extractionId, existingExtractionId);
+});
+
+Deno.test("managed extraction processes XLSX without layout or AI providers", async () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Registration");
+  sheet.getCell("A1").value = "Legal name";
+  sheet.getCell("B1").value = "Synthetic Carrier";
+  const xlsxBytes = new Uint8Array(await workbook.xlsx.writeBuffer());
+  const persisted: Array<
+    { snapshot: { fields: Array<{ provider: string; value: unknown }> } }
+  > = [];
+  const jobs = createInMemoryBackgroundJobStore();
+  const service = createManagedExtractionService({
+    store: {
+      load: async () => ({
+        organizationId,
+        caseId,
+        documentVersionId,
+        bucketId: "osp-corporate-documents",
+        objectKey: `${organizationId}/${documentVersionId}`,
+        contentType:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        sourceSha256: await sha256Hex(xlsxBytes),
+        sourceSafety: "safe",
+        templateVersionId,
+        existingExtractionId: null,
+      }),
+      persist: async (input) => {
+        persisted.push(input as never);
+        return input.snapshot.id;
+      },
+    },
+    storage: { download: async () => xlsxBytes },
+    jobs,
+  });
+  await service.extract({
+    organizationId,
+    documentVersionId,
+    correlationId: "xlsx-no-provider",
+  });
+  assertEquals(
+    persisted[0].snapshot.fields.map((field) => ({
+      provider: field.provider,
+      value: field.value,
+    })),
+    [{ provider: "xlsx_structural", value: "Synthetic Carrier" }],
+  );
+  const [mapping] = await jobs.claim({
+    workerId: "test",
+    now: new Date(),
+    leaseMs: 60_000,
+    limit: 1,
+  });
+  assertEquals(mapping.kind, "form_ai_mapping");
 });

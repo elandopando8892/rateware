@@ -56,6 +56,7 @@ const expectedProductionSourcePaths = [
   'apps/osp/src/features/forms/surveyjs-canonical-adapter.ts',
   'apps/osp/src/features/forms/surveyjs-preset.ts',
   'apps/osp/src/features/forms/VisualFormBuilder.tsx',
+  'apps/osp/src/features/forms/xbf-starter-survey.ts',
   'apps/osp/src/features/pipeline/pipeline-health.ts',
   'apps/osp/src/features/pipeline/PipelineOverview.tsx',
   'apps/osp/src/features/pipeline/use-pipeline-overview.ts',

@@ -1,0 +1,48 @@
+export const XBF_STARTER_SURVEY = Object.freeze({
+  title: "XBF customer setup",
+  pages: [{
+    name: "company",
+    elements: [
+      {
+        type: "text",
+        name: "legal_name",
+        title: "Legal name",
+        isRequired: true,
+        ospKind: "text",
+        ospCanonicalFieldId: "supplier.legalName",
+        minLength: 1,
+        maxLength: 256,
+      },
+      {
+        type: "text",
+        name: "tax_identifier",
+        title: "Tax identifier",
+        isRequired: true,
+        ospKind: "canonical_identifier",
+        ospCanonicalFieldId: "fiscal.taxIdentifier",
+        minLength: 8,
+        maxLength: 32,
+      },
+      {
+        type: "comment",
+        name: "registered_address",
+        title: "Registered address",
+        isRequired: true,
+        ospKind: "textarea",
+        ospCanonicalFieldId: "supplier.address",
+        minLength: 8,
+        maxLength: 500,
+      },
+      {
+        type: "text",
+        name: "bank_account",
+        title: "Bank account",
+        isRequired: true,
+        ospKind: "text",
+        ospCanonicalFieldId: "banking.accountNumber",
+        minLength: 4,
+        maxLength: 34,
+      },
+    ],
+  }],
+});
