@@ -4848,6 +4848,12 @@ assert.match(rfxEventsHtml, /id="rfx-open-delivery-queue"/, "Message should prov
 assert.match(rfxEventsSource, /Select one or more carriers in Carrier fit or This RFx before preparing a delivery queue\./, "Draft preparation should require an explicit RFx carrier wave");
 assert.match(rfxEventsSource, /deliveryParticipationStatus = "in_delivery";[\s\S]+draftQueueTrackingStatus = "drafted";[\s\S]+activateRfxLaunchWorkspace\("delivery", \{ refresh: true \}\)/, "Draft preparation should open Delivery queue filtered to the new draft wave");
 assert.match(rfxEventsSource, /if \(rfxLaunchWorkspace === "message"\) renderOutreachPreview\(\);/, "Changing a selected carrier wave should immediately refresh the Message preview");
+assert.match(rfxEventsHtml, /id="rfx-message-recipient-list"/, "Message should expose the selected carrier wave as a recipient workspace");
+assert.match(rfxEventsHtml, /Back to Carrier Fit/, "Message should provide a direct return to Carrier Fit");
+assert.match(rfxEventsHtml, /No invitations are sent here/, "Message should make its zero-send boundary visible");
+assert.match(rfxEventsSource, /function renderMessageRecipients/, "Message should render one previewable row per selected carrier");
+assert.match(rfxEventsSource, /selectedOutreachPreviewVendorId/, "Message should retain the carrier selected for personalized preview");
+assert.match(stylesSource, /grid-template-areas:\s*"recipients preview setup"/, "Message should use the approved recipients, preview, and setup hierarchy");
 const outreachPreviewStart = rfxEventsSource.indexOf("function renderOutreachPreview");
 const outreachPreviewEnd = rfxEventsSource.indexOf("\n\nfunction", outreachPreviewStart + 1);
 const outreachPreviewSource = rfxEventsSource.slice(outreachPreviewStart, outreachPreviewEnd > outreachPreviewStart ? outreachPreviewEnd : undefined);

@@ -31116,6 +31116,239 @@ form[data-unsaved-guard][data-unsaved="true"] {
   grid-template-columns: minmax(320px, 0.36fr) minmax(0, 0.64fr);
 }
 
+/* Guided Message workspace: selected recipients, personalized preview, setup. */
+.rfx-message-workspace-header,
+.rfx-message-workspace-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid #d6e0e7;
+  background: #ffffff;
+}
+
+.rfx-message-workspace-header {
+  border-radius: 7px 7px 0 0;
+  border-bottom: 0;
+}
+
+.rfx-message-workspace-header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.rfx-message-workspace-header .eyebrow,
+.rfx-message-workspace-header h4 {
+  margin: 0;
+}
+
+.rfx-message-workspace-header h4 {
+  color: #172633;
+  font-size: 0.94rem;
+}
+
+.rfx-message-workspace-header > div > span,
+.rfx-message-workspace-footer > span {
+  color: #64727d;
+  font-size: 0.68rem;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .bid-room-invite-grid {
+  grid-template-columns: minmax(210px, 0.22fr) minmax(420px, 0.5fr) minmax(270px, 0.28fr);
+  grid-template-areas: "recipients preview setup";
+  gap: 0;
+  min-height: 560px;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-message-recipient-panel {
+  grid-area: recipients;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-preview-panel {
+  grid-area: preview;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-controls {
+  grid-area: setup;
+}
+
+.rfx-message-recipient-panel,
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-preview-panel,
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-controls {
+  min-width: 0;
+  border: 1px solid #d6e0e7;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.rfx-message-recipient-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border-right: 0;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-preview-panel {
+  border-right: 0;
+}
+
+.rfx-message-recipient-heading,
+.rfx-message-recipient-summary {
+  padding: 10px;
+  border-bottom: 1px solid #e2e9ee;
+}
+
+.rfx-message-recipient-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rfx-message-recipient-heading .eyebrow {
+  margin: 0 0 2px;
+}
+
+.rfx-message-recipient-heading > span {
+  color: #657582;
+  font-size: 0.66rem;
+}
+
+.rfx-message-recipient-list {
+  min-height: 0;
+  max-height: 590px;
+  overflow: auto;
+}
+
+.rfx-message-recipient-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-bottom: 1px solid #e6ecef;
+  border-left: 3px solid transparent;
+  border-radius: 0;
+  background: #ffffff;
+  color: #243440;
+  text-align: left;
+}
+
+.rfx-message-recipient-row:hover,
+.rfx-message-recipient-row.is-active {
+  border-left-color: #256f7b;
+  background: #f4f8f9;
+}
+
+.rfx-message-recipient-row > span:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rfx-message-recipient-row strong,
+.rfx-message-recipient-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rfx-message-recipient-row strong {
+  font-size: 0.72rem;
+}
+
+.rfx-message-recipient-row small,
+.rfx-message-recipient-row > span:last-child,
+.rfx-message-recipient-summary {
+  font-size: 0.62rem;
+}
+
+.rfx-message-recipient-row .is-ready {
+  color: #187453;
+}
+
+.rfx-message-recipient-row .is-missing {
+  color: #a35e00;
+}
+
+.rfx-message-recipient-summary {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid #e2e9ee;
+  border-bottom: 0;
+  color: #63727e;
+}
+
+.rfx-message-recipient-summary strong {
+  color: #187453;
+}
+
+.rfx-message-recipient-summary span {
+  color: #a35e00;
+}
+
+.rfx-message-recipient-empty {
+  padding: 18px 10px;
+  color: #64727d;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-controls {
+  padding: 10px;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-form {
+  grid-template-columns: 1fr;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-form > * {
+  grid-column: 1;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-preview-panel .outreach-template-preview {
+  min-height: 490px;
+}
+
+.rfx-message-workspace-footer {
+  border-top: 0;
+  border-radius: 0 0 7px 7px;
+}
+
+@media (max-width: 1100px) {
+  .bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .bid-room-invite-grid {
+    grid-template-columns: minmax(200px, 0.3fr) minmax(0, 0.7fr);
+    grid-template-areas:
+      "recipients preview"
+      "setup setup";
+  }
+
+  .bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-preview-panel {
+    border-right: 1px solid #d6e0e7;
+  }
+}
+
+@media (max-width: 720px) {
+  .rfx-message-workspace-header,
+  .rfx-message-workspace-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .bid-room-invite-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas: "recipients" "preview" "setup";
+  }
+
+  .rfx-message-recipient-panel,
+  .bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-preview-panel {
+    border-right: 1px solid #d6e0e7;
+  }
+}
+
 .rfx-template-editor.is-source-admin {
   border-style: dashed;
   background: #fbfcfd;

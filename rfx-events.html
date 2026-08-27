@@ -733,7 +733,28 @@
               </div>
               </section>
               <section id="rfx-launch-message-workspace" class="rfx-launch-workspace-panel" data-rfx-launch-workspace-panel="message" role="tabpanel" hidden>
+              <header class="rfx-message-workspace-header">
+                <div>
+                  <p class="eyebrow">Guided wave review</p>
+                  <h4>Review the invitation wave</h4>
+                  <span>Check every selected carrier, preview the personalized message, then prepare drafts for Delivery queue.</span>
+                </div>
+                <span class="status-pill neutral">No invitations are sent here</span>
+              </header>
               <div class="rfx-outreach-grid bid-room-invite-grid">
+                <aside class="rfx-message-recipient-panel" aria-labelledby="rfx-message-recipient-title">
+                  <div class="rfx-message-recipient-heading">
+                    <div>
+                      <p class="eyebrow">Selected wave</p>
+                      <strong id="rfx-message-recipient-title">Recipients</strong>
+                    </div>
+                    <span id="rfx-message-recipient-count">0 selected</span>
+                  </div>
+                  <div id="rfx-message-recipient-list" class="rfx-message-recipient-list" role="listbox" aria-label="Invitation preview recipients">
+                    <div class="rfx-message-recipient-empty">Select carriers in Carrier Fit to build this wave.</div>
+                  </div>
+                  <div id="rfx-message-recipient-summary" class="rfx-message-recipient-summary">Nothing will be sent from this workspace.</div>
+                </aside>
                 <div class="rfx-outreach-controls">
                   <div class="rfx-outreach-section-heading">
                     <div>
@@ -839,6 +860,10 @@
                   </div>
                 </div>
               </div>
+              <footer class="rfx-message-workspace-footer">
+                <button id="rfx-message-back-to-carrier-fit" type="button" class="secondary">Back to Carrier Fit</button>
+                <span>Preparing drafts does not send invitations. Delivery queue remains the final review and send workspace.</span>
+              </footer>
               </section>
               <section id="rfx-launch-delivery-workspace" class="rfx-launch-workspace-panel" data-rfx-launch-workspace-panel="delivery" role="tabpanel" hidden>
               <div class="rfx-touchpoint-panel rfx-draft-queue-panel">

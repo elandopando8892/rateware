@@ -333,6 +333,10 @@ const carrierTemplatePreviewBody = document.querySelector("#rfx-carrier-template
 const carrierTemplateStatus = document.querySelector("#rfx-carrier-template-status");
 const rfxLaunchWorkspaceTabs = document.querySelector("#rfx-launch-workspace-tabs");
 const rfxLaunchWorkspacePanels = [...document.querySelectorAll("[data-rfx-launch-workspace-panel]")];
+const rfxMessageRecipientList = document.querySelector("#rfx-message-recipient-list");
+const rfxMessageRecipientCount = document.querySelector("#rfx-message-recipient-count");
+const rfxMessageRecipientSummary = document.querySelector("#rfx-message-recipient-summary");
+const rfxMessageBackToCarrierFit = document.querySelector("#rfx-message-back-to-carrier-fit");
 const rfxOutreachForm = document.querySelector("#rfx-outreach-form");
 const rfxOutreachCampaignName = document.querySelector("#rfx-outreach-campaign-name");
 const rfxOutreachTemplate = document.querySelector("#rfx-outreach-template");
@@ -624,6 +628,7 @@ let outreachAudienceCounts = {};
 let outreachAudienceTotal = 0;
 let outreachAudienceSegments = [];
 let selectedOutreachAudienceVendorIds = new Set();
+let selectedOutreachPreviewVendorId = "";
 let outreachAudienceLoading = false;
 let outreachAudienceLoadVersion = 0;
 let outreachAudienceSearchTimer = null;
@@ -3050,9 +3055,50 @@ function targetLaneTableSignature(target) {
   return laneTableSignatureForTargets(targetRows);
 }
 
+function uniqueOutreachWaveTargets() {
+  const targetsByVendorId = new Map();
+  outreachWaveTargets().forEach((target) => {
+    const vendorId = String(target.invitation?.vendor_id || "");
+    if (vendorId && !targetsByVendorId.has(vendorId)) targetsByVendorId.set(vendorId, target);
+  });
+  return [...targetsByVendorId.values()];
+}
+
+function renderMessageRecipients(channel = selectedOutreachChannel()) {
+  if (!rfxMessageRecipientList) return;
+  const targets = uniqueOutreachWaveTargets();
+  const readyCount = targets.filter((target) => targetHasChannel(target, channel)).length;
+  if (!targets.some((target) => String(target.invitation?.vendor_id || "") === selectedOutreachPreviewVendorId)) {
+    selectedOutreachPreviewVendorId = String(targets[0]?.invitation?.vendor_id || "");
+  }
+  if (rfxMessageRecipientCount) rfxMessageRecipientCount.textContent = `${formatNumber(targets.length)} selected`;
+  if (rfxMessageRecipientSummary) {
+    const missing = Math.max(targets.length - readyCount, 0);
+    rfxMessageRecipientSummary.innerHTML = `<strong>${formatNumber(readyCount)} contact ready</strong>${missing ? `<span>${formatNumber(missing)} missing compatible contact</span>` : ""}<small>Nothing will be sent from this workspace.</small>`;
+  }
+  if (!targets.length) {
+    rfxMessageRecipientList.innerHTML = `<div class="rfx-message-recipient-empty">Select carriers in Carrier Fit to build this wave.</div>`;
+    return;
+  }
+  rfxMessageRecipientList.innerHTML = targets.map((target) => {
+    const vendor = target.invitation?.vendors || {};
+    const vendorId = String(target.invitation?.vendor_id || "");
+    const ready = targetHasChannel(target, channel);
+    const active = vendorId === selectedOutreachPreviewVendorId;
+    return `
+      <button type="button" class="rfx-message-recipient-row ${active ? "is-active" : ""}" data-rfx-message-preview-vendor="${escapeHtml(vendorId)}" role="option" aria-selected="${String(active)}">
+        <span><strong>${escapeHtml(vendor.vendor_name || vendor.domain || "Carrier")}</strong><small>${escapeHtml(vendor.domain || vendor.primary_email || "Carrier CRM")}</small></span>
+        <span class="${ready ? "is-ready" : "is-missing"}">${ready ? "Contact ready" : "Missing contact"}</span>
+      </button>
+    `;
+  }).join("");
+}
+
 function firstOutreachTarget() {
-  return outreachWaveTargets().find((target) => targetHasChannel(target, selectedOutreachChannel()))
-    || outreachWaveTargets()[0]
+  const targets = outreachWaveTargets();
+  return targets.find((target) => String(target.invitation?.vendor_id || "") === selectedOutreachPreviewVendorId)
+    || targets.find((target) => targetHasChannel(target, selectedOutreachChannel()))
+    || targets[0]
     || null;
 }
 
@@ -3212,6 +3258,7 @@ function renderOutreachPreview() {
   renderRfxTemplateEditor();
   const template = selectedOutreachTemplateDraft();
   const channel = selectedOutreachChannel();
+  renderMessageRecipients(channel);
   const targetMode = channel === "whatsapp_group" ? "vendor_group" : "direct_vendor";
   const senderEmail = rfxOutreachSender?.value || APPROVED_GMAIL_SENDER;
   const targets = outreachWaveTargets();
@@ -11033,6 +11080,17 @@ rfxLaunchWorkspaceTabs?.addEventListener("click", (event) => {
     return;
   }
   activateRfxLaunchWorkspace(button.dataset.rfxLaunchWorkspace);
+});
+
+rfxMessageBackToCarrierFit?.addEventListener("click", () => activateRfxLaunchWorkspace("carrier"));
+
+rfxMessageRecipientList?.addEventListener("click", (event) => {
+  const button = event.target instanceof Element
+    ? event.target.closest("[data-rfx-message-preview-vendor]")
+    : null;
+  if (!(button instanceof HTMLButtonElement)) return;
+  selectedOutreachPreviewVendorId = String(button.dataset.rfxMessagePreviewVendor || "");
+  renderOutreachPreview();
 });
 
 rfxCustomerInput?.addEventListener("focus", () => {
