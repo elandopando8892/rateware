@@ -37,6 +37,27 @@ export type CaseFormMappingFieldReview = {
   status: 'prepared' | 'missing' | 'contradictory';
   evidenceCount: number;
 };
+export type CaseFormProtectedFieldReview = {
+  id: string;
+  fieldKey: string;
+  presence: 'present' | 'blank' | 'absent' | 'uncertain';
+  value: string | number | boolean | null;
+  confidence: number;
+  validation: 'valid' | 'low_confidence' | 'contradictory' | 'invalid';
+  evidenceCount: number;
+  reviewed: boolean;
+};
+export type CaseFormEvidenceReview = {
+  sourceDocumentVersionId: string;
+  sourceDocumentVersion: number;
+  sourceDocumentStatus: 'uploaded' | 'analyzing' | 'review_required' | 'approved' | 'rejected' | 'superseded';
+  sourceDocumentFingerprint: string;
+  extractionId: string;
+  extractionStatus: 'review_required' | 'reviewed' | 'failed';
+  totalFieldCount: number;
+  invalidFieldCount: number;
+  protectedFields: readonly CaseFormProtectedFieldReview[];
+};
 export type CaseFormMappingReview = {
   id: string;
   version: number;
@@ -45,6 +66,7 @@ export type CaseFormMappingReview = {
   afterSha256: string;
   matchesCurrentDraft: boolean;
   fields: readonly CaseFormMappingFieldReview[];
+  evidence: CaseFormEvidenceReview;
   updatedAt: string;
 };
 export type CaseFormWorkspaceRecord = {
@@ -86,6 +108,9 @@ export type CaseFormMappingReviewReceipt = {
   mappingVersion: number;
   status: 'accepted';
   reviewDecisionId: string;
+  documentVersionId: string;
+  extractionId: string;
+  reviewedFieldCount: number;
   replayed: boolean;
 };
 export type SubmitCaseFormForReviewInput = SaveCaseFormDraftInput & { expectedCaseVersion: number };

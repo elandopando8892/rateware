@@ -22,7 +22,11 @@ const workspace = {
   mappings: [{ id: '74111111-1111-4111-8111-111111111111', version: 1, status: 'accepted' as const, automaticStatus: 'ready_for_operations_review' as const, afterSha256: 'e'.repeat(64), matchesCurrentDraft: true, updatedAt: '2026-08-26T20:10:00.000Z', fields: [
     { fieldId: 'legal_name', source: 'rateware' as const, status: 'prepared' as const, evidenceCount: 1 },
     { fieldId: 'tax_identifier', source: 'attachment' as const, status: 'prepared' as const, evidenceCount: 2 },
-  ] }],
+  ], evidence: {
+    sourceDocumentVersionId: '76111111-1111-4111-8111-111111111111', sourceDocumentVersion: 1, sourceDocumentStatus: 'approved' as const, sourceDocumentFingerprint: 'f'.repeat(64),
+    extractionId: '77111111-1111-4111-8111-111111111111', extractionStatus: 'reviewed' as const, totalFieldCount: 7, invalidFieldCount: 0,
+    protectedFields: [{ id: '78111111-1111-4111-8111-111111111111', fieldKey: 'fiscal.taxIdentifier', presence: 'present' as const, value: 'SRM010101AA1', confidence: 0.94, validation: 'valid' as const, evidenceCount: 2, reviewed: true }],
+  } }],
   evidenceReady: true,
   capabilities: { saveDraft: true, acceptMapping: false, submitForReview: true },
 };
@@ -38,7 +42,7 @@ describe('CaseFormWorkspace', () => {
     renderRoute({ getCaseFormWorkspace: vi.fn().mockResolvedValue(workspace), saveCaseFormDraft: save, acceptCaseFormMapping: vi.fn(), submitCaseFormForReview: vi.fn() });
     expect(await screen.findByRole('heading', { name: /complete customer setup/i })).toBeInTheDocument();
     expect(screen.getByText('50%')).toBeInTheDocument();
-    await userEvent.type(await screen.findByLabelText(/tax identifier/i), 'XAXX010101000');
+    await userEvent.type(await screen.findByLabelText(/tax identifier/i, {}, { timeout: 5_000 }), 'XAXX010101000');
     await userEvent.click(screen.getByRole('button', { name: /save draft/i }));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ caseId, instanceId: workspace.instance.id, expectedVersion: 2, values: { legal_name: 'Sierra Retail México', tax_identifier: 'XAXX010101000' } })));
   }, 10_000);
@@ -47,22 +51,24 @@ describe('CaseFormWorkspace', () => {
     const submit = vi.fn().mockResolvedValue({ instance: { ...workspace.instance, version: 3 }, caseState: 'operations_review', caseVersion: 5, snapshotSha256: 'd'.repeat(64), replayed: false });
     renderRoute({ getCaseFormWorkspace: vi.fn().mockResolvedValue(workspace), saveCaseFormDraft: vi.fn(), acceptCaseFormMapping: vi.fn(), submitCaseFormForReview: submit });
     expect(await screen.findByText('50%')).toBeInTheDocument();
-    await userEvent.type(await screen.findByLabelText(/tax identifier/i), 'XAXX010101000');
+    await userEvent.type(await screen.findByLabelText(/tax identifier/i, {}, { timeout: 5_000 }), 'XAXX010101000');
     expect(await screen.findByText('100%')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /submit for operations review/i }));
     await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ caseId, expectedCaseVersion: 4, expectedVersion: 2, values: { legal_name: 'Sierra Retail México', tax_identifier: 'XAXX010101000' } })));
   }, 10_000);
 
   it('shows safe prefill provenance and accepts the exact reviewed mapping', async () => {
-    const mapping = { ...workspace.mappings[0], status: 'unresolved' as const };
+    const mapping = { ...workspace.mappings[0], status: 'unresolved' as const, evidence: { ...workspace.mappings[0].evidence, sourceDocumentStatus: 'review_required' as const, extractionStatus: 'review_required' as const, protectedFields: workspace.mappings[0].evidence.protectedFields.map((field) => ({ ...field, reviewed: false })) } };
     const reviewWorkspace = { ...workspace, instance: { ...workspace.instance, values: { legal_name: 'Sierra Retail México', tax_identifier: 'XAXX010101000' } }, mappings: [mapping], evidenceReady: false, capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false } };
-    const accept = vi.fn().mockResolvedValue({ mappingId: mapping.id, mappingVersion: 1, status: 'accepted', reviewDecisionId: '75111111-1111-4111-8111-111111111111', replayed: false });
+    const accept = vi.fn().mockResolvedValue({ mappingId: mapping.id, mappingVersion: 1, status: 'accepted', reviewDecisionId: '75111111-1111-4111-8111-111111111111', documentVersionId: mapping.evidence.sourceDocumentVersionId, extractionId: mapping.evidence.extractionId, reviewedFieldCount: 1, replayed: false });
     renderRoute({ getCaseFormWorkspace: vi.fn().mockResolvedValue(reviewWorkspace), saveCaseFormDraft: vi.fn(), acceptCaseFormMapping: accept, submitCaseFormForReview: vi.fn() });
     expect(await screen.findByRole('heading', { name: /automatic prefill review/i })).toBeInTheDocument();
     expect(screen.getByText(/rateware · 1 evidence link/i)).toBeInTheDocument();
     expect(screen.getByText(/attachment · 2 evidence links/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('checkbox', { name: /reviewed every prefilled field/i }));
-    await userEvent.click(screen.getByRole('button', { name: /accept automatic prefill/i }));
+    expect(screen.getByText('fiscal.taxIdentifier')).toBeInTheDocument();
+    expect(screen.getByText('SRM010101AA1')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: /reviewed the source document/i }));
+    await userEvent.click(screen.getByRole('button', { name: /accept evidence and prefill/i }));
     await waitFor(() => expect(accept).toHaveBeenCalledWith({ idempotencyKey: expect.stringMatching(/^case-mapping-accept:/), caseId, mappingId: mapping.id, expectedMappingVersion: 1, expectedAfterSha256: 'e'.repeat(64) }));
   }, 10_000);
 
@@ -70,5 +76,28 @@ describe('CaseFormWorkspace', () => {
     renderRoute({ getCaseFormWorkspace: vi.fn().mockResolvedValue({ ...workspace, instance: { ...workspace.instance, values: { legal_name: 'Sierra Retail México', tax_identifier: 'XAXX010101000' } }, evidenceReady: false, capabilities: { ...workspace.capabilities, submitForReview: false } }), saveCaseFormDraft: vi.fn(), acceptCaseFormMapping: vi.fn(), submitCaseFormForReview: vi.fn() });
     expect(await screen.findByRole('heading', { name: /evidence review required/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /submit for operations review/i })).toBeDisabled();
+  });
+
+  it('fails closed when the source extraction contains an invalid field', async () => {
+    const mapping = {
+      ...workspace.mappings[0],
+      status: 'unresolved' as const,
+      evidence: { ...workspace.mappings[0].evidence, extractionStatus: 'review_required' as const, invalidFieldCount: 1 },
+    };
+    renderRoute({
+      getCaseFormWorkspace: vi.fn().mockResolvedValue({
+        ...workspace,
+        instance: { ...workspace.instance, values: { legal_name: 'Sierra Retail México', tax_identifier: 'XAXX010101000' } },
+        mappings: [mapping],
+        evidenceReady: false,
+        capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false },
+      }),
+      saveCaseFormDraft: vi.fn(),
+      acceptCaseFormMapping: vi.fn(),
+      submitCaseFormForReview: vi.fn(),
+    });
+    expect(await screen.findByText(/1 invalid extracted field blocks acceptance/i)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /reviewed the source document/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /accept evidence and prefill/i })).toBeDisabled();
   });
 });

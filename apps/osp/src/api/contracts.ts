@@ -406,6 +406,26 @@ export const CaseFormMappingReviewSchema = z.strictObject({
     status: z.enum(['prepared', 'missing', 'contradictory']),
     evidenceCount: z.number().int().min(0).max(10_000),
   })).max(200),
+  evidence: z.strictObject({
+    sourceDocumentVersionId: z.uuid(),
+    sourceDocumentVersion: z.number().int().min(1).max(2_147_483_647),
+    sourceDocumentStatus: z.enum(['uploaded', 'analyzing', 'review_required', 'approved', 'rejected', 'superseded']),
+    sourceDocumentFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+    extractionId: z.uuid(),
+    extractionStatus: z.enum(['review_required', 'reviewed', 'failed']),
+    totalFieldCount: z.number().int().min(1).max(10_000),
+    invalidFieldCount: z.number().int().min(0).max(10_000),
+    protectedFields: z.array(z.strictObject({
+      id: z.uuid(),
+      fieldKey: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/),
+      presence: z.enum(['present', 'blank', 'absent', 'uncertain']),
+      value: z.union([z.string().max(10_000), z.number().finite(), z.boolean(), z.null()]),
+      confidence: z.number().min(0).max(1),
+      validation: z.enum(['valid', 'low_confidence', 'contradictory', 'invalid']),
+      evidenceCount: z.number().int().min(0).max(10_000),
+      reviewed: z.boolean(),
+    })).max(1_000),
+  }),
   updatedAt: utcDate,
 });
 
@@ -428,6 +448,9 @@ export const CaseFormMappingReviewResponseSchema = z.strictObject({
     mappingVersion: z.number().int().min(1).max(2_147_483_647),
     status: z.literal('accepted'),
     reviewDecisionId: z.uuid(),
+    documentVersionId: z.uuid(),
+    extractionId: z.uuid(),
+    reviewedFieldCount: z.number().int().min(0).max(10_000),
     replayed: z.boolean(),
   }),
 });

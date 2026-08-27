@@ -17,12 +17,13 @@ it('exposes only safe automatic-prefill provenance in the case form workspace', 
     version: 1,
     data: {
       caseId: '11111111-1111-4111-8111-111111111111', supplierName: 'Synthetic supplier', caseVersion: 4, caseState: 'preparing', templateName: null, template: null, instance: null,
-      mappings: [{ id: '22222222-2222-4222-8222-222222222222', version: 1, status: 'unresolved', automaticStatus: 'ready_for_operations_review', afterSha256: 'a'.repeat(64), matchesCurrentDraft: true, fields: [{ fieldId: 'legal_name', source: 'rateware', status: 'prepared', evidenceCount: 1 }], updatedAt: '2026-08-26T20:00:00.000Z' }], evidenceReady: false,
+      mappings: [{ id: '22222222-2222-4222-8222-222222222222', version: 1, status: 'unresolved', automaticStatus: 'ready_for_operations_review', afterSha256: 'a'.repeat(64), matchesCurrentDraft: true, fields: [{ fieldId: 'legal_name', source: 'rateware', status: 'prepared', evidenceCount: 1 }], evidence: { sourceDocumentVersionId: '33333333-3333-4333-8333-333333333333', sourceDocumentVersion: 1, sourceDocumentStatus: 'review_required', sourceDocumentFingerprint: 'b'.repeat(64), extractionId: '44444444-4444-4444-8444-444444444444', extractionStatus: 'review_required', totalFieldCount: 2, invalidFieldCount: 0, protectedFields: [{ id: '55555555-5555-4555-8555-555555555555', fieldKey: 'fiscal.taxIdentifier', presence: 'present', value: 'SYN010101AA1', confidence: 0.91, validation: 'valid', evidenceCount: 1, reviewed: false }] }, updatedAt: '2026-08-26T20:00:00.000Z' }], evidenceReady: false,
       capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false },
     },
   } as const;
   expect(CaseFormWorkspaceResponseSchema.parse(response)).toEqual(response);
   expect(CaseFormWorkspaceResponseSchema.safeParse({ ...response, data: { ...response.data, mappings: [{ ...response.data.mappings[0], values: { legal_name: 'private' } }] } }).success).toBe(false);
+  expect(CaseFormWorkspaceResponseSchema.safeParse({ ...response, data: { ...response.data, mappings: [{ ...response.data.mappings[0], evidence: { ...response.data.mappings[0].evidence, protectedFields: [{ ...response.data.mappings[0].evidence.protectedFields[0], opaqueObjectKey: 'secret/path' }] } }] } }).success).toBe(false);
 });
 
 it('accepts only a safe Gmail watch renewal receipt', () => {

@@ -5,6 +5,9 @@ import { createPostgresFormStore } from './postgres-store.ts';
 const organizationId = '11111111-1111-4111-8111-111111111111';
 const caseId = '21111111-1111-4111-8111-111111111111';
 const mappingId = '31111111-1111-4111-8111-111111111111';
+const documentVersionId = '41111111-1111-4111-8111-111111111112';
+const extractionId = '41111111-1111-4111-8111-111111111113';
+const reviewDecisionId = '41111111-1111-4111-8111-111111111114';
 const afterSha256 = 'a'.repeat(64);
 const beforeSha256 = 'b'.repeat(64);
 
@@ -26,6 +29,15 @@ function mappingRow(valuesJson: Record<string, unknown>) {
     after_sha256: afterSha256,
     updated_at: '2026-08-27T12:00:00.000Z',
     values_json: valuesJson,
+    extraction_id: extractionId,
+    extraction_status: 'review_required',
+    source_version_id: documentVersionId,
+    source_document_version: 1,
+    source_document_status: 'review_required',
+    source_document_sha256: 'c'.repeat(64),
+    total_field_count: 1,
+    invalid_field_count: 0,
+    protected_fields: [],
   };
 }
 
@@ -36,10 +48,10 @@ function fakeSql(valuesJson: Record<string, unknown>) {
     calls.push({ text, values });
     if (text.startsWith('set local role') || text.startsWith('select set_config') || text.includes('pg_advisory_xact_lock')) return [];
     if (text.includes('from osp_private.command_receipts')) return [];
-    if (text.includes('from osp_private.customer_registration_cases') && text.includes('for update')) return [{ state: 'preparing' }];
-    if (text.includes('from osp_private.supplier_form_mappings mapping') && text.includes('for update of mapping')) return [mappingRow(valuesJson)];
-    if (text.startsWith('insert into osp_private.review_decisions')) return [];
-    if (text.startsWith('update osp_private.supplier_form_mappings')) return [{ version: 1 }];
+    if (text.includes('accept_case_prefill_evidence_command')) {
+      if (valuesJson.legal_name !== 'Synthetic supplier') throw new Error('FORM_MAPPING_NOT_READY');
+      return [{ mapping_id: mappingId, mapping_version: 1, mapping_status: 'accepted', mapping_review_decision_id: reviewDecisionId, document_version_id: documentVersionId, extraction_id: extractionId, reviewed_field_count: 1 }];
+    }
     if (text.startsWith('insert into osp_private.command_receipts')) return [];
     throw new Error(`UNEXPECTED_QUERY:${text}`);
   }, { begin: async <T>(operation: (tx: typeof sql) => Promise<T>) => await operation(sql) });
@@ -50,18 +62,14 @@ Deno.test('Postgres form store accepts the exact current automatic mapping in on
   const fake = fakeSql({ legal_name: 'Synthetic supplier' });
   const store = createPostgresFormStore({ databaseUrl: 'postgresql://synthetic.example.test/db', postgresFactory: () => fake.sql });
   const result = await store.acceptCaseFormMapping({ organizationId, subject: 'operations-user', idempotencyKey: 'mapping-accept-1', caseId, mappingId, expectedMappingVersion: 1, expectedAfterSha256: afterSha256 });
-  assert.deepEqual(result, { mappingId, mappingVersion: 1, status: 'accepted', reviewDecisionId: result.reviewDecisionId, replayed: false });
-  assert.match(result.reviewDecisionId, /^[0-9a-f-]{36}$/);
-  const decision = fake.calls.find((call) => call.text.startsWith('insert into osp_private.review_decisions'));
-  assert.ok(decision);
-  assert.match(decision.text, /'form_mapping'.*'accepted'.*'osp:operate'.*'mapping_confirmed'/);
-  assert.equal(decision.values.includes(organizationId), true);
-  assert.equal(decision.values.includes(caseId), true);
-  assert.equal(decision.values.includes(mappingId), true);
-  assert.equal(decision.values.includes('operations-user'), true);
-  assert.equal(decision.values.includes(beforeSha256), true);
-  assert.equal(decision.values.includes(afterSha256), true);
-  assert.equal(fake.calls.some((call) => call.text.includes('for update of mapping')), true);
+  assert.deepEqual(result, { mappingId, mappingVersion: 1, status: 'accepted', reviewDecisionId, documentVersionId, extractionId, reviewedFieldCount: 1, replayed: false });
+  const command = fake.calls.find((call) => call.text.includes('accept_case_prefill_evidence_command'));
+  assert.ok(command);
+  assert.equal(command.values.includes(organizationId), true);
+  assert.equal(command.values.includes(caseId), true);
+  assert.equal(command.values.includes(mappingId), true);
+  assert.equal(command.values.includes('operations-user'), true);
+  assert.equal(command.values.includes(afterSha256), true);
   assert.equal(fake.calls.some((call) => call.text.startsWith('insert into osp_private.command_receipts')), true);
 });
 
@@ -69,8 +77,7 @@ Deno.test('Postgres form store rejects acceptance when the saved draft differs f
   const fake = fakeSql({ legal_name: 'Changed supplier' });
   const store = createPostgresFormStore({ databaseUrl: 'postgresql://synthetic.example.test/db', postgresFactory: () => fake.sql });
   await assert.rejects(() => store.acceptCaseFormMapping({ organizationId, subject: 'operations-user', idempotencyKey: 'mapping-accept-2', caseId, mappingId, expectedMappingVersion: 1, expectedAfterSha256: afterSha256 }), /FORM_MAPPING_NOT_READY/);
-  assert.equal(fake.calls.some((call) => call.text.startsWith('insert into osp_private.review_decisions')), false);
-  assert.equal(fake.calls.some((call) => call.text.startsWith('update osp_private.supplier_form_mappings')), false);
+  assert.equal(fake.calls.some((call) => call.text.startsWith('insert into osp_private.command_receipts')), false);
 });
 
 Deno.test('Postgres form workspace keeps submission closed when document evidence decisions are absent', async () => {
@@ -85,7 +92,7 @@ Deno.test('Postgres form workspace keeps submission closed when document evidenc
     if (text.includes('from osp_private.form_fields')) return [{ id: '81111111-1111-4111-8111-111111111111', template_version_id: templateVersionId, position: 0, field_key: 'legal_name', definition_json: { label: 'Legal name', required: true, canonicalFieldId: 'supplier.legalName', supplierAliases: [], definition: { kind: 'text', minLength: 1, maxLength: 256 } } }];
     if (text.includes('from osp_private.form_rules')) return [];
     if (text.includes('from osp_private.case_form_instances')) return [{ id: instanceId, version: 1, values_json: { legal_name: 'Synthetic supplier' }, updated_at: '2026-08-27T12:00:00.000Z' }];
-    if (text.includes('distinct on (extraction_id)')) return [{ ...mappingRow({ legal_name: 'Synthetic supplier' }), status: 'accepted' }];
+    if (text.includes('distinct on (mapping.extraction_id)')) return [{ ...mappingRow({ legal_name: 'Synthetic supplier' }), status: 'accepted' }];
     if (text.includes('from osp_private.document_versions version')) return [];
     throw new Error(`UNEXPECTED_QUERY:${text}`);
   }, { begin: async <T>(operation: (tx: typeof sql) => Promise<T>) => await operation(sql) });

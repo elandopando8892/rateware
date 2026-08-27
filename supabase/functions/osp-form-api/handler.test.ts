@@ -119,7 +119,7 @@ Deno.test('form API accepts only an exact authorized mapping fingerprint command
   const subject = createFormApiHandler({
     store: { ...base, acceptCaseFormMapping: async (input) => {
       accepted.push(input);
-      return { mappingId: input.mappingId, mappingVersion: input.expectedMappingVersion, status: 'accepted', reviewDecisionId: '51111111-1111-4111-8111-111111111111', replayed: false };
+      return { mappingId: input.mappingId, mappingVersion: input.expectedMappingVersion, status: 'accepted', reviewDecisionId: '51111111-1111-4111-8111-111111111111', documentVersionId: '61111111-1111-4111-8111-111111111111', extractionId: '71111111-1111-4111-8111-111111111111', reviewedFieldCount: 2, replayed: false };
     } },
     canonicalFieldIds: ['supplier.legalName'],
     verifyToken: async (token: string) => ({ identity: { issuer: 'https://auth.example.test', authorizedParty: 'client', subject: 'operator', organization: organizationId, email: 'operator@example.test', emailVerified: true as const }, permissions: token === 'read-token' ? ['osp:read'] : ['osp:operate'] }),

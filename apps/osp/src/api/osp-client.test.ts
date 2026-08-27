@@ -290,13 +290,13 @@ it('loads and saves one case form through exact tenant-scoped form actions', asy
   const workspace = {
     caseId, supplierName: 'Sierra Retail Mexico', caseVersion: 5, caseState: 'preparing',
     templateName: 'XBF customer setup', template, instance: { ...instance, version: 2 },
-    mappings: [{ id: '55555555-5555-4555-8555-555555555555', version: 1, status: 'unresolved', automaticStatus: 'ready_for_operations_review', afterSha256: 'c'.repeat(64), matchesCurrentDraft: true, fields: [{ fieldId: 'legal_name', source: 'rateware', status: 'prepared', evidenceCount: 1 }], updatedAt: '2026-08-26T20:00:00.000Z' }], evidenceReady: false,
+    mappings: [{ id: '55555555-5555-4555-8555-555555555555', version: 1, status: 'unresolved', automaticStatus: 'ready_for_operations_review', afterSha256: 'c'.repeat(64), matchesCurrentDraft: true, fields: [{ fieldId: 'legal_name', source: 'rateware', status: 'prepared', evidenceCount: 1 }], evidence: { sourceDocumentVersionId: '77777777-7777-4777-8777-777777777777', sourceDocumentVersion: 1, sourceDocumentStatus: 'review_required', sourceDocumentFingerprint: 'd'.repeat(64), extractionId: '88888888-8888-4888-8888-888888888888', extractionStatus: 'review_required', totalFieldCount: 1, invalidFieldCount: 0, protectedFields: [] }, updatedAt: '2026-08-26T20:00:00.000Z' }], evidenceReady: false,
     capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false },
   };
   const h = harness([
     json({ version: 1, data: workspace }),
     json({ version: 1, data: { instance, replayed: false } }),
-    json({ version: 1, data: { mappingId: workspace.mappings[0].id, mappingVersion: 1, status: 'accepted', reviewDecisionId: '66666666-6666-4666-8666-666666666666', replayed: false } }),
+    json({ version: 1, data: { mappingId: workspace.mappings[0].id, mappingVersion: 1, status: 'accepted', reviewDecisionId: '66666666-6666-4666-8666-666666666666', documentVersionId: workspace.mappings[0].evidence.sourceDocumentVersionId, extractionId: workspace.mappings[0].evidence.extractionId, reviewedFieldCount: 0, replayed: false } }),
     json({ version: 1, data: { instance, caseState: 'operations_review', caseVersion: 6, snapshotSha256: 'b'.repeat(64), replayed: false } }),
   ]);
 

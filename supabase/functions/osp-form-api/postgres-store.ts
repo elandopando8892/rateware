@@ -6,6 +6,8 @@ import { withOrganizationTransaction, type SqlPort, type SqlRow } from '../_shar
 import { formStoreInternals, type AcceptCaseFormMappingInput, type CaseFormInstance, type CaseFormMappingReview, type CaseFormMappingReviewReceipt, type CaseFormMutationReceipt, type CaseFormSubmissionReceipt, type CaseFormWorkspaceRecord, type FormMutationReceipt, type FormStore, type FormTemplateCatalogItem, type PublishFormInput, type SaveCaseFormDraftInput, type SaveFormDraftInput, type SubmitCaseFormForReviewInput } from './store.ts';
 
 type PostgresFactory = (databaseUrl: string, options: Record<string, unknown>) => unknown;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SHA = /^[0-9a-f]{64}$/;
 
 function fail(code: string): never { throw new Error(code); }
 
@@ -89,7 +91,7 @@ function submissionReceipt(value: unknown): CaseFormSubmissionReceipt {
 
 function mappingReviewReceipt(value: unknown): CaseFormMappingReviewReceipt {
   const parsed = json(value) as unknown as CaseFormMappingReviewReceipt;
-  if (typeof parsed.mappingId !== 'string' || !Number.isSafeInteger(parsed.mappingVersion) || parsed.mappingVersion < 1 || parsed.status !== 'accepted' || typeof parsed.reviewDecisionId !== 'string') fail('PERSISTENCE_CORRUPT');
+  if (!UUID.test(parsed.mappingId) || !Number.isSafeInteger(parsed.mappingVersion) || parsed.mappingVersion < 1 || parsed.status !== 'accepted' || !UUID.test(parsed.reviewDecisionId) || !UUID.test(parsed.documentVersionId) || !UUID.test(parsed.extractionId) || !Number.isSafeInteger(parsed.reviewedFieldCount) || parsed.reviewedFieldCount < 0) fail('PERSISTENCE_CORRUPT');
   return parsed;
 }
 
@@ -110,6 +112,27 @@ function mappingReview(row: SqlRow, currentValues: Record<string, unknown> | nul
       evidenceCount: field.evidenceIds.length,
     };
   });
+  const protectedFields = jsonArray(row.protected_fields).map((item) => {
+    const field = json(item);
+    const confidence = Number(field.confidence);
+    const evidenceCount = Number(field.evidenceCount);
+    const value = field.value;
+    if (typeof field.id !== 'string' || !UUID.test(field.id) || typeof field.fieldKey !== 'string' || !/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(field.fieldKey) || !['present', 'blank', 'absent', 'uncertain'].includes(String(field.presence)) || !(value === null || typeof value === 'string' && value.length <= 10_000 || typeof value === 'number' && Number.isFinite(value) || typeof value === 'boolean') || !Number.isFinite(confidence) || confidence < 0 || confidence > 1 || !['valid', 'low_confidence', 'contradictory', 'invalid'].includes(String(field.validation)) || !Number.isSafeInteger(evidenceCount) || evidenceCount < 0 || typeof field.reviewed !== 'boolean') fail('PERSISTENCE_CORRUPT');
+    return {
+      id: field.id,
+      fieldKey: field.fieldKey,
+      presence: field.presence as CaseFormMappingReview['evidence']['protectedFields'][number]['presence'],
+      value: value as string | number | boolean | null,
+      confidence,
+      validation: field.validation as CaseFormMappingReview['evidence']['protectedFields'][number]['validation'],
+      evidenceCount,
+      reviewed: field.reviewed,
+    };
+  });
+  const sourceDocumentVersion = Number(row.source_document_version);
+  const totalFieldCount = Number(row.total_field_count);
+  const invalidFieldCount = Number(row.invalid_field_count);
+  if (!UUID.test(String(row.source_version_id)) || !Number.isSafeInteger(sourceDocumentVersion) || sourceDocumentVersion < 1 || !['uploaded', 'analyzing', 'review_required', 'approved', 'rejected', 'superseded'].includes(String(row.source_document_status)) || typeof row.source_document_sha256 !== 'string' || !SHA.test(row.source_document_sha256) || !UUID.test(String(row.extraction_id)) || !['review_required', 'reviewed', 'failed'].includes(String(row.extraction_status)) || !Number.isSafeInteger(totalFieldCount) || totalFieldCount < 1 || !Number.isSafeInteger(invalidFieldCount) || invalidFieldCount < 0) fail('PERSISTENCE_CORRUPT');
   if (!values || typeof values !== 'object' || Array.isArray(values)) fail('PERSISTENCE_CORRUPT');
   return {
     id: row.id,
@@ -119,6 +142,17 @@ function mappingReview(row: SqlRow, currentValues: Record<string, unknown> | nul
     afterSha256: row.after_sha256,
     matchesCurrentDraft: currentValues !== null && formStoreInternals.stable(values) === formStoreInternals.stable(currentValues),
     fields: safeFields,
+    evidence: {
+      sourceDocumentVersionId: String(row.source_version_id),
+      sourceDocumentVersion,
+      sourceDocumentStatus: row.source_document_status as CaseFormMappingReview['evidence']['sourceDocumentStatus'],
+      sourceDocumentFingerprint: row.source_document_sha256,
+      extractionId: String(row.extraction_id),
+      extractionStatus: row.extraction_status as CaseFormMappingReview['evidence']['extractionStatus'],
+      totalFieldCount,
+      invalidFieldCount,
+      protectedFields,
+    },
     updatedAt: timestamp(row.updated_at),
   };
 }
@@ -174,11 +208,11 @@ async function readCaseFormWorkspace(tx: SqlPort, organizationId: string, caseId
   if (template) {
     const rows = await tx`select id, version, values_json, updated_at from osp_private.case_form_instances where organization_id = ${organizationId} and case_id = ${caseId} and template_version_id = ${template.latest.id} order by updated_at desc, id asc limit 1`;
     if (rows.length > 0) instance = caseInstance(rows[0]);
-    const mappingRows = await tx`select distinct on (extraction_id) id, extraction_id, version, status, mapping_json, after_sha256, updated_at from osp_private.supplier_form_mappings where organization_id = ${organizationId} and case_id = ${caseId} and template_version_id = ${template.latest.id} order by extraction_id, updated_at desc, id desc`;
+    const mappingRows = await tx`select distinct on (mapping.extraction_id) mapping.id, mapping.extraction_id, mapping.version, mapping.status, mapping.mapping_json, mapping.after_sha256, mapping.updated_at, extraction.status as extraction_status, extraction.source_version_id, source_version.version as source_document_version, source_version.status as source_document_status, source_version.review_after_sha256 as source_document_sha256, (select count(*) from osp_private.extraction_fields field where field.organization_id = mapping.organization_id and field.extraction_id = mapping.extraction_id) as total_field_count, (select count(*) from osp_private.extraction_fields field where field.organization_id = mapping.organization_id and field.extraction_id = mapping.extraction_id and field.validation = 'invalid') as invalid_field_count, (select coalesce(jsonb_agg(jsonb_build_object('id', field.id::text, 'fieldKey', field.field_key, 'presence', field.presence, 'value', field.value_json, 'confidence', field.confidence, 'validation', field.validation, 'evidenceCount', jsonb_array_length(field.evidence_json), 'reviewed', exists (select 1 from osp_private.review_decisions decision where decision.organization_id = field.organization_id and decision.case_id = ${caseId} and decision.subject_kind = 'extraction_field' and decision.subject_id = field.id and decision.decision in ('accepted', 'corrected') and decision.before_sha256 = field.before_sha256 and decision.after_sha256 = field.after_sha256)) order by field.field_key, field.id), '[]'::jsonb) from osp_private.extraction_fields field where field.organization_id = mapping.organization_id and field.extraction_id = mapping.extraction_id and (field.validation in ('low_confidence', 'contradictory') or field.field_key ~ '^(fiscal|banking)[.]')) as protected_fields from osp_private.supplier_form_mappings mapping join osp_private.document_extractions extraction on extraction.organization_id = mapping.organization_id and extraction.id = mapping.extraction_id join osp_private.document_versions source_version on source_version.organization_id = extraction.organization_id and source_version.id = extraction.source_version_id where mapping.organization_id = ${organizationId} and mapping.case_id = ${caseId} and mapping.template_version_id = ${template.latest.id} order by mapping.extraction_id, mapping.updated_at desc, mapping.id desc`;
     mappings = mappingRows.map((row) => mappingReview(row, instance?.values ?? null)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
   const mappingsAccepted = mappings.length > 0 && mappings.every((mapping) => ['accepted', 'corrected'].includes(mapping.status));
-  const mappingAcceptable = mappings.some((mapping) => mapping.status === 'unresolved' && mapping.automaticStatus === 'ready_for_operations_review' && mapping.matchesCurrentDraft && mapping.fields.every((field) => field.status === 'prepared'));
+  const mappingAcceptable = mappings.some((mapping) => mapping.status === 'unresolved' && mapping.automaticStatus === 'ready_for_operations_review' && mapping.matchesCurrentDraft && mapping.fields.every((field) => field.status === 'prepared' && field.evidenceCount > 0) && ['review_required', 'approved'].includes(mapping.evidence.sourceDocumentStatus) && ['review_required', 'reviewed'].includes(mapping.evidence.extractionStatus) && mapping.evidence.invalidFieldCount === 0 && mapping.evidence.protectedFields.every((field) => field.evidenceCount > 0));
   const evidenceReady = template && mappingsAccepted ? await readEvidenceReady(tx, organizationId, caseId, template.latest.id) : false;
   return {
     caseId, supplierName: cases[0].supplier_name, caseVersion, caseState: cases[0].state,
@@ -329,20 +363,12 @@ export function createPostgresFormStore(options: { databaseUrl: string; postgres
         await tx`select pg_advisory_xact_lock(hashtextextended(${JSON.stringify([input.organizationId, operation, input.idempotencyKey])}, 0))`;
         const replay = await priorCase(tx, input.organizationId, operation, input.idempotencyKey, requestHash, mappingReviewReceipt);
         if (replay) return replay;
-        const cases = await tx`select state from osp_private.customer_registration_cases where organization_id = ${input.organizationId} and id = ${input.caseId} for update`;
-        if (cases.length !== 1) fail('CASE_NOT_FOUND');
-        if (cases[0].state !== 'preparing') fail('CASE_FORM_LOCKED');
-        const rows = await tx`select mapping.id, mapping.version, mapping.status, mapping.mapping_json, mapping.before_sha256, mapping.after_sha256, mapping.updated_at, instance.values_json from osp_private.supplier_form_mappings mapping left join lateral (select values_json from osp_private.case_form_instances where organization_id = mapping.organization_id and case_id = mapping.case_id and template_version_id = mapping.template_version_id order by updated_at desc, id asc limit 1) instance on true where mapping.organization_id = ${input.organizationId} and mapping.case_id = ${input.caseId} and mapping.id = ${input.mappingId} for update of mapping`;
-        if (rows.length !== 1) fail('FORM_MAPPING_NOT_FOUND');
-        if (rows[0].status !== 'unresolved' || Number(rows[0].version) !== input.expectedMappingVersion || rows[0].after_sha256 !== input.expectedAfterSha256) fail('VERSION_CONFLICT');
-        const currentValues = rows[0].values_json === null || rows[0].values_json === undefined ? null : json(rows[0].values_json);
-        const review = mappingReview(rows[0], currentValues);
-        if (review.automaticStatus !== 'ready_for_operations_review' || !review.matchesCurrentDraft || review.fields.length === 0 || review.fields.some((field) => field.status !== 'prepared')) fail('FORM_MAPPING_NOT_READY');
-        const reviewDecisionId = crypto.randomUUID();
-        await tx`insert into osp_private.review_decisions (id, organization_id, case_id, subject_kind, subject_id, decision, reviewer_subject, reviewer_permission, before_sha256, after_sha256, reason_code, created_at) values (${reviewDecisionId}, ${input.organizationId}, ${input.caseId}, 'form_mapping', ${input.mappingId}, 'accepted', ${input.subject}, 'osp:operate', ${rows[0].before_sha256}, ${rows[0].after_sha256}, 'MAPPING_CONFIRMED', statement_timestamp())`;
-        const updated = await tx`update osp_private.supplier_form_mappings set status = 'accepted', review_decision_id = ${reviewDecisionId}, updated_at = statement_timestamp() where organization_id = ${input.organizationId} and case_id = ${input.caseId} and id = ${input.mappingId} and version = ${input.expectedMappingVersion} and status = 'unresolved' returning version`;
-        if (updated.length !== 1) fail('VERSION_CONFLICT');
-        const result: CaseFormMappingReviewReceipt = { mappingId: input.mappingId, mappingVersion: Number(updated[0].version), status: 'accepted', reviewDecisionId, replayed: false };
+        const rows = await tx`select mapping_id, mapping_version, mapping_status, mapping_review_decision_id, document_version_id, extraction_id, reviewed_field_count from osp_private.accept_case_prefill_evidence_command(${input.organizationId}, ${input.caseId}, ${input.mappingId}, ${input.expectedMappingVersion}, ${input.expectedAfterSha256}, ${input.subject}, 'osp:operate')`;
+        if (rows.length !== 1 || !UUID.test(String(rows[0].mapping_id)) || !UUID.test(String(rows[0].mapping_review_decision_id)) || !UUID.test(String(rows[0].document_version_id)) || !UUID.test(String(rows[0].extraction_id)) || rows[0].mapping_status !== 'accepted') fail('FORM_MAPPING_NOT_READY');
+        const mappingVersion = Number(rows[0].mapping_version);
+        const reviewedFieldCount = Number(rows[0].reviewed_field_count);
+        if (!Number.isSafeInteger(mappingVersion) || mappingVersion < 1 || !Number.isSafeInteger(reviewedFieldCount) || reviewedFieldCount < 0) fail('PERSISTENCE_CORRUPT');
+        const result: CaseFormMappingReviewReceipt = { mappingId: String(rows[0].mapping_id), mappingVersion, status: 'accepted', reviewDecisionId: String(rows[0].mapping_review_decision_id), documentVersionId: String(rows[0].document_version_id), extractionId: String(rows[0].extraction_id), reviewedFieldCount, replayed: false };
         await saveCaseReceipt(tx, input.organizationId, operation, input.idempotencyKey, requestHash, result);
         return result;
       });

@@ -194,6 +194,11 @@ function createPreviewClient(): OspClient {
         { fieldId: 'tax_identifier', source: 'attachment', status: 'prepared', evidenceCount: 2 },
         { fieldId: 'registered_address', source: 'attachment', status: 'prepared', evidenceCount: 1 },
       ],
+      evidence: {
+        sourceDocumentVersionId: '76111111-1111-4111-8111-111111111111', sourceDocumentVersion: 1, sourceDocumentStatus: 'review_required', sourceDocumentFingerprint: 'f'.repeat(64),
+        extractionId: '77111111-1111-4111-8111-111111111111', extractionStatus: 'review_required', totalFieldCount: 7, invalidFieldCount: 0,
+        protectedFields: [{ id: '78111111-1111-4111-8111-111111111111', fieldKey: 'fiscal.taxIdentifier', presence: 'present', value: 'SRM010101AA1', confidence: 0.94, validation: 'valid', evidenceCount: 2, reviewed: false }],
+      },
     }],
     evidenceReady: false,
     capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false },
@@ -279,8 +284,8 @@ function createPreviewClient(): OspClient {
       const mapping = caseFormWorkspace.mappings.find((item) => item.id === input.mappingId);
       if (input.caseId !== caseFormCaseId || !mapping || mapping.status !== 'unresolved' || mapping.version !== input.expectedMappingVersion || mapping.afterSha256 !== input.expectedAfterSha256 || !mapping.matchesCurrentDraft) throw new Error('VERSION_CONFLICT');
       const reviewDecisionId = '75111111-1111-4111-8111-111111111111';
-      caseFormWorkspace = { ...caseFormWorkspace, mappings: caseFormWorkspace.mappings.map((item) => item.id === mapping.id ? { ...item, status: 'accepted' as const, updatedAt: new Date().toISOString() } : item), evidenceReady: true, capabilities: { ...caseFormWorkspace.capabilities, acceptMapping: false, submitForReview: true } };
-      return { mappingId: mapping.id, mappingVersion: mapping.version, status: 'accepted', reviewDecisionId, replayed: false };
+      caseFormWorkspace = { ...caseFormWorkspace, mappings: caseFormWorkspace.mappings.map((item) => item.id === mapping.id ? { ...item, status: 'accepted' as const, evidence: { ...item.evidence, sourceDocumentStatus: 'approved' as const, extractionStatus: 'reviewed' as const, protectedFields: item.evidence.protectedFields.map((field) => ({ ...field, reviewed: true })) }, updatedAt: new Date().toISOString() } : item), evidenceReady: true, capabilities: { ...caseFormWorkspace.capabilities, acceptMapping: false, submitForReview: true } };
+      return { mappingId: mapping.id, mappingVersion: mapping.version, status: 'accepted', reviewDecisionId, documentVersionId: mapping.evidence.sourceDocumentVersionId, extractionId: mapping.evidence.extractionId, reviewedFieldCount: mapping.evidence.protectedFields.length, replayed: false };
     },
     submitCaseFormForReview: async (input) => {
       if (input.caseId !== caseFormCaseId || input.expectedCaseVersion !== caseFormWorkspace.caseVersion || input.templateVersionId !== caseFormWorkspace.template?.id || input.instanceId !== caseFormWorkspace.instance?.id || input.expectedVersion !== caseFormWorkspace.instance.version) throw new Error('VERSION_CONFLICT');

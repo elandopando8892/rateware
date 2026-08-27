@@ -132,6 +132,12 @@ function CaseFormEditor({ workspace, onSave, onAcceptMapping, onSubmit }: { work
 
 const sourceLabels = Object.freeze({ existing_draft: 'Existing draft', rateware: 'Rateware', attachment: 'Attachment', missing: 'Missing' });
 
+function reviewValue(value: string | number | boolean | null): string {
+  if (value === null) return 'No value';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
+}
+
 function AutomaticPrefillReview({ workspace, mapping, confirmed, draftChanged, pending, failed, onConfirmed, onAccept }: {
   workspace: CaseFormWorkspaceModel;
   mapping: CaseFormWorkspaceModel['mappings'][number] | null;
@@ -144,8 +150,9 @@ function AutomaticPrefillReview({ workspace, mapping, confirmed, draftChanged, p
 }) {
   const labels = new Map(workspace.template?.fields.map((field) => [field.id, field.label]) ?? []);
   const accepted = mapping?.status === 'accepted' || mapping?.status === 'corrected';
-  const prepared = mapping?.automaticStatus === 'ready_for_operations_review' && mapping.fields.length > 0 && mapping.fields.every((field) => field.status === 'prepared');
-  const canAccept = Boolean(mapping && workspace.capabilities.acceptMapping && prepared && mapping.matchesCurrentDraft && !draftChanged);
+  const prepared = mapping?.automaticStatus === 'ready_for_operations_review' && mapping.fields.length > 0 && mapping.fields.every((field) => field.status === 'prepared' && field.evidenceCount > 0);
+  const evidenceReviewable = Boolean(mapping && ['review_required', 'approved'].includes(mapping.evidence.sourceDocumentStatus) && ['review_required', 'reviewed'].includes(mapping.evidence.extractionStatus) && mapping.evidence.invalidFieldCount === 0 && mapping.evidence.protectedFields.every((field) => field.evidenceCount > 0));
+  const canAccept = Boolean(mapping && workspace.capabilities.acceptMapping && prepared && evidenceReviewable && mapping.matchesCurrentDraft && !draftChanged);
   return <section className={`automatic-prefill-review${accepted ? ' accepted' : ''}`} aria-labelledby="automatic-prefill-title">
     <header>
       <div><p className="eyebrow">Human control · zero external effects</p><h2 id="automatic-prefill-title">Automatic prefill review</h2><p>Confirm what OSP prepared from Rateware and the preserved source evidence.</p></div>
@@ -154,17 +161,25 @@ function AutomaticPrefillReview({ workspace, mapping, confirmed, draftChanged, p
     {!mapping ? <p role="status">Automatic preparation has not produced a reviewable prefill for this case.</p> : <>
       <dl className="automatic-prefill-metrics">
         <div><dt>Prepared fields</dt><dd>{mapping.fields.filter((field) => field.status === 'prepared').length}/{mapping.fields.length}</dd></div>
-        <div><dt>Evidence links</dt><dd>{mapping.fields.reduce((total, field) => total + field.evidenceCount, 0)}</dd></div>
+        <div><dt>Source</dt><dd>Req. v{mapping.evidence.sourceDocumentVersion}</dd></div>
+        <div><dt>Extracted fields</dt><dd>{mapping.evidence.totalFieldCount}</dd></div>
         <div><dt>Fingerprint</dt><dd><code>{mapping.afterSha256.slice(0, 12)}</code></dd></div>
       </dl>
       <ul className="automatic-prefill-fields">
         {mapping.fields.map((field) => <li key={field.fieldId}><span><strong>{labels.get(field.fieldId) ?? field.fieldId}</strong><small>{sourceLabels[field.source]} · {field.evidenceCount} evidence {field.evidenceCount === 1 ? 'link' : 'links'}</small></span><span className={`mapping-field-status ${field.status}`}>{field.status}</span></li>)}
       </ul>
-      {accepted ? <p className="mapping-review-result" role="status">Operations accepted this exact prefill. The decision and fingerprint are preserved for the package snapshot.</p> : <div className="mapping-review-control">
-        {!prepared ? <p role="status">Missing or contradictory fields must be resolved before this prefill can be accepted.</p> : !mapping.matchesCurrentDraft ? <p role="alert">The saved draft no longer matches this automatic prefill. A correction review is required.</p> : draftChanged ? <p role="status">Unsaved edits differ from the prefill. Revert them to accept it unchanged, or save them for the correction workflow.</p> : null}
-        <label className="control-confirmation"><input type="checkbox" checked={confirmed} disabled={!canAccept || pending} onChange={(event) => onConfirmed(event.target.checked)} /> I reviewed every prefilled field, source, and evidence count shown above.</label>
+      <section className="protected-evidence" aria-labelledby="protected-evidence-title">
+        <header><div><h3 id="protected-evidence-title">Protected evidence</h3><p>Fiscal, banking, low-confidence, and contradictory values require an explicit Operations decision.</p></div><span className={`form-status ${mapping.evidence.extractionStatus === 'reviewed' ? 'published' : 'draft'}`}>{mapping.evidence.extractionStatus === 'reviewed' ? 'Reviewed' : 'Review required'}</span></header>
+        {mapping.evidence.invalidFieldCount > 0 ? <p role="alert">{mapping.evidence.invalidFieldCount} invalid extracted {mapping.evidence.invalidFieldCount === 1 ? 'field blocks' : 'fields block'} acceptance.</p> : mapping.evidence.protectedFields.length === 0 ? <p className="privacy-note">No protected extracted fields require an individual decision for this source.</p> : <ul>
+          {mapping.evidence.protectedFields.map((field) => <li key={field.id}><span><code>{field.fieldKey}</code><strong>{reviewValue(field.value)}</strong><small>{Math.round(field.confidence * 100)}% confidence · {field.evidenceCount} evidence {field.evidenceCount === 1 ? 'link' : 'links'}</small></span><span className={`mapping-field-status ${field.validation}`}>{field.reviewed ? 'reviewed' : field.validation.replace('_', ' ')}</span></li>)}
+        </ul>}
+        <p className="evidence-fingerprint">Source document <code>{mapping.evidence.sourceDocumentVersionId.slice(0, 8)}</code> · extraction <code>{mapping.evidence.extractionId.slice(0, 8)}</code> · source fingerprint <code>{mapping.evidence.sourceDocumentFingerprint.slice(0, 12)}</code></p>
+      </section>
+      {accepted ? <p className="mapping-review-result" role="status">Operations accepted the source document, protected extracted fields, and this exact prefill. All decisions are preserved for the package snapshot.</p> : <div className="mapping-review-control">
+        {!prepared ? <p role="status">Missing or contradictory prefill fields must be resolved before this evidence can be accepted.</p> : !evidenceReviewable ? <p role="alert">The source extraction contains invalid or incomplete evidence and cannot be accepted.</p> : !mapping.matchesCurrentDraft ? <p role="alert">The saved draft no longer matches this automatic prefill. A correction review is required.</p> : draftChanged ? <p role="status">Unsaved edits differ from the prefill. Revert them to accept it unchanged, or save them for the correction workflow.</p> : null}
+        <label className="control-confirmation"><input type="checkbox" checked={confirmed} disabled={!canAccept || pending} onChange={(event) => onConfirmed(event.target.checked)} /> I reviewed the source document, every protected extracted value, and every prefilled field shown above.</label>
         {failed ? <p role="alert">The prefill was not accepted. The case, draft, or fingerprint changed; reload and review the current version.</p> : null}
-        <button type="button" disabled={!canAccept || !confirmed || pending} onClick={onAccept}>{pending ? 'Accepting…' : 'Accept automatic prefill'}</button>
+        <button type="button" disabled={!canAccept || !confirmed || pending} onClick={onAccept}>{pending ? 'Recording review…' : 'Accept evidence and prefill'}</button>
       </div>}
     </>}
   </section>;
