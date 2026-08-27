@@ -107,6 +107,30 @@ No actionable P0, P1, or P2 finding remains.
 
 final result: passed
 
+## Guided Message workspace — 2026-08-26
+
+- Source visual truth: `C:\Users\andre\.codex\generated_images\01a03ae9-d638-7f70-8972-7ab3b891bf74\exec-76d65483-c50d-4fa9-baac-d03c4538325a.png` — selected concept 3.
+- Cloud implementation: `https://rateware-git-codex-carrier-lis-ede02d-elandopando8892s-projects.vercel.app/rfx-events?rfx_event_id=e6f6fdc6-b484-46a7-8c0b-26ea2dbd4c4c&view=outreach`.
+- Implementation commit: `e93a999`.
+
+### Implemented contract
+
+- Three-part hierarchy: selected recipients, personalized carrier preview, and message setup.
+- Recipient rows switch the active personalized preview without mutating the RFx.
+- Contact-ready and missing-contact states remain visible.
+- Direct return to Carrier Fit.
+- Explicit zero-send boundary; the only primary action prepares drafts for Delivery queue.
+
+### Verification status
+
+- JavaScript syntax, Rateware stability guards, 72 carrier-template contracts, and whitespace checks passed.
+- Vercel preview deployment `dpl_t4HT5WtztoiU9cs5d98XLNxwodgv` is Ready.
+- Authenticated same-state visual comparison is blocked: Chrome lost its page-control connection and the in-app browser redirected the protected RFx route to the signed-out landing page.
+- The source and an authenticated implementation screenshot could not be placed into the required same-state comparison input.
+- No invitation, message, carrier addition, or external communication was triggered.
+
+final result: blocked
+
 ## Carrier Fit canvas + RFx workspace drawer — 2026-08-26
 
 - Source visual truth: `C:\Users\andre\.codex\generated_images\01a03ae9-d638-7f70-8972-7ab3b891bf74\exec-261c260d-0b3c-4f50-876a-346c1feb7338.png` — 1707 x 922 px.
