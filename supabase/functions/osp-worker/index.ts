@@ -11,7 +11,11 @@ import {
 import { createPostgresQuarterlyDocumentService } from "./postgres-quarterly-document-service.ts";
 import { createSupabaseOriginalObjectStore } from "./supabase-original-object-store.ts";
 import { type QuarterlyDocumentService, runWorker } from "./worker.ts";
-import type { AutomaticPreparationService } from "./automatic-preparation.ts";
+import {
+  type AutomaticPreparationService,
+  createAutomaticPreparationService,
+} from "./automatic-preparation.ts";
+import { createPostgresAutomaticPreparationStore } from "./postgres-automatic-preparation.ts";
 import {
   createSignatureJobService,
   type SignatureVaultReader,
@@ -58,6 +62,12 @@ export async function runComposedWorker(
       databaseUrl: input.databaseUrl,
       postgresFactory: input.postgresFactory,
     });
+  const formMappings = input.formMappings ?? createAutomaticPreparationService(
+    createPostgresAutomaticPreparationStore({
+      databaseUrl: input.databaseUrl,
+      postgresFactory: input.postgresFactory,
+    }),
+  );
   let outboundStore:
     | ReturnType<typeof createPostgresOutboundSendStore>
     | undefined;
@@ -122,7 +132,7 @@ export async function runComposedWorker(
     now: () => new Date(),
     jobs,
     intake,
-    formMappings: input.formMappings,
+    formMappings,
     quarterlyDocuments,
     signatures,
     outboundSends,
