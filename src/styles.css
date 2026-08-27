@@ -4231,121 +4231,6 @@ a {
   margin: 0;
 }
 
-.rfx-this-rfx-trigger {
-  min-height: 32px;
-  padding-inline: 12px;
-  border-color: #5b9dad;
-  color: #17677a;
-  white-space: nowrap;
-}
-
-.rfx-this-rfx-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 49;
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: rgba(28, 28, 28, 0.12);
-  box-shadow: none;
-  cursor: default;
-}
-
-.rfx-this-rfx-backdrop:hover,
-.rfx-this-rfx-backdrop:focus,
-.rfx-this-rfx-backdrop:active {
-  background: rgba(28, 28, 28, 0.12);
-  box-shadow: none;
-  transform: none;
-}
-
-.rfx-this-rfx-backdrop[hidden] {
-  display: none;
-}
-
-.rfx-this-rfx-drawer {
-  position: fixed;
-  top: 18px;
-  right: 18px;
-  bottom: 18px;
-  z-index: 50;
-  width: min(420px, calc(100vw - 36px));
-  margin: 0;
-  padding: 16px;
-  overflow: hidden;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-  border-color: #c4d3dc;
-  border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 24px 70px rgba(18, 35, 48, 0.24);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(calc(100% + 32px));
-  transition: transform 180ms ease, opacity 180ms ease;
-}
-
-.is-this-rfx-drawer-open .rfx-this-rfx-drawer {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateX(0);
-}
-
-.rfx-this-rfx-drawer .rfx-outreach-control-heading {
-  grid-template-columns: 1fr;
-  align-items: start;
-  gap: 10px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #e2e9ee;
-}
-
-.rfx-this-rfx-drawer .rfx-outreach-control-heading h4 {
-  font-size: 1rem;
-}
-
-.rfx-this-rfx-drawer .rfx-outreach-control-title small {
-  font-size: 0.72rem;
-  line-height: 1.45;
-}
-
-.rfx-this-rfx-drawer .rfx-outreach-audience-metrics,
-.rfx-this-rfx-drawer .rfx-outreach-audience-actions {
-  justify-content: flex-start;
-  flex-wrap: wrap;
-}
-
-.rfx-this-rfx-drawer .rfx-this-rfx-close {
-  margin-left: auto;
-  order: 10;
-}
-
-.rfx-this-rfx-drawer .rfx-outreach-audience-controls {
-  grid-template-columns: minmax(0, 1fr) 148px;
-}
-
-.rfx-this-rfx-drawer .rfx-outreach-audience-feedback {
-  align-items: flex-start;
-  flex-wrap: wrap;
-}
-
-.rfx-this-rfx-drawer .rfx-outreach-audience-feedback > .status-message {
-  flex-basis: 100%;
-  overflow: visible;
-  text-overflow: clip;
-  white-space: normal;
-}
-
-.rfx-this-rfx-drawer .rfx-outreach-audience-table-wrap {
-  min-height: 0;
-  max-height: none;
-  height: 100%;
-}
-
-.rfx-this-rfx-drawer .rfx-outreach-audience-table {
-  min-width: 720px;
-}
-
 .rfx-outreach-control-heading {
   display: grid;
   grid-template-columns: minmax(108px, auto) minmax(0, 1fr) auto;
@@ -5008,16 +4893,36 @@ a {
   grid-column: auto;
 }
 
-.rfx-outreach-carrier-picker-grid {
+.rfx-carrier-fit-table-shell {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.rfx-outreach-carrier-picker-grid > section {
+.rfx-carrier-fit-table-shell > section {
   display: grid;
   gap: 5px;
   min-width: 0;
+}
+
+.rfx-carrier-fit-table-header,
+.rfx-carrier-fit-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.35fr) minmax(190px, 1fr) minmax(145px, 0.72fr) minmax(145px, 0.72fr) 92px;
+  align-items: center;
+  gap: 12px;
+}
+
+.rfx-carrier-fit-table-header {
+  padding: 8px 12px;
+  border: 1px solid #dce4ea;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  color: #52616d;
+  background: #f3f6f8;
+  font-size: 0.64rem;
+  font-weight: 780;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .rfx-outreach-carrier-picker-heading {
@@ -5042,6 +4947,64 @@ a {
   border: 1px solid #dce4ea;
   border-radius: 5px;
   background: #f8fafb;
+}
+
+.rfx-carrier-fit-table {
+  gap: 0;
+  max-height: 510px;
+  padding: 0;
+  border-radius: 0 0 6px 6px;
+  background: #ffffff;
+}
+
+.rfx-carrier-fit-table .rfx-carrier-fit-row {
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 1px solid #e4eaee;
+  border-radius: 0;
+}
+
+.rfx-carrier-fit-table .rfx-carrier-fit-row:last-child {
+  border-bottom: 0;
+}
+
+.rfx-carrier-fit-table .rfx-carrier-fit-row.is-already-in-rfx {
+  background: #f7f8fa;
+}
+
+.rfx-carrier-fit-table .rfx-carrier-fit-row.is-already-in-rfx strong,
+.rfx-carrier-fit-table .rfx-carrier-fit-row.is-already-in-rfx small {
+  color: #6f7b85;
+}
+
+.rfx-carrier-fit-cell {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.rfx-carrier-fit-cell > strong,
+.rfx-carrier-fit-cell > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rfx-carrier-fit-evidence {
+  margin-top: 4px;
+}
+
+.rfx-carrier-fit-evidence summary {
+  color: var(--brand-strong);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.rfx-carrier-fit-selection {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .rfx-outreach-carrier-row {
@@ -5182,13 +5145,13 @@ a {
     grid-template-columns: 1fr;
   }
 
-  .rfx-this-rfx-drawer {
-    inset: 8px;
-    width: auto;
+  .rfx-carrier-fit-table-shell {
+    overflow-x: auto;
   }
 
-  .rfx-outreach-carrier-picker-grid {
-    grid-template-columns: 1fr;
+  .rfx-carrier-fit-table-header,
+  .rfx-carrier-fit-row {
+    min-width: 880px;
   }
 
   .rfx-outreach-carrier-wave-actions {
@@ -31151,6 +31114,255 @@ form[data-unsaved-guard][data-unsaved="true"] {
 
 .bid-room-invite-grid {
   grid-template-columns: minmax(320px, 0.36fr) minmax(0, 0.64fr);
+}
+
+/* Guided Message workspace: selected recipients, personalized preview, setup. */
+.rfx-message-workspace-header,
+.rfx-message-workspace-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid #d6e0e7;
+  background: #ffffff;
+}
+
+.rfx-message-workspace-header {
+  border-radius: 7px 7px 0 0;
+  border-bottom: 0;
+}
+
+.rfx-message-workspace-header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.rfx-message-workspace-header .eyebrow,
+.rfx-message-workspace-header h4 {
+  margin: 0;
+}
+
+.rfx-message-workspace-header h4 {
+  color: #172633;
+  font-size: 0.94rem;
+}
+
+.rfx-message-workspace-header > div > span,
+.rfx-message-workspace-footer > span {
+  color: #64727d;
+  font-size: 0.68rem;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .bid-room-invite-grid {
+  grid-template-columns: minmax(210px, 0.22fr) minmax(420px, 0.5fr) minmax(270px, 0.28fr);
+  grid-template-areas: "recipients preview setup";
+  gap: 0;
+  min-height: 560px;
+}
+
+body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-flow-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
+  display: none;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-message-recipient-panel {
+  grid-area: recipients;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-preview-panel {
+  grid-area: preview;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-controls {
+  grid-area: setup;
+}
+
+.rfx-message-recipient-panel,
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-preview-panel,
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-controls {
+  min-width: 0;
+  border: 1px solid #d6e0e7;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.rfx-message-recipient-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border-right: 0;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-preview-panel {
+  border-right: 0;
+}
+
+.rfx-message-recipient-heading,
+.rfx-message-recipient-summary {
+  padding: 10px;
+  border-bottom: 1px solid #e2e9ee;
+}
+
+.rfx-message-recipient-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rfx-message-recipient-heading .eyebrow {
+  margin: 0 0 2px;
+}
+
+.rfx-message-recipient-heading > span {
+  color: #657582;
+  font-size: 0.66rem;
+}
+
+.rfx-message-recipient-list {
+  min-height: 0;
+  max-height: 590px;
+  overflow: auto;
+}
+
+.rfx-message-recipient-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-bottom: 1px solid #e6ecef;
+  border-left: 3px solid transparent;
+  border-radius: 0;
+  background: #ffffff;
+  color: #243440;
+  text-align: left;
+}
+
+.rfx-message-recipient-row:hover,
+.rfx-message-recipient-row.is-active {
+  border-left-color: #256f7b;
+  background: #f4f8f9;
+}
+
+.rfx-message-recipient-row > span:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rfx-message-recipient-row strong,
+.rfx-message-recipient-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rfx-message-recipient-row strong {
+  font-size: 0.72rem;
+}
+
+.rfx-message-recipient-row small,
+.rfx-message-recipient-row > span:last-child,
+.rfx-message-recipient-summary {
+  font-size: 0.62rem;
+}
+
+.rfx-message-recipient-row .is-ready {
+  color: #187453;
+}
+
+.rfx-message-recipient-row .is-missing {
+  color: #a35e00;
+}
+
+.rfx-message-recipient-summary {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid #e2e9ee;
+  border-bottom: 0;
+  color: #63727e;
+}
+
+.rfx-message-recipient-summary strong {
+  color: #187453;
+}
+
+.rfx-message-recipient-summary span {
+  color: #a35e00;
+}
+
+.rfx-message-recipient-empty {
+  padding: 18px 10px;
+  color: #64727d;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-controls {
+  padding: 10px;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-form {
+  grid-template-columns: 1fr;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-form > * {
+  grid-column: 1;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-preview-panel .outreach-template-preview {
+  min-height: 490px;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .template-token-row {
+  display: none;
+}
+
+.rfx-message-workspace-footer {
+  border-top: 0;
+  border-radius: 0 0 7px 7px;
+}
+
+@media (max-width: 1100px) {
+  .bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .bid-room-invite-grid {
+    grid-template-columns: minmax(200px, 0.3fr) minmax(0, 0.7fr);
+    grid-template-areas:
+      "recipients preview"
+      "setup setup";
+  }
+
+  .bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-preview-panel {
+    border-right: 1px solid #d6e0e7;
+  }
+}
+
+@media (max-width: 720px) {
+  .rfx-message-workspace-header,
+  .rfx-message-workspace-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .bid-room-invite-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas: "recipients" "preview" "setup";
+  }
+
+  .rfx-message-recipient-panel,
+  .bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-preview-panel {
+    border-right: 1px solid #d6e0e7;
+  }
 }
 
 .rfx-template-editor.is-source-admin {
