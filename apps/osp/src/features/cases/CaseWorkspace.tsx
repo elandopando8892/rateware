@@ -2,7 +2,22 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import type { OspCaseReadClient } from '../../api/osp-client';
-import { caseNextGates, caseStateLabels, caseStateTone, formatCaseDate } from './case-presenter';
+import { caseNextGates, casePrimaryAction, caseStateLabels, caseStateTone, formatCaseDate, type CasePrimaryAction } from './case-presenter';
+
+function PrimaryAction({ action, caseId }: { action: CasePrimaryAction; caseId: string }) {
+  switch (action.kind) {
+    case 'clarification':
+      return <Link className="case-primary-action" to="/app/clarifications">{action.label}</Link>;
+    case 'form':
+      return <Link className="case-primary-action" to="/app/cases/$caseId/form" params={{ caseId }}>{action.label}</Link>;
+    case 'operations_review':
+      return <Link className="case-primary-action" to="/app/cases/$caseId/review" params={{ caseId }}>{action.label}</Link>;
+    case 'signature':
+      return <Link className="case-primary-action" to="/app/cases/$caseId/signature" params={{ caseId }}>{action.label}</Link>;
+    case 'sales_authorization':
+      return <Link className="case-primary-action" to="/app/cases/$caseId/authorization" params={{ caseId }}>{action.label}</Link>;
+  }
+}
 
 export function CaseWorkspace({ client, caseId }: { client: OspCaseReadClient; caseId: string }) {
   const query = useQuery({
@@ -21,6 +36,7 @@ export function CaseWorkspace({ client, caseId }: { client: OspCaseReadClient; c
 
   const caseRecord = query.data;
   const latest = caseRecord.latest_request;
+  const primaryAction = casePrimaryAction(caseRecord.state);
   return (
     <div className="case-workspace">
       <Link className="back-link" to="/app/pipeline">← Back to pipeline</Link>
@@ -39,7 +55,7 @@ export function CaseWorkspace({ client, caseId }: { client: OspCaseReadClient; c
         <p className="eyebrow">Next gate</p>
         <h2 id="next-gate-title">{caseStateLabels[caseRecord.state]}</h2>
         <p>{caseNextGates[caseRecord.state]}</p>
-        <Link className="case-primary-action" to="/app/cases/$caseId/form" params={{ caseId }}>Open XBF case form</Link>
+        {primaryAction ? <PrimaryAction action={primaryAction} caseId={caseId} /> : <p className="next-gate-status">No action is available until the next controlled transition.</p>}
       </section>
 
       <dl className="case-metrics" aria-label="Case evidence counts">

@@ -56,7 +56,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/router.tsx",
-      "sha256": "d4140bea5f320f1de7af394d042ca05f203cbb96e5c99102202f36a90d7d2e12"
+      "sha256": "5b58039d6cc5b1107fe3aae5ee88782ef6e6e23e571509021053a501d42555d4"
     },
     {
       "kind": "production-ui",
@@ -111,12 +111,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/cases/case-presenter.ts",
-      "sha256": "226b5bf2bcc6939633a46b95564196ff9c3ed25aa21e7b81b5701e406e1f0512"
+      "sha256": "3620874b2781e09480d33ad389c62386b15922e299dbe109b10665d5b2fba1e7"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/cases/CaseWorkspace.tsx",
-      "sha256": "8618c7661fa2d8639dfbf03dfe24e551c6afc42315c38ce350fb7ddd4bdfcc0f"
+      "sha256": "649adbad55f6359605a11b0740a6d882c8ee73e79234dee559d6a3ee8a61f23f"
     },
     {
       "kind": "production-ui",
@@ -196,7 +196,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "500a8ba7500f7a447ba913b885bcd4994fb576aab33794064ef33621f50087e8"
+      "sha256": "995914f7fee2029415619053cb138bcd83bedf447775039adc5e0bdc9dc8fd1c"
     },
     {
       "kind": "production-ui",
@@ -211,7 +211,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/pipeline.css",
-      "sha256": "573ad024898928ba75914a0ade07393bcb09974e10a46d06e67b061da2fe4dc3"
+      "sha256": "fea9500bc34e01f2c6a239b37f4a894b74ca54d52f385068b66e8df94fd4a1f3"
     },
     {
       "kind": "production-ui",

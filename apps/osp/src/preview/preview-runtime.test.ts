@@ -36,4 +36,41 @@ describe('synthetic preview runtime', () => {
     await runtime.authPort.login('/app/pipeline');
     expect(runtime.authPort.getCurrentSession()?.identity.organization).toBe('xbf-preview-organization');
   });
+
+  it('advances a completed form from Operations review to the signature gate in memory', async () => {
+    const runtime = createPreviewRuntime();
+    const cases = await runtime.apiClient.listCustomerRegistrationCases();
+    const formCase = cases.find((item) => item.supplier_name === 'Sierra Retail México')!;
+    const form = await runtime.apiClient.getCaseFormWorkspace(formCase.case_id);
+    const values = { ...form.instance!.values, tax_identifier: 'XAXX010101000' };
+
+    const submitted = await runtime.apiClient.submitCaseFormForReview({
+      caseId: form.caseId,
+      expectedCaseVersion: form.caseVersion,
+      idempotencyKey: 'preview-submit-review',
+      templateVersionId: form.template!.id,
+      instanceId: form.instance!.id,
+      expectedVersion: form.instance!.version,
+      values,
+    });
+    const review = await runtime.apiClient.getApprovalCommunicationsWorkspace({ caseId: form.caseId });
+    expect(review).toMatchObject({ caseState: 'operations_review', capabilities: { completeOperationsReview: true } });
+
+    await runtime.apiClient.completeOperationsReview({
+      caseId: form.caseId,
+      expectedVersion: submitted.caseVersion,
+      idempotencyKey: 'preview-complete-operations',
+      inputSnapshotSha256: submitted.snapshotSha256,
+    });
+
+    await expect(runtime.apiClient.getApprovalCommunicationsWorkspace({ caseId: form.caseId })).resolves.toMatchObject({
+      caseState: 'signature_approval',
+      caseVersion: submitted.caseVersion + 1,
+      signature: { positionVersion: 1, approvalStatus: 'pending' },
+      capabilities: { completeOperationsReview: false, approveAndApplySignature: true },
+    });
+    await expect(runtime.apiClient.listCustomerRegistrationCases()).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ case_id: form.caseId, state: 'signature_approval', aggregate_version: submitted.caseVersion + 1 }),
+    ]));
+  });
 });

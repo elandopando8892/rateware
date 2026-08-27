@@ -115,6 +115,22 @@ const previewWorkspace: ApprovalCommunicationsWorkspace = {
   },
 };
 
+const previewOperationsWorkspace: ApprovalCommunicationsWorkspace = {
+  caseId: previewCases[1].case_id,
+  caseVersion: previewCases[1].aggregate_version,
+  caseState: 'operations_review',
+  inputSnapshot: { sha256: shaB, documentCount: 4, extractionCount: 16, reviewDecisionCount: 5, formInstanceVersion: 2 },
+  signature: null,
+  outbound: null,
+  capabilities: {
+    completeOperationsReview: true,
+    approveAndApplySignature: false,
+    freezeOutboundPayload: false,
+    authorizeOutboundPayload: false,
+    requestAuthorizedSend: false,
+  },
+};
+
 function createPreviewAuthPort(): AuthPort {
   let current: BoundSession | null = previewSession;
   const listeners = new Set<() => void>();
@@ -134,6 +150,11 @@ function createPreviewAuthPort(): AuthPort {
 }
 
 function createPreviewClient(): OspClient {
+  let previewCaseRows = previewCases.map((caseRecord) => structuredClone(caseRecord));
+  const workflowWorkspaces = new Map<string, ApprovalCommunicationsWorkspace>([
+    [previewWorkspace.caseId, structuredClone(previewWorkspace)],
+    [previewOperationsWorkspace.caseId, structuredClone(previewOperationsWorkspace)],
+  ]);
   let formCatalog: FormTemplateCatalog = {
     capabilities: { saveDraft: true, publish: true },
     templates: [
@@ -168,7 +189,6 @@ function createPreviewClient(): OspClient {
     },
     capabilities: { saveDraft: true, submitForReview: true },
   };
-  let caseFormReviewWorkspace: ApprovalCommunicationsWorkspace | null = null;
   const client: OspClient = {
     listOnboardingWorkspace: async () => ({ requests_total: '26', documents_pending: '7', under_review: '5', ready_for_approval: '3' }),
     getGmailStatus: async () => ({
@@ -181,11 +201,11 @@ function createPreviewClient(): OspClient {
       error_code: null,
       outbound_enabled: false,
     }),
-    listCustomerRegistrationCases: async () => previewCases,
+    listCustomerRegistrationCases: async () => structuredClone(previewCaseRows),
     getCustomerRegistrationCase: async (requestedCaseId) => requestedCaseId === caseId
       ? previewCaseDetail
       : {
-          ...(previewCases.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCases[3]),
+          ...(previewCaseRows.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCaseRows[3]),
           latest_request: {
             subject: 'Supplier onboarding request — synthetic preview',
             sender_domain: 'example.test',
@@ -232,7 +252,7 @@ function createPreviewClient(): OspClient {
     },
     getCaseFormWorkspace: async (requestedCaseId) => {
       if (requestedCaseId === caseFormCaseId) return structuredClone(caseFormWorkspace);
-      const caseRecord = previewCases.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCases[0];
+      const caseRecord = previewCaseRows.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCaseRows[0];
       return { caseId: requestedCaseId, supplierName: caseRecord.supplier_name, caseVersion: caseRecord.aggregate_version, caseState: caseRecord.state, templateName: caseFormWorkspace.templateName, template: structuredClone(caseFormWorkspace.template), instance: null, capabilities: { saveDraft: false, submitForReview: false } };
     },
     saveCaseFormDraft: async (input) => {
@@ -246,16 +266,34 @@ function createPreviewClient(): OspClient {
       const instance = { ...caseFormWorkspace.instance, version: caseFormWorkspace.instance.version + 1, values: structuredClone(input.values), updatedAt: new Date().toISOString() };
       const caseVersion = caseFormWorkspace.caseVersion + 1;
       caseFormWorkspace = { ...caseFormWorkspace, caseVersion, caseState: 'operations_review', instance, capabilities: { saveDraft: false, submitForReview: false } };
-      caseFormReviewWorkspace = {
+      previewCaseRows = previewCaseRows.map((caseRecord) => caseRecord.case_id === caseFormCaseId
+        ? { ...caseRecord, state: 'operations_review', aggregate_version: caseVersion, updated_at: new Date().toISOString() }
+        : caseRecord);
+      workflowWorkspaces.set(caseFormCaseId, {
         caseId: caseFormCaseId, caseVersion, caseState: 'operations_review',
         inputSnapshot: { sha256: shaB, documentCount: 4, extractionCount: 12, reviewDecisionCount: 7, formInstanceVersion: instance.version },
         signature: null, outbound: null,
         capabilities: { completeOperationsReview: true, approveAndApplySignature: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
-      };
+      });
       return { instance: structuredClone(instance), caseState: 'operations_review', caseVersion, snapshotSha256: shaB, replayed: false };
     },
-    getApprovalCommunicationsWorkspace: async (input) => input.caseId === caseFormCaseId && caseFormReviewWorkspace ? structuredClone(caseFormReviewWorkspace) : previewWorkspace,
-    completeOperationsReview: async (input) => ({ caseId: input.caseId, state: 'signature_approval', caseVersion: input.expectedVersion + 1, replayed: false }),
+    getApprovalCommunicationsWorkspace: async (input) => structuredClone(workflowWorkspaces.get(input.caseId) ?? { ...previewWorkspace, caseId: input.caseId }),
+    completeOperationsReview: async (input) => {
+      const current = workflowWorkspaces.get(input.caseId);
+      if (!current || current.caseState !== 'operations_review' || input.expectedVersion !== current.caseVersion || input.inputSnapshotSha256 !== current.inputSnapshot?.sha256) throw new Error('VERSION_CONFLICT');
+      const caseVersion = input.expectedVersion + 1;
+      workflowWorkspaces.set(input.caseId, {
+        ...current,
+        caseVersion,
+        caseState: 'signature_approval',
+        signature: { positionVersion: 1, approvalStatus: 'pending', approvalId: null, outputSha256: null },
+        capabilities: { completeOperationsReview: false, approveAndApplySignature: true, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
+      });
+      previewCaseRows = previewCaseRows.map((caseRecord) => caseRecord.case_id === input.caseId
+        ? { ...caseRecord, state: 'signature_approval', aggregate_version: caseVersion, updated_at: new Date().toISOString() }
+        : caseRecord);
+      return { caseId: input.caseId, state: 'signature_approval', caseVersion, replayed: false };
+    },
     approveAndApplySignature: async (input) => ({ caseId: input.caseId, state: 'sales_authorization', caseVersion: input.expectedVersion + 1, replayed: false, approvalId: '50000000-0000-4000-8000-000000000001' }),
     freezeOutboundPayload: async (input) => ({ payloadId: input.payloadId, caseId: input.caseId, caseVersion: input.expectedVersion + 1, kind: 'final_response', mimeSha256: shaA, attachmentSha256: [shaB], replayed: false }),
     authorizeOutboundPayload: async (input) => ({ caseId: input.caseId, state: 'ready_to_send', caseVersion: input.expectedVersion + 1, replayed: false, authorizationId: '50000000-0000-4000-8000-000000000002' }),

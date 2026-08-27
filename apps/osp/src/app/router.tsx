@@ -201,12 +201,16 @@ function WorkflowFailure({ title }: { title: string }) {
 
 function OperationsReviewWorkspace() {
   const { apiClient, params, query, run, conflict } = useWorkflowWorkspace(operationsReviewRoute);
+  const navigate = operationsReviewRoute.useNavigate();
   if (query.isPending || query.fetchStatus !== 'idle') return <WorkflowLoading title="Operations review" message="Loading current evidence package…" />;
   if (query.isError || !query.data) return <WorkflowFailure title="Operations review" />;
-  return <OperationsReviewPage workspace={query.data} conflict={conflict} onComplete={() => run('operations', (idempotencyKey) => apiClient.completeOperationsReview({
-    caseId: params.caseId, expectedVersion: query.data.caseVersion, idempotencyKey,
-    inputSnapshotSha256: query.data.inputSnapshot?.sha256 ?? '',
-  }))} />;
+  return <OperationsReviewPage workspace={query.data} conflict={conflict} onComplete={async () => {
+    await run('operations', (idempotencyKey) => apiClient.completeOperationsReview({
+      caseId: params.caseId, expectedVersion: query.data.caseVersion, idempotencyKey,
+      inputSnapshotSha256: query.data.inputSnapshot?.sha256 ?? '',
+    }));
+    await navigate({ to: '/app/cases/$caseId/signature', params: { caseId: params.caseId } });
+  }} />;
 }
 const operationsReviewRoute = createRoute({ getParentRoute: () => appRoute, path: 'cases/$caseId/review', component: OperationsReviewWorkspace });
 

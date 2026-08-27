@@ -34,6 +34,30 @@ export const caseNextGates: Readonly<Record<CaseState, string>> = Object.freeze(
   closed: 'No further action is currently required.',
 });
 
+export type CasePrimaryAction =
+  | { kind: 'clarification'; label: 'Open clarification review' }
+  | { kind: 'form'; label: 'Open XBF case form' }
+  | { kind: 'operations_review'; label: 'Open Operations review' }
+  | { kind: 'signature'; label: 'Open signature approval' }
+  | { kind: 'sales_authorization'; label: 'Open Sales authorization' };
+
+export function casePrimaryAction(state: CaseState): CasePrimaryAction | null {
+  switch (state) {
+    case 'awaiting_clarification':
+      return { kind: 'clarification', label: 'Open clarification review' };
+    case 'preparing':
+      return { kind: 'form', label: 'Open XBF case form' };
+    case 'operations_review':
+      return { kind: 'operations_review', label: 'Open Operations review' };
+    case 'signature_approval':
+      return { kind: 'signature', label: 'Open signature approval' };
+    case 'sales_authorization':
+      return { kind: 'sales_authorization', label: 'Open Sales authorization' };
+    default:
+      return null;
+  }
+}
+
 export function caseStateTone(state: CaseState): 'new' | 'work' | 'gate' | 'done' | 'blocked' {
   if (state === 'received') return 'new';
   if (['analyzing_requirements', 'awaiting_clarification', 'awaiting_xbf_information', 'preparing', 'operations_review'].includes(state)) return 'work';

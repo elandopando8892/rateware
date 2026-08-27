@@ -101,7 +101,26 @@ describe('App authentication and routing', () => {
     expect(screen.getByRole('heading', { name: 'Received', level: 2 })).toBeInTheDocument();
     expect(screen.getByText('Analyze the request and identify required documents.')).toBeInTheDocument();
     expect(screen.getByText('Message bodies and private files stay outside this summary.')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /open xbf case form/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/no action is available until the next controlled transition/i)).toBeInTheDocument();
     expect(screen.queryByRole('button')).toHaveTextContent('Sign out');
+  });
+
+  it('opens the controlled workspace that matches the current case state', async () => {
+    const api = client();
+    vi.mocked(api.getCustomerRegistrationCase).mockResolvedValue({
+      case_id: '22222222-2222-4222-8222-222222222222', supplier_name: 'Synthetic Supplier', state: 'operations_review', aggregate_version: 5,
+      blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T01:00:00.000Z',
+      message_count: '1', attachment_count: '2', document_count: '2',
+      latest_request: { subject: 'Customer setup request', sender_domain: 'supplier.example', received_at: '2030-01-01T00:00:00.000Z' },
+      recent_events: [{ sequence: 5, state: 'operations_review', occurred_at: '2030-01-01T01:00:00.000Z', reason_code: 'form_submitted_for_review' }],
+    });
+    const history = createMemoryHistory({ initialEntries: ['/app/cases/22222222-2222-4222-8222-222222222222'] });
+    render(<App authPort={authPort(session)} apiClient={api} routerHistory={history} />);
+
+    const action = await screen.findByRole('link', { name: /open operations review/i });
+    expect(action).toHaveAttribute('href', '/app/cases/22222222-2222-4222-8222-222222222222/review');
+    expect(screen.queryByRole('link', { name: /open xbf case form/i })).not.toBeInTheDocument();
   });
 
   it('hides workspace data while authentication is checking', () => {
@@ -226,6 +245,34 @@ describe('App authentication and routing', () => {
       draftId: '44444444-4444-4444-8444-444444444444', expectedCaseVersion: 4, expectedCanonicalSha256: 'a'.repeat(64),
     })));
     expect(screen.queryByRole('button', { name: /send/i })).not.toBeInTheDocument();
+  });
+
+  it('hands a completed Operations review to the signature control', async () => {
+    const caseId = '33333333-3333-4333-8333-333333333333';
+    const snapshot = { sha256: 'a'.repeat(64), documentCount: 4, extractionCount: 18, reviewDecisionCount: 3, formInstanceVersion: 2 };
+    const api = client();
+    vi.mocked(api.getApprovalCommunicationsWorkspace)
+      .mockResolvedValueOnce({
+        caseId, caseVersion: 4, caseState: 'operations_review', inputSnapshot: snapshot, signature: null, outbound: null,
+        capabilities: { completeOperationsReview: true, approveAndApplySignature: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
+      })
+      .mockResolvedValue({
+        caseId, caseVersion: 5, caseState: 'signature_approval', inputSnapshot: snapshot,
+        signature: { positionVersion: 1, approvalStatus: 'pending', approvalId: null, outputSha256: null }, outbound: null,
+        capabilities: { completeOperationsReview: false, approveAndApplySignature: true, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
+      });
+    vi.mocked(api.completeOperationsReview).mockResolvedValue({ caseId, state: 'signature_approval', caseVersion: 5, replayed: false });
+    const history = createMemoryHistory({ initialEntries: [`/app/cases/${caseId}/review`] });
+    render(<App authPort={authPort(session)} apiClient={api} routerHistory={history} />);
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: /evidence package is complete/i }));
+    await userEvent.click(screen.getByRole('button', { name: /complete operations review/i }));
+
+    expect(await screen.findByRole('heading', { name: /signature approval/i })).toBeInTheDocument();
+    expect(history.location.pathname).toBe(`/app/cases/${caseId}/signature`);
+    expect(api.completeOperationsReview).toHaveBeenCalledWith(expect.objectContaining({
+      caseId, expectedVersion: 4, inputSnapshotSha256: snapshot.sha256,
+    }));
   });
 
   it('routes Sales to the exact server-authorized payload without exposing private material', async () => {
