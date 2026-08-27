@@ -3262,8 +3262,10 @@ function renderOutreachPreview() {
   const targetMode = channel === "whatsapp_group" ? "vendor_group" : "direct_vendor";
   const senderEmail = rfxOutreachSender?.value || APPROVED_GMAIL_SENDER;
   const targets = outreachWaveTargets();
-  const ready = targets.filter((target) => targetHasChannel(target, channel)).length;
-  const needsCompatibleContact = Math.max(targets.length - ready, 0);
+  const carrierTargets = uniqueOutreachWaveTargets();
+  const ready = carrierTargets.filter((target) => targetHasChannel(target, channel)).length;
+  const needsCompatibleContact = Math.max(carrierTargets.length - ready, 0);
+  const readyInvitationRows = targets.filter((target) => targetHasChannel(target, channel)).length;
   const whatsappDirectReady = targets.filter((target) => targetHasChannel(target, "whatsapp")).length;
   const whatsappGroupReady = targets.filter((target) => targetHasChannel(target, "whatsapp_group")).length;
   const targetScope = selectedOutreachAudienceVendorIds.size
@@ -3278,8 +3280,8 @@ function renderOutreachPreview() {
       ? "Select an RFx before preparing an invitation wave."
       : selectedOutreachAudienceVendorIds.size
         ? `This wave contains ${formatNumber(selectedOutreachAudienceVendorIds.size)} selected carrier${selectedOutreachAudienceVendorIds.size === 1 ? "" : "s"}; ${formatNumber(ready)} can receive ${outreachChannelLabel(channel)}.${needsCompatibleContact ? ` ${formatNumber(needsCompatibleContact)} need a compatible contact before they can enter delivery.` : ""}`
-        : targets.length
-          ? `${formatNumber(targets.length)} carrier invitation target${targets.length === 1 ? "" : "s"} are in scope; ${formatNumber(ready)} can receive ${outreachChannelLabel(channel)}.${needsCompatibleContact ? ` ${formatNumber(needsCompatibleContact)} need a compatible contact before they can enter delivery.` : ""} Select a wave in Carrier fit to narrow this queue.`
+        : carrierTargets.length
+          ? `${formatNumber(carrierTargets.length)} carrier invitation target${carrierTargets.length === 1 ? "" : "s"} are in scope; ${formatNumber(ready)} can receive ${outreachChannelLabel(channel)}.${needsCompatibleContact ? ` ${formatNumber(needsCompatibleContact)} need a compatible contact before they can enter delivery.` : ""} Select a wave in Carrier fit to narrow this queue.`
           : "No eligible carrier targets are available for this RFx yet.";
   }
   renderMessageReadiness({ template, channel, targets, ready, needsCompatibleContact });
@@ -3340,7 +3342,7 @@ function renderOutreachPreview() {
       <div class="outreach-template-preview-grid">
         <article>
           <span>Draft target</span>
-          <strong>${formatNumber(ready)} / ${formatNumber(targets.length)}</strong>
+          <strong>${formatNumber(ready)} / ${formatNumber(carrierTargets.length)} carriers</strong>
           <small>${escapeHtml(targetScope)}</small>
         </article>
         <article>
@@ -3365,12 +3367,14 @@ function renderOutreachPreview() {
     const deliveryLabel = outreachChannelLabel(channel).replace(" only", "");
     createRfxOutreachCampaignButton.textContent = selectedWaveCount
       ? ready
-        ? `Prepare ${formatNumber(ready)} ${deliveryLabel} draft${ready === 1 ? "" : "s"}`
+        ? readyInvitationRows === ready
+          ? `Prepare ${formatNumber(ready)} ${deliveryLabel} draft${ready === 1 ? "" : "s"}`
+          : `Prepare ${formatNumber(ready)} carrier queue${ready === 1 ? "" : "s"}`
         : "Add a compatible contact"
       : "Select a carrier wave";
     createRfxOutreachCampaignButton.title = selectedWaveCount
       ? ready
-        ? `Create individual ${outreachChannelLabel(channel)} drafts for the ${formatNumber(ready)} selected carrier(s) with a compatible contact.${needsCompatibleContact ? ` ${formatNumber(needsCompatibleContact)} selected carrier(s) require a contact update first.` : ""}`
+        ? `Prepare ${formatNumber(readyInvitationRows)} lane invitation record${readyInvitationRows === 1 ? "" : "s"} grouped into ${formatNumber(ready)} carrier queue${ready === 1 ? "" : "s"}.${needsCompatibleContact ? ` ${formatNumber(needsCompatibleContact)} selected carrier(s) require a contact update first.` : ""}`
         : `Update a compatible ${deliveryLabel} contact in Carrier fit or Carrier CRM before preparing this wave.`
       : "Use Carrier fit or This RFx to select the carriers for this delivery wave.";
     createRfxOutreachCampaignButton.disabled = !selectedWaveCount || !selectedEventId || !template || !targets.length || !ready || Boolean(launchPreflightIssues().length) || rfxTemplateEditorDirty || rfxTemplateVisualEditing;

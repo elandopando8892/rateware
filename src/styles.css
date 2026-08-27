@@ -31161,6 +31161,14 @@ form[data-unsaved-guard][data-unsaved="true"] {
   min-height: 560px;
 }
 
+body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-flow-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
+  display: none;
+}
+
 .bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-message-recipient-panel {
   grid-area: recipients;
 }
@@ -31311,6 +31319,10 @@ form[data-unsaved-guard][data-unsaved="true"] {
 
 .bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .rfx-outreach-preview-panel .outreach-template-preview {
   min-height: 490px;
+}
+
+.bid-room-page .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="message"] .template-token-row {
+  display: none;
 }
 
 .rfx-message-workspace-footer {

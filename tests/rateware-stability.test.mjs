@@ -4854,6 +4854,8 @@ assert.match(rfxEventsHtml, /No invitations are sent here/, "Message should make
 assert.match(rfxEventsSource, /function renderMessageRecipients/, "Message should render one previewable row per selected carrier");
 assert.match(rfxEventsSource, /selectedOutreachPreviewVendorId/, "Message should retain the carrier selected for personalized preview");
 assert.match(stylesSource, /grid-template-areas:\s*"recipients preview setup"/, "Message should use the approved recipients, preview, and setup hierarchy");
+assert.match(rfxEventsSource, /const carrierTargets = uniqueOutreachWaveTargets\(\);/, "Message should report readiness per carrier instead of multiplying it by lane rows");
+assert.match(stylesSource, /body:has\(#rfx-launch-message-workspace:not\(\[hidden\]\)\) \.bid-room-control-panel \{[\s\S]*?display: none/, "Message should reclaim the full canvas from the secondary command panel");
 const outreachPreviewStart = rfxEventsSource.indexOf("function renderOutreachPreview");
 const outreachPreviewEnd = rfxEventsSource.indexOf("\n\nfunction", outreachPreviewStart + 1);
 const outreachPreviewSource = rfxEventsSource.slice(outreachPreviewStart, outreachPreviewEnd > outreachPreviewStart ? outreachPreviewEnd : undefined);
