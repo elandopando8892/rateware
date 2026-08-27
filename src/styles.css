@@ -31165,6 +31165,10 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-flow-shell {
   grid-template-columns: minmax(0, 1fr);
 }
 
+body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   display: none;
 }
