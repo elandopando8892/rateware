@@ -180,6 +180,8 @@ describe('createKindeAuthPort', () => {
 
     expect(createClient).toHaveBeenCalledOnce();
     expect(createClient.mock.calls[0]?.[0]).toMatchObject({
+      _framework: 'React',
+      _frameworkVersion: '19.2.8',
       audience: 'https://osp.heymarksman.com/api',
       client_id: 'synthetic-public-client',
       domain: 'https://auth.heymarksman.com',

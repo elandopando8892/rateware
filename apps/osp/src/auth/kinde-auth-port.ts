@@ -3,6 +3,7 @@ import type {
   KindeClientOptions,
   RedirectOptions,
 } from '@kinde-oss/kinde-auth-pkce-js';
+import { version as reactVersion } from 'react';
 
 import {
   authRedirectUri,
@@ -544,6 +545,8 @@ export function createKindeAuthPort(
   const getClient = () => {
     if (!clientPromise) {
       const createdClient = createClient({
+        _framework: 'React',
+        _frameworkVersion: reactVersion,
         audience: config.VITE_KINDE_AUDIENCE,
         client_id: config.VITE_KINDE_CLIENT_ID,
         domain: config.VITE_KINDE_DOMAIN,
