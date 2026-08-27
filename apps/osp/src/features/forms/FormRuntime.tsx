@@ -29,7 +29,7 @@ export function FormRuntime({ template, initialValues = {}, showCompleteButton =
     const change = (sender: Model) => { onChangeRef.current?.(structuredClone(sender.data as Record<string, unknown>)); };
     model.onComplete.add(complete);
     model.onValueChanged.add(change);
-    return () => { model.onComplete.remove(complete); model.onValueChanged.remove(change); model.dispose(); };
+    return () => { model.onComplete.remove(complete); model.onValueChanged.remove(change); };
   }, [model]);
   return <Survey model={model} />;
 }

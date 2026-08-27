@@ -166,8 +166,9 @@ function createPreviewClient(): OspClient {
       values: { legal_name: 'Sierra Retail México', registered_address: 'Av. Insurgentes Sur 1602, Ciudad de México' },
       updatedAt: '2026-08-26T20:10:00.000Z',
     },
-    capabilities: { saveDraft: true },
+    capabilities: { saveDraft: true, submitForReview: true },
   };
+  let caseFormReviewWorkspace: ApprovalCommunicationsWorkspace | null = null;
   const client: OspClient = {
     listOnboardingWorkspace: async () => ({ requests_total: '26', documents_pending: '7', under_review: '5', ready_for_approval: '3' }),
     getGmailStatus: async () => ({
@@ -232,7 +233,7 @@ function createPreviewClient(): OspClient {
     getCaseFormWorkspace: async (requestedCaseId) => {
       if (requestedCaseId === caseFormCaseId) return structuredClone(caseFormWorkspace);
       const caseRecord = previewCases.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCases[0];
-      return { caseId: requestedCaseId, supplierName: caseRecord.supplier_name, caseVersion: caseRecord.aggregate_version, caseState: caseRecord.state, templateName: caseFormWorkspace.templateName, template: structuredClone(caseFormWorkspace.template), instance: null, capabilities: { saveDraft: false } };
+      return { caseId: requestedCaseId, supplierName: caseRecord.supplier_name, caseVersion: caseRecord.aggregate_version, caseState: caseRecord.state, templateName: caseFormWorkspace.templateName, template: structuredClone(caseFormWorkspace.template), instance: null, capabilities: { saveDraft: false, submitForReview: false } };
     },
     saveCaseFormDraft: async (input) => {
       if (input.caseId !== caseFormCaseId || input.templateVersionId !== caseFormWorkspace.template?.id || input.instanceId !== caseFormWorkspace.instance?.id || input.expectedVersion !== caseFormWorkspace.instance.version) throw new Error('VERSION_CONFLICT');
@@ -240,7 +241,20 @@ function createPreviewClient(): OspClient {
       caseFormWorkspace = { ...caseFormWorkspace, instance };
       return { instance: structuredClone(instance), replayed: false };
     },
-    getApprovalCommunicationsWorkspace: async () => previewWorkspace,
+    submitCaseFormForReview: async (input) => {
+      if (input.caseId !== caseFormCaseId || input.expectedCaseVersion !== caseFormWorkspace.caseVersion || input.templateVersionId !== caseFormWorkspace.template?.id || input.instanceId !== caseFormWorkspace.instance?.id || input.expectedVersion !== caseFormWorkspace.instance.version) throw new Error('VERSION_CONFLICT');
+      const instance = { ...caseFormWorkspace.instance, version: caseFormWorkspace.instance.version + 1, values: structuredClone(input.values), updatedAt: new Date().toISOString() };
+      const caseVersion = caseFormWorkspace.caseVersion + 1;
+      caseFormWorkspace = { ...caseFormWorkspace, caseVersion, caseState: 'operations_review', instance, capabilities: { saveDraft: false, submitForReview: false } };
+      caseFormReviewWorkspace = {
+        caseId: caseFormCaseId, caseVersion, caseState: 'operations_review',
+        inputSnapshot: { sha256: shaB, documentCount: 4, extractionCount: 12, reviewDecisionCount: 7, formInstanceVersion: instance.version },
+        signature: null, outbound: null,
+        capabilities: { completeOperationsReview: true, approveAndApplySignature: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
+      };
+      return { instance: structuredClone(instance), caseState: 'operations_review', caseVersion, snapshotSha256: shaB, replayed: false };
+    },
+    getApprovalCommunicationsWorkspace: async (input) => input.caseId === caseFormCaseId && caseFormReviewWorkspace ? structuredClone(caseFormReviewWorkspace) : previewWorkspace,
     completeOperationsReview: async (input) => ({ caseId: input.caseId, state: 'signature_approval', caseVersion: input.expectedVersion + 1, replayed: false }),
     approveAndApplySignature: async (input) => ({ caseId: input.caseId, state: 'sales_authorization', caseVersion: input.expectedVersion + 1, replayed: false, approvalId: '50000000-0000-4000-8000-000000000001' }),
     freezeOutboundPayload: async (input) => ({ payloadId: input.payloadId, caseId: input.caseId, caseVersion: input.expectedVersion + 1, kind: 'final_response', mimeSha256: shaA, attachmentSha256: [shaB], replayed: false }),

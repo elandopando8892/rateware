@@ -1,4 +1,5 @@
 import type { FormComponent, FormTemplateVersion } from '../../../apps/osp/src/features/forms/surveyjs-canonical-adapter.ts';
+import { assessFormCompletion } from '../../../apps/osp/src/features/forms/form-completion.ts';
 
 export type FormTemplateCatalogItem = {
   templateId: string;
@@ -39,6 +40,7 @@ export type CaseFormWorkspaceRecord = {
   template: FormTemplateVersion | null;
   instance: CaseFormInstance | null;
   saveDraftAllowed: boolean;
+  submitForReviewAllowed: boolean;
 };
 export type SaveCaseFormDraftInput = {
   organizationId: string;
@@ -51,6 +53,14 @@ export type SaveCaseFormDraftInput = {
   values: Record<string, unknown>;
 };
 export type CaseFormMutationReceipt = { instance: CaseFormInstance; replayed: boolean };
+export type SubmitCaseFormForReviewInput = SaveCaseFormDraftInput & { expectedCaseVersion: number };
+export type CaseFormSubmissionReceipt = {
+  instance: CaseFormInstance;
+  caseState: 'operations_review';
+  caseVersion: number;
+  snapshotSha256: string;
+  replayed: boolean;
+};
 
 export interface FormStore {
   list(organizationId: string): Promise<readonly FormTemplateCatalogItem[]>;
@@ -58,9 +68,11 @@ export interface FormStore {
   publish(input: PublishFormInput): Promise<FormMutationReceipt>;
   getCaseFormWorkspace(organizationId: string, caseId: string): Promise<CaseFormWorkspaceRecord>;
   saveCaseFormDraft(input: SaveCaseFormDraftInput): Promise<CaseFormMutationReceipt>;
+  submitCaseFormForReview(input: SubmitCaseFormForReviewInput): Promise<CaseFormSubmissionReceipt>;
 }
 
-type Receipt = { hash: string; value: FormMutationReceipt | CaseFormMutationReceipt };
+type ReceiptValue = FormMutationReceipt | CaseFormMutationReceipt | CaseFormSubmissionReceipt;
+type Receipt = { hash: string; value: ReceiptValue };
 type SeedCase = { organizationId: string; caseId: string; supplierName: string; caseVersion: number; caseState: string };
 
 function fail(code: string): never { throw new Error(code); }
@@ -97,7 +109,7 @@ export function createInMemoryFormStore(now: () => Date = () => new Date('2026-0
   };
   const receiptKey = (organizationId: string, operation: string, idempotencyKey: string) => `${organizationId}\u0000${operation}\u0000${idempotencyKey}`;
 
-  async function replayOrRun<T extends FormMutationReceipt | CaseFormMutationReceipt>(input: { organizationId: string; idempotencyKey: string }, operation: string, request: unknown, action: () => T): Promise<T> {
+  async function replayOrRun<T extends ReceiptValue>(input: { organizationId: string; idempotencyKey: string }, operation: string, request: unknown, action: () => T | Promise<T>): Promise<T> {
     return await locked(lock, async () => {
       const key = receiptKey(input.organizationId, operation, input.idempotencyKey);
       const requestHash = await hash(request);
@@ -106,10 +118,30 @@ export function createInMemoryFormStore(now: () => Date = () => new Date('2026-0
         if (prior.hash !== requestHash) fail('IDEMPOTENCY_CONFLICT');
         return structuredClone({ ...prior.value, replayed: true }) as T;
       }
-      const value = action();
+      const value = await action();
       receipts.set(key, { hash: requestHash, value: structuredClone(value) });
       return structuredClone(value) as T;
     });
+  }
+
+  function writeCaseInstance(input: SaveCaseFormDraftInput): CaseFormInstance {
+    const registrationCase = cases.get(`${input.organizationId}\u0000${input.caseId}`);
+    if (!registrationCase) fail('CASE_NOT_FOUND');
+    if (!['awaiting_xbf_information', 'preparing'].includes(registrationCase.caseState)) fail('CASE_FORM_LOCKED');
+    const template = [...templates(input.organizationId).values()].find((item) => item.latest.id === input.templateVersionId && item.latest.status === 'published');
+    if (!template) fail('FORM_NOT_FOUND');
+    const allowedFields = new Set(template.latest.fields.map((field) => field.id));
+    if (Object.keys(input.values).some((key) => !allowedFields.has(key))) fail('FORM_SCHEMA_INVALID');
+    const key = `${input.organizationId}\u0000${input.caseId}\u0000${input.templateVersionId}`;
+    const current = caseInstances.get(key) ?? null;
+    if (input.instanceId === null) {
+      if (current || input.expectedVersion !== 0) fail('VERSION_CONFLICT');
+    } else if (!current || current.id !== input.instanceId || current.version !== input.expectedVersion) fail('VERSION_CONFLICT');
+    const instance = current && stable(current.values) === stable(input.values)
+      ? current
+      : { id: current?.id ?? crypto.randomUUID(), version: (current?.version ?? 0) + 1, values: structuredClone(input.values), updatedAt: now().toISOString() };
+    caseInstances.set(key, instance);
+    return structuredClone(instance);
   }
 
   return Object.freeze({
@@ -154,27 +186,26 @@ export function createInMemoryFormStore(now: () => Date = () => new Date('2026-0
         caseId, supplierName: registrationCase.supplierName, caseVersion: registrationCase.caseVersion, caseState: registrationCase.caseState,
         templateName: published?.name ?? null, template: published?.latest ?? null, instance,
         saveDraftAllowed: ['awaiting_xbf_information', 'preparing'].includes(registrationCase.caseState),
+        submitForReviewAllowed: registrationCase.caseState === 'preparing',
       });
     },
     async saveCaseFormDraft(input: SaveCaseFormDraftInput) {
-      return await replayOrRun(input, 'save_case_form_draft', input, () => {
+      return await replayOrRun(input, 'save_case_form_draft', input, () => ({ instance: writeCaseInstance(input), replayed: false }));
+    },
+    async submitCaseFormForReview(input: SubmitCaseFormForReviewInput) {
+      return await replayOrRun(input, 'submit_case_form_for_review', input, async () => {
         const registrationCase = cases.get(`${input.organizationId}\u0000${input.caseId}`);
         if (!registrationCase) fail('CASE_NOT_FOUND');
-        if (!['awaiting_xbf_information', 'preparing'].includes(registrationCase.caseState)) fail('CASE_FORM_LOCKED');
+        if (registrationCase.caseState !== 'preparing') fail('CASE_FORM_LOCKED');
+        if (registrationCase.caseVersion !== input.expectedCaseVersion) fail('VERSION_CONFLICT');
         const template = [...templates(input.organizationId).values()].find((item) => item.latest.id === input.templateVersionId && item.latest.status === 'published');
         if (!template) fail('FORM_NOT_FOUND');
-        const allowedFields = new Set(template.latest.fields.map((field) => field.id));
-        if (Object.keys(input.values).some((key) => !allowedFields.has(key))) fail('FORM_SCHEMA_INVALID');
-        const key = `${input.organizationId}\u0000${input.caseId}\u0000${input.templateVersionId}`;
-        const current = caseInstances.get(key) ?? null;
-        if (input.instanceId === null) {
-          if (current || input.expectedVersion !== 0) fail('VERSION_CONFLICT');
-        } else if (!current || current.id !== input.instanceId || current.version !== input.expectedVersion) fail('VERSION_CONFLICT');
-        const instance = current && stable(current.values) === stable(input.values)
-          ? current
-          : { id: current?.id ?? crypto.randomUUID(), version: (current?.version ?? 0) + 1, values: structuredClone(input.values), updatedAt: now().toISOString() };
-        caseInstances.set(key, instance);
-        return { instance, replayed: false };
+        if (!assessFormCompletion(template.latest, input.values).ready) fail('FORM_INCOMPLETE');
+        const instance = writeCaseInstance(input);
+        registrationCase.caseState = 'operations_review';
+        registrationCase.caseVersion += 1;
+        const snapshotSha256 = await hash({ organizationId: input.organizationId, caseId: input.caseId, caseVersion: registrationCase.caseVersion, templateVersionId: input.templateVersionId, instanceId: instance.id, instanceVersion: instance.version });
+        return { instance, caseState: 'operations_review', caseVersion: registrationCase.caseVersion, snapshotSha256, replayed: false };
       });
     },
   });

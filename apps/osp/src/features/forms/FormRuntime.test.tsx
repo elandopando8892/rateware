@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { FormTemplateVersion } from './surveyjs-canonical-adapter';
 import { FormRuntime } from './FormRuntime';
@@ -11,6 +12,7 @@ class ResizeObserverStub {
   disconnect() { return undefined; }
 }
 globalThis.ResizeObserver = ResizeObserverStub;
+afterEach(cleanup);
 
 const template: FormTemplateVersion = {
   id: '22222222-2222-4222-8222-222222222222',
@@ -42,5 +44,12 @@ describe('FormRuntime', () => {
     expect(screen.queryByRole('button', { name: /complete/i })).not.toBeInTheDocument();
     await userEvent.type(input, ' updated');
     await waitFor(() => expect(change).toHaveBeenLastCalledWith({ legal_name: 'Saved supplier updated' }));
+  });
+
+  it('survives the development StrictMode mount cycle without disposing the live model', async () => {
+    const change = vi.fn();
+    render(<StrictMode><FormRuntime template={template} showCompleteButton={false} onChange={change} onComplete={vi.fn()} /></StrictMode>);
+    await userEvent.type(screen.getByLabelText(/legal name/i), 'Strict supplier');
+    await waitFor(() => expect(change).toHaveBeenLastCalledWith({ legal_name: 'Strict supplier' }));
   });
 });

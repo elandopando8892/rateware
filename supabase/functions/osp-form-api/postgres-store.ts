@@ -1,8 +1,9 @@
 import postgres from 'npm:postgres@3.4.7';
 
 import type { FormComponent, FormTemplateVersion } from '../../../apps/osp/src/features/forms/surveyjs-canonical-adapter.ts';
+import { assessFormCompletion } from '../../../apps/osp/src/features/forms/form-completion.ts';
 import { withOrganizationTransaction, type SqlPort, type SqlRow } from '../_shared/osp/database-context.ts';
-import { formStoreInternals, type CaseFormInstance, type CaseFormMutationReceipt, type CaseFormWorkspaceRecord, type FormMutationReceipt, type FormStore, type FormTemplateCatalogItem, type PublishFormInput, type SaveCaseFormDraftInput, type SaveFormDraftInput } from './store.ts';
+import { formStoreInternals, type CaseFormInstance, type CaseFormMutationReceipt, type CaseFormSubmissionReceipt, type CaseFormWorkspaceRecord, type FormMutationReceipt, type FormStore, type FormTemplateCatalogItem, type PublishFormInput, type SaveCaseFormDraftInput, type SaveFormDraftInput, type SubmitCaseFormForReviewInput } from './store.ts';
 
 type PostgresFactory = (databaseUrl: string, options: Record<string, unknown>) => unknown;
 
@@ -22,6 +23,12 @@ function json(value: unknown): Record<string, unknown> {
   if (typeof value === 'string') { try { value = JSON.parse(value); } catch { fail('PERSISTENCE_CORRUPT'); } }
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('PERSISTENCE_CORRUPT');
   return value as Record<string, unknown>;
+}
+
+function jsonArray(value: unknown): readonly unknown[] {
+  if (typeof value === 'string') { try { value = JSON.parse(value); } catch { fail('PERSISTENCE_CORRUPT'); } }
+  if (!Array.isArray(value)) fail('PERSISTENCE_CORRUPT');
+  return value;
 }
 
 function timestamp(value: unknown): string {
@@ -74,6 +81,12 @@ function caseReceipt(value: unknown): CaseFormMutationReceipt {
   return parsed;
 }
 
+function submissionReceipt(value: unknown): CaseFormSubmissionReceipt {
+  const parsed = json(value) as unknown as CaseFormSubmissionReceipt;
+  if (!parsed.instance || typeof parsed.instance.id !== 'string' || parsed.caseState !== 'operations_review' || !Number.isSafeInteger(parsed.caseVersion) || !/^[0-9a-f]{64}$/.test(parsed.snapshotSha256)) fail('PERSISTENCE_CORRUPT');
+  return parsed;
+}
+
 async function readCatalog(tx: SqlPort, organizationId: string, templateId?: string): Promise<readonly FormTemplateCatalogItem[]> {
   const templates = templateId
     ? await tx`select template.id as template_id, template.name, template.updated_at, version_row.id as version_id, version_row.version, version_row.status, version_row.schema_sha256 from osp_private.form_templates template join lateral (select id, version, status, schema_sha256 from osp_private.form_template_versions where organization_id = ${organizationId} and template_id = template.id order by version desc limit 1) version_row on true where template.organization_id = ${organizationId} and template.id = ${templateId}`
@@ -110,7 +123,31 @@ async function readCaseFormWorkspace(tx: SqlPort, organizationId: string, caseId
     caseId, supplierName: cases[0].supplier_name, caseVersion, caseState: cases[0].state,
     templateName: template?.name ?? null, template: template?.latest ?? null, instance,
     saveDraftAllowed: ['awaiting_xbf_information', 'preparing'].includes(cases[0].state),
+    submitForReviewAllowed: cases[0].state === 'preparing',
   };
+}
+
+async function saveCaseInstance(tx: SqlPort, input: SaveCaseFormDraftInput): Promise<CaseFormInstance> {
+  const versions = await tx`select id from osp_private.form_template_versions where organization_id = ${input.organizationId} and id = ${input.templateVersionId} and status = 'published'`;
+  if (versions.length !== 1) fail('FORM_NOT_FOUND');
+  const fields = await tx`select field_key from osp_private.form_fields where organization_id = ${input.organizationId} and template_version_id = ${input.templateVersionId}`;
+  const allowedFields = new Set(fields.map((row) => String(row.field_key)));
+  if (Object.keys(input.values).some((key) => !allowedFields.has(key))) fail('FORM_SCHEMA_INVALID');
+  let rows: readonly SqlRow[];
+  if (input.instanceId === null) {
+    if (input.expectedVersion !== 0) fail('VERSION_CONFLICT');
+    const existing = await tx`select id from osp_private.case_form_instances where organization_id = ${input.organizationId} and case_id = ${input.caseId} and template_version_id = ${input.templateVersionId} for update`;
+    if (existing.length > 0) fail('VERSION_CONFLICT');
+    rows = await tx`insert into osp_private.case_form_instances (id, organization_id, case_id, template_version_id, version, values_json) values (${crypto.randomUUID()}, ${input.organizationId}, ${input.caseId}, ${input.templateVersionId}, 1, ${JSON.stringify(input.values)}::text::jsonb) returning id, version, values_json, updated_at`;
+  } else {
+    const current = await tx`select id, version, values_json, updated_at from osp_private.case_form_instances where organization_id = ${input.organizationId} and case_id = ${input.caseId} and template_version_id = ${input.templateVersionId} and id = ${input.instanceId} for update`;
+    if (current.length !== 1 || Number(current[0].version) !== input.expectedVersion) fail('VERSION_CONFLICT');
+    rows = formStoreInternals.stable(json(current[0].values_json)) === formStoreInternals.stable(input.values)
+      ? current
+      : await tx`update osp_private.case_form_instances set version = version + 1, values_json = ${JSON.stringify(input.values)}::text::jsonb, updated_at = now() where organization_id = ${input.organizationId} and case_id = ${input.caseId} and template_version_id = ${input.templateVersionId} and id = ${input.instanceId} and version = ${input.expectedVersion} returning id, version, values_json, updated_at`;
+  }
+  if (rows.length !== 1) fail('PERSISTENCE_FAILED');
+  return caseInstance(rows[0]);
 }
 
 export function createPostgresFormStore(options: { databaseUrl: string; postgresFactory?: PostgresFactory }): FormStore {
@@ -133,14 +170,14 @@ export function createPostgresFormStore(options: { databaseUrl: string; postgres
     await tx`insert into osp_private.command_receipts (id, organization_id, operation, idempotency_key, request_hash, response_json) values (${crypto.randomUUID()}, ${organizationId}, ${operation}, ${idempotencyKey}, ${requestHash}, ${JSON.stringify(value)}::text::jsonb)`;
   }
 
-  async function priorCase(tx: SqlPort, organizationId: string, operation: string, idempotencyKey: string, requestHash: string): Promise<CaseFormMutationReceipt | null> {
+  async function priorCase<T extends CaseFormMutationReceipt | CaseFormSubmissionReceipt>(tx: SqlPort, organizationId: string, operation: string, idempotencyKey: string, requestHash: string, parse: (value: unknown) => T): Promise<T | null> {
     const rows = await tx`select request_hash, response_json from osp_private.command_receipts where organization_id = ${organizationId} and operation = ${operation} and idempotency_key = ${idempotencyKey}`;
     if (rows.length === 0) return null;
     if (rows.length !== 1 || rows[0].request_hash !== requestHash) fail('IDEMPOTENCY_CONFLICT');
-    return { ...caseReceipt(rows[0].response_json), replayed: true };
+    return { ...parse(rows[0].response_json), replayed: true };
   }
 
-  async function saveCaseReceipt(tx: SqlPort, organizationId: string, operation: string, idempotencyKey: string, requestHash: string, value: CaseFormMutationReceipt) {
+  async function saveCaseReceipt(tx: SqlPort, organizationId: string, operation: string, idempotencyKey: string, requestHash: string, value: CaseFormMutationReceipt | CaseFormSubmissionReceipt) {
     await tx`insert into osp_private.command_receipts (id, organization_id, operation, idempotency_key, request_hash, response_json) values (${crypto.randomUUID()}, ${organizationId}, ${operation}, ${idempotencyKey}, ${requestHash}, ${JSON.stringify(value)}::text::jsonb)`;
   }
 
@@ -213,31 +250,53 @@ export function createPostgresFormStore(options: { databaseUrl: string; postgres
         const operation = 'save_case_form_draft';
         const requestHash = await formStoreInternals.hash(input);
         await tx`select pg_advisory_xact_lock(hashtextextended(${JSON.stringify([input.organizationId, operation, input.idempotencyKey])}, 0))`;
-        const replay = await priorCase(tx, input.organizationId, operation, input.idempotencyKey, requestHash);
+        const replay = await priorCase(tx, input.organizationId, operation, input.idempotencyKey, requestHash, caseReceipt);
         if (replay) return replay;
         const cases = await tx`select state from osp_private.customer_registration_cases where organization_id = ${input.organizationId} and id = ${input.caseId} for update`;
         if (cases.length !== 1) fail('CASE_NOT_FOUND');
         if (!['awaiting_xbf_information', 'preparing'].includes(String(cases[0].state))) fail('CASE_FORM_LOCKED');
-        const versions = await tx`select id from osp_private.form_template_versions where organization_id = ${input.organizationId} and id = ${input.templateVersionId} and status = 'published'`;
-        if (versions.length !== 1) fail('FORM_NOT_FOUND');
-        const fields = await tx`select field_key from osp_private.form_fields where organization_id = ${input.organizationId} and template_version_id = ${input.templateVersionId}`;
-        const allowedFields = new Set(fields.map((row) => String(row.field_key)));
-        if (Object.keys(input.values).some((key) => !allowedFields.has(key))) fail('FORM_SCHEMA_INVALID');
-        let rows: readonly SqlRow[];
-        if (input.instanceId === null) {
-          if (input.expectedVersion !== 0) fail('VERSION_CONFLICT');
-          const existing = await tx`select id from osp_private.case_form_instances where organization_id = ${input.organizationId} and case_id = ${input.caseId} and template_version_id = ${input.templateVersionId} for update`;
-          if (existing.length > 0) fail('VERSION_CONFLICT');
-          rows = await tx`insert into osp_private.case_form_instances (id, organization_id, case_id, template_version_id, version, values_json) values (${crypto.randomUUID()}, ${input.organizationId}, ${input.caseId}, ${input.templateVersionId}, 1, ${JSON.stringify(input.values)}::text::jsonb) returning id, version, values_json, updated_at`;
-        } else {
-          const current = await tx`select id, version, values_json, updated_at from osp_private.case_form_instances where organization_id = ${input.organizationId} and case_id = ${input.caseId} and template_version_id = ${input.templateVersionId} and id = ${input.instanceId} for update`;
-          if (current.length !== 1 || Number(current[0].version) !== input.expectedVersion) fail('VERSION_CONFLICT');
-          rows = formStoreInternals.stable(json(current[0].values_json)) === formStoreInternals.stable(input.values)
-            ? current
-            : await tx`update osp_private.case_form_instances set version = version + 1, values_json = ${JSON.stringify(input.values)}::text::jsonb, updated_at = now() where organization_id = ${input.organizationId} and case_id = ${input.caseId} and template_version_id = ${input.templateVersionId} and id = ${input.instanceId} and version = ${input.expectedVersion} returning id, version, values_json, updated_at`;
-        }
-        if (rows.length !== 1) fail('PERSISTENCE_FAILED');
-        const result = { instance: caseInstance(rows[0]), replayed: false };
+        const result = { instance: await saveCaseInstance(tx, input), replayed: false };
+        await saveCaseReceipt(tx, input.organizationId, operation, input.idempotencyKey, requestHash, result);
+        return result;
+      });
+    },
+    async submitCaseFormForReview(input: SubmitCaseFormForReviewInput) {
+      return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        const operation = 'submit_case_form_for_review';
+        const requestHash = await formStoreInternals.hash(input);
+        await tx`select pg_advisory_xact_lock(hashtextextended(${JSON.stringify([input.organizationId, operation, input.idempotencyKey])}, 0))`;
+        const replay = await priorCase(tx, input.organizationId, operation, input.idempotencyKey, requestHash, submissionReceipt);
+        if (replay) return replay;
+        const cases = await tx`select state, aggregate_version from osp_private.customer_registration_cases where organization_id = ${input.organizationId} and id = ${input.caseId} for update`;
+        if (cases.length !== 1) fail('CASE_NOT_FOUND');
+        if (cases[0].state !== 'preparing') fail('CASE_FORM_LOCKED');
+        if (Number(cases[0].aggregate_version) !== input.expectedCaseVersion) fail('VERSION_CONFLICT');
+        const template = await readPublishedTemplate(tx, input.organizationId);
+        if (!template || template.latest.id !== input.templateVersionId) fail('FORM_NOT_FOUND');
+        if (!assessFormCompletion(template.latest, input.values).ready) fail('FORM_INCOMPLETE');
+
+        const documentRows = await tx`select version.id from osp_private.document_versions version join osp_private.documents document on document.organization_id = version.organization_id and document.id = version.document_id where version.organization_id = ${input.organizationId} and version.status = 'approved' and ((version.document_type = 'supplier_requirement' and document.case_id = ${input.caseId}) or (version.document_type in ('proof_of_address', 'sat_compliance_opinion', 'tax_status_certificate', 'bank_statement') and (document.case_id = ${input.caseId} or document.case_id is null) and version.valid_from <= current_date and current_date < version.expires_at)) order by version.document_type, version.id`;
+        const documentVersionIds = documentRows.map((row) => String(row.id));
+        const extractionRows = documentVersionIds.length === 0 ? [] : await tx`select id from osp_private.document_extractions where organization_id = ${input.organizationId} and case_id = ${input.caseId} and source_version_id = any(${documentVersionIds}::uuid[]) and status = 'reviewed' order by id`;
+        const extractionIds = extractionRows.map((row) => String(row.id));
+        if (documentVersionIds.length === 0 || extractionIds.length === 0) fail('CASE_REVIEW_NOT_READY');
+
+        const decisionRows = await tx`select distinct decision.id from osp_private.review_decisions decision where decision.organization_id = ${input.organizationId} and decision.decision in ('accepted', 'corrected') and ((decision.subject_kind = 'document_version' and decision.subject_id = any(${documentVersionIds}::uuid[])) or (decision.subject_kind = 'extraction_field' and exists (select 1 from osp_private.extraction_fields field where field.organization_id = decision.organization_id and field.id = decision.subject_id and field.extraction_id = any(${extractionIds}::uuid[]))) or (decision.subject_kind = 'form_mapping' and exists (select 1 from osp_private.supplier_form_mappings mapping where mapping.organization_id = decision.organization_id and mapping.case_id = ${input.caseId} and mapping.id = decision.subject_id and mapping.template_version_id = ${input.templateVersionId} and mapping.extraction_id = any(${extractionIds}::uuid[])))) order by decision.id`;
+        const reviewDecisionIds = decisionRows.map((row) => String(row.id));
+        const mappingRows = await tx`select coalesce(jsonb_agg(jsonb_build_object('mappingId', mapping.id::text, 'mappingVersion', mapping.version, 'mappingSha256', mapping.after_sha256, 'extractionId', mapping.extraction_id::text, 'reviewDecisionId', mapping.review_decision_id::text) order by mapping.id::text), '[]'::jsonb) as refs from osp_private.supplier_form_mappings mapping join osp_private.review_decisions decision on decision.organization_id = mapping.organization_id and decision.case_id = mapping.case_id and decision.id = mapping.review_decision_id and decision.subject_kind = 'form_mapping' and decision.subject_id = mapping.id and decision.decision = mapping.status and decision.before_sha256 = mapping.before_sha256 and decision.after_sha256 = mapping.after_sha256 where mapping.organization_id = ${input.organizationId} and mapping.case_id = ${input.caseId} and mapping.template_version_id = ${input.templateVersionId} and mapping.extraction_id = any(${extractionIds}::uuid[]) and mapping.status in ('accepted', 'corrected')`;
+        const fieldRows = await tx`select coalesce(jsonb_agg(jsonb_build_object('fieldId', field.id::text, 'extractionId', field.extraction_id::text, 'kind', evidence->>'kind', 'sourceVersionId', evidence->>'sourceVersionId', 'rawEvidenceHash', evidence->>'rawEvidenceHash') order by field.id::text, field.extraction_id::text, evidence->>'kind', evidence->>'sourceVersionId', evidence->>'rawEvidenceHash'), '[]'::jsonb) as refs from osp_private.extraction_fields field cross join lateral jsonb_array_elements(field.evidence_json) as item(evidence) where field.organization_id = ${input.organizationId} and field.extraction_id = any(${extractionIds}::uuid[])`;
+        const mappingRefs = jsonArray(mappingRows[0]?.refs);
+        const fieldEvidenceRefs = jsonArray(fieldRows[0]?.refs);
+        if (reviewDecisionIds.length === 0 || mappingRefs.length === 0 || fieldEvidenceRefs.length === 0) fail('CASE_REVIEW_NOT_READY');
+
+        const instance = await saveCaseInstance(tx, input);
+        const nextCaseVersion = input.expectedCaseVersion + 1;
+        const advanced = await tx`update osp_private.customer_registration_cases set state = 'operations_review', aggregate_version = aggregate_version + 1, updated_at = statement_timestamp() where organization_id = ${input.organizationId} and id = ${input.caseId} and state = 'preparing' and aggregate_version = ${input.expectedCaseVersion} returning aggregate_version`;
+        if (advanced.length !== 1 || Number(advanced[0].aggregate_version) !== nextCaseVersion) fail('VERSION_CONFLICT');
+        const snapshots = await tx`insert into osp_private.case_package_input_snapshots (id, organization_id, case_id, case_version, document_version_ids, extraction_ids, template_version_id, form_instance_id, form_instance_version, review_decision_ids, mapping_refs, field_evidence_refs) values (${crypto.randomUUID()}, ${input.organizationId}, ${input.caseId}, ${nextCaseVersion}, ${documentVersionIds}::uuid[], ${extractionIds}::uuid[], ${input.templateVersionId}, ${instance.id}, ${instance.version}, ${reviewDecisionIds}::uuid[], ${JSON.stringify(mappingRefs)}::text::jsonb, ${JSON.stringify(fieldEvidenceRefs)}::text::jsonb) returning id, canonical_sha256`;
+        if (snapshots.length !== 1 || typeof snapshots[0].canonical_sha256 !== 'string') fail('SNAPSHOT_PERSISTENCE_FAILED');
+        await tx`insert into osp_private.case_events (id, organization_id, case_id, sequence, state, actor_subject, authority_role, source_version, occurred_at, reason_code, correlation_id, evidence_json) values (${crypto.randomUUID()}, ${input.organizationId}, ${input.caseId}, ${nextCaseVersion}, 'operations_review', ${input.subject}, 'operations', ${input.expectedCaseVersion}, statement_timestamp(), 'case_form_submitted_for_review', ${crypto.randomUUID()}, ${JSON.stringify([String(snapshots[0].id)])}::text::jsonb)`;
+        const result: CaseFormSubmissionReceipt = { instance, caseState: 'operations_review', caseVersion: nextCaseVersion, snapshotSha256: snapshots[0].canonical_sha256, replayed: false };
         await saveCaseReceipt(tx, input.organizationId, operation, input.idempotencyKey, requestHash, result);
         return result;
       });

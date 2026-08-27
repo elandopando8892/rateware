@@ -82,7 +82,7 @@ async function body(request: Request): Promise<unknown> {
 
 function serviceError(error: unknown): OspApiError {
   const code = error instanceof Error ? error.message : '';
-  if (/^(FORM_|CASE_|VERSION_|IDEMPOTENCY_)/.test(code)) return new OspApiError('INVALID_REQUEST');
+  if (/^(FORM_|CASE_|SNAPSHOT_|VERSION_|IDEMPOTENCY_)/.test(code)) return new OspApiError('INVALID_REQUEST');
   if (/^(DATABASE_|PERSISTENCE_)/.test(code)) return new OspApiError('DEPENDENCY_UNAVAILABLE');
   return new OspApiError('INTERNAL_ERROR');
 }
@@ -116,8 +116,8 @@ export function createFormApiHandler(options: FormApiHandlerOptions): (request: 
         const row = exact(payload, ['action', 'case_id', 'version']);
         if (row.version !== 1 || row.action !== 'get_case_form_workspace' || typeof row.case_id !== 'string' || !UUID.test(row.case_id)) throw new OspApiError('INVALID_REQUEST');
         const result = await options.store.getCaseFormWorkspace(verified.identity.organization, row.case_id);
-        const { saveDraftAllowed, ...workspace } = result;
-        return jsonResponse({ version: 1, data: { ...workspace, capabilities: { saveDraft: canOperate(verified) && saveDraftAllowed } } }, 200, postCorsHeaders(allowed));
+        const { saveDraftAllowed, submitForReviewAllowed, ...workspace } = result;
+        return jsonResponse({ version: 1, data: { ...workspace, capabilities: { saveDraft: canOperate(verified) && saveDraftAllowed, submitForReview: canOperate(verified) && submitForReviewAllowed } } }, 200, postCorsHeaders(allowed));
       }
       if (!canOperate(verified)) throw new OspApiError('FORBIDDEN');
       if ((payload as { action?: unknown })?.action === 'save_form_template_draft') {
@@ -144,6 +144,14 @@ export function createFormApiHandler(options: FormApiHandlerOptions): (request: 
         const expectedVersion = integer(row.expected_version, row.instance_id === null ? 0 : 1);
         if ((row.instance_id === null) !== (expectedVersion === 0)) throw new OspApiError('INVALID_REQUEST');
         const result = await options.store.saveCaseFormDraft({ organizationId: verified.identity.organization, subject: verified.identity.subject, idempotencyKey: row.idempotency_key, caseId: row.case_id, templateVersionId: row.template_version_id, instanceId: row.instance_id as string | null, expectedVersion, values: formValues(row.values) });
+        return jsonResponse({ version: 1, data: result }, 200, postCorsHeaders(allowed));
+      }
+      if ((payload as { action?: unknown })?.action === 'submit_case_form_for_review') {
+        const row = exact(payload, ['action', 'case_id', 'expected_case_version', 'expected_version', 'idempotency_key', 'instance_id', 'template_version_id', 'values', 'version']);
+        if (row.version !== 1 || row.action !== 'submit_case_form_for_review' || typeof row.idempotency_key !== 'string' || !OPAQUE.test(row.idempotency_key) || typeof row.case_id !== 'string' || !UUID.test(row.case_id) || typeof row.template_version_id !== 'string' || !UUID.test(row.template_version_id) || !(row.instance_id === null || typeof row.instance_id === 'string' && UUID.test(row.instance_id))) throw new OspApiError('INVALID_REQUEST');
+        const expectedVersion = integer(row.expected_version, row.instance_id === null ? 0 : 1);
+        if ((row.instance_id === null) !== (expectedVersion === 0)) throw new OspApiError('INVALID_REQUEST');
+        const result = await options.store.submitCaseFormForReview({ organizationId: verified.identity.organization, subject: verified.identity.subject, idempotencyKey: row.idempotency_key, caseId: row.case_id, expectedCaseVersion: integer(row.expected_case_version, 0), templateVersionId: row.template_version_id, instanceId: row.instance_id as string | null, expectedVersion, values: formValues(row.values) });
         return jsonResponse({ version: 1, data: result }, 200, postCorsHeaders(allowed));
       }
       throw new OspApiError('INVALID_REQUEST');

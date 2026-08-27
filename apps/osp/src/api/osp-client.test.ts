@@ -272,11 +272,12 @@ it('loads and saves one case form through exact tenant-scoped form actions', asy
   };
   const workspace = {
     caseId, supplierName: 'Sierra Retail Mexico', caseVersion: 5, caseState: 'preparing',
-    templateName: 'XBF customer setup', template, instance: { ...instance, version: 2 }, capabilities: { saveDraft: true },
+    templateName: 'XBF customer setup', template, instance: { ...instance, version: 2 }, capabilities: { saveDraft: true, submitForReview: true },
   };
   const h = harness([
     json({ version: 1, data: workspace }),
     json({ version: 1, data: { instance, replayed: false } }),
+    json({ version: 1, data: { instance, caseState: 'operations_review', caseVersion: 6, snapshotSha256: 'b'.repeat(64), replayed: false } }),
   ]);
 
   await expect(h.client.getCaseFormWorkspace(caseId)).resolves.toEqual(workspace);
@@ -284,9 +285,14 @@ it('loads and saves one case form through exact tenant-scoped form actions', asy
     idempotencyKey: 'case-form-save:1', caseId, templateVersionId,
     instanceId: instance.id, expectedVersion: 2, values: instance.values,
   })).resolves.toEqual({ instance, replayed: false });
+  await expect(h.client.submitCaseFormForReview({
+    idempotencyKey: 'case-form-submit:1', caseId, expectedCaseVersion: 5, templateVersionId,
+    instanceId: instance.id, expectedVersion: 2, values: instance.values,
+  })).resolves.toMatchObject({ caseState: 'operations_review', caseVersion: 6, snapshotSha256: 'b'.repeat(64) });
 
   expect(h.fetch.mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit).body)))).toEqual([
     { version: 1, action: 'get_case_form_workspace', case_id: caseId },
     { version: 1, action: 'save_case_form_draft', idempotency_key: 'case-form-save:1', case_id: caseId, template_version_id: templateVersionId, instance_id: instance.id, expected_version: 2, values: instance.values },
+    { version: 1, action: 'submit_case_form_for_review', idempotency_key: 'case-form-submit:1', case_id: caseId, expected_case_version: 5, template_version_id: templateVersionId, instance_id: instance.id, expected_version: 2, values: instance.values },
   ]);
 });

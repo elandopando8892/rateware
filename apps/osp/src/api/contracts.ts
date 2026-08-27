@@ -388,12 +388,22 @@ export const CaseFormWorkspaceResponseSchema = z.strictObject({
   version: z.literal(1), data: z.strictObject({
     caseId: z.uuid(), supplierName: z.string().min(1).max(256), caseVersion: z.number().int().min(0).max(2_147_483_647),
     caseState: CaseStateSchema, templateName: z.string().min(3).max(128).nullable(), template: FormTemplateVersionSchema.nullable(),
-    instance: CaseFormInstanceSchema.nullable(), capabilities: z.strictObject({ saveDraft: z.boolean() }),
+    instance: CaseFormInstanceSchema.nullable(), capabilities: z.strictObject({ saveDraft: z.boolean(), submitForReview: z.boolean() }),
   }),
 });
 
 export const CaseFormMutationResponseSchema = z.strictObject({
   version: z.literal(1), data: z.strictObject({ instance: CaseFormInstanceSchema, replayed: z.boolean() }),
+});
+
+export const CaseFormSubmissionResponseSchema = z.strictObject({
+  version: z.literal(1), data: z.strictObject({
+    instance: CaseFormInstanceSchema,
+    caseState: z.literal('operations_review'),
+    caseVersion: z.number().int().min(1).max(2_147_483_647),
+    snapshotSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    replayed: z.boolean(),
+  }),
 });
 
 export type PipelineReadModel = z.infer<typeof PipelineReadModelSchema>;
@@ -416,3 +426,4 @@ export type FormValues = z.infer<typeof FormValuesSchema>;
 export type CaseFormInstance = z.infer<typeof CaseFormInstanceSchema>;
 export type CaseFormWorkspace = z.infer<typeof CaseFormWorkspaceResponseSchema>['data'];
 export type CaseFormMutationReceipt = z.infer<typeof CaseFormMutationResponseSchema>['data'];
+export type CaseFormSubmissionReceipt = z.infer<typeof CaseFormSubmissionResponseSchema>['data'];

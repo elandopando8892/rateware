@@ -83,7 +83,7 @@ Deno.test('form API binds a published template to a case and saves an idempotent
   const workspaceBody = (await workspace.json()).data;
   assert.equal(workspaceBody.supplierName, 'Synthetic supplier');
   assert.equal(workspaceBody.template.status, 'published');
-  assert.deepEqual(workspaceBody.capabilities, { saveDraft: false });
+  assert.deepEqual(workspaceBody.capabilities, { saveDraft: false, submitForReview: false });
 
   const command = { version: 1, action: 'save_case_form_draft', idempotency_key: 'case-form-save', case_id: caseId, template_version_id: template.latest.id, instance_id: null, expected_version: 0, values: { legal_name: 'Synthetic supplier' } };
   const first = await subject(request(command));
@@ -100,4 +100,14 @@ Deno.test('form API binds a published template to a case and saves an idempotent
 
   const current = await subject(request({ version: 1, action: 'get_case_form_workspace', case_id: caseId }));
   assert.deepEqual((await current.json()).data.instance.values, { legal_name: 'Synthetic supplier updated' });
+
+  const submitted = await subject(request({ version: 1, action: 'submit_case_form_for_review', idempotency_key: 'case-form-submit', case_id: caseId, expected_case_version: 4, template_version_id: template.latest.id, instance_id: firstBody.instance.id, expected_version: 2, values: { legal_name: 'Synthetic supplier updated' } }));
+  assert.equal(submitted.status, 200);
+  const submittedBody = (await submitted.json()).data;
+  assert.equal(submittedBody.caseState, 'operations_review');
+  assert.equal(submittedBody.caseVersion, 5);
+  assert.match(submittedBody.snapshotSha256, /^[0-9a-f]{64}$/);
+
+  const locked = await subject(request({ ...command, idempotency_key: 'case-form-save-after-submit', instance_id: firstBody.instance.id, expected_version: 2 }));
+  assert.equal(locked.status, 400);
 });
