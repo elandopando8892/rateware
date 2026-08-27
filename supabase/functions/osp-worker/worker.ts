@@ -10,6 +10,7 @@ import {
 } from "./intake-service.ts";
 import type { SignatureApplyReceipt } from "../_shared/osp/signature-port.ts";
 import type { AutomaticPreparationService } from "./automatic-preparation.ts";
+import type { AttachmentPromotionService } from "./attachment-promotion.ts";
 
 const TEMPORARY = new Set<JobErrorCode>([
   "GMAIL_TEMPORARY",
@@ -113,6 +114,7 @@ async function execute(
   quarterlyDocuments?: QuarterlyDocumentService,
   signatures?: SignatureJobService,
   outboundSends?: OutboundSendJobService,
+  attachmentPromotions?: AttachmentPromotionService,
 ): Promise<void> {
   if (job.kind === "send_authorized_payload") {
     const attemptId = job.opaquePayload.attemptId;
@@ -194,13 +196,23 @@ async function execute(
   if (!gmailMessageId || !deliveryIdempotencyKey) {
     throw new Error("INVALID_INPUT");
   }
-  await intake.ingest({
+  const result = await intake.ingest({
     organizationId: job.organizationId,
     gmailMessageId,
     deliveryIdempotencyKey,
     jobId: job.id,
     leaseToken: job.leaseToken,
   });
+  if (
+    attachmentPromotions &&
+    (result.outcome === "created" || result.outcome === "attached")
+  ) {
+    await attachmentPromotions.promoteCase({
+      organizationId: job.organizationId,
+      caseId: result.caseId,
+      correlationId: job.id,
+    });
+  }
 }
 
 export async function runWorker(
@@ -214,6 +226,7 @@ export async function runWorker(
     quarterlyDocuments?: QuarterlyDocumentService;
     signatures?: SignatureJobService;
     outboundSends?: OutboundSendJobService;
+    attachmentPromotions?: AttachmentPromotionService;
     reportFailure?: (input: {
       jobId: string;
       kind: string;
@@ -243,6 +256,7 @@ export async function runWorker(
         deps.quarterlyDocuments,
         deps.signatures,
         deps.outboundSends,
+        deps.attachmentPromotions,
       );
       await deps.jobs.complete({
         jobId: job.id,

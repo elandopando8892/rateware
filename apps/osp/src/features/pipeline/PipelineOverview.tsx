@@ -26,6 +26,11 @@ const preparedStates = new Set<CaseState>([
   'preparing', 'operations_review', 'signature_approval', 'sales_authorization',
   'ready_to_send', 'sent', 'accepted', 'closed',
 ]);
+const evidenceStates = new Set<CaseState>([
+  'analyzing_requirements', 'awaiting_clarification', 'awaiting_xbf_information',
+  'preparing', 'operations_review', 'signature_approval', 'sales_authorization',
+  'ready_to_send', 'sent', 'manual_reconciliation_required', 'accepted', 'rejected', 'closed',
+]);
 const reviewStates = new Set<CaseState>([
   'operations_review', 'signature_approval', 'sales_authorization',
   'ready_to_send', 'sent', 'accepted', 'closed',
@@ -46,6 +51,7 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
   const automaticWatch = health === 'watching';
   const visibleCases = cases.data ?? [];
   const preparedCases = visibleCases.filter((caseRecord) => preparedStates.has(caseRecord.state)).length;
+  const evidenceCases = visibleCases.filter((caseRecord) => evidenceStates.has(caseRecord.state)).length;
   const reviewCases = visibleCases.filter((caseRecord) => reviewStates.has(caseRecord.state)).length;
   const sync = useMutation({
     mutationFn: async () => {
@@ -150,12 +156,16 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
             <span className="automation-step-marker" aria-hidden="true">2</span>
             <div><strong>Request captured</strong><p>{visibleCases.length} visible case(s) preserve the source email and attachments.</p></div>
           </li>
-          <li className={preparedCases > 0 ? 'automation-step-complete' : 'automation-step-pending'}>
+          <li className={evidenceCases > 0 ? 'automation-step-complete' : 'automation-step-pending'}>
             <span className="automation-step-marker" aria-hidden="true">3</span>
+            <div><strong>Evidence extracted</strong><p>{evidenceCases} case(s) have hash-verified attachment evidence or passed that point.</p></div>
+          </li>
+          <li className={preparedCases > 0 ? 'automation-step-complete' : 'automation-step-pending'}>
+            <span className="automation-step-marker" aria-hidden="true">4</span>
             <div><strong>Package prepared</strong><p>{preparedCases} case(s) have a prepared XBF package or passed that point.</p></div>
           </li>
           <li className={reviewCases > 0 ? 'automation-step-complete' : 'automation-step-pending'}>
-            <span className="automation-step-marker" aria-hidden="true">4</span>
+            <span className="automation-step-marker" aria-hidden="true">5</span>
             <div><strong>Operations handoff</strong><p>{reviewCases} case(s) reached the human evidence-review gate.</p></div>
           </li>
         </ol>

@@ -6,6 +6,7 @@ import {
 } from "../_shared/provider-gmail.ts";
 import { createOspWorkerHandler } from "./handler.ts";
 import { createShadowWorkerRuntime } from "./shadow-runtime.ts";
+import { resolveGovernedAutomation } from "./governed-automation-config.ts";
 
 function required(name: string): string {
   const value = Deno.env.get(name)?.trim();
@@ -81,6 +82,7 @@ const runtime = createShadowWorkerRuntime({
   gmailAccessToken,
   storageClient: supabase,
   workerId: `osp-edge:${crypto.randomUUID()}`,
+  automation: resolveGovernedAutomation(Deno.env),
 });
 
 Deno.serve(createOspWorkerHandler({

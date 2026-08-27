@@ -176,7 +176,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/pipeline/PipelineOverview.tsx",
-      "sha256": "2f07d658bd8b447125c287eeb40f380b4ab7e0d7f6d307e9f2f68d0645b0dd5b"
+      "sha256": "19b1730c4837a89a058809210e976951c84f621e05df893f259eea7f15450bdd"
     },
     {
       "kind": "production-ui",

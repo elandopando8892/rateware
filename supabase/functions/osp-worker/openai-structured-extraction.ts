@@ -1,9 +1,9 @@
 type RequestPort = (input: string | URL, init?: RequestInit) => Promise<Response>;
-type EvidenceInput = { id: string; kind: 'pdf_region' | 'xlsx_cell'; content: string };
-type FieldValue = { presence: 'present' | 'blank' | 'absent' | 'uncertain'; value: string | null; confidence: number; evidenceIds: string[] };
-type StructuredResult = {
+export type StructuredEvidenceInput = { id: string; kind: 'pdf_region' | 'xlsx_cell'; content: string };
+export type StructuredFieldValue = { presence: 'present' | 'blank' | 'absent' | 'uncertain'; value: string | null; confidence: number; evidenceIds: string[] };
+export type StructuredExtractionResult = {
   schemaVersion: 1;
-  supplier: { legalName: FieldValue };
+  supplier: { legalName: StructuredFieldValue };
   requestedDocuments: Array<{ documentType: string; required: boolean; evidenceIds: string[] }>;
   requirements: Array<{ id: string; text: string; evidenceIds: string[] }>;
   contradictions: string[];
@@ -61,17 +61,17 @@ function citations(value: unknown, allowed: ReadonlySet<string>): string[] {
   return ids;
 }
 
-function fieldValue(value: unknown, allowed: ReadonlySet<string>): FieldValue {
+function fieldValue(value: unknown, allowed: ReadonlySet<string>): StructuredFieldValue {
   const field = exactRecord(value, ['presence', 'value', 'confidence', 'evidenceIds']);
   if (!['present', 'blank', 'absent', 'uncertain'].includes(field.presence as string)) throw new Error('OPENAI_OUTPUT_INVALID');
   if (field.value !== null && (typeof field.value !== 'string' || field.value.length > 10_000)) throw new Error('OPENAI_OUTPUT_INVALID');
   if (typeof field.confidence !== 'number' || !Number.isFinite(field.confidence) || field.confidence < 0 || field.confidence > 1) throw new Error('OPENAI_OUTPUT_INVALID');
   if (field.presence === 'present' && (typeof field.value !== 'string' || field.value.length < 1)) throw new Error('OPENAI_OUTPUT_INVALID');
   if ((field.presence === 'blank' || field.presence === 'absent') && field.value !== null) throw new Error('OPENAI_OUTPUT_INVALID');
-  return { presence: field.presence as FieldValue['presence'], value: field.value as string | null, confidence: field.confidence, evidenceIds: citations(field.evidenceIds, allowed) };
+  return { presence: field.presence as StructuredFieldValue['presence'], value: field.value as string | null, confidence: field.confidence, evidenceIds: citations(field.evidenceIds, allowed) };
 }
 
-function parseOutput(value: unknown, allowed: ReadonlySet<string>): StructuredResult {
+function parseOutput(value: unknown, allowed: ReadonlySet<string>): StructuredExtractionResult {
   const output = exactRecord(value, ['schemaVersion', 'supplier', 'requestedDocuments', 'requirements', 'contradictions', 'missingInformation', 'clarificationQuestions']);
   if (output.schemaVersion !== 1) throw new Error('OPENAI_OUTPUT_INVALID');
   const supplier = exactRecord(output.supplier, ['legalName']);
@@ -114,7 +114,7 @@ export function createOpenAiStructuredExtraction(options: { baseUrl: string; api
   const apiKey = requireSecret(options.apiKey);
   if (!/^[A-Za-z0-9._-]{1,128}$/.test(options.model) || typeof options.request !== 'function') throw new Error('OPENAI_CONFIGURATION_INVALID');
   return Object.freeze({
-    async extract(input: { evidence: EvidenceInput[] }): Promise<StructuredResult> {
+    async extract(input: { evidence: StructuredEvidenceInput[] }): Promise<StructuredExtractionResult> {
       if (!Array.isArray(input.evidence) || input.evidence.length < 1 || input.evidence.length > 5_000) throw new Error('OPENAI_INPUT_INVALID');
       const ids = new Set<string>();
       const evidence = input.evidence.map((item) => {

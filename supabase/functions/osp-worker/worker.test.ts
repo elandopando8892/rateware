@@ -240,6 +240,53 @@ Deno.test("worker routes document extraction and retries only its temporary prov
   assertEquals(failures[0].retryAt?.toISOString(), "2026-08-22T00:00:05.000Z");
 });
 
+Deno.test("worker promotes attachments only after a created or exact-attached Gmail intake", async () => {
+  const promoted: string[] = [];
+  const completed: string[] = [];
+  await runWorker({
+    workerId: "local-worker",
+    now: () => new Date("2026-08-27T00:00:00.000Z"),
+    jobs: {
+      claim: async () => [{
+        id: "job-intake-promote",
+        organizationId: "org-1",
+        kind: "gmail_ingest",
+        opaquePayload: {
+          gmailMessageId: "message_1",
+          deliveryIdempotencyKey: "delivery_1",
+        },
+        attempt: 1,
+        leaseToken: "11111111-1111-4111-8111-111111111111",
+        leasedUntil: "2026-08-27T00:05:00.000Z",
+      }],
+      complete: async (input) => {
+        completed.push(input.jobId);
+      },
+      fail: async () => {
+        throw new Error("unexpected failure");
+      },
+    },
+    intake: {
+      ingest: async () => ({
+        outcome: "created",
+        caseId: "case-1",
+        eventId: "event-1",
+      }),
+      refreshDuplicateReview: async () => undefined,
+    },
+    attachmentPromotions: {
+      promoteCase: async (input) => {
+        promoted.push(
+          `${input.organizationId}:${input.caseId}:${input.correlationId}`,
+        );
+        return [];
+      },
+    },
+  });
+  assertEquals(promoted, ["org-1:case-1:job-intake-promote"]);
+  assertEquals(completed, ["job-intake-promote"]);
+});
+
 Deno.test("worker routes form mapping to a no-effects preparation service", async () => {
   const prepared: unknown[] = [];
   const completed: string[] = [];
