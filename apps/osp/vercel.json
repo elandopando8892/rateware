@@ -2,18 +2,19 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pnpm build",
   "outputDirectory": "dist",
+  "cleanUrls": true,
   "rewrites": [
-    { "source": "/", "destination": "/app/index.html" },
-    { "source": "/app", "destination": "/app/index.html" },
-    { "source": "/app/pipeline", "destination": "/app/index.html" },
-    { "source": "/app/forms/builder", "destination": "/app/index.html" },
-    { "source": "/app/documents", "destination": "/app/index.html" },
-    { "source": "/app/clarifications", "destination": "/app/index.html" },
-    { "source": "/app/cases/:caseId", "destination": "/app/index.html" },
-    { "source": "/app/cases/:caseId/form", "destination": "/app/index.html" },
-    { "source": "/app/cases/:caseId/review", "destination": "/app/index.html" },
-    { "source": "/app/cases/:caseId/signature", "destination": "/app/index.html" },
-    { "source": "/app/cases/:caseId/authorization", "destination": "/app/index.html" },
-    { "source": "/app/cases/:caseId/communications/:payloadId", "destination": "/app/index.html" }
+    { "source": "/", "destination": "/app/index" },
+    { "source": "/app", "destination": "/app/index" },
+    { "source": "/app/pipeline", "destination": "/app/index" },
+    { "source": "/app/forms/builder", "destination": "/app/index" },
+    { "source": "/app/documents", "destination": "/app/index" },
+    { "source": "/app/clarifications", "destination": "/app/index" },
+    { "source": "/app/cases/:caseId", "destination": "/app/index" },
+    { "source": "/app/cases/:caseId/form", "destination": "/app/index" },
+    { "source": "/app/cases/:caseId/review", "destination": "/app/index" },
+    { "source": "/app/cases/:caseId/signature", "destination": "/app/index" },
+    { "source": "/app/cases/:caseId/authorization", "destination": "/app/index" },
+    { "source": "/app/cases/:caseId/communications/:payloadId", "destination": "/app/index" }
   ]
 }

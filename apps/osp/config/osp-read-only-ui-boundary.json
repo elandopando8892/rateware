@@ -231,7 +231,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/vercel.json",
-      "sha256": "5a529bc99ab15f6e9f0f2b16fae18b20e75bd098dcd8d671a883908819bbc2d5"
+      "sha256": "3b1244b356236cbf20e7937d1f246cf44b7400b5045153adecea6a05a5bfa343"
     },
     {
       "kind": "production-ui",
