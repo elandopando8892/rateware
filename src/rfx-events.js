@@ -6894,6 +6894,21 @@ function eventInvitationNextAction(row = {}, status = eventInvitationStatus(row)
   })[status] || "Review";
 }
 
+let activeRfxDeliveryView = "participation";
+
+function activateRfxDeliveryView(view = "participation") {
+  const nextView = view === "queue" ? "queue" : "participation";
+  activeRfxDeliveryView = nextView;
+  document.querySelectorAll("[data-rfx-delivery-view]").forEach((button) => {
+    const active = button.dataset.rfxDeliveryView === nextView;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  document.querySelectorAll("[data-rfx-delivery-view-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.rfxDeliveryViewPanel !== nextView;
+  });
+}
+
 function renderDeliveryWaveState() {
   if (!rfxDeliveryWaveState) return;
   if (!selectedEventId) {
@@ -13536,5 +13551,10 @@ rfxOpenDeliveryQueueButton?.addEventListener("click", () => {
   draftQueueSearch = "";
   draftQueueOffset = 0;
   activateRfxLaunchWorkspace("delivery", { refresh: true });
+  activateRfxDeliveryView("queue");
   setStatus(rfxOutreachStatus, "Delivery queue opened for pending drafts. Messages remain unsent until you select and send them.", "neutral");
+});
+
+document.querySelectorAll("[data-rfx-delivery-view]").forEach((button) => {
+  button.addEventListener("click", () => activateRfxDeliveryView(button.dataset.rfxDeliveryView));
 });
