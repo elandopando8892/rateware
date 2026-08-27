@@ -1,14 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { lazy, Suspense, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { FormValues } from '../../api/contracts';
+import type { CaseFormWorkspace as CaseFormWorkspaceModel, FormValues } from '../../api/contracts';
 import type { OspClient } from '../../api/osp-client';
 import { assessFormCompletion } from './form-completion';
 
 const FormRuntime = lazy(() => import('./FormRuntime').then((module) => ({ default: module.FormRuntime })));
 
-type CaseFormClient = Pick<OspClient, 'getCaseFormWorkspace' | 'saveCaseFormDraft' | 'submitCaseFormForReview'>;
+type CaseFormClient = Pick<OspClient, 'getCaseFormWorkspace' | 'saveCaseFormDraft' | 'acceptCaseFormMapping' | 'submitCaseFormForReview'>;
 
 export function CaseFormWorkspace({ client, caseId }: { client: CaseFormClient; caseId: string }) {
   const navigate = useNavigate();
@@ -21,6 +21,9 @@ export function CaseFormWorkspace({ client, caseId }: { client: CaseFormClient; 
       instanceId: query.data.instance?.id ?? null, expectedVersion: query.data.instance?.version ?? 0, values,
     });
     await query.refetch();
+  }} onAcceptMapping={async (mappingId, expectedMappingVersion, expectedAfterSha256, idempotencyKey) => {
+    await client.acceptCaseFormMapping({ idempotencyKey, caseId, mappingId, expectedMappingVersion, expectedAfterSha256 });
+    await query.refetch();
   }} onSubmit={async (values, idempotencyKey) => {
     await client.submitCaseFormForReview({
       idempotencyKey, caseId, expectedCaseVersion: query.data.caseVersion, templateVersionId: query.data.template?.id ?? '',
@@ -30,16 +33,24 @@ export function CaseFormWorkspace({ client, caseId }: { client: CaseFormClient; 
   }} />;
 }
 
-function CaseFormEditor({ workspace, onSave, onSubmit }: { workspace: Awaited<ReturnType<CaseFormClient['getCaseFormWorkspace']>>; onSave(values: FormValues, idempotencyKey: string): Promise<void>; onSubmit(values: FormValues, idempotencyKey: string): Promise<void> }) {
+function CaseFormEditor({ workspace, onSave, onAcceptMapping, onSubmit }: { workspace: Awaited<ReturnType<CaseFormClient['getCaseFormWorkspace']>>; onSave(values: FormValues, idempotencyKey: string): Promise<void>; onAcceptMapping(mappingId: string, expectedMappingVersion: number, expectedAfterSha256: string, idempotencyKey: string): Promise<void>; onSubmit(values: FormValues, idempotencyKey: string): Promise<void> }) {
   const initialValues = useMemo(() => structuredClone(workspace.instance?.values ?? {}), [workspace.instance]);
   const [values, setValues] = useState<FormValues>(initialValues);
+  const mapping = workspace.mappings.find((item) => item.status === 'unresolved') ?? workspace.mappings[0] ?? null;
   const idempotencyKeyRef = useRef(`case-form-save:${crypto.randomUUID()}`);
+  const mappingKeyRef = useRef(`case-mapping-accept:${crypto.randomUUID()}`);
   const submitKeyRef = useRef(`case-form-submit:${crypto.randomUUID()}`);
   const [saving, setSaving] = useState(false);
+  const [acceptingMapping, setAcceptingMapping] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
+  const [mappingConfirmed, setMappingConfirmed] = useState(false);
+  const [mappingFailed, setMappingFailed] = useState(false);
   const [submitFailed, setSubmitFailed] = useState(false);
   const completion = useMemo(() => workspace.template ? assessFormCompletion(workspace.template, values) : { required: 0, completed: 0, progress: 0, issues: [], ready: false }, [workspace.template, values]);
+  const draftChanged = JSON.stringify(values) !== JSON.stringify(initialValues);
+  const mappingResolved = workspace.mappings.length > 0 && workspace.mappings.every((item) => item.status === 'accepted' || item.status === 'corrected');
+  useEffect(() => { setMappingConfirmed(false); setMappingFailed(false); }, [mapping?.id, mapping?.status, mapping?.version]);
   const save = async () => {
     setSaveFailed(false); setSaving(true);
     try {
@@ -53,6 +64,14 @@ function CaseFormEditor({ workspace, onSave, onSubmit }: { workspace: Awaited<Re
       await onSubmit(values, submitKeyRef.current);
       submitKeyRef.current = `case-form-submit:${crypto.randomUUID()}`;
     } catch { setSubmitFailed(true); } finally { setSubmitting(false); }
+  };
+  const acceptMapping = async () => {
+    if (!mapping) return;
+    setMappingFailed(false); setAcceptingMapping(true);
+    try {
+      await onAcceptMapping(mapping.id, mapping.version, mapping.afterSha256, mappingKeyRef.current);
+      mappingKeyRef.current = `case-mapping-accept:${crypto.randomUUID()}`;
+    } catch { setMappingFailed(true); } finally { setAcceptingMapping(false); }
   };
 
   return (
@@ -68,6 +87,17 @@ function CaseFormEditor({ workspace, onSave, onSubmit }: { workspace: Awaited<Re
         <div className="progress-track" aria-hidden="true"><span style={{ width: `${completion.progress}%` }} /></div>
         <p>{workspace.instance ? `Last saved ${new Date(workspace.instance.updatedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Mexico_City' })}` : 'Not saved yet'}</p>
       </section>
+
+      <AutomaticPrefillReview
+        workspace={workspace}
+        mapping={mapping}
+        confirmed={mappingConfirmed}
+        draftChanged={draftChanged}
+        pending={acceptingMapping}
+        failed={mappingFailed}
+        onConfirmed={setMappingConfirmed}
+        onAccept={() => void acceptMapping()}
+      />
 
       <div className="case-form-layout">
         <aside className="case-form-rail" aria-label="Case form stages">
@@ -86,16 +116,56 @@ function CaseFormEditor({ workspace, onSave, onSubmit }: { workspace: Awaited<Re
           )}
           {saveFailed ? <p role="alert">The draft could not be saved. Reload the current case version and retry.</p> : null}
           {submitFailed ? <p role="alert">The form was not submitted. Required evidence or the current case version may have changed; reload before retrying.</p> : null}
-          <footer><p>Save freely while working. Submission atomically preserves the exact values and evidence snapshot.</p><div className="case-form-actions"><button type="button" className="secondary" disabled={!workspace.template || !workspace.capabilities.saveDraft || saving || submitting} onClick={() => void save()}>{saving ? 'Saving…' : 'Save draft'}</button><button type="button" disabled={!workspace.template || !workspace.capabilities.submitForReview || !completion.ready || saving || submitting} onClick={() => void submit()}>{submitting ? 'Submitting…' : 'Submit for Operations review'}</button></div></footer>
+          <footer><p>Save freely while working. Submission atomically preserves the exact values and evidence snapshot.</p><div className="case-form-actions"><button type="button" className="secondary" disabled={!workspace.template || !workspace.capabilities.saveDraft || saving || acceptingMapping || submitting} onClick={() => void save()}>{saving ? 'Saving…' : 'Save draft'}</button><button type="button" disabled={!workspace.template || !workspace.capabilities.submitForReview || !completion.ready || saving || acceptingMapping || submitting} onClick={() => void submit()}>{submitting ? 'Submitting…' : 'Submit for Operations review'}</button></div></footer>
         </main>
 
         <aside className="case-form-gates" aria-labelledby="case-form-gates-title">
-          <p className="eyebrow">Next gate</p><h2 id="case-form-gates-title">{!workspace.template ? 'Published template required' : completion.ready ? 'Ready to submit' : `${completion.issues.length} ${completion.issues.length === 1 ? 'field needs' : 'fields need'} attention`}</h2>
+          <p className="eyebrow">Next gate</p><h2 id="case-form-gates-title">{!workspace.template ? 'Published template required' : !completion.ready ? `${completion.issues.length} ${completion.issues.length === 1 ? 'field needs' : 'fields need'} attention` : !mappingResolved ? 'Prefill review required' : 'Ready to submit'}</h2>
           {!workspace.template ? <p>Create and publish the controlled XBF template before completing this case.</p> : completion.issues.length > 0 ? <ul>{completion.issues.map((issue) => <li key={issue.fieldId}>{issue.label} · {issue.code}</li>)}</ul> : <p>Submission saves this exact form and creates the immutable Operations evidence snapshot in one controlled transaction.</p>}
-          {workspace.template && !workspace.capabilities.submitForReview ? <p className="privacy-note">The case must be in Preparing state with Operations authority before submission is enabled.</p> : null}
+          {workspace.template && !mappingResolved ? <p className="privacy-note">Operations must accept every automatic prefill before submission is enabled.</p> : workspace.template && !workspace.capabilities.submitForReview ? <p className="privacy-note">The case must be in Preparing state with Operations authority before submission is enabled.</p> : null}
           <p className="privacy-note">Private document bytes and extracted evidence remain outside this browser view.</p>
         </aside>
       </div>
     </div>
   );
+}
+
+const sourceLabels = Object.freeze({ existing_draft: 'Existing draft', rateware: 'Rateware', attachment: 'Attachment', missing: 'Missing' });
+
+function AutomaticPrefillReview({ workspace, mapping, confirmed, draftChanged, pending, failed, onConfirmed, onAccept }: {
+  workspace: CaseFormWorkspaceModel;
+  mapping: CaseFormWorkspaceModel['mappings'][number] | null;
+  confirmed: boolean;
+  draftChanged: boolean;
+  pending: boolean;
+  failed: boolean;
+  onConfirmed(value: boolean): void;
+  onAccept(): void;
+}) {
+  const labels = new Map(workspace.template?.fields.map((field) => [field.id, field.label]) ?? []);
+  const accepted = mapping?.status === 'accepted' || mapping?.status === 'corrected';
+  const prepared = mapping?.automaticStatus === 'ready_for_operations_review' && mapping.fields.length > 0 && mapping.fields.every((field) => field.status === 'prepared');
+  const canAccept = Boolean(mapping && workspace.capabilities.acceptMapping && prepared && mapping.matchesCurrentDraft && !draftChanged);
+  return <section className={`automatic-prefill-review${accepted ? ' accepted' : ''}`} aria-labelledby="automatic-prefill-title">
+    <header>
+      <div><p className="eyebrow">Human control · zero external effects</p><h2 id="automatic-prefill-title">Automatic prefill review</h2><p>Confirm what OSP prepared from Rateware and the preserved source evidence.</p></div>
+      <span className={`form-status ${accepted ? 'published' : 'draft'}`}>{accepted ? 'Accepted' : mapping ? 'Awaiting review' : 'Not prepared'}</span>
+    </header>
+    {!mapping ? <p role="status">Automatic preparation has not produced a reviewable prefill for this case.</p> : <>
+      <dl className="automatic-prefill-metrics">
+        <div><dt>Prepared fields</dt><dd>{mapping.fields.filter((field) => field.status === 'prepared').length}/{mapping.fields.length}</dd></div>
+        <div><dt>Evidence links</dt><dd>{mapping.fields.reduce((total, field) => total + field.evidenceCount, 0)}</dd></div>
+        <div><dt>Fingerprint</dt><dd><code>{mapping.afterSha256.slice(0, 12)}</code></dd></div>
+      </dl>
+      <ul className="automatic-prefill-fields">
+        {mapping.fields.map((field) => <li key={field.fieldId}><span><strong>{labels.get(field.fieldId) ?? field.fieldId}</strong><small>{sourceLabels[field.source]} · {field.evidenceCount} evidence {field.evidenceCount === 1 ? 'link' : 'links'}</small></span><span className={`mapping-field-status ${field.status}`}>{field.status}</span></li>)}
+      </ul>
+      {accepted ? <p className="mapping-review-result" role="status">Operations accepted this exact prefill. The decision and fingerprint are preserved for the package snapshot.</p> : <div className="mapping-review-control">
+        {!prepared ? <p role="status">Missing or contradictory fields must be resolved before this prefill can be accepted.</p> : !mapping.matchesCurrentDraft ? <p role="alert">The saved draft no longer matches this automatic prefill. A correction review is required.</p> : draftChanged ? <p role="status">Unsaved edits differ from the prefill. Revert them to accept it unchanged, or save them for the correction workflow.</p> : null}
+        <label className="control-confirmation"><input type="checkbox" checked={confirmed} disabled={!canAccept || pending} onChange={(event) => onConfirmed(event.target.checked)} /> I reviewed every prefilled field, source, and evidence count shown above.</label>
+        {failed ? <p role="alert">The prefill was not accepted. The case, draft, or fingerprint changed; reload and review the current version.</p> : null}
+        <button type="button" disabled={!canAccept || !confirmed || pending} onClick={onAccept}>{pending ? 'Accepting…' : 'Accept automatic prefill'}</button>
+      </div>}
+    </>}
+  </section>;
 }

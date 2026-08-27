@@ -83,7 +83,8 @@ Deno.test('form API binds a published template to a case and saves an idempotent
   const workspaceBody = (await workspace.json()).data;
   assert.equal(workspaceBody.supplierName, 'Synthetic supplier');
   assert.equal(workspaceBody.template.status, 'published');
-  assert.deepEqual(workspaceBody.capabilities, { saveDraft: false, submitForReview: false });
+  assert.deepEqual(workspaceBody.capabilities, { saveDraft: false, acceptMapping: false, submitForReview: false });
+  assert.deepEqual(workspaceBody.mappings, []);
 
   const command = { version: 1, action: 'save_case_form_draft', idempotency_key: 'case-form-save', case_id: caseId, template_version_id: template.latest.id, instance_id: null, expected_version: 0, values: { legal_name: 'Synthetic supplier' } };
   const first = await subject(request(command));
@@ -110,4 +111,24 @@ Deno.test('form API binds a published template to a case and saves an idempotent
 
   const locked = await subject(request({ ...command, idempotency_key: 'case-form-save-after-submit', instance_id: firstBody.instance.id, expected_version: 2 }));
   assert.equal(locked.status, 400);
+});
+
+Deno.test('form API accepts only an exact authorized mapping fingerprint command', async () => {
+  const accepted: unknown[] = [];
+  const base = createInMemoryFormStore(() => new Date('2026-08-26T20:00:00.000Z'), [{ organizationId, caseId, supplierName: 'Synthetic supplier', caseVersion: 4, caseState: 'preparing' }]);
+  const subject = createFormApiHandler({
+    store: { ...base, acceptCaseFormMapping: async (input) => {
+      accepted.push(input);
+      return { mappingId: input.mappingId, mappingVersion: input.expectedMappingVersion, status: 'accepted', reviewDecisionId: '51111111-1111-4111-8111-111111111111', replayed: false };
+    } },
+    canonicalFieldIds: ['supplier.legalName'],
+    verifyToken: async (token: string) => ({ identity: { issuer: 'https://auth.example.test', authorizedParty: 'client', subject: 'operator', organization: organizationId, email: 'operator@example.test', emailVerified: true as const }, permissions: token === 'read-token' ? ['osp:read'] : ['osp:operate'] }),
+    incidentId: () => 'incident-synthetic',
+  });
+  const command = { version: 1, action: 'accept_case_form_mapping', idempotency_key: 'mapping-accept-1', case_id: caseId, mapping_id: '51111111-1111-4111-8111-111111111112', expected_mapping_version: 3, expected_after_sha256: 'a'.repeat(64) };
+  const response = await subject(request(command));
+  assert.equal(response.status, 200);
+  assert.deepEqual(accepted, [{ organizationId, subject: 'operator', idempotencyKey: 'mapping-accept-1', caseId, mappingId: command.mapping_id, expectedMappingVersion: 3, expectedAfterSha256: 'a'.repeat(64) }]);
+  assert.equal((await subject(request(command, 'read-token'))).status, 403);
+  assert.equal((await subject(request({ ...command, unexpected: true }))).status, 400);
 });

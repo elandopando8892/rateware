@@ -184,10 +184,18 @@ function createPreviewClient(): OspClient {
     instance: {
       id: '73111111-1111-4111-8111-111111111111',
       version: 2,
-      values: { legal_name: 'Sierra Retail México', registered_address: 'Av. Insurgentes Sur 1602, Ciudad de México' },
+      values: { legal_name: 'Sierra Retail México', tax_identifier: 'SRM010101AA1', registered_address: 'Av. Insurgentes Sur 1602, Ciudad de México' },
       updatedAt: '2026-08-26T20:10:00.000Z',
     },
-    capabilities: { saveDraft: true, submitForReview: true },
+    mappings: [{
+      id: '74111111-1111-4111-8111-111111111111', version: 1, status: 'unresolved', automaticStatus: 'ready_for_operations_review', afterSha256: 'e'.repeat(64), matchesCurrentDraft: true, updatedAt: '2026-08-26T20:10:00.000Z',
+      fields: [
+        { fieldId: 'legal_name', source: 'rateware', status: 'prepared', evidenceCount: 1 },
+        { fieldId: 'tax_identifier', source: 'attachment', status: 'prepared', evidenceCount: 2 },
+        { fieldId: 'registered_address', source: 'attachment', status: 'prepared', evidenceCount: 1 },
+      ],
+    }],
+    capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false },
   };
   const client: OspClient = {
     listOnboardingWorkspace: async () => ({ requests_total: '26', documents_pending: '7', under_review: '5', ready_for_approval: '3' }),
@@ -258,19 +266,26 @@ function createPreviewClient(): OspClient {
     getCaseFormWorkspace: async (requestedCaseId) => {
       if (requestedCaseId === caseFormCaseId) return structuredClone(caseFormWorkspace);
       const caseRecord = previewCaseRows.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCaseRows[0];
-      return { caseId: requestedCaseId, supplierName: caseRecord.supplier_name, caseVersion: caseRecord.aggregate_version, caseState: caseRecord.state, templateName: caseFormWorkspace.templateName, template: structuredClone(caseFormWorkspace.template), instance: null, capabilities: { saveDraft: false, submitForReview: false } };
+      return { caseId: requestedCaseId, supplierName: caseRecord.supplier_name, caseVersion: caseRecord.aggregate_version, caseState: caseRecord.state, templateName: caseFormWorkspace.templateName, template: structuredClone(caseFormWorkspace.template), instance: null, mappings: [], capabilities: { saveDraft: false, acceptMapping: false, submitForReview: false } };
     },
     saveCaseFormDraft: async (input) => {
       if (input.caseId !== caseFormCaseId || input.templateVersionId !== caseFormWorkspace.template?.id || input.instanceId !== caseFormWorkspace.instance?.id || input.expectedVersion !== caseFormWorkspace.instance.version) throw new Error('VERSION_CONFLICT');
       const instance = { ...caseFormWorkspace.instance, version: caseFormWorkspace.instance.version + 1, values: structuredClone(input.values), updatedAt: new Date().toISOString() };
-      caseFormWorkspace = { ...caseFormWorkspace, instance };
+      caseFormWorkspace = { ...caseFormWorkspace, instance, mappings: caseFormWorkspace.mappings.map((mapping) => ({ ...mapping, matchesCurrentDraft: false })), capabilities: { ...caseFormWorkspace.capabilities, acceptMapping: false, submitForReview: false } };
       return { instance: structuredClone(instance), replayed: false };
+    },
+    acceptCaseFormMapping: async (input) => {
+      const mapping = caseFormWorkspace.mappings.find((item) => item.id === input.mappingId);
+      if (input.caseId !== caseFormCaseId || !mapping || mapping.status !== 'unresolved' || mapping.version !== input.expectedMappingVersion || mapping.afterSha256 !== input.expectedAfterSha256 || !mapping.matchesCurrentDraft) throw new Error('VERSION_CONFLICT');
+      const reviewDecisionId = '75111111-1111-4111-8111-111111111111';
+      caseFormWorkspace = { ...caseFormWorkspace, mappings: caseFormWorkspace.mappings.map((item) => item.id === mapping.id ? { ...item, status: 'accepted' as const, updatedAt: new Date().toISOString() } : item), capabilities: { ...caseFormWorkspace.capabilities, acceptMapping: false, submitForReview: true } };
+      return { mappingId: mapping.id, mappingVersion: mapping.version, status: 'accepted', reviewDecisionId, replayed: false };
     },
     submitCaseFormForReview: async (input) => {
       if (input.caseId !== caseFormCaseId || input.expectedCaseVersion !== caseFormWorkspace.caseVersion || input.templateVersionId !== caseFormWorkspace.template?.id || input.instanceId !== caseFormWorkspace.instance?.id || input.expectedVersion !== caseFormWorkspace.instance.version) throw new Error('VERSION_CONFLICT');
       const instance = { ...caseFormWorkspace.instance, version: caseFormWorkspace.instance.version + 1, values: structuredClone(input.values), updatedAt: new Date().toISOString() };
       const caseVersion = caseFormWorkspace.caseVersion + 1;
-      caseFormWorkspace = { ...caseFormWorkspace, caseVersion, caseState: 'operations_review', instance, capabilities: { saveDraft: false, submitForReview: false } };
+      caseFormWorkspace = { ...caseFormWorkspace, caseVersion, caseState: 'operations_review', instance, capabilities: { saveDraft: false, acceptMapping: false, submitForReview: false } };
       previewCaseRows = previewCaseRows.map((caseRecord) => caseRecord.case_id === caseFormCaseId
         ? { ...caseRecord, state: 'operations_review', aggregate_version: caseVersion, updated_at: new Date().toISOString() }
         : caseRecord);

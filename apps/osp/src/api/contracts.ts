@@ -393,16 +393,43 @@ export const CaseFormInstanceSchema = z.strictObject({
   id: z.uuid(), version: z.number().int().min(1).max(2_147_483_647), values: FormValuesSchema, updatedAt: utcDate,
 });
 
+export const CaseFormMappingReviewSchema = z.strictObject({
+  id: z.uuid(),
+  version: z.number().int().min(1).max(2_147_483_647),
+  status: z.enum(['unresolved', 'accepted', 'corrected', 'rejected']),
+  automaticStatus: z.enum(['ready_for_operations_review', 'awaiting_xbf_information', 'awaiting_clarification']),
+  afterSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  matchesCurrentDraft: z.boolean(),
+  fields: z.array(z.strictObject({
+    fieldId: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/),
+    source: z.enum(['existing_draft', 'rateware', 'attachment', 'missing']),
+    status: z.enum(['prepared', 'missing', 'contradictory']),
+    evidenceCount: z.number().int().min(0).max(10_000),
+  })).max(200),
+  updatedAt: utcDate,
+});
+
 export const CaseFormWorkspaceResponseSchema = z.strictObject({
   version: z.literal(1), data: z.strictObject({
     caseId: z.uuid(), supplierName: z.string().min(1).max(256), caseVersion: z.number().int().min(0).max(2_147_483_647),
     caseState: CaseStateSchema, templateName: z.string().min(3).max(128).nullable(), template: FormTemplateVersionSchema.nullable(),
-    instance: CaseFormInstanceSchema.nullable(), capabilities: z.strictObject({ saveDraft: z.boolean(), submitForReview: z.boolean() }),
+    instance: CaseFormInstanceSchema.nullable(), mappings: z.array(CaseFormMappingReviewSchema).max(100),
+    capabilities: z.strictObject({ saveDraft: z.boolean(), acceptMapping: z.boolean(), submitForReview: z.boolean() }),
   }),
 });
 
 export const CaseFormMutationResponseSchema = z.strictObject({
   version: z.literal(1), data: z.strictObject({ instance: CaseFormInstanceSchema, replayed: z.boolean() }),
+});
+
+export const CaseFormMappingReviewResponseSchema = z.strictObject({
+  version: z.literal(1), data: z.strictObject({
+    mappingId: z.uuid(),
+    mappingVersion: z.number().int().min(1).max(2_147_483_647),
+    status: z.literal('accepted'),
+    reviewDecisionId: z.uuid(),
+    replayed: z.boolean(),
+  }),
 });
 
 export const CaseFormSubmissionResponseSchema = z.strictObject({
@@ -436,4 +463,5 @@ export type FormValues = z.infer<typeof FormValuesSchema>;
 export type CaseFormInstance = z.infer<typeof CaseFormInstanceSchema>;
 export type CaseFormWorkspace = z.infer<typeof CaseFormWorkspaceResponseSchema>['data'];
 export type CaseFormMutationReceipt = z.infer<typeof CaseFormMutationResponseSchema>['data'];
+export type CaseFormMappingReviewReceipt = z.infer<typeof CaseFormMappingReviewResponseSchema>['data'];
 export type CaseFormSubmissionReceipt = z.infer<typeof CaseFormSubmissionResponseSchema>['data'];

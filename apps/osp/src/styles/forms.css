@@ -35,6 +35,24 @@
 .case-form-progress span, .case-form-progress > p { color: var(--muted); font-size: .82rem; }
 .progress-track { height: .7rem; border-radius: 999px; overflow: hidden; background: #e6ebf0; }
 .progress-track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--brand), var(--xbf-navy)); transition: width .2s ease; }
+.automatic-prefill-review { display: grid; gap: 1rem; padding: 1.25rem; border: 1px solid #d8c98e; border-radius: var(--radius); background: linear-gradient(135deg, #fffdf6, #fff 65%); box-shadow: var(--shadow); }
+.automatic-prefill-review.accepted { border-color: #b8ddd2; background: linear-gradient(135deg, #f2fbf8, #fff 65%); }
+.automatic-prefill-review > header { display: flex; align-items: start; justify-content: space-between; gap: 1.5rem; }
+.automatic-prefill-review h2 { margin: .15rem 0 .3rem; font-family: var(--font-display); font-size: clamp(1.65rem, 3vw, 2.35rem); line-height: 1; }
+.automatic-prefill-review header p:last-child { margin: 0; color: var(--muted); }
+.automatic-prefill-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 0; padding: 1px; border-radius: 12px; overflow: hidden; background: var(--line); }
+.automatic-prefill-metrics div { display: grid; gap: .2rem; padding: .8rem 1rem; background: var(--surface); }
+.automatic-prefill-metrics dt { color: var(--muted); font-size: .72rem; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
+.automatic-prefill-metrics dd { margin: 0; font-family: var(--font-display); font-size: 1.35rem; }
+.automatic-prefill-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .55rem; margin: 0; padding: 0; list-style: none; }
+.automatic-prefill-fields li { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-width: 0; padding: .7rem .8rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.automatic-prefill-fields strong, .automatic-prefill-fields small { display: block; }
+.automatic-prefill-fields small { margin-top: .15rem; color: var(--muted); font-size: .75rem; }
+.mapping-field-status { flex: none; border-radius: 999px; padding: .22rem .45rem; background: #e4f2ee; color: var(--brand-dark); font-size: .66rem; font-weight: 900; text-transform: uppercase; }
+.mapping-field-status.missing, .mapping-field-status.contradictory { background: #fff1c7; color: #795900; }
+.mapping-review-control { display: grid; justify-items: start; gap: .7rem; padding-top: .2rem; }
+.mapping-review-control p, .mapping-review-result { margin: 0; }
+.mapping-review-result { padding: .75rem .85rem; border-left: 3px solid var(--brand); background: #eaf7f3; color: var(--brand-dark); }
 .case-form-layout { display: grid; grid-template-columns: minmax(13rem, .55fr) minmax(0, 1.6fr) minmax(15rem, .7fr); gap: 1rem; align-items: start; }
 .case-form-rail, .case-form-card, .case-form-gates { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
 .case-form-rail { padding: 1.1rem; }
@@ -67,4 +85,4 @@
 .case-form-gates li { padding: .65rem .75rem; border-left: 3px solid #d4a72c; border-radius: 0 8px 8px 0; background: #fff7dd; }
 .case-form-gates .privacy-note { margin-top: 1.2rem; }
 @media (max-width: 1120px) { .case-form-layout { grid-template-columns: minmax(12rem, .5fr) minmax(0, 1.5fr); } .case-form-gates { grid-column: 1 / -1; } }
-@media (max-width: 760px) { .form-library-hero, .form-template-detail > header, .case-form-hero, .case-form-card > header, .case-form-card > footer { align-items: stretch; flex-direction: column; } .form-library-layout, .case-form-layout, .case-form-progress { grid-template-columns: 1fr; } .case-form-actions { flex-direction: column; } .case-form-gates { grid-column: auto; } .case-form-hero::after { width: 46%; } }
+@media (max-width: 760px) { .form-library-hero, .form-template-detail > header, .case-form-hero, .case-form-card > header, .case-form-card > footer, .automatic-prefill-review > header { align-items: stretch; flex-direction: column; } .form-library-layout, .case-form-layout, .case-form-progress, .automatic-prefill-metrics { grid-template-columns: 1fr; } .case-form-actions { flex-direction: column; } .case-form-gates { grid-column: auto; } .case-form-hero::after { width: 46%; } }

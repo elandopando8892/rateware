@@ -289,11 +289,14 @@ it('loads and saves one case form through exact tenant-scoped form actions', asy
   };
   const workspace = {
     caseId, supplierName: 'Sierra Retail Mexico', caseVersion: 5, caseState: 'preparing',
-    templateName: 'XBF customer setup', template, instance: { ...instance, version: 2 }, capabilities: { saveDraft: true, submitForReview: true },
+    templateName: 'XBF customer setup', template, instance: { ...instance, version: 2 },
+    mappings: [{ id: '55555555-5555-4555-8555-555555555555', version: 1, status: 'unresolved', automaticStatus: 'ready_for_operations_review', afterSha256: 'c'.repeat(64), matchesCurrentDraft: true, fields: [{ fieldId: 'legal_name', source: 'rateware', status: 'prepared', evidenceCount: 1 }], updatedAt: '2026-08-26T20:00:00.000Z' }],
+    capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false },
   };
   const h = harness([
     json({ version: 1, data: workspace }),
     json({ version: 1, data: { instance, replayed: false } }),
+    json({ version: 1, data: { mappingId: workspace.mappings[0].id, mappingVersion: 1, status: 'accepted', reviewDecisionId: '66666666-6666-4666-8666-666666666666', replayed: false } }),
     json({ version: 1, data: { instance, caseState: 'operations_review', caseVersion: 6, snapshotSha256: 'b'.repeat(64), replayed: false } }),
   ]);
 
@@ -302,6 +305,10 @@ it('loads and saves one case form through exact tenant-scoped form actions', asy
     idempotencyKey: 'case-form-save:1', caseId, templateVersionId,
     instanceId: instance.id, expectedVersion: 2, values: instance.values,
   })).resolves.toEqual({ instance, replayed: false });
+  await expect(h.client.acceptCaseFormMapping({
+    idempotencyKey: 'case-mapping-accept:1', caseId, mappingId: workspace.mappings[0].id,
+    expectedMappingVersion: 1, expectedAfterSha256: 'c'.repeat(64),
+  })).resolves.toMatchObject({ mappingId: workspace.mappings[0].id, status: 'accepted' });
   await expect(h.client.submitCaseFormForReview({
     idempotencyKey: 'case-form-submit:1', caseId, expectedCaseVersion: 5, templateVersionId,
     instanceId: instance.id, expectedVersion: 2, values: instance.values,
@@ -310,6 +317,7 @@ it('loads and saves one case form through exact tenant-scoped form actions', asy
   expect(h.fetch.mock.calls.map((call) => JSON.parse(String((call[1] as RequestInit).body)))).toEqual([
     { version: 1, action: 'get_case_form_workspace', case_id: caseId },
     { version: 1, action: 'save_case_form_draft', idempotency_key: 'case-form-save:1', case_id: caseId, template_version_id: templateVersionId, instance_id: instance.id, expected_version: 2, values: instance.values },
+    { version: 1, action: 'accept_case_form_mapping', idempotency_key: 'case-mapping-accept:1', case_id: caseId, mapping_id: workspace.mappings[0].id, expected_mapping_version: 1, expected_after_sha256: 'c'.repeat(64) },
     { version: 1, action: 'submit_case_form_for_review', idempotency_key: 'case-form-submit:1', case_id: caseId, expected_case_version: 5, template_version_id: templateVersionId, instance_id: instance.id, expected_version: 2, values: instance.values },
   ]);
 });

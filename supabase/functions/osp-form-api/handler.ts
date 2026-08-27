@@ -116,8 +116,8 @@ export function createFormApiHandler(options: FormApiHandlerOptions): (request: 
         const row = exact(payload, ['action', 'case_id', 'version']);
         if (row.version !== 1 || row.action !== 'get_case_form_workspace' || typeof row.case_id !== 'string' || !UUID.test(row.case_id)) throw new OspApiError('INVALID_REQUEST');
         const result = await options.store.getCaseFormWorkspace(verified.identity.organization, row.case_id);
-        const { saveDraftAllowed, submitForReviewAllowed, ...workspace } = result;
-        return jsonResponse({ version: 1, data: { ...workspace, capabilities: { saveDraft: canOperate(verified) && saveDraftAllowed, submitForReview: canOperate(verified) && submitForReviewAllowed } } }, 200, postCorsHeaders(allowed));
+        const { saveDraftAllowed, acceptMappingAllowed, submitForReviewAllowed, ...workspace } = result;
+        return jsonResponse({ version: 1, data: { ...workspace, capabilities: { saveDraft: canOperate(verified) && saveDraftAllowed, acceptMapping: canOperate(verified) && acceptMappingAllowed, submitForReview: canOperate(verified) && submitForReviewAllowed } } }, 200, postCorsHeaders(allowed));
       }
       if (!canOperate(verified)) throw new OspApiError('FORBIDDEN');
       if ((payload as { action?: unknown })?.action === 'save_form_template_draft') {
@@ -144,6 +144,12 @@ export function createFormApiHandler(options: FormApiHandlerOptions): (request: 
         const expectedVersion = integer(row.expected_version, row.instance_id === null ? 0 : 1);
         if ((row.instance_id === null) !== (expectedVersion === 0)) throw new OspApiError('INVALID_REQUEST');
         const result = await options.store.saveCaseFormDraft({ organizationId: verified.identity.organization, subject: verified.identity.subject, idempotencyKey: row.idempotency_key, caseId: row.case_id, templateVersionId: row.template_version_id, instanceId: row.instance_id as string | null, expectedVersion, values: formValues(row.values) });
+        return jsonResponse({ version: 1, data: result }, 200, postCorsHeaders(allowed));
+      }
+      if ((payload as { action?: unknown })?.action === 'accept_case_form_mapping') {
+        const row = exact(payload, ['action', 'case_id', 'expected_after_sha256', 'expected_mapping_version', 'idempotency_key', 'mapping_id', 'version']);
+        if (row.version !== 1 || row.action !== 'accept_case_form_mapping' || typeof row.idempotency_key !== 'string' || !OPAQUE.test(row.idempotency_key) || typeof row.case_id !== 'string' || !UUID.test(row.case_id) || typeof row.mapping_id !== 'string' || !UUID.test(row.mapping_id) || typeof row.expected_after_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(row.expected_after_sha256)) throw new OspApiError('INVALID_REQUEST');
+        const result = await options.store.acceptCaseFormMapping({ organizationId: verified.identity.organization, subject: verified.identity.subject, idempotencyKey: row.idempotency_key, caseId: row.case_id, mappingId: row.mapping_id, expectedMappingVersion: integer(row.expected_mapping_version, 1), expectedAfterSha256: row.expected_after_sha256 });
         return jsonResponse({ version: 1, data: result }, 200, postCorsHeaders(allowed));
       }
       if ((payload as { action?: unknown })?.action === 'submit_case_form_for_review') {

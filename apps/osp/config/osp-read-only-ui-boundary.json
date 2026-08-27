@@ -31,12 +31,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/contracts.ts",
-      "sha256": "2d418baceb488acac33a9542e37fb6d0fd4a46bada4493c6dcfab2d5e20122ec"
+      "sha256": "d519ead56d15a37ee9e6b21090ee340cf02f6144d0874bc6d77c8feae34a8d53"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/osp-client.ts",
-      "sha256": "fa97040d0e7307bcac570e54c3b960c8e95679bf07b1843dca661909f2edafcc"
+      "sha256": "15674238e56005ed729161b937ce15351214f2f3730b8dd34088516d7c710544"
     },
     {
       "kind": "production-ui",
@@ -136,7 +136,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/CaseFormWorkspace.tsx",
-      "sha256": "f22b6b1eb46e6383c5439d9bc9bd84159e45859e66e38ebabcb40f0f89550195"
+      "sha256": "8f445d1328f388e0475bab197858e6e0a625d4b66c24353b0c8573b0551b37c7"
     },
     {
       "kind": "production-ui",
@@ -196,12 +196,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "b4a97f6953a0d5b4a2709f536467dbd9666ea9126df69394b9696e21d133bb9f"
+      "sha256": "aa8e2728bf120b8c09ac4f0d0102f817ace01162615e86522e679673715f08b0"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/forms.css",
-      "sha256": "90d0a40f28c50ab7c9546e7209a5822bf27ec6aed03fe69abc10b7a7ac6072b4"
+      "sha256": "028c1b00eba5f11f59180a2281b622667dc4f43a8b2420c86e81ef37640199d1"
     },
     {
       "kind": "production-ui",

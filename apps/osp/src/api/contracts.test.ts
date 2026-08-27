@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   CanonicalCountSchema,
+  CaseFormWorkspaceResponseSchema,
   CaseDetailSuccessResponseSchema,
   CaseListSuccessResponseSchema,
   GmailReadModelSchema,
@@ -10,6 +11,19 @@ import {
   OspReadRequestSchema,
   PipelineSuccessResponseSchema,
 } from './contracts';
+
+it('exposes only safe automatic-prefill provenance in the case form workspace', () => {
+  const response = {
+    version: 1,
+    data: {
+      caseId: '11111111-1111-4111-8111-111111111111', supplierName: 'Synthetic supplier', caseVersion: 4, caseState: 'preparing', templateName: null, template: null, instance: null,
+      mappings: [{ id: '22222222-2222-4222-8222-222222222222', version: 1, status: 'unresolved', automaticStatus: 'ready_for_operations_review', afterSha256: 'a'.repeat(64), matchesCurrentDraft: true, fields: [{ fieldId: 'legal_name', source: 'rateware', status: 'prepared', evidenceCount: 1 }], updatedAt: '2026-08-26T20:00:00.000Z' }],
+      capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false },
+    },
+  } as const;
+  expect(CaseFormWorkspaceResponseSchema.parse(response)).toEqual(response);
+  expect(CaseFormWorkspaceResponseSchema.safeParse({ ...response, data: { ...response.data, mappings: [{ ...response.data.mappings[0], values: { legal_name: 'private' } }] } }).success).toBe(false);
+});
 
 it('accepts only a safe Gmail watch renewal receipt', () => {
   const receipt = {

@@ -31,6 +31,22 @@ export type PublishFormInput = {
 export type FormMutationReceipt = { template: FormTemplateCatalogItem; replayed: boolean };
 
 export type CaseFormInstance = { id: string; version: number; values: Record<string, unknown>; updatedAt: string };
+export type CaseFormMappingFieldReview = {
+  fieldId: string;
+  source: 'existing_draft' | 'rateware' | 'attachment' | 'missing';
+  status: 'prepared' | 'missing' | 'contradictory';
+  evidenceCount: number;
+};
+export type CaseFormMappingReview = {
+  id: string;
+  version: number;
+  status: 'unresolved' | 'accepted' | 'corrected' | 'rejected';
+  automaticStatus: 'ready_for_operations_review' | 'awaiting_xbf_information' | 'awaiting_clarification';
+  afterSha256: string;
+  matchesCurrentDraft: boolean;
+  fields: readonly CaseFormMappingFieldReview[];
+  updatedAt: string;
+};
 export type CaseFormWorkspaceRecord = {
   caseId: string;
   supplierName: string;
@@ -39,7 +55,9 @@ export type CaseFormWorkspaceRecord = {
   templateName: string | null;
   template: FormTemplateVersion | null;
   instance: CaseFormInstance | null;
+  mappings: readonly CaseFormMappingReview[];
   saveDraftAllowed: boolean;
+  acceptMappingAllowed: boolean;
   submitForReviewAllowed: boolean;
 };
 export type SaveCaseFormDraftInput = {
@@ -53,6 +71,22 @@ export type SaveCaseFormDraftInput = {
   values: Record<string, unknown>;
 };
 export type CaseFormMutationReceipt = { instance: CaseFormInstance; replayed: boolean };
+export type AcceptCaseFormMappingInput = {
+  organizationId: string;
+  subject: string;
+  idempotencyKey: string;
+  caseId: string;
+  mappingId: string;
+  expectedMappingVersion: number;
+  expectedAfterSha256: string;
+};
+export type CaseFormMappingReviewReceipt = {
+  mappingId: string;
+  mappingVersion: number;
+  status: 'accepted';
+  reviewDecisionId: string;
+  replayed: boolean;
+};
 export type SubmitCaseFormForReviewInput = SaveCaseFormDraftInput & { expectedCaseVersion: number };
 export type CaseFormSubmissionReceipt = {
   instance: CaseFormInstance;
@@ -68,10 +102,11 @@ export interface FormStore {
   publish(input: PublishFormInput): Promise<FormMutationReceipt>;
   getCaseFormWorkspace(organizationId: string, caseId: string): Promise<CaseFormWorkspaceRecord>;
   saveCaseFormDraft(input: SaveCaseFormDraftInput): Promise<CaseFormMutationReceipt>;
+  acceptCaseFormMapping(input: AcceptCaseFormMappingInput): Promise<CaseFormMappingReviewReceipt>;
   submitCaseFormForReview(input: SubmitCaseFormForReviewInput): Promise<CaseFormSubmissionReceipt>;
 }
 
-type ReceiptValue = FormMutationReceipt | CaseFormMutationReceipt | CaseFormSubmissionReceipt;
+type ReceiptValue = FormMutationReceipt | CaseFormMutationReceipt | CaseFormMappingReviewReceipt | CaseFormSubmissionReceipt;
 type Receipt = { hash: string; value: ReceiptValue };
 type SeedCase = { organizationId: string; caseId: string; supplierName: string; caseVersion: number; caseState: string };
 
@@ -185,12 +220,17 @@ export function createInMemoryFormStore(now: () => Date = () => new Date('2026-0
       return structuredClone({
         caseId, supplierName: registrationCase.supplierName, caseVersion: registrationCase.caseVersion, caseState: registrationCase.caseState,
         templateName: published?.name ?? null, template: published?.latest ?? null, instance,
+        mappings: [],
         saveDraftAllowed: ['awaiting_xbf_information', 'preparing'].includes(registrationCase.caseState),
+        acceptMappingAllowed: false,
         submitForReviewAllowed: registrationCase.caseState === 'preparing',
       });
     },
     async saveCaseFormDraft(input: SaveCaseFormDraftInput) {
       return await replayOrRun(input, 'save_case_form_draft', input, () => ({ instance: writeCaseInstance(input), replayed: false }));
+    },
+    async acceptCaseFormMapping(input: AcceptCaseFormMappingInput) {
+      return await replayOrRun(input, 'accept_case_form_mapping', input, () => fail('FORM_MAPPING_NOT_FOUND'));
     },
     async submitCaseFormForReview(input: SubmitCaseFormForReviewInput) {
       return await replayOrRun(input, 'submit_case_form_for_review', input, async () => {

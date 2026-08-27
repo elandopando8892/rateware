@@ -23,7 +23,7 @@ describe('synthetic preview runtime', () => {
     const formCase = cases.find((item) => item.supplier_name === 'Sierra Retail México');
     expect(formCase).toBeDefined();
     await expect(runtime.apiClient.getCaseFormWorkspace(formCase!.case_id)).resolves.toMatchObject({
-      supplierName: 'Sierra Retail México', instance: { version: 2, values: { legal_name: 'Sierra Retail México' } }, capabilities: { saveDraft: true },
+      supplierName: 'Sierra Retail México', instance: { version: 2, values: { legal_name: 'Sierra Retail México', tax_identifier: 'SRM010101AA1' } }, mappings: expect.arrayContaining([expect.objectContaining({ status: 'unresolved', fields: expect.arrayContaining([expect.objectContaining({ source: 'rateware' })]) })]), capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false },
     });
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
@@ -42,7 +42,14 @@ describe('synthetic preview runtime', () => {
     const cases = await runtime.apiClient.listCustomerRegistrationCases();
     const formCase = cases.find((item) => item.supplier_name === 'Sierra Retail México')!;
     const form = await runtime.apiClient.getCaseFormWorkspace(formCase.case_id);
-    const values = { ...form.instance!.values, tax_identifier: 'XAXX010101000' };
+    const values = form.instance!.values;
+    await runtime.apiClient.acceptCaseFormMapping({
+      caseId: form.caseId,
+      mappingId: form.mappings[0].id,
+      expectedMappingVersion: form.mappings[0].version,
+      expectedAfterSha256: form.mappings[0].afterSha256,
+      idempotencyKey: 'preview-accept-mapping',
+    });
 
     const submitted = await runtime.apiClient.submitCaseFormForReview({
       caseId: form.caseId,
