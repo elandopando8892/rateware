@@ -126,4 +126,29 @@ describe('PipelineOverview', () => {
     expect(await screen.findByText(/1 new gmail message.*osp processed 1 job/i)).toBeInTheDocument();
     expect(syncGmailInbox).toHaveBeenCalledOnce();
   });
+
+  it('shows the automatic email-to-review path while keeping every external effect locked', async () => {
+    const syncGmailInbox = vi.fn(async () => ({
+      discovered: 0, inserted_messages: 0, duplicates: 0, attachment_metadata_rows: 0,
+      osp_enqueued: 0, osp_processed: 0, outbound_enabled: false as const,
+    }));
+    renderOverview({
+      listOnboardingWorkspace: vi.fn(async () => ({
+        requests_total: '2', documents_pending: '0', under_review: '1', ready_for_approval: '0',
+      })),
+      getGmailStatus: vi.fn(async () => ({
+        connection_exists: true as const, pubsub_configured: true, watch_configured: true,
+        token_expires_at: '2099-01-01T00:00:00.000Z', watch_expires_at: '2099-01-02T00:00:00.000Z',
+        error_present: false, error_code: null, outbound_enabled: false as const,
+      })),
+      syncGmailInbox,
+    });
+
+    expect(await screen.findByText(/automatic · gmail watch/i)).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: /automatic onboarding path/i })).toHaveTextContent(/inbox watched/i);
+    expect(screen.getByRole('list', { name: /automatic onboarding path/i })).toHaveTextContent(/operations handoff/i);
+    expect(screen.getByRole('note')).toHaveTextContent(/no reply, signature, authorization or provider write/i);
+    expect(screen.getByRole('button', { name: /run fallback sync/i })).toBeEnabled();
+    expect(syncGmailInbox).not.toHaveBeenCalled();
+  });
 });

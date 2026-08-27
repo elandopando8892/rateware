@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import type { OspCaseReadClient, OspClient, OspReadClient } from '../../api/osp-client';
+import type { CaseState } from '../../api/contracts';
 import { caseNextGates, caseStateLabels, caseStateTone, formatCaseDate } from '../cases/case-presenter';
 import { deriveMailboxHealth, type MailboxHealth } from './pipeline-health';
 import { pipelineOverviewQueryKey, usePipelineOverview } from './use-pipeline-overview';
@@ -21,6 +22,15 @@ const healthLabels: Record<MailboxHealth, string> = {
   degraded: 'Degraded',
 };
 
+const preparedStates = new Set<CaseState>([
+  'preparing', 'operations_review', 'signature_approval', 'sales_authorization',
+  'ready_to_send', 'sent', 'accepted', 'closed',
+]);
+const reviewStates = new Set<CaseState>([
+  'operations_review', 'signature_approval', 'sales_authorization',
+  'ready_to_send', 'sent', 'accepted', 'closed',
+]);
+
 type PipelineClient = OspReadClient & Partial<OspCaseReadClient> & Partial<Pick<OspClient, 'syncGmailInbox'>>;
 
 export function PipelineOverview({ client }: { client: PipelineClient }) {
@@ -33,6 +43,10 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
     staleTime: 0,
   });
   const health = gmail.data ? deriveMailboxHealth(gmail.data) : 'unknown';
+  const automaticWatch = health === 'watching';
+  const visibleCases = cases.data ?? [];
+  const preparedCases = visibleCases.filter((caseRecord) => preparedStates.has(caseRecord.state)).length;
+  const reviewCases = visibleCases.filter((caseRecord) => reviewStates.has(caseRecord.state)).length;
   const sync = useMutation({
     mutationFn: async () => {
       if (!client.syncGmailInbox) throw new Error('manual sync unavailable');
@@ -113,21 +127,48 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
 
       <section className="panel health-panel" aria-labelledby="gmail-title">
         <div className="panel-heading">
-          <h2 id="gmail-title">Gmail intake</h2>
-          <span className="manual-mode-badge">Manual · no Pub/Sub</span>
+          <div><p className="eyebrow">Automatic intake</p><h2 id="gmail-title">Email to Operations review</h2></div>
+          <span className={automaticWatch ? 'automatic-mode-badge' : 'manual-mode-badge'}>
+            {automaticWatch ? 'Automatic · Gmail watch' : 'Manual · no Pub/Sub'}
+          </span>
         </div>
         {!gmail.data && !gmail.isError ? <p role="status" aria-label={gmailActivity[0]}>{gmailActivity[1]}</p> : null}
         {gmail.isError ? <p role="alert" aria-label="Gmail health unavailable">Gmail health is temporarily unavailable.</p> : null}
         {gmail.data ? (
           <div className={`health health-${health}`} role="status" aria-label={`Gmail status: ${healthLabels[health]}`}>
             <span className="health-dot" aria-hidden="true" />
-            <div><strong>{healthLabels[health]}</strong><p>{gmail.data.pubsub_configured ? 'Automatic watch evidence available.' : 'Connected for manual inbox synchronization.'}</p></div>
+            <div><strong>{healthLabels[health]}</strong><p>{automaticWatch ? 'New inbox notifications enter the preparation path without a manual sync.' : 'Connected for manual inbox synchronization.'}</p></div>
           </div>
         ) : null}
-        <div className="sync-card">
+
+        <ol className="automation-path" aria-label="Automatic onboarding path">
+          <li className={automaticWatch ? 'automation-step-complete' : 'automation-step-pending'}>
+            <span className="automation-step-marker" aria-hidden="true">1</span>
+            <div><strong>Inbox watched</strong><p>{automaticWatch ? 'Gmail push is ready to capture new requests.' : 'Pub/Sub watch still needs activation.'}</p></div>
+          </li>
+          <li className={visibleCases.length > 0 ? 'automation-step-complete' : 'automation-step-pending'}>
+            <span className="automation-step-marker" aria-hidden="true">2</span>
+            <div><strong>Request captured</strong><p>{visibleCases.length} visible case(s) preserve the source email and attachments.</p></div>
+          </li>
+          <li className={preparedCases > 0 ? 'automation-step-complete' : 'automation-step-pending'}>
+            <span className="automation-step-marker" aria-hidden="true">3</span>
+            <div><strong>Package prepared</strong><p>{preparedCases} case(s) have a prepared XBF package or passed that point.</p></div>
+          </li>
+          <li className={reviewCases > 0 ? 'automation-step-complete' : 'automation-step-pending'}>
+            <span className="automation-step-marker" aria-hidden="true">4</span>
+            <div><strong>Operations handoff</strong><p>{reviewCases} case(s) reached the human evidence-review gate.</p></div>
+          </li>
+        </ol>
+
+        <div className="effects-lock" role="note">
+          <span aria-hidden="true">🔒</span>
+          <div><strong>External delivery locked</strong><p>No reply, signature, authorization or provider write occurs in this automatic path.</p></div>
+        </div>
+
+        <div className={`sync-card${automaticWatch ? ' sync-card-fallback' : ''}`}>
           <div>
-            <strong>Bring in new requests</strong>
-            <p>Checks the connected inbox and processes new onboarding email using the existing Rateware/OSP infrastructure.</p>
+            <strong>{automaticWatch ? 'Manual fallback' : 'Bring in new requests'}</strong>
+            <p>{automaticWatch ? 'Not required for normal flow. Use only if a Gmail notification is delayed.' : 'Checks the connected inbox and processes new onboarding email using the existing Rateware/OSP infrastructure.'}</p>
           </div>
           <button
             className="sync-button"
@@ -135,7 +176,7 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
             disabled={!client.syncGmailInbox || !gmail.data?.connection_exists || sync.isPending}
             onClick={() => sync.mutate()}
           >
-            {sync.isPending ? 'Syncing…' : 'Sync inbox now'}
+            {sync.isPending ? 'Syncing…' : automaticWatch ? 'Run fallback sync' : 'Sync inbox now'}
           </button>
         </div>
         <div className="sync-result" aria-live="polite">

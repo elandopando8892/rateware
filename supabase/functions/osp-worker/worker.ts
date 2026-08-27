@@ -9,6 +9,7 @@ import {
   IntakeStageError,
 } from "./intake-service.ts";
 import type { SignatureApplyReceipt } from "../_shared/osp/signature-port.ts";
+import type { AutomaticPreparationService } from "./automatic-preparation.ts";
 
 const TEMPORARY = new Set<JobErrorCode>([
   "GMAIL_TEMPORARY",
@@ -90,7 +91,7 @@ function errorCode(error: unknown): JobErrorCode {
     ? code as JobErrorCode
     : code === "SOURCE_HASH_MISMATCH"
     ? "SOURCE_HASH_MISMATCH"
-    : code === "INVALID_GMAIL_MESSAGE" ||
+    : code === "INVALID_INPUT" || code === "INVALID_GMAIL_MESSAGE" ||
         code === "UNQUALIFIED_GMAIL_MESSAGE" || code === "MALFORMED_MIME"
     ? "INVALID_INPUT"
     : "PERMANENT_FAILURE";
@@ -108,6 +109,7 @@ async function execute(
   now: Date,
   intake: IntakeService,
   extraction?: ManagedExtractionService,
+  formMappings?: AutomaticPreparationService,
   quarterlyDocuments?: QuarterlyDocumentService,
   signatures?: SignatureJobService,
   outboundSends?: OutboundSendJobService,
@@ -144,6 +146,22 @@ async function execute(
     await extraction.extract({
       organizationId: job.organizationId,
       documentVersionId,
+      correlationId: job.id,
+    });
+    return;
+  }
+  if (job.kind === "form_ai_mapping") {
+    const caseId = job.opaquePayload.caseId;
+    const extractionId = job.opaquePayload.extractionId;
+    const templateVersionId = job.opaquePayload.templateVersionId;
+    if (!caseId || !extractionId || !templateVersionId || !formMappings) {
+      throw new Error("INVALID_INPUT");
+    }
+    await formMappings.prepare({
+      organizationId: job.organizationId,
+      caseId,
+      extractionId,
+      templateVersionId,
       correlationId: job.id,
     });
     return;
@@ -192,6 +210,7 @@ export async function runWorker(
     jobs: Pick<BackgroundJobStore, "claim" | "complete" | "fail">;
     intake: IntakeService;
     extraction?: ManagedExtractionService;
+    formMappings?: AutomaticPreparationService;
     quarterlyDocuments?: QuarterlyDocumentService;
     signatures?: SignatureJobService;
     outboundSends?: OutboundSendJobService;
@@ -220,6 +239,7 @@ export async function runWorker(
         now,
         deps.intake,
         deps.extraction,
+        deps.formMappings,
         deps.quarterlyDocuments,
         deps.signatures,
         deps.outboundSends,

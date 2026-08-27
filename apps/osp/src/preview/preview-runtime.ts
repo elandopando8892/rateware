@@ -193,10 +193,10 @@ function createPreviewClient(): OspClient {
     listOnboardingWorkspace: async () => ({ requests_total: '26', documents_pending: '7', under_review: '5', ready_for_approval: '3' }),
     getGmailStatus: async () => ({
       connection_exists: true,
-      pubsub_configured: false,
-      watch_configured: false,
+      pubsub_configured: true,
+      watch_configured: true,
       token_expires_at: '2099-01-01T00:00:00.000Z',
-      watch_expires_at: null,
+      watch_expires_at: '2099-01-02T00:00:00.000Z',
       error_present: false,
       error_code: null,
       outbound_enabled: false,

@@ -240,6 +240,124 @@ Deno.test("worker routes document extraction and retries only its temporary prov
   assertEquals(failures[0].retryAt?.toISOString(), "2026-08-22T00:00:05.000Z");
 });
 
+Deno.test("worker routes form mapping to a no-effects preparation service", async () => {
+  const prepared: unknown[] = [];
+  const completed: string[] = [];
+  let outboundCalls = 0;
+  await runWorker({
+    workerId: "local-worker",
+    now: () => new Date("2026-08-27T00:00:00.000Z"),
+    jobs: {
+      claim: async () => [{
+        id: "job-mapping",
+        organizationId: "org-1",
+        kind: "form_ai_mapping",
+        opaquePayload: {
+          caseId: "case-1",
+          extractionId: "extraction-1",
+          templateVersionId: "template-1",
+        },
+        attempt: 1,
+        leaseToken: "11111111-1111-4111-8111-111111111111",
+        leasedUntil: "2026-08-27T00:05:00.000Z",
+      }],
+      complete: async (input) => {
+        completed.push(input.jobId);
+      },
+      fail: async () => {
+        throw new Error("unexpected mapping failure");
+      },
+    },
+    intake: {
+      ingest: async () => {
+        throw new Error("mapping must not enter Gmail intake");
+      },
+      refreshDuplicateReview: async () => undefined,
+    },
+    formMappings: {
+      prepare: async (input) => {
+        prepared.push(input);
+        return {
+          status: "ready_for_operations_review",
+          values: {},
+          fields: [],
+          externalEffects: false,
+        };
+      },
+    },
+    outboundSends: {
+      execute: async () => {
+        outboundCalls += 1;
+      },
+    },
+  });
+  assertEquals(prepared, [{
+    organizationId: "org-1",
+    caseId: "case-1",
+    extractionId: "extraction-1",
+    templateVersionId: "template-1",
+    correlationId: "job-mapping",
+  }]);
+  assertEquals(completed, ["job-mapping"]);
+  assertEquals(outboundCalls, 0);
+});
+
+Deno.test("worker rejects incomplete form mapping payloads without calling preparation or outbound", async () => {
+  const failures: unknown[] = [];
+  let preparationCalls = 0;
+  let outboundCalls = 0;
+  await runWorker({
+    workerId: "local-worker",
+    now: () => new Date("2026-08-27T00:00:00.000Z"),
+    jobs: {
+      claim: async () => [{
+        id: "job-mapping-invalid",
+        organizationId: "org-1",
+        kind: "form_ai_mapping",
+        opaquePayload: { caseId: "case-1", extractionId: "extraction-1" },
+        attempt: 1,
+        leaseToken: "11111111-1111-4111-8111-111111111111",
+        leasedUntil: "2026-08-27T00:05:00.000Z",
+      }],
+      complete: async () => {
+        throw new Error("invalid mapping must not complete");
+      },
+      fail: async (input) => {
+        failures.push(input);
+      },
+    },
+    intake: {
+      ingest: async () => {
+        throw new Error("unexpected intake");
+      },
+      refreshDuplicateReview: async () => undefined,
+    },
+    formMappings: {
+      prepare: async () => {
+        preparationCalls += 1;
+        return {
+          status: "ready_for_operations_review",
+          values: {},
+          fields: [],
+          externalEffects: false,
+        };
+      },
+    },
+    outboundSends: {
+      execute: async () => {
+        outboundCalls += 1;
+      },
+    },
+  });
+  assertEquals(preparationCalls, 0);
+  assertEquals(outboundCalls, 0);
+  assertEquals(
+    (failures[0] as { errorCode: string }).errorCode,
+    "INVALID_INPUT",
+  );
+  assertEquals((failures[0] as { retryAt: Date | null }).retryAt, null);
+});
+
 Deno.test("worker executes quarterly checks using server time without any send capability", async () => {
   const checks: string[] = [];
   await runWorker({
