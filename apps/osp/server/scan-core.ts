@@ -106,7 +106,8 @@ export function createScanHandler(options: {
       await chmod(file, 0o600);
       const status = await options.runScanner(file);
       return json({ sha256: input.sourceSha256, status }, 200);
-    } catch {
+    } catch (error) {
+      console.error('OSP_SCANNER_FAILURE', error instanceof Error ? error.message.slice(0, 512) : 'UNKNOWN');
       return json({ error: 'scan_unavailable' }, 503);
     } finally {
       if (work) await rm(work, { recursive: true, force: true }).catch(() => undefined);
