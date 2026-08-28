@@ -5,6 +5,7 @@ export const OSP_READ_ACTIONS = [
   'provider_gmail_status',
   'list_customer_registration_cases',
   'get_customer_registration_case',
+  'get_corporate_profile',
 ] as const;
 
 export const CanonicalCountSchema = z.string().regex(/^(0|[1-9]\d*)$/);
@@ -16,6 +17,7 @@ export const OspReadRequestSchema = z.union([
       'list_provider_onboarding_workspace',
       'provider_gmail_status',
       'list_customer_registration_cases',
+      'get_corporate_profile',
     ]),
   }),
   z.strictObject({
@@ -152,6 +154,45 @@ export const CaseListSuccessResponseSchema = z.strictObject({
 export const CaseDetailSuccessResponseSchema = z.strictObject({
   version: z.literal(1),
   data: CaseDetailSchema,
+});
+
+export const CorporateProfileFieldSchema = z.strictObject({
+  code: z.string().regex(/^[a-z][a-z0-9_]{1,127}$/),
+  label: z.string().min(1).max(128),
+  display_value: z.string().min(1).max(512),
+  verification_status: z.enum(['verified', 'needs_review', 'unverified', 'rejected']),
+  sensitivity: z.enum(['public', 'internal', 'confidential', 'restricted', 'highly_restricted']),
+});
+
+export const CorporateProfileEvidenceSchema = z.strictObject({
+  name: z.string().min(1).max(256),
+  document_type: z.string().regex(/^[a-z][a-z0-9_]{1,127}$/),
+  verification_status: z.enum(['verified', 'needs_review', 'unverified', 'rejected']),
+  sensitivity: z.enum(['public', 'internal', 'confidential', 'restricted', 'highly_restricted']),
+  release_policy: z.enum(['automatic', 'review_required', 'approval_required', 'never_release']),
+  expiry_state: z.enum(['no_expiry', 'expired', 'expiring_soon', 'current']),
+});
+
+export const CorporateProfileEntitySchema = z.strictObject({
+  entity_id: z.uuid(),
+  entity_code: z.string().regex(/^[A-Z0-9]{2,16}$/),
+  legal_name: z.string().min(1).max(256),
+  country_code: z.string().regex(/^[A-Z]{2}$/),
+  default_currency: z.string().regex(/^[A-Z]{3}$/).nullable(),
+  status: z.enum(['draft', 'active']),
+  verified_fields: CanonicalCountSchema,
+  review_fields: CanonicalCountSchema,
+  total_fields: CanonicalCountSchema,
+  fields: z.array(CorporateProfileFieldSchema).max(128),
+  evidence: z.array(CorporateProfileEvidenceSchema).max(64),
+});
+
+export const CorporateProfileSuccessResponseSchema = z.strictObject({
+  version: z.literal(1),
+  data: z.strictObject({
+    entities: z.array(CorporateProfileEntitySchema).min(1).max(10),
+    disclosure_locked: z.literal(true),
+  }),
 });
 
 export const GmailSyncSuccessResponseSchema = z.strictObject({
@@ -495,6 +536,8 @@ export const CaseFormSubmissionResponseSchema = z.strictObject({
 });
 
 export type PipelineReadModel = z.infer<typeof PipelineReadModelSchema>;
+export type CorporateProfileReadModel = z.infer<typeof CorporateProfileSuccessResponseSchema>['data'];
+export type CorporateProfileEntity = z.infer<typeof CorporateProfileEntitySchema>;
 export type GmailReadModel = z.infer<typeof GmailReadModelSchema>;
 export type GmailSyncResult = z.infer<typeof GmailSyncSuccessResponseSchema>['data'];
 export type GmailWatchResult = z.infer<typeof GmailWatchSuccessResponseSchema>['data'];

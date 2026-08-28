@@ -55,6 +55,14 @@ function baseStore(overrides: Partial<OspReadStore> = {}): OspReadStore {
         recent_events: [{ sequence: 1, state: 'received', occurred_at: '2030-01-01T00:00:00Z', reason_code: 'case_received' }],
       };
     },
+    async readCorporateProfile() {
+      return [{
+        entity_id: '33333333-3333-4333-8333-333333333333', entity_code: 'XBFMX', legal_name: 'Synthetic XBF Mexico',
+        country_code: 'MX', default_currency: 'MXN', status: 'active', verified_fields: '1', review_fields: '0', total_fields: '1',
+        fields: [{ code: 'legal_name', label: 'Legal name', display_value: 'Synthetic XBF Mexico', verification_status: 'verified', sensitivity: 'internal' }],
+        evidence: [],
+      }];
+    },
     ...overrides,
   };
 }
@@ -150,6 +158,21 @@ Deno.test('createOspReadHandler returns the exact pipeline, Gmail and case read 
       message_count: '1', attachment_count: '2', document_count: '0',
       latest_request: { subject: 'Customer setup request', sender_domain: 'supplier.example', received_at: '2030-01-01T00:00:00.000Z' },
       recent_events: [{ sequence: 1, state: 'received', occurred_at: '2030-01-01T00:00:00.000Z', reason_code: 'case_received' }],
+    },
+  });
+
+  const profile = await subject(post(JSON.stringify({ version: 1, action: 'get_corporate_profile' })));
+  assert.equal(profile.status, 200);
+  assert.deepEqual(await json(profile), {
+    version: 1,
+    data: {
+      entities: [{
+        entity_id: '33333333-3333-4333-8333-333333333333', entity_code: 'XBFMX', legal_name: 'Synthetic XBF Mexico',
+        country_code: 'MX', default_currency: 'MXN', status: 'active', verified_fields: '1', review_fields: '0', total_fields: '1',
+        fields: [{ code: 'legal_name', label: 'Legal name', display_value: 'Synthetic XBF Mexico', verification_status: 'verified', sensitivity: 'internal' }],
+        evidence: [],
+      }],
+      disclosure_locked: true,
     },
   });
 });

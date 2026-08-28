@@ -56,7 +56,14 @@ const pipelineRoute = createRoute({
     return <PipelineOverview client={context.apiClient} />;
   },
 });
-const corporateProfileRoute = createRoute({ getParentRoute: () => appRoute, path: 'profile', component: CorporateProfileWorkspace });
+const corporateProfileRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'profile',
+  component: function CorporateProfileRoute() {
+    const context = corporateProfileRoute.useRouteContext();
+    return <CorporateProfileWorkspace client={context.apiClient} />;
+  },
+});
 const caseWorkspaceRoute = createRoute({
   getParentRoute: () => appRoute,
   path: 'cases/$caseId',

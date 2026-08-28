@@ -53,6 +53,14 @@ function client(): OspClient {
       token_expires_at: null, watch_expires_at: null, error_present: false as const,
       error_code: null, outbound_enabled: false as const,
     })),
+    getCorporateProfile: vi.fn(async () => ({
+      disclosure_locked: true as const,
+      entities: [{
+        entity_id: '91000000-0000-4000-8000-000000000001', entity_code: 'XBFMX', legal_name: 'XBF Demo Logistics',
+        country_code: 'MX', default_currency: 'MXN', status: 'active' as const, verified_fields: '1', review_fields: '0', total_fields: '1',
+        fields: [{ code: 'tax_identifier', label: 'Tax identifier', display_value: 'On file', verification_status: 'verified' as const, sensitivity: 'restricted' as const }], evidence: [],
+      }],
+    })),
     listCustomerRegistrationCases: vi.fn(async () => []),
     getCustomerRegistrationCase: vi.fn(async () => { throw new Error('not used'); }),
     listDocumentVersions: vi.fn(async () => []),
@@ -254,9 +262,9 @@ describe('App authentication and routing', () => {
   it('opens the reusable dual-entity corporate profile without production identifiers', async () => {
     const history = createMemoryHistory({ initialEntries: ['/app/profile'] });
     render(<App authPort={authPort(session)} apiClient={client()} routerHistory={history} />);
-    expect(await screen.findByRole('heading', { name: /corporate profile/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /mexico entity/i })).toBeInTheDocument();
-    expect(screen.getByText(/verified corporate name/i)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /mexico entity/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /corporate profile/i })).toBeInTheDocument();
+    expect(screen.getByText(/on file/i)).toBeInTheDocument();
   });
 
   it('hands a completed Operations review to the signature control', async () => {
@@ -350,6 +358,7 @@ describe('App authentication and routing', () => {
       approveAndApplySignature: vi.fn(() => pending), freezeOutboundPayload: vi.fn(() => pending),
       authorizeOutboundPayload: vi.fn(() => pending), requestAuthorizedSend: vi.fn(() => pending),
       listOnboardingWorkspace: vi.fn(() => pending), getGmailStatus: vi.fn(() => pending),
+      getCorporateProfile: vi.fn(() => pending),
       listCustomerRegistrationCases: vi.fn(() => pending), getCustomerRegistrationCase: vi.fn(() => pending),
       listDocumentVersions: vi.fn(() => pending),
       uploadDocumentVersion: vi.fn(() => pending), approveDocumentVersion: vi.fn(() => pending), listClarificationReviews: vi.fn(() => pending),

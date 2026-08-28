@@ -1,5 +1,5 @@
 import type { OspClient } from '../api/osp-client';
-import type { ApprovalCommunicationsWorkspace, CaseDetail, CaseFormWorkspace, CaseSummary, ClarificationReview, DocumentVersion, FormTemplateCatalog } from '../api/contracts';
+import type { ApprovalCommunicationsWorkspace, CaseDetail, CaseFormWorkspace, CaseSummary, ClarificationReview, CorporateProfileReadModel, DocumentVersion, FormTemplateCatalog } from '../api/contracts';
 import type { AuthPort, BoundSession } from '../auth/auth-port';
 import { surveyJsonToCanonical } from '../features/forms/surveyjs-canonical-adapter';
 
@@ -20,6 +20,46 @@ const caseFormCaseId = '11111111-1111-4111-8111-111111111115';
 const payloadId = '22222222-2222-4222-8222-222222222222';
 const shaA = 'a'.repeat(64);
 const shaB = 'b'.repeat(64);
+
+const previewCorporateProfile: CorporateProfileReadModel = {
+  disclosure_locked: true,
+  entities: [
+    {
+      entity_id: '91000000-0000-4000-8000-000000000001', entity_code: 'XBFMX', legal_name: 'XBF Demo Logistics, S. de R.L. de C.V.',
+      country_code: 'MX', default_currency: 'MXN', status: 'active', verified_fields: '4', review_fields: '1', total_fields: '5',
+      fields: [
+        { code: 'tax_identifier', label: 'Tax identifier', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted' },
+        { code: 'tax_regime', label: 'Tax regime', display_value: 'General corporate regime', verification_status: 'verified', sensitivity: 'confidential' },
+        { code: 'registered_address', label: 'Registered address', display_value: 'Querétaro, Querétaro · 76000', verification_status: 'verified', sensitivity: 'confidential' },
+        { code: 'legal_representative', label: 'Legal representative', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted' },
+        { code: 'business_phone', label: 'Business phone', display_value: 'On file', verification_status: 'needs_review', sensitivity: 'restricted' },
+      ],
+      evidence: [
+        { name: 'Tax status certificate', document_type: 'tax_certificate', verification_status: 'verified', sensitivity: 'restricted', release_policy: 'approval_required', expiry_state: 'current' },
+        { name: 'Legal representative authority', document_type: 'legal_representative_authority', verification_status: 'needs_review', sensitivity: 'highly_restricted', release_policy: 'approval_required', expiry_state: 'no_expiry' },
+      ],
+    },
+    {
+      entity_id: '91000000-0000-4000-8000-000000000002', entity_code: 'XBFUS', legal_name: 'XBF Demo Freight Systems LLC',
+      country_code: 'US', default_currency: 'USD', status: 'active', verified_fields: '6', review_fields: '2', total_fields: '8',
+      fields: [
+        { code: 'tax_identifier', label: 'Federal tax ID', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted' },
+        { code: 'mc_number', label: 'MC authority', display_value: 'On file', verification_status: 'verified', sensitivity: 'internal' },
+        { code: 'usdot_number', label: 'USDOT', display_value: 'On file', verification_status: 'verified', sensitivity: 'internal' },
+        { code: 'registered_address', label: 'Registered address', display_value: 'Austin, Texas · 78701', verification_status: 'verified', sensitivity: 'confidential' },
+        { code: 'commercial_address', label: 'Commercial address', display_value: 'San Antonio, Texas · 78205', verification_status: 'verified', sensitivity: 'confidential' },
+        { code: 'website', label: 'Website', display_value: 'xbf.example', verification_status: 'verified', sensitivity: 'internal' },
+        { code: 'requested_credit_amount', label: 'Credit requested', display_value: '$25,000 USD', verification_status: 'needs_review', sensitivity: 'confidential' },
+        { code: 'bank_name', label: 'Bank reference', display_value: 'Withheld', verification_status: 'needs_review', sensitivity: 'restricted' },
+      ],
+      evidence: [
+        { name: 'W-9', document_type: 'w9', verification_status: 'needs_review', sensitivity: 'restricted', release_policy: 'approval_required', expiry_state: 'no_expiry' },
+        { name: 'Broker authority', document_type: 'operating_authority', verification_status: 'verified', sensitivity: 'restricted', release_policy: 'approval_required', expiry_state: 'current' },
+        { name: 'Signature specimen', document_type: 'authorized_signature', verification_status: 'needs_review', sensitivity: 'highly_restricted', release_policy: 'approval_required', expiry_state: 'no_expiry' },
+      ],
+    },
+  ],
+};
 
 const previewCases: readonly CaseSummary[] = Object.freeze([
   {
@@ -219,6 +259,7 @@ function createPreviewClient(): OspClient {
       error_code: null,
       outbound_enabled: false,
     }),
+    getCorporateProfile: async () => structuredClone(previewCorporateProfile),
     listCustomerRegistrationCases: async () => structuredClone(previewCaseRows),
     getCustomerRegistrationCase: async (requestedCaseId) => requestedCaseId === caseId
       ? previewCaseDetail

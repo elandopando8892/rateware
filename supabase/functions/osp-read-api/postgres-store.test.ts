@@ -86,6 +86,10 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
       message_count: '1', attachment_count: '0', document_count: '0', latest_subject: null, latest_sender_domain: null,
       latest_received_at: null, recent_events: [],
     }],
+    [{
+      entity_id: '33333333-3333-4333-8333-333333333333', entity_code: 'XBFMX', legal_name: 'Synthetic XBF Mexico',
+      country_code: 'MX', default_currency: 'MXN', status: 'active', verified_fields: '1', review_fields: '0', total_fields: '1', fields: [], evidence: [],
+    }],
   ]);
   const store = createPostgresOspReadStore({
     databaseUrl: 'postgresql://synthetic.example.test/db',
@@ -97,8 +101,9 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
   assert.equal((await store.readGmail(organizationId)).connection_exists, false);
   assert.deepEqual(await store.readCases(organizationId), []);
   assert.equal((await store.readCase(organizationId, '22222222-2222-4222-8222-222222222222')).state, 'received');
+  assert.equal((await store.readCorporateProfile(organizationId))[0].entity_code, 'XBFMX');
 
-  assert.equal(fake.calls.length, 5);
+  assert.equal(fake.calls.length, 6);
   assert.match(fake.calls[0].text, /FROM\s+public\.external_identities\s+identity_record/i);
   assert.match(fake.calls[0].text, /JOIN\s+public\.external_organization_links\s+organization_link/i);
   assert.match(fake.calls[0].text, /identity_record\.external_subject\s*=\s*\$/i);
@@ -119,10 +124,14 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
   assert.match(fake.calls[3].text, /LIMIT\s+100/i);
   assert.match(fake.calls[4].text, /case_record\.organization_id\s*=\s*\$/i);
   assert.match(fake.calls[4].text, /case_record\.id\s*=\s*\$/i);
+  assert.match(fake.calls[5].text, /FROM\s+public\.legal_entities\s+entity/i);
+  assert.match(fake.calls[5].text, /provider_legal_entity_profile_fields/i);
+  assert.match(fake.calls[5].text, /provider_legal_entity_document_assets/i);
   assert.deepEqual(fake.calls[1].values, [organizationId]);
   assert.deepEqual(fake.calls[2].values, [true, organizationId]);
   assert.deepEqual(fake.calls[3].values, [organizationId]);
   assert.deepEqual(fake.calls[4].values, [organizationId, '22222222-2222-4222-8222-222222222222']);
+  assert.deepEqual(fake.calls[5].values, [organizationId]);
   assert.equal(fake.calls.some((call) => /\b(?:insert|update|delete|merge|call)\b/i.test(call.text)), false);
   assert.equal(fake.calls.some((call) => /select\s+\*/i.test(call.text)), false);
 });

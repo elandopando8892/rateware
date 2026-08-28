@@ -2,7 +2,7 @@ import postgres from 'npm:postgres@3.4.7';
 
 import type { OspAuthorizationIdentity } from './auth-policy.ts';
 import { OspApiError } from './http.ts';
-import type { CaseDetailSeamRow, CaseSummarySeamRow, GmailSeamRow, OspReadStore, PipelineSeamRow } from './store.ts';
+import type { CaseDetailSeamRow, CaseSummarySeamRow, CorporateProfileSeamRow, GmailSeamRow, OspReadStore, PipelineSeamRow } from './store.ts';
 
 type QueryLike<T> = PromiseLike<T>;
 type SqlPort = (strings: TemplateStringsArray, ...values: unknown[]) => QueryLike<unknown[]>;
@@ -270,6 +270,66 @@ export function createPostgresOspReadStore({
         WHERE case_record.organization_id = ${organizationId} AND case_record.id = ${caseId}
       `, signal, STATEMENT_TIMEOUT_MS);
       return exactlyOneRow(rows, 'DEPENDENCY_UNAVAILABLE') as CaseDetailSeamRow;
+    },
+
+    async readCorporateProfile(organizationId: string, signal?: AbortSignal): Promise<readonly CorporateProfileSeamRow[]> {
+      const rows = await executeTaggedQuery(() => sql`
+        SELECT
+          entity.id AS entity_id,
+          entity.entity_code,
+          entity.legal_name,
+          entity.country_code,
+          entity.default_currency,
+          entity.status,
+          count(field.id) FILTER (WHERE field.verification_status = 'verified')::bigint AS verified_fields,
+          count(field.id) FILTER (WHERE field.verification_status = 'needs_review')::bigint AS review_fields,
+          count(field.id)::bigint AS total_fields,
+          COALESCE(jsonb_agg(jsonb_build_object(
+            'code', field.field_code,
+            'label', field.field_label,
+            'display_value', CASE
+              WHEN field.sensitivity IN ('restricted','highly_restricted')
+                THEN CASE WHEN field.field_code LIKE 'bank_%' OR field.sensitivity = 'highly_restricted' THEN 'Withheld' ELSE 'On file' END
+              WHEN field.field_code IN ('mc_number','usdot_number') THEN 'On file'
+              WHEN jsonb_typeof(field.field_value) = 'string' THEN field.field_value #>> '{}'
+              WHEN jsonb_typeof(field.field_value) IN ('number','boolean') THEN field.field_value #>> '{}'
+              ELSE 'On file'
+            END,
+            'verification_status', field.verification_status,
+            'sensitivity', field.sensitivity
+          ) ORDER BY field.field_code) FILTER (WHERE field.id IS NOT NULL), '[]'::jsonb) AS fields,
+          COALESCE((
+            SELECT jsonb_agg(jsonb_build_object(
+              'name', asset.document_name,
+              'document_type', asset.document_type,
+              'verification_status', asset.verification_status,
+              'sensitivity', asset.sensitivity,
+              'release_policy', asset.release_policy,
+              'expiry_state', CASE
+                WHEN asset.expiration_date IS NULL THEN 'no_expiry'
+                WHEN asset.expiration_date < current_date THEN 'expired'
+                WHEN asset.expiration_date <= current_date + 30 THEN 'expiring_soon'
+                ELSE 'current'
+              END
+            ) ORDER BY asset.document_type, asset.document_key)
+            FROM public.provider_legal_entity_document_assets asset
+            WHERE asset.organization_id = entity.organization_id
+              AND asset.legal_entity_id = entity.id
+              AND asset.lifecycle_status = 'active'
+          ), '[]'::jsonb) AS evidence
+        FROM public.legal_entities entity
+        LEFT JOIN public.provider_legal_entity_profile_fields field
+          ON field.organization_id = entity.organization_id
+         AND field.legal_entity_id = entity.id
+         AND field.lifecycle_status = 'active'
+        WHERE entity.organization_id = ${organizationId}
+          AND entity.status IN ('draft','active')
+        GROUP BY entity.organization_id, entity.id, entity.entity_code, entity.legal_name,
+          entity.country_code, entity.default_currency, entity.status
+        ORDER BY entity.entity_code
+        LIMIT 10
+      `, signal, STATEMENT_TIMEOUT_MS);
+      return rows as CorporateProfileSeamRow[];
     },
   });
 }

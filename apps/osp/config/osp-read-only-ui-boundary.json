@@ -31,12 +31,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/contracts.ts",
-      "sha256": "d832dcb3379fcc6f7aa3dfb272347ae5af1ff1aeb2fb8912ccd9bb3a73db6a5c"
+      "sha256": "68379cd76afefe31266f97c73804c3b73d878814a9c67c86f99bd1d9895c94d2"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/osp-client.ts",
-      "sha256": "cfa5b2daf7471bdeb83f1497d127387c14048ab48d30477c05b842b27bd6cfa4"
+      "sha256": "871eef302f9c0c5d2967cc86dc33b2ff0562502278fccacc79c28e61ee530fd2"
     },
     {
       "kind": "production-ui",
@@ -56,7 +56,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/router.tsx",
-      "sha256": "691d70beeb5aee1b1817109a46d3c400e5c5e1c6c7f07d35b979e3969a33f460"
+      "sha256": "fd67b84f6313cdbb0fd5aaee402f4972f0ebc3e000051eb097d7d3ed75fdb852"
     },
     {
       "kind": "production-ui",
@@ -191,7 +191,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/profile/CorporateProfileWorkspace.tsx",
-      "sha256": "1ea9075640e6a91f4c5ed04dd977bf9a6013c8e490fab51c63ce6a1ae05ce303"
+      "sha256": "68add6f881c0d869d82a6ab7e26eedb54920c346f52eee76cc62d80f893e5af5"
     },
     {
       "kind": "production-ui",
@@ -206,7 +206,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "193d0dbba35b94cfb628de6dbad3835d41312ab873fa5212c68bfa8e8f04a0e2"
+      "sha256": "9861868ad3bd14649ca4edca7f70dda737fa9a1894d82ef85afa138980ad7c69"
     },
     {
       "kind": "production-ui",

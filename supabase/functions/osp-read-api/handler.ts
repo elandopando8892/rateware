@@ -7,7 +7,7 @@ import {
   postCorsHeaders,
   safeErrorResponse,
 } from './http.ts';
-import { getCustomerRegistrationCase, getGmailHealth, listCustomerRegistrationCases, listOnboardingWorkspace } from './read-models.ts';
+import { getCorporateProfile, getCustomerRegistrationCase, getGmailHealth, listCustomerRegistrationCases, listOnboardingWorkspace } from './read-models.ts';
 import type { OspReadStore } from './store.ts';
 import { resolveWorkspace } from './workspace.ts';
 
@@ -252,6 +252,8 @@ export function createOspReadHandler({
         data = await getGmailHealth(store, organizationId, request.signal);
       } else if (parsed.action === 'list_customer_registration_cases') {
         data = await listCustomerRegistrationCases(store, organizationId, request.signal);
+      } else if (parsed.action === 'get_corporate_profile') {
+        data = await getCorporateProfile(store, organizationId, request.signal);
       } else if ('case_id' in parsed) {
         data = await getCustomerRegistrationCase(store, organizationId, parsed.case_id, request.signal);
       } else {

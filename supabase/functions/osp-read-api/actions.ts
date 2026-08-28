@@ -5,6 +5,7 @@ export const OSP_READ_ACTIONS = [
   'provider_gmail_status',
   'list_customer_registration_cases',
   'get_customer_registration_case',
+  'get_corporate_profile',
 ] as const;
 
 export type OspReadAction = typeof OSP_READ_ACTIONS[number];

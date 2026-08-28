@@ -9,6 +9,7 @@ import {
   normalizeCaseDetail,
   normalizeCaseSummary,
   normalizeCanonicalDecimal,
+  normalizeCorporateProfile,
   normalizeGmailReadModel,
   normalizePipelineReadModel,
 } from './read-models.ts';
@@ -75,6 +76,22 @@ Deno.test('normalizePipelineReadModel emits exactly four canonical decimal strin
     ready_for_approval: '4',
     extra: '5',
   }));
+});
+
+Deno.test('normalizeCorporateProfile exposes only bounded masked display values', () => {
+  const profile = normalizeCorporateProfile([{
+    entity_id: '33333333-3333-4333-8333-333333333333', entity_code: 'XBFUS', legal_name: 'Synthetic XBF',
+    country_code: 'US', default_currency: 'USD', status: 'active', verified_fields: '1', review_fields: '1', total_fields: '2',
+    fields: [
+      { code: 'tax_identifier', label: 'Tax identifier', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted' },
+      { code: 'bank_name', label: 'Bank name', display_value: 'Withheld', verification_status: 'needs_review', sensitivity: 'restricted' },
+    ],
+    evidence: [{ name: 'Synthetic evidence', document_type: 'tax_certificate', verification_status: 'needs_review', sensitivity: 'restricted', release_policy: 'approval_required', expiry_state: 'current' }],
+  }]);
+  assert.equal(profile.disclosure_locked, true);
+  assert.deepEqual(profile.entities[0].fields.map((field) => field.display_value), ['On file', 'Withheld']);
+  assert.equal(JSON.stringify(profile).includes('storage_path'), false);
+  expectDependency(() => normalizeCorporateProfile([{ ...profile.entities[0], raw_value: 'must-not-pass' }]));
 });
 
 Deno.test('normalizeGmailReadModel preserves the exact disconnected discriminant', () => {
@@ -246,6 +263,7 @@ Deno.test('listOnboardingWorkspace and getGmailHealth scope each read to the res
       seen.push(id);
       return { ...caseSummary, latest_subject: null, latest_sender_domain: null, latest_received_at: null, recent_events: [] };
     },
+    async readCorporateProfile(id: string) { seen.push(id); return []; },
   };
   assert.equal((await listOnboardingWorkspace(store, organizationId)).requests_total, '1');
   assert.equal((await getGmailHealth(store, organizationId)).connection_exists, false);

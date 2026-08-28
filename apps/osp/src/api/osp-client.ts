@@ -4,6 +4,8 @@ import type { ZodType } from 'zod';
 import {
   CaseDetailSuccessResponseSchema,
   CaseListSuccessResponseSchema,
+  CorporateProfileSuccessResponseSchema,
+  type CorporateProfileReadModel,
   type CaseDetail,
   type CaseSummary,
   DocumentApprovalResponseSchema,
@@ -51,6 +53,10 @@ export interface OspReadClient {
   getGmailStatus(): Promise<GmailReadModel>;
 }
 
+export interface OspCorporateProfileClient {
+  getCorporateProfile(): Promise<CorporateProfileReadModel>;
+}
+
 export interface OspCaseReadClient {
   listCustomerRegistrationCases(): Promise<readonly CaseSummary[]>;
   getCustomerRegistrationCase(caseId: string): Promise<CaseDetail>;
@@ -66,7 +72,7 @@ export type AcceptCaseFormMappingInput = { idempotencyKey: string; caseId: strin
 export type CorrectCaseFormMappingInput = AcceptCaseFormMappingInput & { instanceId: string; expectedInstanceVersion: number };
 export type SubmitCaseFormForReviewInput = SaveCaseFormDraftInput & { expectedCaseVersion: number };
 
-export interface OspClient extends OspReadClient, OspCaseReadClient, WorkflowClient {
+export interface OspClient extends OspReadClient, OspCorporateProfileClient, OspCaseReadClient, WorkflowClient {
   syncGmailInbox?(): Promise<GmailSyncResult>;
   renewGmailWatch?(): Promise<GmailWatchResult>;
   listDocumentVersions(): Promise<readonly DocumentVersion[]>;
@@ -400,6 +406,9 @@ export function createOspClient(options: ClientOptions): OspClient {
     ),
     getGmailStatus: () => read<GmailReadModel>(
       { version: 1, action: 'provider_gmail_status' }, GmailSuccessResponseSchema,
+    ),
+    getCorporateProfile: () => read<CorporateProfileReadModel>(
+      { version: 1, action: 'get_corporate_profile' }, CorporateProfileSuccessResponseSchema,
     ),
     listCustomerRegistrationCases: async () => (await read(
       { version: 1, action: 'list_customer_registration_cases' }, CaseListSuccessResponseSchema,

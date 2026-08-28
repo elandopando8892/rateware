@@ -1,7 +1,7 @@
 import { decodeWords } from 'npm:postal-mime@3.0.0';
 
 import { OspApiError } from './http.ts';
-import type { CaseDetailSeamRow, CaseSummarySeamRow, GmailSeamRow, OspReadStore, PipelineSeamRow } from './store.ts';
+import type { CaseDetailSeamRow, CaseSummarySeamRow, CorporateProfileSeamRow, GmailSeamRow, OspReadStore, PipelineSeamRow } from './store.ts';
 
 const PIPELINE_FIELDS = [
   'documents_pending',
@@ -22,6 +22,7 @@ const GMAIL_FIELDS = [
   'watch_configured',
   'watch_expires_at',
 ] as const;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export const GMAIL_ERROR_CODES = [
   'AUTH_REQUIRED',
@@ -93,6 +94,39 @@ export type CaseDetailReadModel = CaseSummaryReadModel & {
   };
   recent_events: readonly CaseEventReadModel[];
 };
+
+export type CorporateProfileFieldReadModel = {
+  code: string;
+  label: string;
+  display_value: string;
+  verification_status: 'verified' | 'needs_review' | 'unverified' | 'rejected';
+  sensitivity: 'public' | 'internal' | 'confidential' | 'restricted' | 'highly_restricted';
+};
+
+export type CorporateProfileEvidenceReadModel = {
+  name: string;
+  document_type: string;
+  verification_status: 'verified' | 'needs_review' | 'unverified' | 'rejected';
+  sensitivity: 'public' | 'internal' | 'confidential' | 'restricted' | 'highly_restricted';
+  release_policy: 'automatic' | 'review_required' | 'approval_required' | 'never_release';
+  expiry_state: 'no_expiry' | 'expired' | 'expiring_soon' | 'current';
+};
+
+export type CorporateProfileEntityReadModel = {
+  entity_id: string;
+  entity_code: string;
+  legal_name: string;
+  country_code: string;
+  default_currency: string | null;
+  status: 'draft' | 'active';
+  verified_fields: string;
+  review_fields: string;
+  total_fields: string;
+  fields: readonly CorporateProfileFieldReadModel[];
+  evidence: readonly CorporateProfileEvidenceReadModel[];
+};
+
+export type CorporateProfileReadModel = { entities: readonly CorporateProfileEntityReadModel[]; disclosure_locked: true };
 
 const CASE_SUMMARY_FIELDS = [
   'aggregate_version', 'attachment_count', 'blocked_by_duplicate_review', 'case_id',
@@ -316,6 +350,82 @@ export function normalizeGmailReadModel(value: unknown): GmailReadModel {
   };
 }
 
+const PROFILE_VERIFICATION = ['verified', 'needs_review', 'unverified', 'rejected'] as const;
+const PROFILE_SENSITIVITY = ['public', 'internal', 'confidential', 'restricted', 'highly_restricted'] as const;
+const PROFILE_RELEASE_POLICY = ['automatic', 'review_required', 'approval_required', 'never_release'] as const;
+const PROFILE_EXPIRY = ['no_expiry', 'expired', 'expiring_soon', 'current'] as const;
+
+function enumValue<const T extends readonly string[]>(value: unknown, allowed: T): T[number] {
+  if (typeof value !== 'string' || !allowed.includes(value)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  return value as T[number];
+}
+
+function normalizeProfileField(value: unknown): CorporateProfileFieldReadModel {
+  const row = recordWithExactKeys(value, ['code', 'display_value', 'label', 'sensitivity', 'verification_status']);
+  const code = normalizeBoundedText(row.code, 128) as string;
+  if (!/^[a-z][a-z0-9_]{1,127}$/.test(code)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  return {
+    code,
+    label: normalizeBoundedText(row.label, 128) as string,
+    display_value: normalizeBoundedText(row.display_value, 512) as string,
+    verification_status: enumValue(row.verification_status, PROFILE_VERIFICATION),
+    sensitivity: enumValue(row.sensitivity, PROFILE_SENSITIVITY),
+  };
+}
+
+function normalizeProfileEvidence(value: unknown): CorporateProfileEvidenceReadModel {
+  const row = recordWithExactKeys(value, ['document_type', 'expiry_state', 'name', 'release_policy', 'sensitivity', 'verification_status']);
+  const documentType = normalizeBoundedText(row.document_type, 128) as string;
+  if (!/^[a-z][a-z0-9_]{1,127}$/.test(documentType)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  return {
+    name: normalizeBoundedText(row.name, 256) as string,
+    document_type: documentType,
+    verification_status: enumValue(row.verification_status, PROFILE_VERIFICATION),
+    sensitivity: enumValue(row.sensitivity, PROFILE_SENSITIVITY),
+    release_policy: enumValue(row.release_policy, PROFILE_RELEASE_POLICY),
+    expiry_state: enumValue(row.expiry_state, PROFILE_EXPIRY),
+  };
+}
+
+function normalizeCorporateProfileEntity(value: unknown): CorporateProfileEntityReadModel {
+  const row = recordWithExactKeys(value, [
+    'country_code', 'default_currency', 'entity_code', 'entity_id', 'evidence', 'fields',
+    'legal_name', 'review_fields', 'status', 'total_fields', 'verified_fields',
+  ]);
+  if (typeof row.entity_id !== 'string' || !UUID_PATTERN.test(row.entity_id) ||
+      typeof row.entity_code !== 'string' || !/^[A-Z0-9]{2,16}$/.test(row.entity_code) ||
+      typeof row.country_code !== 'string' || !/^[A-Z]{2}$/.test(row.country_code) ||
+      !(row.default_currency === null || (typeof row.default_currency === 'string' && /^[A-Z]{3}$/.test(row.default_currency))) ||
+      !Array.isArray(row.fields) || row.fields.length > 128 || !Array.isArray(row.evidence) || row.evidence.length > 64) {
+    throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  }
+  const fields = row.fields.map(normalizeProfileField);
+  if (new Set(fields.map((field) => field.code)).size !== fields.length) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  return {
+    entity_id: row.entity_id,
+    entity_code: row.entity_code,
+    legal_name: normalizeBoundedText(row.legal_name, 256) as string,
+    country_code: row.country_code,
+    default_currency: row.default_currency,
+    status: enumValue(row.status, ['draft', 'active'] as const),
+    verified_fields: normalizeCanonicalDecimal(row.verified_fields),
+    review_fields: normalizeCanonicalDecimal(row.review_fields),
+    total_fields: normalizeCanonicalDecimal(row.total_fields),
+    fields,
+    evidence: row.evidence.map(normalizeProfileEvidence),
+  };
+}
+
+export function normalizeCorporateProfile(value: unknown): CorporateProfileReadModel {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 10) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  const entities = value.map(normalizeCorporateProfileEntity);
+  if (new Set(entities.map((entity) => entity.entity_id)).size !== entities.length ||
+      new Set(entities.map((entity) => entity.entity_code)).size !== entities.length) {
+    throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  }
+  return { entities, disclosure_locked: true };
+}
+
 export async function listOnboardingWorkspace(
   store: OspReadStore,
   organizationId: string,
@@ -351,4 +461,13 @@ export async function getCustomerRegistrationCase(
   signal?: AbortSignal,
 ): Promise<CaseDetailReadModel> {
   return normalizeCaseDetail(await store.readCase(organizationId, caseId, signal));
+}
+
+export async function getCorporateProfile(
+  store: OspReadStore,
+  organizationId: string,
+  signal?: AbortSignal,
+): Promise<CorporateProfileReadModel> {
+  const rows: readonly CorporateProfileSeamRow[] = await store.readCorporateProfile(organizationId, signal);
+  return normalizeCorporateProfile(rows);
 }

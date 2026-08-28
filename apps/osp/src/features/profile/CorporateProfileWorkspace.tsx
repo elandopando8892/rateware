@@ -1,101 +1,17 @@
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+
+import type { CorporateProfileEntity } from '../../api/contracts';
+import type { OspCorporateProfileClient } from '../../api/osp-client';
 
 type Readiness = 'verified' | 'review_required' | 'withheld';
 
-type ProfileField = {
-  label: string;
-  value: string;
-  status: Readiness;
-  sensitivity?: 'internal' | 'confidential' | 'restricted';
-};
-
-type ProfileSection = { title: string; fields: readonly ProfileField[] };
-type EvidenceItem = { name: string; kind: string; status: Readiness; policy: string };
-
-type LegalEntityProfile = {
-  id: 'mx' | 'us';
-  eyebrow: string;
-  legalName: string;
-  jurisdiction: string;
-  entityType: string;
-  readiness: number;
-  verifiedFacts: number;
-  totalFacts: number;
-  sections: readonly ProfileSection[];
-  evidence: readonly EvidenceItem[];
-};
-
-const entities: readonly LegalEntityProfile[] = [
-  {
-    id: 'mx',
-    eyebrow: 'Mexico entity',
-    legalName: 'XBF Demo Logistics, S. de R.L. de C.V.',
-    jurisdiction: 'Querétaro · Mexico',
-    entityType: 'Limited liability company',
-    readiness: 88,
-    verifiedFacts: 7,
-    totalFacts: 8,
-    sections: [
-      { title: 'Legal identity', fields: [
-        { label: 'Legal name', value: 'Verified corporate name', status: 'verified', sensitivity: 'internal' },
-        { label: 'Tax identifier', value: '••••••••••••', status: 'verified', sensitivity: 'restricted' },
-        { label: 'Tax regime', value: 'General corporate regime', status: 'verified', sensitivity: 'confidential' },
-        { label: 'Legal representative', value: 'Verified principal', status: 'verified', sensitivity: 'restricted' },
-      ] },
-      { title: 'Registered presence', fields: [
-        { label: 'Registered address', value: 'Querétaro, Querétaro · 76000', status: 'verified', sensitivity: 'confidential' },
-        { label: 'Mobile contact', value: '+52 •• •••• ••••', status: 'review_required', sensitivity: 'restricted' },
-        { label: 'Fixed phone', value: 'Not applicable', status: 'verified', sensitivity: 'internal' },
-        { label: 'Fax', value: 'Not applicable', status: 'verified', sensitivity: 'internal' },
-      ] },
-    ],
-    evidence: [
-      { name: 'Tax status certificate', kind: 'Fiscal', status: 'verified', policy: 'Approval required' },
-      { name: 'Proof of address', kind: 'Corporate', status: 'verified', policy: 'Approval required' },
-      { name: 'Legal representative authority', kind: 'Identity', status: 'review_required', policy: 'Explicit approval' },
-    ],
-  },
-  {
-    id: 'us',
-    eyebrow: 'United States entity',
-    legalName: 'XBF Demo Freight Systems LLC',
-    jurisdiction: 'Texas · United States',
-    entityType: 'Multi-member LLC partnership',
-    readiness: 82,
-    verifiedFacts: 18,
-    totalFacts: 22,
-    sections: [
-      { title: 'Legal and operating identity', fields: [
-        { label: 'Federal tax ID', value: '••-•••••••', status: 'verified', sensitivity: 'restricted' },
-        { label: 'State entity ID', value: '•••••••••', status: 'verified', sensitivity: 'confidential' },
-        { label: 'MC authority', value: 'MC •••••••', status: 'verified', sensitivity: 'internal' },
-        { label: 'USDOT', value: '•••••••', status: 'verified', sensitivity: 'internal' },
-        { label: 'Registered address', value: 'Austin, Texas · 78701', status: 'verified', sensitivity: 'confidential' },
-        { label: 'Commercial address', value: 'San Antonio, Texas · 78205', status: 'verified', sensitivity: 'confidential' },
-      ] },
-      { title: 'Management and billing', fields: [
-        { label: 'General manager', value: 'Verified principal', status: 'verified', sensitivity: 'restricted' },
-        { label: 'Accounts payable', value: 'Verified finance contact', status: 'verified', sensitivity: 'restricted' },
-        { label: 'Billing mailbox', value: 'finance@example.test', status: 'verified', sensitivity: 'restricted' },
-        { label: 'Website', value: 'xbf.example', status: 'verified', sensitivity: 'internal' },
-        { label: 'Years in business', value: 'Established 2022', status: 'verified', sensitivity: 'internal' },
-        { label: 'Years at address', value: '2 years', status: 'review_required', sensitivity: 'internal' },
-      ] },
-      { title: 'Credit and bank reference', fields: [
-        { label: 'Credit requested', value: '$25,000 USD', status: 'review_required', sensitivity: 'confidential' },
-        { label: 'Payment terms', value: 'Net 15', status: 'review_required', sensitivity: 'confidential' },
-        { label: 'Bank reference', value: 'Demo regional bank', status: 'withheld', sensitivity: 'restricted' },
-        { label: 'Trade references', value: '2 references preserved', status: 'review_required', sensitivity: 'restricted' },
-      ] },
-    ],
-    evidence: [
-      { name: 'W-9', kind: 'Tax', status: 'review_required', policy: 'Approval required' },
-      { name: 'Broker authority', kind: 'Operating authority', status: 'verified', policy: 'Approval required' },
-      { name: 'Surety bond', kind: 'Insurance', status: 'verified', policy: 'Approval required' },
-      { name: 'Signature specimen', kind: 'Signature', status: 'withheld', policy: 'Purpose-specific approval' },
-      { name: 'Bank reference', kind: 'Banking', status: 'withheld', policy: 'Explicit approval' },
-    ],
-  },
+const sectionDefinitions = [
+  { title: 'Legal identity', codes: ['tax_identifier', 'entity_identifier', 'entity_type', 'tax_regime', 'mc_number', 'usdot_number'] },
+  { title: 'Registered presence', codes: ['registered_address', 'commercial_address', 'business_start_year', 'address_tenure_years'] },
+  { title: 'Management and billing', codes: ['legal_representative', 'general_manager', 'accounts_payable_contact', 'billing_email', 'business_phone', 'website', 'principal_names'] },
+  { title: 'Credit and bank reference', codes: ['requested_credit_amount', 'payment_terms', 'billing_instructions', 'bank_name', 'bank_address', 'bank_officer_reference', 'trade_references', 'affiliated_company'] },
+  { title: 'Execution', codes: ['signer_name', 'signer_title', 'effective_date'] },
 ] as const;
 
 const statusLabel: Record<Readiness, string> = {
@@ -104,10 +20,55 @@ const statusLabel: Record<Readiness, string> = {
   withheld: 'Withheld',
 };
 
-export function CorporateProfileWorkspace() {
-  const [selectedId, setSelectedId] = useState<LegalEntityProfile['id']>('mx');
-  const entity = entities.find((item) => item.id === selectedId) ?? entities[0];
-  const releasableEvidence = entity.evidence.filter((item) => item.status === 'verified').length;
+function fieldStatus(entity: CorporateProfileEntity, code: string): Readiness {
+  const field = entity.fields.find((candidate) => candidate.code === code);
+  if (!field) return 'review_required';
+  if (field.display_value === 'Withheld' || field.sensitivity === 'highly_restricted') return 'withheld';
+  return field.verification_status === 'verified' ? 'verified' : 'review_required';
+}
+
+function evidenceStatus(evidence: CorporateProfileEntity['evidence'][number]): Readiness {
+  if (evidence.release_policy === 'never_release' || evidence.sensitivity === 'highly_restricted') return 'withheld';
+  return evidence.verification_status === 'verified' ? 'verified' : 'review_required';
+}
+
+function readiness(entity: CorporateProfileEntity): number {
+  const total = Number(entity.total_fields);
+  return total === 0 ? 0 : Math.round((Number(entity.verified_fields) / total) * 100);
+}
+
+export function CorporateProfileWorkspace({ client }: { client: OspCorporateProfileClient }) {
+  const query = useQuery({
+    queryKey: ['osp', 'corporate-profile'],
+    queryFn: () => client.getCorporateProfile(),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const [selectedId, setSelectedId] = useState<string>('');
+
+  if (query.isPending || query.fetchStatus !== 'idle') {
+    return <section className="workflow-page"><h1>Corporate profile</h1><p role="status">Loading the governed XBF profile…</p></section>;
+  }
+  if (query.isError || !query.data || query.data.entities.length === 0) {
+    return <section className="workflow-page"><h1>Corporate profile</h1><p role="alert">The corporate profile is unavailable. Reload and retry.</p></section>;
+  }
+
+  const entities = query.data.entities;
+  const entity = entities.find((candidate) => candidate.entity_id === selectedId) ?? entities[0];
+  const totalFacts = entities.reduce((sum, candidate) => sum + Number(candidate.total_fields), 0);
+  const verifiedFacts = entities.reduce((sum, candidate) => sum + Number(candidate.verified_fields), 0);
+  const evidenceCount = entities.reduce((sum, candidate) => sum + candidate.evidence.length, 0);
+  const releasableEvidence = entity.evidence.filter((item) => evidenceStatus(item) === 'verified').length;
+  const mappedCodes = new Set<string>(sectionDefinitions.flatMap((section) => [...section.codes]));
+  const sections: Array<{ title: string; fields: CorporateProfileEntity['fields'][number][] }> = sectionDefinitions.map((section) => ({
+    title: section.title,
+    fields: section.codes.flatMap((code) => {
+      const field = entity.fields.find((candidate) => candidate.code === code);
+      return field ? [field] : [];
+    }),
+  })).filter((section) => section.fields.length > 0);
+  const otherFields = entity.fields.filter((field) => !mappedCodes.has(field.code));
+  if (otherFields.length > 0) sections.push({ title: 'Other verified facts', fields: [...otherFields] });
 
   return <div className="corporate-profile-page">
     <header className="profile-hero">
@@ -117,14 +78,15 @@ export function CorporateProfileWorkspace() {
         <p className="lede">Select the legal entity requested by a provider, then assemble only verified facts and approved evidence. Nothing is sent from this workspace.</p>
       </div>
       <div className="profile-hero-score" aria-label="Combined corporate readiness">
-        <strong>85%</strong><span>combined readiness</span><small>25 verified facts · 7 controlled items</small>
+        <strong>{totalFacts === 0 ? 0 : Math.round((verifiedFacts / totalFacts) * 100)}%</strong><span>combined readiness</span><small>{verifiedFacts} verified facts · {evidenceCount} controlled items</small>
       </div>
     </header>
 
     <section className="entity-switcher" aria-label="XBF legal entities">
-      {entities.map((item) => <button key={item.id} type="button" className={item.id === entity.id ? 'entity-option entity-option-active' : 'entity-option'} aria-pressed={item.id === entity.id} onClick={() => setSelectedId(item.id)}>
-        <span>{item.eyebrow}</span><strong>{item.legalName}</strong><small>{item.jurisdiction}</small>
-        <b>{item.readiness}% ready</b>
+      {entities.map((item) => <button key={item.entity_id} type="button" className={item.entity_id === entity.entity_id ? 'entity-option entity-option-active' : 'entity-option'} aria-pressed={item.entity_id === entity.entity_id} onClick={() => setSelectedId(item.entity_id)}>
+        <span>{item.country_code === 'MX' ? 'Mexico entity' : item.country_code === 'US' ? 'United States entity' : `${item.country_code} entity`}</span>
+        <strong>{item.legal_name}</strong><small>{item.country_code} · {item.default_currency ?? 'No currency'}</small>
+        <b>{readiness(item)}% ready</b>
       </button>)}
     </section>
 
@@ -132,20 +94,23 @@ export function CorporateProfileWorkspace() {
       <main className="profile-main">
         <section className="profile-summary panel" aria-labelledby="entity-profile-title">
           <div className="panel-heading">
-            <div><p className="eyebrow">{entity.eyebrow}</p><h2 id="entity-profile-title">{entity.legalName}</h2><p>{entity.entityType} · {entity.jurisdiction}</p></div>
-            <div className="entity-readiness"><strong>{entity.readiness}%</strong><span>{entity.verifiedFacts}/{entity.totalFacts} facts verified</span></div>
+            <div><p className="eyebrow">{entity.entity_code}</p><h2 id="entity-profile-title">{entity.legal_name}</h2><p>{entity.country_code} · {entity.default_currency ?? 'Currency not set'} · {entity.status}</p></div>
+            <div className="entity-readiness"><strong>{readiness(entity)}%</strong><span>{entity.verified_fields}/{entity.total_fields} facts verified</span></div>
           </div>
-          <div className="readiness-track" aria-hidden="true"><span style={{ width: `${entity.readiness}%` }} /></div>
+          <div className="readiness-track" aria-hidden="true"><span style={{ width: `${readiness(entity)}%` }} /></div>
         </section>
 
-        {entity.sections.map((section) => <section className="profile-section panel" key={section.title} aria-labelledby={`section-${section.title.replaceAll(' ', '-').toLowerCase()}`}>
+        {sections.map((section) => <section className="profile-section panel" key={section.title} aria-labelledby={`section-${section.title.replaceAll(' ', '-').toLowerCase()}`}>
           <div className="panel-heading"><h2 id={`section-${section.title.replaceAll(' ', '-').toLowerCase()}`}>{section.title}</h2><span className="read-only-badge">Private vault</span></div>
           <dl className="profile-field-grid">
-            {section.fields.map((field) => <div className="profile-field" key={field.label}>
-              <dt>{field.label}</dt><dd>{field.value}</dd>
-              <span className={`profile-status profile-status-${field.status}`}>{statusLabel[field.status]}</span>
-              {field.sensitivity ? <small>{field.sensitivity.replace('_', ' ')}</small> : null}
-            </div>)}
+            {section.fields.map((field) => {
+              const status = fieldStatus(entity, field.code);
+              return <div className="profile-field" key={field.code}>
+                <dt>{field.label}</dt><dd>{field.display_value}</dd>
+                <span className={`profile-status profile-status-${status}`}>{statusLabel[status]}</span>
+                <small>{field.sensitivity.replace('_', ' ')}</small>
+              </div>;
+            })}
           </dl>
         </section>)}
       </main>
@@ -155,20 +120,23 @@ export function CorporateProfileWorkspace() {
           <p className="eyebrow">Provider-ready package</p><h2>{releasableEvidence}/{entity.evidence.length} evidence items ready</h2>
           <p>OSP can map verified fields immediately. Restricted documents remain withheld until their exact recipient and purpose are approved.</p>
           <ol>
-            <li className="package-step-complete"><span>1</span><div><strong>Entity selected</strong><small>{entity.jurisdiction}</small></div></li>
-            <li className="package-step-complete"><span>2</span><div><strong>Facts mapped</strong><small>{entity.verifiedFacts} verified</small></div></li>
+            <li className="package-step-complete"><span>1</span><div><strong>Entity selected</strong><small>{entity.entity_code}</small></div></li>
+            <li className="package-step-complete"><span>2</span><div><strong>Facts mapped</strong><small>{entity.verified_fields} verified</small></div></li>
             <li><span>3</span><div><strong>Evidence approval</strong><small>{entity.evidence.length - releasableEvidence} controlled item(s)</small></div></li>
             <li><span>4</span><div><strong>Provider form</strong><small>Generated only after review</small></div></li>
           </ol>
         </section>
         <section className="panel evidence-panel">
           <div className="panel-heading"><h2>Evidence vault</h2><span>Metadata only</span></div>
-          <ul>
-            {entity.evidence.map((item) => <li key={item.name}>
-              <div><strong>{item.name}</strong><small>{item.kind} · {item.policy}</small></div>
-              <span className={`profile-status profile-status-${item.status}`}>{statusLabel[item.status]}</span>
-            </li>)}
-          </ul>
+          {entity.evidence.length === 0 ? <p role="status">No governed evidence is registered for this entity yet.</p> : <ul>
+            {entity.evidence.map((item) => {
+              const status = evidenceStatus(item);
+              return <li key={`${item.document_type}:${item.name}`}>
+                <div><strong>{item.name}</strong><small>{item.document_type.replaceAll('_', ' ')} · {item.release_policy.replaceAll('_', ' ')}</small></div>
+                <span className={`profile-status profile-status-${status}`}>{statusLabel[status]}</span>
+              </li>;
+            })}
+          </ul>}
         </section>
         <div className="effects-lock" role="note"><span aria-hidden="true">🔒</span><div><strong>Disclosure remains locked</strong><p>Banking, signatures and identity evidence require a named recipient, release purpose and human approval.</p></div></div>
       </aside>

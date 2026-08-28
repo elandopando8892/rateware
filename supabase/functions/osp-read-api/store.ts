@@ -41,10 +41,25 @@ export type CaseDetailSeamRow = CaseSummarySeamRow & {
   recent_events: unknown;
 };
 
+export type CorporateProfileSeamRow = {
+  entity_id: unknown;
+  entity_code: unknown;
+  legal_name: unknown;
+  country_code: unknown;
+  default_currency: unknown;
+  status: unknown;
+  verified_fields: unknown;
+  review_fields: unknown;
+  total_fields: unknown;
+  fields: unknown;
+  evidence: unknown;
+};
+
 export interface OspReadStore {
   resolveWorkspace(identity: OspAuthorizationIdentity, signal?: AbortSignal): Promise<string>;
   readPipeline(organizationId: string, signal?: AbortSignal): Promise<PipelineSeamRow>;
   readGmail(organizationId: string, signal?: AbortSignal): Promise<GmailSeamRow>;
   readCases(organizationId: string, signal?: AbortSignal): Promise<readonly CaseSummarySeamRow[]>;
   readCase(organizationId: string, caseId: string, signal?: AbortSignal): Promise<CaseDetailSeamRow>;
+  readCorporateProfile(organizationId: string, signal?: AbortSignal): Promise<readonly CorporateProfileSeamRow[]>;
 }
