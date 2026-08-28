@@ -13,6 +13,51 @@ const beforeSha256 = 'b'.repeat(64);
 
 type QueryRecord = { text: string; values: unknown[] };
 
+Deno.test('Postgres form catalog serializes UUID sets as JSON instead of malformed scalar arrays', async () => {
+  const templateId = '51111111-1111-4111-8111-111111111111';
+  const templateVersionId = '61111111-1111-4111-8111-111111111111';
+  const fieldId = '81111111-1111-4111-8111-111111111111';
+  const calls: QueryRecord[] = [];
+  const sql = Object.assign(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const text = strings.join('?').replace(/\s+/g, ' ').trim().toLowerCase();
+    calls.push({ text, values });
+    if (text.startsWith('set local role') || text.startsWith('select set_config')) return [];
+    if (text.includes('from osp_private.form_templates template')) return [{
+      template_id: templateId,
+      name: 'XBF customer setup',
+      updated_at: '2026-08-28T12:00:00.000Z',
+      version_id: templateVersionId,
+      version: 1,
+      status: 'published',
+      schema_sha256: 'c'.repeat(64),
+    }];
+    if (text.includes('from osp_private.form_fields')) return [{
+      id: fieldId,
+      template_version_id: templateVersionId,
+      position: 0,
+      field_key: 'legal_name',
+      definition_json: {
+        label: 'Legal name',
+        required: true,
+        canonicalFieldId: 'supplier.legalName',
+        supplierAliases: [],
+        definition: { kind: 'text', minLength: 1, maxLength: 256 },
+      },
+    }];
+    if (text.includes('from osp_private.form_rules')) return [];
+    throw new Error(`UNEXPECTED_QUERY:${text}`);
+  }, { begin: async <T>(operation: (tx: typeof sql) => Promise<T>) => await operation(sql) });
+  const store = createPostgresFormStore({ databaseUrl: 'postgresql://synthetic.example.test/db', postgresFactory: () => sql });
+
+  const templates = await store.list(organizationId);
+
+  assert.equal(templates.length, 1);
+  const setQueries = calls.filter((call) => call.text.includes('jsonb_array_elements_text'));
+  assert.equal(setQueries.length, 2);
+  assert.equal(setQueries.every((call) => call.values.includes(JSON.stringify([templateVersionId]))), true);
+  assert.equal(calls.some((call) => call.text.includes('::uuid[]')), false);
+});
+
 function mappingRow(valuesJson: Record<string, unknown>) {
   return {
     id: mappingId,
