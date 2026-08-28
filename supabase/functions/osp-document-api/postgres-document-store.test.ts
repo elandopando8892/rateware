@@ -98,3 +98,28 @@ Deno.test('Postgres document store approves only the reviewed persisted source a
     reviewBeforeSha256: sourceSha256, reviewAfterSha256: sourceSha256,
   }), Error, 'DOCUMENT_REVIEW_HASH_MISMATCH');
 });
+
+Deno.test('Postgres document store performs profile review commands atomically under tenant authority', async () => {
+  const queries: Array<{ text: string; values: unknown[] }> = [];
+  const reviewId = '44444444-4444-4444-8444-444444444444';
+  const fieldId = '55555555-5555-4555-8555-555555555555';
+  const sql = Object.assign(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const text = strings.join('?').replace(/\s+/g, ' ').trim().toLowerCase();
+    queries.push({ text, values });
+    if (text.startsWith('set local role') || text.startsWith('select set_config')) return [];
+    if (text.includes('claim_profile_evidence_review_command')) return [{ review_id: reviewId, review_status: 'in_review', revision: 2 }];
+    if (text.includes('decide_profile_evidence_field_command')) return [{ review_id: reviewId, field_id: fieldId, field_status: 'accepted', revision: 3 }];
+    if (text.includes('finalize_profile_evidence_review_command')) return [{ review_id: reviewId, review_status: 'approved', verification_status: 'verified', revision: 4 }];
+    throw new Error(`UNEXPECTED_QUERY:${text}`);
+  }, { begin: async <T>(operation: (tx: typeof sql) => Promise<T>) => await operation(sql) });
+  const store = createPostgresDocumentStore({ databaseUrl: 'postgres://localhost:55322/osp', postgresFactory: () => sql });
+
+  assertEquals(await store.claimProfileReview({ organizationId, reviewId, expectedRevision: 1, actorSubject: 'ops-subject', actorPermission: 'osp:operate' }), { reviewId, reviewStatus: 'in_review', revision: 2 });
+  assertEquals(await store.decideProfileReviewField({ organizationId, reviewId, fieldId, expectedRevision: 2, decision: 'accepted', decisionNote: 'Evidence matches the proposed value.', reviewerValue: null, actorSubject: 'ops-subject', actorPermission: 'osp:operate' }), { reviewId, fieldId, fieldStatus: 'accepted', revision: 3 });
+  assertEquals(await store.finalizeProfileReview({ organizationId, reviewId, expectedRevision: 3, decision: 'approved', decisionNote: 'All fields were reviewed.', actorSubject: 'second-ops-subject', actorPermission: 'osp:operate' }), { reviewId, reviewStatus: 'approved', verificationStatus: 'verified', revision: 4 });
+
+  assertEquals(queries.filter((query) => query.text.startsWith('set local role')).length, 3);
+  assertEquals(queries.filter((query) => query.text.startsWith('select set_config')).length, 3);
+  assertEquals(queries.some((query) => query.text.includes('insert into public.provider_legal_entity_facts')), false);
+  assertEquals(queries.some((query) => /\b(?:send|webhook|email)\b/i.test(query.text)), false);
+});

@@ -272,7 +272,7 @@ export function createPostgresOspReadStore({
       return exactlyOneRow(rows, 'DEPENDENCY_UNAVAILABLE') as CaseDetailSeamRow;
     },
 
-    async readCorporateProfile(organizationId: string, signal?: AbortSignal): Promise<readonly CorporateProfileSeamRow[]> {
+    async readCorporateProfile(organizationId: string, reviewerSubject: string, signal?: AbortSignal): Promise<readonly CorporateProfileSeamRow[]> {
       const rows = await executeTaggedQuery(() => sql`
         SELECT
           entity.id AS entity_id,
@@ -350,7 +350,50 @@ export function createPostgresOspReadStore({
                 AND reviewed_field.field_code = field.field_code
                 AND reviewed_review.review_status = 'approved'
                 AND reviewed_field.field_status IN ('accepted','corrected')
-            )
+            ),
+            'review_candidates', COALESCE((
+              SELECT jsonb_agg(jsonb_build_object(
+                'review_id', candidate_review.id::text,
+                'review_field_id', candidate_field.id::text,
+                'review_revision', candidate_review.revision,
+                'review_status', candidate_review.review_status,
+                'ownership', CASE
+                  WHEN candidate_review.review_status = 'pending' AND candidate_review.assigned_reviewer_user_id IS NULL THEN 'available'
+                  WHEN candidate_review.review_status = 'in_review' AND candidate_review.assigned_reviewer_user_id = ${reviewerSubject} THEN 'owned'
+                  ELSE 'locked'
+                END,
+                'field_status', candidate_field.field_status,
+                'document_type', candidate_asset.document_type,
+                'evidence_label', initcap(replace(candidate_asset.document_type, '_', ' ')),
+                'proposed_display_value', CASE
+                  WHEN candidate_field.sensitivity IN ('restricted','highly_restricted') THEN 'Withheld'
+                  WHEN jsonb_typeof(candidate_field.proposed_value) IN ('string','number','boolean') THEN candidate_field.proposed_value #>> '{}'
+                  ELSE 'On file'
+                END,
+                'pending_field_count', (
+                  SELECT count(*)::bigint FROM public.provider_entity_document_review_fields pending_field
+                  WHERE pending_field.organization_id = candidate_review.organization_id
+                    AND pending_field.review_id = candidate_review.id
+                    AND pending_field.field_status = 'pending'
+                ),
+                'total_field_count', (
+                  SELECT count(*)::bigint FROM public.provider_entity_document_review_fields total_field
+                  WHERE total_field.organization_id = candidate_review.organization_id
+                    AND total_field.review_id = candidate_review.id
+                )
+              ) ORDER BY candidate_review.requested_at, candidate_review.id, candidate_field.id)
+              FROM public.provider_entity_document_reviews candidate_review
+              JOIN public.provider_entity_document_review_fields candidate_field
+                ON candidate_field.organization_id = candidate_review.organization_id
+               AND candidate_field.review_id = candidate_review.id
+              JOIN public.provider_legal_entity_document_assets candidate_asset
+                ON candidate_asset.organization_id = candidate_review.organization_id
+               AND candidate_asset.id = candidate_review.document_asset_id
+              WHERE candidate_review.organization_id = field.organization_id
+                AND candidate_review.legal_entity_id = field.legal_entity_id
+                AND candidate_field.field_code = field.field_code
+                AND candidate_review.review_status IN ('pending','in_review')
+            ), '[]'::jsonb)
           ) ORDER BY field.field_code) FILTER (WHERE field.id IS NOT NULL), '[]'::jsonb) AS fields,
           COALESCE((
             SELECT jsonb_agg(jsonb_build_object(

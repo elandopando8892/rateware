@@ -253,7 +253,7 @@ export function createOspReadHandler({
       } else if (parsed.action === 'list_customer_registration_cases') {
         data = await listCustomerRegistrationCases(store, organizationId, request.signal);
       } else if (parsed.action === 'get_corporate_profile') {
-        data = await getCorporateProfile(store, organizationId, request.signal);
+        data = await getCorporateProfile(store, organizationId, identity.subject, request.signal);
       } else if ('case_id' in parsed) {
         data = await getCustomerRegistrationCase(store, organizationId, parsed.case_id, request.signal);
       } else {

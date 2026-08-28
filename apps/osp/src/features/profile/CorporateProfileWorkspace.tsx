@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import type { CorporateProfileEntity } from '../../api/contracts';
@@ -54,6 +54,13 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
   });
   const [selectedId, setSelectedId] = useState<string>('');
   const [supportFilter, setSupportFilter] = useState<SupportFilter>('all');
+  const [selectedReview, setSelectedReview] = useState<{ fieldCode: string; reviewId: string } | null>(null);
+  const [decisionNote, setDecisionNote] = useState('');
+  const [lastOutcome, setLastOutcome] = useState('');
+  const mutation = useMutation({
+    mutationFn: async (operation: () => Promise<unknown>) => await operation(),
+    onSuccess: async () => { setLastOutcome('Review action stored in the audit ledger. No profile facts were promoted.'); await query.refetch(); },
+  });
 
   if (query.isPending || query.fetchStatus !== 'idle') {
     return <section className="workflow-page"><h1>Corporate profile</h1><p role="status">Loading the governed XBF profile…</p></section>;
@@ -83,6 +90,10 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
     return counts;
   }, { verified_match: 0, conflict: 0, evidence_available: 0, unsupported: 0 });
   const visibleReviewFields = supportFilter === 'all' ? entity.fields : entity.fields.filter((field) => field.support_status === supportFilter);
+  const selectedField = selectedReview ? entity.fields.find((field) => field.code === selectedReview.fieldCode) : undefined;
+  const selectedCandidate = selectedField?.review_candidates.find((candidate) => candidate.review_id === selectedReview?.reviewId);
+  const noteReady = decisionNote.trim() === decisionNote && decisionNote.length >= 3;
+  const restrictedDecision = selectedField ? ['restricted', 'highly_restricted'].includes(selectedField.sensitivity) : false;
 
   return <div className="corporate-profile-page">
     <header className="profile-hero">
@@ -117,7 +128,7 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
         <section className="profile-review-queue panel" aria-labelledby="profile-review-title">
           <div className="panel-heading">
             <div><p className="eyebrow">Sprint 6 · documentary validation</p><h2 id="profile-review-title">Verification queue</h2><p>Compare each reusable fact with the governed evidence already in the vault. Values remain masked when their sensitivity requires it.</p></div>
-            <span className="read-only-badge">Read-only preview</span>
+            <span className="read-only-badge">Controlled review</span>
           </div>
           <div className="verification-scorecards" aria-label="Document verification status">
             <button type="button" className={supportFilter === 'verified_match' ? 'verification-scorecard verification-scorecard-active' : 'verification-scorecard'} onClick={() => setSupportFilter('verified_match')}><strong>{supportCounts.verified_match}</strong><span>Matched</span></button>
@@ -134,9 +145,33 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
               <div className="verification-field-copy"><strong>{field.label}</strong><span>{field.display_value}</span><small>{field.code.replaceAll('_', ' ')}</small></div>
               <div className="verification-evidence-count"><strong>{field.reviewed_candidate_count}/{field.evidence_candidate_count}</strong><span>reviewed / found</span></div>
               <span className={`support-status support-status-${field.support_status}`}>{supportLabel[field.support_status]}</span>
+              {field.review_candidates.length > 0 ? <button type="button" className="review-evidence-button" onClick={() => { setSelectedReview({ fieldCode: field.code, reviewId: field.review_candidates[0].review_id }); setDecisionNote(''); setLastOutcome(''); }}>Review evidence</button> : null}
             </li>)}
           </ul>
-          <div className="effects-lock" role="note"><span aria-hidden="true">✓</span><div><strong>Human decision remains required</strong><p>This queue identifies documentary support; it does not approve, reject, promote or release any fact.</p></div></div>
+          {selectedCandidate && selectedField ? <section className="profile-decision-panel" aria-labelledby="profile-decision-title">
+            <div className="panel-heading"><div><p className="eyebrow">Human checkpoint</p><h3 id="profile-decision-title">Review {selectedField.label}</h3></div><button type="button" className="text-button" onClick={() => setSelectedReview(null)}>Close</button></div>
+            <dl className="profile-decision-evidence">
+              <div><dt>Evidence</dt><dd>{selectedCandidate.evidence_label}</dd></div>
+              <div><dt>Proposed value</dt><dd>{selectedCandidate.proposed_display_value}</dd></div>
+              <div><dt>Progress</dt><dd>{Number(selectedCandidate.total_field_count) - Number(selectedCandidate.pending_field_count)}/{selectedCandidate.total_field_count} fields decided</dd></div>
+            </dl>
+            {selectedCandidate.ownership === 'locked' ? <p role="status" className="review-lock-message">Another reviewer owns this evidence review. Reload after they finish.</p> : null}
+            {selectedCandidate.ownership === 'available' ? <button type="button" className="primary-action" disabled={mutation.isPending} onClick={() => mutation.mutate(() => client.claimProfileReview({ reviewId: selectedCandidate.review_id, expectedRevision: selectedCandidate.review_revision }))}>Start review</button> : null}
+            {selectedCandidate.ownership === 'owned' ? <>
+              <label className="decision-note-field">Decision note<textarea value={decisionNote} maxLength={1000} onChange={(event) => setDecisionNote(event.target.value)} placeholder="State what the evidence proves or why it is rejected." /></label>
+              {selectedCandidate.field_status === 'pending' ? <div className="decision-actions">
+                {restrictedDecision ? <button type="button" disabled={!noteReady || mutation.isPending} onClick={() => mutation.mutate(() => client.decideProfileReviewField({ reviewId: selectedCandidate.review_id, fieldId: selectedCandidate.review_field_id, expectedRevision: selectedCandidate.review_revision, decision: 'withheld', decisionNote, reviewerValue: null }))}>Withhold restricted value</button> : <button type="button" className="primary-action" disabled={!noteReady || mutation.isPending} onClick={() => mutation.mutate(() => client.decideProfileReviewField({ reviewId: selectedCandidate.review_id, fieldId: selectedCandidate.review_field_id, expectedRevision: selectedCandidate.review_revision, decision: 'accepted', decisionNote, reviewerValue: null }))}>Accept evidence</button>}
+                <button type="button" className="danger-action" disabled={!noteReady || mutation.isPending} onClick={() => mutation.mutate(() => client.decideProfileReviewField({ reviewId: selectedCandidate.review_id, fieldId: selectedCandidate.review_field_id, expectedRevision: selectedCandidate.review_revision, decision: 'rejected', decisionNote, reviewerValue: null }))}>Reject evidence</button>
+              </div> : null}
+              {selectedCandidate.field_status !== 'pending' && selectedCandidate.pending_field_count === '0' ? <div className="decision-actions">
+                <button type="button" className="primary-action" disabled={!noteReady || mutation.isPending || selectedCandidate.field_status === 'rejected'} onClick={() => mutation.mutate(() => client.finalizeProfileReview({ reviewId: selectedCandidate.review_id, expectedRevision: selectedCandidate.review_revision, decision: 'approved', decisionNote }))}>Approve completed review</button>
+                <button type="button" disabled={!noteReady || mutation.isPending} onClick={() => mutation.mutate(() => client.finalizeProfileReview({ reviewId: selectedCandidate.review_id, expectedRevision: selectedCandidate.review_revision, decision: 'changes_required', decisionNote }))}>Request changes</button>
+              </div> : null}
+            </> : null}
+            {mutation.isError ? <p role="alert">The review changed or could not be stored. Reload and try again.</p> : null}
+          </section> : null}
+          {lastOutcome ? <p className="review-outcome" role="status">{lastOutcome}</p> : null}
+          <div className="effects-lock" role="note"><span aria-hidden="true">✓</span><div><strong>Promotion remains a separate gate</strong><p>Review decisions are auditable, but they do not promote, release or send any corporate fact.</p></div></div>
         </section>
 
         {sections.map((section) => <section className="profile-section panel" key={section.title} aria-labelledby={`section-${section.title.replaceAll(' ', '-').toLowerCase()}`}>

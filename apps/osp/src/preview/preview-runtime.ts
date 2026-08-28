@@ -21,6 +21,25 @@ const payloadId = '22222222-2222-4222-8222-222222222222';
 const shaA = 'a'.repeat(64);
 const shaB = 'b'.repeat(64);
 
+const mxTaxReview = {
+  review_id: '92000000-0000-4000-8000-000000000001', review_field_id: '93000000-0000-4000-8000-000000000001',
+  review_revision: 1, review_status: 'pending' as const, ownership: 'available' as const, field_status: 'pending' as const,
+  document_type: 'tax_status_certificate', evidence_label: 'Tax status certificate', proposed_display_value: 'General corporate regime',
+  pending_field_count: '1', total_field_count: '1',
+};
+const usAuthorityReview = {
+  review_id: '92000000-0000-4000-8000-000000000002', review_field_id: '93000000-0000-4000-8000-000000000002',
+  review_revision: 3, review_status: 'in_review' as const, ownership: 'owned' as const, field_status: 'pending' as const,
+  document_type: 'motor_carrier_authority', evidence_label: 'Motor carrier authority', proposed_display_value: 'Authority on file',
+  pending_field_count: '1', total_field_count: '1',
+};
+const usBankReview = {
+  review_id: '92000000-0000-4000-8000-000000000003', review_field_id: '93000000-0000-4000-8000-000000000003',
+  review_revision: 2, review_status: 'in_review' as const, ownership: 'locked' as const, field_status: 'pending' as const,
+  document_type: 'bank_letter', evidence_label: 'Bank letter', proposed_display_value: 'Withheld',
+  pending_field_count: '1', total_field_count: '1',
+};
+
 const previewCorporateProfile: CorporateProfileReadModel = {
   disclosure_locked: true,
   entities: [
@@ -28,11 +47,11 @@ const previewCorporateProfile: CorporateProfileReadModel = {
       entity_id: '91000000-0000-4000-8000-000000000001', entity_code: 'XBFMX', legal_name: 'XBF Demo Logistics, S. de R.L. de C.V.',
       country_code: 'MX', default_currency: 'MXN', status: 'active', verified_fields: '4', review_fields: '1', total_fields: '5',
       fields: [
-        { code: 'tax_identifier', label: 'Tax identifier', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted', support_status: 'verified_match', evidence_candidate_count: '2', reviewed_candidate_count: '2' },
-        { code: 'tax_regime', label: 'Tax regime', display_value: 'General corporate regime', verification_status: 'verified', sensitivity: 'confidential', support_status: 'evidence_available', evidence_candidate_count: '1', reviewed_candidate_count: '0' },
-        { code: 'registered_address', label: 'Registered address', display_value: 'Querétaro, Querétaro · 76000', verification_status: 'verified', sensitivity: 'confidential', support_status: 'verified_match', evidence_candidate_count: '2', reviewed_candidate_count: '1' },
-        { code: 'legal_representative', label: 'Legal representative', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted', support_status: 'conflict', evidence_candidate_count: '2', reviewed_candidate_count: '1' },
-        { code: 'business_phone', label: 'Business phone', display_value: 'On file', verification_status: 'needs_review', sensitivity: 'restricted', support_status: 'unsupported', evidence_candidate_count: '0', reviewed_candidate_count: '0' },
+        { code: 'tax_identifier', label: 'Tax identifier', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted', support_status: 'verified_match', evidence_candidate_count: '2', reviewed_candidate_count: '2', review_candidates: [] },
+        { code: 'tax_regime', label: 'Tax regime', display_value: 'General corporate regime', verification_status: 'verified', sensitivity: 'confidential', support_status: 'evidence_available', evidence_candidate_count: '1', reviewed_candidate_count: '0', review_candidates: [mxTaxReview] },
+        { code: 'registered_address', label: 'Registered address', display_value: 'Querétaro, Querétaro · 76000', verification_status: 'verified', sensitivity: 'confidential', support_status: 'verified_match', evidence_candidate_count: '2', reviewed_candidate_count: '1', review_candidates: [] },
+        { code: 'legal_representative', label: 'Legal representative', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted', support_status: 'conflict', evidence_candidate_count: '2', reviewed_candidate_count: '1', review_candidates: [] },
+        { code: 'business_phone', label: 'Business phone', display_value: 'On file', verification_status: 'needs_review', sensitivity: 'restricted', support_status: 'unsupported', evidence_candidate_count: '0', reviewed_candidate_count: '0', review_candidates: [] },
       ],
       evidence: [
         { name: 'Tax status certificate', document_type: 'tax_certificate', verification_status: 'verified', sensitivity: 'restricted', release_policy: 'approval_required', expiry_state: 'current' },
@@ -43,14 +62,14 @@ const previewCorporateProfile: CorporateProfileReadModel = {
       entity_id: '91000000-0000-4000-8000-000000000002', entity_code: 'XBFUS', legal_name: 'XBF Demo Freight Systems LLC',
       country_code: 'US', default_currency: 'USD', status: 'active', verified_fields: '6', review_fields: '2', total_fields: '8',
       fields: [
-        { code: 'tax_identifier', label: 'Federal tax ID', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted', support_status: 'verified_match', evidence_candidate_count: '1', reviewed_candidate_count: '1' },
-        { code: 'mc_number', label: 'MC authority', display_value: 'On file', verification_status: 'verified', sensitivity: 'internal', support_status: 'evidence_available', evidence_candidate_count: '1', reviewed_candidate_count: '0' },
-        { code: 'usdot_number', label: 'USDOT', display_value: 'On file', verification_status: 'verified', sensitivity: 'internal', support_status: 'unsupported', evidence_candidate_count: '0', reviewed_candidate_count: '0' },
-        { code: 'registered_address', label: 'Registered address', display_value: 'Austin, Texas · 78701', verification_status: 'verified', sensitivity: 'confidential', support_status: 'verified_match', evidence_candidate_count: '2', reviewed_candidate_count: '1' },
-        { code: 'commercial_address', label: 'Commercial address', display_value: 'San Antonio, Texas · 78205', verification_status: 'verified', sensitivity: 'confidential', support_status: 'conflict', evidence_candidate_count: '2', reviewed_candidate_count: '1' },
-        { code: 'website', label: 'Website', display_value: 'xbf.example', verification_status: 'verified', sensitivity: 'internal', support_status: 'unsupported', evidence_candidate_count: '0', reviewed_candidate_count: '0' },
-        { code: 'requested_credit_amount', label: 'Credit requested', display_value: '$25,000 USD', verification_status: 'needs_review', sensitivity: 'confidential', support_status: 'unsupported', evidence_candidate_count: '0', reviewed_candidate_count: '0' },
-        { code: 'bank_name', label: 'Bank reference', display_value: 'Withheld', verification_status: 'needs_review', sensitivity: 'restricted', support_status: 'evidence_available', evidence_candidate_count: '1', reviewed_candidate_count: '0' },
+        { code: 'tax_identifier', label: 'Federal tax ID', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted', support_status: 'verified_match', evidence_candidate_count: '1', reviewed_candidate_count: '1', review_candidates: [] },
+        { code: 'mc_number', label: 'MC authority', display_value: 'On file', verification_status: 'verified', sensitivity: 'internal', support_status: 'evidence_available', evidence_candidate_count: '1', reviewed_candidate_count: '0', review_candidates: [usAuthorityReview] },
+        { code: 'usdot_number', label: 'USDOT', display_value: 'On file', verification_status: 'verified', sensitivity: 'internal', support_status: 'unsupported', evidence_candidate_count: '0', reviewed_candidate_count: '0', review_candidates: [] },
+        { code: 'registered_address', label: 'Registered address', display_value: 'Austin, Texas · 78701', verification_status: 'verified', sensitivity: 'confidential', support_status: 'verified_match', evidence_candidate_count: '2', reviewed_candidate_count: '1', review_candidates: [] },
+        { code: 'commercial_address', label: 'Commercial address', display_value: 'San Antonio, Texas · 78205', verification_status: 'verified', sensitivity: 'confidential', support_status: 'conflict', evidence_candidate_count: '2', reviewed_candidate_count: '1', review_candidates: [] },
+        { code: 'website', label: 'Website', display_value: 'xbf.example', verification_status: 'verified', sensitivity: 'internal', support_status: 'unsupported', evidence_candidate_count: '0', reviewed_candidate_count: '0', review_candidates: [] },
+        { code: 'requested_credit_amount', label: 'Credit requested', display_value: '$25,000 USD', verification_status: 'needs_review', sensitivity: 'confidential', support_status: 'unsupported', evidence_candidate_count: '0', reviewed_candidate_count: '0', review_candidates: [] },
+        { code: 'bank_name', label: 'Bank reference', display_value: 'Withheld', verification_status: 'needs_review', sensitivity: 'restricted', support_status: 'evidence_available', evidence_candidate_count: '1', reviewed_candidate_count: '0', review_candidates: [usBankReview] },
       ],
       evidence: [
         { name: 'W-9', document_type: 'w9', verification_status: 'needs_review', sensitivity: 'restricted', release_policy: 'approval_required', expiry_state: 'no_expiry' },
@@ -191,6 +210,20 @@ function createPreviewAuthPort(): AuthPort {
 
 function createPreviewClient(): OspClient {
   let previewCaseRows = previewCases.map((caseRecord) => structuredClone(caseRecord));
+  let corporateProfile = structuredClone(previewCorporateProfile);
+  const reviewCandidates = () => corporateProfile.entities.flatMap((entity) => entity.fields.flatMap((field) => field.review_candidates.map((candidate) => ({ entity, field, candidate }))));
+  const replaceReviewCandidates = (reviewId: string, transform: (candidate: CorporateProfileReadModel['entities'][number]['fields'][number]['review_candidates'][number]) => CorporateProfileReadModel['entities'][number]['fields'][number]['review_candidates'][number] | null) => {
+    corporateProfile = {
+      ...corporateProfile,
+      entities: corporateProfile.entities.map((entity) => ({
+        ...entity,
+        fields: entity.fields.map((field) => ({
+          ...field,
+          review_candidates: field.review_candidates.flatMap((candidate) => candidate.review_id === reviewId ? [transform(candidate)].filter((item): item is typeof candidate => item !== null) : [candidate]),
+        })),
+      })),
+    };
+  };
   const workflowWorkspaces = new Map<string, ApprovalCommunicationsWorkspace>([
     [previewWorkspace.caseId, structuredClone(previewWorkspace)],
     [previewOperationsWorkspace.caseId, structuredClone(previewOperationsWorkspace)],
@@ -259,7 +292,40 @@ function createPreviewClient(): OspClient {
       error_code: null,
       outbound_enabled: false,
     }),
-    getCorporateProfile: async () => structuredClone(previewCorporateProfile),
+    getCorporateProfile: async () => structuredClone(corporateProfile),
+    claimProfileReview: async (input) => {
+      const match = reviewCandidates().find(({ candidate }) => candidate.review_id === input.reviewId);
+      if (!match || match.candidate.ownership !== 'available' || match.candidate.review_revision !== input.expectedRevision) throw new Error('Preview review conflict');
+      const revision = input.expectedRevision + 1;
+      replaceReviewCandidates(input.reviewId, (candidate) => ({ ...candidate, review_status: 'in_review', ownership: 'owned', review_revision: revision }));
+      return { reviewId: input.reviewId, reviewStatus: 'in_review', revision };
+    },
+    decideProfileReviewField: async (input) => {
+      const match = reviewCandidates().find(({ candidate }) => candidate.review_id === input.reviewId && candidate.review_field_id === input.fieldId);
+      if (!match || match.candidate.ownership !== 'owned' || match.candidate.review_revision !== input.expectedRevision || match.candidate.field_status !== 'pending') throw new Error('Preview field conflict');
+      const revision = input.expectedRevision + 1;
+      replaceReviewCandidates(input.reviewId, (candidate) => ({
+        ...candidate, review_revision: revision,
+        field_status: candidate.review_field_id === input.fieldId ? input.decision : candidate.field_status,
+        pending_field_count: candidate.review_field_id === input.fieldId ? String(Math.max(0, Number(candidate.pending_field_count) - 1)) : candidate.pending_field_count,
+      }));
+      return { reviewId: input.reviewId, fieldId: input.fieldId, fieldStatus: input.decision, revision };
+    },
+    finalizeProfileReview: async (input) => {
+      const matches = reviewCandidates().filter(({ candidate }) => candidate.review_id === input.reviewId);
+      if (matches.length === 0 || matches.some(({ candidate }) => candidate.ownership !== 'owned' || candidate.review_revision !== input.expectedRevision || candidate.field_status === 'pending')) throw new Error('Preview finalization conflict');
+      corporateProfile = {
+        ...corporateProfile,
+        entities: corporateProfile.entities.map((entity) => ({
+          ...entity,
+          fields: entity.fields.map((field) => {
+            const reviewed = field.review_candidates.find((candidate) => candidate.review_id === input.reviewId && ['accepted', 'corrected'].includes(candidate.field_status));
+            return { ...field, reviewed_candidate_count: reviewed ? String(Number(field.reviewed_candidate_count) + 1) : field.reviewed_candidate_count, review_candidates: field.review_candidates.filter((candidate) => candidate.review_id !== input.reviewId) };
+          }),
+        })),
+      };
+      return { reviewId: input.reviewId, reviewStatus: input.decision, verificationStatus: input.decision === 'approved' ? 'verified' : input.decision === 'rejected' ? 'rejected' : 'needs_review', revision: input.expectedRevision + 1 };
+    },
     listCustomerRegistrationCases: async () => structuredClone(previewCaseRows),
     getCustomerRegistrationCase: async (requestedCaseId) => requestedCaseId === caseId
       ? previewCaseDetail

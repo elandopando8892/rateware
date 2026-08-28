@@ -165,6 +165,30 @@ export const CorporateProfileFieldSchema = z.strictObject({
   support_status: z.enum(['verified_match', 'conflict', 'evidence_available', 'unsupported']),
   evidence_candidate_count: CanonicalCountSchema,
   reviewed_candidate_count: CanonicalCountSchema,
+  review_candidates: z.array(z.strictObject({
+    review_id: z.uuid(),
+    review_field_id: z.uuid(),
+    review_revision: z.number().int().min(1).max(2_147_483_647),
+    review_status: z.enum(['pending', 'in_review']),
+    ownership: z.enum(['available', 'owned', 'locked']),
+    field_status: z.enum(['pending', 'accepted', 'corrected', 'rejected', 'withheld']),
+    document_type: z.string().regex(/^[a-z][a-z0-9_]{1,127}$/),
+    evidence_label: z.string().min(1).max(256),
+    proposed_display_value: z.string().min(1).max(512),
+    pending_field_count: CanonicalCountSchema,
+    total_field_count: CanonicalCountSchema,
+  })).max(20),
+});
+
+export const ProfileReviewMutationResponseSchema = z.strictObject({
+  data: z.strictObject({
+    reviewId: z.uuid(),
+    revision: z.number().int().min(1).max(2_147_483_647),
+    reviewStatus: z.enum(['in_review', 'approved', 'rejected', 'changes_required']).optional(),
+    fieldId: z.uuid().optional(),
+    fieldStatus: z.enum(['accepted', 'corrected', 'rejected', 'withheld']).optional(),
+    verificationStatus: z.enum(['verified', 'rejected', 'needs_review']).optional(),
+  }),
 });
 
 export const CorporateProfileEvidenceSchema = z.strictObject({
@@ -541,6 +565,7 @@ export const CaseFormSubmissionResponseSchema = z.strictObject({
 export type PipelineReadModel = z.infer<typeof PipelineReadModelSchema>;
 export type CorporateProfileReadModel = z.infer<typeof CorporateProfileSuccessResponseSchema>['data'];
 export type CorporateProfileEntity = z.infer<typeof CorporateProfileEntitySchema>;
+export type ProfileReviewMutationReceipt = z.infer<typeof ProfileReviewMutationResponseSchema>['data'];
 export type GmailReadModel = z.infer<typeof GmailReadModelSchema>;
 export type GmailSyncResult = z.infer<typeof GmailSyncSuccessResponseSchema>['data'];
 export type GmailWatchResult = z.infer<typeof GmailWatchSuccessResponseSchema>['data'];

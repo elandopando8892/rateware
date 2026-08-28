@@ -79,5 +79,6 @@ export function createDocumentApiRuntime(options: DocumentApiRuntimeOptions): (r
     verifyToken: (token, signal) => verifier.verifyWorkflow(token, signal),
     listVersions: store.listVersions,
     documentService,
+    profileReviewStore: store,
   });
 }

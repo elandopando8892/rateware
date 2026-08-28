@@ -61,5 +61,5 @@ export interface OspReadStore {
   readGmail(organizationId: string, signal?: AbortSignal): Promise<GmailSeamRow>;
   readCases(organizationId: string, signal?: AbortSignal): Promise<readonly CaseSummarySeamRow[]>;
   readCase(organizationId: string, caseId: string, signal?: AbortSignal): Promise<CaseDetailSeamRow>;
-  readCorporateProfile(organizationId: string, signal?: AbortSignal): Promise<readonly CorporateProfileSeamRow[]>;
+  readCorporateProfile(organizationId: string, reviewerSubject: string, signal?: AbortSignal): Promise<readonly CorporateProfileSeamRow[]>;
 }

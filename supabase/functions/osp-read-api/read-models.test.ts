@@ -83,8 +83,8 @@ Deno.test('normalizeCorporateProfile exposes only bounded masked display values'
     entity_id: '33333333-3333-4333-8333-333333333333', entity_code: 'XBFUS', legal_name: 'Synthetic XBF',
     country_code: 'US', default_currency: 'USD', status: 'active', verified_fields: '1', review_fields: '1', total_fields: '2',
     fields: [
-      { code: 'tax_identifier', label: 'Tax identifier', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted', support_status: 'verified_match', evidence_candidate_count: '2', reviewed_candidate_count: '2' },
-      { code: 'bank_name', label: 'Bank name', display_value: 'Withheld', verification_status: 'needs_review', sensitivity: 'restricted', support_status: 'evidence_available', evidence_candidate_count: '1', reviewed_candidate_count: '0' },
+      { code: 'tax_identifier', label: 'Tax identifier', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted', support_status: 'verified_match', evidence_candidate_count: '2', reviewed_candidate_count: '2', review_candidates: [] },
+      { code: 'bank_name', label: 'Bank name', display_value: 'Withheld', verification_status: 'needs_review', sensitivity: 'restricted', support_status: 'evidence_available', evidence_candidate_count: '1', reviewed_candidate_count: '0', review_candidates: [] },
     ],
     evidence: [{ name: 'Synthetic evidence', document_type: 'tax_certificate', verification_status: 'needs_review', sensitivity: 'restricted', release_policy: 'approval_required', expiry_state: 'current' }],
   }]);

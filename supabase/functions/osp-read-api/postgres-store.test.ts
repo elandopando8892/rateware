@@ -101,7 +101,7 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
   assert.equal((await store.readGmail(organizationId)).connection_exists, false);
   assert.deepEqual(await store.readCases(organizationId), []);
   assert.equal((await store.readCase(organizationId, '22222222-2222-4222-8222-222222222222')).state, 'received');
-  assert.equal((await store.readCorporateProfile(organizationId))[0].entity_code, 'XBFMX');
+  assert.equal((await store.readCorporateProfile(organizationId, identity.subject))[0].entity_code, 'XBFMX');
 
   assert.equal(fake.calls.length, 6);
   assert.match(fake.calls[0].text, /FROM\s+public\.external_identities\s+identity_record/i);
@@ -135,7 +135,7 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
   assert.deepEqual(fake.calls[2].values, [true, organizationId]);
   assert.deepEqual(fake.calls[3].values, [organizationId]);
   assert.deepEqual(fake.calls[4].values, [organizationId, '22222222-2222-4222-8222-222222222222']);
-  assert.deepEqual(fake.calls[5].values, [organizationId]);
+  assert.deepEqual(fake.calls[5].values, [identity.subject, organizationId]);
   assert.equal(fake.calls.some((call) => /\b(?:insert|update|delete|merge|call)\b/i.test(call.text)), false);
   assert.equal(fake.calls.some((call) => /select\s+\*/i.test(call.text)), false);
 });

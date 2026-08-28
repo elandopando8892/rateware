@@ -37,6 +37,35 @@ describe('synthetic preview runtime', () => {
     expect(runtime.authPort.getCurrentSession()?.identity.organization).toBe('xbf-preview-organization');
   });
 
+  it('keeps a decided documentary candidate visible until the review is finalized', async () => {
+    const runtime = createPreviewRuntime();
+    const profile = await runtime.apiClient.getCorporateProfile();
+    const field = profile.entities[0].fields.find((item) => item.code === 'tax_regime')!;
+    const candidate = field.review_candidates[0];
+    const claimed = await runtime.apiClient.claimProfileReview({ reviewId: candidate.review_id, expectedRevision: candidate.review_revision });
+    const decided = await runtime.apiClient.decideProfileReviewField({
+      reviewId: candidate.review_id,
+      fieldId: candidate.review_field_id,
+      expectedRevision: claimed.revision,
+      decision: 'accepted',
+      decisionNote: 'Synthetic evidence matches the proposed tax regime.',
+      reviewerValue: null,
+    });
+    const afterDecision = await runtime.apiClient.getCorporateProfile();
+    expect(afterDecision.entities[0].fields.find((item) => item.code === 'tax_regime')?.review_candidates[0]).toMatchObject({
+      ownership: 'owned', field_status: 'accepted', pending_field_count: '0', review_revision: decided.revision,
+    });
+
+    await expect(runtime.apiClient.finalizeProfileReview({
+      reviewId: candidate.review_id,
+      expectedRevision: decided.revision,
+      decision: 'approved',
+      decisionNote: 'All synthetic evidence was reviewed.',
+    })).resolves.toMatchObject({ reviewStatus: 'approved', verificationStatus: 'verified' });
+    const finalized = await runtime.apiClient.getCorporateProfile();
+    expect(finalized.entities[0].fields.find((item) => item.code === 'tax_regime')?.review_candidates).toEqual([]);
+  });
+
   it('advances a completed form from Operations review to the signature gate in memory', async () => {
     const runtime = createPreviewRuntime();
     const cases = await runtime.apiClient.listCustomerRegistrationCases();

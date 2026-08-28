@@ -56,7 +56,7 @@ function AuthenticatedRouter({ apiClient, email, logout, routerHistory, sessionK
 export function App({ authPort, apiClient, buildProfile = 'local-e2e', routerHistory }: { authPort: AuthPort; apiClient: OspClient; buildProfile?: OspBuildProfile; routerHistory?: RouterHistory }) {
   return (
     <>
-      {buildProfile === 'preview-synthetic' ? <aside className="synthetic-preview-banner" role="status">Preview sintética — usa datos demostrativos y no ejecuta envíos, aprobaciones ni cambios productivos.</aside> : null}
+      {buildProfile === 'preview-synthetic' ? <aside className="synthetic-preview-banner" role="status">Preview sintética — las decisiones viven solo en memoria; no ejecuta envíos, divulgaciones ni cambios productivos.</aside> : null}
       <AuthProvider port={authPort}>
         <SessionScopedQueryProvider apiClient={apiClient}>
           <AuthenticatedApp apiClient={apiClient} routerHistory={routerHistory} />

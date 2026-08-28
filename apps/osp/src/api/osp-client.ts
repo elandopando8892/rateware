@@ -6,6 +6,8 @@ import {
   CaseListSuccessResponseSchema,
   CorporateProfileSuccessResponseSchema,
   type CorporateProfileReadModel,
+  ProfileReviewMutationResponseSchema,
+  type ProfileReviewMutationReceipt,
   type CaseDetail,
   type CaseSummary,
   DocumentApprovalResponseSchema,
@@ -55,6 +57,9 @@ export interface OspReadClient {
 
 export interface OspCorporateProfileClient {
   getCorporateProfile(): Promise<CorporateProfileReadModel>;
+  claimProfileReview(input: ClaimProfileReviewInput): Promise<ProfileReviewMutationReceipt>;
+  decideProfileReviewField(input: DecideProfileReviewFieldInput): Promise<ProfileReviewMutationReceipt>;
+  finalizeProfileReview(input: FinalizeProfileReviewInput): Promise<ProfileReviewMutationReceipt>;
 }
 
 export interface OspCaseReadClient {
@@ -71,6 +76,9 @@ export type SaveCaseFormDraftInput = { idempotencyKey: string; caseId: string; t
 export type AcceptCaseFormMappingInput = { idempotencyKey: string; caseId: string; mappingId: string; expectedMappingVersion: number; expectedAfterSha256: string };
 export type CorrectCaseFormMappingInput = AcceptCaseFormMappingInput & { instanceId: string; expectedInstanceVersion: number };
 export type SubmitCaseFormForReviewInput = SaveCaseFormDraftInput & { expectedCaseVersion: number };
+export type ClaimProfileReviewInput = { reviewId: string; expectedRevision: number };
+export type DecideProfileReviewFieldInput = ClaimProfileReviewInput & { fieldId: string; decision: 'accepted' | 'corrected' | 'rejected' | 'withheld'; decisionNote: string; reviewerValue: unknown | null };
+export type FinalizeProfileReviewInput = ClaimProfileReviewInput & { decision: 'approved' | 'rejected' | 'changes_required'; decisionNote: string };
 
 export interface OspClient extends OspReadClient, OspCorporateProfileClient, OspCaseReadClient, WorkflowClient {
   syncGmailInbox?(): Promise<GmailSyncResult>;
@@ -304,6 +312,20 @@ export function createOspClient(options: ClientOptions): OspClient {
     }
   }
 
+  async function profileReviewMutation(action: 'claim_profile_review' | 'decide_profile_review_field' | 'finalize_profile_review', body: Record<string, unknown>): Promise<ProfileReviewMutationReceipt> {
+    const encoded = new TextEncoder().encode(JSON.stringify(body));
+    if (encoded.byteLength > 8_192) throw new OspClientError('INVALID_REQUEST');
+    const response = await documentRequest({
+      query: [['action', action]], expectedStatus: 200, schema: ProfileReviewMutationResponseSchema,
+      contentType: 'application/json', body: encoded.buffer,
+    });
+    return response.data;
+  }
+
+  function validDecisionNote(value: string): boolean {
+    return value.trim() === value && value.length >= 3 && value.length <= 1000 && !/[<>]|(?:javascript|data):|https?:\/\//i.test(value);
+  }
+
   async function gmailMutation<T>(
     action: 'sync_provider_gmail_inbox' | 'renew_provider_gmail_watch',
     schema: ZodType<{ version: 1; data: T }>,
@@ -410,6 +432,18 @@ export function createOspClient(options: ClientOptions): OspClient {
     getCorporateProfile: () => read<CorporateProfileReadModel>(
       { version: 1, action: 'get_corporate_profile' }, CorporateProfileSuccessResponseSchema,
     ),
+    claimProfileReview: (input: ClaimProfileReviewInput) => {
+      if (!UUID.test(input.reviewId) || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1 || input.expectedRevision > 2_147_483_647) return Promise.reject(new OspClientError('INVALID_REQUEST'));
+      return profileReviewMutation('claim_profile_review', { reviewId: input.reviewId, expectedRevision: input.expectedRevision });
+    },
+    decideProfileReviewField: (input: DecideProfileReviewFieldInput) => {
+      if (!UUID.test(input.reviewId) || !UUID.test(input.fieldId) || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1 || input.expectedRevision > 2_147_483_647 || !['accepted', 'corrected', 'rejected', 'withheld'].includes(input.decision) || !validDecisionNote(input.decisionNote) || ((input.decision === 'corrected') !== (input.reviewerValue !== null))) return Promise.reject(new OspClientError('INVALID_REQUEST'));
+      return profileReviewMutation('decide_profile_review_field', { reviewId: input.reviewId, fieldId: input.fieldId, expectedRevision: input.expectedRevision, decision: input.decision, decisionNote: input.decisionNote, reviewerValue: input.reviewerValue });
+    },
+    finalizeProfileReview: (input: FinalizeProfileReviewInput) => {
+      if (!UUID.test(input.reviewId) || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1 || input.expectedRevision > 2_147_483_647 || !['approved', 'rejected', 'changes_required'].includes(input.decision) || !validDecisionNote(input.decisionNote)) return Promise.reject(new OspClientError('INVALID_REQUEST'));
+      return profileReviewMutation('finalize_profile_review', { reviewId: input.reviewId, expectedRevision: input.expectedRevision, decision: input.decision, decisionNote: input.decisionNote });
+    },
     listCustomerRegistrationCases: async () => (await read(
       { version: 1, action: 'list_customer_registration_cases' }, CaseListSuccessResponseSchema,
     )).cases,

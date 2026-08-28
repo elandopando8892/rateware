@@ -31,12 +31,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/contracts.ts",
-      "sha256": "2b216a1597bb88c40b279d80c5641d411c022a7ba91f8b6e5db44609194451e0"
+      "sha256": "e23bed8e55ea378300982ad6bf6c19d8727a009adff8111f8193348176c6f249"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/osp-client.ts",
-      "sha256": "871eef302f9c0c5d2967cc86dc33b2ff0562502278fccacc79c28e61ee530fd2"
+      "sha256": "f483776951bcf14070ab0cce5da89edee74adeac7f96ac6e059e0b8f31871a18"
     },
     {
       "kind": "production-ui",
@@ -46,7 +46,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/App.tsx",
-      "sha256": "5b43fc955ae646807ce65fc0a0fb575812967028b6538aabaa80c252ef0a727d"
+      "sha256": "3e93430246cc698a877b2f0c029d1595c212e45bc5aa438376b34708f8814e90"
     },
     {
       "kind": "production-ui",
@@ -191,7 +191,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/profile/CorporateProfileWorkspace.tsx",
-      "sha256": "fd358969584739787d8321120aa2abe283e9bf62a8ab4be156e68bf4604ace6e"
+      "sha256": "f506a70e06acf6293d3a6f0af4996ba7022734c772064915a54a74c05dc8a60f"
     },
     {
       "kind": "production-ui",
@@ -206,7 +206,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "58e120c17b9014dc2f90449b75747cf933757709260908cbbb28752f754c5dc1"
+      "sha256": "327102667b80c98c4a4ea91f61108c27b763fa4d73f7184232f051e51f794db1"
     },
     {
       "kind": "production-ui",
@@ -226,7 +226,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/profile.css",
-      "sha256": "99c7eee3917a050e6ec93707d111130bd559372ac1d67a811644983d858ee449"
+      "sha256": "269b1bb44183155d059a6051305e2f38a1bac06817f16a695179939e13db9293"
     },
     {
       "kind": "production-ui",

@@ -104,6 +104,19 @@ export type CorporateProfileFieldReadModel = {
   support_status: 'verified_match' | 'conflict' | 'evidence_available' | 'unsupported';
   evidence_candidate_count: string;
   reviewed_candidate_count: string;
+  review_candidates: readonly {
+    review_id: string;
+    review_field_id: string;
+    review_revision: number;
+    review_status: 'pending' | 'in_review';
+    ownership: 'available' | 'owned' | 'locked';
+    field_status: 'pending' | 'accepted' | 'corrected' | 'rejected' | 'withheld';
+    document_type: string;
+    evidence_label: string;
+    proposed_display_value: string;
+    pending_field_count: string;
+    total_field_count: string;
+  }[];
 };
 
 export type CorporateProfileEvidenceReadModel = {
@@ -358,6 +371,9 @@ const PROFILE_SENSITIVITY = ['public', 'internal', 'confidential', 'restricted',
 const PROFILE_RELEASE_POLICY = ['automatic', 'review_required', 'approval_required', 'never_release'] as const;
 const PROFILE_EXPIRY = ['no_expiry', 'expired', 'expiring_soon', 'current'] as const;
 const PROFILE_SUPPORT = ['verified_match', 'conflict', 'evidence_available', 'unsupported'] as const;
+const PROFILE_REVIEW_STATUS = ['pending', 'in_review'] as const;
+const PROFILE_REVIEW_OWNERSHIP = ['available', 'owned', 'locked'] as const;
+const PROFILE_FIELD_STATUS = ['pending', 'accepted', 'corrected', 'rejected', 'withheld'] as const;
 
 function enumValue<const T extends readonly string[]>(value: unknown, allowed: T): T[number] {
   if (typeof value !== 'string' || !allowed.includes(value)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
@@ -366,11 +382,12 @@ function enumValue<const T extends readonly string[]>(value: unknown, allowed: T
 
 function normalizeProfileField(value: unknown): CorporateProfileFieldReadModel {
   const row = recordWithExactKeys(value, [
-    'code', 'display_value', 'evidence_candidate_count', 'label', 'reviewed_candidate_count',
-    'sensitivity', 'support_status', 'verification_status',
+    'code', 'display_value', 'evidence_candidate_count', 'label', 'review_candidates',
+    'reviewed_candidate_count', 'sensitivity', 'support_status', 'verification_status',
   ]);
   const code = normalizeBoundedText(row.code, 128) as string;
   if (!/^[a-z][a-z0-9_]{1,127}$/.test(code)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  if (!Array.isArray(row.review_candidates) || row.review_candidates.length > 20) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
   return {
     code,
     label: normalizeBoundedText(row.label, 128) as string,
@@ -380,6 +397,34 @@ function normalizeProfileField(value: unknown): CorporateProfileFieldReadModel {
     support_status: enumValue(row.support_status, PROFILE_SUPPORT),
     evidence_candidate_count: normalizeCanonicalDecimal(row.evidence_candidate_count),
     reviewed_candidate_count: normalizeCanonicalDecimal(row.reviewed_candidate_count),
+    review_candidates: row.review_candidates.map((candidate) => {
+      const item = recordWithExactKeys(candidate, [
+        'document_type', 'evidence_label', 'field_status', 'ownership', 'pending_field_count',
+        'proposed_display_value', 'review_field_id', 'review_id', 'review_revision',
+        'review_status', 'total_field_count',
+      ]);
+      if (typeof item.review_id !== 'string' || !UUID_PATTERN.test(item.review_id) ||
+          typeof item.review_field_id !== 'string' || !UUID_PATTERN.test(item.review_field_id)) {
+        throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+      }
+      const reviewRevision = Number(item.review_revision);
+      const documentType = normalizeBoundedText(item.document_type, 128) as string;
+      if (!Number.isSafeInteger(reviewRevision) || reviewRevision < 1 || reviewRevision > 2_147_483_647 ||
+          !/^[a-z][a-z0-9_]{1,127}$/.test(documentType)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+      return Object.freeze({
+        review_id: item.review_id,
+        review_field_id: item.review_field_id,
+        review_revision: reviewRevision,
+        review_status: enumValue(item.review_status, PROFILE_REVIEW_STATUS),
+        ownership: enumValue(item.ownership, PROFILE_REVIEW_OWNERSHIP),
+        field_status: enumValue(item.field_status, PROFILE_FIELD_STATUS),
+        document_type: documentType,
+        evidence_label: normalizeBoundedText(item.evidence_label, 256) as string,
+        proposed_display_value: normalizeBoundedText(item.proposed_display_value, 512) as string,
+        pending_field_count: normalizeCanonicalDecimal(item.pending_field_count),
+        total_field_count: normalizeCanonicalDecimal(item.total_field_count),
+      });
+    }),
   };
 }
 
@@ -476,8 +521,9 @@ export async function getCustomerRegistrationCase(
 export async function getCorporateProfile(
   store: OspReadStore,
   organizationId: string,
+  reviewerSubject: string,
   signal?: AbortSignal,
 ): Promise<CorporateProfileReadModel> {
-  const rows: readonly CorporateProfileSeamRow[] = await store.readCorporateProfile(organizationId, signal);
+  const rows: readonly CorporateProfileSeamRow[] = await store.readCorporateProfile(organizationId, reviewerSubject, signal);
   return normalizeCorporateProfile(rows);
 }

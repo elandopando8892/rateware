@@ -121,6 +121,64 @@ Deno.test('document API approves only exact reviewed hashes and contains unsafe 
   }
 });
 
+Deno.test('document API governs profile evidence review without promoting facts or accepting a read-only identity', async () => {
+  const calls: Array<{ action: string; input: Record<string, unknown> }> = [];
+  const reviewId = '44444444-4444-4444-8444-444444444444';
+  const fieldId = '55555555-5555-4555-8555-555555555555';
+  const profileReviewStore = {
+    claimProfileReview: async (input: Record<string, unknown>) => {
+      calls.push({ action: 'claim', input });
+      return { reviewId, reviewStatus: 'in_review' as const, revision: 2 };
+    },
+    decideProfileReviewField: async (input: Record<string, unknown>) => {
+      calls.push({ action: 'decide', input });
+      return { reviewId, fieldId, fieldStatus: 'accepted' as const, revision: 3 };
+    },
+    finalizeProfileReview: async (input: Record<string, unknown>) => {
+      calls.push({ action: 'finalize', input });
+      return { reviewId, reviewStatus: 'approved' as const, verificationStatus: 'verified' as const, revision: 4 };
+    },
+  };
+  const handler = createDocumentApiHandler({
+    verifyToken: async () => identity,
+    listVersions: async () => [],
+    documentService: {
+      upload: async () => ({ id: 'unused', version: 1, expiresAt: '2026-11-24' }),
+      approve: async () => ({ id: 'unused', status: 'approved' as const }),
+    },
+    profileReviewStore,
+    incidentId: () => 'incident-profile-review',
+  });
+  const jsonRequest = (action: string, body: Record<string, unknown>) => request(`action=${action}`, {
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  assertEquals((await handler(jsonRequest('claim_profile_review', { reviewId, expectedRevision: 1 }))).status, 200);
+  assertEquals((await handler(jsonRequest('decide_profile_review_field', {
+    reviewId, fieldId, expectedRevision: 2, decision: 'accepted', decisionNote: 'Evidence matches the proposed value.', reviewerValue: null,
+  }))).status, 200);
+  assertEquals((await handler(jsonRequest('finalize_profile_review', {
+    reviewId, expectedRevision: 3, decision: 'approved', decisionNote: 'All documentary evidence was reviewed.',
+  }))).status, 200);
+  assertEquals(calls.map(({ action }) => action), ['claim', 'decide', 'finalize']);
+  assertEquals(calls.every(({ input }) => input.organizationId === identity.identity.organization && input.actorSubject === identity.identity.subject), true);
+  assertEquals(calls.some(({ input }) => 'promote' in input || 'send' in input), false);
+
+  const readOnly = createDocumentApiHandler({
+    verifyToken: async () => readOnlyIdentity,
+    listVersions: async () => [],
+    documentService: {
+      upload: async () => ({ id: 'unused', version: 1, expiresAt: '2026-11-24' }),
+      approve: async () => ({ id: 'unused', status: 'approved' as const }),
+    },
+    profileReviewStore,
+    incidentId: () => 'incident-profile-review-forbidden',
+  });
+  assertEquals((await readOnly(jsonRequest('claim_profile_review', { reviewId, expectedRevision: 1 }))).status, 403);
+  assertEquals(calls.length, 3);
+});
+
 Deno.test('document API preflight accepts the exact header set independent of order and rejects extras', async () => {
   const handler = createDocumentApiHandler({
     verifyToken: async () => identity,
@@ -144,6 +202,9 @@ Deno.test('document API preflight accepts the exact header set independent of or
     [`action=approve_document_version&version_id=22222222-2222-4222-8222-222222222222&expected_version=1&review_before_sha256=${'a'.repeat(64)}&review_after_sha256=${'a'.repeat(64)}`, 'Authorization'],
     ['action=upload_document_version&document_type=proof_of_address&valid_from=2026-08-24', 'authorization, content-type'],
     ['action=upload_document_version&document_type=proof_of_address&valid_from=2026-08-24', 'content-type,authorization'],
+    ['action=claim_profile_review', 'authorization, content-type'],
+    ['action=decide_profile_review_field', 'content-type, authorization'],
+    ['action=finalize_profile_review', 'authorization,content-type'],
   ]) {
     const response = await handler(preflight(query, headers));
     assertEquals(response.status, 204);

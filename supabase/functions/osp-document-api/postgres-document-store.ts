@@ -17,6 +17,9 @@ export type DocumentVersionSummary = {
   validFrom: string;
   expiresAt: string;
 };
+export type ProfileReviewClaimInput = { organizationId: string; reviewId: string; expectedRevision: number; actorSubject: string; actorPermission: 'osp:operate' };
+export type ProfileReviewFieldDecisionInput = ProfileReviewClaimInput & { fieldId: string; decision: 'accepted' | 'corrected' | 'rejected' | 'withheld'; decisionNote: string; reviewerValue: unknown | null };
+export type ProfileReviewFinalizationInput = ProfileReviewClaimInput & { decision: 'approved' | 'rejected' | 'changes_required'; decisionNote: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
@@ -124,6 +127,27 @@ export function createPostgresDocumentStore(options: { databaseUrl: string; post
         one(advanced, 'DOCUMENT_VERSION_CONFLICT');
         if (approved.id !== versionId || approved.status !== 'approved') throw new Error('DOCUMENT_APPROVAL_REJECTED');
         return Object.freeze({ id: versionId, status: 'approved' as const });
+      });
+    },
+    async claimProfileReview(input: ProfileReviewClaimInput) {
+      return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        const row = one(await tx`select review_id, review_status, revision from osp_private.claim_profile_evidence_review_command(${input.organizationId}, ${input.reviewId}, ${input.expectedRevision}, ${input.actorSubject}, ${input.actorPermission})`, 'PROFILE_REVIEW_VERSION_CONFLICT');
+        if (row.review_id !== input.reviewId || row.review_status !== 'in_review') throw new Error('PROFILE_REVIEW_REJECTED');
+        return Object.freeze({ reviewId: input.reviewId, reviewStatus: 'in_review' as const, revision: integer(row.revision, 'PROFILE_REVIEW_REJECTED') });
+      });
+    },
+    async decideProfileReviewField(input: ProfileReviewFieldDecisionInput) {
+      return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        const row = one(await tx`select review_id, field_id, field_status, revision from osp_private.decide_profile_evidence_field_command(${input.organizationId}, ${input.reviewId}, ${input.fieldId}, ${input.expectedRevision}, ${input.decision}, ${input.decisionNote}, ${input.reviewerValue === null ? null : JSON.stringify(input.reviewerValue)}::jsonb, ${input.actorSubject}, ${input.actorPermission})`, 'PROFILE_FIELD_VERSION_CONFLICT');
+        if (row.review_id !== input.reviewId || row.field_id !== input.fieldId || row.field_status !== input.decision) throw new Error('PROFILE_FIELD_DECISION_REJECTED');
+        return Object.freeze({ reviewId: input.reviewId, fieldId: input.fieldId, fieldStatus: input.decision, revision: integer(row.revision, 'PROFILE_FIELD_DECISION_REJECTED') });
+      });
+    },
+    async finalizeProfileReview(input: ProfileReviewFinalizationInput) {
+      return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        const row = one(await tx`select review_id, review_status, verification_status, revision from osp_private.finalize_profile_evidence_review_command(${input.organizationId}, ${input.reviewId}, ${input.expectedRevision}, ${input.decision}, ${input.decisionNote}, ${input.actorSubject}, ${input.actorPermission})`, 'PROFILE_REVIEW_VERSION_CONFLICT');
+        if (row.review_id !== input.reviewId || row.review_status !== input.decision || !['verified', 'rejected', 'needs_review'].includes(String(row.verification_status))) throw new Error('PROFILE_REVIEW_FINALIZATION_REJECTED');
+        return Object.freeze({ reviewId: input.reviewId, reviewStatus: input.decision, verificationStatus: row.verification_status as 'verified' | 'rejected' | 'needs_review', revision: integer(row.revision, 'PROFILE_REVIEW_FINALIZATION_REJECTED') });
       });
     },
   });
