@@ -26,13 +26,7 @@ import { createStrictXlsxPackageScanner } from "./strict-xlsx-package-scanner.ts
 import type { AttachmentPromotionService } from "./attachment-promotion.ts";
 import type { ManagedExtractionService } from "./worker.ts";
 import type { AutomaticPreparationService } from "./automatic-preparation.ts";
-import {
-  createRatewareXlsxCanaryService,
-  type RatewareXlsxCanaryReceipt,
-} from "./rateware-xlsx-canary.ts";
-import { createPostgresRatewareXlsxCanaryStore } from "./postgres-rateware-xlsx-canary-store.ts";
-import type { RatewareXlsxRoutingConfiguration } from "./rateware-xlsx-routing-config.ts";
-import { createPostgresRatewareXlsxStagingStore } from "./postgres-rateware-xlsx-staging-store.ts";
+import type { OspXlsxIntakeConfiguration } from "./osp-xlsx-intake-config.ts";
 
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -62,7 +56,7 @@ export function createShadowWorkerRuntime(input: {
   workerId: string;
   automation?: GovernedAutomationConfiguration;
   xlsxShadow?: XlsxShadowConfiguration;
-  ratewareXlsxRouting?: RatewareXlsxRoutingConfiguration;
+  xlsxIntake?: OspXlsxIntakeConfiguration;
   fetch?: typeof globalThis.fetch;
 }): {
   enqueue(limit: number): Promise<number>;
@@ -70,12 +64,9 @@ export function createShadowWorkerRuntime(input: {
   runXlsxDocumentExtractCanary?: (
     request: XlsxDocumentExtractCanary,
   ) => Promise<number>;
-  stageXlsxRatewareCanary?: (
-    request: XlsxDocumentExtractCanary,
-  ) => Promise<RatewareXlsxCanaryReceipt>;
 } {
   if (
-    [input.automation, input.xlsxShadow, input.ratewareXlsxRouting].filter(
+    [input.automation, input.xlsxShadow, input.xlsxIntake].filter(
       Boolean,
     ).length > 1
   ) {
@@ -101,7 +92,7 @@ export function createShadowWorkerRuntime(input: {
   });
   const request = input.fetch ?? globalThis.fetch;
   const automationStorage = input.automation || input.xlsxShadow ||
-      input.ratewareXlsxRouting
+      input.xlsxIntake
     ? governedStorage(input.storageClient)
     : undefined;
   let attachmentPromotions: AttachmentPromotionService | undefined;
@@ -143,7 +134,7 @@ export function createShadowWorkerRuntime(input: {
           ? promoted.promoteCase(request)
           : Promise.resolve(Object.freeze([])),
     });
-  } else if (input.ratewareXlsxRouting) {
+  } else if (input.xlsxIntake) {
     attachmentPromotions = createAttachmentPromotionService({
       store: createPostgresAttachmentPromotionStore({
         databaseUrl: input.databaseUrl,
@@ -159,12 +150,7 @@ export function createShadowWorkerRuntime(input: {
     });
   }
   let extraction: ManagedExtractionService | undefined;
-  let stageXlsxRatewareCanary:
-    | ((
-      request: XlsxDocumentExtractCanary,
-    ) => Promise<RatewareXlsxCanaryReceipt>)
-    | undefined;
-  if (input.automation || input.xlsxShadow || input.ratewareXlsxRouting) {
+  if (input.automation || input.xlsxShadow || input.xlsxIntake) {
     const managedStore = createPostgresManagedExtractionStore({
       databaseUrl: input.databaseUrl,
       postgresFactory: input.postgresFactory,
@@ -212,37 +198,11 @@ export function createShadowWorkerRuntime(input: {
           },
         }
         : {}),
-      ...(input.ratewareXlsxRouting
-        ? {
-          ratewareXlsxStaging: createPostgresRatewareXlsxStagingStore({
-            databaseUrl: input.databaseUrl,
-            postgresFactory: input.postgresFactory,
-          }),
-        }
-        : {}),
       jobs,
     });
-    if (input.xlsxShadow) {
-      const canary = createRatewareXlsxCanaryService({
-        sources: extractionStore,
-        storage: managedStorage,
-        staging: createPostgresRatewareXlsxCanaryStore({
-          databaseUrl: input.databaseUrl,
-          postgresFactory: input.postgresFactory,
-        }),
-      });
-      stageXlsxRatewareCanary = async (request) => {
-        if (
-          request.organizationId !== input.xlsxShadow!.organizationId ||
-          request.caseId !== input.xlsxShadow!.caseId ||
-          request.sourceSha256 !== input.xlsxShadow!.sourceSha256
-        ) throw new Error("INVALID_INPUT");
-        return await canary.stage(request);
-      };
-    }
   }
   let formMappings: AutomaticPreparationService | undefined;
-  if (input.automation || input.xlsxShadow || input.ratewareXlsxRouting) {
+  if (input.automation || input.xlsxShadow || input.xlsxIntake) {
     const prepared = createAutomaticPreparationService(
       createPostgresAutomaticPreparationStore({
         databaseUrl: input.databaseUrl,
@@ -302,6 +262,5 @@ export function createShadowWorkerRuntime(input: {
         limit,
       }),
     runXlsxDocumentExtractCanary,
-    stageXlsxRatewareCanary,
   });
 }

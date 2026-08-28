@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1.0.14";
+import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import ExcelJS from "exceljs";
 
 import { createInMemoryBackgroundJobStore } from "../_shared/osp/background-jobs.ts";
@@ -223,7 +223,7 @@ Deno.test("managed extraction processes XLSX without layout or AI providers", as
   assertEquals(mapping.kind, "form_ai_mapping");
 });
 
-Deno.test("managed extraction routes a complete carrier quote only to Rateware staging", async () => {
+Deno.test("managed extraction rejects a carrier quote instead of routing it to Rateware", async () => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Carrier Quote");
   sheet.addRow([
@@ -255,7 +255,7 @@ Deno.test("managed extraction routes a complete carrier quote only to Rateware s
     8,
   ]);
   const xlsxBytes = new Uint8Array(await workbook.xlsx.writeBuffer());
-  const staged: unknown[] = [];
+  let persisted = false;
   const jobs = createInMemoryBackgroundJobStore();
   const service = createManagedExtractionService({
     store: {
@@ -273,45 +273,25 @@ Deno.test("managed extraction routes a complete carrier quote only to Rateware s
         existingExtractionId: null,
       }),
       persist: async () => {
-        throw new Error("must not persist OSP extraction for a quote");
+        persisted = true;
+        throw new Error("must not persist a quote as customer setup");
       },
     },
     storage: { download: async () => xlsxBytes },
-    ratewareXlsxStaging: {
-      stage: async (input) => {
-        staged.push(input);
-        return {
-          rawUploadId: crypto.randomUUID(),
-          interpretationJobId: crypto.randomUUID(),
-          rateStagingId: crypto.randomUUID(),
-          inserted: true,
-        };
-      },
-    },
     jobs,
   });
-  await service.extract({
-    organizationId,
-    documentVersionId,
-    correlationId: "job-rateware",
-    leaseToken: "lease-rateware",
-  });
-  assertEquals(staged.length, 1);
-  assertEquals(
-    (staged[0] as { jobId: string; leaseToken: string; quote: { rfx: string } })
-      .jobId,
-    "job-rateware",
+  await assertRejects(
+    () =>
+      service.extract({
+        organizationId,
+        documentVersionId,
+        correlationId: "job-not-rateware",
+        leaseToken: "lease-not-rateware",
+      }),
+    Error,
+    "XLSX_CANONICAL_FIELDS_NOT_FOUND",
   );
-  assertEquals(
-    (staged[0] as { jobId: string; leaseToken: string; quote: { rfx: string } })
-      .leaseToken,
-    "lease-rateware",
-  );
-  assertEquals(
-    (staged[0] as { jobId: string; leaseToken: string; quote: { rfx: string } })
-      .quote.rfx,
-    "RFx-1",
-  );
+  assertEquals(persisted, false);
   assertEquals(
     await jobs.claim({
       workerId: "test",

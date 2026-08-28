@@ -53,6 +53,18 @@ function fakeDatabase(initialState = "received") {
           },
         }];
       }
+      if (
+        text.startsWith(
+          "select field_key, value_json, evidence_id from osp_private.load_xbf_customer_setup_candidates",
+        )
+      ) {
+        return [{
+          field_key: "supplier.legalName",
+          value_json: "X Border Freight",
+          evidence_id:
+            "rateware:legal-entity-fact:66666666-6666-4666-8666-666666666666",
+        }];
+      }
       if (text.startsWith("select id, field_key, presence")) {
         return [{
           id: "55555555-5555-4555-8555-555555555555",
@@ -168,9 +180,12 @@ const readyPlan: AutomaticPreparationPlan = {
   values: { legal_name: "X Border Freight" },
   fields: [{
     fieldId: "legal_name",
-    source: "attachment",
+    source: "rateware",
     status: "prepared",
-    evidenceIds: ["55555555-5555-4555-8555-555555555555"],
+    evidenceIds: [
+      "55555555-5555-4555-8555-555555555555",
+      "rateware:legal-entity-fact:66666666-6666-4666-8666-666666666666",
+    ],
   }],
   externalEffects: false,
 };
@@ -193,14 +208,26 @@ Deno.test("postgres preparation loads published fields and grounded extraction c
     supplierAliases: ["Legal name"],
     required: true,
   }]);
-  assertEquals(loaded.candidates, [{
-    fieldKey: "Legal name",
-    value: "X Border Freight",
-    source: "attachment",
-    confidence: 0.98,
-    validation: "valid",
-    evidenceIds: ["55555555-5555-4555-8555-555555555555"],
-  }]);
+  assertEquals(loaded.candidates, [
+    {
+      fieldKey: "supplier.legalName",
+      value: "X Border Freight",
+      source: "rateware",
+      confidence: 1,
+      validation: "valid",
+      evidenceIds: [
+        "rateware:legal-entity-fact:66666666-6666-4666-8666-666666666666",
+      ],
+    },
+    {
+      fieldKey: "Legal name",
+      value: "X Border Freight",
+      source: "attachment",
+      confidence: 0.98,
+      validation: "valid",
+      evidenceIds: ["55555555-5555-4555-8555-555555555555"],
+    },
+  ]);
 });
 
 Deno.test("postgres preparation persists a reviewable draft and stops at preparing", async () => {

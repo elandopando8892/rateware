@@ -47,13 +47,6 @@ type XlsxDocumentExtractCanary = {
   sourceSha256: string;
 };
 
-type RatewareXlsxCanaryReceipt = {
-  rawUploadId: string;
-  interpretationJobId: string;
-  rateStagingId: string;
-  inserted: boolean;
-};
-
 export function createOspWorkerHandler(deps: {
   expectedToken: string;
   enqueue(limit: number): Promise<number>;
@@ -61,9 +54,6 @@ export function createOspWorkerHandler(deps: {
   runXlsxDocumentExtractCanary?: (
     input: XlsxDocumentExtractCanary,
   ) => Promise<number>;
-  stageXlsxRatewareCanary?: (
-    input: XlsxDocumentExtractCanary,
-  ) => Promise<RatewareXlsxCanaryReceipt>;
 }): (request: Request) => Promise<Response> {
   if (deps.expectedToken.length < 32) {
     throw new Error("INVALID_RUNTIME_CONFIGURATION");
@@ -114,10 +104,7 @@ export function createOspWorkerHandler(deps: {
       "sourceSha256",
     ];
     if (
-      ![
-        "run_xlsx_document_extract_canary",
-        "stage_xlsx_rateware_canary",
-      ].includes(String(body.action)) ||
+      body.action !== "run_xlsx_document_extract_canary" ||
       keys.length !== canaryKeys.length ||
       keys.some((key, index) => key !== canaryKeys[index]) ||
       typeof body.organizationId !== "string" ||
@@ -138,17 +125,6 @@ export function createOspWorkerHandler(deps: {
       documentVersionId: body.documentVersionId,
       sourceSha256: body.sourceSha256,
     };
-    if (body.action === "stage_xlsx_rateware_canary") {
-      if (!deps.stageXlsxRatewareCanary) {
-        return json(409, { error: "CANARY_DISABLED" });
-      }
-      try {
-        const receipt = await deps.stageXlsxRatewareCanary(canaryInput);
-        return json(200, receipt);
-      } catch {
-        return json(503, { error: "WORKER_UNAVAILABLE" });
-      }
-    }
     if (!deps.runXlsxDocumentExtractCanary) {
       return json(409, { error: "CANARY_DISABLED" });
     }

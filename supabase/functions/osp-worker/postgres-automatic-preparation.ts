@@ -99,6 +99,21 @@ function extractionCandidate(row: SqlRow): PreparationCandidate {
   });
 }
 
+function ratewareCandidate(row: SqlRow): PreparationCandidate {
+  if (
+    typeof row.field_key !== "string" ||
+    typeof row.evidence_id !== "string" || row.evidence_id.length < 1
+  ) fail("DATABASE_TEMPORARY");
+  return Object.freeze({
+    fieldKey: row.field_key,
+    value: row.value_json,
+    source: "rateware" as const,
+    confidence: 1,
+    validation: "valid" as const,
+    evidenceIds: Object.freeze([row.evidence_id]),
+  });
+}
+
 function canonical(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -149,6 +164,8 @@ async function loadPreparation(
   const fieldRows =
     await tx`select field_key, definition_json from osp_private.form_fields where organization_id = ${input.organizationId} and template_version_id = ${input.templateVersionId} order by position, id`;
   if (fieldRows.length === 0) fail("INVALID_INPUT");
+  const ratewareRows =
+    await tx`select field_key, value_json, evidence_id from osp_private.load_xbf_customer_setup_candidates(${input.organizationId}) order by field_key, evidence_id`;
   const extractionRows = lockSources
     ? await tx`select id, field_key, presence, value_json, confidence, validation from osp_private.extraction_fields where organization_id = ${input.organizationId} and extraction_id = ${input.extractionId} and presence = 'present' order by field_key, id for share`
     : await tx`select id, field_key, presence, value_json, confidence, validation from osp_private.extraction_fields where organization_id = ${input.organizationId} and extraction_id = ${input.extractionId} and presence = 'present' order by field_key, id`;
@@ -160,7 +177,10 @@ async function loadPreparation(
     extractionId: input.extractionId,
     templateVersionId: input.templateVersionId,
     fields: Object.freeze(fieldRows.map(templateField)),
-    candidates: Object.freeze(extractionRows.map(extractionCandidate)),
+    candidates: Object.freeze([
+      ...ratewareRows.map(ratewareCandidate),
+      ...extractionRows.map(extractionCandidate),
+    ]),
     currentValues: Object.freeze(
       instances.length === 0 ? {} : jsonObject(instances[0].values_json),
     ),

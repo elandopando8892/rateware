@@ -8,7 +8,7 @@ import { createOspWorkerHandler } from "./handler.ts";
 import { createShadowWorkerRuntime } from "./shadow-runtime.ts";
 import { resolveGovernedAutomation } from "./governed-automation-config.ts";
 import { resolveXlsxShadow } from "./xlsx-shadow-config.ts";
-import { resolveRatewareXlsxRouting } from "./rateware-xlsx-routing-config.ts";
+import { resolveOspXlsxIntake } from "./osp-xlsx-intake-config.ts";
 
 function required(name: string): string {
   const value = Deno.env.get(name)?.trim();
@@ -81,7 +81,7 @@ const gmailAccessToken = async (): Promise<string> => {
 
 const automation = resolveGovernedAutomation(Deno.env);
 const xlsxShadow = resolveXlsxShadow(Deno.env);
-const ratewareXlsxRouting = resolveRatewareXlsxRouting(Deno.env);
+const xlsxIntake = resolveOspXlsxIntake(Deno.env);
 const runtime = createShadowWorkerRuntime({
   databaseUrl,
   gmailAccessToken,
@@ -89,7 +89,7 @@ const runtime = createShadowWorkerRuntime({
   workerId: `osp-edge:${crypto.randomUUID()}`,
   automation,
   xlsxShadow,
-  ratewareXlsxRouting,
+  xlsxIntake,
 });
 
 Deno.serve(createOspWorkerHandler({
@@ -97,5 +97,4 @@ Deno.serve(createOspWorkerHandler({
   enqueue: runtime.enqueue,
   run: runtime.run,
   runXlsxDocumentExtractCanary: runtime.runXlsxDocumentExtractCanary,
-  stageXlsxRatewareCanary: runtime.stageXlsxRatewareCanary,
 }));

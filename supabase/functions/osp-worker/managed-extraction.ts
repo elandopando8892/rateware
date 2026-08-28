@@ -14,8 +14,6 @@ import type {
 import { parseXlsxStructure } from "./xlsx-structure.ts";
 import { createXlsxStructuralSnapshot } from "./xlsx-structural-extraction.ts";
 import type { AzureAnalysis } from "./azure-document-intelligence.ts";
-import { classifyRatewareXlsxQuote } from "./rateware-xlsx-quote.ts";
-import type { RatewareXlsxStagingStore } from "./rateware-xlsx-staging.ts";
 
 export type ManagedExtractionSource = Readonly<{
   organizationId: string;
@@ -217,7 +215,6 @@ export function createManagedExtractionService(deps: {
   storage: ManagedExtractionStorage;
   layout?: LayoutAnalyzer;
   structured?: StructuredExtractor;
-  ratewareXlsxStaging?: RatewareXlsxStagingStore;
   jobs: Pick<BackgroundJobStore, "enqueue">;
 }) {
   return Object.freeze({
@@ -243,21 +240,6 @@ export function createManagedExtractionService(deps: {
             sourceVersionId: source.documentVersionId,
             bytes,
           });
-          if (deps.ratewareXlsxStaging) {
-            const quote = classifyRatewareXlsxQuote(structure);
-            if (quote) {
-              await deps.ratewareXlsxStaging.stage({
-                organizationId: source.organizationId,
-                caseId: source.caseId,
-                jobId: input.correlationId,
-                leaseToken: input.leaseToken,
-                documentVersionId: source.documentVersionId,
-                sourceSha256: source.sourceSha256,
-                quote,
-              });
-              return;
-            }
-          }
           created = await createXlsxStructuralSnapshot({ source, structure });
         } else {
           if (!deps.layout || !deps.structured) {
