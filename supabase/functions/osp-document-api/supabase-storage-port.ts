@@ -4,6 +4,7 @@ type SimpleStorageClient = {
   upload(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
   download(key: string): Promise<Uint8Array | null>;
   remove(key: string): Promise<void>;
+  createSignedUrl?(key: string, expiresInSeconds: number): Promise<string>;
 };
 export type DocumentStorageClient = Pick<SupabaseClient, 'storage'> | SimpleStorageClient;
 
@@ -64,6 +65,24 @@ export function createSupabaseDocumentStoragePort(options: { client: DocumentSto
         if (error instanceof Error && ['DOCUMENT_STORAGE_INTEGRITY', 'DOCUMENT_STORAGE_TEMPORARY'].includes(error.message)) throw error;
         throw new Error('DOCUMENT_STORAGE_TEMPORARY');
       }
+    },
+    async createPrivateReadUrl(input: { bucketId: 'osp-corporate-documents'; opaqueObjectKey: string; expiresInSeconds: number }): Promise<string> {
+      validate(input.bucketId, input.opaqueObjectKey);
+      if (!Number.isSafeInteger(input.expiresInSeconds) || input.expiresInSeconds < 15 || input.expiresInSeconds > 120) throw new Error('DOCUMENT_STORAGE_REJECTED');
+      try {
+        const value = isSimple(options.client)
+          ? await options.client.createSignedUrl?.(input.opaqueObjectKey, input.expiresInSeconds)
+          : await (async () => {
+            const supabaseClient = options.client as Pick<SupabaseClient, 'storage'>;
+            const result = await supabaseClient.storage.from(input.bucketId).createSignedUrl(input.opaqueObjectKey, input.expiresInSeconds, { download: true });
+            if (result.error) throw result.error;
+            return result.data?.signedUrl;
+          })();
+        if (typeof value !== 'string') throw new Error('DOCUMENT_STORAGE_TEMPORARY');
+        const parsed = new URL(value);
+        if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash) throw new Error('DOCUMENT_STORAGE_TEMPORARY');
+        return value;
+      } catch { throw new Error('DOCUMENT_STORAGE_TEMPORARY'); }
     },
     deletePrivateObject,
   });

@@ -11,7 +11,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/package.json",
-      "sha256": "c67df147932362976e920f07e3e7af5dce597d8d308ddb55703dc816cdb05161"
+      "sha256": "3c258fb80e61634103b53e62006bf7af1ed636eeab99df9a3bed411522b2e5c0"
     },
     {
       "kind": "production-ui",
@@ -236,7 +236,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/vercel.json",
-      "sha256": "3b1244b356236cbf20e7937d1f246cf44b7400b5045153adecea6a05a5bfa343"
+      "sha256": "5bbbdcfa7d29bf8501611ecd8d34996815ad9aedfb8185b94a4dd4ff4c73421d"
     },
     {
       "kind": "production-ui",

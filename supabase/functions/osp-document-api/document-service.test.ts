@@ -14,6 +14,7 @@ function dependencies(overrides: Record<string, unknown> = {}) {
   return {
     scan: async () => 'clean' as const,
     putPrivateObject: async () => undefined,
+    createPrivateReadUrl: async () => 'https://storage.example.test/private-object?token=synthetic',
     deletePrivateObject: async () => undefined,
     createVersion: async () => ({ id: 'version-1', version: 1 }),
     ...overrides,
@@ -45,8 +46,10 @@ Deno.test('document service rejects unsafe MIME, size, malware, missing authorit
     { ...source, bytes: new Uint8Array() },
     { ...source, opaqueObjectKey: 'caller/path' },
   ]) await assertRejects(() => service.upload(authority, invalid as never), Error, 'DOCUMENT_UPLOAD_REJECTED');
-  const infected = createDocumentService(dependencies({ scan: async () => 'infected' as const }));
+  const removed: unknown[] = [];
+  const infected = createDocumentService(dependencies({ scan: async () => 'infected' as const, deletePrivateObject: async (input: unknown) => { removed.push(input); } }));
   await assertRejects(() => infected.upload(authority, source), Error, 'DOCUMENT_UPLOAD_REJECTED');
+  assertEquals(removed.length, 1);
   assertEquals(
     await service.upload({ ...authority, permissions: ['osp:read'] }, source),
     { id: 'version-1', version: 1, expiresAt: '2026-11-24' },
@@ -74,9 +77,8 @@ Deno.test('document service snapshots bytes and removes an orphan if metadata pe
   const stored: Uint8Array[] = [];
   const removed: unknown[] = [];
   const service = createDocumentService(dependencies({
-    scan: async (bytes: Uint8Array) => {
+    scan: async () => {
       callerBytes.fill(0);
-      bytes[0] = 88;
       return 'clean' as const;
     },
     putPrivateObject: async (input: { bytes: Uint8Array }) => { stored.push(input.bytes); },

@@ -22,7 +22,7 @@ Deno.test('document API runtime composes verified auth, tenant Postgres, private
     env: environment(),
     fetch: async () => { fetches += 1; return new Response(null, { status: 500 }); },
     postgresFactory: () => { databaseConnections += 1; return sql; },
-    storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined },
+    storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined, createSignedUrl: async () => 'https://storage.example.test/object?token=test' },
   });
   assertEquals(typeof runtime, 'function');
   assertEquals(fetches, 0);
@@ -34,7 +34,7 @@ Deno.test('document API runtime fails closed on every absent external dependency
     assertThrows(() => createDocumentApiRuntime({
       env: environment({ [name]: undefined }), fetch: async () => new Response(null, { status: 500 }),
       postgresFactory: () => Object.assign(async () => [], { begin: async () => undefined }),
-      storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined },
+      storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined, createSignedUrl: async () => 'https://storage.example.test/object?token=test' },
     }), Error, 'INVALID_RUNTIME_CONFIGURATION');
   }
 });
@@ -44,14 +44,14 @@ Deno.test('document API runtime keeps reads available and uploads fail closed wh
     env: environment({ OSP_MALWARE_SCANNER_ORIGIN: undefined, OSP_MALWARE_SCANNER_TOKEN: undefined }),
     fetch: async () => new Response(null, { status: 500 }),
     postgresFactory: () => Object.assign(async () => [], { begin: async () => undefined }),
-    storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined },
+    storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined, createSignedUrl: async () => 'https://storage.example.test/object?token=test' },
   });
   assertEquals(typeof runtime, 'function');
   for (const name of ['OSP_MALWARE_SCANNER_ORIGIN', 'OSP_MALWARE_SCANNER_TOKEN']) {
     assertThrows(() => createDocumentApiRuntime({
       env: environment({ [name]: undefined }), fetch: async () => new Response(null, { status: 500 }),
       postgresFactory: () => Object.assign(async () => [], { begin: async () => undefined }),
-      storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined },
+      storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined, createSignedUrl: async () => 'https://storage.example.test/object?token=test' },
     }), Error, 'INVALID_RUNTIME_CONFIGURATION');
   }
 });
@@ -65,7 +65,7 @@ Deno.test('document API accepts only the standard TLS database query and relies 
       seenUrl = url;
       return Object.assign(async () => [], { begin: async () => undefined });
     },
-    storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined },
+    storageClient: { upload: async () => undefined, download: async () => null, remove: async () => undefined, createSignedUrl: async () => 'https://storage.example.test/object?token=test' },
   });
   assertEquals(seenUrl, 'postgres://localhost:55322/osp');
 });

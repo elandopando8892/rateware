@@ -13,10 +13,12 @@ Deno.test('document Storage port writes private bytes, verifies read-back hash, 
       upload: async (objectKey: string, value: Uint8Array) => { objects.set(objectKey, value.slice()); },
       download: async (objectKey: string) => objects.get(objectKey)?.slice() ?? null,
       remove: async (objectKey: string) => { removed.push(objectKey); objects.delete(objectKey); },
+      createSignedUrl: async (objectKey: string, expiresInSeconds: number) => `https://storage.example.test/${objectKey}?expires=${expiresInSeconds}`,
     },
   });
   await port.putPrivateObject({ bucketId: 'osp-corporate-documents', opaqueObjectKey: key, bytes, contentType: 'application/pdf', sourceSha256: await sha256(bytes) });
   assertEquals(objects.get(key), bytes);
+  assertEquals(await port.createPrivateReadUrl({ bucketId: 'osp-corporate-documents', opaqueObjectKey: key, expiresInSeconds: 60 }), `https://storage.example.test/${key}?expires=60`);
   await port.deletePrivateObject({ bucketId: 'osp-corporate-documents', opaqueObjectKey: key });
   assertEquals(removed, [key]);
 });

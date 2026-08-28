@@ -1,9 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm build",
+  "buildCommand": "pnpm build:vercel",
   "outputDirectory": "dist",
+  "functions": {
+    "api/v1/scan.ts": {
+      "includeFiles": "api/.clamav/**",
+      "maxDuration": 60
+    }
+  },
   "cleanUrls": true,
   "rewrites": [
+    { "source": "/v1/scan", "destination": "/api/v1/scan" },
     { "source": "/", "destination": "/app/index" },
     { "source": "/app", "destination": "/app/index" },
     { "source": "/app/pipeline", "destination": "/app/index" },

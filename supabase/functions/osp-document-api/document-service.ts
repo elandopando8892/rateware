@@ -65,8 +65,9 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 }
 
 export function createDocumentService(deps: {
-  scan(bytes: Uint8Array): Promise<'clean' | 'infected' | 'unknown'>;
+  scan(input: { sourceUrl: string; sourceSha256: string; sizeBytes: number }): Promise<'clean' | 'infected' | 'unknown'>;
   putPrivateObject(input: { bucketId: 'osp-corporate-documents'; opaqueObjectKey: string; bytes: Uint8Array; contentType: string; sourceSha256: string }): Promise<void>;
+  createPrivateReadUrl(input: { bucketId: 'osp-corporate-documents'; opaqueObjectKey: string; expiresInSeconds: number }): Promise<string>;
   deletePrivateObject(input: { bucketId: 'osp-corporate-documents'; opaqueObjectKey: string }): Promise<void>;
   createVersion(input: PersistedDocumentUpload): Promise<{ id: string; version: number }>;
   approveVersion?(input: DocumentApprovalInput & { organizationId: string; approvedBySubject: string; approvedByPermission: 'osp:operate' }): Promise<{ id: string; status: 'approved' }>;
@@ -76,10 +77,16 @@ export function createDocumentService(deps: {
       assertAuthority(authority, 'read');
       const validated = upload(input);
       const sourceBytes = validated.bytes.slice();
-      if (await deps.scan(sourceBytes.slice()) !== 'clean') throw new Error('DOCUMENT_UPLOAD_REJECTED');
       const sourceSha256 = await sha256(sourceBytes);
       const opaqueObjectKey = `${crypto.randomUUID()}/${crypto.randomUUID()}`;
       await deps.putPrivateObject({ bucketId: 'osp-corporate-documents', opaqueObjectKey, bytes: sourceBytes.slice(), contentType: validated.contentType, sourceSha256 });
+      try {
+        const sourceUrl = await deps.createPrivateReadUrl({ bucketId: 'osp-corporate-documents', opaqueObjectKey, expiresInSeconds: 60 });
+        if (await deps.scan({ sourceUrl, sourceSha256, sizeBytes: sourceBytes.byteLength }) !== 'clean') throw new Error('DOCUMENT_UPLOAD_REJECTED');
+      } catch (error) {
+        try { await deps.deletePrivateObject({ bucketId: 'osp-corporate-documents', opaqueObjectKey }); } catch { /* orphan cleanup is retried operationally */ }
+        throw error;
+      }
       let result: { id: string; version: number };
       try {
         result = await deps.createVersion({

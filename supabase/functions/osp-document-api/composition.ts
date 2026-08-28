@@ -66,6 +66,7 @@ export function createDocumentApiRuntime(options: DocumentApiRuntimeOptions): (r
       ? createManagedMalwareScanner({ origin: scannerOrigin, token: scannerToken, fetch: options.fetch })
       : async () => { throw new Error('MALWARE_SCAN_UNAVAILABLE'); },
     putPrivateObject: storage.putPrivateObject,
+    createPrivateReadUrl: storage.createPrivateReadUrl,
     deletePrivateObject: storage.deletePrivateObject,
     createVersion: store.createVersion,
     approveVersion: store.approveVersion,
