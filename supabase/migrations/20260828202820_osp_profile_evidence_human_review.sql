@@ -28,7 +28,7 @@ begin
   update public.provider_entity_document_reviews review
   set assigned_reviewer_user_id = p_actor_subject,
       claimed_at = pg_catalog.statement_timestamp(),
-      started_at = pg_catalog.coalesce(review.started_at, pg_catalog.statement_timestamp()),
+      started_at = coalesce(review.started_at, pg_catalog.statement_timestamp()),
       review_status = 'in_review',
       revision = review.revision + 1,
       updated_at = pg_catalog.statement_timestamp()

@@ -22,5 +22,6 @@ Deno.test('profile evidence review migration is tenant-bound, atomic and has no 
   assertMatch(sql, /target_field\.sensitivity in \('restricted', 'highly_restricted'\)/);
   assertMatch(sql, /insert into public\.provider_entity_document_review_events/);
   assertNotMatch(sql, /insert into public\.provider_legal_entity_facts/);
+  assertNotMatch(sql, /pg_catalog\.coalesce/);
   assertNotMatch(sql, /\b(?:http|send_email|webhook|net\.http|pg_net|vault\.decrypted_secrets)\b/);
 });
