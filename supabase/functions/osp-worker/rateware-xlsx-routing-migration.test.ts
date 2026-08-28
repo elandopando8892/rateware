@@ -4,6 +4,10 @@ const migrationUrl = new URL(
   "../../migrations/20260828030000_osp_rateware_xlsx_routing.sql",
   import.meta.url,
 );
+const activationUrl = new URL(
+  "../../migrations/20260828031500_activate_osp_rateware_xlsx_routing.sql",
+  import.meta.url,
+);
 
 Deno.test("Rateware XLSX routing migration stays shadow-only, lease-bound and review-gated", async () => {
   const sql = (await Deno.readTextFile(migrationUrl)).replace(/\s+/g, " ")
@@ -38,5 +42,18 @@ Deno.test("Rateware XLSX routing migration stays shadow-only, lease-bound and re
       ),
     false,
   );
+  assertEquals(/outbound_enabled\s*=\s*true/.test(sql), false);
+});
+
+Deno.test("Rateware XLSX activation starts at deployment time without enabling outbound", async () => {
+  const sql = (await Deno.readTextFile(activationUrl)).replace(/\s+/g, " ")
+    .trim().toLowerCase();
+  assert(sql.includes("rateware_xlsx_routing_enabled = true"));
+  assert(
+    sql.includes("rateware_xlsx_routing_active_after = statement_timestamp()"),
+  );
+  assert(sql.includes("release_mode = 'shadow'"));
+  assert(sql.includes("outbound_enabled = false"));
+  assert(sql.includes("get diagnostics affected = row_count"));
   assertEquals(/outbound_enabled\s*=\s*true/.test(sql), false);
 });
