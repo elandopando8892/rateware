@@ -38,7 +38,7 @@ Deno.test('document service creates only private opaque quarterly versions and e
   assertEquals((objects[0] as Record<string, unknown>).bucketId, 'osp-corporate-documents');
 });
 
-Deno.test('document service rejects unsafe MIME, size, malware, hash, permission, and caller object keys', async () => {
+Deno.test('document service rejects unsafe MIME, size, malware, missing authority, and caller object keys', async () => {
   const service = createDocumentService(dependencies());
   for (const invalid of [
     { ...source, contentType: 'text/html' },
@@ -47,7 +47,11 @@ Deno.test('document service rejects unsafe MIME, size, malware, hash, permission
   ]) await assertRejects(() => service.upload(authority, invalid as never), Error, 'DOCUMENT_UPLOAD_REJECTED');
   const infected = createDocumentService(dependencies({ scan: async () => 'infected' as const }));
   await assertRejects(() => infected.upload(authority, source), Error, 'DOCUMENT_UPLOAD_REJECTED');
-  await assertRejects(() => service.upload({ ...authority, permissions: ['osp:read'] }, source), Error, 'FORBIDDEN');
+  assertEquals(
+    await service.upload({ ...authority, permissions: ['osp:read'] }, source),
+    { id: 'version-1', version: 1, expiresAt: '2026-11-24' },
+  );
+  await assertRejects(() => service.upload({ ...authority, permissions: [] }, source), Error, 'FORBIDDEN');
 });
 
 Deno.test('document service requires Operations approval and supersedes without rewriting source evidence', async () => {
@@ -57,6 +61,11 @@ Deno.test('document service requires Operations approval and supersedes without 
   }));
   assertEquals(await service.approve(authority, { versionId: 'version-1', expectedVersion: 1, reviewBeforeSha256: 'a'.repeat(64), reviewAfterSha256: 'a'.repeat(64) }), { id: 'version-1', status: 'approved' });
   assertEquals(approvals.length, 1);
+  await assertRejects(
+    () => service.approve({ ...authority, permissions: ['osp:read'] }, { versionId: 'version-1', expectedVersion: 1, reviewBeforeSha256: 'a'.repeat(64), reviewAfterSha256: 'a'.repeat(64) }),
+    Error,
+    'FORBIDDEN',
+  );
   await assertRejects(() => service.approve(authority, { versionId: 'version-1', expectedVersion: 1, reviewBeforeSha256: 'a'.repeat(64), reviewAfterSha256: 'b'.repeat(64) }), Error, 'DOCUMENT_REVIEW_HASH_MISMATCH');
 });
 

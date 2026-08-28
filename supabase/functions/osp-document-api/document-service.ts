@@ -31,8 +31,11 @@ const SHA = /^[0-9a-f]{64}$/;
 const SAFE = /^[A-Za-z0-9:_@.-]{1,256}$/;
 const CONTENT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']);
 
-function assertOperate(authority: DocumentAuthority): void {
-  if (!SAFE.test(authority.organizationId) || !SAFE.test(authority.subject) || !authority.permissions.includes('osp:operate')) throw new Error('FORBIDDEN');
+function assertAuthority(authority: DocumentAuthority, required: 'read' | 'operate'): void {
+  const permitted = required === 'operate'
+    ? authority.permissions.includes('osp:operate')
+    : authority.permissions.some((permission) => permission === 'osp:read' || permission === 'osp:operate');
+  if (!SAFE.test(authority.organizationId) || !SAFE.test(authority.subject) || !permitted) throw new Error('FORBIDDEN');
 }
 
 function calendarExpiry(value: string): string {
@@ -70,7 +73,7 @@ export function createDocumentService(deps: {
 }) {
   return Object.freeze({
     async upload(authority: DocumentAuthority, input: DocumentUploadInput) {
-      assertOperate(authority);
+      assertAuthority(authority, 'read');
       const validated = upload(input);
       const sourceBytes = validated.bytes.slice();
       if (await deps.scan(sourceBytes.slice()) !== 'clean') throw new Error('DOCUMENT_UPLOAD_REJECTED');
@@ -100,7 +103,7 @@ export function createDocumentService(deps: {
       return Object.freeze({ ...result, expiresAt: validated.expiresAt });
     },
     async approve(authority: DocumentAuthority, input: DocumentApprovalInput) {
-      assertOperate(authority);
+      assertAuthority(authority, 'operate');
       if (!deps.approveVersion || !SAFE.test(input.versionId) || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1 || !SHA.test(input.reviewBeforeSha256) || input.reviewBeforeSha256 !== input.reviewAfterSha256) throw new Error(input.reviewBeforeSha256 !== input.reviewAfterSha256 ? 'DOCUMENT_REVIEW_HASH_MISMATCH' : 'DOCUMENT_APPROVAL_REJECTED');
       return await deps.approveVersion({ ...input, organizationId: authority.organizationId, approvedBySubject: authority.subject, approvedByPermission: 'osp:operate' });
     },

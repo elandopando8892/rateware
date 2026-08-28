@@ -174,7 +174,7 @@ export function createDocumentApiHandler(options: DocumentApiHandlerOptions): (r
       }
       if (action === 'upload_document_version') {
         const query = exactQuery(url, ['action', 'document_type', 'valid_from']);
-        const authority = permission(verified, 'operate');
+        const authority = permission(verified, 'read');
         const contentType = request.headers.get('content-type');
         const encoding = request.headers.get('content-encoding');
         if (!contentType || !CONTENT_TYPES.has(contentType) || (encoding && encoding.toLowerCase() !== 'identity') || request.headers.has('transfer-encoding') || !DOCUMENT_TYPES.has(query.document_type) || !DATE.test(query.valid_from)) throw new OspApiError('UNSUPPORTED_MEDIA_TYPE');

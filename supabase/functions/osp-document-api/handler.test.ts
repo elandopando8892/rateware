@@ -9,6 +9,7 @@ const identity = {
   },
   permissions: ['osp:read', 'osp:operate'],
 } as const;
+const readOnlyIdentity = { ...identity, permissions: ['osp:read'] } as const;
 const origin = 'https://osp.heymarksman.com';
 
 function request(query: string, init: RequestInit = {}) {
@@ -64,6 +65,32 @@ Deno.test('document API accepts a gateway-normalized zero-byte stream and reject
     (await handler(request('action=list_document_versions', { body: stream(new Uint8Array([1])) }))).status,
     400,
   );
+});
+
+Deno.test('document API lets an authorized reader stage evidence but not approve it', async () => {
+  const uploads: unknown[] = [];
+  const approvals: unknown[] = [];
+  const handler = createDocumentApiHandler({
+    verifyToken: async () => readOnlyIdentity,
+    listVersions: async () => [],
+    documentService: {
+      upload: async (authority, input) => { uploads.push({ authority, input }); return { id: 'version-1', version: 1, expiresAt: '2026-11-28' }; },
+      approve: async (authority, input) => { approvals.push({ authority, input }); return { id: input.versionId, status: 'approved' as const }; },
+    },
+    incidentId: () => 'incident-read-only-upload',
+  });
+  const body = new TextEncoder().encode('synthetic bank statement');
+  const uploaded = await handler(request('action=upload_document_version&document_type=bank_statement&valid_from=2026-08-28', {
+    headers: { 'content-type': 'application/pdf', 'content-length': String(body.byteLength) },
+    body,
+  }));
+  assertEquals(uploaded.status, 201);
+  assertEquals(uploads.length, 1);
+
+  const sha = 'a'.repeat(64);
+  const approved = await handler(request(`action=approve_document_version&version_id=22222222-2222-4222-8222-222222222222&expected_version=1&review_before_sha256=${sha}&review_after_sha256=${sha}`));
+  assertEquals(approved.status, 403);
+  assertEquals(approvals.length, 0);
 });
 
 Deno.test('document API approves only exact reviewed hashes and contains unsafe requests', async () => {
