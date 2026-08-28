@@ -93,6 +93,8 @@ function errorCode(error: unknown): JobErrorCode {
     ? code as JobErrorCode
     : code === "SOURCE_HASH_MISMATCH"
     ? "SOURCE_HASH_MISMATCH"
+    : code === "MALWARE_SCAN_REJECTED"
+    ? "MALWARE_SCAN_REJECTED"
     : code === "INVALID_INPUT" || code === "INVALID_GMAIL_MESSAGE" ||
         code === "UNQUALIFIED_GMAIL_MESSAGE" || code === "MALFORMED_MIME"
     ? "INVALID_INPUT"

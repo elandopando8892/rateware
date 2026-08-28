@@ -18,7 +18,7 @@ type ZipEntryMetadata = {
   name: string;
   unsafeOriginalName?: string;
   _data?: { uncompressedSize?: number; compressedSize?: number };
-  async(type: "string"): Promise<string>;
+  async(type: "uint8array"): Promise<Uint8Array>;
 };
 
 function validEntryPath(entry: ZipEntryMetadata): boolean {
@@ -38,11 +38,15 @@ async function boundedXml(entry: ZipEntryMetadata): Promise<string> {
   ) {
     throw new Error("XLSX_PACKAGE_POLICY_REJECTED");
   }
-  const value = await entry.async("string");
-  if (new TextEncoder().encode(value).byteLength !== size) {
+  const bytes = await entry.async("uint8array");
+  if (bytes.byteLength !== size) {
     throw new Error("XLSX_PACKAGE_POLICY_REJECTED");
   }
-  return value;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error("XLSX_PACKAGE_POLICY_REJECTED");
+  }
 }
 
 export async function assertStrictXlsxPackage(

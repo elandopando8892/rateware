@@ -32,6 +32,7 @@ export type JobErrorCode =
   | "CASE_PERSIST_FAILURE"
   | "DUPLICATE_REFRESH_FAILURE"
   | "SOURCE_HASH_MISMATCH"
+  | "MALWARE_SCAN_REJECTED"
   | "PERMANENT_FAILURE";
 export type LeasedJob = {
   id: string;

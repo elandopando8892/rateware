@@ -90,6 +90,49 @@ Deno.test("worker persists the safe intake stage for an unknown terminal failure
   );
 });
 
+Deno.test("worker preserves a deterministic XLSX policy rejection", async () => {
+  const failures: unknown[] = [];
+  await runWorker({
+    workerId: "local-worker",
+    now: () => new Date("2026-08-28T00:00:00.000Z"),
+    jobs: {
+      claim: async () => [{
+        id: "job-xlsx-policy",
+        organizationId: "org-1",
+        kind: "gmail_ingest",
+        opaquePayload: {
+          gmailMessageId: "message_1",
+          deliveryIdempotencyKey: "delivery_1",
+        },
+        attempt: 1,
+        leaseToken: "11111111-1111-4111-8111-111111111111",
+        leasedUntil: "2026-08-28T00:05:00.000Z",
+      }],
+      complete: async () => undefined,
+      fail: async (input) => {
+        failures.push(input);
+      },
+    },
+    intake: {
+      ingest: async () => ({
+        outcome: "created",
+        caseId: "case-1",
+        eventId: "event-1",
+      }),
+      refreshDuplicateReview: async () => undefined,
+    },
+    attachmentPromotions: {
+      promoteCase: async () => {
+        throw new Error("MALWARE_SCAN_REJECTED");
+      },
+    },
+  });
+  assertEquals(
+    (failures[0] as { errorCode: string }).errorCode,
+    "MALWARE_SCAN_REJECTED",
+  );
+});
+
 Deno.test("worker retries only bounded temporary errors with deterministic capped backoff", async () => {
   assertEquals(
     deterministicRetryAt(new Date("2026-08-22T00:00:00.000Z"), 1).toISOString(),
