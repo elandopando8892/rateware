@@ -17,6 +17,8 @@ Deno.test('case profile binding is tenant-bound and selects one active entity', 
   assertMatch(sql, /CASE_PROFILE_ENTITY_NOT_READY/);
   assertMatch(sql, /blocked_by_duplicate_review/);
   assertMatch(sql, /case_profile_bound/);
+  assertMatch(sql, /char_length\(p_actor_subject\) not between 1 and 256/);
+  assertNotMatch(sql, /\{1,256\}/);
 });
 
 Deno.test('package draft freezes fact references without outbound authority', () => {

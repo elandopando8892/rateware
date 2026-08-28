@@ -16,7 +16,8 @@ create table osp_private.case_profile_bindings (
   foreign key (organization_id, legal_entity_id)
     references public.legal_entities(organization_id, id) on delete restrict,
   check (revision between 1 and 2147483647),
-  check (bound_by_subject ~ '^[A-Za-z0-9:_@.-]{1,256}$')
+  check (pg_catalog.char_length(bound_by_subject) between 1 and 256
+    and bound_by_subject ~ '^[A-Za-z0-9:_@.-]+$')
 );
 
 create table osp_private.case_profile_package_drafts (
@@ -45,7 +46,8 @@ create table osp_private.case_profile_package_drafts (
   check (facts_sha256 ~ '^[0-9a-f]{64}$' and manifest_sha256 ~ '^[0-9a-f]{64}$'),
   check (draft_status in ('current', 'superseded')),
   check (fact_count between 1 and 128 and restricted_fact_count between 0 and fact_count),
-  check (created_by_subject ~ '^[A-Za-z0-9:_@.-]{1,256}$'),
+  check (pg_catalog.char_length(created_by_subject) between 1 and 256
+    and created_by_subject ~ '^[A-Za-z0-9:_@.-]+$'),
   check ((draft_status = 'current' and superseded_at is null) or draft_status = 'superseded')
 );
 
@@ -137,7 +139,8 @@ begin
   if nullif(pg_catalog.current_setting('osp.organization_id', true), '')::uuid is distinct from p_organization_id
      or p_expected_case_version < 0 or p_expected_case_version > 2147483647
      or p_expected_binding_revision < 0 or p_expected_binding_revision > 2147483647
-     or p_actor_subject !~ '^[A-Za-z0-9:_@.-]{1,256}$'
+     or pg_catalog.char_length(p_actor_subject) not between 1 and 256
+     or p_actor_subject !~ '^[A-Za-z0-9:_@.-]+$'
      or p_actor_permission <> 'osp:operate' then
     raise exception using errcode = '42501', message = 'CASE_PROFILE_BINDING_FORBIDDEN';
   end if;
@@ -245,7 +248,8 @@ begin
      or p_expected_case_version < 0 or p_expected_case_version > 2147483647
      or p_expected_binding_revision < 1 or p_expected_binding_revision > 2147483647
      or p_expected_facts_sha256 !~ '^[0-9a-f]{64}$'
-     or p_actor_subject !~ '^[A-Za-z0-9:_@.-]{1,256}$'
+     or pg_catalog.char_length(p_actor_subject) not between 1 and 256
+     or p_actor_subject !~ '^[A-Za-z0-9:_@.-]+$'
      or p_actor_permission <> 'osp:operate' then
     raise exception using errcode = '42501', message = 'CASE_PROFILE_DRAFT_FORBIDDEN';
   end if;
