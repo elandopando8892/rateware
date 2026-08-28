@@ -300,11 +300,7 @@ export function createPostgresOspReadStore({
           ) ORDER BY field.field_code) FILTER (WHERE field.id IS NOT NULL), '[]'::jsonb) AS fields,
           COALESCE((
             SELECT jsonb_agg(jsonb_build_object(
-              'name', CASE
-                WHEN asset.sensitivity IN ('restricted','highly_restricted')
-                  THEN initcap(replace(asset.document_type, '_', ' '))
-                ELSE asset.document_name
-              END,
+              'name', initcap(replace(asset.document_type, '_', ' ')),
               'document_type', asset.document_type,
               'verification_status', asset.verification_status,
               'sensitivity', asset.sensitivity,
