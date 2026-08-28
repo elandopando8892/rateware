@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { chmod, copyFile, cp, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -49,10 +49,9 @@ async function command(executable, args) {
   });
 }
 
-async function link(target, path) {
+async function copyAlias(target, path) {
   await rm(path, { force: true });
-  try { await symlink(target, path); }
-  catch { await copyFile(join(dirname(path), target), path); }
+  await copyFile(join(dirname(path), target), path);
 }
 
 const temporary = await mkdtemp(join(tmpdir(), 'osp-clamav-build-'));
@@ -80,10 +79,10 @@ try {
   for (const name of ['libclamav.so.12.1.0', 'libclammspack.so.0.8.0', 'libclamunrar.so.12.1.0', 'libclamunrar_iface.so.12.1.0']) {
     await rename(join(extracted, 'usr', 'local', 'lib', name), join(staged, 'lib', name));
   }
-  await link('libclamav.so.12.1.0', join(staged, 'lib', 'libclamav.so.12'));
-  await link('libclammspack.so.0.8.0', join(staged, 'lib', 'libclammspack.so.0'));
-  await link('libclamunrar.so.12.1.0', join(staged, 'lib', 'libclamunrar.so.12'));
-  await link('libclamunrar_iface.so.12.1.0', join(staged, 'lib', 'libclamunrar_iface.so.12'));
+  await copyAlias('libclamav.so.12.1.0', join(staged, 'lib', 'libclamav.so.12'));
+  await copyAlias('libclammspack.so.0.8.0', join(staged, 'lib', 'libclammspack.so.0'));
+  await copyAlias('libclamunrar.so.12.1.0', join(staged, 'lib', 'libclamunrar.so.12'));
+  await copyAlias('libclamunrar_iface.so.12.1.0', join(staged, 'lib', 'libclamunrar_iface.so.12'));
   await chmod(join(staged, 'bin', 'clamscan'), 0o755);
 
   const manifest = { clamavVersion: VERSION, packageSha256: PACKAGE_SHA256, databases: {} };
