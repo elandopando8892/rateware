@@ -12,6 +12,8 @@ Deno.test('scheduled Gmail poll migration is fail-closed, bounded and secret-bac
   assert(sql.includes('add column gmail_poll_lease_id uuid'));
   assert(sql.includes("check ((gmail_poll_last_status = 'running') = (gmail_poll_lease_id is not null))"));
   assert(sql.includes('active := false'));
+  assert(sql.includes('on osp_private.production_controls to service_role'));
+  assertEquals(sql.includes('osp_readonly_api'), false);
   assertEquals(/gmail_poll_enabled\s*=\s*true/i.test(sql), false);
   assertEquals(/outbound_enabled\s*=\s*true/i.test(sql), false);
 });

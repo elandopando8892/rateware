@@ -42,7 +42,7 @@ grant select (
   gmail_poll_last_status,
   gmail_poll_last_error_code,
   gmail_poll_consecutive_failures
-) on osp_private.production_controls to osp_readonly_api;
+) on osp_private.production_controls to service_role;
 
 comment on column osp_private.production_controls.gmail_poll_enabled is
   'Fail-closed switch for the no-Pub/Sub OSP Gmail polling path. Activation requires a separate authorized migration.';
