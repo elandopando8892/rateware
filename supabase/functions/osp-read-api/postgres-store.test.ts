@@ -76,6 +76,7 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
     [{ requests_total: '1', documents_pending: '2', under_review: '3', ready_for_approval: '4' }],
     [{
       connection_exists: false, pubsub_configured: null, watch_configured: null,
+      scheduled_poll_configured: null, poll_interval_seconds: null, poll_last_completed_at: null, poll_status: null,
       token_expires_at: null, watch_expires_at: null, error_present: false, error_code: null,
     }],
     [],

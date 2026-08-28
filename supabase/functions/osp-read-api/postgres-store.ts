@@ -168,6 +168,10 @@ export function createPostgresOspReadStore({
           CASE WHEN count(*) = 0 THEN NULL
             ELSE bool_or(status = 'watching' AND watch_expiration_at > statement_timestamp())
           END AS watch_configured,
+          CASE WHEN count(*) = 0 THEN NULL ELSE control.gmail_poll_enabled END AS scheduled_poll_configured,
+          CASE WHEN count(*) = 0 THEN NULL ELSE control.gmail_poll_interval_seconds END AS poll_interval_seconds,
+          CASE WHEN count(*) = 0 THEN NULL ELSE control.gmail_poll_last_completed_at END AS poll_last_completed_at,
+          CASE WHEN count(*) = 0 THEN NULL ELSE control.gmail_poll_last_status END AS poll_status,
           CASE WHEN count(*) = 0 THEN NULL ELSE max(token_expires_at) END AS token_expires_at,
           CASE WHEN bool_or(status = 'watching' AND watch_expiration_at > statement_timestamp())
             THEN max(watch_expiration_at) FILTER (
@@ -176,16 +180,22 @@ export function createPostgresOspReadStore({
             ELSE NULL
           END AS watch_expires_at,
           CASE WHEN count(*) = 0 THEN false
-            ELSE bool_or(status = 'error' OR last_error IS NOT NULL)
+            ELSE bool_or(status = 'error' OR last_error IS NOT NULL) OR (control.gmail_poll_enabled AND control.gmail_poll_last_status = 'failed')
           END AS error_present,
           CASE WHEN bool_or(status = 'error' OR last_error IS NOT NULL)
             THEN 'PROVIDER_CONNECTION_ERROR'
+            WHEN control.gmail_poll_enabled AND control.gmail_poll_last_status = 'failed'
+            THEN 'UPSTREAM_UNAVAILABLE'
             ELSE NULL
           END AS error_code
         FROM public.provider_gmail_connections
+        CROSS JOIN osp_private.production_controls control
         WHERE organization_id = ${organizationId}
           AND purpose = 'provider_onboarding'
           AND mailbox_email = 'carriers@xbfreight.com'
+          AND control.id = 'singleton'
+        GROUP BY control.gmail_poll_enabled, control.gmail_poll_interval_seconds,
+          control.gmail_poll_last_completed_at, control.gmail_poll_last_status
       `, signal, STATEMENT_TIMEOUT_MS);
       return exactlyOneRow(rows, 'DEPENDENCY_UNAVAILABLE') as GmailSeamRow;
     },

@@ -51,6 +51,10 @@ const disconnectedGmail = z.strictObject({
   connection_exists: z.literal(false),
   pubsub_configured: z.null(),
   watch_configured: z.null(),
+  scheduled_poll_configured: z.null().optional(),
+  poll_interval_seconds: z.null().optional(),
+  poll_last_completed_at: z.null().optional(),
+  poll_status: z.null().optional(),
   token_expires_at: z.null(),
   watch_expires_at: z.null(),
   error_present: z.literal(false),
@@ -62,6 +66,10 @@ const connectedGmail = z.strictObject({
   connection_exists: z.literal(true),
   pubsub_configured: z.boolean(),
   watch_configured: z.boolean(),
+  scheduled_poll_configured: z.boolean().optional(),
+  poll_interval_seconds: z.number().int().min(60).max(3600).nullable().optional(),
+  poll_last_completed_at: utcDate.nullable().optional(),
+  poll_status: z.enum(['disabled', 'running', 'succeeded', 'failed']).optional(),
   token_expires_at: utcDate.nullable(),
   watch_expires_at: utcDate.nullable(),
   error_present: z.boolean(),
@@ -73,6 +81,12 @@ const connectedGmail = z.strictObject({
   }
   if (value.error_present !== (value.error_code !== null)) {
     context.addIssue({ code: 'custom', message: 'Error presence must match error code' });
+  }
+  if (value.scheduled_poll_configured === true && (value.poll_interval_seconds === null || value.poll_interval_seconds === undefined || value.poll_status === undefined)) {
+    context.addIssue({ code: 'custom', message: 'Scheduled polling requires interval and status' });
+  }
+  if (value.scheduled_poll_configured === false && value.poll_status !== undefined && value.poll_status !== 'disabled') {
+    context.addIssue({ code: 'custom', message: 'Disabled polling must have disabled status' });
   }
 });
 

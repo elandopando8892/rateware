@@ -1,6 +1,6 @@
 import { GmailReadModelSchema } from '../../api/contracts';
 
-export type MailboxHealth = 'unknown' | 'disconnected' | 'connected' | 'watching' | 'degraded';
+export type MailboxHealth = 'unknown' | 'disconnected' | 'connected' | 'polling' | 'watching' | 'degraded';
 
 export function deriveMailboxHealth(
   evidence: unknown,
@@ -27,5 +27,5 @@ export function deriveMailboxHealth(
     || (model.watch_configured && (watchExpiration === null || watchExpiration <= now))
   ) return 'degraded';
 
-  return model.watch_configured ? 'watching' : 'connected';
+  return model.watch_configured ? 'watching' : model.scheduled_poll_configured === true ? 'polling' : 'connected';
 }

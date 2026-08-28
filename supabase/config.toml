@@ -444,6 +444,11 @@ verify_jwt = false
 [functions.osp-gmail-sync-api]
 verify_jwt = false
 
+# Scheduled Gmail polling authenticates a Vault-held bearer inside the runtime.
+# The database control remains disabled until an explicitly authorized activation.
+[functions.osp-gmail-poll]
+verify_jwt = false
+
 [functions.osp-worker]
 verify_jwt = false
 entrypoint = "./functions/osp-worker/edge.ts"

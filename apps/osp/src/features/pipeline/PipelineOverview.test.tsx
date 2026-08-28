@@ -151,13 +151,46 @@ describe('PipelineOverview', () => {
     });
 
     expect(await screen.findByText(/automatic · gmail watch/i)).toBeInTheDocument();
-    expect(screen.getByRole('list', { name: /automatic onboarding path/i })).toHaveTextContent(/inbox watched/i);
+    expect(screen.getByRole('list', { name: /automatic onboarding path/i })).toHaveTextContent(/inbox monitored/i);
     expect(screen.getByRole('list', { name: /automatic onboarding path/i })).toHaveTextContent(/operations handoff/i);
     expect(screen.getByRole('note')).toHaveTextContent(/no reply, signature, authorization or provider write/i);
     expect(screen.getByRole('button', { name: /run fallback sync/i })).toBeEnabled();
     expect(screen.getByRole('button', { name: /renew watch/i })).toBeEnabled();
     expect(syncGmailInbox).not.toHaveBeenCalled();
     expect(renewGmailWatch).not.toHaveBeenCalled();
+  });
+
+  it('shows no-cost scheduled polling as the primary automatic path', async () => {
+    renderOverview({
+      listOnboardingWorkspace: vi.fn(async () => ({
+        requests_total: '2', documents_pending: '2', under_review: '0', ready_for_approval: '0',
+      })),
+      getGmailStatus: vi.fn(async () => ({
+        connection_exists: true as const,
+        pubsub_configured: false,
+        watch_configured: false,
+        scheduled_poll_configured: true,
+        poll_interval_seconds: 300,
+        poll_last_completed_at: '2099-01-01T00:00:00.000Z',
+        poll_status: 'succeeded' as const,
+        token_expires_at: '2099-01-02T00:00:00.000Z',
+        watch_expires_at: null,
+        error_present: false,
+        error_code: null,
+        outbound_enabled: false as const,
+      })),
+      syncGmailInbox: vi.fn(async () => ({
+        discovered: 0, inserted_messages: 0, duplicates: 0, attachment_metadata_rows: 0,
+        osp_enqueued: 0, osp_processed: 0, outbound_enabled: false as const,
+      })),
+    });
+
+    expect(await screen.findByText(/automatic · scheduled sync/i)).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: /gmail status: automated/i })).toHaveTextContent(/every 5 minutes/i);
+    expect(screen.getByText(/no-cost scheduled intake/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /scheduled sync active/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /run fallback sync/i })).toBeEnabled();
+    expect(screen.getByRole('note')).toHaveTextContent(/no reply, signature, authorization or provider write/i);
   });
 
   it('activates automatic intake only when the full cloud trigger is configured', async () => {

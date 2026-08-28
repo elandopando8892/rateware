@@ -13,7 +13,11 @@ const GMAIL_FIELDS = [
   'connection_exists',
   'error_code',
   'error_present',
+  'poll_interval_seconds',
+  'poll_last_completed_at',
+  'poll_status',
   'pubsub_configured',
+  'scheduled_poll_configured',
   'token_expires_at',
   'watch_configured',
   'watch_expires_at',
@@ -41,6 +45,10 @@ export type GmailReadModel = {
   connection_exists: boolean;
   pubsub_configured: boolean | null;
   watch_configured: boolean | null;
+  scheduled_poll_configured: boolean | null;
+  poll_interval_seconds: number | null;
+  poll_last_completed_at: string | null;
+  poll_status: 'disabled' | 'running' | 'succeeded' | 'failed' | null;
   token_expires_at: string | null;
   watch_expires_at: string | null;
   error_present: boolean;
@@ -255,6 +263,10 @@ export function normalizeGmailReadModel(value: unknown): GmailReadModel {
       connection_exists: false,
       pubsub_configured: null,
       watch_configured: null,
+      scheduled_poll_configured: null,
+      poll_interval_seconds: null,
+      poll_last_completed_at: null,
+      poll_status: null,
       token_expires_at: null,
       watch_expires_at: null,
       error_present: false,
@@ -263,12 +275,17 @@ export function normalizeGmailReadModel(value: unknown): GmailReadModel {
     };
   }
 
-  if (typeof row.pubsub_configured !== 'boolean' || typeof row.watch_configured !== 'boolean') {
+  if (typeof row.pubsub_configured !== 'boolean' || typeof row.watch_configured !== 'boolean' ||
+      typeof row.scheduled_poll_configured !== 'boolean' ||
+      !Number.isSafeInteger(Number(row.poll_interval_seconds)) || Number(row.poll_interval_seconds) < 60 || Number(row.poll_interval_seconds) > 3600 ||
+      !['disabled', 'running', 'succeeded', 'failed'].includes(String(row.poll_status))) {
     throw new OspApiError('DEPENDENCY_UNAVAILABLE');
   }
   const tokenExpiresAt = normalizeUtcDate(row.token_expires_at);
   const watchExpiresAt = normalizeUtcDate(row.watch_expires_at);
+  const pollLastCompletedAt = normalizeUtcDate(row.poll_last_completed_at);
   if (!row.watch_configured && watchExpiresAt !== null) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  if (!row.scheduled_poll_configured && (row.poll_status !== 'disabled' || pollLastCompletedAt !== null)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
 
   let errorCode: GmailErrorCode | null;
   if (row.error_present) {
@@ -287,6 +304,10 @@ export function normalizeGmailReadModel(value: unknown): GmailReadModel {
     connection_exists: true,
     pubsub_configured: row.pubsub_configured,
     watch_configured: row.watch_configured,
+    scheduled_poll_configured: row.scheduled_poll_configured,
+    poll_interval_seconds: Number(row.poll_interval_seconds),
+    poll_last_completed_at: pollLastCompletedAt,
+    poll_status: row.poll_status as 'disabled' | 'running' | 'succeeded' | 'failed',
     token_expires_at: tokenExpiresAt,
     watch_expires_at: watchExpiresAt,
     error_present: row.error_present,

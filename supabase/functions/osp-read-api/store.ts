@@ -11,6 +11,10 @@ export type GmailSeamRow = {
   connection_exists: unknown;
   pubsub_configured: unknown;
   watch_configured: unknown;
+  scheduled_poll_configured: unknown;
+  poll_interval_seconds: unknown;
+  poll_last_completed_at: unknown;
+  poll_status: unknown;
   token_expires_at: unknown;
   watch_expires_at: unknown;
   error_present: unknown;
