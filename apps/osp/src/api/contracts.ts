@@ -448,7 +448,7 @@ export const CaseFormWorkspaceResponseSchema = z.strictObject({
     caseId: z.uuid(), supplierName: z.string().min(1).max(256), caseVersion: z.number().int().min(0).max(2_147_483_647),
     caseState: CaseStateSchema, templateName: z.string().min(3).max(128).nullable(), template: FormTemplateVersionSchema.nullable(),
     instance: CaseFormInstanceSchema.nullable(), mappings: z.array(CaseFormMappingReviewSchema).max(100), evidenceReady: z.boolean(),
-    capabilities: z.strictObject({ saveDraft: z.boolean(), acceptMapping: z.boolean(), submitForReview: z.boolean() }),
+    capabilities: z.strictObject({ saveDraft: z.boolean(), acceptMapping: z.boolean(), correctMapping: z.boolean(), submitForReview: z.boolean() }),
   }),
 });
 
@@ -465,6 +465,21 @@ export const CaseFormMappingReviewResponseSchema = z.strictObject({
     documentVersionId: z.uuid(),
     extractionId: z.uuid(),
     reviewedFieldCount: z.number().int().min(0).max(10_000),
+    replayed: z.boolean(),
+  }),
+});
+
+export const CaseFormMappingCorrectionResponseSchema = z.strictObject({
+  version: z.literal(1), data: z.strictObject({
+    mappingId: z.uuid(),
+    mappingVersion: z.number().int().min(1).max(2_147_483_647),
+    status: z.literal('corrected'),
+    reviewDecisionId: z.uuid(),
+    evidenceDocumentVersionId: z.uuid(),
+    extractionId: z.uuid(),
+    reviewedFieldCount: z.number().int().min(0).max(10_000),
+    caseState: z.literal('preparing'),
+    caseVersion: z.number().int().min(1).max(2_147_483_647),
     replayed: z.boolean(),
   }),
 });
@@ -501,4 +516,5 @@ export type CaseFormInstance = z.infer<typeof CaseFormInstanceSchema>;
 export type CaseFormWorkspace = z.infer<typeof CaseFormWorkspaceResponseSchema>['data'];
 export type CaseFormMutationReceipt = z.infer<typeof CaseFormMutationResponseSchema>['data'];
 export type CaseFormMappingReviewReceipt = z.infer<typeof CaseFormMappingReviewResponseSchema>['data'];
+export type CaseFormMappingCorrectionReceipt = z.infer<typeof CaseFormMappingCorrectionResponseSchema>['data'];
 export type CaseFormSubmissionReceipt = z.infer<typeof CaseFormSubmissionResponseSchema>['data'];

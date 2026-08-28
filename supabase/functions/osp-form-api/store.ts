@@ -81,6 +81,7 @@ export type CaseFormWorkspaceRecord = {
   evidenceReady: boolean;
   saveDraftAllowed: boolean;
   acceptMappingAllowed: boolean;
+  correctMappingAllowed: boolean;
   submitForReviewAllowed: boolean;
 };
 export type SaveCaseFormDraftInput = {
@@ -113,6 +114,22 @@ export type CaseFormMappingReviewReceipt = {
   reviewedFieldCount: number;
   replayed: boolean;
 };
+export type CorrectCaseFormMappingInput = AcceptCaseFormMappingInput & {
+  instanceId: string;
+  expectedInstanceVersion: number;
+};
+export type CaseFormMappingCorrectionReceipt = {
+  mappingId: string;
+  mappingVersion: number;
+  status: 'corrected';
+  reviewDecisionId: string;
+  evidenceDocumentVersionId: string;
+  extractionId: string;
+  reviewedFieldCount: number;
+  caseState: 'preparing';
+  caseVersion: number;
+  replayed: boolean;
+};
 export type SubmitCaseFormForReviewInput = SaveCaseFormDraftInput & { expectedCaseVersion: number };
 export type CaseFormSubmissionReceipt = {
   instance: CaseFormInstance;
@@ -129,10 +146,11 @@ export interface FormStore {
   getCaseFormWorkspace(organizationId: string, caseId: string): Promise<CaseFormWorkspaceRecord>;
   saveCaseFormDraft(input: SaveCaseFormDraftInput): Promise<CaseFormMutationReceipt>;
   acceptCaseFormMapping(input: AcceptCaseFormMappingInput): Promise<CaseFormMappingReviewReceipt>;
+  correctCaseFormMapping(input: CorrectCaseFormMappingInput): Promise<CaseFormMappingCorrectionReceipt>;
   submitCaseFormForReview(input: SubmitCaseFormForReviewInput): Promise<CaseFormSubmissionReceipt>;
 }
 
-type ReceiptValue = FormMutationReceipt | CaseFormMutationReceipt | CaseFormMappingReviewReceipt | CaseFormSubmissionReceipt;
+type ReceiptValue = FormMutationReceipt | CaseFormMutationReceipt | CaseFormMappingReviewReceipt | CaseFormMappingCorrectionReceipt | CaseFormSubmissionReceipt;
 type Receipt = { hash: string; value: ReceiptValue };
 type SeedCase = { organizationId: string; caseId: string; supplierName: string; caseVersion: number; caseState: string };
 
@@ -250,6 +268,7 @@ export function createInMemoryFormStore(now: () => Date = () => new Date('2026-0
         evidenceReady: true,
         saveDraftAllowed: ['awaiting_xbf_information', 'preparing'].includes(registrationCase.caseState),
         acceptMappingAllowed: false,
+        correctMappingAllowed: false,
         submitForReviewAllowed: registrationCase.caseState === 'preparing',
       });
     },
@@ -258,6 +277,9 @@ export function createInMemoryFormStore(now: () => Date = () => new Date('2026-0
     },
     async acceptCaseFormMapping(input: AcceptCaseFormMappingInput) {
       return await replayOrRun(input, 'accept_case_form_mapping', input, () => fail('FORM_MAPPING_NOT_FOUND'));
+    },
+    async correctCaseFormMapping(input: CorrectCaseFormMappingInput) {
+      return await replayOrRun(input, 'correct_case_form_mapping', input, () => fail('FORM_MAPPING_NOT_FOUND'));
     },
     async submitCaseFormForReview(input: SubmitCaseFormForReviewInput) {
       return await replayOrRun(input, 'submit_case_form_for_review', input, async () => {

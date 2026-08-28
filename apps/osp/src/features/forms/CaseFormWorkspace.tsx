@@ -8,7 +8,7 @@ import { assessFormCompletion } from './form-completion';
 
 const FormRuntime = lazy(() => import('./FormRuntime').then((module) => ({ default: module.FormRuntime })));
 
-type CaseFormClient = Pick<OspClient, 'getCaseFormWorkspace' | 'saveCaseFormDraft' | 'acceptCaseFormMapping' | 'submitCaseFormForReview'>;
+type CaseFormClient = Pick<OspClient, 'getCaseFormWorkspace' | 'saveCaseFormDraft' | 'acceptCaseFormMapping' | 'correctCaseFormMapping' | 'submitCaseFormForReview'>;
 
 export function CaseFormWorkspace({ client, caseId }: { client: CaseFormClient; caseId: string }) {
   const navigate = useNavigate();
@@ -24,6 +24,10 @@ export function CaseFormWorkspace({ client, caseId }: { client: CaseFormClient; 
   }} onAcceptMapping={async (mappingId, expectedMappingVersion, expectedAfterSha256, idempotencyKey) => {
     await client.acceptCaseFormMapping({ idempotencyKey, caseId, mappingId, expectedMappingVersion, expectedAfterSha256 });
     await query.refetch();
+  }} onCorrectMapping={async (mappingId, expectedMappingVersion, expectedAfterSha256, idempotencyKey) => {
+    if (!query.data.instance) throw new Error('FORM_INSTANCE_REQUIRED');
+    await client.correctCaseFormMapping({ idempotencyKey, caseId, mappingId, expectedMappingVersion, expectedAfterSha256, instanceId: query.data.instance.id, expectedInstanceVersion: query.data.instance.version });
+    await query.refetch();
   }} onSubmit={async (values, idempotencyKey) => {
     await client.submitCaseFormForReview({
       idempotencyKey, caseId, expectedCaseVersion: query.data.caseVersion, templateVersionId: query.data.template?.id ?? '',
@@ -33,15 +37,17 @@ export function CaseFormWorkspace({ client, caseId }: { client: CaseFormClient; 
   }} />;
 }
 
-function CaseFormEditor({ workspace, onSave, onAcceptMapping, onSubmit }: { workspace: Awaited<ReturnType<CaseFormClient['getCaseFormWorkspace']>>; onSave(values: FormValues, idempotencyKey: string): Promise<void>; onAcceptMapping(mappingId: string, expectedMappingVersion: number, expectedAfterSha256: string, idempotencyKey: string): Promise<void>; onSubmit(values: FormValues, idempotencyKey: string): Promise<void> }) {
+function CaseFormEditor({ workspace, onSave, onAcceptMapping, onCorrectMapping, onSubmit }: { workspace: Awaited<ReturnType<CaseFormClient['getCaseFormWorkspace']>>; onSave(values: FormValues, idempotencyKey: string): Promise<void>; onAcceptMapping(mappingId: string, expectedMappingVersion: number, expectedAfterSha256: string, idempotencyKey: string): Promise<void>; onCorrectMapping(mappingId: string, expectedMappingVersion: number, expectedAfterSha256: string, idempotencyKey: string): Promise<void>; onSubmit(values: FormValues, idempotencyKey: string): Promise<void> }) {
   const initialValues = useMemo(() => structuredClone(workspace.instance?.values ?? {}), [workspace.instance]);
   const [values, setValues] = useState<FormValues>(initialValues);
   const mapping = workspace.mappings.find((item) => item.status === 'unresolved') ?? workspace.mappings[0] ?? null;
   const idempotencyKeyRef = useRef(`case-form-save:${crypto.randomUUID()}`);
   const mappingKeyRef = useRef(`case-mapping-accept:${crypto.randomUUID()}`);
+  const correctionKeyRef = useRef(`case-mapping-correct:${crypto.randomUUID()}`);
   const submitKeyRef = useRef(`case-form-submit:${crypto.randomUUID()}`);
   const [saving, setSaving] = useState(false);
   const [acceptingMapping, setAcceptingMapping] = useState(false);
+  const [correctingMapping, setCorrectingMapping] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
   const [mappingConfirmed, setMappingConfirmed] = useState(false);
@@ -73,6 +79,14 @@ function CaseFormEditor({ workspace, onSave, onAcceptMapping, onSubmit }: { work
       mappingKeyRef.current = `case-mapping-accept:${crypto.randomUUID()}`;
     } catch { setMappingFailed(true); } finally { setAcceptingMapping(false); }
   };
+  const correctMapping = async () => {
+    if (!mapping) return;
+    setMappingFailed(false); setCorrectingMapping(true);
+    try {
+      await onCorrectMapping(mapping.id, mapping.version, mapping.afterSha256, correctionKeyRef.current);
+      correctionKeyRef.current = `case-mapping-correct:${crypto.randomUUID()}`;
+    } catch { setMappingFailed(true); } finally { setCorrectingMapping(false); }
+  };
 
   return (
     <div className="case-form-page">
@@ -94,9 +108,11 @@ function CaseFormEditor({ workspace, onSave, onAcceptMapping, onSubmit }: { work
         confirmed={mappingConfirmed}
         draftChanged={draftChanged}
         pending={acceptingMapping}
+        correcting={correctingMapping}
         failed={mappingFailed}
         onConfirmed={setMappingConfirmed}
         onAccept={() => void acceptMapping()}
+        onCorrect={() => void correctMapping()}
       />
 
       <div className="case-form-layout">
@@ -116,7 +132,7 @@ function CaseFormEditor({ workspace, onSave, onAcceptMapping, onSubmit }: { work
           )}
           {saveFailed ? <p role="alert">The draft could not be saved. Reload the current case version and retry.</p> : null}
           {submitFailed ? <p role="alert">The form was not submitted. Required evidence or the current case version may have changed; reload before retrying.</p> : null}
-          <footer><p>Save freely while working. Submission atomically preserves the exact values and evidence snapshot.</p><div className="case-form-actions"><button type="button" className="secondary" disabled={!workspace.template || !workspace.capabilities.saveDraft || saving || acceptingMapping || submitting} onClick={() => void save()}>{saving ? 'Saving…' : 'Save draft'}</button><button type="button" disabled={!workspace.template || !workspace.capabilities.submitForReview || !completion.ready || saving || acceptingMapping || submitting} onClick={() => void submit()}>{submitting ? 'Submitting…' : 'Submit for Operations review'}</button></div></footer>
+          <footer><p>Save freely while working. Submission atomically preserves the exact values and evidence snapshot.</p><div className="case-form-actions"><button type="button" className="secondary" disabled={!workspace.template || !workspace.capabilities.saveDraft || saving || acceptingMapping || correctingMapping || submitting} onClick={() => void save()}>{saving ? 'Saving…' : 'Save draft'}</button><button type="button" disabled={!workspace.template || !workspace.capabilities.submitForReview || !completion.ready || saving || acceptingMapping || correctingMapping || submitting} onClick={() => void submit()}>{submitting ? 'Submitting…' : 'Submit for Operations review'}</button></div></footer>
         </main>
 
         <aside className="case-form-gates" aria-labelledby="case-form-gates-title">
@@ -138,21 +154,25 @@ function reviewValue(value: string | number | boolean | null): string {
   return String(value);
 }
 
-function AutomaticPrefillReview({ workspace, mapping, confirmed, draftChanged, pending, failed, onConfirmed, onAccept }: {
+function AutomaticPrefillReview({ workspace, mapping, confirmed, draftChanged, pending, correcting, failed, onConfirmed, onAccept, onCorrect }: {
   workspace: CaseFormWorkspaceModel;
   mapping: CaseFormWorkspaceModel['mappings'][number] | null;
   confirmed: boolean;
   draftChanged: boolean;
   pending: boolean;
+  correcting: boolean;
   failed: boolean;
   onConfirmed(value: boolean): void;
   onAccept(): void;
+  onCorrect(): void;
 }) {
   const labels = new Map(workspace.template?.fields.map((field) => [field.id, field.label]) ?? []);
   const accepted = mapping?.status === 'accepted' || mapping?.status === 'corrected';
   const prepared = mapping?.automaticStatus === 'ready_for_operations_review' && mapping.fields.length > 0 && mapping.fields.every((field) => field.status === 'prepared' && field.evidenceCount > 0);
   const evidenceReviewable = Boolean(mapping && ['review_required', 'approved'].includes(mapping.evidence.sourceDocumentStatus) && ['review_required', 'reviewed'].includes(mapping.evidence.extractionStatus) && mapping.evidence.invalidFieldCount === 0 && mapping.evidence.protectedFields.every((field) => field.evidenceCount > 0));
   const canAccept = Boolean(mapping && workspace.capabilities.acceptMapping && prepared && evidenceReviewable && mapping.matchesCurrentDraft && !draftChanged);
+  const missingBankOnly = Boolean(mapping && mapping.fields.filter((field) => field.status === 'missing' && field.source === 'missing').length === 1 && mapping.fields.some((field) => field.fieldId === 'bank_account' && field.status === 'missing' && field.source === 'missing') && mapping.fields.filter((field) => field.fieldId !== 'bank_account').every((field) => field.status === 'prepared' && field.evidenceCount > 0));
+  const canCorrect = Boolean(mapping && workspace.instance && workspace.capabilities.correctMapping && missingBankOnly && evidenceReviewable && !mapping.matchesCurrentDraft && !draftChanged);
   return <section className={`automatic-prefill-review${accepted ? ' accepted' : ''}`} aria-labelledby="automatic-prefill-title">
     <header>
       <div><p className="eyebrow">Human control · zero external effects</p><h2 id="automatic-prefill-title">Automatic prefill review</h2><p>Confirm what OSP prepared from Rateware and the preserved source evidence.</p></div>
@@ -176,10 +196,10 @@ function AutomaticPrefillReview({ workspace, mapping, confirmed, draftChanged, p
         <p className="evidence-fingerprint">Source document <code>{mapping.evidence.sourceDocumentVersionId.slice(0, 8)}</code> · extraction <code>{mapping.evidence.extractionId.slice(0, 8)}</code> · source fingerprint <code>{mapping.evidence.sourceDocumentFingerprint.slice(0, 12)}</code></p>
       </section>
       {accepted ? <p className="mapping-review-result" role="status">Operations accepted the source document, protected extracted fields, and this exact prefill. All decisions are preserved for the package snapshot.</p> : <div className="mapping-review-control">
-        {!prepared ? <p role="status">Missing or contradictory prefill fields must be resolved before this evidence can be accepted.</p> : !evidenceReviewable ? <p role="alert">The source extraction contains invalid or incomplete evidence and cannot be accepted.</p> : !mapping.matchesCurrentDraft ? <p role="alert">The saved draft no longer matches this automatic prefill. A correction review is required.</p> : draftChanged ? <p role="status">Unsaved edits differ from the prefill. Revert them to accept it unchanged, or save them for the correction workflow.</p> : null}
-        <label className="control-confirmation"><input type="checkbox" checked={confirmed} disabled={!canAccept || pending} onChange={(event) => onConfirmed(event.target.checked)} /> I reviewed the source document, every protected extracted value, and every prefilled field shown above.</label>
+        {canCorrect ? <p role="status">The saved bank account will be linked to the current approved bank statement and preserved as a human correction.</p> : !prepared ? <p role="status">Missing or contradictory prefill fields must be resolved before this evidence can be accepted.</p> : !evidenceReviewable ? <p role="alert">The source extraction contains invalid or incomplete evidence and cannot be accepted.</p> : !mapping.matchesCurrentDraft ? <p role="alert">The saved draft no longer matches this automatic prefill. A correction review is required.</p> : draftChanged ? <p role="status">Unsaved edits differ from the prefill. Revert them to accept it unchanged, or save them for the correction workflow.</p> : null}
+        <label className="control-confirmation"><input type="checkbox" checked={confirmed} disabled={!(canAccept || canCorrect) || pending || correcting} onChange={(event) => onConfirmed(event.target.checked)} /> I reviewed the source documents, every protected extracted value, and every prefilled or corrected field shown above.</label>
         {failed ? <p role="alert">The prefill was not accepted. The case, draft, or fingerprint changed; reload and review the current version.</p> : null}
-        <button type="button" disabled={!canAccept || !confirmed || pending} onClick={onAccept}>{pending ? 'Recording review…' : 'Accept evidence and prefill'}</button>
+        {canCorrect ? <button type="button" disabled={!confirmed || correcting} onClick={onCorrect}>{correcting ? 'Recording correction…' : 'Record reviewed correction'}</button> : <button type="button" disabled={!canAccept || !confirmed || pending} onClick={onAccept}>{pending ? 'Recording review…' : 'Accept evidence and prefill'}</button>}
       </div>}
     </>}
   </section>;

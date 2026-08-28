@@ -70,6 +70,7 @@ function client(): OspClient {
     getCaseFormWorkspace: vi.fn(async () => { throw new Error('not used'); }),
     saveCaseFormDraft: vi.fn(async () => { throw new Error('not used'); }),
     acceptCaseFormMapping: vi.fn(async () => { throw new Error('not used'); }),
+    correctCaseFormMapping: vi.fn(async () => { throw new Error('not used'); }),
     submitCaseFormForReview: vi.fn(async () => { throw new Error('not used'); }),
   };
 }
@@ -345,7 +346,7 @@ describe('App authentication and routing', () => {
       uploadDocumentVersion: vi.fn(() => pending), approveDocumentVersion: vi.fn(() => pending), listClarificationReviews: vi.fn(() => pending),
       saveClarificationReview: vi.fn(() => pending),
       listFormTemplates: vi.fn(() => pending), saveFormTemplateDraft: vi.fn(() => pending), publishFormTemplate: vi.fn(() => pending),
-      getCaseFormWorkspace: vi.fn(() => pending), saveCaseFormDraft: vi.fn(() => pending), acceptCaseFormMapping: vi.fn(() => pending), submitCaseFormForReview: vi.fn(() => pending),
+      getCaseFormWorkspace: vi.fn(() => pending), saveCaseFormDraft: vi.fn(() => pending), acceptCaseFormMapping: vi.fn(() => pending), correctCaseFormMapping: vi.fn(() => pending), submitCaseFormForReview: vi.fn(() => pending),
     };
     const history = createMemoryHistory({ initialEntries: ['/app/pipeline'] });
     const view = render(<App authPort={port} apiClient={clientA} routerHistory={history} />);

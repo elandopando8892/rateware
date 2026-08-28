@@ -83,7 +83,7 @@ Deno.test('form API binds a published template to a case and saves an idempotent
   const workspaceBody = (await workspace.json()).data;
   assert.equal(workspaceBody.supplierName, 'Synthetic supplier');
   assert.equal(workspaceBody.template.status, 'published');
-  assert.deepEqual(workspaceBody.capabilities, { saveDraft: false, acceptMapping: false, submitForReview: false });
+  assert.deepEqual(workspaceBody.capabilities, { saveDraft: false, acceptMapping: false, correctMapping: false, submitForReview: false });
   assert.deepEqual(workspaceBody.mappings, []);
 
   const command = { version: 1, action: 'save_case_form_draft', idempotency_key: 'case-form-save', case_id: caseId, template_version_id: template.latest.id, instance_id: null, expected_version: 0, values: { legal_name: 'Synthetic supplier' } };
@@ -131,4 +131,24 @@ Deno.test('form API accepts only an exact authorized mapping fingerprint command
   assert.deepEqual(accepted, [{ organizationId, subject: 'operator', idempotencyKey: 'mapping-accept-1', caseId, mappingId: command.mapping_id, expectedMappingVersion: 3, expectedAfterSha256: 'a'.repeat(64) }]);
   assert.equal((await subject(request(command, 'read-token'))).status, 403);
   assert.equal((await subject(request({ ...command, unexpected: true }))).status, 400);
+});
+
+Deno.test('form API records only an exact authorized current-instance correction command', async () => {
+  const corrected: unknown[] = [];
+  const base = createInMemoryFormStore(() => new Date('2026-08-26T20:00:00.000Z'), [{ organizationId, caseId, supplierName: 'Synthetic supplier', caseVersion: 4, caseState: 'preparing' }]);
+  const subject = createFormApiHandler({
+    store: { ...base, correctCaseFormMapping: async (input) => {
+      corrected.push(input);
+      return { mappingId: input.mappingId, mappingVersion: input.expectedMappingVersion + 1, status: 'corrected', reviewDecisionId: '51111111-1111-4111-8111-111111111111', evidenceDocumentVersionId: '61111111-1111-4111-8111-111111111111', extractionId: '71111111-1111-4111-8111-111111111111', reviewedFieldCount: 2, caseState: 'preparing', caseVersion: 5, replayed: false };
+    } },
+    canonicalFieldIds: ['banking.accountNumber'],
+    verifyToken: async (token: string) => ({ identity: { issuer: 'https://auth.example.test', authorizedParty: 'client', subject: 'operator', organization: organizationId, email: 'operator@example.test', emailVerified: true as const }, permissions: token === 'read-token' ? ['osp:read'] : ['osp:operate'] }),
+    incidentId: () => 'incident-synthetic',
+  });
+  const command = { version: 1, action: 'correct_case_form_mapping', idempotency_key: 'mapping-correct-1', case_id: caseId, mapping_id: '51111111-1111-4111-8111-111111111112', expected_mapping_version: 3, expected_after_sha256: 'a'.repeat(64), instance_id: '81111111-1111-4111-8111-111111111111', expected_instance_version: 2 };
+  const response = await subject(request(command));
+  assert.equal(response.status, 200);
+  assert.deepEqual(corrected, [{ organizationId, subject: 'operator', idempotencyKey: 'mapping-correct-1', caseId, mappingId: command.mapping_id, expectedMappingVersion: 3, expectedAfterSha256: 'a'.repeat(64), instanceId: command.instance_id, expectedInstanceVersion: 2 }]);
+  assert.equal((await subject(request(command, 'read-token'))).status, 403);
+  assert.equal((await subject(request({ ...command, expected_instance_version: 0 }))).status, 400);
 });

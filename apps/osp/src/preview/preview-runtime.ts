@@ -201,7 +201,7 @@ function createPreviewClient(): OspClient {
       },
     }],
     evidenceReady: false,
-    capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false },
+    capabilities: { saveDraft: true, acceptMapping: true, correctMapping: false, submitForReview: false },
   };
   const client: OspClient = {
     listOnboardingWorkspace: async () => ({ requests_total: '26', documents_pending: '7', under_review: '5', ready_for_approval: '3' }),
@@ -276,7 +276,7 @@ function createPreviewClient(): OspClient {
     getCaseFormWorkspace: async (requestedCaseId) => {
       if (requestedCaseId === caseFormCaseId) return structuredClone(caseFormWorkspace);
       const caseRecord = previewCaseRows.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCaseRows[0];
-      return { caseId: requestedCaseId, supplierName: caseRecord.supplier_name, caseVersion: caseRecord.aggregate_version, caseState: caseRecord.state, templateName: caseFormWorkspace.templateName, template: structuredClone(caseFormWorkspace.template), instance: null, mappings: [], evidenceReady: false, capabilities: { saveDraft: false, acceptMapping: false, submitForReview: false } };
+      return { caseId: requestedCaseId, supplierName: caseRecord.supplier_name, caseVersion: caseRecord.aggregate_version, caseState: caseRecord.state, templateName: caseFormWorkspace.templateName, template: structuredClone(caseFormWorkspace.template), instance: null, mappings: [], evidenceReady: false, capabilities: { saveDraft: false, acceptMapping: false, correctMapping: false, submitForReview: false } };
     },
     saveCaseFormDraft: async (input) => {
       if (input.caseId !== caseFormCaseId || input.templateVersionId !== caseFormWorkspace.template?.id || input.instanceId !== caseFormWorkspace.instance?.id || input.expectedVersion !== caseFormWorkspace.instance.version) throw new Error('VERSION_CONFLICT');
@@ -291,11 +291,12 @@ function createPreviewClient(): OspClient {
       caseFormWorkspace = { ...caseFormWorkspace, mappings: caseFormWorkspace.mappings.map((item) => item.id === mapping.id ? { ...item, status: 'accepted' as const, evidence: { ...item.evidence, sourceDocumentStatus: 'approved' as const, extractionStatus: 'reviewed' as const, protectedFields: item.evidence.protectedFields.map((field) => ({ ...field, reviewed: true })) }, updatedAt: new Date().toISOString() } : item), evidenceReady: true, capabilities: { ...caseFormWorkspace.capabilities, acceptMapping: false, submitForReview: true } };
       return { mappingId: mapping.id, mappingVersion: mapping.version, status: 'accepted', reviewDecisionId, documentVersionId: mapping.evidence.sourceDocumentVersionId, extractionId: mapping.evidence.extractionId, reviewedFieldCount: mapping.evidence.protectedFields.length, replayed: false };
     },
+    correctCaseFormMapping: async () => { throw new Error('FORM_MAPPING_NOT_FOUND'); },
     submitCaseFormForReview: async (input) => {
       if (input.caseId !== caseFormCaseId || input.expectedCaseVersion !== caseFormWorkspace.caseVersion || input.templateVersionId !== caseFormWorkspace.template?.id || input.instanceId !== caseFormWorkspace.instance?.id || input.expectedVersion !== caseFormWorkspace.instance.version) throw new Error('VERSION_CONFLICT');
       const instance = { ...caseFormWorkspace.instance, version: caseFormWorkspace.instance.version + 1, values: structuredClone(input.values), updatedAt: new Date().toISOString() };
       const caseVersion = caseFormWorkspace.caseVersion + 1;
-      caseFormWorkspace = { ...caseFormWorkspace, caseVersion, caseState: 'operations_review', instance, capabilities: { saveDraft: false, acceptMapping: false, submitForReview: false } };
+      caseFormWorkspace = { ...caseFormWorkspace, caseVersion, caseState: 'operations_review', instance, capabilities: { saveDraft: false, acceptMapping: false, correctMapping: false, submitForReview: false } };
       previewCaseRows = previewCaseRows.map((caseRecord) => caseRecord.case_id === caseFormCaseId
         ? { ...caseRecord, state: 'operations_review', aggregate_version: caseVersion, updated_at: new Date().toISOString() }
         : caseRecord);

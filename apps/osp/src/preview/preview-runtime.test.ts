@@ -23,7 +23,7 @@ describe('synthetic preview runtime', () => {
     const formCase = cases.find((item) => item.supplier_name === 'Sierra Retail México');
     expect(formCase).toBeDefined();
     await expect(runtime.apiClient.getCaseFormWorkspace(formCase!.case_id)).resolves.toMatchObject({
-      supplierName: 'Sierra Retail México', instance: { version: 2, values: { legal_name: 'Sierra Retail México', tax_identifier: 'SRM010101AA1' } }, mappings: expect.arrayContaining([expect.objectContaining({ status: 'unresolved', fields: expect.arrayContaining([expect.objectContaining({ source: 'rateware' })]) })]), capabilities: { saveDraft: true, acceptMapping: true, submitForReview: false },
+      supplierName: 'Sierra Retail México', instance: { version: 2, values: { legal_name: 'Sierra Retail México', tax_identifier: 'SRM010101AA1' } }, mappings: expect.arrayContaining([expect.objectContaining({ status: 'unresolved', fields: expect.arrayContaining([expect.objectContaining({ source: 'rateware' })]) })]), capabilities: { saveDraft: true, acceptMapping: true, correctMapping: false, submitForReview: false },
     });
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
