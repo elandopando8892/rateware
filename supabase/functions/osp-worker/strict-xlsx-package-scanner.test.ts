@@ -26,6 +26,7 @@ Deno.test("strict XLSX package policy accepts a bounded inert workbook with the 
   await assertStrictXlsxPackage(bytes);
   const scanner = createStrictXlsxPackageScanner(await sha256Hex(bytes));
   assertEquals(await scanner(bytes), "clean");
+  assertEquals(await createStrictXlsxPackageScanner()(bytes), "clean");
   assertEquals(
     await createStrictXlsxPackageScanner("0".repeat(64))(bytes),
     "unknown",

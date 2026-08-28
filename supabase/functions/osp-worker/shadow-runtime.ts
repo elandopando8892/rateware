@@ -31,6 +31,8 @@ import {
   type RatewareXlsxCanaryReceipt,
 } from "./rateware-xlsx-canary.ts";
 import { createPostgresRatewareXlsxCanaryStore } from "./postgres-rateware-xlsx-canary-store.ts";
+import type { RatewareXlsxRoutingConfiguration } from "./rateware-xlsx-routing-config.ts";
+import { createPostgresRatewareXlsxStagingStore } from "./postgres-rateware-xlsx-staging-store.ts";
 
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -60,6 +62,7 @@ export function createShadowWorkerRuntime(input: {
   workerId: string;
   automation?: GovernedAutomationConfiguration;
   xlsxShadow?: XlsxShadowConfiguration;
+  ratewareXlsxRouting?: RatewareXlsxRoutingConfiguration;
   fetch?: typeof globalThis.fetch;
 }): {
   enqueue(limit: number): Promise<number>;
@@ -71,7 +74,11 @@ export function createShadowWorkerRuntime(input: {
     request: XlsxDocumentExtractCanary,
   ) => Promise<RatewareXlsxCanaryReceipt>;
 } {
-  if (input.automation && input.xlsxShadow) {
+  if (
+    [input.automation, input.xlsxShadow, input.ratewareXlsxRouting].filter(
+      Boolean,
+    ).length > 1
+  ) {
     throw new Error("INVALID_RUNTIME_CONFIGURATION");
   }
   const jobs = createPostgresBackgroundJobStore({
@@ -93,7 +100,8 @@ export function createShadowWorkerRuntime(input: {
     postgresFactory: input.postgresFactory,
   });
   const request = input.fetch ?? globalThis.fetch;
-  const automationStorage = input.automation || input.xlsxShadow
+  const automationStorage = input.automation || input.xlsxShadow ||
+      input.ratewareXlsxRouting
     ? governedStorage(input.storageClient)
     : undefined;
   let attachmentPromotions: AttachmentPromotionService | undefined;
@@ -135,6 +143,20 @@ export function createShadowWorkerRuntime(input: {
           ? promoted.promoteCase(request)
           : Promise.resolve(Object.freeze([])),
     });
+  } else if (input.ratewareXlsxRouting) {
+    attachmentPromotions = createAttachmentPromotionService({
+      store: createPostgresAttachmentPromotionStore({
+        databaseUrl: input.databaseUrl,
+        postgresFactory: input.postgresFactory,
+      }),
+      storage: createSupabaseAttachmentPromotionStorage({
+        client: automationStorage!,
+      }),
+      scan: createStrictXlsxPackageScanner(),
+      sourceSafetyReason: "strict_xlsx_package_policy",
+      contentTypes: [XLSX],
+      jobs,
+    });
   }
   let extraction: ManagedExtractionService | undefined;
   let stageXlsxRatewareCanary:
@@ -142,7 +164,7 @@ export function createShadowWorkerRuntime(input: {
       request: XlsxDocumentExtractCanary,
     ) => Promise<RatewareXlsxCanaryReceipt>)
     | undefined;
-  if (input.automation || input.xlsxShadow) {
+  if (input.automation || input.xlsxShadow || input.ratewareXlsxRouting) {
     const managedStore = createPostgresManagedExtractionStore({
       databaseUrl: input.databaseUrl,
       postgresFactory: input.postgresFactory,
@@ -190,6 +212,14 @@ export function createShadowWorkerRuntime(input: {
           },
         }
         : {}),
+      ...(input.ratewareXlsxRouting
+        ? {
+          ratewareXlsxStaging: createPostgresRatewareXlsxStagingStore({
+            databaseUrl: input.databaseUrl,
+            postgresFactory: input.postgresFactory,
+          }),
+        }
+        : {}),
       jobs,
     });
     if (input.xlsxShadow) {
@@ -212,7 +242,7 @@ export function createShadowWorkerRuntime(input: {
     }
   }
   let formMappings: AutomaticPreparationService | undefined;
-  if (input.automation || input.xlsxShadow) {
+  if (input.automation || input.xlsxShadow || input.ratewareXlsxRouting) {
     const prepared = createAutomaticPreparationService(
       createPostgresAutomaticPreparationStore({
         databaseUrl: input.databaseUrl,

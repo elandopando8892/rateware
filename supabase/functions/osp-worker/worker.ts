@@ -29,6 +29,7 @@ export interface ManagedExtractionService {
       organizationId: string;
       documentVersionId: string;
       correlationId: string;
+      leaseToken: string;
     },
   ): Promise<void>;
 }
@@ -149,6 +150,7 @@ async function execute(
       organizationId: job.organizationId,
       documentVersionId,
       correlationId: job.id,
+      leaseToken: job.leaseToken,
     });
     return;
   }

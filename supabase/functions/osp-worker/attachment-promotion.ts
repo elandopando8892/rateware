@@ -96,8 +96,16 @@ export function createAttachmentPromotionService(deps: {
   storage: AttachmentPromotionStorage;
   scan: MalwareScanner;
   sourceSafetyReason?: SourceSafetyReason;
+  contentTypes?: readonly string[];
   jobs: Pick<BackgroundJobStore, "enqueue">;
 }): AttachmentPromotionService {
+  const contentTypes = deps.contentTypes
+    ? new Set(deps.contentTypes)
+    : undefined;
+  if (
+    contentTypes?.size === 0 ||
+    [...contentTypes ?? []].some((value) => !CONTENT_TYPES.has(value))
+  ) throw new Error("INVALID_RUNTIME_CONFIGURATION");
   const service: AttachmentPromotionService = {
     async promoteCase(input) {
       if (!UUID.test(input.organizationId) || !UUID.test(input.caseId)) {
@@ -107,6 +115,7 @@ export function createAttachmentPromotionService(deps: {
       const promoted: RegisteredRequirementDocument[] = [];
       for (const source of sources) {
         validateSource(source, input.organizationId, input.caseId);
+        if (contentTypes && !contentTypes.has(source.contentType)) continue;
         const bytes = await deps.storage.downloadOriginal({
           objectKey: source.sourceObjectKey,
         });

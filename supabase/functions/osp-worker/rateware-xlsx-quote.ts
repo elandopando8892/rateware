@@ -37,6 +37,13 @@ const DEFINITIONS = Object.freeze(
 type QuoteField = typeof DEFINITIONS[number]["key"];
 type Scalar = string | number | boolean;
 type Candidate = Readonly<{ value: Scalar; evidenceIds: readonly string[] }>;
+const RATE_SIGNAL_FIELDS = new Set<QuoteField>([
+  "linehaul",
+  "borderFee",
+  "fsc",
+  "allInRate",
+  "weeklyCapacity",
+]);
 
 export type RatewareXlsxQuote = Readonly<{
   parserVersion: "osp-rateware-xlsx-adjacent-label-v1";
@@ -156,9 +163,9 @@ function almostEqual(left: number, right: number): boolean {
   return Math.abs(left - right) <= 0.01;
 }
 
-export function parseRatewareXlsxQuote(
+function quoteCandidates(
   structure: XlsxStructure,
-): RatewareXlsxQuote {
+): ReadonlyMap<QuoteField, readonly Candidate[]> {
   const aliases = new Map<string, QuoteField>();
   for (const definition of DEFINITIONS) {
     for (const label of definition.labels) {
@@ -213,6 +220,12 @@ export function parseRatewareXlsxQuote(
     }
   }
 
+  return candidates;
+}
+
+function quoteFromCandidates(
+  candidates: ReadonlyMap<QuoteField, readonly Candidate[]>,
+): RatewareXlsxQuote {
   const found = Object.fromEntries(
     DEFINITIONS.map(({ key }) => [key, requiredCandidate(candidates, key)]),
   ) as Record<QuoteField, Candidate>;
@@ -255,4 +268,26 @@ export function parseRatewareXlsxQuote(
       DEFINITIONS.map(({ key }) => [key, found[key].evidenceIds]),
     ) as Record<QuoteField, readonly string[]>),
   });
+}
+
+export function classifyRatewareXlsxQuote(
+  structure: XlsxStructure,
+): RatewareXlsxQuote | null {
+  const candidates = quoteCandidates(structure);
+  const signaled = [...RATE_SIGNAL_FIELDS].some((key) =>
+    (candidates.get(key)?.length ?? 0) > 0
+  );
+  if (!signaled) return null;
+  if (
+    DEFINITIONS.some(({ key }) => (candidates.get(key)?.length ?? 0) === 0)
+  ) throw new Error("RATEWARE_XLSX_PARTIAL_QUOTE");
+  return quoteFromCandidates(candidates);
+}
+
+export function parseRatewareXlsxQuote(
+  structure: XlsxStructure,
+): RatewareXlsxQuote {
+  const quote = classifyRatewareXlsxQuote(structure);
+  if (!quote) throw new Error("RATEWARE_XLSX_FIELDS_NOT_FOUND");
+  return quote;
 }

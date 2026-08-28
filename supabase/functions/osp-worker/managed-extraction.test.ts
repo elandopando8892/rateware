@@ -95,6 +95,7 @@ Deno.test("managed extraction closes provider evidence, persists snapshot and qu
     organizationId,
     documentVersionId,
     correlationId: "job-extract",
+    leaseToken: "lease-extract",
   });
   const snapshot = (persisted[0] as {
     snapshot: { fields: Array<{ fieldKey: string; validation: string }> };
@@ -155,6 +156,7 @@ Deno.test("managed extraction reuses a persisted extraction without provider or 
     organizationId,
     documentVersionId,
     correlationId: "job-retry",
+    leaseToken: "lease-retry",
   });
   assertEquals(externalCalls, 0);
   const [mapping] = await jobs.claim({
@@ -203,6 +205,7 @@ Deno.test("managed extraction processes XLSX without layout or AI providers", as
     organizationId,
     documentVersionId,
     correlationId: "xlsx-no-provider",
+    leaseToken: "lease-xlsx",
   });
   assertEquals(
     persisted[0].snapshot.fields.map((field) => ({
@@ -218,4 +221,104 @@ Deno.test("managed extraction processes XLSX without layout or AI providers", as
     limit: 1,
   });
   assertEquals(mapping.kind, "form_ai_mapping");
+});
+
+Deno.test("managed extraction routes a complete carrier quote only to Rateware staging", async () => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Carrier Quote");
+  sheet.addRow([
+    "Vendor",
+    "RFx",
+    "Origin",
+    "Destination",
+    "Equipment",
+    "Operation",
+    "Service",
+    "Linehaul",
+    "Border Fee",
+    "FSC",
+    "All-in Rate",
+    "Weekly Capacity",
+  ]);
+  sheet.addRow([
+    "Synthetic Carrier",
+    "RFx-1",
+    "Monterrey, MX",
+    "Dallas, TX",
+    "53FT Dry Van",
+    "Export",
+    "FTL",
+    1850,
+    125,
+    0.18,
+    2308,
+    8,
+  ]);
+  const xlsxBytes = new Uint8Array(await workbook.xlsx.writeBuffer());
+  const staged: unknown[] = [];
+  const jobs = createInMemoryBackgroundJobStore();
+  const service = createManagedExtractionService({
+    store: {
+      load: async () => ({
+        organizationId,
+        caseId,
+        documentVersionId,
+        bucketId: "osp-corporate-documents",
+        objectKey: `${organizationId}/${documentVersionId}`,
+        contentType:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        sourceSha256: await sha256Hex(xlsxBytes),
+        sourceSafety: "safe",
+        templateVersionId,
+        existingExtractionId: null,
+      }),
+      persist: async () => {
+        throw new Error("must not persist OSP extraction for a quote");
+      },
+    },
+    storage: { download: async () => xlsxBytes },
+    ratewareXlsxStaging: {
+      stage: async (input) => {
+        staged.push(input);
+        return {
+          rawUploadId: crypto.randomUUID(),
+          interpretationJobId: crypto.randomUUID(),
+          rateStagingId: crypto.randomUUID(),
+          inserted: true,
+        };
+      },
+    },
+    jobs,
+  });
+  await service.extract({
+    organizationId,
+    documentVersionId,
+    correlationId: "job-rateware",
+    leaseToken: "lease-rateware",
+  });
+  assertEquals(staged.length, 1);
+  assertEquals(
+    (staged[0] as { jobId: string; leaseToken: string; quote: { rfx: string } })
+      .jobId,
+    "job-rateware",
+  );
+  assertEquals(
+    (staged[0] as { jobId: string; leaseToken: string; quote: { rfx: string } })
+      .leaseToken,
+    "lease-rateware",
+  );
+  assertEquals(
+    (staged[0] as { jobId: string; leaseToken: string; quote: { rfx: string } })
+      .quote.rfx,
+    "RFx-1",
+  );
+  assertEquals(
+    await jobs.claim({
+      workerId: "test",
+      now: new Date(),
+      leaseMs: 60_000,
+      limit: 1,
+    }),
+    [],
+  );
 });

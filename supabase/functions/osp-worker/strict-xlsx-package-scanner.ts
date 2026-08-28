@@ -135,12 +135,15 @@ export async function assertStrictXlsxPackage(
   }
 }
 
-export function createStrictXlsxPackageScanner(expectedSha256: string) {
-  if (!SHA256.test(expectedSha256)) {
+export function createStrictXlsxPackageScanner(expectedSha256?: string) {
+  if (expectedSha256 !== undefined && !SHA256.test(expectedSha256)) {
     throw new Error("INVALID_RUNTIME_CONFIGURATION");
   }
   return async (bytes: Uint8Array): Promise<"clean" | "unknown"> => {
-    if (await sha256Hex(bytes) !== expectedSha256) return "unknown";
+    if (
+      expectedSha256 !== undefined &&
+      await sha256Hex(bytes) !== expectedSha256
+    ) return "unknown";
     try {
       await assertStrictXlsxPackage(bytes);
       return "clean";

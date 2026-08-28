@@ -112,3 +112,44 @@ Deno.test("attachment promotion fails closed before persistence on hash or malwa
   );
   assertEquals(registered, 0);
 });
+
+Deno.test("attachment promotion can limit a free deterministic route to XLSX", async () => {
+  let downloaded = 0;
+  const service = createAttachmentPromotionService({
+    store: {
+      listCaseAttachments: async () => [{
+        id: attachmentId,
+        organizationId,
+        caseId,
+        sourceObjectKey:
+          `${organizationId}/44444444-4444-4444-8444-444444444444`,
+        sourceSha256: await sha256Hex(bytes),
+        contentType: "application/pdf",
+      }],
+      register: async () => {
+        throw new Error("must not register excluded content");
+      },
+    },
+    storage: {
+      downloadOriginal: async () => {
+        downloaded += 1;
+        return bytes;
+      },
+      putCorporate: async () => undefined,
+    },
+    scan: async () => "clean",
+    contentTypes: [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ],
+    jobs: createInMemoryBackgroundJobStore(),
+  });
+  assertEquals(
+    await service.promoteCase({
+      organizationId,
+      caseId,
+      correlationId: "job-filter",
+    }),
+    [],
+  );
+  assertEquals(downloaded, 0);
+});
