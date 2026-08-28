@@ -117,6 +117,63 @@ Deno.test("XLSX structural extraction marks conflicting repeated labels for huma
   );
 });
 
+Deno.test("XLSX structural extraction preserves blank provider fields for Rateware-backed preparation", async () => {
+  const bytes = await workbookBytes((workbook) => {
+    const sheet = workbook.addWorksheet("Customer setup");
+    sheet.getCell("A1").value = "Legal name";
+    sheet.getCell("A2").value = "Tax ID";
+    sheet.getCell("A3").value = "Fiscal address";
+    sheet.getCell("A4").value = "Bank account";
+  });
+  const created = await snapshot(bytes);
+  assertEquals(
+    created.fields.map((field) => ({
+      fieldKey: field.fieldKey,
+      presence: field.presence,
+      value: field.value,
+      confidence: field.confidence,
+      validation: field.validation,
+      ranges: field.evidence.map((item) =>
+        item.kind === "xlsx_cell" ? item.cellRange : ""
+      ),
+    })),
+    [
+      {
+        fieldKey: "supplier.legalName",
+        presence: "blank",
+        value: null,
+        confidence: 1,
+        validation: "valid",
+        ranges: ["A1"],
+      },
+      {
+        fieldKey: "fiscal.taxIdentifier",
+        presence: "blank",
+        value: null,
+        confidence: 1,
+        validation: "valid",
+        ranges: ["A2"],
+      },
+      {
+        fieldKey: "supplier.address",
+        presence: "blank",
+        value: null,
+        confidence: 1,
+        validation: "valid",
+        ranges: ["A3"],
+      },
+      {
+        fieldKey: "banking.accountNumber",
+        presence: "blank",
+        value: null,
+        confidence: 1,
+        validation: "valid",
+        ranges: ["A4"],
+      },
+    ],
+  );
+});
+
 Deno.test("XLSX structural extraction refuses unsupported spreadsheets instead of guessing", async () => {
   const bytes = await workbookBytes((workbook) => {
     const sheet = workbook.addWorksheet("Rates");

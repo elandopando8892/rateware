@@ -117,8 +117,38 @@ async function extractedField(input: {
   extractionId: string;
   fieldKey: string;
   candidates: readonly Candidate[];
+  blankEvidence: readonly EvidenceItem[];
   modelVersion: string;
 }): Promise<ExtractedField> {
+  if (input.candidates.length === 0) {
+    const beforeSha256 = await sha256Hex(
+      new TextEncoder().encode(
+        JSON.stringify({ presence: "absent", value: null }),
+      ),
+    );
+    const afterSha256 = await sha256Hex(
+      new TextEncoder().encode(
+        JSON.stringify({ presence: "blank", value: null }),
+      ),
+    );
+    return Object.freeze({
+      id: crypto.randomUUID(),
+      organizationId: input.source.organizationId,
+      caseId: input.source.caseId,
+      extractionId: input.extractionId,
+      beforeSha256,
+      afterSha256,
+      fieldKey: input.fieldKey,
+      presence: "blank" as const,
+      value: null,
+      confidence: 1,
+      evidence: Object.freeze(input.blankEvidence.map((item) => item.locator)),
+      provider: "xlsx_structural" as const,
+      modelVersion: input.modelVersion,
+      schemaVersion: 1 as const,
+      validation: "valid" as const,
+    });
+  }
   const distinct = new Map<string, Candidate>();
   for (const candidate of input.candidates) {
     const key = stable(candidate.value);
@@ -181,6 +211,7 @@ export async function createXlsxStructuralSnapshot(input: {
     }
   }
   const candidates = new Map<string, Candidate[]>();
+  const detectedLabels = new Map<string, EvidenceItem[]>();
   for (
     let sheetIndex = 0;
     sheetIndex < input.structure.sheets.length;
@@ -195,17 +226,24 @@ export async function createXlsxStructuralSnapshot(input: {
       const cellCoordinates = coordinates(labelCell.address);
       if (!cellCoordinates) continue;
       const [column, row] = cellCoordinates;
-      const valueCell = cells.get(address(column + 1, row)) ??
-        cells.get(address(column, row + 1));
-      const value = scalar(valueCell);
-      if (value === null || !valueCell) continue;
       const labelEvidence = evidenceById.get(
         `xlsx:${sheetIndex + 1}:${labelCell.address}`,
       );
+      if (!labelEvidence) throw new Error("XLSX_EVIDENCE_CLOSURE");
+      const detected = detectedLabels.get(fieldKey) ?? [];
+      detected.push(labelEvidence);
+      detectedLabels.set(fieldKey, detected);
+      const valueCell = cells.get(address(column + 1, row)) ??
+        cells.get(address(column, row + 1));
+      const value = scalar(valueCell);
+      if (
+        value === null || !valueCell ||
+        (typeof value === "string" && aliases.has(normalize(value)))
+      ) continue;
       const valueEvidence = evidenceById.get(
         `xlsx:${sheetIndex + 1}:${valueCell.address}`,
       );
-      if (!labelEvidence || !valueEvidence) {
+      if (!valueEvidence) {
         throw new Error("XLSX_EVIDENCE_CLOSURE");
       }
       const existing = candidates.get(fieldKey) ?? [];
@@ -213,17 +251,20 @@ export async function createXlsxStructuralSnapshot(input: {
       candidates.set(fieldKey, existing);
     }
   }
-  if (candidates.size === 0) throw new Error("XLSX_CANONICAL_FIELDS_NOT_FOUND");
+  if (detectedLabels.size === 0) {
+    throw new Error("XLSX_CANONICAL_FIELDS_NOT_FOUND");
+  }
   const fields: ExtractedField[] = [];
   for (const definition of FIELD_ALIASES) {
-    const found = candidates.get(definition.fieldKey);
-    if (!found) continue;
+    const labels = detectedLabels.get(definition.fieldKey);
+    if (!labels) continue;
     fields.push(
       await extractedField({
         source: input.source,
         extractionId,
         fieldKey: definition.fieldKey,
-        candidates: found,
+        candidates: candidates.get(definition.fieldKey) ?? [],
+        blankEvidence: labels,
         modelVersion: `${input.structure.modelVersion}/adjacent-label-v1`,
       }),
     );
