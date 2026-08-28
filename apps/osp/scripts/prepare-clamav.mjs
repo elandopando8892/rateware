@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, cp, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -95,7 +95,7 @@ try {
   await writeFile(join(staged, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o444 });
   await rm(destination, { recursive: true, force: true });
   await mkdir(dirname(destination), { recursive: true });
-  await rename(staged, destination);
+  await cp(staged, destination, { recursive: true, preserveTimestamps: true });
   const persisted = JSON.parse(await readFile(join(destination, 'manifest.json'), 'utf8'));
   process.stdout.write(`Prepared ClamAV ${persisted.clamavVersion} with ${Object.keys(persisted.databases).length} signed databases.\n`);
 } finally {
