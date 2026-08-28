@@ -67,6 +67,8 @@ function client(): OspClient {
     promoteProfileReviewFacts: vi.fn(async () => { throw new Error('not used'); }),
     listCustomerRegistrationCases: vi.fn(async () => []),
     getCustomerRegistrationCase: vi.fn(async () => { throw new Error('not used'); }),
+    bindCaseProfile: vi.fn(async () => { throw new Error('not used'); }),
+    assembleCaseProfileDraft: vi.fn(async () => { throw new Error('not used'); }),
     listDocumentVersions: vi.fn(async () => []),
     uploadDocumentVersion: vi.fn(async () => ({ id: '22222222-2222-4222-8222-222222222222', version: 1, expiresAt: '2026-11-24' })),
     approveDocumentVersion: vi.fn(async (input) => ({ id: input.versionId, status: 'approved' as const })),
@@ -100,7 +102,7 @@ describe('App authentication and routing', () => {
     expect(await screen.findByText('operator@example.test')).toBeInTheDocument();
   });
 
-  it('opens a read-only case workspace with the next gate and redacted request summary', async () => {
+  it('opens a governed case workspace and binds one explicitly confirmed XBF entity', async () => {
     const api = client();
     vi.mocked(api.getCustomerRegistrationCase).mockResolvedValue({
       case_id: '22222222-2222-4222-8222-222222222222', supplier_name: 'Synthetic Supplier', state: 'received', aggregate_version: 1,
@@ -108,6 +110,12 @@ describe('App authentication and routing', () => {
       message_count: '1', attachment_count: '2', document_count: '0',
       latest_request: { subject: 'Customer setup request', sender_domain: 'supplier.example', received_at: '2030-01-01T00:00:00.000Z' },
       recent_events: [{ sequence: 1, state: 'received', occurred_at: '2030-01-01T00:00:00.000Z', reason_code: 'case_received' }],
+      profile_workspace: {
+        candidates: [
+          { entity_id: '33333333-3333-4333-8333-333333333333', entity_code: 'XBFMX', legal_name: 'XBF México', country_code: 'MX', fact_count: '14', facts_sha256: 'a'.repeat(64) },
+          { entity_id: '44444444-4444-4444-8444-444444444444', entity_code: 'XBFUS', legal_name: 'XBF Freight Systems LLC', country_code: 'US', fact_count: '21', facts_sha256: 'b'.repeat(64) },
+        ], binding: null, draft: null, disclosure_locked: true,
+      },
     });
     const history = createMemoryHistory({ initialEntries: ['/app/cases/22222222-2222-4222-8222-222222222222'] });
     render(<App authPort={authPort(session)} apiClient={api} routerHistory={history} />);
@@ -117,7 +125,14 @@ describe('App authentication and routing', () => {
     expect(screen.getByText('Message bodies and private files stay outside this summary.')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /open xbf case form/i })).not.toBeInTheDocument();
     expect(screen.getByText(/no action is available until the next controlled transition/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button')).toHaveTextContent('Sign out');
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('radio', { name: /XBFUS/i }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /confirm this supplier request must use XBFUS/i }));
+    await userEvent.click(screen.getByRole('button', { name: /bind entity to case/i }));
+    await waitFor(() => expect(api.bindCaseProfile).toHaveBeenCalledWith({
+      caseId: '22222222-2222-4222-8222-222222222222', legalEntityId: '44444444-4444-4444-8444-444444444444',
+      expectedCaseVersion: 1, expectedBindingRevision: 0, confirmation: 'BIND_CASE_TO_XBF_ENTITY',
+    }));
   });
 
   it('opens the controlled workspace that matches the current case state', async () => {
@@ -128,6 +143,7 @@ describe('App authentication and routing', () => {
       message_count: '1', attachment_count: '2', document_count: '2',
       latest_request: { subject: 'Customer setup request', sender_domain: 'supplier.example', received_at: '2030-01-01T00:00:00.000Z' },
       recent_events: [{ sequence: 5, state: 'operations_review', occurred_at: '2030-01-01T01:00:00.000Z', reason_code: 'form_submitted_for_review' }],
+      profile_workspace: { candidates: [], binding: null, draft: null, disclosure_locked: true },
     });
     const history = createMemoryHistory({ initialEntries: ['/app/cases/22222222-2222-4222-8222-222222222222'] });
     render(<App authPort={authPort(session)} apiClient={api} routerHistory={history} />);
@@ -365,6 +381,7 @@ describe('App authentication and routing', () => {
       getCorporateProfile: vi.fn(() => pending),
       claimProfileReview: vi.fn(() => pending), decideProfileReviewField: vi.fn(() => pending), finalizeProfileReview: vi.fn(() => pending), promoteProfileReviewFacts: vi.fn(() => pending),
       listCustomerRegistrationCases: vi.fn(() => pending), getCustomerRegistrationCase: vi.fn(() => pending),
+      bindCaseProfile: vi.fn(() => pending), assembleCaseProfileDraft: vi.fn(() => pending),
       listDocumentVersions: vi.fn(() => pending),
       uploadDocumentVersion: vi.fn(() => pending), approveDocumentVersion: vi.fn(() => pending), listClarificationReviews: vi.fn(() => pending),
       saveClarificationReview: vi.fn(() => pending),

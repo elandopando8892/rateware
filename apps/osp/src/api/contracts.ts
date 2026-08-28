@@ -144,7 +144,31 @@ export const CaseDetailSchema = CaseSummarySchema.extend({
     return populated === 0 || populated === 3;
   }, 'Latest request fields must be populated together'),
   recent_events: z.array(CaseEventSchema).max(20),
+  profile_workspace: z.strictObject({
+    candidates: z.array(z.strictObject({
+      entity_id: z.uuid(), entity_code: z.string().regex(/^[A-Z0-9]{2,16}$/), legal_name: z.string().min(1).max(256),
+      country_code: z.string().regex(/^[A-Z]{2}$/), fact_count: CanonicalCountSchema, facts_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    })).max(10),
+    binding: z.strictObject({
+      legal_entity_id: z.uuid(), entity_code: z.string().regex(/^[A-Z0-9]{2,16}$/), binding_revision: z.number().int().min(1).max(2_147_483_647), facts_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    }).nullable(),
+    draft: z.strictObject({
+      draft_id: z.uuid(), manifest_sha256: z.string().regex(/^[0-9a-f]{64}$/), fact_count: CanonicalCountSchema,
+      restricted_fact_count: CanonicalCountSchema, binding_revision: z.number().int().min(1).max(2_147_483_647),
+    }).nullable(),
+    disclosure_locked: z.literal(true),
+  }),
 });
+
+export const CaseProfileBindingResponseSchema = z.strictObject({ data: z.strictObject({
+  caseId: z.uuid(), legalEntityId: z.uuid(), entityCode: z.string().regex(/^[A-Z0-9]{2,16}$/),
+  bindingRevision: z.number().int().min(1).max(2_147_483_647), caseVersion: z.number().int().min(0).max(2_147_483_647), replayed: z.boolean(),
+}) });
+
+export const CaseProfileDraftResponseSchema = z.strictObject({ data: z.strictObject({
+  draftId: z.uuid(), manifestSha256: z.string().regex(/^[0-9a-f]{64}$/), factCount: z.number().int().min(1).max(128),
+  restrictedFactCount: z.number().int().min(0).max(128), caseVersion: z.number().int().min(0).max(2_147_483_647), replayed: z.boolean(),
+}) });
 
 export const CaseListSuccessResponseSchema = z.strictObject({
   version: z.literal(1),

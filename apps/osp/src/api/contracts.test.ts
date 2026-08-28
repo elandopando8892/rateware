@@ -79,6 +79,7 @@ it('validates exact case summaries and keeps request bodies outside the read mod
       ...summary,
       latest_request: { subject: 'Customer setup request', sender_domain: 'supplier.example', received_at: '2030-01-01T00:00:00.000Z' },
       recent_events: [{ sequence: 1, state: 'received', occurred_at: '2030-01-01T00:00:00.000Z', reason_code: 'case_received' }],
+      profile_workspace: { candidates: [], binding: null, draft: null, disclosure_locked: true },
     },
   };
   expect(CaseDetailSuccessResponseSchema.parse(detail)).toEqual(detail);

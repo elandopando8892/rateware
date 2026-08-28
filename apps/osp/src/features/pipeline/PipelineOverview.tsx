@@ -54,7 +54,7 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
   const automaticPoll = health === 'polling';
   const automaticIntake = automaticWatch || automaticPoll;
   const gmailConnected = gmail.data?.connection_exists === true;
-  const pubsubReady = gmailConnected && gmail.data.pubsub_configured;
+  const pubsubReady = gmailConnected && gmail.data?.pubsub_configured === true;
   const visibleCases = cases.data ?? [];
   const preparedCases = visibleCases.filter((caseRecord) => preparedStates.has(caseRecord.state)).length;
   const evidenceCases = visibleCases.filter((caseRecord) => evidenceStates.has(caseRecord.state)).length;

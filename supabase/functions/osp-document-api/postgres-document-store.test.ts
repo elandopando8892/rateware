@@ -129,3 +129,21 @@ Deno.test('Postgres document store performs profile review commands atomically u
   assertEquals(queries.some((query) => query.text.includes('insert into public.provider_legal_entity_facts')), false);
   assertEquals(queries.some((query) => /\b(?:send|webhook|email)\b/i.test(query.text)), false);
 });
+
+Deno.test('Postgres document store delegates case profile binding and draft assembly to tenant commands', async () => {
+  const queries: Array<{ text: string; values: unknown[] }> = [];
+  const caseId = '22222222-2222-4222-8222-222222222222';
+  const legalEntityId = '33333333-3333-4333-8333-333333333333';
+  const sql = Object.assign(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const text = strings.join('?').replace(/\s+/g, ' ').trim().toLowerCase();
+    queries.push({ text, values });
+    if (text.startsWith('set local role') || text.startsWith('select set_config')) return [];
+    if (text.includes('bind_case_profile_command')) return [{ case_id: caseId, legal_entity_id: legalEntityId, entity_code: 'XBFUS', binding_revision: 1, case_version: 2, replayed: false }];
+    if (text.includes('assemble_case_profile_draft_command')) return [{ draft_id: '77777777-7777-4777-8777-777777777777', manifest_sha256: sourceSha256, fact_count: 21, restricted_fact_count: 7, case_version: 3, replayed: false }];
+    throw new Error(`UNEXPECTED_QUERY:${text}`);
+  }, { begin: async <T>(operation: (tx: typeof sql) => Promise<T>) => await operation(sql) });
+  const store = createPostgresDocumentStore({ databaseUrl: 'postgres://localhost:55322/osp', postgresFactory: () => sql });
+  assertEquals(await store.bindCaseProfile({ organizationId, caseId, legalEntityId, expectedCaseVersion: 1, expectedBindingRevision: 0, actorSubject: 'ops-subject', actorPermission: 'osp:operate' }), { caseId, legalEntityId, entityCode: 'XBFUS', bindingRevision: 1, caseVersion: 2, replayed: false });
+  assertEquals(await store.assembleCaseProfileDraft({ organizationId, caseId, expectedCaseVersion: 2, expectedBindingRevision: 1, expectedFactsSha256: sourceSha256, actorSubject: 'ops-subject', actorPermission: 'osp:operate' }), { draftId: '77777777-7777-4777-8777-777777777777', manifestSha256: sourceSha256, factCount: 21, restrictedFactCount: 7, caseVersion: 3, replayed: false });
+  assertEquals(queries.filter((query) => query.text.startsWith('set local role')).length, 2);
+});

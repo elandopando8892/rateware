@@ -164,7 +164,7 @@ async function loadPreparation(
     await tx`select field_key, definition_json from osp_private.form_fields where organization_id = ${input.organizationId} and template_version_id = ${input.templateVersionId} order by position, id`;
   if (fieldRows.length === 0) fail("INVALID_INPUT");
   const ratewareRows =
-    await tx`select field_key, value_json, evidence_id from osp_private.load_xbf_customer_setup_candidates(${input.organizationId}) order by field_key, evidence_id`;
+    await tx`select field_key, value_json, evidence_id from osp_private.load_xbf_customer_setup_candidates_for_case(${input.organizationId}, ${input.caseId}) order by field_key, evidence_id`;
   const extractionRows =
     await tx`select id, field_key, presence, value_json, confidence, validation from osp_private.extraction_fields where organization_id = ${input.organizationId} and extraction_id = ${input.extractionId} and presence = 'present' order by field_key, id`;
   const instances = lockSources

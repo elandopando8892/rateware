@@ -1,7 +1,7 @@
 import type { VerifiedWorkflowIdentity } from '../_shared/osp/workflow-authority.ts';
 import { jsonResponse, NO_CACHE_HEADERS, OspApiError, postCorsHeaders, safeErrorResponse } from '../osp-read-api/http.ts';
 import type { DocumentApprovalInput, DocumentAuthority, DocumentUploadInput } from './document-service.ts';
-import type { DocumentVersionSummary, ProfileFactPromotionInput, ProfileReviewClaimInput, ProfileReviewFieldDecisionInput, ProfileReviewFinalizationInput } from './postgres-document-store.ts';
+import type { CaseProfileBindingInput, CaseProfileDraftInput, DocumentVersionSummary, ProfileFactPromotionInput, ProfileReviewClaimInput, ProfileReviewFieldDecisionInput, ProfileReviewFinalizationInput } from './postgres-document-store.ts';
 
 const BODY_LIMIT_BYTES = 26_214_400;
 const ORIGINS = new Set(['http://localhost:8791', 'https://osp.heymarksman.com']);
@@ -21,6 +21,8 @@ type ProfileReviewStorePort = {
   decideProfileReviewField(input: ProfileReviewFieldDecisionInput): Promise<{ reviewId: string; fieldId: string; fieldStatus: ProfileReviewFieldDecisionInput['decision']; revision: number }>;
   finalizeProfileReview(input: ProfileReviewFinalizationInput): Promise<{ reviewId: string; reviewStatus: ProfileReviewFinalizationInput['decision']; verificationStatus: 'verified' | 'rejected' | 'needs_review'; revision: number }>;
   promoteProfileReviewFacts?(input: ProfileFactPromotionInput): Promise<{ promotionId: string; promotionStatus: 'applied'; promotedFactCount: number; unchangedFactCount: number; withheldFieldCount: number; reviewId: string; reviewRevision: number; replayed: boolean }>;
+  bindCaseProfile?(input: CaseProfileBindingInput): Promise<{ caseId: string; legalEntityId: string; entityCode: string; bindingRevision: number; caseVersion: number; replayed: boolean }>;
+  assembleCaseProfileDraft?(input: CaseProfileDraftInput): Promise<{ draftId: string; manifestSha256: string; factCount: number; restrictedFactCount: number; caseVersion: number; replayed: boolean }>;
 };
 
 export type DocumentApiHandlerOptions = {
@@ -69,7 +71,7 @@ function preflightHeaders(url: URL): readonly string[] {
     exactQuery(url, ['action', 'version_id', 'expected_version', 'review_before_sha256', 'review_after_sha256']);
     return ['authorization'];
   }
-  if (['claim_profile_review', 'decide_profile_review_field', 'finalize_profile_review', 'promote_profile_review_facts'].includes(action ?? '')) {
+  if (['claim_profile_review', 'decide_profile_review_field', 'finalize_profile_review', 'promote_profile_review_facts', 'bind_case_profile', 'assemble_case_profile_draft'].includes(action ?? '')) {
     exactQuery(url, ['action']);
     return ['authorization', 'content-type'];
   }
@@ -162,6 +164,11 @@ function positiveRevision(value: unknown): number {
   return revision;
 }
 
+function nonnegativeVersion(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 2_147_483_647) throw new OspApiError('INVALID_REQUEST');
+  return value;
+}
+
 function note(value: unknown): string {
   if (typeof value !== 'string' || value.trim() !== value || value.length < 3 || value.length > 1000 || /[<>]|(?:javascript|data):|https?:\/\//i.test(value)) throw new OspApiError('INVALID_REQUEST');
   return value;
@@ -170,7 +177,7 @@ function note(value: unknown): string {
 function serviceError(error: unknown): OspApiError {
   const code = error instanceof Error ? error.message : '';
   if (code === 'FORBIDDEN') return new OspApiError('FORBIDDEN');
-  if (/^(DOCUMENT_UPLOAD_REJECTED|DOCUMENT_APPROVAL_REJECTED|DOCUMENT_REVIEW_HASH_MISMATCH|DOCUMENT_VERSION_CONFLICT|DOCUMENT_NOT_FOUND|DOCUMENT_STORAGE_REJECTED|PROFILE_(?:REVIEW|FIELD|FACT|CORRECTION|WITHHOLD|RESTRICTED|EVIDENCE).*)$/.test(code)) return new OspApiError('INVALID_REQUEST');
+  if (/^(DOCUMENT_UPLOAD_REJECTED|DOCUMENT_APPROVAL_REJECTED|DOCUMENT_REVIEW_HASH_MISMATCH|DOCUMENT_VERSION_CONFLICT|DOCUMENT_NOT_FOUND|DOCUMENT_STORAGE_REJECTED|PROFILE_(?:REVIEW|FIELD|FACT|CORRECTION|WITHHOLD|RESTRICTED|EVIDENCE).*|CASE_PROFILE_.*)$/.test(code)) return new OspApiError('INVALID_REQUEST');
   if (/^(DOCUMENT_PERSISTENCE_FAILED|DOCUMENT_STORAGE_(?:TEMPORARY|INTEGRITY)|MALWARE_SCAN_UNAVAILABLE)$/.test(code)) return new OspApiError('DEPENDENCY_UNAVAILABLE');
   return new OspApiError('INTERNAL_ERROR');
 }
@@ -278,6 +285,24 @@ export function createDocumentApiHandler(options: DocumentApiHandlerOptions): (r
           actorSubject: authority.subject,
           actorPermission: 'osp:operate',
         });
+        return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+      }
+      if (action === 'bind_case_profile') {
+        exactQuery(url, ['action']);
+        const authority = permission(verified, 'operate');
+        const body = await strictJsonObject(request, ['caseId', 'confirmation', 'expectedBindingRevision', 'expectedCaseVersion', 'legalEntityId']);
+        if (typeof body.caseId !== 'string' || !UUID.test(body.caseId) || typeof body.legalEntityId !== 'string' || !UUID.test(body.legalEntityId) || body.confirmation !== 'BIND_CASE_TO_XBF_ENTITY') throw new OspApiError('INVALID_REQUEST');
+        if (!options.profileReviewStore?.bindCaseProfile) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+        const result = await options.profileReviewStore.bindCaseProfile({ organizationId: authority.organizationId, caseId: body.caseId, legalEntityId: body.legalEntityId, expectedCaseVersion: nonnegativeVersion(body.expectedCaseVersion), expectedBindingRevision: nonnegativeVersion(body.expectedBindingRevision), actorSubject: authority.subject, actorPermission: 'osp:operate' });
+        return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+      }
+      if (action === 'assemble_case_profile_draft') {
+        exactQuery(url, ['action']);
+        const authority = permission(verified, 'operate');
+        const body = await strictJsonObject(request, ['caseId', 'confirmation', 'expectedBindingRevision', 'expectedCaseVersion', 'expectedFactsSha256']);
+        if (typeof body.caseId !== 'string' || !UUID.test(body.caseId) || typeof body.expectedFactsSha256 !== 'string' || !SHA.test(body.expectedFactsSha256) || body.confirmation !== 'ASSEMBLE_INTERNAL_PROFILE_DRAFT') throw new OspApiError('INVALID_REQUEST');
+        if (!options.profileReviewStore?.assembleCaseProfileDraft) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+        const result = await options.profileReviewStore.assembleCaseProfileDraft({ organizationId: authority.organizationId, caseId: body.caseId, expectedCaseVersion: nonnegativeVersion(body.expectedCaseVersion), expectedBindingRevision: positiveRevision(body.expectedBindingRevision), expectedFactsSha256: body.expectedFactsSha256, actorSubject: authority.subject, actorPermission: 'osp:operate' });
         return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
       }
       throw new OspApiError('INVALID_REQUEST');

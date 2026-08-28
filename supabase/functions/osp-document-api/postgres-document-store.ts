@@ -21,6 +21,8 @@ export type ProfileReviewClaimInput = { organizationId: string; reviewId: string
 export type ProfileReviewFieldDecisionInput = ProfileReviewClaimInput & { fieldId: string; decision: 'accepted' | 'corrected' | 'rejected' | 'withheld'; decisionNote: string; reviewerValue: unknown | null };
 export type ProfileReviewFinalizationInput = ProfileReviewClaimInput & { decision: 'approved' | 'rejected' | 'changes_required'; decisionNote: string };
 export type ProfileFactPromotionInput = ProfileReviewClaimInput & { candidateSha256: string; expectedCurrentFactIds: Readonly<Record<string, string | null>> };
+export type CaseProfileBindingInput = { organizationId: string; caseId: string; legalEntityId: string; expectedCaseVersion: number; expectedBindingRevision: number; actorSubject: string; actorPermission: 'osp:operate' };
+export type CaseProfileDraftInput = Omit<CaseProfileBindingInput, 'legalEntityId'> & { expectedFactsSha256: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
@@ -166,6 +168,21 @@ export function createPostgresDocumentStore(options: { databaseUrl: string; post
           reviewRevision: integer(row.review_revision, 'PROFILE_FACT_PROMOTION_REJECTED'),
           replayed: row.replayed,
         });
+      });
+    },
+    async bindCaseProfile(input: CaseProfileBindingInput) {
+      return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        const row = one(await tx`select case_id, legal_entity_id, entity_code, binding_revision, case_version, replayed from osp_private.bind_case_profile_command(${input.organizationId}, ${input.caseId}, ${input.legalEntityId}, ${input.expectedCaseVersion}, ${input.expectedBindingRevision}, ${input.actorSubject}, ${input.actorPermission})`, 'CASE_PROFILE_BINDING_CONFLICT');
+        if (row.case_id !== input.caseId || row.legal_entity_id !== input.legalEntityId || typeof row.entity_code !== 'string' || typeof row.replayed !== 'boolean') throw new Error('CASE_PROFILE_BINDING_REJECTED');
+        return Object.freeze({ caseId: input.caseId, legalEntityId: input.legalEntityId, entityCode: row.entity_code, bindingRevision: integer(row.binding_revision, 'CASE_PROFILE_BINDING_REJECTED'), caseVersion: integer(row.case_version, 'CASE_PROFILE_BINDING_REJECTED'), replayed: row.replayed });
+      });
+    },
+    async assembleCaseProfileDraft(input: CaseProfileDraftInput) {
+      if (!SHA.test(input.expectedFactsSha256)) throw new Error('CASE_PROFILE_DRAFT_REJECTED');
+      return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        const row = one(await tx`select draft_id, manifest_sha256, fact_count, restricted_fact_count, case_version, replayed from osp_private.assemble_case_profile_draft_command(${input.organizationId}, ${input.caseId}, ${input.expectedCaseVersion}, ${input.expectedBindingRevision}, ${input.expectedFactsSha256}, ${input.actorSubject}, ${input.actorPermission})`, 'CASE_PROFILE_DRAFT_CONFLICT');
+        if (typeof row.draft_id !== 'string' || !UUID.test(row.draft_id) || typeof row.manifest_sha256 !== 'string' || !SHA.test(row.manifest_sha256) || typeof row.replayed !== 'boolean') throw new Error('CASE_PROFILE_DRAFT_REJECTED');
+        return Object.freeze({ draftId: row.draft_id, manifestSha256: row.manifest_sha256, factCount: integer(row.fact_count, 'CASE_PROFILE_DRAFT_REJECTED'), restrictedFactCount: integer(row.restricted_fact_count, 'CASE_PROFILE_DRAFT_REJECTED'), caseVersion: integer(row.case_version, 'CASE_PROFILE_DRAFT_REJECTED'), replayed: row.replayed });
       });
     },
   });

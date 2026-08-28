@@ -93,6 +93,12 @@ export type CaseDetailReadModel = CaseSummaryReadModel & {
     received_at: string | null;
   };
   recent_events: readonly CaseEventReadModel[];
+  profile_workspace: {
+    candidates: readonly { entity_id: string; entity_code: string; legal_name: string; country_code: string; fact_count: string; facts_sha256: string }[];
+    binding: { legal_entity_id: string; entity_code: string; binding_revision: number; facts_sha256: string } | null;
+    draft: { draft_id: string; manifest_sha256: string; fact_count: string; restricted_fact_count: string; binding_revision: number } | null;
+    disclosure_locked: true;
+  };
 };
 
 export type CorporateProfileFieldReadModel = {
@@ -164,8 +170,31 @@ const CASE_SUMMARY_FIELDS = [
 const CASE_DETAIL_FIELDS = [
   'aggregate_version', 'attachment_count', 'blocked_by_duplicate_review', 'case_id',
   'created_at', 'document_count', 'latest_received_at', 'latest_sender_domain',
-  'latest_subject', 'message_count', 'recent_events', 'state', 'supplier_name', 'updated_at',
+  'latest_subject', 'message_count', 'profile_workspace', 'recent_events', 'state', 'supplier_name', 'updated_at',
 ] as const;
+
+function normalizeCaseProfileWorkspace(value: unknown): CaseDetailReadModel['profile_workspace'] {
+  const workspace = recordWithExactKeys(value, ['binding', 'candidates', 'disclosure_locked', 'draft']);
+  if (workspace.disclosure_locked !== true || !Array.isArray(workspace.candidates) || workspace.candidates.length > 10) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  const uuid = (candidate: unknown) => typeof candidate === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(candidate);
+  const sha = (candidate: unknown) => typeof candidate === 'string' && /^[0-9a-f]{64}$/.test(candidate);
+  const entityCode = (candidate: unknown) => typeof candidate === 'string' && /^[A-Z0-9]{2,16}$/.test(candidate);
+  const candidates = workspace.candidates.map((candidate) => {
+    const row = recordWithExactKeys(candidate, ['country_code', 'entity_code', 'entity_id', 'fact_count', 'facts_sha256', 'legal_name']);
+    if (!uuid(row.entity_id) || !entityCode(row.entity_code) || typeof row.country_code !== 'string' || !/^[A-Z]{2}$/.test(row.country_code) || !sha(row.facts_sha256)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+    return { entity_id: row.entity_id as string, entity_code: row.entity_code as string, legal_name: normalizeBoundedText(row.legal_name, 256) as string, country_code: row.country_code, fact_count: normalizeCanonicalDecimal(row.fact_count), facts_sha256: row.facts_sha256 as string };
+  });
+  const bindingRow = workspace.binding === null ? null : recordWithExactKeys(workspace.binding, ['binding_revision', 'entity_code', 'facts_sha256', 'legal_entity_id']);
+  if (bindingRow && (!uuid(bindingRow.legal_entity_id) || !entityCode(bindingRow.entity_code) || !sha(bindingRow.facts_sha256))) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  const draftRow = workspace.draft === null ? null : recordWithExactKeys(workspace.draft, ['binding_revision', 'draft_id', 'fact_count', 'manifest_sha256', 'restricted_fact_count']);
+  if (draftRow && (!uuid(draftRow.draft_id) || !sha(draftRow.manifest_sha256))) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  return {
+    candidates,
+    binding: bindingRow ? { legal_entity_id: bindingRow.legal_entity_id as string, entity_code: bindingRow.entity_code as string, binding_revision: normalizeSafeInteger(bindingRow.binding_revision, 1), facts_sha256: bindingRow.facts_sha256 as string } : null,
+    draft: draftRow ? { draft_id: draftRow.draft_id as string, manifest_sha256: draftRow.manifest_sha256 as string, fact_count: normalizeCanonicalDecimal(draftRow.fact_count), restricted_fact_count: normalizeCanonicalDecimal(draftRow.restricted_fact_count), binding_revision: normalizeSafeInteger(draftRow.binding_revision, 1) } : null,
+    disclosure_locked: true,
+  };
+}
 
 function recordWithExactKeys(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -307,6 +336,7 @@ export function normalizeCaseDetail(value: unknown): CaseDetailReadModel {
     ...summary,
     latest_request: { subject, sender_domain: senderDomain, received_at: receivedAt },
     recent_events: normalizeRecentEvents(row.recent_events),
+    profile_workspace: normalizeCaseProfileWorkspace(row.profile_workspace),
   };
 }
 

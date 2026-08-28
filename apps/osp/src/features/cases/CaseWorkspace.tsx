@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
 
 import type { OspCaseReadClient } from '../../api/osp-client';
 import { caseNextGates, casePrimaryAction, caseStateLabels, caseStateTone, formatCaseDate, type CasePrimaryAction } from './case-presenter';
+
+const emptyProfileWorkspace = { candidates: [], binding: null, draft: null, disclosure_locked: true as const };
 
 function PrimaryAction({ action, caseId }: { action: CasePrimaryAction; caseId: string }) {
   switch (action.kind) {
@@ -20,12 +23,22 @@ function PrimaryAction({ action, caseId }: { action: CasePrimaryAction; caseId: 
 }
 
 export function CaseWorkspace({ client, caseId }: { client: OspCaseReadClient; caseId: string }) {
+  const [selectedEntityId, setSelectedEntityId] = useState('');
+  const [bindingConfirmed, setBindingConfirmed] = useState(false);
+  const [draftConfirmed, setDraftConfirmed] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'binding' | 'draft' | null>(null);
+  const [actionError, setActionError] = useState(false);
   const query = useQuery({
     queryKey: ['osp', 'case', caseId],
     queryFn: () => client.getCustomerRegistrationCase(caseId),
     retry: false,
     refetchOnWindowFocus: false,
   });
+
+  useEffect(() => {
+    const workspace = query.data?.profile_workspace;
+    if (workspace && !selectedEntityId) setSelectedEntityId(workspace.binding?.legal_entity_id ?? workspace.candidates[0]?.entity_id ?? '');
+  }, [query.data, selectedEntityId]);
 
   if (query.isPending || query.fetchStatus !== 'idle') {
     return <section className="case-workspace"><p role="status">Loading case workspace…</p></section>;
@@ -36,6 +49,27 @@ export function CaseWorkspace({ client, caseId }: { client: OspCaseReadClient; c
 
   const caseRecord = query.data;
   const latest = caseRecord.latest_request;
+  const profile = caseRecord.profile_workspace ?? emptyProfileWorkspace;
+  const selectedEntity = profile.candidates.find((candidate) => candidate.entity_id === selectedEntityId);
+  const bindingMatchesSelection = profile.binding?.legal_entity_id === selectedEntityId;
+  const runProfileAction = async (action: 'binding' | 'draft') => {
+    setPendingAction(action);
+    setActionError(false);
+    try {
+      if (action === 'binding') {
+        await client.bindCaseProfile({ caseId, legalEntityId: selectedEntityId, expectedCaseVersion: caseRecord.aggregate_version, expectedBindingRevision: profile.binding?.binding_revision ?? 0, confirmation: 'BIND_CASE_TO_XBF_ENTITY' });
+        setBindingConfirmed(false);
+      } else if (profile.binding) {
+        await client.assembleCaseProfileDraft({ caseId, expectedCaseVersion: caseRecord.aggregate_version, expectedBindingRevision: profile.binding.binding_revision, expectedFactsSha256: profile.binding.facts_sha256, confirmation: 'ASSEMBLE_INTERNAL_PROFILE_DRAFT' });
+        setDraftConfirmed(false);
+      }
+      await query.refetch();
+    } catch {
+      setActionError(true);
+    } finally {
+      setPendingAction(null);
+    }
+  };
   const primaryAction = casePrimaryAction(caseRecord.state);
   return (
     <div className="case-workspace">
@@ -64,6 +98,41 @@ export function CaseWorkspace({ client, caseId }: { client: OspCaseReadClient; c
         <div><dt>Documents</dt><dd>{caseRecord.document_count}</dd></div>
         <div><dt>Last updated</dt><dd>{formatCaseDate(caseRecord.updated_at)}</dd></div>
       </dl>
+
+      <section className="panel case-profile-assembler" aria-labelledby="profile-assembler-title">
+        <div className="panel-heading">
+          <div><p className="eyebrow">Governed package draft</p><h2 id="profile-assembler-title">Choose the XBF legal entity for this request</h2></div>
+          <span className="read-only-badge">Disclosure locked</span>
+        </div>
+        <p className="privacy-note">This freezes canonical fact references for internal review. It does not disclose values, send email, call a webhook, or authorize release.</p>
+        <div className="case-profile-options" role="radiogroup" aria-label="XBF legal entity">
+          {profile.candidates.map((candidate) => (
+            <label className={candidate.entity_id === selectedEntityId ? 'case-profile-option case-profile-option-active' : 'case-profile-option'} key={candidate.entity_id}>
+              <input type="radio" name="case-profile-entity" value={candidate.entity_id} checked={candidate.entity_id === selectedEntityId} onChange={() => { setSelectedEntityId(candidate.entity_id); setBindingConfirmed(false); }} />
+              <span><strong>{candidate.entity_code}</strong>{candidate.legal_name}<small>{candidate.country_code} · {candidate.fact_count} reviewed facts</small></span>
+            </label>
+          ))}
+        </div>
+        {selectedEntity ? (
+          <div className="case-profile-control">
+            <label><input type="checkbox" checked={bindingConfirmed} onChange={(event) => setBindingConfirmed(event.target.checked)} /> Confirm this supplier request must use {selectedEntity.entity_code}.</label>
+            <button type="button" disabled={!bindingConfirmed || bindingMatchesSelection || pendingAction !== null || caseRecord.blocked_by_duplicate_review} onClick={() => void runProfileAction('binding')}>{pendingAction === 'binding' ? 'Binding…' : bindingMatchesSelection ? 'Entity bound' : 'Bind entity to case'}</button>
+          </div>
+        ) : <p>No active XBF entity with canonical facts is available.</p>}
+        <div className="case-profile-summary">
+          <div><span>Bound profile</span><strong>{profile.binding?.entity_code ?? 'Not selected'}</strong></div>
+          <div><span>Internal draft</span><strong>{profile.draft ? `${profile.draft.fact_count} references frozen` : 'Not assembled'}</strong></div>
+          <div><span>Restricted references</span><strong>{profile.draft?.restricted_fact_count ?? '—'}</strong></div>
+        </div>
+        {profile.binding ? (
+          <div className="case-profile-control">
+            <label><input type="checkbox" checked={draftConfirmed} onChange={(event) => setDraftConfirmed(event.target.checked)} /> Assemble a reference-only internal draft from the currently bound facts.</label>
+            <button type="button" disabled={!draftConfirmed || pendingAction !== null || caseRecord.blocked_by_duplicate_review} onClick={() => void runProfileAction('draft')}>{pendingAction === 'draft' ? 'Assembling…' : profile.draft ? 'Refresh internal draft' : 'Assemble internal draft'}</button>
+          </div>
+        ) : null}
+        {profile.draft ? <p className="case-profile-manifest">Manifest {profile.draft.manifest_sha256.slice(0, 12)}… · binding revision {profile.draft.binding_revision}</p> : null}
+        {actionError ? <p className="case-warning" role="alert">The profile action was not applied. Refresh the case and retry with the current version.</p> : null}
+      </section>
 
       <div className="case-detail-grid">
         <section className="panel" aria-labelledby="request-title">

@@ -256,7 +256,34 @@ export function createPostgresOspReadStore({
               ORDER BY event.sequence DESC
               LIMIT 20
             ) recent_event
-          ), '[]'::jsonb) AS recent_events
+          ), '[]'::jsonb) AS recent_events,
+          jsonb_build_object(
+            'candidates', COALESCE((
+              SELECT jsonb_agg(jsonb_build_object(
+                'entity_id', entity.id,
+                'entity_code', entity.entity_code,
+                'legal_name', entity.legal_name,
+                'country_code', entity.country_code,
+                'fact_count', (SELECT count(*)::text FROM public.provider_legal_entity_facts fact WHERE fact.organization_id = entity.organization_id AND fact.legal_entity_id = entity.id AND fact.fact_status = 'current'),
+                'facts_sha256', osp_private.case_profile_facts_sha256(entity.organization_id, entity.id)
+              ) ORDER BY entity.entity_code)
+              FROM public.legal_entities entity
+              WHERE entity.organization_id = case_record.organization_id AND entity.status = 'active'
+                AND EXISTS (SELECT 1 FROM public.provider_legal_entity_facts fact WHERE fact.organization_id = entity.organization_id AND fact.legal_entity_id = entity.id AND fact.fact_status = 'current')
+            ), '[]'::jsonb),
+            'binding', (
+              SELECT jsonb_build_object('legal_entity_id', binding.legal_entity_id, 'entity_code', entity.entity_code, 'binding_revision', binding.revision, 'facts_sha256', osp_private.case_profile_facts_sha256(binding.organization_id, binding.legal_entity_id))
+              FROM osp_private.case_profile_bindings binding
+              JOIN public.legal_entities entity ON entity.organization_id = binding.organization_id AND entity.id = binding.legal_entity_id
+              WHERE binding.organization_id = case_record.organization_id AND binding.case_id = case_record.id
+            ),
+            'draft', (
+              SELECT jsonb_build_object('draft_id', draft.id, 'manifest_sha256', draft.manifest_sha256, 'fact_count', draft.fact_count::text, 'restricted_fact_count', draft.restricted_fact_count::text, 'binding_revision', draft.binding_revision)
+              FROM osp_private.case_profile_package_drafts draft
+              WHERE draft.organization_id = case_record.organization_id AND draft.case_id = case_record.id AND draft.draft_status = 'current'
+            ),
+            'disclosure_locked', true
+          ) AS profile_workspace
         FROM osp_private.customer_registration_cases case_record
         JOIN osp_private.supplier_counterparties supplier
           ON supplier.organization_id = case_record.organization_id AND supplier.id = case_record.supplier_id

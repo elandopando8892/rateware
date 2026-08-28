@@ -192,6 +192,28 @@ Deno.test('document API separates profile review from explicit fact promotion an
   assertEquals(calls.length, 4);
 });
 
+Deno.test('document API binds one XBF entity and assembles only a reference-only internal draft', async () => {
+  const caseId = '22222222-2222-4222-8222-222222222222';
+  const legalEntityId = '33333333-3333-4333-8333-333333333333';
+  const calls: Array<{ action: string; input: Record<string, unknown> }> = [];
+  const profileReviewStore = {
+    claimProfileReview: async () => { throw new Error('not used'); },
+    decideProfileReviewField: async () => { throw new Error('not used'); },
+    finalizeProfileReview: async () => { throw new Error('not used'); },
+    bindCaseProfile: async (input: Record<string, unknown>) => { calls.push({ action: 'bind', input }); return { caseId, legalEntityId, entityCode: 'XBFUS', bindingRevision: 1, caseVersion: 2, replayed: false }; },
+    assembleCaseProfileDraft: async (input: Record<string, unknown>) => { calls.push({ action: 'draft', input }); return { draftId: '77777777-7777-4777-8777-777777777777', manifestSha256: 'b'.repeat(64), factCount: 21, restrictedFactCount: 7, caseVersion: 3, replayed: false }; },
+  };
+  const handler = createDocumentApiHandler({ verifyToken: async () => identity, listVersions: async () => [], documentService: { upload: async () => ({ id: 'unused', version: 1, expiresAt: '2026-11-24' }), approve: async () => ({ id: 'unused', status: 'approved' as const }) }, profileReviewStore, incidentId: () => 'incident-package-draft' });
+  const postJson = (action: string, body: Record<string, unknown>) => handler(request(`action=${action}`, { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
+  assertEquals((await postJson('bind_case_profile', { caseId, legalEntityId, expectedCaseVersion: 1, expectedBindingRevision: 0, confirmation: 'BIND_CASE_TO_XBF_ENTITY' })).status, 200);
+  assertEquals((await postJson('assemble_case_profile_draft', { caseId, expectedCaseVersion: 2, expectedBindingRevision: 1, expectedFactsSha256: 'a'.repeat(64), confirmation: 'ASSEMBLE_INTERNAL_PROFILE_DRAFT' })).status, 200);
+  assertEquals(calls.map(({ action }) => action), ['bind', 'draft']);
+  assertEquals(calls.every(({ input }) => input.organizationId === identity.identity.organization && input.actorPermission === 'osp:operate'), true);
+  const readOnly = createDocumentApiHandler({ verifyToken: async () => readOnlyIdentity, listVersions: async () => [], documentService: { upload: async () => ({ id: 'unused', version: 1, expiresAt: '2026-11-24' }), approve: async () => ({ id: 'unused', status: 'approved' as const }) }, profileReviewStore, incidentId: () => 'incident-package-forbidden' });
+  assertEquals((await readOnly(request('action=bind_case_profile', { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ caseId, legalEntityId, expectedCaseVersion: 1, expectedBindingRevision: 0, confirmation: 'BIND_CASE_TO_XBF_ENTITY' }) }))).status, 403);
+  assertEquals(calls.length, 2);
+});
+
 Deno.test('document API preflight accepts the exact header set independent of order and rejects extras', async () => {
   const handler = createDocumentApiHandler({
     verifyToken: async () => identity,

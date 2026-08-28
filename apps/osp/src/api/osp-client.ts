@@ -3,6 +3,8 @@ import { createWorkflowClient, type WorkflowClient } from './workflow-client';
 import type { ZodType } from 'zod';
 import {
   CaseDetailSuccessResponseSchema,
+  CaseProfileBindingResponseSchema,
+  CaseProfileDraftResponseSchema,
   CaseListSuccessResponseSchema,
   CorporateProfileSuccessResponseSchema,
   type CorporateProfileReadModel,
@@ -68,6 +70,8 @@ export interface OspCorporateProfileClient {
 export interface OspCaseReadClient {
   listCustomerRegistrationCases(): Promise<readonly CaseSummary[]>;
   getCustomerRegistrationCase(caseId: string): Promise<CaseDetail>;
+  bindCaseProfile(input: BindCaseProfileInput): Promise<{ caseId: string; legalEntityId: string; entityCode: string; bindingRevision: number; caseVersion: number; replayed: boolean }>;
+  assembleCaseProfileDraft(input: AssembleCaseProfileDraftInput): Promise<{ draftId: string; manifestSha256: string; factCount: number; restrictedFactCount: number; caseVersion: number; replayed: boolean }>;
 }
 
 export type DocumentUploadInput = { documentType: QuarterlyDocumentType; validFrom: string; contentType: string; bytes: Uint8Array };
@@ -87,6 +91,8 @@ export type PromoteProfileReviewFactsInput = ClaimProfileReviewInput & {
   expectedCurrentFactIds: Readonly<Record<string, string | null>>;
   confirmation: 'PROMOTE_VERIFIED_PROFILE_FACTS';
 };
+export type BindCaseProfileInput = { caseId: string; legalEntityId: string; expectedCaseVersion: number; expectedBindingRevision: number; confirmation: 'BIND_CASE_TO_XBF_ENTITY' };
+export type AssembleCaseProfileDraftInput = { caseId: string; expectedCaseVersion: number; expectedBindingRevision: number; expectedFactsSha256: string; confirmation: 'ASSEMBLE_INTERNAL_PROFILE_DRAFT' };
 
 export interface OspClient extends OspReadClient, OspCorporateProfileClient, OspCaseReadClient, WorkflowClient {
   syncGmailInbox?(): Promise<GmailSyncResult>;
@@ -477,6 +483,18 @@ export function createOspClient(options: ClientOptions): OspClient {
     getCustomerRegistrationCase: (caseId: string) => {
       if (!UUID.test(caseId)) return Promise.reject(new OspClientError('INVALID_REQUEST'));
       return read({ version: 1, action: 'get_customer_registration_case', case_id: caseId }, CaseDetailSuccessResponseSchema);
+    },
+    bindCaseProfile: async (input: BindCaseProfileInput) => {
+      if (!UUID.test(input.caseId) || !UUID.test(input.legalEntityId) || !Number.isSafeInteger(input.expectedCaseVersion) || input.expectedCaseVersion < 0 || input.expectedCaseVersion > 2_147_483_647 || !Number.isSafeInteger(input.expectedBindingRevision) || input.expectedBindingRevision < 0 || input.expectedBindingRevision > 2_147_483_647 || input.confirmation !== 'BIND_CASE_TO_XBF_ENTITY') throw new OspClientError('INVALID_REQUEST');
+      const encoded = new TextEncoder().encode(JSON.stringify(input));
+      const response = await documentRequest({ query: [['action', 'bind_case_profile']], expectedStatus: 200, schema: CaseProfileBindingResponseSchema, contentType: 'application/json', body: encoded.buffer });
+      return response.data;
+    },
+    assembleCaseProfileDraft: async (input: AssembleCaseProfileDraftInput) => {
+      if (!UUID.test(input.caseId) || !Number.isSafeInteger(input.expectedCaseVersion) || input.expectedCaseVersion < 0 || input.expectedCaseVersion > 2_147_483_647 || !Number.isSafeInteger(input.expectedBindingRevision) || input.expectedBindingRevision < 1 || input.expectedBindingRevision > 2_147_483_647 || !SHA.test(input.expectedFactsSha256) || input.confirmation !== 'ASSEMBLE_INTERNAL_PROFILE_DRAFT') throw new OspClientError('INVALID_REQUEST');
+      const encoded = new TextEncoder().encode(JSON.stringify(input));
+      const response = await documentRequest({ query: [['action', 'assemble_case_profile_draft']], expectedStatus: 200, schema: CaseProfileDraftResponseSchema, contentType: 'application/json', body: encoded.buffer });
+      return response.data;
     },
     syncGmailInbox,
     renewGmailWatch,

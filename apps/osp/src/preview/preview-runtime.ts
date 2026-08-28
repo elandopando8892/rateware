@@ -20,6 +20,18 @@ const caseFormCaseId = '11111111-1111-4111-8111-111111111115';
 const payloadId = '22222222-2222-4222-8222-222222222222';
 const shaA = 'a'.repeat(64);
 const shaB = 'b'.repeat(64);
+const mxEntityId = '91000000-0000-4000-8000-000000000001';
+const usEntityId = '91000000-0000-4000-8000-000000000002';
+
+const previewProfileWorkspace: CaseDetail['profile_workspace'] = {
+  candidates: [
+    { entity_id: mxEntityId, entity_code: 'XBFMX', legal_name: 'XBF Demo Logistics, S. de R.L. de C.V.', country_code: 'MX', fact_count: '14', facts_sha256: shaA },
+    { entity_id: usEntityId, entity_code: 'XBFUS', legal_name: 'XBF Demo Freight Systems LLC', country_code: 'US', fact_count: '21', facts_sha256: shaB },
+  ],
+  binding: null,
+  draft: null,
+  disclosure_locked: true,
+};
 
 const mxTaxReview = {
   review_id: '92000000-0000-4000-8000-000000000001', review_field_id: '93000000-0000-4000-8000-000000000001',
@@ -133,6 +145,7 @@ const previewCaseDetail: CaseDetail = Object.freeze({
     { sequence: 10, state: 'signature_approval' as const, occurred_at: '2026-08-26T16:25:00.000Z', reason_code: 'operations_review_completed' },
     { sequence: 1, state: 'received' as const, occurred_at: '2026-08-22T14:30:00.000Z', reason_code: 'case_received' },
   ],
+  profile_workspace: previewProfileWorkspace,
 });
 
 const previewDocuments: readonly DocumentVersion[] = Object.freeze([
@@ -222,6 +235,7 @@ function createPreviewAuthPort(): AuthPort {
 
 function createPreviewClient(): OspClient {
   let previewCaseRows = previewCases.map((caseRecord) => structuredClone(caseRecord));
+  const profileWorkspaces = new Map<string, CaseDetail['profile_workspace']>(previewCaseRows.map((caseRecord) => [caseRecord.case_id, structuredClone(previewProfileWorkspace)]));
   let corporateProfile = structuredClone(previewCorporateProfile);
   const reviewCandidates = () => corporateProfile.entities.flatMap((entity) => entity.fields.flatMap((field) => field.review_candidates.map((candidate) => ({ entity, field, candidate }))));
   const replaceReviewCandidates = (reviewId: string, transform: (candidate: CorporateProfileReadModel['entities'][number]['fields'][number]['review_candidates'][number]) => CorporateProfileReadModel['entities'][number]['fields'][number]['review_candidates'][number] | null) => {
@@ -359,17 +373,45 @@ function createPreviewClient(): OspClient {
       };
     },
     listCustomerRegistrationCases: async () => structuredClone(previewCaseRows),
-    getCustomerRegistrationCase: async (requestedCaseId) => requestedCaseId === caseId
-      ? previewCaseDetail
-      : {
-          ...(previewCaseRows.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCaseRows[3]),
+    getCustomerRegistrationCase: async (requestedCaseId) => {
+      const caseRecord = previewCaseRows.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCaseRows[3];
+      const base = requestedCaseId === caseId ? previewCaseDetail : {
+          ...caseRecord,
           latest_request: {
             subject: 'Supplier onboarding request — synthetic preview',
             sender_domain: 'example.test',
             received_at: '2026-08-26T14:05:00.000Z',
           },
           recent_events: [{ sequence: 1, state: 'received' as const, occurred_at: '2026-08-26T14:05:00.000Z', reason_code: 'case_received' }],
-        },
+          profile_workspace: previewProfileWorkspace,
+        };
+      return structuredClone({ ...base, ...caseRecord, profile_workspace: profileWorkspaces.get(requestedCaseId) ?? previewProfileWorkspace });
+    },
+    bindCaseProfile: async (input) => {
+      const currentCase = previewCaseRows.find((candidate) => candidate.case_id === input.caseId);
+      const workspace = profileWorkspaces.get(input.caseId);
+      const candidate = workspace?.candidates.find((item) => item.entity_id === input.legalEntityId);
+      if (!currentCase || !workspace || !candidate || currentCase.aggregate_version !== input.expectedCaseVersion || (workspace.binding?.binding_revision ?? 0) !== input.expectedBindingRevision || input.confirmation !== 'BIND_CASE_TO_XBF_ENTITY') throw new Error('VERSION_CONFLICT');
+      const replayed = workspace.binding?.legal_entity_id === candidate.entity_id;
+      const bindingRevision = replayed ? workspace.binding!.binding_revision : (workspace.binding?.binding_revision ?? 0) + 1;
+      const caseVersion = replayed ? currentCase.aggregate_version : currentCase.aggregate_version + 1;
+      profileWorkspaces.set(input.caseId, { ...workspace, binding: { legal_entity_id: candidate.entity_id, entity_code: candidate.entity_code, binding_revision: bindingRevision, facts_sha256: candidate.facts_sha256 }, draft: replayed ? workspace.draft : null });
+      if (!replayed) previewCaseRows = previewCaseRows.map((row) => row.case_id === input.caseId ? { ...row, aggregate_version: caseVersion, updated_at: new Date().toISOString() } : row);
+      return { caseId: input.caseId, legalEntityId: candidate.entity_id, entityCode: candidate.entity_code, bindingRevision, caseVersion, replayed };
+    },
+    assembleCaseProfileDraft: async (input) => {
+      const currentCase = previewCaseRows.find((candidate) => candidate.case_id === input.caseId);
+      const workspace = profileWorkspaces.get(input.caseId);
+      const binding = workspace?.binding;
+      const candidate = workspace?.candidates.find((item) => item.entity_id === binding?.legal_entity_id);
+      if (!currentCase || !workspace || !binding || !candidate || currentCase.aggregate_version !== input.expectedCaseVersion || binding.binding_revision !== input.expectedBindingRevision || binding.facts_sha256 !== input.expectedFactsSha256 || input.confirmation !== 'ASSEMBLE_INTERNAL_PROFILE_DRAFT') throw new Error('VERSION_CONFLICT');
+      const replayed = workspace.draft?.binding_revision === binding.binding_revision && workspace.draft.manifest_sha256 === binding.facts_sha256;
+      const caseVersion = replayed ? currentCase.aggregate_version : currentCase.aggregate_version + 1;
+      const draft = { draft_id: workspace.draft?.draft_id ?? '96000000-0000-4000-8000-000000000001', manifest_sha256: binding.facts_sha256, fact_count: candidate.fact_count, restricted_fact_count: candidate.entity_code === 'XBFUS' ? '7' : '5', binding_revision: binding.binding_revision };
+      profileWorkspaces.set(input.caseId, { ...workspace, draft });
+      if (!replayed) previewCaseRows = previewCaseRows.map((row) => row.case_id === input.caseId ? { ...row, aggregate_version: caseVersion, updated_at: new Date().toISOString() } : row);
+      return { draftId: draft.draft_id, manifestSha256: draft.manifest_sha256, factCount: Number(draft.fact_count), restrictedFactCount: Number(draft.restricted_fact_count), caseVersion, replayed };
+    },
     syncGmailInbox: async () => ({
       discovered: 2,
       inserted_messages: 1,

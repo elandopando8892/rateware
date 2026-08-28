@@ -130,7 +130,7 @@ it('lists cases and loads one case through strict read-only action bodies', asyn
     blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T01:00:00.000Z',
     message_count: '1', attachment_count: '2', document_count: '0',
   } as const;
-  const detail = { ...summary, latest_request: { subject: null, sender_domain: null, received_at: null }, recent_events: [] };
+  const detail = { ...summary, latest_request: { subject: null, sender_domain: null, received_at: null }, recent_events: [], profile_workspace: { candidates: [], binding: null, draft: null, disclosure_locked: true } };
   const h = harness([json({ version: 1, data: { cases: [summary] } }), json({ version: 1, data: detail })]);
   await expect(h.client.listCustomerRegistrationCases()).resolves.toEqual([summary]);
   await expect(h.client.getCustomerRegistrationCase(summary.case_id)).resolves.toEqual(detail);
@@ -141,6 +141,24 @@ it('lists cases and loads one case through strict read-only action bodies', asyn
   ]);
   await expect(h.client.getCustomerRegistrationCase('not-a-uuid')).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
   expect(h.fetch).toHaveBeenCalledTimes(2);
+});
+
+it('binds an XBF legal entity and assembles a governed internal draft through exact document actions', async () => {
+  const caseId = '22222222-2222-4222-8222-222222222222';
+  const legalEntityId = '33333333-3333-4333-8333-333333333333';
+  const binding = { caseId, legalEntityId, entityCode: 'XBFUS', bindingRevision: 1, caseVersion: 2, replayed: false };
+  const draft = { draftId: '77777777-7777-4777-8777-777777777777', manifestSha256: 'b'.repeat(64), factCount: 21, restrictedFactCount: 7, caseVersion: 3, replayed: false };
+  const h = harness([json({ data: binding }), json({ data: draft })]);
+  await expect(h.client.bindCaseProfile({ caseId, legalEntityId, expectedCaseVersion: 1, expectedBindingRevision: 0, confirmation: 'BIND_CASE_TO_XBF_ENTITY' })).resolves.toEqual(binding);
+  await expect(h.client.assembleCaseProfileDraft({ caseId, expectedCaseVersion: 2, expectedBindingRevision: 1, expectedFactsSha256: 'a'.repeat(64), confirmation: 'ASSEMBLE_INTERNAL_PROFILE_DRAFT' })).resolves.toEqual(draft);
+  expect(h.fetch.mock.calls.map((call) => call[0])).toEqual([
+    'https://synthetic.supabase.co/functions/v1/osp-document-api?action=bind_case_profile',
+    'https://synthetic.supabase.co/functions/v1/osp-document-api?action=assemble_case_profile_draft',
+  ]);
+  expect(h.fetch.mock.calls.map((call) => JSON.parse(new TextDecoder().decode((call[1] as RequestInit).body as ArrayBuffer)))).toEqual([
+    { caseId, legalEntityId, expectedCaseVersion: 1, expectedBindingRevision: 0, confirmation: 'BIND_CASE_TO_XBF_ENTITY' },
+    { caseId, expectedCaseVersion: 2, expectedBindingRevision: 1, expectedFactsSha256: 'a'.repeat(64), confirmation: 'ASSEMBLE_INTERNAL_PROFILE_DRAFT' },
+  ]);
 });
 
 it('runs one bounded Gmail sync through the dedicated OSP endpoint without automatic mutation retry', async () => {

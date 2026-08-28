@@ -23,6 +23,7 @@ const caseSummary = {
   blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00Z', updated_at: '2030-01-01T01:00:00Z',
   message_count: '1', attachment_count: 2, document_count: '0',
 };
+const profileWorkspace = { candidates: [], binding: null, draft: null, disclosure_locked: true };
 
 function expectDependency(fn: () => unknown) {
   assert.throws(fn, (error) => error instanceof OspApiError && error.code === 'DEPENDENCY_UNAVAILABLE');
@@ -185,6 +186,7 @@ Deno.test('case read models expose bounded metadata, canonical counts and no mes
     ...caseSummary,
     latest_subject: 'Customer setup request', latest_sender_domain: 'supplier.example', latest_received_at: '2030-01-01T00:00:00Z',
     recent_events: [{ sequence: '1', state: 'received', occurred_at: '2030-01-01T00:00:00Z', reason_code: 'case_received' }],
+    profile_workspace: profileWorkspace,
   });
   assert.deepEqual(detail.latest_request, {
     subject: 'Customer setup request', sender_domain: 'supplier.example', received_at: '2030-01-01T00:00:00.000Z',
@@ -192,7 +194,7 @@ Deno.test('case read models expose bounded metadata, canonical counts and no mes
   assert.equal('safe_body' in detail, false);
   assert.equal(detail.recent_events[0].sequence, 1);
   expectDependency(() => normalizeCaseSummary({ ...caseSummary, supplier_name: ' Synthetic Supplier' }));
-  expectDependency(() => normalizeCaseDetail({ ...caseSummary, latest_subject: 'Only subject', latest_sender_domain: null, latest_received_at: null, recent_events: [] }));
+  expectDependency(() => normalizeCaseDetail({ ...caseSummary, latest_subject: 'Only subject', latest_sender_domain: null, latest_received_at: null, recent_events: [], profile_workspace: profileWorkspace }));
 });
 
 Deno.test('case detail decodes RFC 2047 subjects and safely preserves malformed or unsafe values', () => {
@@ -202,6 +204,7 @@ Deno.test('case detail decodes RFC 2047 subjects and safely preserves malformed 
     latest_sender_domain: 'supplier.example',
     latest_received_at: '2030-01-01T00:00:00Z',
     recent_events: [],
+    profile_workspace: profileWorkspace,
   }).latest_request.subject;
 
   assert.equal(
@@ -271,7 +274,7 @@ Deno.test('listOnboardingWorkspace and getGmailHealth scope each read to the res
     async readCases(id: string) { seen.push(id); return [caseSummary]; },
     async readCase(id: string) {
       seen.push(id);
-      return { ...caseSummary, latest_subject: null, latest_sender_domain: null, latest_received_at: null, recent_events: [] };
+      return { ...caseSummary, latest_subject: null, latest_sender_domain: null, latest_received_at: null, recent_events: [], profile_workspace: profileWorkspace };
     },
     async readCorporateProfile(id: string) { seen.push(id); return []; },
   };

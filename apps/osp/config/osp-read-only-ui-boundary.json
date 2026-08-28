@@ -31,12 +31,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/contracts.ts",
-      "sha256": "8e03fb85019c0308d00982aa4f0776651856e08bffdd5ca750d2dddbb890b787"
+      "sha256": "1c6378b10449327ca03b2b76e1665ea83c0f5ddace1c079404d9839f15c48226"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/osp-client.ts",
-      "sha256": "8cda477ed6ef38ab6e9a13e61f61786711bc310a7462987fbf78204d7c6900ea"
+      "sha256": "f66d8364c1eb812043eee666b28542e7c9383a674f11c2939d68decc7716705c"
     },
     {
       "kind": "production-ui",
@@ -116,7 +116,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/cases/CaseWorkspace.tsx",
-      "sha256": "649adbad55f6359605a11b0740a6d882c8ee73e79234dee559d6a3ee8a61f23f"
+      "sha256": "d4764de153172a25df64f933e3dca23604398b5a2d188b0550a4779df12d8068"
     },
     {
       "kind": "production-ui",
@@ -181,7 +181,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/pipeline/PipelineOverview.tsx",
-      "sha256": "a187940d33656c9aed7146b160345b8760810352fd3daf89241840ee62c76c28"
+      "sha256": "cc351ca6ec7ac53d9fb712318710b60bce19a16675993f3c3095b5d1e71b123c"
     },
     {
       "kind": "production-ui",
@@ -206,7 +206,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "e536c13d0bba8f00cf46694d067482f7be118819b894028a3c4014656af0b446"
+      "sha256": "3f742f9a48323392bf266e4da378345e10f67c0e44d2f316e24a6f0200a42e32"
     },
     {
       "kind": "production-ui",
@@ -226,7 +226,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/profile.css",
-      "sha256": "c01077aff0e80915c7dd008416657bde7755c37668e1a28ae8aa0a4a907e1539"
+      "sha256": "a4bf17c14f971cc22fd7ff90923928dadd73200426b023b3ce9a78a327418dea"
     },
     {
       "kind": "production-ui",

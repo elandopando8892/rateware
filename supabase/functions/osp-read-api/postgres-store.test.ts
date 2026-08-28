@@ -85,6 +85,7 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
       aggregate_version: '1', blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00Z', updated_at: '2030-01-01T00:00:00Z',
       message_count: '1', attachment_count: '0', document_count: '0', latest_subject: null, latest_sender_domain: null,
       latest_received_at: null, recent_events: [],
+      profile_workspace: { candidates: [], binding: null, draft: null, disclosure_locked: true },
     }],
     [{
       entity_id: '33333333-3333-4333-8333-333333333333', entity_code: 'XBFMX', legal_name: 'Synthetic XBF Mexico',
