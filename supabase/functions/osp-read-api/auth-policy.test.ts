@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 
-import { OSP_PRODUCTION_ORGANIZATION_BINDING, requireOspIdentity } from './auth-policy.ts';
+import {
+  OSP_PRODUCTION_OPERATOR_ENTITLEMENTS,
+  OSP_PRODUCTION_ORGANIZATION_BINDING,
+  requireOspIdentity,
+} from './auth-policy.ts';
 import { OspApiError } from './http.ts';
 
 const NOW = 1_800_000_000;
@@ -109,6 +113,15 @@ Deno.test('requireOspIdentity binds an approved production identity to the canon
     email: 'operator@example.test',
     emailVerified: true,
   });
+});
+
+Deno.test('production operator entitlement is exact, immutable, and bound to the reviewed Kinde organization', () => {
+  assert.deepEqual(OSP_PRODUCTION_OPERATOR_ENTITLEMENTS, [{
+    email: 'jgonzalez@xbfreight.com',
+    externalOrganization: 'org_dbc2fd12c76',
+  }]);
+  assert.equal(Object.isFrozen(OSP_PRODUCTION_OPERATOR_ENTITLEMENTS), true);
+  assert.equal(Object.isFrozen(OSP_PRODUCTION_OPERATOR_ENTITLEMENTS[0]), true);
 });
 
 Deno.test('requireOspIdentity rejects any non-reviewed production organization', () => {

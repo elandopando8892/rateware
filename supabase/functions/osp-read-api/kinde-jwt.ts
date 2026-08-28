@@ -10,6 +10,7 @@ import {
 import {
   requireOspIdentity,
   type OspAuthorizationIdentity,
+  type OspOperatorEntitlement,
   type OspOrganizationBinding,
 } from './auth-policy.ts';
 import { OspApiError } from './http.ts';
@@ -41,6 +42,7 @@ export type KindeJwtVerifierOptions = {
   audience?: string;
   allowedEmails?: readonly string[];
   organizationBinding?: OspOrganizationBinding;
+  operatorEntitlements?: readonly OspOperatorEntitlement[];
   jwksFetch: typeof fetch;
   clock?: () => number;
   elapsedClock?: () => number;
@@ -73,7 +75,11 @@ function isRefreshableVerificationFailure(error: unknown): boolean {
   return code === 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED' || code === 'ERR_JWKS_NO_MATCHING_KEY';
 }
 
-function canonicalWorkflowPermissions(payload: Record<string, unknown>): readonly string[] {
+function canonicalWorkflowPermissions(
+  payload: Record<string, unknown>,
+  identity: OspAuthorizationIdentity,
+  operatorEntitlements: readonly OspOperatorEntitlement[],
+): readonly string[] {
   const permissions = payload.permissions;
   if (permissions !== undefined && (!Array.isArray(permissions) ||
       permissions.some((permission) => typeof permission !== 'string' || permission.trim() === '' ||
@@ -87,7 +93,15 @@ function canonicalWorkflowPermissions(payload: Record<string, unknown>): readonl
     'osp:read', 'osp:operate', 'osp:signature-approve',
     'osp:sales-authorize', 'osp:send-authorized',
   ].includes(permission))) throw new OspApiError('FORBIDDEN');
-  const canonical = [...new Set(['osp:read', ...ospPermissions])].sort();
+  const entitledToOperate = operatorEntitlements.some((entitlement) =>
+    entitlement.email === identity.email &&
+    entitlement.externalOrganization === identity.externalOrganization
+  );
+  const canonical = [...new Set([
+    'osp:read',
+    ...ospPermissions,
+    ...(entitledToOperate ? ['osp:operate'] : []),
+  ])].sort();
   return Object.freeze(canonical);
 }
 
@@ -129,6 +143,7 @@ export function createKindeJwtVerifier({
   audience = OSP_API_AUDIENCE,
   allowedEmails = OSP_PRODUCTION_READONLY_EMAILS,
   organizationBinding,
+  operatorEntitlements = [],
   jwksFetch,
   clock = Date.now,
   elapsedClock = () => performance.now(),
@@ -297,17 +312,19 @@ export function createKindeJwtVerifier({
 
   const verifyWorkflow = async (token: string, signal?: AbortSignal): Promise<VerifiedWorkflowIdentity> => {
     const payload = await verifyPayload(token, signal);
+    const identity = requireIdentity(payload);
     return Object.freeze({
-      identity: requireIdentity(payload),
-      permissions: canonicalWorkflowPermissions(payload),
+      identity,
+      permissions: canonicalWorkflowPermissions(payload, identity, operatorEntitlements),
     });
   };
 
   const verifyApproval = async (token: string, signal?: AbortSignal): Promise<VerifiedApprovalIdentity> => {
     const payload = await verifyPayload(token, signal);
+    const identity = requireIdentity(payload);
     return Object.freeze({
-      identity: requireIdentity(payload),
-      permissions: canonicalWorkflowPermissions(payload),
+      identity,
+      permissions: canonicalWorkflowPermissions(payload, identity, operatorEntitlements),
       ...canonicalApprovalSession(payload),
     });
   };

@@ -1,5 +1,8 @@
 import { createKindeJwtVerifier } from "../osp-read-api/kinde-jwt.ts";
-import { OSP_PRODUCTION_ORGANIZATION_BINDING } from "../osp-read-api/auth-policy.ts";
+import {
+  OSP_PRODUCTION_OPERATOR_ENTITLEMENTS,
+  OSP_PRODUCTION_ORGANIZATION_BINDING,
+} from "../osp-read-api/auth-policy.ts";
 import { createCaseApiHandler } from "./handler.ts";
 import { createPostgresClarificationStore } from "./postgres-store.ts";
 import {
@@ -73,6 +76,7 @@ export function createCaseApiRuntime(options: {
     jwksFetch: options.fetch,
     clock: options.clock ?? Date.now,
     organizationBinding: OSP_PRODUCTION_ORGANIZATION_BINDING,
+    operatorEntitlements: OSP_PRODUCTION_OPERATOR_ENTITLEMENTS,
   });
   let sharedDatabase: unknown;
   const sharedFactory: PostgresFactory = (url, config) =>

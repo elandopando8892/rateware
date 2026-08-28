@@ -24,6 +24,18 @@ export const OSP_PRODUCTION_ORGANIZATION_BINDING: OspOrganizationBinding = Objec
   allowMissingExternalClaim: true,
 });
 
+export type OspOperatorEntitlement = {
+  email: string;
+  externalOrganization: string;
+};
+
+export const OSP_PRODUCTION_OPERATOR_ENTITLEMENTS: readonly OspOperatorEntitlement[] = Object.freeze([
+  Object.freeze({
+    email: 'jgonzalez@xbfreight.com',
+    externalOrganization: OSP_PRODUCTION_ORGANIZATION_BINDING.externalOrganization,
+  }),
+]);
+
 export type OspClaimPolicy = {
   issuer: string;
   audience: string;

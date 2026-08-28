@@ -1,5 +1,8 @@
 import { createKindeJwtVerifier } from '../osp-read-api/kinde-jwt.ts';
-import { OSP_PRODUCTION_ORGANIZATION_BINDING } from '../osp-read-api/auth-policy.ts';
+import {
+  OSP_PRODUCTION_OPERATOR_ENTITLEMENTS,
+  OSP_PRODUCTION_ORGANIZATION_BINDING,
+} from '../osp-read-api/auth-policy.ts';
 import { createDocumentService } from './document-service.ts';
 import { createDocumentApiHandler } from './handler.ts';
 import { createManagedMalwareScanner } from './managed-malware-scanner.ts';
@@ -58,6 +61,7 @@ export function createDocumentApiRuntime(options: DocumentApiRuntimeOptions): (r
     jwksFetch: options.fetch,
     clock: options.clock ?? Date.now,
     organizationBinding: OSP_PRODUCTION_ORGANIZATION_BINDING,
+    operatorEntitlements: OSP_PRODUCTION_OPERATOR_ENTITLEMENTS,
   });
   const store = createPostgresDocumentStore({ databaseUrl: databaseConnection, postgresFactory: options.postgresFactory });
   const storage = createSupabaseDocumentStoragePort({ client: options.storageClient });

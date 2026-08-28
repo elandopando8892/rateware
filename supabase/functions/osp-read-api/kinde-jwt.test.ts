@@ -9,6 +9,7 @@ import {
 
 import { OspApiError } from './http.ts';
 import { createKindeJwtVerifier } from './kinde-jwt.ts';
+import type { OspOperatorEntitlement, OspOrganizationBinding } from './auth-policy.ts';
 
 const NOW = 1_800_000_000;
 const issuer = 'https://auth.heymarksman.com';
@@ -57,6 +58,24 @@ function verifier(jwksFetch: typeof fetch) {
     clientId,
     audience,
     allowedEmails,
+    jwksFetch,
+    clock: () => NOW * 1_000,
+  });
+}
+
+function verifierWithOperatorEntitlements(
+  jwksFetch: typeof fetch,
+  operatorEntitlements: readonly OspOperatorEntitlement[],
+  organizationBinding: OspOrganizationBinding,
+  emails: readonly string[] = allowedEmails,
+) {
+  return createKindeJwtVerifier({
+    issuer,
+    clientId,
+    audience,
+    allowedEmails: emails,
+    organizationBinding,
+    operatorEntitlements,
     jwksFetch,
     clock: () => NOW * 1_000,
   });
@@ -194,6 +213,50 @@ Deno.test('createKindeJwtVerifier grants approved identities read-only workflow 
     const workflow = await verifier(jsonFetch({ keys: [fixture.firstJwk] })).verifyWorkflow(token);
     assert.deepEqual(workflow.permissions, ['osp:read']);
   }
+});
+
+Deno.test('createKindeJwtVerifier grants only the exact verified operator identity in the bound organization', async () => {
+  const fixture = await setup();
+  const binding = {
+    externalOrganization: 'synthetic-org',
+    canonicalOrganization: 'canonical-org',
+    allowMissingExternalClaim: false,
+  } as const;
+  const entitlements = [{ email: 'operator@example.test', externalOrganization: 'synthetic-org' }] as const;
+  const exact = await sign(fixture.first.privateKey, 'first-kid', { permissions: [] });
+  const otherEmail = await sign(fixture.first.privateKey, 'first-kid', {
+    email: 'readonly@example.test',
+    osp_verified_email: 'readonly@example.test',
+    permissions: [],
+  });
+  const subject = verifierWithOperatorEntitlements(
+    jsonFetch({ keys: [fixture.firstJwk] }),
+    entitlements,
+    binding,
+    ['operator@example.test', 'readonly@example.test'],
+  );
+
+  assert.deepEqual((await subject.verifyWorkflow(exact)).permissions, ['osp:operate', 'osp:read']);
+  assert.deepEqual((await subject.verifyWorkflow(otherEmail)).permissions, ['osp:read']);
+});
+
+Deno.test('createKindeJwtVerifier does not carry an operator entitlement into another organization', async () => {
+  const fixture = await setup();
+  const token = await sign(fixture.first.privateKey, 'first-kid', {
+    org_code: 'other-org',
+    permissions: [],
+  });
+  const subject = verifierWithOperatorEntitlements(
+    jsonFetch({ keys: [fixture.firstJwk] }),
+    [{ email: 'operator@example.test', externalOrganization: 'synthetic-org' }],
+    {
+      externalOrganization: 'other-org',
+      canonicalOrganization: 'other-canonical-org',
+      allowMissingExternalClaim: false,
+    },
+  );
+
+  assert.deepEqual((await subject.verifyWorkflow(token)).permissions, ['osp:read']);
 });
 
 Deno.test('createKindeJwtVerifier rejects an altered real signature without leaking details', async () => {
