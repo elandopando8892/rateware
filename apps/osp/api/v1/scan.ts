@@ -15,6 +15,7 @@ const handler = createScanHandler({
   runScanner: createClamAvRunner({
     binary: join(root, 'bin', 'clamscan'),
     database: join(root, 'database'),
+    certificates: join(root, 'certs'),
     libraryPath: join(root, 'lib'),
   }),
 });

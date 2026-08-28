@@ -69,16 +69,19 @@ try {
     './usr/local/lib/libclammspack.so.0.8.0',
     './usr/local/lib/libclamunrar.so.12.1.0',
     './usr/local/lib/libclamunrar_iface.so.12.1.0',
+    './usr/local/etc/certs/clamav.crt',
   ]);
 
   const staged = join(temporary, '.clamav');
   await mkdir(join(staged, 'bin'), { recursive: true });
   await mkdir(join(staged, 'lib'), { recursive: true });
   await mkdir(join(staged, 'database'), { recursive: true });
+  await mkdir(join(staged, 'certs'), { recursive: true });
   await rename(join(extracted, 'usr', 'local', 'bin', 'clamscan'), join(staged, 'bin', 'clamscan'));
   for (const name of ['libclamav.so.12.1.0', 'libclammspack.so.0.8.0', 'libclamunrar.so.12.1.0', 'libclamunrar_iface.so.12.1.0']) {
     await rename(join(extracted, 'usr', 'local', 'lib', name), join(staged, 'lib', name));
   }
+  await rename(join(extracted, 'usr', 'local', 'etc', 'certs', 'clamav.crt'), join(staged, 'certs', 'clamav.crt'));
   await copyAlias('libclamav.so.12.1.0', join(staged, 'lib', 'libclamav.so.12'));
   await copyAlias('libclammspack.so.0.8.0', join(staged, 'lib', 'libclammspack.so.0'));
   await copyAlias('libclamunrar.so.12.1.0', join(staged, 'lib', 'libclamunrar.so.12'));

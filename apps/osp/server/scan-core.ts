@@ -64,12 +64,12 @@ async function download(fetchImplementation: typeof fetch, url: URL, expectedByt
   return bytes;
 }
 
-export function createClamAvRunner(options: { binary: string; database: string; libraryPath: string }): RunScanner {
+export function createClamAvRunner(options: { binary: string; database: string; certificates: string; libraryPath: string }): RunScanner {
   return async (file: string) => await new Promise<ScanStatus>((resolve, reject) => {
     const child = spawn(options.binary, [
-      `--database=${options.database}`, '--no-summary', '--infected', '--max-filesize=25M', '--max-scansize=25M',
+      `--database=${options.database}`, `--cvdcertsdir=${options.certificates}`, '--no-summary', '--infected', '--max-filesize=25M', '--max-scansize=25M',
       '--max-recursion=20', '--max-files=1000', file,
-    ], { env: { ...process.env, LD_LIBRARY_PATH: options.libraryPath }, stdio: ['ignore', 'ignore', 'pipe'] });
+    ], { env: { ...process.env, LD_LIBRARY_PATH: options.libraryPath, CVD_CERTS_DIR: options.certificates }, stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (chunk: string) => { if (stderr.length < 4096) stderr += chunk; });
