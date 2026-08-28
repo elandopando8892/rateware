@@ -107,7 +107,10 @@ export function createPostgresDocumentStore(options: { databaseUrl: string; post
         throw new Error('DOCUMENT_APPROVAL_REJECTED');
       }
       return await withOrganizationTransaction(sql, organizationId, async (tx) => {
-        const row = one(await tx`select version.id, version.document_id, version.version, version.status, version.source_sha256, document.case_id, document.version as aggregate_version from osp_private.document_versions version join osp_private.documents document on document.organization_id = version.organization_id and document.id = version.document_id where version.organization_id = ${organizationId} and version.id = ${versionId} for update of version, document`, 'DOCUMENT_NOT_FOUND');
+        // The security-definer approval command below owns the document-scoped
+        // advisory lock. Keeping a redundant FOR UPDATE here would require the
+        // deliberately revoked table UPDATE privilege on osp_workflow_api.
+        const row = one(await tx`select version.id, version.document_id, version.version, version.status, version.source_sha256, document.case_id, document.version as aggregate_version from osp_private.document_versions version join osp_private.documents document on document.organization_id = version.organization_id and document.id = version.document_id where version.organization_id = ${organizationId} and version.id = ${versionId}`, 'DOCUMENT_NOT_FOUND');
         const persistedVersion = integer(row.version, 'DOCUMENT_APPROVAL_REJECTED');
         if (persistedVersion !== expectedVersion || row.status !== 'review_required') throw new Error('DOCUMENT_VERSION_CONFLICT');
         if (row.source_sha256 !== reviewBeforeSha256 || row.source_sha256 !== reviewAfterSha256) throw new Error('DOCUMENT_REVIEW_HASH_MISMATCH');

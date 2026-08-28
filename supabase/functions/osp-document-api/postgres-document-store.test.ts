@@ -66,7 +66,7 @@ Deno.test('Postgres document store approves only the reviewed persisted source a
     const text = strings.join('?').replace(/\s+/g, ' ').trim().toLowerCase();
     queries.push({ text, values });
     if (text.startsWith('set local role') || text.startsWith('select set_config')) return [];
-    if (text.includes('from osp_private.document_versions version') && text.includes('for update')) return [{
+    if (text.includes('from osp_private.document_versions version')) return [{
       id: '33333333-3333-4333-8333-333333333333', document_id: '22222222-2222-4222-8222-222222222222', version: '1',
       status: 'review_required', source_sha256: sourceSha256, case_id: null, aggregate_version: '1',
     }];
@@ -83,12 +83,13 @@ Deno.test('Postgres document store approves only the reviewed persisted source a
     reviewBeforeSha256: sourceSha256, reviewAfterSha256: sourceSha256,
   }), { id: '33333333-3333-4333-8333-333333333333', status: 'approved' });
   assertEquals(queries.some((query) => query.text.includes('approve_document_version_command')), true);
+  assertEquals(queries.some((query) => query.text.includes('for update')), false);
   assertEquals(queries.some((query) => query.text.startsWith('insert into osp_private.review_decisions') && query.text.includes("'document_version'") && query.text.includes("'document_approved'")), true);
 
   const mismatchSql = Object.assign(async (strings: TemplateStringsArray) => {
       const text = strings.join(' ').toLowerCase();
       if (text.includes('set local role') || text.includes('set_config')) return [];
-      if (text.includes('for update')) return [{ id: '33333333-3333-4333-8333-333333333333', document_id: '22222222-2222-4222-8222-222222222222', version: 1, status: 'review_required', source_sha256: 'b'.repeat(64), case_id: null, aggregate_version: 1 }];
+      if (text.includes('from osp_private.document_versions version')) return [{ id: '33333333-3333-4333-8333-333333333333', document_id: '22222222-2222-4222-8222-222222222222', version: 1, status: 'review_required', source_sha256: 'b'.repeat(64), case_id: null, aggregate_version: 1 }];
       return [];
     }, { begin: async (operation: (tx: typeof mismatchSql) => Promise<unknown>) => await operation(mismatchSql) });
   const mismatch = createPostgresDocumentStore({ databaseUrl: 'postgres://localhost:55322/osp', postgresFactory: () => mismatchSql });
