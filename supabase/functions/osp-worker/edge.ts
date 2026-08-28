@@ -94,4 +94,5 @@ Deno.serve(createOspWorkerHandler({
   enqueue: runtime.enqueue,
   run: runtime.run,
   runXlsxDocumentExtractCanary: runtime.runXlsxDocumentExtractCanary,
+  stageXlsxRatewareCanary: runtime.stageXlsxRatewareCanary,
 }));

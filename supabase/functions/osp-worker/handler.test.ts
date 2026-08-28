@@ -102,6 +102,36 @@ Deno.test("OSP worker runs one exact XLSX extraction canary", async () => {
   });
 });
 
+Deno.test("OSP worker stages one exact XLSX quote canary in Rateware review", async () => {
+  let received: Record<string, string> | undefined;
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    stageXlsxRatewareCanary: async (request) => {
+      received = request;
+      return {
+        rawUploadId: "55555555-5555-4555-8555-555555555555",
+        interpretationJobId: "66666666-6666-4666-8666-666666666666",
+        rateStagingId: "77777777-7777-4777-8777-777777777777",
+        inserted: true,
+      };
+    },
+  });
+  const response = await handler(request({
+    ...canary,
+    action: "stage_xlsx_rateware_canary",
+  }));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), {
+    rawUploadId: "55555555-5555-4555-8555-555555555555",
+    interpretationJobId: "66666666-6666-4666-8666-666666666666",
+    rateStagingId: "77777777-7777-4777-8777-777777777777",
+    inserted: true,
+  });
+  assertEquals(received?.documentVersionId, canary.documentVersionId);
+});
+
 Deno.test("OSP worker fails closed when the XLSX canary is disabled or not ready", async () => {
   const disabled = createOspWorkerHandler({
     expectedToken: token,
@@ -125,4 +155,11 @@ Deno.test("OSP worker fails closed when the XLSX canary is disabled or not ready
   response = await unavailable(request({ ...canary, extra: true }));
   assertEquals(response.status, 400);
   assertEquals(await response.json(), { error: "INVALID_REQUEST" });
+
+  response = await unavailable(request({
+    ...canary,
+    action: "stage_xlsx_rateware_canary",
+  }));
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), { error: "CANARY_DISABLED" });
 });

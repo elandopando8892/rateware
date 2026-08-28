@@ -26,6 +26,11 @@ import { createStrictXlsxPackageScanner } from "./strict-xlsx-package-scanner.ts
 import type { AttachmentPromotionService } from "./attachment-promotion.ts";
 import type { ManagedExtractionService } from "./worker.ts";
 import type { AutomaticPreparationService } from "./automatic-preparation.ts";
+import {
+  createRatewareXlsxCanaryService,
+  type RatewareXlsxCanaryReceipt,
+} from "./rateware-xlsx-canary.ts";
+import { createPostgresRatewareXlsxCanaryStore } from "./postgres-rateware-xlsx-canary-store.ts";
 
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -62,6 +67,9 @@ export function createShadowWorkerRuntime(input: {
   runXlsxDocumentExtractCanary?: (
     request: XlsxDocumentExtractCanary,
   ) => Promise<number>;
+  stageXlsxRatewareCanary?: (
+    request: XlsxDocumentExtractCanary,
+  ) => Promise<RatewareXlsxCanaryReceipt>;
 } {
   if (input.automation && input.xlsxShadow) {
     throw new Error("INVALID_RUNTIME_CONFIGURATION");
@@ -129,6 +137,11 @@ export function createShadowWorkerRuntime(input: {
     });
   }
   let extraction: ManagedExtractionService | undefined;
+  let stageXlsxRatewareCanary:
+    | ((
+      request: XlsxDocumentExtractCanary,
+    ) => Promise<RatewareXlsxCanaryReceipt>)
+    | undefined;
   if (input.automation || input.xlsxShadow) {
     const managedStore = createPostgresManagedExtractionStore({
       databaseUrl: input.databaseUrl,
@@ -153,11 +166,12 @@ export function createShadowWorkerRuntime(input: {
         persist: managedStore.persist,
       }
       : managedStore;
+    const managedStorage = createSupabaseManagedExtractionStorage({
+      client: automationStorage!,
+    });
     extraction = createManagedExtractionService({
       store: extractionStore,
-      storage: createSupabaseManagedExtractionStorage({
-        client: automationStorage!,
-      }),
+      storage: managedStorage,
       ...(input.automation
         ? {
           layout: createAzureDocumentIntelligence({
@@ -178,6 +192,24 @@ export function createShadowWorkerRuntime(input: {
         : {}),
       jobs,
     });
+    if (input.xlsxShadow) {
+      const canary = createRatewareXlsxCanaryService({
+        sources: extractionStore,
+        storage: managedStorage,
+        staging: createPostgresRatewareXlsxCanaryStore({
+          databaseUrl: input.databaseUrl,
+          postgresFactory: input.postgresFactory,
+        }),
+      });
+      stageXlsxRatewareCanary = async (request) => {
+        if (
+          request.organizationId !== input.xlsxShadow!.organizationId ||
+          request.caseId !== input.xlsxShadow!.caseId ||
+          request.sourceSha256 !== input.xlsxShadow!.sourceSha256
+        ) throw new Error("INVALID_INPUT");
+        return await canary.stage(request);
+      };
+    }
   }
   let formMappings: AutomaticPreparationService | undefined;
   if (input.automation || input.xlsxShadow) {
@@ -240,5 +272,6 @@ export function createShadowWorkerRuntime(input: {
         limit,
       }),
     runXlsxDocumentExtractCanary,
+    stageXlsxRatewareCanary,
   });
 }

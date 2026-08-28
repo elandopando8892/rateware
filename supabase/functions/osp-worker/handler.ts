@@ -47,6 +47,13 @@ type XlsxDocumentExtractCanary = {
   sourceSha256: string;
 };
 
+type RatewareXlsxCanaryReceipt = {
+  rawUploadId: string;
+  interpretationJobId: string;
+  rateStagingId: string;
+  inserted: boolean;
+};
+
 export function createOspWorkerHandler(deps: {
   expectedToken: string;
   enqueue(limit: number): Promise<number>;
@@ -54,6 +61,9 @@ export function createOspWorkerHandler(deps: {
   runXlsxDocumentExtractCanary?: (
     input: XlsxDocumentExtractCanary,
   ) => Promise<number>;
+  stageXlsxRatewareCanary?: (
+    input: XlsxDocumentExtractCanary,
+  ) => Promise<RatewareXlsxCanaryReceipt>;
 }): (request: Request) => Promise<Response> {
   if (deps.expectedToken.length < 32) {
     throw new Error("INVALID_RUNTIME_CONFIGURATION");
@@ -104,7 +114,10 @@ export function createOspWorkerHandler(deps: {
       "sourceSha256",
     ];
     if (
-      body.action !== "run_xlsx_document_extract_canary" ||
+      ![
+        "run_xlsx_document_extract_canary",
+        "stage_xlsx_rateware_canary",
+      ].includes(String(body.action)) ||
       keys.length !== canaryKeys.length ||
       keys.some((key, index) => key !== canaryKeys[index]) ||
       typeof body.organizationId !== "string" ||
@@ -118,17 +131,29 @@ export function createOspWorkerHandler(deps: {
       !UUID.test(body.documentVersionId) ||
       !SHA256.test(body.sourceSha256)
     ) return json(400, { error: "INVALID_REQUEST" });
+    const canaryInput = {
+      organizationId: body.organizationId,
+      caseId: body.caseId,
+      jobId: body.jobId,
+      documentVersionId: body.documentVersionId,
+      sourceSha256: body.sourceSha256,
+    };
+    if (body.action === "stage_xlsx_rateware_canary") {
+      if (!deps.stageXlsxRatewareCanary) {
+        return json(409, { error: "CANARY_DISABLED" });
+      }
+      try {
+        const receipt = await deps.stageXlsxRatewareCanary(canaryInput);
+        return json(200, receipt);
+      } catch {
+        return json(503, { error: "WORKER_UNAVAILABLE" });
+      }
+    }
     if (!deps.runXlsxDocumentExtractCanary) {
       return json(409, { error: "CANARY_DISABLED" });
     }
     try {
-      const processed = await deps.runXlsxDocumentExtractCanary({
-        organizationId: body.organizationId,
-        caseId: body.caseId,
-        jobId: body.jobId,
-        documentVersionId: body.documentVersionId,
-        sourceSha256: body.sourceSha256,
-      });
+      const processed = await deps.runXlsxDocumentExtractCanary(canaryInput);
       return processed === 1
         ? json(200, { processed })
         : json(409, { error: "CANARY_NOT_READY" });
