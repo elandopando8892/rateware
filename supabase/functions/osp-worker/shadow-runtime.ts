@@ -30,6 +30,14 @@ import type { AutomaticPreparationService } from "./automatic-preparation.ts";
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+type XlsxDocumentExtractCanary = {
+  organizationId: string;
+  caseId: string;
+  jobId: string;
+  documentVersionId: string;
+  sourceSha256: string;
+};
+
 function governedStorage(
   client: Parameters<typeof createSupabaseOriginalObjectStore>[0]["client"],
 ): Pick<SupabaseClient, "storage"> {
@@ -51,6 +59,9 @@ export function createShadowWorkerRuntime(input: {
 }): {
   enqueue(limit: number): Promise<number>;
   run(limit: number): Promise<number>;
+  runXlsxDocumentExtractCanary?: (
+    request: XlsxDocumentExtractCanary,
+  ) => Promise<number>;
 } {
   if (input.automation && input.xlsxShadow) {
     throw new Error("INVALID_RUNTIME_CONFIGURATION");
@@ -190,6 +201,31 @@ export function createShadowWorkerRuntime(input: {
       })
       : prepared;
   }
+  const runXlsxDocumentExtractCanary = input.xlsxShadow && extraction
+    ? async (request: XlsxDocumentExtractCanary): Promise<number> => {
+      if (
+        request.organizationId !== input.xlsxShadow!.organizationId ||
+        request.caseId !== input.xlsxShadow!.caseId ||
+        request.sourceSha256 !== input.xlsxShadow!.sourceSha256
+      ) throw new Error("INVALID_INPUT");
+      return await runWorker({
+        workerId: input.workerId,
+        now: () => new Date(),
+        jobs: {
+          claim: ({ leaseMs }) =>
+            jobs.claimShadowDocumentExtract({
+              ...request,
+              leaseMs,
+            }),
+          complete: jobs.complete,
+          fail: jobs.fail,
+        },
+        intake,
+        extraction,
+        limit: 1,
+      });
+    }
+    : undefined;
   return Object.freeze({
     enqueue: (limit: number) => bridge.enqueue(limit),
     run: (limit: number) =>
@@ -203,5 +239,6 @@ export function createShadowWorkerRuntime(input: {
         formMappings,
         limit,
       }),
+    runXlsxDocumentExtractCanary,
   });
 }

@@ -78,17 +78,20 @@ const gmailAccessToken = async (): Promise<string> => {
   }
 };
 
+const automation = resolveGovernedAutomation(Deno.env);
+const xlsxShadow = resolveXlsxShadow(Deno.env);
 const runtime = createShadowWorkerRuntime({
   databaseUrl,
   gmailAccessToken,
   storageClient: supabase,
   workerId: `osp-edge:${crypto.randomUUID()}`,
-  automation: resolveGovernedAutomation(Deno.env),
-  xlsxShadow: resolveXlsxShadow(Deno.env),
+  automation,
+  xlsxShadow,
 });
 
 Deno.serve(createOspWorkerHandler({
   expectedToken: serviceRoleKey,
   enqueue: runtime.enqueue,
   run: runtime.run,
+  runXlsxDocumentExtractCanary: runtime.runXlsxDocumentExtractCanary,
 }));

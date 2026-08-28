@@ -3,6 +3,14 @@ import { assertEquals } from "jsr:@std/assert@1.0.14";
 import { createOspWorkerHandler } from "./handler.ts";
 
 const token = "s".repeat(64);
+const canary = {
+  action: "run_xlsx_document_extract_canary",
+  organizationId: "11111111-1111-4111-8111-111111111111",
+  caseId: "22222222-2222-4222-8222-222222222222",
+  jobId: "33333333-3333-4333-8333-333333333333",
+  documentVersionId: "44444444-4444-4444-8444-444444444444",
+  sourceSha256: "a".repeat(64),
+};
 const request = (body: unknown, authorization = `Bearer ${token}`) =>
   new Request("https://example.test/functions/v1/osp-worker", {
     method: "POST",
@@ -69,4 +77,52 @@ Deno.test("OSP worker fails closed when the bridge is unavailable", async () => 
   const response = await handler(request({ action: "drain_rateware_gmail" }));
   assertEquals(response.status, 503);
   assertEquals(await response.json(), { error: "WORKER_UNAVAILABLE" });
+});
+
+Deno.test("OSP worker runs one exact XLSX extraction canary", async () => {
+  let received: Record<string, string> | undefined;
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    runXlsxDocumentExtractCanary: async (input) => {
+      received = input;
+      return 1;
+    },
+  });
+  const response = await handler(request(canary));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { processed: 1 });
+  assertEquals(received, {
+    organizationId: canary.organizationId,
+    caseId: canary.caseId,
+    jobId: canary.jobId,
+    documentVersionId: canary.documentVersionId,
+    sourceSha256: canary.sourceSha256,
+  });
+});
+
+Deno.test("OSP worker fails closed when the XLSX canary is disabled or not ready", async () => {
+  const disabled = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: async () => 0,
+    run: async () => 0,
+  });
+  let response = await disabled(request(canary));
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), { error: "CANARY_DISABLED" });
+
+  const unavailable = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: async () => 0,
+    run: async () => 0,
+    runXlsxDocumentExtractCanary: async () => 0,
+  });
+  response = await unavailable(request(canary));
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), { error: "CANARY_NOT_READY" });
+
+  response = await unavailable(request({ ...canary, extra: true }));
+  assertEquals(response.status, 400);
+  assertEquals(await response.json(), { error: "INVALID_REQUEST" });
 });

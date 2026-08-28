@@ -43,6 +43,15 @@ export type LeasedJob = {
   leasedUntil: string;
 };
 
+export type ShadowDocumentExtractClaim = {
+  organizationId: string;
+  caseId: string;
+  jobId: string;
+  documentVersionId: string;
+  sourceSha256: string;
+  leaseMs: number;
+};
+
 export interface BackgroundJobStore {
   enqueue(
     input: {
@@ -68,6 +77,12 @@ export interface BackgroundJobStore {
   ): Promise<void>;
 }
 
+export interface CanaryBackgroundJobStore extends BackgroundJobStore {
+  claimShadowDocumentExtract(
+    input: ShadowDocumentExtractClaim,
+  ): Promise<LeasedJob[]>;
+}
+
 type MemoryJob = LeasedJob & {
   idempotencyKey: string;
   completedAt: Date | null;
@@ -80,6 +95,9 @@ type PostgresFactory = (
 ) => unknown;
 const LEASE_TOKEN_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const JOB_KINDS: readonly JobKind[] = [
   "gmail_ingest",
   "duplicate_review_refresh",
@@ -251,9 +269,27 @@ function requireTimestamp(value: unknown): string {
   return parsed.toISOString();
 }
 
+function leasedJob(row: Record<string, unknown>): LeasedJob {
+  if (
+    typeof row.id !== "string" ||
+    typeof row.organization_id !== "string" ||
+    !JOB_KINDS.includes(row.kind as JobKind) ||
+    typeof row.lease_token !== "string"
+  ) throw new Error("LEASE_CONFLICT");
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    kind: row.kind as JobKind,
+    opaquePayload: requireOpaquePayload(row.opaque_payload),
+    attempt: Number(row.attempt),
+    leaseToken: row.lease_token,
+    leasedUntil: requireTimestamp(row.leased_until),
+  };
+}
+
 export function createPostgresBackgroundJobStore(
   options: { databaseUrl: string; postgresFactory?: PostgresFactory },
-): BackgroundJobStore {
+): CanaryBackgroundJobStore {
   const created =
     (options.postgresFactory ?? postgres as unknown as PostgresFactory)(
       requireDatabaseUrl(options.databaseUrl),
@@ -313,23 +349,24 @@ export function createPostgresBackgroundJobStore(
       return await withWorkerTransaction(sql, async (tx) => {
         const rows =
           await tx`select * from osp_private.claim_next_background_jobs(${input.leaseMs}, ${input.limit})`;
-        return rows.map((row) => {
-          if (
-            typeof row.id !== "string" ||
-            typeof row.organization_id !== "string" ||
-            !JOB_KINDS.includes(row.kind as JobKind) ||
-            typeof row.lease_token !== "string"
-          ) throw new Error("LEASE_CONFLICT");
-          return {
-            id: row.id,
-            organizationId: row.organization_id,
-            kind: row.kind as JobKind,
-            opaquePayload: requireOpaquePayload(row.opaque_payload),
-            attempt: Number(row.attempt),
-            leaseToken: row.lease_token,
-            leasedUntil: requireTimestamp(row.leased_until),
-          };
-        });
+        return rows.map(leasedJob);
+      });
+    },
+    async claimShadowDocumentExtract(input: ShadowDocumentExtractClaim) {
+      if (
+        !UUID_PATTERN.test(input.organizationId) ||
+        !UUID_PATTERN.test(input.caseId) ||
+        !UUID_PATTERN.test(input.jobId) ||
+        !UUID_PATTERN.test(input.documentVersionId) ||
+        !SHA256_PATTERN.test(input.sourceSha256) ||
+        !Number.isSafeInteger(input.leaseMs) || input.leaseMs < 1 ||
+        input.leaseMs > 900_000
+      ) throw new Error("INVALID_CLAIM");
+      return await withWorkerTransaction(sql, async (tx) => {
+        const rows =
+          await tx`select * from osp_private.claim_shadow_document_extract(${input.organizationId}, ${input.caseId}, ${input.jobId}, ${input.documentVersionId}, ${input.sourceSha256}, ${input.leaseMs})`;
+        if (rows.length > 1) throw new Error("LEASE_CONFLICT");
+        return rows.map(leasedJob);
       });
     },
     async complete(
