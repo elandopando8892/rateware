@@ -1,4 +1,4 @@
-import { createClient } from 'supabase';
+import { createClient } from 'npm:@supabase/supabase-js@2.112.3';
 import postgres from 'npm:postgres@3.4.7';
 
 import { createDocumentApiRuntime } from './composition.ts';
