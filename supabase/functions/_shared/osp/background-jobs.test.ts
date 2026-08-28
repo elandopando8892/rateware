@@ -222,6 +222,7 @@ Deno.test("Postgres background store scopes enqueue to one tenant and claims thr
     "select set_config('osp.organization_id', $, true)",
   );
   assert.match(calls[2].text, /insert into osp_private\.background_jobs/i);
+  assert.match(calls[2].text, /::text::jsonb/i);
   assert.match(calls[3].text, /set local role osp_worker/i);
   assert.match(
     calls[4].text,

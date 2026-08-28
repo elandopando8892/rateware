@@ -109,8 +109,14 @@ export function createPostgresManagedExtractionStore(options: {
         sql,
         input.source.organizationId,
         async (tx) => {
+          const lockKey = JSON.stringify([
+            input.source.organizationId,
+            "managed_extraction",
+            input.source.documentVersionId,
+          ]);
+          await tx`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
           const locked =
-            await tx`select version.source_sha256, document.case_id, safety.status as source_safety from osp_private.document_versions version join osp_private.documents document on document.organization_id = version.organization_id and document.id = version.document_id join lateral (select assessment.status from osp_private.source_safety_assessments assessment where assessment.organization_id = version.organization_id and assessment.document_version_id = version.id order by assessment.version desc limit 1) safety on true where version.organization_id = ${input.source.organizationId} and version.id = ${input.source.documentVersionId} for share of version, document`;
+            await tx`select version.source_sha256, document.case_id, safety.status as source_safety from osp_private.document_versions version join osp_private.documents document on document.organization_id = version.organization_id and document.id = version.document_id join lateral (select assessment.status from osp_private.source_safety_assessments assessment where assessment.organization_id = version.organization_id and assessment.document_version_id = version.id order by assessment.version desc limit 1) safety on true where version.organization_id = ${input.source.organizationId} and version.id = ${input.source.documentVersionId}`;
           if (
             locked.length !== 1 ||
             locked[0].source_sha256 !== input.source.sourceSha256 ||
@@ -118,7 +124,7 @@ export function createPostgresManagedExtractionStore(options: {
             locked[0].source_safety !== "safe"
           ) throw new Error("SOURCE_HASH_MISMATCH");
           const existing =
-            await tx`select id, input_sha256, prompt_sha256, schema_sha256 from osp_private.document_extractions where organization_id = ${input.source.organizationId} and source_version_id = ${input.source.documentVersionId} and status in ('review_required', 'reviewed') order by created_at, id limit 2 for share`;
+            await tx`select id, input_sha256, prompt_sha256, schema_sha256 from osp_private.document_extractions where organization_id = ${input.source.organizationId} and source_version_id = ${input.source.documentVersionId} and status in ('review_required', 'reviewed') order by created_at, id limit 2`;
           if (existing.length === 1) {
             const row = existing[0];
             if (

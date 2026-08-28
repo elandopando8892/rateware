@@ -325,7 +325,7 @@ export function createPostgresBackgroundJobStore(
         input.organizationId,
         async (tx) => {
           const inserted =
-            await tx`insert into osp_private.background_jobs (id, organization_id, kind, opaque_payload, idempotency_key) values (${crypto.randomUUID()}, ${input.organizationId}, ${input.kind}, ${payload}, ${input.idempotencyKey}) on conflict (organization_id, kind, idempotency_key) do nothing returning id, opaque_payload`;
+            await tx`insert into osp_private.background_jobs (id, organization_id, kind, opaque_payload, idempotency_key) values (${crypto.randomUUID()}, ${input.organizationId}, ${input.kind}, ${payload}::text::jsonb, ${input.idempotencyKey}) on conflict (organization_id, kind, idempotency_key) do nothing returning id, opaque_payload`;
           const rows = inserted.length === 1
             ? inserted
             : await tx`select id, opaque_payload from osp_private.background_jobs where organization_id = ${input.organizationId} and kind = ${input.kind} and idempotency_key = ${input.idempotencyKey}`;
