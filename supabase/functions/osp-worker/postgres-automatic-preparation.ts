@@ -157,18 +157,16 @@ async function loadPreparation(
   const versions =
     await tx`select id from osp_private.form_template_versions where organization_id = ${input.organizationId} and id = ${input.templateVersionId} and status = 'published'`;
   if (versions.length !== 1) fail("INVALID_INPUT");
-  const extractions = lockSources
-    ? await tx`select id from osp_private.document_extractions where organization_id = ${input.organizationId} and id = ${input.extractionId} and case_id = ${input.caseId} and status in ('review_required', 'reviewed') for share`
-    : await tx`select id from osp_private.document_extractions where organization_id = ${input.organizationId} and id = ${input.extractionId} and case_id = ${input.caseId} and status in ('review_required', 'reviewed')`;
+  const extractions =
+    await tx`select id from osp_private.document_extractions where organization_id = ${input.organizationId} and id = ${input.extractionId} and case_id = ${input.caseId} and status in ('review_required', 'reviewed')`;
   if (extractions.length !== 1) fail("INVALID_INPUT");
   const fieldRows =
     await tx`select field_key, definition_json from osp_private.form_fields where organization_id = ${input.organizationId} and template_version_id = ${input.templateVersionId} order by position, id`;
   if (fieldRows.length === 0) fail("INVALID_INPUT");
   const ratewareRows =
     await tx`select field_key, value_json, evidence_id from osp_private.load_xbf_customer_setup_candidates(${input.organizationId}) order by field_key, evidence_id`;
-  const extractionRows = lockSources
-    ? await tx`select id, field_key, presence, value_json, confidence, validation from osp_private.extraction_fields where organization_id = ${input.organizationId} and extraction_id = ${input.extractionId} and presence = 'present' order by field_key, id for share`
-    : await tx`select id, field_key, presence, value_json, confidence, validation from osp_private.extraction_fields where organization_id = ${input.organizationId} and extraction_id = ${input.extractionId} and presence = 'present' order by field_key, id`;
+  const extractionRows =
+    await tx`select id, field_key, presence, value_json, confidence, validation from osp_private.extraction_fields where organization_id = ${input.organizationId} and extraction_id = ${input.extractionId} and presence = 'present' order by field_key, id`;
   const instances = lockSources
     ? await tx`select values_json from osp_private.case_form_instances where organization_id = ${input.organizationId} and case_id = ${input.caseId} and template_version_id = ${input.templateVersionId} order by updated_at desc, id asc limit 1 for update`
     : await tx`select values_json from osp_private.case_form_instances where organization_id = ${input.organizationId} and case_id = ${input.caseId} and template_version_id = ${input.templateVersionId} order by updated_at desc, id asc limit 1`;

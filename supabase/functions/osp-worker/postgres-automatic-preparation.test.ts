@@ -267,6 +267,14 @@ Deno.test("postgres preparation persists a reviewable draft and stops at prepari
     fake.calls.some((call) => call.text.includes("operations_review")),
     false,
   );
+  assertEquals(
+    fake.calls.some((call) => call.text.includes("pg_advisory_xact_lock")),
+    true,
+  );
+  assertEquals(
+    fake.calls.some((call) => call.text.includes("for share")),
+    false,
+  );
 });
 
 Deno.test("postgres preparation refuses to rewrite a human-governed downstream case", async () => {
