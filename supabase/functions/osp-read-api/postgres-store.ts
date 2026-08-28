@@ -397,6 +397,84 @@ export function createPostgresOspReadStore({
           ) ORDER BY field.field_code) FILTER (WHERE field.id IS NOT NULL), '[]'::jsonb) AS fields,
           COALESCE((
             SELECT jsonb_agg(jsonb_build_object(
+              'review_id', approved_review.id::text,
+              'review_revision', approved_review.revision,
+              'document_type', approved_asset.document_type,
+              'evidence_label', initcap(replace(approved_asset.document_type, '_', ' ')),
+              'candidate_sha256', osp_private.profile_review_candidate_sha256(
+                approved_review.organization_id, approved_review.id, approved_review.revision
+              ),
+              'candidate_count', (
+                SELECT count(*)::bigint FROM public.provider_entity_document_review_fields candidate_field
+                WHERE candidate_field.organization_id = approved_review.organization_id
+                  AND candidate_field.review_id = approved_review.id
+                  AND candidate_field.field_status IN ('accepted','corrected')
+              ),
+              'change_count', (
+                SELECT count(*)::bigint
+                FROM public.provider_entity_document_review_fields candidate_field
+                LEFT JOIN public.provider_legal_entity_facts current_fact
+                  ON current_fact.organization_id = candidate_field.organization_id
+                 AND current_fact.legal_entity_id = approved_review.legal_entity_id
+                 AND current_fact.field_code = candidate_field.field_code
+                 AND current_fact.fact_status = 'current'
+                WHERE candidate_field.organization_id = approved_review.organization_id
+                  AND candidate_field.review_id = approved_review.id
+                  AND candidate_field.field_status IN ('accepted','corrected')
+                  AND (current_fact.id IS NULL OR current_fact.fact_value IS DISTINCT FROM
+                    CASE WHEN candidate_field.field_status = 'corrected'
+                      THEN candidate_field.reviewer_value ELSE candidate_field.proposed_value END)
+              ),
+              'unchanged_count', (
+                SELECT count(*)::bigint
+                FROM public.provider_entity_document_review_fields candidate_field
+                JOIN public.provider_legal_entity_facts current_fact
+                  ON current_fact.organization_id = candidate_field.organization_id
+                 AND current_fact.legal_entity_id = approved_review.legal_entity_id
+                 AND current_fact.field_code = candidate_field.field_code
+                 AND current_fact.fact_status = 'current'
+                WHERE candidate_field.organization_id = approved_review.organization_id
+                  AND candidate_field.review_id = approved_review.id
+                  AND candidate_field.field_status IN ('accepted','corrected')
+                  AND current_fact.fact_value = CASE WHEN candidate_field.field_status = 'corrected'
+                    THEN candidate_field.reviewer_value ELSE candidate_field.proposed_value END
+              ),
+              'withheld_count', (
+                SELECT count(*)::bigint FROM public.provider_entity_document_review_fields withheld_field
+                WHERE withheld_field.organization_id = approved_review.organization_id
+                  AND withheld_field.review_id = approved_review.id
+                  AND withheld_field.field_status = 'withheld'
+              ),
+              'expected_current_fact_ids', COALESCE((
+                SELECT jsonb_object_agg(
+                  candidate_field.field_code,
+                  COALESCE(to_jsonb(current_fact.id::text), 'null'::jsonb)
+                )
+                FROM public.provider_entity_document_review_fields candidate_field
+                LEFT JOIN public.provider_legal_entity_facts current_fact
+                  ON current_fact.organization_id = candidate_field.organization_id
+                 AND current_fact.legal_entity_id = approved_review.legal_entity_id
+                 AND current_fact.field_code = candidate_field.field_code
+                 AND current_fact.fact_status = 'current'
+                WHERE candidate_field.organization_id = approved_review.organization_id
+                  AND candidate_field.review_id = approved_review.id
+                  AND candidate_field.field_status IN ('accepted','corrected')
+              ), '{}'::jsonb),
+              'promotion_status', COALESCE(promotion.promotion_status, 'ready')
+            ) ORDER BY approved_review.reviewed_at, approved_review.id)
+            FROM public.provider_entity_document_reviews approved_review
+            JOIN public.provider_legal_entity_document_assets approved_asset
+              ON approved_asset.organization_id = approved_review.organization_id
+             AND approved_asset.id = approved_review.document_asset_id
+            LEFT JOIN public.provider_legal_entity_fact_promotions promotion
+              ON promotion.organization_id = approved_review.organization_id
+             AND promotion.review_id = approved_review.id
+            WHERE approved_review.organization_id = entity.organization_id
+              AND approved_review.legal_entity_id = entity.id
+              AND approved_review.review_status = 'approved'
+          ), '[]'::jsonb) AS promotion_candidates,
+          COALESCE((
+            SELECT jsonb_agg(jsonb_build_object(
               'name', initcap(replace(asset.document_type, '_', ' ')),
               'document_type', asset.document_type,
               'verification_status', asset.verification_status,

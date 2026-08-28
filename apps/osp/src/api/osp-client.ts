@@ -8,6 +8,8 @@ import {
   type CorporateProfileReadModel,
   ProfileReviewMutationResponseSchema,
   type ProfileReviewMutationReceipt,
+  ProfileFactPromotionResponseSchema,
+  type ProfileFactPromotionReceipt,
   type CaseDetail,
   type CaseSummary,
   DocumentApprovalResponseSchema,
@@ -60,6 +62,7 @@ export interface OspCorporateProfileClient {
   claimProfileReview(input: ClaimProfileReviewInput): Promise<ProfileReviewMutationReceipt>;
   decideProfileReviewField(input: DecideProfileReviewFieldInput): Promise<ProfileReviewMutationReceipt>;
   finalizeProfileReview(input: FinalizeProfileReviewInput): Promise<ProfileReviewMutationReceipt>;
+  promoteProfileReviewFacts(input: PromoteProfileReviewFactsInput): Promise<ProfileFactPromotionReceipt>;
 }
 
 export interface OspCaseReadClient {
@@ -79,6 +82,11 @@ export type SubmitCaseFormForReviewInput = SaveCaseFormDraftInput & { expectedCa
 export type ClaimProfileReviewInput = { reviewId: string; expectedRevision: number };
 export type DecideProfileReviewFieldInput = ClaimProfileReviewInput & { fieldId: string; decision: 'accepted' | 'corrected' | 'rejected' | 'withheld'; decisionNote: string; reviewerValue: unknown | null };
 export type FinalizeProfileReviewInput = ClaimProfileReviewInput & { decision: 'approved' | 'rejected' | 'changes_required'; decisionNote: string };
+export type PromoteProfileReviewFactsInput = ClaimProfileReviewInput & {
+  candidateSha256: string;
+  expectedCurrentFactIds: Readonly<Record<string, string | null>>;
+  confirmation: 'PROMOTE_VERIFIED_PROFILE_FACTS';
+};
 
 export interface OspClient extends OspReadClient, OspCorporateProfileClient, OspCaseReadClient, WorkflowClient {
   syncGmailInbox?(): Promise<GmailSyncResult>;
@@ -443,6 +451,25 @@ export function createOspClient(options: ClientOptions): OspClient {
     finalizeProfileReview: (input: FinalizeProfileReviewInput) => {
       if (!UUID.test(input.reviewId) || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1 || input.expectedRevision > 2_147_483_647 || !['approved', 'rejected', 'changes_required'].includes(input.decision) || !validDecisionNote(input.decisionNote)) return Promise.reject(new OspClientError('INVALID_REQUEST'));
       return profileReviewMutation('finalize_profile_review', { reviewId: input.reviewId, expectedRevision: input.expectedRevision, decision: input.decision, decisionNote: input.decisionNote });
+    },
+    promoteProfileReviewFacts: async (input: PromoteProfileReviewFactsInput) => {
+      const entries = Object.entries(input.expectedCurrentFactIds);
+      if (!UUID.test(input.reviewId) || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1 || input.expectedRevision > 2_147_483_647 ||
+          !SHA.test(input.candidateSha256) || input.confirmation !== 'PROMOTE_VERIFIED_PROFILE_FACTS' || entries.length > 128 ||
+          entries.some(([key, value]) => !/^[a-z][a-z0-9_]{1,127}$/.test(key) || !(value === null || UUID.test(value)))) throw new OspClientError('INVALID_REQUEST');
+      const encoded = new TextEncoder().encode(JSON.stringify({
+        reviewId: input.reviewId,
+        expectedRevision: input.expectedRevision,
+        candidateSha256: input.candidateSha256,
+        expectedCurrentFactIds: input.expectedCurrentFactIds,
+        confirmation: input.confirmation,
+      }));
+      if (encoded.byteLength > 8_192) throw new OspClientError('INVALID_REQUEST');
+      const response = await documentRequest({
+        query: [['action', 'promote_profile_review_facts']], expectedStatus: 200,
+        schema: ProfileFactPromotionResponseSchema, contentType: 'application/json', body: encoded.buffer,
+      });
+      return response.data;
     },
     listCustomerRegistrationCases: async () => (await read(
       { version: 1, action: 'list_customer_registration_cases' }, CaseListSuccessResponseSchema,

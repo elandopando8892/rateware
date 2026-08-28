@@ -52,6 +52,7 @@ export type CorporateProfileSeamRow = {
   review_fields: unknown;
   total_fields: unknown;
   fields: unknown;
+  promotion_candidates: unknown;
   evidence: unknown;
 };
 

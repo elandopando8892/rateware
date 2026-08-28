@@ -20,6 +20,7 @@ export type DocumentVersionSummary = {
 export type ProfileReviewClaimInput = { organizationId: string; reviewId: string; expectedRevision: number; actorSubject: string; actorPermission: 'osp:operate' };
 export type ProfileReviewFieldDecisionInput = ProfileReviewClaimInput & { fieldId: string; decision: 'accepted' | 'corrected' | 'rejected' | 'withheld'; decisionNote: string; reviewerValue: unknown | null };
 export type ProfileReviewFinalizationInput = ProfileReviewClaimInput & { decision: 'approved' | 'rejected' | 'changes_required'; decisionNote: string };
+export type ProfileFactPromotionInput = ProfileReviewClaimInput & { candidateSha256: string; expectedCurrentFactIds: Readonly<Record<string, string | null>> };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
@@ -148,6 +149,23 @@ export function createPostgresDocumentStore(options: { databaseUrl: string; post
         const row = one(await tx`select review_id, review_status, verification_status, revision from osp_private.finalize_profile_evidence_review_command(${input.organizationId}, ${input.reviewId}, ${input.expectedRevision}, ${input.decision}, ${input.decisionNote}, ${input.actorSubject}, ${input.actorPermission})`, 'PROFILE_REVIEW_VERSION_CONFLICT');
         if (row.review_id !== input.reviewId || row.review_status !== input.decision || !['verified', 'rejected', 'needs_review'].includes(String(row.verification_status))) throw new Error('PROFILE_REVIEW_FINALIZATION_REJECTED');
         return Object.freeze({ reviewId: input.reviewId, reviewStatus: input.decision, verificationStatus: row.verification_status as 'verified' | 'rejected' | 'needs_review', revision: integer(row.revision, 'PROFILE_REVIEW_FINALIZATION_REJECTED') });
+      });
+    },
+    async promoteProfileReviewFacts(input: ProfileFactPromotionInput) {
+      if (!SHA.test(input.candidateSha256) || Object.keys(input.expectedCurrentFactIds).length > 128) throw new Error('PROFILE_FACT_PROMOTION_REJECTED');
+      return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        const row = one(await tx`select promotion_id, promotion_status, promoted_fact_count, unchanged_fact_count, withheld_field_count, review_id, review_revision, replayed from osp_private.promote_profile_review_facts_command(${input.organizationId}, ${input.reviewId}, ${input.expectedRevision}, ${input.candidateSha256}, ${JSON.stringify(input.expectedCurrentFactIds)}::jsonb, ${input.actorSubject}, ${input.actorPermission})`, 'PROFILE_FACT_PROMOTION_CONFLICT');
+        if (row.promotion_status !== 'applied' || row.review_id !== input.reviewId || typeof row.promotion_id !== 'string' || !UUID.test(row.promotion_id) || typeof row.replayed !== 'boolean') throw new Error('PROFILE_FACT_PROMOTION_REJECTED');
+        return Object.freeze({
+          promotionId: row.promotion_id,
+          promotionStatus: 'applied' as const,
+          promotedFactCount: integer(row.promoted_fact_count, 'PROFILE_FACT_PROMOTION_REJECTED'),
+          unchangedFactCount: integer(row.unchanged_fact_count, 'PROFILE_FACT_PROMOTION_REJECTED'),
+          withheldFieldCount: integer(row.withheld_field_count, 'PROFILE_FACT_PROMOTION_REJECTED'),
+          reviewId: input.reviewId,
+          reviewRevision: integer(row.review_revision, 'PROFILE_FACT_PROMOTION_REJECTED'),
+          replayed: row.replayed,
+        });
       });
     },
   });

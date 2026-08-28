@@ -139,6 +139,19 @@ export type CorporateProfileEntityReadModel = {
   review_fields: string;
   total_fields: string;
   fields: readonly CorporateProfileFieldReadModel[];
+  promotion_candidates: readonly {
+    review_id: string;
+    review_revision: number;
+    document_type: string;
+    evidence_label: string;
+    candidate_sha256: string;
+    candidate_count: string;
+    change_count: string;
+    unchanged_count: string;
+    withheld_count: string;
+    expected_current_fact_ids: Readonly<Record<string, string | null>>;
+    promotion_status: 'ready' | 'pending' | 'applied' | 'conflict' | 'failed';
+  }[];
   evidence: readonly CorporateProfileEvidenceReadModel[];
 };
 
@@ -374,6 +387,7 @@ const PROFILE_SUPPORT = ['verified_match', 'conflict', 'evidence_available', 'un
 const PROFILE_REVIEW_STATUS = ['pending', 'in_review'] as const;
 const PROFILE_REVIEW_OWNERSHIP = ['available', 'owned', 'locked'] as const;
 const PROFILE_FIELD_STATUS = ['pending', 'accepted', 'corrected', 'rejected', 'withheld'] as const;
+const PROFILE_PROMOTION_STATUS = ['ready', 'pending', 'applied', 'conflict', 'failed'] as const;
 
 function enumValue<const T extends readonly string[]>(value: unknown, allowed: T): T[number] {
   if (typeof value !== 'string' || !allowed.includes(value)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
@@ -445,17 +459,51 @@ function normalizeProfileEvidence(value: unknown): CorporateProfileEvidenceReadM
 function normalizeCorporateProfileEntity(value: unknown): CorporateProfileEntityReadModel {
   const row = recordWithExactKeys(value, [
     'country_code', 'default_currency', 'entity_code', 'entity_id', 'evidence', 'fields',
-    'legal_name', 'review_fields', 'status', 'total_fields', 'verified_fields',
+    'legal_name', 'promotion_candidates', 'review_fields', 'status', 'total_fields', 'verified_fields',
   ]);
   if (typeof row.entity_id !== 'string' || !UUID_PATTERN.test(row.entity_id) ||
       typeof row.entity_code !== 'string' || !/^[A-Z0-9]{2,16}$/.test(row.entity_code) ||
       typeof row.country_code !== 'string' || !/^[A-Z]{2}$/.test(row.country_code) ||
       !(row.default_currency === null || (typeof row.default_currency === 'string' && /^[A-Z]{3}$/.test(row.default_currency))) ||
-      !Array.isArray(row.fields) || row.fields.length > 128 || !Array.isArray(row.evidence) || row.evidence.length > 64) {
+      !Array.isArray(row.fields) || row.fields.length > 128 || !Array.isArray(row.evidence) || row.evidence.length > 64 ||
+      !Array.isArray(row.promotion_candidates) || row.promotion_candidates.length > 20) {
     throw new OspApiError('DEPENDENCY_UNAVAILABLE');
   }
   const fields = row.fields.map(normalizeProfileField);
   if (new Set(fields.map((field) => field.code)).size !== fields.length) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  const promotionCandidates = row.promotion_candidates.map((value) => {
+    const candidate = recordWithExactKeys(value, [
+      'candidate_count', 'candidate_sha256', 'change_count', 'document_type', 'evidence_label',
+      'expected_current_fact_ids', 'promotion_status', 'review_id', 'review_revision',
+      'unchanged_count', 'withheld_count',
+    ]);
+    if (typeof candidate.review_id !== 'string' || !UUID_PATTERN.test(candidate.review_id) ||
+        typeof candidate.candidate_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(candidate.candidate_sha256) ||
+        typeof candidate.document_type !== 'string' || !/^[a-z][a-z0-9_]{1,127}$/.test(candidate.document_type) ||
+        !candidate.expected_current_fact_ids || typeof candidate.expected_current_fact_ids !== 'object' || Array.isArray(candidate.expected_current_fact_ids)) {
+      throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+    }
+    const reviewRevision = Number(candidate.review_revision);
+    if (!Number.isSafeInteger(reviewRevision) || reviewRevision < 1 || reviewRevision > 2_147_483_647) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+    const expectedCurrentFactIds: Record<string, string | null> = {};
+    for (const [key, currentId] of Object.entries(candidate.expected_current_fact_ids as Record<string, unknown>)) {
+      if (!/^[a-z][a-z0-9_]{1,127}$/.test(key) || !(currentId === null || typeof currentId === 'string' && UUID_PATTERN.test(currentId))) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+      expectedCurrentFactIds[key] = currentId as string | null;
+    }
+    return Object.freeze({
+      review_id: candidate.review_id,
+      review_revision: reviewRevision,
+      document_type: candidate.document_type,
+      evidence_label: normalizeBoundedText(candidate.evidence_label, 256) as string,
+      candidate_sha256: candidate.candidate_sha256,
+      candidate_count: normalizeCanonicalDecimal(candidate.candidate_count),
+      change_count: normalizeCanonicalDecimal(candidate.change_count),
+      unchanged_count: normalizeCanonicalDecimal(candidate.unchanged_count),
+      withheld_count: normalizeCanonicalDecimal(candidate.withheld_count),
+      expected_current_fact_ids: Object.freeze(expectedCurrentFactIds),
+      promotion_status: enumValue(candidate.promotion_status, PROFILE_PROMOTION_STATUS),
+    });
+  });
   return {
     entity_id: row.entity_id,
     entity_code: row.entity_code,
@@ -467,6 +515,7 @@ function normalizeCorporateProfileEntity(value: unknown): CorporateProfileEntity
     review_fields: normalizeCanonicalDecimal(row.review_fields),
     total_fields: normalizeCanonicalDecimal(row.total_fields),
     fields,
+    promotion_candidates: promotionCandidates,
     evidence: row.evidence.map(normalizeProfileEvidence),
   };
 }

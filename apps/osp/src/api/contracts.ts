@@ -191,6 +191,33 @@ export const ProfileReviewMutationResponseSchema = z.strictObject({
   }),
 });
 
+export const ProfileFactPromotionCandidateSchema = z.strictObject({
+  review_id: z.uuid(),
+  review_revision: z.number().int().min(1).max(2_147_483_647),
+  document_type: z.string().regex(/^[a-z][a-z0-9_]{1,127}$/),
+  evidence_label: z.string().min(1).max(256),
+  candidate_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  candidate_count: CanonicalCountSchema,
+  change_count: CanonicalCountSchema,
+  unchanged_count: CanonicalCountSchema,
+  withheld_count: CanonicalCountSchema,
+  expected_current_fact_ids: z.record(z.string().regex(/^[a-z][a-z0-9_]{1,127}$/), z.uuid().nullable()),
+  promotion_status: z.enum(['ready', 'pending', 'applied', 'conflict', 'failed']),
+});
+
+export const ProfileFactPromotionResponseSchema = z.strictObject({
+  data: z.strictObject({
+    promotionId: z.uuid(),
+    promotionStatus: z.literal('applied'),
+    promotedFactCount: z.number().int().min(0).max(128),
+    unchangedFactCount: z.number().int().min(0).max(128),
+    withheldFieldCount: z.number().int().min(0).max(128),
+    reviewId: z.uuid(),
+    reviewRevision: z.number().int().min(1).max(2_147_483_647),
+    replayed: z.boolean(),
+  }),
+});
+
 export const CorporateProfileEvidenceSchema = z.strictObject({
   name: z.string().min(1).max(256),
   document_type: z.string().regex(/^[a-z][a-z0-9_]{1,127}$/),
@@ -211,6 +238,7 @@ export const CorporateProfileEntitySchema = z.strictObject({
   review_fields: CanonicalCountSchema,
   total_fields: CanonicalCountSchema,
   fields: z.array(CorporateProfileFieldSchema).max(128),
+  promotion_candidates: z.array(ProfileFactPromotionCandidateSchema).max(20).default([]),
   evidence: z.array(CorporateProfileEvidenceSchema).max(64),
 });
 
@@ -565,6 +593,7 @@ export const CaseFormSubmissionResponseSchema = z.strictObject({
 export type PipelineReadModel = z.infer<typeof PipelineReadModelSchema>;
 export type CorporateProfileReadModel = z.infer<typeof CorporateProfileSuccessResponseSchema>['data'];
 export type CorporateProfileEntity = z.infer<typeof CorporateProfileEntitySchema>;
+export type ProfileFactPromotionReceipt = z.infer<typeof ProfileFactPromotionResponseSchema>['data'];
 export type ProfileReviewMutationReceipt = z.infer<typeof ProfileReviewMutationResponseSchema>['data'];
 export type GmailReadModel = z.infer<typeof GmailReadModelSchema>;
 export type GmailSyncResult = z.infer<typeof GmailSyncSuccessResponseSchema>['data'];

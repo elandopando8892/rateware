@@ -88,7 +88,7 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
     }],
     [{
       entity_id: '33333333-3333-4333-8333-333333333333', entity_code: 'XBFMX', legal_name: 'Synthetic XBF Mexico',
-      country_code: 'MX', default_currency: 'MXN', status: 'active', verified_fields: '1', review_fields: '0', total_fields: '1', fields: [], evidence: [],
+      country_code: 'MX', default_currency: 'MXN', status: 'active', verified_fields: '1', review_fields: '0', total_fields: '1', fields: [], promotion_candidates: [], evidence: [],
     }],
   ]);
   const store = createPostgresOspReadStore({

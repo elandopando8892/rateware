@@ -53,6 +53,7 @@ const previewCorporateProfile: CorporateProfileReadModel = {
         { code: 'legal_representative', label: 'Legal representative', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted', support_status: 'conflict', evidence_candidate_count: '2', reviewed_candidate_count: '1', review_candidates: [] },
         { code: 'business_phone', label: 'Business phone', display_value: 'On file', verification_status: 'needs_review', sensitivity: 'restricted', support_status: 'unsupported', evidence_candidate_count: '0', reviewed_candidate_count: '0', review_candidates: [] },
       ],
+      promotion_candidates: [],
       evidence: [
         { name: 'Tax status certificate', document_type: 'tax_certificate', verification_status: 'verified', sensitivity: 'restricted', release_policy: 'approval_required', expiry_state: 'current' },
         { name: 'Legal representative authority', document_type: 'legal_representative_authority', verification_status: 'needs_review', sensitivity: 'highly_restricted', release_policy: 'approval_required', expiry_state: 'no_expiry' },
@@ -71,6 +72,17 @@ const previewCorporateProfile: CorporateProfileReadModel = {
         { code: 'requested_credit_amount', label: 'Credit requested', display_value: '$25,000 USD', verification_status: 'needs_review', sensitivity: 'confidential', support_status: 'unsupported', evidence_candidate_count: '0', reviewed_candidate_count: '0', review_candidates: [] },
         { code: 'bank_name', label: 'Bank reference', display_value: 'Withheld', verification_status: 'needs_review', sensitivity: 'restricted', support_status: 'evidence_available', evidence_candidate_count: '1', reviewed_candidate_count: '0', review_candidates: [usBankReview] },
       ],
+      promotion_candidates: [{
+        review_id: '92000000-0000-4000-8000-000000000004', review_revision: 6,
+        document_type: 'formation_document', evidence_label: 'Formation document',
+        candidate_sha256: '9'.repeat(64), candidate_count: '3', change_count: '2',
+        unchanged_count: '1', withheld_count: '1', promotion_status: 'ready',
+        expected_current_fact_ids: {
+          entity_type: null,
+          business_start_year: '94000000-0000-4000-8000-000000000001',
+          affiliated_company: null,
+        },
+      }],
       evidence: [
         { name: 'W-9', document_type: 'w9', verification_status: 'needs_review', sensitivity: 'restricted', release_policy: 'approval_required', expiry_state: 'no_expiry' },
         { name: 'Broker authority', document_type: 'operating_authority', verification_status: 'verified', sensitivity: 'restricted', release_policy: 'approval_required', expiry_state: 'current' },
@@ -325,6 +337,26 @@ function createPreviewClient(): OspClient {
         })),
       };
       return { reviewId: input.reviewId, reviewStatus: input.decision, verificationStatus: input.decision === 'approved' ? 'verified' : input.decision === 'rejected' ? 'rejected' : 'needs_review', revision: input.expectedRevision + 1 };
+    },
+    promoteProfileReviewFacts: async (input) => {
+      const entity = corporateProfile.entities.find((candidate) => candidate.promotion_candidates.some((promotion) => promotion.review_id === input.reviewId));
+      const promotion = entity?.promotion_candidates.find((candidate) => candidate.review_id === input.reviewId);
+      if (!entity || !promotion || promotion.promotion_status !== 'ready' || promotion.review_revision !== input.expectedRevision ||
+          promotion.candidate_sha256 !== input.candidateSha256 || input.confirmation !== 'PROMOTE_VERIFIED_PROFILE_FACTS' ||
+          JSON.stringify(promotion.expected_current_fact_ids) !== JSON.stringify(input.expectedCurrentFactIds)) throw new Error('Preview promotion conflict');
+      corporateProfile = {
+        ...corporateProfile,
+        entities: corporateProfile.entities.map((candidate) => candidate.entity_id !== entity.entity_id ? candidate : {
+          ...candidate,
+          promotion_candidates: candidate.promotion_candidates.map((item) => item.review_id === input.reviewId ? { ...item, promotion_status: 'applied' as const } : item),
+        }),
+      };
+      return {
+        promotionId: '95000000-0000-4000-8000-000000000001', promotionStatus: 'applied' as const,
+        promotedFactCount: Number(promotion.change_count), unchangedFactCount: Number(promotion.unchanged_count),
+        withheldFieldCount: Number(promotion.withheld_count), reviewId: input.reviewId,
+        reviewRevision: input.expectedRevision, replayed: false,
+      };
     },
     listCustomerRegistrationCases: async () => structuredClone(previewCaseRows),
     getCustomerRegistrationCase: async (requestedCaseId) => requestedCaseId === caseId

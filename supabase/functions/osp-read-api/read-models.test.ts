@@ -86,12 +86,20 @@ Deno.test('normalizeCorporateProfile exposes only bounded masked display values'
       { code: 'tax_identifier', label: 'Tax identifier', display_value: 'On file', verification_status: 'verified', sensitivity: 'restricted', support_status: 'verified_match', evidence_candidate_count: '2', reviewed_candidate_count: '2', review_candidates: [] },
       { code: 'bank_name', label: 'Bank name', display_value: 'Withheld', verification_status: 'needs_review', sensitivity: 'restricted', support_status: 'evidence_available', evidence_candidate_count: '1', reviewed_candidate_count: '0', review_candidates: [] },
     ],
+    promotion_candidates: [{
+      review_id: '44444444-4444-4444-8444-444444444444', review_revision: 4,
+      document_type: 'formation_document', evidence_label: 'Formation document', candidate_sha256: 'a'.repeat(64),
+      candidate_count: '2', change_count: '1', unchanged_count: '1', withheld_count: '1',
+      expected_current_fact_ids: { legal_name: '55555555-5555-4555-8555-555555555555', entity_type: null },
+      promotion_status: 'ready',
+    }],
     evidence: [{ name: 'Synthetic evidence', document_type: 'tax_certificate', verification_status: 'needs_review', sensitivity: 'restricted', release_policy: 'approval_required', expiry_state: 'current' }],
   }]);
   assert.equal(profile.disclosure_locked, true);
   assert.deepEqual(profile.entities[0].fields.map((field) => field.display_value), ['On file', 'Withheld']);
   assert.deepEqual(profile.entities[0].fields.map((field) => field.support_status), ['verified_match', 'evidence_available']);
   assert.deepEqual(profile.entities[0].fields.map((field) => field.evidence_candidate_count), ['2', '1']);
+  assert.deepEqual(profile.entities[0].promotion_candidates[0].expected_current_fact_ids, { legal_name: '55555555-5555-4555-8555-555555555555', entity_type: null });
   assert.equal(JSON.stringify(profile).includes('storage_path'), false);
   expectDependency(() => normalizeCorporateProfile([{ ...profile.entities[0], raw_value: 'must-not-pass' }]));
 });

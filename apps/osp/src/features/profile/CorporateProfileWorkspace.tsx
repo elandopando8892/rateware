@@ -57,9 +57,24 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
   const [selectedReview, setSelectedReview] = useState<{ fieldCode: string; reviewId: string } | null>(null);
   const [decisionNote, setDecisionNote] = useState('');
   const [lastOutcome, setLastOutcome] = useState('');
+  const [confirmedPromotionReviewId, setConfirmedPromotionReviewId] = useState('');
   const mutation = useMutation({
     mutationFn: async (operation: () => Promise<unknown>) => await operation(),
     onSuccess: async () => { setLastOutcome('Review action stored in the audit ledger. No profile facts were promoted.'); await query.refetch(); },
+  });
+  const promotionMutation = useMutation({
+    mutationFn: async (candidate: CorporateProfileEntity['promotion_candidates'][number]) => await client.promoteProfileReviewFacts({
+      reviewId: candidate.review_id,
+      expectedRevision: candidate.review_revision,
+      candidateSha256: candidate.candidate_sha256,
+      expectedCurrentFactIds: candidate.expected_current_fact_ids,
+      confirmation: 'PROMOTE_VERIFIED_PROFILE_FACTS',
+    }),
+    onSuccess: async (receipt) => {
+      setLastOutcome(`${receipt.promotedFactCount} reviewed facts promoted to the private XBF ledger; ${receipt.unchangedFactCount} already matched and ${receipt.withheldFieldCount} remained withheld.`);
+      setConfirmedPromotionReviewId('');
+      await query.refetch();
+    },
   });
 
   if (query.isPending || query.fetchStatus !== 'idle') {
@@ -123,6 +138,25 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
             <div className="entity-readiness"><strong>{readiness(entity)}%</strong><span>{entity.verified_fields}/{entity.total_fields} facts verified</span></div>
           </div>
           <div className="readiness-track" aria-hidden="true"><span style={{ width: `${readiness(entity)}%` }} /></div>
+        </section>
+
+        <section className="profile-promotion-queue panel" aria-labelledby="profile-promotion-title">
+          <div className="panel-heading">
+            <div><p className="eyebrow">Sprint 7 · governed source of truth</p><h2 id="profile-promotion-title">Canonical promotion</h2><p>Apply only an approved evidence snapshot to Rateware's private fact ledger. Every changed fact keeps its review provenance and prior version.</p></div>
+            <span className="read-only-badge">No disclosure</span>
+          </div>
+          {entity.promotion_candidates.length === 0 ? <p role="status" className="promotion-empty">No approved evidence review is waiting for promotion.</p> : <ul className="promotion-list">
+            {entity.promotion_candidates.map((candidate) => <li key={candidate.review_id}>
+              <div className="promotion-copy"><strong>{candidate.evidence_label}</strong><span>{candidate.candidate_count} reviewed facts · {candidate.change_count} changes · {candidate.unchanged_count} unchanged</span><small>{candidate.withheld_count} restricted field(s) remain withheld · fingerprint {candidate.candidate_sha256.slice(0, 10)}…</small></div>
+              <span className={`profile-status profile-status-${candidate.promotion_status === 'applied' ? 'verified' : candidate.promotion_status === 'ready' ? 'review_required' : 'withheld'}`}>{candidate.promotion_status === 'ready' ? 'Ready to promote' : candidate.promotion_status.replace('_', ' ')}</span>
+              {candidate.promotion_status === 'ready' ? <div className="promotion-control">
+                <label><input type="checkbox" checked={confirmedPromotionReviewId === candidate.review_id} disabled={promotionMutation.isPending} onChange={(event) => setConfirmedPromotionReviewId(event.target.checked ? candidate.review_id : '')} /> I confirm this exact reviewed snapshot becomes the reusable XBF profile.</label>
+                <button type="button" className="primary-action" disabled={confirmedPromotionReviewId !== candidate.review_id || promotionMutation.isPending} onClick={() => promotionMutation.mutate(candidate)}>{promotionMutation.isPending ? 'Promoting…' : 'Promote reviewed facts'}</button>
+              </div> : null}
+            </li>)}
+          </ul>}
+          {promotionMutation.isError ? <p role="alert">The profile or current fact version changed. Reload and review the new comparison before promoting.</p> : null}
+          <div className="effects-lock" role="note"><span aria-hidden="true">✓</span><div><strong>Internal profile update only</strong><p>This action never releases evidence, generates a provider package, signs a form or sends a message.</p></div></div>
         </section>
 
         <section className="profile-review-queue panel" aria-labelledby="profile-review-title">

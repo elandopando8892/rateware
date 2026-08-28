@@ -17,8 +17,8 @@
 .entity-option-active { border: 2px solid var(--xbf-navy); background: #eef1f8; }
 .profile-workspace-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(18rem, .8fr); gap: 1.25rem; align-items: start; }
 .profile-main, .profile-side { display: grid; gap: 1.25rem; }
-.profile-summary, .profile-section, .profile-review-queue, .package-readiness, .evidence-panel { padding: 1.25rem; }
-.profile-summary h2, .profile-section h2, .profile-review-queue h2, .package-readiness h2, .evidence-panel h2 { margin: .2rem 0; }
+.profile-summary, .profile-section, .profile-review-queue, .profile-promotion-queue, .package-readiness, .evidence-panel { padding: 1.25rem; }
+.profile-summary h2, .profile-section h2, .profile-review-queue h2, .profile-promotion-queue h2, .package-readiness h2, .evidence-panel h2 { margin: .2rem 0; }
 .profile-summary p { margin: .25rem 0 0; color: var(--muted); }
 .entity-readiness { display: grid; min-width: 7.5rem; text-align: right; }
 .entity-readiness strong { color: var(--xbf-navy); font-family: var(--font-display); font-size: 2rem; }
@@ -33,6 +33,16 @@
 .profile-status-verified { color: #14653e; background: #e7f6ee; }
 .profile-status-review_required { color: #805000; background: #fff1c8; }
 .profile-status-withheld { color: #862332; background: #fde8eb; }
+.profile-promotion-queue .panel-heading p:not(.eyebrow) { max-width: 48rem; margin: .25rem 0 0; color: var(--muted); }
+.promotion-empty { margin: 1rem 0; color: var(--muted); }
+.promotion-list { display: grid; gap: .75rem; margin: 1rem 0; padding: 0; list-style: none; }
+.promotion-list > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .8rem 1rem; align-items: center; padding: 1rem; border: 1px solid var(--line); border-radius: .75rem; background: #f8f9fc; }
+.promotion-copy { display: grid; gap: .18rem; }
+.promotion-copy span, .promotion-copy small { color: var(--muted); }
+.promotion-copy small { overflow-wrap: anywhere; }
+.promotion-control { grid-column: 1 / -1; display: flex; gap: 1rem; align-items: center; justify-content: space-between; padding-top: .8rem; border-top: 1px solid var(--line); }
+.promotion-control label { display: flex; gap: .55rem; align-items: flex-start; max-width: 42rem; color: var(--ink); font-size: .78rem; font-weight: 750; }
+.promotion-control input { margin-top: .15rem; accent-color: var(--xbf-navy); }
 .profile-review-queue .panel-heading p:not(.eyebrow) { max-width: 48rem; margin: .25rem 0 0; color: var(--muted); }
 .verification-scorecards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .65rem; margin-top: 1rem; }
 .verification-scorecard { display: grid; gap: .15rem; padding: .85rem; border: 1px solid var(--line); border-radius: .75rem; color: var(--ink); text-align: left; background: #f8f9fc; }

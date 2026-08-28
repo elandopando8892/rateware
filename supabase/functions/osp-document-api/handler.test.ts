@@ -121,7 +121,7 @@ Deno.test('document API approves only exact reviewed hashes and contains unsafe 
   }
 });
 
-Deno.test('document API governs profile evidence review without promoting facts or accepting a read-only identity', async () => {
+Deno.test('document API separates profile review from explicit fact promotion and rejects a read-only identity', async () => {
   const calls: Array<{ action: string; input: Record<string, unknown> }> = [];
   const reviewId = '44444444-4444-4444-8444-444444444444';
   const fieldId = '55555555-5555-4555-8555-555555555555';
@@ -137,6 +137,10 @@ Deno.test('document API governs profile evidence review without promoting facts 
     finalizeProfileReview: async (input: Record<string, unknown>) => {
       calls.push({ action: 'finalize', input });
       return { reviewId, reviewStatus: 'approved' as const, verificationStatus: 'verified' as const, revision: 4 };
+    },
+    promoteProfileReviewFacts: async (input: Record<string, unknown>) => {
+      calls.push({ action: 'promote', input });
+      return { promotionId: '66666666-6666-4666-8666-666666666666', promotionStatus: 'applied' as const, promotedFactCount: 2, unchangedFactCount: 1, withheldFieldCount: 1, reviewId, reviewRevision: 4, replayed: false };
     },
   };
   const handler = createDocumentApiHandler({
@@ -162,8 +166,13 @@ Deno.test('document API governs profile evidence review without promoting facts 
     reviewId, expectedRevision: 3, decision: 'approved', decisionNote: 'All documentary evidence was reviewed.',
   }))).status, 200);
   assertEquals(calls.map(({ action }) => action), ['claim', 'decide', 'finalize']);
+  assertEquals((await handler(jsonRequest('promote_profile_review_facts', {
+    reviewId, expectedRevision: 4, candidateSha256: 'a'.repeat(64),
+    expectedCurrentFactIds: { legal_name: null }, confirmation: 'PROMOTE_VERIFIED_PROFILE_FACTS',
+  }))).status, 200);
+  assertEquals(calls.map(({ action }) => action), ['claim', 'decide', 'finalize', 'promote']);
   assertEquals(calls.every(({ input }) => input.organizationId === identity.identity.organization && input.actorSubject === identity.identity.subject), true);
-  assertEquals(calls.some(({ input }) => 'promote' in input || 'send' in input), false);
+  assertEquals(calls.some(({ input }) => 'send' in input), false);
 
   const readOnly = createDocumentApiHandler({
     verifyToken: async () => readOnlyIdentity,
@@ -176,7 +185,11 @@ Deno.test('document API governs profile evidence review without promoting facts 
     incidentId: () => 'incident-profile-review-forbidden',
   });
   assertEquals((await readOnly(jsonRequest('claim_profile_review', { reviewId, expectedRevision: 1 }))).status, 403);
-  assertEquals(calls.length, 3);
+  assertEquals((await readOnly(jsonRequest('promote_profile_review_facts', {
+    reviewId, expectedRevision: 4, candidateSha256: 'a'.repeat(64),
+    expectedCurrentFactIds: { legal_name: null }, confirmation: 'PROMOTE_VERIFIED_PROFILE_FACTS',
+  }))).status, 403);
+  assertEquals(calls.length, 4);
 });
 
 Deno.test('document API preflight accepts the exact header set independent of order and rejects extras', async () => {
@@ -205,6 +218,7 @@ Deno.test('document API preflight accepts the exact header set independent of or
     ['action=claim_profile_review', 'authorization, content-type'],
     ['action=decide_profile_review_field', 'content-type, authorization'],
     ['action=finalize_profile_review', 'authorization,content-type'],
+    ['action=promote_profile_review_facts', 'authorization,content-type'],
   ]) {
     const response = await handler(preflight(query, headers));
     assertEquals(response.status, 204);

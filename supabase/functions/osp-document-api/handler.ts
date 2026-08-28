@@ -1,7 +1,7 @@
 import type { VerifiedWorkflowIdentity } from '../_shared/osp/workflow-authority.ts';
 import { jsonResponse, NO_CACHE_HEADERS, OspApiError, postCorsHeaders, safeErrorResponse } from '../osp-read-api/http.ts';
 import type { DocumentApprovalInput, DocumentAuthority, DocumentUploadInput } from './document-service.ts';
-import type { DocumentVersionSummary, ProfileReviewClaimInput, ProfileReviewFieldDecisionInput, ProfileReviewFinalizationInput } from './postgres-document-store.ts';
+import type { DocumentVersionSummary, ProfileFactPromotionInput, ProfileReviewClaimInput, ProfileReviewFieldDecisionInput, ProfileReviewFinalizationInput } from './postgres-document-store.ts';
 
 const BODY_LIMIT_BYTES = 26_214_400;
 const ORIGINS = new Set(['http://localhost:8791', 'https://osp.heymarksman.com']);
@@ -20,6 +20,7 @@ type ProfileReviewStorePort = {
   claimProfileReview(input: ProfileReviewClaimInput): Promise<{ reviewId: string; reviewStatus: 'in_review'; revision: number }>;
   decideProfileReviewField(input: ProfileReviewFieldDecisionInput): Promise<{ reviewId: string; fieldId: string; fieldStatus: ProfileReviewFieldDecisionInput['decision']; revision: number }>;
   finalizeProfileReview(input: ProfileReviewFinalizationInput): Promise<{ reviewId: string; reviewStatus: ProfileReviewFinalizationInput['decision']; verificationStatus: 'verified' | 'rejected' | 'needs_review'; revision: number }>;
+  promoteProfileReviewFacts?(input: ProfileFactPromotionInput): Promise<{ promotionId: string; promotionStatus: 'applied'; promotedFactCount: number; unchangedFactCount: number; withheldFieldCount: number; reviewId: string; reviewRevision: number; replayed: boolean }>;
 };
 
 export type DocumentApiHandlerOptions = {
@@ -68,7 +69,7 @@ function preflightHeaders(url: URL): readonly string[] {
     exactQuery(url, ['action', 'version_id', 'expected_version', 'review_before_sha256', 'review_after_sha256']);
     return ['authorization'];
   }
-  if (['claim_profile_review', 'decide_profile_review_field', 'finalize_profile_review'].includes(action ?? '')) {
+  if (['claim_profile_review', 'decide_profile_review_field', 'finalize_profile_review', 'promote_profile_review_facts'].includes(action ?? '')) {
     exactQuery(url, ['action']);
     return ['authorization', 'content-type'];
   }
@@ -169,7 +170,7 @@ function note(value: unknown): string {
 function serviceError(error: unknown): OspApiError {
   const code = error instanceof Error ? error.message : '';
   if (code === 'FORBIDDEN') return new OspApiError('FORBIDDEN');
-  if (/^(DOCUMENT_UPLOAD_REJECTED|DOCUMENT_APPROVAL_REJECTED|DOCUMENT_REVIEW_HASH_MISMATCH|DOCUMENT_VERSION_CONFLICT|DOCUMENT_NOT_FOUND|DOCUMENT_STORAGE_REJECTED|PROFILE_(?:REVIEW|FIELD|CORRECTION|WITHHOLD|RESTRICTED|EVIDENCE).*)$/.test(code)) return new OspApiError('INVALID_REQUEST');
+  if (/^(DOCUMENT_UPLOAD_REJECTED|DOCUMENT_APPROVAL_REJECTED|DOCUMENT_REVIEW_HASH_MISMATCH|DOCUMENT_VERSION_CONFLICT|DOCUMENT_NOT_FOUND|DOCUMENT_STORAGE_REJECTED|PROFILE_(?:REVIEW|FIELD|FACT|CORRECTION|WITHHOLD|RESTRICTED|EVIDENCE).*)$/.test(code)) return new OspApiError('INVALID_REQUEST');
   if (/^(DOCUMENT_PERSISTENCE_FAILED|DOCUMENT_STORAGE_(?:TEMPORARY|INTEGRITY)|MALWARE_SCAN_UNAVAILABLE)$/.test(code)) return new OspApiError('DEPENDENCY_UNAVAILABLE');
   return new OspApiError('INTERNAL_ERROR');
 }
@@ -256,6 +257,27 @@ export function createDocumentApiHandler(options: DocumentApiHandlerOptions): (r
         if (typeof body.reviewId !== 'string' || !UUID.test(body.reviewId) || typeof body.decision !== 'string' || !['approved', 'rejected', 'changes_required'].includes(body.decision)) throw new OspApiError('INVALID_REQUEST');
         if (!options.profileReviewStore) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
         const result = await options.profileReviewStore.finalizeProfileReview({ organizationId: authority.organizationId, reviewId: body.reviewId, expectedRevision: positiveRevision(body.expectedRevision), decision: body.decision as ProfileReviewFinalizationInput['decision'], decisionNote: note(body.decisionNote), actorSubject: authority.subject, actorPermission: 'osp:operate' });
+        return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+      }
+      if (action === 'promote_profile_review_facts') {
+        exactQuery(url, ['action']);
+        const authority = permission(verified, 'operate');
+        const body = await strictJsonObject(request, ['candidateSha256', 'confirmation', 'expectedCurrentFactIds', 'expectedRevision', 'reviewId']);
+        if (typeof body.reviewId !== 'string' || !UUID.test(body.reviewId) || typeof body.candidateSha256 !== 'string' || !SHA.test(body.candidateSha256) ||
+            body.confirmation !== 'PROMOTE_VERIFIED_PROFILE_FACTS' || !body.expectedCurrentFactIds || typeof body.expectedCurrentFactIds !== 'object' || Array.isArray(body.expectedCurrentFactIds)) throw new OspApiError('INVALID_REQUEST');
+        const expectedCurrentFactIds = body.expectedCurrentFactIds as Record<string, unknown>;
+        const expectations = Object.entries(expectedCurrentFactIds);
+        if (expectations.length > 128 || expectations.some(([key, value]) => !/^[a-z][a-z0-9_]{1,127}$/.test(key) || !(value === null || typeof value === 'string' && UUID.test(value)))) throw new OspApiError('INVALID_REQUEST');
+        if (!options.profileReviewStore?.promoteProfileReviewFacts) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+        const result = await options.profileReviewStore.promoteProfileReviewFacts({
+          organizationId: authority.organizationId,
+          reviewId: body.reviewId,
+          expectedRevision: positiveRevision(body.expectedRevision),
+          candidateSha256: body.candidateSha256,
+          expectedCurrentFactIds: expectedCurrentFactIds as Record<string, string | null>,
+          actorSubject: authority.subject,
+          actorPermission: 'osp:operate',
+        });
         return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
       }
       throw new OspApiError('INVALID_REQUEST');
