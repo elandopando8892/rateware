@@ -13,7 +13,7 @@
 .route-placeholder { max-width: 42rem; }
 @media (max-width: 720px) {
   .topbar { position: relative; align-items: stretch; padding: .8rem 1rem; }
-  .primary-navigation { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; width: 100%; }
+  .primary-navigation { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .65rem; width: 100%; }
   .primary-navigation .wordmark { grid-column: 1 / -1; width: fit-content; padding-right: 5.5rem; }
   .primary-navigation a:not(.wordmark) { font-size: .78rem; text-align: center; }
   .account { position: absolute; top: .8rem; right: 1rem; }

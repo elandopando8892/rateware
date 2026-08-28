@@ -31,12 +31,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/contracts.ts",
-      "sha256": "5098ceb374a03fa35da9162c4bca20031a07579f7331b19ddd98d8d0203b9ec4"
+      "sha256": "d832dcb3379fcc6f7aa3dfb272347ae5af1ff1aeb2fb8912ccd9bb3a73db6a5c"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/osp-client.ts",
-      "sha256": "15674238e56005ed729161b937ce15351214f2f3730b8dd34088516d7c710544"
+      "sha256": "cfa5b2daf7471bdeb83f1497d127387c14048ab48d30477c05b842b27bd6cfa4"
     },
     {
       "kind": "production-ui",
@@ -56,7 +56,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/router.tsx",
-      "sha256": "e21fb2ca949b6bbc5b8631ee5f237b22ecaafc2db2fb1b35fe0d26a2e13d8aa3"
+      "sha256": "691d70beeb5aee1b1817109a46d3c400e5c5e1c6c7f07d35b979e3969a33f460"
     },
     {
       "kind": "production-ui",
@@ -136,7 +136,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/CaseFormWorkspace.tsx",
-      "sha256": "a5cd8789b2bded9506a569fd3aeb47e3b400e8e669735537e12d4f3352c24845"
+      "sha256": "24d1a0133aed088a4469b30332d81d303f7425791059ab1401f578d498f40cf8"
     },
     {
       "kind": "production-ui",
@@ -190,18 +190,23 @@
     },
     {
       "kind": "production-ui",
+      "path": "apps/osp/src/features/profile/CorporateProfileWorkspace.tsx",
+      "sha256": "1ea9075640e6a91f4c5ed04dd977bf9a6013c8e490fab51c63ce6a1ae05ce303"
+    },
+    {
+      "kind": "production-ui",
       "path": "apps/osp/src/features/review/OperationsReviewPage.tsx",
       "sha256": "2c8a097ec0563d3b6874edd89d96fc45b9141f56344f972a39fa9b54e9c8ccbe"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/main.tsx",
-      "sha256": "8a2bd3527e2bbbb4c9b1962efc1761506cb3eaf59319d90c23e5ba881fa0977a"
+      "sha256": "ffaaaee4fae78042d7ee85e8ea114026996417995becf9aa1441be04d9bc61ff"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "6df3561397bdf96ac16831ad60366eb3b6e6e7ddcf09374a03ca51f0d330c128"
+      "sha256": "193d0dbba35b94cfb628de6dbad3835d41312ab873fa5212c68bfa8e8f04a0e2"
     },
     {
       "kind": "production-ui",
@@ -220,8 +225,13 @@
     },
     {
       "kind": "production-ui",
+      "path": "apps/osp/src/styles/profile.css",
+      "sha256": "a0763b6af372649a7eabe78e3ce97de5f9df43c63f7f4a6cd3668b2f4cecd2e0"
+    },
+    {
+      "kind": "production-ui",
       "path": "apps/osp/src/styles/shell.css",
-      "sha256": "efac09688dc45b70e0a5a370f2996cc24c7ad7e684105eb0d3a829e0f8e6af5b"
+      "sha256": "53561f44587a5a62b923fa53582d9ada90e76b42e2974d417d591467a323bb9b"
     },
     {
       "kind": "production-ui",
@@ -236,7 +246,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/vercel.json",
-      "sha256": "5bbbdcfa7d29bf8501611ecd8d34996815ad9aedfb8185b94a4dd4ff4c73421d"
+      "sha256": "28ee0272dc8fd675fa8291e2fc8fe0ce9a3d0db7af4b82f0a6abe1177f90c2c3"
     },
     {
       "kind": "production-ui",

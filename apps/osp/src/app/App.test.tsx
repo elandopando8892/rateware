@@ -204,6 +204,7 @@ describe('App authentication and routing', () => {
     expect(controls).toEqual([
       { tag: 'a', name: 'Skip to content', href: '#main-content', type: null },
       { tag: 'a', name: 'XBF OSP pipeline home', href: '/app/pipeline', type: null },
+      { tag: 'a', name: 'Corporate profile', href: '/app/profile', type: null },
       { tag: 'a', name: 'Forms', href: '/app/forms/builder', type: null },
       { tag: 'a', name: 'Documents', href: '/app/documents', type: null },
       { tag: 'a', name: 'Clarifications', href: '/app/clarifications', type: null },
@@ -248,6 +249,14 @@ describe('App authentication and routing', () => {
       draftId: '44444444-4444-4444-8444-444444444444', expectedCaseVersion: 4, expectedCanonicalSha256: 'a'.repeat(64),
     })));
     expect(screen.queryByRole('button', { name: /send/i })).not.toBeInTheDocument();
+  });
+
+  it('opens the reusable dual-entity corporate profile without production identifiers', async () => {
+    const history = createMemoryHistory({ initialEntries: ['/app/profile'] });
+    render(<App authPort={authPort(session)} apiClient={client()} routerHistory={history} />);
+    expect(await screen.findByRole('heading', { name: /corporate profile/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /mexico entity/i })).toBeInTheDocument();
+    expect(screen.getByText(/verified corporate name/i)).toBeInTheDocument();
   });
 
   it('hands a completed Operations review to the signature control', async () => {

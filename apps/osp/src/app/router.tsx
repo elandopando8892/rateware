@@ -17,6 +17,7 @@ const OperationsReviewPage = lazyRouteComponent(() => import('../features/review
 const SignatureApprovalPage = lazyRouteComponent(() => import('../features/approval/SignatureApprovalPage'), 'SignatureApprovalPage');
 const SalesAuthorizationPage = lazyRouteComponent(() => import('../features/approval/SalesAuthorizationPage'), 'SalesAuthorizationPage');
 const OutboundPayloadPage = lazyRouteComponent(() => import('../features/communications/OutboundPayloadPage'), 'OutboundPayloadPage');
+const CorporateProfileWorkspace = lazyRouteComponent(() => import('../features/profile/CorporateProfileWorkspace'), 'CorporateProfileWorkspace');
 
 type AppRouterContext = { apiClient: OspClient; email: string; logout(): Promise<void> };
 
@@ -30,6 +31,7 @@ const appRoute = createRoute({
       <AppShell email={context.email} onLogout={context.logout} homeLink={
         <nav className="primary-navigation" aria-label="Workspace">
           <Link className="wordmark" to="/app/pipeline" aria-label="XBF OSP pipeline home"><span aria-hidden="true">XBF</span><small>Powering Freight Logistics</small></Link>
+          <Link to="/app/profile">Corporate profile</Link>
           <Link to="/app/forms/builder">Forms</Link>
           <Link to="/app/documents">Documents</Link>
           <Link to="/app/clarifications">Clarifications</Link>
@@ -54,6 +56,7 @@ const pipelineRoute = createRoute({
     return <PipelineOverview client={context.apiClient} />;
   },
 });
+const corporateProfileRoute = createRoute({ getParentRoute: () => appRoute, path: 'profile', component: CorporateProfileWorkspace });
 const caseWorkspaceRoute = createRoute({
   getParentRoute: () => appRoute,
   path: 'cases/$caseId',
@@ -253,7 +256,7 @@ function OutboundPayloadWorkspace() {
 const outboundPayloadRoute = createRoute({ getParentRoute: () => appRoute, path: 'cases/$caseId/communications/$payloadId', component: OutboundPayloadWorkspace });
 
 const routeTree = rootRoute.addChildren([appRoute.addChildren([
-  appIndexRoute, pipelineRoute, caseWorkspaceRoute, caseFormRoute, formBuilderRoute, documentsRoute, clarificationsRoute,
+  appIndexRoute, pipelineRoute, corporateProfileRoute, caseWorkspaceRoute, caseFormRoute, formBuilderRoute, documentsRoute, clarificationsRoute,
   operationsReviewRoute, signatureApprovalRoute, salesAuthorizationRoute, outboundPayloadRoute,
 ])]);
 

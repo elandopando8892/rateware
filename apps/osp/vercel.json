@@ -14,6 +14,7 @@
     { "source": "/", "destination": "/app/index" },
     { "source": "/app", "destination": "/app/index" },
     { "source": "/app/pipeline", "destination": "/app/index" },
+    { "source": "/app/profile", "destination": "/app/index" },
     { "source": "/app/forms/builder", "destination": "/app/index" },
     { "source": "/app/documents", "destination": "/app/index" },
     { "source": "/app/clarifications", "destination": "/app/index" },
