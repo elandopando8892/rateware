@@ -5,6 +5,7 @@ import type { CorporateProfileEntity } from '../../api/contracts';
 import type { OspCorporateProfileClient } from '../../api/osp-client';
 
 type Readiness = 'verified' | 'review_required' | 'withheld';
+type SupportFilter = 'all' | CorporateProfileEntity['fields'][number]['support_status'];
 
 const sectionDefinitions = [
   { title: 'Legal identity', codes: ['tax_identifier', 'entity_identifier', 'entity_type', 'tax_regime', 'mc_number', 'usdot_number'] },
@@ -18,6 +19,13 @@ const statusLabel: Record<Readiness, string> = {
   verified: 'Verified',
   review_required: 'Review required',
   withheld: 'Withheld',
+};
+
+const supportLabel: Record<Exclude<SupportFilter, 'all'>, string> = {
+  verified_match: 'Document matched',
+  conflict: 'Conflict detected',
+  evidence_available: 'Evidence available',
+  unsupported: 'No evidence mapped',
 };
 
 function fieldStatus(entity: CorporateProfileEntity, code: string): Readiness {
@@ -45,6 +53,7 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
     refetchOnWindowFocus: false,
   });
   const [selectedId, setSelectedId] = useState<string>('');
+  const [supportFilter, setSupportFilter] = useState<SupportFilter>('all');
 
   if (query.isPending || query.fetchStatus !== 'idle') {
     return <section className="workflow-page"><h1>Corporate profile</h1><p role="status">Loading the governed XBF profile…</p></section>;
@@ -69,6 +78,11 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
   })).filter((section) => section.fields.length > 0);
   const otherFields = entity.fields.filter((field) => !mappedCodes.has(field.code));
   if (otherFields.length > 0) sections.push({ title: 'Other verified facts', fields: [...otherFields] });
+  const supportCounts = entity.fields.reduce<Record<Exclude<SupportFilter, 'all'>, number>>((counts, field) => {
+    counts[field.support_status] += 1;
+    return counts;
+  }, { verified_match: 0, conflict: 0, evidence_available: 0, unsupported: 0 });
+  const visibleReviewFields = supportFilter === 'all' ? entity.fields : entity.fields.filter((field) => field.support_status === supportFilter);
 
   return <div className="corporate-profile-page">
     <header className="profile-hero">
@@ -98,6 +112,31 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
             <div className="entity-readiness"><strong>{readiness(entity)}%</strong><span>{entity.verified_fields}/{entity.total_fields} facts verified</span></div>
           </div>
           <div className="readiness-track" aria-hidden="true"><span style={{ width: `${readiness(entity)}%` }} /></div>
+        </section>
+
+        <section className="profile-review-queue panel" aria-labelledby="profile-review-title">
+          <div className="panel-heading">
+            <div><p className="eyebrow">Sprint 6 · documentary validation</p><h2 id="profile-review-title">Verification queue</h2><p>Compare each reusable fact with the governed evidence already in the vault. Values remain masked when their sensitivity requires it.</p></div>
+            <span className="read-only-badge">Read-only preview</span>
+          </div>
+          <div className="verification-scorecards" aria-label="Document verification status">
+            <button type="button" className={supportFilter === 'verified_match' ? 'verification-scorecard verification-scorecard-active' : 'verification-scorecard'} onClick={() => setSupportFilter('verified_match')}><strong>{supportCounts.verified_match}</strong><span>Matched</span></button>
+            <button type="button" className={supportFilter === 'evidence_available' ? 'verification-scorecard verification-scorecard-active' : 'verification-scorecard'} onClick={() => setSupportFilter('evidence_available')}><strong>{supportCounts.evidence_available}</strong><span>Evidence ready</span></button>
+            <button type="button" className={supportFilter === 'conflict' ? 'verification-scorecard verification-scorecard-active' : 'verification-scorecard'} onClick={() => setSupportFilter('conflict')}><strong>{supportCounts.conflict}</strong><span>Conflicts</span></button>
+            <button type="button" className={supportFilter === 'unsupported' ? 'verification-scorecard verification-scorecard-active' : 'verification-scorecard'} onClick={() => setSupportFilter('unsupported')}><strong>{supportCounts.unsupported}</strong><span>Unsupported</span></button>
+          </div>
+          <div className="verification-filter-row">
+            <p>{visibleReviewFields.length} of {entity.fields.length} facts shown</p>
+            {supportFilter !== 'all' ? <button type="button" className="text-button" onClick={() => setSupportFilter('all')}>Show all facts</button> : null}
+          </div>
+          <ul className="verification-list">
+            {visibleReviewFields.map((field) => <li key={field.code}>
+              <div className="verification-field-copy"><strong>{field.label}</strong><span>{field.display_value}</span><small>{field.code.replaceAll('_', ' ')}</small></div>
+              <div className="verification-evidence-count"><strong>{field.reviewed_candidate_count}/{field.evidence_candidate_count}</strong><span>reviewed / found</span></div>
+              <span className={`support-status support-status-${field.support_status}`}>{supportLabel[field.support_status]}</span>
+            </li>)}
+          </ul>
+          <div className="effects-lock" role="note"><span aria-hidden="true">✓</span><div><strong>Human decision remains required</strong><p>This queue identifies documentary support; it does not approve, reject, promote or release any fact.</p></div></div>
         </section>
 
         {sections.map((section) => <section className="profile-section panel" key={section.title} aria-labelledby={`section-${section.title.replaceAll(' ', '-').toLowerCase()}`}>

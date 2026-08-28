@@ -296,7 +296,61 @@ export function createPostgresOspReadStore({
               ELSE 'On file'
             END,
             'verification_status', field.verification_status,
-            'sensitivity', field.sensitivity
+            'sensitivity', field.sensitivity,
+            'support_status', CASE
+              WHEN EXISTS (
+                SELECT 1 FROM public.provider_legal_entity_facts exact_fact
+                WHERE exact_fact.organization_id = field.organization_id
+                  AND exact_fact.legal_entity_id = field.legal_entity_id
+                  AND exact_fact.field_code = field.field_code
+                  AND exact_fact.fact_status = 'current'
+                  AND exact_fact.fact_value = field.field_value
+              ) THEN 'verified_match'
+              WHEN EXISTS (
+                SELECT 1 FROM public.provider_legal_entity_facts current_fact
+                WHERE current_fact.organization_id = field.organization_id
+                  AND current_fact.legal_entity_id = field.legal_entity_id
+                  AND current_fact.field_code = field.field_code
+                  AND current_fact.fact_status = 'current'
+              ) THEN 'conflict'
+              WHEN EXISTS (
+                SELECT 1
+                FROM public.provider_entity_document_reviews candidate_review
+                JOIN public.provider_entity_document_review_fields candidate_field
+                  ON candidate_field.organization_id = candidate_review.organization_id
+                 AND candidate_field.review_id = candidate_review.id
+                WHERE candidate_review.organization_id = field.organization_id
+                  AND candidate_review.legal_entity_id = field.legal_entity_id
+                  AND candidate_field.field_code = field.field_code
+                  AND candidate_review.review_status IN ('pending','in_review','approved','changes_required')
+                  AND candidate_field.field_status <> 'rejected'
+              ) THEN 'evidence_available'
+              ELSE 'unsupported'
+            END,
+            'evidence_candidate_count', (
+              SELECT count(DISTINCT candidate_review.document_asset_id)::bigint
+              FROM public.provider_entity_document_reviews candidate_review
+              JOIN public.provider_entity_document_review_fields candidate_field
+                ON candidate_field.organization_id = candidate_review.organization_id
+               AND candidate_field.review_id = candidate_review.id
+              WHERE candidate_review.organization_id = field.organization_id
+                AND candidate_review.legal_entity_id = field.legal_entity_id
+                AND candidate_field.field_code = field.field_code
+                AND candidate_review.review_status IN ('pending','in_review','approved','changes_required')
+                AND candidate_field.field_status <> 'rejected'
+            ),
+            'reviewed_candidate_count', (
+              SELECT count(DISTINCT reviewed_review.document_asset_id)::bigint
+              FROM public.provider_entity_document_reviews reviewed_review
+              JOIN public.provider_entity_document_review_fields reviewed_field
+                ON reviewed_field.organization_id = reviewed_review.organization_id
+               AND reviewed_field.review_id = reviewed_review.id
+              WHERE reviewed_review.organization_id = field.organization_id
+                AND reviewed_review.legal_entity_id = field.legal_entity_id
+                AND reviewed_field.field_code = field.field_code
+                AND reviewed_review.review_status = 'approved'
+                AND reviewed_field.field_status IN ('accepted','corrected')
+            )
           ) ORDER BY field.field_code) FILTER (WHERE field.id IS NOT NULL), '[]'::jsonb) AS fields,
           COALESCE((
             SELECT jsonb_agg(jsonb_build_object(

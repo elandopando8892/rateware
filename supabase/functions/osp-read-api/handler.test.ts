@@ -59,7 +59,7 @@ function baseStore(overrides: Partial<OspReadStore> = {}): OspReadStore {
       return [{
         entity_id: '33333333-3333-4333-8333-333333333333', entity_code: 'XBFMX', legal_name: 'Synthetic XBF Mexico',
         country_code: 'MX', default_currency: 'MXN', status: 'active', verified_fields: '1', review_fields: '0', total_fields: '1',
-        fields: [{ code: 'legal_name', label: 'Legal name', display_value: 'Synthetic XBF Mexico', verification_status: 'verified', sensitivity: 'internal' }],
+        fields: [{ code: 'legal_name', label: 'Legal name', display_value: 'Synthetic XBF Mexico', verification_status: 'verified', sensitivity: 'internal', support_status: 'verified_match', evidence_candidate_count: '1', reviewed_candidate_count: '1' }],
         evidence: [],
       }];
     },
@@ -169,7 +169,7 @@ Deno.test('createOspReadHandler returns the exact pipeline, Gmail and case read 
       entities: [{
         entity_id: '33333333-3333-4333-8333-333333333333', entity_code: 'XBFMX', legal_name: 'Synthetic XBF Mexico',
         country_code: 'MX', default_currency: 'MXN', status: 'active', verified_fields: '1', review_fields: '0', total_fields: '1',
-        fields: [{ code: 'legal_name', label: 'Legal name', display_value: 'Synthetic XBF Mexico', verification_status: 'verified', sensitivity: 'internal' }],
+        fields: [{ code: 'legal_name', label: 'Legal name', display_value: 'Synthetic XBF Mexico', verification_status: 'verified', sensitivity: 'internal', support_status: 'verified_match', evidence_candidate_count: '1', reviewed_candidate_count: '1' }],
         evidence: [],
       }],
       disclosure_locked: true,

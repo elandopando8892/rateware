@@ -162,6 +162,9 @@ export const CorporateProfileFieldSchema = z.strictObject({
   display_value: z.string().min(1).max(512),
   verification_status: z.enum(['verified', 'needs_review', 'unverified', 'rejected']),
   sensitivity: z.enum(['public', 'internal', 'confidential', 'restricted', 'highly_restricted']),
+  support_status: z.enum(['verified_match', 'conflict', 'evidence_available', 'unsupported']),
+  evidence_candidate_count: CanonicalCountSchema,
+  reviewed_candidate_count: CanonicalCountSchema,
 });
 
 export const CorporateProfileEvidenceSchema = z.strictObject({

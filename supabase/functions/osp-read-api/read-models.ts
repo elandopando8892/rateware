@@ -101,6 +101,9 @@ export type CorporateProfileFieldReadModel = {
   display_value: string;
   verification_status: 'verified' | 'needs_review' | 'unverified' | 'rejected';
   sensitivity: 'public' | 'internal' | 'confidential' | 'restricted' | 'highly_restricted';
+  support_status: 'verified_match' | 'conflict' | 'evidence_available' | 'unsupported';
+  evidence_candidate_count: string;
+  reviewed_candidate_count: string;
 };
 
 export type CorporateProfileEvidenceReadModel = {
@@ -354,6 +357,7 @@ const PROFILE_VERIFICATION = ['verified', 'needs_review', 'unverified', 'rejecte
 const PROFILE_SENSITIVITY = ['public', 'internal', 'confidential', 'restricted', 'highly_restricted'] as const;
 const PROFILE_RELEASE_POLICY = ['automatic', 'review_required', 'approval_required', 'never_release'] as const;
 const PROFILE_EXPIRY = ['no_expiry', 'expired', 'expiring_soon', 'current'] as const;
+const PROFILE_SUPPORT = ['verified_match', 'conflict', 'evidence_available', 'unsupported'] as const;
 
 function enumValue<const T extends readonly string[]>(value: unknown, allowed: T): T[number] {
   if (typeof value !== 'string' || !allowed.includes(value)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
@@ -361,7 +365,10 @@ function enumValue<const T extends readonly string[]>(value: unknown, allowed: T
 }
 
 function normalizeProfileField(value: unknown): CorporateProfileFieldReadModel {
-  const row = recordWithExactKeys(value, ['code', 'display_value', 'label', 'sensitivity', 'verification_status']);
+  const row = recordWithExactKeys(value, [
+    'code', 'display_value', 'evidence_candidate_count', 'label', 'reviewed_candidate_count',
+    'sensitivity', 'support_status', 'verification_status',
+  ]);
   const code = normalizeBoundedText(row.code, 128) as string;
   if (!/^[a-z][a-z0-9_]{1,127}$/.test(code)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
   return {
@@ -370,6 +377,9 @@ function normalizeProfileField(value: unknown): CorporateProfileFieldReadModel {
     display_value: normalizeBoundedText(row.display_value, 512) as string,
     verification_status: enumValue(row.verification_status, PROFILE_VERIFICATION),
     sensitivity: enumValue(row.sensitivity, PROFILE_SENSITIVITY),
+    support_status: enumValue(row.support_status, PROFILE_SUPPORT),
+    evidence_candidate_count: normalizeCanonicalDecimal(row.evidence_candidate_count),
+    reviewed_candidate_count: normalizeCanonicalDecimal(row.reviewed_candidate_count),
   };
 }
 

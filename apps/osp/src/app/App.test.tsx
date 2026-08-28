@@ -58,7 +58,7 @@ function client(): OspClient {
       entities: [{
         entity_id: '91000000-0000-4000-8000-000000000001', entity_code: 'XBFMX', legal_name: 'XBF Demo Logistics',
         country_code: 'MX', default_currency: 'MXN', status: 'active' as const, verified_fields: '1', review_fields: '0', total_fields: '1',
-        fields: [{ code: 'tax_identifier', label: 'Tax identifier', display_value: 'On file', verification_status: 'verified' as const, sensitivity: 'restricted' as const }], evidence: [],
+        fields: [{ code: 'tax_identifier', label: 'Tax identifier', display_value: 'On file', verification_status: 'verified' as const, sensitivity: 'restricted' as const, support_status: 'verified_match' as const, evidence_candidate_count: '1', reviewed_candidate_count: '1' }], evidence: [],
       }],
     })),
     listCustomerRegistrationCases: vi.fn(async () => []),
@@ -264,7 +264,7 @@ describe('App authentication and routing', () => {
     render(<App authPort={authPort(session)} apiClient={client()} routerHistory={history} />);
     expect(await screen.findByRole('button', { name: /mexico entity/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /corporate profile/i })).toBeInTheDocument();
-    expect(screen.getByText(/on file/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/on file/i).length).toBeGreaterThan(0);
   });
 
   it('hands a completed Operations review to the signature control', async () => {

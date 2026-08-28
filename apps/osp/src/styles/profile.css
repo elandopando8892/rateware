@@ -17,8 +17,8 @@
 .entity-option-active { border: 2px solid var(--xbf-navy); background: #eef1f8; }
 .profile-workspace-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(18rem, .8fr); gap: 1.25rem; align-items: start; }
 .profile-main, .profile-side { display: grid; gap: 1.25rem; }
-.profile-summary, .profile-section, .package-readiness, .evidence-panel { padding: 1.25rem; }
-.profile-summary h2, .profile-section h2, .package-readiness h2, .evidence-panel h2 { margin: .2rem 0; }
+.profile-summary, .profile-section, .profile-review-queue, .package-readiness, .evidence-panel { padding: 1.25rem; }
+.profile-summary h2, .profile-section h2, .profile-review-queue h2, .package-readiness h2, .evidence-panel h2 { margin: .2rem 0; }
 .profile-summary p { margin: .25rem 0 0; color: var(--muted); }
 .entity-readiness { display: grid; min-width: 7.5rem; text-align: right; }
 .entity-readiness strong { color: var(--xbf-navy); font-family: var(--font-display); font-size: 2rem; }
@@ -33,6 +33,26 @@
 .profile-status-verified { color: #14653e; background: #e7f6ee; }
 .profile-status-review_required { color: #805000; background: #fff1c8; }
 .profile-status-withheld { color: #862332; background: #fde8eb; }
+.profile-review-queue .panel-heading p:not(.eyebrow) { max-width: 48rem; margin: .25rem 0 0; color: var(--muted); }
+.verification-scorecards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .65rem; margin-top: 1rem; }
+.verification-scorecard { display: grid; gap: .15rem; padding: .85rem; border: 1px solid var(--line); border-radius: .75rem; color: var(--ink); text-align: left; background: #f8f9fc; }
+.verification-scorecard:hover, .verification-scorecard-active { border-color: var(--xbf-navy); color: var(--xbf-navy); background: #eef1f8; }
+.verification-scorecard strong { font-family: var(--font-display); font-size: 1.65rem; line-height: 1; }
+.verification-scorecard span { font-size: .7rem; font-weight: 850; text-transform: uppercase; }
+.verification-filter-row { display: flex; align-items: center; justify-content: space-between; margin-top: 1rem; }
+.verification-filter-row p { margin: 0; color: var(--muted); font-size: .78rem; }
+.text-button { padding: .35rem .55rem; border: 0; color: var(--brand); background: transparent; font-weight: 800; }
+.verification-list { display: grid; gap: 0; margin: .5rem 0 1rem; padding: 0; list-style: none; }
+.verification-list li { display: grid; grid-template-columns: minmax(0, 1fr) 7rem 10rem; gap: .8rem; align-items: center; padding: .85rem 0; border-top: 1px solid var(--line); }
+.verification-field-copy { display: grid; gap: .1rem; min-width: 0; }
+.verification-field-copy span { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.verification-field-copy small, .verification-evidence-count span { color: var(--muted); font-size: .68rem; text-transform: capitalize; }
+.verification-evidence-count { display: grid; text-align: center; }
+.support-status { justify-self: end; padding: .32rem .52rem; border-radius: 999px; font-size: .66rem; font-weight: 900; text-align: center; text-transform: uppercase; }
+.support-status-verified_match { color: #14653e; background: #e7f6ee; }
+.support-status-evidence_available { color: #2458a6; background: #e8f0ff; }
+.support-status-conflict { color: #862332; background: #fde8eb; }
+.support-status-unsupported { color: #6c4f18; background: #f5edda; }
 .package-readiness > p:not(.eyebrow) { color: var(--muted); }
 .package-readiness ol { display: grid; gap: .8rem; margin: 1.2rem 0 0; padding: 0; list-style: none; }
 .package-readiness li { display: grid; grid-template-columns: 2rem 1fr; gap: .7rem; align-items: center; }
@@ -46,4 +66,5 @@
 .evidence-panel li small { color: var(--muted); }
 .evidence-panel .profile-status { flex: 0 0 auto; margin: 0; }
 @media (max-width: 840px) { .profile-workspace-grid, .profile-hero { grid-template-columns: 1fr; } .profile-hero-score { padding: 1rem 0 0; border-top: 1px solid rgb(255 255 255 / 35%); border-left: 0; } }
-@media (max-width: 620px) { .entity-switcher, .profile-field-grid { grid-template-columns: 1fr; } .entity-option b { margin-top: 0; justify-self: start; } }
+@media (max-width: 720px) { .verification-scorecards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .verification-list li { grid-template-columns: minmax(0, 1fr) auto; } .verification-evidence-count { display: none; } }
+@media (max-width: 620px) { .entity-switcher, .profile-field-grid { grid-template-columns: 1fr; } .entity-option b { margin-top: 0; justify-self: start; } .support-status { max-width: 8rem; } }
