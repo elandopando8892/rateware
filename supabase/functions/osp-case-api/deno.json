@@ -1,0 +1,11 @@
+{
+  "imports": {
+    "exceljs": "npm:exceljs@4.4.0",
+    "jose": "npm:jose@5.9.6",
+    "pdf-lib": "npm:pdf-lib@1.17.1",
+    "postalMime": "npm:postal-mime@3.0.0",
+    "postgres": "npm:postgres@3.4.7",
+    "supabase": "npm:@supabase/supabase-js@2.112.3",
+    "zod": "npm:zod@4.4.3"
+  }
+}
