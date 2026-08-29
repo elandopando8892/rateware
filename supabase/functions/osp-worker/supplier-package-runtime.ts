@@ -108,7 +108,7 @@ export function createPostgresSupplierPackageRecordStore(options: {
               caseId: input.caseId,
               snapshotId: input.snapshotId,
             })
-          }::text::jsonb for update`;
+          }::text::jsonb`;
         if (jobs.length !== 1) throw new Error("LEASE_CONFLICT");
         const existing =
           await tx`select status, package_id, object_id, package_version, artifact_receipt_json from osp_private.supplier_package_generation_runs where organization_id = ${input.organizationId} and input_snapshot_id = ${input.snapshotId} for update`;
