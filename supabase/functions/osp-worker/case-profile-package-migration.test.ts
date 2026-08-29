@@ -18,6 +18,11 @@ Deno.test('case profile binding is tenant-bound and selects one active entity', 
   assertMatch(sql, /blocked_by_duplicate_review/);
   assertMatch(sql, /case_profile_bound/);
   assertMatch(sql, /char_length\(p_actor_subject\) not between 1 and 256/);
+  assertMatch(
+    sql,
+    /on conflict on constraint case_profile_bindings_pkey do update set/,
+  );
+  assertNotMatch(sql, /on conflict \(organization_id, case_id\) do update set/);
   assertNotMatch(sql, /\{1,256\}/);
 });
 

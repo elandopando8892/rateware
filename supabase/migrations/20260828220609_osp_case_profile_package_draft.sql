@@ -185,7 +185,7 @@ begin
     organization_id, case_id, legal_entity_id, revision, bound_by_subject
   ) values (
     p_organization_id, p_case_id, p_legal_entity_id, next_revision, p_actor_subject
-  ) on conflict (organization_id, case_id) do update set
+  ) on conflict on constraint case_profile_bindings_pkey do update set
     legal_entity_id = excluded.legal_entity_id,
     revision = excluded.revision,
     bound_by_subject = excluded.bound_by_subject,
