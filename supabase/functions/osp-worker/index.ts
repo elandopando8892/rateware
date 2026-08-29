@@ -10,7 +10,11 @@ import {
 } from "./postgres-intake-persistence.ts";
 import { createPostgresQuarterlyDocumentService } from "./postgres-quarterly-document-service.ts";
 import { createSupabaseOriginalObjectStore } from "./supabase-original-object-store.ts";
-import { type QuarterlyDocumentService, runWorker } from "./worker.ts";
+import {
+  type QuarterlyDocumentService,
+  runWorker,
+  type SupplierPackageJobService,
+} from "./worker.ts";
 import {
   type AutomaticPreparationService,
   createAutomaticPreparationService,
@@ -28,6 +32,7 @@ import {
   createPostgresOutboundSendStore,
 } from "./outbound-receipt.ts";
 import { runOutboundSendJob } from "./outbound-send-job.ts";
+import { createSupplierPackageJobService } from "./supplier-package-runtime.ts";
 
 export type WorkerComposition = {
   databaseUrl: string;
@@ -38,6 +43,7 @@ export type WorkerComposition = {
   postgresFactory?: PostgresIntakePersistenceOptions["postgresFactory"];
   quarterlyDocuments?: QuarterlyDocumentService;
   formMappings?: AutomaticPreparationService;
+  supplierPackages?: SupplierPackageJobService;
   signatureVault?: SignatureVaultReader;
   storageClient: Parameters<
     typeof createSupabaseOriginalObjectStore
@@ -68,6 +74,14 @@ export async function runComposedWorker(
       postgresFactory: input.postgresFactory,
     }),
   );
+  const supplierPackages = input.supplierPackages ??
+    ("storage" in input.storageClient
+      ? createSupplierPackageJobService({
+        databaseUrl: input.databaseUrl,
+        postgresFactory: input.postgresFactory,
+        storageClient: input.storageClient,
+      })
+      : undefined);
   let outboundStore:
     | ReturnType<typeof createPostgresOutboundSendStore>
     | undefined;
@@ -134,6 +148,7 @@ export async function runComposedWorker(
     intake,
     formMappings,
     quarterlyDocuments,
+    supplierPackages,
     signatures,
     outboundSends,
   });

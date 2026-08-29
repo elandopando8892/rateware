@@ -45,7 +45,6 @@ function validateMappings(
     target(left).localeCompare(target(right), "en", { numeric: true })
   );
   const targets = new Set<string>();
-  const decisions = new Set<string>();
   for (const mapping of sorted) {
     validateMappingIdentity(
       mapping.mappingDecisionId,
@@ -57,12 +56,11 @@ function validateMappings(
       mapping.sheet.trim() !== mapping.sheet || mapping.sheet.length < 1 ||
       mapping.sheet.length > 128 ||
       typeof mapping.cell !== "string" || !cellCoordinates(mapping.cell) ||
-      targets.has(target(mapping)) || decisions.has(mapping.mappingDecisionId)
+      targets.has(target(mapping))
     ) {
       throw new Error("ARTIFACT_MAPPING_INVALID");
     }
     targets.add(target(mapping));
-    decisions.add(mapping.mappingDecisionId);
   }
   return sorted;
 }

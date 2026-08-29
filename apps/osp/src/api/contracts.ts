@@ -401,6 +401,13 @@ export const ApprovalCommunicationsWorkspaceSchema = z.strictObject({
     reviewDecisionCount: z.number().int().min(0).max(100_000),
     formInstanceVersion: z.number().int().min(1).max(2_147_483_647),
   }).nullable(),
+  supplierPackage: z.strictObject({
+    packageId: z.uuid(),
+    version: z.number().int().min(1).max(2_147_483_647),
+    outputSha256: workflowSha,
+    contentType: z.literal('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+    downloadUrl: z.url().nullable(),
+  }).nullable().default(null),
   signature: z.strictObject({
     positionVersion: z.number().int().min(1).max(2_147_483_647),
     approvalStatus: z.enum(['pending', 'approved']),

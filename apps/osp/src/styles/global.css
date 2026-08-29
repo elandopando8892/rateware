@@ -18,6 +18,10 @@ dd { margin: .35rem 0 0; overflow-wrap: anywhere; }
 code { display: inline-block; max-width: 100%; color: var(--xbf-navy); font-family: ui-monospace, Consolas, monospace; font-size: .8rem; overflow-wrap: anywhere; }
 .control-confirmation { display: flex; align-items: flex-start; gap: .75rem; margin: 1.5rem 0; padding: 1rem; border-left: 4px solid var(--xbf-navy); background: #eef1f8; font-weight: 700; }
 .control-confirmation input { width: 1.2rem; height: 1.2rem; margin-top: .1rem; accent-color: var(--xbf-navy); }
+.review-package { margin: 1.5rem 0; padding: 1.25rem; border: 1px solid var(--line); border-left: 4px solid var(--xbf-cyan); background: #f7f9fc; }
+.review-package h2 { margin: .25rem 0 .5rem; font-family: var(--font-display); text-transform: uppercase; }
+.button-link { display: inline-flex; align-items: center; min-height: 2.75rem; padding: .65rem 1rem; border-radius: .35rem; background: var(--xbf-navy); color: #fff; font-weight: 800; text-decoration: none; }
+.button-link:hover, .button-link:focus-visible { background: var(--xbf-blue); }
 .workflow-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
 .critical-action { background: var(--xbf-navy-deep); }
 .message-preview { white-space: pre-wrap; }

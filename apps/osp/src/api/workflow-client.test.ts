@@ -29,6 +29,7 @@ const workspace = {
     reviewDecisionCount: 3,
     formInstanceVersion: 2,
   },
+  supplierPackage: null,
   signature: {
     positionVersion: 3,
     approvalStatus: 'approved' as const,

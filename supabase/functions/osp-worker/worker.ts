@@ -52,6 +52,15 @@ export interface SignatureJobService {
     },
   ): Promise<SignatureApplyReceipt>;
 }
+export interface SupplierPackageJobService {
+  generate(input: {
+    organizationId: string;
+    caseId: string;
+    snapshotId: string;
+    jobId: string;
+    leaseToken: string;
+  }): Promise<unknown>;
+}
 export interface OutboundSendJobService {
   execute(
     input: {
@@ -115,10 +124,26 @@ async function execute(
   extraction?: ManagedExtractionService,
   formMappings?: AutomaticPreparationService,
   quarterlyDocuments?: QuarterlyDocumentService,
+  supplierPackages?: SupplierPackageJobService,
   signatures?: SignatureJobService,
   outboundSends?: OutboundSendJobService,
   attachmentPromotions?: AttachmentPromotionService,
 ): Promise<void> {
+  if (job.kind === "generate_supplier_package") {
+    const caseId = job.opaquePayload.caseId;
+    const snapshotId = job.opaquePayload.snapshotId;
+    if (!caseId || !snapshotId || !supplierPackages) {
+      throw new Error("INVALID_INPUT");
+    }
+    await supplierPackages.generate({
+      organizationId: job.organizationId,
+      caseId,
+      snapshotId,
+      jobId: job.id,
+      leaseToken: job.leaseToken,
+    });
+    return;
+  }
   if (job.kind === "send_authorized_payload") {
     const attemptId = job.opaquePayload.attemptId;
     const authorizationId = job.opaquePayload.authorizationId;
@@ -228,6 +253,7 @@ export async function runWorker(
     extraction?: ManagedExtractionService;
     formMappings?: AutomaticPreparationService;
     quarterlyDocuments?: QuarterlyDocumentService;
+    supplierPackages?: SupplierPackageJobService;
     signatures?: SignatureJobService;
     outboundSends?: OutboundSendJobService;
     attachmentPromotions?: AttachmentPromotionService;
@@ -258,6 +284,7 @@ export async function runWorker(
         deps.extraction,
         deps.formMappings,
         deps.quarterlyDocuments,
+        deps.supplierPackages,
         deps.signatures,
         deps.outboundSends,
         deps.attachmentPromotions,

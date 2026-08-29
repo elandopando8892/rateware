@@ -83,6 +83,46 @@ Deno.test("XLSX completer writes reviewed cells on a copy and preserves formatti
   });
 });
 
+Deno.test("XLSX completer permits one reviewed decision to govern multiple unique cells", async () => {
+  const sourceBytes = await xlsxSource();
+  const completed = await completeXlsxArtifact({
+    sourceVersionId,
+    sourceBytes,
+    sourceSha256: await sha256Hex(sourceBytes),
+    packageSnapshotId,
+    packageSnapshotSha256,
+    approvedMappingDecisionIds: [mappingDecisionId],
+    version: 1,
+    mappings: [
+      {
+        mappingDecisionId,
+        canonicalFieldId: "supplier.legalName",
+        sheet: "Registration",
+        cell: "A2",
+        value: "XBF SISTEMAS LOGISTICOS S DE RL DE CV",
+      },
+      {
+        mappingDecisionId,
+        canonicalFieldId: "fiscal.taxIdentifier",
+        sheet: "Registration",
+        cell: "A3",
+        value: "XSL260511N11",
+      },
+    ],
+  });
+  const output = new ExcelJS.Workbook();
+  await output.xlsx.load(completed.bytes as never);
+  assertEquals(
+    output.getWorksheet("Registration")?.getCell("A2").value,
+    "XBF SISTEMAS LOGISTICOS S DE RL DE CV",
+  );
+  assertEquals(
+    output.getWorksheet("Registration")?.getCell("A3").value,
+    "XSL260511N11",
+  );
+  assertEquals(completed.receipt.mappings.length, 2);
+});
+
 Deno.test("XLSX completer rejects source drift, formulas, hyperlinks, and duplicate reviewed targets", async () => {
   const sourceBytes = await xlsxSource();
   const base = {

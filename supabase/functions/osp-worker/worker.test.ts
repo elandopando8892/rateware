@@ -392,6 +392,58 @@ Deno.test("worker routes form mapping to a no-effects preparation service", asyn
   assertEquals(outboundCalls, 0);
 });
 
+Deno.test("worker routes supplier package generation without invoking outbound effects", async () => {
+  const generated: unknown[] = [];
+  const completed: string[] = [];
+  let outboundCalls = 0;
+  await runWorker({
+    workerId: "local-worker",
+    now: () => new Date("2026-08-29T00:00:00.000Z"),
+    jobs: {
+      claim: async () => [{
+        id: "job-package",
+        organizationId: "org-1",
+        kind: "generate_supplier_package",
+        opaquePayload: { caseId: "case-1", snapshotId: "snapshot-1" },
+        attempt: 1,
+        leaseToken: "11111111-1111-4111-8111-111111111111",
+        leasedUntil: "2026-08-29T00:05:00.000Z",
+      }],
+      complete: async (input) => {
+        completed.push(input.jobId);
+      },
+      fail: async () => {
+        throw new Error("unexpected package failure");
+      },
+    },
+    intake: {
+      ingest: async () => {
+        throw new Error("package generation must not enter Gmail intake");
+      },
+      refreshDuplicateReview: async () => undefined,
+    },
+    supplierPackages: {
+      generate: async (input) => {
+        generated.push(input);
+      },
+    },
+    outboundSends: {
+      execute: async () => {
+        outboundCalls += 1;
+      },
+    },
+  });
+  assertEquals(generated, [{
+    organizationId: "org-1",
+    caseId: "case-1",
+    snapshotId: "snapshot-1",
+    jobId: "job-package",
+    leaseToken: "11111111-1111-4111-8111-111111111111",
+  }]);
+  assertEquals(completed, ["job-package"]);
+  assertEquals(outboundCalls, 0);
+});
+
 Deno.test("worker rejects incomplete form mapping payloads without calling preparation or outbound", async () => {
   const failures: unknown[] = [];
   let preparationCalls = 0;

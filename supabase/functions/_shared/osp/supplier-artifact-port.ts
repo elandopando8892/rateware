@@ -138,8 +138,11 @@ export function validateReviewedMappingSet(
   input: SupplierArtifactContext,
   mappingDecisionIds: readonly string[],
 ): void {
-  const expected = [...input.approvedMappingDecisionIds].sort();
-  const actual = [...mappingDecisionIds].sort();
+  // A single human review decision may approve several field-to-target
+  // mappings in the same reviewed form. Compare decision identities as sets;
+  // target uniqueness is enforced by the format-specific completer.
+  const expected = [...new Set(input.approvedMappingDecisionIds)].sort();
+  const actual = [...new Set(mappingDecisionIds)].sort();
   if (
     expected.length !== actual.length ||
     expected.some((id, index) => id !== actual[index])

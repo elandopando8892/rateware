@@ -12,6 +12,7 @@ export type JobKind =
   | "document_extract"
   | "quarterly_document_check"
   | "form_ai_mapping"
+  | "generate_supplier_package"
   | "apply_signature"
   | "send_authorized_payload";
 export type JobErrorCode =
@@ -105,6 +106,7 @@ const JOB_KINDS: readonly JobKind[] = [
   "document_extract",
   "quarterly_document_check",
   "form_ai_mapping",
+  "generate_supplier_package",
   "apply_signature",
   "send_authorized_payload",
 ];

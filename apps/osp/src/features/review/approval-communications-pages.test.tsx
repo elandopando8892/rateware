@@ -18,6 +18,7 @@ const workspace: ApprovalCommunicationsWorkspace = {
     sha256: 'a'.repeat(64), documentCount: 4, extractionCount: 18,
     reviewDecisionCount: 3, formInstanceVersion: 2,
   },
+  supplierPackage: null,
   signature: {
     positionVersion: 3, approvalStatus: 'approved',
     approvalId: '55555555-5555-4555-8555-555555555555', outputSha256: 'b'.repeat(64),
@@ -42,9 +43,21 @@ afterEach(cleanup);
 describe('controlled approval and communications pages', () => {
   it('requires an Operations evidence acknowledgment before advancing', async () => {
     const complete = vi.fn(async () => undefined);
-    render(<OperationsReviewPage workspace={workspace} onComplete={complete} />);
+    const operationsWorkspace: ApprovalCommunicationsWorkspace = {
+      ...workspace,
+      caseState: 'operations_review',
+      supplierPackage: {
+        packageId: '66666666-6666-4666-8666-666666666666',
+        version: 1,
+        outputSha256: 'e'.repeat(64),
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        downloadUrl: 'https://example.test/reviewed-package',
+      },
+    };
+    render(<OperationsReviewPage workspace={operationsWorkspace} onComplete={complete} />);
     expect(screen.getByText(/4 reviewed documents/i)).toBeInTheDocument();
     expect(screen.getByText(/18 extracted fields/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /download reviewed xlsx/i })).toHaveAttribute('href', 'https://example.test/reviewed-package');
     const action = screen.getByRole('button', { name: /complete operations review/i });
     expect(action).toBeDisabled();
     await userEvent.click(screen.getByRole('checkbox', { name: /evidence package is complete/i }));

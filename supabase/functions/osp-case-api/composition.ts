@@ -42,7 +42,9 @@ function issuer(value: string): string {
 
 function databaseUrl(value: string): string {
   try {
-    if (value.trim() !== value) throw new Error("INVALID_RUNTIME_CONFIGURATION");
+    if (value.trim() !== value) {
+      throw new Error("INVALID_RUNTIME_CONFIGURATION");
+    }
     const parsed = new URL(value);
     const sslMode = parsed.searchParams.get("sslmode");
     const allowedSslQuery = parsed.searchParams.size === 1 &&
@@ -96,9 +98,25 @@ export function createCaseApiRuntime(options: {
     storageClient: options.storageClient,
     now: () => new Date(options.clock?.() ?? Date.now()),
   });
+  const workflowStorage = "storage" in options.storageClient
+    ? options.storageClient
+    : null;
   const workflowView = createPostgresWorkflowViewSource({
     databaseUrl: databaseConnection,
     postgresFactory: sharedFactory,
+    signSupplierPackage: workflowStorage
+      ? async (objectId) => {
+        const result = await workflowStorage.storage
+          .from("osp-derived-documents")
+          .createSignedUrl(objectId, 60, {
+            download: "XBF-OSP-Supplier-Package.xlsx",
+          });
+        if (result.error || !result.data?.signedUrl) {
+          throw new Error("WORKFLOW_VIEW_INVALID");
+        }
+        return result.data.signedUrl;
+      }
+      : undefined,
   });
   return createCaseApiHandler({
     verifyToken: (token, signal) => verifier.verifyWorkflow(token, signal),

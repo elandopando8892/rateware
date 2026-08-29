@@ -39,6 +39,15 @@ type SignatureView = {
   approvalId: string | null;
   outputSha256: string | null;
 };
+type SupplierPackageView = {
+  packageId: string;
+  version: number;
+  outputSha256: string;
+  contentType:
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  downloadUrl: string | null;
+  objectId: string;
+};
 type OutboundView = {
   payloadId: string;
   kind: "clarification" | "final_response";
@@ -73,6 +82,7 @@ export type WorkflowViewRecord = {
   caseVersion: number;
   caseState: CaseState;
   inputSnapshot: InputSnapshot | null;
+  supplierPackage?: SupplierPackageView | null;
   signature: SignatureView | null;
   outbound: OutboundView | null;
 };
@@ -130,6 +140,21 @@ function optionalSha(value: unknown): string | null {
   if (typeof value !== "string" || !SHA.test(value)) fail();
   return value;
 }
+function optionalHttpsUrl(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") fail();
+  try {
+    const url = new URL(value);
+    const local = url.protocol === "http:" &&
+      ["127.0.0.1", "localhost"].includes(url.hostname);
+    if ((!local && url.protocol !== "https:") || url.username || url.password) {
+      fail();
+    }
+    return url.toString();
+  } catch {
+    fail();
+  }
+}
 function recipients(value: unknown): readonly string[] {
   if (!Array.isArray(value) || value.length > 50) fail();
   const values = value.map((item) => {
@@ -168,6 +193,18 @@ function parseRow(
       formInstanceVersion: integer(row.form_instance_version, 1),
     };
   const approvalId = optionalUuid(row.signature_approval_id);
+  const packageId = optionalUuid(row.supplier_package_id);
+  const supplierPackage = packageId === null ? null : {
+    packageId,
+    version: integer(row.supplier_package_version, 1),
+    outputSha256: optionalSha(row.supplier_package_sha256) ?? fail(),
+    contentType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" as const,
+    downloadUrl: optionalHttpsUrl(row.supplier_package_download_url),
+    objectId: typeof row.supplier_package_object_id === "string"
+      ? row.supplier_package_object_id
+      : fail(),
+  };
   const signaturePositionVersion = row.signature_position_version ??
     row.signature_policy_position_version;
   const signature =
@@ -245,6 +282,7 @@ function parseRow(
     caseVersion: integer(row.case_version),
     caseState: row.case_state as CaseState,
     inputSnapshot: snapshot ? Object.freeze(snapshot) : null,
+    supplierPackage: supplierPackage ? Object.freeze(supplierPackage) : null,
     signature: signature ? Object.freeze(signature) : null,
     outbound: outbound ? Object.freeze(outbound) : null,
   });
@@ -284,12 +322,22 @@ export function approvalCommunicationsWorkspace(
     caseVersion: record.caseVersion,
     caseState: record.caseState,
     inputSnapshot: record.inputSnapshot,
+    supplierPackage: record.supplierPackage
+      ? Object.freeze({
+        packageId: record.supplierPackage.packageId,
+        version: record.supplierPackage.version,
+        outputSha256: record.supplierPackage.outputSha256,
+        contentType: record.supplierPackage.contentType,
+        downloadUrl: record.supplierPackage.downloadUrl,
+      })
+      : null,
     signature: record.signature,
     outbound: record.outbound,
     capabilities: Object.freeze({
       completeOperationsReview: operations &&
         record.caseState === "operations_review" &&
-        record.inputSnapshot !== null,
+        record.inputSnapshot !== null && record.supplierPackage !== null &&
+        record.supplierPackage !== undefined,
       approveAndApplySignature: jose &&
         record.caseState === "signature_approval" &&
         record.inputSnapshot !== null && record.signature !== null &&
@@ -344,14 +392,21 @@ function sqlClient(
 }
 
 export function createPostgresWorkflowViewSource(
-  options: { databaseUrl: string; postgresFactory?: PostgresFactory },
+  options: {
+    databaseUrl: string;
+    postgresFactory?: PostgresFactory;
+    signSupplierPackage?: (objectId: string) => Promise<string>;
+  },
 ): WorkflowViewSource {
   const sql = sqlClient(options.databaseUrl, options.postgresFactory);
   return Object.freeze({
-    load: async ({ organizationId, caseId, payloadId }) =>
-      await withOrganizationTransaction(sql, organizationId, async (tx) => {
-        await tx`set local statement_timeout = '3000ms'`;
-        const rows = await tx`
+    load: async ({ organizationId, caseId, payloadId }) => {
+      const record = await withOrganizationTransaction(
+        sql,
+        organizationId,
+        async (tx) => {
+          await tx`set local statement_timeout = '3000ms'`;
+          const rows = await tx`
         select case_record.organization_id, case_record.id as case_id,
                case_record.aggregate_version as case_version, case_record.state as case_state,
                snapshot.canonical_sha256 as snapshot_sha256,
@@ -359,6 +414,11 @@ export function createPostgresWorkflowViewSource(
                cardinality(snapshot.extraction_ids) as extraction_count,
                cardinality(snapshot.review_decision_ids) as review_decision_count,
                snapshot.form_instance_version,
+               supplier_package.id as supplier_package_id,
+               supplier_package.version as supplier_package_version,
+               supplier_package.output_sha256 as supplier_package_sha256,
+               supplier_package.object_id as supplier_package_object_id,
+               null::text as supplier_package_download_url,
                signature_policy.position_version as signature_policy_position_version,
                signature.signature_position_version, signature.status as signature_status,
                signature.id as signature_approval_id, signed_package.output_sha256 as signature_output_sha256,
@@ -373,6 +433,15 @@ export function createPostgresWorkflowViewSource(
           where value.organization_id = case_record.organization_id and value.case_id = case_record.id
           order by value.created_at desc, value.id desc limit 1
         ) snapshot on true
+        left join lateral (
+          select value.* from osp_private.generated_packages value
+          where value.organization_id = case_record.organization_id
+            and value.case_id = case_record.id
+            and value.package_kind = 'supplier_completed'
+            and value.status = 'current'
+            and value.input_snapshot_id = snapshot.id
+          order by value.version desc, value.id desc limit 1
+        ) supplier_package on true
         left join lateral (
           select position.version as position_version
           from osp_private.signature_vault_policies policy
@@ -450,8 +519,23 @@ export function createPostgresWorkflowViewSource(
         ) attempt on true
         where case_record.organization_id = ${organizationId} and case_record.id = ${caseId}
         limit 2`;
-        if (rows.length !== 1) throw new Error("WORKFLOW_VIEW_INVALID");
-        return parseRow(rows[0], organizationId, caseId);
-      }),
+          if (rows.length !== 1) throw new Error("WORKFLOW_VIEW_INVALID");
+          return parseRow(rows[0], organizationId, caseId);
+        },
+      );
+      if (!record.supplierPackage || !options.signSupplierPackage) {
+        return record;
+      }
+      const downloadUrl = optionalHttpsUrl(
+        await options.signSupplierPackage(record.supplierPackage.objectId),
+      );
+      return Object.freeze({
+        ...record,
+        supplierPackage: Object.freeze({
+          ...record.supplierPackage,
+          downloadUrl,
+        }),
+      });
+    },
   });
 }

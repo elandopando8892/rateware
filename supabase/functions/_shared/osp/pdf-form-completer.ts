@@ -47,7 +47,6 @@ function validateMappings(
     target(left).localeCompare(target(right))
   );
   const targets = new Set<string>();
-  const decisions = new Set<string>();
   for (const mapping of sorted) {
     validateMappingIdentity(
       mapping.mappingDecisionId,
@@ -55,11 +54,8 @@ function validateMappings(
     );
     validateArtifactValue(mapping.value);
     const mappingTarget = target(mapping);
-    if (
-      targets.has(mappingTarget) || decisions.has(mapping.mappingDecisionId)
-    ) throw new Error("ARTIFACT_MAPPING_INVALID");
+    if (targets.has(mappingTarget)) throw new Error("ARTIFACT_MAPPING_INVALID");
     targets.add(mappingTarget);
-    decisions.add(mapping.mappingDecisionId);
     if (mapping.kind === "acroform") {
       if (
         typeof mapping.fieldName !== "string" ||

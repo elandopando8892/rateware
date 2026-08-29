@@ -293,11 +293,11 @@ describe('App authentication and routing', () => {
     const api = client();
     vi.mocked(api.getApprovalCommunicationsWorkspace)
       .mockResolvedValueOnce({
-        caseId, caseVersion: 4, caseState: 'operations_review', inputSnapshot: snapshot, signature: null, outbound: null,
+        caseId, caseVersion: 4, caseState: 'operations_review', inputSnapshot: snapshot, supplierPackage: null, signature: null, outbound: null,
         capabilities: { completeOperationsReview: true, approveAndApplySignature: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
       })
       .mockResolvedValue({
-        caseId, caseVersion: 5, caseState: 'signature_approval', inputSnapshot: snapshot,
+        caseId, caseVersion: 5, caseState: 'signature_approval', inputSnapshot: snapshot, supplierPackage: null,
         signature: { positionVersion: 1, approvalStatus: 'pending', approvalId: null, outputSha256: null }, outbound: null,
         capabilities: { completeOperationsReview: false, approveAndApplySignature: true, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
       });
@@ -321,6 +321,7 @@ describe('App authentication and routing', () => {
     vi.mocked(api.getApprovalCommunicationsWorkspace).mockResolvedValue({
       caseId: '33333333-3333-4333-8333-333333333333', caseVersion: 7, caseState: 'sales_authorization',
       inputSnapshot: { sha256: 'a'.repeat(64), documentCount: 4, extractionCount: 18, reviewDecisionCount: 3, formInstanceVersion: 2 },
+      supplierPackage: null,
       signature: null,
       outbound: {
         payloadId: '44444444-4444-4444-8444-444444444444', kind: 'final_response', status: 'frozen', caseVersion: 7,
