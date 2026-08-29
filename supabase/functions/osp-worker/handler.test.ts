@@ -11,6 +11,13 @@ const canary = {
   documentVersionId: "44444444-4444-4444-8444-444444444444",
   sourceSha256: "a".repeat(64),
 };
+const packageCanary = {
+  action: "run_supplier_package_canary",
+  organizationId: "11111111-1111-4111-8111-111111111111",
+  caseId: "22222222-2222-4222-8222-222222222222",
+  snapshotId: "33333333-3333-4333-8333-333333333333",
+  snapshotSha256: "b".repeat(64),
+};
 const request = (body: unknown, authorization = `Bearer ${token}`) =>
   new Request("https://example.test/functions/v1/osp-worker", {
     method: "POST",
@@ -132,4 +139,50 @@ Deno.test("OSP worker fails closed when the XLSX canary is disabled or not ready
   }));
   assertEquals(response.status, 400);
   assertEquals(await response.json(), { error: "INVALID_REQUEST" });
+});
+
+Deno.test("OSP worker runs only one exact supplier package canary", async () => {
+  let received: Record<string, string> | undefined;
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    runSupplierPackageCanary: async (input) => {
+      received = input;
+      return 1;
+    },
+  });
+  const response = await handler(request(packageCanary));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { processed: 1 });
+  assertEquals(received, {
+    organizationId: packageCanary.organizationId,
+    caseId: packageCanary.caseId,
+    snapshotId: packageCanary.snapshotId,
+    snapshotSha256: packageCanary.snapshotSha256,
+  });
+
+  const ambiguous = await handler(request({ ...packageCanary, extra: true }));
+  assertEquals(ambiguous.status, 400);
+});
+
+Deno.test("OSP worker fails closed when supplier package canary is disabled or not ready", async () => {
+  const disabled = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: async () => 0,
+    run: async () => 0,
+  });
+  let response = await disabled(request(packageCanary));
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), { error: "CANARY_DISABLED" });
+
+  const unavailable = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: async () => 0,
+    run: async () => 0,
+    runSupplierPackageCanary: async () => 0,
+  });
+  response = await unavailable(request(packageCanary));
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), { error: "CANARY_NOT_READY" });
 });

@@ -285,6 +285,56 @@ Deno.test("Postgres background store claims only an exact shadow XLSX extraction
   ]);
 });
 
+Deno.test("Postgres background store claims only an exact supplier package snapshot", async () => {
+  const calls: Array<{ text: string; values: unknown[] }> = [];
+  const caseId = "22222222-2222-4222-8222-222222222222";
+  const jobId = "33333333-3333-4333-8333-333333333333";
+  const snapshotId = "44444444-4444-4444-8444-444444444444";
+  const snapshotSha256 = "b".repeat(64);
+  const rows: Array<Array<Record<string, unknown>>> = [
+    [],
+    [{
+      id: jobId,
+      organization_id: org,
+      kind: "generate_supplier_package",
+      opaque_payload: JSON.stringify({ caseId, snapshotId }),
+      attempt: 1,
+      lease_token: "55555555-5555-4555-8555-555555555555",
+      leased_until: "2026-08-29T00:05:00.000Z",
+    }],
+  ];
+  const query = ((strings: TemplateStringsArray, ...values: unknown[]) => {
+    calls.push({ text: strings.join("$"), values });
+    return Promise.resolve(rows.shift() ?? []);
+  }) as SqlPort;
+  query.begin = async <T>(operation: (transaction: SqlPort) => Promise<T>) =>
+    await operation(query);
+  const store = createPostgresBackgroundJobStore({
+    databaseUrl: "postgresql://synthetic.example.test/db",
+    postgresFactory: () => query,
+  });
+  const claimed = await store.claimSupplierPackageCanary({
+    organizationId: org,
+    caseId,
+    jobId,
+    snapshotId,
+    snapshotSha256,
+    leaseMs: 300_000,
+  });
+  assert.equal(claimed.length, 1);
+  assert.deepEqual(claimed[0].opaquePayload, { caseId, snapshotId });
+  assert.match(calls[0].text, /set local role osp_worker/i);
+  assert.match(calls[1].text, /claim_supplier_package_canary/i);
+  assert.deepEqual(calls[1].values, [
+    org,
+    caseId,
+    jobId,
+    snapshotId,
+    snapshotSha256,
+    300_000,
+  ]);
+});
+
 Deno.test("Postgres background store rejects a worker lease token from another job", async () => {
   const query = ((strings: TemplateStringsArray) => {
     const text = strings.join("$");

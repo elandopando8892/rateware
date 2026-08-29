@@ -47,12 +47,22 @@ type XlsxDocumentExtractCanary = {
   sourceSha256: string;
 };
 
+type SupplierPackageCanary = {
+  organizationId: string;
+  caseId: string;
+  snapshotId: string;
+  snapshotSha256: string;
+};
+
 export function createOspWorkerHandler(deps: {
   expectedToken: string;
   enqueue(limit: number): Promise<number>;
   run(limit: number): Promise<number>;
   runXlsxDocumentExtractCanary?: (
     input: XlsxDocumentExtractCanary,
+  ) => Promise<number>;
+  runSupplierPackageCanary?: (
+    input: SupplierPackageCanary,
   ) => Promise<number>;
 }): (request: Request) => Promise<Response> {
   if (deps.expectedToken.length < 32) {
@@ -90,6 +100,44 @@ export function createOspWorkerHandler(deps: {
           if (current < limit) break;
         }
         return json(200, { enqueued, processed, batches });
+      } catch {
+        return json(503, { error: "WORKER_UNAVAILABLE" });
+      }
+    }
+
+    const supplierPackageKeys = [
+      "action",
+      "caseId",
+      "organizationId",
+      "snapshotId",
+      "snapshotSha256",
+    ];
+    if (body.action === "run_supplier_package_canary") {
+      if (
+        keys.length !== supplierPackageKeys.length ||
+        keys.some((key, index) => key !== supplierPackageKeys[index]) ||
+        typeof body.organizationId !== "string" ||
+        typeof body.caseId !== "string" ||
+        typeof body.snapshotId !== "string" ||
+        typeof body.snapshotSha256 !== "string" ||
+        !UUID.test(body.organizationId) ||
+        !UUID.test(body.caseId) ||
+        !UUID.test(body.snapshotId) ||
+        !SHA256.test(body.snapshotSha256)
+      ) return json(400, { error: "INVALID_REQUEST" });
+      if (!deps.runSupplierPackageCanary) {
+        return json(409, { error: "CANARY_DISABLED" });
+      }
+      try {
+        const processed = await deps.runSupplierPackageCanary({
+          organizationId: body.organizationId,
+          caseId: body.caseId,
+          snapshotId: body.snapshotId,
+          snapshotSha256: body.snapshotSha256,
+        });
+        return processed === 1
+          ? json(200, { processed })
+          : json(409, { error: "CANARY_NOT_READY" });
       } catch {
         return json(503, { error: "WORKER_UNAVAILABLE" });
       }

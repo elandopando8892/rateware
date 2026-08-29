@@ -27,6 +27,8 @@ import type { AttachmentPromotionService } from "./attachment-promotion.ts";
 import type { ManagedExtractionService } from "./worker.ts";
 import type { AutomaticPreparationService } from "./automatic-preparation.ts";
 import type { OspXlsxIntakeConfiguration } from "./osp-xlsx-intake-config.ts";
+import type { SupplierPackageCanaryConfiguration } from "./supplier-package-canary-config.ts";
+import { createSupplierPackageJobService } from "./supplier-package-runtime.ts";
 
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -37,6 +39,13 @@ type XlsxDocumentExtractCanary = {
   jobId: string;
   documentVersionId: string;
   sourceSha256: string;
+};
+
+type SupplierPackageCanary = {
+  organizationId: string;
+  caseId: string;
+  snapshotId: string;
+  snapshotSha256: string;
 };
 
 function governedStorage(
@@ -57,12 +66,16 @@ export function createShadowWorkerRuntime(input: {
   automation?: GovernedAutomationConfiguration;
   xlsxShadow?: XlsxShadowConfiguration;
   xlsxIntake?: OspXlsxIntakeConfiguration;
+  supplierPackageCanary?: SupplierPackageCanaryConfiguration;
   fetch?: typeof globalThis.fetch;
 }): {
   enqueue(limit: number): Promise<number>;
   run(limit: number): Promise<number>;
   runXlsxDocumentExtractCanary?: (
     request: XlsxDocumentExtractCanary,
+  ) => Promise<number>;
+  runSupplierPackageCanary?: (
+    request: SupplierPackageCanary,
   ) => Promise<number>;
 } {
   if (
@@ -248,6 +261,51 @@ export function createShadowWorkerRuntime(input: {
       });
     }
     : undefined;
+  const supplierPackages = input.supplierPackageCanary
+    ? createSupplierPackageJobService({
+      databaseUrl: input.databaseUrl,
+      postgresFactory: input.postgresFactory,
+      storageClient: governedStorage(input.storageClient),
+    })
+    : undefined;
+  const runSupplierPackageCanary = input.supplierPackageCanary &&
+      supplierPackages
+    ? async (request: SupplierPackageCanary): Promise<number> => {
+      const allowed = input.supplierPackageCanary!;
+      if (
+        request.organizationId !== allowed.organizationId ||
+        request.caseId !== allowed.caseId ||
+        request.snapshotId !== allowed.snapshotId ||
+        request.snapshotSha256 !== allowed.snapshotSha256
+      ) throw new Error("INVALID_INPUT");
+      const jobId = await jobs.enqueue({
+        organizationId: request.organizationId,
+        kind: "generate_supplier_package",
+        opaquePayload: {
+          caseId: request.caseId,
+          snapshotId: request.snapshotId,
+        },
+        idempotencyKey: `supplier-package:${request.snapshotId}`,
+      });
+      return await runWorker({
+        workerId: input.workerId,
+        now: () => new Date(),
+        jobs: {
+          claim: ({ leaseMs }) =>
+            jobs.claimSupplierPackageCanary({
+              ...request,
+              jobId,
+              leaseMs,
+            }),
+          complete: jobs.complete,
+          fail: jobs.fail,
+        },
+        intake,
+        supplierPackages,
+        limit: 1,
+      });
+    }
+    : undefined;
   return Object.freeze({
     enqueue: (limit: number) => bridge.enqueue(limit),
     run: (limit: number) =>
@@ -262,5 +320,6 @@ export function createShadowWorkerRuntime(input: {
         limit,
       }),
     runXlsxDocumentExtractCanary,
+    runSupplierPackageCanary,
   });
 }
