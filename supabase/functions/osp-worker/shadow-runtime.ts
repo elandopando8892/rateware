@@ -110,6 +110,11 @@ export function createShadowWorkerRuntime(input: {
     : undefined;
   let attachmentPromotions: AttachmentPromotionService | undefined;
   if (input.automation) {
+    const managedScan = createManagedMalwareScanner({
+      origin: input.automation.malwareScannerOrigin,
+      token: input.automation.malwareScannerToken,
+      fetch: request,
+    });
     attachmentPromotions = createAttachmentPromotionService({
       store: createPostgresAttachmentPromotionStore({
         databaseUrl: input.databaseUrl,
@@ -118,11 +123,12 @@ export function createShadowWorkerRuntime(input: {
       storage: createSupabaseAttachmentPromotionStorage({
         client: automationStorage!,
       }),
-      scan: createManagedMalwareScanner({
-        origin: input.automation.malwareScannerOrigin,
-        token: input.automation.malwareScannerToken,
-        fetch: request,
-      }),
+      scan: async ({ sourceUrl, sourceSha256, sizeBytes }) =>
+        await managedScan({
+          sourceUrl: await sourceUrl(),
+          sourceSha256,
+          sizeBytes,
+        }),
       jobs,
     });
   } else if (input.xlsxShadow) {
@@ -134,7 +140,8 @@ export function createShadowWorkerRuntime(input: {
       storage: createSupabaseAttachmentPromotionStorage({
         client: automationStorage!,
       }),
-      scan: createStrictXlsxPackageScanner(input.xlsxShadow.sourceSha256),
+      scan: ({ bytes }) =>
+        createStrictXlsxPackageScanner(input.xlsxShadow!.sourceSha256)(bytes),
       sourceSafetyReason: "strict_xlsx_package_policy",
       jobs,
     });
@@ -156,7 +163,7 @@ export function createShadowWorkerRuntime(input: {
       storage: createSupabaseAttachmentPromotionStorage({
         client: automationStorage!,
       }),
-      scan: createStrictXlsxPackageScanner(),
+      scan: ({ bytes }) => createStrictXlsxPackageScanner()(bytes),
       sourceSafetyReason: "strict_xlsx_package_policy",
       contentTypes: [XLSX],
       jobs,

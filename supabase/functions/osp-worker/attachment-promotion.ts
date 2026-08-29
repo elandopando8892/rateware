@@ -35,6 +35,10 @@ export interface AttachmentPromotionStorage {
   downloadOriginal(input: {
     objectKey: string;
   }): Promise<Uint8Array>;
+  createOriginalReadUrl(input: {
+    objectKey: string;
+    expiresInSeconds: number;
+  }): Promise<string>;
   putCorporate(input: {
     objectKey: string;
     bytes: Uint8Array;
@@ -52,7 +56,12 @@ export interface AttachmentPromotionService {
 }
 
 type MalwareScanner = (
-  bytes: Uint8Array,
+  input: {
+    bytes: Uint8Array;
+    sourceUrl: () => Promise<string>;
+    sourceSha256: string;
+    sizeBytes: number;
+  },
 ) => Promise<"clean" | "infected" | "unknown">;
 
 const UUID =
@@ -122,7 +131,18 @@ export function createAttachmentPromotionService(deps: {
         if (await sha256(bytes) !== source.sourceSha256) {
           throw new Error("SOURCE_HASH_MISMATCH");
         }
-        if (await deps.scan(bytes.slice()) !== "clean") {
+        if (
+          await deps.scan({
+            bytes: bytes.slice(),
+            sourceUrl: () =>
+              deps.storage.createOriginalReadUrl({
+                objectKey: source.sourceObjectKey,
+                expiresInSeconds: 60,
+              }),
+            sourceSha256: source.sourceSha256,
+            sizeBytes: bytes.byteLength,
+          }) !== "clean"
+        ) {
           throw new Error("MALWARE_SCAN_REJECTED");
         }
         const corporateObjectKey = `${input.organizationId}/${source.id}`;

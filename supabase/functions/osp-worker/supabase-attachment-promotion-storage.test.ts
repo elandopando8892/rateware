@@ -13,12 +13,25 @@ Deno.test("promotion storage accepts an idempotent duplicate only after target h
       if (objects.has(target)) throw new Error("duplicate");
       objects.set(target, bytes.slice());
     },
+    createSignedUrl: async (
+      bucket: string,
+      key: string,
+      expiresInSeconds: number,
+    ) =>
+      `https://storage.example.test/${bucket}/${key}?expires=${expiresInSeconds}`,
   };
   const storage = createSupabaseAttachmentPromotionStorage({ client });
   const bytes = new TextEncoder().encode("same bytes");
   const sourceSha256 = await sha256Hex(bytes);
   objects.set("osp-originals/source", bytes);
   assertEquals(await storage.downloadOriginal({ objectKey: "source" }), bytes);
+  assertEquals(
+    await storage.createOriginalReadUrl({
+      objectKey: "source",
+      expiresInSeconds: 60,
+    }),
+    "https://storage.example.test/osp-originals/source?expires=60",
+  );
   await storage.putCorporate({
     objectKey: "target",
     bytes,

@@ -12,6 +12,7 @@ const bytes = new TextEncoder().encode("synthetic supplier requirement");
 Deno.test("attachment promotion verifies, scans, registers and queues one deterministic extraction", async () => {
   const sourceSha256 = await sha256Hex(bytes);
   const stored: unknown[] = [];
+  const scans: unknown[] = [];
   const jobs = createInMemoryBackgroundJobStore();
   const service = createAttachmentPromotionService({
     store: {
@@ -31,11 +32,19 @@ Deno.test("attachment promotion verifies, scans, registers and queues one determ
     },
     storage: {
       downloadOriginal: async () => bytes,
+      createOriginalReadUrl: async () =>
+        "https://storage.example.test/signed-source?token=synthetic",
       putCorporate: async (input) => {
         stored.push(input);
       },
     },
-    scan: async () => "clean",
+    scan: async (input) => {
+      scans.push({
+        ...input,
+        sourceUrl: await input.sourceUrl(),
+      });
+      return "clean";
+    },
     jobs,
   });
   assertEquals(
@@ -46,6 +55,12 @@ Deno.test("attachment promotion verifies, scans, registers and queues one determ
     }),
     [{ documentVersionId: attachmentId, templateVersionId: null }],
   );
+  assertEquals(scans, [{
+    bytes,
+    sourceUrl: "https://storage.example.test/signed-source?token=synthetic",
+    sourceSha256,
+    sizeBytes: bytes.byteLength,
+  }]);
   assertEquals(
     (stored[0] as { objectKey: string }).objectKey,
     `${organizationId}/${attachmentId}`,
@@ -84,6 +99,8 @@ Deno.test("attachment promotion fails closed before persistence on hash or malwa
     },
     storage: {
       downloadOriginal: async () => bytes,
+      createOriginalReadUrl: async () =>
+        "https://storage.example.test/signed-source?token=synthetic",
       putCorporate: async () => undefined,
     },
     scan,
@@ -135,6 +152,8 @@ Deno.test("attachment promotion can limit a free deterministic route to XLSX", a
         downloaded += 1;
         return bytes;
       },
+      createOriginalReadUrl: async () =>
+        "https://storage.example.test/signed-source?token=synthetic",
       putCorporate: async () => undefined,
     },
     scan: async () => "clean",

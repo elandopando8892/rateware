@@ -11,6 +11,11 @@ type SimpleClient = {
     bytes: Uint8Array,
     contentType: string,
   ): Promise<void>;
+  createSignedUrl(
+    bucket: string,
+    key: string,
+    expiresInSeconds: number,
+  ): Promise<string>;
 };
 
 export type AttachmentStorageClient =
@@ -50,6 +55,40 @@ export function createSupabaseAttachmentPromotionStorage(options: {
           error instanceof Error &&
           error.message === "STORAGE_DOWNLOAD_TEMPORARY"
         ) throw error;
+        throw new Error("STORAGE_DOWNLOAD_TEMPORARY");
+      }
+    },
+    async createOriginalReadUrl(input) {
+      if (
+        !Number.isSafeInteger(input.expiresInSeconds) ||
+        input.expiresInSeconds < 15 || input.expiresInSeconds > 120
+      ) throw new Error("STORAGE_DOWNLOAD_TEMPORARY");
+      try {
+        const value = isSimple(options.client)
+          ? await options.client.createSignedUrl(
+            "osp-originals",
+            input.objectKey,
+            input.expiresInSeconds,
+          )
+          : await (async () => {
+            const client = options.client as Pick<SupabaseClient, "storage">;
+            const result = await client.storage.from("osp-originals")
+              .createSignedUrl(input.objectKey, input.expiresInSeconds, {
+                download: true,
+              });
+            if (result.error) throw result.error;
+            return result.data?.signedUrl;
+          })();
+        if (typeof value !== "string") {
+          throw new Error("STORAGE_DOWNLOAD_TEMPORARY");
+        }
+        const parsed = new URL(value);
+        if (
+          parsed.protocol !== "https:" || parsed.username || parsed.password ||
+          parsed.hash
+        ) throw new Error("STORAGE_DOWNLOAD_TEMPORARY");
+        return value;
+      } catch {
         throw new Error("STORAGE_DOWNLOAD_TEMPORARY");
       }
     },
