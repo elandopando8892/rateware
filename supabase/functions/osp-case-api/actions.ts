@@ -303,8 +303,23 @@ export function createPostgresSignatureVaultPolicySource(options: {
         input.organizationId,
         async (tx) => {
           await tx`set local statement_timeout = '3000ms'`;
-          const rows =
-            await tx`select policy.vault_ref, position.version as position_version from osp_private.signature_vault_policies policy join osp_private.signature_positions position on position.organization_id = policy.organization_id and position.id = policy.signature_position_id where policy.organization_id = ${input.organizationId} and policy.active = true and position.active = true limit 2`;
+          const rows = await tx`
+            select policy.vault_ref,
+                   coalesce(pdf_position.version, xlsx_position.version) as position_version
+            from osp_private.signature_vault_policies policy
+            left join osp_private.signature_positions pdf_position
+              on pdf_position.organization_id = policy.organization_id
+             and pdf_position.id = policy.signature_position_id
+             and pdf_position.active = true
+            left join osp_private.signature_xlsx_positions xlsx_position
+              on xlsx_position.organization_id = policy.organization_id
+             and xlsx_position.id = policy.signature_xlsx_position_id
+             and xlsx_position.active = true
+            where policy.organization_id = ${input.organizationId}
+              and policy.active = true
+              and (pdf_position.id is not null)::integer +
+                  (xlsx_position.id is not null)::integer = 1
+            limit 2`;
           if (
             rows.length !== 1 || typeof rows[0].vault_ref !== "string" ||
             !Number.isSafeInteger(Number(rows[0].position_version))

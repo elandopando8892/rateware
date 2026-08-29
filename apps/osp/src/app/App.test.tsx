@@ -293,11 +293,14 @@ describe('App authentication and routing', () => {
     const api = client();
     vi.mocked(api.getApprovalCommunicationsWorkspace)
       .mockResolvedValueOnce({
-        caseId, caseVersion: 4, caseState: 'operations_review', inputSnapshot: snapshot, supplierPackage: null, signature: null, outbound: null,
+        caseId, caseVersion: 4, caseState: 'operations_review', inputSnapshot: snapshot,
+        supplierPackage: { packageId: '55555555-5555-4555-8555-555555555551', version: 1, outputSha256: 'b'.repeat(64), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', downloadUrl: null },
+        signature: null, outbound: null,
         capabilities: { completeOperationsReview: true, approveAndApplySignature: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
       })
       .mockResolvedValue({
-        caseId, caseVersion: 5, caseState: 'signature_approval', inputSnapshot: snapshot, supplierPackage: null,
+        caseId, caseVersion: 5, caseState: 'signature_approval', inputSnapshot: snapshot,
+        supplierPackage: { packageId: '55555555-5555-4555-8555-555555555551', version: 1, outputSha256: 'b'.repeat(64), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', downloadUrl: null },
         signature: { positionVersion: 1, approvalStatus: 'pending', approvalId: null, outputSha256: null }, outbound: null,
         capabilities: { completeOperationsReview: false, approveAndApplySignature: true, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
       });

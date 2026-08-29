@@ -204,6 +204,12 @@ const previewOperationsWorkspace: ApprovalCommunicationsWorkspace = {
   caseVersion: previewCases[1].aggregate_version,
   caseState: 'operations_review',
   inputSnapshot: { sha256: shaB, documentCount: 4, extractionCount: 16, reviewDecisionCount: 5, formInstanceVersion: 2 },
+  supplierPackage: {
+    packageId: '56000000-0000-4000-8000-000000000001', version: 1,
+    outputSha256: shaA,
+    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    downloadUrl: null,
+  },
   signature: null,
   outbound: null,
   capabilities: {
@@ -484,6 +490,12 @@ function createPreviewClient(): OspClient {
       workflowWorkspaces.set(caseFormCaseId, {
         caseId: caseFormCaseId, caseVersion, caseState: 'operations_review',
         inputSnapshot: { sha256: shaB, documentCount: 4, extractionCount: 12, reviewDecisionCount: 7, formInstanceVersion: instance.version },
+        supplierPackage: {
+          packageId: '56000000-0000-4000-8000-000000000002', version: 1,
+          outputSha256: shaA,
+          contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          downloadUrl: null,
+        },
         signature: null, outbound: null,
         capabilities: { completeOperationsReview: true, approveAndApplySignature: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
       });

@@ -200,11 +200,11 @@ export function createPostgresSupplierPackageRecordStore(options: {
             prior[0].id
           }`;
         }
-        await tx`insert into osp_private.generated_packages (id, organization_id, case_id, input_snapshot_id, input_snapshot_sha256, object_id, output_sha256, version, package_kind, status, supersedes_package_id, artifact_receipt_json) values (${input.receipt.packageId}, ${input.organizationId}, ${input.caseId}, ${input.snapshotId}, ${input.receipt.artifact.packageSnapshotSha256}, ${input.receipt.objectId}, ${input.receipt.artifact.outputSha256}, ${
+        await tx`insert into osp_private.generated_packages (id, organization_id, case_id, input_snapshot_id, input_snapshot_sha256, object_id, output_sha256, version, package_kind, status, supersedes_package_id, artifact_receipt_json, content_type) values (${input.receipt.packageId}, ${input.organizationId}, ${input.caseId}, ${input.snapshotId}, ${input.receipt.artifact.packageSnapshotSha256}, ${input.receipt.objectId}, ${input.receipt.artifact.outputSha256}, ${
           Number(runs[0].package_version)
         }, 'supplier_completed', 'current', ${prior[0]?.id ?? null}, ${
           JSON.stringify(input.receipt.artifact)
-        }::text::jsonb)`;
+        }::text::jsonb, ${XLSX})`;
         await tx`update osp_private.supplier_package_generation_runs set status = 'generated', artifact_receipt_json = ${
           JSON.stringify(input.receipt)
         }::text::jsonb, last_error_code = null, updated_at = statement_timestamp() where organization_id = ${input.organizationId} and input_snapshot_id = ${input.snapshotId}`;

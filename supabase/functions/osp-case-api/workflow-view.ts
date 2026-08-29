@@ -198,8 +198,10 @@ function parseRow(
     packageId,
     version: integer(row.supplier_package_version, 1),
     outputSha256: optionalSha(row.supplier_package_sha256) ?? fail(),
-    contentType:
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" as const,
+    contentType: row.supplier_package_content_type ===
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" as const
+      : fail(),
     downloadUrl: optionalHttpsUrl(row.supplier_package_download_url),
     objectId: typeof row.supplier_package_object_id === "string"
       ? row.supplier_package_object_id
@@ -417,6 +419,7 @@ export function createPostgresWorkflowViewSource(
                supplier_package.id as supplier_package_id,
                supplier_package.version as supplier_package_version,
                supplier_package.output_sha256 as supplier_package_sha256,
+               supplier_package.content_type as supplier_package_content_type,
                supplier_package.object_id as supplier_package_object_id,
                null::text as supplier_package_download_url,
                signature_policy.position_version as signature_policy_position_version,
@@ -443,13 +446,20 @@ export function createPostgresWorkflowViewSource(
           order by value.version desc, value.id desc limit 1
         ) supplier_package on true
         left join lateral (
-          select position.version as position_version
+          select coalesce(pdf_position.version, xlsx_position.version) as position_version
           from osp_private.signature_vault_policies policy
-          join osp_private.signature_positions position
-            on position.organization_id = policy.organization_id
-           and position.id = policy.signature_position_id
+          left join osp_private.signature_positions pdf_position
+            on pdf_position.organization_id = policy.organization_id
+           and pdf_position.id = policy.signature_position_id
+           and pdf_position.active = true
+          left join osp_private.signature_xlsx_positions xlsx_position
+            on xlsx_position.organization_id = policy.organization_id
+           and xlsx_position.id = policy.signature_xlsx_position_id
+           and xlsx_position.active = true
           where policy.organization_id = case_record.organization_id
-            and policy.active = true and position.active = true
+            and policy.active = true
+            and (pdf_position.id is not null)::integer +
+                (xlsx_position.id is not null)::integer = 1
           limit 2
         ) signature_policy on true
         left join lateral (

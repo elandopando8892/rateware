@@ -56,7 +56,9 @@ export function createSignatureObjectPort(
         organizationId: string;
         objectId: string;
         bytes: Uint8Array;
-        contentType: "application/pdf";
+        contentType:
+          | "application/pdf"
+          | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
       },
       _signal: AbortSignal,
     ) => {
@@ -115,14 +117,31 @@ export function createPostgresSignaturePolicyPort(options: {
           (rows[0].content_type !== "image/png" &&
             rows[0].content_type !== "image/jpeg")
         ) throw new Error("SIGNATURE_POLICY_INVALID");
-        return {
+        const common = {
           signatureBytes: await options.vault.read(rows[0].vault_ref, signal),
           contentType: rows[0].content_type as "image/png" | "image/jpeg",
-          page: Number(rows[0].page),
-          x: Number(rows[0].x),
-          y: Number(rows[0].y),
-          width: Number(rows[0].width),
-          height: Number(rows[0].height),
+        };
+        if (rows[0].target_kind === "pdf") {
+          return {
+            ...common,
+            targetKind: "pdf" as const,
+            page: Number(rows[0].page),
+            x: Number(rows[0].x),
+            y: Number(rows[0].y),
+            width: Number(rows[0].width),
+            height: Number(rows[0].height),
+          };
+        }
+        if (
+          rows[0].target_kind !== "xlsx" ||
+          typeof rows[0].worksheet_name !== "string" ||
+          typeof rows[0].cell_range !== "string"
+        ) throw new Error("SIGNATURE_POLICY_INVALID");
+        return {
+          ...common,
+          targetKind: "xlsx" as const,
+          worksheetName: rows[0].worksheet_name,
+          cellRange: rows[0].cell_range,
         };
       }),
   });

@@ -1,4 +1,5 @@
 import { PDFDocument } from "pdf-lib";
+import ExcelJS from "exceljs";
 
 import type {
   SignatureApplyReceipt,
@@ -11,6 +12,27 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
 const OPAQUE = /^[A-Za-z0-9:_/-]{1,512}$/;
+const XLSX_RANGE = /^[A-Z]{1,3}[1-9][0-9]{0,6}:[A-Z]{1,3}[1-9][0-9]{0,6}$/;
+
+function xlsxCoordinate(value: string): readonly [number, number] | null {
+  const match = /^([A-Z]{1,3})([1-9][0-9]{0,6})$/.exec(value);
+  if (!match) return null;
+  const column = [...match[1]].reduce(
+    (total, character) => total * 26 + character.charCodeAt(0) - 64,
+    0,
+  );
+  const row = Number(match[2]);
+  return column <= 16_384 && row <= 1_048_576 ? [column, row] : null;
+}
+
+function validXlsxRange(value: string): boolean {
+  if (!XLSX_RANGE.test(value)) return false;
+  const [startValue, endValue] = value.split(":");
+  const start = xlsxCoordinate(startValue);
+  const end = xlsxCoordinate(endValue);
+  return start !== null && end !== null && start[0] <= end[0] &&
+    start[1] <= end[1];
+}
 
 export interface SignatureObjectPort {
   read(
@@ -22,7 +44,9 @@ export interface SignatureObjectPort {
       organizationId: string;
       objectId: string;
       bytes: Uint8Array;
-      contentType: "application/pdf";
+      contentType:
+        | "application/pdf"
+        | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     },
     signal: AbortSignal,
   ): Promise<void>;
@@ -42,12 +66,18 @@ export interface PrivateSignaturePolicyPort {
   ): Promise<{
     signatureBytes: Uint8Array;
     contentType: "image/png" | "image/jpeg";
+  } & ({
+    targetKind: "pdf";
     page: number;
     x: number;
     y: number;
     width: number;
     height: number;
-  }>;
+  } | {
+    targetKind: "xlsx";
+    worksheetName: string;
+    cellRange: string;
+  })>;
 }
 
 function invalid(code: string): never {
@@ -100,45 +130,83 @@ export function createPdfSignatureApplier(deps: {
         !policy || !(policy.signatureBytes instanceof Uint8Array) ||
         policy.signatureBytes.byteLength < 1 ||
         policy.signatureBytes.byteLength > 1024 * 1024 ||
-        !["image/png", "image/jpeg"].includes(policy.contentType) ||
-        !Number.isSafeInteger(policy.page) || policy.page < 1 ||
-        [policy.x, policy.y].some((value) =>
-          typeof value !== "number" || !Number.isFinite(value) || value < 0
-        ) ||
-        [policy.width, policy.height].some((value) =>
-          typeof value !== "number" || !Number.isFinite(value) || value <= 0
-        )
+        !["image/png", "image/jpeg"].includes(policy.contentType)
       ) invalid("SIGNATURE_POSITION_INVALID");
-      let document: PDFDocument;
-      try {
-        document = await PDFDocument.load(inputBytes.slice(), {
-          ignoreEncryption: false,
+      let outputBytes: Uint8Array;
+      let outputContentType:
+        | "application/pdf"
+        | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      if (policy.targetKind === "pdf") {
+        if (
+          !Number.isSafeInteger(policy.page) || policy.page < 1 ||
+          [policy.x, policy.y].some((value) =>
+            typeof value !== "number" || !Number.isFinite(value) || value < 0
+          ) ||
+          [policy.width, policy.height].some((value) =>
+            typeof value !== "number" || !Number.isFinite(value) || value <= 0
+          )
+        ) invalid("SIGNATURE_POSITION_INVALID");
+        let document: PDFDocument;
+        try {
+          document = await PDFDocument.load(inputBytes.slice(), {
+            ignoreEncryption: false,
+          });
+        } catch {
+          invalid("SIGNATURE_INPUT_INVALID");
+        }
+        const page = document.getPages()[policy.page - 1];
+        if (
+          !page || policy.x + policy.width > page.getWidth() ||
+          policy.y + policy.height > page.getHeight()
+        ) invalid("SIGNATURE_POSITION_INVALID");
+        try {
+          const image = policy.contentType === "image/png"
+            ? await document.embedPng(policy.signatureBytes)
+            : await document.embedJpg(policy.signatureBytes);
+          page.drawImage(image, {
+            x: policy.x,
+            y: policy.y,
+            width: policy.width,
+            height: policy.height,
+          });
+        } catch {
+          invalid("SIGNATURE_ASSET_INVALID");
+        }
+        outputBytes = await document.save({
+          useObjectStreams: false,
+          addDefaultPage: false,
         });
-      } catch {
-        invalid("SIGNATURE_INPUT_INVALID");
+        outputContentType = "application/pdf";
+      } else if (policy.targetKind === "xlsx") {
+        if (
+          typeof policy.worksheetName !== "string" ||
+          policy.worksheetName.trim() !== policy.worksheetName ||
+          policy.worksheetName.length < 1 || policy.worksheetName.length > 31 ||
+          !validXlsxRange(policy.cellRange)
+        ) invalid("SIGNATURE_POSITION_INVALID");
+        const workbook = new ExcelJS.Workbook();
+        try {
+          await workbook.xlsx.load(inputBytes.slice() as never);
+        } catch {
+          invalid("SIGNATURE_INPUT_INVALID");
+        }
+        const worksheet = workbook.getWorksheet(policy.worksheetName);
+        if (!worksheet) invalid("SIGNATURE_POSITION_INVALID");
+        try {
+          const imageId = workbook.addImage({
+            buffer: policy.signatureBytes.slice() as never,
+            extension: policy.contentType === "image/png" ? "png" : "jpeg",
+          });
+          worksheet.addImage(imageId, policy.cellRange);
+          outputBytes = new Uint8Array(await workbook.xlsx.writeBuffer());
+        } catch {
+          invalid("SIGNATURE_ASSET_INVALID");
+        }
+        outputContentType =
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      } else {
+        invalid("SIGNATURE_POSITION_INVALID");
       }
-      const page = document.getPages()[policy.page - 1];
-      if (
-        !page || policy.x + policy.width > page.getWidth() ||
-        policy.y + policy.height > page.getHeight()
-      ) invalid("SIGNATURE_POSITION_INVALID");
-      try {
-        const image = policy.contentType === "image/png"
-          ? await document.embedPng(policy.signatureBytes)
-          : await document.embedJpg(policy.signatureBytes);
-        page.drawImage(image, {
-          x: policy.x,
-          y: policy.y,
-          width: policy.width,
-          height: policy.height,
-        });
-      } catch {
-        invalid("SIGNATURE_ASSET_INVALID");
-      }
-      const outputBytes = await document.save({
-        useObjectStreams: false,
-        addDefaultPage: false,
-      });
       if (
         outputBytes.byteLength < 1 || outputBytes.byteLength > 25 * 1024 * 1024
       ) invalid("SIGNATURE_OUTPUT_INVALID");
@@ -150,7 +218,7 @@ export function createPdfSignatureApplier(deps: {
           organizationId: request.organizationId,
           objectId: outputObjectId,
           bytes: outputBytes,
-          contentType: "application/pdf",
+          contentType: outputContentType,
         }, signal);
       } catch (error) {
         if (

@@ -90,7 +90,11 @@ describe('synthetic preview runtime', () => {
       values,
     });
     const review = await runtime.apiClient.getApprovalCommunicationsWorkspace({ caseId: form.caseId });
-    expect(review).toMatchObject({ caseState: 'operations_review', capabilities: { completeOperationsReview: true } });
+    expect(review).toMatchObject({
+      caseState: 'operations_review',
+      supplierPackage: { version: 1, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      capabilities: { completeOperationsReview: true },
+    });
 
     await runtime.apiClient.completeOperationsReview({
       caseId: form.caseId,
