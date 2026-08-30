@@ -29,7 +29,14 @@ export type OspOperatorEntitlement = {
   externalOrganization: string;
 };
 
-export const OSP_PRODUCTION_OPERATOR_ENTITLEMENTS: readonly OspOperatorEntitlement[] = Object.freeze([
+export type OspSignatureEntitlement = {
+  email: string;
+  externalOrganization: string;
+};
+
+export const OSP_PRODUCTION_OPERATOR_ENTITLEMENTS: readonly OspOperatorEntitlement[] = Object.freeze([]);
+
+export const OSP_PRODUCTION_SIGNATURE_ENTITLEMENTS: readonly OspSignatureEntitlement[] = Object.freeze([
   Object.freeze({
     email: 'jgonzalez@xbfreight.com',
     externalOrganization: OSP_PRODUCTION_ORGANIZATION_BINDING.externalOrganization,

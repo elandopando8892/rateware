@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   OSP_PRODUCTION_OPERATOR_ENTITLEMENTS,
   OSP_PRODUCTION_ORGANIZATION_BINDING,
+  OSP_PRODUCTION_SIGNATURE_ENTITLEMENTS,
   requireOspIdentity,
 } from './auth-policy.ts';
 import { OspApiError } from './http.ts';
@@ -115,13 +116,15 @@ Deno.test('requireOspIdentity binds an approved production identity to the canon
   });
 });
 
-Deno.test('production operator entitlement is exact, immutable, and bound to the reviewed Kinde organization', () => {
-  assert.deepEqual(OSP_PRODUCTION_OPERATOR_ENTITLEMENTS, [{
+Deno.test('production signature entitlement is exact, immutable, and removes operator authority from José', () => {
+  assert.deepEqual(OSP_PRODUCTION_OPERATOR_ENTITLEMENTS, []);
+  assert.deepEqual(OSP_PRODUCTION_SIGNATURE_ENTITLEMENTS, [{
     email: 'jgonzalez@xbfreight.com',
     externalOrganization: 'org_dbc2fd12c76',
   }]);
   assert.equal(Object.isFrozen(OSP_PRODUCTION_OPERATOR_ENTITLEMENTS), true);
-  assert.equal(Object.isFrozen(OSP_PRODUCTION_OPERATOR_ENTITLEMENTS[0]), true);
+  assert.equal(Object.isFrozen(OSP_PRODUCTION_SIGNATURE_ENTITLEMENTS), true);
+  assert.equal(Object.isFrozen(OSP_PRODUCTION_SIGNATURE_ENTITLEMENTS[0]), true);
 });
 
 Deno.test('requireOspIdentity rejects any non-reviewed production organization', () => {

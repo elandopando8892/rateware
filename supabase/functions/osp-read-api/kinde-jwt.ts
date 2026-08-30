@@ -12,6 +12,7 @@ import {
   type OspAuthorizationIdentity,
   type OspOperatorEntitlement,
   type OspOrganizationBinding,
+  type OspSignatureEntitlement,
 } from './auth-policy.ts';
 import { OspApiError } from './http.ts';
 import type {
@@ -43,6 +44,7 @@ export type KindeJwtVerifierOptions = {
   allowedEmails?: readonly string[];
   organizationBinding?: OspOrganizationBinding;
   operatorEntitlements?: readonly OspOperatorEntitlement[];
+  signatureEntitlements?: readonly OspSignatureEntitlement[];
   jwksFetch: typeof fetch;
   clock?: () => number;
   elapsedClock?: () => number;
@@ -79,6 +81,7 @@ function canonicalWorkflowPermissions(
   payload: Record<string, unknown>,
   identity: OspAuthorizationIdentity,
   operatorEntitlements: readonly OspOperatorEntitlement[],
+  signatureEntitlements: readonly OspSignatureEntitlement[],
 ): readonly string[] {
   const permissions = payload.permissions;
   if (permissions !== undefined && (!Array.isArray(permissions) ||
@@ -97,10 +100,15 @@ function canonicalWorkflowPermissions(
     entitlement.email === identity.email &&
     entitlement.externalOrganization === identity.externalOrganization
   );
+  const entitledToApproveSignature = signatureEntitlements.some((entitlement) =>
+    entitlement.email === identity.email &&
+    entitlement.externalOrganization === identity.externalOrganization
+  );
   const canonical = [...new Set([
     'osp:read',
     ...ospPermissions,
     ...(entitledToOperate ? ['osp:operate'] : []),
+    ...(entitledToApproveSignature ? ['osp:signature-approve'] : []),
   ])].sort();
   return Object.freeze(canonical);
 }
@@ -144,6 +152,7 @@ export function createKindeJwtVerifier({
   allowedEmails = OSP_PRODUCTION_READONLY_EMAILS,
   organizationBinding,
   operatorEntitlements = [],
+  signatureEntitlements = [],
   jwksFetch,
   clock = Date.now,
   elapsedClock = () => performance.now(),
@@ -315,7 +324,12 @@ export function createKindeJwtVerifier({
     const identity = requireIdentity(payload);
     return Object.freeze({
       identity,
-      permissions: canonicalWorkflowPermissions(payload, identity, operatorEntitlements),
+      permissions: canonicalWorkflowPermissions(
+        payload,
+        identity,
+        operatorEntitlements,
+        signatureEntitlements,
+      ),
     });
   };
 
@@ -340,7 +354,12 @@ export function createKindeJwtVerifier({
     }
     return Object.freeze({
       identity,
-      permissions: canonicalWorkflowPermissions(accessPayload, identity, operatorEntitlements),
+      permissions: canonicalWorkflowPermissions(
+        accessPayload,
+        identity,
+        operatorEntitlements,
+        signatureEntitlements,
+      ),
       ...canonicalApprovalSession(idPayload),
     });
   };

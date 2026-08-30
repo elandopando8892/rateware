@@ -9,7 +9,11 @@ import {
 
 import { OspApiError } from './http.ts';
 import { createKindeJwtVerifier } from './kinde-jwt.ts';
-import type { OspOperatorEntitlement, OspOrganizationBinding } from './auth-policy.ts';
+import type {
+  OspOperatorEntitlement,
+  OspOrganizationBinding,
+  OspSignatureEntitlement,
+} from './auth-policy.ts';
 
 const NOW = 1_800_000_000;
 const issuer = 'https://auth.heymarksman.com';
@@ -90,6 +94,24 @@ function verifierWithOperatorEntitlements(
     allowedEmails: emails,
     organizationBinding,
     operatorEntitlements,
+    jwksFetch,
+    clock: () => NOW * 1_000,
+  });
+}
+
+function verifierWithSignatureEntitlements(
+  jwksFetch: typeof fetch,
+  signatureEntitlements: readonly OspSignatureEntitlement[],
+  organizationBinding: OspOrganizationBinding,
+  emails: readonly string[] = allowedEmails,
+) {
+  return createKindeJwtVerifier({
+    issuer,
+    clientId,
+    audience,
+    allowedEmails: emails,
+    organizationBinding,
+    signatureEntitlements,
     jwksFetch,
     clock: () => NOW * 1_000,
   });
@@ -284,6 +306,31 @@ Deno.test('createKindeJwtVerifier does not carry an operator entitlement into an
   );
 
   assert.deepEqual((await subject.verifyWorkflow(token)).permissions, ['osp:read']);
+});
+
+Deno.test('createKindeJwtVerifier grants only the exact signature identity in the bound organization', async () => {
+  const fixture = await setup();
+  const binding = {
+    externalOrganization: 'synthetic-org',
+    canonicalOrganization: 'canonical-org',
+    allowMissingExternalClaim: false,
+  } as const;
+  const entitlements = [{ email: 'operator@example.test', externalOrganization: 'synthetic-org' }] as const;
+  const exact = await sign(fixture.first.privateKey, 'first-kid', { permissions: [] });
+  const subject = verifierWithSignatureEntitlements(
+    jsonFetch({ keys: [fixture.firstJwk] }),
+    entitlements,
+    binding,
+  );
+
+  assert.deepEqual(
+    (await subject.verifyWorkflow(exact)).permissions,
+    ['osp:read', 'osp:signature-approve'],
+  );
+  assert.deepEqual(
+    (await subject.verifyApproval(exact, await signId(fixture.first.privateKey, 'first-kid'))).permissions,
+    ['osp:read', 'osp:signature-approve'],
+  );
 });
 
 Deno.test('createKindeJwtVerifier rejects an altered real signature without leaking details', async () => {

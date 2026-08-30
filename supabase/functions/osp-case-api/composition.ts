@@ -2,6 +2,7 @@ import { createKindeJwtVerifier } from "../osp-read-api/kinde-jwt.ts";
 import {
   OSP_PRODUCTION_OPERATOR_ENTITLEMENTS,
   OSP_PRODUCTION_ORGANIZATION_BINDING,
+  OSP_PRODUCTION_SIGNATURE_ENTITLEMENTS,
 } from "../osp-read-api/auth-policy.ts";
 import { createCaseApiHandler } from "./handler.ts";
 import { createPostgresClarificationStore } from "./postgres-store.ts";
@@ -79,6 +80,7 @@ export function createCaseApiRuntime(options: {
     clock: options.clock ?? Date.now,
     organizationBinding: OSP_PRODUCTION_ORGANIZATION_BINDING,
     operatorEntitlements: OSP_PRODUCTION_OPERATOR_ENTITLEMENTS,
+    signatureEntitlements: OSP_PRODUCTION_SIGNATURE_ENTITLEMENTS,
   });
   let sharedDatabase: unknown;
   const sharedFactory: PostgresFactory = (url, config) =>

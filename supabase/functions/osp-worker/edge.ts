@@ -10,6 +10,7 @@ import { resolveGovernedAutomation } from "./governed-automation-config.ts";
 import { resolveXlsxShadow } from "./xlsx-shadow-config.ts";
 import { resolveOspXlsxIntake } from "./osp-xlsx-intake-config.ts";
 import { resolveSupplierPackageCanary } from "./supplier-package-canary-config.ts";
+import { createPostgresSignatureVaultReader } from "./signature-runtime.ts";
 
 function required(name: string): string {
   const value = Deno.env.get(name)?.trim();
@@ -84,6 +85,7 @@ const automation = resolveGovernedAutomation(Deno.env);
 const xlsxShadow = resolveXlsxShadow(Deno.env);
 const xlsxIntake = resolveOspXlsxIntake(Deno.env);
 const supplierPackageCanary = resolveSupplierPackageCanary(Deno.env);
+const signatureVault = createPostgresSignatureVaultReader({ databaseUrl });
 const runtime = createShadowWorkerRuntime({
   databaseUrl,
   gmailAccessToken,
@@ -93,6 +95,7 @@ const runtime = createShadowWorkerRuntime({
   xlsxShadow,
   xlsxIntake,
   supplierPackageCanary,
+  signatureVault,
 });
 
 Deno.serve(createOspWorkerHandler({

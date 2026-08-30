@@ -29,6 +29,10 @@ import type { AutomaticPreparationService } from "./automatic-preparation.ts";
 import type { OspXlsxIntakeConfiguration } from "./osp-xlsx-intake-config.ts";
 import type { SupplierPackageCanaryConfiguration } from "./supplier-package-canary-config.ts";
 import { createSupplierPackageJobService } from "./supplier-package-runtime.ts";
+import {
+  createSignatureJobService,
+  type SignatureVaultReader,
+} from "./signature-runtime.ts";
 
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -67,6 +71,7 @@ export function createShadowWorkerRuntime(input: {
   xlsxShadow?: XlsxShadowConfiguration;
   xlsxIntake?: OspXlsxIntakeConfiguration;
   supplierPackageCanary?: SupplierPackageCanaryConfiguration;
+  signatureVault?: SignatureVaultReader;
   fetch?: typeof globalThis.fetch;
 }): {
   enqueue(limit: number): Promise<number>;
@@ -275,6 +280,14 @@ export function createShadowWorkerRuntime(input: {
       storageClient: governedStorage(input.storageClient),
     })
     : undefined;
+  const signatures = input.signatureVault
+    ? createSignatureJobService({
+      databaseUrl: input.databaseUrl,
+      postgresFactory: input.postgresFactory,
+      storageClient: governedStorage(input.storageClient),
+      vault: input.signatureVault,
+    })
+    : undefined;
   const runSupplierPackageCanary = input.supplierPackageCanary &&
       supplierPackages
     ? async (request: SupplierPackageCanary): Promise<number> => {
@@ -324,6 +337,7 @@ export function createShadowWorkerRuntime(input: {
         attachmentPromotions,
         extraction,
         formMappings,
+        signatures,
         limit,
       }),
     runXlsxDocumentExtractCanary,

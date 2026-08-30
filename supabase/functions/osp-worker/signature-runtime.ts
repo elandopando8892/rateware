@@ -25,6 +25,67 @@ export interface SignatureVaultReader {
   read(vaultRef: string, signal: AbortSignal): Promise<Uint8Array>;
 }
 
+const VAULT_REF = /^[A-Za-z0-9:_-]{1,256}$/;
+const STANDARD_BASE64 =
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const MAX_SIGNATURE_BYTES = 1024 * 1024;
+
+function decodeSignatureSecret(value: unknown): Uint8Array {
+  if (
+    typeof value !== "string" || value.length < 4 ||
+    value.length > Math.ceil(MAX_SIGNATURE_BYTES / 3) * 4 ||
+    !STANDARD_BASE64.test(value)
+  ) throw new Error("SIGNATURE_VAULT_INVALID");
+  try {
+    const binary = atob(value);
+    if (
+      btoa(binary) !== value || binary.length < 1 ||
+      binary.length > MAX_SIGNATURE_BYTES
+    ) {
+      throw new Error("SIGNATURE_VAULT_INVALID");
+    }
+    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  } catch {
+    throw new Error("SIGNATURE_VAULT_INVALID");
+  }
+}
+
+export function createPostgresSignatureVaultReader(options: {
+  databaseUrl: string;
+  postgresFactory?: PostgresFactory;
+}): SignatureVaultReader {
+  const factory = options.postgresFactory ??
+    (postgres as unknown as PostgresFactory);
+  const created = factory(options.databaseUrl, {
+    ssl: "verify-full",
+    fetch_types: false,
+    prepare: false,
+    max: 1,
+    connect_timeout: 5,
+    connection: {
+      application_name: "osp-signature-vault",
+      statement_timeout: "3000",
+    },
+  });
+  if (typeof created !== "function") {
+    throw new Error("INVALID_RUNTIME_CONFIGURATION");
+  }
+  const sql = created as SqlPort;
+  return Object.freeze({
+    read: async (vaultRef: string, signal: AbortSignal) => {
+      if (!VAULT_REF.test(vaultRef) || signal.aborted) {
+        throw new Error("SIGNATURE_VAULT_INVALID");
+      }
+      const rows =
+        await sql`select decrypted_secret from vault.decrypted_secrets where name = ${vaultRef}`;
+      if (signal.aborted || rows.length !== 1) {
+        throw new Error("SIGNATURE_VAULT_INVALID");
+      }
+      return decodeSignatureSecret(rows[0].decrypted_secret);
+    },
+  });
+}
+
 function simple(
   client: StorageClient,
 ): client is Exclude<StorageClient, Pick<SupabaseClient, "storage">> {
