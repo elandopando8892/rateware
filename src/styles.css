@@ -36989,6 +36989,20 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   }
 }
 
+/* Invitation Wave: the focused review owns the full workspace column. */
+.bid-room-page.rfx-wave-review-active .bid-room-workspace {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.bid-room-page.rfx-wave-review-active .bid-room-build-column {
+  grid-column: 1 / -1 !important;
+  width: 100% !important;
+}
+
+.bid-room-page.rfx-wave-review-active .bid-room-control-panel {
+  display: none !important;
+}
+
 /* RFx Process internal RFI editor and marketplace preview. */
 .rfx-process-rfi-legacy-layout {
   display: grid;
