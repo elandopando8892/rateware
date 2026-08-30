@@ -7584,6 +7584,7 @@ function renderDraftQueue() {
       const vendorId = String(row.vendor_id || "");
       const attention = candidateNeedsAttention(row);
       const selected = selectedOutreachAudienceVendorIds.has(vendorId);
+      const reviewed = reviewedCarrierVendorIds.has(vendorId);
       const groupHeading = attention && !attentionHeadingRendered
         ? (attentionHeadingRendered = true, `<tr class="rfx-wave-group-row is-attention"><td colspan="9">Needs attention (${formatNumber(attentionCount)})</td></tr>`)
         : !attention && !readyHeadingRendered
