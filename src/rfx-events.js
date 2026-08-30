@@ -6425,7 +6425,7 @@ function resetDraftQueue({ clearSelection = false } = {}) {
   deliveryParticipationCounts = {};
   deliveryParticipationTotal = 0;
   deliveryParticipationLoading = false;
-  deliveryParticipationStatus = "all";
+  deliveryParticipationStatus = "in_delivery";
   deliveryParticipationPage = 0;
   if (clearSelection) {
     clearDraftQueueSelection();
@@ -13869,9 +13869,9 @@ rfxOpenDeliveryQueueButton?.addEventListener("click", () => {
     setStatus(rfxOutreachStatus, "Select an RFx before opening Delivery queue.", "warning");
     return;
   }
-  deliveryParticipationStatus = "in_delivery";
+  deliveryParticipationStatus = "all";
   deliveryParticipationPage = 0;
-  draftQueueTrackingStatus = "drafted";
+  draftQueueTrackingStatus = "all";
   draftQueueSearch = "";
   draftQueueOffset = 0;
   activateRfxLaunchWorkspace("delivery", { refresh: true });
