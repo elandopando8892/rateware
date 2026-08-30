@@ -17,7 +17,6 @@ import type {
 import { createSessionChannel, type SessionChannel } from './session-channel';
 import {
   assertVerifiedAccessTokenMatchesSession,
-  assertVerifiedIdTokenMatchesSession,
   bindVerifiedTokenPair,
   createKindeTokenVerifier,
   type KindeTokenVerifier,
@@ -374,6 +373,7 @@ export function createKindeAuthPort(
 
   let clientPromise: Promise<KindeClientBoundary> | undefined;
   let currentSession: BoundSession | null = null;
+  let currentApprovalProof: string | null = null;
   let active = false;
   let activationEpoch = 0;
   let activationAttempt: ActivationAttempt | undefined;
@@ -531,6 +531,7 @@ export function createKindeAuthPort(
   const clearSession = (publish: boolean): void => {
     const changed = currentSession !== null;
     currentSession = null;
+    currentApprovalProof = null;
     callbackCompleted = false;
     callbackReturnTo = undefined;
     if (changed) notify();
@@ -636,6 +637,7 @@ export function createKindeAuthPort(
       };
       const changed = !previousSession || !sameSession(previousSession, nextSession);
       currentSession = nextSession;
+      currentApprovalProof = idToken;
 
       if (completedCallback) {
         callbackCompleted = false;
@@ -714,6 +716,7 @@ export function createKindeAuthPort(
       logoutPromise = completion;
       const hadSession = currentSession !== null;
       currentSession = null;
+      currentApprovalProof = null;
       callbackCompleted = false;
       callbackReturnTo = undefined;
       if (hadSession) notify();
@@ -791,36 +794,14 @@ export function createKindeAuthPort(
     },
     async getIdToken(expected) {
       if (logoutBarrier) throw new Error('Requested session is not current');
-      const operation = operationEpoch;
-      const assertStillCurrent = () => {
-        if (!isCurrentOperation(operation) || !currentSession || !sameSession(currentSession, expected)) {
-          throw new Error('Requested session is not current');
-        }
-      };
-      assertStillCurrent();
-      try {
-        const client = await getClient();
-        assertStillCurrent();
-        const token = await client.getIdToken();
-        assertStillCurrent();
-        if (!token) throw new Error('Kinde ID token missing');
-        const claims = await tokenVerifier.verifyIdToken(token);
-        assertStillCurrent();
-        const verified = assertVerifiedIdTokenMatchesSession(
-          token,
-          claims,
-          expected.identity,
-          config,
-        );
-        assertStillCurrent();
-        return verified;
-      } catch (error) {
-        if (isCurrentOperation(operation) && currentSession && sameSession(currentSession, expected)) {
-          operationEpoch += 1;
-          clearSession(true);
-        }
-        throw error;
+      if (!currentSession || !sameSession(currentSession, expected) || !currentApprovalProof) {
+        throw new Error('Requested session is not current');
       }
+      // The proof was cryptographically verified and identity-bound when this
+      // exact session was established. Reusing it avoids a second SDK read that
+      // can stall immediately after an OAuth callback, while session changes
+      // still clear the proof synchronously and fail closed.
+      return currentApprovalProof;
     },
     activate() {
       if (active) return;
@@ -1135,6 +1116,7 @@ export function createKindeAuthPort(
       channelUnsubscribe = () => undefined;
       listeners.clear();
       currentSession = null;
+      currentApprovalProof = null;
       if (previousActivation) void previousActivation.catch(() => undefined);
       if (previousAttempt) {
         const previousAttemptChannel = previousAttempt.channel;

@@ -1797,6 +1797,54 @@ describe('createKindeAuthPort', () => {
     await expect(port.getAccessToken(session)).rejects.toThrow();
   });
 
+  it('reuses the verified ID token bound during session establishment for approval proof', async () => {
+    const tokens = tokenPair('user-a', 'org-a');
+    const client = {
+      isAuthenticated: vi.fn(async () => true),
+      getAccessToken: vi.fn(async () => tokens.accessToken),
+      getIdToken: vi.fn()
+        .mockResolvedValueOnce(tokens.idToken)
+        .mockImplementationOnce(() => new Promise<string | undefined>(() => undefined)),
+      getToken: vi.fn(async () => tokens.accessToken),
+      login: vi.fn(async () => undefined),
+      logout: vi.fn(async () => undefined),
+    };
+    const port = createKindeAuthPort(runtime, {
+      origin: 'http://localhost:8791',
+      createClient: async () => client,
+      createGeneration: () => 'approval-proof-generation',
+      tokenVerifier: fixtureVerifier,
+    });
+    const session = await port.initialize();
+    if (!session) throw new Error('fixture failed to authenticate');
+
+    await expect(port.getIdToken(session)).resolves.toBe(tokens.idToken);
+    expect(client.getIdToken).toHaveBeenCalledOnce();
+  });
+
+  it('clears the bound approval proof when the session is logged out', async () => {
+    const tokens = tokenPair('user-a', 'org-a');
+    const client = {
+      isAuthenticated: vi.fn(async () => true),
+      getAccessToken: vi.fn(async () => tokens.accessToken),
+      getIdToken: vi.fn(async () => tokens.idToken),
+      getToken: vi.fn(async () => tokens.accessToken),
+      login: vi.fn(async () => undefined),
+      logout: vi.fn(async () => undefined),
+    };
+    const port = createKindeAuthPort(runtime, {
+      origin: 'http://localhost:8791',
+      createClient: async () => client,
+      createGeneration: () => 'approval-proof-generation',
+      tokenVerifier: fixtureVerifier,
+    });
+    const session = await port.initialize();
+    if (!session) throw new Error('fixture failed to authenticate');
+
+    await port.logout();
+    await expect(port.getIdToken(session)).rejects.toThrow('not current');
+  });
+
   it('rechecks session authority after an access-token SDK await races with logout', async () => {
     const pair = tokenPair();
     const pendingToken = deferred<string | undefined>();
