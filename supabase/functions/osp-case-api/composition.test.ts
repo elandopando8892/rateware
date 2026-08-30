@@ -12,7 +12,7 @@ function environment(overrides: Record<string, string | undefined> = {}) {
   return { get: (name: string) => values[name] };
 }
 
-Deno.test("case API runtime composes Kinde verification and tenant Postgres without eager network I/O", () => {
+Deno.test("case API runtime composes Kinde verification with isolated approval pools and no eager network I/O", () => {
   let fetches = 0;
   let databaseConnections = 0;
   const sql = Object.assign(async () => [], {
@@ -36,7 +36,7 @@ Deno.test("case API runtime composes Kinde verification and tenant Postgres with
   });
   assertEquals(typeof runtime, "function");
   assertEquals(fetches, 0);
-  assertEquals(databaseConnections, 1);
+  assertEquals(databaseConnections, 3);
 });
 
 Deno.test("case API runtime fails closed when auth or database configuration is absent", () => {
@@ -68,13 +68,18 @@ Deno.test("case API runtime fails closed when auth or database configuration is 
 Deno.test("case API accepts only the standard TLS database query and relies on verify-full transport", () => {
   let seenUrl = "";
   createCaseApiRuntime({
-    env: environment({ OSP_CASE_DATABASE_URL: "postgres://localhost:55322/osp?sslmode=require" }),
+    env: environment({
+      OSP_CASE_DATABASE_URL: "postgres://localhost:55322/osp?sslmode=require",
+    }),
     fetch: async () => new Response(null, { status: 500 }),
     postgresFactory: (url: string) => {
       seenUrl = url;
       return Object.assign(async () => [], { begin: async () => undefined });
     },
-    storageClient: { upload: async () => undefined, download: async () => null },
+    storageClient: {
+      upload: async () => undefined,
+      download: async () => null,
+    },
   });
   assertEquals(seenUrl, "postgres://localhost:55322/osp");
 });

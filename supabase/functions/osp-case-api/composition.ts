@@ -89,7 +89,10 @@ export function createCaseApiRuntime(options: {
   });
   const approvalActions = createPostgresCaseApprovalActions({
     databaseUrl: databaseConnection,
-    postgresFactory: sharedFactory,
+    // Approval commands run a preparation read inside the command transaction.
+    // Keep their pools isolated so max:1 cannot self-deadlock while the outer
+    // transaction owns the shared connection.
+    postgresFactory: options.postgresFactory,
     now: () => new Date(options.clock?.() ?? Date.now()),
   });
   const outboundActions = createPostgresCaseOutboundActions({

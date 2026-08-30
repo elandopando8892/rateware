@@ -338,10 +338,24 @@ export function createPostgresCaseApprovalActions(options: {
   postgresFactory?: PostgresFactory;
   now?: () => Date;
 }): CaseApprovalActions {
+  const factory = options.postgresFactory ??
+    postgres as unknown as PostgresFactory;
+  let supportDatabase: unknown;
+  const supportFactory: PostgresFactory = (url, config) =>
+    supportDatabase ??= factory(url, config);
   return createCaseApprovalActions({
-    snapshots: createPostgresOperationsSnapshotSource(options),
-    signaturePolicies: createPostgresSignatureVaultPolicySource(options),
-    approvals: createPostgresApprovalStore(options),
+    snapshots: createPostgresOperationsSnapshotSource({
+      ...options,
+      postgresFactory: supportFactory,
+    }),
+    signaturePolicies: createPostgresSignatureVaultPolicySource({
+      ...options,
+      postgresFactory: supportFactory,
+    }),
+    approvals: createPostgresApprovalStore({
+      ...options,
+      postgresFactory: factory,
+    }),
     now: options.now,
   });
 }
