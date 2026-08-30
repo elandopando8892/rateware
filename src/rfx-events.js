@@ -434,6 +434,8 @@ const waveWorkspaceStatus = document.querySelector("#rfx-wave-workspace-status")
 const waveLifecycle = document.querySelector("#rfx-wave-lifecycle");
 const waveReadinessSummary = document.querySelector("#rfx-wave-readiness-summary");
 const continueWaveReviewButton = document.querySelector("#rfx-continue-wave-review");
+const waveReleaseReviewDialog = document.querySelector("#rfx-wave-release-review");
+const waveReleaseReviewContent = document.querySelector("#rfx-wave-release-review-content");
 const draftSearchInput = document.querySelector("#rfx-draft-search");
 const draftClearSearchButton = document.querySelector("#rfx-clear-draft-search");
 const draftTrackingFilters = document.querySelector("#rfx-draft-tracking-filters");
@@ -7429,7 +7431,9 @@ function renderInvitationWaveWorkspace(rows = [], carrierRows = deliveryParticip
   const usingCarrierRows = !draftRows.length && carrierRows.length > 0;
   const activeRows = usingCarrierRows ? carrierRows : draftRows;
   const carrierHasContact = (row) => Boolean(String(row.email || row.phone || "").trim());
-  const reviewed = usingCarrierRows ? activeRows.filter(carrierHasContact) : activeRows.filter(draftWasReviewed);
+  const reviewed = usingCarrierRows
+    ? activeRows.filter((row) => carrierHasContact(row) && reviewedCarrierVendorIds.has(String(row.vendor_id || "")))
+    : activeRows.filter(draftWasReviewed);
   const blocked = usingCarrierRows ? activeRows.filter((row) => !carrierHasContact(row)) : activeRows.filter((message) => {
     const state = outreachTrackingState(message);
     return isStaleOutreachDraft(message) || !messageRecipient(message) || ["bounced", "failed", "suppressed", "no_contact"].includes(state);
@@ -7469,7 +7473,12 @@ function renderInvitationWaveWorkspace(rows = [], carrierRows = deliveryParticip
     waveWorkspaceStatus.textContent = released.length ? "Release in progress" : reviewComplete ? "Ready for confirmation" : "Review required";
     waveWorkspaceStatus.className = `status-pill ${released.length || reviewComplete ? "success" : "warning"}`;
   }
-  if (continueWaveReviewButton) continueWaveReviewButton.disabled = !activeRows.some((message) => !draftWasReviewed(message));
+  if (continueWaveReviewButton) {
+    const hasPendingCarrierReview = usingCarrierRows && activeRows.some((row) => !carrierHasContact(row) || !reviewedCarrierVendorIds.has(String(row.vendor_id || "")));
+    const hasPendingDraftReview = !usingCarrierRows && activeRows.some((message) => !draftWasReviewed(message));
+    continueWaveReviewButton.disabled = !activeRows.length;
+    continueWaveReviewButton.textContent = reviewComplete ? "Review release" : hasPendingCarrierReview || hasPendingDraftReview ? "Continue review" : "Review release";
+  }
 
   waveLifecycle.innerHTML = steps.map(([label, detail, subdetail], index) => {
     const step = index + 1;
@@ -7513,6 +7522,65 @@ function renderInvitationWaveWorkspace(rows = [], carrierRows = deliveryParticip
       context.beginPath(); context.arc(56, 56, 42, -Math.PI / 2 + reviewedAngle, -Math.PI / 2 + reviewedAngle + (blocked.length / total) * Math.PI * 2); context.stroke();
     }
   }
+}
+
+function renderWaveReleaseReview() {
+  if (!waveReleaseReviewContent) return;
+  const carriers = deliveryParticipationRows.filter((row) => String(row.vendor_id || ""));
+  const blocked = carriers.filter((row) => !carrierHasContact(row));
+  const reviewed = carriers.filter((row) => carrierHasContact(row) && reviewedCarrierVendorIds.has(String(row.vendor_id || "")));
+  const pending = carriers.filter((row) => carrierHasContact(row) && !reviewedCarrierVendorIds.has(String(row.vendor_id || "")));
+  const activeDrafts = draftQueueRows.filter((message) => String(message.status || "").toLowerCase() !== "archived");
+  const releaseReadyDrafts = activeDrafts.filter(draftWasReviewed);
+  const canContinue = Boolean(reviewed.length) && !blocked.length && !pending.length;
+  const sample = reviewed.slice(0, 6);
+  waveReleaseReviewContent.innerHTML = `
+    <form method="dialog" class="rfx-wave-release-review-card">
+      <header>
+        <div><p class="eyebrow">Final review</p><h2 id="rfx-wave-release-review-title">Release confirmation</h2></div>
+        <button type="submit" class="secondary small-button" value="cancel" aria-label="Close release review">Close</button>
+      </header>
+      <p>Confirm the carrier audience before opening release controls. This step does not send anything.</p>
+      <div class="rfx-wave-release-metrics">
+        <article><strong>${formatNumber(reviewed.length)}</strong><span>Reviewed</span></article>
+        <article><strong>${formatNumber(pending.length)}</strong><span>Pending</span></article>
+        <article><strong>${formatNumber(blocked.length)}</strong><span>Blocked</span></article>
+        <article><strong>${formatNumber(releaseReadyDrafts.length)}</strong><span>Messages ready</span></article>
+      </div>
+      <section>
+        <strong>Release audience</strong>
+        <ul>${sample.map((row) => `<li><span>${escapeHtml(row.vendor_name || row.vendor_domain || "Carrier")}</span><small>${escapeHtml(row.email || row.phone || "No verified contact")}</small></li>`).join("") || "<li><span>No reviewed carriers yet</span></li>"}</ul>
+        ${reviewed.length > sample.length ? `<small>+ ${formatNumber(reviewed.length - sample.length)} additional reviewed carriers</small>` : ""}
+      </section>
+      <label class="rfx-wave-release-acknowledgement">
+        <input type="checkbox" data-rfx-wave-release-ack ${canContinue ? "" : "disabled"} />
+        <span>I confirm the reviewed carriers, contacts, and channels shown for this RFx.</span>
+      </label>
+      <p class="rfx-wave-release-fence">Nothing sends from this confirmation. Sending remains behind the existing channel-specific confirmation.</p>
+      <footer>
+        <button type="submit" class="secondary" value="cancel">Return to review</button>
+        <button type="button" data-rfx-wave-open-release-controls disabled>${activeDrafts.length ? "Open release controls" : "Prepare messages"}</button>
+      </footer>
+      <div class="status-message ${canContinue ? "neutral" : "warning"}">${canContinue ? "Audience review is complete." : `Resolve ${formatNumber(blocked.length)} blocker(s) and review ${formatNumber(pending.length)} remaining carrier(s).`}</div>
+    </form>`;
+}
+
+async function openCarrierReview(vendorId) {
+  activeDraftReviewId = "";
+  activeCarrierReviewVendorId = String(vendorId || "");
+  activeCarrierReviewVendor = null;
+  renderDraftQueue();
+  if (!activeCarrierReviewVendorId) return;
+  try {
+    const requestedVendorId = activeCarrierReviewVendorId;
+    const result = await fetchVendors({ ids: [requestedVendorId], limit: 1, offset: 0, view: "all" });
+    if (activeCarrierReviewVendorId !== requestedVendorId) return;
+    activeCarrierReviewVendor = result.rows?.[0] || null;
+  } catch (error) {
+    setStatus(rfxOutreachStatus, `Carrier CRM detail could not load. ${humanizeError(error)}`, "warning");
+  }
+  renderDraftQueue();
+  draftReviewInspector?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function renderDraftQueue() {
@@ -11631,9 +11699,25 @@ document.addEventListener("click", (event) => {
   }
 });
 
-continueWaveReviewButton?.addEventListener("click", () => {
+continueWaveReviewButton?.addEventListener("click", async () => {
+  if (!draftQueueRows.length && deliveryParticipationRows.length) {
+    const nextCarrier = [...deliveryParticipationRows]
+      .sort((left, right) => Number(carrierHasContact(left)) - Number(carrierHasContact(right)))
+      .find((row) => !carrierHasContact(row) || !reviewedCarrierVendorIds.has(String(row.vendor_id || "")));
+    if (nextCarrier) {
+      await openCarrierReview(nextCarrier.vendor_id);
+      return;
+    }
+    renderWaveReleaseReview();
+    waveReleaseReviewDialog?.showModal();
+    return;
+  }
   const nextMessage = draftQueueRows.find((message) => String(message.status || "").toLowerCase() !== "archived" && !draftWasReviewed(message));
-  if (!nextMessage) return;
+  if (!nextMessage) {
+    renderWaveReleaseReview();
+    waveReleaseReviewDialog?.showModal();
+    return;
+  }
   activeDraftReviewId = String(nextMessage.id || "");
   reviewedDraftMessageIds.add(activeDraftReviewId);
   rememberDraftRow(nextMessage);
@@ -11644,19 +11728,7 @@ continueWaveReviewButton?.addEventListener("click", () => {
 draftList?.addEventListener("click", async (event) => {
   const carrierReviewButton = event.target instanceof Element ? event.target.closest("[data-rfx-wave-carrier-review]") : null;
   if (carrierReviewButton) {
-    activeDraftReviewId = "";
-    activeCarrierReviewVendorId = String(carrierReviewButton.dataset.rfxWaveCarrierReview || "");
-    activeCarrierReviewVendor = null;
-    renderDraftQueue();
-    try {
-      const result = await fetchVendors({ ids: [activeCarrierReviewVendorId], limit: 1, offset: 0, view: "all" });
-      if (String(activeCarrierReviewVendorId) !== String(carrierReviewButton.dataset.rfxWaveCarrierReview || "")) return;
-      activeCarrierReviewVendor = result.rows?.[0] || null;
-    } catch (error) {
-      setStatus(rfxOutreachStatus, `Carrier CRM detail could not load. ${humanizeError(error)}`, "warning");
-    }
-    renderDraftQueue();
-    draftReviewInspector?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    await openCarrierReview(carrierReviewButton.dataset.rfxWaveCarrierReview);
     return;
   }
   const reviewButton = event.target instanceof Element ? event.target.closest("[data-rfx-review-draft]") : null;
@@ -11749,6 +11821,27 @@ draftList?.addEventListener("click", async (event) => {
   } finally {
     statusButton.disabled = false;
   }
+});
+
+waveReleaseReviewDialog?.addEventListener("change", (event) => {
+  const acknowledgement = event.target instanceof Element ? event.target.closest("[data-rfx-wave-release-ack]") : null;
+  if (!acknowledgement) return;
+  const continueButton = waveReleaseReviewDialog.querySelector("[data-rfx-wave-open-release-controls]");
+  if (continueButton) continueButton.disabled = !acknowledgement.checked;
+});
+
+waveReleaseReviewDialog?.addEventListener("click", (event) => {
+  const continueButton = event.target instanceof Element ? event.target.closest("[data-rfx-wave-open-release-controls]") : null;
+  if (!continueButton || continueButton.disabled) return;
+  waveReleaseReviewDialog.close();
+  if (!draftQueueRows.length) {
+    activateRfxLaunchWorkspace("message", { focus: true });
+    setStatus(rfxOutreachStatus, "Carrier review is complete. Prepare messages next; nothing has been sent.", "success");
+    return;
+  }
+  draftQueueRows.filter(draftWasReviewed).forEach(rememberDraftRow);
+  renderDraftQueue();
+  setStatus(rfxOutreachStatus, "Release controls are ready. Review the selection and confirm the channel-specific send action when authorized.", "success");
 });
 
 draftReviewInspector?.addEventListener("click", (event) => {

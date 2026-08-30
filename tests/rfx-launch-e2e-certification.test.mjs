@@ -33,5 +33,10 @@ assert.match(source, /data-rfx-wave-carrier-review[\s\S]+function renderDraftRev
 assert.match(source, /Save this contact to Carrier CRM and mark the carrier reviewed\? No invitation will be sent\.[\s\S]+await updateVendor/, "Carrier contact corrections should require explicit confirmation before the CRM write");
 assert.match(source, /data-rfx-mark-carrier-reviewed[\s\S]+reviewedCarrierVendorIds\.add/, "Carrier Review should support a reversible session review without forcing a CRM write");
 assert.match(styles, /rfx-carrier-review-active[\s\S]+rfx-carrier-review-form[\s\S]+rfx-carrier-review-safety/, "Focused Invitation Wave should expose a clear review form and safety boundary");
+assert.match(source, /const reviewed = usingCarrierRows[\s\S]+reviewedCarrierVendorIds\.has/, "A valid contact must not be treated as reviewed until the operator reviews that carrier");
+assert.match(source, /continueWaveReviewButton\?\.addEventListener\("click", async[\s\S]+openCarrierReview\(nextCarrier\.vendor_id\)/, "Continue review should advance through carrier participants before drafts exist");
+assert.match(html, /id="rfx-wave-release-review"[\s\S]+id="rfx-wave-release-review-content"/, "Invitation Wave should expose a final release review dialog");
+assert.match(source, /function renderWaveReleaseReview\([\s\S]+Nothing sends from this confirmation\./, "Final review must preserve the no-send safety fence");
+assert.match(source, /data-rfx-wave-open-release-controls[\s\S]+activateRfxLaunchWorkspace\("message"/, "A reviewed carrier audience without drafts should continue to message preparation instead of sending");
 
 console.log("RFx Launch E2E certification contracts passed.");
