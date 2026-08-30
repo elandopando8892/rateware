@@ -61,6 +61,7 @@ import {
   fetchVendorSegments,
   fetchVendors,
   getCarrierListTemplate,
+  updateVendor,
   updateVendorSegment
 } from "./vendor-service.js";
 import {
@@ -610,6 +611,9 @@ let selectedInvitationIds = new Set();
 let selectedDraftMessageIds = new Set();
 let reviewedDraftMessageIds = new Set();
 let activeDraftReviewId = "";
+let activeCarrierReviewVendorId = "";
+let activeCarrierReviewVendor = null;
+const reviewedCarrierVendorIds = new Set();
 const selectedDraftMessageRows = new Map();
 let draftQueueSearch = rfxPageParams.has("draft_search")
   ? String(rfxPageParams.get("draft_search") || "")
@@ -7066,6 +7070,7 @@ function renderDeliveryParticipation() {
     rfxDeliveryParticipationList.innerHTML = pageRows.map((row) => {
       const vendorId = String(row.vendor_id || "");
       const selected = selectedOutreachAudienceVendorIds.has(vendorId);
+      const reviewed = reviewedCarrierVendorIds.has(vendorId);
       const status = eventInvitationStatus(row);
       const lanes = Number(row.shortlisted_lane_count || row.lane_count || 0);
       const eventLanes = Number(row.event_lane_count || lanes);
@@ -7588,7 +7593,7 @@ function renderDraftQueue() {
       const statusLabel = attention ? "Missing contact" : "Validated";
       const updated = formatCompactDateTime(row.updated_at || row.invited_at || row.created_at) || "—";
       return `${groupHeading}
-        <tr class="${selected ? "is-selected-row" : ""}" data-rfx-wave-carrier-id="${escapeHtml(vendorId)}">
+        <tr class="${selected ? "is-selected-row " : ""}${reviewed ? "is-reviewed-row " : ""}${activeCarrierReviewVendorId === vendorId ? "is-review-row" : ""}" data-rfx-wave-carrier-id="${escapeHtml(vendorId)}">
           <td><input type="checkbox" data-rfx-wave-carrier-select="${escapeHtml(vendorId)}" ${selected ? "checked" : ""} aria-label="Select ${escapeHtml(row.vendor_name || row.vendor_domain || "carrier")}" /></td>
           <td><strong>${escapeHtml(row.vendor_name || row.vendor_domain || "Carrier")}</strong><small>${escapeHtml(row.vendor_domain || "")}</small></td>
           <td>${escapeHtml(contact)}</td>
@@ -7597,7 +7602,7 @@ function renderDraftQueue() {
           <td><small class="rfx-draft-next-action">${escapeHtml(statusLabel)}</small></td>
           <td></td>
           <td>${escapeHtml(updated)}</td>
-          <td><button type="button" class="secondary small-button" data-rfx-wave-carrier-review="${escapeHtml(vendorId)}">Review</button></td>
+          <td><button type="button" class="secondary small-button" data-rfx-wave-carrier-review="${escapeHtml(vendorId)}">${reviewed ? "Reviewed" : "Review"}</button></td>
         </tr>`;
     }).join("");
     if (draftPageSummary) draftPageSummary.textContent = `${formatNumber(candidates.length)} of ${formatNumber(deliveryParticipationTotal || deliveryParticipationRows.length)} carriers`;
@@ -7735,6 +7740,53 @@ function renderDraftQueue() {
 
 function renderDraftReviewInspector() {
   if (!draftReviewInspector) return;
+  const carrierReviewRow = deliveryParticipationRows.find((row) => String(row.vendor_id || "") === activeCarrierReviewVendorId);
+  const carrierReview = activeCarrierReviewVendorId
+    ? { ...(carrierReviewRow || {}), ...(activeCarrierReviewVendor || {}) }
+    : null;
+  if (carrierReview) {
+    document.body.classList.add("rfx-carrier-review-active");
+    const vendorId = String(carrierReview.id || carrierReview.vendor_id || activeCarrierReviewVendorId);
+    const carrierName = carrierReview.vendor_name || carrierReview.vendor_domain || carrierReview.domain || "Carrier";
+    const contactName = String(carrierReview.contact_name || "").trim();
+    const email = String(carrierReview.primary_email || carrierReview.email || "").trim();
+    const phone = String(carrierReview.whatsapp_phone || carrierReview.phone || "").trim();
+    const reviewed = reviewedCarrierVendorIds.has(vendorId);
+    const issue = !email && !phone
+      ? "No compatible email or phone is available for this invitation."
+      : !email
+        ? "Email is missing. Phone remains available for a phone-based wave."
+        : "Contact is ready. Confirm the preferred channel and mark this carrier reviewed.";
+    const preferredChannel = email ? "email" : "phone";
+    draftReviewInspector.innerHTML = `
+      <div class="rfx-draft-review-heading">
+        <div><p class="eyebrow">Carrier review</p><strong>${escapeHtml(carrierName)}</strong></div>
+        <button type="button" class="secondary small-button" data-rfx-close-carrier-review aria-label="Close carrier review">Close</button>
+      </div>
+      <div class="rfx-carrier-review-issue ${email || phone ? "is-ready" : "is-blocked"}">
+        <span>${email || phone ? "Contact ready" : "Needs attention"}</span>
+        <strong>${escapeHtml(issue)}</strong>
+      </div>
+      <form class="rfx-carrier-review-form" data-rfx-carrier-review-form="${escapeHtml(vendorId)}">
+        <fieldset>
+          <legend>Invitation channel</legend>
+          <label><input type="radio" name="preferred_channel" value="email" ${preferredChannel === "email" ? "checked" : ""} ${email ? "" : "disabled"}> Email</label>
+          <label><input type="radio" name="preferred_channel" value="phone" ${preferredChannel === "phone" ? "checked" : ""} ${phone ? "" : "disabled"}> Phone</label>
+        </fieldset>
+        <label><span>Contact name</span><input name="contact_name" value="${escapeHtml(contactName)}" autocomplete="name" placeholder="Carrier contact"></label>
+        <label><span>Email</span><input name="primary_email" type="email" value="${escapeHtml(email)}" autocomplete="email" placeholder="name@carrier.com"></label>
+        <label><span>Phone</span><input name="whatsapp_phone" type="tel" value="${escapeHtml(phone)}" autocomplete="tel" placeholder="+1 555 555 5555"></label>
+        <p class="rfx-carrier-review-safety">Saving updates Carrier CRM only. It does not create or send an invitation.</p>
+        <div class="rfx-carrier-review-actions">
+          <button type="button" class="secondary" data-rfx-mark-carrier-reviewed="${escapeHtml(vendorId)}">${reviewed ? "Reviewed" : "Mark reviewed"}</button>
+          <button type="submit">Save contact and mark reviewed</button>
+        </div>
+        <p class="row-save-status" data-rfx-carrier-review-status role="status"></p>
+      </form>
+    `;
+    return;
+  }
+  document.body.classList.remove("rfx-carrier-review-active");
   const message = draftQueueRows.find((row) => String(row.id) === activeDraftReviewId);
   if (!message) {
     draftReviewInspector.innerHTML = `
@@ -11589,6 +11641,23 @@ continueWaveReviewButton?.addEventListener("click", () => {
 });
 
 draftList?.addEventListener("click", async (event) => {
+  const carrierReviewButton = event.target instanceof Element ? event.target.closest("[data-rfx-wave-carrier-review]") : null;
+  if (carrierReviewButton) {
+    activeDraftReviewId = "";
+    activeCarrierReviewVendorId = String(carrierReviewButton.dataset.rfxWaveCarrierReview || "");
+    activeCarrierReviewVendor = null;
+    renderDraftQueue();
+    try {
+      const result = await fetchVendors({ ids: [activeCarrierReviewVendorId], limit: 1, offset: 0, view: "all" });
+      if (String(activeCarrierReviewVendorId) !== String(carrierReviewButton.dataset.rfxWaveCarrierReview || "")) return;
+      activeCarrierReviewVendor = result.rows?.[0] || null;
+    } catch (error) {
+      setStatus(rfxOutreachStatus, `Carrier CRM detail could not load. ${humanizeError(error)}`, "warning");
+    }
+    renderDraftQueue();
+    draftReviewInspector?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    return;
+  }
   const reviewButton = event.target instanceof Element ? event.target.closest("[data-rfx-review-draft]") : null;
   if (reviewButton) {
     activeDraftReviewId = String(reviewButton.dataset.rfxReviewDraft || "");
@@ -11683,9 +11752,64 @@ draftList?.addEventListener("click", async (event) => {
 
 draftReviewInspector?.addEventListener("click", (event) => {
   if (!(event.target instanceof Element)) return;
+  if (event.target.closest("[data-rfx-close-carrier-review]")) {
+    activeCarrierReviewVendorId = "";
+    activeCarrierReviewVendor = null;
+    renderDraftQueue();
+    return;
+  }
+  const markCarrierReviewedButton = event.target.closest("[data-rfx-mark-carrier-reviewed]");
+  if (markCarrierReviewedButton) {
+    const vendorId = String(markCarrierReviewedButton.dataset.rfxMarkCarrierReviewed || "");
+    if (vendorId) reviewedCarrierVendorIds.add(vendorId);
+    renderDraftQueue();
+    return;
+  }
   if (event.target.closest("[data-rfx-close-draft-review]")) {
     activeDraftReviewId = "";
     renderDraftQueue();
+  }
+});
+
+draftReviewInspector?.addEventListener("submit", async (event) => {
+  const form = event.target instanceof Element ? event.target.closest("[data-rfx-carrier-review-form]") : null;
+  if (!(form instanceof HTMLFormElement)) return;
+  event.preventDefault();
+  const vendorId = String(form.dataset.rfxCarrierReviewForm || "");
+  const statusElement = form.querySelector("[data-rfx-carrier-review-status]");
+  const submitButton = form.querySelector('button[type="submit"]');
+  const formData = new FormData(form);
+  const contactName = String(formData.get("contact_name") || "").trim();
+  const email = String(formData.get("primary_email") || "").trim().toLowerCase();
+  const phone = String(formData.get("whatsapp_phone") || "").trim();
+  const preferredChannel = String(formData.get("preferred_channel") || (email ? "email" : "phone"));
+  if (!email && !phone) {
+    setStatus(statusElement, "Add at least one email or phone before saving.", "error");
+    return;
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    setStatus(statusElement, "Enter a valid carrier email address.", "error");
+    return;
+  }
+  if (!window.confirm("Save this contact to Carrier CRM and mark the carrier reviewed? No invitation will be sent.")) return;
+  submitButton.disabled = true;
+  setStatus(statusElement, "Saving Carrier CRM contact...", "neutral");
+  try {
+    activeCarrierReviewVendor = await updateVendor(vendorId, {
+      contact_name: contactName || null,
+      primary_email: email || null,
+      whatsapp_phone: phone || null,
+      preferred_channel: preferredChannel
+    });
+    reviewedCarrierVendorIds.add(vendorId);
+    await loadDeliveryParticipation({ force: true });
+    renderDraftQueue();
+    const refreshedStatus = draftReviewInspector.querySelector("[data-rfx-carrier-review-status]");
+    setStatus(refreshedStatus, "Carrier CRM contact saved. This carrier is reviewed; nothing was sent.", "success");
+  } catch (error) {
+    setStatus(statusElement, humanizeError(error), "error");
+  } finally {
+    if (submitButton.isConnected) submitButton.disabled = false;
   }
 });
 
