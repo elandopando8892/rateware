@@ -228,6 +228,13 @@ Deno.test("Postgres approval store uses one tenant transaction and only the revi
     type: 25,
   });
   assertEquals(
+    statements.some((sql) =>
+      sql.includes("complete_operations_review_command") &&
+      sql.includes("?::text[]")
+    ),
+    true,
+  );
+  assertEquals(
     statements.some((sql) => sql.includes("approve_signature_command")),
     false,
   );
