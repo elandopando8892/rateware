@@ -160,20 +160,24 @@ Deno.test("Task 1 store cannot reserve or record an outbound send", async () => 
 
 Deno.test("Postgres approval store uses one tenant transaction and only the reviewed command function", async () => {
   const statements: string[] = [];
-  const transaction = ((strings: TemplateStringsArray) => {
-    const sql = strings.join("?").replace(/\s+/g, " ").trim();
-    statements.push(sql);
-    if (sql.includes("complete_operations_review_command")) {
-      return Promise.resolve([{
-        case_id: caseId,
-        state: "signature_approval",
-        case_version: 11,
-        approval_id: null,
-        authorization_id: null,
-      }]);
-    }
-    return Promise.resolve([]);
-  }) as SqlPort;
+  let commandValues: unknown[] = [];
+  const transaction =
+    ((strings: TemplateStringsArray, ...values: unknown[]) => {
+      const sql = strings.join("?").replace(/\s+/g, " ").trim();
+      statements.push(sql);
+      if (sql.includes("complete_operations_review_command")) {
+        commandValues = values;
+        return Promise.resolve([{
+          case_id: caseId,
+          state: "signature_approval",
+          case_version: 11,
+          approval_id: null,
+          authorization_id: null,
+        }]);
+      }
+      return Promise.resolve([]);
+    }) as SqlPort;
+  transaction.array = (values, type) => ({ values, type });
   transaction.begin = async <T>(operation: (tx: SqlPort) => Promise<T>) => {
     return await operation(transaction);
   };
@@ -210,9 +214,7 @@ Deno.test("Postgres approval store uses one tenant transaction and only the revi
     true,
   );
   assertEquals(
-    statements.some((sql) =>
-      sql === "set local statement_timeout = '3000ms'"
-    ),
+    statements.some((sql) => sql === "set local statement_timeout = '3000ms'"),
     true,
   );
   assertEquals(
@@ -221,6 +223,10 @@ Deno.test("Postgres approval store uses one tenant transaction and only the revi
     ).length,
     1,
   );
+  assertEquals(commandValues[6], {
+    values: ["osp:read", "osp:operate"],
+    type: 25,
+  });
   assertEquals(
     statements.some((sql) => sql.includes("approve_signature_command")),
     false,
@@ -274,6 +280,7 @@ Deno.test("Postgres approval store maps only reviewed constraint messages", asyn
     }
     return Promise.resolve([]);
   }) as SqlPort;
+  transaction.array = (values, type) => ({ values, type });
   transaction.begin = async <T>(operation: (tx: SqlPort) => Promise<T>) => {
     return await operation(transaction);
   };

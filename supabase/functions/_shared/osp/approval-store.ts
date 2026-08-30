@@ -313,6 +313,11 @@ function resultFromRow(row: SqlRow, replayed: boolean): ApprovalResult {
   });
 }
 
+function textArray(sql: SqlPort, values: readonly string[]): unknown {
+  if (typeof sql.array !== "function") fail("INVALID_RUNTIME_CONFIGURATION");
+  return sql.array([...values], 25);
+}
+
 export function createPostgresApprovalStore(options: {
   databaseUrl: string;
   postgresFactory?: PostgresFactory;
@@ -369,14 +374,18 @@ export function createPostgresApprovalStore(options: {
             let rows: SqlRow[];
             const permissions = [...command.actor.permissions];
             if (command.type === "complete_operations_review") {
+              const permissionArray = textArray(sql, permissions);
               rows =
-                await tx`select * from osp_private.complete_operations_review_command(${command.organizationId}, ${command.caseId}, ${command.inputSnapshotSha256}, ${command.expectedCaseVersion}, ${command.actor.subject}, ${command.actor.verifiedEmail}, ${permissions}, ${command.actor.role}, ${command.actor.authorizationSessionId}, ${command.actor.authorizationSessionIssuedAt}, ${hash})`;
+                await tx`select * from osp_private.complete_operations_review_command(${command.organizationId}, ${command.caseId}, ${command.inputSnapshotSha256}, ${command.expectedCaseVersion}, ${command.actor.subject}, ${command.actor.verifiedEmail}, ${permissionArray}, ${command.actor.role}, ${command.actor.authorizationSessionId}, ${command.actor.authorizationSessionIssuedAt}, ${hash})`;
             } else if (command.type === "approve_signature") {
+              const permissionArray = textArray(sql, permissions);
               rows =
-                await tx`select * from osp_private.approve_signature_command(${command.organizationId}, ${command.caseId}, ${command.inputSnapshotSha256}, ${command.signatureVaultRef}, ${command.signaturePositionVersion}, ${command.expectedCaseVersion}, ${command.idempotencyKey}, ${command.actor.subject}, ${command.actor.verifiedEmail}, ${permissions}, ${command.actor.role}, ${command.actor.authorizationSessionId}, ${command.actor.authorizationSessionIssuedAt}, ${hash})`;
+                await tx`select * from osp_private.approve_signature_command(${command.organizationId}, ${command.caseId}, ${command.inputSnapshotSha256}, ${command.signatureVaultRef}, ${command.signaturePositionVersion}, ${command.expectedCaseVersion}, ${command.idempotencyKey}, ${command.actor.subject}, ${command.actor.verifiedEmail}, ${permissionArray}, ${command.actor.role}, ${command.actor.authorizationSessionId}, ${command.actor.authorizationSessionIssuedAt}, ${hash})`;
             } else if (command.type === "authorize_outbound") {
+              const attachmentArray = textArray(sql, command.attachmentSha256);
+              const permissionArray = textArray(sql, permissions);
               rows =
-                await tx`select * from osp_private.authorize_outbound_command(${command.organizationId}, ${command.caseId}, ${command.payloadId}, ${command.payloadSha256}, ${command.attachmentSha256}, ${command.expectedCaseVersion}, ${command.idempotencyKey}, ${command.actor.subject}, ${command.actor.verifiedEmail}, ${permissions}, ${command.actor.role}, ${command.actor.authorizationSessionId}, ${command.actor.authorizationSessionIssuedAt}, ${hash})`;
+                await tx`select * from osp_private.authorize_outbound_command(${command.organizationId}, ${command.caseId}, ${command.payloadId}, ${command.payloadSha256}, ${attachmentArray}, ${command.expectedCaseVersion}, ${command.idempotencyKey}, ${command.actor.subject}, ${command.actor.verifiedEmail}, ${permissionArray}, ${command.actor.role}, ${command.actor.authorizationSessionId}, ${command.actor.authorizationSessionIssuedAt}, ${hash})`;
             } else {
               fail("APPROVAL_TRANSITION_INVALID");
             }
