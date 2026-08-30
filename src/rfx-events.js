@@ -7135,7 +7135,7 @@ async function loadDeliveryParticipation({ force = false } = {}) {
       deliveryParticipationLoading = false;
       renderDeliveryParticipation();
       renderEventDeliveryOverview();
-      if (rfxDeliveryView === "queue") renderDraftQueue();
+      if (activeRfxDeliveryView === "queue") renderDraftQueue();
     }
   }
 }
