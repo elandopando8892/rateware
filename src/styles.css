@@ -37158,6 +37158,37 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   font-size: 13px;
 }
 
+.rfx-wave-release-review {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  border: 1px solid #cbd6e3;
+  border-radius: 8px;
+  padding: 0;
+  box-shadow: 0 24px 70px rgba(13, 35, 64, .22);
+}
+
+.rfx-wave-release-review::backdrop { background: rgba(18, 34, 56, .42); }
+.rfx-wave-release-review-card { display: grid; gap: 18px; padding: 24px; color: #172131; }
+.rfx-wave-release-review-card > header,
+.rfx-wave-release-review-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rfx-wave-release-review-card h2 { margin: 3px 0 0; font-size: 22px; }
+.rfx-wave-release-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.rfx-wave-release-metrics article { display: grid; gap: 3px; border: 1px solid #d9e2ec; border-radius: 6px; padding: 13px; background: #f8fafc; }
+.rfx-wave-release-metrics strong { font-size: 21px; }
+.rfx-wave-release-metrics span { color: #5d708a; font-size: 11px; }
+.rfx-wave-release-review-card section { display: grid; gap: 10px; }
+.rfx-wave-release-review-card ul { display: grid; gap: 0; max-height: 230px; overflow: auto; margin: 0; padding: 0; list-style: none; border: 1px solid #d9e2ec; border-radius: 6px; }
+.rfx-wave-release-review-card li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 10px 12px; border-bottom: 1px solid #e7edf4; }
+.rfx-wave-release-review-card li:last-child { border-bottom: 0; }
+.rfx-wave-release-review-card li small { color: #5d708a; }
+.rfx-wave-release-acknowledgement { display: flex; align-items: flex-start; gap: 9px; border: 1px solid #b8d3f4; border-radius: 6px; padding: 13px; background: #f4f8fe; }
+.rfx-wave-release-fence { margin: 0; border-left: 3px solid #0f65c9; padding: 7px 10px; color: #405675; font-size: 12px; }
+
+@media (max-width: 680px) {
+  .rfx-wave-release-metrics { grid-template-columns: repeat(2, 1fr); }
+  .rfx-wave-release-review-card > footer { align-items: stretch; flex-direction: column-reverse; }
+}
+
 .bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle {
   position: relative;
   display: grid;
@@ -37296,6 +37327,14 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   border-color: #b9cbe1;
   box-shadow: 0 12px 30px rgba(20, 55, 90, .1);
 }
+
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table th:nth-child(4),
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table td:nth-child(4),
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table th:nth-child(8),
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table td:nth-child(8) { display: none; }
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table th:nth-child(2) { width: 31%; }
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table th:nth-child(3) { width: 37%; }
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table th:nth-child(6) { width: 20%; }
 
 .bid-room-page.rfx-wave-review-active .rfx-draft-table tr.is-reviewed-row td { background: #f7fcf8; }
 
