@@ -6929,6 +6929,7 @@ let activeRfxDeliveryView = "participation";
 function activateRfxDeliveryView(view = "participation") {
   const nextView = view === "queue" ? "queue" : "participation";
   activeRfxDeliveryView = nextView;
+  document.body.classList.toggle("rfx-wave-review-active", nextView === "queue");
   document.querySelectorAll("[data-rfx-delivery-view]").forEach((button) => {
     const active = button.dataset.rfxDeliveryView === nextView;
     button.classList.toggle("is-active", active);

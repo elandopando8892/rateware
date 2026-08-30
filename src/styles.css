@@ -10853,6 +10853,26 @@ a {
 .bid-room-page .rfx-wave-readiness-summary > p { margin: 0; border: 1px solid #bcd3ed; border-radius: 5px; background: #f5f9fe; padding: 9px; color: #175aa9; font-size: .68rem; font-weight: 720; }
 .bid-room-page .rfx-wave-readiness-summary > button { width: 100%; }
 
+.bid-room-page.rfx-wave-review-active .bid-room-product {
+  grid-template-columns: minmax(0, 1fr);
+  padding-inline: 18px;
+}
+
+.bid-room-page.rfx-wave-review-active .bid-room-event-rail,
+.bid-room-page.rfx-wave-review-active .bid-room-event-overview,
+.bid-room-page.rfx-wave-review-active .bid-room-flow-shell,
+.bid-room-page.rfx-wave-review-active .rfx-delivery-control-header,
+.bid-room-page.rfx-wave-review-active .rfx-event-delivery-overview,
+.bid-room-page.rfx-wave-review-active .rfx-delivery-wave-state {
+  display: none;
+}
+
+.bid-room-page.rfx-wave-review-active .bid-room-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.bid-room-page.rfx-wave-review-active .bid-room-build-column { grid-column: 1; }
+
 .bid-room-page .rfx-draft-table .rfx-wave-group-row td {
   padding: 10px 8px 6px;
   border-bottom: 1px solid #dce5ea;
