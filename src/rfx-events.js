@@ -7452,7 +7452,7 @@ function renderInvitationWaveWorkspace(rows = []) {
   waveLifecycle.innerHTML = steps.map(([label, detail], index) => {
     const step = index + 1;
     const state = step < currentStep ? "is-complete" : step === currentStep ? "is-current" : "";
-    return `<div class="rfx-wave-lifecycle-step ${state}"><span>Step ${step}</span><strong>${escapeHtml(label)}</strong><small>${escapeHtml(detail)}</small></div>`;
+    return `<div class="rfx-wave-lifecycle-step ${state}"><b aria-hidden="true">${step}</b><strong>${escapeHtml(label)}</strong><small>${escapeHtml(detail)}</small></div>`;
   }).join("");
 
   const reviewedPercent = ready ? Math.round((Math.min(reviewed.length, ready) / ready) * 100) : 0;

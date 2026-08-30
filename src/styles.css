@@ -10766,6 +10766,210 @@ a {
   }
 }
 
+/* Invitation Wave option 2 fidelity pass: one focused release workspace. */
+@media (min-width: 981px) {
+  .bid-room-page.rfx-wave-review-active .rw-app {
+    grid-template-columns: 176px minmax(0, 1fr);
+  }
+}
+
+.bid-room-page.rfx-wave-review-active .rw-operate-heading,
+.bid-room-page.rfx-wave-review-active .bid-room-stage-panel[data-workbench-view-panel="outreach"] > .bid-room-stage-header,
+.bid-room-page.rfx-wave-review-active .rfx-launch-workspace-tabs,
+.bid-room-page.rfx-wave-review-active .rfx-delivery-view-tabs {
+  display: none;
+}
+
+.bid-room-page.rfx-wave-review-active .bid-room-product {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 18px 22px 28px;
+}
+
+.bid-room-page.rfx-wave-review-active .bid-room-workspace,
+.bid-room-page.rfx-wave-review-active .bid-room-build-column,
+.bid-room-page.rfx-wave-review-active .bid-room-stage-panel[data-workbench-view-panel="outreach"],
+.bid-room-page.rfx-wave-review-active .rfx-launch-workspace-panel[data-rfx-launch-workspace-panel="delivery"] {
+  width: 100%;
+  max-width: none;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-draft-queue-panel,
+.bid-room-page.rfx-wave-review-active .rfx-draft-workbench {
+  border: 0;
+  background: #fff;
+  box-shadow: none;
+  padding: 0;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-heading {
+  padding: 4px 0 18px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-heading strong {
+  font-size: 1.18rem;
+  line-height: 1.3;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-heading small {
+  font-size: .76rem;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle {
+  padding: 20px 22px 16px;
+  border-color: #d7e1e7;
+  border-radius: 8px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step {
+  position: relative;
+  justify-items: center;
+  gap: 6px;
+  padding: 0 10px 6px;
+  border-right: 0;
+  border-bottom: 0;
+  text-align: center;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step > b {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #aab8c2;
+  border-radius: 50%;
+  background: #fff;
+  color: #52636f;
+  font-size: .74rem;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step.is-complete > b {
+  border-color: #3b9d72;
+  background: #edf8f3;
+  color: #277a56;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step.is-current > b {
+  border: 2px solid #1769d2;
+  color: #1769d2;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step.is-current {
+  background: #fff;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step > strong { font-size: .75rem; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step > small { font-size: .68rem; }
+
+.bid-room-page.rfx-wave-review-active .rfx-delivery-review-grid {
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 18px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-delivery-queue-heading {
+  align-items: center;
+  margin: 4px 0 12px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-filter-row {
+  display: grid;
+  grid-template-columns: 160px minmax(260px, 1fr);
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-advanced-filters {
+  position: relative;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-advanced-filters > summary {
+  min-height: 34px;
+  border: 1px solid #cfd9e0;
+  border-radius: 5px;
+  background: #fff;
+  padding: 8px 10px;
+  color: #31434d;
+  font-size: .72rem;
+  font-weight: 750;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-advanced-filters[open] .rfx-draft-tracking {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  left: 0;
+  display: grid;
+  min-width: 320px;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid #d7e1e7;
+  border-radius: 6px;
+  background: #fff;
+  padding: 7px;
+  box-shadow: 0 10px 24px rgba(32, 48, 58, .14);
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-advanced-filters:not([open]) .rfx-draft-tracking {
+  display: none;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-draft-filterbar {
+  margin: 0;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-draft-filterbar label span {
+  display: none;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-draft-filterbar input {
+  min-height: 34px;
+  font-size: .74rem;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-draft-pager > div {
+  display: none;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-draft-actions button:disabled,
+.bid-room-page.rfx-wave-review-active .rfx-draft-actions details {
+  display: none;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-draft-actions {
+  min-height: 0;
+  justify-content: flex-start;
+  border-top: 0;
+  padding: 6px 0 8px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-draft-table-wrap {
+  max-height: 520px;
+  border: 1px solid #dce5ea;
+  border-radius: 6px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-summary,
+.bid-room-page.rfx-wave-review-active .rfx-draft-review-inspector {
+  padding: 16px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-heading > b {
+  font-size: 1.2rem;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-delivery-workspace-footer {
+  margin-top: 18px;
+}
+
+@media (max-width: 760px) {
+  .bid-room-page.rfx-wave-review-active .rfx-wave-filter-row,
+  .bid-room-page.rfx-wave-review-active .rfx-delivery-review-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Invitation wave workspace: visual target selected for the governed release flow. */
 .bid-room-page .rfx-wave-workspace-heading {
   display: flex;

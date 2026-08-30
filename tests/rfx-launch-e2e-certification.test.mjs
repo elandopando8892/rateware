@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("../src/rfx-events.js", import.meta.url), "utf8");
 const html = readFileSync(new URL("../rfx-events.html", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
 assert.match(source, /let reviewedDraftMessageIds = new Set\(\);/, "Delivery review should track messages reviewed in the current session");
 assert.match(source, /function draftWasReviewed\(message\)[\s\S]+reviewedDraftMessageIds\.has\(String\(message\?\.id \|\| ""\)\)/, "Release readiness should resolve from the reviewed-message set");
@@ -21,5 +22,8 @@ assert.match(source, /function renderInvitationWaveWorkspace\(rows = \[\]\)[\s\S
 assert.match(source, /continueWaveReviewButton\?\.addEventListener\("click"[\s\S]+!draftWasReviewed\(message\)[\s\S]+renderDraftQueue\(\)/, "Continue review should open the next unreviewed carrier message");
 assert.match(source, /const orderedRows = \[\.\.\.rows\]\.sort[\s\S]+Needs attention[\s\S]+Ready for review[\s\S]+Archived history/, "Carrier review should surface attention items before release-ready rows and keep archived history separate");
 assert.match(source, /document\.body\.classList\.toggle\("rfx-wave-review-active", nextView === "queue"\)/, "Message Queue should enter a focused wave-review layout without changing other Launch workspaces");
+assert.match(html, /class="rfx-wave-advanced-filters"[\s\S]+<summary>All statuses<\/summary>/, "Detailed lifecycle filters should stay behind one compact status control");
+assert.match(styles, /rfx-wave-review-active \.rfx-launch-workspace-tabs[\s\S]+rfx-wave-review-active \.rfx-delivery-view-tabs[\s\S]+display: none/, "Focused wave review should remove redundant workspace and delivery tab bands");
+assert.match(styles, /rfx-wave-lifecycle-step > b[\s\S]+border-radius: 50%/, "Invitation Wave lifecycle should use the selected circular step treatment");
 
 console.log("RFx Launch E2E certification contracts passed.");
