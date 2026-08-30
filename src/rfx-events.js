@@ -7423,6 +7423,10 @@ async function archiveCurrentOutreachAudienceSegment() {
   }
 }
 
+function carrierHasContact(row) {
+  return Boolean(String(row?.email || row?.phone || "").trim());
+}
+
 function renderInvitationWaveWorkspace(rows = [], carrierRows = deliveryParticipationRows) {
   if (!waveLifecycle || !waveReadinessSummary) return;
   const eventLabel = selectedEvent?.rfx_id || selectedEvent?.name || "RFx";
@@ -7430,7 +7434,6 @@ function renderInvitationWaveWorkspace(rows = [], carrierRows = deliveryParticip
   const draftRows = rows.filter((message) => String(message.status || "").toLowerCase() !== "archived");
   const usingCarrierRows = !draftRows.length && carrierRows.length > 0;
   const activeRows = usingCarrierRows ? carrierRows : draftRows;
-  const carrierHasContact = (row) => Boolean(String(row.email || row.phone || "").trim());
   const reviewed = usingCarrierRows
     ? activeRows.filter((row) => carrierHasContact(row) && reviewedCarrierVendorIds.has(String(row.vendor_id || "")))
     : activeRows.filter(draftWasReviewed);

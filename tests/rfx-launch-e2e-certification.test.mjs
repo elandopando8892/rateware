@@ -34,6 +34,7 @@ assert.match(source, /Save this contact to Carrier CRM and mark the carrier revi
 assert.match(source, /data-rfx-mark-carrier-reviewed[\s\S]+reviewedCarrierVendorIds\.add/, "Carrier Review should support a reversible session review without forcing a CRM write");
 assert.match(styles, /rfx-carrier-review-active[\s\S]+rfx-carrier-review-form[\s\S]+rfx-carrier-review-safety/, "Focused Invitation Wave should expose a clear review form and safety boundary");
 assert.match(source, /const reviewed = usingCarrierRows[\s\S]+reviewedCarrierVendorIds\.has/, "A valid contact must not be treated as reviewed until the operator reviews that carrier");
+assert.match(source, /function carrierHasContact\(row\)[\s\S]+function renderInvitationWaveWorkspace/, "Carrier contact readiness must be shared by lifecycle, final review, and Continue review controls");
 assert.match(source, /continueWaveReviewButton\?\.addEventListener\("click", async[\s\S]+openCarrierReview\(nextCarrier\.vendor_id\)/, "Continue review should advance through carrier participants before drafts exist");
 assert.match(html, /id="rfx-wave-release-review"[\s\S]+id="rfx-wave-release-review-content"/, "Invitation Wave should expose a final release review dialog");
 assert.match(source, /function renderWaveReleaseReview\([\s\S]+Nothing sends from this confirmation\./, "Final review must preserve the no-send safety fence");
