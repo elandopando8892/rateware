@@ -223,10 +223,7 @@ Deno.test("Postgres approval store uses one tenant transaction and only the revi
     ).length,
     1,
   );
-  assertEquals(commandValues[6], {
-    values: ["osp:read", "osp:operate"],
-    type: 25,
-  });
+  assertEquals(commandValues[6], '{"osp:read","osp:operate"}');
   assertEquals(
     statements.some((sql) =>
       sql.includes("complete_operations_review_command") &&
