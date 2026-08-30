@@ -107,6 +107,45 @@ No actionable P0, P1, or P2 finding remains.
 
 final result: passed
 
+## Selected Invitation Wave fidelity correction — 2026-08-30
+
+- Source visual truth: `C:\Users\andre\AppData\Local\Temp\codex-clipboard-9a3fa0ab-5d1c-46a2-834f-80dc8ed23352.png`
+- Browser-rendered implementation: `C:\Users\andre\AppData\Local\Temp\rateware-wave-selected-design-final-clean.png`
+- Combined comparison evidence: `C:\Users\andre\AppData\Local\Temp\rateware-wave-comparison-pass2.png`
+- Viewport: 1487 x 1058 CSS pixels at device scale factor 1
+- Source pixels: 1487 x 1058
+- Implementation pixels: 1487 x 1058
+- Density normalization: none; the artifacts were compared at identical pixel dimensions.
+- State: authenticated Vercel preview, RFx-06252601, Launch > Delivery queue > Message queue, 284 real RFx carriers loaded.
+
+### Findings
+
+No actionable P0, P1, or P2 mismatch remains.
+
+- Fonts and typography: the selected compact enterprise hierarchy is reproduced across breadcrumb, wave title, lifecycle, carrier groups, table, and readiness summary. The longer live RFx title wraps at the target viewport; this is accepted real-content behavior rather than design drift.
+- Spacing and layout rhythm: the dedicated 136 px Launch navigation, 54 px utility bar, full-width lifecycle card, two-column carrier/readiness grid, and dense carrier rows match the source proportions. The carrier table no longer intrudes beneath the readiness panel.
+- Colors and visual tokens: white canvas, Rateware blue, slate dividers, green completion/readiness, red blocker, and amber release state match the selected source semantics.
+- Image quality and asset fidelity: this screen contains no photographic or illustrative assets. Navigation and lifecycle use the existing Rateware icon component; the readiness visualization is a data-driven canvas chart.
+- Copy and content: Launch, Invitation wave, Continue review, Draft created through Response, Needs attention, Ready, Release readiness, Channels, Owner, Scheduled release, and the human-confirmation boundary are present. Counts and event state intentionally come from the live selected RFx instead of the illustrative mock.
+- Accessibility and interaction: semantic navigation, tab activation, labelled carrier checkboxes, filter/search controls, and Continue review remain keyboard-addressable. A carrier checkbox was selected and cleared without producing an external effect.
+
+### Full-view and focused comparison evidence
+
+The 2974 x 1058 side-by-side comparison verifies the same viewport, crop, shell, header, lifecycle, grouped carrier review, and readiness composition. Focused regions were not separately required because the identical-density full view keeps header, table labels, lifecycle details, and readiness labels legible.
+
+### Comparison history
+
+1. Pass 1 — blocked: Platform 55 navigation remained visible, the status pill overlapped the RFx title, the empty draft table reported zero carriers despite 284 RFx participants, and the table extended beneath the readiness column.
+2. Fixes: introduced the selected Launch shell, moved the status pill into the title grid, used the real RFx participant audience as the pre-draft carrier review source, added Needs attention/Ready grouping, constrained table columns, and added the donut readiness summary.
+3. Pass 2 — passed: authenticated preview shows the selected composition with 284 real carriers, 14 blockers, 18 visible carrier rows, the correct live Delivery stage, working local selection, and zero browser-console errors.
+
+### Follow-up polish
+
+- P3: the live RFx title is longer than the illustrative Northeast Dry Van title and therefore wraps. Keep it because truncating the event identity would reduce operational clarity.
+- P3: live carrier/contact/status values differ from the mock by design; no synthetic carrier data was introduced.
+
+final result: passed
+
 ## Guided Message authenticated closure — 2026-08-26
 
 - Source visual truth: `C:\Users\andre\.codex\generated_images\01a03ae9-d638-7f70-8972-7ab3b891bf74\exec-76d65483-c50d-4fa9-baac-d03c4538325a.png` — selected concept 3, 1440 x 1024.
