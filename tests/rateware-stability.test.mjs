@@ -729,7 +729,7 @@ assert.match(sendWhatsappGroupOutreachSource, /WhatsApp groups are manual-only\.
 assert.doesNotMatch(sendWhatsappGroupOutreachSource, /activeWhatsappConnection|delivery_status:\s*"failed"/, "Manual WhatsApp group actions should not require a Meta connection or mark drafts as provider failures");
 assert.match(rfxEventsSource, /function syncOutreachChannelUi/, "Bid Room should render controls for only the active outreach channel");
 assert.match(rfxEventsSource, /clearDraftQueueSelection\(\);[\s\S]+syncOutreachChannelUi\(\);/, "Changing outreach channels should clear mixed draft selections");
-assert.match(rfxEventsSource, /const selectable = channel === "whatsapp"[\s\S]+selectable\.forEach\(rememberDraftRow\)/, "Select-all should only select drafts from the active channel queue");
+assert.match(rfxEventsSource, /const selectable = channel === "whatsapp"[\s\S]+selectable\.filter\(draftWasReviewed\)\.forEach\(rememberDraftRow\)/, "Select-all should only select reviewed drafts from the active channel queue");
 assert.match(rfxEventsHtml, /data-rfx-draft-action-channel="email"[\s\S]+data-rfx-draft-action-channel="whatsapp"[\s\S]+data-rfx-draft-action-channel="whatsapp_group"/, "Draft queue actions should be scoped to Gmail, direct WhatsApp, or manual group delivery");
 assert.match(apiSource, /test_whatsapp_business_connection/, "Rateware API should expose WhatsApp Business connection test");
 assert.match(apiSource, /testWhatsappBusinessConnection[\s\S]+validateWhatsappConnectionAgainstMeta/, "Test line should validate token, Phone Number ID, and WABA together");
@@ -2330,7 +2330,7 @@ for (const functionName of ["sendSelectedDraftEmails", "sendSelectedDraftWhatsap
   const source = rfxEventsSource.slice(start, nextFunction > start ? nextFunction : undefined);
   assert.match(source, /finally \{[\s\S]*?updateDraftSendControls\(draftQueueRows\);[\s\S]*?\}/, `${functionName} should always restore Bid Room Draft Queue controls after success or failure`);
 }
-assert.match(rfxEventsSource, /const selectable = channel === "whatsapp"[\s\S]+selectable\.forEach\(rememberDraftRow\)/, "Select sendable should add only drafts from the active channel queue without replacing previous selections");
+assert.match(rfxEventsSource, /const selectable = channel === "whatsapp"[\s\S]+selectable\.filter\(draftWasReviewed\)\.forEach\(rememberDraftRow\)/, "Select sendable should add only reviewed drafts from the active channel queue without replacing previous selections");
 assert.doesNotMatch(rfxEventsSource, /draftRowsForEvent\(\)\.slice\(0, 200\)/, "Draft queue selection should not be capped to the first 200 unfiltered rows");
 for (const source of [rfxInvitationTableSource, apiInvitationTableSource]) {
   assert.doesNotMatch(source, /Tu tarifa|Tu capacidad|Rango objetivo|Millas|Peso/, "RFx invitation lane table should not include carrier response or heavy analysis columns");
