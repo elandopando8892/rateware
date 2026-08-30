@@ -63,6 +63,18 @@ export type SupplierPackageCanaryClaim = {
   leaseMs: number;
 };
 
+export type SignatureApplicationCanaryClaim = {
+  organizationId: string;
+  caseId: string;
+  jobId: string;
+  approvalId: string;
+  expectedCaseVersion: number;
+  inputSnapshotSha256: string;
+  inputPackageSha256: string;
+  signaturePositionVersion: number;
+  leaseMs: number;
+};
+
 export interface BackgroundJobStore {
   enqueue(
     input: {
@@ -94,6 +106,9 @@ export interface CanaryBackgroundJobStore extends BackgroundJobStore {
   ): Promise<LeasedJob[]>;
   claimSupplierPackageCanary(
     input: SupplierPackageCanaryClaim,
+  ): Promise<LeasedJob[]>;
+  claimSignatureApplicationCanary(
+    input: SignatureApplicationCanaryClaim,
   ): Promise<LeasedJob[]>;
 }
 
@@ -397,6 +412,30 @@ export function createPostgresBackgroundJobStore(
       return await withWorkerTransaction(sql, async (tx) => {
         const rows =
           await tx`select * from osp_private.claim_supplier_package_canary(${input.organizationId}, ${input.caseId}, ${input.jobId}, ${input.snapshotId}, ${input.snapshotSha256}, ${input.leaseMs})`;
+        if (rows.length > 1) throw new Error("LEASE_CONFLICT");
+        return rows.map(leasedJob);
+      });
+    },
+    async claimSignatureApplicationCanary(
+      input: SignatureApplicationCanaryClaim,
+    ) {
+      if (
+        !UUID_PATTERN.test(input.organizationId) ||
+        !UUID_PATTERN.test(input.caseId) ||
+        !UUID_PATTERN.test(input.jobId) ||
+        !UUID_PATTERN.test(input.approvalId) ||
+        !Number.isSafeInteger(input.expectedCaseVersion) ||
+        input.expectedCaseVersion < 1 ||
+        !SHA256_PATTERN.test(input.inputSnapshotSha256) ||
+        !SHA256_PATTERN.test(input.inputPackageSha256) ||
+        !Number.isSafeInteger(input.signaturePositionVersion) ||
+        input.signaturePositionVersion < 1 ||
+        !Number.isSafeInteger(input.leaseMs) || input.leaseMs < 1 ||
+        input.leaseMs > 900_000
+      ) throw new Error("INVALID_CLAIM");
+      return await withWorkerTransaction(sql, async (tx) => {
+        const rows =
+          await tx`select * from osp_private.claim_signature_application_canary(${input.organizationId}, ${input.caseId}, ${input.jobId}, ${input.approvalId}, ${input.expectedCaseVersion}, ${input.inputSnapshotSha256}, ${input.inputPackageSha256}, ${input.signaturePositionVersion}, ${input.leaseMs})`;
         if (rows.length > 1) throw new Error("LEASE_CONFLICT");
         return rows.map(leasedJob);
       });

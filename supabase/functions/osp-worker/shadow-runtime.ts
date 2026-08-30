@@ -28,6 +28,7 @@ import type { ManagedExtractionService } from "./worker.ts";
 import type { AutomaticPreparationService } from "./automatic-preparation.ts";
 import type { OspXlsxIntakeConfiguration } from "./osp-xlsx-intake-config.ts";
 import type { SupplierPackageCanaryConfiguration } from "./supplier-package-canary-config.ts";
+import type { SignatureCanaryConfiguration } from "./signature-canary-config.ts";
 import { createSupplierPackageJobService } from "./supplier-package-runtime.ts";
 import {
   createSignatureJobService,
@@ -52,6 +53,8 @@ type SupplierPackageCanary = {
   snapshotSha256: string;
 };
 
+type SignatureApplicationCanary = SignatureCanaryConfiguration;
+
 function governedStorage(
   client: Parameters<typeof createSupabaseOriginalObjectStore>[0]["client"],
 ): Pick<SupabaseClient, "storage"> {
@@ -71,6 +74,7 @@ export function createShadowWorkerRuntime(input: {
   xlsxShadow?: XlsxShadowConfiguration;
   xlsxIntake?: OspXlsxIntakeConfiguration;
   supplierPackageCanary?: SupplierPackageCanaryConfiguration;
+  signatureCanary?: SignatureCanaryConfiguration;
   signatureVault?: SignatureVaultReader;
   fetch?: typeof globalThis.fetch;
 }): {
@@ -81,6 +85,9 @@ export function createShadowWorkerRuntime(input: {
   ) => Promise<number>;
   runSupplierPackageCanary?: (
     request: SupplierPackageCanary,
+  ) => Promise<number>;
+  runSignatureApplicationCanary?: (
+    request: SignatureApplicationCanary,
   ) => Promise<number>;
 } {
   if (
@@ -326,6 +333,36 @@ export function createShadowWorkerRuntime(input: {
       });
     }
     : undefined;
+  const runSignatureApplicationCanary = input.signatureCanary && signatures
+    ? async (request: SignatureApplicationCanary): Promise<number> => {
+      const allowed = input.signatureCanary!;
+      if (
+        request.organizationId !== allowed.organizationId ||
+        request.caseId !== allowed.caseId || request.jobId !== allowed.jobId ||
+        request.approvalId !== allowed.approvalId ||
+        request.expectedCaseVersion !== allowed.expectedCaseVersion ||
+        request.inputSnapshotSha256 !== allowed.inputSnapshotSha256 ||
+        request.inputPackageSha256 !== allowed.inputPackageSha256 ||
+        request.signaturePositionVersion !== allowed.signaturePositionVersion
+      ) throw new Error("INVALID_INPUT");
+      return await runWorker({
+        workerId: input.workerId,
+        now: () => new Date(),
+        jobs: {
+          claim: ({ leaseMs }) =>
+            jobs.claimSignatureApplicationCanary({
+              ...request,
+              leaseMs,
+            }),
+          complete: jobs.complete,
+          fail: jobs.fail,
+        },
+        intake,
+        signatures,
+        limit: 1,
+      });
+    }
+    : undefined;
   return Object.freeze({
     enqueue: (limit: number) => bridge.enqueue(limit),
     run: (limit: number) =>
@@ -342,5 +379,6 @@ export function createShadowWorkerRuntime(input: {
       }),
     runXlsxDocumentExtractCanary,
     runSupplierPackageCanary,
+    runSignatureApplicationCanary,
   });
 }

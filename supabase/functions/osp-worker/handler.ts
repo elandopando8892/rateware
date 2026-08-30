@@ -54,6 +54,17 @@ type SupplierPackageCanary = {
   snapshotSha256: string;
 };
 
+type SignatureApplicationCanary = {
+  organizationId: string;
+  caseId: string;
+  jobId: string;
+  approvalId: string;
+  expectedCaseVersion: number;
+  inputSnapshotSha256: string;
+  inputPackageSha256: string;
+  signaturePositionVersion: number;
+};
+
 export function createOspWorkerHandler(deps: {
   expectedToken: string;
   enqueue(limit: number): Promise<number>;
@@ -63,6 +74,9 @@ export function createOspWorkerHandler(deps: {
   ) => Promise<number>;
   runSupplierPackageCanary?: (
     input: SupplierPackageCanary,
+  ) => Promise<number>;
+  runSignatureApplicationCanary?: (
+    input: SignatureApplicationCanary,
   ) => Promise<number>;
 }): (request: Request) => Promise<Response> {
   if (deps.expectedToken.length < 32) {
@@ -134,6 +148,58 @@ export function createOspWorkerHandler(deps: {
           caseId: body.caseId,
           snapshotId: body.snapshotId,
           snapshotSha256: body.snapshotSha256,
+        });
+        return processed === 1
+          ? json(200, { processed })
+          : json(409, { error: "CANARY_NOT_READY" });
+      } catch {
+        return json(503, { error: "WORKER_UNAVAILABLE" });
+      }
+    }
+
+    const signatureKeys = [
+      "action",
+      "approvalId",
+      "caseId",
+      "expectedCaseVersion",
+      "inputPackageSha256",
+      "inputSnapshotSha256",
+      "jobId",
+      "organizationId",
+      "signaturePositionVersion",
+    ];
+    if (body.action === "run_signature_application_canary") {
+      if (
+        keys.length !== signatureKeys.length ||
+        keys.some((key, index) => key !== signatureKeys[index]) ||
+        typeof body.organizationId !== "string" ||
+        typeof body.caseId !== "string" ||
+        typeof body.jobId !== "string" ||
+        typeof body.approvalId !== "string" ||
+        typeof body.inputSnapshotSha256 !== "string" ||
+        typeof body.inputPackageSha256 !== "string" ||
+        !UUID.test(body.organizationId) || !UUID.test(body.caseId) ||
+        !UUID.test(body.jobId) || !UUID.test(body.approvalId) ||
+        !SHA256.test(body.inputSnapshotSha256) ||
+        !SHA256.test(body.inputPackageSha256) ||
+        !Number.isSafeInteger(body.expectedCaseVersion) ||
+        Number(body.expectedCaseVersion) < 1 ||
+        !Number.isSafeInteger(body.signaturePositionVersion) ||
+        Number(body.signaturePositionVersion) < 1
+      ) return json(400, { error: "INVALID_REQUEST" });
+      if (!deps.runSignatureApplicationCanary) {
+        return json(409, { error: "CANARY_DISABLED" });
+      }
+      try {
+        const processed = await deps.runSignatureApplicationCanary({
+          organizationId: body.organizationId,
+          caseId: body.caseId,
+          jobId: body.jobId,
+          approvalId: body.approvalId,
+          expectedCaseVersion: Number(body.expectedCaseVersion),
+          inputSnapshotSha256: body.inputSnapshotSha256,
+          inputPackageSha256: body.inputPackageSha256,
+          signaturePositionVersion: Number(body.signaturePositionVersion),
         });
         return processed === 1
           ? json(200, { processed })

@@ -18,6 +18,17 @@ const packageCanary = {
   snapshotId: "33333333-3333-4333-8333-333333333333",
   snapshotSha256: "b".repeat(64),
 };
+const signatureCanary = {
+  action: "run_signature_application_canary",
+  organizationId: "11111111-1111-4111-8111-111111111111",
+  caseId: "22222222-2222-4222-8222-222222222222",
+  jobId: "33333333-3333-4333-8333-333333333333",
+  approvalId: "44444444-4444-4444-8444-444444444444",
+  expectedCaseVersion: 10,
+  inputSnapshotSha256: "c".repeat(64),
+  inputPackageSha256: "d".repeat(64),
+  signaturePositionVersion: 1,
+};
 const request = (body: unknown, authorization = `Bearer ${token}`) =>
   new Request("https://example.test/functions/v1/osp-worker", {
     method: "POST",
@@ -183,6 +194,57 @@ Deno.test("OSP worker fails closed when supplier package canary is disabled or n
     runSupplierPackageCanary: async () => 0,
   });
   response = await unavailable(request(packageCanary));
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), { error: "CANARY_NOT_READY" });
+});
+
+Deno.test("OSP worker runs only one exact signature application canary", async () => {
+  let received: Record<string, string | number> | undefined;
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    runSignatureApplicationCanary: async (input) => {
+      received = input;
+      return 1;
+    },
+  });
+  const response = await handler(request(signatureCanary));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { processed: 1 });
+  assertEquals(received, {
+    organizationId: signatureCanary.organizationId,
+    caseId: signatureCanary.caseId,
+    jobId: signatureCanary.jobId,
+    approvalId: signatureCanary.approvalId,
+    expectedCaseVersion: 10,
+    inputSnapshotSha256: signatureCanary.inputSnapshotSha256,
+    inputPackageSha256: signatureCanary.inputPackageSha256,
+    signaturePositionVersion: 1,
+  });
+  assertEquals(
+    (await handler(request({ ...signatureCanary, extra: true }))).status,
+    400,
+  );
+});
+
+Deno.test("OSP worker fails closed when signature canary is disabled or not ready", async () => {
+  const disabled = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: async () => 0,
+    run: async () => 0,
+  });
+  let response = await disabled(request(signatureCanary));
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), { error: "CANARY_DISABLED" });
+
+  const unavailable = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: async () => 0,
+    run: async () => 0,
+    runSignatureApplicationCanary: async () => 0,
+  });
+  response = await unavailable(request(signatureCanary));
   assertEquals(response.status, 409);
   assertEquals(await response.json(), { error: "CANARY_NOT_READY" });
 });
