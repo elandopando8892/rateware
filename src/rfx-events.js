@@ -425,6 +425,7 @@ const touchpointList = document.querySelector("#rfx-touchpoint-list");
 const draftSummary = document.querySelector("#rfx-draft-summary");
 const draftList = document.querySelector("#rfx-draft-list");
 const draftReviewInspector = document.querySelector("#rfx-draft-review-inspector");
+const draftReviewProgress = document.querySelector("#rfx-draft-review-progress");
 const draftSearchInput = document.querySelector("#rfx-draft-search");
 const draftClearSearchButton = document.querySelector("#rfx-clear-draft-search");
 const draftTrackingFilters = document.querySelector("#rfx-draft-tracking-filters");
@@ -600,6 +601,7 @@ let responseBoardRowsCache = [];
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let selectedDraftMessageIds = new Set();
+let reviewedDraftMessageIds = new Set();
 let activeDraftReviewId = "";
 const selectedDraftMessageRows = new Map();
 let draftQueueSearch = rfxPageParams.has("draft_search")
@@ -6418,7 +6420,11 @@ function resetDraftQueue({ clearSelection = false } = {}) {
   deliveryParticipationLoading = false;
   deliveryParticipationStatus = "all";
   deliveryParticipationPage = 0;
-  if (clearSelection) clearDraftQueueSelection();
+  if (clearSelection) {
+    clearDraftQueueSelection();
+    reviewedDraftMessageIds.clear();
+    activeDraftReviewId = "";
+  }
 }
 
 function rememberDraftRow(message) {
@@ -6652,16 +6658,26 @@ function selectedDraftRows(rows = null) {
   return source.filter((message) => selectedDraftMessageIds.has(String(message.id)));
 }
 
+function draftWasReviewed(message) {
+  return reviewedDraftMessageIds.has(String(message?.id || ""));
+}
+
+function draftCanRelease(message) {
+  if (message?.channel === "whatsapp") return selectableWhatsappDrafts([message]).length > 0;
+  if (message?.channel === "whatsapp_group") return selectableWhatsappGroupDrafts([message]).length > 0;
+  return selectableEmailDrafts([message]).length > 0;
+}
+
 function selectedSendableDraftIds(rows = null) {
-  return selectableEmailDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
+  return selectableEmailDrafts(selectedDraftRows(rows)).filter(draftWasReviewed).map((message) => String(message.id));
 }
 
 function selectedWhatsappDraftIds(rows = null) {
-  return selectableWhatsappDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
+  return selectableWhatsappDrafts(selectedDraftRows(rows)).filter(draftWasReviewed).map((message) => String(message.id));
 }
 
 function selectedWhatsappGroupDraftIds(rows = null) {
-  return selectableWhatsappGroupDrafts(selectedDraftRows(rows)).map((message) => String(message.id));
+  return selectableWhatsappGroupDrafts(selectedDraftRows(rows)).filter(draftWasReviewed).map((message) => String(message.id));
 }
 
 function refreshableOutreachDrafts(rows = []) {
@@ -6791,7 +6807,13 @@ function updateDraftSendControls(rows = []) {
     : activeChannel === "whatsapp_group"
       ? whatsappGroupSelectable
       : selectable;
-  if (draftSelectAllEmailsButton) draftSelectAllEmailsButton.disabled = !activeSelectable.length;
+  const reviewedSelectable = activeSelectable.filter(draftWasReviewed);
+  if (draftReviewProgress) {
+    draftReviewProgress.textContent = activeSelectable.length
+      ? `${formatNumber(reviewedSelectable.length)} of ${formatNumber(activeSelectable.length)} release-ready message${activeSelectable.length === 1 ? "" : "s"} reviewed on this page.`
+      : "No release-ready messages on this page.";
+  }
+  if (draftSelectAllEmailsButton) draftSelectAllEmailsButton.disabled = !reviewedSelectable.length;
   if (draftClearSelectionButton) draftClearSelectionButton.disabled = !selectedDraftMessageIds.size;
   if (draftRefreshSelectedButton) {
     draftRefreshSelectedButton.disabled = draftQueueMutationRunning || !refreshableSelectedRows.length;
@@ -6827,8 +6849,8 @@ function updateDraftSendControls(rows = []) {
       : activeChannel === "whatsapp"
         ? "WhatsApp drafts"
         : "sendable emails";
-    draftSelectAllEmailsButton.textContent = activeSelectable.length
-      ? `Select ${label} (${formatNumber(activeSelectable.length)})`
+    draftSelectAllEmailsButton.textContent = reviewedSelectable.length
+      ? `Select reviewed ${label} (${formatNumber(reviewedSelectable.length)})`
       : `Select ${label}`;
   }
   if (draftArchiveSelectedButton) draftArchiveSelectedButton.disabled = draftQueueMutationRunning || !selectedRows.length;
@@ -7477,6 +7499,7 @@ function renderDraftQueue() {
     const canSendEmail = isEmail && selectableEmailDrafts([message]).length;
     const canSendWhatsapp = isWhatsapp && whatsappConnectionReadiness.ready === true && selectableWhatsappDrafts([message]).length;
     const canMarkGroup = isWhatsappGroup && selectableWhatsappGroupDrafts([message]).length;
+    const reviewed = draftWasReviewed(message);
     const openLabel = isEmail ? "Open Gmail" : isWhatsappGroup ? "Open group" : "Open WhatsApp";
     const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
     const templateStatus = String(metadata.whatsapp_template_status || (message.whatsapp_template_name ? "NOT_SYNCED" : "NOT_PUBLISHED")).toUpperCase();
@@ -7528,11 +7551,11 @@ function renderDraftQueue() {
         <td>${escapeHtml(updated ? new Date(updated).toLocaleString() : "-")}</td>
         <td>
           <div class="rfx-draft-row-actions">
-            <button class="secondary small-button" type="button" data-rfx-review-draft="${escapeHtml(message.id)}">Review</button>
+            <button class="secondary small-button" type="button" data-rfx-review-draft="${escapeHtml(message.id)}">${reviewed ? "Reviewed" : "Review"}</button>
             ${staleDraft || ["sent", "replied"].includes(status) ? `<button class="small-button" type="button" data-rfx-refresh-draft="${escapeHtml(message.id)}">${staleDraft ? "Refresh draft" : "Create resend"}</button>` : ""}
-            ${isEmail ? `<button class="small-button" type="button" data-rfx-send-draft-now="${escapeHtml(message.id)}" ${canSendEmail ? "" : "disabled"}>Send email</button>` : ""}
-            ${isWhatsapp ? `<button class="small-button" type="button" data-rfx-send-whatsapp-now="${escapeHtml(message.id)}" ${canSendWhatsapp ? "" : "disabled"}>Send WhatsApp</button>` : ""}
-            ${isWhatsappGroup ? `<button class="small-button" type="button" data-rfx-mark-whatsapp-group-sent="${escapeHtml(message.id)}" ${canMarkGroup ? "" : "disabled"}>Manual sent</button>` : ""}
+            ${isEmail ? `<button class="small-button" type="button" data-rfx-send-draft-now="${escapeHtml(message.id)}" ${canSendEmail && reviewed ? "" : "disabled"}>Send email</button>` : ""}
+            ${isWhatsapp ? `<button class="small-button" type="button" data-rfx-send-whatsapp-now="${escapeHtml(message.id)}" ${canSendWhatsapp && reviewed ? "" : "disabled"}>Send WhatsApp</button>` : ""}
+            ${isWhatsappGroup ? `<button class="small-button" type="button" data-rfx-mark-whatsapp-group-sent="${escapeHtml(message.id)}" ${canMarkGroup && reviewed ? "" : "disabled"}>Manual sent</button>` : ""}
             <button class="secondary small-button" type="button" data-rfx-open-draft="${escapeHtml(openUrl || "")}" ${openUrl ? "" : "disabled"}>${escapeHtml(openLabel)}</button>
             <button class="secondary small-button" type="button" data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="queued" ${status === "queued" || status === "sending" || status === "sent" || status === "archived" ? "disabled" : ""}>Queue</button>
             <button class="secondary small-button" type="button" title="Hide this delivery message from the active queue. Carrier participation and RFx history remain." data-rfx-mark-draft="${escapeHtml(message.id)}" data-rfx-draft-status="archived" ${status === "archived" ? "disabled" : ""}>Archive message</button>
@@ -10614,6 +10637,10 @@ async function sendSingleDraftEmail(id) {
     setStatus(rfxOutreachStatus, "Draft row could not be found. Refresh the Bid Room and try again.", "error");
     return;
   }
+  if (!draftWasReviewed(row)) {
+    setStatus(rfxOutreachStatus, "Review this carrier message before sending.", "error");
+    return;
+  }
   const sendable = selectableEmailDrafts([row]).length > 0;
   if (!sendable) {
     setStatus(rfxOutreachStatus, "This draft cannot be sent directly. It needs an email recipient and drafted/queued/failed status.", "error");
@@ -10713,6 +10740,10 @@ async function sendSingleDraftWhatsapp(id) {
     setStatus(rfxOutreachStatus, "WhatsApp draft row could not be found. Refresh the Bid Room and try again.", "error");
     return;
   }
+  if (!draftWasReviewed(row)) {
+    setStatus(rfxOutreachStatus, "Review this carrier message before sending it through WhatsApp.", "error");
+    return;
+  }
   if (!selectableWhatsappDrafts([row]).length) {
     setStatus(rfxOutreachStatus, "This WhatsApp draft needs a valid phone and drafted, queued, or failed status. Rateware checks the Meta notifier automatically when you send.", "error");
     return;
@@ -10795,6 +10826,8 @@ async function refreshOutreachDraftRows(rows = [], { statusLabel = "Refreshing s
     return 0;
   }
   const eventId = selectedEventId;
+  rows.forEach((message) => reviewedDraftMessageIds.delete(String(message.id || "")));
+  if (rows.some((message) => String(message.id || "") === activeDraftReviewId)) activeDraftReviewId = "";
   setStatus(rfxOutreachStatus, statusLabel);
   try {
     for (let index = 0; index < refreshes.length; index += 1) {
@@ -10879,6 +10912,10 @@ async function markSingleWhatsappGroupManuallySent(id) {
   const row = findDraftRow(id);
   if (!row) {
     setStatus(rfxOutreachStatus, "WhatsApp group draft row could not be found. Refresh the Bid Room and try again.", "error");
+    return;
+  }
+  if (!draftWasReviewed(row)) {
+    setStatus(rfxOutreachStatus, "Review this carrier message before marking the WhatsApp group delivery as sent.", "error");
     return;
   }
   if (!selectableWhatsappGroupDrafts([row]).length) {
@@ -11379,6 +11416,7 @@ draftList?.addEventListener("click", async (event) => {
   const reviewButton = event.target instanceof Element ? event.target.closest("[data-rfx-review-draft]") : null;
   if (reviewButton) {
     activeDraftReviewId = String(reviewButton.dataset.rfxReviewDraft || "");
+    reviewedDraftMessageIds.add(activeDraftReviewId);
     renderDraftQueue();
     return;
   }
@@ -11480,6 +11518,11 @@ draftReviewInspector?.addEventListener("change", (event) => {
   if (!checkbox) return;
   const id = String(checkbox.dataset.rfxDraftSelect || "");
   if (!id) return;
+  if (checkbox.checked && !reviewedDraftMessageIds.has(String(id))) {
+    checkbox.checked = false;
+    setStatus(rfxOutreachStatus, "Review this carrier message before selecting it for release.", "error");
+    return;
+  }
   if (checkbox.checked) rememberDraftRow(draftQueueRows.find((message) => String(message.id) === id));
   else forgetDraftRow(id);
   renderDraftQueue();
@@ -11490,8 +11533,15 @@ draftList?.addEventListener("change", (event) => {
   if (!checkbox) return;
   const id = checkbox.dataset.rfxDraftSelect;
   if (!id) return;
+  const row = draftQueueRows.find((message) => String(message.id) === String(id));
+  if (checkbox.checked && draftCanRelease(row) && !reviewedDraftMessageIds.has(String(id))) {
+    checkbox.checked = false;
+    setStatus(rfxOutreachStatus, "Review this carrier message before selecting it for release.", "error");
+    renderDraftQueue();
+    return;
+  }
   if (checkbox.checked) {
-    rememberDraftRow(draftQueueRows.find((message) => String(message.id) === String(id)));
+    rememberDraftRow(row);
   } else {
     forgetDraftRow(id);
   }
@@ -11546,7 +11596,7 @@ draftTrackingFilters?.addEventListener("click", (event) => {
 draftToggleVisible?.addEventListener("change", () => {
   const rows = draftQueueRows;
   if (draftToggleVisible.checked) {
-    rows.forEach(rememberDraftRow);
+    rows.filter((message) => !draftCanRelease(message) || draftWasReviewed(message)).forEach(rememberDraftRow);
   } else {
     rows.forEach((message) => forgetDraftRow(message.id));
   }
@@ -11561,7 +11611,7 @@ draftSelectAllEmailsButton?.addEventListener("click", () => {
     : channel === "whatsapp_group"
       ? selectableWhatsappGroupDrafts(rows)
       : selectableEmailDrafts(rows);
-  selectable.forEach(rememberDraftRow);
+  selectable.filter(draftWasReviewed).forEach(rememberDraftRow);
   renderDraftQueue();
 });
 
