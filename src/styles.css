@@ -37120,11 +37120,11 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   padding: 0 0 20px;
 }
 
-.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-heading > div:first-child { gap: 8px; }
-.bid-room-page.rfx-wave-review-active .rfx-wave-breadcrumb { margin: 0 0 13px; color: #2872d8; font-size: 12px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-heading > div:first-child { display: grid; grid-template-columns: minmax(0, auto) auto; justify-content: start; gap: 8px 12px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-breadcrumb { grid-column: 1 / -1; margin: 0 0 13px; color: #2872d8; font-size: 12px; }
 .bid-room-page.rfx-wave-review-active .rfx-wave-breadcrumb span { padding: 0 8px; color: #9ba9ba; }
 .bid-room-page.rfx-wave-review-active .rfx-wave-workspace-heading strong { font-size: 20px; letter-spacing: -.25px; }
-.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-heading small { color: #5d708a; font-size: 12px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-heading small { grid-column: 1 / -1; color: #5d708a; font-size: 12px; }
 
 .bid-room-page.rfx-wave-review-active .rfx-wave-workspace-primary {
   display: flex;
@@ -37134,9 +37134,15 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
 }
 
 .bid-room-page.rfx-wave-review-active .rfx-wave-workspace-primary .status-pill {
-  position: absolute;
-  bottom: 57px;
-  left: min(390px, 42vw);
+  border: 1px solid #f4b780;
+  background: #fff8f1;
+  color: #d96708;
+  font-size: 11px;
+  text-transform: none;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-heading > div:first-child > .status-pill {
+  align-self: center;
   border: 1px solid #f4b780;
   background: #fff8f1;
   color: #d96708;
@@ -37232,7 +37238,14 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   border-radius: 0;
 }
 
-.bid-room-page.rfx-wave-review-active .rfx-draft-table { border-collapse: separate; border-spacing: 0; font-size: 11px; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table { width: 100%; min-width: 0 !important; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 11px; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table th:nth-child(1) { width: 34px; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table th:nth-child(2) { width: 25%; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table th:nth-child(3) { width: 24%; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table th:nth-child(4) { width: 12%; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table th:nth-child(6) { width: 16%; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table th:nth-child(8) { width: 16%; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table th:nth-child(9) { width: 82px; }
 .bid-room-page.rfx-wave-review-active .rfx-draft-table thead th { border-block: 1px solid #d5dee8; background: #fff; color: #3c526e; padding-block: 12px; }
 .bid-room-page.rfx-wave-review-active .rfx-draft-table thead th:first-child { border-left: 1px solid #d5dee8; border-radius: 5px 0 0 0; }
 .bid-room-page.rfx-wave-review-active .rfx-draft-table thead th:last-child { border-right: 1px solid #d5dee8; border-radius: 0 5px 0 0; }

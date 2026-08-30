@@ -7135,6 +7135,7 @@ async function loadDeliveryParticipation({ force = false } = {}) {
       deliveryParticipationLoading = false;
       renderDeliveryParticipation();
       renderEventDeliveryOverview();
+      if (rfxDeliveryView === "queue") renderDraftQueue();
     }
   }
 }
@@ -7415,21 +7416,26 @@ async function archiveCurrentOutreachAudienceSegment() {
   }
 }
 
-function renderInvitationWaveWorkspace(rows = []) {
+function renderInvitationWaveWorkspace(rows = [], carrierRows = deliveryParticipationRows) {
   if (!waveLifecycle || !waveReadinessSummary) return;
   const eventLabel = selectedEvent?.rfx_id || selectedEvent?.name || "RFx";
   const eventName = selectedEvent?.name && selectedEvent?.name !== eventLabel ? selectedEvent.name : eventLabel;
-  const activeRows = rows.filter((message) => String(message.status || "").toLowerCase() !== "archived");
-  const reviewed = activeRows.filter(draftWasReviewed);
-  const blocked = activeRows.filter((message) => {
+  const draftRows = rows.filter((message) => String(message.status || "").toLowerCase() !== "archived");
+  const usingCarrierRows = !draftRows.length && carrierRows.length > 0;
+  const activeRows = usingCarrierRows ? carrierRows : draftRows;
+  const carrierHasContact = (row) => Boolean(String(row.email || row.phone || "").trim());
+  const reviewed = usingCarrierRows ? activeRows.filter(carrierHasContact) : activeRows.filter(draftWasReviewed);
+  const blocked = usingCarrierRows ? activeRows.filter((row) => !carrierHasContact(row)) : activeRows.filter((message) => {
     const state = outreachTrackingState(message);
     return isStaleOutreachDraft(message) || !messageRecipient(message) || ["bounced", "failed", "suppressed", "no_contact"].includes(state);
   });
-  const released = activeRows.filter((message) => ["queued", "sending", "sent", "delivered", "read", "replied", "quoted", "manual_sent"].includes(outreachTrackingState(message)));
-  const delivered = activeRows.filter((message) => ["delivered", "read", "replied", "quoted"].includes(outreachTrackingState(message)));
-  const responses = activeRows.filter((message) => ["replied", "quoted"].includes(outreachTrackingState(message)));
+  const released = usingCarrierRows ? activeRows.filter((row) => !["not_invited", "ready"].includes(eventInvitationStatus(row))) : activeRows.filter((message) => ["queued", "sending", "sent", "delivered", "read", "replied", "quoted", "manual_sent"].includes(outreachTrackingState(message)));
+  const delivered = usingCarrierRows ? activeRows.filter((row) => ["delivered", "read", "response", "quoted"].includes(eventInvitationStatus(row))) : activeRows.filter((message) => ["delivered", "read", "replied", "quoted"].includes(outreachTrackingState(message)));
+  const responses = usingCarrierRows ? activeRows.filter((row) => ["response", "quoted"].includes(eventInvitationStatus(row))) : activeRows.filter((message) => ["replied", "quoted"].includes(outreachTrackingState(message)));
   const ready = Math.max(activeRows.length - blocked.length, 0);
-  const laneCount = new Set(activeRows.map((message) => String(message.rfx_lane_id || message.rfx_lanes?.id || "")).filter(Boolean)).size;
+  const laneCount = usingCarrierRows
+    ? Math.max(...activeRows.map((row) => Number(row.event_lane_count || row.shortlisted_lane_count || row.lane_count || 0)), 0)
+    : new Set(activeRows.map((message) => String(message.rfx_lane_id || message.rfx_lanes?.id || "")).filter(Boolean)).size;
   const reviewComplete = Boolean(activeRows.length) && reviewed.length >= ready && blocked.length === 0;
   const currentStep = released.length ? 5 : reviewComplete ? 4 : activeRows.length ? 3 : 1;
   const waveDate = (value) => {
@@ -7438,8 +7444,8 @@ function renderInvitationWaveWorkspace(rows = []) {
       ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date)
       : "—";
   };
-  const createdAt = activeRows.map((message) => message.created_at).filter(Boolean).sort()[0];
-  const validatedAt = activeRows.filter((message) => messageRecipient(message)).map((message) => message.updated_at || message.created_at).filter(Boolean).sort().at(-1);
+  const createdAt = activeRows.map((message) => message.created_at || message.invited_at).filter(Boolean).sort()[0];
+  const validatedAt = activeRows.filter((message) => usingCarrierRows ? carrierHasContact(message) : messageRecipient(message)).map((message) => message.updated_at || message.created_at || message.invited_at).filter(Boolean).sort().at(-1);
   const steps = [
     ["Draft created", waveDate(createdAt), activeRows.length ? `${formatNumber(activeRows.length)} carriers` : "Not started"],
     ["Contacts validated", waveDate(validatedAt), activeRows.length ? `${formatNumber(ready)} ready${blocked.length ? ` • ${formatNumber(blocked.length)} blocked` : ""}` : "Not started"],
@@ -7556,6 +7562,45 @@ function renderDraftQueue() {
   if (draftQueueLoading) {
     renderDraftReviewInspector();
     draftList.innerHTML = `<tr><td colspan="9">Loading draft queue...</td></tr>`;
+    return;
+  }
+  if (!rows.length && deliveryParticipationRows.length && !hasSearch && draftQueueTrackingStatus === "all") {
+    activeDraftReviewId = "";
+    renderDraftReviewInspector();
+    updateDraftSendControls([]);
+    const candidates = deliveryParticipationRows.slice(0, 18);
+    const candidateNeedsAttention = (row) => !String(row.email || row.phone || "").trim();
+    const orderedCandidates = [...candidates].sort((left, right) => Number(candidateNeedsAttention(right)) - Number(candidateNeedsAttention(left)));
+    const attentionCount = orderedCandidates.filter(candidateNeedsAttention).length;
+    const readyCount = orderedCandidates.length - attentionCount;
+    let attentionHeadingRendered = false;
+    let readyHeadingRendered = false;
+    draftList.innerHTML = orderedCandidates.map((row) => {
+      const vendorId = String(row.vendor_id || "");
+      const attention = candidateNeedsAttention(row);
+      const selected = selectedOutreachAudienceVendorIds.has(vendorId);
+      const groupHeading = attention && !attentionHeadingRendered
+        ? (attentionHeadingRendered = true, `<tr class="rfx-wave-group-row is-attention"><td colspan="9">Needs attention (${formatNumber(attentionCount)})</td></tr>`)
+        : !attention && !readyHeadingRendered
+          ? (readyHeadingRendered = true, `<tr class="rfx-wave-group-row is-ready"><td colspan="9">Ready (${formatNumber(readyCount)})</td></tr>`)
+          : "";
+      const contact = row.email || row.phone || "No verified contact";
+      const statusLabel = attention ? "Missing contact" : "Validated";
+      const updated = formatCompactDateTime(row.updated_at || row.invited_at || row.created_at) || "—";
+      return `${groupHeading}
+        <tr class="${selected ? "is-selected-row" : ""}" data-rfx-wave-carrier-id="${escapeHtml(vendorId)}">
+          <td><input type="checkbox" data-rfx-wave-carrier-select="${escapeHtml(vendorId)}" ${selected ? "checked" : ""} aria-label="Select ${escapeHtml(row.vendor_name || row.vendor_domain || "carrier")}" /></td>
+          <td><strong>${escapeHtml(row.vendor_name || row.vendor_domain || "Carrier")}</strong><small>${escapeHtml(row.vendor_domain || "")}</small></td>
+          <td>${escapeHtml(contact)}</td>
+          <td>${escapeHtml(outreachChannelLabel(selectedOutreachChannel()))}</td>
+          <td></td>
+          <td><small class="rfx-draft-next-action">${escapeHtml(statusLabel)}</small></td>
+          <td></td>
+          <td>${escapeHtml(updated)}</td>
+          <td><button type="button" class="secondary small-button" data-rfx-wave-carrier-review="${escapeHtml(vendorId)}">Review</button></td>
+        </tr>`;
+    }).join("");
+    if (draftPageSummary) draftPageSummary.textContent = `${formatNumber(candidates.length)} of ${formatNumber(deliveryParticipationTotal || deliveryParticipationRows.length)} carriers`;
     return;
   }
   if (!rows.length) {
@@ -11660,6 +11705,16 @@ draftReviewInspector?.addEventListener("change", (event) => {
 });
 
 draftList?.addEventListener("change", (event) => {
+  const carrierCheckbox = event.target.closest("[data-rfx-wave-carrier-select]");
+  if (carrierCheckbox) {
+    const vendorId = String(carrierCheckbox.dataset.rfxWaveCarrierSelect || "");
+    if (!vendorId) return;
+    if (carrierCheckbox.checked) selectedOutreachAudienceVendorIds.add(vendorId);
+    else selectedOutreachAudienceVendorIds.delete(vendorId);
+    renderDraftQueue();
+    renderDeliveryWaveState();
+    return;
+  }
   const checkbox = event.target.closest("[data-rfx-draft-select]");
   if (!checkbox) return;
   const id = checkbox.dataset.rfxDraftSelect;
