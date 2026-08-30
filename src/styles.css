@@ -10766,6 +10766,152 @@ a {
   }
 }
 
+/* Delivery Review Inspector: governed per-carrier review before selection. */
+.bid-room-page .rfx-delivery-review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 30%);
+  align-items: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bid-room-page .rfx-delivery-queue-main { min-width: 0; }
+
+.bid-room-page .rfx-draft-review-inspector {
+  position: sticky;
+  top: 72px;
+  display: grid;
+  gap: 8px;
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  border: 1px solid #d8e2e7;
+  border-radius: 6px;
+  background: #f8fafb;
+  padding: 10px;
+}
+
+.bid-room-page .rfx-draft-review-inspector > span {
+  color: #687983;
+  font-size: .67rem;
+  line-height: 1.4;
+}
+
+.bid-room-page .rfx-draft-review-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bid-room-page .rfx-draft-review-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.bid-room-page .rfx-draft-review-facts > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border: 1px solid #e0e7eb;
+  border-radius: 4px;
+  background: #fff;
+  padding: 6px;
+}
+
+.bid-room-page .rfx-draft-review-facts span,
+.bid-room-page .rfx-draft-review-message > span,
+.bid-room-page .rfx-draft-review-timeline > span {
+  color: #6d7d86;
+  font-size: .59rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.bid-room-page .rfx-draft-review-facts strong {
+  overflow: hidden;
+  font-size: .68rem;
+  text-overflow: ellipsis;
+}
+
+.bid-room-page .rfx-draft-review-message,
+.bid-room-page .rfx-draft-review-timeline {
+  display: grid;
+  gap: 5px;
+  border-top: 1px solid #dce5e9;
+  padding-top: 8px;
+}
+
+.bid-room-page .rfx-draft-review-message pre {
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid #dce5e9;
+  border-radius: 4px;
+  background: #fff;
+  padding: 8px;
+  color: #31434d;
+  font-family: inherit;
+  font-size: .66rem;
+  font-weight: 500;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.bid-room-page .rfx-draft-review-timeline ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bid-room-page .rfx-draft-review-timeline li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 1px 6px;
+}
+
+.bid-room-page .rfx-draft-review-timeline li::before {
+  grid-row: 1 / span 2;
+  width: 7px;
+  height: 7px;
+  margin-top: 3px;
+  border: 1px solid #8b9aa2;
+  border-radius: 50%;
+  background: #fff;
+  content: "";
+}
+
+.bid-room-page .rfx-draft-review-timeline li.is-complete::before {
+  border-color: #4c9a82;
+  background: #4c9a82;
+}
+
+.bid-room-page .rfx-draft-review-timeline li b { font-size: .67rem; }
+.bid-room-page .rfx-draft-review-timeline li small { color: #71818a; font-size: .61rem; }
+
+.bid-room-page .rfx-draft-review-select {
+  display: flex;
+  align-items: start;
+  gap: 7px;
+  border: 1px solid #b8d8cd;
+  border-radius: 5px;
+  background: #f1faf7;
+  padding: 8px;
+  color: #29473e;
+  font-size: .66rem;
+  font-weight: 750;
+}
+
+.bid-room-page .rfx-draft-table tr.is-review-row td { background: #f3f8fa; }
+
+@media (max-width: 980px) {
+  .bid-room-page .rfx-delivery-review-grid { grid-template-columns: minmax(0, 1fr); }
+  .bid-room-page .rfx-draft-review-inspector { position: static; max-height: none; }
+}
+
 /* Spreadsheet workspace parity: CRM uses the same dense grid language as
    Staging and Rateware while preserving its own vendor-specific columns. */
 .vendor-directory-workspace .directory-heading {
