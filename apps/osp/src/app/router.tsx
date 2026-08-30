@@ -19,7 +19,13 @@ const SalesAuthorizationPage = lazyRouteComponent(() => import('../features/appr
 const OutboundPayloadPage = lazyRouteComponent(() => import('../features/communications/OutboundPayloadPage'), 'OutboundPayloadPage');
 const CorporateProfileWorkspace = lazyRouteComponent(() => import('../features/profile/CorporateProfileWorkspace'), 'CorporateProfileWorkspace');
 
-type AppRouterContext = { apiClient: OspClient; email: string; logout(): Promise<void> };
+type AppRouterContext = {
+  apiClient: OspClient;
+  email: string;
+  logout(): Promise<void>;
+  reauthenticateForApproval(returnTo: string): Promise<void>;
+  approvalSessionFresh(): boolean;
+};
 
 const rootRoute = createRootRouteWithContext<AppRouterContext>()({ component: Outlet });
 const appRoute = createRoute({
@@ -229,14 +235,24 @@ function OperationsReviewWorkspace() {
 const operationsReviewRoute = createRoute({ getParentRoute: () => appRoute, path: 'cases/$caseId/review', component: OperationsReviewWorkspace });
 
 function SignatureApprovalWorkspace() {
+  const context = signatureApprovalRoute.useRouteContext();
   const { apiClient, params, query, run, conflict } = useWorkflowWorkspace(signatureApprovalRoute);
   if (query.isPending || query.fetchStatus !== 'idle') return <WorkflowLoading title="Signature approval" message="Loading current signature policy…" />;
   if (query.isError || !query.data) return <WorkflowFailure title="Signature approval" />;
-  return <SignatureApprovalPage workspace={query.data} conflict={conflict} onApprove={() => run('signature', (idempotencyKey) => apiClient.approveAndApplySignature({
-    caseId: params.caseId, expectedVersion: query.data.caseVersion, idempotencyKey,
-    inputSnapshotSha256: query.data.inputSnapshot?.sha256 ?? '',
-    signaturePositionVersion: query.data.signature?.positionVersion ?? 0,
-  }))} />;
+  const returnTo = `/app/cases/${params.caseId}/signature`;
+  return <SignatureApprovalPage
+    workspace={query.data}
+    conflict={conflict}
+    reauthenticationRequired={!context.approvalSessionFresh()}
+    onReauthenticate={() => context.reauthenticateForApproval(returnTo)}
+    onApprove={() => context.approvalSessionFresh()
+      ? run('signature', (idempotencyKey) => apiClient.approveAndApplySignature({
+        caseId: params.caseId, expectedVersion: query.data.caseVersion, idempotencyKey,
+        inputSnapshotSha256: query.data.inputSnapshot?.sha256 ?? '',
+        signaturePositionVersion: query.data.signature?.positionVersion ?? 0,
+      }))
+      : context.reauthenticateForApproval(returnTo)}
+  />;
 }
 const signatureApprovalRoute = createRoute({ getParentRoute: () => appRoute, path: 'cases/$caseId/signature', component: SignatureApprovalWorkspace });
 

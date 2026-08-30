@@ -20,6 +20,7 @@ type VerifiedTokenPairInput = {
 type BoundTokenPair = {
   identity: OspAuthorizationIdentity;
   displayProfile: OspDisplayProfile;
+  approvalSessionIssuedAt?: string;
 };
 
 const PRODUCTION_READONLY_EMAILS = new Set([
@@ -98,6 +99,19 @@ function requiredString(claims: Record<string, unknown>, claim: string): string 
 
 function normalizedEmail(claims: Record<string, unknown>, claim: string): string {
   return requiredString(claims, claim).trim().toLowerCase();
+}
+
+function approvalSessionIssuedAt(claims: Record<string, unknown>): string | undefined {
+  const value = claims.auth_time;
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new Error('Invalid approval-session claim: auth_time');
+  }
+  const issuedAt = new Date((value as number) * 1_000);
+  if (Number.isNaN(issuedAt.getTime())) {
+    throw new Error('Invalid approval-session claim: auth_time');
+  }
+  return issuedAt.toISOString();
 }
 
 function optionalExactString(claims: Record<string, unknown>, claim: string): string | undefined {
@@ -229,7 +243,11 @@ export function bindVerifiedTokenPair({
 }: VerifiedTokenPairInput): BoundTokenPair {
   const identity = validateAccessClaims(accessClaims, config);
   const displayProfile = validateIdClaims(idClaims, identity, config);
-  return { identity, displayProfile };
+  return {
+    identity,
+    displayProfile,
+    approvalSessionIssuedAt: approvalSessionIssuedAt(idClaims),
+  };
 }
 
 export function assertVerifiedAccessTokenMatchesSession(

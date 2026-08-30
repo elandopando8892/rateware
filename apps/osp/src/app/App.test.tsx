@@ -8,7 +8,7 @@ import { join } from 'node:path';
 
 import type { OspClient } from '../api/osp-client';
 import type { AuthPort, BoundSession } from '../auth/auth-port';
-import { App } from './App';
+import { App, isApprovalSessionFresh } from './App';
 
 const session: BoundSession = {
   generation: 'generation-a',
@@ -95,6 +95,19 @@ afterEach(() => {
 });
 
 describe('App authentication and routing', () => {
+  it('opens the approval window only for a recent verified authentication', () => {
+    const now = Date.parse('2026-08-30T21:22:42.000Z');
+    expect(isApprovalSessionFresh({
+      ...session,
+      approvalSessionIssuedAt: '2026-08-30T21:18:12.000Z',
+    }, now)).toBe(true);
+    expect(isApprovalSessionFresh({
+      ...session,
+      approvalSessionIssuedAt: '2026-08-30T21:18:11.999Z',
+    }, now)).toBe(false);
+    expect(isApprovalSessionFresh(session, now)).toBe(false);
+  });
+
   it('labels the synthetic preview prominently', async () => {
     const history = createMemoryHistory({ initialEntries: ['/app/pipeline'] });
     render(<App authPort={authPort(session)} apiClient={client()} buildProfile="preview-synthetic" routerHistory={history} />);
@@ -316,6 +329,33 @@ describe('App authentication and routing', () => {
     expect(api.completeOperationsReview).toHaveBeenCalledWith(expect.objectContaining({
       caseId, expectedVersion: 4, inputSnapshotSha256: snapshot.sha256,
     }));
+  });
+
+  it('step-ups a stale production signature session before sending any command', async () => {
+    const caseId = '33333333-3333-4333-8333-333333333333';
+    const staleSession: BoundSession = {
+      ...session,
+      identity: { ...session.identity, email: 'jgonzalez@xbfreight.com' },
+      approvalSessionIssuedAt: '2026-08-30T19:16:00.000Z',
+    };
+    const port = authPort(staleSession);
+    const api = client();
+    vi.mocked(api.getApprovalCommunicationsWorkspace).mockResolvedValue({
+      caseId, caseVersion: 9, caseState: 'signature_approval',
+      inputSnapshot: { sha256: 'a'.repeat(64), documentCount: 5, extractionCount: 1, reviewDecisionCount: 8, formInstanceVersion: 1 },
+      supplierPackage: { packageId: '55555555-5555-4555-8555-555555555551', version: 1, outputSha256: 'b'.repeat(64), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', downloadUrl: null },
+      signature: { positionVersion: 1, approvalStatus: 'pending', approvalId: null, outputSha256: null },
+      outbound: null,
+      capabilities: { completeOperationsReview: false, approveAndApplySignature: true, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
+    });
+    const history = createMemoryHistory({ initialEntries: [`/app/cases/${caseId}/signature`] });
+    render(<App authPort={port} apiClient={api} buildProfile="production-readonly" routerHistory={history} />);
+
+    expect(await screen.findByRole('button', { name: /authenticate to approve/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /approve and apply signature/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /authenticate to approve/i }));
+    expect(port.login).toHaveBeenCalledWith(`/app/cases/${caseId}/signature`);
+    expect(api.approveAndApplySignature).not.toHaveBeenCalled();
   });
 
   it('routes Sales to the exact server-authorized payload without exposing private material', async () => {

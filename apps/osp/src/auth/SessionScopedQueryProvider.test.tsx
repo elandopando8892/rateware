@@ -89,6 +89,7 @@ function tokenPair() {
       ...identity,
       aud: runtime.VITE_KINDE_CLIENT_ID,
       email_verified: true,
+      auth_time: 1_700_000_000,
       name: 'Visible user-a',
     }),
   };

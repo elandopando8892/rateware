@@ -1,13 +1,24 @@
 import { RouterProvider, type RouterHistory } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import type { OspClient } from '../api/osp-client';
-import type { AuthPort } from '../auth/auth-port';
+import type { AuthPort, BoundSession } from '../auth/auth-port';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
 import { SessionScopedQueryProvider, sessionQueryScopeKey } from '../auth/SessionScopedQueryProvider';
 import { createAppRouter } from './router';
 import type { OspBuildProfile } from '../config/runtime';
 
-function AuthenticatedApp({ apiClient, routerHistory }: { apiClient: OspClient; routerHistory?: RouterHistory }) {
+const APPROVAL_SESSION_CLIENT_WINDOW_MS = 4 * 60 * 1_000 + 30 * 1_000;
+const APPROVAL_SESSION_CLOCK_SKEW_MS = 30 * 1_000;
+
+export function isApprovalSessionFresh(session: BoundSession, now = Date.now()): boolean {
+  const issuedAt = Date.parse(session.approvalSessionIssuedAt ?? '');
+  if (!Number.isFinite(issuedAt) || !Number.isFinite(now)) return false;
+  const age = now - issuedAt;
+  return age >= -APPROVAL_SESSION_CLOCK_SKEW_MS
+    && age <= APPROVAL_SESSION_CLIENT_WINDOW_MS;
+}
+
+function AuthenticatedApp({ apiClient, buildProfile, routerHistory }: { apiClient: OspClient; buildProfile: OspBuildProfile; routerHistory?: RouterHistory }) {
   const auth = useAuth();
   const [loginFailed, setLoginFailed] = useState(false);
   if (auth.state.status === 'loading') {
@@ -45,12 +56,20 @@ function AuthenticatedApp({ apiClient, routerHistory }: { apiClient: OspClient; 
       </main>
     );
   }
-  return <AuthenticatedRouter apiClient={apiClient} email={auth.state.session.identity.email} logout={auth.logout} routerHistory={routerHistory} sessionKey={sessionQueryScopeKey(auth.state, apiClient, auth.scopeVersion)} />;
+  return <AuthenticatedRouter
+    apiClient={apiClient}
+    email={auth.state.session.identity.email}
+    logout={auth.logout}
+    reauthenticateForApproval={auth.login}
+    approvalSessionFresh={() => buildProfile !== 'production-readonly' || isApprovalSessionFresh(auth.state.session)}
+    routerHistory={routerHistory}
+    sessionKey={sessionQueryScopeKey(auth.state, apiClient, auth.scopeVersion)}
+  />;
 }
 
-function AuthenticatedRouter({ apiClient, email, logout, routerHistory, sessionKey }: { apiClient: OspClient; email: string; logout(): Promise<void>; routerHistory?: RouterHistory; sessionKey: string }) {
+function AuthenticatedRouter({ apiClient, email, logout, reauthenticateForApproval, approvalSessionFresh, routerHistory, sessionKey }: { apiClient: OspClient; email: string; logout(): Promise<void>; reauthenticateForApproval(returnTo: string): Promise<void>; approvalSessionFresh(): boolean; routerHistory?: RouterHistory; sessionKey: string }) {
   const router = useMemo(() => createAppRouter(routerHistory), [apiClient, routerHistory, sessionKey]);
-  return <RouterProvider router={router} context={{ apiClient, email, logout }} />;
+  return <RouterProvider router={router} context={{ apiClient, email, logout, reauthenticateForApproval, approvalSessionFresh }} />;
 }
 
 export function App({ authPort, apiClient, buildProfile = 'local-e2e', routerHistory }: { authPort: AuthPort; apiClient: OspClient; buildProfile?: OspBuildProfile; routerHistory?: RouterHistory }) {
@@ -59,7 +78,7 @@ export function App({ authPort, apiClient, buildProfile = 'local-e2e', routerHis
       {buildProfile === 'preview-synthetic' ? <aside className="synthetic-preview-banner" role="status">Preview sintética — las decisiones viven solo en memoria; no ejecuta envíos, divulgaciones ni cambios productivos.</aside> : null}
       <AuthProvider port={authPort}>
         <SessionScopedQueryProvider apiClient={apiClient}>
-          <AuthenticatedApp apiClient={apiClient} routerHistory={routerHistory} />
+          <AuthenticatedApp apiClient={apiClient} buildProfile={buildProfile} routerHistory={routerHistory} />
         </SessionScopedQueryProvider>
       </AuthProvider>
     </>

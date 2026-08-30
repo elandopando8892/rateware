@@ -36,17 +36,17 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/osp-client.ts",
-      "sha256": "f66d8364c1eb812043eee666b28542e7c9383a674f11c2939d68decc7716705c"
+      "sha256": "6b9d2417b38f24ccb98fc0654c8bd3f00b7a5c56f6bf40e8240d166cc049a745"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/workflow-client.ts",
-      "sha256": "8b55549827ae09caffa011cc5ab5c23d9e3dd724259dc6297d7dff1fb9fc7c5d"
+      "sha256": "833650be234f59600c2c6b1b8e6760784825085603fa03ed6eaf276ae552cc10"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/App.tsx",
-      "sha256": "3e93430246cc698a877b2f0c029d1595c212e45bc5aa438376b34708f8814e90"
+      "sha256": "6defb0e5f97e497e688485042fa51e35f3007d0bc480a698dae0b9e53a72ee0d"
     },
     {
       "kind": "production-ui",
@@ -56,12 +56,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/router.tsx",
-      "sha256": "fd67b84f6313cdbb0fd5aaee402f4972f0ebc3e000051eb097d7d3ed75fdb852"
+      "sha256": "d516ea7c8a451b615b5d8b14ebb48fe2c55c7cf30a68a75cff941ea3d6263637"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/auth/auth-port.ts",
-      "sha256": "edae7d5e12c236b58cf9135d7e86c80aa2f8fb906bc0afe5898da82d67cda279"
+      "sha256": "84902d024fbba2fc8f4da1653df085394976eee64edc9d7457b7aaaad7c291fc"
     },
     {
       "kind": "production-ui",
@@ -71,7 +71,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/auth/kinde-auth-port.ts",
-      "sha256": "4534eb94d58b341dd9f2fb375eb86cc75a4148e3f9c16a85ec686ab9383aa845"
+      "sha256": "4a913e916643fd8c11ae11a6c4a6f8d8cdfb4050d4d76781142d620763f9ab2f"
     },
     {
       "kind": "production-ui",
@@ -86,7 +86,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/auth/token-binding.ts",
-      "sha256": "ba73de136d55ac01319c5af502ef1402627e98fc0909da601a3c5b46bd566770"
+      "sha256": "1f7caf5e61f216106e62f2af31475246d8e3be44f718efb0048938671c48baf7"
     },
     {
       "kind": "production-ui",
@@ -106,7 +106,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/approval/SignatureApprovalPage.tsx",
-      "sha256": "2d46fb336dcaa9cdc8c35d83f89d0062dbef924252c647a1a2efb27321caaf80"
+      "sha256": "97e1c839e984ca1138da38c7fdf9b980bf2f3dd265833df392bd895226651739"
     },
     {
       "kind": "production-ui",
@@ -201,7 +201,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/main.tsx",
-      "sha256": "ffaaaee4fae78042d7ee85e8ea114026996417995becf9aa1441be04d9bc61ff"
+      "sha256": "b7cf1bb5f34ef487ab411d8e03c04b2c6d9f04e04025ea27dd2214b23c5f742b"
     },
     {
       "kind": "production-ui",

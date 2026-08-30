@@ -14,6 +14,7 @@ export type OspDisplayProfile = {
 export type BoundSession = {
   identity: OspAuthorizationIdentity;
   generation: string;
+  approvalSessionIssuedAt?: string;
 };
 
 export interface AuthPort {

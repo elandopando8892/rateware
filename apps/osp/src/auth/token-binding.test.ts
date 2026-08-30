@@ -43,6 +43,7 @@ const baseIdClaims: Record<string, unknown> = {
   org_code: 'org-a',
   email: 'operator@example.test',
   email_verified: true,
+  auth_time: 1_700_000_000,
   name: 'Visible Operator',
 };
 
@@ -69,12 +70,17 @@ describe('bindVerifiedTokenPair', () => {
         emailVerified: true,
       },
       displayProfile: { displayName: 'Visible Operator' },
+      approvalSessionIssuedAt: '2023-11-14T22:13:20.000Z',
     });
   });
 
   it('accepts the required audience in a textual audience list', () => {
     expect(bind({ aud: ['another-audience', 'https://osp.heymarksman.com/api'] }).identity.subject)
       .toBe('user-a');
+  });
+
+  it('keeps read-only authentication available when Kinde omits optional auth_time', () => {
+    expect(bind({}, { auth_time: undefined }).approvalSessionIssuedAt).toBeUndefined();
   });
 
   it.each([
@@ -85,6 +91,7 @@ describe('bindVerifiedTokenPair', () => {
     ['organization', { org_code: '' }, {}],
     ['multiple organizations', { org_code: ['org-a', 'org-b'] }, {}],
     ['native ID-token email verification', {}, { email_verified: false }],
+    ['approval-session issue time', {}, { auth_time: 'not-an-epoch' }],
     ['ID-token subject match', {}, { sub: 'user-b' }],
     ['ID-token organization match', {}, { org_code: 'org-b' }],
     ['ID-token email match', {}, { email: 'other@example.test' }],

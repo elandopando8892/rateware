@@ -78,6 +78,23 @@ describe('controlled approval and communications pages', () => {
     expect(approve).toHaveBeenCalledOnce();
   });
 
+  it('requires fresh authentication before rendering any signature command control', async () => {
+    const approve = vi.fn(async () => undefined);
+    const reauthenticate = vi.fn(async () => undefined);
+    render(<SignatureApprovalPage
+      workspace={workspace}
+      reauthenticationRequired
+      onReauthenticate={reauthenticate}
+      onApprove={approve}
+    />);
+    expect(screen.queryByRole('checkbox', { name: /approved signature policy/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /approve and apply signature/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/no signature command will be sent yet/i);
+    await userEvent.click(screen.getByRole('button', { name: /authenticate to approve/i }));
+    expect(reauthenticate).toHaveBeenCalledOnce();
+    expect(approve).not.toHaveBeenCalled();
+  });
+
   it('shows Sales the exact outbound content and resets confirmation when its fingerprint changes', async () => {
     const authorize = vi.fn(async () => undefined);
     const view = render(<SalesAuthorizationPage workspace={workspace} onAuthorize={authorize} />);

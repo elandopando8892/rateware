@@ -23,6 +23,7 @@ const runtime: RuntimeConfig = {
   VITE_SUPABASE_URL: 'https://project.example.test',
   VITE_OSP_BUILD_PROFILE: 'local-e2e',
 };
+const fixtureAuthTime = 1_700_000_000;
 
 afterEach(cleanup);
 
@@ -70,6 +71,7 @@ function tokenPair(subject = 'user-a', organization = 'org-a') {
       org_code: organization,
       email,
       email_verified: true,
+      auth_time: fixtureAuthTime,
       name: `Visible ${subject}`,
     }),
   };
@@ -86,6 +88,7 @@ function bound(subject: string, organization: string, generation: string): Bound
       emailVerified: true,
     },
     generation,
+    approvalSessionIssuedAt: new Date(fixtureAuthTime * 1_000).toISOString(),
   };
 }
 

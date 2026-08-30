@@ -179,7 +179,9 @@ function sameIdentity(left: OspAuthorizationIdentity, right: OspAuthorizationIde
 }
 
 function sameSession(left: BoundSession, right: BoundSession): boolean {
-  return left.generation === right.generation && sameIdentity(left.identity, right.identity);
+  return left.generation === right.generation
+    && left.approvalSessionIssuedAt === right.approvalSessionIssuedAt
+    && sameIdentity(left.identity, right.identity);
 }
 
 function safeReturnTo(returnTo: unknown, origin: string): string {
@@ -634,6 +636,7 @@ export function createKindeAuthPort(
         generation: reuseGeneration
           ? previousSession!.generation
           : createGeneration(),
+        approvalSessionIssuedAt: bound.approvalSessionIssuedAt,
       };
       const changed = !previousSession || !sameSession(previousSession, nextSession);
       currentSession = nextSession;
