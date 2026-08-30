@@ -426,6 +426,13 @@ const draftSummary = document.querySelector("#rfx-draft-summary");
 const draftList = document.querySelector("#rfx-draft-list");
 const draftReviewInspector = document.querySelector("#rfx-draft-review-inspector");
 const draftReviewProgress = document.querySelector("#rfx-draft-review-progress");
+const waveBreadcrumbEvent = document.querySelector("#rfx-wave-breadcrumb-event");
+const waveWorkspaceTitle = document.querySelector("#rfx-wave-workspace-title");
+const waveWorkspaceContext = document.querySelector("#rfx-wave-workspace-context");
+const waveWorkspaceStatus = document.querySelector("#rfx-wave-workspace-status");
+const waveLifecycle = document.querySelector("#rfx-wave-lifecycle");
+const waveReadinessSummary = document.querySelector("#rfx-wave-readiness-summary");
+const continueWaveReviewButton = document.querySelector("#rfx-continue-wave-review");
 const draftSearchInput = document.querySelector("#rfx-draft-search");
 const draftClearSearchButton = document.querySelector("#rfx-clear-draft-search");
 const draftTrackingFilters = document.querySelector("#rfx-draft-tracking-filters");
@@ -6923,6 +6930,7 @@ let activeRfxDeliveryView = "participation";
 function activateRfxDeliveryView(view = "participation") {
   const nextView = view === "queue" ? "queue" : "participation";
   activeRfxDeliveryView = nextView;
+  document.body.classList.toggle("rfx-wave-review-active", nextView === "queue");
   document.querySelectorAll("[data-rfx-delivery-view]").forEach((button) => {
     const active = button.dataset.rfxDeliveryView === nextView;
     button.classList.toggle("is-active", active);
@@ -7127,6 +7135,7 @@ async function loadDeliveryParticipation({ force = false } = {}) {
       deliveryParticipationLoading = false;
       renderDeliveryParticipation();
       renderEventDeliveryOverview();
+      if (activeRfxDeliveryView === "queue") renderDraftQueue();
     }
   }
 }
@@ -7407,11 +7416,106 @@ async function archiveCurrentOutreachAudienceSegment() {
   }
 }
 
+function renderInvitationWaveWorkspace(rows = [], carrierRows = deliveryParticipationRows) {
+  if (!waveLifecycle || !waveReadinessSummary) return;
+  const eventLabel = selectedEvent?.rfx_id || selectedEvent?.name || "RFx";
+  const eventName = selectedEvent?.name && selectedEvent?.name !== eventLabel ? selectedEvent.name : eventLabel;
+  const draftRows = rows.filter((message) => String(message.status || "").toLowerCase() !== "archived");
+  const usingCarrierRows = !draftRows.length && carrierRows.length > 0;
+  const activeRows = usingCarrierRows ? carrierRows : draftRows;
+  const carrierHasContact = (row) => Boolean(String(row.email || row.phone || "").trim());
+  const reviewed = usingCarrierRows ? activeRows.filter(carrierHasContact) : activeRows.filter(draftWasReviewed);
+  const blocked = usingCarrierRows ? activeRows.filter((row) => !carrierHasContact(row)) : activeRows.filter((message) => {
+    const state = outreachTrackingState(message);
+    return isStaleOutreachDraft(message) || !messageRecipient(message) || ["bounced", "failed", "suppressed", "no_contact"].includes(state);
+  });
+  const released = usingCarrierRows ? activeRows.filter((row) => !["not_invited", "ready"].includes(eventInvitationStatus(row))) : activeRows.filter((message) => ["queued", "sending", "sent", "delivered", "read", "replied", "quoted", "manual_sent"].includes(outreachTrackingState(message)));
+  const delivered = usingCarrierRows ? activeRows.filter((row) => ["delivered", "read", "response", "quoted"].includes(eventInvitationStatus(row))) : activeRows.filter((message) => ["delivered", "read", "replied", "quoted"].includes(outreachTrackingState(message)));
+  const responses = usingCarrierRows ? activeRows.filter((row) => ["response", "quoted"].includes(eventInvitationStatus(row))) : activeRows.filter((message) => ["replied", "quoted"].includes(outreachTrackingState(message)));
+  const ready = Math.max(activeRows.length - blocked.length, 0);
+  const laneCount = usingCarrierRows
+    ? Math.max(...activeRows.map((row) => Number(row.event_lane_count || row.shortlisted_lane_count || row.lane_count || 0)), 0)
+    : new Set(activeRows.map((message) => String(message.rfx_lane_id || message.rfx_lanes?.id || "")).filter(Boolean)).size;
+  const reviewComplete = Boolean(activeRows.length) && reviewed.length >= ready && blocked.length === 0;
+  const currentStep = released.length ? 5 : reviewComplete ? 4 : activeRows.length ? 3 : 1;
+  const waveDate = (value) => {
+    const date = value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime())
+      ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date)
+      : "—";
+  };
+  const createdAt = activeRows.map((message) => message.created_at || message.invited_at).filter(Boolean).sort()[0];
+  const validatedAt = activeRows.filter((message) => usingCarrierRows ? carrierHasContact(message) : messageRecipient(message)).map((message) => message.updated_at || message.created_at || message.invited_at).filter(Boolean).sort().at(-1);
+  const steps = [
+    ["Draft created", waveDate(createdAt), activeRows.length ? `${formatNumber(activeRows.length)} carriers` : "Not started"],
+    ["Contacts validated", waveDate(validatedAt), activeRows.length ? `${formatNumber(ready)} ready${blocked.length ? ` • ${formatNumber(blocked.length)} blocked` : ""}` : "Not started"],
+    ["Review", activeRows.length ? (reviewComplete ? "Complete" : "In progress") : "Not started", activeRows.length ? `${formatNumber(reviewed.length)} reviewed • ${formatNumber(blocked.length)} blocked` : "—"],
+    ["Release", released.length ? `${formatNumber(released.length)} released` : "—", released.length ? "Released" : "Not released"],
+    ["Delivery", delivered.length ? `${formatNumber(delivered.length)} delivered` : "—", delivered.length ? "In progress" : "Not started"],
+    ["Response", responses.length ? `${formatNumber(responses.length)} received` : "—", responses.length ? "In progress" : "Not started"]
+  ];
+
+  if (waveBreadcrumbEvent) waveBreadcrumbEvent.textContent = eventLabel;
+  if (waveWorkspaceTitle) waveWorkspaceTitle.textContent = selectedEventId ? `Invitation wave — ${eventName}` : "Select an RFx invitation wave";
+  if (waveWorkspaceContext) waveWorkspaceContext.textContent = selectedEventId
+    ? `Wave 1 of 1 • ${outreachChannelLabel(selectedOutreachChannel())} • ${formatNumber(activeRows.length)} carriers${laneCount ? ` • Target lanes: ${formatNumber(laneCount)}` : ""}`
+    : "Review recipients and resolve delivery blockers before release.";
+  if (waveWorkspaceStatus) {
+    waveWorkspaceStatus.textContent = released.length ? "Release in progress" : reviewComplete ? "Ready for confirmation" : "Review required";
+    waveWorkspaceStatus.className = `status-pill ${released.length || reviewComplete ? "success" : "warning"}`;
+  }
+  if (continueWaveReviewButton) continueWaveReviewButton.disabled = !activeRows.some((message) => !draftWasReviewed(message));
+
+  waveLifecycle.innerHTML = steps.map(([label, detail, subdetail], index) => {
+    const step = index + 1;
+    const state = step < currentStep ? "is-complete" : step === currentStep ? "is-current" : "";
+    const marker = state === "is-complete" ? '<rw-icon name="check"></rw-icon>' : step;
+    return `<div class="rfx-wave-lifecycle-step ${state}"><b aria-hidden="true">${marker}</b><strong>${escapeHtml(label)}</strong><small>${escapeHtml(detail)}</small><em>${escapeHtml(subdetail)}</em></div>`;
+  }).join("");
+
+  const reviewedPercent = ready ? Math.round((Math.min(reviewed.length, ready) / ready) * 100) : 0;
+  waveReadinessSummary.innerHTML = `
+    <div class="rfx-wave-readiness-heading">
+      <div><strong>Release readiness</strong></div>
+    </div>
+    <div class="rfx-wave-readiness-chart">
+      <canvas width="112" height="112" aria-label="${formatNumber(reviewedPercent)} percent reviewed"></canvas>
+      <div><b>${formatNumber(activeRows.length)}</b><span>Total</span></div>
+      <ul><li><i class="is-ready"></i><b>${formatNumber(reviewed.length)}</b><span>Reviewed</span><strong>${formatNumber(reviewedPercent)}%</strong></li><li><i class="is-blocked"></i><b>${formatNumber(blocked.length)}</b><span>Blocked</span><strong>${formatNumber(activeRows.length ? Math.round((blocked.length / activeRows.length) * 100) : 0)}%</strong></li></ul>
+    </div>
+    <dl>
+      <div><dt>Channels</dt><dd>${escapeHtml(outreachChannelLabel(selectedOutreachChannel()))}</dd></div>
+      <div><dt>Owner</dt><dd>Signed-in operator</dd></div>
+      <div><dt>Scheduled release</dt><dd>Not set &nbsp; <button type="button" class="rfx-wave-set-time">Set time</button></dd></div>
+    </dl>
+    <p>Nothing sends without confirmation.</p>
+    <button type="button" class="secondary small-button" disabled title="Available after the invitation wave is released">View receipt</button>
+    <small>Available after release</small>
+  `;
+  const readinessCanvas = waveReadinessSummary.querySelector("canvas");
+  const context = readinessCanvas?.getContext("2d");
+  if (context) {
+    const total = Math.max(activeRows.length, 1);
+    const reviewedAngle = (Math.min(reviewed.length, total) / total) * Math.PI * 2;
+    context.lineWidth = 10;
+    context.lineCap = "butt";
+    context.strokeStyle = "#e7edf3";
+    context.beginPath(); context.arc(56, 56, 42, 0, Math.PI * 2); context.stroke();
+    context.strokeStyle = "#22a447";
+    context.beginPath(); context.arc(56, 56, 42, -Math.PI / 2, -Math.PI / 2 + reviewedAngle); context.stroke();
+    if (blocked.length) {
+      context.strokeStyle = "#ef4e3f";
+      context.beginPath(); context.arc(56, 56, 42, -Math.PI / 2 + reviewedAngle, -Math.PI / 2 + reviewedAngle + (blocked.length / total) * Math.PI * 2); context.stroke();
+    }
+  }
+}
+
 function renderDraftQueue() {
   if (!draftSummary || !draftList) return;
   renderEventDeliveryOverview();
   renderDraftTrackingFilters();
   const rows = draftQueueRows;
+  renderInvitationWaveWorkspace(rows);
   const actionable = rows.filter((message) => ["drafted", "queued", "failed"].includes(String(message.status || "").toLowerCase()));
   const staleRows = rows.filter(isStaleOutreachDraft);
   const emailSelectable = selectableEmailDrafts(rows);
@@ -7460,6 +7564,45 @@ function renderDraftQueue() {
     draftList.innerHTML = `<tr><td colspan="9">Loading draft queue...</td></tr>`;
     return;
   }
+  if (!rows.length && deliveryParticipationRows.length && !hasSearch && draftQueueTrackingStatus === "all") {
+    activeDraftReviewId = "";
+    renderDraftReviewInspector();
+    updateDraftSendControls([]);
+    const candidates = deliveryParticipationRows.slice(0, 18);
+    const candidateNeedsAttention = (row) => !String(row.email || row.phone || "").trim();
+    const orderedCandidates = [...candidates].sort((left, right) => Number(candidateNeedsAttention(right)) - Number(candidateNeedsAttention(left)));
+    const attentionCount = orderedCandidates.filter(candidateNeedsAttention).length;
+    const readyCount = orderedCandidates.length - attentionCount;
+    let attentionHeadingRendered = false;
+    let readyHeadingRendered = false;
+    draftList.innerHTML = orderedCandidates.map((row) => {
+      const vendorId = String(row.vendor_id || "");
+      const attention = candidateNeedsAttention(row);
+      const selected = selectedOutreachAudienceVendorIds.has(vendorId);
+      const groupHeading = attention && !attentionHeadingRendered
+        ? (attentionHeadingRendered = true, `<tr class="rfx-wave-group-row is-attention"><td colspan="9">Needs attention (${formatNumber(attentionCount)})</td></tr>`)
+        : !attention && !readyHeadingRendered
+          ? (readyHeadingRendered = true, `<tr class="rfx-wave-group-row is-ready"><td colspan="9">Ready (${formatNumber(readyCount)})</td></tr>`)
+          : "";
+      const contact = row.email || row.phone || "No verified contact";
+      const statusLabel = attention ? "Missing contact" : "Validated";
+      const updated = formatCompactDateTime(row.updated_at || row.invited_at || row.created_at) || "—";
+      return `${groupHeading}
+        <tr class="${selected ? "is-selected-row" : ""}" data-rfx-wave-carrier-id="${escapeHtml(vendorId)}">
+          <td><input type="checkbox" data-rfx-wave-carrier-select="${escapeHtml(vendorId)}" ${selected ? "checked" : ""} aria-label="Select ${escapeHtml(row.vendor_name || row.vendor_domain || "carrier")}" /></td>
+          <td><strong>${escapeHtml(row.vendor_name || row.vendor_domain || "Carrier")}</strong><small>${escapeHtml(row.vendor_domain || "")}</small></td>
+          <td>${escapeHtml(contact)}</td>
+          <td>${escapeHtml(outreachChannelLabel(selectedOutreachChannel()))}</td>
+          <td></td>
+          <td><small class="rfx-draft-next-action">${escapeHtml(statusLabel)}</small></td>
+          <td></td>
+          <td>${escapeHtml(updated)}</td>
+          <td><button type="button" class="secondary small-button" data-rfx-wave-carrier-review="${escapeHtml(vendorId)}">Review</button></td>
+        </tr>`;
+    }).join("");
+    if (draftPageSummary) draftPageSummary.textContent = `${formatNumber(candidates.length)} of ${formatNumber(deliveryParticipationTotal || deliveryParticipationRows.length)} carriers`;
+    return;
+  }
   if (!rows.length) {
     activeDraftReviewId = "";
     renderDraftReviewInspector();
@@ -7478,7 +7621,30 @@ function renderDraftQueue() {
   if (!emailSelectable.length && !whatsappSelectable.length && !whatsappGroupSelectable.length && rows.length) {
     updateDraftSendControls(rows);
   }
-  draftList.innerHTML = rows.map((message) => {
+  const rowNeedsAttention = (message) => {
+    const state = outreachTrackingState(message);
+    return isStaleOutreachDraft(message) || !messageRecipient(message) || ["bounced", "failed", "suppressed", "no_contact"].includes(state);
+  };
+  const rowGroup = (message) => String(message.status || "").toLowerCase() === "archived" ? "history" : rowNeedsAttention(message) ? "attention" : "ready";
+  const rowGroupOrder = { attention: 0, ready: 1, history: 2 };
+  const orderedRows = [...rows].sort((left, right) => rowGroupOrder[rowGroup(left)] - rowGroupOrder[rowGroup(right)]);
+  const groupCounts = orderedRows.reduce((counts, message) => {
+    const group = rowGroup(message);
+    counts[group] = (counts[group] || 0) + 1;
+    return counts;
+  }, {});
+  let renderedAttentionGroup = false;
+  let renderedReadyGroup = false;
+  let renderedHistoryGroup = false;
+  draftList.innerHTML = orderedRows.map((message) => {
+    const group = rowGroup(message);
+    const groupHeading = group === "attention" && !renderedAttentionGroup
+      ? (renderedAttentionGroup = true, `<tr class="rfx-wave-group-row is-attention"><td colspan="9">Needs attention (${formatNumber(groupCounts.attention || 0)})</td></tr>`)
+      : group === "ready" && !renderedReadyGroup
+        ? (renderedReadyGroup = true, `<tr class="rfx-wave-group-row is-ready"><td colspan="9">Ready for review (${formatNumber(groupCounts.ready || 0)})</td></tr>`)
+        : group === "history" && !renderedHistoryGroup
+          ? (renderedHistoryGroup = true, `<tr class="rfx-wave-group-row"><td colspan="9">Archived history (${formatNumber(groupCounts.history || 0)})</td></tr>`)
+        : "";
     const isEmail = message.channel === "email";
     const isWhatsapp = message.channel === "whatsapp";
     const isWhatsappGroup = message.channel === "whatsapp_group";
@@ -7533,7 +7699,7 @@ function renderDraftQueue() {
       : isWhatsapp && templateStatus !== "APPROVED"
         ? whatsappDraftStatusDetail(message, templateStatus)
         : "";
-    return `
+    return `${groupHeading}
       <tr class="${checked ? "is-selected-row" : ""}${staleDraft ? " is-stale-row" : ""}${String(message.id) === activeDraftReviewId ? " is-review-row" : ""}" data-rfx-draft-id="${escapeHtml(message.id)}">
         <td><input type="checkbox" data-rfx-draft-select="${escapeHtml(message.id)}" ${checked ? "checked" : ""} /></td>
         <td>
@@ -11412,6 +11578,16 @@ document.addEventListener("click", (event) => {
   }
 });
 
+continueWaveReviewButton?.addEventListener("click", () => {
+  const nextMessage = draftQueueRows.find((message) => String(message.status || "").toLowerCase() !== "archived" && !draftWasReviewed(message));
+  if (!nextMessage) return;
+  activeDraftReviewId = String(nextMessage.id || "");
+  reviewedDraftMessageIds.add(activeDraftReviewId);
+  rememberDraftRow(nextMessage);
+  renderDraftQueue();
+  draftReviewInspector?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+});
+
 draftList?.addEventListener("click", async (event) => {
   const reviewButton = event.target instanceof Element ? event.target.closest("[data-rfx-review-draft]") : null;
   if (reviewButton) {
@@ -11529,6 +11705,16 @@ draftReviewInspector?.addEventListener("change", (event) => {
 });
 
 draftList?.addEventListener("change", (event) => {
+  const carrierCheckbox = event.target.closest("[data-rfx-wave-carrier-select]");
+  if (carrierCheckbox) {
+    const vendorId = String(carrierCheckbox.dataset.rfxWaveCarrierSelect || "");
+    if (!vendorId) return;
+    if (carrierCheckbox.checked) selectedOutreachAudienceVendorIds.add(vendorId);
+    else selectedOutreachAudienceVendorIds.delete(vendorId);
+    renderDraftQueue();
+    renderDeliveryWaveState();
+    return;
+  }
   const checkbox = event.target.closest("[data-rfx-draft-select]");
   if (!checkbox) return;
   const id = checkbox.dataset.rfxDraftSelect;

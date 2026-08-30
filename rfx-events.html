@@ -12,6 +12,22 @@
   <body class="bid-room-page" data-platform55-shell="tenant" data-platform55-page="rfx-events">
     <div class="rw-app" data-platform55-app>
       <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <aside class="rfx-wave-shell-nav" aria-label="Launch navigation">
+        <a class="rfx-wave-brand" href="./app.html">Rateware</a>
+        <nav>
+          <a href="./app.html"><rw-icon name="command"></rw-icon><span>Home</span></a>
+          <a class="is-active" href="./rfx-events.html"><rw-icon name="rfx"></rw-icon><span>Launch</span></a>
+          <a href="./outreach.html"><rw-icon name="bell"></rw-icon><span>Inbox</span></a>
+          <a href="./rateware.html"><rw-icon name="rate"></rw-icon><span>Rates</span></a>
+          <a href="./vendors.html"><rw-icon name="carrier"></rw-icon><span>Network</span></a>
+          <a href="./business-intelligence.html"><rw-icon name="work"></rw-icon><span>Analytics</span></a>
+          <a href="./settings.html"><rw-icon name="settings"></rw-icon><span>Admin</span></a>
+        </nav>
+        <div>
+          <a href="./vendor-support.html"><rw-icon name="review"></rw-icon><span>Help</span></a>
+          <button type="button" data-rfx-wave-collapse><rw-icon name="chevron"></rw-icon><span>Collapse</span></button>
+        </div>
+      </aside>
       <div class="rw-workspace">
         <header class="rw-topbar" data-platform55-topbar>
           <form id="auth-form" class="auth-strip">
@@ -19,6 +35,11 @@
             <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
             <p id="auth-status" role="status"></p>
           </form>
+        </header>
+        <header class="rfx-wave-topbar">
+          <time datetime="2026-08-30">August 30, 2026</time>
+          <span>JS</span>
+          <rw-icon name="chevron"></rw-icon>
         </header>
 
         <main class="bid-room-product rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="event-lifecycle">
@@ -920,15 +941,32 @@
                   </section>
                   </section>
                   <section class="rfx-delivery-view-panel" data-rfx-delivery-view-panel="queue" role="tabpanel" hidden>
+                  <div class="rfx-wave-workspace-heading">
+                    <div>
+                      <p class="rfx-wave-breadcrumb">Launch <span>/</span> Bid Room <span>/</span> <b id="rfx-wave-breadcrumb-event">RFx</b></p>
+                      <strong id="rfx-wave-workspace-title">Select an RFx invitation wave</strong>
+                      <span id="rfx-wave-workspace-status" class="status-pill warning">Review required</span>
+                      <small id="rfx-wave-workspace-context">Review recipients and resolve delivery blockers before release.</small>
+                    </div>
+                    <div class="rfx-wave-workspace-primary">
+                      <button id="rfx-continue-wave-review" type="button" class="small-button" disabled>Continue review</button>
+                    </div>
+                  </div>
+                  <section id="rfx-wave-lifecycle" class="rfx-wave-lifecycle" aria-label="Invitation wave lifecycle" aria-live="polite"></section>
+                  <div class="rfx-delivery-review-grid">
+                  <div class="rfx-delivery-queue-main">
                   <div class="rfx-delivery-queue-heading">
                     <div>
-                      <p class="eyebrow">Message queue</p>
-                      <strong>Release only the drafts you select</strong>
+                      <p class="eyebrow">Carrier review</p>
+                      <strong>Resolve attention items, then review the ready list</strong>
                     </div>
                     <span id="rfx-draft-review-progress">Review is required before any send action becomes available.</span>
                   </div>
-                  <div class="rfx-delivery-review-grid">
-                  <div class="rfx-delivery-queue-main">
+                  <div class="rfx-wave-filter-row">
+                  <details class="rfx-wave-advanced-filters">
+                    <summary>All statuses</summary>
+                    <div id="rfx-draft-tracking-filters" class="rfx-draft-tracking" role="group" aria-label="Outreach lifecycle filters"></div>
+                  </details>
                   <div class="rfx-draft-filterbar">
                     <label>
                       <span>Message delivery log</span>
@@ -936,7 +974,7 @@
                     </label>
                     <button id="rfx-clear-draft-search" type="button" class="secondary small-button">Clear search</button>
                   </div>
-                  <div id="rfx-draft-tracking-filters" class="rfx-draft-tracking" role="group" aria-label="Outreach lifecycle filters"></div>
+                  </div>
                   <div id="rfx-draft-pager" class="rfx-draft-pager" aria-label="Draft queue pagination">
                     <span id="rfx-draft-page-summary">No draft rows loaded.</span>
                     <div>
@@ -974,7 +1012,7 @@
                           <th>To</th>
                           <th>Channel</th>
                           <th>Status</th>
-                          <th>Next action</th>
+                          <th>Review status</th>
                           <th>Subject / preview</th>
                           <th>Updated</th>
                           <th>Action</th>
@@ -986,10 +1024,13 @@
                     </table>
                   </div>
                   </div>
-                  <aside id="rfx-draft-review-inspector" class="rfx-draft-review-inspector" aria-live="polite" aria-label="Selected delivery message review">
+                  <aside class="rfx-wave-readiness" aria-label="Invitation wave release readiness">
+                    <div id="rfx-wave-readiness-summary" class="rfx-wave-readiness-summary" aria-live="polite"></div>
+                    <div id="rfx-draft-review-inspector" class="rfx-draft-review-inspector" aria-live="polite" aria-label="Selected delivery message review">
                     <p class="eyebrow">Delivery review</p>
                     <strong>Select a carrier message</strong>
                     <span>Open Review from any row to inspect its recipient, personalized content, lane context, and delivery history.</span>
+                    </div>
                   </aside>
                   </div>
                   </section>
