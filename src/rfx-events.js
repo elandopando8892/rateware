@@ -10507,9 +10507,9 @@ async function createCurrentOutreachDrafts(statusElement = rfxOutreachStatus) {
   if (selectedEventId !== eventId) return result;
   await loadDetail(eventId);
   if (selectedEventId !== eventId) return result;
-  deliveryParticipationStatus = "in_delivery";
+  deliveryParticipationStatus = "all";
   deliveryParticipationPage = 0;
-  draftQueueTrackingStatus = "drafted";
+  draftQueueTrackingStatus = "all";
   draftQueueSearch = "";
   draftQueueOffset = 0;
   activateRfxLaunchWorkspace("delivery", { refresh: true });
