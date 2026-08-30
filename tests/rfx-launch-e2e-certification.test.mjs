@@ -39,5 +39,6 @@ assert.match(source, /continueWaveReviewButton\?\.addEventListener\("click", asy
 assert.match(html, /id="rfx-wave-release-review"[\s\S]+id="rfx-wave-release-review-content"/, "Invitation Wave should expose a final release review dialog");
 assert.match(source, /function renderWaveReleaseReview\([\s\S]+Nothing sends from this confirmation\./, "Final review must preserve the no-send safety fence");
 assert.match(source, /data-rfx-wave-open-release-controls[\s\S]+activateRfxLaunchWorkspace\("message"/, "A reviewed carrier audience without drafts should continue to message preparation instead of sending");
+assert.match(styles, /rfx-carrier-review-active \.rfx-draft-table th:nth-child\(4\)[\s\S]+display: none/, "Carrier inspector mode should remove secondary table columns instead of crowding contact and status");
 
 console.log("RFx Launch E2E certification contracts passed.");

@@ -37328,6 +37328,14 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   box-shadow: 0 12px 30px rgba(20, 55, 90, .1);
 }
 
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table th:nth-child(4),
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table td:nth-child(4),
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table th:nth-child(8),
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table td:nth-child(8) { display: none; }
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table th:nth-child(2) { width: 31%; }
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table th:nth-child(3) { width: 37%; }
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-draft-table th:nth-child(6) { width: 20%; }
+
 .bid-room-page.rfx-wave-review-active .rfx-draft-table tr.is-reviewed-row td { background: #f7fcf8; }
 
 .bid-room-page.rfx-wave-review-active .rfx-carrier-review-issue {
