@@ -12,6 +12,22 @@
   <body class="bid-room-page" data-platform55-shell="tenant" data-platform55-page="rfx-events">
     <div class="rw-app" data-platform55-app>
       <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
+      <aside class="rfx-wave-shell-nav" aria-label="Launch navigation">
+        <a class="rfx-wave-brand" href="./app.html">Rateware</a>
+        <nav>
+          <a href="./app.html"><rw-icon name="command"></rw-icon><span>Home</span></a>
+          <a class="is-active" href="./rfx-events.html"><rw-icon name="rfx"></rw-icon><span>Launch</span></a>
+          <a href="./outreach.html"><rw-icon name="bell"></rw-icon><span>Inbox</span></a>
+          <a href="./rateware.html"><rw-icon name="rate"></rw-icon><span>Rates</span></a>
+          <a href="./vendors.html"><rw-icon name="carrier"></rw-icon><span>Network</span></a>
+          <a href="./business-intelligence.html"><rw-icon name="work"></rw-icon><span>Analytics</span></a>
+          <a href="./settings.html"><rw-icon name="settings"></rw-icon><span>Admin</span></a>
+        </nav>
+        <div>
+          <a href="./vendor-support.html"><rw-icon name="review"></rw-icon><span>Help</span></a>
+          <button type="button" data-rfx-wave-collapse><rw-icon name="chevron"></rw-icon><span>Collapse</span></button>
+        </div>
+      </aside>
       <div class="rw-workspace">
         <header class="rw-topbar" data-platform55-topbar>
           <form id="auth-form" class="auth-strip">
@@ -19,6 +35,11 @@
             <button id="sign-out-button" type="button" class="secondary hidden">Sign out</button>
             <p id="auth-status" role="status"></p>
           </form>
+        </header>
+        <header class="rfx-wave-topbar">
+          <time datetime="2026-08-30">August 30, 2026</time>
+          <span>JS</span>
+          <rw-icon name="chevron"></rw-icon>
         </header>
 
         <main class="bid-room-product rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="event-lifecycle">
@@ -922,7 +943,7 @@
                   <section class="rfx-delivery-view-panel" data-rfx-delivery-view-panel="queue" role="tabpanel" hidden>
                   <div class="rfx-wave-workspace-heading">
                     <div>
-                      <p class="eyebrow">Invitation wave</p>
+                      <p class="rfx-wave-breadcrumb">Launch <span>/</span> Bid Room <span>/</span> <b id="rfx-wave-breadcrumb-event">RFx</b></p>
                       <strong id="rfx-wave-workspace-title">Select an RFx invitation wave</strong>
                       <small id="rfx-wave-workspace-context">Review recipients and resolve delivery blockers before release.</small>
                     </div>
@@ -991,7 +1012,7 @@
                           <th>To</th>
                           <th>Channel</th>
                           <th>Status</th>
-                          <th>Next action</th>
+                          <th>Review status</th>
                           <th>Subject / preview</th>
                           <th>Updated</th>
                           <th>Action</th>

@@ -426,6 +426,7 @@ const draftSummary = document.querySelector("#rfx-draft-summary");
 const draftList = document.querySelector("#rfx-draft-list");
 const draftReviewInspector = document.querySelector("#rfx-draft-review-inspector");
 const draftReviewProgress = document.querySelector("#rfx-draft-review-progress");
+const waveBreadcrumbEvent = document.querySelector("#rfx-wave-breadcrumb-event");
 const waveWorkspaceTitle = document.querySelector("#rfx-wave-workspace-title");
 const waveWorkspaceContext = document.querySelector("#rfx-wave-workspace-context");
 const waveWorkspaceStatus = document.querySelector("#rfx-wave-workspace-status");
@@ -7428,20 +7429,30 @@ function renderInvitationWaveWorkspace(rows = []) {
   const delivered = activeRows.filter((message) => ["delivered", "read", "replied", "quoted"].includes(outreachTrackingState(message)));
   const responses = activeRows.filter((message) => ["replied", "quoted"].includes(outreachTrackingState(message)));
   const ready = Math.max(activeRows.length - blocked.length, 0);
+  const laneCount = new Set(activeRows.map((message) => String(message.rfx_lane_id || message.rfx_lanes?.id || "")).filter(Boolean)).size;
   const reviewComplete = Boolean(activeRows.length) && reviewed.length >= ready && blocked.length === 0;
   const currentStep = released.length ? 5 : reviewComplete ? 4 : activeRows.length ? 3 : 1;
+  const waveDate = (value) => {
+    const date = value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime())
+      ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date)
+      : "—";
+  };
+  const createdAt = activeRows.map((message) => message.created_at).filter(Boolean).sort()[0];
+  const validatedAt = activeRows.filter((message) => messageRecipient(message)).map((message) => message.updated_at || message.created_at).filter(Boolean).sort().at(-1);
   const steps = [
-    ["Draft created", activeRows.length ? `${formatNumber(activeRows.length)} carriers` : "Not started"],
-    ["Contacts validated", blocked.length ? `${formatNumber(blocked.length)} blocked` : activeRows.length ? `${formatNumber(ready)} ready` : "Not started"],
-    ["Review", activeRows.length ? `${formatNumber(reviewed.length)} reviewed` : "Not started"],
-    ["Release", released.length ? `${formatNumber(released.length)} released` : "Not released"],
-    ["Delivery", delivered.length ? `${formatNumber(delivered.length)} delivered` : "Not started"],
-    ["Response", responses.length ? `${formatNumber(responses.length)} received` : "Not started"]
+    ["Draft created", waveDate(createdAt), activeRows.length ? `${formatNumber(activeRows.length)} carriers` : "Not started"],
+    ["Contacts validated", waveDate(validatedAt), activeRows.length ? `${formatNumber(ready)} ready${blocked.length ? ` • ${formatNumber(blocked.length)} blocked` : ""}` : "Not started"],
+    ["Review", activeRows.length ? (reviewComplete ? "Complete" : "In progress") : "Not started", activeRows.length ? `${formatNumber(reviewed.length)} reviewed • ${formatNumber(blocked.length)} blocked` : "—"],
+    ["Release", released.length ? `${formatNumber(released.length)} released` : "—", released.length ? "Released" : "Not released"],
+    ["Delivery", delivered.length ? `${formatNumber(delivered.length)} delivered` : "—", delivered.length ? "In progress" : "Not started"],
+    ["Response", responses.length ? `${formatNumber(responses.length)} received` : "—", responses.length ? "In progress" : "Not started"]
   ];
 
+  if (waveBreadcrumbEvent) waveBreadcrumbEvent.textContent = eventLabel;
   if (waveWorkspaceTitle) waveWorkspaceTitle.textContent = selectedEventId ? `Invitation wave — ${eventName}` : "Select an RFx invitation wave";
   if (waveWorkspaceContext) waveWorkspaceContext.textContent = selectedEventId
-    ? `${eventLabel} • ${formatNumber(activeRows.length)} carriers on this page • ${outreachChannelLabel(selectedOutreachChannel())}`
+    ? `Wave 1 of 1 • ${outreachChannelLabel(selectedOutreachChannel())} • ${formatNumber(activeRows.length)} carriers${laneCount ? ` • Target lanes: ${formatNumber(laneCount)}` : ""}`
     : "Review recipients and resolve delivery blockers before release.";
   if (waveWorkspaceStatus) {
     waveWorkspaceStatus.textContent = released.length ? "Release in progress" : reviewComplete ? "Ready for confirmation" : "Review required";
@@ -7449,28 +7460,48 @@ function renderInvitationWaveWorkspace(rows = []) {
   }
   if (continueWaveReviewButton) continueWaveReviewButton.disabled = !activeRows.some((message) => !draftWasReviewed(message));
 
-  waveLifecycle.innerHTML = steps.map(([label, detail], index) => {
+  waveLifecycle.innerHTML = steps.map(([label, detail, subdetail], index) => {
     const step = index + 1;
     const state = step < currentStep ? "is-complete" : step === currentStep ? "is-current" : "";
-    return `<div class="rfx-wave-lifecycle-step ${state}"><b aria-hidden="true">${step}</b><strong>${escapeHtml(label)}</strong><small>${escapeHtml(detail)}</small></div>`;
+    const marker = state === "is-complete" ? '<rw-icon name="check"></rw-icon>' : step;
+    return `<div class="rfx-wave-lifecycle-step ${state}"><b aria-hidden="true">${marker}</b><strong>${escapeHtml(label)}</strong><small>${escapeHtml(detail)}</small><em>${escapeHtml(subdetail)}</em></div>`;
   }).join("");
 
   const reviewedPercent = ready ? Math.round((Math.min(reviewed.length, ready) / ready) * 100) : 0;
   waveReadinessSummary.innerHTML = `
     <div class="rfx-wave-readiness-heading">
-      <div><p class="eyebrow">Release readiness</p><strong>${formatNumber(reviewed.length)} of ${formatNumber(ready)} ready carriers reviewed</strong></div>
-      <b>${formatNumber(reviewedPercent)}%</b>
+      <div><strong>Release readiness</strong></div>
     </div>
-    <div class="rfx-wave-readiness-meter" aria-label="${formatNumber(reviewedPercent)} percent reviewed"><span style="width:${reviewedPercent}%"></span></div>
+    <div class="rfx-wave-readiness-chart">
+      <canvas width="112" height="112" aria-label="${formatNumber(reviewedPercent)} percent reviewed"></canvas>
+      <div><b>${formatNumber(activeRows.length)}</b><span>Total</span></div>
+      <ul><li><i class="is-ready"></i><b>${formatNumber(reviewed.length)}</b><span>Reviewed</span><strong>${formatNumber(reviewedPercent)}%</strong></li><li><i class="is-blocked"></i><b>${formatNumber(blocked.length)}</b><span>Blocked</span><strong>${formatNumber(activeRows.length ? Math.round((blocked.length / activeRows.length) * 100) : 0)}%</strong></li></ul>
+    </div>
     <dl>
-      <div><dt>Ready</dt><dd>${formatNumber(ready)}</dd></div>
-      <div><dt>Needs attention</dt><dd>${formatNumber(blocked.length)}</dd></div>
-      <div><dt>Channel</dt><dd>${escapeHtml(outreachChannelLabel(selectedOutreachChannel()))}</dd></div>
+      <div><dt>Channels</dt><dd>${escapeHtml(outreachChannelLabel(selectedOutreachChannel()))}</dd></div>
       <div><dt>Owner</dt><dd>Signed-in operator</dd></div>
+      <div><dt>Scheduled release</dt><dd>Not set &nbsp; <button type="button" class="rfx-wave-set-time">Set time</button></dd></div>
     </dl>
     <p>Nothing sends without confirmation.</p>
     <button type="button" class="secondary small-button" disabled title="Available after the invitation wave is released">View receipt</button>
+    <small>Available after release</small>
   `;
+  const readinessCanvas = waveReadinessSummary.querySelector("canvas");
+  const context = readinessCanvas?.getContext("2d");
+  if (context) {
+    const total = Math.max(activeRows.length, 1);
+    const reviewedAngle = (Math.min(reviewed.length, total) / total) * Math.PI * 2;
+    context.lineWidth = 10;
+    context.lineCap = "butt";
+    context.strokeStyle = "#e7edf3";
+    context.beginPath(); context.arc(56, 56, 42, 0, Math.PI * 2); context.stroke();
+    context.strokeStyle = "#22a447";
+    context.beginPath(); context.arc(56, 56, 42, -Math.PI / 2, -Math.PI / 2 + reviewedAngle); context.stroke();
+    if (blocked.length) {
+      context.strokeStyle = "#ef4e3f";
+      context.beginPath(); context.arc(56, 56, 42, -Math.PI / 2 + reviewedAngle, -Math.PI / 2 + reviewedAngle + (blocked.length / total) * Math.PI * 2); context.stroke();
+    }
+  }
 }
 
 function renderDraftQueue() {
@@ -7552,17 +7583,22 @@ function renderDraftQueue() {
   const rowGroup = (message) => String(message.status || "").toLowerCase() === "archived" ? "history" : rowNeedsAttention(message) ? "attention" : "ready";
   const rowGroupOrder = { attention: 0, ready: 1, history: 2 };
   const orderedRows = [...rows].sort((left, right) => rowGroupOrder[rowGroup(left)] - rowGroupOrder[rowGroup(right)]);
+  const groupCounts = orderedRows.reduce((counts, message) => {
+    const group = rowGroup(message);
+    counts[group] = (counts[group] || 0) + 1;
+    return counts;
+  }, {});
   let renderedAttentionGroup = false;
   let renderedReadyGroup = false;
   let renderedHistoryGroup = false;
   draftList.innerHTML = orderedRows.map((message) => {
     const group = rowGroup(message);
     const groupHeading = group === "attention" && !renderedAttentionGroup
-      ? (renderedAttentionGroup = true, `<tr class="rfx-wave-group-row is-attention"><td colspan="9">Needs attention</td></tr>`)
+      ? (renderedAttentionGroup = true, `<tr class="rfx-wave-group-row is-attention"><td colspan="9">Needs attention (${formatNumber(groupCounts.attention || 0)})</td></tr>`)
       : group === "ready" && !renderedReadyGroup
-        ? (renderedReadyGroup = true, `<tr class="rfx-wave-group-row is-ready"><td colspan="9">Ready for review</td></tr>`)
+        ? (renderedReadyGroup = true, `<tr class="rfx-wave-group-row is-ready"><td colspan="9">Ready for review (${formatNumber(groupCounts.ready || 0)})</td></tr>`)
         : group === "history" && !renderedHistoryGroup
-          ? (renderedHistoryGroup = true, `<tr class="rfx-wave-group-row"><td colspan="9">Archived history</td></tr>`)
+          ? (renderedHistoryGroup = true, `<tr class="rfx-wave-group-row"><td colspan="9">Archived history (${formatNumber(groupCounts.history || 0)})</td></tr>`)
         : "";
     const isEmail = message.channel === "email";
     const isWhatsapp = message.channel === "whatsapp";

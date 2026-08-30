@@ -37003,6 +37003,285 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   display: none !important;
 }
 
+/* Invitation Wave selected visual: dedicated Launch shell and review composition. */
+.rfx-wave-shell-nav,
+.rfx-wave-topbar { display: none; }
+
+@media (min-width: 981px) {
+  .bid-room-page.rfx-wave-review-active .rw-app {
+    grid-template-columns: 136px minmax(0, 1fr) !important;
+  }
+
+  .bid-room-page.rfx-wave-review-active .rw-sidebar { display: none !important; }
+
+  .bid-room-page.rfx-wave-review-active .rfx-wave-shell-nav {
+    position: sticky;
+    top: 0;
+    z-index: 22;
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    min-height: 100vh;
+    flex-direction: column;
+    border-right: 1px solid #d8e0e9;
+    background: #fff;
+  }
+
+  .bid-room-page.rfx-wave-review-active .rfx-wave-brand {
+    display: flex;
+    height: 54px;
+    align-items: center;
+    padding: 0 22px;
+    border-bottom: 1px solid #d8e0e9;
+    color: #075bc7;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -.5px;
+    text-decoration: none;
+  }
+
+  .bid-room-page.rfx-wave-review-active .rfx-wave-shell-nav nav {
+    display: grid;
+    gap: 1px;
+    padding: 20px 0;
+  }
+
+  .bid-room-page.rfx-wave-review-active .rfx-wave-shell-nav > div {
+    display: grid;
+    gap: 1px;
+    margin-top: auto;
+    padding-bottom: 14px;
+  }
+
+  .bid-room-page.rfx-wave-review-active .rfx-wave-shell-nav a:not(.rfx-wave-brand),
+  .bid-room-page.rfx-wave-review-active .rfx-wave-shell-nav button {
+    position: relative;
+    display: flex;
+    min-height: 52px;
+    align-items: center;
+    gap: 12px;
+    border: 0;
+    background: transparent;
+    padding: 0 24px;
+    color: #536987;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    text-decoration: none;
+  }
+
+  .bid-room-page.rfx-wave-review-active .rfx-wave-shell-nav rw-icon { width: 19px; height: 19px; }
+  .bid-room-page.rfx-wave-review-active .rfx-wave-shell-nav a.is-active { color: #075bc7; background: #f1f7ff; font-weight: 700; }
+  .bid-room-page.rfx-wave-review-active .rfx-wave-shell-nav a.is-active::before { position: absolute; inset: 0 auto 0 0; width: 3px; background: #1268e8; content: ""; }
+}
+
+.bid-room-page.rfx-wave-review-active .rw-topbar { display: none !important; }
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-topbar {
+  display: flex;
+  height: 54px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  border-bottom: 1px solid #d8e0e9;
+  background: #fff;
+  padding: 0 24px;
+  color: #526681;
+  font-size: 12px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-topbar > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: #0c3f83;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-topbar rw-icon { width: 14px; height: 14px; transform: rotate(90deg); }
+
+.bid-room-page.rfx-wave-review-active .bid-room-product {
+  padding: 18px 24px 34px !important;
+  background: #fff;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-draft-queue-panel { min-height: calc(100vh - 106px); }
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-heading {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 18px;
+  padding: 0 0 20px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-heading > div:first-child { gap: 8px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-breadcrumb { margin: 0 0 13px; color: #2872d8; font-size: 12px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-breadcrumb span { padding: 0 8px; color: #9ba9ba; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-heading strong { font-size: 20px; letter-spacing: -.25px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-heading small { color: #5d708a; font-size: 12px; }
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-primary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 4px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-workspace-primary .status-pill {
+  position: absolute;
+  bottom: 57px;
+  left: min(390px, 42vw);
+  border: 1px solid #f4b780;
+  background: #fff8f1;
+  color: #d96708;
+  font-size: 11px;
+  text-transform: none;
+}
+
+.bid-room-page.rfx-wave-review-active #rfx-continue-wave-review {
+  min-width: 164px;
+  min-height: 42px;
+  border-radius: 5px;
+  background: #0862c9;
+  font-size: 13px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  margin: 0 0 20px;
+  border: 1px solid #d4dde8;
+  border-radius: 5px;
+  background: #fff;
+  padding: 22px 38px 20px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  min-height: 112px;
+  border: 0;
+  background: transparent;
+  padding: 0 6px;
+  text-align: center;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step:not(:last-child)::after {
+  position: absolute;
+  z-index: 0;
+  top: 20px;
+  left: calc(50% + 27px);
+  width: calc(100% - 54px);
+  border-top: 1px dashed #bdc9d7;
+  content: "";
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step.is-complete:not(:last-child)::after { border-color: #23a448; border-top-style: solid; }
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step > b {
+  z-index: 1;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid #b9c5d4;
+  border-radius: 50%;
+  background: #fff;
+  color: #4f6179;
+  font-size: 14px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step > b rw-icon { width: 18px; height: 18px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step.is-complete > b { border-color: #98d5aa; background: #f3fbf5; color: #22a447; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step.is-current > b { border: 2px solid #1268e8; color: #075bc7; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step > strong { color: #172131; font-size: 13px; font-weight: 700; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step > small,
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step > em { color: #53667f; font-size: 11px; font-style: normal; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle-step.is-current > em { color: #075bc7; }
+
+.bid-room-page.rfx-wave-review-active .rfx-delivery-review-grid {
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-delivery-queue-heading { display: none; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-filter-row { grid-template-columns: 140px minmax(260px, 238px) auto; justify-content: start; margin-bottom: 14px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-advanced-filters > summary,
+.bid-room-page.rfx-wave-review-active .rfx-draft-filterbar input { height: 38px; border-color: #cbd6e3; border-radius: 5px; background: #fff; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-filterbar { width: 238px; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-filterbar label { width: 100%; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-filterbar label > span { display: none; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-filterbar input { width: 100%; padding-inline: 12px; }
+.bid-room-page.rfx-wave-review-active #rfx-clear-draft-search { display: none; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-pager { margin: -44px 0 18px 394px; color: #5a6e87; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-actions { margin-bottom: 8px; }
+
+.bid-room-page.rfx-wave-review-active .rfx-draft-table-wrap {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-draft-table { border-collapse: separate; border-spacing: 0; font-size: 11px; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table thead th { border-block: 1px solid #d5dee8; background: #fff; color: #3c526e; padding-block: 12px; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table thead th:first-child { border-left: 1px solid #d5dee8; border-radius: 5px 0 0 0; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table thead th:last-child { border-right: 1px solid #d5dee8; border-radius: 0 5px 0 0; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table td { border-bottom: 1px solid #d5dee8; background: #fff; padding-block: 11px; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table td:first-child { border-left: 1px solid #d5dee8; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table td:last-child { border-right: 1px solid #d5dee8; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table th:nth-child(5),
+.bid-room-page.rfx-wave-review-active .rfx-draft-table td:nth-child(5),
+.bid-room-page.rfx-wave-review-active .rfx-draft-table th:nth-child(7),
+.bid-room-page.rfx-wave-review-active .rfx-draft-table td:nth-child(7) { display: none; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table th:nth-child(6),
+.bid-room-page.rfx-wave-review-active .rfx-draft-table td:nth-child(6),
+.bid-room-page.rfx-wave-review-active .rfx-draft-table th:nth-child(8),
+.bid-room-page.rfx-wave-review-active .rfx-draft-table td:nth-child(8),
+.bid-room-page.rfx-wave-review-active .rfx-draft-table th:nth-child(9),
+.bid-room-page.rfx-wave-review-active .rfx-draft-table td:nth-child(9) { display: table-cell; }
+.bid-room-page.rfx-wave-review-active .rfx-draft-table .rfx-wave-group-row td {
+  border: 0;
+  background: #fff;
+  padding: 20px 0 10px;
+  font-size: 13px;
+  text-align: left;
+  text-transform: none;
+}
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness { gap: 14px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-summary { gap: 18px; border-color: #d4dde8; border-radius: 5px; padding: 20px 22px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-heading strong { color: #172131; font-size: 16px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-chart { position: relative; display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: 18px; padding-bottom: 18px; border-bottom: 1px solid #dce3eb; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-chart > div { position: absolute; left: 25px; top: 30px; display: grid; width: 62px; justify-items: center; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-chart > div b { color: #172131; font-size: 22px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-chart > div span { color: #60728a; font-size: 11px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-chart ul { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-chart li { display: grid; grid-template-columns: 10px 22px 1fr auto; align-items: center; gap: 7px; color: #53667f; font-size: 11px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-chart li i { width: 9px; height: 9px; border-radius: 50%; background: #22a447; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-chart li i.is-blocked { background: #ef4e3f; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-summary dl > div { min-height: 52px; align-items: center; font-size: 12px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-summary dt { color: #223650; font-size: 12px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-summary dd { color: #53667f; font-size: 12px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-set-time { border: 0; background: transparent; padding: 0; color: #075bc7; font: inherit; font-weight: 700; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-summary > p { border-color: #a8c8f3; background: #f5f9ff; padding: 14px; font-size: 11px; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness-summary > small { color: #718198; font-size: 10px; text-align: center; }
+.bid-room-page.rfx-wave-review-active .rfx-wave-readiness .rfx-draft-review-inspector,
+.bid-room-page.rfx-wave-review-active .rfx-delivery-workspace-footer { display: none; }
+
+@media (max-width: 1120px) {
+  .bid-room-page.rfx-wave-review-active .rfx-delivery-review-grid { grid-template-columns: minmax(0, 1fr) 300px; }
+  .bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle { padding-inline: 16px; }
+}
+
 /* RFx Process internal RFI editor and marketplace preview. */
 .rfx-process-rfi-legacy-layout {
   display: grid;
