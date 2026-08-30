@@ -37183,6 +37183,10 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
 .rfx-wave-release-review-card li small { color: #5d708a; }
 .rfx-wave-release-acknowledgement { display: flex; align-items: flex-start; gap: 9px; border: 1px solid #b8d3f4; border-radius: 6px; padding: 13px; background: #f4f8fe; }
 .rfx-wave-release-fence { margin: 0; border-left: 3px solid #0f65c9; padding: 7px 10px; color: #405675; font-size: 12px; }
+.rfx-wave-review-sync { display: block; color: #2e7050; text-align: center; }
+.rfx-wave-review-sync.is-warning { color: #a14829; }
+.rfx-carrier-review-audit { display: grid; gap: 3px; margin: 0; border-left: 3px solid #2d9b5f; padding: 7px 10px; color: #405675; font-size: 11px; }
+.rfx-carrier-review-audit strong { color: #24583f; }
 
 @media (max-width: 680px) {
   .rfx-wave-release-metrics { grid-template-columns: repeat(2, 1fr); }

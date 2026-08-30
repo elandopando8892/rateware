@@ -35,6 +35,7 @@ import {
   archiveOutreachAudienceSegment,
   deleteOutreachTemplate,
   fetchOutreachAudienceSegments,
+  fetchInvitationWaveReviews,
   fetchOutreachMessages,
   fetchOutreachMessage,
   fetchOutreachMessagesPage,
@@ -42,6 +43,7 @@ import {
   fetchOutreachTemplates,
   generateOutreachDrafts,
   previewOutreachAudience,
+  recordInvitationWaveReview,
   saveOutreachAudienceSegment,
   deleteOutreachMessages,
   markWhatsappGroupMessageManuallySent,
@@ -52,7 +54,7 @@ import {
   sendWhatsappGroupOutreachMessages,
   syncOutreachWhatsappTemplates,
   updateOutreachTemplate
-} from "./outreach-service.js?v=20260801-outreach-read-v1";
+} from "./outreach-service.js?v=20260830-review-audit-v1";
 import { fetchCarrierRecommendations } from "./business-intelligence-service.js";
 import {
   createVendorSegment,
@@ -616,6 +618,10 @@ let activeDraftReviewId = "";
 let activeCarrierReviewVendorId = "";
 let activeCarrierReviewVendor = null;
 const reviewedCarrierVendorIds = new Set();
+const invitationWaveReviewRecords = new Map();
+let invitationWaveReviewsLoading = false;
+let invitationWaveReviewsAvailable = null;
+let invitationWaveReviewLoadVersion = 0;
 const selectedDraftMessageRows = new Map();
 let draftQueueSearch = rfxPageParams.has("draft_search")
   ? String(rfxPageParams.get("draft_search") || "")
@@ -7107,6 +7113,9 @@ async function loadDeliveryParticipation({ force = false } = {}) {
     deliveryParticipationRows = [];
     deliveryParticipationCounts = {};
     deliveryParticipationTotal = 0;
+    reviewedCarrierVendorIds.clear();
+    invitationWaveReviewRecords.clear();
+    invitationWaveReviewsAvailable = null;
     renderDeliveryParticipation();
     renderEventDeliveryOverview();
     return;
@@ -7131,6 +7140,7 @@ async function loadDeliveryParticipation({ force = false } = {}) {
     deliveryParticipationRows = Array.isArray(audience?.rows) ? audience.rows : [];
     deliveryParticipationCounts = audience?.counts && typeof audience.counts === "object" ? audience.counts : {};
     deliveryParticipationTotal = Number(audience?.total || deliveryParticipationRows.length);
+    await loadInvitationWaveReviews(eventId);
   } catch (error) {
     if (loadVersion !== deliveryParticipationLoadVersion || eventId !== selectedEventId) return;
     deliveryParticipationRows = [];
@@ -7145,6 +7155,61 @@ async function loadDeliveryParticipation({ force = false } = {}) {
       if (activeRfxDeliveryView === "queue") renderDraftQueue();
     }
   }
+}
+
+async function loadInvitationWaveReviews(eventId = selectedEventId) {
+  if (!eventId) return false;
+  const loadVersion = ++invitationWaveReviewLoadVersion;
+  invitationWaveReviewsLoading = true;
+  try {
+    const result = await fetchInvitationWaveReviews(eventId);
+    if (loadVersion !== invitationWaveReviewLoadVersion || eventId !== selectedEventId) return false;
+    reviewedCarrierVendorIds.clear();
+    invitationWaveReviewRecords.clear();
+    for (const record of result.rows || []) {
+      const vendorId = String(record.vendor_id || "");
+      if (!vendorId) continue;
+      invitationWaveReviewRecords.set(vendorId, record);
+      if (record.reviewed) reviewedCarrierVendorIds.add(vendorId);
+    }
+    invitationWaveReviewsAvailable = true;
+    return true;
+  } catch (error) {
+    if (loadVersion !== invitationWaveReviewLoadVersion || eventId !== selectedEventId) return false;
+    invitationWaveReviewsAvailable = false;
+    console.warn("Invitation wave review history could not load.", humanizeError(error));
+    return false;
+  } finally {
+    if (loadVersion === invitationWaveReviewLoadVersion) invitationWaveReviewsLoading = false;
+  }
+}
+
+function carrierReviewContactSnapshot(vendorId) {
+  const participation = deliveryParticipationRows.find((row) => String(row.vendor_id || "") === String(vendorId || "")) || {};
+  const vendor = String(activeCarrierReviewVendor?.id || "") === String(vendorId || "") ? activeCarrierReviewVendor : {};
+  return {
+    contact_name: vendor.contact_name || participation.contact_name || "",
+    email: vendor.primary_email || participation.email || "",
+    phone: vendor.whatsapp_phone || participation.phone || "",
+    vendor_name: vendor.vendor_name || participation.vendor_name || "",
+    vendor_domain: vendor.domain || participation.vendor_domain || ""
+  };
+}
+
+async function persistInvitationWaveReview(vendorId, reviewed = true, contactSnapshot = carrierReviewContactSnapshot(vendorId)) {
+  const result = await recordInvitationWaveReview({
+    rfxEventId: selectedEventId,
+    vendorId,
+    reviewed,
+    contactSnapshot,
+    channel: selectedOutreachChannel()
+  });
+  const record = result.row || {};
+  invitationWaveReviewRecords.set(String(vendorId), record);
+  if (reviewed) reviewedCarrierVendorIds.add(String(vendorId));
+  else reviewedCarrierVendorIds.delete(String(vendorId));
+  invitationWaveReviewsAvailable = true;
+  return record;
 }
 
 function renderEventDeliveryOverview() {
@@ -7491,6 +7556,13 @@ function renderInvitationWaveWorkspace(rows = [], carrierRows = deliveryParticip
   }).join("");
 
   const reviewedPercent = ready ? Math.round((Math.min(reviewed.length, ready) / ready) * 100) : 0;
+  const reviewSyncLabel = invitationWaveReviewsLoading
+    ? "Loading review history..."
+    : invitationWaveReviewsAvailable === true
+      ? "Review history synced"
+      : invitationWaveReviewsAvailable === false
+        ? "Review history unavailable; changes will not be marked complete"
+        : "Review history not loaded";
   waveReadinessSummary.innerHTML = `
     <div class="rfx-wave-readiness-heading">
       <div><strong>Release readiness</strong></div>
@@ -7506,6 +7578,7 @@ function renderInvitationWaveWorkspace(rows = [], carrierRows = deliveryParticip
       <div><dt>Scheduled release</dt><dd>Not set &nbsp; <button type="button" class="rfx-wave-set-time">Set time</button></dd></div>
     </dl>
     <p>Nothing sends without confirmation.</p>
+    <small class="rfx-wave-review-sync ${invitationWaveReviewsAvailable === false ? "is-warning" : ""}">${escapeHtml(reviewSyncLabel)}</small>
     <button type="button" class="secondary small-button" disabled title="Available after the invitation wave is released">View receipt</button>
     <small>Available after release</small>
   `;
@@ -7824,6 +7897,10 @@ function renderDraftReviewInspector() {
     const email = String(carrierReview.primary_email || carrierReview.email || "").trim();
     const phone = String(carrierReview.whatsapp_phone || carrierReview.phone || "").trim();
     const reviewed = reviewedCarrierVendorIds.has(vendorId);
+    const reviewRecord = invitationWaveReviewRecords.get(vendorId);
+    const reviewStamp = reviewRecord?.reviewed
+      ? `Reviewed by ${reviewRecord.reviewed_by || "an operator"} • ${formatCompactDateTime(reviewRecord.reviewed_at) || "time unavailable"}`
+      : "";
     const issue = !email && !phone
       ? "No compatible email or phone is available for this invitation."
       : !email
@@ -7839,6 +7916,7 @@ function renderDraftReviewInspector() {
         <span>${email || phone ? "Contact ready" : "Needs attention"}</span>
         <strong>${escapeHtml(issue)}</strong>
       </div>
+      ${reviewStamp ? `<p class="rfx-carrier-review-audit"><strong>Audit trail</strong><span>${escapeHtml(reviewStamp)}</span></p>` : ""}
       <form class="rfx-carrier-review-form" data-rfx-carrier-review-form="${escapeHtml(vendorId)}">
         <fieldset>
           <legend>Invitation channel</legend>
@@ -11847,7 +11925,7 @@ waveReleaseReviewDialog?.addEventListener("click", (event) => {
   setStatus(rfxOutreachStatus, "Release controls are ready. Review the selection and confirm the channel-specific send action when authorized.", "success");
 });
 
-draftReviewInspector?.addEventListener("click", (event) => {
+draftReviewInspector?.addEventListener("click", async (event) => {
   if (!(event.target instanceof Element)) return;
   if (event.target.closest("[data-rfx-close-carrier-review]")) {
     activeCarrierReviewVendorId = "";
@@ -11858,8 +11936,19 @@ draftReviewInspector?.addEventListener("click", (event) => {
   const markCarrierReviewedButton = event.target.closest("[data-rfx-mark-carrier-reviewed]");
   if (markCarrierReviewedButton) {
     const vendorId = String(markCarrierReviewedButton.dataset.rfxMarkCarrierReviewed || "");
-    if (vendorId) reviewedCarrierVendorIds.add(vendorId);
-    renderDraftQueue();
+    if (!vendorId) return;
+    markCarrierReviewedButton.disabled = true;
+    const statusElement = draftReviewInspector.querySelector("[data-rfx-carrier-review-status]");
+    setStatus(statusElement, "Saving review checkpoint...", "neutral");
+    try {
+      await persistInvitationWaveReview(vendorId, true);
+      renderDraftQueue();
+      const refreshedStatus = draftReviewInspector.querySelector("[data-rfx-carrier-review-status]");
+      setStatus(refreshedStatus, "Review saved. Nothing was sent.", "success");
+    } catch (error) {
+      setStatus(statusElement, `Review was not saved. ${humanizeError(error)}`, "error");
+      markCarrierReviewedButton.disabled = false;
+    }
     return;
   }
   if (event.target.closest("[data-rfx-close-draft-review]")) {
@@ -11898,7 +11987,21 @@ draftReviewInspector?.addEventListener("submit", async (event) => {
       whatsapp_phone: phone || null,
       preferred_channel: preferredChannel
     });
-    reviewedCarrierVendorIds.add(vendorId);
+    try {
+      await persistInvitationWaveReview(vendorId, true, {
+        contact_name: contactName,
+        email,
+        phone,
+        vendor_name: activeCarrierReviewVendor?.vendor_name || "",
+        vendor_domain: activeCarrierReviewVendor?.domain || ""
+      });
+    } catch (reviewError) {
+      await loadDeliveryParticipation({ force: true });
+      renderDraftQueue();
+      const partialStatus = draftReviewInspector.querySelector("[data-rfx-carrier-review-status]");
+      setStatus(partialStatus, `Carrier CRM contact saved, but review was not saved. ${humanizeError(reviewError)}`, "warning");
+      return;
+    }
     await loadDeliveryParticipation({ force: true });
     renderDraftQueue();
     const refreshedStatus = draftReviewInspector.querySelector("[data-rfx-carrier-review-status]");

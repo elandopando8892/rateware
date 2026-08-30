@@ -29587,6 +29587,84 @@ export function createRatewareApiHandler(
       return jsonResponse({ rows, counts, total: allRows.length, filtered_total: rows.length, channel, rfx_event_id: eventId });
     }
 
+    if (body.action === "list_rfx_invitation_wave_reviews") {
+      const eventId = cleanText(body.rfx_event_id || body.event_id);
+      if (!eventId || !UUID_PATTERN.test(eventId)) return jsonResponse({ error: "A valid RFx event id is required." }, 400);
+      await requireOwnedRfxEvent(supabase, user, eventId);
+      const result = await supabase
+        .from("saas_audit_log")
+        .select("id,created_at,actor_email,action,entity_id,summary,metadata")
+        .eq("owner_email", user.owner_email)
+        .eq("entity_type", "rfx_event_carrier_review")
+        .contains("metadata", { rfx_event_id: eventId })
+        .order("created_at", { ascending: false })
+        .limit(5000);
+      if (result.error) throw result.error;
+      const latestByVendor = new Map<string, Record<string, unknown>>();
+      for (const row of result.data || []) {
+        const metadata = objectRecord(row.metadata);
+        const vendorId = cleanText(metadata.vendor_id);
+        if (!vendorId || latestByVendor.has(vendorId)) continue;
+        latestByVendor.set(vendorId, {
+          id: row.id,
+          vendor_id: vendorId,
+          reviewed: row.action === "rfx.invitation_carrier.reviewed",
+          reviewed_at: row.created_at,
+          reviewed_by: row.actor_email,
+          channel: cleanText(metadata.channel),
+          contact_snapshot: objectRecord(metadata.contact_snapshot),
+          review_version: Number(metadata.review_version || 1)
+        });
+      }
+      return jsonResponse({ rows: [...latestByVendor.values()] });
+    }
+
+    if (body.action === "record_rfx_invitation_wave_review") {
+      const eventId = cleanText(body.rfx_event_id || body.event_id);
+      const vendorId = cleanText(body.vendor_id);
+      if (!eventId || !UUID_PATTERN.test(eventId)) return jsonResponse({ error: "A valid RFx event id is required." }, 400);
+      if (!vendorId || !UUID_PATTERN.test(vendorId)) return jsonResponse({ error: "A valid carrier id is required." }, 400);
+      await requireOwnedRfxEvent(supabase, user, eventId);
+      const participation = await supabase
+        .from("rfx_lane_vendors")
+        .select("id")
+        .eq("rfx_event_id", eventId)
+        .eq("vendor_id", vendorId)
+        .limit(1);
+      if (participation.error) throw participation.error;
+      if (!participation.data?.length) return jsonResponse({ error: "This carrier is not part of the selected RFx." }, 409);
+      const reviewed = body.reviewed !== false;
+      const contactInput = objectRecord(body.contact_snapshot);
+      const contactSnapshot = {
+        contact_name: cleanText(contactInput.contact_name),
+        email: cleanText(contactInput.email)?.toLowerCase() || null,
+        phone: cleanText(contactInput.phone),
+        vendor_name: cleanText(contactInput.vendor_name),
+        vendor_domain: cleanText(contactInput.vendor_domain)
+      };
+      const channel = cleanText(body.channel)?.toLowerCase() || null;
+      const action = reviewed ? "rfx.invitation_carrier.reviewed" : "rfx.invitation_carrier.review_revoked";
+      const inserted = await supabase.from("saas_audit_log").insert(withOwner({
+        actor_email: user.owner_email,
+        action,
+        entity_type: "rfx_event_carrier_review",
+        entity_id: `${eventId}:${vendorId}`,
+        summary: reviewed ? "Reviewed carrier for RFx invitation wave" : "Revoked carrier review for RFx invitation wave",
+        metadata: { rfx_event_id: eventId, vendor_id: vendorId, channel, contact_snapshot: contactSnapshot, review_version: 1 }
+      }, user)).select("id,created_at,actor_email,action,metadata").single();
+      if (inserted.error) throw inserted.error;
+      return jsonResponse({ row: {
+        id: inserted.data.id,
+        vendor_id: vendorId,
+        reviewed,
+        reviewed_at: inserted.data.created_at,
+        reviewed_by: inserted.data.actor_email,
+        channel,
+        contact_snapshot: contactSnapshot,
+        review_version: 1
+      } });
+    }
+
     if (body.action === "list_outreach_campaigns") {
       const campaignsResult = await supabase
         .from("outreach_campaigns")
