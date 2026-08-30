@@ -7564,7 +7564,7 @@ function renderDraftQueue() {
     draftList.innerHTML = `<tr><td colspan="9">Loading draft queue...</td></tr>`;
     return;
   }
-  if (!rows.length && deliveryParticipationRows.length && !hasSearch && draftQueueTrackingStatus === "all") {
+  if (!rows.length && deliveryParticipationRows.length && !hasSearch) {
     activeDraftReviewId = "";
     renderDraftReviewInspector();
     updateDraftSendControls([]);

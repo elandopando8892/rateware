@@ -27,6 +27,7 @@ assert.match(styles, /rfx-wave-review-active \.rfx-launch-workspace-tabs[\s\S]+r
 assert.match(styles, /rfx-wave-lifecycle-step > b[\s\S]+border-radius: 50%/, "Invitation Wave lifecycle should use the selected circular step treatment");
 assert.match(html, /class="rfx-wave-shell-nav"[\s\S]+Home[\s\S]+Launch[\s\S]+Inbox[\s\S]+Rates[\s\S]+Network[\s\S]+Analytics[\s\S]+Admin/, "Focused Invitation Wave should use the selected Launch navigation shell");
 assert.match(source, /deliveryParticipationRows\.slice\(0, 18\)[\s\S]+data-rfx-wave-carrier-select/, "Invitation Wave should show RFx carrier participants when no delivery drafts exist");
+assert.match(source, /if \(!rows\.length && deliveryParticipationRows\.length && !hasSearch\)/, "Persisted draft-status filters should not hide the RFx participant review when no drafts exist");
 assert.match(source, /rfxOpenDeliveryQueueButton\?\.addEventListener[\s\S]+deliveryParticipationStatus = "all";[\s\S]+draftQueueTrackingStatus = "all";/, "Opening Invitation Wave should load the full RFx audience instead of an empty drafted-only subset");
 
 console.log("RFx Launch E2E certification contracts passed.");
