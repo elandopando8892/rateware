@@ -1,12 +1,15 @@
 import { ACTION_CONTRACT as BASE_ACTION_CONTRACT } from '../supabase/functions/_shared/action-contract.mjs';
 import { CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-carrier-list-templates.mjs';
 import { PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-provider-service.mjs';
+import { RFX_INVITATION_REVIEW_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-rfx-invitation-reviews.mjs';
 
 const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
 const carrierTemplateExtension = CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION;
+const rfxInvitationReviewExtension = RFX_INVITATION_REVIEW_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 const carrierTemplateDelta = carrierTemplateExtension.expectedCountsDelta;
+const rfxInvitationReviewDelta = rfxInvitationReviewExtension.expectedCountsDelta;
 
 // Provider Service is hosted inside the authenticated shipper-directory-api runtime.
 // Its local dependency changes that function's shared authorization envelope for
@@ -28,10 +31,11 @@ const legacyAuthorizationOverrides = Object.fromEntries([
 // The Rateware API handler factory and Carrier List Templates imports change the
 // shared authorization envelope for every action hosted by rateware-api. This is
 // a static reviewed fingerprint; it is not derived from source at validation time.
-const ratewareApiEnvelope = '23ad51228f3cc24759f313a2d8a5210f6b677e5cd4ef99a73fd4adb8d790d963';
+const ratewareApiEnvelope = '057fe2d9bf90410209d1bc1b7152776412433ada9fa5fd69b884cf2378044c8b';
 const ratewareApiAuthorizationOverrides = Object.fromEntries([
   ...BASE_ACTION_CONTRACT.surfaces,
   ...carrierTemplateExtension.surfaces,
+  ...rfxInvitationReviewExtension.surfaces,
 ].filter((entry) => entry.canonicalId.startsWith('edge.rateware-api.'))
   .map((entry) => [entry.canonicalId, ratewareApiEnvelope]));
 
@@ -213,12 +217,12 @@ const gmailSurfaces = [
 export const ACTION_CONTRACT = {
   ...BASE_ACTION_CONTRACT,
   contractVersion,
-  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates`,
+  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres,
-    ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi,
+    ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi,
   },
   reviewedMetadataFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedMetadataFingerprints,
@@ -226,6 +230,7 @@ export const ACTION_CONTRACT = {
     ...providerMetadataOverrides,
     ...gmailMetadataFingerprints,
     ...carrierTemplateExtension.reviewedMetadataFingerprints,
+    ...rfxInvitationReviewExtension.reviewedMetadataFingerprints,
   },
   reviewedAuthorizationFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedAuthorizationFingerprints,
@@ -234,6 +239,7 @@ export const ACTION_CONTRACT = {
     ...gmailAuthorizationFingerprints,
     ...ratewareApiAuthorizationOverrides,
     ...carrierTemplateExtension.reviewedAuthorizationFingerprints,
+    ...rfxInvitationReviewExtension.reviewedAuthorizationFingerprints,
   },
   surfaces: [
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({
@@ -246,5 +252,6 @@ export const ACTION_CONTRACT = {
     ...providerSurfaces,
     ...gmailSurfaces,
     ...carrierTemplateExtension.surfaces,
+    ...rfxInvitationReviewExtension.surfaces,
   ],
 };
