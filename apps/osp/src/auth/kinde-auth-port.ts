@@ -697,6 +697,11 @@ export function createKindeAuthPort(
       if (logoutBarrier) throw new Error('Auth port logout must complete successfully');
       await client.login({
         app_state: { returnTo: approvedReturnTo },
+        // Approval commands require a newly authenticated ID token. A normal
+        // Kinde login may reuse the existing SSO session and preserve an old
+        // auth_time, so force an interactive authentication ceremony here.
+        prompt: 'login',
+        authUrlParams: { max_age: 0 },
         ...(config.VITE_OSP_BUILD_PROFILE === 'production-readonly'
           ? { orgCode: PRODUCTION_KINDE_ORGANIZATION }
           : {}),

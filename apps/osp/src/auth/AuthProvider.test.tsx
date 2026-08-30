@@ -1637,6 +1637,8 @@ describe('createKindeAuthPort', () => {
     expect(login).toHaveBeenCalledOnce();
     expect(login).toHaveBeenCalledWith({
       app_state: { returnTo: '/app/case?tab=overview' },
+      prompt: 'login',
+      authUrlParams: { max_age: 0 },
     });
   });
 
@@ -1664,6 +1666,8 @@ describe('createKindeAuthPort', () => {
 
     expect(login).toHaveBeenCalledWith({
       app_state: { returnTo: '/app/pipeline' },
+      prompt: 'login',
+      authUrlParams: { max_age: 0 },
       orgCode: 'org_dbc2fd12c76',
     });
   });
