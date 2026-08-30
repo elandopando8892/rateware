@@ -7549,15 +7549,20 @@ function renderDraftQueue() {
     const state = outreachTrackingState(message);
     return isStaleOutreachDraft(message) || !messageRecipient(message) || ["bounced", "failed", "suppressed", "no_contact"].includes(state);
   };
-  const orderedRows = [...rows].sort((left, right) => Number(rowNeedsAttention(right)) - Number(rowNeedsAttention(left)));
+  const rowGroup = (message) => String(message.status || "").toLowerCase() === "archived" ? "history" : rowNeedsAttention(message) ? "attention" : "ready";
+  const rowGroupOrder = { attention: 0, ready: 1, history: 2 };
+  const orderedRows = [...rows].sort((left, right) => rowGroupOrder[rowGroup(left)] - rowGroupOrder[rowGroup(right)]);
   let renderedAttentionGroup = false;
   let renderedReadyGroup = false;
+  let renderedHistoryGroup = false;
   draftList.innerHTML = orderedRows.map((message) => {
-    const needsAttention = rowNeedsAttention(message);
-    const groupHeading = needsAttention && !renderedAttentionGroup
+    const group = rowGroup(message);
+    const groupHeading = group === "attention" && !renderedAttentionGroup
       ? (renderedAttentionGroup = true, `<tr class="rfx-wave-group-row is-attention"><td colspan="9">Needs attention</td></tr>`)
-      : !needsAttention && !renderedReadyGroup
+      : group === "ready" && !renderedReadyGroup
         ? (renderedReadyGroup = true, `<tr class="rfx-wave-group-row is-ready"><td colspan="9">Ready for review</td></tr>`)
+        : group === "history" && !renderedHistoryGroup
+          ? (renderedHistoryGroup = true, `<tr class="rfx-wave-group-row"><td colspan="9">Archived history</td></tr>`)
         : "";
     const isEmail = message.channel === "email";
     const isWhatsapp = message.channel === "whatsapp";

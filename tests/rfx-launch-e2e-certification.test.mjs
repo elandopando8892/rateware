@@ -19,7 +19,7 @@ assert.match(html, /id="rfx-wave-readiness-summary"/, "Delivery Queue should kee
 assert.match(html, /id="rfx-continue-wave-review"[^>]+disabled/, "Continue review must begin disabled until a reviewable draft exists");
 assert.match(source, /function renderInvitationWaveWorkspace\(rows = \[\]\)[\s\S]+Nothing sends without confirmation\./, "Invitation Wave should calculate review, blocker, release, delivery, and response readiness without implying automatic send");
 assert.match(source, /continueWaveReviewButton\?\.addEventListener\("click"[\s\S]+!draftWasReviewed\(message\)[\s\S]+renderDraftQueue\(\)/, "Continue review should open the next unreviewed carrier message");
-assert.match(source, /const orderedRows = \[\.\.\.rows\]\.sort[\s\S]+Needs attention[\s\S]+Ready for review/, "Carrier review should surface attention items before release-ready rows");
+assert.match(source, /const orderedRows = \[\.\.\.rows\]\.sort[\s\S]+Needs attention[\s\S]+Ready for review[\s\S]+Archived history/, "Carrier review should surface attention items before release-ready rows and keep archived history separate");
 assert.match(source, /document\.body\.classList\.toggle\("rfx-wave-review-active", nextView === "queue"\)/, "Message Queue should enter a focused wave-review layout without changing other Launch workspaces");
 
 console.log("RFx Launch E2E certification contracts passed.");
