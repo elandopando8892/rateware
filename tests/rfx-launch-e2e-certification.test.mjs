@@ -14,5 +14,11 @@ assert.match(source, /if \(checkbox\.checked[\s\S]+!reviewedDraftMessageIds\.has
 assert.match(source, /if \(!draftWasReviewed\(row\)\)[\s\S]+Review this carrier message before sending\./, "Single-message email release should require review");
 assert.match(source, /if \(!draftWasReviewed\(row\)\)[\s\S]+Review this carrier message before sending it through WhatsApp\./, "Single-message WhatsApp release should require review");
 assert.match(html, /id="rfx-draft-review-progress"/, "Delivery Queue should expose review progress next to the release promise");
+assert.match(html, /id="rfx-wave-lifecycle"/, "Delivery Queue should expose the selected Invitation Wave lifecycle");
+assert.match(html, /id="rfx-wave-readiness-summary"/, "Delivery Queue should keep release readiness visible beside carrier review");
+assert.match(html, /id="rfx-continue-wave-review"[^>]+disabled/, "Continue review must begin disabled until a reviewable draft exists");
+assert.match(source, /function renderInvitationWaveWorkspace\(rows = \[\]\)[\s\S]+Nothing sends without confirmation\./, "Invitation Wave should calculate review, blocker, release, delivery, and response readiness without implying automatic send");
+assert.match(source, /continueWaveReviewButton\?\.addEventListener\("click"[\s\S]+!draftWasReviewed\(message\)[\s\S]+renderDraftQueue\(\)/, "Continue review should open the next unreviewed carrier message");
+assert.match(source, /const orderedRows = \[\.\.\.rows\]\.sort[\s\S]+Needs attention[\s\S]+Ready for review/, "Carrier review should surface attention items before release-ready rows");
 
 console.log("RFx Launch E2E certification contracts passed.");

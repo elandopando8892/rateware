@@ -10766,6 +10766,120 @@ a {
   }
 }
 
+/* Invitation wave workspace: visual target selected for the governed release flow. */
+.bid-room-page .rfx-wave-workspace-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 2px 12px;
+}
+
+.bid-room-page .rfx-wave-workspace-heading > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bid-room-page .rfx-wave-workspace-heading .eyebrow { margin: 0; }
+.bid-room-page .rfx-wave-workspace-heading strong { color: #1e2d38; font-size: 1rem; }
+.bid-room-page .rfx-wave-workspace-heading small { color: #687983; font-size: .72rem; }
+
+.bid-room-page .rfx-wave-workspace-primary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+}
+
+.bid-room-page .rfx-wave-lifecycle {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-bottom: 14px;
+  border: 1px solid #d8e2e7;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.bid-room-page .rfx-wave-lifecycle-step {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px 14px 13px;
+  border-bottom: 3px solid transparent;
+  border-right: 1px solid #e4eaee;
+}
+
+.bid-room-page .rfx-wave-lifecycle-step:last-child { border-right: 0; }
+.bid-room-page .rfx-wave-lifecycle-step.is-complete { border-bottom-color: #58a88d; }
+.bid-room-page .rfx-wave-lifecycle-step.is-current { border-bottom-color: #1769d2; background: #f7faff; }
+.bid-room-page .rfx-wave-lifecycle-step > span { color: #71818a; font-size: .62rem; font-weight: 800; text-transform: uppercase; }
+.bid-room-page .rfx-wave-lifecycle-step > strong { overflow: hidden; color: #243642; font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+.bid-room-page .rfx-wave-lifecycle-step > small { overflow: hidden; color: #687983; font-size: .66rem; text-overflow: ellipsis; white-space: nowrap; }
+.bid-room-page .rfx-wave-lifecycle-step.is-current > span,
+.bid-room-page .rfx-wave-lifecycle-step.is-current > strong { color: #1769d2; }
+
+.bid-room-page .rfx-wave-readiness {
+  position: sticky;
+  top: 72px;
+  display: grid;
+  gap: 10px;
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+}
+
+.bid-room-page .rfx-wave-readiness-summary,
+.bid-room-page .rfx-wave-readiness .rfx-draft-review-inspector {
+  position: static;
+  max-height: none;
+  border: 1px solid #d8e2e7;
+  border-radius: 7px;
+  background: #fff;
+  padding: 12px;
+}
+
+.bid-room-page .rfx-wave-readiness-summary { display: grid; gap: 11px; }
+.bid-room-page .rfx-wave-readiness-heading { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
+.bid-room-page .rfx-wave-readiness-heading > div { display: grid; gap: 3px; }
+.bid-room-page .rfx-wave-readiness-heading .eyebrow { margin: 0; }
+.bid-room-page .rfx-wave-readiness-heading strong { color: #243642; font-size: .76rem; line-height: 1.4; }
+.bid-room-page .rfx-wave-readiness-heading > b { color: #1769d2; font-size: 1rem; }
+.bid-room-page .rfx-wave-readiness-meter { height: 5px; overflow: hidden; border-radius: 3px; background: #e8eef2; }
+.bid-room-page .rfx-wave-readiness-meter > span { display: block; height: 100%; background: #2f9e69; }
+.bid-room-page .rfx-wave-readiness-summary dl { display: grid; gap: 0; margin: 0; }
+.bid-room-page .rfx-wave-readiness-summary dl > div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #e5ebef; }
+.bid-room-page .rfx-wave-readiness-summary dt { color: #687983; font-size: .68rem; }
+.bid-room-page .rfx-wave-readiness-summary dd { overflow: hidden; margin: 0; color: #243642; font-size: .69rem; font-weight: 750; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.bid-room-page .rfx-wave-readiness-summary > p { margin: 0; border: 1px solid #bcd3ed; border-radius: 5px; background: #f5f9fe; padding: 9px; color: #175aa9; font-size: .68rem; font-weight: 720; }
+.bid-room-page .rfx-wave-readiness-summary > button { width: 100%; }
+
+.bid-room-page .rfx-draft-table .rfx-wave-group-row td {
+  padding: 10px 8px 6px;
+  border-bottom: 1px solid #dce5ea;
+  background: #fff;
+  color: #526672;
+  font-size: .66rem;
+  font-weight: 850;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.bid-room-page .rfx-draft-table .rfx-wave-group-row.is-attention td { color: #b23a32; }
+.bid-room-page .rfx-draft-table .rfx-wave-group-row.is-ready td { color: #268458; }
+
+@media (max-width: 980px) {
+  .bid-room-page .rfx-wave-lifecycle { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .bid-room-page .rfx-wave-lifecycle-step:nth-child(3) { border-right: 0; }
+  .bid-room-page .rfx-wave-readiness { position: static; max-height: none; }
+}
+
+@media (max-width: 680px) {
+  .bid-room-page .rfx-wave-workspace-heading { align-items: flex-start; flex-direction: column; }
+  .bid-room-page .rfx-wave-workspace-primary { width: 100%; justify-content: space-between; }
+  .bid-room-page .rfx-wave-lifecycle { grid-template-columns: 1fr; }
+  .bid-room-page .rfx-wave-lifecycle-step { border-right: 0; }
+}
+
 /* Delivery Review Inspector: governed per-carrier review before selection. */
 .bid-room-page .rfx-delivery-review-grid {
   display: grid;

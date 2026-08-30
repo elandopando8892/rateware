@@ -920,15 +920,27 @@
                   </section>
                   </section>
                   <section class="rfx-delivery-view-panel" data-rfx-delivery-view-panel="queue" role="tabpanel" hidden>
+                  <div class="rfx-wave-workspace-heading">
+                    <div>
+                      <p class="eyebrow">Invitation wave</p>
+                      <strong id="rfx-wave-workspace-title">Select an RFx invitation wave</strong>
+                      <small id="rfx-wave-workspace-context">Review recipients and resolve delivery blockers before release.</small>
+                    </div>
+                    <div class="rfx-wave-workspace-primary">
+                      <span id="rfx-wave-workspace-status" class="status-pill warning">Review required</span>
+                      <button id="rfx-continue-wave-review" type="button" class="small-button" disabled>Continue review</button>
+                    </div>
+                  </div>
+                  <section id="rfx-wave-lifecycle" class="rfx-wave-lifecycle" aria-label="Invitation wave lifecycle" aria-live="polite"></section>
+                  <div class="rfx-delivery-review-grid">
+                  <div class="rfx-delivery-queue-main">
                   <div class="rfx-delivery-queue-heading">
                     <div>
-                      <p class="eyebrow">Message queue</p>
-                      <strong>Release only the drafts you select</strong>
+                      <p class="eyebrow">Carrier review</p>
+                      <strong>Resolve attention items, then review the ready list</strong>
                     </div>
                     <span id="rfx-draft-review-progress">Review is required before any send action becomes available.</span>
                   </div>
-                  <div class="rfx-delivery-review-grid">
-                  <div class="rfx-delivery-queue-main">
                   <div class="rfx-draft-filterbar">
                     <label>
                       <span>Message delivery log</span>
@@ -986,10 +998,13 @@
                     </table>
                   </div>
                   </div>
-                  <aside id="rfx-draft-review-inspector" class="rfx-draft-review-inspector" aria-live="polite" aria-label="Selected delivery message review">
+                  <aside class="rfx-wave-readiness" aria-label="Invitation wave release readiness">
+                    <div id="rfx-wave-readiness-summary" class="rfx-wave-readiness-summary" aria-live="polite"></div>
+                    <div id="rfx-draft-review-inspector" class="rfx-draft-review-inspector" aria-live="polite" aria-label="Selected delivery message review">
                     <p class="eyebrow">Delivery review</p>
                     <strong>Select a carrier message</strong>
                     <span>Open Review from any row to inspect its recipient, personalized content, lane context, and delivery history.</span>
+                    </div>
                   </aside>
                   </div>
                   </section>
