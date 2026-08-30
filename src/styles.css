@@ -37290,6 +37290,73 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
 .bid-room-page.rfx-wave-review-active .rfx-wave-readiness .rfx-draft-review-inspector,
 .bid-room-page.rfx-wave-review-active .rfx-delivery-workspace-footer { display: none; }
 
+.bid-room-page.rfx-wave-review-active.rfx-carrier-review-active .rfx-wave-readiness .rfx-draft-review-inspector {
+  display: grid;
+  gap: 14px;
+  border-color: #b9cbe1;
+  box-shadow: 0 12px 30px rgba(20, 55, 90, .1);
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-draft-table tr.is-reviewed-row td { background: #f7fcf8; }
+
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-issue {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #efb8b3;
+  border-radius: 5px;
+  background: #fff8f7;
+  padding: 11px;
+  color: #9e332d;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-issue.is-ready {
+  border-color: #add9bd;
+  background: #f5fbf7;
+  color: #28764c;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-issue span {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-issue strong { font-size: 12px; line-height: 1.45; }
+
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-form { display: grid; gap: 11px; }
+
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-form > label { display: grid; gap: 5px; }
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-form > label > span,
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-form legend { color: #52657c; font-size: 10px; font-weight: 750; }
+
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-form input[type="text"],
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-form input[type="email"],
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-form input[type="tel"] {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid #cbd6e3;
+  border-radius: 5px;
+  background: #fff;
+  padding: 7px 9px;
+  color: #21344d;
+  font: inherit;
+  font-size: 12px;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-form fieldset {
+  display: flex;
+  gap: 16px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-form fieldset label { display: flex; align-items: center; gap: 6px; color: #344b67; font-size: 12px; }
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-safety { margin: 0; border-left: 3px solid #1268e8; background: #f5f9ff; padding: 9px; color: #315b8e; font-size: 10px; line-height: 1.45; }
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-actions { display: grid; grid-template-columns: 1fr; gap: 7px; }
+.bid-room-page.rfx-wave-review-active .rfx-carrier-review-actions button { width: 100%; }
+
 @media (max-width: 1120px) {
   .bid-room-page.rfx-wave-review-active .rfx-delivery-review-grid { grid-template-columns: minmax(0, 1fr) 300px; }
   .bid-room-page.rfx-wave-review-active .rfx-wave-lifecycle { padding-inline: 16px; }

@@ -29,5 +29,9 @@ assert.match(html, /class="rfx-wave-shell-nav"[\s\S]+Home[\s\S]+Launch[\s\S]+Inb
 assert.match(source, /deliveryParticipationRows\.slice\(0, 18\)[\s\S]+data-rfx-wave-carrier-select/, "Invitation Wave should show RFx carrier participants when no delivery drafts exist");
 assert.match(source, /if \(!rows\.length && deliveryParticipationRows\.length && !hasSearch\)/, "Persisted draft-status filters should not hide the RFx participant review when no drafts exist");
 assert.match(source, /rfxOpenDeliveryQueueButton\?\.addEventListener[\s\S]+deliveryParticipationStatus = "all";[\s\S]+draftQueueTrackingStatus = "all";/, "Opening Invitation Wave should load the full RFx audience instead of an empty drafted-only subset");
+assert.match(source, /data-rfx-wave-carrier-review[\s\S]+function renderDraftReviewInspector[\s\S]+data-rfx-carrier-review-form/, "Carrier Review should reuse the governed inspector beside release readiness");
+assert.match(source, /Save this contact to Carrier CRM and mark the carrier reviewed\? No invitation will be sent\.[\s\S]+await updateVendor/, "Carrier contact corrections should require explicit confirmation before the CRM write");
+assert.match(source, /data-rfx-mark-carrier-reviewed[\s\S]+reviewedCarrierVendorIds\.add/, "Carrier Review should support a reversible session review without forcing a CRM write");
+assert.match(styles, /rfx-carrier-review-active[\s\S]+rfx-carrier-review-form[\s\S]+rfx-carrier-review-safety/, "Focused Invitation Wave should expose a clear review form and safety boundary");
 
 console.log("RFx Launch E2E certification contracts passed.");
