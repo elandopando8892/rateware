@@ -424,6 +424,7 @@ const touchpointSummary = document.querySelector("#rfx-touchpoint-summary");
 const touchpointList = document.querySelector("#rfx-touchpoint-list");
 const draftSummary = document.querySelector("#rfx-draft-summary");
 const draftList = document.querySelector("#rfx-draft-list");
+const draftReviewInspector = document.querySelector("#rfx-draft-review-inspector");
 const draftSearchInput = document.querySelector("#rfx-draft-search");
 const draftClearSearchButton = document.querySelector("#rfx-clear-draft-search");
 const draftTrackingFilters = document.querySelector("#rfx-draft-tracking-filters");
@@ -599,6 +600,7 @@ let responseBoardRowsCache = [];
 let selectedLaneIds = new Set();
 let selectedInvitationIds = new Set();
 let selectedDraftMessageIds = new Set();
+let activeDraftReviewId = "";
 const selectedDraftMessageRows = new Map();
 let draftQueueSearch = rfxPageParams.has("draft_search")
   ? String(rfxPageParams.get("draft_search") || "")
@@ -7425,15 +7427,20 @@ function renderDraftQueue() {
     draftToggleVisible.disabled = draftQueueLoading || !rows.length;
   }
   if (!selectedEventId) {
+    activeDraftReviewId = "";
+    renderDraftReviewInspector();
     updateDraftSendControls([]);
     draftList.innerHTML = `<tr><td colspan="9">Select a bid event to review invitation drafts.</td></tr>`;
     return;
   }
   if (draftQueueLoading) {
+    renderDraftReviewInspector();
     draftList.innerHTML = `<tr><td colspan="9">Loading draft queue...</td></tr>`;
     return;
   }
   if (!rows.length) {
+    activeDraftReviewId = "";
+    renderDraftReviewInspector();
     updateDraftSendControls([]);
     const canShowAll = draftQueueTrackingStatus !== "all" || hasSearch;
     draftList.innerHTML = `
@@ -7504,7 +7511,7 @@ function renderDraftQueue() {
         ? whatsappDraftStatusDetail(message, templateStatus)
         : "";
     return `
-      <tr class="${checked ? "is-selected-row" : ""}${staleDraft ? " is-stale-row" : ""}" data-rfx-draft-id="${escapeHtml(message.id)}">
+      <tr class="${checked ? "is-selected-row" : ""}${staleDraft ? " is-stale-row" : ""}${String(message.id) === activeDraftReviewId ? " is-review-row" : ""}" data-rfx-draft-id="${escapeHtml(message.id)}">
         <td><input type="checkbox" data-rfx-draft-select="${escapeHtml(message.id)}" ${checked ? "checked" : ""} /></td>
         <td>
           <strong>${escapeHtml(message.vendors?.vendor_name || message.vendors?.domain || "Vendor")}</strong>
@@ -7521,6 +7528,7 @@ function renderDraftQueue() {
         <td>${escapeHtml(updated ? new Date(updated).toLocaleString() : "-")}</td>
         <td>
           <div class="rfx-draft-row-actions">
+            <button class="secondary small-button" type="button" data-rfx-review-draft="${escapeHtml(message.id)}">Review</button>
             ${staleDraft || ["sent", "replied"].includes(status) ? `<button class="small-button" type="button" data-rfx-refresh-draft="${escapeHtml(message.id)}">${staleDraft ? "Refresh draft" : "Create resend"}</button>` : ""}
             ${isEmail ? `<button class="small-button" type="button" data-rfx-send-draft-now="${escapeHtml(message.id)}" ${canSendEmail ? "" : "disabled"}>Send email</button>` : ""}
             ${isWhatsapp ? `<button class="small-button" type="button" data-rfx-send-whatsapp-now="${escapeHtml(message.id)}" ${canSendWhatsapp ? "" : "disabled"}>Send WhatsApp</button>` : ""}
@@ -7533,6 +7541,62 @@ function renderDraftQueue() {
       </tr>
     `;
   }).join("");
+  renderDraftReviewInspector();
+}
+
+function renderDraftReviewInspector() {
+  if (!draftReviewInspector) return;
+  const message = draftQueueRows.find((row) => String(row.id) === activeDraftReviewId);
+  if (!message) {
+    draftReviewInspector.innerHTML = `
+      <p class="eyebrow">Delivery review</p>
+      <strong>Select a carrier message</strong>
+      <span>Open Review from any row to inspect its recipient, personalized content, lane context, and delivery history.</span>
+    `;
+    return;
+  }
+  const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};
+  const carrier = message.vendors?.vendor_name || message.vendors?.domain || "Carrier";
+  const recipient = messageRecipient(message) || "No compatible contact";
+  const lane = message.rfx_lanes
+    ? `${message.rfx_lanes.origin || "-"} → ${message.rfx_lanes.destination || "-"}`
+    : message.rfx_events?.rfx_id || selectedEvent?.rfx_id || "This RFx";
+  const content = String(message.text_body || message.whatsapp_text || message.html_body || "No message content available.").trim();
+  const trackingStatus = outreachTrackingState(message);
+  const created = message.created_at ? new Date(message.created_at).toLocaleString() : "Not recorded";
+  const updated = message.updated_at ? new Date(message.updated_at).toLocaleString() : created;
+  const sent = message.sent_at ? new Date(message.sent_at).toLocaleString() : "Not sent";
+  const providerDetail = message.delivery_error || metadata.provider_status || metadata.delivery_status || "No provider exception";
+  draftReviewInspector.innerHTML = `
+    <div class="rfx-draft-review-heading">
+      <div><p class="eyebrow">Delivery review</p><strong>${escapeHtml(carrier)}</strong></div>
+      <button type="button" class="secondary small-button" data-rfx-close-draft-review aria-label="Close delivery review">Close</button>
+    </div>
+    <div class="rfx-draft-review-facts">
+      <div><span>Recipient</span><strong>${escapeHtml(recipient)}</strong></div>
+      <div><span>Channel</span><strong>${escapeHtml(outreachChannelLabel(message.channel))}</strong></div>
+      <div><span>Lane</span><strong>${escapeHtml(lane)}</strong></div>
+      <div><span>Status</span><strong><span class="status-pill ${trackingStatusTone(trackingStatus)}">${escapeHtml(trackingStatus)}</span></strong></div>
+    </div>
+    <section class="rfx-draft-review-message">
+      <span>Personalized message</span>
+      <strong>${escapeHtml(message.subject || "RFx invitation")}</strong>
+      <pre>${escapeHtml(content)}</pre>
+    </section>
+    <section class="rfx-draft-review-timeline" aria-label="Delivery history">
+      <span>Delivery history</span>
+      <ol>
+        <li><b>Draft created</b><small>${escapeHtml(created)}</small></li>
+        <li><b>Last updated</b><small>${escapeHtml(updated)}</small></li>
+        <li class="${message.sent_at ? "is-complete" : ""}"><b>${message.sent_at ? "Sent" : "Not released"}</b><small>${escapeHtml(sent)}</small></li>
+      </ol>
+      <small>${escapeHtml(providerDetail)}</small>
+    </section>
+    <label class="rfx-draft-review-select">
+      <input type="checkbox" data-rfx-draft-select="${escapeHtml(message.id)}" ${selectedDraftMessageIds.has(String(message.id)) ? "checked" : ""} />
+      <span>Select this message for the governed bulk action</span>
+    </label>
+  `;
 }
 
 function renderOutreachLaunchpad() {
@@ -11312,6 +11376,12 @@ document.addEventListener("click", (event) => {
 });
 
 draftList?.addEventListener("click", async (event) => {
+  const reviewButton = event.target instanceof Element ? event.target.closest("[data-rfx-review-draft]") : null;
+  if (reviewButton) {
+    activeDraftReviewId = String(reviewButton.dataset.rfxReviewDraft || "");
+    renderDraftQueue();
+    return;
+  }
   const showAllDraftQueueButton = event.target instanceof Element
     ? event.target.closest("[data-rfx-show-all-draft-queue]")
     : null;
@@ -11395,6 +11465,24 @@ draftList?.addEventListener("click", async (event) => {
   } finally {
     statusButton.disabled = false;
   }
+});
+
+draftReviewInspector?.addEventListener("click", (event) => {
+  if (!(event.target instanceof Element)) return;
+  if (event.target.closest("[data-rfx-close-draft-review]")) {
+    activeDraftReviewId = "";
+    renderDraftQueue();
+  }
+});
+
+draftReviewInspector?.addEventListener("change", (event) => {
+  const checkbox = event.target instanceof Element ? event.target.closest("[data-rfx-draft-select]") : null;
+  if (!checkbox) return;
+  const id = String(checkbox.dataset.rfxDraftSelect || "");
+  if (!id) return;
+  if (checkbox.checked) rememberDraftRow(draftQueueRows.find((message) => String(message.id) === id));
+  else forgetDraftRow(id);
+  renderDraftQueue();
 });
 
 draftList?.addEventListener("change", (event) => {

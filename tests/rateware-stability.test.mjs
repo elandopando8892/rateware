@@ -1784,6 +1784,10 @@ assert.match(rfxEventsHtml, /data-rfx-delivery-view="participation"/, "Delivery 
 assert.match(rfxEventsHtml, /data-rfx-delivery-view="queue"/, "Delivery queue should provide a focused message release view");
 assert.match(rfxEventsHtml, /Nothing sends without confirmation/, "Delivery control should keep the no-automatic-send boundary visible");
 assert.match(rfxEventsSource, /function activateRfxDeliveryView/, "Delivery queue views should be keyboard-accessible native controls with deterministic state");
+assert.match(rfxEventsHtml, /id="rfx-draft-review-inspector"/, "Message queue should provide a per-carrier delivery review inspector");
+assert.match(rfxEventsSource, /function renderDraftReviewInspector/, "Delivery review should render from the already-loaded event-scoped draft row");
+assert.match(rfxEventsSource, /data-rfx-review-draft/, "Every delivery row should expose an explicit review action before selection");
+assert.match(rfxEventsSource, /Select this message for the governed bulk action/, "The inspector should connect review to the existing governed selection without sending");
 assert.match(rfxEventsSource, /activateRfxDeliveryView\("queue"\)/, "Opening a prepared delivery queue should focus the message queue without sending anything");
 assert.match(rfxEventsSource, /function renderDeliveryWaveState/, "Delivery queue should render a compact event-scoped status for the active carrier wave");
 assert.match(rfxEventsSource, /Only this selected wave belongs to this RFx delivery queue/, "Delivery queue should explain that selected-wave activity never mixes with other RFx history");
