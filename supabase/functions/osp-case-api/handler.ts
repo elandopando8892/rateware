@@ -56,7 +56,8 @@ export type CaseApiHandlerOptions = {
     signal?: AbortSignal,
   ): Promise<VerifiedWorkflowIdentity>;
   verifyApprovalToken?(
-    token: string,
+    accessToken: string,
+    idToken: string,
     signal?: AbortSignal,
   ): Promise<VerifiedApprovalIdentity>;
   clarificationStore: ClarificationStorePort;
@@ -86,6 +87,14 @@ function bearer(request: Request): string {
   );
   if (!match) throw new OspApiError("UNAUTHORIZED");
   return match[1];
+}
+
+function approvalProof(request: Request): string {
+  const value = request.headers.get("x-osp-approval-proof") ?? "";
+  if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value)) {
+    throw new OspApiError("UNAUTHORIZED");
+  }
+  return value;
 }
 
 function authority(
@@ -154,7 +163,7 @@ function preflightHeaders(url: URL): readonly string[] {
       "input_snapshot_sha256",
       "idempotency_key",
     ]);
-    return ["authorization"];
+    return ["authorization", "x-osp-approval-proof"];
   }
   if (action === "approve_and_apply_signature") {
     exactQuery(url, [
@@ -165,7 +174,7 @@ function preflightHeaders(url: URL): readonly string[] {
       "signature_position_version",
       "idempotency_key",
     ]);
-    return ["authorization"];
+    return ["authorization", "x-osp-approval-proof"];
   }
   if (action === "save_outbound_draft") {
     exactQuery(url, [
@@ -197,7 +206,7 @@ function preflightHeaders(url: URL): readonly string[] {
       "payload_id",
       "payload_sha256",
     ]);
-    return ["authorization"];
+    return ["authorization", "x-osp-approval-proof"];
   }
   if (action === "request_authorized_send") {
     exactQuery(url, [
@@ -208,7 +217,7 @@ function preflightHeaders(url: URL): readonly string[] {
       "payload_sha256",
       "sales_authorization_id",
     ]);
-    return ["authorization"];
+    return ["authorization", "x-osp-approval-proof"];
   }
   throw new OspApiError("INVALID_REQUEST");
 }
@@ -608,6 +617,7 @@ export function createCaseApiHandler(
         ) throw new OspApiError("INVALID_REQUEST");
         const verified = await options.verifyApprovalToken(
           bearer(request),
+          approvalProof(request),
           request.signal,
         );
         const common = {
@@ -750,6 +760,7 @@ export function createCaseApiHandler(
         ) throw new OspApiError("INVALID_REQUEST");
         const verified = await options.verifyApprovalToken(
           bearer(request),
+          approvalProof(request),
           request.signal,
         );
         const result = await options.outboundActions.authorizePayload({
@@ -787,6 +798,7 @@ export function createCaseApiHandler(
         ) throw new OspApiError("INVALID_REQUEST");
         const verified = await options.verifyApprovalToken(
           bearer(request),
+          approvalProof(request),
           request.signal,
         );
         const result = await options.outboundActions.requestSend({

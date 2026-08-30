@@ -17,6 +17,7 @@ import type {
 import { createSessionChannel, type SessionChannel } from './session-channel';
 import {
   assertVerifiedAccessTokenMatchesSession,
+  assertVerifiedIdTokenMatchesSession,
   bindVerifiedTokenPair,
   createKindeTokenVerifier,
   type KindeTokenVerifier,
@@ -356,7 +357,9 @@ function attemptCleanup(action: (() => void) | undefined): void {
 export function createKindeAuthPort(
   config: RuntimeConfig,
   dependencies: KindeAuthPortDependencies = {},
-): ManagedAuthPort {
+): ManagedAuthPort & {
+  getIdToken(expected: BoundSession): Promise<string>;
+} {
   const origin = dependencies.origin ?? window.location.origin;
   const redirectUri = authRedirectUri(origin, config.VITE_OSP_BUILD_PROFILE);
   const createClient = dependencies.createClient
@@ -780,6 +783,39 @@ export function createKindeAuthPort(
           && currentSession
           && sameSession(currentSession, expected)
         ) {
+          operationEpoch += 1;
+          clearSession(true);
+        }
+        throw error;
+      }
+    },
+    async getIdToken(expected) {
+      if (logoutBarrier) throw new Error('Requested session is not current');
+      const operation = operationEpoch;
+      const assertStillCurrent = () => {
+        if (!isCurrentOperation(operation) || !currentSession || !sameSession(currentSession, expected)) {
+          throw new Error('Requested session is not current');
+        }
+      };
+      assertStillCurrent();
+      try {
+        const client = await getClient();
+        assertStillCurrent();
+        const token = await client.getIdToken();
+        assertStillCurrent();
+        if (!token) throw new Error('Kinde ID token missing');
+        const claims = await tokenVerifier.verifyIdToken(token);
+        assertStillCurrent();
+        const verified = assertVerifiedIdTokenMatchesSession(
+          token,
+          claims,
+          expected.identity,
+          config,
+        );
+        assertStillCurrent();
+        return verified;
+      } catch (error) {
+        if (isCurrentOperation(operation) && currentSession && sameSession(currentSession, expected)) {
           operationEpoch += 1;
           clearSession(true);
         }

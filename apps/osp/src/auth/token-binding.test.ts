@@ -13,6 +13,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { RuntimeConfig } from '../config/runtime';
 import {
   assertVerifiedAccessTokenMatchesSession,
+  assertVerifiedIdTokenMatchesSession,
   bindVerifiedTokenPair,
   createKindeTokenVerifier,
 } from './token-binding';
@@ -138,6 +139,37 @@ describe('assertVerifiedAccessTokenMatchesSession', () => {
     expect(() => assertVerifiedAccessTokenMatchesSession(
       'cryptographically-verified-access-token',
       { ...baseAccessClaims, ...overrides },
+      bound.identity,
+      runtime,
+    )).toThrow();
+  });
+});
+
+describe('assertVerifiedIdTokenMatchesSession', () => {
+  it('returns the ID token only when its verified identity matches the bound session', () => {
+    const bound = bind();
+    const token = 'cryptographically-verified-id-token';
+
+    expect(assertVerifiedIdTokenMatchesSession(
+      token,
+      baseIdClaims,
+      bound.identity,
+      runtime,
+    )).toBe(token);
+  });
+
+  it.each([
+    ['subject', { sub: 'user-b' }],
+    ['organization', { org_code: 'org-b' }],
+    ['email', { email: 'other@example.test' }],
+    ['issuer', { iss: 'https://other.example.test' }],
+    ['authorized party', { azp: 'another-client' }],
+    ['email verification', { email_verified: false }],
+  ])('rejects a current ID token with a changed %s', (_name, overrides) => {
+    const bound = bind();
+    expect(() => assertVerifiedIdTokenMatchesSession(
+      'cryptographically-verified-id-token',
+      { ...baseIdClaims, ...overrides },
       bound.identity,
       runtime,
     )).toThrow();

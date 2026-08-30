@@ -25,6 +25,7 @@ const runtime = config.VITE_OSP_BUILD_PROFILE === 'preview-synthetic'
           supabaseUrl: config.VITE_SUPABASE_URL,
           getCurrentSession: () => authPort.getCurrentSession(),
           getAccessToken: (session, forceRefresh) => authPort.getAccessToken(session, forceRefresh),
+          getApprovalIdToken: (session) => authPort.getIdToken(session),
         }),
       };
     })();

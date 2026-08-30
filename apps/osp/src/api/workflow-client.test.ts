@@ -68,6 +68,7 @@ function client(fetch: typeof globalThis.fetch) {
       expect(forceRefresh).toBe(false);
       return 'synthetic-token';
     }),
+    getApprovalIdToken: vi.fn(async () => 'synthetic-id-token'),
     fetch,
   });
 }
@@ -95,7 +96,13 @@ describe('WorkflowClient', () => {
   });
 
   it('sends each mutation exactly once and never refreshes or retries automatically', async () => {
-    const fetch = vi.fn(async () => { throw new TypeError('offline'); });
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.headers).toEqual({
+        authorization: 'Bearer synthetic-token',
+        'x-osp-approval-proof': 'synthetic-id-token',
+      });
+      throw new TypeError('offline');
+    });
     await expect(client(fetch).completeOperationsReview({
       caseId,
       expectedVersion: 7,
@@ -103,6 +110,24 @@ describe('WorkflowClient', () => {
       inputSnapshotSha256: sha,
     })).rejects.toMatchObject({ code: 'NETWORK_UNAVAILABLE' });
     expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('fails closed before fetch when the bound approval proof is unavailable', async () => {
+    const fetch = vi.fn();
+    const workflow = createWorkflowClient({
+      supabaseUrl: 'https://project.example.test',
+      getCurrentSession: () => session,
+      getAccessToken: vi.fn(async () => 'synthetic-token'),
+      getApprovalIdToken: vi.fn(async () => { throw new Error('missing ID token'); }),
+      fetch,
+    });
+    await expect(workflow.completeOperationsReview({
+      caseId,
+      expectedVersion: 7,
+      idempotencyKey: 'operations-no-proof',
+      inputSnapshotSha256: sha,
+    })).rejects.toMatchObject({ code: 'NO_SESSION' });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('maps the exact safe 409 response to VERSION_CONFLICT without replay', async () => {

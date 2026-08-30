@@ -50,6 +50,7 @@ function request(query: string, init: RequestInit = {}) {
       headers: {
         origin: "https://osp.heymarksman.com",
         authorization: "Bearer synthetic-token",
+        "x-osp-approval-proof": "header.payload.signature",
         ...init.headers,
       },
     },
@@ -251,6 +252,13 @@ Deno.test("case API preflight is exact per clarification action", async () => {
       ),
     )).status,
     400,
+  );
+  assertEquals(
+    (await handler(preflight(
+      `action=complete_operations_review&case_id=${row.caseId}&expected_case_version=4&input_snapshot_sha256=${sourceHash}&idempotency_key=operations-1`,
+      "authorization, x-osp-approval-proof",
+    ))).status,
+    204,
   );
 });
 

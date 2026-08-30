@@ -120,8 +120,8 @@ export function createCaseApiRuntime(options: {
   });
   return createCaseApiHandler({
     verifyToken: (token, signal) => verifier.verifyWorkflow(token, signal),
-    verifyApprovalToken: (token, signal) =>
-      verifier.verifyApproval(token, signal),
+    verifyApprovalToken: (accessToken, idToken, signal) =>
+      verifier.verifyApproval(accessToken, idToken, signal),
     clarificationStore,
     approvalActions,
     outboundActions,

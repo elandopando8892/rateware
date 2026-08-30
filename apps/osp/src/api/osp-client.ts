@@ -140,6 +140,7 @@ const STATUS_BY_ERROR_CODE: Readonly<Record<OspPublicErrorCode, number>> = Objec
 
 type ClientOptions = OspClientAuth & {
   supabaseUrl: string;
+  getApprovalIdToken(expected: BoundSession): Promise<string>;
   fetch?: typeof globalThis.fetch;
 };
 

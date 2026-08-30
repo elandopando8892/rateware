@@ -33,7 +33,7 @@ const OSP_PRODUCTION_READONLY_EMAILS = Object.freeze([
 export type KindeJwtVerifier = {
   verify(token: string, signal?: AbortSignal): Promise<OspAuthorizationIdentity>;
   verifyWorkflow(token: string, signal?: AbortSignal): Promise<VerifiedWorkflowIdentity>;
-  verifyApproval(token: string, signal?: AbortSignal): Promise<VerifiedApprovalIdentity>;
+  verifyApproval(accessToken: string, idToken: string, signal?: AbortSignal): Promise<VerifiedApprovalIdentity>;
 };
 
 export type KindeJwtVerifierOptions = {
@@ -109,7 +109,7 @@ function canonicalApprovalSession(payload: Record<string, unknown>): Pick<
   VerifiedApprovalIdentity,
   'authorizationSessionId' | 'authorizationSessionIssuedAt'
 > {
-  const sessionId = payload.sid;
+  const sessionId = payload.jti;
   const authTime = payload.auth_time;
   if (typeof sessionId !== 'string' || !/^[A-Za-z0-9:_-]{1,256}$/.test(sessionId) ||
       typeof authTime !== 'number' || !Number.isSafeInteger(authTime) || authTime < 0) {
@@ -246,17 +246,17 @@ export function createKindeJwtVerifier({
     return await joinFlight(startFlight(kind), signal);
   };
 
-  const verifyJwt = async (token: string, snapshot: JwksSnapshot) => {
+  const verifyJwt = async (token: string, snapshot: JwksSnapshot, expectedAudience = audience) => {
     return await jwtVerify(token, snapshot.getKey, {
       algorithms: ['RS256'],
       issuer,
-      audience,
+      audience: expectedAudience,
       clockTolerance: CLOCK_TOLERANCE_SECONDS,
       currentDate: new Date(clock()),
     });
   };
 
-  const verifyPayload = async (token: string, signal?: AbortSignal): Promise<Record<string, unknown>> => {
+  const verifyPayload = async (token: string, signal?: AbortSignal, expectedAudience = audience): Promise<Record<string, unknown>> => {
     try {
       if (signal?.aborted) throw new OspApiError('UNAUTHORIZED');
       if (typeof token !== 'string' || token === '' || token.trim() !== token) {
@@ -280,12 +280,12 @@ export function createKindeJwtVerifier({
       }
       let verified;
       try {
-        verified = await verifyJwt(token, active);
+        verified = await verifyJwt(token, active, expectedAudience);
       } catch (error) {
         if (refreshed || !isRefreshableVerificationFailure(error)) throw error;
         active = await loadJwks('refresh', signal);
         refreshed = true;
-        verified = await verifyJwt(token, active);
+        verified = await verifyJwt(token, active, expectedAudience);
       }
       return verified.payload as Record<string, unknown>;
     } catch (error) {
@@ -319,13 +319,29 @@ export function createKindeJwtVerifier({
     });
   };
 
-  const verifyApproval = async (token: string, signal?: AbortSignal): Promise<VerifiedApprovalIdentity> => {
-    const payload = await verifyPayload(token, signal);
-    const identity = requireIdentity(payload);
+  const verifyApproval = async (accessToken: string, idToken: string, signal?: AbortSignal): Promise<VerifiedApprovalIdentity> => {
+    const accessPayload = await verifyPayload(accessToken, signal);
+    const identity = requireIdentity(accessPayload);
+    const idPayload = await verifyPayload(idToken, signal, clientId);
+    const idIdentity = requireOspIdentity(idPayload, {
+      issuer,
+      audience: clientId,
+      clientId,
+      allowedEmails,
+      organizationBinding,
+      nowEpochSeconds: () => Math.floor(clock() / 1_000),
+      clockToleranceSeconds: CLOCK_TOLERANCE_SECONDS,
+    });
+    if (idPayload.email_verified !== true ||
+        idIdentity.subject !== identity.subject ||
+        idIdentity.email !== identity.email ||
+        idIdentity.organization !== identity.organization) {
+      throw new OspApiError('FORBIDDEN');
+    }
     return Object.freeze({
       identity,
-      permissions: canonicalWorkflowPermissions(payload, identity, operatorEntitlements),
-      ...canonicalApprovalSession(payload),
+      permissions: canonicalWorkflowPermissions(accessPayload, identity, operatorEntitlements),
+      ...canonicalApprovalSession(idPayload),
     });
   };
 

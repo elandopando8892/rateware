@@ -21,7 +21,8 @@ function harness(responses: Array<Response | Error>, current = session()) {
     return next;
   });
   const getAccessToken = vi.fn(async (_expected: BoundSession, force?: boolean) => force ? 'fresh-bound-token' : 'bound-token');
-  const client = createOspClient({ supabaseUrl: 'https://synthetic.supabase.co/', getCurrentSession: () => active, getAccessToken, fetch });
+  const getApprovalIdToken = vi.fn(async () => 'bound-id-token');
+  const client = createOspClient({ supabaseUrl: 'https://synthetic.supabase.co/', getCurrentSession: () => active, getAccessToken, getApprovalIdToken, fetch });
   return { client, fetch, getAccessToken, setSession(value: BoundSession | null) { active = value; } };
 }
 

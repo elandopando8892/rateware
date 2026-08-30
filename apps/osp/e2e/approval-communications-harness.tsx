@@ -28,6 +28,7 @@ function Harness() {
     supabaseUrl: location.origin,
     getCurrentSession: () => session,
     getAccessToken: async () => actor.token ?? '',
+    getApprovalIdToken: async () => actor.token ?? '',
   }), [actor.token, session]);
   const [workspace, setWorkspace] = useState<ApprovalCommunicationsWorkspace | null>(null);
   const [failed, setFailed] = useState(false);

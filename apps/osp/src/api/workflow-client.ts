@@ -9,7 +9,9 @@ import {
   type ApprovalCommunicationsWorkspace,
 } from './contracts';
 
-type WorkflowAuth = Pick<AuthPort, 'getCurrentSession' | 'getAccessToken'>;
+type WorkflowAuth = Pick<AuthPort, 'getCurrentSession' | 'getAccessToken'> & {
+  getApprovalIdToken(expected: BoundSession): Promise<string>;
+};
 type CommandBase = { caseId: string; expectedVersion: number; idempotencyKey: string };
 export type ApprovalCommandReceipt = typeof ApprovalCommandReceiptSchema._output['data'];
 export type FreezeCommandReceipt = typeof FreezeCommandReceiptSchema._output['data'];
@@ -69,17 +71,28 @@ export function createWorkflowClient(options: WorkflowAuth & { supabaseUrl: stri
   const fetchImplementation = options.fetch ?? globalThis.fetch;
   const endpoint = `${options.supabaseUrl.replace(/\/+$/, '')}/functions/v1/osp-case-api`;
 
-  async function request<T>(query: readonly (readonly [string, string])[], status: number, schema: ZodType<T>): Promise<T> {
+  async function request<T>(query: readonly (readonly [string, string])[], status: number, schema: ZodType<T>, approval = false): Promise<T> {
     const captured = options.getCurrentSession();
     if (!captured) throw new OspWorkflowError('NO_SESSION');
     let token: string;
     try { token = await options.getAccessToken(captured, false); } catch { throw new OspWorkflowError('NO_SESSION'); }
+    let approvalProof: string | undefined;
+    if (approval) {
+      try { approvalProof = await options.getApprovalIdToken(captured); } catch { throw new OspWorkflowError('NO_SESSION'); }
+    }
     assertSession(options, captured);
     const url = new URL(endpoint);
     for (const [key, value] of query) url.searchParams.append(key, value);
     let response: Response;
     try {
-      response = await fetchImplementation(url.toString(), { method: 'POST', redirect: 'error', headers: { authorization: `Bearer ${token}` } });
+      response = await fetchImplementation(url.toString(), {
+        method: 'POST',
+        redirect: 'error',
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...(approvalProof ? { 'x-osp-approval-proof': approvalProof } : {}),
+        },
+      });
     } catch {
       assertSession(options, captured);
       throw new OspWorkflowError('NETWORK_UNAVAILABLE');
@@ -116,7 +129,7 @@ export function createWorkflowClient(options: WorkflowAuth & { supabaseUrl: stri
       return (await request([
         ['action', 'complete_operations_review'], ['case_id', input.caseId], ['expected_case_version', String(input.expectedVersion)],
         ['input_snapshot_sha256', input.inputSnapshotSha256], ['idempotency_key', input.idempotencyKey],
-      ], 200, ApprovalCommandReceiptSchema)).data;
+      ], 200, ApprovalCommandReceiptSchema, true)).data;
     },
     approveAndApplySignature: async (input) => {
       validateBase(input);
@@ -124,7 +137,7 @@ export function createWorkflowClient(options: WorkflowAuth & { supabaseUrl: stri
       return (await request([
         ['action', 'approve_and_apply_signature'], ['case_id', input.caseId], ['expected_case_version', String(input.expectedVersion)],
         ['input_snapshot_sha256', input.inputSnapshotSha256], ['signature_position_version', String(input.signaturePositionVersion)], ['idempotency_key', input.idempotencyKey],
-      ], 202, ApprovalCommandReceiptSchema)).data;
+      ], 202, ApprovalCommandReceiptSchema, true)).data;
     },
     freezeOutboundPayload: async (input) => {
       validateBase(input);
@@ -140,7 +153,7 @@ export function createWorkflowClient(options: WorkflowAuth & { supabaseUrl: stri
       return (await request([
         ['action', 'authorize_outbound_payload'], ['attachment_sha256s', input.attachmentSha256.length === 0 ? 'none' : input.attachmentSha256.join(',')], ['case_id', input.caseId],
         ['expected_case_version', String(input.expectedVersion)], ['idempotency_key', input.idempotencyKey], ['payload_id', input.payloadId], ['payload_sha256', input.payloadSha256],
-      ], 202, ApprovalCommandReceiptSchema)).data;
+      ], 202, ApprovalCommandReceiptSchema, true)).data;
     },
     requestAuthorizedSend: async (input) => {
       validateBase(input);
@@ -148,7 +161,7 @@ export function createWorkflowClient(options: WorkflowAuth & { supabaseUrl: stri
       return (await request([
         ['action', 'request_authorized_send'], ['case_id', input.caseId], ['expected_case_version', String(input.expectedVersion)],
         ['idempotency_key', input.idempotencyKey], ['payload_sha256', input.payloadSha256], ['sales_authorization_id', input.salesAuthorizationId],
-      ], 202, SendCommandReceiptSchema)).data;
+      ], 202, SendCommandReceiptSchema, true)).data;
     },
   });
 }

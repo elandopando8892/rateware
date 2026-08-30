@@ -252,3 +252,13 @@ export function assertVerifiedAccessTokenMatchesSession(
 
   return accessToken;
 }
+
+export function assertVerifiedIdTokenMatchesSession(
+  idToken: string,
+  idClaims: Record<string, unknown>,
+  expected: OspAuthorizationIdentity,
+  config: RuntimeConfig,
+): string {
+  validateIdClaims(idClaims, expected, config);
+  return idToken;
+}

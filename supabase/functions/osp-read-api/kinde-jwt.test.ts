@@ -52,6 +52,20 @@ async function sign(
     .sign(privateKey);
 }
 
+async function signId(
+  privateKey: KeyLike | Uint8Array,
+  kid: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return await sign(privateKey, kid, {
+    aud: clientId,
+    email_verified: true,
+    jti: 'approval-token-1',
+    auth_time: NOW - 60,
+    ...overrides,
+  });
+}
+
 function verifier(jwksFetch: typeof fetch) {
   return createKindeJwtVerifier({
     issuer,
@@ -169,26 +183,39 @@ Deno.test('createKindeJwtVerifier projects only the approved consequential permi
 
 Deno.test('createKindeJwtVerifier projects approval session proof only from signed claims', async () => {
   const fixture = await setup();
-  const token = await sign(fixture.first.privateKey, 'first-kid', {
+  const accessToken = await sign(fixture.first.privateKey, 'first-kid', {
     permissions: ['osp:read', 'osp:signature-approve'],
-    sid: 'approval-session-1',
-    auth_time: NOW - 60,
   });
-  const approval = await verifier(jsonFetch({ keys: [fixture.firstJwk] })).verifyApproval(token);
-  assert.equal(approval.authorizationSessionId, 'approval-session-1');
+  const idToken = await signId(fixture.first.privateKey, 'first-kid');
+  const approval = await verifier(jsonFetch({ keys: [fixture.firstJwk] })).verifyApproval(accessToken, idToken);
+  assert.equal(approval.authorizationSessionId, 'approval-token-1');
   assert.equal(approval.authorizationSessionIssuedAt, '2027-01-15T07:59:00.000Z');
   assert.deepEqual(approval.permissions, ['osp:read', 'osp:signature-approve']);
 });
 
 Deno.test('createKindeJwtVerifier rejects missing or malformed approval session claims', async () => {
   const fixture = await setup();
+  const accessToken = await sign(fixture.first.privateKey, 'first-kid', {
+    permissions: ['osp:read', 'osp:signature-approve'],
+  });
   for (const overrides of [
-    { permissions: ['osp:read', 'osp:signature-approve'] },
-    { permissions: ['osp:read', 'osp:signature-approve'], sid: 'approval-session-1', auth_time: 'not-a-time' },
+    { jti: undefined, auth_time: undefined },
+    { jti: 'approval-token-1', auth_time: 'not-a-time' },
   ]) {
-    const token = await sign(fixture.first.privateKey, 'first-kid', overrides);
-    await expectForbidden(verifier(jsonFetch({ keys: [fixture.firstJwk] })).verifyApproval(token));
+    const idToken = await signId(fixture.first.privateKey, 'first-kid', overrides);
+    await expectForbidden(verifier(jsonFetch({ keys: [fixture.firstJwk] })).verifyApproval(accessToken, idToken));
   }
+});
+
+Deno.test('createKindeJwtVerifier rejects an ID token for a different identity', async () => {
+  const fixture = await setup();
+  const accessToken = await sign(fixture.first.privateKey, 'first-kid', {
+    permissions: ['osp:read', 'osp:operate'],
+  });
+  const idToken = await signId(fixture.first.privateKey, 'first-kid', {
+    sub: 'different-subject',
+  });
+  await expectForbidden(verifier(jsonFetch({ keys: [fixture.firstJwk] })).verifyApproval(accessToken, idToken));
 });
 
 for (const [label, permissions] of [
