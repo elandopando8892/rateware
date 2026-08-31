@@ -35,7 +35,7 @@ export function initAuthControls() {
   }
   document.querySelector("#auth-button")?.classList.toggle("hidden", qaState() !== "signed-out");
 }
-export async function getKindeClient() { return Object.freeze({ login: blocked, logout: blocked }); }
+export function getAuthClient() { return Object.freeze({ auth: Object.freeze({ signInWithPassword: blocked, signOut: blocked }) }); }
 export async function authenticatedFetch() { throw new Error("QA boundary blocks network requests"); }
 `;
 

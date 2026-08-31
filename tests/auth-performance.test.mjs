@@ -4,21 +4,18 @@ import test from "node:test";
 
 const source = readFileSync(new URL("../src/auth.js", import.meta.url), "utf8");
 
-function functionSource(name, nextName) {
-  const start = source.indexOf(`export async function ${name}`);
-  const end = source.indexOf(nextName, start + 1);
-  assert.ok(start >= 0, `${name} should exist`);
-  return source.slice(start, end >= 0 ? end : undefined);
-}
-
-test("ensureSignedIn reuses one Kinde token for session and access context", () => {
-  const ensureSource = functionSource("ensureSignedIn", "function accessContextFromToken");
-  assert.equal((ensureSource.match(/getKindeToken\(/g) || []).length, 1);
-  assert.match(ensureSource, /access: accessContextFromToken\(token\)/);
-  assert.doesNotMatch(ensureSource, /getAccessContext\(\)/);
+test("Supabase owns browser session persistence and refresh", () => {
+  assert.match(source, /persistSession: true/);
+  assert.match(source, /autoRefreshToken: true/);
+  assert.match(source, /authClient\.auth\.getSession\(\)/);
+  assert.match(source, /authClient\.auth\.refreshSession\(\)/);
 });
 
-test("getAccessContext keeps the public token-derived access contract", () => {
-  assert.match(source, /function accessContextFromToken\(token\)[\s\S]*roles:[\s\S]*permissions:/);
-  assert.match(source, /export async function getAccessContext\(\) \{\s*return accessContextFromToken\(await getKindeToken\(\)\);\s*\}/);
+test("access context comes only from server-managed app metadata", () => {
+  assert.match(source, /const metadata = user\?\.app_metadata \|\| \{\}/);
+  assert.doesNotMatch(source, /user_metadata[^\n]+roles|user_metadata[^\n]+permissions/);
+});
+
+test("the browser runtime contains no Kinde fallback", () => {
+  assert.doesNotMatch(source, /Kinde|getKinde|kinde/i);
 });

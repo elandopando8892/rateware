@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   IdentityContractError,
   normalizeVerifiedKindeIdentity,
+  normalizeVerifiedIdentity,
   resolveCanonicalTenant
 } from "../supabase/functions/_shared/identity-contract.mjs";
 
@@ -11,14 +12,14 @@ const TENANT_ID = "11111111-1111-4111-8111-111111111111";
 const IDENTITY_ID = "22222222-2222-4222-8222-222222222222";
 
 function claims(overrides = {}) {
-  return { sub: "kp_subject", org_code: "org_verified", email: "USER@EXAMPLE.COM", ...overrides };
+  return { auth_provider: "supabase", sub: "kp_subject", org_code: "org_verified", email: "USER@EXAMPLE.COM", ...overrides };
 }
 
 function fakeClient(rowsByTable) {
   const reads = [];
   const defaults = {
-    external_identities: { provider: "kinde", external_subject: "kp_subject" },
-    external_organization_links: { provider: "kinde", external_organization_id: "org_verified" },
+    external_identities: { provider: "supabase", external_subject: "kp_subject" },
+    external_organization_links: { provider: "supabase", external_organization_id: "org_verified" },
     workspace_registry: { organization_id: "org_verified" }
   };
   return {
@@ -69,6 +70,20 @@ test("nested equivalent organization claims remain deterministic", () => {
   assert.equal(result.externalOrganizationId, "org_verified");
 });
 
+test("normalizes a verified Supabase user with a reviewed organization claim", () => {
+  assert.deepEqual(normalizeVerifiedIdentity({
+    auth_provider: "supabase",
+    sub: "11111111-1111-4111-8111-111111111112",
+    email: "USER@EXAMPLE.COM",
+    organization_id: "ORG_VERIFIED"
+  }), {
+    provider: "supabase",
+    externalSubject: "11111111-1111-4111-8111-111111111112",
+    externalOrganizationId: "org_verified",
+    email: "user@example.com"
+  });
+});
+
 test("rejects non-textual identity and organization claims instead of coercing them", () => {
   for (const sub of [["kp_subject"], 42, { value: "kp_subject" }]) {
     assert.equal(
@@ -95,8 +110,8 @@ test("resolver returns a canonical tenant only when all reviewed mappings agree"
   assert.equal(context.canonicalTenantId, TENANT_ID);
   assert.equal(context.canonicalOwnerKey, "org:org_verified");
   assert.deepEqual(client.reads, [
-    { table: "external_identities", filters: [["provider", "kinde"], ["external_subject", "kp_subject"]] },
-    { table: "external_organization_links", filters: [["provider", "kinde"], ["external_organization_id", "org_verified"]] },
+    { table: "external_identities", filters: [["provider", "supabase"], ["external_subject", "kp_subject"]] },
+    { table: "external_organization_links", filters: [["provider", "supabase"], ["external_organization_id", "org_verified"]] },
     { table: "workspace_registry", filters: [["organization_id", "org_verified"]] }
   ]);
 });

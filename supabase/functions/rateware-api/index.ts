@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
-import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
+import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
+import { requireRatewareUser } from "../_shared/auth.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import type { WorkspaceUser } from "../_shared/workspace.ts";
 import {
@@ -25560,7 +25561,7 @@ async function markRfxAwardPackageImplementationReady(
 
 type RatewareApiHandlerDependencies = {
   getClient?: () => RatewareSupabaseClient;
-  authenticate?: typeof requireKindeUser;
+  authenticate?: typeof requireRatewareUser;
   resolveUser?: RatewareIdentityDependencies["resolveUser"];
   carrierTemplatesEnabled?: boolean;
 };
@@ -25569,7 +25570,7 @@ export function createRatewareApiHandler(
   dependencies: RatewareApiHandlerDependencies = {}
 ) {
   const clientFactory = dependencies.getClient ?? getClient;
-  const authenticate = dependencies.authenticate ?? requireKindeUser;
+  const authenticate = dependencies.authenticate ?? requireRatewareUser;
   const resolveUser = dependencies.resolveUser ?? resolveRuntimeWorkspaceUser;
   const carrierTemplatesEnabled = dependencies.carrierTemplatesEnabled ?? CARRIER_LIST_TEMPLATES_V2_ENABLED;
 

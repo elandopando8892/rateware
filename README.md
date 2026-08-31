@@ -24,23 +24,20 @@ Static Upload Center module for preserving carrier quotation source files before
 1. Run `supabase/raw_uploads.sql` in Supabase SQL Editor.
 2. Copy `src/config.example.js` values into `src/config.js`.
 3. Replace the project URL and anon key in `src/config.js`.
-4. Configure Kinde as a front-end/mobile application.
+4. Enable email/password sign-in in the existing Rateware Supabase project.
 5. Deploy Supabase functions: `create-raw-upload`, `rateware-api`, and `interpret-upload`.
 6. Set Supabase function secrets:
    - `OPENAI_API_KEY`
    - `OPENAI_MODEL`
-   - `KINDE_DOMAIN`
-   - optional `KINDE_AUDIENCE`
+   - `SUPABASE_ANON_KEY`
    - `RATEWARE_SUPABASE_ANON_KEY`
    - `RATEWARE_SUPABASE_SERVICE_ROLE_KEY`
-7. Configure `KINDE_DOMAIN` and `KINDE_CLIENT_ID` in `src/config.js`.
+7. Add the production and preview URLs to Supabase Auth redirect URLs.
 8. Open `index.html`, or run `npm run dev` and use the served URL.
 
-## Kinde
+## Supabase Auth
 
-Create a Kinde application with type `Front-end and mobile`.
-
-Allowed callback URLs:
+Rateware uses the Auth service in the existing `rateware-prod` Supabase project. Configure these redirect URLs:
 
 ```text
 http://127.0.0.1:3000/app.html
@@ -48,18 +45,7 @@ https://your-vercel-app.vercel.app/app
 https://your-vercel-app.vercel.app/app.html
 ```
 
-Allowed logout redirect URLs:
-
-```text
-http://127.0.0.1:3000
-https://your-vercel-app.vercel.app
-```
-
-Copy the Kinde application `Domain` and `Client ID` into `src/config.js`. JavaScript SPA apps do not use a client secret.
-
-For the current MVP, Kinde is used only for sign-in/session. All authenticated users have full access to every Rateware module; role and permission enforcement is intentionally deferred.
-
-This static multipage app enables Kinde refresh-token persistence with local storage so users remain signed in while navigating between modules. For a later enterprise hardening sprint, replace this with Kinde custom-domain/httpOnly refresh cookies or a backend-for-frontend session.
+The browser uses only the public Supabase URL and publishable key. Private APIs validate every access token with Supabase Auth. Tenant and permission claims belong in server-managed `app_metadata`, never user-editable metadata.
 
 ## GitHub and Vercel
 
@@ -72,7 +58,7 @@ Recommended Vercel settings:
 - Output directory: `.`
 - Install command: leave empty or `npm install`
 
-After the Vercel URL is created, add it in Kinde callback and logout redirect URLs:
+After the Vercel URL is created, add it to Supabase Auth redirect URLs:
 
 ```text
 https://your-vercel-app.vercel.app

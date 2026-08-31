@@ -27,7 +27,7 @@ function printHelp() {
 Rateware production integration smoke test
 
 Required for authenticated checks:
-  RATEWARE_E2E_KINDE_TOKEN=<token> node tools/integration-smoke.mjs
+  RATEWARE_E2E_AUTH_TOKEN=<supabase-token> node tools/integration-smoke.mjs
 
 Optional:
   --recipient sales@heymarksman.com
@@ -38,7 +38,7 @@ Optional:
 
 Checks:
   - Vercel deploy responds.
-  - Kinde token is present, current, and accepted by Rateware API.
+  - Supabase token is present, current, and accepted by Rateware API.
   - Supabase Edge API responds.
   - Gmail OAuth connection is connected, and optional real send works.
   - Google Chat inbound endpoint responds.
@@ -58,7 +58,7 @@ if (hasFlag("--help")) {
   process.exit(0);
 }
 
-const kindeToken = (argValue("--kinde-token", process.env.RATEWARE_E2E_KINDE_TOKEN || process.env.KINDE_TOKEN || "") || "").trim();
+const authToken = (argValue("--auth-token", process.env.RATEWARE_E2E_AUTH_TOKEN || "") || "").trim();
 const appOrigin = argValue("--app-origin", process.env.RATEWARE_E2E_APP_ORIGIN || defaultAppOrigin).replace(/\/$/, "");
 const recipient = argValue("--recipient", process.env.RATEWARE_E2E_RECIPIENT || defaultRecipient).trim().toLowerCase();
 const sendGmail = hasFlag("--send-gmail");
@@ -151,7 +151,7 @@ async function rateware(action, payload = {}) {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/rateware-api`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${kindeToken}`,
+      Authorization: `Bearer ${authToken}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ action, ...payload })
@@ -187,7 +187,7 @@ async function checkVercelDeploy() {
   const configResponse = await fetch(`${appOrigin}/src/config.js`, { redirect: "follow" });
   const configText = await configResponse.text();
   if (!configResponse.ok) throw new Error(`Config asset returned HTTP ${configResponse.status}.`);
-  if (!configText.includes("SUPABASE_URL") || !configText.includes("KINDE_DOMAIN")) {
+  if (!configText.includes("SUPABASE_URL") || !configText.includes("SUPABASE_ANON_KEY")) {
     throw new Error("Deployed config asset does not expose expected Rateware settings.");
   }
   return {
@@ -470,31 +470,31 @@ async function runChatAndCloseout(context) {
 await check("Vercel deploy", checkVercelDeploy);
 await check("Google Chat inbound endpoint", checkGoogleChatInboundEndpoint);
 
-if (!kindeToken) {
-  record("Kinde login", "fail", {
-    error: "Missing RATEWARE_E2E_KINDE_TOKEN. Sign in to Rateware and provide a current Kinde token to run authenticated production checks."
+if (!authToken) {
+  record("Supabase login", "fail", {
+    error: "Missing RATEWARE_E2E_AUTH_TOKEN. Sign in to Rateware and provide a current Supabase access token to run authenticated checks."
   });
-  skip("Supabase API", "Requires Kinde token.");
-  skip("Gmail connection", "Requires Kinde token.");
-  skip("Google Chat OAuth connection", "Requires Kinde token.");
-  skip("Bid Room workflow", "Requires Kinde token.");
+  skip("Supabase API", "Requires Supabase token.");
+  skip("Gmail connection", "Requires Supabase token.");
+  skip("Google Chat OAuth connection", "Requires Supabase token.");
+  skip("Bid Room workflow", "Requires Supabase token.");
   console.log("\nSmoke result");
   console.log(JSON.stringify(report, null, 2));
   process.exit(1);
 }
 
-const claims = parseJwt(kindeToken);
+const claims = parseJwt(authToken);
 const expiresAt = Number(claims.exp || 0) * 1000;
 if (!expiresAt || expiresAt <= Date.now()) {
-  record("Kinde login", "fail", {
-    error: "Kinde token is missing exp or has expired."
+  record("Supabase login", "fail", {
+    error: "Supabase token is missing exp or has expired."
   });
   console.log("\nSmoke result");
   console.log(JSON.stringify(report, null, 2));
   process.exit(1);
 }
 
-record("Kinde login", "pass", {
+record("Supabase login", "pass", {
   email: cleanText(claims.email || claims.preferred_email || claims["https://kinde.com/email"]),
   issuer: cleanText(claims.iss),
   expires_at: new Date(expiresAt).toISOString()

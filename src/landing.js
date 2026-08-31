@@ -1,4 +1,4 @@
-import { getKindeClient, initAuthControls } from "./auth.js";
+import { initAuthControls, openLogin } from "./auth.js";
 import { humanizeError } from "./error-copy.js";
 
 const heroForm = document.querySelector("#hero-auth-form");
@@ -16,8 +16,8 @@ heroForm?.addEventListener("submit", async (event) => {
   }
 
   try {
-    const kinde = await getKindeClient();
-    await kinde.login();
+    const result = await openLogin();
+    if (result && !result.reset) window.location.href = "./app.html";
   } catch (error) {
     heroAuthRunning = false;
     if (heroButton) {

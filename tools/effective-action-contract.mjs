@@ -16,7 +16,7 @@ const rfxInvitationReviewDelta = rfxInvitationReviewExtension.expectedCountsDelt
 // all eight pre-existing actions even though their handler source segments are unchanged.
 // Build 30 adds two sanitized, read-only onboarding actions under the same canonical
 // Kinde -> workspace -> tenant resolver and does not add a new externally discovered action.
-const shipperDirectoryEnvelope = 'cf049f85a1664a9df2663c3683ad72b6a249900debb1b97b9b641ac927081338';
+const shipperDirectoryEnvelope = '28123057c8839fca6b50d71a34391eb6b24c994946f003040a78ef3626c77bac';
 const legacyAuthorizationOverrides = Object.fromEntries([
   'edge.shipper-directory-api.get_shipper',
   'edge.shipper-directory-api.list_shippers',
@@ -31,13 +31,39 @@ const legacyAuthorizationOverrides = Object.fromEntries([
 // The Rateware API handler factory and Carrier List Templates imports change the
 // shared authorization envelope for every action hosted by rateware-api. This is
 // a static reviewed fingerprint; it is not derived from source at validation time.
-const ratewareApiEnvelope = '057fe2d9bf90410209d1bc1b7152776412433ada9fa5fd69b884cf2378044c8b';
+const ratewareApiEnvelope = '108b6847738059101384980ac29b9f32f075d4f34a2cc28fb968c5cfee7d0308';
 const ratewareApiAuthorizationOverrides = Object.fromEntries([
   ...BASE_ACTION_CONTRACT.surfaces,
   ...carrierTemplateExtension.surfaces,
   ...rfxInvitationReviewExtension.surfaces,
 ].filter((entry) => entry.canonicalId.startsWith('edge.rateware-api.'))
   .map((entry) => [entry.canonicalId, ratewareApiEnvelope]));
+
+const supabaseAuthAuthorizationOverrides = {
+  'edge.create-raw-upload.create_raw_upload': '52420761826b476fffd671d7bce3eaa6a6994a5388eaf6ca6e2dbe80652ac694',
+  'edge.interpret-upload.interpret_upload': 'c97cf6d7a44a5815d0297d00ee27a2dbd06c6217647997421859c18eac271264',
+  'edge.sync-rateware-catalog.sync_rateware_catalog': 'b3acb75e8fad35c02feca43e27d704fb7eb5ac3c8fb72d75287ccbc698a1db1c',
+};
+
+// Removing the unused legacy verifier from the shared response helper changes
+// dependency envelopes for CORS-only consumers without changing their handlers.
+const corsOnlyAuthorizationEnvelopes = {
+  'edge.carrier-profile-api.': '4e1755252e58e7245b2078488ded67fb6f6241b221007147462887b427afa9d6',
+  'edge.gmail-oauth-callback.': '3584f61979a5ad5605e49b243e33fc9769f314808a5ae6b1f866154088b59b29',
+  'edge.google-chat-app.': 'cac11d8a48e151559ddd4145dd9a7f8a933caaa6305667083544f35175515a05',
+  'edge.ratebook-carrier-api.': 'ce08ec32d9d78aeef3f0f745240d84c5f2da51e14e2862e8bcc8096aeba37907',
+  'edge.rfx-bid-api.': 'e9ec9cde40ad64ebc94dc24eadfe3676c392f4ad32ec48551c60c060b8cfd70f',
+  'edge.shipper-profile-api.': 'a6920f9f1d0daf40018b3f4390578b051b504fdab9d377e4a52bab3e98f9b0dd',
+  'edge.sync-banxico-fx.': '0cd59df491252504b52db16b3d6a2aff738bfcc6cd9f3a07ec87b43c87fc85a4',
+  'edge.whatsapp-webhook.': 'd0e3629ff9357c3035cd753c19ed4e8bbb04c954ab642d5539a6cbc161c7c403',
+};
+const corsOnlyAuthorizationOverrides = Object.fromEntries(
+  BASE_ACTION_CONTRACT.surfaces.flatMap((entry) => {
+    const match = Object.entries(corsOnlyAuthorizationEnvelopes)
+      .find(([prefix]) => entry.canonicalId.startsWith(prefix));
+    return match ? [[entry.canonicalId, match[1]]] : [];
+  })
+);
 
 // These eight pre-existing actions share reviewed code segments with the newly
 // added template dispatch and handler factory. Their behavior is unchanged, but
@@ -51,6 +77,17 @@ const ratewareApiSourceFingerprintOverrides = {
   'edge.rateware-api.send_bid_room_carrier_message': '3a8bc0f06e4f577effffd6e35350e73925fd9153db71a25266b35f40b81b7fe0',
   'edge.rateware-api.shortlist_rfx_lane_vendors': '054559e7a40ff4c2946a3a6981ad70e5cd69e49bdf3fd9016072a559dbab4030',
   'edge.rateware-api.update_vendor_segment': 'd73978185d8637b0b72028db2b30b7f5d3800a42f3d58949d25d2f4d2d978976',
+};
+
+const supabaseAuthSourceFingerprintOverrides = {
+  'edge.create-raw-upload.create_raw_upload': '162bfb646dea07477a3f6d27be7ee573db7efbafd6d089b0eeea5a06dafccc79',
+  'edge.interpret-upload.interpret_upload': '103d4f9050f9f7a7b78dc30049e5ae0bd3534f7caadf38b9bd27e25307bba3ed',
+  'edge.sync-rateware-catalog.sync_rateware_catalog': '207fd12f17afbbd5e4dd58a0e914ad939aab033816bf8a5a64b461cf46aa8c83',
+};
+
+const supabaseAuthMetadataOverrides = {
+  'edge.google-chat-app.handle_chat_event': 'fd759bead6f0bfed76d9f70c962399ba7d815ef30f7a85491d68c4d5b088accf',
+  'edge.google-chat-app.health': 'f9872ecb54dc79b021298aacc207d6e2eeee956f4dba34d97981b3b354394060',
 };
 
 // Phase 0 models every PostgreSQL RPC as internal/service-role + internal_only.
@@ -85,11 +122,11 @@ const providerSurfaces = extension.surfaces.map((entry) => ({
 }));
 
 const gmailAuthorizationFingerprints = {
-  'edge.provider-gmail-intake-api.provider_gmail_status': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
-  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
-  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
-  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': '0904678e8fefab6d202730784336047beb0148e1b51eaa9dc5c36bd120689f41',
-  'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': '61a4d760bc3bc7157e0abcebf08818cd4e84841f6ec35f7c406475e28df53a3b',
+  'edge.provider-gmail-intake-api.provider_gmail_status': 'e44eb7eafa4a31050af94fbc732896d5f37bdbcda99019ed9893f66d27b0387f',
+  'edge.provider-gmail-intake-api.renew_provider_gmail_watch': 'e44eb7eafa4a31050af94fbc732896d5f37bdbcda99019ed9893f66d27b0387f',
+  'edge.provider-gmail-intake-api.start_provider_gmail_oauth': 'e44eb7eafa4a31050af94fbc732896d5f37bdbcda99019ed9893f66d27b0387f',
+  'edge.provider-gmail-intake-api.sync_provider_gmail_inbox': 'e44eb7eafa4a31050af94fbc732896d5f37bdbcda99019ed9893f66d27b0387f',
+  'edge.provider-gmail-oauth-callback.complete_provider_gmail_oauth_callback': 'cd8694e615f2754770c93f510d6abb3330b6b7e9c02b4971d9e1ce2b007c6fa7',
   'edge.provider-gmail-push.receive_provider_gmail_push': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
 };
 
@@ -231,6 +268,7 @@ export const ACTION_CONTRACT = {
     ...gmailMetadataFingerprints,
     ...carrierTemplateExtension.reviewedMetadataFingerprints,
     ...rfxInvitationReviewExtension.reviewedMetadataFingerprints,
+    ...supabaseAuthMetadataOverrides,
   },
   reviewedAuthorizationFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedAuthorizationFingerprints,
@@ -240,13 +278,19 @@ export const ACTION_CONTRACT = {
     ...ratewareApiAuthorizationOverrides,
     ...carrierTemplateExtension.reviewedAuthorizationFingerprints,
     ...rfxInvitationReviewExtension.reviewedAuthorizationFingerprints,
+    ...corsOnlyAuthorizationOverrides,
+    ...supabaseAuthAuthorizationOverrides,
+    ...ratewareApiAuthorizationOverrides,
   },
   surfaces: [
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({
       ...entry,
       contractVersion,
-      ...(ratewareApiSourceFingerprintOverrides[entry.canonicalId]
-        ? { sourceFingerprint: ratewareApiSourceFingerprintOverrides[entry.canonicalId] }
+      ...((ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId])
+        ? { sourceFingerprint: ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] }
+        : {}),
+      ...(entry.canonicalId.startsWith('edge.google-chat-app.')
+        ? { analysisCoverage: 'shared-observed', coverageSignals: ['shared_dependency_observed'] }
         : {}),
     })),
     ...providerSurfaces,

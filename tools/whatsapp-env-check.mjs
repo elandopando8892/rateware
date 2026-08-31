@@ -18,7 +18,7 @@ const requiredSecrets = [
   "WHATSAPP_GROUPS_ENABLED"
 ];
 
-const token = (process.env.RATEWARE_API_BEARER || process.env.RATEWARE_E2E_KINDE_TOKEN || process.env.KINDE_TOKEN || "").trim();
+const token = (process.env.RATEWARE_API_BEARER || process.env.RATEWARE_E2E_AUTH_TOKEN || "").trim();
 const apiUrl = (process.env.RATEWARE_API_URL || `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/rateware-api`).trim();
 
 function statusLine(name, ok, detail = "") {
@@ -38,7 +38,7 @@ function safeError(error) {
 }
 
 async function callRateware(action, payload = {}) {
-  if (!token) throw new Error("RATEWARE_API_BEARER or RATEWARE_E2E_KINDE_TOKEN is required for API checks.");
+  if (!token) throw new Error("RATEWARE_API_BEARER or RATEWARE_E2E_AUTH_TOKEN is required for API checks.");
   const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
@@ -79,7 +79,7 @@ if (localMissing.length) {
 
 if (!token) {
   console.log("");
-  console.log("Skipping Rateware API checks. Set RATEWARE_API_BEARER to a current Kinde access token to validate production.");
+  console.log("Skipping Rateware API checks. Set RATEWARE_API_BEARER to a current Supabase access token to validate production.");
   process.exit(0);
 }
 

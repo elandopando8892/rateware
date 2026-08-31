@@ -1,6 +1,7 @@
 import {
   IdentityContractError,
   normalizeVerifiedKindeIdentity,
+  normalizeVerifiedIdentity,
   resolveCanonicalTenant
 } from "./identity-contract.mjs";
 
@@ -20,5 +21,6 @@ export type CanonicalTenantContext = VerifiedKindeIdentity & {
 export {
   IdentityContractError,
   normalizeVerifiedKindeIdentity,
+  normalizeVerifiedIdentity,
   resolveCanonicalTenant
 };

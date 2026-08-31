@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
-import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
+import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
+import { requireRatewareUser } from "../_shared/auth.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import { decideServiceFromResolution, resolveServiceEvidence } from "../_shared/service-normalization.mjs";
 import { normalizedAllInFromFuel } from "../_shared/rate-normalization.mjs";
@@ -2440,7 +2441,7 @@ Deno.serve(async (request) => {
   const supabase = getClient();
   let user: RuntimeWorkspaceUser;
   try {
-    user = await resolveRuntimeWorkspaceUser(supabase, await requireKindeUser(request));
+    user = await resolveRuntimeWorkspaceUser(supabase, await requireRatewareUser(request));
   } catch (error) {
     return jsonResponse({ error: interpretationErrorMessage(error, "Authentication required.") }, runtimeIdentityStatus(error) === 403 ? 403 : 401);
   }
