@@ -28,11 +28,11 @@ function token(overrides: Record<string, unknown> = {}): string {
   })}.fixture`;
 }
 
-function fixture() {
-  const accessToken = token();
+function fixture(email = 'jgonzalez@xbfreight.com') {
+  const accessToken = token({ email });
   const user = {
     id: '11111111-1111-4111-8111-111111111111',
-    email: 'jgonzalez@xbfreight.com',
+    email,
     email_confirmed_at: '2026-08-30T00:00:00.000Z',
     confirmed_at: '2026-08-30T00:00:00.000Z',
   } as User;
@@ -97,6 +97,30 @@ describe('createSupabaseAuthPort', () => {
         queryParams: { prompt: 'select_account' },
       },
     });
+  });
+
+  it('accepts the dedicated Operations identity without widening the production allowlist', async () => {
+    const { auth } = fixture('ops@xbfreight.com');
+    const port = createSupabaseAuthPort(runtime, {
+      origin: 'https://osp.heymarksman.com',
+      createClient: () => ({ auth: auth as never }),
+    });
+
+    const session = await port.initialize();
+    expect(session?.identity).toMatchObject({
+      email: 'ops@xbfreight.com',
+      organization: 'ca0a8f30-1382-4316-9bd5-cb76d9ab4920',
+    });
+
+    await port.login('/app/pipeline', ' OPS@XBFREIGHT.COM ');
+    expect(auth.signInWithOAuth).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({
+        queryParams: {
+          login_hint: 'ops@xbfreight.com',
+          prompt: 'select_account',
+        },
+      }),
+    }));
   });
 
   it('rejects a verified Google session whose email is outside the OSP allowlist', async () => {

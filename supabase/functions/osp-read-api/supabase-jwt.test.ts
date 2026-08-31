@@ -73,6 +73,23 @@ Deno.test('Supabase JWT verifier binds the reviewed XBF role and fresh session p
   assert.equal(approval.authorizationSessionIssuedAt, new Date((NOW - 60) * 1_000).toISOString());
 });
 
+Deno.test('Supabase JWT verifier grants only the reviewed Operations permission', async () => {
+  const { verifier, sign } = await fixture();
+  const token = await sign({
+    email: 'ops@xbfreight.com',
+    osp_permissions: ['osp:read', 'osp:operate'],
+  });
+
+  const workflow = await verifier.verifyWorkflow(token);
+  assert.equal(workflow.identity.email, 'ops@xbfreight.com');
+  assert.deepEqual(workflow.permissions, ['osp:read', 'osp:operate']);
+
+  await expectCode(verifier.verifyWorkflow(await sign({
+    email: 'ops@xbfreight.com',
+    osp_permissions: ['osp:read', 'osp:operate', 'osp:sales-authorize'],
+  })), 'FORBIDDEN');
+});
+
 Deno.test('Supabase JWT verifier rejects claim smuggling and cross-proof composition', async () => {
   const { verifier, sign } = await fixture();
   await expectCode(verifier.verifyWorkflow(await sign({
