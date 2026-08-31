@@ -10716,64 +10716,34 @@ async function rejectRfxBid(
 async function awardRfxLaneVendor(
   supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  operationId: string | null
 ) {
   const invitation = await requireOwnedRfxLaneVendor(supabase, user, input.id || input.rfx_lane_vendor_id || input.invitation_id);
   if (cleanNumber(invitation.bid_rate) === null) throw new Error("A carrier bid rate is required before awarding.");
   const role = normalizeAwardRole(input.award_role || input.role);
-  const now = new Date().toISOString();
+  if (!operationId) throw new Error("RFx award operation id is required.");
+  const transition = await supabase.rpc("rateware_award_rfx_lane_vendor", {
+    p_owner_email: user.owner_email,
+    p_operation_id: operationId,
+    p_rfx_lane_vendor_id: invitation.id,
+    p_award_role: role,
+    p_award_reason: cleanText(input.award_reason || input.reason),
+    p_award_notes: cleanText(input.award_notes || input.notes),
+    p_awarded_by: user.owner_email
+  });
+  if (transition.error) throw transition.error;
 
-  if (role === "primary") {
-    const previousPrimary = await supabase
-      .from("rfx_lane_vendors")
-      .select("id,bid_rate_staging_id")
-      .eq("rfx_lane_id", invitation.rfx_lane_id)
-      .eq("award_role", "primary")
-      .neq("id", invitation.id);
-    if (previousPrimary.error) throw previousPrimary.error;
-
-    const clearResult = await supabase
-      .from("rfx_lane_vendors")
-      .update({
-        award_role: null,
-        award_reason: null,
-        award_notes: null,
-        awarded_at: null,
-        awarded_by: null,
-        updated_at: now
-      })
-      .eq("rfx_lane_id", invitation.rfx_lane_id)
-      .eq("award_role", "primary")
-      .neq("id", invitation.id);
-    if (clearResult.error) throw clearResult.error;
-
-    for (const previous of previousPrimary.data || []) {
-      await setRfxBidRateHistoryOutcome(supabase, previous, "not_awarded", now);
-    }
-  }
-
-  const result = await supabase
-    .from("rfx_lane_vendors")
-    .update({
-      award_role: role,
-      award_reason: cleanText(input.award_reason || input.reason) || (role === "primary" ? "Primary procurement award" : "Backup carrier"),
-      award_notes: cleanText(input.award_notes || input.notes),
-      awarded_at: now,
-      awarded_by: user.owner_email,
-      invitation_status: role === "primary" ? "awarded" : "quoted",
-      updated_at: now
-    })
-    .eq("id", invitation.id)
-    .select("*, vendors(id,vendor_name,domain,primary_email,base_stage,status)")
-    .single();
-  if (result.error) throw result.error;
-
-  await setRfxBidRateHistoryOutcome(supabase, invitation, role === "primary" ? "awarded" : "backup", now);
+  const result = await requireOwnedRfxLaneVendor(supabase, user, invitation.id);
+  const receipt = objectRecord(transition.data);
+  const before = receipt.before && typeof receipt.before === "object" ? objectRecord(receipt.before) : invitation;
 
   return {
-    row: publicRfxParticipantRow(result.data),
-    before: publicRfxParticipantRow(invitation),
-    award_role: role
+    row: publicRfxParticipantRow(result),
+    before: publicRfxParticipantRow(before),
+    award_role: role,
+    operation_id: operationId,
+    idempotent: Boolean(receipt.idempotent)
   };
 }
 
@@ -29105,8 +29075,8 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "award_rfx_lane_vendor") {
-      const result = await awardRfxLaneVendor(supabase, user, body);
-      await writeAuditLog(
+      const result = await awardRfxLaneVendor(supabase, user, body, operationId);
+      if (!result.idempotent) await writeAuditLog(
         supabase,
         user,
         "rfx.award.save",
@@ -29117,7 +29087,8 @@ export function createRatewareApiHandler(
           award_role: result.award_role,
           award_reason: result.row.award_reason,
           rfx_event_id: result.row.rfx_event_id,
-          rfx_lane_id: result.row.rfx_lane_id
+          rfx_lane_id: result.row.rfx_lane_id,
+          operation_id: result.operation_id
         }
       );
       return jsonResponse(result);

@@ -2,10 +2,12 @@ import { ACTION_CONTRACT as BASE_ACTION_CONTRACT } from '../supabase/functions/_
 import { CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-carrier-list-templates.mjs';
 import { PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-provider-service.mjs';
 import { RFX_INVITATION_REVIEW_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-rfx-invitation-reviews.mjs';
+import { RFX_ATOMIC_AWARD_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-rfx-award-atomic.mjs';
 
 const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
 const carrierTemplateExtension = CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION;
 const rfxInvitationReviewExtension = RFX_INVITATION_REVIEW_ACTION_CONTRACT_EXTENSION;
+const rfxAtomicAwardExtension = RFX_ATOMIC_AWARD_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 const carrierTemplateDelta = carrierTemplateExtension.expectedCountsDelta;
@@ -31,7 +33,7 @@ const legacyAuthorizationOverrides = Object.fromEntries([
 // The Rateware API handler factory and Carrier List Templates imports change the
 // shared authorization envelope for every action hosted by rateware-api. This is
 // a static reviewed fingerprint; it is not derived from source at validation time.
-const ratewareApiEnvelope = '584c0373e4031386c2582ffa96b887e527734ded4d6e98893a7e490820728281';
+const ratewareApiEnvelope = 'e767fe1a4f17285c2a705b2366f828f0aaabfa132795a978e3f8edf89ab87a84';
 const ratewareApiAuthorizationOverrides = Object.fromEntries([
   ...BASE_ACTION_CONTRACT.surfaces,
   ...carrierTemplateExtension.surfaces,
@@ -69,6 +71,7 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // added template dispatch and handler factory. Their behavior is unchanged, but
 // the scanner intentionally fingerprints the complete reachable action segment.
 const ratewareApiSourceFingerprintOverrides = {
+  'edge.rateware-api.award_rfx_lane_vendor': '80b222f9225cf992b19bcc18ca232ae3dff2a4cdfc88b280bd615d517373ba34',
   'edge.rateware-api.create_vendor_segment': '8e6a444366bfa108430e02fdf8dffbbf11a0ab0e4e102d4687f6e589f809aa69',
   'edge.rateware-api.delete_vendor_segment': '792ce2b10566c1be41064ef07f5e818088fb1f16596433d88fdb7c0fbec972d2',
   'edge.rateware-api.generate_outreach_drafts': '05f5940c29b19b93b95466b0571fc160146d32e89e253e186e58eec647d270c5',
@@ -266,11 +269,11 @@ const gmailSurfaces = [
 export const ACTION_CONTRACT = {
   ...BASE_ACTION_CONTRACT,
   contractVersion,
-  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews`,
+  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable,
     edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge,
-    postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres,
+    postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres + rfxAtomicAwardExtension.expectedCountsDelta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi,
   },
   reviewedMetadataFingerprints: {
@@ -280,6 +283,7 @@ export const ACTION_CONTRACT = {
     ...gmailMetadataFingerprints,
     ...carrierTemplateExtension.reviewedMetadataFingerprints,
     ...rfxInvitationReviewExtension.reviewedMetadataFingerprints,
+    ...rfxAtomicAwardExtension.reviewedMetadataFingerprints,
     ...supabaseAuthMetadataOverrides,
   },
   reviewedAuthorizationFingerprints: {
@@ -290,6 +294,7 @@ export const ACTION_CONTRACT = {
     ...ratewareApiAuthorizationOverrides,
     ...carrierTemplateExtension.reviewedAuthorizationFingerprints,
     ...rfxInvitationReviewExtension.reviewedAuthorizationFingerprints,
+    ...rfxAtomicAwardExtension.reviewedAuthorizationFingerprints,
     ...corsOnlyAuthorizationOverrides,
     ...supabaseAuthAuthorizationOverrides,
     ...ratewareApiAuthorizationOverrides,
@@ -309,5 +314,6 @@ export const ACTION_CONTRACT = {
     ...gmailSurfaces,
     ...carrierTemplateExtension.surfaces,
     ...rfxInvitationReviewExtension.surfaces,
+    ...rfxAtomicAwardExtension.surfaces,
   ],
 };

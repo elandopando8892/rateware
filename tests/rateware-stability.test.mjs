@@ -121,6 +121,7 @@ const rfxAwardCloseoutMigration = readFileSync(new URL("../supabase/migrations/2
 const rfxBidSubmissionV2Migration = readFileSync(new URL("../supabase/migrations/20260704093000_rfx_bid_submission_v2.sql", import.meta.url), "utf8");
 const rfxBidRatewareCaptureMigration = readFileSync(new URL("../supabase/migrations/20260708162000_rfx_bid_rateware_capture.sql", import.meta.url), "utf8");
 const rfxBidCostHistoryMigration = readFileSync(new URL("../supabase/migrations/20260723173000_rfx_bid_cost_history.sql", import.meta.url), "utf8");
+const rfxAtomicAwardMigration = readFileSync(new URL("../supabase/migrations/20260831022000_atomic_rfx_lane_vendor_award.sql", import.meta.url), "utf8");
 const rfxBidValidityMigration = readFileSync(new URL("../supabase/migrations/20260708170000_rfx_bid_validity.sql", import.meta.url), "utf8");
 const rfxBidDeadheadMigration = readFileSync(new URL("../supabase/migrations/20260709090000_rfx_bid_deadhead_commitment.sql", import.meta.url), "utf8");
 const rfxBidWithdrawnStatusMigration = readFileSync(new URL("../supabase/migrations/20260710183000_rfx_bid_withdrawn_status.sql", import.meta.url), "utf8");
@@ -2106,7 +2107,7 @@ assert.match(apiSource, /body\.action === "reject_rfx_bid"/, "Internal API shoul
 assert.match(apiSource, /source_bid_status: "declined"/, "Operator-rejected bid history should record its source status");
 assert.match(apiSource, /rfx\.bid\.reject/, "Operator bid rejection should be auditable");
 assert.match(apiSource, /rfx_bid_outcome: outcome/, "RFx award actions should persist the selected bid outcome");
-assert.match(apiSource, /setRfxBidRateHistoryOutcome\(supabase, previous, "not_awarded", now\)/, "Replacing a primary award should preserve the former carrier cost as not awarded");
+assert.match(rfxAtomicAwardMigration, /rfx_bid_outcome = 'not_awarded'[\s\S]+previous\.award_role = 'primary'/, "Replacing a primary award should atomically preserve the former carrier cost as not awarded");
 assert.match(apiSource, /carrier_cost_rate: cleanNumber\(invitation\.bid_rate\)/, "Award closeout should retain the carrier cost alongside the active Rateware row");
 assert.match(apiSource, /rfx_bid_outcome: "awarded"/, "Award closeout should identify the awarded carrier cost history");
 assert.match(apiSource, /"carrier_cost_rate"[\s\S]*"customer_board_rate"[\s\S]*"commercial_model"[\s\S]*"source_bid_status"[\s\S]*"rfx_bid_outcome"/, "Rateware list responses should expose RFx bid history fields for audit views");
