@@ -7,6 +7,7 @@ import {
 } from "./gmail-send-adapter.ts";
 
 const authorizationId = "44444444-4444-4444-8444-444444444444";
+const organizationId = "11111111-1111-4111-8111-111111111111";
 const payloadId = "33333333-3333-4333-8333-333333333333";
 const mimeObjectId =
   "outbound_11111111-1111-4111-8111-111111111111_33333333-3333-4333-8333-333333333333";
@@ -69,14 +70,17 @@ async function adapter(input: {
     accessToken: async () => "synthetic-token",
     fetch: fetchFixture(input),
     mimeObjects: {
-      read: async ({ objectId }: { objectId: string }) =>
-        objectId === mimeObjectId ? (input.bytes ?? mimeBytes).slice() : null,
+      read: async ({ organizationId: requestedOrganizationId, objectId }) =>
+        requestedOrganizationId === organizationId && objectId === mimeObjectId
+          ? (input.bytes ?? mimeBytes).slice()
+          : null,
     },
   });
 }
 
 function request(expectedMimeSha256: string) {
   return {
+    organizationId,
     authorizationId,
     mimeObjectId,
     expectedMimeSha256,

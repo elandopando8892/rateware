@@ -1,4 +1,5 @@
 export type GmailSendRequest = Readonly<{
+  organizationId: string;
   authorizationId: string;
   mimeObjectId: string;
   expectedMimeSha256: string;

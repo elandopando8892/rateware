@@ -63,8 +63,9 @@ Deno.test("send job records one receipt and duplicate leases never call Gmail tw
   const store = ledger();
   const reservation = await reserved(store);
   let calls = 0;
-  const port = gmail(async () => {
+  const port = gmail(async (request) => {
     calls += 1;
+    assertEquals(request.organizationId, organizationId);
     return {
       gmailMessageId: "gmail-message-1",
       gmailThreadId: "gmail-thread-1",

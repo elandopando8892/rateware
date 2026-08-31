@@ -27,7 +27,10 @@ export class KnownPreAcceptanceSendError extends Error {
 }
 
 export interface FrozenMimeObjectReader {
-  read(input: { objectId: string }): Promise<Uint8Array | null>;
+  read(input: {
+    organizationId: string;
+    objectId: string;
+  }): Promise<Uint8Array | null>;
 }
 
 type AdapterOptions = {
@@ -87,12 +90,13 @@ function base64Url(bytes: Uint8Array): string {
 
 function assertRequest(value: GmailSendRequest): void {
   if (
-    !value || !UUID.test(value.authorizationId) ||
+    !value || !UUID.test(value.organizationId) ||
+    !UUID.test(value.authorizationId) ||
     !OPAQUE.test(value.mimeObjectId) || !SHA.test(value.expectedMimeSha256) ||
     value.expectedMailbox !== EXPECTED_MAILBOX ||
     (value.threadId !== null && !GMAIL_ID.test(value.threadId)) ||
     Object.keys(value).sort().join(",") !==
-      "authorizationId,expectedMailbox,expectedMimeSha256,mimeObjectId,threadId"
+      "authorizationId,expectedMailbox,expectedMimeSha256,mimeObjectId,organizationId,threadId"
   ) invalid("GMAIL_SEND_REQUEST_INVALID");
 }
 
@@ -160,6 +164,7 @@ export async function createGmailSendAdapter(
       let stored: Uint8Array | null;
       try {
         stored = await options.mimeObjects.read({
+          organizationId: request.organizationId,
           objectId: request.mimeObjectId,
         });
       } catch {

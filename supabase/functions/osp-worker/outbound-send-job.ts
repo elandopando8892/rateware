@@ -27,6 +27,7 @@ export async function runOutboundSendJob(
   if (claimed.kind === "terminal") return claimed.result;
   try {
     const result = await deps.gmail.sendFrozen({
+      organizationId: input.organizationId,
       authorizationId: claimed.authorizationId,
       mimeObjectId: claimed.mimeObjectId,
       expectedMimeSha256: claimed.mimeSha256,
