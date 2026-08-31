@@ -367,6 +367,7 @@ export function createPostgresCaseOutboundActions(options: {
   storageClient: OutboundStorageClient;
   postgresFactory?: PostgresFactory;
   attachmentPostgresFactory?: PostgresFactory;
+  authorizationPostgresFactory?: PostgresFactory;
   now?: () => Date;
 }): CaseOutboundActions {
   const store = createPostgresOutboundDraftStore(options);
@@ -379,7 +380,11 @@ export function createPostgresCaseOutboundActions(options: {
         options.postgresFactory,
     }),
     objects: storage.objects,
-    payloads: createPostgresCurrentOutboundAuthorizationSource(options),
+    payloads: createPostgresCurrentOutboundAuthorizationSource({
+      ...options,
+      postgresFactory: options.authorizationPostgresFactory ??
+        options.postgresFactory,
+    }),
     approvals: createPostgresApprovalStore(options),
     sendStore: createPostgresOutboundSendStore(options),
     now: options.now,

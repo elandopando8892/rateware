@@ -90,6 +90,10 @@ export function createCaseApiRuntime(options: {
     databaseUrl: databaseConnection,
     postgresFactory: sharedFactory,
     attachmentPostgresFactory: outboundSupportFactory,
+    // Sales authorization validates the current frozen payload from inside the
+    // approval transaction. Reuse the nested-read pool rather than waiting on
+    // the max:1 connection held by the outer transaction.
+    authorizationPostgresFactory: outboundSupportFactory,
     storageClient: options.storageClient,
     now: () => new Date(options.clock?.() ?? Date.now()),
   });

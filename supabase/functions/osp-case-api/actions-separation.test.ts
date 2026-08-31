@@ -1,7 +1,10 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 
 import type { VerifiedWorkflowIdentity } from "../_shared/osp/workflow-authority.ts";
-import { createCaseOutboundActions } from "./actions.ts";
+import {
+  createCaseOutboundActions,
+  createPostgresCaseOutboundActions,
+} from "./actions.ts";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
 const caseId = "22222222-2222-4222-8222-222222222222";
@@ -99,4 +102,30 @@ Deno.test("real outbound action boundary rejects every mixed Operations and cons
     );
   }
   assertEquals(storeTouches, 0);
+});
+
+Deno.test("Postgres outbound authorization uses the isolated nested-read pool", () => {
+  let primaryConnections = 0;
+  let authorizationConnections = 0;
+  const sql = Object.assign(async () => [], {
+    begin: async (operation: (tx: typeof sql) => Promise<unknown>) =>
+      await operation(sql),
+  });
+  createPostgresCaseOutboundActions({
+    databaseUrl: "postgresql://synthetic.example.test/db",
+    postgresFactory: () => {
+      primaryConnections += 1;
+      return sql;
+    },
+    authorizationPostgresFactory: () => {
+      authorizationConnections += 1;
+      return sql;
+    },
+    storageClient: {
+      upload: async () => undefined,
+      download: async () => null,
+    },
+  });
+  assertEquals(authorizationConnections, 1);
+  assertEquals(primaryConnections, 4);
 });
