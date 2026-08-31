@@ -19,7 +19,7 @@ const PRODUCTION_EMAILS = new Set([
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type SupabaseAuthBoundary = Pick<SupabaseClient['auth'],
-  'getSession' | 'getUser' | 'onAuthStateChange' | 'refreshSession' | 'signInWithOtp' | 'signOut'
+  'getSession' | 'getUser' | 'onAuthStateChange' | 'refreshSession' | 'signInWithOAuth' | 'signOut'
 >;
 
 type SupabaseAuthPortDependencies = {
@@ -209,7 +209,7 @@ export function createSupabaseAuthPort(
 
   const port: ManagedAuthPort & { getApprovalProof(expected: BoundSession): Promise<string> } = {
     initialize: () => validate(false),
-    revalidate: (_reason) => validate(false),
+    revalidate: () => validate(false),
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -217,18 +217,21 @@ export function createSupabaseAuthPort(
     getCurrentSession: () => currentSession,
     async login(returnTo, candidateEmail) {
       if (!active) throw new Error('Auth port is inactive');
-      const email = normalizedEmail(candidateEmail ?? currentSession?.identity.email);
-      if (config.VITE_OSP_BUILD_PROFILE === 'production-readonly' && !PRODUCTION_EMAILS.has(email)) {
+      const email = candidateEmail === undefined ? undefined : normalizedEmail(candidateEmail);
+      if (config.VITE_OSP_BUILD_PROFILE === 'production-readonly' && email && !PRODUCTION_EMAILS.has(email)) {
         throw new Error('Email is not approved for OSP');
       }
       const approvedReturnTo = safeReturnTo(returnTo, origin);
       const redirect = new URL(callbackUri);
       redirect.searchParams.set('returnTo', approvedReturnTo);
-      const result = await client.auth.signInWithOtp({
-        email,
+      const result = await client.auth.signInWithOAuth({
+        provider: 'google',
         options: {
-          emailRedirectTo: redirect.toString(),
-          shouldCreateUser: false,
+          redirectTo: redirect.toString(),
+          queryParams: {
+            prompt: 'select_account',
+            ...(email ? { login_hint: email } : {}),
+          },
         },
       });
       if (result.error) throw result.error;

@@ -67,6 +67,7 @@ describe('loadRuntimeConfig', () => {
 
   it('keeps Kinde as the rollback default until the production cutover is authorized', () => {
     const { VITE_OSP_AUTH_PROVIDER: _provider, ...legacy } = valid;
+    void _provider;
     expect(loadRuntimeConfig(legacy)).toEqual(valid);
   });
 });

@@ -183,14 +183,12 @@ describe('App authentication and routing', () => {
     expect(document.querySelector('iframe')).toBeNull();
   });
 
-  it('offers Supabase passwordless access without creating an alternate workspace flow', async () => {
+  it('offers Supabase Google access without creating an alternate workspace flow', async () => {
     const port = authPort(null);
     render(<App authPort={port} apiClient={client()} authProvider="supabase" buildProfile="production-readonly" />);
-    const email = await screen.findByRole('textbox', { name: /authorized work email/i });
-    await userEvent.type(email, 'jgonzalez@xbfreight.com');
-    await userEvent.click(screen.getByRole('button', { name: /send secure access link/i }));
-    expect(port.login).toHaveBeenCalledWith('/app/pipeline', 'jgonzalez@xbfreight.com');
-    expect(await screen.findByRole('status')).toHaveTextContent(/check your inbox/i);
+    await userEvent.click(await screen.findByRole('button', { name: /continue with google/i }));
+    expect(port.login).toHaveBeenCalledWith('/app/pipeline');
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /approve|authorize|send email|upload|sync|renew|digital signature/i })).not.toBeInTheDocument();
   });
 

@@ -46,7 +46,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/App.tsx",
-      "sha256": "7ba2fa03d338dfaac2e61d7812adc1960010fd187ce7f04b12534d61180c9f2d"
+      "sha256": "1a6f5ce0942a27a9f7bc66f42ace6d24ac69022e8debf9362a622343cdb7151d"
     },
     {
       "kind": "production-ui",
@@ -86,7 +86,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/auth/supabase-auth-port.ts",
-      "sha256": "a01a550645fa016be0924071e3a10292aa315941e3e779f65ea05eaf44a8c087"
+      "sha256": "18f5b1f5b404749221e7b29c3bc316d70c5151b2610a42d8e3e1b102204740f0"
     },
     {
       "kind": "production-ui",
@@ -221,7 +221,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/global.css",
-      "sha256": "4bb43e3fc291eb75ba6d5258073138976708cc120fa9c892eacf782205d673a2"
+      "sha256": "c7dcfd232d5762a7b1086732a77fd961501407f874d980948b9c3027ead1d75d"
     },
     {
       "kind": "production-ui",

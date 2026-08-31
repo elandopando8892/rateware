@@ -23,7 +23,7 @@ function token(overrides: Record<string, unknown> = {}): string {
     sub: '11111111-1111-4111-8111-111111111111',
     session_id: '22222222-2222-4222-8222-222222222222',
     email: 'jgonzalez@xbfreight.com',
-    amr: [{ method: 'otp', timestamp: 1_800_000_000 }],
+    amr: [{ method: 'oauth', timestamp: 1_800_000_000 }],
     ...overrides,
   })}.fixture`;
 }
@@ -43,14 +43,14 @@ function fixture() {
     getUser: vi.fn(async () => ({ data: { user }, error: null })),
     refreshSession: vi.fn(async () => ({ data: { session, user }, error: null })),
     onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe } } })),
-    signInWithOtp: vi.fn(async () => ({ data: { user: null, session: null }, error: null })),
+    signInWithOAuth: vi.fn(async () => ({ data: { provider: 'google', url: 'https://accounts.google.com/' }, error: null })),
     signOut: vi.fn(async () => ({ error: null })),
   };
   return { accessToken, auth, session, unsubscribe, user };
 }
 
 describe('createSupabaseAuthPort', () => {
-  it('binds the verified Supabase user and requests a no-signup magic link', async () => {
+  it('binds the verified Supabase user and starts Google OAuth with an approved login hint', async () => {
     const { accessToken, auth } = fixture();
     const port = createSupabaseAuthPort(runtime, {
       origin: 'https://osp.heymarksman.com',
@@ -71,13 +71,49 @@ describe('createSupabaseAuthPort', () => {
     expect(await port.getApprovalProof(session!)).toBe(accessToken);
 
     await port.login('/app/pipeline', ' JGONZALEZ@XBFREIGHT.COM ');
-    expect(auth.signInWithOtp).toHaveBeenCalledWith({
-      email: 'jgonzalez@xbfreight.com',
+    expect(auth.signInWithOAuth).toHaveBeenCalledWith({
+      provider: 'google',
       options: {
-        emailRedirectTo: 'https://osp.heymarksman.com/app?returnTo=%2Fapp%2Fpipeline',
-        shouldCreateUser: false,
+        redirectTo: 'https://osp.heymarksman.com/app?returnTo=%2Fapp%2Fpipeline',
+        queryParams: {
+          login_hint: 'jgonzalez@xbfreight.com',
+          prompt: 'select_account',
+        },
       },
     });
+  });
+
+  it('starts Google account selection for an anonymous approved-session attempt', async () => {
+    const { auth } = fixture();
+    const port = createSupabaseAuthPort(runtime, {
+      origin: 'https://osp.heymarksman.com',
+      createClient: () => ({ auth: auth as never }),
+    });
+    await port.login('/app/pipeline');
+    expect(auth.signInWithOAuth).toHaveBeenCalledWith({
+      provider: 'google',
+      options: {
+        redirectTo: 'https://osp.heymarksman.com/app?returnTo=%2Fapp%2Fpipeline',
+        queryParams: { prompt: 'select_account' },
+      },
+    });
+  });
+
+  it('rejects a verified Google session whose email is outside the OSP allowlist', async () => {
+    const { auth, user } = fixture();
+    const unauthorizedUser = { ...user, email: 'attacker@example.com' } as User;
+    const unauthorizedSession = {
+      access_token: token({ email: 'attacker@example.com' }),
+      user: unauthorizedUser,
+    } as Session;
+    auth.getSession.mockResolvedValue({ data: { session: unauthorizedSession }, error: null });
+    auth.getUser.mockResolvedValue({ data: { user: unauthorizedUser }, error: null });
+    const port = createSupabaseAuthPort(runtime, {
+      origin: 'https://osp.heymarksman.com',
+      createClient: () => ({ auth: auth as never }),
+    });
+    await expect(port.initialize()).rejects.toThrow('Email is not approved for OSP');
+    expect(port.getCurrentSession()).toBeNull();
   });
 
   it('fails closed for an unapproved email without asking Supabase to create a user', async () => {
@@ -87,7 +123,7 @@ describe('createSupabaseAuthPort', () => {
       createClient: () => ({ auth: auth as never }),
     });
     await expect(port.login('/app/pipeline', 'attacker@example.com')).rejects.toThrow();
-    expect(auth.signInWithOtp).not.toHaveBeenCalled();
+    expect(auth.signInWithOAuth).not.toHaveBeenCalled();
   });
 
   it('clears authority and unsubscribes when the managed port is deactivated', async () => {

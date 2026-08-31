@@ -21,8 +21,6 @@ export function isApprovalSessionFresh(session: BoundSession, now = Date.now()):
 function AuthenticatedApp({ apiClient, authProvider, buildProfile, routerHistory }: { apiClient: OspClient; authProvider: OspAuthProvider; buildProfile: OspBuildProfile; routerHistory?: RouterHistory }) {
   const auth = useAuth();
   const [loginFailed, setLoginFailed] = useState(false);
-  const [loginSent, setLoginSent] = useState(false);
-  const [email, setEmail] = useState('');
   if (auth.state.status === 'loading') {
     return <main className="auth-page"><p role="status" aria-label="Checking access">Checking access…</p></main>;
   }
@@ -43,11 +41,8 @@ function AuthenticatedApp({ apiClient, authProvider, buildProfile, routerHistory
   if (auth.state.status === 'anonymous') {
     const login = async () => {
       setLoginFailed(false);
-      setLoginSent(false);
       try {
-        if (authProvider === 'supabase') await auth.login('/app/pipeline', email);
-        else await auth.login('/app/pipeline');
-        if (authProvider === 'supabase') setLoginSent(true);
+        await auth.login('/app/pipeline');
       } catch { setLoginFailed(true); }
     };
     return (
@@ -57,27 +52,12 @@ function AuthenticatedApp({ apiClient, authProvider, buildProfile, routerHistory
         <p>Sign in to view your organization’s read-only request status.</p>
         {auth.logoutFailed ? <p role="alert">We could not sign out. Please retry.</p> : null}
         {loginFailed ? <p role="alert">We could not start sign in. Please retry.</p> : null}
-        {loginSent ? <p role="status">Check your inbox and open the secure OSP access link.</p> : null}
         {auth.logoutFailed
           ? <button type="button" onClick={() => void auth.logout().catch(() => undefined)}>Retry sign out</button>
           : authProvider === 'supabase'
-            ? <div className="auth-email-link">
-                <label htmlFor="osp-auth-email">Authorized work email</label>
-                <input
-                  id="osp-auth-email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      void login();
-                    }
-                  }}
-                />
-                <button type="button" onClick={() => void login()}>{loginFailed ? 'Retry secure link' : 'Send secure access link'}</button>
+            ? <div className="auth-google-login">
+                <p>Use one of the Google Workspace accounts authorized for OSP.</p>
+                <button type="button" onClick={() => void login()}>{loginFailed ? 'Retry Google sign in' : 'Continue with Google'}</button>
               </div>
             : <button type="button" onClick={() => void login()}>{loginFailed ? 'Retry sign in' : 'Sign in'}</button>}
       </main>
