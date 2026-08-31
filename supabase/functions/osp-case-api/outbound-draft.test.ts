@@ -436,7 +436,10 @@ Deno.test("a post-authorization body edit supersedes Sales authority and returns
   assertEquals(
     queries.some((text) =>
       text.startsWith("insert into osp_private.outbound_drafts") &&
-      text.includes("to_jsonb(references_header) as references_header")
+      text.includes("to_jsonb(references_header) as references_header") &&
+      text.includes(
+        "array(select jsonb_array_elements_text(?::jsonb))",
+      )
     ),
     true,
   );

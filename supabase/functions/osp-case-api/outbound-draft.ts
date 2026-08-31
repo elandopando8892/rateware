@@ -615,7 +615,9 @@ export function createPostgresOutboundDraftStore(options: {
               jsonParameter(tx, persistedDraft.to)
             }, ${
               jsonParameter(tx, persistedDraft.cc)
-            }, ${persistedDraft.subject}, ${persistedDraft.inReplyTo}, ${persistedDraft.references}, ${persistedDraft.bodyText}, ${
+            }, ${persistedDraft.subject}, ${persistedDraft.inReplyTo}, array(select jsonb_array_elements_text(${
+              jsonParameter(tx, persistedDraft.references)
+            }::jsonb)), ${persistedDraft.bodyText}, ${
               jsonParameter(tx, persistedDraft.attachments)
             }, ${input.createdBySubject}) returning id, organization_id, case_id, version, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, from_email, to_recipients, cc_recipients, subject, in_reply_to, to_jsonb(references_header) as references_header, body_text, attachments_json`;
           if (inserted.length !== 1) {
@@ -721,7 +723,9 @@ export function createPostgresOutboundDraftStore(options: {
           const inserted =
             await tx`insert into osp_private.outbound_payloads (id, organization_id, case_id, version, payload_kind, object_id, canonical_sha256, attachment_sha256s, status, draft_id, case_version, source_snapshot_sha256, signed_package_sha256) values (${input.payloadId}, ${input.organizationId}, ${input.caseId}, ${
               Number(drafts[0].version)
-            }, ${record.kind}, ${record.mimeObjectId}, ${record.mimeSha256}, ${record.attachmentSha256}, 'frozen', ${input.payloadId}, ${record.caseVersion}, ${record.sourceSnapshotSha256}, ${record.signedPackageSha256}) returning id, organization_id, case_id, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, object_id, canonical_sha256, to_jsonb(attachment_sha256s) as attachment_sha256s`;
+            }, ${record.kind}, ${record.mimeObjectId}, ${record.mimeSha256}, array(select jsonb_array_elements_text(${
+              jsonParameter(tx, record.attachmentSha256)
+            }::jsonb)), 'frozen', ${input.payloadId}, ${record.caseVersion}, ${record.sourceSnapshotSha256}, ${record.signedPackageSha256}) returning id, organization_id, case_id, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, object_id, canonical_sha256, to_jsonb(attachment_sha256s) as attachment_sha256s`;
           if (inserted.length !== 1) {
             throw new Error("OUTBOUND_PERSISTENCE_FAILED");
           }
