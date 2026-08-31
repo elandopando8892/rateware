@@ -431,7 +431,11 @@ Deno.test("Postgres workflow view is tenant-scoped and rejects malformed rows", 
         "signed_package.input_snapshot_sha256 = snapshot.canonical_sha256",
       ) &&
       query.includes("jsonb_array_elements(draft.attachments_json)") &&
-      query.includes("draft_attachment.value ->> 'sha256'"),
+      query.includes("draft_attachment.value ->> 'sha256'") &&
+      query.includes(
+        "to_jsonb(draft.references_header) as references_header",
+      ) &&
+      query.includes("to_jsonb(coalesce("),
     true,
   );
   assertEquals(

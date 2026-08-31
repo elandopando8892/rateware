@@ -433,6 +433,13 @@ Deno.test("a post-authorization body edit supersedes Sales authority and returns
     ),
     true,
   );
+  assertEquals(
+    queries.some((text) =>
+      text.startsWith("insert into osp_private.outbound_drafts") &&
+      text.includes("to_jsonb(references_header) as references_header")
+    ),
+    true,
+  );
 });
 
 Deno.test("a reserved, sending, or manual attempt makes a post-authorization edit fail closed", async () => {
@@ -867,6 +874,7 @@ Deno.test("Postgres freeze selects only the latest append-only draft version", a
   );
   assertEquals(queries.some((text) =>
     text.includes("version = (select max(latest.version)") &&
-    text.includes("latest.payload_kind = draft.payload_kind")
+    text.includes("latest.payload_kind = draft.payload_kind") &&
+    text.includes("to_jsonb(references_header) as references_header")
   ), true);
 });

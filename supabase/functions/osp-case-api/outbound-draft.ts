@@ -536,7 +536,7 @@ export function createPostgresOutboundDraftStore(options: {
           ]);
           await tx`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
           const existing =
-            await tx`select id, organization_id, case_id, version, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, from_email, to_recipients, cc_recipients, subject, in_reply_to, references_header, body_text, attachments_json from osp_private.outbound_drafts where organization_id = ${input.organizationId} and case_id = ${input.caseId} and id = ${input.draft.payloadId}`;
+            await tx`select id, organization_id, case_id, version, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, from_email, to_recipients, cc_recipients, subject, in_reply_to, to_jsonb(references_header) as references_header, body_text, attachments_json from osp_private.outbound_drafts where organization_id = ${input.organizationId} and case_id = ${input.caseId} and id = ${input.draft.payloadId}`;
           if (existing.length === 1) {
             const prior = draftFromRow(existing[0], input.organizationId);
             if (JSON.stringify(prior) !== JSON.stringify(input.draft)) {
@@ -617,7 +617,7 @@ export function createPostgresOutboundDraftStore(options: {
               jsonParameter(tx, persistedDraft.cc)
             }, ${persistedDraft.subject}, ${persistedDraft.inReplyTo}, ${persistedDraft.references}, ${persistedDraft.bodyText}, ${
               jsonParameter(tx, persistedDraft.attachments)
-            }, ${input.createdBySubject}) returning id, organization_id, case_id, version, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, from_email, to_recipients, cc_recipients, subject, in_reply_to, references_header, body_text, attachments_json`;
+            }, ${input.createdBySubject}) returning id, organization_id, case_id, version, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, from_email, to_recipients, cc_recipients, subject, in_reply_to, to_jsonb(references_header) as references_header, body_text, attachments_json`;
           if (inserted.length !== 1) {
             throw new Error("OUTBOUND_PERSISTENCE_FAILED");
           }
@@ -633,7 +633,7 @@ export function createPostgresOutboundDraftStore(options: {
         input.organizationId,
         async (tx) => {
           const rows =
-            await tx`select id, organization_id, case_id, version, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, from_email, to_recipients, cc_recipients, subject, in_reply_to, references_header, body_text, attachments_json from osp_private.outbound_drafts where organization_id = ${input.organizationId} and case_id = ${input.caseId} and id = ${input.payloadId}`;
+            await tx`select id, organization_id, case_id, version, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, from_email, to_recipients, cc_recipients, subject, in_reply_to, to_jsonb(references_header) as references_header, body_text, attachments_json from osp_private.outbound_drafts where organization_id = ${input.organizationId} and case_id = ${input.caseId} and id = ${input.payloadId}`;
           if (rows.length !== 1) throw new Error("OUTBOUND_DRAFT_NOT_FOUND");
           return draftFromRow(rows[0], input.organizationId);
         },
@@ -681,7 +681,7 @@ export function createPostgresOutboundDraftStore(options: {
             context.caseVersion !== input.expectedCaseVersion
           ) throw new Error("OUTBOUND_VERSION_CONFLICT");
           const draftRows =
-            await tx`select id, organization_id, case_id, version, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, from_email, to_recipients, cc_recipients, subject, in_reply_to, references_header, body_text, attachments_json from osp_private.outbound_drafts draft where organization_id = ${input.organizationId} and case_id = ${input.caseId} and id = ${input.payloadId} and version = (select max(latest.version) from osp_private.outbound_drafts latest where latest.organization_id = draft.organization_id and latest.case_id = draft.case_id and latest.payload_kind = draft.payload_kind)`;
+            await tx`select id, organization_id, case_id, version, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, from_email, to_recipients, cc_recipients, subject, in_reply_to, to_jsonb(references_header) as references_header, body_text, attachments_json from osp_private.outbound_drafts draft where organization_id = ${input.organizationId} and case_id = ${input.caseId} and id = ${input.payloadId} and version = (select max(latest.version) from osp_private.outbound_drafts latest where latest.organization_id = draft.organization_id and latest.case_id = draft.case_id and latest.payload_kind = draft.payload_kind)`;
           if (draftRows.length !== 1) {
             throw new Error("OUTBOUND_DRAFT_NOT_FOUND");
           }
@@ -696,7 +696,7 @@ export function createPostgresOutboundDraftStore(options: {
             record.caseVersion !== input.expectedCaseVersion
           ) throw new Error("OUTBOUND_PERSISTENCE_FAILED");
           const existing =
-            await tx`select id, organization_id, case_id, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, object_id, canonical_sha256, attachment_sha256s from osp_private.outbound_payloads where organization_id = ${input.organizationId} and case_id = ${input.caseId} and id = ${input.payloadId}`;
+            await tx`select id, organization_id, case_id, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, object_id, canonical_sha256, to_jsonb(attachment_sha256s) as attachment_sha256s from osp_private.outbound_payloads where organization_id = ${input.organizationId} and case_id = ${input.caseId} and id = ${input.payloadId}`;
           if (existing.length === 1) {
             const prior = frozenFromRow(existing[0], true);
             if (
@@ -721,7 +721,7 @@ export function createPostgresOutboundDraftStore(options: {
           const inserted =
             await tx`insert into osp_private.outbound_payloads (id, organization_id, case_id, version, payload_kind, object_id, canonical_sha256, attachment_sha256s, status, draft_id, case_version, source_snapshot_sha256, signed_package_sha256) values (${input.payloadId}, ${input.organizationId}, ${input.caseId}, ${
               Number(drafts[0].version)
-            }, ${record.kind}, ${record.mimeObjectId}, ${record.mimeSha256}, ${record.attachmentSha256}, 'frozen', ${input.payloadId}, ${record.caseVersion}, ${record.sourceSnapshotSha256}, ${record.signedPackageSha256}) returning id, organization_id, case_id, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, object_id, canonical_sha256, attachment_sha256s`;
+            }, ${record.kind}, ${record.mimeObjectId}, ${record.mimeSha256}, ${record.attachmentSha256}, 'frozen', ${input.payloadId}, ${record.caseVersion}, ${record.sourceSnapshotSha256}, ${record.signedPackageSha256}) returning id, organization_id, case_id, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, object_id, canonical_sha256, to_jsonb(attachment_sha256s) as attachment_sha256s`;
           if (inserted.length !== 1) {
             throw new Error("OUTBOUND_PERSISTENCE_FAILED");
           }

@@ -218,6 +218,9 @@ Deno.test("Postgres Sales authorization resolves only the latest append-only dra
   assertEquals(queries.some((text) =>
     text.includes("join osp_private.outbound_drafts draft") &&
     text.includes("draft.version = (select max(latest.version)") &&
-    text.includes("latest.payload_kind = draft.payload_kind")
+    text.includes("latest.payload_kind = draft.payload_kind") &&
+    text.includes(
+      "to_jsonb(payload.attachment_sha256s) as attachment_sha256s",
+    )
   ), true);
 });

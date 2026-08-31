@@ -524,9 +524,9 @@ export function createPostgresWorkflowViewSource(
                    and latest_draft.payload_kind = draft.payload_kind
                ) as payload_is_latest,
                draft.from_email, draft.to_recipients, draft.cc_recipients, draft.subject,
-               draft.in_reply_to, draft.references_header, draft.body_text,
+               draft.in_reply_to, to_jsonb(draft.references_header) as references_header, draft.body_text,
                frozen.status as payload_status, frozen.canonical_sha256 as mime_sha256,
-               coalesce(
+               to_jsonb(coalesce(
                  frozen.attachment_sha256s,
                  (
                    select coalesce(
@@ -537,7 +537,7 @@ export function createPostgresWorkflowViewSource(
                      as draft_attachment(value, ordinality)
                  ),
                  array[]::text[]
-               ) as attachment_sha256s,
+               )) as attachment_sha256s,
                authorized_record.id as sales_authorization_id, attempt.outcome as send_outcome
         from osp_private.customer_registration_cases case_record
         left join lateral (
