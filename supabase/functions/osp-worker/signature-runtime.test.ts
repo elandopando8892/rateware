@@ -64,32 +64,40 @@ Deno.test("signature vault reader fails closed on invalid references, duplicate 
   }
 });
 
-Deno.test("signature object reader uses the Edge-compatible stream path instead of Blob conversion", async () => {
+Deno.test("signature object reader uses an exact signed URL instead of the Edge Blob path", async () => {
   let blobPathUsed = false;
-  const builder = {
-    asStream: () =>
-      Promise.resolve({
-        data: new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(new Uint8Array([1, 2]));
-            controller.enqueue(new Uint8Array([3, 4]));
-            controller.close();
-          },
-        }),
-        error: null,
-      }),
-    then: () => {
-      blobPathUsed = true;
-      throw new TypeError("Blob conversion is unavailable");
-    },
-  };
+  let requestedUrl = "";
   const port = createSignatureObjectPort({
     storage: {
+      url: "https://example.supabase.co/storage/v1",
       from: () => ({
-        download: () => builder,
+        download: () => {
+          blobPathUsed = true;
+          throw new TypeError("Blob conversion is unavailable");
+        },
+        createSignedUrl: () =>
+          Promise.resolve({
+            data: {
+              signedUrl:
+                "https://example.supabase.co/storage/v1/object/sign/osp-derived-documents/input?token=opaque",
+            },
+            error: null,
+          }),
       }),
     },
-  } as never);
+  } as never, "osp-derived-documents", (url) => {
+    requestedUrl = String(url);
+    return Promise.resolve(new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2]));
+          controller.enqueue(new Uint8Array([3, 4]));
+          controller.close();
+        },
+      }),
+      { status: 200 },
+    ));
+  });
   const bytes = await port.read(
     {
       organizationId: "11111111-1111-4111-8111-111111111111",
@@ -99,16 +107,19 @@ Deno.test("signature object reader uses the Edge-compatible stream path instead 
   );
   assertEquals([...bytes], [1, 2, 3, 4]);
   assertEquals(blobPathUsed, false);
+  assertEquals(
+    requestedUrl,
+    "https://example.supabase.co/storage/v1/object/sign/osp-derived-documents/input?token=opaque",
+  );
 });
 
 Deno.test("signature object reader converts Edge download failures into a stable safe code", async () => {
   const port = createSignatureObjectPort({
     storage: {
+      url: "https://example.supabase.co/storage/v1",
       from: () => ({
-        download: () => ({
-          asStream: () =>
-            Promise.reject(new TypeError("runtime-specific detail")),
-        }),
+        createSignedUrl: () =>
+          Promise.reject(new TypeError("runtime-specific detail")),
       }),
     },
   } as never);
@@ -124,4 +135,39 @@ Deno.test("signature object reader converts Edge download failures into a stable
     Error,
     "SIGNATURE_INPUT_INVALID",
   );
+});
+
+Deno.test("signature object reader rejects a cross-origin signed URL before fetch", async () => {
+  let fetched = false;
+  const port = createSignatureObjectPort({
+    storage: {
+      url: "https://example.supabase.co/storage/v1",
+      from: () => ({
+        createSignedUrl: () =>
+          Promise.resolve({
+            data: {
+              signedUrl:
+                "https://attacker.invalid/storage/v1/object/sign/osp-derived-documents/input?token=opaque",
+            },
+            error: null,
+          }),
+      }),
+    },
+  } as never, "osp-derived-documents", () => {
+    fetched = true;
+    return Promise.resolve(new Response(null, { status: 200 }));
+  });
+  await assertRejects(
+    () =>
+      port.read(
+        {
+          organizationId: "11111111-1111-4111-8111-111111111111",
+          objectId: "input",
+        },
+        new AbortController().signal,
+      ),
+    Error,
+    "SIGNATURE_INPUT_INVALID",
+  );
+  assertEquals(fetched, false);
 });

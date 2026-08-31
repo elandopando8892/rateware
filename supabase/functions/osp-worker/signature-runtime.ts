@@ -31,8 +31,8 @@ const STANDARD_BASE64 =
 const MAX_SIGNATURE_BYTES = 1024 * 1024;
 const MAX_SIGNATURE_INPUT_BYTES = 25 * 1024 * 1024;
 
-type StorageDownloadStream = {
-  data: ReadableStream<Uint8Array> | null;
+type SignedStorageDownload = {
+  data: { signedUrl: string } | null;
   error: unknown;
 };
 
@@ -135,6 +135,7 @@ function simple(
 export function createSignatureObjectPort(
   client: StorageClient,
   bucket = "osp-derived-documents",
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
 ): SignatureObjectPort {
   return Object.freeze({
     read: async (
@@ -146,24 +147,31 @@ export function createSignatureObjectPort(
         bytes = simple(client)
           ? await client.download(objectId)
           : await (async () => {
-            const builder = client.storage.from(bucket).download(
+            const storage = client.storage as unknown as { url?: string };
+            if (typeof storage.url !== "string") return null;
+            const storageUrl = new URL(storage.url);
+            const signed = await client.storage.from(bucket).createSignedUrl(
               objectId,
-              {},
-              { signal },
-            );
-            const streamBuilder = builder as unknown as {
-              asStream?: () => PromiseLike<StorageDownloadStream>;
-            };
-            if (typeof streamBuilder.asStream === "function") {
-              const result = await streamBuilder.asStream();
-              return result.error || !result.data
-                ? null
-                : await collectStorageStream(result.data, signal);
-            }
-            const result = await builder;
-            return result.error || !result.data
+              60,
+            ) as SignedStorageDownload;
+            if (signed.error || !signed.data) return null;
+            const signedUrl = new URL(signed.data.signedUrl);
+            const expectedPath = `${storageUrl.pathname}/object/sign/${bucket}/`;
+            if (
+              signedUrl.protocol !== "https:" ||
+              signedUrl.origin !== storageUrl.origin ||
+              !signedUrl.pathname.startsWith(expectedPath) ||
+              signedUrl.username || signedUrl.password || signedUrl.hash ||
+              !signedUrl.searchParams.has("token")
+            ) return null;
+            const response = await fetchImpl(signedUrl, {
+              method: "GET",
+              redirect: "error",
+              signal,
+            });
+            return !response.ok || !response.body
               ? null
-              : new Uint8Array(await result.data.arrayBuffer());
+              : await collectStorageStream(response.body, signal);
           })();
       } catch (error) {
         if (
