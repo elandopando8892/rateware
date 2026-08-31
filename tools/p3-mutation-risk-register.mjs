@@ -137,10 +137,10 @@ export const MUTATION_RISK_REGISTER = [
     effect: "Change primary or backup carrier award",
     likelihood: 3,
     impact: 5,
-    control: "transaction_required",
-    evidence: "Primary clearing, selected-vendor update, and history append are separate writes; replay can duplicate history or leave partial state.",
+    control: "atomic_transaction_with_operation_receipt",
+    evidence: "A service-role RPC locks the lane, applies award and staging outcomes atomically, and persists a payload-bound operation receipt.",
     owner: "Procurement Platform",
-    status: "open"
+    status: "controlled"
   },
   {
     canonicalId: "edge.rateware-api.create_rfx_award_package",
