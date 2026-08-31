@@ -76,6 +76,23 @@ const META_APP_ID = (Deno.env.get("META_APP_ID") || "").trim();
 const META_CONFIG_ID = (Deno.env.get("META_CONFIG_ID") || "").trim();
 const META_REDIRECT_URI = (Deno.env.get("META_REDIRECT_URI") || "").trim();
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CORRELATION_ID_PATTERN = /^[A-Za-z0-9_.:-]{8,128}$/;
+const CORRELATED_HIGH_RISK_ACTIONS = new Set([
+  "award_rfx_lane_vendor",
+  "bulk_update_staging",
+  "bulk_update_rate_rows_by_filter",
+  "bulk_update_rateware",
+  "closeout_awarded_rfx_to_rateware",
+  "generate_outreach_drafts",
+  "generate_rfx_award_notices",
+  "send_bid_room_carrier_message",
+  "send_fcm_customer_quote_email",
+  "send_outreach_messages",
+  "send_ratebook_distribution",
+  "send_whatsapp_group_outreach_messages",
+  "send_whatsapp_outreach_messages",
+  "update_staging"
+]);
 const BULK_SELECTED_ID_LIMIT = 1000;
 const BULK_SEND_LIMIT = 100;
 const EXACT_VENDOR_CONSOLIDATION_BATCH_LIMIT = 1;
@@ -25566,6 +25583,41 @@ type RatewareApiHandlerDependencies = {
   carrierTemplatesEnabled?: boolean;
 };
 
+export function ratewareRequestId(request: Request) {
+  const supplied = request.headers.get("x-request-id")?.trim() || "";
+  return CORRELATION_ID_PATTERN.test(supplied) ? supplied : crypto.randomUUID();
+}
+
+export function ratewareOperationId(request: Request, body: Record<string, unknown>) {
+  const action = cleanText(body.action) || "";
+  if (!CORRELATED_HIGH_RISK_ACTIONS.has(action)) return null;
+  const supplied = cleanText(request.headers.get("x-operation-id") || body.operation_id);
+  return supplied && UUID_PATTERN.test(supplied) ? supplied.toLowerCase() : crypto.randomUUID();
+}
+
+function correlatedJsonResponse(
+  request: Request,
+  requestId: string,
+  operationId: string | null,
+  body: unknown,
+  status = 200
+) {
+  const response = baseJsonResponse(body, status, request);
+  const headers = new Headers(response.headers);
+  headers.set("X-Request-Id", requestId);
+  if (operationId) headers.set("X-Operation-Id", operationId);
+  headers.set("Access-Control-Expose-Headers", "X-Request-Id, X-Operation-Id");
+  return new Response(response.body, { status: response.status, headers });
+}
+
+function correlatedPreflightResponse(request: Request, requestId: string) {
+  const headers = new Headers(corsHeaders(request));
+  headers.set("Access-Control-Allow-Headers", "authorization, x-client-info, apikey, content-type, x-request-id, x-operation-id");
+  headers.set("Access-Control-Expose-Headers", "X-Request-Id, X-Operation-Id");
+  headers.set("X-Request-Id", requestId);
+  return new Response("ok", { headers });
+}
+
 export function createRatewareApiHandler(
   dependencies: RatewareApiHandlerDependencies = {}
 ) {
@@ -25576,8 +25628,10 @@ export function createRatewareApiHandler(
 
   return async (request: Request) => {
   const requestStartedAt = performance.now();
-  const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
-  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
+  const requestId = ratewareRequestId(request);
+  let operationId: string | null = null;
+  const jsonResponse = (body: unknown, status = 200) => correlatedJsonResponse(request, requestId, operationId, body, status);
+  if (request.method === "OPTIONS") return correlatedPreflightResponse(request, requestId);
 
   let auditSupabase: RatewareSupabaseClient | null = null;
   let auditUser: RatewareUser | null = null;
@@ -25592,6 +25646,7 @@ export function createRatewareApiHandler(
     const authenticationCompletedAt = performance.now();
     auditUser = user;
     body = await request.json();
+    operationId = ratewareOperationId(request, body);
     const bodyParsedAt = performance.now();
 
     const growthAction = typeof body.action === "string" ? body.action : "";
@@ -28766,6 +28821,8 @@ export function createRatewareApiHandler(
       const actionCompletedAt = performance.now();
       console.info(JSON.stringify({
         event: "rateware_api.performance",
+        request_id: requestId,
+        operation_id: operationId,
         action: "list_bid_room_chat",
         authentication_ms: Math.round(authenticationCompletedAt - authenticationStartedAt),
         body_parse_ms: Math.round(bodyParsedAt - authenticationCompletedAt),
@@ -33191,6 +33248,8 @@ export function createRatewareApiHandler(
     const errorStatus = identityStatus === 403 ? 403 : apiErrorStatus(errorInfo);
     console.error(JSON.stringify({
       event: "rateware_api.error",
+      request_id: requestId,
+      operation_id: operationId,
       incident_id: incidentId,
       action: failedApiAction,
       status: errorStatus,
@@ -33227,6 +33286,8 @@ export function createRatewareApiHandler(
             : `Rateware API action failed: ${failedApiAction}`,
           {
             incident_id: incidentId,
+            request_id: requestId,
+            operation_id: operationId,
             action: failedApiAction,
             status: errorStatus,
             error: errorMessage,
@@ -33252,6 +33313,8 @@ export function createRatewareApiHandler(
       details: errorDetails,
       hint: errorHint,
       incident_id: incidentId,
+      request_id: requestId,
+      operation_id: operationId,
       action: failedApiAction,
       stage: errorStage
     }, errorStatus);

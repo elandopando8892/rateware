@@ -17,6 +17,7 @@
     "test:identity-contract": "node --test tests/phase0-identity.test.mjs",
     "test:migration-ledger": "node --test tests/supabase-migration-ledger.test.mjs",
     "test:release-preflight": "node --test tests/release-preflight.test.mjs",
+    "test:rateware-correlation": "deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/rateware-correlation.contract.test.ts",
     "test:platform55-command-center": "node tests/platform55-command-center.test.mjs",
     "test:platform55:operate": "node tests/platform55-operate-shell.test.mjs && node --test tests/platform55-operate-evidence-server.test.mjs",
     "test:platform55:procurement": "node tests/platform55-procurement-shell.test.mjs && node --test tests/platform55-procurement-evidence-server.test.mjs tests/platform55-procurement-evidence.test.mjs",
