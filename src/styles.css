@@ -37183,6 +37183,10 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
 .rfx-wave-release-review-card li small { color: #5d708a; }
 .rfx-wave-release-acknowledgement { display: flex; align-items: flex-start; gap: 9px; border: 1px solid #b8d3f4; border-radius: 6px; padding: 13px; background: #f4f8fe; }
 .rfx-wave-release-fence { margin: 0; border-left: 3px solid #0f65c9; padding: 7px 10px; color: #405675; font-size: 12px; }
+.rfx-wave-review-sync { display: block; color: #2e7050; text-align: center; }
+.rfx-wave-review-sync.is-warning { color: #a14829; }
+.rfx-carrier-review-audit { display: grid; gap: 3px; margin: 0; border-left: 3px solid #2d9b5f; padding: 7px 10px; color: #405675; font-size: 11px; }
+.rfx-carrier-review-audit strong { color: #24583f; }
 
 @media (max-width: 680px) {
   .rfx-wave-release-metrics { grid-template-columns: repeat(2, 1fr); }
@@ -39286,3 +39290,49 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
     flex-direction: column;
   }
 }
+.rateware-login-dialog {
+  width: min(440px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid #d7e0eb;
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(15, 37, 68, 0.22);
+}
+
+.rateware-login-dialog::backdrop {
+  background: rgba(15, 37, 68, 0.38);
+  backdrop-filter: blur(2px);
+}
+
+.rateware-login-card {
+  display: grid;
+  gap: 16px;
+  padding: 28px;
+}
+
+.rateware-login-card header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.rateware-login-card h2 { margin: 4px 0 0; }
+.rateware-login-card label { display: grid; gap: 6px; font-weight: 600; }
+.rateware-login-card input { width: 100%; }
+.rateware-login-card [data-auth-error]:empty { display: none; }
+.rateware-login-card [data-auth-error] { margin: 0; color: #b42318; }
+.rateware-login-copy { margin: 0; color: #475467; line-height: 1.5; }
+.rateware-login-note { margin: 0; color: #667085; font-size: 12px; line-height: 1.45; text-align: center; }
+.rateware-login-card .google-sign-in {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  background: #fff;
+  color: #101828;
+  border: 1px solid #d0d5dd;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 5%);
+}
+.rateware-login-card .google-sign-in:hover { background: #f9fafb; border-color: #98a2b3; }
+.google-mark { color: #4285f4; font: 700 18px/1 Arial, sans-serif; }

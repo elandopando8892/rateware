@@ -415,17 +415,17 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 [functions.shipper-profile-api]
 verify_jwt = false
 
-# Rateware uses Kinde RS256 access tokens. The Edge gateway only understands
-# Supabase-issued JWTs, so authentication is performed inside rateware-api by
-# requireKindeUser against Kinde's issuer and remote JWKS.
+# Rateware accepts Supabase Auth sessions only. Verification remains inside the
+# function while the gateway verification setting is kept compatible with the
+# existing Edge deployment contract.
 [functions.rateware-api]
 verify_jwt = false
 
 [functions.shipper-directory-api]
 verify_jwt = false
 
-# Provider Gmail uses Kinde for the operator API and a one-time OAuth state for
-# the Google callback. Both functions perform authentication inside the runtime.
+# Provider Gmail uses Supabase Auth for the operator API and a one-time OAuth
+# state for the Google callback. Both functions authenticate inside the runtime.
 [functions.provider-gmail-intake-api]
 verify_jwt = false
 

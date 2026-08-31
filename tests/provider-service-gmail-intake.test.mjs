@@ -44,7 +44,7 @@ test('intake API exposes only status, OAuth, sync, and watch operations', () => 
   for (const action of ['provider_gmail_status', 'start_provider_gmail_oauth', 'sync_provider_gmail_inbox', 'renew_provider_gmail_watch']) {
     assert.match(api, new RegExp(action));
   }
-  assert.match(api, /requireKindeUser\(request\)/);
+  assert.match(api, /requireRatewareUser\(request\)/);
   assert.match(api, /resolveRuntimeWorkspaceUser/);
   assert.match(api, /PROVIDER_GMAIL_READONLY_SCOPE/);
   assert.match(api, /openid email/);
@@ -79,7 +79,7 @@ test('watch registration is INBOX-only and stores returned history/expiration', 
 test('Provider Gmail Edge functions bypass only the Supabase JWT gateway and keep runtime auth', () => {
   assert.match(supabaseConfig, /\[functions\.provider-gmail-intake-api\]\s+verify_jwt = false/);
   assert.match(supabaseConfig, /\[functions\.provider-gmail-oauth-callback\]\s+verify_jwt = false/);
-  assert.match(api, /requireKindeUser\(request\)/);
+  assert.match(api, /requireRatewareUser\(request\)/);
   assert.match(callback, /provider_gmail_oauth_states/);
 });
 

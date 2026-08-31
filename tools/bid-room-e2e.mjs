@@ -25,7 +25,7 @@ function printHelp() {
 Bid Room production E2E runner
 
 Required:
-  RATEWARE_E2E_KINDE_TOKEN=<token> node tools/bid-room-e2e.mjs
+  RATEWARE_E2E_AUTH_TOKEN=<supabase-token> node tools/bid-room-e2e.mjs
 
 Optional:
   --carrier-list-templates-preview
@@ -91,7 +91,7 @@ if (hasFlag("--help")) {
   process.exit(0);
 }
 
-const kindeToken = (argValue("--kinde-token", process.env.RATEWARE_E2E_KINDE_TOKEN || process.env.KINDE_TOKEN || "") || "").trim();
+const authToken = (argValue("--auth-token", process.env.RATEWARE_E2E_AUTH_TOKEN || "") || "").trim();
 const recipient = argValue("--recipient", process.env.RATEWARE_E2E_RECIPIENT || defaultRecipient).trim().toLowerCase();
 const sendGmail = hasFlag("--send-gmail");
 const sendCloseoutEmail = hasFlag("--send-closeout-email");
@@ -116,8 +116,8 @@ if (hasFlag("--carrier-list-templates-preview")) {
   }
 }
 
-if (!kindeToken) {
-  console.error("Missing RATEWARE_E2E_KINDE_TOKEN. Sign in to Rateware, provide a current Kinde token, then rerun this script.");
+if (!authToken) {
+  console.error("Missing RATEWARE_E2E_AUTH_TOKEN. Sign in to Rateware and provide a current Supabase access token.");
   printHelp();
   process.exit(1);
 }
@@ -177,7 +177,7 @@ async function rateware(action, payload = {}) {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/rateware-api`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${kindeToken}`,
+      Authorization: `Bearer ${authToken}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ action, ...payload })

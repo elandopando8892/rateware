@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
-import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from '../_shared/kinde.ts';
+import { corsHeaders, jsonResponse as baseJsonResponse } from '../_shared/kinde.ts';
+import { requireRatewareUser } from '../_shared/auth.ts';
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from '../_shared/runtime-identity.ts';
 import {
   PROVIDER_GMAIL_READONLY_SCOPE,
@@ -214,7 +215,7 @@ Deno.serve(async (request) => {
 
   try {
     const supabase = getClient();
-    const identity = await requireKindeUser(request);
+    const identity = await requireRatewareUser(request);
     const user = await resolveRuntimeWorkspaceUser(supabase, identity as Record<string, unknown>, { persistLegacyIdentity: false });
     const body = await request.json() as Record<string, unknown>;
     if (typeof body.action !== 'string' || !ACTIONS.has(body.action)) return jsonResponse({ error: 'Unknown Provider Gmail action.' }, 400);

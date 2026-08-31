@@ -1208,23 +1208,19 @@ assert.match(rfxEventsSource, /inviteSelectedButton\?\.addEventListener\("click"
 assert.match(rfxEventsSource, /archiveSelectedButton\?\.addEventListener\("click", async \(\) => \{[\s\S]+const ids = selectedVisibleInvitationIds\(\);/, "Bid Room archive bulk action should ignore hidden stale selected participants");
 assert.match(ratewareApiClientSource, /function apiErrorMessage/, "Rateware API client should normalize object error payloads before throwing");
 assert.doesNotMatch(ratewareApiClientSource, /new Error\(data\.error \|\| data\.message/, "Rateware API client should not throw raw object errors that render as [object Object]");
-assert.match(authSource, /return await kinde\.getAccessToken\?\.\(\)/, "Kinde auth should use the supported access-token API for normal authenticated requests");
-assert.match(authSource, /let kindeRefreshPromise/, "Kinde session restoration should be single-flight across concurrent bulk requests");
-assert.match(authSource, /let kindeReauthenticationPromise;/, "Kinde reauthentication should be single-flight across repeated sign-in clicks");
-assert.match(authSource, /if \(kindeReauthenticationPromise\) return kindeReauthenticationPromise;/, "Kinde reauthentication should reuse an in-flight login restart");
-assert.match(authSource, /kindePromise = null;[\s\S]+await getKindeClient\(\)/, "Kinde session restoration should reinitialize the PKCE client so checkAuth can renew the cached token");
+assert.match(authSource, /authClient\.auth\.getSession\(\)/, "Supabase Auth should restore the persisted Rateware session");
+assert.match(authSource, /authClient\.auth\.refreshSession\(\)/, "Supabase Auth should refresh an expired Rateware session");
+assert.match(authSource, /let loginPromise;/, "Supabase sign-in should be single-flight across repeated sign-in clicks");
+assert.match(authSource, /if \(loginPromise\) return loginPromise;/, "Supabase sign-in should reuse an open login flow");
+assert.doesNotMatch(authSource, /Kinde|getKinde|kinde/i, "The browser auth runtime should no longer depend on Kinde");
 assert.match(authSource, /export async function authenticatedFetch/, "Authenticated requests should use one shared session-aware fetch executor");
-assert.match(authSource, /response\.status !== 401[\s\S]+forceRefresh: true[\s\S]+fetch\(input, withBearerToken\(init, freshToken\)\)/, "Authenticated fetch should retry one unauthorized request after session restoration");
-assert.match(authSource, /rateware:session-required/, "Failed silent restoration should raise one controlled reauthentication signal");
-assert.match(authSource, /app_state: \{ returnTo \}/, "Kinde reauthentication should preserve the current module route");
-assert.match(authSource, /async function hasUsableKindeSession\(\)/, "The shell should distinguish a usable Kinde token from stale local authentication state");
-assert.match(authSource, /locallyAuthenticated && await hasUsableKindeSession\(\)/, "The shell should not render a stale Kinde session as an authenticated user");
-assert.match(authSource, /kindePromise = null;[\s\S]+await kinde\.login\(\{ app_state: \{ returnTo \} \}\)/, "Reauthentication should recreate the Kinde client before restarting OAuth");
-assert.match(authSource, /let authControlActionRunning = false;/, "Auth controls should block duplicate sign-in and sign-out clicks");
-assert.match(authSource, /if \(authControlActionRunning\) return;[\s\S]+authButton\.disabled = true;[\s\S]+await reauthenticateKinde\(\)/, "Sign-in control should serialize reauthentication");
-assert.match(authSource, /authButton\.textContent = "Opening sign-in\.\.\."/, "Sign-in control should show an in-progress state");
+assert.match(authSource, /response\.status !== 401[\s\S]+forceRefresh: true[\s\S]+fetch\(input, withBearerToken\(init, fresh\)\)/, "Authenticated fetch should retry one unauthorized request after session restoration");
+assert.match(authSource, /showSessionRecovery/, "Failed silent restoration should expose controlled reauthentication");
+assert.match(authSource, /persistSession: true[\s\S]+autoRefreshToken: true/, "Supabase Auth should persist and refresh sessions");
+assert.match(authSource, /signInWithOAuth\(\{[\s\S]+provider: "google"[\s\S]+redirectTo/, "Rateware login should use Supabase Google OAuth with an explicit return URL");
+assert.doesNotMatch(authSource, /signInWithPassword|resetPasswordForEmail/, "Rateware login should not expose legacy password flows");
 assert.match(landingSource, /heroButton\.textContent = "Opening sign-in\.\.\."/, "Landing sign-in should show an in-progress state");
-assert.match(authSource, /if \(authControlActionRunning\) return;[\s\S]+signOutButton\.disabled = true;[\s\S]+await kinde\.logout\(\)/, "Sign-out control should serialize logout");
+assert.match(authSource, /authClient\.auth\.signOut\(\)/, "Sign-out should revoke the Supabase browser session");
 assert.doesNotMatch(authSource, /setStatus\(error\.message\)/, "Auth controls should pass caught errors through shared humanization");
 assert.match(authSource, /showSessionRecovery\(\);\s*throw error;/, "Protected modules should expose session recovery rather than continuing with an expired token");
 assert.doesNotMatch(readFileSync(new URL("../index.html", import.meta.url), "utf8"), /Open SaaS dashboard/, "Landing should not offer a redundant unauthenticated dashboard link");
@@ -1255,8 +1251,8 @@ for (const [source, label] of [
 ]) {
   assert.match(source, /requirePrivatePage\(\)\.then\([\s\S]+\.catch\(\(\) => \{\}\);/, `${label} should absorb the expected unauthenticated redirect rejection`);
 }
-assert.match(supabaseConfigSource, /\[functions\.rateware-api\]\s*verify_jwt\s*=\s*false/, "Rateware API must bypass Supabase gateway JWT verification so its Kinde RS256 verifier can authenticate requests");
-assert.match(apiSource, /const authenticate = dependencies\.authenticate \?\? requireKindeUser/, "Rateware API handler factory must default to the custom Kinde verifier when gateway JWT verification is disabled");
+assert.match(supabaseConfigSource, /\[functions\.rateware-api\]\s*verify_jwt\s*=\s*false/, "Rateware API must bypass gateway JWT verification while its staged dual-provider verifier authenticates requests");
+assert.match(apiSource, /const authenticate = dependencies\.authenticate \?\? requireRatewareUser/, "Rateware API handler factory must default to the staged Rateware verifier when gateway JWT verification is disabled");
 assert.match(apiSource, /const claims = await authenticate\(request\)/, "Rateware API handler must preserve verified raw claims before workspace resolution");
 assert.match(apiSource, /Deno\.serve\(createRatewareApiHandler\(\)\)/, "Production serving must use the same injectable Rateware API handler factory as request tests");
 assert.match(ratewareApiClientSource, /import \{ authenticatedFetch \} from "\.\/auth\.js"/, "Rateware API calls should use the shared authenticated request executor");
@@ -2174,7 +2170,7 @@ assert.match(stylesSource, /rfx-close-workspace-tabs/, "Close workspace tabs sho
 assert.match(stylesSource, /rfx-award-notice-layout/, "Notices should use a queue and preview layout");
 assert.match(packageJsonSource, /"e2e:bid-room": "node tools\/bid-room-e2e\.mjs"/, "Package scripts should expose the Bid Room production E2E runner");
 assert.match(packageJsonSource, /"smoke:integrations": "node tools\/integration-smoke\.mjs"/, "Package scripts should expose the production integration smoke runner");
-assert.match(bidRoomE2eSource, /RATEWARE_E2E_KINDE_TOKEN/, "Bid Room E2E should require a real Kinde token for production API calls");
+assert.match(bidRoomE2eSource, /RATEWARE_E2E_AUTH_TOKEN/, "Bid Room E2E should require a real Supabase token for authenticated API calls");
 assert.match(bidRoomE2eSource, /create_rfx_event/, "Bid Room E2E should create a real RFx event");
 assert.match(bidRoomE2eSource, /import_rfx_lanes/, "Bid Room E2E should load lane book rows");
 assert.match(bidRoomE2eSource, /shortlist_rfx_lane_vendors/, "Bid Room E2E should select CRM carriers as participants");
@@ -2206,7 +2202,7 @@ assert.match(rfxGmailAccessTokenSource, /\.eq\("mailbox_email", GMAIL_ALLOWED_SE
 assert.match(rfxGmailAccessTokenSource, /const connectionOwner = cleanEmail\(connection\.owner_email\) \|\| owner/, "Bid Room Gmail token refresh should update the actual connection owner");
 assert.match(rfxGmailAccessTokenSource, /\.eq\("owner_email", connectionOwner\)/, "Bid Room Gmail token refresh should not write against stale event owner metadata");
 assert.match(integrationSmokeSource, /Vercel deploy/, "Integration smoke should confirm Vercel deployment");
-assert.match(integrationSmokeSource, /Kinde login/, "Integration smoke should confirm Kinde login");
+assert.match(integrationSmokeSource, /Supabase login/, "Integration smoke should confirm Supabase login");
 assert.match(integrationSmokeSource, /get_saas_settings/, "Integration smoke should confirm authenticated Supabase API access");
 assert.match(integrationSmokeSource, /list_gmail_connections/, "Integration smoke should check Gmail connection status");
 assert.match(integrationSmokeSource, /send_outreach_messages/, "Integration smoke should cover real Gmail sending when enabled");
@@ -3833,7 +3829,7 @@ assert.match(bidRoomChatSnapshotMigration, /vendor_row\.owner_email = p_owner_em
 assert.match(bidRoomChatSnapshotMigration, /security invoker[\s\S]+set search_path = pg_catalog, public, pg_temp/, "Bid Room snapshot should use caller privileges and pin its search path");
 assert.match(bidRoomChatSnapshotMigration, /revoke all on function public\.rateware_bid_room_chat_snapshot[\s\S]+from public, anon, authenticated/, "Bid Room snapshot RPC should remain backend-only");
 assert.match(createRawUploadSource, /resolveRuntimeWorkspaceUser\(supabase, identity\)/, "Upload creation should enforce the reviewed tenant identity");
-assert.match(interpretUploadSource, /resolveRuntimeWorkspaceUser\(supabase, await requireKindeUser/, "Interpretation should enforce the reviewed tenant identity");
+assert.match(interpretUploadSource, /resolveRuntimeWorkspaceUser\(supabase, await requireRatewareUser/, "Interpretation should enforce the reviewed tenant identity through the staged provider verifier");
 assert.match(canonicalWorkspaceMigration, /create table if not exists public\.workspace_registry/, "Canonical workspace ownership should be persisted");
 assert.match(canonicalWorkspaceMigration, /with recursive owner_edges as/, "Legacy owners should be discovered through existing vendor-rate relationships");
 assert.match(canonicalWorkspaceMigration, /rate_staging_vendor_workspace_guard/, "Staged rates should reject cross-workspace vendor links");
@@ -4900,7 +4896,8 @@ assert.match(uploadServiceSource, /fetchUploadHistory[\s\S]+page\.has_more[\s\S]
 assert.match(uploadServiceSource, /fetchUploadStagedRows[\s\S]+page\.has_more[\s\S]+return rows/, "Upload History should load every staged row page for source comparison");
 assert.match(apiSource, /body\.action === "list_vendor_segments"[\s\S]+count: "exact"[\s\S]+has_more/, "Vendor segment reads should expose pagination metadata instead of silently truncating at 100 rows");
 assert.match(vendorServiceSource, /fetchVendorSegments[\s\S]+page\.has_more[\s\S]+return rows/, "Vendor segment consumers should load every paginated segment page");
-assert.match(interpretUploadSource, /import \{ corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser \} from "\.\.\/_shared\/kinde\.ts"/, "Interpretation should use the shared response hardening contract");
+assert.match(interpretUploadSource, /import \{ corsHeaders, jsonResponse as baseJsonResponse \} from "\.\.\/_shared\/kinde\.ts"/, "Interpretation should use the shared response hardening contract");
+assert.match(interpretUploadSource, /import \{ requireRatewareUser \} from "\.\.\/_shared\/auth\.ts"/, "Interpretation should use the staged Rateware identity verifier");
 assert.doesNotMatch(interpretUploadSource, /const corsHeaders = \{/, "Interpretation should not maintain a divergent wildcard CORS response helper");
 assert.match(shipperProfileApiSource, /organization_id[\s\S]+contactsQuery\.eq\("organization_id"/, "Shipper profile links should scope public contacts to their workspace");
 assert.match(shipperProfileApiSource, /organization_id[\s\S]+locationsQuery\.eq\("organization_id"/, "Shipper profile links should scope public locations to their workspace");

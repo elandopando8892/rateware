@@ -96,7 +96,7 @@ jobs:
           container='supabase_db_alqjqzqagdmcywpjtnnr'
           ledger="$(docker exec "$container" psql -U postgres -d postgres -Atc \
             "select count(*)::text || '|' || max(version)::text from supabase_migrations.schema_migrations")"
-          test "$ledger" = '370|20260825160000'
+          test "$ledger" = '371|20260830221500'
 
           grants="$(docker exec "$container" psql -U postgres -d postgres -Atc \
             "select has_table_privilege('service_role','public.provider_legal_entity_fact_promotions','SELECT'),
