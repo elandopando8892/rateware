@@ -2966,6 +2966,11 @@ assert.match(apiSource, /function apiErrorStatus/, "Rateware API should return a
 assert.match(apiSource, /function safeOperationalError/, "Rateware API errors should be sanitized before returning or auditing them");
 assert.match(apiSource, /event: "rateware_api\.error"/, "Rateware API should emit structured server-side error logs");
 assert.match(apiSource, /incident_id: incidentId/, "Rateware API failures should carry a correlation incident ID");
+assert.match(apiSource, /headers\.set\("X-Request-Id", requestId\)/, "Rateware API responses should expose one request correlation id");
+assert.match(apiSource, /headers\.set\("X-Operation-Id", operationId\)/, "High-risk Rateware mutations should expose one operation id");
+assert.match(apiSource, /x-request-id, x-operation-id/, "Rateware preflight should allow caller correlation headers");
+assert.match(apiSource, /CORRELATED_HIGH_RISK_ACTIONS[\s\S]+generate_outreach_drafts[\s\S]+send_bid_room_carrier_message/, "Outreach effects should be included in the initial high-risk correlation set");
+assert.match(apiSource, /request_id: requestId[\s\S]{0,120}operation_id: operationId/, "Operational logs should reuse request and operation correlation ids");
 assert.match(apiSource, /cause_chain: errorCauseChain/, "Rateware API should preserve the nested backend cause chain");
 assert.match(apiSource, /stack: safeOperationalValue\(errorInfo\.stack/, "Backend stacks should remain sanitized and server-side only");
 assert.match(ratewareApiClientSource, /error\.incidentId = data\?\.incident_id/, "Rateware API client should preserve backend incident IDs");

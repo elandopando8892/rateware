@@ -31,7 +31,7 @@ const legacyAuthorizationOverrides = Object.fromEntries([
 // The Rateware API handler factory and Carrier List Templates imports change the
 // shared authorization envelope for every action hosted by rateware-api. This is
 // a static reviewed fingerprint; it is not derived from source at validation time.
-const ratewareApiEnvelope = '108b6847738059101384980ac29b9f32f075d4f34a2cc28fb968c5cfee7d0308';
+const ratewareApiEnvelope = '584c0373e4031386c2582ffa96b887e527734ded4d6e98893a7e490820728281';
 const ratewareApiAuthorizationOverrides = Object.fromEntries([
   ...BASE_ACTION_CONTRACT.surfaces,
   ...carrierTemplateExtension.surfaces,
