@@ -83,6 +83,7 @@ const CORRELATED_HIGH_RISK_ACTIONS = new Set([
   "bulk_update_rate_rows_by_filter",
   "bulk_update_rateware",
   "closeout_awarded_rfx_to_rateware",
+  "create_rfx_award_package",
   "generate_outreach_drafts",
   "generate_rfx_award_notices",
   "send_bid_room_carrier_message",
@@ -21924,7 +21925,8 @@ async function writeRfxProcessAudit(
   entityType: string,
   entityId: unknown,
   summary: string,
-  metadata: Record<string, unknown> = {}
+  metadata: Record<string, unknown> = {},
+  operationId: string | null = null
 ) {
   const row = withOwner({
     project_id: cleanText(projectId),
@@ -21933,10 +21935,15 @@ async function writeRfxProcessAudit(
     entity_type: entityType,
     entity_id: cleanText(entityId),
     summary,
-    metadata
+    metadata,
+    operation_id: operationId
   }, user);
-  const result = await supabase.from("rfx_process_audit").insert(row);
+  const query = operationId
+    ? supabase.from("rfx_process_audit").upsert(row, { onConflict: "owner_email,action,operation_id", ignoreDuplicates: true }).select("id")
+    : supabase.from("rfx_process_audit").insert(row).select("id");
+  const result = await query;
   if (result.error) throw result.error;
+  if (operationId && !(result.data || []).length) return;
   await writeAuditLog(supabase, user, action, entityType, entityId, summary, { ...metadata, rfx_project_id: cleanText(projectId) });
 }
 
@@ -25443,27 +25450,17 @@ async function syncShipperOpportunityFromImplementationReadyAward(
   return result.data as Record<string, unknown>;
 }
 
-async function createRfxAwardPackage(supabase: RatewareSupabaseClient, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+async function createRfxAwardPackage(
+  supabase: RatewareSupabaseClient,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>,
+  operationId: string | null
+) {
+  if (!operationId) throw new Error("RFx award package operation id is required.");
   const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
   const scenarioType = cleanText(input.scenario_type || input.scenarioType)?.toLowerCase() || "best_value";
   const status = cleanText(input.status)?.toLowerCase() || "draft";
-  const awardRow = withOwner({
-    project_id: project.id,
-    rfx_package_id: cleanText(input.rfx_package_id || input.package_id),
-    linked_rfx_event_id: cleanText(input.linked_rfx_event_id || project.linked_rfx_event_id),
-    scenario_name: cleanText(input.scenario_name || input.name) || "Primary award scenario",
-    scenario_type: ["cheapest", "best_value", "primary_backup", "capacity_split", "incumbent_comparison"].includes(scenarioType) ? scenarioType : "best_value",
-    status: ["draft", "approved", "implementation_ready", "archived"].includes(status) ? status : "draft",
-    evaluation_summary: objectRecord(input.evaluation_summary || input.evaluationSummary),
-    implementation_checklist: objectRecord(input.implementation_checklist || input.implementationChecklist),
-    approved_at: ["approved", "implementation_ready"].includes(status) ? new Date().toISOString() : null,
-    notes: cleanText(input.notes)
-  }, user);
-  const awardInsert = await supabase.from("rfx_award_packages").insert(awardRow).select().single();
-  if (awardInsert.error) throw awardInsert.error;
-  const lines = Array.isArray(input.lines) ? input.lines : [];
-  const lineRows = lines.slice(0, 1000).map((line: Record<string, unknown>) => withOwner({
-    award_package_id: awardInsert.data.id,
+  const normalizedLines = (Array.isArray(input.lines) ? input.lines : []).slice(0, 1000).map((line: Record<string, unknown>) => ({
     lane_id: cleanText(line.lane_id || line.laneId),
     awarded_carrier_id: cleanText(line.awarded_carrier_id || line.awardedCarrierId),
     backup_carrier_id: cleanText(line.backup_carrier_id || line.backupCarrierId),
@@ -25475,26 +25472,98 @@ async function createRfxAwardPackage(supabase: RatewareSupabaseClient, user: { o
     accepted_exceptions: Array.isArray(line.accepted_exceptions) ? line.accepted_exceptions : [],
     implementation_notes: cleanText(line.implementation_notes || line.implementationNotes),
     status: cleanText(line.status) || "draft"
+  }));
+  const awardRow: Record<string, unknown> = withOwner({
+    project_id: project.id,
+    rfx_package_id: cleanText(input.rfx_package_id || input.package_id),
+    linked_rfx_event_id: cleanText(input.linked_rfx_event_id || project.linked_rfx_event_id),
+    scenario_name: cleanText(input.scenario_name || input.name) || "Primary award scenario",
+    scenario_type: ["cheapest", "best_value", "primary_backup", "capacity_split", "incumbent_comparison"].includes(scenarioType) ? scenarioType : "best_value",
+    status: ["draft", "approved", "implementation_ready", "archived"].includes(status) ? status : "draft",
+    evaluation_summary: objectRecord(input.evaluation_summary || input.evaluationSummary),
+    implementation_checklist: objectRecord(input.implementation_checklist || input.implementationChecklist),
+    approved_at: ["approved", "implementation_ready"].includes(status) ? new Date().toISOString() : null,
+    notes: cleanText(input.notes),
+    operation_id: operationId
+  }, user);
+  const payloadFingerprint = await fcmSha256Hex(JSON.stringify({
+    project_id: awardRow.project_id,
+    rfx_package_id: awardRow.rfx_package_id,
+    linked_rfx_event_id: awardRow.linked_rfx_event_id,
+    scenario_name: awardRow.scenario_name,
+    scenario_type: awardRow.scenario_type,
+    status: awardRow.status,
+    evaluation_summary: awardRow.evaluation_summary,
+    implementation_checklist: awardRow.implementation_checklist,
+    notes: awardRow.notes,
+    lines: normalizedLines
+  }));
+  awardRow.operation_payload_fingerprint = payloadFingerprint;
+
+  let awardPackage: Record<string, unknown> | null = null;
+  let idempotent = false;
+  const existing = await supabase.from("rfx_award_packages").select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("operation_id", operationId)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  if (existing.data) {
+    awardPackage = existing.data;
+    idempotent = true;
+  } else {
+    const awardInsert = await supabase.from("rfx_award_packages").insert(awardRow).select().single();
+    if (awardInsert.error?.code === "23505") {
+      const raced = await supabase.from("rfx_award_packages").select("*")
+        .eq("owner_email", user.owner_email)
+        .eq("operation_id", operationId)
+        .single();
+      if (raced.error) throw raced.error;
+      awardPackage = raced.data;
+      idempotent = true;
+    } else if (awardInsert.error) throw awardInsert.error;
+    else awardPackage = awardInsert.data;
+  }
+  if (cleanText(awardPackage?.operation_payload_fingerprint) !== payloadFingerprint) {
+    throw new Error("RFx award package operation id was already used with a different payload.");
+  }
+
+  const lineRows = normalizedLines.map((line, operationLineIndex) => withOwner({
+    ...line,
+    award_package_id: awardPackage?.id,
+    operation_line_index: operationLineIndex
   }, user));
   for (const batch of chunkValues(lineRows, 500)) {
-    const insert = await supabase.from("rfx_award_package_lanes").insert(batch).select("id");
+    const insert = await supabase.from("rfx_award_package_lanes")
+      .upsert(batch, { onConflict: "award_package_id,operation_line_index" })
+      .select("id");
     if (insert.error) throw insert.error;
   }
   let shipperOpportunity: Record<string, unknown> | null = null;
   if (awardRow.status === "implementation_ready") {
-    const projectUpdate = await supabase.from("rfx_projects")
-      .update({ status: "implementation_ready", updated_at: new Date().toISOString() })
-      .eq("id", project.id)
-      .eq("owner_email", user.owner_email);
-    if (projectUpdate.error) throw projectUpdate.error;
-    shipperOpportunity = await syncShipperOpportunityFromImplementationReadyAward(supabase, user, project.id, awardInsert.data.id);
+    if (!cleanText(awardPackage?.operation_completed_at)) {
+      const projectUpdate = await supabase.from("rfx_projects")
+        .update({ status: "implementation_ready", updated_at: new Date().toISOString() })
+        .eq("id", project.id)
+        .eq("owner_email", user.owner_email);
+      if (projectUpdate.error) throw projectUpdate.error;
+      shipperOpportunity = await syncShipperOpportunityFromImplementationReadyAward(supabase, user, project.id, awardPackage?.id);
+    }
   }
-  await writeRfxProcessAudit(supabase, user, project.id, "award_scenario_created", "rfx_award_packages", awardInsert.data.id, `Created RFx Award Package ${awardInsert.data.scenario_name}`, {
-    scenario_type: awardInsert.data.scenario_type,
+  await writeRfxProcessAudit(supabase, user, project.id, "award_scenario_created", "rfx_award_packages", awardPackage?.id, `Created RFx Award Package ${awardPackage?.scenario_name}`, {
+    scenario_type: awardPackage?.scenario_type,
     lines: lineRows.length,
-    shipper_opportunity_id: shipperOpportunity?.id || null
-  });
-  return { row: awardInsert.data, lines: lineRows.length, shipper_opportunity: shipperOpportunity };
+    shipper_opportunity_id: shipperOpportunity?.id || null,
+    operation_id: operationId
+  }, operationId);
+  const completedAt = cleanText(awardPackage?.operation_completed_at) || new Date().toISOString();
+  const completion = await supabase.from("rfx_award_packages")
+    .update({ operation_completed_at: completedAt, updated_at: new Date().toISOString() })
+    .eq("owner_email", user.owner_email)
+    .eq("id", awardPackage?.id)
+    .select()
+    .single();
+  if (completion.error) throw completion.error;
+  return { row: completion.data, lines: lineRows.length, shipper_opportunity: shipperOpportunity, operation_id: operationId, idempotent };
 }
 
 async function markRfxAwardPackageImplementationReady(
@@ -25830,7 +25899,7 @@ export function createRatewareApiHandler(
     }
 
     if (body.action === "create_rfx_award_package") {
-      return jsonResponse(await createRfxAwardPackage(supabase, user, body));
+      return jsonResponse(await createRfxAwardPackage(supabase, user, body, operationId));
     }
 
     if (body.action === "mark_rfx_award_package_implementation_ready") {
