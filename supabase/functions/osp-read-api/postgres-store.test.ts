@@ -9,6 +9,7 @@ const identity = {
   authorizedParty: 'synthetic-public-client',
   subject: 'synthetic-subject',
   organization: 'synthetic-org',
+  externalOrganization: 'synthetic-org',
   email: 'operator@example.test',
   emailVerified: true as const,
 };
@@ -157,6 +158,35 @@ Deno.test('createPostgresOspReadStore resolves a canonical tenant through its re
     identity.subject,
     identity.email,
     'org_dbc2fd12c76',
+    organizationId,
+  ]);
+});
+
+Deno.test('createPostgresOspReadStore resolves a Supabase principal through its reviewed OSP binding', async () => {
+  const fake = fakeFactory([[{ organization_id: organizationId }]]);
+  const store = createPostgresOspReadStore({
+    databaseUrl: 'postgresql://synthetic.example.test/db',
+    postgresFactory: fake.factory,
+  });
+  const supabaseIdentity = {
+    issuer: 'https://project.example.test/auth/v1',
+    authorizedParty: 'authenticated',
+    subject: '22222222-2222-4222-8222-222222222222',
+    organization: organizationId,
+    email: 'carriers@xbfreight.com',
+    emailVerified: true as const,
+  };
+  assert.equal(await store.resolveWorkspace(supabaseIdentity), organizationId);
+  assert.match(fake.calls[0].text, /FROM\s+osp_private\.auth_principal_bindings\s+binding/i);
+  assert.match(fake.calls[0].text, /binding\.auth_user_id\s*=\s*\$/i);
+  assert.match(fake.calls[0].text, /lower\(btrim\(binding\.email\)\)\s*=\s*\$/i);
+  assert.match(fake.calls[0].text, /binding\.organization_id\s*=\s*\$/i);
+  assert.match(fake.calls[0].text, /binding\.status\s*=\s*'active'/i);
+  assert.match(fake.calls[0].text, /binding\.reviewed_at\s+IS\s+NOT\s+NULL/i);
+  assert.doesNotMatch(fake.calls[0].text, /external_identities/i);
+  assert.deepEqual(fake.calls[0].values, [
+    supabaseIdentity.subject,
+    supabaseIdentity.email,
     organizationId,
   ]);
 });

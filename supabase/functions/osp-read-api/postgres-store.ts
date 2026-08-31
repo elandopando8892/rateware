@@ -117,22 +117,31 @@ export function createPostgresOspReadStore({
   return Object.freeze({
     async resolveWorkspace(identity: OspAuthorizationIdentity, signal?: AbortSignal): Promise<string> {
       const { subject, organization, externalOrganization, email } = identity;
-      const organizationCode = externalOrganization ?? organization;
-      const rows = await executeTaggedQuery(() => sql`
-        SELECT organization_link.organization_id
-        FROM public.external_identities identity_record
-        JOIN public.external_organization_links organization_link
-          ON organization_link.provider = identity_record.provider
-        WHERE identity_record.provider = 'kinde'
-          AND identity_record.external_subject = ${subject}
-          AND lower(btrim(identity_record.email)) = ${email}
-          AND identity_record.status = 'active'
-          AND identity_record.reviewed_at IS NOT NULL
-          AND organization_link.external_organization_id = ${organizationCode}
-          AND organization_link.organization_id = ${organization}
-          AND organization_link.status = 'active'
-          AND organization_link.reviewed_at IS NOT NULL
-      `, signal, STATEMENT_TIMEOUT_MS);
+      const rows = externalOrganization === undefined
+        ? await executeTaggedQuery(() => sql`
+          SELECT binding.organization_id
+          FROM osp_private.auth_principal_bindings binding
+          WHERE binding.auth_user_id = ${subject}
+            AND lower(btrim(binding.email)) = ${email}
+            AND binding.organization_id = ${organization}
+            AND binding.status = 'active'
+            AND binding.reviewed_at IS NOT NULL
+        `, signal, STATEMENT_TIMEOUT_MS)
+        : await executeTaggedQuery(() => sql`
+          SELECT organization_link.organization_id
+          FROM public.external_identities identity_record
+          JOIN public.external_organization_links organization_link
+            ON organization_link.provider = identity_record.provider
+          WHERE identity_record.provider = 'kinde'
+            AND identity_record.external_subject = ${subject}
+            AND lower(btrim(identity_record.email)) = ${email}
+            AND identity_record.status = 'active'
+            AND identity_record.reviewed_at IS NOT NULL
+            AND organization_link.external_organization_id = ${externalOrganization}
+            AND organization_link.organization_id = ${organization}
+            AND organization_link.status = 'active'
+            AND organization_link.reviewed_at IS NOT NULL
+        `, signal, STATEMENT_TIMEOUT_MS);
       const row = exactlyOneRow(rows, 'WORKSPACE_UNAVAILABLE');
       if (typeof row.organization_id !== 'string' || !UUID_PATTERN.test(row.organization_id)) {
         throw new OspApiError('WORKSPACE_UNAVAILABLE');
