@@ -114,3 +114,14 @@ Warnings and informational findings remain visible. Errors always produce a non-
 ## Later increments
 
 Phase 0.2-0.10 may consume this contract only after separate authorization. This hardening adds no tenant model, persistent roles/permissions, authorization engine, CI platform, data change, shadow mode, pilot, or enforcement. H10 and process ownership remain **PENDING HUMAN APPROVAL**.
+
+## MARKSMAN Loads private Bid Room connector increment
+
+The effective contract now records two HMAC-authenticated server-to-server actions under `rfx-internal-bid-api`:
+
+- `resolve_and_submit_bid_canary` performs reviewed, read-only carrier/lane/invitation resolution;
+- `resolve_and_submit_bid` delegates a signed, human-confirmed carrier quote to canonical `rfx-bid-api.submit_bid` with durable idempotency and reconciliation.
+
+Both are classified `external-tokenized` because MARKSMAN Loads is outside the Rateware runtime boundary. Both remain `pending_human_approval` and default disabled at runtime; recording them does not deploy the function, provision a secret, activate a feature flag, create an organization link, or submit a bid.
+
+Current reproducible inventory: 303 active Edge operations plus 112 active PostgreSQL/RPC signatures, for 415 discovered surfaces. The effective contract retains 417 rows because the two intentionally removed historical RPCs remain recorded. Decision totals are 269 `pending_human_approval`, 33 `explicitly_allowed`, and 115 `internal_only`.

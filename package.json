@@ -21,6 +21,7 @@
     "test:migration-ledger": "node --test tests/supabase-migration-ledger.test.mjs",
     "test:release-preflight": "node --test tests/release-preflight.test.mjs",
     "test:rateware-correlation": "deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/rateware-correlation.contract.test.ts",
+    "test:marksman-loads-bid-connector": "deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/marksman-loads-private-bid-connector.contract.test.ts tests/marksman-loads-private-bid-endpoint.runtime.test.ts",
     "audit:p3:mutations": "node tools/p3-mutation-risk-register.mjs",
     "test:p3:mutations": "node --test tests/p3-mutation-risk-register.test.mjs",
     "test:p3:atomic-award": "node --test tests/rfx-atomic-award.test.mjs",
