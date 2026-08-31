@@ -1,4 +1,4 @@
-import { createKindeJwtVerifier } from '../osp-read-api/kinde-jwt.ts';
+import { createOspRuntimeJwtVerifier } from '../osp-read-api/auth-runtime.ts';
 import {
   OSP_PRODUCTION_OPERATOR_ENTITLEMENTS,
   OSP_PRODUCTION_ORGANIZATION_BINDING,
@@ -16,8 +16,8 @@ function required(env: Environment, name: string): string {
 }
 
 export function createFormApiRuntime(options: { env: Environment; fetch: typeof globalThis.fetch; postgresFactory?: PostgresFactory; clock?: () => number }) {
-  const verifier = createKindeJwtVerifier({
-    issuer: required(options.env, 'OSP_KINDE_ISSUER'), clientId: required(options.env, 'OSP_KINDE_CLIENT_ID'), jwksFetch: options.fetch,
+  const verifier = createOspRuntimeJwtVerifier({
+    env: options.env, fetch: options.fetch,
     clock: options.clock ?? Date.now, organizationBinding: OSP_PRODUCTION_ORGANIZATION_BINDING,
     operatorEntitlements: OSP_PRODUCTION_OPERATOR_ENTITLEMENTS,
   });

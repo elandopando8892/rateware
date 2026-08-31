@@ -5,7 +5,7 @@ import type { AuthPort, BoundSession } from '../auth/auth-port';
 import { AuthProvider, useAuth } from '../auth/AuthProvider';
 import { SessionScopedQueryProvider, sessionQueryScopeKey } from '../auth/SessionScopedQueryProvider';
 import { createAppRouter } from './router';
-import type { OspBuildProfile } from '../config/runtime';
+import type { OspAuthProvider, OspBuildProfile } from '../config/runtime';
 
 const APPROVAL_SESSION_CLIENT_WINDOW_MS = 4 * 60 * 1_000 + 30 * 1_000;
 const APPROVAL_SESSION_CLOCK_SKEW_MS = 30 * 1_000;
@@ -18,9 +18,11 @@ export function isApprovalSessionFresh(session: BoundSession, now = Date.now()):
     && age <= APPROVAL_SESSION_CLIENT_WINDOW_MS;
 }
 
-function AuthenticatedApp({ apiClient, buildProfile, routerHistory }: { apiClient: OspClient; buildProfile: OspBuildProfile; routerHistory?: RouterHistory }) {
+function AuthenticatedApp({ apiClient, authProvider, buildProfile, routerHistory }: { apiClient: OspClient; authProvider: OspAuthProvider; buildProfile: OspBuildProfile; routerHistory?: RouterHistory }) {
   const auth = useAuth();
   const [loginFailed, setLoginFailed] = useState(false);
+  const [loginSent, setLoginSent] = useState(false);
+  const [email, setEmail] = useState('');
   if (auth.state.status === 'loading') {
     return <main className="auth-page"><p role="status" aria-label="Checking access">Checking access…</p></main>;
   }
@@ -29,9 +31,9 @@ function AuthenticatedApp({ apiClient, buildProfile, routerHistory }: { apiClien
       <main className="auth-page">
         <p role="alert">We could not verify access. Please try again.</p>
         <button type="button" onClick={() => void auth.refresh()}>Retry access</button>
-        <button type="button" onClick={() => void auth.login('/app/pipeline').catch(() => undefined)}>
-          Authorize workspace
-        </button>
+        {authProvider === 'kinde'
+          ? <button type="button" onClick={() => void auth.login('/app/pipeline').catch(() => undefined)}>Authorize workspace</button>
+          : null}
         <button type="button" onClick={() => void auth.logout().catch(() => undefined)}>
           {auth.logoutFailed ? 'Retry new session' : 'Start new session'}
         </button>
@@ -41,7 +43,12 @@ function AuthenticatedApp({ apiClient, buildProfile, routerHistory }: { apiClien
   if (auth.state.status === 'anonymous') {
     const login = async () => {
       setLoginFailed(false);
-      try { await auth.login('/app/pipeline'); } catch { setLoginFailed(true); }
+      setLoginSent(false);
+      try {
+        if (authProvider === 'supabase') await auth.login('/app/pipeline', email);
+        else await auth.login('/app/pipeline');
+        if (authProvider === 'supabase') setLoginSent(true);
+      } catch { setLoginFailed(true); }
     };
     return (
       <main className="auth-page">
@@ -50,18 +57,42 @@ function AuthenticatedApp({ apiClient, buildProfile, routerHistory }: { apiClien
         <p>Sign in to view your organization’s read-only request status.</p>
         {auth.logoutFailed ? <p role="alert">We could not sign out. Please retry.</p> : null}
         {loginFailed ? <p role="alert">We could not start sign in. Please retry.</p> : null}
+        {loginSent ? <p role="status">Check your inbox and open the secure OSP access link.</p> : null}
         {auth.logoutFailed
           ? <button type="button" onClick={() => void auth.logout().catch(() => undefined)}>Retry sign out</button>
-          : <button type="button" onClick={() => void login()}>{loginFailed ? 'Retry sign in' : 'Sign in'}</button>}
+          : authProvider === 'supabase'
+            ? <div className="auth-email-link">
+                <label htmlFor="osp-auth-email">Authorized work email</label>
+                <input
+                  id="osp-auth-email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void login();
+                    }
+                  }}
+                />
+                <button type="button" onClick={() => void login()}>{loginFailed ? 'Retry secure link' : 'Send secure access link'}</button>
+              </div>
+            : <button type="button" onClick={() => void login()}>{loginFailed ? 'Retry sign in' : 'Sign in'}</button>}
       </main>
     );
   }
+  const authenticatedSession = auth.state.session;
+  const reauthenticateForApproval = authProvider === 'supabase'
+    ? (returnTo: string) => auth.login(returnTo, authenticatedSession.identity.email)
+    : (returnTo: string) => auth.login(returnTo);
   return <AuthenticatedRouter
     apiClient={apiClient}
-    email={auth.state.session.identity.email}
+    email={authenticatedSession.identity.email}
     logout={auth.logout}
-    reauthenticateForApproval={auth.login}
-    approvalSessionFresh={() => buildProfile !== 'production-readonly' || isApprovalSessionFresh(auth.state.session)}
+    reauthenticateForApproval={reauthenticateForApproval}
+    approvalSessionFresh={() => buildProfile !== 'production-readonly' || isApprovalSessionFresh(authenticatedSession)}
     routerHistory={routerHistory}
     sessionKey={sessionQueryScopeKey(auth.state, apiClient, auth.scopeVersion)}
   />;
@@ -72,13 +103,13 @@ function AuthenticatedRouter({ apiClient, email, logout, reauthenticateForApprov
   return <RouterProvider router={router} context={{ apiClient, email, logout, reauthenticateForApproval, approvalSessionFresh }} />;
 }
 
-export function App({ authPort, apiClient, buildProfile = 'local-e2e', routerHistory }: { authPort: AuthPort; apiClient: OspClient; buildProfile?: OspBuildProfile; routerHistory?: RouterHistory }) {
+export function App({ authPort, apiClient, authProvider = 'kinde', buildProfile = 'local-e2e', routerHistory }: { authPort: AuthPort; apiClient: OspClient; authProvider?: OspAuthProvider; buildProfile?: OspBuildProfile; routerHistory?: RouterHistory }) {
   return (
     <>
       {buildProfile === 'preview-synthetic' ? <aside className="synthetic-preview-banner" role="status">Preview sintética — las decisiones viven solo en memoria; no ejecuta envíos, divulgaciones ni cambios productivos.</aside> : null}
       <AuthProvider port={authPort}>
         <SessionScopedQueryProvider apiClient={apiClient}>
-          <AuthenticatedApp apiClient={apiClient} buildProfile={buildProfile} routerHistory={routerHistory} />
+          <AuthenticatedApp apiClient={apiClient} authProvider={authProvider} buildProfile={buildProfile} routerHistory={routerHistory} />
         </SessionScopedQueryProvider>
       </AuthProvider>
     </>

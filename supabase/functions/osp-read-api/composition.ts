@@ -1,5 +1,5 @@
 import { createOspReadHandler } from './handler.ts';
-import { createKindeJwtVerifier } from './kinde-jwt.ts';
+import { createOspRuntimeJwtVerifier } from './auth-runtime.ts';
 import { OSP_PRODUCTION_ORGANIZATION_BINDING } from './auth-policy.ts';
 import {
   createPostgresOspReadStore,
@@ -25,19 +25,6 @@ function requiredEnvironment(env: EnvironmentPort, name: string): string {
   return value.trim();
 }
 
-function requireIssuer(value: string): string {
-  try {
-    const url = new URL(value);
-    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash ||
-        (url.pathname !== '' && url.pathname !== '/')) {
-      throw new Error('INVALID_RUNTIME_CONFIGURATION');
-    }
-    return url.origin;
-  } catch {
-    throw new Error('INVALID_RUNTIME_CONFIGURATION');
-  }
-}
-
 function requireDatabaseUrl(value: string): string {
   try {
     const url = new URL(value);
@@ -59,8 +46,6 @@ export function createOspReadRuntime({
   postgresFactory,
   clock = Date.now,
 }: OspReadRuntimeOptions): (request: Request) => Promise<Response> {
-  const issuer = requireIssuer(requiredEnvironment(env, 'OSP_KINDE_ISSUER'));
-  const clientId = requiredEnvironment(env, 'OSP_KINDE_CLIENT_ID');
   const databaseUrl = requireDatabaseUrl(
     env.get('OSP_READ_DATABASE_URL')?.trim() || requiredEnvironment(env, 'SUPABASE_DB_URL'),
   );
@@ -69,10 +54,9 @@ export function createOspReadRuntime({
     'PROVIDER_GMAIL_PUBSUB_AUDIENCE',
     'PROVIDER_GMAIL_PUBSUB_SERVICE_ACCOUNT',
   ].every((name) => Boolean(env.get(name)?.trim()));
-  const verifier = createKindeJwtVerifier({
-    issuer,
-    clientId,
-    jwksFetch,
+  const verifier = createOspRuntimeJwtVerifier({
+    env,
+    fetch: jwksFetch,
     clock,
     organizationBinding: OSP_PRODUCTION_ORGANIZATION_BINDING,
   });

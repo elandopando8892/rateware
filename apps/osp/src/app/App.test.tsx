@@ -183,6 +183,17 @@ describe('App authentication and routing', () => {
     expect(document.querySelector('iframe')).toBeNull();
   });
 
+  it('offers Supabase passwordless access without creating an alternate workspace flow', async () => {
+    const port = authPort(null);
+    render(<App authPort={port} apiClient={client()} authProvider="supabase" buildProfile="production-readonly" />);
+    const email = await screen.findByRole('textbox', { name: /authorized work email/i });
+    await userEvent.type(email, 'jgonzalez@xbfreight.com');
+    await userEvent.click(screen.getByRole('button', { name: /send secure access link/i }));
+    expect(port.login).toHaveBeenCalledWith('/app/pipeline', 'jgonzalez@xbfreight.com');
+    expect(await screen.findByRole('status')).toHaveTextContent(/check your inbox/i);
+    expect(screen.queryByRole('button', { name: /approve|authorize|send email|upload|sync|renew|digital signature/i })).not.toBeInTheDocument();
+  });
+
   it('contains login rejection safely and permits an explicit retry', async () => {
     const port = authPort(null);
     vi.mocked(port.login).mockRejectedValueOnce(new Error('private login failure'));

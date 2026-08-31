@@ -7,6 +7,7 @@ import {
 } from './runtime';
 
 const valid = {
+  VITE_OSP_AUTH_PROVIDER: 'kinde' as const,
   VITE_KINDE_DOMAIN: 'https://auth.heymarksman.com',
   VITE_KINDE_CLIENT_ID: 'synthetic-public-client',
   VITE_KINDE_AUDIENCE: 'https://osp.heymarksman.com/api',
@@ -31,7 +32,7 @@ describe('loadRuntimeConfig', () => {
     expect(() => loadRuntimeConfig({ ...valid, [key]: value })).toThrow();
   });
 
-  it.each(Object.keys(valid) as Array<keyof typeof valid>)('rejects missing %s', (key) => {
+  it.each((Object.keys(valid) as Array<keyof typeof valid>).filter((key) => key !== 'VITE_OSP_AUTH_PROVIDER'))('rejects missing %s', (key) => {
     const environment = { ...valid } as Partial<typeof valid>;
     delete environment[key];
 
@@ -49,6 +50,24 @@ describe('loadRuntimeConfig', () => {
       VITE_VERCEL_ENV: 'production',
       VITE_VERCEL_URL: 'osp-customer-setup.vercel.app',
     })).toEqual(valid);
+  });
+
+  it('requires a public browser key only when the reversible Supabase Auth path is selected', () => {
+    const supabase = {
+      ...valid,
+      VITE_OSP_AUTH_PROVIDER: 'supabase' as const,
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_synthetic_test_key',
+    };
+    expect(loadRuntimeConfig(supabase)).toEqual(supabase);
+    expect(() => loadRuntimeConfig({
+      ...valid,
+      VITE_OSP_AUTH_PROVIDER: 'supabase',
+    })).toThrow();
+  });
+
+  it('keeps Kinde as the rollback default until the production cutover is authorized', () => {
+    const { VITE_OSP_AUTH_PROVIDER: _provider, ...legacy } = valid;
+    expect(loadRuntimeConfig(legacy)).toEqual(valid);
   });
 });
 

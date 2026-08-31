@@ -22,7 +22,7 @@ export interface AuthPort {
   revalidate(reason: 'focus' | 'visible' | 'cross-tab' | 'refresh'): Promise<BoundSession | null>;
   subscribe(listener: () => void): () => void;
   getCurrentSession(): BoundSession | null;
-  login(returnTo: string): Promise<void>;
+  login(returnTo: string, email?: string): Promise<void>;
   logout(): Promise<void>;
   getAccessToken(expected: BoundSession, forceRefresh?: boolean): Promise<string>;
 }

@@ -19,6 +19,7 @@ import {
 } from './token-binding';
 
 const runtime: RuntimeConfig = {
+  VITE_OSP_AUTH_PROVIDER: 'kinde',
   VITE_KINDE_DOMAIN: 'https://auth.heymarksman.com',
   VITE_KINDE_CLIENT_ID: 'synthetic-public-client',
   VITE_KINDE_AUDIENCE: 'https://osp.heymarksman.com/api',

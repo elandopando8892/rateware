@@ -22,7 +22,7 @@ type AuthContextValue = {
   state: AuthState;
   scopeVersion: number;
   logoutFailed: boolean;
-  login(returnTo: string): Promise<void>;
+  login(returnTo: string, email?: string): Promise<void>;
   logout(): Promise<void>;
   refresh(): Promise<void>;
   getAccessToken(forceRefresh?: boolean): Promise<string>;
@@ -144,7 +144,9 @@ export function AuthProvider({ port, children }: { port: AuthPort; children: Rea
     state,
     scopeVersion,
     logoutFailed,
-    login: (returnTo) => port.login(returnTo),
+    login: (returnTo, email) => email === undefined
+      ? port.login(returnTo)
+      : port.login(returnTo, email),
     async logout() {
       setLogoutFailed(false);
       const sequence = ++validationSequence.current;

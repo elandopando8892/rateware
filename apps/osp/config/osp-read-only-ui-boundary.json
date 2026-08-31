@@ -11,7 +11,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/package.json",
-      "sha256": "3c258fb80e61634103b53e62006bf7af1ed636eeab99df9a3bed411522b2e5c0"
+      "sha256": "517e78f77143592cfb3ca2cd63843acc98b68cd32888a2029de8130adfda63c7"
     },
     {
       "kind": "production-ui",
@@ -21,7 +21,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/pnpm-lock.yaml",
-      "sha256": "ab7d6fb7d8c069161844b7c0a3e0507bf0f2ff7e4264c10bdb656ee1395f8fb0"
+      "sha256": "568abf5584afd1657f58d74ae63f5e249ee4af3c461cecae17d1fe4de54e4454"
     },
     {
       "kind": "production-ui",
@@ -46,7 +46,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/App.tsx",
-      "sha256": "6defb0e5f97e497e688485042fa51e35f3007d0bc480a698dae0b9e53a72ee0d"
+      "sha256": "7ba2fa03d338dfaac2e61d7812adc1960010fd187ce7f04b12534d61180c9f2d"
     },
     {
       "kind": "production-ui",
@@ -61,17 +61,17 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/auth/auth-port.ts",
-      "sha256": "84902d024fbba2fc8f4da1653df085394976eee64edc9d7457b7aaaad7c291fc"
+      "sha256": "1704e5dd54ff0414899c24d7ac8fa2325745539118f7eb3897c856749d779674"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/auth/AuthProvider.tsx",
-      "sha256": "2f7bc519f951c073993dae5b67f070746a5b06c4e4b312c6b30d4aa19d3d4448"
+      "sha256": "fc96d384fb56107225b7534f465da9e2dedfa8e745ba06ae8f97b388ac516677"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/auth/kinde-auth-port.ts",
-      "sha256": "4a913e916643fd8c11ae11a6c4a6f8d8cdfb4050d4d76781142d620763f9ab2f"
+      "sha256": "a06ee649b2d94f9d0868445bc8be6bde1c6c517545ce5ca569b73ccfbb660a11"
     },
     {
       "kind": "production-ui",
@@ -82,6 +82,11 @@
       "kind": "production-ui",
       "path": "apps/osp/src/auth/SessionScopedQueryProvider.tsx",
       "sha256": "b7bcd20ade5fc29d1886cf7fe7b0b09d00d708382691fa5af09cf2faf90cd492"
+    },
+    {
+      "kind": "production-ui",
+      "path": "apps/osp/src/auth/supabase-auth-port.ts",
+      "sha256": "a01a550645fa016be0924071e3a10292aa315941e3e779f65ea05eaf44a8c087"
     },
     {
       "kind": "production-ui",
@@ -96,7 +101,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/config/runtime.ts",
-      "sha256": "5f9083cb7fa39de511b2221443aef54a6b6c2254e0a1a2f89f6a99e1ed0b427b"
+      "sha256": "9c2d8d806c09d8417c9b6f97ce8e0707f0e8ffae013c54d8f26cc14189235060"
     },
     {
       "kind": "production-ui",
@@ -201,7 +206,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/main.tsx",
-      "sha256": "b7cf1bb5f34ef487ab411d8e03c04b2c6d9f04e04025ea27dd2214b23c5f742b"
+      "sha256": "9c01d2dcbf7fa276d7a018b7956645ed2c8cc62ae9cead184cde23ba274815fb"
     },
     {
       "kind": "production-ui",
@@ -216,7 +221,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/global.css",
-      "sha256": "ad51dc4dcff5233125b88ed4249ade67a93b1c53f341833954d945c8707adcd2"
+      "sha256": "4bb43e3fc291eb75ba6d5258073138976708cc120fa9c892eacf782205d673a2"
     },
     {
       "kind": "production-ui",
@@ -251,7 +256,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/vite.config.ts",
-      "sha256": "5148c0a4186cac9edd651038f75d78f32707cdebc7f220ceebc1907fd742fce5"
+      "sha256": "1dcc9e1dc0caa1f8ae943745e1cc34def6a00ee8c52a86209264b175ed53b6b0"
     }
   ]
 }

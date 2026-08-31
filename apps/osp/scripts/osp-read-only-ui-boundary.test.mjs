@@ -39,6 +39,7 @@ const expectedProductionSourcePaths = [
   'apps/osp/src/auth/kinde-auth-port.ts',
   'apps/osp/src/auth/session-channel.ts',
   'apps/osp/src/auth/SessionScopedQueryProvider.tsx',
+  'apps/osp/src/auth/supabase-auth-port.ts',
   'apps/osp/src/auth/token-binding.ts',
   'apps/osp/src/components/RoutePlaceholder.tsx',
   'apps/osp/src/config/runtime.ts',

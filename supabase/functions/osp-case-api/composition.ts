@@ -1,4 +1,4 @@
-import { createKindeJwtVerifier } from "../osp-read-api/kinde-jwt.ts";
+import { createOspRuntimeJwtVerifier } from "../osp-read-api/auth-runtime.ts";
 import {
   OSP_PRODUCTION_OPERATOR_ENTITLEMENTS,
   OSP_PRODUCTION_ORGANIZATION_BINDING,
@@ -27,20 +27,6 @@ function required(env: CaseApiEnvironment, name: string): string {
   return value.trim();
 }
 
-function issuer(value: string): string {
-  try {
-    const parsed = new URL(value);
-    if (
-      parsed.protocol !== "https:" || parsed.username || parsed.password ||
-      parsed.search || parsed.hash ||
-      (parsed.pathname !== "" && parsed.pathname !== "/")
-    ) throw new Error("INVALID_RUNTIME_CONFIGURATION");
-    return parsed.origin;
-  } catch {
-    throw new Error("INVALID_RUNTIME_CONFIGURATION");
-  }
-}
-
 function databaseUrl(value: string): string {
   try {
     if (value.trim() !== value) {
@@ -67,16 +53,13 @@ export function createCaseApiRuntime(options: {
   storageClient: OutboundStorageClient;
   clock?: () => number;
 }): (request: Request) => Promise<Response> {
-  const kindeIssuer = issuer(required(options.env, "OSP_KINDE_ISSUER"));
-  const clientId = required(options.env, "OSP_KINDE_CLIENT_ID");
   const databaseConnection = databaseUrl(
     options.env.get("OSP_CASE_DATABASE_URL")?.trim() ||
       required(options.env, "SUPABASE_DB_URL"),
   );
-  const verifier = createKindeJwtVerifier({
-    issuer: kindeIssuer,
-    clientId,
-    jwksFetch: options.fetch,
+  const verifier = createOspRuntimeJwtVerifier({
+    env: options.env,
+    fetch: options.fetch,
     clock: options.clock ?? Date.now,
     organizationBinding: OSP_PRODUCTION_ORGANIZATION_BINDING,
     operatorEntitlements: OSP_PRODUCTION_OPERATOR_ENTITLEMENTS,

@@ -680,7 +680,9 @@ export function createKindeAuthPort(
     }
   };
 
-  const port: ManagedAuthPort = {
+  const port: ManagedAuthPort & {
+    getIdToken(expected: BoundSession): Promise<string>;
+  } = {
     initialize: () => validateCurrent('initialize'),
     revalidate: (reason) => validateCurrent(reason),
     subscribe(listener) {

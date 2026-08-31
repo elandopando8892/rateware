@@ -84,7 +84,7 @@ export default defineConfig({
           groups: [
             {
               name: 'app-vendor',
-              test: /node_modules[\\/](?:react|react-dom|scheduler|@tanstack|@kinde-oss|zod|jose)[\\/]/,
+              test: /node_modules[\\/](?:react|react-dom|scheduler|@tanstack|zod)[\\/]/,
               priority: 20,
             },
           ],
