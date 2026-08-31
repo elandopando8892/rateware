@@ -60,21 +60,24 @@ export interface PrivateSignaturePolicyPort {
       positionVersion: number;
     },
     signal: AbortSignal,
-  ): Promise<{
-    signatureBytes: Uint8Array;
-    contentType: "image/png" | "image/jpeg";
-  } & ({
-    targetKind: "pdf";
-    page: number;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | {
-    targetKind: "xlsx";
-    worksheetName: string;
-    cellRange: string;
-  })>;
+  ): Promise<
+    & {
+      signatureBytes: Uint8Array;
+      contentType: "image/png" | "image/jpeg";
+    }
+    & ({
+      targetKind: "pdf";
+      page: number;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    } | {
+      targetKind: "xlsx";
+      worksheetName: string;
+      cellRange: string;
+    })
+  >;
 }
 
 function invalid(code: string): never {
@@ -86,7 +89,7 @@ export function createPdfSignatureApplier(deps: {
   policies: PrivateSignaturePolicyPort;
   uuid?: () => string;
 }): SignaturePort {
-  const uuid = deps.uuid ?? crypto.randomUUID;
+  const uuid = deps.uuid ?? (() => crypto.randomUUID());
   return Object.freeze({
     async apply(
       request: SignatureApplyRequest,

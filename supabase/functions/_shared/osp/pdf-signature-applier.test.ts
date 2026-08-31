@@ -182,6 +182,53 @@ Deno.test("private XLSX applier embeds the approved signature in the configured 
   assertEquals(signed.getWorksheet("Registration")?.getImages().length, 1);
 });
 
+Deno.test("private XLSX applier preserves the platform UUID receiver", async () => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.addWorksheet("Registration").getCell("A1").value = "Supplier setup";
+  const source = new Uint8Array(await workbook.xlsx.writeBuffer());
+  const signature = Uint8Array.from(
+    atob(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    ),
+    (value) => value.charCodeAt(0),
+  );
+  const writes: string[] = [];
+  const applier = createPdfSignatureApplier({
+    objects: {
+      read: async () => source,
+      writeExclusive: async (input) => {
+        writes.push(input.objectId);
+      },
+    },
+    policies: {
+      resolve: async () => ({
+        signatureBytes: signature,
+        contentType: "image/png" as const,
+        targetKind: "xlsx" as const,
+        worksheetName: "Registration",
+        cellRange: "B4:D7",
+      }),
+    },
+  });
+  const receipt = await applier.apply({
+    organizationId: "11111111-1111-4111-8111-111111111111",
+    caseId: "22222222-2222-4222-8222-222222222222",
+    approvalId: "33333333-3333-4333-8333-333333333333",
+    jobId: "55555555-5555-4555-8555-555555555555",
+    leaseToken: "66666666-6666-4666-8666-666666666666",
+    inputObjectId: "private-input-object",
+    expectedInputSha256: await sha256Hex(source),
+    signaturePositionVersion: 1,
+  }, new AbortController().signal);
+  assertEquals(
+    /^signed:11111111-1111-4111-8111-111111111111:[0-9a-f-]{36}$/.test(
+      receipt.outputObjectId,
+    ),
+    true,
+  );
+  assertEquals(writes, [receipt.outputObjectId]);
+});
+
 Deno.test("private XLSX applier rejects coordinates outside Excel bounds", async () => {
   const workbook = new ExcelJS.Workbook();
   workbook.addWorksheet("Registration");
