@@ -1,6 +1,3 @@
-import { PDFDocument } from "pdf-lib";
-import ExcelJS from "exceljs";
-
 import type {
   SignatureApplyReceipt,
   SignatureApplyRequest,
@@ -146,8 +143,9 @@ export function createPdfSignatureApplier(deps: {
             typeof value !== "number" || !Number.isFinite(value) || value <= 0
           )
         ) invalid("SIGNATURE_POSITION_INVALID");
-        let document: PDFDocument;
+        let document: import("pdf-lib").PDFDocument;
         try {
+          const { PDFDocument } = await import("pdf-lib");
           document = await PDFDocument.load(inputBytes.slice(), {
             ignoreEncryption: false,
           });
@@ -184,7 +182,13 @@ export function createPdfSignatureApplier(deps: {
           policy.worksheetName.length < 1 || policy.worksheetName.length > 31 ||
           !validXlsxRange(policy.cellRange)
         ) invalid("SIGNATURE_POSITION_INVALID");
-        const workbook = new ExcelJS.Workbook();
+        let workbook: import("exceljs").Workbook;
+        try {
+          const ExcelJS = (await import("exceljs")).default;
+          workbook = new ExcelJS.Workbook();
+        } catch {
+          invalid("SIGNATURE_RUNTIME_INVALID");
+        }
         try {
           await workbook.xlsx.load(inputBytes.slice() as never);
         } catch {
