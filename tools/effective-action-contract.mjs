@@ -33,7 +33,7 @@ const legacyAuthorizationOverrides = Object.fromEntries([
 // The Rateware API handler factory and Carrier List Templates imports change the
 // shared authorization envelope for every action hosted by rateware-api. This is
 // a static reviewed fingerprint; it is not derived from source at validation time.
-const ratewareApiEnvelope = 'e767fe1a4f17285c2a705b2366f828f0aaabfa132795a978e3f8edf89ab87a84';
+const ratewareApiEnvelope = '0efdf3cd406cd5d03481c26204e40aa9592ae97f23f9cb2f9ddd1c639efce5f5';
 const ratewareApiAuthorizationOverrides = Object.fromEntries([
   ...BASE_ACTION_CONTRACT.surfaces,
   ...carrierTemplateExtension.surfaces,
@@ -72,6 +72,7 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // the scanner intentionally fingerprints the complete reachable action segment.
 const ratewareApiSourceFingerprintOverrides = {
   'edge.rateware-api.award_rfx_lane_vendor': '80b222f9225cf992b19bcc18ca232ae3dff2a4cdfc88b280bd615d517373ba34',
+  'edge.rateware-api.create_rfx_award_package': '378f73423f4726da85dfc4c453be98f50d3f86c7da6a9f3af9a68267441fe4d6',
   'edge.rateware-api.create_vendor_segment': '8e6a444366bfa108430e02fdf8dffbbf11a0ab0e4e102d4687f6e589f809aa69',
   'edge.rateware-api.delete_vendor_segment': '792ce2b10566c1be41064ef07f5e818088fb1f16596433d88fdb7c0fbec972d2',
   'edge.rateware-api.generate_outreach_drafts': '05f5940c29b19b93b95466b0571fc160146d32e89e253e186e58eec647d270c5',

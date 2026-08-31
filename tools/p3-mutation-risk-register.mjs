@@ -147,10 +147,10 @@ export const MUTATION_RISK_REGISTER = [
     effect: "Create award package and lane membership",
     likelihood: 3,
     impact: 5,
-    control: "operation_ledger_required",
-    evidence: "Package, lane membership, optional invitation status, and audit are separate writes with no caller operation key.",
+    control: "payload_bound_operation_ledger",
+    evidence: "A workspace-unique operation id binds the normalized payload; stable lane ordinals resume partial creation without duplicate packages or lanes.",
     owner: "Procurement Platform",
-    status: "open"
+    status: "controlled"
   },
   {
     canonicalId: "edge.rateware-api.mark_rfx_award_package_implementation_ready",
@@ -205,7 +205,7 @@ export function renderMutationRiskRegister(register = MUTATION_RISK_REGISTER) {
     "",
     ...open.map((risk, index) => `${index + 1}. **${risk.canonicalId.replace("edge.rateware-api.", "")}** - ${risk.evidence}`),
     "",
-    "External delivery controls are already durable; the next implementation target is the award state transition, followed by award-package creation and its implementation-ready version guard.",
+    "External delivery, carrier award, and award-package creation controls are durable. The remaining implementation target is the implementation-ready version guard.",
     ""
   ].join("\n");
 }

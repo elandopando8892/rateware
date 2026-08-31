@@ -21,6 +21,7 @@
     "audit:p3:mutations": "node tools/p3-mutation-risk-register.mjs",
     "test:p3:mutations": "node --test tests/p3-mutation-risk-register.test.mjs",
     "test:p3:atomic-award": "node --test tests/rfx-atomic-award.test.mjs",
+    "test:p3:award-package": "node --test tests/rfx-award-package-idempotency.test.mjs",
     "test:platform55-command-center": "node tests/platform55-command-center.test.mjs",
     "test:platform55:operate": "node tests/platform55-operate-shell.test.mjs && node --test tests/platform55-operate-evidence-server.test.mjs",
     "test:platform55:procurement": "node tests/platform55-procurement-shell.test.mjs && node --test tests/platform55-procurement-evidence-server.test.mjs tests/platform55-procurement-evidence.test.mjs",
