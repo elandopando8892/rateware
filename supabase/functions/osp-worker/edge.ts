@@ -3,6 +3,7 @@ import { createClient } from "supabase";
 import {
   getProviderGmailAccessToken,
   providerGmailAllowedAccount,
+  validateProviderGmailOutboundScopes,
 } from "../_shared/provider-gmail.ts";
 import { createOspWorkerHandler } from "./handler.ts";
 import { createShadowWorkerRuntime } from "./shadow-runtime.ts";
@@ -73,6 +74,7 @@ const gmailAccessToken = async (): Promise<string> => {
     throw new Error("GMAIL_TEMPORARY");
   }
   try {
+    validateProviderGmailOutboundScopes(result.data[0].scopes);
     return await getProviderGmailAccessToken(
       supabase,
       result.data[0] as Record<string, unknown>,

@@ -5,7 +5,7 @@ import {
   encryptProviderGmailToken,
   fetchProviderGoogleUserEmail,
   providerGmailAllowedAccount,
-  validateProviderGmailScopes,
+  validateProviderGmailOutboundScopes,
 } from '../_shared/provider-gmail.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
@@ -82,7 +82,7 @@ Deno.serve(async (request) => {
 
     const accessToken = cleanProviderGmailText(tokenData.access_token);
     if (!accessToken) throw new Error('Google did not return an access token.');
-    const scopes = validateProviderGmailScopes(tokenData.scope);
+    const scopes = validateProviderGmailOutboundScopes(tokenData.scope);
     const googleUser = await fetchProviderGoogleUserEmail(accessToken, cleanProviderGmailText(tokenData.id_token));
     const expectedMailbox = cleanProviderGmailText(stateRow.mailbox_email)?.toLowerCase();
     const allowedMailbox = providerGmailAllowedAccount();

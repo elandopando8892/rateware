@@ -1,7 +1,14 @@
 export const PROVIDER_GMAIL_READONLY_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+export const PROVIDER_GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+export const PROVIDER_GMAIL_OUTBOUND_ALLOWED_SCOPES = Object.freeze([
+  'openid',
+  'email',
+  'https://www.googleapis.com/auth/userinfo.email',
+  PROVIDER_GMAIL_READONLY_SCOPE,
+  PROVIDER_GMAIL_SEND_SCOPE,
+]);
 export const PROVIDER_GMAIL_FORBIDDEN_SCOPES = Object.freeze([
   'https://mail.google.com/',
-  'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.compose',
   'https://www.googleapis.com/auth/gmail.modify',
 ]);
@@ -83,6 +90,18 @@ export function validateProviderGmailScopes(value: unknown) {
   }
   const forbidden = PROVIDER_GMAIL_FORBIDDEN_SCOPES.filter((scope) => scopes.includes(scope));
   if (forbidden.length) throw new Error(`Provider Gmail connection contains forbidden scope: ${forbidden[0]}.`);
+  return scopes;
+}
+
+export function validateProviderGmailOutboundScopes(value: unknown) {
+  const scopes = validateProviderGmailScopes(value);
+  if (!scopes.includes(PROVIDER_GMAIL_SEND_SCOPE)) {
+    throw new Error('Provider Gmail connection must include gmail.send.');
+  }
+  const unexpected = scopes.filter((scope) => !PROVIDER_GMAIL_OUTBOUND_ALLOWED_SCOPES.includes(scope));
+  if (unexpected.length) {
+    throw new Error(`Provider Gmail connection contains an unexpected scope: ${unexpected[0]}.`);
+  }
   return scopes;
 }
 

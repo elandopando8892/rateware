@@ -4,8 +4,10 @@ import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const migration = read('../supabase/migrations/20260814030000_provider_gmail_intake.sql');
+const outboundMigration = read('../supabase/migrations/20260831230000_osp_outbound_scope_reconciliation.sql');
 const shared = read('../supabase/functions/_shared/provider-gmail.ts');
 const sync = read('../supabase/functions/_shared/provider-gmail-sync.ts');
+const watch = read('../supabase/functions/_shared/provider-gmail-watch.ts');
 const api = read('../supabase/functions/provider-gmail-intake-api/index.ts');
 const callback = read('../supabase/functions/provider-gmail-oauth-callback/index.ts');
 const page = read('../provider-gmail.html');
@@ -21,36 +23,40 @@ test('Provider Gmail storage is purpose-bound, tenant/entity scoped, and service
   assert.match(migration, /grant select, insert, update, delete on table public\.provider_gmail_connections to service_role/);
 });
 
-test('database and token helper forbid outbound Gmail scopes', () => {
-  for (const forbidden of ['gmail.send', 'gmail.compose', 'gmail.modify', 'https://mail.google.com/']) {
+test('database and token helper allow only read plus exact authorized send authority', () => {
+  for (const forbidden of ['gmail.compose', 'gmail.modify', 'https://mail.google.com/']) {
     assert.match(migration, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.match(shared, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
   assert.match(shared, /gmail\.readonly/);
+  assert.match(shared, /gmail\.send/);
   assert.match(shared, /carriers@xbfreight\.com/);
-  assert.doesNotMatch(shared, /gmail\.send[^'"\]]*allow|gmail\.compose[^'"\]]*allow/i);
+  assert.match(outboundMigration, /drop constraint if exists provider_gmail_connections_readonly_scopes_check/);
+  assert.match(outboundMigration, /provider_gmail_connections_least_privilege_scopes_check/);
+  assert.match(outboundMigration, /scopes <@ array\[/);
 });
 
-test('OAuth callback enforces the dedicated provider mailbox and readonly scope', () => {
+test('OAuth callback enforces the dedicated provider mailbox and least-privilege outbound scopes', () => {
   assert.match(callback, /provider_gmail_oauth_states/);
   assert.match(callback, /providerGmailAllowedAccount\(\)/);
-  assert.match(callback, /validateProviderGmailScopes\(tokenData\.scope\)/);
+  assert.match(callback, /validateProviderGmailOutboundScopes\(tokenData\.scope\)/);
   assert.match(callback, /provider_gmail_connections/);
   assert.match(callback, /purpose: 'provider_onboarding'/);
   assert.match(callback, /provider-gmail\.html/);
 });
 
-test('intake API exposes only status, OAuth, sync, and watch operations', () => {
+test('intake API exposes status, OAuth, sync, and watch without a browser send operation', () => {
   for (const action of ['provider_gmail_status', 'start_provider_gmail_oauth', 'sync_provider_gmail_inbox', 'renew_provider_gmail_watch']) {
     assert.match(api, new RegExp(action));
   }
   assert.match(api, /requireKindeUser\(request\)/);
   assert.match(api, /resolveRuntimeWorkspaceUser/);
   assert.match(api, /PROVIDER_GMAIL_READONLY_SCOPE/);
+  assert.match(api, /PROVIDER_GMAIL_SEND_SCOPE/);
   assert.match(api, /openid email/);
   assert.match(api, /login_hint/);
   assert.match(api, /syncProviderGmailConnection/);
-  assert.doesNotMatch(api, /gmail\.send|gmail\.compose|gmail\.modify|\/messages\/send|\/drafts\/send/i);
+  assert.doesNotMatch(api, /gmail\.compose|gmail\.modify|\/messages\/send|\/drafts\/send/i);
 });
 
 test('shared Gmail sync remains bounded, idempotent, confidential, and incremental', () => {
@@ -69,11 +75,12 @@ test('shared Gmail sync remains bounded, idempotent, confidential, and increment
 });
 
 test('watch registration is INBOX-only and stores returned history/expiration', () => {
-  assert.match(api, /topicName: PROVIDER_GMAIL_PUBSUB_TOPIC/);
-  assert.match(api, /labelIds: \[["']INBOX["']\]/);
-  assert.match(api, /labelFilterBehavior: ["']INCLUDE["']/);
-  assert.match(api, /history_id: historyId/);
-  assert.match(api, /watch_expiration_at: watchExpirationAt/);
+  assert.match(api, /renewProviderGmailWatch/);
+  assert.match(watch, /topicName/);
+  assert.match(watch, /labelIds: \[["']INBOX["']\]/);
+  assert.match(watch, /labelFilterBehavior: ["']INCLUDE["']/);
+  assert.match(watch, /history_id: historyId/);
+  assert.match(watch, /watch_expiration_at: watchExpirationAt/);
 });
 
 test('Provider Gmail Edge functions bypass only the Supabase JWT gateway and keep runtime auth', () => {
@@ -83,10 +90,11 @@ test('Provider Gmail Edge functions bypass only the Supabase JWT gateway and kee
   assert.match(callback, /provider_gmail_oauth_states/);
 });
 
-test('Provider Gmail UI is private and cannot expose outbound controls', () => {
-  assert.match(page, /Gmail Intake/);
-  assert.match(page, /gmail\.readonly only/);
-  assert.match(page, /No send/);
+test('Provider Gmail UI is private and describes human-gated send without exposing send controls', () => {
+  assert.match(page, /Gmail Intake \+ Authorized Replies/);
+  assert.match(page, /gmail\.readonly/);
+  assert.match(page, /gmail\.send/);
+  assert.match(page, /No compose, modify or delete/);
   assert.match(page, /id="provider-gmail-entity"/);
   assert.match(controller, /await requirePrivatePage\(\)/);
   assert.match(controller, /provider_gmail_status/);
@@ -94,5 +102,5 @@ test('Provider Gmail UI is private and cannot expose outbound controls', () => {
   assert.match(controller, /sync_provider_gmail_inbox/);
   assert.match(controller, /renew_provider_gmail_watch/);
   assert.doesNotMatch(page, /id="provider-gmail-send"|>Send email<|>Reply now<|>Compose message</i);
-  assert.doesNotMatch(controller, /gmail\.send|gmail\.compose|gmail\.modify|\/messages\/send|\/drafts\/send/i);
+  assert.doesNotMatch(controller, /gmail\.compose|gmail\.modify|\/messages\/send|\/drafts\/send/i);
 });

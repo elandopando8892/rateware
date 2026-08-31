@@ -43,6 +43,10 @@ function invalid(code: string): never {
   throw new Error(code);
 }
 
+function preAcceptance(code: string): never {
+  throw new KnownPreAcceptanceSendError(code);
+}
+
 function token(value: string): string {
   if (!value || value.trim() !== value || /[\r\n]/.test(value)) {
     invalid("GMAIL_AUTH_UNAVAILABLE");
@@ -97,7 +101,7 @@ function assertRequest(value: GmailSendRequest): void {
     (value.threadId !== null && !GMAIL_ID.test(value.threadId)) ||
     Object.keys(value).sort().join(",") !==
       "authorizationId,expectedMailbox,expectedMimeSha256,mimeObjectId,organizationId,threadId"
-  ) invalid("GMAIL_SEND_REQUEST_INVALID");
+  ) preAcceptance("GMAIL_SEND_REQUEST_INVALID");
 }
 
 function assertFrozenHeaders(bytes: Uint8Array): void {
@@ -105,7 +109,7 @@ function assertFrozenHeaders(bytes: Uint8Array): void {
   try {
     mime = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
-    invalid("GMAIL_MIME_MISMATCH");
+    preAcceptance("GMAIL_MIME_MISMATCH");
   }
   const head = mime.split("\r\n\r\n", 1)[0];
   const from = head.match(/^From: ([^\r\n]+)$/gm) ?? [];
@@ -118,7 +122,7 @@ function assertFrozenHeaders(bytes: Uint8Array): void {
   if (
     from.length !== 1 || from[0] !== `From: ${EXPECTED_MAILBOX}` ||
     messageIds.length !== 1
-  ) invalid("GMAIL_MIME_MISMATCH");
+  ) preAcceptance("GMAIL_MIME_MISMATCH");
 }
 
 export async function createGmailSendAdapter(
@@ -168,20 +172,25 @@ export async function createGmailSendAdapter(
           objectId: request.mimeObjectId,
         });
       } catch {
-        invalid("GMAIL_MIME_UNAVAILABLE");
+        preAcceptance("GMAIL_MIME_UNAVAILABLE");
       }
       if (
         !(stored instanceof Uint8Array) || stored.byteLength < 1 ||
         stored.byteLength > MAX_MIME_BYTES
       ) {
-        invalid("GMAIL_MIME_UNAVAILABLE");
+        preAcceptance("GMAIL_MIME_UNAVAILABLE");
       }
       const bytes = stored.slice();
       if (await sha256(bytes) !== request.expectedMimeSha256) {
-        invalid("GMAIL_MIME_MISMATCH");
+        preAcceptance("GMAIL_MIME_MISMATCH");
       }
       assertFrozenHeaders(bytes);
-      const accessToken = token(await options.accessToken(signal));
+      let accessToken: string;
+      try {
+        accessToken = token(await options.accessToken(signal));
+      } catch {
+        preAcceptance("GMAIL_AUTH_UNAVAILABLE");
+      }
       const body = request.threadId === null
         ? { raw: base64Url(bytes) }
         : { raw: base64Url(bytes), threadId: request.threadId };

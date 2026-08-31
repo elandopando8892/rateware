@@ -21,8 +21,8 @@ let actionRunning = false;
 
 function updateProviderGmailShell(status, busy = false) {
   updatePlatform55Shell({ pageState: {
-    title: 'Gmail Intake',
-    subtitle: 'Read-only mailbox connectivity and bounded inbox synchronization.',
+    title: 'Gmail Intake + Authorized Replies',
+    subtitle: 'Read-only intake with least-privilege delivery of exact, human-authorized replies.',
     breadcrumbs: ['Service', 'Provider Gmail'],
     status,
     busy,
@@ -119,7 +119,7 @@ refreshButton?.addEventListener('click', () => loadStatus());
 connectButton?.addEventListener('click', () => runAction(async () => {
   const legalEntityId = selectedEntityId();
   if (!legalEntityId) return;
-  setStatus(`Preparing read-only OAuth for ${snapshot.mailbox_email}…`);
+  setStatus(`Preparing least-privilege Gmail consent for ${snapshot.mailbox_email}…`);
   const response = await callRatewareFunction('provider-gmail-intake-api', 'start_provider_gmail_oauth', { legal_entity_id: legalEntityId });
   const authUrl = response?.data?.auth_url;
   if (!authUrl) throw new Error('Provider Gmail OAuth URL was not returned.');

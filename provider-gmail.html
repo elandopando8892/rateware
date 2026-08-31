@@ -25,8 +25,8 @@
           <header class="page-header" data-platform55-page-header>
           <div>
             <p class="eyebrow" data-platform55-breadcrumbs>Service · Provider Gmail</p>
-            <h1 data-platform55-page-title>Gmail Intake</h1>
-            <p data-platform55-page-subtitle>Read-only mailbox connectivity and bounded inbox synchronization.</p>
+            <h1 data-platform55-page-title>Gmail Intake + Authorized Replies</h1>
+            <p data-platform55-page-subtitle>Read-only intake with least-privilege delivery of exact, human-authorized replies.</p>
           </div>
           <div class="page-header-actions">
             <a class="secondary-link" href="./provider-communications.html">Open Communications Inbox</a>
@@ -35,16 +35,16 @@
 
           <section class="workspace-panel provider-gmail-hero wide-section">
             <div>
-              <p class="eyebrow">Inbound only</p>
-              <h2>Connect the provider onboarding mailbox without granting send authority.</h2>
+              <p class="eyebrow">Inbound + authorized send</p>
+              <h2>Connect the provider mailbox for intake and exact Sales-authorized replies.</h2>
               <p id="provider-gmail-mailbox">Expected mailbox: —</p>
             </div>
             <div class="provider-gmail-safety">
-              <strong>Read-only contract</strong>
-              <span>gmail.readonly only</span>
-              <span>No compose</span>
-              <span>No send</span>
-              <span>No delete</span>
+              <strong>Least-privilege contract</strong>
+              <span>gmail.readonly</span>
+              <span>gmail.send</span>
+              <span>No compose, modify or delete</span>
+              <span>Frozen payload + Sales authorization required</span>
             </div>
           </section>
 
@@ -72,7 +72,7 @@
             <article class="workspace-panel"><span>Connection</span><strong id="provider-gmail-connection-state">Not connected</strong><small id="provider-gmail-token-state">—</small></article>
             <article class="workspace-panel"><span>Watch</span><strong id="provider-gmail-watch-state">Inactive</strong><small id="provider-gmail-watch-expiration">—</small></article>
             <article class="workspace-panel"><span>Last sync</span><strong id="provider-gmail-last-sync">Never</strong><small id="provider-gmail-history">No history ID</small></article>
-            <article class="workspace-panel"><span>Outbound</span><strong>Disabled</strong><small>Build 16 cannot send email</small></article>
+            <article class="workspace-panel"><span>Outbound</span><strong>Human-gated</strong><small>Only frozen, Sales-authorized OSP payloads</small></article>
           </section>
 
           <section class="workspace-panel wide-section">

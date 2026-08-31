@@ -136,6 +136,29 @@ Deno.test("Gmail adapter rejects mailbox substitution and changed MIME before th
   );
 });
 
+Deno.test("Gmail adapter classifies unavailable tenant MIME as known pre-acceptance", async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const port = await createGmailSendAdapter({
+    accessToken: async () => "synthetic-token",
+    fetch: fetchFixture({ calls }),
+    mimeObjects: { read: async () => null },
+  });
+  const expectedHash = await sha256(mimeBytes);
+  await assertRejects(
+    () =>
+      port.sendFrozen(
+        request(expectedHash),
+        AbortSignal.timeout(5_000),
+      ),
+    KnownPreAcceptanceSendError,
+    "GMAIL_MIME_UNAVAILABLE",
+  );
+  assertEquals(
+    calls.filter((call) => call.url.endsWith("/messages/send")).length,
+    0,
+  );
+});
+
 Deno.test("Gmail adapter distinguishes known pre-acceptance refusal from an ambiguous transport outcome", async () => {
   const expectedHash = await sha256(mimeBytes);
   const refused = await adapter({

@@ -11,6 +11,7 @@ import {
 import {
   cleanProviderGmailText,
   PROVIDER_GMAIL_READONLY_SCOPE,
+  PROVIDER_GMAIL_SEND_SCOPE,
   providerGmailAllowedAccount,
 } from "../_shared/provider-gmail.ts";
 import {
@@ -167,6 +168,11 @@ async function listSafeStatus(supabase: any, organizationUuid: string) {
     data: {
       mailbox_email: providerGmailAllowedAccount(),
       required_scope: PROVIDER_GMAIL_READONLY_SCOPE,
+      required_scopes: [
+        PROVIDER_GMAIL_READONLY_SCOPE,
+        PROVIDER_GMAIL_SEND_SCOPE,
+      ],
+      send_scope: PROVIDER_GMAIL_SEND_SCOPE,
       legal_entities: entities.data || [],
       connections: connections.data || [],
       outbound_enabled: false,
@@ -217,7 +223,7 @@ async function startOauth(
   authUrl.searchParams.set("login_hint", mailbox);
   authUrl.searchParams.set(
     "scope",
-    `openid email ${PROVIDER_GMAIL_READONLY_SCOPE}`,
+    `openid email ${PROVIDER_GMAIL_READONLY_SCOPE} ${PROVIDER_GMAIL_SEND_SCOPE}`,
   );
   authUrl.searchParams.set("state", state);
 
