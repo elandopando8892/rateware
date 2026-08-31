@@ -364,13 +364,18 @@ export function createPostgresCaseOutboundActions(options: {
   databaseUrl: string;
   storageClient: OutboundStorageClient;
   postgresFactory?: PostgresFactory;
+  attachmentPostgresFactory?: PostgresFactory;
   now?: () => Date;
 }): CaseOutboundActions {
   const store = createPostgresOutboundDraftStore(options);
   const storage = createOutboundStoragePorts(options.storageClient);
   return createCaseOutboundActions({
     store,
-    attachments: createTenantAttachmentObjectPort(options),
+    attachments: createTenantAttachmentObjectPort({
+      ...options,
+      postgresFactory: options.attachmentPostgresFactory ??
+        options.postgresFactory,
+    }),
     objects: storage.objects,
     payloads: createPostgresCurrentOutboundAuthorizationSource(options),
     approvals: createPostgresApprovalStore(options),

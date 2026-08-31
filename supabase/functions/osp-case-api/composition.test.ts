@@ -12,7 +12,7 @@ function environment(overrides: Record<string, string | undefined> = {}) {
   return { get: (name: string) => values[name] };
 }
 
-Deno.test("case API runtime composes Kinde verification with isolated approval pools and no eager network I/O", () => {
+Deno.test("case API runtime composes Kinde verification with isolated approval and outbound preparation pools and no eager network I/O", () => {
   let fetches = 0;
   let databaseConnections = 0;
   const sql = Object.assign(async () => [], {
@@ -36,7 +36,7 @@ Deno.test("case API runtime composes Kinde verification with isolated approval p
   });
   assertEquals(typeof runtime, "function");
   assertEquals(fetches, 0);
-  assertEquals(databaseConnections, 3);
+  assertEquals(databaseConnections, 4);
 });
 
 Deno.test("case API runtime fails closed when auth or database configuration is absent", () => {

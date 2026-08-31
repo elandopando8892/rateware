@@ -80,9 +80,16 @@ export function createCaseApiRuntime(options: {
     postgresFactory: options.postgresFactory,
     now: () => new Date(options.clock?.() ?? Date.now()),
   });
+  // Freeze preparation resolves an attachment inside the outer payload
+  // transaction. Give that nested read its own max:1 pool so it cannot wait
+  // forever for the connection held by the payload transaction.
+  let outboundSupportDatabase: unknown;
+  const outboundSupportFactory: PostgresFactory = (url, config) =>
+    outboundSupportDatabase ??= options.postgresFactory(url, config);
   const outboundActions = createPostgresCaseOutboundActions({
     databaseUrl: databaseConnection,
     postgresFactory: sharedFactory,
+    attachmentPostgresFactory: outboundSupportFactory,
     storageClient: options.storageClient,
     now: () => new Date(options.clock?.() ?? Date.now()),
   });
