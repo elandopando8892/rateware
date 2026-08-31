@@ -127,7 +127,10 @@ begin
     or failed_job.retry_at is not null
     or failed_job.lease_token is not null
     or failed_job.leased_until is not null
-    or pg_catalog.jsonb_object_length(failed_job.opaque_payload) <> 2
+    or (
+      select pg_catalog.count(*)
+      from pg_catalog.jsonb_object_keys(failed_job.opaque_payload)
+    ) <> 2
     or failed_job.opaque_payload->>'attemptId' <> p_attempt_id::text
     or failed_job.opaque_payload->>'authorizationId' <> current_attempt.sales_authorization_id::text
     or exists (
