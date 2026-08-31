@@ -23,6 +23,8 @@ Deno.test("signature retry archives the failed receipt and remains an exact shad
   assertMatch(sql, /failed_job\.completed_at is null/i);
   assertMatch(sql, /control\.release_mode = 'shadow'/i);
   assertMatch(sql, /control\.outbound_enabled = false/i);
+  assertMatch(sql, /sales_authorizations sales_auth/i);
+  assertNotMatch(sql, /sales_authorizations authorization/i);
   assertMatch(
     sql,
     /insert into osp_private\.signature_application_failure_evidence/i,

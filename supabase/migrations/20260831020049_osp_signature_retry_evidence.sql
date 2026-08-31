@@ -216,9 +216,9 @@ begin
          and payload.case_id = p_case_id
      )
      or exists (
-       select 1 from osp_private.sales_authorizations authorization
-       where authorization.organization_id = p_organization_id
-         and authorization.case_id = p_case_id
+       select 1 from osp_private.sales_authorizations sales_auth
+       where sales_auth.organization_id = p_organization_id
+         and sales_auth.case_id = p_case_id
      ) then
     raise exception using errcode = '55000', message = 'SIGNATURE_RETRY_EXTERNAL_EFFECT_HOLD';
   end if;
