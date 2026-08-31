@@ -3,6 +3,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import {
   createPostgresSignatureVaultReader,
   createSignatureJobService,
+  createSignatureObjectPort,
 } from "./signature-runtime.ts";
 
 Deno.test("signature runtime composes the production Postgres adapter without eager I/O", () => {
@@ -61,4 +62,66 @@ Deno.test("signature vault reader fails closed on invalid references, duplicate 
       "SIGNATURE_VAULT_INVALID",
     );
   }
+});
+
+Deno.test("signature object reader uses the Edge-compatible stream path instead of Blob conversion", async () => {
+  let blobPathUsed = false;
+  const builder = {
+    asStream: () =>
+      Promise.resolve({
+        data: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array([1, 2]));
+            controller.enqueue(new Uint8Array([3, 4]));
+            controller.close();
+          },
+        }),
+        error: null,
+      }),
+    then: () => {
+      blobPathUsed = true;
+      throw new TypeError("Blob conversion is unavailable");
+    },
+  };
+  const port = createSignatureObjectPort({
+    storage: {
+      from: () => ({
+        download: () => builder,
+      }),
+    },
+  } as never);
+  const bytes = await port.read(
+    {
+      organizationId: "11111111-1111-4111-8111-111111111111",
+      objectId: "input",
+    },
+    new AbortController().signal,
+  );
+  assertEquals([...bytes], [1, 2, 3, 4]);
+  assertEquals(blobPathUsed, false);
+});
+
+Deno.test("signature object reader converts Edge download failures into a stable safe code", async () => {
+  const port = createSignatureObjectPort({
+    storage: {
+      from: () => ({
+        download: () => ({
+          asStream: () =>
+            Promise.reject(new TypeError("runtime-specific detail")),
+        }),
+      }),
+    },
+  } as never);
+  await assertRejects(
+    () =>
+      port.read(
+        {
+          organizationId: "11111111-1111-4111-8111-111111111111",
+          objectId: "input",
+        },
+        new AbortController().signal,
+      ),
+    Error,
+    "SIGNATURE_INPUT_INVALID",
+  );
 });

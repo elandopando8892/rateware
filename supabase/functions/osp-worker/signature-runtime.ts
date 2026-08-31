@@ -29,6 +29,46 @@ const VAULT_REF = /^[A-Za-z0-9:_-]{1,256}$/;
 const STANDARD_BASE64 =
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const MAX_SIGNATURE_BYTES = 1024 * 1024;
+const MAX_SIGNATURE_INPUT_BYTES = 25 * 1024 * 1024;
+
+type StorageDownloadStream = {
+  data: ReadableStream<Uint8Array> | null;
+  error: unknown;
+};
+
+async function collectStorageStream(
+  stream: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      if (signal.aborted) throw new Error("SIGNATURE_ABORTED");
+      const result = await reader.read();
+      if (result.done) break;
+      if (!(result.value instanceof Uint8Array)) {
+        throw new Error("SIGNATURE_INPUT_INVALID");
+      }
+      total += result.value.byteLength;
+      if (total < 1 || total > MAX_SIGNATURE_INPUT_BYTES) {
+        throw new Error("SIGNATURE_INPUT_INVALID");
+      }
+      chunks.push(result.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (total < 1) throw new Error("SIGNATURE_INPUT_INVALID");
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
 
 function decodeSignatureSecret(value: unknown): Uint8Array {
   if (
@@ -99,16 +139,41 @@ export function createSignatureObjectPort(
   return Object.freeze({
     read: async (
       { objectId }: { organizationId: string; objectId: string },
-      _signal: AbortSignal,
+      signal: AbortSignal,
     ) => {
-      const bytes = simple(client)
-        ? await client.download(objectId)
-        : await (async () => {
-          const result = await client.storage.from(bucket).download(objectId);
-          return result.error || !result.data
-            ? null
-            : new Uint8Array(await result.data.arrayBuffer());
-        })();
+      let bytes: Uint8Array | null;
+      try {
+        bytes = simple(client)
+          ? await client.download(objectId)
+          : await (async () => {
+            const builder = client.storage.from(bucket).download(
+              objectId,
+              {},
+              { signal },
+            );
+            const streamBuilder = builder as unknown as {
+              asStream?: () => PromiseLike<StorageDownloadStream>;
+            };
+            if (typeof streamBuilder.asStream === "function") {
+              const result = await streamBuilder.asStream();
+              return result.error || !result.data
+                ? null
+                : await collectStorageStream(result.data, signal);
+            }
+            const result = await builder;
+            return result.error || !result.data
+              ? null
+              : new Uint8Array(await result.data.arrayBuffer());
+          })();
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          ["SIGNATURE_ABORTED", "SIGNATURE_INPUT_INVALID"].includes(
+            error.message,
+          )
+        ) throw error;
+        throw new Error("SIGNATURE_INPUT_INVALID");
+      }
       if (!bytes) throw new Error("SIGNATURE_INPUT_INVALID");
       return bytes;
     },
