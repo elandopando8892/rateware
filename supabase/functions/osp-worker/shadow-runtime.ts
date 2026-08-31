@@ -34,6 +34,10 @@ import {
   createSignatureJobService,
   type SignatureVaultReader,
 } from "./signature-runtime.ts";
+import { createGmailSendAdapter } from "../_shared/osp/gmail-send-adapter.ts";
+import { createOutboundStoragePorts } from "../osp-case-api/outbound-draft.ts";
+import { createPostgresOutboundSendStore } from "./outbound-receipt.ts";
+import { runOutboundSendJob } from "./outbound-send-job.ts";
 
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -116,6 +120,46 @@ export function createShadowWorkerRuntime(input: {
     postgresFactory: input.postgresFactory,
   });
   const request = input.fetch ?? globalThis.fetch;
+  let outboundStore:
+    | ReturnType<typeof createPostgresOutboundSendStore>
+    | undefined;
+  const getOutboundStore = () =>
+    outboundStore ??= createPostgresOutboundSendStore({
+      databaseUrl: input.databaseUrl,
+      postgresFactory: input.postgresFactory,
+    });
+  let gmailSender:
+    | Awaited<ReturnType<typeof createGmailSendAdapter>>
+    | undefined;
+  const outboundSends = Object.freeze({
+    execute: async (
+      job: {
+        organizationId: string;
+        authorizationId: string;
+        attemptId: string;
+        jobId: string;
+        leaseToken: string;
+      },
+    ) => {
+      gmailSender ??= await createGmailSendAdapter({
+        accessToken: input.gmailAccessToken,
+        fetch: request,
+        mimeObjects: createOutboundStoragePorts(
+          governedStorage(input.storageClient),
+        ).objects,
+      });
+      return await runOutboundSendJob({
+        organizationId: job.organizationId,
+        attemptId: job.attemptId,
+        jobId: job.jobId,
+        leaseToken: job.leaseToken,
+      }, {
+        store: getOutboundStore(),
+        gmail: gmailSender,
+        signal: AbortSignal.timeout(30_000),
+      });
+    },
+  });
   const automationStorage = input.automation || input.xlsxShadow ||
       input.xlsxIntake
     ? governedStorage(input.storageClient)
@@ -375,6 +419,7 @@ export function createShadowWorkerRuntime(input: {
         extraction,
         formMappings,
         signatures,
+        outboundSends,
         limit,
       }),
     runXlsxDocumentExtractCanary,
