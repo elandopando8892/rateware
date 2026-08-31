@@ -56,7 +56,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/router.tsx",
-      "sha256": "6e4256e20540cf16ad265ba7f02ef0515b87c9967ee942e85683f4b8ae4ef48c"
+      "sha256": "5ca84c0d2d366340e026d80b8358fb61a070261dcda3731cf2264941e14e3b37"
     },
     {
       "kind": "production-ui",
@@ -111,7 +111,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/approval/SalesAuthorizationPage.tsx",
-      "sha256": "63abf0b2d2c4c303bc10baffd3cc5a73575271eaeee8360e9aea21923c8c4588"
+      "sha256": "748290a7b4047c707af17ed039d553e6c8db0181ce95b6b5563800fef0f3d88c"
     },
     {
       "kind": "production-ui",

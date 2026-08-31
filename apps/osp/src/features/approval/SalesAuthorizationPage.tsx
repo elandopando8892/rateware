@@ -6,8 +6,10 @@ import { FinalResponseComposer, type FinalResponseDraftFields } from './FinalRes
 type SalesAuthorizationPageProps = {
   workspace: ApprovalCommunicationsWorkspace;
   conflict?: boolean;
+  reauthenticationRequired?: boolean;
   onSaveDraft(input: FinalResponseDraftFields): Promise<void>;
   onFreeze(): Promise<void>;
+  onReauthenticate?(): Promise<void>;
   onAuthorize(): Promise<void>;
 };
 
@@ -29,7 +31,15 @@ function PayloadReview({ workspace }: { workspace: ApprovalCommunicationsWorkspa
   </dl>;
 }
 
-export function SalesAuthorizationPage({ workspace, conflict = false, onSaveDraft, onFreeze, onAuthorize }: SalesAuthorizationPageProps) {
+export function SalesAuthorizationPage({
+  workspace,
+  conflict = false,
+  reauthenticationRequired = false,
+  onSaveDraft,
+  onFreeze,
+  onReauthenticate = async () => undefined,
+  onAuthorize,
+}: SalesAuthorizationPageProps) {
   const outbound = workspace.outbound;
   const revision = outbound ? JSON.stringify({
     caseVersion: workspace.caseVersion, status: outbound.status, to: outbound.to, cc: outbound.cc,
@@ -38,13 +48,23 @@ export function SalesAuthorizationPage({ workspace, conflict = false, onSaveDraf
   }) : '';
   const [confirmed, setConfirmed] = useState(false);
   const [draftDirty, setDraftDirty] = useState(false);
-  const [pending, setPending] = useState<'freeze' | 'authorize' | null>(null);
+  const [pending, setPending] = useState<'freeze' | 'reauthenticate' | 'authorize' | null>(null);
   const [failed, setFailed] = useState(false);
-  useEffect(() => { setConfirmed(false); setDraftDirty(false); setFailed(false); }, [revision]);
+  const [reauthenticationFailed, setReauthenticationFailed] = useState(false);
+  useEffect(() => {
+    setConfirmed(false);
+    setDraftDirty(false);
+    setFailed(false);
+    setReauthenticationFailed(false);
+  }, [revision]);
 
   const act = async (action: 'freeze' | 'authorize', command: () => Promise<void>) => {
     setPending(action); setFailed(false);
     try { await command(); } catch { setFailed(true); } finally { setPending(null); }
+  };
+  const reauthenticate = async () => {
+    setPending('reauthenticate'); setReauthenticationFailed(false);
+    try { await onReauthenticate(); } catch { setReauthenticationFailed(true); } finally { setPending(null); }
   };
 
   if (!outbound) {
@@ -81,8 +101,14 @@ export function SalesAuthorizationPage({ workspace, conflict = false, onSaveDraf
     <p className="eyebrow">CONTROL 03 · SALES</p><h1 id="sales-title">Authorize exact outbound payload</h1>
     <p className="lede">Review every recipient, word and attachment fingerprint. Authorization does not send.</p>
     <PayloadReview workspace={workspace} />
-    <label className="control-confirmation"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> I reviewed the exact recipients, content and attachments shown above.</label>
-    {conflict ? <p role="alert">Authorization failed safely. Current state was reloaded; review the payload before retrying.</p> : failed ? <p role="alert">Authorization failed safely. Reload the current state and review the payload before retrying.</p> : null}
-    {workspace.capabilities.authorizeOutboundPayload ? <button type="button" disabled={!confirmed || pending !== null} onClick={() => void act('authorize', onAuthorize)}>{pending === 'authorize' ? 'Authorizing…' : 'Authorize outbound payload'}</button> : outbound.status === 'authorized' || workspace.caseState === 'ready_to_send' || workspace.caseState === 'sent' || workspace.caseState === 'manual_reconciliation_required' ? <p role="status">Sales authorization complete.</p> : <p role="status">sales@heymarksman.com authorization is required.</p>}
+    {workspace.capabilities.authorizeOutboundPayload && reauthenticationRequired ? <>
+      <p role="status">A fresh Sales authentication is required before authorization. No authorization command will be sent yet.</p>
+      {reauthenticationFailed ? <p role="alert">We could not start fresh Sales authentication. Please retry.</p> : null}
+      <button type="button" disabled={pending !== null} onClick={() => void reauthenticate()}>{pending === 'reauthenticate' ? 'Starting secure authentication…' : 'Authenticate Sales to authorize'}</button>
+    </> : <>
+      <label className="control-confirmation"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> I reviewed the exact recipients, content and attachments shown above.</label>
+      {conflict ? <p role="alert">Authorization failed safely. Current state was reloaded; review the payload before retrying.</p> : failed ? <p role="alert">Authorization failed safely. Reload the current state and review the payload before retrying.</p> : null}
+      {workspace.capabilities.authorizeOutboundPayload ? <button type="button" disabled={!confirmed || pending !== null} onClick={() => void act('authorize', onAuthorize)}>{pending === 'authorize' ? 'Authorizing…' : 'Authorize outbound payload'}</button> : outbound.status === 'authorized' || workspace.caseState === 'ready_to_send' || workspace.caseState === 'sent' || workspace.caseState === 'manual_reconciliation_required' ? <p role="status">Sales authorization complete.</p> : <p role="status">sales@heymarksman.com authorization is required.</p>}
+    </>}
   </section>;
 }

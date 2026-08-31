@@ -124,6 +124,25 @@ describe('controlled approval and communications pages', () => {
     expect(screen.getByRole('button', { name: /authorize outbound payload/i })).toBeDisabled();
   });
 
+  it('requires fresh Sales authentication before rendering any authorization command control', async () => {
+    const authorize = vi.fn(async () => undefined);
+    const reauthenticate = vi.fn(async () => undefined);
+    render(<SalesAuthorizationPage
+      workspace={workspace}
+      reauthenticationRequired
+      onSaveDraft={vi.fn()}
+      onFreeze={vi.fn()}
+      onReauthenticate={reauthenticate}
+      onAuthorize={authorize}
+    />);
+    expect(screen.queryByRole('checkbox', { name: /exact recipients, content and attachments/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /authorize outbound payload/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/no authorization command will be sent yet/i);
+    await userEvent.click(screen.getByRole('button', { name: /authenticate sales to authorize/i }));
+    expect(reauthenticate).toHaveBeenCalledOnce();
+    expect(authorize).not.toHaveBeenCalled();
+  });
+
   it('moves from internal composer to an explicit Operations freeze without exposing send', async () => {
     const save = vi.fn(async () => undefined);
     const composer = render(<SalesAuthorizationPage

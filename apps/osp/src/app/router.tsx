@@ -257,14 +257,18 @@ function SignatureApprovalWorkspace() {
 const signatureApprovalRoute = createRoute({ getParentRoute: () => appRoute, path: 'cases/$caseId/signature', component: SignatureApprovalWorkspace });
 
 function SalesAuthorizationWorkspace() {
+  const context = salesAuthorizationRoute.useRouteContext();
   const { apiClient, params, query, run, conflict } = useWorkflowWorkspace(salesAuthorizationRoute);
   if (query.isPending || query.fetchStatus !== 'idle') return <WorkflowLoading title="Sales authorization" message="Loading exact outbound payload…" />;
   if (query.isError || !query.data) return <WorkflowFailure title="Sales authorization" />;
   const signedPackage = query.data.signedPackage;
   const inputSnapshot = query.data.inputSnapshot;
+  const returnTo = `/app/cases/${params.caseId}/authorization`;
   return <SalesAuthorizationPage
     workspace={query.data}
     conflict={conflict}
+    reauthenticationRequired={!context.approvalSessionFresh()}
+    onReauthenticate={() => context.reauthenticateForApproval(returnTo)}
     onSaveDraft={(input) => signedPackage && inputSnapshot
       ? run('save-draft', () => apiClient.saveOutboundDraft({
           ...input, caseId: params.caseId, expectedVersion: query.data.caseVersion,
@@ -274,10 +278,12 @@ function SalesAuthorizationWorkspace() {
     onFreeze={() => run('freeze', (idempotencyKey) => apiClient.freezeOutboundPayload({
       caseId: params.caseId, payloadId: query.data.outbound?.payloadId ?? '', expectedVersion: query.data.caseVersion, idempotencyKey,
     }))}
-    onAuthorize={() => run('sales', (idempotencyKey) => apiClient.authorizeOutboundPayload({
-      caseId: params.caseId, payloadId: query.data.outbound?.payloadId ?? '', expectedVersion: query.data.caseVersion, idempotencyKey,
-      payloadSha256: query.data.outbound?.mimeSha256 ?? '', attachmentSha256: query.data.outbound?.attachmentSha256 ?? [],
-    }))}
+    onAuthorize={() => context.approvalSessionFresh()
+      ? run('sales', (idempotencyKey) => apiClient.authorizeOutboundPayload({
+        caseId: params.caseId, payloadId: query.data.outbound?.payloadId ?? '', expectedVersion: query.data.caseVersion, idempotencyKey,
+        payloadSha256: query.data.outbound?.mimeSha256 ?? '', attachmentSha256: query.data.outbound?.attachmentSha256 ?? [],
+      }))
+      : context.reauthenticateForApproval(returnTo)}
   />;
 }
 const salesAuthorizationRoute = createRoute({ getParentRoute: () => appRoute, path: 'cases/$caseId/authorization', component: SalesAuthorizationWorkspace });
