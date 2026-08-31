@@ -84,7 +84,9 @@ Deno.test('Postgres intake persistence replays a delivery receipt without creati
       receivedAt: '2026-08-22T00:00:00.000Z',
     },
     parsed: {
+      senderEmail: 'requester@xbfreight.com',
       senderDomain: 'xbfreight.com',
+      internetMessageId: '<message-1@xbfreight.com>',
       supplierDomain: 'supplier.example.test',
       to: [supplierMailbox],
       cc: ['carriers@xbfreight.com'],
@@ -121,6 +123,8 @@ Deno.test('Postgres intake persistence replays a delivery receipt without creati
   assertEquals(cases, 1);
   assertEquals(messageInsertValues.length, 1);
   assertEquals(messageInsertValues[0].includes('Supplier registration'), true);
+  assertEquals(messageInsertValues[0].includes('requester@xbfreight.com'), true);
+  assertEquals(messageInsertValues[0].includes('<message-1@xbfreight.com>'), true);
   assertEquals(
     messageInsertValues[0].includes('Please complete the application.'),
     true,
@@ -225,7 +229,9 @@ Deno.test('Postgres exact attachment does not insert a second gmail row for the 
     receivedAt: '2026-08-22T00:00:00.000Z',
   };
   const parsed = {
+    senderEmail: 'requester@xbfreight.com',
     senderDomain: 'xbfreight.com',
+    internetMessageId: '<message-1@xbfreight.com>',
     supplierDomain: 'supplier.example.test',
     to: [supplierMailbox],
     cc: ['carriers@xbfreight.com'],
@@ -350,7 +356,9 @@ Deno.test('Postgres exact replay persists duplicate evidence once and replays th
     receivedAt: '2026-08-22T00:00:00.000Z',
   };
   const parsed = {
+    senderEmail: 'requester@xbfreight.com',
     senderDomain: 'xbfreight.com',
+    internetMessageId: '<message-1@xbfreight.com>',
     supplierDomain: 'supplier.example.test',
     to: [supplierMailbox],
     cc: ['carriers@xbfreight.com'],
@@ -494,7 +502,9 @@ Deno.test('Postgres probable hold appends evidence and advances the case aggrega
     receivedAt: '2026-08-22T00:00:00.000Z',
   };
   const parsed = {
+    senderEmail: 'requester@xbfreight.com',
     senderDomain: 'xbfreight.com',
+    internetMessageId: '<message-1@xbfreight.com>',
     supplierDomain: 'supplier.example.test',
     to: [supplierMailbox],
     cc: [],

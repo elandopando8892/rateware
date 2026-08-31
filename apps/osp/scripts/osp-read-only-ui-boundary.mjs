@@ -30,6 +30,22 @@ const ALTERNATE_VITE_CONFIG_PATHS = new Set([
 const OPERATIONAL_CONTROL_NAMES = new Set([
   'approve', 'authorize', 'digitalsignature', 'oauth', 'renew', 'send', 'signature', 'sync', 'upload',
 ]);
+const OUTBOUND_DRAFT_COMPOSER_PATH = 'apps/osp/src/features/approval/FinalResponseComposer.tsx';
+const OUTBOUND_DRAFT_ALLOWED_IMPORTS = new Set(['../../api/contracts', 'react']);
+const OUTBOUND_DRAFT_FORBIDDEN_CALLS = new Set([
+  'approveandapplysignature',
+  'authorizeoutboundpayload',
+  'completeoperationsreview',
+  'fetch',
+  'freezeoutboundpayload',
+  'open',
+  'postmessage',
+  'requestauthorizedsend',
+  'send',
+  'sendbeacon',
+  'uploaddocumentversion',
+]);
+const OUTBOUND_DRAFT_FORBIDDEN_CONSTRUCTORS = new Set(['eventsource', 'websocket', 'xmlhttprequest']);
 
 function fail(code) {
   throw new Error(code);
@@ -272,6 +288,65 @@ function isCreateElementCall(expression) {
   return ts.isIdentifier(expression) && expression.text === 'createElement';
 }
 
+function expressionName(expression) {
+  if (ts.isIdentifier(expression)) return expression.text;
+  if (ts.isPropertyAccessExpression(expression)) return `${expressionName(expression.expression)}.${expression.name.text}`;
+  if (ts.isElementAccessExpression(expression) && expression.argumentExpression &&
+      ts.isStringLiteral(expression.argumentExpression)) {
+    return `${expressionName(expression.expression)}.${expression.argumentExpression.text}`;
+  }
+  return '';
+}
+
+function literalJsxAttribute(attributes, attributeName) {
+  const attribute = attributes.properties.find((candidate) =>
+    ts.isJsxAttribute(candidate) && candidate.name.getText() === attributeName);
+  return attribute && attribute.initializer && ts.isStringLiteral(attribute.initializer)
+    ? attribute.initializer.text
+    : undefined;
+}
+
+function assertGovernedOutboundDraftSurface(file, sourcePath) {
+  if (sourcePath.replace(/\\/g, '/') !== OUTBOUND_DRAFT_COMPOSER_PATH) return;
+  const imports = [];
+  let composerDeclarations = 0;
+  let saveCalls = 0;
+  let actionButtons = 0;
+  visit(file, (node) => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      imports.push(node.moduleSpecifier.text);
+    }
+    if (ts.isFunctionDeclaration(node) && node.name?.text === 'FinalResponseComposer') {
+      composerDeclarations += 1;
+      const binding = node.parameters[0]?.name;
+      if (!binding || !ts.isObjectBindingPattern(binding) ||
+          JSON.stringify(binding.elements.map((element) => element.name.getText()).sort()) !==
+            JSON.stringify(['initialBodyText', 'onDirtyChange', 'onSave', 'replyContext', 'revision', 'signedPackage'])) {
+        fail('UI_MUTATION_CONTROL');
+      }
+    }
+    if (ts.isCallExpression(node)) {
+      const name = normalizedControlName(expressionName(node.expression));
+      if (name === 'onsave') saveCalls += 1;
+      if (OUTBOUND_DRAFT_FORBIDDEN_CALLS.has(name)) fail('UI_MUTATION_CONTROL');
+    }
+    if (ts.isNewExpression(node) &&
+        OUTBOUND_DRAFT_FORBIDDEN_CONSTRUCTORS.has(normalizedControlName(expressionName(node.expression)))) {
+      fail('UI_MUTATION_CONTROL');
+    }
+    if ((ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+        jsxName(node.tagName).toLowerCase() === 'button') {
+      actionButtons += 1;
+      if (literalJsxAttribute(node.attributes, 'type') !== 'button') fail('UI_MUTATION_CONTROL');
+    }
+  });
+  if (composerDeclarations !== 1 || saveCalls !== 1 || actionButtons !== 1 ||
+      imports.some((specifier) => !OUTBOUND_DRAFT_ALLOWED_IMPORTS.has(specifier)) ||
+      new Set(imports).size !== imports.length) {
+    fail('UI_MUTATION_CONTROL');
+  }
+}
+
 export function assertNoUnsafeUiSyntax(source, sourcePath = 'fixture.tsx') {
   if (sourcePath.endsWith('.css')) return;
   const file = parseTypeScript(source, sourcePath);
@@ -299,6 +374,7 @@ export function assertNoUnsafeUiSyntax(source, sourcePath = 'fixture.tsx') {
     }
   });
   if (allowDocumentMutation && (documentForms !== 1 || documentFileInputs !== 1)) fail('UI_MUTATION_CONTROL');
+  assertGovernedOutboundDraftSurface(file, sourcePath);
 }
 
 function cssImports(source) {

@@ -10,6 +10,7 @@ import {
 const organizationId = "11111111-1111-4111-8111-111111111111";
 const caseId = "33333333-3333-4333-8333-333333333333";
 const payloadId = "44444444-4444-4444-8444-444444444444";
+const signedPackageId = "77777777-7777-4777-8777-777777777777";
 const sha = "a".repeat(64);
 const baseIdentity: VerifiedWorkflowIdentity = {
   identity: {
@@ -40,6 +41,19 @@ const record: WorkflowViewRecord = {
     approvalId: "55555555-5555-4555-8555-555555555555",
     outputSha256: "b".repeat(64),
   },
+  signedPackage: {
+    packageId: signedPackageId,
+    outputSha256: "b".repeat(64),
+    contentType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  },
+  replyContext: {
+    to: ["requester@xbfreight.com"],
+    cc: ["supplier@example.test", "sales@heymarksman.com"],
+    subject: "Re: Supplier registration request",
+    inReplyTo: "<supplier-request@example.test>",
+    references: ["<supplier-request@example.test>"],
+  },
   outbound: {
     payloadId,
     kind: "final_response",
@@ -49,6 +63,8 @@ const record: WorkflowViewRecord = {
     to: ["supplier@example.test"],
     cc: ["sales@heymarksman.com"],
     subject: "Supplier registration response",
+    inReplyTo: "<supplier-request@example.test>",
+    references: ["<original-thread@example.test>"],
     bodyText: "Ready for review.",
     attachmentSha256: ["c".repeat(64)],
     mimeSha256: "d".repeat(64),
@@ -60,6 +76,7 @@ const record: WorkflowViewRecord = {
 Deno.test("workflow view derives mutually exclusive server capabilities and exposes no secret locators", () => {
   const operations = approvalCommunicationsWorkspace(record, baseIdentity);
   assertEquals(operations.capabilities, {
+    saveOutboundDraft: false,
     completeOperationsReview: false,
     approveAndApplySignature: false,
     freezeOutboundPayload: false,
@@ -75,6 +92,12 @@ Deno.test("workflow view derives mutually exclusive server capabilities and expo
   assertEquals(JSON.stringify(sales).includes("vault"), false);
   assertEquals(JSON.stringify(sales).includes("objectId"), false);
   assertEquals(JSON.stringify(sales).includes("signatureBytes"), false);
+  assertEquals(sales.signedPackage, {
+    packageId: signedPackageId,
+    outputSha256: "b".repeat(64),
+    contentType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
   const mixed = approvalCommunicationsWorkspace(record, {
     ...baseIdentity,
     identity: { ...baseIdentity.identity, email: "sales@heymarksman.com" },
@@ -88,6 +111,56 @@ Deno.test("workflow view derives mutually exclusive server capabilities and expo
   });
   assertEquals(
     Object.values(operationsAndSales.capabilities).some(Boolean),
+    false,
+  );
+});
+
+Deno.test("workflow view grants outbound draft creation only for current signed evidence and separated Operations authority", () => {
+  const ready = {
+    ...record,
+    outbound: null,
+  } satisfies WorkflowViewRecord;
+  assertEquals(
+    approvalCommunicationsWorkspace(ready, baseIdentity).capabilities
+      .saveOutboundDraft,
+    true,
+  );
+  assertEquals(
+    approvalCommunicationsWorkspace({
+      ...ready,
+      outbound: { ...record.outbound!, status: "draft", mimeSha256: null },
+    }, baseIdentity).capabilities.saveOutboundDraft,
+    true,
+  );
+  for (
+    const candidate of [
+      { ...ready, caseState: "signature_approval" as const },
+      { ...ready, inputSnapshot: null },
+      { ...ready, signedPackage: null },
+      { ...ready, replyContext: null },
+      { ...ready, outbound: record.outbound },
+      {
+        ...ready,
+        outbound: {
+          ...record.outbound!,
+          status: "draft" as const,
+          caseVersion: ready.caseVersion - 1,
+          mimeSha256: null,
+        },
+      },
+    ]
+  ) {
+    assertEquals(
+      approvalCommunicationsWorkspace(candidate, baseIdentity).capabilities
+        .saveOutboundDraft,
+      false,
+    );
+  }
+  assertEquals(
+    approvalCommunicationsWorkspace(ready, {
+      ...baseIdentity,
+      permissions: ["osp:operate", "osp:sales-authorize"],
+    }).capabilities.saveOutboundDraft,
     false,
   );
 });
@@ -130,6 +203,12 @@ Deno.test("workflow view never grants an action for a stale outbound payload", (
     }, identity);
     assertEquals(Object.values(projected.capabilities).some(Boolean), false);
   }
+  const historical = approvalCommunicationsWorkspace({
+    ...record,
+    outboundIsLatest: false,
+    outbound: { ...record.outbound!, status: "draft", caseVersion: record.caseVersion },
+  }, baseIdentity);
+  assertEquals(Object.values(historical.capabilities).some(Boolean), false);
 });
 
 Deno.test("a current Sales authorization at N plus one grants Carriers the send capability", () => {
@@ -194,7 +273,9 @@ Deno.test("workflow view exposes the active signature policy before the first ap
       signature_position_version: null,
       signature_status: null,
       signature_approval_id: null,
+      signed_package_id: null,
       signature_output_sha256: null,
+      signed_package_content_type: null,
       payload_id: null,
     }];
   }, {
@@ -263,15 +344,34 @@ Deno.test("Postgres workflow view is tenant-scoped and rejects malformed rows", 
         signature_position_version: "3",
         signature_status: "applied",
         signature_approval_id: "55555555-5555-4555-8555-555555555555",
+        signed_package_id: signedPackageId,
         signature_output_sha256: "b".repeat(64),
+        signed_package_content_type:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        reply_gmail_thread_id: "gmail-thread-1",
+        reply_sender_email: "requester@xbfreight.com",
+        reply_internet_message_id: "<supplier-request@example.test>",
+        reply_original_subject: "Re: Re: Supplier registration request",
+        reply_original_to: [
+          "supplier@example.test",
+          "sales@heymarksman.com",
+        ],
+        reply_original_cc: [
+          "supplier@example.test",
+          "carriers@xbfreight.com",
+          "sales@heymarksman.com",
+        ],
         payload_id: payloadId,
         payload_kind: "final_response",
+        payload_is_latest: true,
         payload_status: "frozen",
         payload_case_version: "7",
         from_email: "carriers@xbfreight.com",
         to_recipients: [{ email: "supplier@example.test" }],
         cc_recipients: [{ email: "sales@heymarksman.com" }],
         subject: "Supplier registration response",
+        in_reply_to: "<supplier-request@example.test>",
+        references_header: ["<original-thread@example.test>"],
         body_text: "Ready for review.",
         attachment_sha256s: ["c".repeat(64)],
         mime_sha256: "d".repeat(64),
@@ -290,6 +390,21 @@ Deno.test("Postgres workflow view is tenant-scoped and rejects malformed rows", 
   });
   const result = await source.load({ organizationId, caseId, payloadId });
   assertEquals(result.caseId, caseId);
+  assertEquals(result.signedPackage, {
+    packageId: signedPackageId,
+    outputSha256: "b".repeat(64),
+    contentType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  assertEquals(result.replyContext, {
+    to: ["requester@xbfreight.com"],
+    cc: ["supplier@example.test", "sales@heymarksman.com"],
+    subject: "Re: Supplier registration request",
+    inReplyTo: "<supplier-request@example.test>",
+    references: ["<supplier-request@example.test>"],
+  });
+  assertEquals(result.outbound?.inReplyTo, "<supplier-request@example.test>");
+  assertEquals(result.outbound?.references, ["<original-thread@example.test>"]);
   assertEquals(
     calls.some((call) =>
       call.values.includes(organizationId) && call.values.includes(caseId) &&
@@ -306,6 +421,26 @@ Deno.test("Postgres workflow view is tenant-scoped and rejects malformed rows", 
   );
   const query = calls.find((call) => call.text.includes("sales_authorizations"))
     ?.text ?? "";
+  assertEquals(
+    query.includes("signed_package.id as signed_package_id") &&
+      query.includes(
+        "signed_package.content_type as signed_package_content_type",
+      ) &&
+      query.includes("signed_package.input_snapshot_id = snapshot.id") &&
+      query.includes(
+        "signed_package.input_snapshot_sha256 = snapshot.canonical_sha256",
+      ) &&
+      query.includes("jsonb_array_elements(draft.attachments_json)") &&
+      query.includes("draft_attachment.value ->> 'sha256'"),
+    true,
+  );
+  assertEquals(
+    query.includes("from osp_private.gmail_messages value") &&
+      query.includes(
+        "order by value.received_at asc, value.created_at asc, value.id asc",
+      ),
+    true,
+  );
   assertEquals(
     query.includes("authorization_event.case_version = draft.case_version + 1"),
     true,
@@ -368,11 +503,14 @@ Deno.test("Postgres workflow view is tenant-scoped and rejects malformed rows", 
     signature_approval_id: null,
     payload_id: payloadId,
     payload_kind: "final_response",
+    payload_is_latest: true,
     payload_case_version: "7",
     from_email: "carriers@xbfreight.com",
     to_recipients: [{ email: "supplier@example.test" }],
     cc_recipients: [],
     subject: "Supplier registration response",
+    in_reply_to: null,
+    references_header: [],
     body_text: "a".repeat(100_001),
     attachment_sha256s: [],
     mime_sha256: null,

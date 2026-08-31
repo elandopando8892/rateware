@@ -5,7 +5,8 @@ button, a { font: inherit; }
 a { color: var(--brand); }
 button { border: 0; border-radius: 999px; padding: .7rem 1rem; background: var(--brand); color: white; cursor: pointer; }
 button:hover { background: var(--brand-dark); }
-button:focus-visible, a:focus-visible, input:focus-visible, main:focus-visible { outline: 3px solid var(--xbf-navy); outline-offset: 3px; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, main:focus-visible { outline: 3px solid var(--xbf-navy); outline-offset: 3px; }
+button:disabled { cursor: not-allowed; opacity: .58; }
 .workflow-page { position: relative; max-width: 64rem; padding: clamp(1.25rem, 3vw, 2.5rem); border: 1px solid var(--line); border-top: .4rem solid var(--xbf-navy); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
 .workflow-page::after { content: ""; position: absolute; inset: 0 0 auto auto; width: 14rem; height: 7rem; pointer-events: none; opacity: .08; background-image: linear-gradient(var(--xbf-navy) 1px, transparent 1px), linear-gradient(90deg, var(--xbf-navy) 1px, transparent 1px); background-size: 16px 16px; }
 .workflow-page h1 { position: relative; margin: .3rem 0; font-family: var(--font-display); font-size: clamp(2rem, 5vw, 3.6rem); line-height: .98; letter-spacing: -.035em; text-transform: uppercase; }
@@ -25,9 +26,30 @@ code { display: inline-block; max-width: 100%; color: var(--xbf-navy); font-fami
 .workflow-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
 .critical-action { background: var(--xbf-navy-deep); }
 .message-preview { white-space: pre-wrap; }
+.outbound-composer { display: grid; gap: 1.25rem; margin-top: 2rem; }
+.outbound-composer-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--line); }
+.outbound-composer-heading h2, .outbound-attachment h3 { margin: .25rem 0 0; font-family: var(--font-display); text-transform: uppercase; }
+.outbound-composer-heading p[role="status"] { max-width: 22rem; margin: 0; color: var(--muted); text-align: right; }
+.outbound-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.outbound-field-grid label { display: grid; align-content: start; gap: .45rem; color: var(--muted); font-size: .78rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.outbound-field-grid label small { font: inherit; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.outbound-field-grid input, .outbound-field-grid textarea { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: .45rem; padding: .75rem .8rem; background: #fff; color: var(--ink); font: 500 1rem/1.45 var(--font-body); letter-spacing: normal; text-transform: none; }
+.outbound-field-grid input[readonly] { background: #eef1f8; color: var(--muted); }
+.outbound-field-grid textarea { resize: vertical; }
+.outbound-wide-field { grid-column: 1 / -1; }
+.outbound-attachment { display: grid; grid-template-columns: minmax(12rem, .7fr) minmax(0, 1.3fr); gap: 1rem 1.5rem; padding: 1rem; border: 1px solid var(--line); border-left: 4px solid var(--xbf-cyan); background: #f7f9fc; }
+.outbound-attachment dl { display: grid; gap: .75rem; margin: 0; }
+.outbound-attachment dl div { min-width: 0; }
+.outbound-attachment > p { grid-column: 1 / -1; margin: 0; color: var(--muted); }
 .eyebrow { color: var(--brand); font-size: .76rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .auth-page { max-width: 42rem; margin: 12vh auto; padding: clamp(1.5rem, 5vw, 3rem); border: 1px solid var(--line); border-top: .4rem solid var(--xbf-navy); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
 .auth-page h1 { margin: .35rem 0 .75rem; font-family: var(--font-display); font-size: clamp(2rem, 6vw, 3.4rem); line-height: .98; text-transform: uppercase; }
 .auth-google-login { display: grid; gap: .75rem; max-width: 30rem; margin-top: 1.5rem; }
 .auth-google-login p { margin: 0; color: var(--muted); }
 .auth-google-login button { justify-self: start; min-height: 3rem; padding-inline: 1.3rem; font-weight: 800; }
+@media (max-width: 42rem) {
+  .outbound-composer-heading { align-items: start; flex-direction: column; }
+  .outbound-composer-heading p[role="status"] { text-align: left; }
+  .outbound-field-grid, .outbound-attachment { grid-template-columns: 1fr; }
+  .outbound-wide-field, .outbound-attachment > p { grid-column: auto; }
+}

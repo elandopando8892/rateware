@@ -31,7 +31,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/contracts.ts",
-      "sha256": "cf756dfc17eab9c1485ac1c4045a2cf2f3555cdc927707b3f4fbf634745ddb79"
+      "sha256": "87a2e59e4d4f8998b6112a72eea645877cd5f9925135151191c1828a7d2a950b"
     },
     {
       "kind": "production-ui",
@@ -41,7 +41,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/workflow-client.ts",
-      "sha256": "833650be234f59600c2c6b1b8e6760784825085603fa03ed6eaf276ae552cc10"
+      "sha256": "529ca8fadc09eb52d3f4a23f953fdf8be00794bc32ae456d455a724a3eebc61d"
     },
     {
       "kind": "production-ui",
@@ -56,7 +56,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/router.tsx",
-      "sha256": "d516ea7c8a451b615b5d8b14ebb48fe2c55c7cf30a68a75cff941ea3d6263637"
+      "sha256": "6e4256e20540cf16ad265ba7f02ef0515b87c9967ee942e85683f4b8ae4ef48c"
     },
     {
       "kind": "production-ui",
@@ -105,8 +105,13 @@
     },
     {
       "kind": "production-ui",
+      "path": "apps/osp/src/features/approval/FinalResponseComposer.tsx",
+      "sha256": "9dc6657a37772d5f1194446d75096f95b6cc6ee25d8353be2364695fe0886002"
+    },
+    {
+      "kind": "production-ui",
       "path": "apps/osp/src/features/approval/SalesAuthorizationPage.tsx",
-      "sha256": "8de9893f2adb62759414c9a20142ee447ed7f355216b93e0283278d099a56080"
+      "sha256": "63abf0b2d2c4c303bc10baffd3cc5a73575271eaeee8360e9aea21923c8c4588"
     },
     {
       "kind": "production-ui",
@@ -211,7 +216,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "2467b7ff262740efc74b226e6a34b2cb210e33266f57c0aade311f9b98f5c000"
+      "sha256": "214c5283107857fd16438e7164919c195f7482f6c2c81060b712113e68b87529"
     },
     {
       "kind": "production-ui",
@@ -221,7 +226,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/global.css",
-      "sha256": "c7dcfd232d5762a7b1086732a77fd961501407f874d980948b9c3027ead1d75d"
+      "sha256": "7159c5c630702505772bfa52572c0505df2340b89b11881d5d9cba951353cb3e"
     },
     {
       "kind": "production-ui",
@@ -241,7 +246,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/tokens.css",
-      "sha256": "408af7fa4bd76d6eb30dbf9b11e9f4d2c4ed904b68520059512f1d0b1892bf2a"
+      "sha256": "c50d1a1a24e8e610febe14836a5c9f8dd8fd767f7a25c275ff766e483b80cb0e"
     },
     {
       "kind": "production-ui",

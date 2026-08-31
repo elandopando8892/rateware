@@ -42,6 +42,7 @@ function client(): OspClient {
     getApprovalCommunicationsWorkspace: vi.fn(async () => { throw new Error('not used'); }),
     completeOperationsReview: vi.fn(async () => { throw new Error('not used'); }),
     approveAndApplySignature: vi.fn(async () => { throw new Error('not used'); }),
+    saveOutboundDraft: vi.fn(async () => { throw new Error('not used'); }),
     freezeOutboundPayload: vi.fn(async () => { throw new Error('not used'); }),
     authorizeOutboundPayload: vi.fn(async () => { throw new Error('not used'); }),
     requestAuthorizedSend: vi.fn(async () => { throw new Error('not used'); }),
@@ -317,14 +318,18 @@ describe('App authentication and routing', () => {
       .mockResolvedValueOnce({
         caseId, caseVersion: 4, caseState: 'operations_review', inputSnapshot: snapshot,
         supplierPackage: { packageId: '55555555-5555-4555-8555-555555555551', version: 1, outputSha256: 'b'.repeat(64), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', downloadUrl: null },
+        signedPackage: null,
+        replyContext: null,
         signature: null, outbound: null,
-        capabilities: { completeOperationsReview: true, approveAndApplySignature: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
+        capabilities: { completeOperationsReview: true, approveAndApplySignature: false, saveOutboundDraft: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
       })
       .mockResolvedValue({
         caseId, caseVersion: 5, caseState: 'signature_approval', inputSnapshot: snapshot,
         supplierPackage: { packageId: '55555555-5555-4555-8555-555555555551', version: 1, outputSha256: 'b'.repeat(64), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', downloadUrl: null },
+        signedPackage: null,
+        replyContext: null,
         signature: { positionVersion: 1, approvalStatus: 'pending', approvalId: null, outputSha256: null }, outbound: null,
-        capabilities: { completeOperationsReview: false, approveAndApplySignature: true, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
+        capabilities: { completeOperationsReview: false, approveAndApplySignature: true, saveOutboundDraft: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
       });
     vi.mocked(api.completeOperationsReview).mockResolvedValue({ caseId, state: 'signature_approval', caseVersion: 5, replayed: false });
     const history = createMemoryHistory({ initialEntries: [`/app/cases/${caseId}/review`] });
@@ -353,9 +358,11 @@ describe('App authentication and routing', () => {
       caseId, caseVersion: 9, caseState: 'signature_approval',
       inputSnapshot: { sha256: 'a'.repeat(64), documentCount: 5, extractionCount: 1, reviewDecisionCount: 8, formInstanceVersion: 1 },
       supplierPackage: { packageId: '55555555-5555-4555-8555-555555555551', version: 1, outputSha256: 'b'.repeat(64), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', downloadUrl: null },
+      signedPackage: null,
+      replyContext: null,
       signature: { positionVersion: 1, approvalStatus: 'pending', approvalId: null, outputSha256: null },
       outbound: null,
-      capabilities: { completeOperationsReview: false, approveAndApplySignature: true, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
+      capabilities: { completeOperationsReview: false, approveAndApplySignature: true, saveOutboundDraft: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
     });
     const history = createMemoryHistory({ initialEntries: [`/app/cases/${caseId}/signature`] });
     render(<App authPort={port} apiClient={api} buildProfile="production-readonly" routerHistory={history} />);
@@ -374,14 +381,17 @@ describe('App authentication and routing', () => {
       caseId: '33333333-3333-4333-8333-333333333333', caseVersion: 7, caseState: 'sales_authorization',
       inputSnapshot: { sha256: 'a'.repeat(64), documentCount: 4, extractionCount: 18, reviewDecisionCount: 3, formInstanceVersion: 2 },
       supplierPackage: null,
+      signedPackage: { packageId: '66666666-6666-4666-8666-666666666666', outputSha256: 'c'.repeat(64), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      replyContext: null,
       signature: null,
       outbound: {
         payloadId: '44444444-4444-4444-8444-444444444444', kind: 'final_response', status: 'frozen', caseVersion: 7,
         from: 'carriers@xbfreight.com', to: ['supplier@example.test'], cc: [], subject: 'Supplier registration response',
+        inReplyTo: null, references: [],
         bodyText: 'Ready for exact Sales review.', attachmentSha256: ['c'.repeat(64)], mimeSha256: 'd'.repeat(64),
         salesAuthorizationId: null, sendOutcome: null,
       },
-      capabilities: { completeOperationsReview: false, approveAndApplySignature: false, freezeOutboundPayload: false, authorizeOutboundPayload: true, requestAuthorizedSend: false },
+      capabilities: { completeOperationsReview: false, approveAndApplySignature: false, saveOutboundDraft: false, freezeOutboundPayload: false, authorizeOutboundPayload: true, requestAuthorizedSend: false },
     });
     vi.mocked(api.authorizeOutboundPayload).mockResolvedValue({
       caseId: '33333333-3333-4333-8333-333333333333', state: 'ready_to_send', caseVersion: 8, replayed: false,
@@ -428,7 +438,7 @@ describe('App authentication and routing', () => {
     const pending = new Promise<never>(() => undefined);
     const clientB: OspClient = {
       getApprovalCommunicationsWorkspace: vi.fn(() => pending), completeOperationsReview: vi.fn(() => pending),
-      approveAndApplySignature: vi.fn(() => pending), freezeOutboundPayload: vi.fn(() => pending),
+      approveAndApplySignature: vi.fn(() => pending), saveOutboundDraft: vi.fn(() => pending), freezeOutboundPayload: vi.fn(() => pending),
       authorizeOutboundPayload: vi.fn(() => pending), requestAuthorizedSend: vi.fn(() => pending),
       listOnboardingWorkspace: vi.fn(() => pending), getGmailStatus: vi.fn(() => pending),
       getCorporateProfile: vi.fn(() => pending),

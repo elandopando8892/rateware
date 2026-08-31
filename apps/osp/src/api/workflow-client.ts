@@ -5,6 +5,7 @@ import {
   ApprovalCommandReceiptSchema,
   ApprovalCommunicationsWorkspaceResponseSchema,
   FreezeCommandReceiptSchema,
+  SaveOutboundDraftReceiptSchema,
   SendCommandReceiptSchema,
   type ApprovalCommunicationsWorkspace,
 } from './contracts';
@@ -12,15 +13,34 @@ import {
 type WorkflowAuth = Pick<AuthPort, 'getCurrentSession' | 'getAccessToken'> & {
   getApprovalIdToken(expected: BoundSession): Promise<string>;
 };
-type CommandBase = { caseId: string; expectedVersion: number; idempotencyKey: string };
+type VersionedCaseBase = { caseId: string; expectedVersion: number };
+type CommandBase = VersionedCaseBase & { idempotencyKey: string };
 export type ApprovalCommandReceipt = typeof ApprovalCommandReceiptSchema._output['data'];
 export type FreezeCommandReceipt = typeof FreezeCommandReceiptSchema._output['data'];
+export type SaveOutboundDraftReceipt = typeof SaveOutboundDraftReceiptSchema._output['data'];
 export type SendCommandReceipt = typeof SendCommandReceiptSchema._output['data'];
+
+export type SaveOutboundDraftInput = VersionedCaseBase & {
+  payloadId: string;
+  inputSnapshotSha256: string;
+  signedPackage: {
+    packageId: string;
+    outputSha256: string;
+    contentType: 'application/pdf' | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  };
+  to: readonly string[];
+  cc: readonly string[];
+  subject: string;
+  bodyText: string;
+  inReplyTo: string | null;
+  references: readonly string[];
+};
 
 export type WorkflowClient = {
   getApprovalCommunicationsWorkspace(input: { caseId: string; payloadId?: string }): Promise<ApprovalCommunicationsWorkspace>;
   completeOperationsReview(input: CommandBase & { inputSnapshotSha256: string }): Promise<ApprovalCommandReceipt>;
   approveAndApplySignature(input: CommandBase & { inputSnapshotSha256: string; signaturePositionVersion: number }): Promise<ApprovalCommandReceipt>;
+  saveOutboundDraft(input: SaveOutboundDraftInput): Promise<SaveOutboundDraftReceipt>;
   freezeOutboundPayload(input: CommandBase & { payloadId: string }): Promise<FreezeCommandReceipt>;
   authorizeOutboundPayload(input: CommandBase & { payloadId: string; payloadSha256: string; attachmentSha256: readonly string[] }): Promise<ApprovalCommandReceipt>;
   requestAuthorizedSend(input: CommandBase & { salesAuthorizationId: string; payloadSha256: string }): Promise<SendCommandReceipt>;
@@ -38,10 +58,22 @@ export class OspWorkflowError extends Error {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
 const KEY = /^[A-Za-z0-9:_-]{1,256}$/;
+const EMAIL = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/;
+const MESSAGE_ID = /^<[\x21-\x3d\x3f-\x7e]+@[A-Za-z0-9.-]+>$/;
+const PDF = 'application/pdf' as const;
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' as const;
 const ERROR_STATUS: Readonly<Record<string, number>> = Object.freeze({
   INVALID_REQUEST: 400, UNAUTHORIZED: 401, FORBIDDEN: 403, VERSION_CONFLICT: 409,
   DEPENDENCY_UNAVAILABLE: 503, INTERNAL_ERROR: 500,
 });
+
+function hasForbiddenControl(value: string, body: boolean): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 0x7f || (body ? code === 0 || code === 0x0b || code === 0x0c : code < 0x20)) return true;
+  }
+  return false;
+}
 
 function assertSession(auth: WorkflowAuth, captured: BoundSession): void {
   const current = auth.getCurrentSession();
@@ -57,7 +89,14 @@ function assertSession(auth: WorkflowAuth, captured: BoundSession): void {
 }
 
 function validateBase(input: CommandBase): void {
-  if (!UUID.test(input.caseId) || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 0 || input.expectedVersion > 2_147_483_647 || !KEY.test(input.idempotencyKey)) {
+  validateCaseVersion(input);
+  if (!KEY.test(input.idempotencyKey)) {
+    throw new OspWorkflowError('INVALID_REQUEST');
+  }
+}
+
+function validateCaseVersion(input: VersionedCaseBase): void {
+  if (!UUID.test(input.caseId) || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 0 || input.expectedVersion > 2_147_483_647) {
     throw new OspWorkflowError('INVALID_REQUEST');
   }
 }
@@ -71,7 +110,7 @@ export function createWorkflowClient(options: WorkflowAuth & { supabaseUrl: stri
   const fetchImplementation = options.fetch ?? globalThis.fetch;
   const endpoint = `${options.supabaseUrl.replace(/\/+$/, '')}/functions/v1/osp-case-api`;
 
-  async function request<T>(query: readonly (readonly [string, string])[], status: number, schema: ZodType<T>, approval = false): Promise<T> {
+  async function request<T>(query: readonly (readonly [string, string])[], status: number, schema: ZodType<T>, approval = false, body?: string): Promise<T> {
     const captured = options.getCurrentSession();
     if (!captured) throw new OspWorkflowError('NO_SESSION');
     let token: string;
@@ -91,18 +130,20 @@ export function createWorkflowClient(options: WorkflowAuth & { supabaseUrl: stri
         headers: {
           authorization: `Bearer ${token}`,
           ...(approvalProof ? { 'x-osp-approval-proof': approvalProof } : {}),
+          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
+        ...(body === undefined ? {} : { body }),
       });
     } catch {
       assertSession(options, captured);
       throw new OspWorkflowError('NETWORK_UNAVAILABLE');
     }
     assertSession(options, captured);
-    const body = await json(response);
+    const responseBody = await json(response);
     assertSession(options, captured);
     if (!response.ok) {
-      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new OspWorkflowError('INVALID_RESPONSE');
-      const root = body as Record<string, unknown>;
+      if (!responseBody || typeof responseBody !== 'object' || Array.isArray(responseBody)) throw new OspWorkflowError('INVALID_RESPONSE');
+      const root = responseBody as Record<string, unknown>;
       const error = root.error;
       if (Object.keys(root).join(',') !== 'error' || !error || typeof error !== 'object' || Array.isArray(error)) throw new OspWorkflowError('INVALID_RESPONSE');
       const row = error as Record<string, unknown>;
@@ -110,7 +151,7 @@ export function createWorkflowClient(options: WorkflowAuth & { supabaseUrl: stri
       throw new OspWorkflowError(row.code as OspWorkflowErrorCode, row.incident_id);
     }
     if (response.status !== status) throw new OspWorkflowError('INVALID_RESPONSE');
-    const parsed = schema.safeParse(body);
+    const parsed = schema.safeParse(responseBody);
     if (!parsed.success) throw new OspWorkflowError('INVALID_RESPONSE');
     return parsed.data;
   }
@@ -138,6 +179,34 @@ export function createWorkflowClient(options: WorkflowAuth & { supabaseUrl: stri
         ['action', 'approve_and_apply_signature'], ['case_id', input.caseId], ['expected_case_version', String(input.expectedVersion)],
         ['input_snapshot_sha256', input.inputSnapshotSha256], ['signature_position_version', String(input.signaturePositionVersion)], ['idempotency_key', input.idempotencyKey],
       ], 202, ApprovalCommandReceiptSchema, true)).data;
+    },
+    saveOutboundDraft: async (input) => {
+      validateCaseVersion(input);
+      const recipients = [...input.to, ...input.cc];
+      if (!UUID.test(input.payloadId) || !SHA.test(input.inputSnapshotSha256) ||
+          !UUID.test(input.signedPackage.packageId) || !SHA.test(input.signedPackage.outputSha256) ||
+          (input.signedPackage.contentType !== XLSX && input.signedPackage.contentType !== PDF) ||
+          input.to.length < 1 || input.to.length > 50 || input.cc.length > 50 || recipients.some((email) => !EMAIL.test(email)) || new Set(recipients).size !== recipients.length ||
+          input.subject.length < 1 || input.subject.length > 998 || input.subject.trim() !== input.subject || hasForbiddenControl(input.subject, false) ||
+          input.bodyText.length < 1 || input.bodyText.length > 100_000 || hasForbiddenControl(input.bodyText, true) ||
+          (input.inReplyTo !== null && !MESSAGE_ID.test(input.inReplyTo)) || input.references.length > 50 || input.references.some((reference) => !MESSAGE_ID.test(reference)) || new Set(input.references).size !== input.references.length) {
+        throw new OspWorkflowError('INVALID_REQUEST');
+      }
+      const body = JSON.stringify({
+        attachments: [{
+          bucketId: 'osp-derived-documents', contentType: input.signedPackage.contentType,
+          name: input.signedPackage.contentType === PDF ? 'XBF-signed-supplier-package.pdf' : 'XBF-signed-supplier-package.xlsx', objectId: input.signedPackage.packageId,
+          sha256: input.signedPackage.outputSha256,
+        }],
+        bodyText: input.bodyText, cc: input.cc.map((email) => ({ email, source: 'reviewed_manual' })),
+        from: 'carriers@xbfreight.com', inReplyTo: input.inReplyTo, kind: 'final_response', payloadId: input.payloadId,
+        references: [...input.references], subject: input.subject,
+        to: input.to.map((email) => ({ email, source: 'reviewed_manual' })),
+      });
+      return (await request([
+        ['action', 'save_outbound_draft'], ['case_id', input.caseId], ['expected_case_version', String(input.expectedVersion)],
+        ['source_snapshot_sha256', input.inputSnapshotSha256], ['signed_package_sha256', input.signedPackage.outputSha256],
+      ], 201, SaveOutboundDraftReceiptSchema, false, body)).data;
     },
     freezeOutboundPayload: async (input) => {
       validateBase(input);

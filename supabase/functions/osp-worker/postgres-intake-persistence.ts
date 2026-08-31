@@ -103,7 +103,9 @@ function stableSource(source: IntakeSource): Record<string, unknown> {
 
 function stableParsed(parsed: ParsedCopiedRequest): Record<string, unknown> {
   return {
+    senderEmail: parsed.senderEmail,
     senderDomain: parsed.senderDomain,
+    internetMessageId: parsed.internetMessageId,
     supplierDomain: parsed.supplierDomain,
     to: [...parsed.to],
     cc: [...parsed.cc],
@@ -228,7 +230,7 @@ async function persistSource(
   const toJson = JSON.stringify([...parsed.to]);
   const ccJson = JSON.stringify([...parsed.cc]);
   const requirementTokensJson = JSON.stringify([...parsed.requirementTokens]);
-  await tx`insert into osp_private.gmail_messages (id, organization_id, gmail_message_id, gmail_thread_id, case_id, opaque_object_key, source_sha256, sender_domain, subject, to_addresses, cc_addresses, safe_body, application_reference, requirement_tokens, duplicate_evidence_json, received_at) values (${messageId}, ${organizationId}, ${source.gmailMessageId}, ${source.gmailThreadId}, ${caseId}, ${rawMimeKey}, ${rawMimeHash}, ${parsed.senderDomain}, ${parsed.subject}, (select coalesce(array_agg(item.value order by item.ordinality), '{}'::text[]) from jsonb_array_elements_text(${toJson}::text::jsonb) with ordinality as item(value, ordinality)), (select coalesce(array_agg(item.value order by item.ordinality), '{}'::text[]) from jsonb_array_elements_text(${ccJson}::text::jsonb) with ordinality as item(value, ordinality)), ${parsed.safeBody}, ${parsed.applicationReference}, (select coalesce(array_agg(item.value order by item.ordinality), '{}'::text[]) from jsonb_array_elements_text(${requirementTokensJson}::text::jsonb) with ordinality as item(value, ordinality)), ${JSON.stringify(evidence)}::text::jsonb, ${source.receivedAt})`;
+  await tx`insert into osp_private.gmail_messages (id, organization_id, gmail_message_id, gmail_thread_id, case_id, opaque_object_key, source_sha256, sender_email, sender_domain, internet_message_id, subject, to_addresses, cc_addresses, safe_body, application_reference, requirement_tokens, duplicate_evidence_json, received_at) values (${messageId}, ${organizationId}, ${source.gmailMessageId}, ${source.gmailThreadId}, ${caseId}, ${rawMimeKey}, ${rawMimeHash}, ${parsed.senderEmail}, ${parsed.senderDomain}, ${parsed.internetMessageId}, ${parsed.subject}, (select coalesce(array_agg(item.value order by item.ordinality), '{}'::text[]) from jsonb_array_elements_text(${toJson}::text::jsonb) with ordinality as item(value, ordinality)), (select coalesce(array_agg(item.value order by item.ordinality), '{}'::text[]) from jsonb_array_elements_text(${ccJson}::text::jsonb) with ordinality as item(value, ordinality)), ${parsed.safeBody}, ${parsed.applicationReference}, (select coalesce(array_agg(item.value order by item.ordinality), '{}'::text[]) from jsonb_array_elements_text(${requirementTokensJson}::text::jsonb) with ordinality as item(value, ordinality)), ${JSON.stringify(evidence)}::text::jsonb, ${source.receivedAt})`;
   for (const attachment of source.attachments) {
     await tx`insert into osp_private.gmail_attachments (id, organization_id, gmail_message_id, opaque_object_key, source_sha256, content_type) values (${crypto.randomUUID()}, ${organizationId}, ${messageId}, ${requireObjectKey(attachment.objectKey)}, ${requireHash(attachment.sha256)}, ${attachment.contentType})`;
   }

@@ -212,6 +212,7 @@ export async function createGmailSendAdapter(
       if (
         typeof value.id !== "string" || !GMAIL_ID.test(value.id) ||
         typeof value.threadId !== "string" || !GMAIL_ID.test(value.threadId) ||
+        (request.threadId !== null && value.threadId !== request.threadId) ||
         !acceptedAt || Number.isNaN(acceptedAt.getTime())
       ) throw new AmbiguousSendError();
       return Object.freeze({

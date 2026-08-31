@@ -4,6 +4,7 @@ import {
   captureInboundGmailEvent,
   captureOutboundGmailReceipt,
   createInMemoryOutboundLedger,
+  createPostgresOutboundSendStore,
 } from "./outbound-receipt.ts";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
@@ -193,4 +194,44 @@ Deno.test("supplier reply on the immutable Gmail ancestry returns the sent case 
   }, { store });
   assertEquals(result.outcome, "supplier_response");
   assertEquals(await store.caseState(caseId), "analyzing_requirements");
+});
+
+Deno.test("Postgres send claim binds the exact captured Gmail thread to the frozen draft", async () => {
+  const attemptId = "55555555-5555-4555-8555-555555555555";
+  const jobId = "66666666-6666-4666-8666-666666666666";
+  const leaseToken = "77777777-7777-4777-8777-777777777777";
+  const queries: string[] = [];
+  const query = Object.assign(async (strings: TemplateStringsArray) => {
+    const text = strings.join("?").replace(/\s+/g, " ").trim().toLowerCase();
+    queries.push(text);
+    if (text.startsWith("set local role") || text.startsWith("select set_config")) return [];
+    if (text.includes("claim_authorized_send")) {
+      return [{
+        preparation: "ready",
+        authorization_id: authorizationId,
+        mime_object_id: `outbound_${organizationId}_${payloadId}`,
+        mime_sha256: mimeSha256,
+        gmail_thread_id: null,
+        deterministic_message_id: `<osp-${payloadId}@xbfreight.com>`,
+        send_claim_token: "88888888-8888-4888-8888-888888888888",
+      }];
+    }
+    if (text.includes("resolve_authorized_send_thread")) {
+      return [{ payload_kind: "final_response", gmail_thread_id: "gmail-thread-1" }];
+    }
+    throw new Error(`UNEXPECTED_QUERY:${text}`);
+  }, {
+    begin: async <T>(operation: (transaction: typeof query) => Promise<T>) =>
+      await operation(query),
+  });
+  const store = createPostgresOutboundSendStore({
+    databaseUrl: "postgresql://synthetic.example.test/db",
+    postgresFactory: () => query,
+  });
+  const claimed = await store.claim({ organizationId, attemptId, jobId, leaseToken });
+  if (claimed.kind !== "send") throw new Error("TEST_SEND_NOT_CLAIMED");
+  assertEquals(claimed.threadId, "gmail-thread-1");
+  assertEquals(queries.some((text) =>
+    text.includes("resolve_authorized_send_thread")
+  ), true);
 });

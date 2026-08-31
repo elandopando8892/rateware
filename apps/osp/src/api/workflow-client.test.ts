@@ -30,6 +30,18 @@ const workspace = {
     formInstanceVersion: 2,
   },
   supplierPackage: null,
+  signedPackage: {
+    packageId: '66666666-6666-4666-8666-666666666666',
+    outputSha256: 'c'.repeat(64),
+    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' as const,
+  },
+  replyContext: {
+    to: ['requester@xbfreight.com'],
+    cc: ['supplier@example.test', 'sales@heymarksman.com'],
+    subject: 'Re: Supplier registration request',
+    inReplyTo: '<supplier-request@example.test>',
+    references: ['<supplier-request@example.test>'],
+  },
   signature: {
     positionVersion: 3,
     approvalStatus: 'approved' as const,
@@ -45,6 +57,8 @@ const workspace = {
     to: ['supplier@example.test'],
     cc: ['sales@heymarksman.com'],
     subject: 'Supplier registration response',
+    inReplyTo: '<source@example.test>',
+    references: ['<source@example.test>'],
     bodyText: 'The reviewed supplier package is ready.',
     attachmentSha256: ['c'.repeat(64)],
     mimeSha256: 'd'.repeat(64),
@@ -54,6 +68,7 @@ const workspace = {
   capabilities: {
     completeOperationsReview: false,
     approveAndApplySignature: false,
+    saveOutboundDraft: false,
     freezeOutboundPayload: false,
     authorizeOutboundPayload: true,
     requestAuthorizedSend: false,
@@ -93,6 +108,26 @@ describe('WorkflowClient', () => {
     expect(result).toEqual(workspace);
     expect(JSON.stringify(result)).not.toMatch(/vault|mimeObject|signatureBytes|rawMime|accessToken/i);
     expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('loads the previous read-only API shape with new write capability disabled', async () => {
+    const legacyWorkspace = structuredClone(workspace) as unknown as Record<string, unknown>;
+    delete legacyWorkspace.signedPackage;
+    delete legacyWorkspace.replyContext;
+    const legacyCapabilities = legacyWorkspace.capabilities as Record<string, unknown>;
+    delete legacyCapabilities.saveOutboundDraft;
+    const legacyOutbound = legacyWorkspace.outbound as Record<string, unknown>;
+    delete legacyOutbound.inReplyTo;
+    delete legacyOutbound.references;
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      data: legacyWorkspace,
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const result = await client(fetch).getApprovalCommunicationsWorkspace({ caseId });
+    expect(result.signedPackage).toBeNull();
+    expect(result.replyContext).toBeNull();
+    expect(result.outbound?.inReplyTo).toBeNull();
+    expect(result.outbound?.references).toEqual([]);
+    expect(result.capabilities.saveOutboundDraft).toBe(false);
   });
 
   it('sends each mutation exactly once and never refreshes or retries automatically', async () => {
@@ -145,6 +180,44 @@ describe('WorkflowClient', () => {
       code: 'VERSION_CONFLICT',
       incidentId: 'incident-conflict',
     }));
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('saves one internal final-response draft with the exact signed XLSX and no send action', async () => {
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      expect([...url.searchParams.entries()]).toEqual([
+        ['action', 'save_outbound_draft'], ['case_id', caseId], ['expected_case_version', '7'],
+        ['source_snapshot_sha256', sha], ['signed_package_sha256', 'c'.repeat(64)],
+      ]);
+      expect(init).toMatchObject({ method: 'POST', redirect: 'error', headers: {
+        authorization: 'Bearer synthetic-token', 'content-type': 'application/json',
+      } });
+      expect(JSON.parse(String(init?.body))).toEqual({
+        attachments: [{
+          bucketId: 'osp-derived-documents',
+          contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          name: 'XBF-signed-supplier-package.xlsx',
+          objectId: '66666666-6666-4666-8666-666666666666', sha256: 'c'.repeat(64),
+        }],
+        bodyText: 'Completed package attached.',
+        cc: [{ email: 'sales@example.test', source: 'reviewed_manual' }],
+        from: 'carriers@xbfreight.com', inReplyTo: '<source@example.test>', kind: 'final_response', payloadId,
+        references: ['<source@example.test>'], subject: 'Completed supplier registration package',
+        to: [{ email: 'supplier@example.test', source: 'reviewed_manual' }],
+      });
+      expect(String(input)).not.toContain('request_authorized_send');
+      return new Response(JSON.stringify({ data: { payloadId, caseVersion: 7, kind: 'final_response' } }), {
+        status: 201, headers: { 'content-type': 'application/json' },
+      });
+    });
+    await expect(client(fetch).saveOutboundDraft({
+      caseId, expectedVersion: 7, payloadId, inputSnapshotSha256: sha,
+      signedPackage: workspace.signedPackage,
+      to: ['supplier@example.test'], cc: ['sales@example.test'],
+      subject: 'Completed supplier registration package', bodyText: 'Completed package attached.',
+      inReplyTo: '<source@example.test>', references: ['<source@example.test>'],
+    })).resolves.toEqual({ payloadId, caseVersion: 7, kind: 'final_response' });
     expect(fetch).toHaveBeenCalledOnce();
   });
 

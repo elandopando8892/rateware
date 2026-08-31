@@ -260,10 +260,25 @@ function SalesAuthorizationWorkspace() {
   const { apiClient, params, query, run, conflict } = useWorkflowWorkspace(salesAuthorizationRoute);
   if (query.isPending || query.fetchStatus !== 'idle') return <WorkflowLoading title="Sales authorization" message="Loading exact outbound payload…" />;
   if (query.isError || !query.data) return <WorkflowFailure title="Sales authorization" />;
-  return <SalesAuthorizationPage workspace={query.data} conflict={conflict} onAuthorize={() => run('sales', (idempotencyKey) => apiClient.authorizeOutboundPayload({
-    caseId: params.caseId, payloadId: query.data.outbound?.payloadId ?? '', expectedVersion: query.data.caseVersion, idempotencyKey,
-    payloadSha256: query.data.outbound?.mimeSha256 ?? '', attachmentSha256: query.data.outbound?.attachmentSha256 ?? [],
-  }))} />;
+  const signedPackage = query.data.signedPackage;
+  const inputSnapshot = query.data.inputSnapshot;
+  return <SalesAuthorizationPage
+    workspace={query.data}
+    conflict={conflict}
+    onSaveDraft={(input) => signedPackage && inputSnapshot
+      ? run('save-draft', () => apiClient.saveOutboundDraft({
+          ...input, caseId: params.caseId, expectedVersion: query.data.caseVersion,
+          inputSnapshotSha256: inputSnapshot.sha256, signedPackage,
+        }))
+      : Promise.reject(new OspWorkflowError('INVALID_REQUEST'))}
+    onFreeze={() => run('freeze', (idempotencyKey) => apiClient.freezeOutboundPayload({
+      caseId: params.caseId, payloadId: query.data.outbound?.payloadId ?? '', expectedVersion: query.data.caseVersion, idempotencyKey,
+    }))}
+    onAuthorize={() => run('sales', (idempotencyKey) => apiClient.authorizeOutboundPayload({
+      caseId: params.caseId, payloadId: query.data.outbound?.payloadId ?? '', expectedVersion: query.data.caseVersion, idempotencyKey,
+      payloadSha256: query.data.outbound?.mimeSha256 ?? '', attachmentSha256: query.data.outbound?.attachmentSha256 ?? [],
+    }))}
+  />;
 }
 const salesAuthorizationRoute = createRoute({ getParentRoute: () => appRoute, path: 'cases/$caseId/authorization', component: SalesAuthorizationWorkspace });
 

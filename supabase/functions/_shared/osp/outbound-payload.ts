@@ -206,9 +206,9 @@ export function assertOutboundDraft(value: OutboundDraft): OutboundDraft {
   const attachments = safeAttachments(value.attachments);
   if (
     value.kind === "final_response" &&
-    !attachments.some((attachment) =>
-      attachment.sha256 === value.signedPackageSha256
-    )
+    (attachments.length !== 1 ||
+      attachments[0].bucketId !== "osp-derived-documents" ||
+      attachments[0].sha256 !== value.signedPackageSha256)
   ) invalid();
   return Object.freeze({
     ...value,

@@ -5,12 +5,13 @@ const organizationId = '11111111-1111-4111-8111-111111111111';
 const otherOrganizationId = '22222222-2222-4222-8222-222222222222';
 const caseId = '33333333-3333-4333-8333-333333333333';
 const payloadId = '44444444-4444-4444-8444-444444444444';
+const editedPayloadId = '99999999-9999-4999-8999-999999999999';
 const approvalId = '55555555-5555-4555-8555-555555555555';
 const sha = 'a'.repeat(64);
 const signedSha = 'b'.repeat(64);
 const mimeSha = 'd'.repeat(64);
 type Actor = { subject: string; email: string; organization?: string; permissions: string[] };
-type State = { version: number; payloadVersion: number; stage: 'awaiting_clarification' | 'operations_review' | 'signature_approval' | 'sales_authorization' | 'ready_to_send' | 'manual_reconciliation_required'; kind: 'clarification' | 'final_response'; payload: 'draft' | 'frozen' | 'authorized' | 'send_pending'; reservations: number; signaturePending?: boolean; outcome?: 'manual_reconciliation_required'; seen: Set<string>; sendKeys?: string[]; dropNextSendResponse?: boolean; workerReceipts?: Set<string>; workerTransitions?: number };
+type State = { version: number; payloadVersion: number; stage: 'awaiting_clarification' | 'operations_review' | 'signature_approval' | 'sales_authorization' | 'ready_to_send' | 'manual_reconciliation_required'; kind: 'clarification' | 'final_response'; payload: 'none' | 'draft' | 'frozen' | 'authorized' | 'send_pending'; activePayloadId?: string; reservations: number; signaturePending?: boolean; outcome?: 'manual_reconciliation_required'; seen: Set<string>; sendKeys?: string[]; dropNextSendResponse?: boolean; workerReceipts?: Set<string>; workerTransitions?: number };
 
 let privateKey: KeyLike;
 let publicKey: KeyLike;
@@ -42,18 +43,33 @@ function workspace(state: State, claims: { email?: unknown; permissions?: unknow
   const consequences = permissions.filter((item) => ['osp:operate', 'osp:signature-approve', 'osp:sales-authorize', 'osp:send-authorized'].includes(String(item)));
   const exact = consequences.length === 1;
   const operations = exact && consequences[0] === 'osp:operate';
+  const replyContext = state.kind === 'final_response' ? {
+    to: ['requester@xbfreight.com'],
+    cc: ['supplier@example.test', 'sales@heymarksman.com'],
+    subject: 'Re: Supplier registration request',
+    inReplyTo: '<supplier-request@example.test>',
+    references: ['<supplier-request@example.test>'],
+  } : null;
+  const outbound = state.payload === 'none' ? null : {
+    payloadId: state.activePayloadId ?? payloadId, kind: state.kind, status: state.payload, caseVersion: state.payloadVersion, from: 'carriers@xbfreight.com',
+    to: state.kind === 'final_response' ? replyContext!.to : ['supplier@example.test'], cc: state.kind === 'final_response' ? replyContext!.cc : ['sales@heymarksman.com'],
+    subject: state.kind === 'final_response' ? replyContext!.subject : 'Supplier registration response',
+    inReplyTo: state.kind === 'final_response' ? replyContext!.inReplyTo : null, references: state.kind === 'final_response' ? replyContext!.references : [],
+    bodyText: 'The reviewed supplier package is ready.',
+    attachmentSha256: state.kind === 'final_response' ? [signedSha] : [], mimeSha256: state.payload === 'draft' ? null : mimeSha, salesAuthorizationId: ['authorized', 'send_pending'].includes(state.payload) ? approvalId : null, sendOutcome: state.outcome ?? (state.reservations ? 'reserved' : null),
+  };
   return {
     caseId, caseVersion: state.version, caseState: state.stage,
     inputSnapshot: { sha256: sha, documentCount: 4, extractionCount: 18, reviewDecisionCount: 3, formInstanceVersion: 2 },
+    supplierPackage: state.stage === 'operations_review' ? { packageId: '77777777-7777-4777-8777-777777777777', version: 1, outputSha256: sha, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', downloadUrl: null } : null,
+    signedPackage: ['sales_authorization', 'ready_to_send', 'manual_reconciliation_required'].includes(state.stage) ? { packageId: '88888888-8888-4888-8888-888888888888', outputSha256: signedSha, contentType: 'application/pdf' } : null,
+    replyContext,
     signature: { positionVersion: 3, approvalStatus: state.stage === 'signature_approval' ? 'pending' : 'approved', approvalId: state.signaturePending ? approvalId : state.stage === 'signature_approval' ? null : approvalId, outputSha256: state.stage === 'signature_approval' ? null : signedSha },
-    outbound: {
-      payloadId, kind: state.kind, status: state.payload, caseVersion: state.payloadVersion, from: 'carriers@xbfreight.com',
-      to: ['supplier@example.test'], cc: ['sales@heymarksman.com'], subject: 'Supplier registration response', bodyText: 'The reviewed supplier package is ready.',
-      attachmentSha256: state.kind === 'final_response' ? [signedSha] : [], mimeSha256: state.payload === 'draft' ? null : mimeSha, salesAuthorizationId: ['authorized', 'send_pending'].includes(state.payload) ? approvalId : null, sendOutcome: state.outcome ?? (state.reservations ? 'reserved' : null),
-    },
+    outbound,
     capabilities: {
       completeOperationsReview: operations && state.stage === 'operations_review',
       approveAndApplySignature: exact && claims.email === 'jgonzalez@xbfreight.com' && consequences[0] === 'osp:signature-approve' && state.stage === 'signature_approval' && !state.signaturePending,
+      saveOutboundDraft: operations && state.kind === 'final_response' && state.stage === 'sales_authorization' && (state.payload === 'none' || state.payload === 'draft'),
       freezeOutboundPayload: operations && state.payload === 'draft' && state.payloadVersion === state.version,
       authorizeOutboundPayload: exact && claims.email === 'sales@heymarksman.com' && consequences[0] === 'osp:sales-authorize' && state.payload === 'frozen' && state.payloadVersion === state.version && ((state.kind === 'clarification' && state.stage === 'awaiting_clarification') || (state.kind === 'final_response' && state.stage === 'sales_authorization')),
       requestAuthorizedSend: exact && claims.email === 'carriers@xbfreight.com' && consequences[0] === 'osp:send-authorized' && state.stage === 'ready_to_send' && state.payload === 'authorized' && state.payloadVersion + 1 === state.version,
@@ -69,24 +85,27 @@ function exactQuery(url: URL, names: readonly string[]): boolean {
     actual.every((name, index) => name === expected[index]);
 }
 
-function finalDraftBody() {
+function finalDraftBody(draftPayloadId = editedPayloadId, bodyText = 'Edited after authorization.') {
   return {
     attachments: [{
       bucketId: 'osp-derived-documents',
       contentType: 'application/pdf',
-      name: 'signed-supplier-package.pdf',
+      name: 'XBF-signed-supplier-package.pdf',
       objectId: '88888888-8888-4888-8888-888888888888',
       sha256: signedSha,
     }],
-    bodyText: 'Edited after authorization.',
-    cc: [{ email: 'sales@heymarksman.com', source: 'reviewed_manual' }],
+    bodyText,
+    cc: [
+      { email: 'supplier@example.test', source: 'reviewed_manual' },
+      { email: 'sales@heymarksman.com', source: 'reviewed_manual' },
+    ],
     from: 'carriers@xbfreight.com',
-    inReplyTo: null,
+    inReplyTo: '<supplier-request@example.test>',
     kind: 'final_response',
-    payloadId,
-    references: [],
-    subject: 'Supplier registration response',
-    to: [{ email: 'supplier@example.test', source: 'captured_supplier' }],
+    payloadId: draftPayloadId,
+    references: ['<supplier-request@example.test>'],
+    subject: 'Re: Supplier registration request',
+    to: [{ email: 'requester@xbfreight.com', source: 'reviewed_manual' }],
   };
 }
 
@@ -123,7 +142,7 @@ async function installUiContractFixture(page: Page, state: State) {
     if (!replayed) {
       state.workerReceipts.add(receiptId); state.workerTransitions = (state.workerTransitions ?? 0) + 1;
       if (state.stage === 'signature_approval' && state.signaturePending) {
-        state.signaturePending = false; state.stage = 'sales_authorization'; state.version += 1; state.payloadVersion = state.version;
+        state.signaturePending = false; state.stage = 'sales_authorization'; state.version += 1; state.payloadVersion = state.version; state.payload = 'none';
       }
     }
     await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ data: { approvalId, replayed } }) });
@@ -159,18 +178,24 @@ async function installUiContractFixture(page: Page, state: State) {
     }
     const expected = Number(url.searchParams.get('expected_case_version'));
     if (expected !== state.version) { await deny('VERSION_CONFLICT', 409); return; }
-    if (action === 'save_outbound_draft' && operations && state.stage === 'ready_to_send' && state.payload === 'authorized') {
+    if (action === 'save_outbound_draft' && operations && state.kind === 'final_response' && (state.stage === 'sales_authorization' || (state.stage === 'ready_to_send' && state.payload === 'authorized'))) {
+      const editAfterAuthorization = state.stage === 'ready_to_send';
       let body: unknown;
       try { body = request.postDataJSON(); } catch { body = null; }
+      const bodyRecord = body && typeof body === 'object' ? body as { payloadId?: unknown; bodyText?: unknown } : {};
+      const requestedPayloadId = typeof bodyRecord.payloadId === 'string' ? bodyRecord.payloadId : '';
+      const requestedBodyText = typeof bodyRecord.bodyText === 'string' ? bodyRecord.bodyText : '';
       if (!exactQuery(url, ['action', 'case_id', 'expected_case_version', 'source_snapshot_sha256', 'signed_package_sha256']) ||
         url.searchParams.get('source_snapshot_sha256') !== sha ||
         url.searchParams.get('signed_package_sha256') !== signedSha ||
-        JSON.stringify(body) !== JSON.stringify(finalDraftBody())) { await deny('INVALID_REQUEST', 400); return; }
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(requestedPayloadId) ||
+        requestedBodyText.length < 1 || JSON.stringify(body) !== JSON.stringify(finalDraftBody(requestedPayloadId, requestedBodyText))) { await deny('INVALID_REQUEST', 400); return; }
       state.stage = state.kind === 'clarification' ? 'awaiting_clarification' : 'sales_authorization';
       state.payload = 'draft';
-      state.version += 1;
+      state.activePayloadId = requestedPayloadId;
+      if (editAfterAuthorization) state.version += 1;
       state.payloadVersion = state.version;
-      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ data: { payloadId, caseId, caseVersion: state.version, kind: state.kind } }) });
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ data: { payloadId: requestedPayloadId, caseVersion: state.version, kind: state.kind } }) });
       return;
     }
     if (!/^(?:operations|signature|sales|freeze|send):[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(url.searchParams.get('idempotency_key') ?? '') || request.postData() !== null) { await deny('INVALID_REQUEST', 400); return; }
@@ -183,7 +208,7 @@ async function installUiContractFixture(page: Page, state: State) {
     if (!exactCommand) { await deny('INVALID_REQUEST', 400); return; }
     if (action === 'complete_operations_review' && view.capabilities.completeOperationsReview) { state.stage = 'signature_approval'; state.version += 1; await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { caseId, state: 'signature_approval', caseVersion: state.version, replayed: false } }) }); return; }
     if (action === 'approve_and_apply_signature' && view.capabilities.approveAndApplySignature) { state.signaturePending = true; state.version += 1; await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ data: { caseId, state: 'signature_approval', caseVersion: state.version, replayed: false, approvalId } }) }); return; }
-    if (action === 'freeze_outbound_payload' && view.capabilities.freezeOutboundPayload) { state.payload = 'frozen'; await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ data: { payloadId, caseId, caseVersion: state.version, kind: state.kind, mimeSha256: mimeSha, attachmentSha256: state.kind === 'final_response' ? [signedSha] : [], replayed: false } }) }); return; }
+    if (action === 'freeze_outbound_payload' && view.capabilities.freezeOutboundPayload && url.searchParams.get('payload_id') === (state.activePayloadId ?? payloadId)) { state.payload = 'frozen'; await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ data: { payloadId: state.activePayloadId ?? payloadId, caseId, caseVersion: state.version, kind: state.kind, mimeSha256: mimeSha, attachmentSha256: state.kind === 'final_response' ? [signedSha] : [], replayed: false } }) }); return; }
     if (action === 'authorize_outbound_payload' && view.capabilities.authorizeOutboundPayload) { state.stage = 'ready_to_send'; state.payload = 'authorized'; state.version += 1; await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ data: { caseId, state: 'ready_to_send', caseVersion: state.version, replayed: false, authorizationId: approvalId } }) }); return; }
     if (action === 'request_authorized_send' && view.capabilities.requestAuthorizedSend) {
       const replayed = state.seen.has(key);
@@ -230,8 +255,11 @@ test('separate signed actors drive one exact final response through the UI contr
   expect(signatureReceipts.map((item) => item.status)).toEqual([202, 202]);
   expect(signatureReceipts.map((item) => item.body.data.replayed)).toEqual([false, true]);
   expect(state.workerTransitions).toBe(1);
-  await open(page, { subject: 'operations', email: 'operations@example.test', permissions: ['osp:read', 'osp:operate'] }, 'communications');
-  await page.getByRole('button', { name: /freeze outbound payload/i }).click();
+  await open(page, { subject: 'operations', email: 'operations@example.test', permissions: ['osp:read', 'osp:operate'] }, 'authorization');
+  await page.getByRole('button', { name: /save internal draft/i }).click();
+  await expect(page.getByRole('heading', { name: /freeze final response/i })).toBeVisible();
+  await page.getByRole('checkbox', { name: /exact draft, recipients and signed package/i }).check();
+  await page.getByRole('button', { name: /freeze for sales review/i }).click();
   await open(page, { subject: 'sales', email: 'sales@heymarksman.com', permissions: ['osp:read', 'osp:sales-authorize'] }, 'authorization');
   await page.getByRole('checkbox').check(); await page.getByRole('button', { name: /authorize outbound payload/i }).click();
   await open(page, { subject: 'carriers', email: 'carriers@xbfreight.com', permissions: ['osp:read', 'osp:send-authorized'] }, 'communications');

@@ -16,7 +16,7 @@ describe('synthetic preview runtime', () => {
     await expect(runtime.apiClient.listClarificationReviews()).resolves.toHaveLength(1);
     await expect(runtime.apiClient.listFormTemplates()).resolves.toMatchObject({ templates: [{ latest: { status: 'published' } }, { latest: { status: 'draft' } }] });
     const cases = await runtime.apiClient.listCustomerRegistrationCases();
-    expect(cases).toHaveLength(5);
+    expect(cases).toHaveLength(6);
     await expect(runtime.apiClient.getCustomerRegistrationCase(cases[0].case_id)).resolves.toMatchObject({
       supplier_name: 'Northstar Components', state: 'ready_to_send', message_count: '4',
     });
@@ -27,6 +27,85 @@ describe('synthetic preview runtime', () => {
     });
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
+  });
+
+  it('exposes the governed final-response composer with a locked signed package', async () => {
+    const runtime = createPreviewRuntime();
+    const cases = await runtime.apiClient.listCustomerRegistrationCases();
+    const responseCase = cases.find((item) => item.supplier_name === 'Cumbre Manufacturing');
+    expect(responseCase).toBeDefined();
+    await expect(runtime.apiClient.getApprovalCommunicationsWorkspace({ caseId: responseCase!.case_id })).resolves.toMatchObject({
+      caseState: 'sales_authorization',
+      signedPackage: { contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      replyContext: {
+        to: ['requester@example.test'],
+        subject: 'Re: Supplier registration request | synthetic preview',
+        inReplyTo: '<osp-preview-request@example.test>',
+      },
+      outbound: null,
+      capabilities: { saveOutboundDraft: true, requestAuthorizedSend: false },
+    });
+  });
+
+  it('creates and freezes a synthetic final response while preserving its captured reply thread', async () => {
+    const runtime = createPreviewRuntime();
+    const cases = await runtime.apiClient.listCustomerRegistrationCases();
+    const responseCase = cases.find((item) => item.supplier_name === 'Cumbre Manufacturing')!;
+    const workspace = await runtime.apiClient.getApprovalCommunicationsWorkspace({ caseId: responseCase.case_id });
+    const context = workspace.replyContext!;
+    const payloadId = '77777777-7777-4777-8777-777777777777';
+    await runtime.apiClient.saveOutboundDraft({
+      caseId: responseCase.case_id,
+      expectedVersion: workspace.caseVersion,
+      inputSnapshotSha256: workspace.inputSnapshot!.sha256,
+      signedPackage: workspace.signedPackage!,
+      payloadId,
+      to: context.to,
+      cc: context.cc,
+      subject: context.subject,
+      bodyText: 'Synthetic reviewed response.',
+      inReplyTo: context.inReplyTo,
+      references: context.references,
+    });
+    const draft = await runtime.apiClient.getApprovalCommunicationsWorkspace({ caseId: responseCase.case_id });
+    expect(draft).toMatchObject({
+      outbound: { payloadId, status: 'draft', inReplyTo: context.inReplyTo, attachmentSha256: [workspace.signedPackage!.outputSha256] },
+      capabilities: { saveOutboundDraft: true, freezeOutboundPayload: true, requestAuthorizedSend: false },
+    });
+    const correctedPayloadId = '88888888-8888-4888-8888-888888888888';
+    await runtime.apiClient.saveOutboundDraft({
+      caseId: responseCase.case_id,
+      expectedVersion: draft.caseVersion,
+      inputSnapshotSha256: workspace.inputSnapshot!.sha256,
+      signedPackage: workspace.signedPackage!,
+      payloadId: correctedPayloadId,
+      to: context.to,
+      cc: context.cc,
+      subject: context.subject,
+      bodyText: 'Synthetic corrected response.',
+      inReplyTo: context.inReplyTo,
+      references: context.references,
+    });
+    await expect(runtime.apiClient.getApprovalCommunicationsWorkspace({ caseId: responseCase.case_id, payloadId })).resolves.toMatchObject({
+      outbound: { payloadId, bodyText: 'Synthetic reviewed response.' },
+      capabilities: { saveOutboundDraft: false, freezeOutboundPayload: false },
+    });
+    await expect(runtime.apiClient.freezeOutboundPayload({
+      caseId: responseCase.case_id,
+      payloadId,
+      expectedVersion: draft.caseVersion,
+      idempotencyKey: 'preview-freeze-final-response',
+    })).rejects.toThrow('VERSION_CONFLICT');
+    await runtime.apiClient.freezeOutboundPayload({
+      caseId: responseCase.case_id,
+      payloadId: correctedPayloadId,
+      expectedVersion: draft.caseVersion,
+      idempotencyKey: 'preview-freeze-corrected-response',
+    });
+    await expect(runtime.apiClient.getApprovalCommunicationsWorkspace({ caseId: responseCase.case_id })).resolves.toMatchObject({
+      outbound: { payloadId: correctedPayloadId, status: 'frozen', mimeSha256: 'a'.repeat(64) },
+      capabilities: { saveOutboundDraft: false, freezeOutboundPayload: false },
+    });
   });
 
   it('keeps preview sign-out and sign-in entirely in memory', async () => {

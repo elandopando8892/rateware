@@ -45,7 +45,7 @@ function fetchFixture(input: {
         new Response(
           JSON.stringify({
             id: "gmail-message-1",
-            threadId: "gmail-thread-1",
+            threadId: "gmail-thread-0",
           }),
           {
             status: 200,
@@ -94,7 +94,7 @@ Deno.test("Gmail adapter sends only the verified frozen MIME through the Carrier
   );
   assertEquals(receipt, {
     gmailMessageId: "gmail-message-1",
-    gmailThreadId: "gmail-thread-1",
+    gmailThreadId: "gmail-thread-0",
     acceptedAt: "2026-08-24T18:00:00.000Z",
   });
   assertEquals(calls.length, 2);
@@ -149,6 +149,26 @@ Deno.test("Gmail adapter distinguishes known pre-acceptance refusal from an ambi
   await assertRejects(
     () =>
       ambiguous.sendFrozen(request(expectedHash), AbortSignal.timeout(5_000)),
+    AmbiguousSendError,
+  );
+});
+
+Deno.test("Gmail adapter treats a provider thread substitution as ambiguous", async () => {
+  const expectedHash = await sha256(mimeBytes);
+  const port = await adapter({
+    send: async () => new Response(JSON.stringify({
+      id: "gmail-message-1",
+      threadId: "other-thread",
+    }), {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        date: "Mon, 24 Aug 2026 18:00:00 GMT",
+      },
+    }),
+  });
+  await assertRejects(
+    () => port.sendFrozen(request(expectedHash), AbortSignal.timeout(5_000)),
     AmbiguousSendError,
   );
 });

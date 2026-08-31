@@ -8,6 +8,10 @@ import type { OutboundDraft } from "./outbound-payload.ts";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
 const caseId = "22222222-2222-4222-8222-222222222222";
+const packageId = "44444444-4444-4444-8444-444444444444";
+const messageId = "<supplier-request@example.test>";
+const xlsx =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" as const;
 
 function draft(kind: OutboundDraft["kind"]): OutboundDraft {
   return {
@@ -22,10 +26,18 @@ function draft(kind: OutboundDraft["kind"]): OutboundDraft {
     to: [{ email: "supplier@example.test", source: "captured_supplier" }],
     cc: [],
     subject: "Synthetic subject",
-    inReplyTo: null,
-    references: [],
+    inReplyTo: kind === "final_response" ? messageId : null,
+    references: kind === "final_response" ? [messageId] : [],
     bodyText: "Synthetic body",
-    attachments: [],
+    attachments: kind === "final_response"
+      ? [{
+        bucketId: "osp-derived-documents",
+        objectId: packageId,
+        name: "XBF-signed-supplier-package.xlsx",
+        contentType: xlsx,
+        sha256: "b".repeat(64),
+      }]
+      : [],
   };
 }
 
@@ -39,6 +51,18 @@ function context(kind: OutboundDraft["kind"]): OutboundCaseContext {
     caseVersion: 7,
     sourceSnapshotSha256: "a".repeat(64),
     signedPackageSha256: kind === "final_response" ? "b".repeat(64) : null,
+    signedPackageId: kind === "final_response" ? packageId : null,
+    signedPackageContentType: kind === "final_response" ? xlsx : null,
+    gmailThreadId: kind === "final_response" ? "gmail-thread-1" : null,
+    replyContext: kind === "final_response"
+      ? {
+        to: ["supplier@example.test"],
+        cc: [],
+        subject: "Synthetic subject",
+        inReplyTo: messageId,
+        references: [messageId],
+      }
+      : null,
   };
 }
 
@@ -59,6 +83,7 @@ Deno.test("current policy rejects stale case, stale source, stale signed package
       { ...current, caseVersion: 8 },
       { ...current, sourceSnapshotSha256: "c".repeat(64) },
       { ...current, signedPackageSha256: "d".repeat(64) },
+      { ...current, signedPackageId: "55555555-5555-4555-8555-555555555555" },
       { ...current, state: "awaiting_clarification" },
     ]
   ) {
@@ -78,6 +103,17 @@ Deno.test("current policy rejects stale case, stale source, stale signed package
         { ...finalDraft, signedPackageSha256: null },
         current,
       ),
+    Error,
+    "OUTBOUND_CONTEXT_STALE",
+  );
+  assertThrows(
+    () => requireCurrentOutboundPolicy({
+      ...finalDraft,
+      attachments: finalDraft.attachments.map((attachment) => ({
+        ...attachment,
+        objectId: "55555555-5555-4555-8555-555555555555",
+      })),
+    }, current),
     Error,
     "OUTBOUND_CONTEXT_STALE",
   );

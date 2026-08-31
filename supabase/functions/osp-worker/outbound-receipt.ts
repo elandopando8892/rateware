@@ -706,20 +706,38 @@ export function createPostgresOutboundSendStore(options: {
           if (row.preparation !== "ready") {
             fail("OUTBOUND_SEND_PERSISTENCE_FAILED");
           }
+          const sendClaimToken = text(row, "send_claim_token", UUID);
+          const sourceThreads =
+            await tx`select * from osp_private.resolve_authorized_send_thread(${input.organizationId}, ${input.attemptId}, ${input.jobId}, ${sendClaimToken})`;
+          if (sourceThreads.length !== 1) {
+            fail("OUTBOUND_SEND_PERSISTENCE_FAILED");
+          }
+          const payloadKind = sourceThreads[0].payload_kind;
+          if (payloadKind !== "clarification" && payloadKind !== "final_response") {
+            fail("OUTBOUND_SEND_PERSISTENCE_FAILED");
+          }
+          const capturedThreadId = sourceThreads[0].gmail_thread_id === null
+            ? null
+            : text(sourceThreads[0], "gmail_thread_id", GMAIL_ID);
+          if (payloadKind === "final_response" && capturedThreadId === null) {
+            fail("OUTBOUND_SEND_PERSISTENCE_FAILED");
+          }
+          if (
+            row.gmail_thread_id !== null &&
+            text(row, "gmail_thread_id", GMAIL_ID) !== capturedThreadId
+          ) fail("OUTBOUND_SEND_PERSISTENCE_FAILED");
           return Object.freeze({
             kind: "send" as const,
             authorizationId: text(row, "authorization_id", UUID),
             mimeObjectId: text(row, "mime_object_id"),
             mimeSha256: text(row, "mime_sha256", SHA),
-            threadId: row.gmail_thread_id === null
-              ? null
-              : text(row, "gmail_thread_id", GMAIL_ID),
+            threadId: capturedThreadId,
             deterministicMessageId: text(
               row,
               "deterministic_message_id",
               DETERMINISTIC_MESSAGE_ID,
             ),
-            sendClaimToken: text(row, "send_claim_token", UUID),
+            sendClaimToken,
           });
         });
       } catch (error) {

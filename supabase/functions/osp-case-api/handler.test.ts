@@ -483,9 +483,15 @@ Deno.test("case API transports the canonical one hundred thousand character outb
         savedBodyLength = input.draft.bodyText.length;
         return { payloadId: draftId, kind: "clarification", caseVersion: 7 };
       },
-      freezePayload: async () => { throw new Error("unexpected freeze"); },
-      authorizePayload: async () => { throw new Error("unexpected authorize"); },
-      requestSend: async () => { throw new Error("unexpected send"); },
+      freezePayload: async () => {
+        throw new Error("unexpected freeze");
+      },
+      authorizePayload: async () => {
+        throw new Error("unexpected authorize");
+      },
+      requestSend: async () => {
+        throw new Error("unexpected send");
+      },
     },
     incidentId: () => "incident-body-boundary",
   });
@@ -535,6 +541,7 @@ Deno.test("case API returns a tenant-safe approval workspace and a typed version
           reviewDecisionCount: 3,
           formInstanceVersion: 2,
         },
+        replyContext: null,
         signature: null,
         outbound: {
           payloadId: draftId,
@@ -545,6 +552,8 @@ Deno.test("case API returns a tenant-safe approval workspace and a typed version
           to: ["supplier@example.test"],
           cc: [],
           subject: "Supplier registration response",
+          inReplyTo: "<supplier-request@example.test>",
+          references: ["<original-thread@example.test>"],
           bodyText: "Ready for review.",
           attachmentSha256: ["c".repeat(64)],
           mimeSha256: "d".repeat(64),

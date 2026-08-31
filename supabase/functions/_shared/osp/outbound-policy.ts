@@ -1,4 +1,7 @@
 import type { OutboundDraft } from "./outbound-payload.ts";
+import type { ReplyContext } from "./reply-context.ts";
+
+const GMAIL_ID = /^[A-Za-z0-9_-]{1,256}$/;
 
 export type OutboundCaseContext = {
   organizationId: string;
@@ -7,6 +10,13 @@ export type OutboundCaseContext = {
   caseVersion: number;
   sourceSnapshotSha256: string;
   signedPackageSha256: string | null;
+  signedPackageId?: string | null;
+  signedPackageContentType?:
+    | "application/pdf"
+    | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    | null;
+  gmailThreadId?: string | null;
+  replyContext?: ReplyContext | null;
 };
 
 function stale(): never {
@@ -21,6 +31,26 @@ export function requireCurrentOutboundPolicy(
   const expectedState = draft.kind === "clarification"
     ? "awaiting_clarification"
     : "sales_authorization";
+  const replyContext = current?.replyContext;
+  const exactReplyContext = draft.kind !== "final_response" ||
+    (replyContext !== null && replyContext !== undefined &&
+      JSON.stringify(draft.to.map((recipient) => recipient.email)) ===
+        JSON.stringify(replyContext.to) &&
+      JSON.stringify(draft.cc.map((recipient) => recipient.email)) ===
+        JSON.stringify(replyContext.cc) &&
+      draft.subject === replyContext.subject &&
+      draft.inReplyTo === replyContext.inReplyTo &&
+      JSON.stringify(draft.references) === JSON.stringify(replyContext.references));
+  const signedAttachment = draft.attachments[0];
+  const exactSignedAttachment = draft.kind !== "final_response" ||
+    (draft.attachments.length === 1 && signedAttachment !== undefined &&
+      signedAttachment.bucketId === "osp-derived-documents" &&
+      signedAttachment.objectId === current.signedPackageId &&
+      signedAttachment.sha256 === current.signedPackageSha256 &&
+      signedAttachment.contentType === current.signedPackageContentType);
+  const exactGmailThread = draft.kind !== "final_response" ||
+    (typeof current.gmailThreadId === "string" &&
+      GMAIL_ID.test(current.gmailThreadId));
   if (
     !current || current.organizationId !== draft.organizationId ||
     current.caseId !== draft.caseId ||
@@ -29,6 +59,9 @@ export function requireCurrentOutboundPolicy(
     current.caseVersion !== draft.caseVersion ||
     current.sourceSnapshotSha256 !== draft.sourceSnapshotSha256 ||
     current.signedPackageSha256 !== draft.signedPackageSha256 ||
+    !exactReplyContext ||
+    !exactSignedAttachment ||
+    !exactGmailThread ||
     (draft.kind === "final_response" && draft.signedPackageSha256 === null) ||
     (draft.kind === "clarification" && draft.signedPackageSha256 !== null)
   ) stale();

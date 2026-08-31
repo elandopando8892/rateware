@@ -82,7 +82,7 @@ Deno.test("freezing the same clarification draft produces identical MIME bytes a
   assertEquals(mime.endsWith("\r\n"), true);
 });
 
-Deno.test("final response MIME binds a signed package and changes after attachment reorder or one body byte", async () => {
+Deno.test("final response MIME binds exactly one signed package and changes after one body byte", async () => {
   const signedPackageSha256 = await sha256(attachmentA);
   const attachments = [
     {
@@ -91,13 +91,6 @@ Deno.test("final response MIME binds a signed package and changes after attachme
       name: "signed-package.pdf",
       contentType: "application/pdf" as const,
       sha256: await sha256(attachmentA),
-    },
-    {
-      bucketId: "osp-derived-documents" as const,
-      objectId: "55555555-5555-4555-8555-555555555555",
-      name: "evidence.pdf",
-      contentType: "application/pdf" as const,
-      sha256: await sha256(attachmentB),
     },
   ];
   const source = await draft({
@@ -110,18 +103,27 @@ Deno.test("final response MIME binds a signed package and changes after attachme
       objectId === "44444444-4444-4444-8444-444444444444"
         ? attachmentA.slice()
         : attachmentB.slice(),
-    );
+  );
   const frozen = await freezeOutboundPayload(source, resolver);
-  const reordered = await freezeOutboundPayload({
-    ...source,
-    attachments: [...attachments].reverse(),
-  }, resolver);
   const edited = await freezeOutboundPayload({
     ...source,
     bodyText: `${source.bodyText}.`,
   }, resolver);
-  assertNotEquals(reordered.mimeSha256, frozen.mimeSha256);
   assertNotEquals(edited.mimeSha256, frozen.mimeSha256);
+  await assertRejects(
+    () => freezeOutboundPayload({
+      ...source,
+      attachments: [...attachments, {
+        bucketId: "osp-derived-documents" as const,
+        objectId: "55555555-5555-4555-8555-555555555555",
+        name: "evidence.pdf",
+        contentType: "application/pdf" as const,
+        sha256: "c".repeat(64),
+      }],
+    }, resolver),
+    Error,
+    "OUTBOUND_PAYLOAD_INVALID",
+  );
 });
 
 Deno.test("outbound body length matches the browser contract and final responses include the signed package attachment", async () => {

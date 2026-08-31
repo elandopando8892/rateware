@@ -13,13 +13,24 @@ const xbfRequester = ["requester", "xbfreight.com"].join("@");
 Deno.test("parser accepts encoded sender and multiple quoted Cc mailboxes but no display-name lookalike", async () => {
   const parsed = await parseCopiedRequest(
     raw(
-      `From: =?utf-8?Q?XBF?= <${xbfRequester}>\r\nTo: Supplier <ops@example.test>\r\nCc: "Carriers Team" <carriers@xbfreight.com>, Other <other@example.test>`,
+      `From: =?utf-8?Q?XBF?= <${xbfRequester}>\r\nTo: Supplier <ops@example.test>\r\nCc: "Carriers Team" <carriers@xbfreight.com>, Other <other@example.test>\r\nMessage-ID: <supplier-registration@example.test>`,
     ),
   );
+  assertEquals(parsed.senderEmail, xbfRequester);
   assertEquals(parsed.senderDomain, "xbfreight.com");
+  assertEquals(
+    parsed.internetMessageId,
+    "<supplier-registration@example.test>",
+  );
   assertEquals(parsed.supplierDomain, "example.test");
   assertEquals(parsed.to, ["ops@example.test"]);
   assertEquals(parsed.cc, ["carriers@xbfreight.com", "other@example.test"]);
+  const missingMessageId = await parseCopiedRequest(
+    raw(
+      `From: ${xbfRequester}\r\nTo: Supplier <ops@example.test>\r\nCc: carriers@xbfreight.com`,
+    ),
+  );
+  assertEquals(missingMessageId.internetMessageId, null);
   await assertRejects(
     () =>
       parseCopiedRequest(

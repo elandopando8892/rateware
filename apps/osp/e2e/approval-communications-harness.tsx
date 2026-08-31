@@ -54,7 +54,15 @@ function Harness() {
   if (!workspace) return <p role="status">Loading current state…</p>;
   if (stage === 'review') return <OperationsReviewPage workspace={workspace} conflict={conflict} onComplete={() => run('operations', (idempotencyKey) => client.completeOperationsReview({ caseId, expectedVersion: workspace.caseVersion, idempotencyKey, inputSnapshotSha256: workspace.inputSnapshot?.sha256 ?? '' }))} />;
   if (stage === 'signature') return <SignatureApprovalPage workspace={workspace} conflict={conflict} onApprove={() => run('signature', (idempotencyKey) => client.approveAndApplySignature({ caseId, expectedVersion: workspace.caseVersion, idempotencyKey, inputSnapshotSha256: workspace.inputSnapshot?.sha256 ?? '', signaturePositionVersion: workspace.signature?.positionVersion ?? 0 }))} />;
-  if (stage === 'authorization') return <SalesAuthorizationPage workspace={workspace} conflict={conflict} onAuthorize={() => run('sales', (idempotencyKey) => client.authorizeOutboundPayload({ caseId, expectedVersion: workspace.caseVersion, idempotencyKey, payloadId, payloadSha256: workspace.outbound?.mimeSha256 ?? '', attachmentSha256: workspace.outbound?.attachmentSha256 ?? [] }))} />;
+  if (stage === 'authorization') return <SalesAuthorizationPage
+    workspace={workspace}
+    conflict={conflict}
+    onSaveDraft={(input) => workspace.signedPackage && workspace.inputSnapshot
+      ? run('save-draft', () => client.saveOutboundDraft({ ...input, caseId, expectedVersion: workspace.caseVersion, inputSnapshotSha256: workspace.inputSnapshot!.sha256, signedPackage: workspace.signedPackage! })) as Promise<void>
+      : Promise.reject(new OspWorkflowError('INVALID_REQUEST'))}
+    onFreeze={() => run('freeze', (idempotencyKey) => client.freezeOutboundPayload({ caseId, payloadId: workspace.outbound?.payloadId ?? '', expectedVersion: workspace.caseVersion, idempotencyKey })) as Promise<void>}
+    onAuthorize={() => run('sales', (idempotencyKey) => client.authorizeOutboundPayload({ caseId, expectedVersion: workspace.caseVersion, idempotencyKey, payloadId: workspace.outbound?.payloadId ?? '', payloadSha256: workspace.outbound?.mimeSha256 ?? '', attachmentSha256: workspace.outbound?.attachmentSha256 ?? [] })) as Promise<void>}
+  />;
   return <OutboundPayloadPage workspace={workspace} conflict={conflict}
     onFreeze={() => run('freeze', (idempotencyKey) => client.freezeOutboundPayload({ caseId, payloadId, expectedVersion: workspace.caseVersion, idempotencyKey }))}
     onRequestSend={() => run('send', (idempotencyKey) => client.requestAuthorizedSend({ caseId, expectedVersion: workspace.caseVersion, idempotencyKey, salesAuthorizationId: workspace.outbound?.salesAuthorizationId ?? '', payloadSha256: workspace.outbound?.mimeSha256 ?? '' }))}

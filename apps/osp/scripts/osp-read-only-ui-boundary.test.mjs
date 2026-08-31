@@ -43,6 +43,7 @@ const expectedProductionSourcePaths = [
   'apps/osp/src/auth/token-binding.ts',
   'apps/osp/src/components/RoutePlaceholder.tsx',
   'apps/osp/src/config/runtime.ts',
+  'apps/osp/src/features/approval/FinalResponseComposer.tsx',
   'apps/osp/src/features/approval/SalesAuthorizationPage.tsx',
   'apps/osp/src/features/approval/SignatureApprovalPage.tsx',
   'apps/osp/src/features/cases/case-presenter.ts',
@@ -542,4 +543,26 @@ test('semantic UI boundary permits only the reviewed quarterly document upload s
     () => assertNoUnsafeUiSyntax(source.replace('application/pdf,image/jpeg,image/png,image/tiff', 'application/pdf'), sourcePath),
     (error) => error instanceof Error && error.message === 'UI_MUTATION_CONTROL',
   );
+});
+
+test('semantic UI boundary permits only the governed internal outbound draft mutation', async () => {
+  const sourcePath = 'apps/osp/src/features/approval/FinalResponseComposer.tsx';
+  const source = await readFile(path.join(repositoryRoot, sourcePath), 'utf8');
+  assert.doesNotThrow(() => assertNoUnsafeUiSyntax(source, sourcePath));
+
+  for (const [label, candidate] of [
+    ['direct network call', source.replace('await onSave({', "await fetch('/functions/v1/osp-case-api', { method: 'POST' });\n      await onSave({")],
+    ['send action', source.replace('await onSave({', 'await requestAuthorizedSend({')],
+    ['freeze action', source.replace('await onSave({', 'await freezeOutboundPayload({')],
+    ['sales authorization', source.replace('await onSave({', 'await authorizeOutboundPayload({')],
+    ['extra mutation callback', source.replace('onDirtyChange, onSave', 'onDirtyChange, onSave, onFreeze')],
+    ['implicit submit button', source.replace('<button type="button"', '<button type="submit"')],
+    ['second action button', source.replace('</div>\n  </section>;', '<button type="button">Another action</button></div>\n  </section>;')],
+  ]) {
+    assert.throws(
+      () => assertNoUnsafeUiSyntax(candidate, sourcePath),
+      (error) => error instanceof Error && error.message === 'UI_MUTATION_CONTROL',
+      label,
+    );
+  }
 });

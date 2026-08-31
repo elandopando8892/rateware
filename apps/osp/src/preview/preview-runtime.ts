@@ -17,6 +17,7 @@ const previewSession: BoundSession = Object.freeze({
 
 const caseId = '11111111-1111-4111-8111-111111111111';
 const caseFormCaseId = '11111111-1111-4111-8111-111111111115';
+const finalResponseCaseId = '11111111-1111-4111-8111-111111111116';
 const payloadId = '22222222-2222-4222-8222-222222222222';
 const shaA = 'a'.repeat(64);
 const shaB = 'b'.repeat(64);
@@ -130,6 +131,11 @@ const previewCases: readonly CaseSummary[] = Object.freeze([
     blocked_by_duplicate_review: false, created_at: '2026-08-25T19:30:00.000Z', updated_at: '2026-08-26T20:10:00.000Z',
     message_count: '2', attachment_count: '4', document_count: '3',
   },
+  {
+    case_id: finalResponseCaseId, supplier_name: 'Cumbre Manufacturing', state: 'sales_authorization', aggregate_version: 11,
+    blocked_by_duplicate_review: false, created_at: '2026-08-26T12:10:00.000Z', updated_at: '2026-08-26T21:05:00.000Z',
+    message_count: '3', attachment_count: '6', document_count: '6',
+  },
 ]);
 
 const previewCaseDetail: CaseDetail = Object.freeze({
@@ -174,6 +180,9 @@ const previewWorkspace: ApprovalCommunicationsWorkspace = {
   caseVersion: 12,
   caseState: 'ready_to_send',
   inputSnapshot: { sha256: shaA, documentCount: 8, extractionCount: 42, reviewDecisionCount: 11, formInstanceVersion: 3 },
+  supplierPackage: null,
+  signedPackage: { packageId: '56000000-0000-4000-8000-000000000009', outputSha256: shaB, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  replyContext: null,
   signature: { positionVersion: 2, approvalStatus: 'approved', approvalId: '50000000-0000-4000-8000-000000000001', outputSha256: shaB },
   outbound: {
     payloadId,
@@ -184,6 +193,8 @@ const previewWorkspace: ApprovalCommunicationsWorkspace = {
     to: ['procurement@example.test'],
     cc: ['operations@example.test'],
     subject: 'XBF supplier onboarding package — synthetic preview',
+    inReplyTo: null,
+    references: [],
     bodyText: 'Synthetic preview only. The reviewed onboarding package is ready for controlled delivery.',
     attachmentSha256: [shaB],
     mimeSha256: shaA,
@@ -193,6 +204,7 @@ const previewWorkspace: ApprovalCommunicationsWorkspace = {
   capabilities: {
     completeOperationsReview: false,
     approveAndApplySignature: false,
+    saveOutboundDraft: false,
     freezeOutboundPayload: false,
     authorizeOutboundPayload: false,
     requestAuthorizedSend: false,
@@ -210,11 +222,40 @@ const previewOperationsWorkspace: ApprovalCommunicationsWorkspace = {
     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     downloadUrl: null,
   },
+  signedPackage: null,
+  replyContext: null,
   signature: null,
   outbound: null,
   capabilities: {
     completeOperationsReview: true,
     approveAndApplySignature: false,
+    saveOutboundDraft: false,
+    freezeOutboundPayload: false,
+    authorizeOutboundPayload: false,
+    requestAuthorizedSend: false,
+  },
+};
+
+const previewFinalResponseWorkspace: ApprovalCommunicationsWorkspace = {
+  caseId: finalResponseCaseId,
+  caseVersion: 11,
+  caseState: 'sales_authorization',
+  inputSnapshot: { sha256: shaA, documentCount: 6, extractionCount: 31, reviewDecisionCount: 9, formInstanceVersion: 2 },
+  supplierPackage: null,
+  signedPackage: { packageId: '56000000-0000-4000-8000-000000000010', outputSha256: shaB, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  replyContext: {
+    to: ['requester@example.test'],
+    cc: ['sales@heymarksman.com'],
+    subject: 'Re: Supplier registration request | synthetic preview',
+    inReplyTo: '<osp-preview-request@example.test>',
+    references: ['<osp-preview-request@example.test>'],
+  },
+  signature: { positionVersion: 2, approvalStatus: 'approved', approvalId: '50000000-0000-4000-8000-000000000010', outputSha256: shaB },
+  outbound: null,
+  capabilities: {
+    completeOperationsReview: false,
+    approveAndApplySignature: false,
+    saveOutboundDraft: true,
     freezeOutboundPayload: false,
     authorizeOutboundPayload: false,
     requestAuthorizedSend: false,
@@ -259,7 +300,11 @@ function createPreviewClient(): OspClient {
   const workflowWorkspaces = new Map<string, ApprovalCommunicationsWorkspace>([
     [previewWorkspace.caseId, structuredClone(previewWorkspace)],
     [previewOperationsWorkspace.caseId, structuredClone(previewOperationsWorkspace)],
+    [previewFinalResponseWorkspace.caseId, structuredClone(previewFinalResponseWorkspace)],
   ]);
+  const outboundHistories = new Map<string, NonNullable<ApprovalCommunicationsWorkspace['outbound']>[]>(
+    [...workflowWorkspaces].map(([workspaceCaseId, workspace]) => [workspaceCaseId, workspace.outbound ? [structuredClone(workspace.outbound)] : []]),
+  );
   let formCatalog: FormTemplateCatalog = {
     capabilities: { saveDraft: true, publish: true },
     templates: [
@@ -496,12 +541,28 @@ function createPreviewClient(): OspClient {
           contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           downloadUrl: null,
         },
+        signedPackage: null,
+        replyContext: null,
         signature: null, outbound: null,
-        capabilities: { completeOperationsReview: true, approveAndApplySignature: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
+        capabilities: { completeOperationsReview: true, approveAndApplySignature: false, saveOutboundDraft: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
       });
       return { instance: structuredClone(instance), caseState: 'operations_review', caseVersion, snapshotSha256: shaB, replayed: false };
     },
-    getApprovalCommunicationsWorkspace: async (input) => structuredClone(workflowWorkspaces.get(input.caseId) ?? { ...previewWorkspace, caseId: input.caseId }),
+    getApprovalCommunicationsWorkspace: async (input) => {
+      const current = workflowWorkspaces.get(input.caseId) ?? { ...previewWorkspace, caseId: input.caseId };
+      if (!input.payloadId) return structuredClone(current);
+      const historical = outboundHistories.get(input.caseId)?.find((item) => item.payloadId === input.payloadId);
+      if (!historical) return structuredClone(current);
+      const isLatest = current.outbound?.payloadId === historical.payloadId;
+      return structuredClone({
+        ...current,
+        outbound: historical,
+        capabilities: isLatest ? current.capabilities : {
+          completeOperationsReview: false, approveAndApplySignature: false, saveOutboundDraft: false,
+          freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false,
+        },
+      });
+    },
     completeOperationsReview: async (input) => {
       const current = workflowWorkspaces.get(input.caseId);
       if (!current || current.caseState !== 'operations_review' || input.expectedVersion !== current.caseVersion || input.inputSnapshotSha256 !== current.inputSnapshot?.sha256) throw new Error('VERSION_CONFLICT');
@@ -511,7 +572,7 @@ function createPreviewClient(): OspClient {
         caseVersion,
         caseState: 'signature_approval',
         signature: { positionVersion: 1, approvalStatus: 'pending', approvalId: null, outputSha256: null },
-        capabilities: { completeOperationsReview: false, approveAndApplySignature: true, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
+        capabilities: { completeOperationsReview: false, approveAndApplySignature: true, saveOutboundDraft: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
       });
       previewCaseRows = previewCaseRows.map((caseRecord) => caseRecord.case_id === input.caseId
         ? { ...caseRecord, state: 'signature_approval', aggregate_version: caseVersion, updated_at: new Date().toISOString() }
@@ -519,7 +580,38 @@ function createPreviewClient(): OspClient {
       return { caseId: input.caseId, state: 'signature_approval', caseVersion, replayed: false };
     },
     approveAndApplySignature: async (input) => ({ caseId: input.caseId, state: 'sales_authorization', caseVersion: input.expectedVersion + 1, replayed: false, approvalId: '50000000-0000-4000-8000-000000000001' }),
-    freezeOutboundPayload: async (input) => ({ payloadId: input.payloadId, caseId: input.caseId, caseVersion: input.expectedVersion + 1, kind: 'final_response', mimeSha256: shaA, attachmentSha256: [shaB], replayed: false }),
+    saveOutboundDraft: async (input) => {
+      const current = workflowWorkspaces.get(input.caseId);
+      const context = current?.replyContext;
+      if (!current?.signedPackage || !context || current.caseState !== 'sales_authorization' || current.caseVersion !== input.expectedVersion) throw new Error('VERSION_CONFLICT');
+      if (JSON.stringify({ to: input.to, cc: input.cc, subject: input.subject, inReplyTo: input.inReplyTo, references: input.references }) !== JSON.stringify(context)) throw new Error('REPLY_CONTEXT_MISMATCH');
+      const outbound: NonNullable<ApprovalCommunicationsWorkspace['outbound']> = {
+        payloadId: input.payloadId, kind: 'final_response', status: 'draft', caseVersion: current.caseVersion,
+        from: 'carriers@xbfreight.com', to: [...input.to], cc: [...input.cc], subject: input.subject,
+        inReplyTo: input.inReplyTo, references: [...input.references], bodyText: input.bodyText,
+        attachmentSha256: [current.signedPackage.outputSha256], mimeSha256: null, salesAuthorizationId: null, sendOutcome: null,
+      };
+      outboundHistories.set(input.caseId, [...(outboundHistories.get(input.caseId) ?? []), structuredClone(outbound)]);
+      workflowWorkspaces.set(input.caseId, {
+        ...current,
+        outbound,
+        capabilities: { ...current.capabilities, saveOutboundDraft: true, freezeOutboundPayload: true },
+      });
+      return { payloadId: input.payloadId, caseVersion: input.expectedVersion, kind: 'final_response' };
+    },
+    freezeOutboundPayload: async (input) => {
+      const current = workflowWorkspaces.get(input.caseId);
+      const latest = outboundHistories.get(input.caseId)?.at(-1);
+      if (!current?.outbound || !latest || latest.payloadId !== input.payloadId || current.outbound.payloadId !== input.payloadId || current.outbound.status !== 'draft' || current.caseVersion !== input.expectedVersion) throw new Error('VERSION_CONFLICT');
+      const frozen = { ...current.outbound, status: 'frozen' as const, mimeSha256: shaA };
+      outboundHistories.set(input.caseId, [...(outboundHistories.get(input.caseId)?.slice(0, -1) ?? []), structuredClone(frozen)]);
+      workflowWorkspaces.set(input.caseId, {
+        ...current,
+        outbound: frozen,
+        capabilities: { ...current.capabilities, saveOutboundDraft: false, freezeOutboundPayload: false },
+      });
+      return { payloadId: input.payloadId, caseId: input.caseId, caseVersion: input.expectedVersion, kind: 'final_response', mimeSha256: shaA, attachmentSha256: [...current.outbound.attachmentSha256], replayed: false };
+    },
     authorizeOutboundPayload: async (input) => ({ caseId: input.caseId, state: 'ready_to_send', caseVersion: input.expectedVersion + 1, replayed: false, authorizationId: '50000000-0000-4000-8000-000000000002' }),
     requestAuthorizedSend: async () => ({ attemptId: '60000000-0000-4000-8000-000000000001', jobId: '60000000-0000-4000-8000-000000000002', outcome: 'reserved', replayed: false }),
   };

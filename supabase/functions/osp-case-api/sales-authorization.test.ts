@@ -2,7 +2,10 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 
 import { createInMemoryApprovalStore } from "../_shared/osp/approval-store.ts";
 import type { ApprovalActor } from "../_shared/osp/approval-types.ts";
-import { authorizeOutbound } from "./sales-authorization.ts";
+import {
+  authorizeOutbound,
+  createPostgresCurrentOutboundAuthorizationSource,
+} from "./sales-authorization.ts";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
 const caseId = "22222222-2222-4222-8222-222222222222";
@@ -189,4 +192,32 @@ Deno.test("Sales authorization replays its receipt before resolving stale payloa
   assertEquals(first.replayed, false);
   assertEquals(replay.replayed, true);
   assertEquals(resolutions, 1);
+});
+
+Deno.test("Postgres Sales authorization resolves only the latest append-only draft", async () => {
+  const queries: string[] = [];
+  const query = Object.assign(async (strings: TemplateStringsArray) => {
+    const text = strings.join("?").replace(/\s+/g, " ").trim().toLowerCase();
+    queries.push(text);
+    if (text.startsWith("set local role") || text.startsWith("select set_config")) return [];
+    if (text.includes("from osp_private.outbound_payloads payload")) return [];
+    throw new Error(`UNEXPECTED_QUERY:${text}`);
+  }, {
+    begin: async <T>(operation: (transaction: typeof query) => Promise<T>) =>
+      await operation(query),
+  });
+  const payloads = createPostgresCurrentOutboundAuthorizationSource({
+    databaseUrl: "postgresql://synthetic.example.test/db",
+    postgresFactory: () => query,
+  });
+  await assertRejects(
+    () => payloads.resolveCurrent({ organizationId, caseId, payloadId }),
+    Error,
+    "OUTBOUND_AUTHORIZATION_STALE",
+  );
+  assertEquals(queries.some((text) =>
+    text.includes("join osp_private.outbound_drafts draft") &&
+    text.includes("draft.version = (select max(latest.version)") &&
+    text.includes("latest.payload_kind = draft.payload_kind")
+  ), true);
 });

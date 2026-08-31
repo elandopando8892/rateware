@@ -5,7 +5,14 @@ import {
   type SqlRow,
   withOrganizationTransaction,
 } from "../_shared/osp/database-context.ts";
+import {
+  deriveReplyContext,
+  isReplyMessageId,
+  type ReplyContext,
+} from "../_shared/osp/reply-context.ts";
 import type { VerifiedWorkflowIdentity } from "../_shared/osp/workflow-authority.ts";
+
+const GMAIL_ID = /^[A-Za-z0-9_-]{1,256}$/;
 
 type PostgresFactory = (
   databaseUrl: string,
@@ -48,6 +55,14 @@ type SupplierPackageView = {
   downloadUrl: string | null;
   objectId: string;
 };
+type SignedPackageView = {
+  packageId: string;
+  outputSha256: string;
+  contentType:
+    | "application/pdf"
+    | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+};
+type ReplyContextView = ReplyContext;
 type OutboundView = {
   payloadId: string;
   kind: "clarification" | "final_response";
@@ -64,6 +79,8 @@ type OutboundView = {
   to: readonly string[];
   cc: readonly string[];
   subject: string;
+  inReplyTo: string | null;
+  references: readonly string[];
   bodyText: string;
   attachmentSha256: readonly string[];
   mimeSha256: string | null;
@@ -83,8 +100,11 @@ export type WorkflowViewRecord = {
   caseState: CaseState;
   inputSnapshot: InputSnapshot | null;
   supplierPackage?: SupplierPackageView | null;
+  signedPackage?: SignedPackageView | null;
+  replyContext: ReplyContextView | null;
   signature: SignatureView | null;
   outbound: OutboundView | null;
+  outboundIsLatest?: boolean;
 };
 
 export type WorkflowViewSource = {
@@ -173,6 +193,29 @@ function hashes(value: unknown): readonly string[] {
   ) fail();
   return Object.freeze([...value] as string[]);
 }
+function messageIds(value: unknown): readonly string[] {
+  if (
+    !Array.isArray(value) || value.length > 50 ||
+    value.some((messageId) =>
+      !isReplyMessageId(messageId)
+    ) || new Set(value).size !== value.length
+  ) fail();
+  return Object.freeze([...value] as string[]);
+}
+
+function replyContext(row: SqlRow): ReplyContextView | null {
+  if (
+    typeof row.reply_gmail_thread_id !== "string" ||
+    !GMAIL_ID.test(row.reply_gmail_thread_id)
+  ) return null;
+  return deriveReplyContext({
+    senderEmail: row.reply_sender_email,
+    internetMessageId: row.reply_internet_message_id,
+    subject: row.reply_original_subject,
+    to: row.reply_original_to,
+    cc: row.reply_original_cc,
+  });
+}
 
 function parseRow(
   row: SqlRow,
@@ -207,6 +250,18 @@ function parseRow(
       ? row.supplier_package_object_id
       : fail(),
   };
+  const signedPackageId = optionalUuid(row.signed_package_id);
+  const signedPackage = signedPackageId === null ? null : {
+    packageId: signedPackageId,
+    outputSha256: optionalSha(row.signature_output_sha256) ?? fail(),
+    contentType: row.signed_package_content_type === "application/pdf"
+      ? "application/pdf" as const
+      : row.signed_package_content_type ===
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" as const
+      : fail(),
+  };
+  const parsedReplyContext = replyContext(row);
   const signaturePositionVersion = row.signature_position_version ??
     row.signature_policy_position_version;
   const signature =
@@ -232,9 +287,13 @@ function parseRow(
         row.payload_kind !== "final_response") ||
       row.from_email !== "carriers@xbfreight.com" ||
       typeof row.subject !== "string" || row.subject.length < 1 ||
+      (row.in_reply_to !== null && row.in_reply_to !== undefined &&
+        (typeof row.in_reply_to !== "string" ||
+          !isReplyMessageId(row.in_reply_to))) ||
       typeof row.body_text !== "string" || row.body_text.length < 1 ||
       row.body_text.length > 100_000
     ) fail();
+    if (typeof row.payload_is_latest !== "boolean") fail();
     const rawOutcome = row.send_outcome;
     const sendOutcome = rawOutcome === null || rawOutcome === undefined
       ? null
@@ -271,6 +330,8 @@ function parseRow(
       to: recipients(row.to_recipients),
       cc: recipients(row.cc_recipients),
       subject: row.subject,
+      inReplyTo: typeof row.in_reply_to === "string" ? row.in_reply_to : null,
+      references: messageIds(row.references_header ?? []),
       bodyText: row.body_text,
       attachmentSha256: hashes(row.attachment_sha256s ?? []),
       mimeSha256,
@@ -285,8 +346,11 @@ function parseRow(
     caseState: row.case_state as CaseState,
     inputSnapshot: snapshot ? Object.freeze(snapshot) : null,
     supplierPackage: supplierPackage ? Object.freeze(supplierPackage) : null,
+    signedPackage: signedPackage ? Object.freeze(signedPackage) : null,
+    replyContext: parsedReplyContext,
     signature: signature ? Object.freeze(signature) : null,
     outbound: outbound ? Object.freeze(outbound) : null,
+    outboundIsLatest: outbound ? row.payload_is_latest as boolean : true,
   });
 }
 
@@ -313,7 +377,8 @@ export function approvalCommunicationsWorkspace(
     authorityPermissions[0] === "osp:send-authorized" &&
     identity.identity.email === "carriers@xbfreight.com";
   const outboundWritableCurrent = record.outbound !== null &&
-    record.outbound.caseVersion === record.caseVersion;
+    record.outbound.caseVersion === record.caseVersion &&
+    record.outboundIsLatest !== false;
   const authorizedSendCurrent = record.outbound !== null && (
     record.outbound.caseVersion + 1 === record.caseVersion ||
     (record.outbound.status === "failed" &&
@@ -333,9 +398,25 @@ export function approvalCommunicationsWorkspace(
         downloadUrl: record.supplierPackage.downloadUrl,
       })
       : null,
+    signedPackage: record.signedPackage
+      ? Object.freeze({
+        packageId: record.signedPackage.packageId,
+        outputSha256: record.signedPackage.outputSha256,
+        contentType: record.signedPackage.contentType,
+      })
+      : null,
+    replyContext: record.replyContext,
     signature: record.signature,
     outbound: record.outbound,
     capabilities: Object.freeze({
+      saveOutboundDraft: operations &&
+        record.caseState === "sales_authorization" &&
+        record.inputSnapshot !== null && record.signedPackage !== null &&
+        record.signedPackage !== undefined && record.replyContext !== null &&
+        (record.outbound === null ||
+          (outboundWritableCurrent &&
+            record.outbound.kind === "final_response" &&
+            record.outbound.status === "draft")),
       completeOperationsReview: operations &&
         record.caseState === "operations_review" &&
         record.inputSnapshot !== null && record.supplierPackage !== null &&
@@ -424,11 +505,39 @@ export function createPostgresWorkflowViewSource(
                null::text as supplier_package_download_url,
                signature_policy.position_version as signature_policy_position_version,
                signature.signature_position_version, signature.status as signature_status,
-               signature.id as signature_approval_id, signed_package.output_sha256 as signature_output_sha256,
+               signature.id as signature_approval_id,
+               signed_package.id as signed_package_id,
+               signed_package.output_sha256 as signature_output_sha256,
+               signed_package.content_type as signed_package_content_type,
+               source_message.gmail_thread_id as reply_gmail_thread_id,
+               source_message.sender_email as reply_sender_email,
+               source_message.internet_message_id as reply_internet_message_id,
+               source_message.subject as reply_original_subject,
+               source_message.to_addresses as reply_original_to,
+               source_message.cc_addresses as reply_original_cc,
                draft.id as payload_id, draft.payload_kind, draft.case_version as payload_case_version,
-               draft.from_email, draft.to_recipients, draft.cc_recipients, draft.subject, draft.body_text,
+               draft.version = (
+                 select max(latest_draft.version)
+                 from osp_private.outbound_drafts latest_draft
+                 where latest_draft.organization_id = draft.organization_id
+                   and latest_draft.case_id = draft.case_id
+                   and latest_draft.payload_kind = draft.payload_kind
+               ) as payload_is_latest,
+               draft.from_email, draft.to_recipients, draft.cc_recipients, draft.subject,
+               draft.in_reply_to, draft.references_header, draft.body_text,
                frozen.status as payload_status, frozen.canonical_sha256 as mime_sha256,
-               coalesce(frozen.attachment_sha256s, array[]::text[]) as attachment_sha256s,
+               coalesce(
+                 frozen.attachment_sha256s,
+                 (
+                   select coalesce(
+                     array_agg(draft_attachment.value ->> 'sha256' order by draft_attachment.ordinality),
+                     array[]::text[]
+                   )
+                   from jsonb_array_elements(draft.attachments_json) with ordinality
+                     as draft_attachment(value, ordinality)
+                 ),
+                 array[]::text[]
+               ) as attachment_sha256s,
                authorized_record.id as sales_authorization_id, attempt.outcome as send_outcome
         from osp_private.customer_registration_cases case_record
         left join lateral (
@@ -471,6 +580,17 @@ export function createPostgresWorkflowViewSource(
         left join osp_private.generated_packages signed_package
           on signed_package.organization_id = signature.organization_id and signed_package.signature_approval_id = signature.id
           and signed_package.package_kind = 'signed' and signed_package.status = 'current'
+          and signed_package.input_snapshot_id = snapshot.id
+          and signed_package.input_snapshot_sha256 = snapshot.canonical_sha256
+        left join lateral (
+          select value.gmail_thread_id, value.sender_email, value.internet_message_id, value.subject,
+                 value.to_addresses, value.cc_addresses
+          from osp_private.gmail_messages value
+          where value.organization_id = case_record.organization_id
+            and value.case_id = case_record.id
+          order by value.received_at asc, value.created_at asc, value.id asc
+          limit 1
+        ) source_message on true
         left join lateral (
           select * from osp_private.outbound_drafts value
           where value.organization_id = case_record.organization_id and value.case_id = case_record.id

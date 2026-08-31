@@ -377,9 +377,11 @@ export const ClarificationReviewResponseSchema = z.strictObject({ data: Clarific
 
 const workflowSha = z.string().regex(/^[0-9a-f]{64}$/);
 const workflowVersion = z.number().int().min(0).max(2_147_483_647);
+const workflowMessageId = z.string().min(5).max(998).regex(/^<[^<>\s@]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?>$/);
 const capabilitySchema = z.strictObject({
   completeOperationsReview: z.boolean(),
   approveAndApplySignature: z.boolean(),
+  saveOutboundDraft: z.boolean().default(false),
   freezeOutboundPayload: z.boolean(),
   authorizeOutboundPayload: z.boolean(),
   requestAuthorizedSend: z.boolean(),
@@ -408,6 +410,18 @@ export const ApprovalCommunicationsWorkspaceSchema = z.strictObject({
     contentType: z.literal('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
     downloadUrl: z.url().nullable(),
   }).nullable().default(null),
+  signedPackage: z.strictObject({
+    packageId: z.uuid(),
+    outputSha256: workflowSha,
+    contentType: z.enum(['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']),
+  }).nullable().default(null),
+  replyContext: z.strictObject({
+    to: z.array(z.email()).min(1).max(50),
+    cc: z.array(z.email()).max(50),
+    subject: z.string().min(1).max(998),
+    inReplyTo: workflowMessageId,
+    references: z.array(workflowMessageId).min(1).max(50),
+  }).nullable().default(null),
   signature: z.strictObject({
     positionVersion: z.number().int().min(1).max(2_147_483_647),
     approvalStatus: z.enum(['pending', 'approved']),
@@ -423,6 +437,8 @@ export const ApprovalCommunicationsWorkspaceSchema = z.strictObject({
     to: z.array(z.email()).min(1).max(50),
     cc: z.array(z.email()).max(50),
     subject: z.string().min(1).max(998),
+    inReplyTo: z.string().nullable().default(null),
+    references: z.array(z.string()).max(50).default([]),
     bodyText: z.string().min(1).max(100_000),
     attachmentSha256: z.array(workflowSha).max(100),
     mimeSha256: workflowSha.nullable(),
@@ -456,6 +472,14 @@ export const FreezeCommandReceiptSchema = z.strictObject({
     mimeSha256: workflowSha,
     attachmentSha256: z.array(workflowSha).max(100),
     replayed: z.boolean(),
+  }),
+});
+
+export const SaveOutboundDraftReceiptSchema = z.strictObject({
+  data: z.strictObject({
+    payloadId: z.uuid(),
+    caseVersion: workflowVersion,
+    kind: z.literal('final_response'),
   }),
 });
 

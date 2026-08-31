@@ -8,11 +8,18 @@ import {
   type OutboundCaseContext,
   requireCurrentOutboundPolicy,
 } from "../_shared/osp/outbound-policy.ts";
+import {
+  deriveReplyContext,
+  type ReplyContext,
+} from "../_shared/osp/reply-context.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
 const SUBJECT = /^[A-Za-z0-9:_@.-]{1,256}$/;
+const GMAIL_ID = /^[A-Za-z0-9_-]{1,256}$/;
+const XLSX =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" as const;
 
 export type SavedOutboundDraftInput = {
   organizationId: string;
@@ -273,12 +280,16 @@ async function contextFromTransaction(
   ) throw new Error("OUTBOUND_CONTEXT_STALE");
   if (cases[0].state === "sales_authorization") {
     const packages =
-      await tx`select input_snapshot_sha256, output_sha256 from osp_private.generated_packages where organization_id = ${input.organizationId} and case_id = ${input.caseId} and package_kind = 'signed' and status = 'current' order by version desc limit 2`;
+      await tx`select id, input_snapshot_sha256, output_sha256, content_type from osp_private.generated_packages where organization_id = ${input.organizationId} and case_id = ${input.caseId} and package_kind = 'signed' and status = 'current' order by version desc limit 2`;
     if (
       packages.length !== 1 ||
+      typeof packages[0].id !== "string" || !UUID.test(packages[0].id) ||
       typeof packages[0].input_snapshot_sha256 !== "string" ||
-      typeof packages[0].output_sha256 !== "string"
+      typeof packages[0].output_sha256 !== "string" ||
+      (packages[0].content_type !== "application/pdf" &&
+        packages[0].content_type !== XLSX)
     ) throw new Error("OUTBOUND_CONTEXT_STALE");
+    const source = await replySourceFromTransaction(tx, input);
     return Object.freeze({
       organizationId: input.organizationId,
       caseId: input.caseId,
@@ -286,21 +297,32 @@ async function contextFromTransaction(
       caseVersion,
       sourceSnapshotSha256: packages[0].input_snapshot_sha256,
       signedPackageSha256: packages[0].output_sha256,
+      signedPackageId: packages[0].id,
+      signedPackageContentType: packages[0].content_type,
+      gmailThreadId: source.gmailThreadId,
+      replyContext: source.replyContext,
     });
   }
   if (cases[0].state === "ready_to_send") {
     const authorizations =
-      await tx`select authorized_record.id as authorization_id, payload.payload_kind, payload.source_snapshot_sha256, payload.signed_package_sha256 from osp_private.sales_authorizations authorized_record join osp_private.outbound_payloads payload on payload.organization_id = authorized_record.organization_id and payload.case_id = authorized_record.case_id and payload.id = authorized_record.payload_id where authorized_record.organization_id = ${input.organizationId} and authorized_record.case_id = ${input.caseId} and authorized_record.status = 'authorized' order by authorized_record.authorized_at desc, authorized_record.id desc limit 2`;
+      await tx`select authorized_record.id as authorization_id, payload.payload_kind, payload.source_snapshot_sha256, payload.signed_package_sha256, signed_package.id as signed_package_id, signed_package.content_type as signed_package_content_type from osp_private.sales_authorizations authorized_record join osp_private.outbound_payloads payload on payload.organization_id = authorized_record.organization_id and payload.case_id = authorized_record.case_id and payload.id = authorized_record.payload_id left join osp_private.generated_packages signed_package on payload.payload_kind = 'final_response' and signed_package.organization_id = payload.organization_id and signed_package.case_id = payload.case_id and signed_package.package_kind = 'signed' and signed_package.status = 'current' and signed_package.output_sha256 = payload.signed_package_sha256 where authorized_record.organization_id = ${input.organizationId} and authorized_record.case_id = ${input.caseId} and authorized_record.status = 'authorized' order by authorized_record.authorized_at desc, authorized_record.id desc limit 2`;
     if (
       authorizations.length !== 1 ||
       (authorizations[0].payload_kind !== "clarification" &&
         authorizations[0].payload_kind !== "final_response") ||
       typeof authorizations[0].source_snapshot_sha256 !== "string" ||
       (authorizations[0].payload_kind === "final_response" &&
-        typeof authorizations[0].signed_package_sha256 !== "string") ||
+        (typeof authorizations[0].signed_package_sha256 !== "string" ||
+          typeof authorizations[0].signed_package_id !== "string" ||
+          !UUID.test(authorizations[0].signed_package_id) ||
+          (authorizations[0].signed_package_content_type !== "application/pdf" &&
+            authorizations[0].signed_package_content_type !== XLSX))) ||
       (authorizations[0].payload_kind === "clarification" &&
-        authorizations[0].signed_package_sha256 !== null)
+        (authorizations[0].signed_package_sha256 !== null ||
+          authorizations[0].signed_package_id !== null ||
+          authorizations[0].signed_package_content_type !== null))
     ) throw new Error("OUTBOUND_CONTEXT_STALE");
+    const source = await replySourceFromTransaction(tx, input);
     return Object.freeze({
       organizationId: input.organizationId,
       caseId: input.caseId,
@@ -310,6 +332,16 @@ async function contextFromTransaction(
       signedPackageSha256: authorizations[0].signed_package_sha256 as
         | string
         | null,
+      signedPackageId: authorizations[0].signed_package_id as string | null,
+      signedPackageContentType: authorizations[0]
+        .signed_package_content_type as
+          | "application/pdf"
+          | typeof XLSX
+          | null,
+      gmailThreadId: source.gmailThreadId,
+      replyContext: authorizations[0].payload_kind === "final_response"
+        ? source.replyContext
+        : null,
     });
   }
   if (cases[0].state !== "awaiting_clarification") {
@@ -327,6 +359,33 @@ async function contextFromTransaction(
     caseVersion,
     sourceSnapshotSha256: snapshots[0].canonical_sha256,
     signedPackageSha256: null,
+    signedPackageId: null,
+    signedPackageContentType: null,
+    gmailThreadId: null,
+  });
+}
+
+async function replySourceFromTransaction(
+  tx: SqlPort,
+  input: { organizationId: string; caseId: string },
+): Promise<{ replyContext: ReplyContext | null; gmailThreadId: string | null }> {
+  const rows =
+    await tx`select gmail_thread_id, sender_email, internet_message_id, subject, to_addresses, cc_addresses from osp_private.gmail_messages where organization_id = ${input.organizationId} and case_id = ${input.caseId} order by received_at asc, created_at asc, id asc limit 1`;
+  if (rows.length !== 1) {
+    return Object.freeze({ replyContext: null, gmailThreadId: null });
+  }
+  return Object.freeze({
+    replyContext: deriveReplyContext({
+      senderEmail: rows[0].sender_email,
+      internetMessageId: rows[0].internet_message_id,
+      subject: rows[0].subject,
+      to: rows[0].to_addresses,
+      cc: rows[0].cc_addresses,
+    }),
+    gmailThreadId: typeof rows[0].gmail_thread_id === "string" &&
+        GMAIL_ID.test(rows[0].gmail_thread_id)
+      ? rows[0].gmail_thread_id
+      : null,
   });
 }
 
@@ -490,6 +549,13 @@ export function createPostgresOutboundDraftStore(options: {
             caseId: input.caseId,
           }, true);
           requireCurrentOutboundPolicy(input.draft, current, true);
+          if (current.state !== "ready_to_send") {
+            const frozen =
+              await tx`select id from osp_private.outbound_payloads where organization_id = ${input.organizationId} and case_id = ${input.caseId} and payload_kind = ${input.draft.kind} and case_version = ${current.caseVersion} and status = 'frozen' limit 1`;
+            if (frozen.length > 0) {
+              throw new Error("OUTBOUND_DRAFT_LOCKED");
+            }
+          }
           let persistedDraft = input.draft;
           if (current.state === "ready_to_send") {
             const activeAttempts =
@@ -615,7 +681,7 @@ export function createPostgresOutboundDraftStore(options: {
             context.caseVersion !== input.expectedCaseVersion
           ) throw new Error("OUTBOUND_VERSION_CONFLICT");
           const draftRows =
-            await tx`select id, organization_id, case_id, version, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, from_email, to_recipients, cc_recipients, subject, in_reply_to, references_header, body_text, attachments_json from osp_private.outbound_drafts where organization_id = ${input.organizationId} and case_id = ${input.caseId} and id = ${input.payloadId}`;
+            await tx`select id, organization_id, case_id, version, payload_kind, case_version, source_snapshot_sha256, signed_package_sha256, from_email, to_recipients, cc_recipients, subject, in_reply_to, references_header, body_text, attachments_json from osp_private.outbound_drafts draft where organization_id = ${input.organizationId} and case_id = ${input.caseId} and id = ${input.payloadId} and version = (select max(latest.version) from osp_private.outbound_drafts latest where latest.organization_id = draft.organization_id and latest.case_id = draft.case_id and latest.payload_kind = draft.payload_kind)`;
           if (draftRows.length !== 1) {
             throw new Error("OUTBOUND_DRAFT_NOT_FOUND");
           }
