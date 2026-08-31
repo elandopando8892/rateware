@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 
 import {
+  createPostgresSignaturePolicyPort,
   createPostgresSignatureVaultReader,
   createSignatureJobService,
   createSignatureObjectPort,
@@ -62,6 +63,60 @@ Deno.test("signature vault reader fails closed on invalid references, duplicate 
       "SIGNATURE_VAULT_INVALID",
     );
   }
+});
+
+Deno.test("signature policy commits its worker transaction before the privileged Vault read", async () => {
+  const calls: string[] = [];
+  const transaction = (strings: TemplateStringsArray) => {
+    const query = strings.join("$");
+    if (query.includes("set local role")) calls.push("set-worker-role");
+    else if (query.includes("resolve_signature_application_policy")) {
+      calls.push("resolve-policy");
+      return Promise.resolve([{
+        vault_ref: "osp_signature_jagp_v1",
+        content_type: "image/png",
+        target_kind: "xlsx",
+        worksheet_name: "Customer setup",
+        cell_range: "C16:C21",
+      }]);
+    }
+    return Promise.resolve([]);
+  };
+  const sql = Object.assign(transaction, {
+    begin: async <T>(operation: (tx: typeof transaction) => Promise<T>) => {
+      calls.push("begin");
+      const result = await operation(transaction);
+      calls.push("commit");
+      return result;
+    },
+  });
+  const policy = createPostgresSignaturePolicyPort({
+    databaseUrl: "postgresql://localhost:5432/osp",
+    postgresFactory: () => sql,
+    vault: {
+      read: () => {
+        calls.push("read-vault");
+        return Promise.resolve(new Uint8Array([1, 2, 3]));
+      },
+    },
+  });
+  const resolved = await policy.resolve({
+    organizationId: "11111111-1111-4111-8111-111111111111",
+    caseId: "22222222-2222-4222-8222-222222222222",
+    approvalId: "33333333-3333-4333-8333-333333333333",
+    jobId: "44444444-4444-4444-8444-444444444444",
+    leaseToken: "55555555-5555-4555-8555-555555555555",
+    positionVersion: 1,
+  }, new AbortController().signal);
+  assertEquals(calls, [
+    "begin",
+    "set-worker-role",
+    "resolve-policy",
+    "commit",
+    "read-vault",
+  ]);
+  assertEquals(resolved.targetKind, "xlsx");
+  assertEquals([...resolved.signatureBytes], [1, 2, 3]);
 });
 
 Deno.test("signature object reader uses an exact signed URL instead of the Edge Blob path", async () => {

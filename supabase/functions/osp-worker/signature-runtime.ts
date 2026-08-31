@@ -242,8 +242,8 @@ export function createPostgresSignaturePolicyPort(options: {
         positionVersion: number;
       },
       signal: AbortSignal,
-    ) =>
-      await withWorkerTransaction(sql, async (tx) => {
+    ) => {
+      const policy = await withWorkerTransaction(sql, async (tx) => {
         const rows =
           await tx`select * from osp_private.resolve_signature_application_policy(${input.organizationId}, ${input.approvalId}, ${input.jobId}, ${input.leaseToken}, ${input.positionVersion})`;
         if (
@@ -251,12 +251,12 @@ export function createPostgresSignaturePolicyPort(options: {
           (rows[0].content_type !== "image/png" &&
             rows[0].content_type !== "image/jpeg")
         ) throw new Error("SIGNATURE_POLICY_INVALID");
-        const common = {
-          signatureBytes: await options.vault.read(rows[0].vault_ref, signal),
+        const common = Object.freeze({
+          vaultRef: rows[0].vault_ref,
           contentType: rows[0].content_type as "image/png" | "image/jpeg",
-        };
+        });
         if (rows[0].target_kind === "pdf") {
-          return {
+          return Object.freeze({
             ...common,
             targetKind: "pdf" as const,
             page: Number(rows[0].page),
@@ -264,20 +264,27 @@ export function createPostgresSignaturePolicyPort(options: {
             y: Number(rows[0].y),
             width: Number(rows[0].width),
             height: Number(rows[0].height),
-          };
+          });
         }
         if (
           rows[0].target_kind !== "xlsx" ||
           typeof rows[0].worksheet_name !== "string" ||
           typeof rows[0].cell_range !== "string"
         ) throw new Error("SIGNATURE_POLICY_INVALID");
-        return {
+        return Object.freeze({
           ...common,
           targetKind: "xlsx" as const,
           worksheetName: rows[0].worksheet_name,
           cellRange: rows[0].cell_range,
-        };
-      }),
+        });
+      });
+      // The Vault adapter owns a separate privileged connection. Read the
+      // private asset only after the worker-role transaction has committed so
+      // Edge isolates never need two concurrent Postgres connections here.
+      const signatureBytes = await options.vault.read(policy.vaultRef, signal);
+      const { vaultRef: _vaultRef, ...publicPolicy } = policy;
+      return Object.freeze({ ...publicPolicy, signatureBytes });
+    },
   });
 }
 
