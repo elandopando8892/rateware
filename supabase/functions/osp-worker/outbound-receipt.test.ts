@@ -196,6 +196,72 @@ Deno.test("supplier reply on the immutable Gmail ancestry returns the sent case 
   assertEquals(await store.caseState(caseId), "analyzing_requirements");
 });
 
+Deno.test("Postgres send reservation binds superuser permissions as an explicit text array", async () => {
+  const attemptId = "55555555-5555-4555-8555-555555555555";
+  const jobId = "66666666-6666-4666-8666-666666666666";
+  const queries: string[] = [];
+  const boundValues: unknown[][] = [];
+  const query = Object.assign(async (
+    strings: TemplateStringsArray,
+    ...values: unknown[]
+  ) => {
+    const text = strings.join("?").replace(/\s+/g, " ").trim().toLowerCase();
+    queries.push(text);
+    boundValues.push(values);
+    if (
+      text.startsWith("set local role") || text.startsWith("select set_config")
+    ) return [];
+    if (text.includes("request_authorized_send_command")) {
+      return [{
+        attempt_id: attemptId,
+        job_id: jobId,
+        outcome: "reserved",
+        replayed: false,
+      }];
+    }
+    throw new Error(`UNEXPECTED_QUERY:${text}`);
+  }, {
+    begin: async <T>(operation: (transaction: typeof query) => Promise<T>) =>
+      await operation(query),
+  });
+  const store = createPostgresOutboundSendStore({
+    databaseUrl: "postgresql://synthetic.example.test/db",
+    postgresFactory: () => query,
+  });
+
+  const reservation = await store.reserve({
+    organizationId,
+    caseId,
+    salesAuthorizationId: authorizationId,
+    payloadSha256: mimeSha256,
+    expectedCaseVersion: 8,
+    idempotencyKey: "send-superuser-array",
+    actorSubject: "sales-subject",
+    actorEmail: "sales@heymarksman.com",
+    actorPermissions: ["osp:read", "osp:superuser"],
+    actorRole: "carriers_sender",
+    authorizationSessionId: "session-sales",
+    authorizationSessionIssuedAt: "2026-08-31T19:50:00.000Z",
+    commandSha256: "e".repeat(64),
+  });
+
+  assertEquals(reservation, {
+    attemptId,
+    jobId,
+    outcome: "reserved",
+    replayed: false,
+  });
+  const requestIndex = queries.findIndex((text) =>
+    text.includes("request_authorized_send_command")
+  );
+  assertEquals(requestIndex >= 0, true);
+  assertEquals(queries[requestIndex].includes("?::text[]"), true);
+  assertEquals(
+    boundValues[requestIndex].includes('{"osp:read","osp:superuser"}'),
+    true,
+  );
+});
+
 Deno.test("Postgres send claim binds the exact captured Gmail thread to the frozen draft", async () => {
   const attemptId = "55555555-5555-4555-8555-555555555555";
   const jobId = "66666666-6666-4666-8666-666666666666";
@@ -204,7 +270,9 @@ Deno.test("Postgres send claim binds the exact captured Gmail thread to the froz
   const query = Object.assign(async (strings: TemplateStringsArray) => {
     const text = strings.join("?").replace(/\s+/g, " ").trim().toLowerCase();
     queries.push(text);
-    if (text.startsWith("set local role") || text.startsWith("select set_config")) return [];
+    if (
+      text.startsWith("set local role") || text.startsWith("select set_config")
+    ) return [];
     if (text.includes("claim_authorized_send")) {
       return [{
         preparation: "ready",
@@ -217,7 +285,10 @@ Deno.test("Postgres send claim binds the exact captured Gmail thread to the froz
       }];
     }
     if (text.includes("resolve_authorized_send_thread")) {
-      return [{ payload_kind: "final_response", gmail_thread_id: "gmail-thread-1" }];
+      return [{
+        payload_kind: "final_response",
+        gmail_thread_id: "gmail-thread-1",
+      }];
     }
     throw new Error(`UNEXPECTED_QUERY:${text}`);
   }, {
@@ -228,10 +299,16 @@ Deno.test("Postgres send claim binds the exact captured Gmail thread to the froz
     databaseUrl: "postgresql://synthetic.example.test/db",
     postgresFactory: () => query,
   });
-  const claimed = await store.claim({ organizationId, attemptId, jobId, leaseToken });
+  const claimed = await store.claim({
+    organizationId,
+    attemptId,
+    jobId,
+    leaseToken,
+  });
   if (claimed.kind !== "send") throw new Error("TEST_SEND_NOT_CLAIMED");
   assertEquals(claimed.threadId, "gmail-thread-1");
-  assertEquals(queries.some((text) =>
-    text.includes("resolve_authorized_send_thread")
-  ), true);
+  assertEquals(
+    queries.some((text) => text.includes("resolve_authorized_send_thread")),
+    true,
+  );
 });

@@ -573,6 +573,17 @@ function databaseUrl(value: string): string {
   }
 }
 
+function textArray(values: readonly string[]): string {
+  // This pool disables PostgreSQL type discovery, so postgres.js cannot map
+  // text (OID 25) to text[] (OID 1009). Bind a quoted array literal and cast
+  // it explicitly, matching the approval-command persistence path.
+  return "{" +
+    values.map((value) =>
+      '"' + value.replaceAll("\\", "\\\\").replaceAll('"', '\\"') + '"'
+    ).join(",") +
+    "}";
+}
+
 function text(
   row: Record<string, unknown>,
   key: string,
@@ -634,13 +645,12 @@ export function createPostgresOutboundSendStore(options: {
           sql,
           input.organizationId,
           async (tx) => {
+            const permissionArray = textArray(input.actorPermissions);
             const rows =
               await tx`select * from osp_private.request_authorized_send_command(
             ${input.organizationId}, ${input.caseId}, ${input.salesAuthorizationId},
             ${input.payloadSha256}, ${input.expectedCaseVersion}, ${input.idempotencyKey},
-            ${input.actorSubject}, ${input.actorEmail}, ${[
-                ...input.actorPermissions,
-              ]},
+            ${input.actorSubject}, ${input.actorEmail}, ${permissionArray}::text[],
             ${input.actorRole}, ${input.authorizationSessionId},
             ${input.authorizationSessionIssuedAt}, ${input.commandSha256}
           )`;
@@ -713,7 +723,9 @@ export function createPostgresOutboundSendStore(options: {
             fail("OUTBOUND_SEND_PERSISTENCE_FAILED");
           }
           const payloadKind = sourceThreads[0].payload_kind;
-          if (payloadKind !== "clarification" && payloadKind !== "final_response") {
+          if (
+            payloadKind !== "clarification" && payloadKind !== "final_response"
+          ) {
             fail("OUTBOUND_SEND_PERSISTENCE_FAILED");
           }
           const capturedThreadId = sourceThreads[0].gmail_thread_id === null
