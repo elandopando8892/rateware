@@ -25,7 +25,7 @@ test("required mode authorizes through the canonical tenant contract", () => {
   assert.doesNotMatch(runtimeSource, /user_metadata|raw_user_meta_data/);
 });
 
-test("all Kinde-protected runtime entrypoints use the enforcement adapter", () => {
+test("all authenticated runtime entrypoints use the enforcement adapter", () => {
   const entrypoints = [
     "create-raw-upload/index.ts",
     "interpret-upload/index.ts",
