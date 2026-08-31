@@ -8,7 +8,7 @@ describe('synthetic preview runtime', () => {
     const runtime = createPreviewRuntime();
     const session = await runtime.authPort.initialize();
 
-    expect(session?.identity.email).toBe('preview.operations@xbfreight.com');
+    expect(session?.identity.email).toBe('sales@heymarksman.com');
     await expect(runtime.apiClient.listOnboardingWorkspace()).resolves.toEqual({
       requests_total: '26', documents_pending: '7', under_review: '5', ready_for_approval: '3',
     });

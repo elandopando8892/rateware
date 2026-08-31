@@ -115,6 +115,51 @@ Deno.test("workflow view derives mutually exclusive server capabilities and expo
   );
 });
 
+Deno.test("the Sales superuser receives only the action for the current workflow stage", () => {
+  const superuser: VerifiedWorkflowIdentity = {
+    ...baseIdentity,
+    identity: { ...baseIdentity.identity, email: "sales@heymarksman.com" },
+    permissions: ["osp:read", "osp:superuser"],
+  };
+  const operations = approvalCommunicationsWorkspace({
+    ...record,
+    caseState: "operations_review",
+    outbound: null,
+    supplierPackage: {
+      packageId: "88888888-8888-4888-8888-888888888888",
+      version: 1,
+      outputSha256: sha,
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      downloadUrl: null,
+      objectId: "private-object",
+    },
+  }, superuser);
+  assertEquals(operations.capabilities.completeOperationsReview, true);
+
+  const signature = approvalCommunicationsWorkspace({
+    ...record,
+    caseState: "signature_approval",
+    outbound: null,
+    signature: { positionVersion: 1, approvalStatus: "pending", approvalId: null, outputSha256: null },
+  }, superuser);
+  assertEquals(signature.capabilities.approveAndApplySignature, true);
+
+  const sales = approvalCommunicationsWorkspace(record, superuser);
+  assertEquals(sales.capabilities.authorizeOutboundPayload, true);
+
+  const send = approvalCommunicationsWorkspace({
+    ...record,
+    caseState: "ready_to_send",
+    caseVersion: 8,
+    outbound: {
+      ...record.outbound!,
+      status: "authorized",
+      salesAuthorizationId: "66666666-6666-4666-8666-666666666666",
+    },
+  }, superuser);
+  assertEquals(send.capabilities.requestAuthorizedSend, true);
+});
+
 Deno.test("workflow view grants outbound draft creation only for current signed evidence and separated Operations authority", () => {
   const ready = {
     ...record,

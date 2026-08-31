@@ -59,6 +59,47 @@ Deno.test("approval authority enforces the four exact separated roles", () => {
   }
 });
 
+Deno.test("the verified Sales superuser can perform every stage without role switching", () => {
+  const roles: readonly [ApprovalCommandType, ApprovalActor["role"]][] = [
+    ["complete_operations_review", "operations_reviewer"],
+    ["approve_signature", "signature_approver"],
+    ["authorize_outbound", "sales_authorizer"],
+    ["request_authorized_send", "carriers_sender"],
+  ];
+  for (const [commandType, role] of roles) {
+    const candidate = actor({
+      verifiedEmail: "sales@heymarksman.com",
+      permissions: ["osp:read", "osp:superuser"],
+      role,
+      authorizationSessionId: `session-superuser-${role}`,
+    });
+    assertEquals(requireApprovalAuthority(candidate, commandType, NOW), candidate);
+  }
+  assertThrows(
+    () => requireApprovalAuthority(actor({
+      verifiedEmail: "other@example.test",
+      permissions: ["osp:read", "osp:superuser"],
+    }), "complete_operations_review", NOW),
+    Error,
+    "APPROVAL_FORBIDDEN",
+  );
+  const focusedSession = actor({
+    verifiedEmail: "sales@heymarksman.com",
+    permissions: ["osp:read", "osp:superuser"],
+    role: "sales_authorizer",
+    authorizationSessionIssuedAt: "2026-08-24T11:30:00.000Z",
+  });
+  assertEquals(requireApprovalAuthority(focusedSession, "authorize_outbound", NOW), focusedSession);
+  assertThrows(
+    () => requireApprovalAuthority({
+      ...focusedSession,
+      authorizationSessionIssuedAt: "2026-08-24T11:29:59.999Z",
+    }, "authorize_outbound", NOW),
+    Error,
+    "APPROVAL_FORBIDDEN",
+  );
+});
+
 Deno.test("approval authority rejects substitution, stale sessions, and mixed consequential permissions", () => {
   const rejected: readonly [ApprovalCommandType, ApprovalActor][] = [
     [

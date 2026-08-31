@@ -8,9 +8,9 @@ const previewSession: BoundSession = Object.freeze({
   identity: Object.freeze({
     issuer: 'https://auth.heymarksman.com',
     authorizedParty: 'synthetic-public-client',
-    subject: 'preview-operations-user',
+    subject: 'preview-sales-superuser',
     organization: 'xbf-preview-organization',
-    email: 'preview.operations@xbfreight.com',
+    email: 'sales@heymarksman.com',
     emailVerified: true,
   }),
 });

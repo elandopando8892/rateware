@@ -80,7 +80,7 @@ function preflightHeaders(url: URL): readonly string[] {
 
 function permission(verified: VerifiedWorkflowIdentity, required: 'read' | 'operate'): DocumentAuthority {
   const permissions = verified.permissions;
-  if (!Array.isArray(permissions) || (required === 'operate' ? !permissions.includes('osp:operate') : !permissions.some((value) => value === 'osp:read' || value === 'osp:operate'))) throw new OspApiError('FORBIDDEN');
+  if (!Array.isArray(permissions) || (required === 'operate' ? !permissions.some((value) => value === 'osp:operate' || value === 'osp:superuser') : !permissions.some((value) => value === 'osp:read' || value === 'osp:operate' || value === 'osp:superuser'))) throw new OspApiError('FORBIDDEN');
   return Object.freeze({ organizationId: verified.identity.organization, subject: verified.identity.subject, permissions });
 }
 

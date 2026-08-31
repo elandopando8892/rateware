@@ -109,6 +109,13 @@ describe('App authentication and routing', () => {
     expect(isApprovalSessionFresh(session, now)).toBe(false);
   });
 
+  it('keeps one verified Sales superuser session active for a focused workflow', () => {
+    const now = Date.parse('2026-08-30T21:30:00.000Z');
+    const sales = { ...session, identity: { ...session.identity, email: 'sales@heymarksman.com' } };
+    expect(isApprovalSessionFresh({ ...sales, approvalSessionIssuedAt: '2026-08-30T21:00:30.000Z' }, now)).toBe(true);
+    expect(isApprovalSessionFresh({ ...sales, approvalSessionIssuedAt: '2026-08-30T21:00:29.999Z' }, now)).toBe(false);
+  });
+
   it('labels the synthetic preview prominently', async () => {
     const history = createMemoryHistory({ initialEntries: ['/app/pipeline'] });
     render(<App authPort={authPort(session)} apiClient={client()} buildProfile="preview-synthetic" routerHistory={history} />);

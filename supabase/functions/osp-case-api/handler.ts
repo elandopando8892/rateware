@@ -105,13 +105,16 @@ function authority(
     permission === "osp:operate" ||
     permission === "osp:signature-approve" ||
     permission === "osp:sales-authorize" ||
-    permission === "osp:send-authorized"
+    permission === "osp:send-authorized" ||
+    permission === "osp:superuser"
   );
   const allowed = required === "operate"
     ? authorityPermissions.length === 1 &&
-      authorityPermissions[0] === "osp:operate"
+      (authorityPermissions[0] === "osp:operate" ||
+        authorityPermissions[0] === "osp:superuser")
     : verified.permissions.some((permission) =>
-      permission === "osp:read" || permission === "osp:operate"
+      permission === "osp:read" || permission === "osp:operate" ||
+      permission === "osp:superuser"
     );
   if (!allowed) throw new OspApiError("FORBIDDEN");
   return {

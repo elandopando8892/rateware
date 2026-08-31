@@ -63,11 +63,11 @@ function bearer(request: Request): string {
 }
 
 function canRead(verified: VerifiedWorkflowIdentity): boolean {
-  return verified.permissions.includes('osp:read') || verified.permissions.includes('osp:operate');
+  return verified.permissions.includes('osp:read') || verified.permissions.includes('osp:operate') || verified.permissions.includes('osp:superuser');
 }
 
 function canOperate(verified: VerifiedWorkflowIdentity): boolean {
-  return verified.permissions.includes('osp:operate');
+  return verified.permissions.includes('osp:operate') || verified.permissions.includes('osp:superuser');
 }
 
 async function body(request: Request): Promise<unknown> {

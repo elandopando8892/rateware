@@ -8,14 +8,18 @@ import { createAppRouter } from './router';
 import type { OspAuthProvider, OspBuildProfile } from '../config/runtime';
 
 const APPROVAL_SESSION_CLIENT_WINDOW_MS = 4 * 60 * 1_000 + 30 * 1_000;
+const SUPERUSER_SESSION_CLIENT_WINDOW_MS = 29 * 60 * 1_000 + 30 * 1_000;
 const APPROVAL_SESSION_CLOCK_SKEW_MS = 30 * 1_000;
 
 export function isApprovalSessionFresh(session: BoundSession, now = Date.now()): boolean {
   const issuedAt = Date.parse(session.approvalSessionIssuedAt ?? '');
   if (!Number.isFinite(issuedAt) || !Number.isFinite(now)) return false;
   const age = now - issuedAt;
+  const windowMs = session.identity.email === 'sales@heymarksman.com'
+    ? SUPERUSER_SESSION_CLIENT_WINDOW_MS
+    : APPROVAL_SESSION_CLIENT_WINDOW_MS;
   return age >= -APPROVAL_SESSION_CLOCK_SKEW_MS
-    && age <= APPROVAL_SESSION_CLIENT_WINDOW_MS;
+    && age <= windowMs;
 }
 
 function AuthenticatedApp({ apiClient, authProvider, buildProfile, routerHistory }: { apiClient: OspClient; authProvider: OspAuthProvider; buildProfile: OspBuildProfile; routerHistory?: RouterHistory }) {

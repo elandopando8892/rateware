@@ -33,8 +33,8 @@ const CONTENT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'im
 
 function assertAuthority(authority: DocumentAuthority, required: 'read' | 'operate'): void {
   const permitted = required === 'operate'
-    ? authority.permissions.includes('osp:operate')
-    : authority.permissions.some((permission) => permission === 'osp:read' || permission === 'osp:operate');
+    ? authority.permissions.some((permission) => permission === 'osp:operate' || permission === 'osp:superuser')
+    : authority.permissions.some((permission) => permission === 'osp:read' || permission === 'osp:operate' || permission === 'osp:superuser');
   if (!SAFE.test(authority.organizationId) || !SAFE.test(authority.subject) || !permitted) throw new Error('FORBIDDEN');
 }
 

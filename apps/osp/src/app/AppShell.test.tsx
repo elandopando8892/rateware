@@ -38,4 +38,11 @@ describe('AppShell', () => {
     await userEvent.click(screen.getByRole('button', { name: /retry sign out/i }));
     expect(logout).toHaveBeenCalledTimes(2);
   });
+
+  it('identifies the permanent Sales superuser without exposing a role selector', () => {
+    const queryClient = new QueryClient();
+    render(<QueryClientProvider client={queryClient}><AppShell email="sales@heymarksman.com" onLogout={async () => undefined}><h1>Workspace</h1></AppShell></QueryClientProvider>);
+    expect(screen.getByText('OSP administrator')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
 });

@@ -12,6 +12,7 @@ export function AppShell({
   homeLink?: ReactNode;
   children: ReactNode;
 }) {
+  const isSuperuser = email.trim().toLowerCase() === 'sales@heymarksman.com';
   const queryClient = useQueryClient();
   const [logoutFailed, setLogoutFailed] = useState(false);
   const logout = async () => {
@@ -30,7 +31,7 @@ export function AppShell({
       <header className="topbar">
         {homeLink ?? <a className="wordmark" href="/app/pipeline" aria-label="XBF OSP pipeline home"><span aria-hidden="true">XBF</span><small>Powering Freight Logistics</small></a>}
         <div className="account">
-          <span>{email}</span>
+          <span className="account-identity">{email}{isSuperuser ? <small>OSP administrator</small> : null}</span>
           <button type="button" onClick={() => void logout()}>{logoutFailed ? 'Retry sign out' : 'Sign out'}</button>
         </div>
       </header>

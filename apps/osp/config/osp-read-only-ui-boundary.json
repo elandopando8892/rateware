@@ -46,12 +46,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/App.tsx",
-      "sha256": "1a6f5ce0942a27a9f7bc66f42ace6d24ac69022e8debf9362a622343cdb7151d"
+      "sha256": "f0b7ec00a0b6aebe23c9f2eea2d84b82fb417a605e910ab7d0ccbacf9ee570bc"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/app/AppShell.tsx",
-      "sha256": "f7602fb22cc04e532bd19ddf05480f9e895356ad424e92105f97b539f56f95eb"
+      "sha256": "91dd482716b916c0f3e9a03ff6eb366a820071db0ea6d845f0890d802a5e1813"
     },
     {
       "kind": "production-ui",
@@ -216,7 +216,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "214c5283107857fd16438e7164919c195f7482f6c2c81060b712113e68b87529"
+      "sha256": "26890fff0bf2bb2fca99ce42250f4e764923a9be9175b3fcff186854c0801191"
     },
     {
       "kind": "production-ui",
@@ -241,7 +241,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/shell.css",
-      "sha256": "53561f44587a5a62b923fa53582d9ada90e76b42e2974d417d591467a323bb9b"
+      "sha256": "5c0dea63a969a12859be1ca3af381812d7491630f9a3286006a239bb1244fa72"
     },
     {
       "kind": "production-ui",

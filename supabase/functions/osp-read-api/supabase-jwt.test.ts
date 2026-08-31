@@ -90,6 +90,27 @@ Deno.test('Supabase JWT verifier grants only the reviewed Operations permission'
   })), 'FORBIDDEN');
 });
 
+Deno.test('Supabase JWT verifier grants the permanent Sales superuser permission only to Sales', async () => {
+  const { verifier, sign } = await fixture();
+  const token = await sign({
+    email: 'sales@heymarksman.com',
+    osp_permissions: ['osp:read', 'osp:superuser'],
+  });
+
+  const workflow = await verifier.verifyWorkflow(token);
+  assert.equal(workflow.identity.email, 'sales@heymarksman.com');
+  assert.deepEqual(workflow.permissions, ['osp:read', 'osp:superuser']);
+
+  await expectCode(verifier.verifyWorkflow(await sign({
+    email: 'sales@heymarksman.com',
+    osp_permissions: ['osp:read', 'osp:sales-authorize'],
+  })), 'FORBIDDEN');
+  await expectCode(verifier.verifyWorkflow(await sign({
+    email: 'ops@xbfreight.com',
+    osp_permissions: ['osp:read', 'osp:superuser'],
+  })), 'FORBIDDEN');
+});
+
 Deno.test('Supabase JWT verifier rejects claim smuggling and cross-proof composition', async () => {
   const { verifier, sign } = await fixture();
   await expectCode(verifier.verifyWorkflow(await sign({

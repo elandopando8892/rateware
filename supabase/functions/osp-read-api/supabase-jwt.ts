@@ -19,7 +19,7 @@ const EXPECTED_PERMISSIONS = Object.freeze({
   'carriers@xbfreight.com': Object.freeze(['osp:read']),
   'jgonzalez@xbfreight.com': Object.freeze(['osp:read', 'osp:signature-approve']),
   'ops@xbfreight.com': Object.freeze(['osp:read', 'osp:operate']),
-  'sales@heymarksman.com': Object.freeze(['osp:read', 'osp:sales-authorize']),
+  'sales@heymarksman.com': Object.freeze(['osp:read', 'osp:superuser']),
 } satisfies Record<string, readonly string[]>);
 
 export type SupabaseJwtVerifier = {

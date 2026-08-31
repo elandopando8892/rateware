@@ -138,6 +138,7 @@ const AUTHORITY_PERMISSIONS = new Set([
   "osp:signature-approve",
   "osp:sales-authorize",
   "osp:send-authorized",
+  "osp:superuser",
 ]);
 
 function fail(): never {
@@ -365,15 +366,18 @@ export function approvalCommunicationsWorkspace(
   const authorityPermissions = identity.permissions.filter((permission) =>
     AUTHORITY_PERMISSIONS.has(permission)
   );
-  const operations = authorityPermissions.length === 1 &&
+  const superuser = authorityPermissions.length === 1 &&
+    authorityPermissions[0] === "osp:superuser" &&
+    identity.identity.email === "sales@heymarksman.com";
+  const operations = superuser || authorityPermissions.length === 1 &&
     authorityPermissions[0] === "osp:operate";
-  const jose = authorityPermissions.length === 1 &&
+  const jose = superuser || authorityPermissions.length === 1 &&
     authorityPermissions[0] === "osp:signature-approve" &&
     identity.identity.email === "jgonzalez@xbfreight.com";
-  const sales = authorityPermissions.length === 1 &&
+  const sales = superuser || authorityPermissions.length === 1 &&
     authorityPermissions[0] === "osp:sales-authorize" &&
     identity.identity.email === "sales@heymarksman.com";
-  const carriers = authorityPermissions.length === 1 &&
+  const carriers = superuser || authorityPermissions.length === 1 &&
     authorityPermissions[0] === "osp:send-authorized" &&
     identity.identity.email === "carriers@xbfreight.com";
   const outboundWritableCurrent = record.outbound !== null &&

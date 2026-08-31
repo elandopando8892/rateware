@@ -25,7 +25,15 @@ const SPRINT_ONE_PERMISSIONS = new Set([
   'osp:signature-approve',
   'osp:sales-authorize',
   'osp:send-authorized',
+  'osp:superuser',
 ]);
+
+export function hasWorkflowPermission(
+  permissions: readonly string[],
+  permission: string,
+): boolean {
+  return permissions.includes(permission) || permissions.includes('osp:superuser');
+}
 
 function fail(): never {
   throw new Error('FORBIDDEN');
@@ -50,7 +58,7 @@ export function assertWorkflowPermission(
   authority: OspAuthorityContext,
   permission: 'osp:read' | 'osp:operate' | string,
 ): void {
-  if (!SPRINT_ONE_PERMISSIONS.has(permission) || !authority.permissions.includes(permission)) fail();
+  if (!SPRINT_ONE_PERMISSIONS.has(permission) || !hasWorkflowPermission(authority.permissions, permission)) fail();
 }
 
 export function assertServerDerivedOrganization(

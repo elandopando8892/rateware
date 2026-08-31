@@ -166,13 +166,15 @@ function requireOperate(identity: VerifiedWorkflowIdentity): void {
     "osp:signature-approve",
     "osp:sales-authorize",
     "osp:send-authorized",
+    "osp:superuser",
   ]);
   const authority = identity.permissions.filter((permission) =>
     separatedPermissions.has(permission)
   );
   if (
     !identity.identity.emailVerified ||
-    authority.length !== 1 || authority[0] !== "osp:operate"
+    authority.length !== 1 ||
+    (authority[0] !== "osp:operate" && authority[0] !== "osp:superuser")
   ) throw new Error("APPROVAL_FORBIDDEN");
 }
 

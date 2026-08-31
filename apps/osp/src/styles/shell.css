@@ -8,6 +8,8 @@
 .primary-navigation a:not(.wordmark) { color: var(--muted); font-weight: 700; text-decoration: none; }
 .form-builder-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
 .account { display: flex; align-items: center; gap: 1rem; color: var(--muted); font-size: .88rem; }
+.account-identity { display: grid; gap: .1rem; text-align: right; }
+.account-identity small { color: var(--muted); font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .account button { background: transparent; border: 1px solid var(--line); color: var(--ink); }
 #main-content { width: min(1120px, calc(100% - 2rem)); margin: 0 auto; padding: 3rem 0 5rem; }
 .route-placeholder { max-width: 42rem; }
