@@ -513,8 +513,8 @@ export function createPostgresWorkflowViewSource(
                source_message.sender_email as reply_sender_email,
                source_message.internet_message_id as reply_internet_message_id,
                source_message.subject as reply_original_subject,
-               source_message.to_addresses as reply_original_to,
-               source_message.cc_addresses as reply_original_cc,
+               to_jsonb(source_message.to_addresses) as reply_original_to,
+               to_jsonb(source_message.cc_addresses) as reply_original_cc,
                draft.id as payload_id, draft.payload_kind, draft.case_version as payload_case_version,
                draft.version = (
                  select max(latest_draft.version)

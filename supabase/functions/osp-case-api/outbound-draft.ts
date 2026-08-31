@@ -370,7 +370,7 @@ async function replySourceFromTransaction(
   input: { organizationId: string; caseId: string },
 ): Promise<{ replyContext: ReplyContext | null; gmailThreadId: string | null }> {
   const rows =
-    await tx`select gmail_thread_id, sender_email, internet_message_id, subject, to_addresses, cc_addresses from osp_private.gmail_messages where organization_id = ${input.organizationId} and case_id = ${input.caseId} order by received_at asc, created_at asc, id asc limit 1`;
+    await tx`select gmail_thread_id, sender_email, internet_message_id, subject, to_jsonb(to_addresses) as to_addresses, to_jsonb(cc_addresses) as cc_addresses from osp_private.gmail_messages where organization_id = ${input.organizationId} and case_id = ${input.caseId} order by received_at asc, created_at asc, id asc limit 1`;
   if (rows.length !== 1) {
     return Object.freeze({ replyContext: null, gmailThreadId: null });
   }
