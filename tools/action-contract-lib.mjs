@@ -37,6 +37,7 @@ function hash(value) { return createHash("sha256").update(value).digest("hex"); 
 
 // Format/comment-insensitive lexical tokens. This is intentionally not a semantic parser.
 export function semanticTokens(value, { sql = false } = {}) {
+  value = value.replace(/\r\n?/g, "\n");
   const out = [];
   let i = 0;
   while (i < value.length) {

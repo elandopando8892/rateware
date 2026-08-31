@@ -52,7 +52,7 @@ const corsOnlyAuthorizationEnvelopes = {
   'edge.gmail-oauth-callback.': '3584f61979a5ad5605e49b243e33fc9769f314808a5ae6b1f866154088b59b29',
   'edge.google-chat-app.': 'cac11d8a48e151559ddd4145dd9a7f8a933caaa6305667083544f35175515a05',
   'edge.ratebook-carrier-api.': 'ce08ec32d9d78aeef3f0f745240d84c5f2da51e14e2862e8bcc8096aeba37907',
-  'edge.rfx-bid-api.': 'e9ec9cde40ad64ebc94dc24eadfe3676c392f4ad32ec48551c60c060b8cfd70f',
+  'edge.rfx-bid-api.': 'e0dfcdf045b4043bc40a95eaae8e786539a3f7c15d348471445929a64ee5d0e8',
   'edge.shipper-profile-api.': 'a6920f9f1d0daf40018b3f4390578b051b504fdab9d377e4a52bab3e98f9b0dd',
   'edge.sync-banxico-fx.': '0cd59df491252504b52db16b3d6a2aff738bfcc6cd9f3a07ec87b43c87fc85a4',
   'edge.whatsapp-webhook.': 'd0e3629ff9357c3035cd753c19ed4e8bbb04c954ab642d5539a6cbc161c7c403',
@@ -83,6 +83,18 @@ const supabaseAuthSourceFingerprintOverrides = {
   'edge.create-raw-upload.create_raw_upload': '162bfb646dea07477a3f6d27be7ee573db7efbafd6d089b0eeea5a06dafccc79',
   'edge.interpret-upload.interpret_upload': '103d4f9050f9f7a7b78dc30049e5ae0bd3534f7caadf38b9bd27e25307bba3ed',
   'edge.sync-rateware-catalog.sync_rateware_catalog': '207fd12f17afbbd5e4dd58a0e914ad939aab033816bf8a5a64b461cf46aa8c83',
+};
+
+// These reviewed rfx-bid handlers contain multiline literals. Normalizing CRLF
+// before lexical fingerprinting makes their identities stable across Windows
+// and Unix checkouts without changing executable behavior.
+const portableRfxBidSourceFingerprintOverrides = {
+  'edge.rfx-bid-api.decline_invitation': '6ec9d89d98ca2bbcceed7b697fa1acd22929d29d4519c4f31e5ffc7d72fd28c0',
+  'edge.rfx-bid-api.get_invitation': 'ee9eaae5b385393fbe889a2a6a374aea3b8ae1a48c29b18848e116427cdaacbf',
+  'edge.rfx-bid-api.public_bid_room_find_invitations': '789fd150c4ca512fa07374cc0eab1d9b53081861a3c2425691fc5c63300237b8',
+  'edge.rfx-bid-api.public_bid_room_request_invite': '1d6b135fde12db3a88cc64efd2e5c5c39ce1dafbc3c79eb94cb0216425f40907',
+  'edge.rfx-bid-api.submit_bid': 'd60402a1c008a8b884b84c6436010d55e3fcac0457fff6cf0c592b51547b4934',
+  'edge.rfx-bid-api.withdraw_bid': '6ec9d89d98ca2bbcceed7b697fa1acd22929d29d4519c4f31e5ffc7d72fd28c0',
 };
 
 const supabaseAuthMetadataOverrides = {
@@ -286,8 +298,8 @@ export const ACTION_CONTRACT = {
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({
       ...entry,
       contractVersion,
-      ...((ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId])
-        ? { sourceFingerprint: ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] }
+      ...((ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId])
+        ? { sourceFingerprint: ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] }
         : {}),
       ...(entry.canonicalId.startsWith('edge.google-chat-app.')
         ? { analysisCoverage: 'shared-observed', coverageSignals: ['shared_dependency_observed'] }
