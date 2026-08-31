@@ -1217,8 +1217,8 @@ assert.match(authSource, /export async function authenticatedFetch/, "Authentica
 assert.match(authSource, /response\.status !== 401[\s\S]+forceRefresh: true[\s\S]+fetch\(input, withBearerToken\(init, fresh\)\)/, "Authenticated fetch should retry one unauthorized request after session restoration");
 assert.match(authSource, /showSessionRecovery/, "Failed silent restoration should expose controlled reauthentication");
 assert.match(authSource, /persistSession: true[\s\S]+autoRefreshToken: true/, "Supabase Auth should persist and refresh sessions");
-assert.match(authSource, /signInWithPassword\(\{ email, password \}\)/, "Rateware login should use Supabase email and password authentication");
-assert.match(authSource, /resetPasswordForEmail/, "Rateware login should provide Supabase password recovery");
+assert.match(authSource, /signInWithOAuth\(\{[\s\S]+provider: "google"[\s\S]+redirectTo/, "Rateware login should use Supabase Google OAuth with an explicit return URL");
+assert.doesNotMatch(authSource, /signInWithPassword|resetPasswordForEmail/, "Rateware login should not expose legacy password flows");
 assert.match(landingSource, /heroButton\.textContent = "Opening sign-in\.\.\."/, "Landing sign-in should show an in-progress state");
 assert.match(authSource, /authClient\.auth\.signOut\(\)/, "Sign-out should revoke the Supabase browser session");
 assert.doesNotMatch(authSource, /setStatus\(error\.message\)/, "Auth controls should pass caught errors through shared humanization");

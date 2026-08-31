@@ -16,8 +16,7 @@ heroForm?.addEventListener("submit", async (event) => {
   }
 
   try {
-    const result = await openLogin();
-    if (result && !result.reset) window.location.href = "./app.html";
+    await openLogin({ redirectTo: new URL("./app.html", window.location.href).href });
   } catch (error) {
     heroAuthRunning = false;
     if (heroButton) {

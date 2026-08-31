@@ -39321,3 +39321,18 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
 .rateware-login-card input { width: 100%; }
 .rateware-login-card [data-auth-error]:empty { display: none; }
 .rateware-login-card [data-auth-error] { margin: 0; color: #b42318; }
+.rateware-login-copy { margin: 0; color: #475467; line-height: 1.5; }
+.rateware-login-note { margin: 0; color: #667085; font-size: 12px; line-height: 1.45; text-align: center; }
+.rateware-login-card .google-sign-in {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  background: #fff;
+  color: #101828;
+  border: 1px solid #d0d5dd;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 5%);
+}
+.rateware-login-card .google-sign-in:hover { background: #f9fafb; border-color: #98a2b3; }
+.google-mark { color: #4285f4; font: 700 18px/1 Arial, sans-serif; }

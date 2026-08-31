@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const authSource = readFileSync(new URL("../supabase/functions/_shared/auth.ts", import.meta.url), "utf8");
+const browserAuthSource = readFileSync(new URL("../src/auth.js", import.meta.url), "utf8");
 
 test("private Rateware APIs accept only Supabase Auth", () => {
   assert.doesNotMatch(authSource, /Kinde|RATEWARE_AUTH_PROVIDER|dual/i);
@@ -14,6 +15,13 @@ test("Supabase tokens are verified by Auth before claims are trusted", () => {
   assert.match(authSource, /if \(!response\.ok\) throw/);
   assert.match(authSource, /appMetadata\.rateware_organization_id/);
   assert.doesNotMatch(authSource, /user_metadata.*organization/i);
+});
+
+test("Rateware browser sign-in uses Google OAuth only", () => {
+  assert.match(browserAuthSource, /signInWithOAuth/);
+  assert.match(browserAuthSource, /provider:\s*["']google["']/);
+  assert.doesNotMatch(browserAuthSource, /signInWithPassword/);
+  assert.doesNotMatch(browserAuthSource, /resetPasswordForEmail/);
 });
 
 test("unverified JWT claims are never used for verifier selection", () => {

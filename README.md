@@ -24,7 +24,7 @@ Static Upload Center module for preserving carrier quotation source files before
 1. Run `supabase/raw_uploads.sql` in Supabase SQL Editor.
 2. Copy `src/config.example.js` values into `src/config.js`.
 3. Replace the project URL and anon key in `src/config.js`.
-4. Enable email/password sign-in in the existing Rateware Supabase project.
+4. Enable Google sign-in in the existing Rateware Supabase project, configure Google's callback URL, and allow the production and preview redirect URLs.
 5. Deploy Supabase functions: `create-raw-upload`, `rateware-api`, and `interpret-upload`.
 6. Set Supabase function secrets:
    - `OPENAI_API_KEY`

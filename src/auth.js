@@ -39,17 +39,16 @@ function ensureLoginDialog() {
   dialog.innerHTML = `
     <form class="rateware-login-card">
       <header><div><span class="eyebrow">Rateware workspace</span><h2>Sign in</h2></div><button type="button" data-close class="secondary" aria-label="Close">Close</button></header>
-      <label>Work email<input name="email" type="email" autocomplete="username" required /></label>
-      <label>Password<input name="password" type="password" autocomplete="current-password" required /></label>
+      <p class="rateware-login-copy">Use your authorized Google account to access the Rateware workspace.</p>
       <p data-auth-error role="alert"></p>
-      <button value="signin" type="submit">Continue</button>
-      <button value="reset" type="submit" class="secondary">Reset password</button>
+      <button value="google" type="submit" class="google-sign-in"><span aria-hidden="true" class="google-mark">G</span>Continue with Google</button>
+      <p class="rateware-login-note">Google is used only to verify your identity. Nothing is sent without confirmation.</p>
     </form>`;
   document.body.append(dialog);
   return dialog;
 }
 
-export function openLogin() {
+export function openLogin({ redirectTo = window.location.href } = {}) {
   if (loginPromise) return loginPromise;
   const dialog = ensureLoginDialog();
   dialog.showModal();
@@ -64,21 +63,15 @@ export function openLogin() {
     dialog.querySelector("[data-close]").addEventListener("click", close, { once: true });
     const submit = async (event) => {
       event.preventDefault();
-      const action = event.submitter?.value || "signin";
-      const form = dialog.querySelector("form");
-      const email = form.elements.email.value.trim();
-      const password = form.elements.password.value;
       const errorNode = dialog.querySelector("[data-auth-error]");
       errorNode.textContent = "";
       try {
-        if (action === "reset") {
-          const { error } = await authClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.href });
-          if (error) throw error;
-          return finish({ reset: true });
-        }
-        const { data, error } = await authClient.auth.signInWithPassword({ email, password });
+        const { data, error } = await authClient.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo }
+        });
         if (error) throw error;
-        finish(data.session);
+        finish(data);
       } catch (error) {
         errorNode.textContent = humanizeError(error);
       }
