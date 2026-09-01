@@ -241,3 +241,13 @@ test("unapplied migration exposes only service-role RPCs and no request-body col
   assert.match(sql, /fail_rfx_private_resolver_request/i);
   assert.doesNotMatch(sql, /\n\s*(request_body|signature|invitation_token|operational_fit|bid_rate)\s+/i);
 });
+
+test("health migration exposes aggregate service-role evidence without adding a retention policy", async () => {
+  const sql = await readFile(new URL("../supabase/migrations/20260901230000_rfx_private_resolver_ledger_health.sql", import.meta.url), "utf8");
+  assert.match(sql, /get_rfx_private_resolver_ledger_health/i);
+  assert.match(sql, /grant execute[\s\S]+to service_role/i);
+  assert.match(sql, /revoke all[\s\S]+from public, anon, authenticated/i);
+  assert.match(sql, /requestBodyStored'[\s\S]+false/i);
+  assert.match(sql, /credentialMaterialStored'[\s\S]+false/i);
+  assert.doesNotMatch(sql, /delete\s+from|truncate|drop\s+table/i);
+});

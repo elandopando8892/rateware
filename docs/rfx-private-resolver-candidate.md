@@ -36,6 +36,11 @@ The Edge Function fails closed when this ledger is unavailable. The local HTTP
 harness uses the same interface with an ignored file-backed ledger so replay can
 be exercised without applying the database migration.
 
+Sprint 9.5 additionally validates both candidate migrations against disposable
+Supabase Postgres. The database preflight proves atomic concurrency, RLS,
+service-role-only RPCs, aggregate-only health and the external-execution
+constraint. See `docs/rfx-private-resolver-postgres-preflight.md`.
+
 ## Runtime gates
 
 `RATEWARE_PRIVATE_RESOLVER_CANARY_ENABLED=true` enables only the read-only
@@ -61,6 +66,7 @@ with MARKSMAN Loads. The fixture is not production Rateware evidence.
 
 ## Deployment boundary
 
-Sprint 9.4 authors the migration and function adapter but does not apply or
-deploy either one. Production requires migration review, secret provisioning,
-network/rate limiting and a separately authorized release.
+Sprint 9.4 authored the ledger migration and Sprint 9.5 applied it only inside a
+discarded local container. Neither migration nor the Edge Function was deployed
+remotely. Production requires retention policy, migration review, secret
+provisioning, network/rate limiting and a separately authorized release.

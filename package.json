@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "npx serve .",
     "dev:private-resolver-candidate": "node tools/serve-rfx-private-resolver-candidate.mjs",
+    "test:integration:resolver-ledger": "node tools/verify-rfx-private-resolver-ledger-postgres.mjs",
+    "test:release:private-resolver": "npm test && npm run test:integration:resolver-ledger && deno check supabase/functions/rfx-private-resolver/index.ts",
     "test": "node tests/upload-center.test.mjs && node tests/rateware-stability.test.mjs && node --test tests/rfx-private-resolver.test.mjs"
   }
 }
