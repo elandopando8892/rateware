@@ -12,7 +12,7 @@
     "build": "vite build --config vite.config.ts",
     "build:vercel": "node scripts/prepare-clamav.mjs && pnpm build",
     "lint": "eslint . --rule react-hooks/set-state-in-effect:off --rule react-hooks/immutability:off",
-    "test": "vitest run --config vite.config.ts && node --test scripts/osp-read-only-ui-boundary.test.mjs",
+    "test": "vitest run --config vite.config.ts --pool=threads --maxWorkers=1 && node --test scripts/osp-read-only-ui-boundary.test.mjs",
     "test:e2e": "playwright test --config playwright.config.ts"
   },
   "dependencies": {

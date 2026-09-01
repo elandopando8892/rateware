@@ -5,7 +5,12 @@ import { providerGmailAllowedAccount } from '../_shared/provider-gmail.ts';
 import { requireProviderGmailConnection, syncProviderGmailConnection } from '../_shared/provider-gmail-sync.ts';
 import { triggerOspGmailWorker } from '../_shared/osp/worker-trigger.ts';
 import { OSP_PRODUCTION_ORGANIZATION_BINDING } from '../osp-read-api/auth-policy.ts';
-import { createScheduledGmailPollHandler, type ScheduledGmailPollReceipt } from './handler.ts';
+import {
+  createScheduledGmailPollHandler,
+  ScheduledGmailPollDependencyError,
+  type ScheduledGmailPollFailureCode,
+  type ScheduledGmailPollReceipt,
+} from './handler.ts';
 
 function required(name: string): string {
   const value = Deno.env.get(name)?.trim();
@@ -75,13 +80,20 @@ try {
         .eq('mailbox_email', providerGmailAllowedAccount())
         .in('status', ['connected', 'watching'])
         .limit(2);
-      if (selected.error || selected.data?.length !== 1) throw new Error('GMAIL_CONNECTION_UNAVAILABLE');
+      if (selected.error || selected.data?.length !== 1) {
+        throw new ScheduledGmailPollDependencyError('POLL_GMAIL_CONNECTION_UNAVAILABLE');
+      }
       const connection = await requireProviderGmailConnection(supabase, organizationId, selected.data[0].legal_entity_id);
       const synced = await syncProviderGmailConnection(supabase, organizationId, connection, {
         limit: 50,
         trigger: 'osp_scheduled_poll',
       });
-      const worker = await triggerOspGmailWorker({ supabaseUrl, serviceRoleKey, limit: 10 });
+      let worker: Awaited<ReturnType<typeof triggerOspGmailWorker>>;
+      try {
+        worker = await triggerOspGmailWorker({ supabaseUrl, serviceRoleKey, limit: 10 });
+      } catch {
+        throw new ScheduledGmailPollDependencyError('POLL_WORKER_UNAVAILABLE');
+      }
       return {
         discovered: Number(synced.data.discovered),
         insertedMessages: Number(synced.data.inserted_messages),
@@ -110,12 +122,12 @@ try {
         where id = 'singleton' and gmail_poll_last_status = 'running' and gmail_poll_lease_id = ${leaseId}::uuid
       `;
     },
-    fail: async (leaseId: string) => {
+    fail: async (errorCode: ScheduledGmailPollFailureCode, leaseId: string) => {
       await sql`
         update osp_private.production_controls
         set gmail_poll_last_completed_at = statement_timestamp(),
             gmail_poll_last_status = 'failed',
-            gmail_poll_last_error_code = 'POLL_DEPENDENCY_UNAVAILABLE',
+            gmail_poll_last_error_code = ${errorCode},
             gmail_poll_lease_id = null,
             gmail_poll_consecutive_failures = least(gmail_poll_consecutive_failures + 1, 2147483647)
         where id = 'singleton' and gmail_poll_last_status = 'running' and gmail_poll_lease_id = ${leaseId}::uuid

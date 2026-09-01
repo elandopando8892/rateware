@@ -7,12 +7,46 @@ export type ScheduledGmailPollReceipt = Readonly<{
   ospProcessed: number;
 }>;
 
+export type ScheduledGmailPollFailureCode =
+  | 'POLL_DEPENDENCY_UNAVAILABLE'
+  | 'POLL_GMAIL_CONNECTION_UNAVAILABLE'
+  | 'POLL_TOKEN_DECRYPT_FAILED'
+  | 'POLL_REFRESH_TOKEN_MISSING'
+  | 'POLL_OAUTH_CLIENT_MISSING'
+  | 'POLL_TOKEN_REFRESH_REJECTED'
+  | 'POLL_ACCESS_TOKEN_UNAVAILABLE'
+  | 'POLL_SCOPE_INVALID'
+  | 'POLL_GMAIL_SYNC_UNAVAILABLE'
+  | 'POLL_WORKER_UNAVAILABLE';
+
+export class ScheduledGmailPollDependencyError extends Error {
+  constructor(readonly code: ScheduledGmailPollFailureCode) {
+    super(code);
+    this.name = 'ScheduledGmailPollDependencyError';
+  }
+}
+
+export function classifyScheduledGmailPollFailure(error: unknown): ScheduledGmailPollFailureCode {
+  if (error instanceof ScheduledGmailPollDependencyError) return error.code;
+  const message = error instanceof Error ? `${error.name} ${error.message}` : '';
+  if (/unsupported gmail token envelope|operationerror|decrypt|cipher/i.test(message)) return 'POLL_TOKEN_DECRYPT_FAILED';
+  if (/refresh token is unavailable/i.test(message)) return 'POLL_REFRESH_TOKEN_MISSING';
+  if (/oauth client is not configured/i.test(message)) return 'POLL_OAUTH_CLIENT_MISSING';
+  if (/invalid_grant|expired or revoked|token refresh|refresh token.*(?:failed|rejected)|bad request/i.test(message)) {
+    return 'POLL_TOKEN_REFRESH_REJECTED';
+  }
+  if (/access token/i.test(message)) return 'POLL_ACCESS_TOKEN_UNAVAILABLE';
+  if (/scope/i.test(message)) return 'POLL_SCOPE_INVALID';
+  if (/gmail/i.test(message)) return 'POLL_GMAIL_SYNC_UNAVAILABLE';
+  return 'POLL_DEPENDENCY_UNAVAILABLE';
+}
+
 export type ScheduledGmailPollHandlerOptions = Readonly<{
   expectedToken: string;
   claim(): Promise<Readonly<{ status: 'claimed'; leaseId: string }> | Readonly<{ status: 'disabled' | 'busy' }>>;
   poll(): Promise<ScheduledGmailPollReceipt>;
   complete(receipt: ScheduledGmailPollReceipt, leaseId: string): Promise<void>;
-  fail(leaseId: string): Promise<void>;
+  fail(code: ScheduledGmailPollFailureCode, leaseId: string): Promise<void>;
   incidentId?: () => string;
 }>;
 
@@ -101,8 +135,8 @@ export function createScheduledGmailPollHandler(options: ScheduledGmailPollHandl
             outbound_enabled: false,
           },
         }, 200);
-      } catch {
-        await options.fail(claim.leaseId).catch(() => undefined);
+      } catch (error) {
+        await options.fail(classifyScheduledGmailPollFailure(error), claim.leaseId).catch(() => undefined);
         return json({ error: { code: 'DEPENDENCY_UNAVAILABLE', incident_id: incidentId() } }, 503);
       }
     } catch {

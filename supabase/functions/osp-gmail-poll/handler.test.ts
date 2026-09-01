@@ -1,6 +1,9 @@
 import { assert, assertEquals } from 'jsr:@std/assert@1.0.14';
 
-import { createScheduledGmailPollHandler } from './handler.ts';
+import {
+  createScheduledGmailPollHandler,
+  ScheduledGmailPollDependencyError,
+} from './handler.ts';
 
 const expectedToken = 'x'.repeat(48);
 const body = JSON.stringify({ version: 1, action: 'poll_connected_provider_mailbox' });
@@ -74,7 +77,11 @@ Deno.test('scheduled Gmail poll closes a failed lease and exposes no dependency 
     claim: async () => ({ status: 'claimed', leaseId: 'lease-3' }),
     poll: async () => { throw new Error('private Gmail refresh token failed'); },
     complete: async () => undefined,
-    fail: async (leaseId) => { assertEquals(leaseId, 'lease-3'); failures += 1; },
+    fail: async (code, leaseId) => {
+      assertEquals(code, 'POLL_TOKEN_REFRESH_REJECTED');
+      assertEquals(leaseId, 'lease-3');
+      failures += 1;
+    },
     incidentId: () => 'incident-safe',
   });
   const response = await handler(request());
@@ -83,4 +90,22 @@ Deno.test('scheduled Gmail poll closes a failed lease and exposes no dependency 
   const payload = JSON.stringify(await response.json());
   assert(payload.includes('DEPENDENCY_UNAVAILABLE'));
   assert(!payload.includes('refresh token'));
+});
+
+Deno.test('scheduled Gmail poll persists a bounded dependency stage without exposing it to callers', async () => {
+  let persisted = '';
+  const handler = createScheduledGmailPollHandler({
+    expectedToken,
+    claim: async () => ({ status: 'claimed', leaseId: 'lease-4' }),
+    poll: async () => { throw new ScheduledGmailPollDependencyError('POLL_TOKEN_DECRYPT_FAILED'); },
+    complete: async () => undefined,
+    fail: async (code) => { persisted = code; },
+    incidentId: () => 'incident-bounded',
+  });
+  const response = await handler(request());
+  assertEquals(response.status, 503);
+  assertEquals(persisted, 'POLL_TOKEN_DECRYPT_FAILED');
+  const payload = JSON.stringify(await response.json());
+  assert(payload.includes('DEPENDENCY_UNAVAILABLE'));
+  assert(!payload.includes('DECRYPT'));
 });

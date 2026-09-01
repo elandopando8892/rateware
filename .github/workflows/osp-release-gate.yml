@@ -1,0 +1,65 @@
+name: osp-release-gate
+
+on:
+  pull_request:
+    paths:
+      - 'apps/osp/**'
+      - 'supabase/functions/osp-*/**'
+      - 'supabase/functions/_shared/osp/**'
+      - 'supabase/functions/_shared/provider-gmail*.ts'
+      - 'supabase/migrations/*osp*'
+      - '.github/workflows/osp-release-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  osp-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Activate pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.19.0 --activate
+
+      - name: Install OSP dependencies
+        working-directory: apps/osp
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        working-directory: apps/osp
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Lint OSP UI
+        working-directory: apps/osp
+        run: pnpm lint
+
+      - name: Test OSP UI
+        working-directory: apps/osp
+        run: pnpm test
+
+      - name: Test OSP browser workflow
+        working-directory: apps/osp
+        run: pnpm test:e2e
+
+      - name: Build OSP UI
+        working-directory: apps/osp
+        run: pnpm build
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.5.6
+
+      - name: Test OSP Gmail poll and adaptive worker
+        run: |
+          deno check supabase/functions/osp-gmail-poll/index.ts supabase/functions/osp-worker/edge.ts
+          deno test --no-check --allow-env --allow-read supabase/functions/osp-gmail-poll supabase/functions/osp-worker
