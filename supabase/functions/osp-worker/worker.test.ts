@@ -46,6 +46,7 @@ Deno.test("worker reports a safe intake stage while preserving retry classificat
     code: "STORAGE_TEMPORARY",
     stage: "raw_store",
     errorName: "Error",
+    diagnosticCode: "STORAGE_TEMPORARY",
   }]);
   assertEquals(
     (failures[0] as { errorCode: string }).errorCode,

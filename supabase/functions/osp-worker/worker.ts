@@ -283,6 +283,7 @@ export async function runWorker(
       code: JobErrorCode;
       stage: IntakeStage | "worker_execute";
       errorName: string;
+      diagnosticCode: string | null;
     }) => void;
     limit?: number;
   },
@@ -317,6 +318,10 @@ export async function runWorker(
     } catch (error) {
       const code = errorCode(error);
       const original = rootError(error);
+      const diagnosticCode = original instanceof Error &&
+          /^[A-Z][A-Z0-9_]{2,63}$/.test(original.message)
+        ? original.message
+        : null;
       const diagnostic = {
         jobId: job.id,
         kind: job.kind,
@@ -324,6 +329,7 @@ export async function runWorker(
         code,
         stage: failureStage(error),
         errorName: original instanceof Error ? original.name : typeof original,
+        diagnosticCode,
       };
       if (deps.reportFailure) deps.reportFailure(diagnostic);
       else {console.error(
