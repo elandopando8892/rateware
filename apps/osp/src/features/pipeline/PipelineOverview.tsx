@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 
 import type { OspCaseReadClient, OspClient, OspReadClient } from '../../api/osp-client';
 import type { CaseState } from '../../api/contracts';
+import { HistoricalIntakePanel } from '../cases/HistoricalIntakePanel';
 import { caseNextGates, caseStateLabels, caseStateTone, formatCaseDate } from '../cases/case-presenter';
 import { deriveMailboxHealth, type MailboxHealth } from './pipeline-health';
 import { pipelineOverviewQueryKey, usePipelineOverview } from './use-pipeline-overview';
@@ -38,9 +39,23 @@ const reviewStates = new Set<CaseState>([
 ]);
 
 type PipelineClient = OspReadClient & Partial<OspCaseReadClient> &
-  Partial<Pick<OspClient, 'syncGmailInbox' | 'renewGmailWatch'>>;
+  Partial<Pick<OspClient, 'syncGmailInbox' | 'renewGmailWatch' | 'previewHistoricalGmailSearch' | 'importHistoricalGmailMessage'>>;
 
-export function PipelineOverview({ client }: { client: PipelineClient }) {
+const salzilloHistoricalIntake = {
+  status: 'preview_only' as const,
+  query: 'in:inbox subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/09 before:2026/08/12',
+  after_date: '2026-08-09',
+  before_date: '2026-08-12',
+  candidate_count: 0,
+  duplicate_state: 'ready' as const,
+  checkpoint_unchanged: true as const,
+  source_preserved: true as const,
+  external_effects: false as const,
+};
+
+const salzilloSubject = 'PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN';
+
+export function PipelineOverview({ client, email = '' }: { client: PipelineClient; email?: string }) {
   const queryClient = useQueryClient();
   const { pipeline, gmail } = usePipelineOverview(client);
   const cases = useQuery({
@@ -145,6 +160,14 @@ export function PipelineOverview({ client }: { client: PipelineClient }) {
           </div>
         ) : null}
       </section>
+
+      {email.trim().toLowerCase() === 'sales@heymarksman.com' ? (
+        <HistoricalIntakePanel
+          intake={salzilloHistoricalIntake}
+          subject={salzilloSubject}
+          client={client}
+        />
+      ) : null}
 
       <section className="panel health-panel" aria-labelledby="gmail-title">
         <div className="panel-heading">

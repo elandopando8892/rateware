@@ -59,7 +59,7 @@ const pipelineRoute = createRoute({
   path: 'pipeline',
   component: function PipelineRoute() {
     const context = pipelineRoute.useRouteContext();
-    return <PipelineOverview client={context.apiClient} />;
+    return <PipelineOverview client={context.apiClient} email={context.email} />;
   },
 });
 const corporateProfileRoute = createRoute({

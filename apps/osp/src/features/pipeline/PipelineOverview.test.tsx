@@ -9,9 +9,10 @@ import { PipelineOverview } from './PipelineOverview';
 afterEach(() => { cleanup(); onlineManager.setOnline(true); });
 
 function renderOverview(client: OspReadClient & Partial<OspCaseReadClient> &
-  Partial<Pick<OspClient, 'syncGmailInbox' | 'renewGmailWatch'>>) {
+  Partial<Pick<OspClient, 'syncGmailInbox' | 'renewGmailWatch' | 'previewHistoricalGmailSearch' | 'importHistoricalGmailMessage'>>,
+email = '') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={queryClient}><PipelineOverview client={client} /></QueryClientProvider>);
+  return render(<QueryClientProvider client={queryClient}><PipelineOverview client={client} email={email} /></QueryClientProvider>);
 }
 
 const disconnected = {
@@ -215,5 +216,68 @@ describe('PipelineOverview', () => {
     await userEvent.click(screen.getByRole('button', { name: /enable automatic intake/i }));
     expect(renewGmailWatch).toHaveBeenCalledOnce();
     expect(await screen.findByText(/automatic intake active until/i)).toBeInTheDocument();
+  });
+
+  it('exposes the exact Salzillo recovery only to Sales and preserves every outbound guard', async () => {
+    const salzilloQuery = 'in:inbox subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/09 before:2026/08/12';
+    const previewHistoricalGmailSearch = vi.fn(async () => ({
+      query: salzilloQuery,
+      candidates: [{
+        candidate_id: 'salzillo_message_1',
+        subject: 'PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN',
+        sender_domain: 'xbfreight.com',
+        received_at: '2026-08-10T15:00:00.000Z',
+        attachment_count: 1,
+        duplicate_state: 'ready' as const,
+      }],
+      checkpoint_unchanged: true as const,
+      persisted: false as const,
+      outbound_enabled: false as const,
+    }));
+    const importHistoricalGmailMessage = vi.fn(async () => ({
+      candidate_id: 'salzillo_message_1',
+      claim_id: '97000000-0000-4000-8000-000000000001',
+      import_status: 'imported' as const,
+      attachment_metadata_rows: 1,
+      osp_enqueued: 1,
+      osp_processed: 0,
+      checkpoint_unchanged: true as const,
+      source_preserved: true as const,
+      persisted: true as const,
+      outbound_enabled: false as const,
+    }));
+    const client = {
+      listOnboardingWorkspace: vi.fn(async () => ({ requests_total: '3', documents_pending: '2', under_review: '0', ready_for_approval: '0' })),
+      getGmailStatus: vi.fn(async () => disconnected),
+      previewHistoricalGmailSearch,
+      importHistoricalGmailMessage,
+    };
+
+    const view = renderOverview(client, 'ops@xbfreight.com');
+    expect(screen.queryByRole('heading', { name: /bounded gmail preflight/i })).not.toBeInTheDocument();
+    view.unmount();
+    renderOverview(client, 'sales@heymarksman.com');
+
+    expect(await screen.findByText(salzilloQuery)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /verify exact candidate/i }));
+    expect(previewHistoricalGmailSearch).toHaveBeenCalledWith({
+      subjectPhrase: 'PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN',
+      afterDate: '2026-08-09',
+      beforeDate: '2026-08-12',
+    });
+    expect(screen.getByLabelText('Historical intake preflight')).toHaveTextContent('Candidates1');
+    expect(await screen.findByText(/xbfreight\.com · 1 attachment.*new import/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: /import only this verified customer-setup request/i }));
+    await userEvent.click(screen.getByRole('button', { name: /import selected request/i }));
+    expect(importHistoricalGmailMessage).toHaveBeenCalledOnce();
+    expect(importHistoricalGmailMessage).toHaveBeenCalledWith(expect.objectContaining({
+      subjectPhrase: 'PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN',
+      afterDate: '2026-08-09',
+      beforeDate: '2026-08-12',
+      candidateId: 'salzillo_message_1',
+      idempotencyKey: expect.stringMatching(/^historical_gmail:/),
+    }));
+    expect(await screen.findByText(/imported into osp intake/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 intake job queued · 1 attachment metadata row/i)).toBeInTheDocument();
   });
 });

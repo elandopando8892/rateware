@@ -13,6 +13,7 @@ export function HistoricalIntakePanel({ intake, subject, client }: {
   client?: HistoricalClient;
 }) {
   const [candidate, setCandidate] = useState<Awaited<ReturnType<NonNullable<HistoricalClient['previewHistoricalGmailSearch']>>>['candidates'][number] | null>(null);
+  const [verifiedCandidateCount, setVerifiedCandidateCount] = useState<number | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [pending, setPending] = useState<'verify' | 'import' | null>(null);
   const [receipt, setReceipt] = useState<HistoricalGmailImportResult | null>(null);
@@ -24,6 +25,7 @@ export function HistoricalIntakePanel({ intake, subject, client }: {
     setPending('verify'); setFailed(false);
     try {
       const result = await client.previewHistoricalGmailSearch({ subjectPhrase: subject, afterDate: intake.after_date, beforeDate: intake.before_date });
+      setVerifiedCandidateCount(result.candidates.length);
       if (result.candidates.length !== 1) throw new Error('candidate mismatch');
       setCandidate(result.candidates[0]);
     } catch { setFailed(true); }
@@ -55,7 +57,7 @@ export function HistoricalIntakePanel({ intake, subject, client }: {
       </div>
       <dl className="historical-intake-metrics" aria-label="Historical intake preflight">
         <div><dt>Search window</dt><dd>{intake.after_date} → {intake.before_date}</dd></div>
-        <div><dt>Candidates</dt><dd>{intake.candidate_count}</dd></div>
+        <div><dt>Candidates</dt><dd>{verifiedCandidateCount ?? intake.candidate_count}</dd></div>
         <div><dt>Replay status</dt><dd>{intake.duplicate_state === 'already_imported' ? 'Already captured' : 'Ready to import'}</dd></div>
       </dl>
       <div className="historical-intake-query"><span>Exact Gmail query</span><code>{intake.query}</code></div>
