@@ -1,7 +1,9 @@
 import { ACTION_CONTRACT as BASE_ACTION_CONTRACT } from '../supabase/functions/_shared/action-contract.mjs';
 import { PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-provider-service.mjs';
+import { OSP_CUSTOMER_SETUP_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-osp-customer-setup.mjs';
 
 const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
+const ospExtension = OSP_CUSTOMER_SETUP_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 
@@ -186,11 +188,11 @@ const gmailSurfaces = [
 export const ACTION_CONTRACT = {
   ...BASE_ACTION_CONTRACT,
   contractVersion,
-  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub`,
+  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+osp-customer-setup`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6,
-    postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + ospExtension.expectedCountsDelta.governable,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + ospExtension.expectedCountsDelta.edge,
+    postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + ospExtension.expectedCountsDelta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi,
   },
   reviewedMetadataFingerprints: {
@@ -198,16 +200,19 @@ export const ACTION_CONTRACT = {
     ...extension.reviewedMetadataFingerprints,
     ...providerMetadataOverrides,
     ...gmailMetadataFingerprints,
+    ...ospExtension.reviewedMetadataFingerprints,
   },
   reviewedAuthorizationFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedAuthorizationFingerprints,
     ...legacyAuthorizationOverrides,
     ...extension.reviewedAuthorizationFingerprints,
     ...gmailAuthorizationFingerprints,
+    ...ospExtension.reviewedAuthorizationFingerprints,
   },
   surfaces: [
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({ ...entry, contractVersion })),
     ...providerSurfaces,
     ...gmailSurfaces,
+    ...ospExtension.surfaces,
   ],
 };

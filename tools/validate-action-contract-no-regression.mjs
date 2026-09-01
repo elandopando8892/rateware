@@ -13,8 +13,8 @@ if (!baselineRoot || baselineRoot === resolve("")) {
   throw new Error("--baseline-root must point to a checked-out main worktree.");
 }
 
-const baselineContractUrl = pathToFileURL(resolve(baselineRoot, "supabase/functions/_shared/action-contract.mjs")).href;
-const { ACTION_CONTRACT: BASELINE_CONTRACT } = await import(`${baselineContractUrl}?build13=${Date.now()}`);
+const baselineContractUrl = pathToFileURL(resolve(baselineRoot, "tools/effective-action-contract.mjs")).href;
+const { ACTION_CONTRACT: BASELINE_CONTRACT } = await import(`${baselineContractUrl}?no_regression=${Date.now()}`);
 
 function errors(contract, repoRoot) {
   const discovered = discoverGovernableSurfaces(repoRoot);
