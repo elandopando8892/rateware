@@ -219,7 +219,7 @@ describe('PipelineOverview', () => {
   });
 
   it('exposes the exact Salzillo recovery only to Sales and preserves every outbound guard', async () => {
-    const salzilloQuery = 'in:inbox subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/18 before:2026/08/21';
+    const salzilloQuery = 'subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/18 before:2026/08/21';
     const previewHistoricalGmailSearch = vi.fn(async () => ({
       query: salzilloQuery,
       candidates: [{

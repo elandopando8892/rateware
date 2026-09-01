@@ -43,7 +43,7 @@ type PipelineClient = OspReadClient & Partial<OspCaseReadClient> &
 
 const salzilloHistoricalIntake = {
   status: 'preview_only' as const,
-  query: 'in:inbox subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/18 before:2026/08/21',
+  query: 'subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/18 before:2026/08/21',
   after_date: '2026-08-18',
   before_date: '2026-08-21',
   candidate_count: 0,

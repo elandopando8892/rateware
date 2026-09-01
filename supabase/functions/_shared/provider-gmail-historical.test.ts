@@ -15,10 +15,10 @@ const criteria = {
   beforeDate: "2026-08-12",
 };
 
-Deno.test("historical Gmail recovery builds one bounded inbox query", () => {
+Deno.test("historical Gmail recovery builds one bounded mailbox query", () => {
   assertEquals(
     buildProviderGmailHistoricalQuery(criteria),
-    'in:inbox subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/09 before:2026/08/12',
+    'subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/09 before:2026/08/12',
   );
   assertThrows(
     () =>
@@ -59,7 +59,7 @@ Deno.test("historical Gmail recovery reads safe candidate metadata without histo
           id: "message_1",
           threadId: "thread_1",
           internalDate: String(Date.parse("2026-08-10T15:00:00.000Z")),
-          labelIds: ["INBOX"],
+          labelIds: [],
           payload: {
             headers: [
               { name: "Subject", value: criteria.subjectPhrase },

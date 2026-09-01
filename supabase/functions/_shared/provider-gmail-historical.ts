@@ -64,7 +64,6 @@ export function buildProviderGmailHistoricalQuery(
 ): string {
   const criteria = normalizeProviderGmailHistoricalCriteria(input);
   return [
-    "in:inbox",
     `subject:"${criteria.subjectPhrase}"`,
     `after:${criteria.afterDate.replaceAll("-", "/")}`,
     `before:${criteria.beforeDate.replaceAll("-", "/")}`,
@@ -113,7 +112,6 @@ export async function searchProviderGmailHistoricalInbox(
   const query = buildProviderGmailHistoricalQuery(criteria);
   const params = new URLSearchParams({
     maxResults: String(MAX_RESULTS),
-    labelIds: "INBOX",
     q: query,
   });
   const listed = await requestGmailJson(
@@ -133,9 +131,6 @@ export async function searchProviderGmailHistoricalInbox(
       accessToken,
       `/messages/${encodeURIComponent(id)}?format=FULL`,
     );
-    if (!Array.isArray(raw.labelIds) || !raw.labelIds.includes("INBOX")) {
-      continue;
-    }
     const subject = header(raw.payload || {}, "Subject");
     if (!subject.toLowerCase().includes(criteria.subjectPhrase.toLowerCase())) {
       continue;

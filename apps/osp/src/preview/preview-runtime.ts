@@ -249,7 +249,7 @@ const salzilloCaseDetail: CaseDetail = Object.freeze({
   request_manifest: salzilloRequestManifest,
   historical_intake: {
     status: 'preview_only',
-    query: 'in:inbox subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/18 before:2026/08/21',
+    query: 'subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/18 before:2026/08/21',
     after_date: '2026-08-18',
     before_date: '2026-08-21',
     candidate_count: 1,
