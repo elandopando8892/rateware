@@ -219,7 +219,7 @@ describe('PipelineOverview', () => {
   });
 
   it('exposes the exact Salzillo recovery only to Sales and preserves every outbound guard', async () => {
-    const salzilloQuery = 'in:inbox subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/09 before:2026/08/12';
+    const salzilloQuery = 'in:inbox subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/18 before:2026/08/21';
     const previewHistoricalGmailSearch = vi.fn(async () => ({
       query: salzilloQuery,
       candidates: [{
@@ -262,8 +262,8 @@ describe('PipelineOverview', () => {
     await userEvent.click(screen.getByRole('button', { name: /verify exact candidate/i }));
     expect(previewHistoricalGmailSearch).toHaveBeenCalledWith({
       subjectPhrase: 'PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN',
-      afterDate: '2026-08-09',
-      beforeDate: '2026-08-12',
+      afterDate: '2026-08-18',
+      beforeDate: '2026-08-21',
     });
     expect(screen.getByLabelText('Historical intake preflight')).toHaveTextContent('Candidates1');
     expect(await screen.findByText(/xbfreight\.com · 1 attachment.*new import/i)).toBeInTheDocument();
@@ -272,8 +272,8 @@ describe('PipelineOverview', () => {
     expect(importHistoricalGmailMessage).toHaveBeenCalledOnce();
     expect(importHistoricalGmailMessage).toHaveBeenCalledWith(expect.objectContaining({
       subjectPhrase: 'PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN',
-      afterDate: '2026-08-09',
-      beforeDate: '2026-08-12',
+      afterDate: '2026-08-18',
+      beforeDate: '2026-08-21',
       candidateId: 'salzillo_message_1',
       idempotencyKey: expect.stringMatching(/^historical_gmail:/),
     }));
