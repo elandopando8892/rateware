@@ -1,0 +1,59 @@
+{
+  "contractVersion": "rateware.private-resolver.readiness-intake.v1",
+  "intakeVersion": "beta-9.9",
+  "parentReview": {
+    "contractVersion": "rateware.private-resolver.release-review.v1",
+    "reviewVersion": "beta-9.8",
+    "candidateSha": "3c6ae8636d293eb51c1fd7b520f13ce63d62d49a"
+  },
+  "environmentPlan": {
+    "desiredClass": "staging",
+    "provider": "supabase",
+    "selected": false,
+    "strategy": null,
+    "projectRef": null,
+    "gitEnvironment": null,
+    "region": null,
+    "billingAcknowledged": false,
+    "fixtureDataOnly": true,
+    "productionDataAllowed": false
+  },
+  "roles": [
+    { "id": "technical_reviewer", "label": "Technical reviewer", "required": true, "assignment": null },
+    { "id": "release_approver", "label": "Release approver", "required": true, "assignment": null },
+    { "id": "security_owner", "label": "Security or secret-custody owner", "required": true, "assignment": null },
+    { "id": "platform_owner", "label": "Platform and network owner", "required": true, "assignment": null },
+    { "id": "monitoring_owner", "label": "Monitoring and on-call owner", "required": true, "assignment": null },
+    { "id": "rollback_owner", "label": "Rollback rehearsal owner", "required": true, "assignment": null },
+    { "id": "product_owner", "label": "Product authorization owner", "required": true, "assignment": null }
+  ],
+  "evidenceRequests": [
+    { "id": "secret_custody", "ownerRoleId": "security_owner", "status": "MISSING", "evidenceRef": null, "capturedAt": null, "containsSecretValues": false },
+    { "id": "network_controls", "ownerRoleId": "platform_owner", "status": "MISSING", "evidenceRef": null, "capturedAt": null, "containsSecretValues": false },
+    { "id": "monitoring_alerts", "ownerRoleId": "monitoring_owner", "status": "MISSING", "evidenceRef": null, "capturedAt": null, "containsSecretValues": false },
+    { "id": "rollback_rehearsal", "ownerRoleId": "rollback_owner", "status": "MISSING", "evidenceRef": null, "capturedAt": null, "containsSecretValues": false },
+    { "id": "environment_isolation", "ownerRoleId": "platform_owner", "status": "MISSING", "evidenceRef": null, "capturedAt": null, "containsSecretValues": false },
+    { "id": "four_eyes_review", "ownerRoleId": "release_approver", "status": "MISSING", "evidenceRef": null, "capturedAt": null, "containsSecretValues": false },
+    { "id": "production_authorization", "ownerRoleId": "product_owner", "status": "MISSING", "evidenceRef": null, "capturedAt": null, "containsSecretValues": false }
+  ],
+  "decision": {
+    "status": "INTAKE_INCOMPLETE",
+    "assignedRoles": 0,
+    "verifiedEvidence": 0,
+    "openItems": 15,
+    "stagingRehearsalReady": false,
+    "stagingRehearsalAuthorized": false,
+    "productionReleaseReady": false,
+    "productionApproved": false
+  },
+  "safety": {
+    "remoteProjectCreated": false,
+    "remoteBranchCreated": false,
+    "gitEnvironmentCreated": false,
+    "secretMutation": false,
+    "remoteMigration": false,
+    "functionDeployment": false,
+    "schedulerMutation": false,
+    "externalExecution": false
+  }
+}

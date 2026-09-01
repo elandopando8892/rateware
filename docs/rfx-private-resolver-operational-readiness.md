@@ -90,3 +90,11 @@ machine-verifiable `NO_GO` decision. It pins the locally tested candidate SHA,
 requires all nine gates, keeps unassigned owners explicit and forbids a release
 ready result while any gate lacks evidence. This review does not choose a
 target environment, assign a person or request production authorization.
+
+## Sprint 9.9 readiness intake
+
+`rfx-private-resolver-readiness-intake.json` separates role acceptance,
+staging-environment selection and evidence capture. All seven roles and seven
+evidence requests remain unassigned or missing, and the staging environment is
+only a desired class with no project reference. The intake validates 15 open
+items and cannot authorize a rehearsal, deployment or production release.
