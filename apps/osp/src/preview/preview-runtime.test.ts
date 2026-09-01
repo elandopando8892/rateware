@@ -26,7 +26,18 @@ describe('synthetic preview runtime', () => {
         spreadsheetProtection: { macroEnabledFiles: 1, macroExecution: 'blocked', analysisMode: 'sanitized_copy' },
         externalEffects: false,
       },
+      historical_intake: {
+        status: 'preview_only',
+        candidate_count: 1,
+        duplicate_state: 'already_imported',
+        checkpoint_unchanged: true,
+        source_preserved: true,
+        external_effects: false,
+      },
     });
+    await expect(runtime.apiClient.previewHistoricalGmailSearch?.({
+      subjectPhrase: 'SALZILLO', afterDate: '2026-08-09', beforeDate: '2026-08-12',
+    })).resolves.toMatchObject({ candidates: [{ duplicate_state: 'already_imported' }], checkpoint_unchanged: true, persisted: false });
     const formCase = cases.find((item) => item.supplier_name === 'Sierra Retail México');
     expect(formCase).toBeDefined();
     await expect(runtime.apiClient.getCaseFormWorkspace(formCase!.case_id)).resolves.toMatchObject({

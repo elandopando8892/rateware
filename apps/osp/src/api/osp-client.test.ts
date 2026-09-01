@@ -193,6 +193,30 @@ it('renews the Gmail watch through the same dedicated endpoint without exposing 
   expect(ambiguous.fetch).toHaveBeenCalledOnce();
 });
 
+it('previews one bounded historical Gmail search without persisting or changing the checkpoint', async () => {
+  const data = {
+    query: 'in:inbox subject:"Salzillo" after:2026/08/09 before:2026/08/12',
+    candidates: [{
+      candidate_id: 'message_1', subject: 'Salzillo customer setup', sender_domain: 'example.test',
+      received_at: '2026-08-10T15:00:00.000Z', attachment_count: 1, duplicate_state: 'ready',
+    }],
+    checkpoint_unchanged: true, persisted: false, outbound_enabled: false,
+  } as const;
+  const h = harness([json({ version: 1, data })]);
+  await expect(h.client.previewHistoricalGmailSearch?.({
+    subjectPhrase: 'Salzillo', afterDate: '2026-08-09', beforeDate: '2026-08-12',
+  })).resolves.toEqual(data);
+  const [url, init] = h.fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(url).toBe('https://synthetic.supabase.co/functions/v1/osp-gmail-sync-api');
+  expect(JSON.parse(String(init.body))).toEqual({
+    version: 1,
+    action: 'preview_historical_provider_gmail',
+    subject_phrase: 'Salzillo',
+    after_date: '2026-08-09',
+    before_date: '2026-08-12',
+  });
+});
+
 it('lists quarterly document versions through the authenticated document endpoint', async () => {
   const version = { id: '22222222-2222-4222-8222-222222222222', documentType: 'proof_of_address', version: 1, status: 'approved', validFrom: '2026-08-24', expiresAt: '2026-11-24' };
   const h = harness([json({ data: { versions: [version] } })]);

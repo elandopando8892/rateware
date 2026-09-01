@@ -42,6 +42,8 @@ import {
   GmailSuccessResponseSchema,
   GmailWatchSuccessResponseSchema,
   type GmailWatchResult,
+  HistoricalGmailPreviewSuccessResponseSchema,
+  type HistoricalGmailPreviewResult,
   type DocumentVersion,
   type GmailReadModel,
   OspErrorResponseSchema,
@@ -93,10 +95,12 @@ export type PromoteProfileReviewFactsInput = ClaimProfileReviewInput & {
 };
 export type BindCaseProfileInput = { caseId: string; legalEntityId: string; expectedCaseVersion: number; expectedBindingRevision: number; confirmation: 'BIND_CASE_TO_XBF_ENTITY' };
 export type AssembleCaseProfileDraftInput = { caseId: string; expectedCaseVersion: number; expectedBindingRevision: number; expectedFactsSha256: string; confirmation: 'ASSEMBLE_INTERNAL_PROFILE_DRAFT' };
+export type HistoricalGmailPreviewInput = { subjectPhrase: string; afterDate: string; beforeDate: string };
 
 export interface OspClient extends OspReadClient, OspCorporateProfileClient, OspCaseReadClient, WorkflowClient {
   syncGmailInbox?(): Promise<GmailSyncResult>;
   renewGmailWatch?(): Promise<GmailWatchResult>;
+  previewHistoricalGmailSearch?(input: HistoricalGmailPreviewInput): Promise<HistoricalGmailPreviewResult>;
   listDocumentVersions(): Promise<readonly DocumentVersion[]>;
   uploadDocumentVersion(input: DocumentUploadInput): Promise<{ id: string; version: number; expiresAt: string }>;
   approveDocumentVersion(input: DocumentApprovalInput): Promise<{ id: string; status: 'approved' }>;
@@ -342,8 +346,9 @@ export function createOspClient(options: ClientOptions): OspClient {
   }
 
   async function gmailMutation<T>(
-    action: 'sync_provider_gmail_inbox' | 'renew_provider_gmail_watch',
+    action: 'sync_provider_gmail_inbox' | 'renew_provider_gmail_watch' | 'preview_historical_provider_gmail',
     schema: ZodType<{ version: 1; data: T }>,
+    input: Record<string, unknown> = {},
   ): Promise<T> {
     const captured = options.getCurrentSession();
     if (!captured) throw new OspClientError('NO_SESSION');
@@ -358,7 +363,7 @@ export function createOspClient(options: ClientOptions): OspClient {
         response = await fetchImplementation(gmailSyncEndpoint, {
           method: 'POST',
           headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ version: 1, action }),
+          body: JSON.stringify({ version: 1, action, ...input }),
         });
       } catch {
         assertCurrent(options, captured);
@@ -389,6 +394,14 @@ export function createOspClient(options: ClientOptions): OspClient {
 
   function renewGmailWatch(): Promise<GmailWatchResult> {
     return gmailMutation('renew_provider_gmail_watch', GmailWatchSuccessResponseSchema);
+  }
+
+  function previewHistoricalGmailSearch(input: HistoricalGmailPreviewInput): Promise<HistoricalGmailPreviewResult> {
+    return gmailMutation('preview_historical_provider_gmail', HistoricalGmailPreviewSuccessResponseSchema, {
+      subject_phrase: input.subjectPhrase,
+      after_date: input.afterDate,
+      before_date: input.beforeDate,
+    });
   }
 
   async function caseRequest<T>(input: {
@@ -499,6 +512,7 @@ export function createOspClient(options: ClientOptions): OspClient {
     },
     syncGmailInbox,
     renewGmailWatch,
+    previewHistoricalGmailSearch,
     listDocumentVersions: async () => (await documentRequest({
       query: [['action', 'list_document_versions']], expectedStatus: 200, schema: DocumentVersionsResponseSchema,
     })).data.versions,

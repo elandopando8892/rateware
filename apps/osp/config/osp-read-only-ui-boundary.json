@@ -31,12 +31,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/contracts.ts",
-      "sha256": "2d5d3c448b76454e86bec5106b30fcb1ff44cb844fcbd8ac515bffab2a830c4a"
+      "sha256": "9ff750e8481cc95ffbc2b2fd7388de2f6721464627d783ba4bcace227c552b52"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/osp-client.ts",
-      "sha256": "6b9d2417b38f24ccb98fc0654c8bd3f00b7a5c56f6bf40e8240d166cc049a745"
+      "sha256": "161163487bf54e69c76db26312b4f4dc2f20305a0dfbb2f36f3cdfe8e5c01394"
     },
     {
       "kind": "production-ui",
@@ -126,12 +126,17 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/cases/CaseWorkspace.tsx",
-      "sha256": "004331d7c841a1b67d34929efa79e81689685a939e96e043f2a46ee91800ca70"
+      "sha256": "778df4d28e48af339f13a38a05461c388c723db19a95635b8c9cd0ebbec13670"
+    },
+    {
+      "kind": "production-ui",
+      "path": "apps/osp/src/features/cases/HistoricalIntakePanel.tsx",
+      "sha256": "d1efb4ddce55c837b50d707dc93cf7f5094d182e6956dd87d3a4b17c6221849b"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/cases/RequestManifestPanel.tsx",
-      "sha256": "74f318baf69e22d163c7bd75f05d809ea5d0064d9947eaf31726b3fdf6006943"
+      "sha256": "eb9e1cce2ed089be29c94ba63f4630f6311a4a073fb89e44d4d04c70f6360e2d"
     },
     {
       "kind": "production-ui",
@@ -221,7 +226,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "4c4853ac553e794183cb7cd61a68b438d34a20a22bac905c7e8f5d733e1c92e1"
+      "sha256": "9d298a350382277210b864536ec1236f09abf3be1a4a7a3f8409ff381b09c279"
     },
     {
       "kind": "production-ui",
@@ -236,7 +241,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/pipeline.css",
-      "sha256": "0d6b9eca76fa3b065651616bd5a14576e18ced74a97597e41982b31e3d90960d"
+      "sha256": "0cfc81b4e4db29684e62fa41225e66e42244598ad62e58dc11dc51f0f2cb7aad"
     },
     {
       "kind": "production-ui",

@@ -247,6 +247,17 @@ const salzilloCaseDetail: CaseDetail = Object.freeze({
     { sequence: 1, state: 'received', occurred_at: '2026-08-10T15:00:00.000Z', reason_code: 'historical_request_identified' },
   ],
   request_manifest: salzilloRequestManifest,
+  historical_intake: {
+    status: 'preview_only',
+    query: 'in:inbox subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/09 before:2026/08/12',
+    after_date: '2026-08-09',
+    before_date: '2026-08-12',
+    candidate_count: 1,
+    duplicate_state: 'already_imported',
+    checkpoint_unchanged: true,
+    source_preserved: true,
+    external_effects: false,
+  },
   profile_workspace: previewProfileWorkspace,
 });
 
@@ -584,6 +595,22 @@ function createPreviewClient(): OspClient {
       attachment_metadata_rows: 0,
       osp_enqueued: 1,
       osp_processed: 1,
+      outbound_enabled: false,
+    }),
+    previewHistoricalGmailSearch: async (input) => ({
+      query: `in:inbox subject:"${input.subjectPhrase}" after:${input.afterDate.replaceAll('-', '/')} before:${input.beforeDate.replaceAll('-', '/')}`,
+      candidates: input.subjectPhrase.toLowerCase().includes('salzillo')
+        ? [{
+            candidate_id: 'salzillo_message_1',
+            subject: 'PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN',
+            sender_domain: 'example.test',
+            received_at: '2026-08-10T15:00:00.000Z',
+            attachment_count: 1,
+            duplicate_state: 'already_imported' as const,
+          }]
+        : [],
+      checkpoint_unchanged: true,
+      persisted: false,
       outbound_enabled: false,
     }),
     renewGmailWatch: async () => ({

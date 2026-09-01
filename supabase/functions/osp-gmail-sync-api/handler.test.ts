@@ -53,6 +53,7 @@ Deno.test("manual Gmail sync authenticates before one bounded workspace sync and
     renewWatch: async () => ({
       watchExpiresAt: "2030-01-07T00:00:00.000Z",
     }),
+    previewHistoricalInbox: async () => ({ query: "in:inbox", candidates: [] }),
     incidentId: () => "incident-test",
   });
   const response = await handler(
@@ -105,6 +106,7 @@ Deno.test("manual Gmail sync rejects extra actions, disallowed origins and missi
     renewWatch: async () => ({
       watchExpiresAt: "2030-01-07T00:00:00.000Z",
     }),
+    previewHistoricalInbox: async () => ({ query: "in:inbox", candidates: [] }),
     incidentId: () => "incident-test",
   });
   const invalidBody = await handler(
@@ -144,6 +146,7 @@ Deno.test("manual Gmail sync maps dependency details to a safe unavailable error
     renewWatch: async () => ({
       watchExpiresAt: "2030-01-07T00:00:00.000Z",
     }),
+    previewHistoricalInbox: async () => ({ query: "in:inbox", candidates: [] }),
     incidentId: () => "incident-safe",
   });
   const response = await handler(
@@ -178,6 +181,7 @@ Deno.test("Gmail watch renewal uses the same exact authorization seam and return
       calls.push(`watch:${organizationId}`);
       return { watchExpiresAt: "2030-01-07T00:00:00.000Z" };
     },
+    previewHistoricalInbox: async () => ({ query: "in:inbox", candidates: [] }),
     incidentId: () => "incident-watch",
   });
   const response = await handler(
@@ -201,4 +205,49 @@ Deno.test("Gmail watch renewal uses the same exact authorization seam and return
     calls.join("|") ===
       `verify:exact-token|workspace:subject-a|watch:${identity.organization}`,
   );
+});
+
+Deno.test("historical Gmail preflight is bounded, read-only and returns safe candidate metadata", async () => {
+  const calls: string[] = [];
+  const handler = createOspGmailSyncHandler({
+    verifyToken: async () => identity,
+    resolveWorkspace: async () => identity.organization,
+    syncInbox: async () => {
+      throw new Error("must not sync");
+    },
+    renewWatch: async () => {
+      throw new Error("must not watch");
+    },
+    previewHistoricalInbox: async (organizationId, criteria) => {
+      calls.push(
+        `${organizationId}:${criteria.afterDate}:${criteria.beforeDate}:${criteria.subjectPhrase}`,
+      );
+      return {
+        query: 'in:inbox subject:"Salzillo" after:2026/08/09 before:2026/08/12',
+        candidates: [{
+          candidateId: "message_1",
+          subject: "PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN",
+          senderDomain: "example.test",
+          receivedAt: "2026-08-10T15:00:00.000Z",
+          attachmentCount: 1,
+          duplicateState: "ready",
+        }],
+      };
+    },
+    incidentId: () => "incident-history",
+  });
+  const response = await handler(request(JSON.stringify({
+    version: 1,
+    action: "preview_historical_provider_gmail",
+    subject_phrase: "PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN",
+    after_date: "2026-08-09",
+    before_date: "2026-08-12",
+  })));
+  assert(response.status === 200);
+  const body = await response.json();
+  assert(body.data.candidates[0].candidate_id === "message_1");
+  assert(body.data.checkpoint_unchanged === true);
+  assert(body.data.persisted === false);
+  assert(body.data.outbound_enabled === false);
+  assert(calls.length === 1);
 });

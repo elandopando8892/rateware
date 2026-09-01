@@ -241,6 +241,17 @@ export const CaseDetailSchema = CaseSummarySchema.extend({
   }, 'Latest request fields must be populated together'),
   recent_events: z.array(CaseEventSchema).max(20),
   request_manifest: RequestManifestSchema.nullable().optional(),
+  historical_intake: z.strictObject({
+    status: z.enum(['preview_only', 'imported']),
+    query: z.string().min(1).max(512),
+    after_date: dateOnly,
+    before_date: dateOnly,
+    candidate_count: z.number().int().min(0).max(25),
+    duplicate_state: z.enum(['ready', 'already_imported']),
+    checkpoint_unchanged: z.literal(true),
+    source_preserved: z.literal(true),
+    external_effects: z.literal(false),
+  }).nullable().optional(),
   profile_workspace: z.strictObject({
     candidates: z.array(z.strictObject({
       entity_id: z.uuid(), entity_code: z.string().regex(/^[A-Z0-9]{2,16}$/), legal_name: z.string().min(1).max(256),
@@ -389,6 +400,24 @@ export const GmailWatchSuccessResponseSchema = z.strictObject({
   data: z.strictObject({
     watch_configured: z.literal(true),
     watch_expires_at: utcDate,
+    outbound_enabled: z.literal(false),
+  }),
+});
+
+export const HistoricalGmailPreviewSuccessResponseSchema = z.strictObject({
+  version: z.literal(1),
+  data: z.strictObject({
+    query: z.string().min(1).max(512),
+    candidates: z.array(z.strictObject({
+      candidate_id: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+      subject: z.string().min(1).max(998),
+      sender_domain: z.string().regex(/^[a-z0-9.-]{1,253}$/),
+      received_at: utcDate,
+      attachment_count: z.number().int().min(0).max(100),
+      duplicate_state: z.enum(['ready', 'already_imported']),
+    })).max(25),
+    checkpoint_unchanged: z.literal(true),
+    persisted: z.literal(false),
     outbound_enabled: z.literal(false),
   }),
 });
@@ -744,6 +773,7 @@ export type ProfileReviewMutationReceipt = z.infer<typeof ProfileReviewMutationR
 export type GmailReadModel = z.infer<typeof GmailReadModelSchema>;
 export type GmailSyncResult = z.infer<typeof GmailSyncSuccessResponseSchema>['data'];
 export type GmailWatchResult = z.infer<typeof GmailWatchSuccessResponseSchema>['data'];
+export type HistoricalGmailPreviewResult = z.infer<typeof HistoricalGmailPreviewSuccessResponseSchema>['data'];
 export type OspReadRequest = z.infer<typeof OspReadRequestSchema>;
 export type OspPublicErrorCode = z.infer<typeof OspPublicErrorCodeSchema>;
 export type CaseState = z.infer<typeof CaseStateSchema>;

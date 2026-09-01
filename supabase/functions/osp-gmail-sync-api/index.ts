@@ -5,6 +5,8 @@ import {
   requireProviderGmailConnection,
   syncProviderGmailConnection,
 } from "../_shared/provider-gmail-sync.ts";
+import { searchProviderGmailHistoricalInbox } from "../_shared/provider-gmail-historical.ts";
+import { getProviderGmailAccessToken } from "../_shared/provider-gmail.ts";
 import { renewProviderGmailWatch } from "../_shared/provider-gmail-watch.ts";
 import { triggerOspGmailWorker } from "../_shared/osp/worker-trigger.ts";
 import { OSP_PRODUCTION_ORGANIZATION_BINDING } from "../osp-read-api/auth-policy.ts";
@@ -116,6 +118,48 @@ try {
         pubsubTopic,
       );
       return { watchExpiresAt: receipt.watchExpirationAt };
+    },
+    previewHistoricalInbox: async (organizationId, criteria) => {
+      const connection = await providerConnection(organizationId);
+      const accessToken = await getProviderGmailAccessToken(
+        supabase,
+        connection,
+      );
+      const result = await searchProviderGmailHistoricalInbox(
+        accessToken,
+        criteria,
+      );
+      const ids = result.candidates.map((candidate) =>
+        candidate.gmailMessageId
+      );
+      const imported = new Set<string>();
+      if (ids.length > 0) {
+        const existing = await supabase.from("provider_communication_messages")
+          .select("external_message_id")
+          .eq("organization_id", organizationId)
+          .eq("channel", "email")
+          .eq("mailbox_reference", "carriers@xbfreight.com")
+          .in("external_message_id", ids);
+        if (existing.error) throw existing.error;
+        for (const row of existing.data || []) {
+          if (typeof row.external_message_id === "string") {
+            imported.add(row.external_message_id);
+          }
+        }
+      }
+      return {
+        query: result.query,
+        candidates: result.candidates.map((candidate) => ({
+          candidateId: candidate.gmailMessageId,
+          subject: candidate.subject,
+          senderDomain: candidate.senderDomain,
+          receivedAt: candidate.receivedAt,
+          attachmentCount: candidate.attachmentCount,
+          duplicateState: imported.has(candidate.gmailMessageId)
+            ? "already_imported" as const
+            : "ready" as const,
+        })),
+      };
     },
   });
 } catch (error) {

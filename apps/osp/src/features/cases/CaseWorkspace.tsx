@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import type { OspCaseReadClient } from '../../api/osp-client';
 import { caseNextGates, casePrimaryAction, caseStateLabels, caseStateTone, formatCaseDate, type CasePrimaryAction } from './case-presenter';
 import { RequestManifestPanel } from './RequestManifestPanel';
+import { HistoricalIntakePanel } from './HistoricalIntakePanel';
 
 const emptyProfileWorkspace = { candidates: [], binding: null, draft: null, disclosure_locked: true as const };
 
@@ -101,6 +102,7 @@ export function CaseWorkspace({ client, caseId }: { client: OspCaseReadClient; c
       </dl>
 
       <RequestManifestPanel manifest={caseRecord.request_manifest ?? null} />
+      <HistoricalIntakePanel intake={caseRecord.historical_intake ?? null} />
 
       <section className="panel case-profile-assembler" aria-labelledby="profile-assembler-title">
         <div className="panel-heading">
