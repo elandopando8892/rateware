@@ -43,6 +43,7 @@ export function classifyScheduledGmailPollFailure(error: unknown): ScheduledGmai
 
 export type ScheduledGmailPollHandlerOptions = Readonly<{
   expectedToken: string;
+  drain?(): Promise<Readonly<{ enqueued: number; processed: number }>>;
   claim(): Promise<Readonly<{ status: 'claimed'; leaseId: string }> | Readonly<{ status: 'disabled' | 'busy' }>>;
   poll(): Promise<ScheduledGmailPollReceipt>;
   complete(receipt: ScheduledGmailPollReceipt, leaseId: string): Promise<void>;
@@ -72,7 +73,11 @@ function exactToken(actual: string, expected: string): boolean {
   return mismatch === 0;
 }
 
-async function strictBody(request: Request): Promise<void> {
+type ScheduledAction =
+  | 'poll_connected_provider_mailbox'
+  | 'drain_queued_osp_jobs';
+
+async function strictBody(request: Request): Promise<ScheduledAction> {
   if (request.headers.get('transfer-encoding')) throw new Error('INVALID_REQUEST');
   const encoding = request.headers.get('content-encoding');
   if (encoding && encoding.trim().toLowerCase() !== 'identity') throw new Error('INVALID_REQUEST');
@@ -91,8 +96,13 @@ async function strictBody(request: Request): Promise<void> {
   const record = body as Record<string, unknown>;
   if (
     Object.keys(record).sort().join(',') !== 'action,version' ||
-    record.version !== 1 || record.action !== 'poll_connected_provider_mailbox'
+    record.version !== 1 ||
+    ![
+      'poll_connected_provider_mailbox',
+      'drain_queued_osp_jobs',
+    ].includes(String(record.action))
   ) throw new Error('INVALID_REQUEST');
+  return record.action as ScheduledAction;
 }
 
 function safeReceipt(receipt: ScheduledGmailPollReceipt): ScheduledGmailPollReceipt {
@@ -111,7 +121,35 @@ export function createScheduledGmailPollHandler(options: ScheduledGmailPollHandl
       if (!match || !exactToken(match[1], options.expectedToken)) {
         return json({ error: { code: 'UNAUTHORIZED', incident_id: incidentId() } }, 401);
       }
-      await strictBody(request);
+      const action = await strictBody(request);
+      if (action === 'drain_queued_osp_jobs') {
+        if (!options.drain) {
+          return json({ error: { code: 'DEPENDENCY_UNAVAILABLE', incident_id: incidentId() } }, 503);
+        }
+        try {
+          const drained = await options.drain();
+          const receipt = safeReceipt({
+            discovered: 0,
+            insertedMessages: 0,
+            duplicates: 0,
+            attachmentMetadataRows: 0,
+            ospEnqueued: drained.enqueued,
+            ospProcessed: drained.processed,
+          });
+          return json({
+            version: 1,
+            data: {
+              status: 'completed',
+              source_sync_performed: false,
+              osp_enqueued: receipt.ospEnqueued,
+              osp_processed: receipt.ospProcessed,
+              outbound_enabled: false,
+            },
+          }, 200);
+        } catch {
+          return json({ error: { code: 'DEPENDENCY_UNAVAILABLE', incident_id: incidentId() } }, 503);
+        }
+      }
       const claim = await options.claim();
       if (claim.status !== 'claimed') {
         return json({

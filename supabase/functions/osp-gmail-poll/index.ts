@@ -50,6 +50,17 @@ try {
 
   runtime = createScheduledGmailPollHandler({
     expectedToken,
+    drain: async () => {
+      try {
+        return await triggerOspGmailWorker({
+          supabaseUrl,
+          serviceRoleKey,
+          limit: 10,
+        });
+      } catch {
+        throw new ScheduledGmailPollDependencyError('POLL_WORKER_UNAVAILABLE');
+      }
+    },
     claim: async () => {
       const rows = await sql`
         update osp_private.production_controls

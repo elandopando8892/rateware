@@ -7,6 +7,7 @@ import {
 
 const expectedToken = 'x'.repeat(48);
 const body = JSON.stringify({ version: 1, action: 'poll_connected_provider_mailbox' });
+const drainBody = JSON.stringify({ version: 1, action: 'drain_queued_osp_jobs' });
 
 function request(token = expectedToken, value = body): Request {
   return new Request('https://project.example/functions/v1/osp-gmail-poll', {
@@ -52,6 +53,41 @@ Deno.test('scheduled Gmail poll skips disabled and busy controls without touchin
     assertEquals(polls, 0);
     assertEquals(await response.json(), { version: 1, data: { status: 'skipped', reason, outbound_enabled: false } });
   }
+});
+
+Deno.test('authenticated queue drain processes existing OSP jobs without polling Gmail or claiming the cron lease', async () => {
+  const calls: string[] = [];
+  const handler = createScheduledGmailPollHandler({
+    expectedToken,
+    drain: async () => {
+      calls.push('drain');
+      return { enqueued: 0, processed: 2 };
+    },
+    claim: async () => {
+      calls.push('claim');
+      return { status: 'claimed', leaseId: 'lease-unused' };
+    },
+    poll: async () => {
+      calls.push('poll');
+      throw new Error('must not poll Gmail');
+    },
+    complete: async () => { calls.push('complete'); },
+    fail: async () => { calls.push('fail'); },
+    incidentId: () => 'incident-drain',
+  });
+  const response = await handler(request(expectedToken, drainBody));
+  assertEquals(response.status, 200);
+  assertEquals(calls, ['drain']);
+  assertEquals(await response.json(), {
+    version: 1,
+    data: {
+      status: 'completed',
+      source_sync_performed: false,
+      osp_enqueued: 0,
+      osp_processed: 2,
+      outbound_enabled: false,
+    },
+  });
 });
 
 Deno.test('scheduled Gmail poll rejects wrong tokens and malformed bodies before claiming', async () => {
