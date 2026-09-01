@@ -2,7 +2,7 @@ import { assertMatch } from "jsr:@std/assert@1.0.14";
 
 const migration = await Deno.readTextFile(
   new URL(
-    "../../migrations/20260901033000_osp_request_manifest_review_drafts.sql",
+    "../../migrations/20260901035651_osp_request_manifest_review_drafts.sql",
     import.meta.url,
   ),
 );
