@@ -422,6 +422,22 @@ export const HistoricalGmailPreviewSuccessResponseSchema = z.strictObject({
   }),
 });
 
+export const HistoricalGmailImportSuccessResponseSchema = z.strictObject({
+  version: z.literal(1),
+  data: z.strictObject({
+    candidate_id: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+    claim_id: z.uuid(),
+    import_status: z.enum(['imported', 'replayed']),
+    attachment_metadata_rows: z.number().int().min(0).max(100),
+    osp_enqueued: z.number().int().min(0).max(100),
+    osp_processed: z.number().int().min(0).max(100),
+    checkpoint_unchanged: z.literal(true),
+    source_preserved: z.literal(true),
+    persisted: z.literal(true),
+    outbound_enabled: z.literal(false),
+  }),
+});
+
 export const OspPublicErrorCodeSchema = z.enum([
   'INVALID_REQUEST',
   'UNAUTHORIZED',
@@ -774,6 +790,7 @@ export type GmailReadModel = z.infer<typeof GmailReadModelSchema>;
 export type GmailSyncResult = z.infer<typeof GmailSyncSuccessResponseSchema>['data'];
 export type GmailWatchResult = z.infer<typeof GmailWatchSuccessResponseSchema>['data'];
 export type HistoricalGmailPreviewResult = z.infer<typeof HistoricalGmailPreviewSuccessResponseSchema>['data'];
+export type HistoricalGmailImportResult = z.infer<typeof HistoricalGmailImportSuccessResponseSchema>['data'];
 export type OspReadRequest = z.infer<typeof OspReadRequestSchema>;
 export type OspPublicErrorCode = z.infer<typeof OspPublicErrorCodeSchema>;
 export type CaseState = z.infer<typeof CaseStateSchema>;

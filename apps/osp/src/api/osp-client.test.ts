@@ -217,6 +217,25 @@ it('previews one bounded historical Gmail search without persisting or changing 
   });
 });
 
+it('imports one exact historical Gmail candidate once and never retries an ambiguous mutation', async () => {
+  const data = {
+    candidate_id: 'message_1', claim_id: '97000000-0000-4000-8000-000000000001', import_status: 'imported',
+    attachment_metadata_rows: 1, osp_enqueued: 1, osp_processed: 0, checkpoint_unchanged: true,
+    source_preserved: true, persisted: true, outbound_enabled: false,
+  } as const;
+  const input = { subjectPhrase: 'Salzillo', afterDate: '2026-08-09', beforeDate: '2026-08-12', candidateId: 'message_1', idempotencyKey: 'historical_gmail:one' };
+  const h = harness([json({ version: 1, data })]);
+  await expect(h.client.importHistoricalGmailMessage?.(input)).resolves.toEqual(data);
+  expect(JSON.parse(String((h.fetch.mock.calls[0][1] as RequestInit).body))).toEqual({
+    version: 1, action: 'import_historical_provider_gmail', subject_phrase: 'Salzillo',
+    after_date: '2026-08-09', before_date: '2026-08-12', candidate_id: 'message_1',
+    idempotency_key: 'historical_gmail:one', confirmation: 'IMPORT_EXACT_HISTORICAL_CUSTOMER_SETUP',
+  });
+  const ambiguous = harness([new TypeError('response lost'), json({ version: 1, data })]);
+  await expect(ambiguous.client.importHistoricalGmailMessage?.(input)).rejects.toMatchObject({ code: 'NETWORK_UNAVAILABLE' });
+  expect(ambiguous.fetch).toHaveBeenCalledOnce();
+});
+
 it('lists quarterly document versions through the authenticated document endpoint', async () => {
   const version = { id: '22222222-2222-4222-8222-222222222222', documentType: 'proof_of_address', version: 1, status: 'approved', validFrom: '2026-08-24', expiresAt: '2026-11-24' };
   const h = harness([json({ data: { versions: [version] } })]);

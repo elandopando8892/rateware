@@ -37,10 +37,20 @@ export type HistoricalGmailPreviewReceipt = Readonly<{
   }>[];
 }>;
 
+export type HistoricalGmailImportReceipt = Readonly<{
+  candidateId: string;
+  claimId: string;
+  importStatus: "imported" | "replayed";
+  attachmentMetadataRows: number;
+  ospEnqueued: number;
+  ospProcessed: number;
+}>;
+
 type GmailAction =
   | "sync_provider_gmail_inbox"
   | "renew_provider_gmail_watch"
-  | "preview_historical_provider_gmail";
+  | "preview_historical_provider_gmail"
+  | "import_historical_provider_gmail";
 
 type GmailRequestBody = Readonly<{
   action: GmailAction;
@@ -49,6 +59,8 @@ type GmailRequestBody = Readonly<{
     afterDate: string;
     beforeDate: string;
   }>;
+  candidateId?: string;
+  idempotencyKey?: string;
 }>;
 
 export type OspGmailSyncHandlerOptions = {
@@ -73,6 +85,16 @@ export type OspGmailSyncHandlerOptions = {
     criteria: NonNullable<GmailRequestBody["historicalCriteria"]>,
     signal?: AbortSignal,
   ): Promise<HistoricalGmailPreviewReceipt>;
+  importHistoricalInbox(
+    organizationId: string,
+    identity: OspAuthorizationIdentity,
+    input: Readonly<{
+      criteria: NonNullable<GmailRequestBody["historicalCriteria"]>;
+      candidateId: string;
+      idempotencyKey: string;
+    }>,
+    signal?: AbortSignal,
+  ): Promise<HistoricalGmailImportReceipt>;
   incidentId?: () => string;
 };
 
@@ -122,21 +144,25 @@ async function strictRequestBody(request: Request): Promise<GmailRequestBody> {
       "sync_provider_gmail_inbox",
       "renew_provider_gmail_watch",
       "preview_historical_provider_gmail",
+      "import_historical_provider_gmail",
     ].includes(String(body.action))
   ) {
     throw new OspApiError("INVALID_REQUEST");
   }
   const action = body.action as GmailAction;
-  if (action !== "preview_historical_provider_gmail") {
+  if (
+    action !== "preview_historical_provider_gmail" &&
+    action !== "import_historical_provider_gmail"
+  ) {
     if (Object.keys(body).sort().join(",") !== "action,version") {
       throw new OspApiError("INVALID_REQUEST");
     }
     return { action };
   }
-  if (
-    Object.keys(body).sort().join(",") !==
-      "action,after_date,before_date,subject_phrase,version"
-  ) {
+  const expectedKeys = action === "preview_historical_provider_gmail"
+    ? "action,after_date,before_date,subject_phrase,version"
+    : "action,after_date,before_date,candidate_id,confirmation,idempotency_key,subject_phrase,version";
+  if (Object.keys(body).sort().join(",") !== expectedKeys) {
     throw new OspApiError("INVALID_REQUEST");
   }
   const subjectPhrase = typeof body.subject_phrase === "string"
@@ -153,10 +179,22 @@ async function strictRequestBody(request: Request): Promise<GmailRequestBody> {
     /[\u0000-\u001f\u007f"\\]/.test(subjectPhrase) ||
     !datePattern.test(afterDate) || !datePattern.test(beforeDate)
   ) throw new OspApiError("INVALID_REQUEST");
-  return {
-    action,
-    historicalCriteria: { subjectPhrase, afterDate, beforeDate },
-  };
+  const historicalCriteria = { subjectPhrase, afterDate, beforeDate };
+  if (action === "preview_historical_provider_gmail") {
+    return { action, historicalCriteria };
+  }
+  const candidateId = typeof body.candidate_id === "string"
+    ? body.candidate_id
+    : "";
+  const idempotencyKey = typeof body.idempotency_key === "string"
+    ? body.idempotency_key
+    : "";
+  if (
+    !/^[A-Za-z0-9_-]{1,128}$/.test(candidateId) ||
+    !/^[A-Za-z0-9:_-]{1,256}$/.test(idempotencyKey) ||
+    body.confirmation !== "IMPORT_EXACT_HISTORICAL_CUSTOMER_SETUP"
+  ) throw new OspApiError("INVALID_REQUEST");
+  return { action, historicalCriteria, candidateId, idempotencyKey };
 }
 
 function preflight(request: Request): Response {
@@ -232,12 +270,34 @@ function safeHistoricalReceipt(
   return receipt;
 }
 
+function safeHistoricalImportReceipt(
+  receipt: HistoricalGmailImportReceipt,
+): HistoricalGmailImportReceipt {
+  if (
+    !receipt || typeof receipt !== "object" ||
+    !/^[A-Za-z0-9_-]{1,128}$/.test(receipt.candidateId) ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(receipt.claimId) ||
+    !["imported", "replayed"].includes(receipt.importStatus)
+  ) throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+  for (const value of [
+    receipt.attachmentMetadataRows,
+    receipt.ospEnqueued,
+    receipt.ospProcessed,
+  ]) {
+    if (!Number.isSafeInteger(value) || value < 0 || value > 100) {
+      throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+    }
+  }
+  return receipt;
+}
+
 export function createOspGmailSyncHandler({
   verifyToken,
   resolveWorkspace,
   syncInbox,
   renewWatch,
   previewHistoricalInbox,
+  importHistoricalInbox,
   incidentId = () => crypto.randomUUID(),
 }: OspGmailSyncHandlerOptions): (request: Request) => Promise<Response> {
   return async (request: Request): Promise<Response> => {
@@ -254,6 +314,48 @@ export function createOspGmailSyncHandler({
       const identity = await verifyToken(bearer(request), request.signal);
       const body = await strictRequestBody(request);
       const organizationId = await resolveWorkspace(identity, request.signal);
+      if (body.action === "import_historical_provider_gmail") {
+        if (identity.email !== "sales@heymarksman.com") {
+          throw new OspApiError("FORBIDDEN");
+        }
+        let receipt: HistoricalGmailImportReceipt;
+        try {
+          receipt = safeHistoricalImportReceipt(
+            await importHistoricalInbox(
+              organizationId,
+              identity,
+              {
+                criteria: body.historicalCriteria!,
+                candidateId: body.candidateId!,
+                idempotencyKey: body.idempotencyKey!,
+              },
+              request.signal,
+            ),
+          );
+        } catch (error) {
+          if (error instanceof OspApiError) throw error;
+          throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+        }
+        return jsonResponse(
+          {
+            version: 1,
+            data: {
+              candidate_id: receipt.candidateId,
+              claim_id: receipt.claimId,
+              import_status: receipt.importStatus,
+              attachment_metadata_rows: receipt.attachmentMetadataRows,
+              osp_enqueued: receipt.ospEnqueued,
+              osp_processed: receipt.ospProcessed,
+              checkpoint_unchanged: true,
+              source_preserved: true,
+              persisted: true,
+              outbound_enabled: false,
+            },
+          },
+          200,
+          postCorsHeaders(origin),
+        );
+      }
       if (body.action === "preview_historical_provider_gmail") {
         let receipt: HistoricalGmailPreviewReceipt;
         try {

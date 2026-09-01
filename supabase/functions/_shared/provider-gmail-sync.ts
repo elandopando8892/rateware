@@ -145,6 +145,11 @@ function parsedGmailMessage(raw: Record<string, any>, mailbox: string) {
   };
 }
 
+function senderDomain(value: string | null) {
+  const match = value?.toLowerCase().match(/@([a-z0-9.-]+\.[a-z]{2,})$/);
+  return match?.[1]?.slice(0, 253) || 'unknown.invalid';
+}
+
 async function ensureThread(
   supabase: any,
   organizationUuid: string,
@@ -269,6 +274,68 @@ async function insertMessageAndAttachments(
     attachmentCount += 1;
   }
   return { inserted: true, attachmentCount };
+}
+
+export async function importProviderGmailMessageById(
+  supabase: any,
+  organizationUuid: string,
+  connection: Record<string, unknown>,
+  messageIdValue: unknown,
+  accessTokenValue?: string,
+) {
+  const legalEntityId = cleanProviderGmailText(connection.legal_entity_id);
+  const mailbox = cleanProviderGmailText(connection.mailbox_email)?.toLowerCase();
+  const messageId = cleanProviderGmailText(messageIdValue);
+  if (!legalEntityId || !UUID_PATTERN.test(legalEntityId)) {
+    throw new Error('Provider Gmail connection has an invalid legal entity.');
+  }
+  if (!mailbox || mailbox !== providerGmailAllowedAccount()) {
+    throw new Error('Provider Gmail connection mailbox is not allowed.');
+  }
+  if (!messageId || !/^[A-Za-z0-9_-]{1,128}$/.test(messageId)) {
+    throw new Error('Provider Gmail message id is invalid.');
+  }
+  const accessToken = accessTokenValue || await getProviderGmailAccessToken(supabase, connection);
+  const raw = await gmailJson(accessToken, `/messages/${encodeURIComponent(messageId)}?format=FULL`);
+  if (!Array.isArray(raw.labelIds) || !raw.labelIds.includes('INBOX')) {
+    throw new Error('Provider Gmail message is not in the inbox.');
+  }
+  const message = parsedGmailMessage(raw, mailbox);
+  if (message.id !== messageId || message.direction !== 'inbound') {
+    throw new Error('Provider Gmail message is not an inbound intake candidate.');
+  }
+  const existing = await supabase.from('provider_communication_messages')
+    .select('id')
+    .eq('organization_id', organizationUuid)
+    .eq('channel', 'email')
+    .eq('mailbox_reference', mailbox)
+    .eq('external_message_id', message.id)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  let inserted = false;
+  let attachmentCount = 0;
+  if (!existing.data) {
+    const thread = await ensureThread(supabase, organizationUuid, legalEntityId, mailbox, message);
+    const outcome = await insertMessageAndAttachments(
+      supabase,
+      organizationUuid,
+      legalEntityId,
+      mailbox,
+      thread,
+      message,
+    );
+    inserted = outcome.inserted;
+    attachmentCount = outcome.attachmentCount;
+  }
+  return Object.freeze({
+    gmailMessageId: message.id,
+    gmailThreadId: message.threadId,
+    subject: message.subject,
+    senderDomain: senderDomain(message.senderEmail),
+    receivedAt: message.messageAt,
+    inserted,
+    attachmentCount,
+  });
 }
 
 async function listHistoryMessageIds(accessToken: string, startHistoryId: string, limit: number) {

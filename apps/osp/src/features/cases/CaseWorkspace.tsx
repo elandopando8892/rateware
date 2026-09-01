@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 
-import type { OspCaseReadClient } from '../../api/osp-client';
+import type { OspCaseReadClient, OspClient } from '../../api/osp-client';
 import { caseNextGates, casePrimaryAction, caseStateLabels, caseStateTone, formatCaseDate, type CasePrimaryAction } from './case-presenter';
 import { RequestManifestPanel } from './RequestManifestPanel';
 import { HistoricalIntakePanel } from './HistoricalIntakePanel';
@@ -24,7 +24,9 @@ function PrimaryAction({ action, caseId }: { action: CasePrimaryAction; caseId: 
   }
 }
 
-export function CaseWorkspace({ client, caseId }: { client: OspCaseReadClient; caseId: string }) {
+type CaseWorkspaceClient = OspCaseReadClient & Partial<Pick<OspClient, 'previewHistoricalGmailSearch' | 'importHistoricalGmailMessage'>>;
+
+export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient; caseId: string }) {
   const [selectedEntityId, setSelectedEntityId] = useState('');
   const [bindingConfirmed, setBindingConfirmed] = useState(false);
   const [draftConfirmed, setDraftConfirmed] = useState(false);
@@ -102,7 +104,7 @@ export function CaseWorkspace({ client, caseId }: { client: OspCaseReadClient; c
       </dl>
 
       <RequestManifestPanel manifest={caseRecord.request_manifest ?? null} />
-      <HistoricalIntakePanel intake={caseRecord.historical_intake ?? null} />
+      <HistoricalIntakePanel intake={caseRecord.historical_intake ?? null} subject={latest.subject} client={client} />
 
       <section className="panel case-profile-assembler" aria-labelledby="profile-assembler-title">
         <div className="panel-heading">

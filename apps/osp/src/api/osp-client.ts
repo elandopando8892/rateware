@@ -44,6 +44,8 @@ import {
   type GmailWatchResult,
   HistoricalGmailPreviewSuccessResponseSchema,
   type HistoricalGmailPreviewResult,
+  HistoricalGmailImportSuccessResponseSchema,
+  type HistoricalGmailImportResult,
   type DocumentVersion,
   type GmailReadModel,
   OspErrorResponseSchema,
@@ -96,11 +98,13 @@ export type PromoteProfileReviewFactsInput = ClaimProfileReviewInput & {
 export type BindCaseProfileInput = { caseId: string; legalEntityId: string; expectedCaseVersion: number; expectedBindingRevision: number; confirmation: 'BIND_CASE_TO_XBF_ENTITY' };
 export type AssembleCaseProfileDraftInput = { caseId: string; expectedCaseVersion: number; expectedBindingRevision: number; expectedFactsSha256: string; confirmation: 'ASSEMBLE_INTERNAL_PROFILE_DRAFT' };
 export type HistoricalGmailPreviewInput = { subjectPhrase: string; afterDate: string; beforeDate: string };
+export type HistoricalGmailImportInput = HistoricalGmailPreviewInput & { candidateId: string; idempotencyKey: string };
 
 export interface OspClient extends OspReadClient, OspCorporateProfileClient, OspCaseReadClient, WorkflowClient {
   syncGmailInbox?(): Promise<GmailSyncResult>;
   renewGmailWatch?(): Promise<GmailWatchResult>;
   previewHistoricalGmailSearch?(input: HistoricalGmailPreviewInput): Promise<HistoricalGmailPreviewResult>;
+  importHistoricalGmailMessage?(input: HistoricalGmailImportInput): Promise<HistoricalGmailImportResult>;
   listDocumentVersions(): Promise<readonly DocumentVersion[]>;
   uploadDocumentVersion(input: DocumentUploadInput): Promise<{ id: string; version: number; expiresAt: string }>;
   approveDocumentVersion(input: DocumentApprovalInput): Promise<{ id: string; status: 'approved' }>;
@@ -346,7 +350,7 @@ export function createOspClient(options: ClientOptions): OspClient {
   }
 
   async function gmailMutation<T>(
-    action: 'sync_provider_gmail_inbox' | 'renew_provider_gmail_watch' | 'preview_historical_provider_gmail',
+    action: 'sync_provider_gmail_inbox' | 'renew_provider_gmail_watch' | 'preview_historical_provider_gmail' | 'import_historical_provider_gmail',
     schema: ZodType<{ version: 1; data: T }>,
     input: Record<string, unknown> = {},
   ): Promise<T> {
@@ -401,6 +405,17 @@ export function createOspClient(options: ClientOptions): OspClient {
       subject_phrase: input.subjectPhrase,
       after_date: input.afterDate,
       before_date: input.beforeDate,
+    });
+  }
+
+  function importHistoricalGmailMessage(input: HistoricalGmailImportInput): Promise<HistoricalGmailImportResult> {
+    return gmailMutation('import_historical_provider_gmail', HistoricalGmailImportSuccessResponseSchema, {
+      subject_phrase: input.subjectPhrase,
+      after_date: input.afterDate,
+      before_date: input.beforeDate,
+      candidate_id: input.candidateId,
+      idempotency_key: input.idempotencyKey,
+      confirmation: 'IMPORT_EXACT_HISTORICAL_CUSTOMER_SETUP',
     });
   }
 
@@ -513,6 +528,7 @@ export function createOspClient(options: ClientOptions): OspClient {
     syncGmailInbox,
     renewGmailWatch,
     previewHistoricalGmailSearch,
+    importHistoricalGmailMessage,
     listDocumentVersions: async () => (await documentRequest({
       query: [['action', 'list_document_versions']], expectedStatus: 200, schema: DocumentVersionsResponseSchema,
     })).data.versions,

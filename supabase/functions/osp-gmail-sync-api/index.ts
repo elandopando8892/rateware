@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import postgres from "npm:postgres@3.4.7";
 
 import {
+  importProviderGmailMessageById,
   requireProviderGmailConnection,
   syncProviderGmailConnection,
 } from "../_shared/provider-gmail-sync.ts";
@@ -14,6 +15,7 @@ import { OspApiError } from "../osp-read-api/http.ts";
 import { createKindeJwtVerifier } from "../osp-read-api/kinde-jwt.ts";
 import { createPostgresOspReadStore } from "../osp-read-api/postgres-store.ts";
 import { createOspGmailSyncHandler } from "./handler.ts";
+import { createPostgresHistoricalImportStore } from "./historical-import-store.ts";
 
 function required(name: string): string {
   const value = Deno.env.get(name)?.trim();
@@ -35,6 +37,12 @@ function issuer(value: string): string {
   }
 }
 
+async function sha256(value: string): Promise<string> {
+  return [...new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
+  )].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 let runtime: (request: Request) => Promise<Response>;
 try {
   const supabaseUrl = required("SUPABASE_URL");
@@ -45,9 +53,14 @@ try {
     jwksFetch: globalThis.fetch.bind(globalThis),
     organizationBinding: OSP_PRODUCTION_ORGANIZATION_BINDING,
   });
+  const databaseUrl = Deno.env.get("OSP_READ_DATABASE_URL")?.trim() ||
+    required("SUPABASE_DB_URL");
   const store = createPostgresOspReadStore({
-    databaseUrl: Deno.env.get("OSP_READ_DATABASE_URL")?.trim() ||
-      required("SUPABASE_DB_URL"),
+    databaseUrl,
+    postgresFactory: postgres,
+  });
+  const historicalImportStore = createPostgresHistoricalImportStore({
+    databaseUrl,
     postgresFactory: postgres,
   });
   const supabase = createClient(supabaseUrl, serviceRoleKey);
@@ -159,6 +172,64 @@ try {
             ? "already_imported" as const
             : "ready" as const,
         })),
+      };
+    },
+    importHistoricalInbox: async (organizationId, identity, input) => {
+      const connection = await providerConnection(organizationId);
+      const accessToken = await getProviderGmailAccessToken(
+        supabase,
+        connection,
+      );
+      const preflight = await searchProviderGmailHistoricalInbox(
+        accessToken,
+        input.criteria,
+      );
+      const candidate = preflight.candidates.find((item) =>
+        item.gmailMessageId === input.candidateId
+      );
+      if (!candidate) throw new OspApiError("INVALID_REQUEST");
+      const imported = await importProviderGmailMessageById(
+        supabase,
+        organizationId,
+        connection,
+        input.candidateId,
+        accessToken,
+      );
+      if (
+        imported.gmailThreadId !== candidate.gmailThreadId ||
+        imported.subject !== candidate.subject ||
+        imported.senderDomain !== candidate.senderDomain ||
+        imported.receivedAt !== candidate.receivedAt
+      ) throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+      const requestSha256 = await sha256(JSON.stringify({
+        version: 1,
+        action: "import_historical_provider_gmail",
+        organizationId,
+        actorSubject: identity.subject,
+        candidateId: input.candidateId,
+        criteria: input.criteria,
+      }));
+      const claim = await historicalImportStore.record({
+        organizationId,
+        mailboxEmail: "carriers@xbfreight.com",
+        gmailMessageId: imported.gmailMessageId,
+        gmailThreadId: imported.gmailThreadId,
+        subjectSha256: await sha256(imported.subject),
+        senderDomain: imported.senderDomain,
+        receivedAt: imported.receivedAt,
+        actorSubject: identity.subject,
+        idempotencyKey: input.idempotencyKey,
+        requestSha256,
+        providerMessageInserted: imported.inserted,
+        attachmentMetadataRows: imported.attachmentCount,
+      });
+      return {
+        candidateId: imported.gmailMessageId,
+        claimId: claim.claimId,
+        importStatus: claim.status,
+        attachmentMetadataRows: claim.attachmentMetadataRows,
+        ospEnqueued: claim.ospEnqueued,
+        ospProcessed: 0,
       };
     },
   });

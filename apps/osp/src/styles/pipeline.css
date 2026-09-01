@@ -144,6 +144,14 @@
 .historical-intake-guards li { display: grid; grid-template-columns: 1.5rem 1fr; column-gap: .55rem; padding: .8rem; border: 1px solid var(--line); border-radius: 10px; }
 .historical-intake-guards li > span { grid-row: 1 / span 2; display: grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; color: white; background: var(--success); font-size: .75rem; font-weight: 900; }
 .historical-intake-guards small { margin-top: .15rem; color: var(--muted); }
+.historical-intake-action { display: grid; gap: .85rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.historical-intake-action button { justify-self: start; min-height: 2.75rem; padding: .7rem 1rem; border: 0; border-radius: 8px; color: white; background: var(--xbf-navy); font-weight: 850; cursor: pointer; }
+.historical-intake-action button:disabled { cursor: not-allowed; opacity: .55; }
+.historical-candidate, .historical-import-receipt { display: grid; gap: .3rem; padding: .9rem 1rem; border-left: 4px solid var(--success); background: #f2f7f3; }
+.historical-candidate > span, .historical-import-receipt code { color: var(--muted); font-size: .7rem; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
+.historical-candidate small, .historical-import-receipt span { color: var(--muted); }
+.historical-import-confirmation { display: grid; gap: .75rem; }
+.historical-import-confirmation label { display: flex; gap: .65rem; align-items: flex-start; font-weight: 750; }
 .case-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
 .request-details { display: grid; gap: 1px; margin: 0; background: var(--line); }
 .request-details div { padding: .9rem; background: var(--canvas); }

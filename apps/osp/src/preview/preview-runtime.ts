@@ -613,6 +613,21 @@ function createPreviewClient(): OspClient {
       persisted: false,
       outbound_enabled: false,
     }),
+    importHistoricalGmailMessage: async (input) => {
+      if (input.candidateId !== 'salzillo_message_1' || !input.subjectPhrase.toLowerCase().includes('salzillo')) throw new Error('INVALID_REQUEST');
+      return {
+        candidate_id: input.candidateId,
+        claim_id: '97000000-0000-4000-8000-000000000001',
+        import_status: 'replayed' as const,
+        attachment_metadata_rows: 0,
+        osp_enqueued: 0,
+        osp_processed: 0,
+        checkpoint_unchanged: true,
+        source_preserved: true,
+        persisted: true,
+        outbound_enabled: false,
+      };
+    },
     renewGmailWatch: async () => ({
       watch_configured: true,
       watch_expires_at: '2099-01-08T00:00:00.000Z',

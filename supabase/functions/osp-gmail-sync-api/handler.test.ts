@@ -54,6 +54,7 @@ Deno.test("manual Gmail sync authenticates before one bounded workspace sync and
       watchExpiresAt: "2030-01-07T00:00:00.000Z",
     }),
     previewHistoricalInbox: async () => ({ query: "in:inbox", candidates: [] }),
+    importHistoricalInbox: async () => { throw new Error("must not import"); },
     incidentId: () => "incident-test",
   });
   const response = await handler(
@@ -107,6 +108,7 @@ Deno.test("manual Gmail sync rejects extra actions, disallowed origins and missi
       watchExpiresAt: "2030-01-07T00:00:00.000Z",
     }),
     previewHistoricalInbox: async () => ({ query: "in:inbox", candidates: [] }),
+    importHistoricalInbox: async () => { throw new Error("must not import"); },
     incidentId: () => "incident-test",
   });
   const invalidBody = await handler(
@@ -147,6 +149,7 @@ Deno.test("manual Gmail sync maps dependency details to a safe unavailable error
       watchExpiresAt: "2030-01-07T00:00:00.000Z",
     }),
     previewHistoricalInbox: async () => ({ query: "in:inbox", candidates: [] }),
+    importHistoricalInbox: async () => { throw new Error("must not import"); },
     incidentId: () => "incident-safe",
   });
   const response = await handler(
@@ -182,6 +185,7 @@ Deno.test("Gmail watch renewal uses the same exact authorization seam and return
       return { watchExpiresAt: "2030-01-07T00:00:00.000Z" };
     },
     previewHistoricalInbox: async () => ({ query: "in:inbox", candidates: [] }),
+    importHistoricalInbox: async () => { throw new Error("must not import"); },
     incidentId: () => "incident-watch",
   });
   const response = await handler(
@@ -234,6 +238,7 @@ Deno.test("historical Gmail preflight is bounded, read-only and returns safe can
         }],
       };
     },
+    importHistoricalInbox: async () => { throw new Error("must not import"); },
     incidentId: () => "incident-history",
   });
   const response = await handler(request(JSON.stringify({
@@ -250,4 +255,63 @@ Deno.test("historical Gmail preflight is bounded, read-only and returns safe can
   assert(body.data.persisted === false);
   assert(body.data.outbound_enabled === false);
   assert(calls.length === 1);
+});
+
+Deno.test("historical Gmail import requires Sales, exact confirmation and returns a no-send receipt", async () => {
+  let imports = 0;
+  const salesIdentity = { ...identity, email: "sales@heymarksman.com" };
+  const options = {
+    verifyToken: async () => salesIdentity,
+    resolveWorkspace: async () => identity.organization,
+    syncInbox: async () => { throw new Error("must not sync"); },
+    renewWatch: async () => { throw new Error("must not watch"); },
+    previewHistoricalInbox: async () => ({ query: "in:inbox", candidates: [] }),
+    importHistoricalInbox: async () => {
+      imports += 1;
+      return {
+        candidateId: "message_1",
+        claimId: "97000000-0000-4000-8000-000000000001",
+        importStatus: "imported" as const,
+        attachmentMetadataRows: 1,
+        ospEnqueued: 1,
+        ospProcessed: 0,
+      };
+    },
+    incidentId: () => "incident-import",
+  };
+  const body = JSON.stringify({
+    version: 1,
+    action: "import_historical_provider_gmail",
+    subject_phrase: "PROCESO DE ALTA GRUPO SALZILLO",
+    after_date: "2026-08-09",
+    before_date: "2026-08-12",
+    candidate_id: "message_1",
+    idempotency_key: "historical_gmail:one",
+    confirmation: "IMPORT_EXACT_HISTORICAL_CUSTOMER_SETUP",
+  });
+  const response = await createOspGmailSyncHandler(options)(request(body));
+  assert(response.status === 200);
+  assert(JSON.stringify(await response.json()) === JSON.stringify({
+    version: 1,
+    data: {
+      candidate_id: "message_1",
+      claim_id: "97000000-0000-4000-8000-000000000001",
+      import_status: "imported",
+      attachment_metadata_rows: 1,
+      osp_enqueued: 1,
+      osp_processed: 0,
+      checkpoint_unchanged: true,
+      source_preserved: true,
+      persisted: true,
+      outbound_enabled: false,
+    },
+  }));
+  assert(imports === 1);
+
+  const forbidden = await createOspGmailSyncHandler({
+    ...options,
+    verifyToken: async () => identity,
+  })(request(body));
+  assert(forbidden.status === 403);
+  assert(imports === 1);
 });
