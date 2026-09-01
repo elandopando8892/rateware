@@ -49,8 +49,10 @@ test('intake API exposes status, OAuth, sync, and watch without a browser send o
   for (const action of ['provider_gmail_status', 'start_provider_gmail_oauth', 'sync_provider_gmail_inbox', 'renew_provider_gmail_watch']) {
     assert.match(api, new RegExp(action));
   }
-  assert.match(api, /requireKindeUser\(request\)/);
-  assert.match(api, /resolveRuntimeWorkspaceUser/);
+  assert.match(api, /createOspRuntimeJwtVerifier/);
+  assert.match(api, /requireSalesSuperuser\(request\)/);
+  assert.match(api, /sales@heymarksman\.com/);
+  assert.match(api, /osp:superuser/);
   assert.match(api, /PROVIDER_GMAIL_READONLY_SCOPE/);
   assert.match(api, /PROVIDER_GMAIL_SEND_SCOPE/);
   assert.match(api, /openid email/);
@@ -83,10 +85,11 @@ test('watch registration is INBOX-only and stores returned history/expiration', 
   assert.match(watch, /watch_expiration_at: watchExpirationAt/);
 });
 
-test('Provider Gmail Edge functions bypass only the Supabase JWT gateway and keep runtime auth', () => {
+test('Provider Gmail Edge functions bypass only the gateway and keep Supabase runtime auth', () => {
   assert.match(supabaseConfig, /\[functions\.provider-gmail-intake-api\]\s+verify_jwt = false/);
   assert.match(supabaseConfig, /\[functions\.provider-gmail-oauth-callback\]\s+verify_jwt = false/);
-  assert.match(api, /requireKindeUser\(request\)/);
+  assert.match(api, /createOspRuntimeJwtVerifier/);
+  assert.doesNotMatch(api, /requireKindeUser|resolveRuntimeWorkspaceUser/);
   assert.match(callback, /provider_gmail_oauth_states/);
 });
 

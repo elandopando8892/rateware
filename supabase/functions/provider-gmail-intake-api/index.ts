@@ -2,12 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import {
   corsHeaders,
   jsonResponse as baseJsonResponse,
-  requireKindeUser,
 } from "../_shared/kinde.ts";
-import {
-  resolveRuntimeWorkspaceUser,
-  runtimeIdentityStatus,
-} from "../_shared/runtime-identity.ts";
+import { createOspRuntimeJwtVerifier } from "../osp-read-api/auth-runtime.ts";
 import {
   cleanProviderGmailText,
   PROVIDER_GMAIL_READONLY_SCOPE,
@@ -27,6 +23,10 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get(
   "RATEWARE_SUPABASE_SERVICE_ROLE_KEY",
 );
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
+const OSP_AUTH = createOspRuntimeJwtVerifier({
+  env: Deno.env,
+  fetch: globalThis.fetch.bind(globalThis),
+});
 const PROVIDER_GMAIL_PUBSUB_TOPIC = cleanProviderGmailText(
   Deno.env.get("PROVIDER_GMAIL_PUBSUB_TOPIC"),
 );
@@ -105,23 +105,34 @@ function oauthRedirectUri() {
     }/functions/v1/provider-gmail-oauth-callback`;
 }
 
-async function resolveScope(supabase: any, user: Record<string, unknown>) {
-  const workspaceId = cleanProviderGmailText(user.organization_id);
-  if (!workspaceId) {
-    throw new Error("Organization workspace is required for Provider Gmail.");
-  }
-  const registry = await supabase.from("workspace_registry")
-    .select("organization_uuid")
-    .eq("organization_id", workspaceId)
-    .maybeSingle();
-  if (registry.error) throw registry.error;
-  const organizationUuid = cleanProviderGmailText(
-    registry.data?.organization_uuid,
+function bearer(request: Request) {
+  const match = /^Bearer ([^\s,]+)$/.exec(
+    request.headers.get("authorization") || "",
   );
-  if (!organizationUuid || !UUID_PATTERN.test(organizationUuid)) {
-    throw new Error("Workspace tenant mapping is incomplete.");
+  if (!match) {
+    const error = new Error("Unauthorized.");
+    (error as Error & { status?: number }).status = 401;
+    throw error;
   }
-  return { organizationUuid };
+  return match[1];
+}
+
+async function requireSalesSuperuser(request: Request) {
+  const verified = await OSP_AUTH.verifyWorkflow(
+    bearer(request),
+    AbortSignal.timeout(5_000),
+  );
+  if (
+    verified.identity.email !== "sales@heymarksman.com" ||
+    verified.permissions.length !== 2 ||
+    verified.permissions[0] !== "osp:read" ||
+    verified.permissions[1] !== "osp:superuser"
+  ) {
+    const error = new Error("Forbidden.");
+    (error as Error & { status?: number }).status = 403;
+    throw error;
+  }
+  return verified;
 }
 
 async function requireLegalEntity(
@@ -313,20 +324,17 @@ Deno.serve(async (request) => {
 
   try {
     const supabase = getClient();
-    const identity = await requireKindeUser(request);
-    const user = await resolveRuntimeWorkspaceUser(
-      supabase,
-      identity as Record<string, unknown>,
-      { persistLegacyIdentity: false },
-    );
+    const verified = await requireSalesSuperuser(request);
+    const user = {
+      id: verified.identity.subject,
+      email: verified.identity.email,
+      owner_email: verified.identity.email,
+    };
+    const organizationUuid = verified.identity.organization;
     const body = await request.json() as Record<string, unknown>;
     if (typeof body.action !== "string" || !ACTIONS.has(body.action)) {
       return jsonResponse({ error: "Unknown Provider Gmail action." }, 400);
     }
-    const { organizationUuid } = await resolveScope(
-      supabase,
-      user as Record<string, unknown>,
-    );
     if (body.action === "provider_gmail_status") {
       return jsonResponse(await listSafeStatus(supabase, organizationUuid));
     }
@@ -348,10 +356,9 @@ Deno.serve(async (request) => {
     }
     return jsonResponse({ error: "Unknown Provider Gmail action." }, 400);
   } catch (error) {
-    const identityStatus = runtimeIdentityStatus(error);
     return jsonResponse(
       { error: errorMessage(error) },
-      identityStatus === 403 ? 403 : errorStatus(error),
+      errorStatus(error),
     );
   }
 });
