@@ -41,6 +41,13 @@ Supabase Postgres. The database preflight proves atomic concurrency, RLS,
 service-role-only RPCs, aggregate-only health and the external-execution
 constraint. See `docs/rfx-private-resolver-postgres-preflight.md`.
 
+Sprint 9.6 adds the unapplied retention candidate
+`20260902003000_rfx_private_resolver_retention.sql`. It recovers expired leases,
+compacts terminal detail after 90 days and preserves a purpose-limited
+anti-replay tombstone for 400 days. Claim and maintenance transactions use
+shared/exclusive advisory locks so compaction cannot reopen a replay race. See
+`docs/rfx-private-resolver-retention-candidate.md`.
+
 ## Runtime gates
 
 `RATEWARE_PRIVATE_RESOLVER_CANARY_ENABLED=true` enables only the read-only
@@ -66,7 +73,10 @@ with MARKSMAN Loads. The fixture is not production Rateware evidence.
 
 ## Deployment boundary
 
-Sprint 9.4 authored the ledger migration and Sprint 9.5 applied it only inside a
-discarded local container. Neither migration nor the Edge Function was deployed
-remotely. Production requires retention policy, migration review, secret
-provisioning, network/rate limiting and a separately authorized release.
+Sprint 9.4 authored the ledger migration; Sprints 9.5 and 9.6 applied all three
+migrations only inside discarded local containers. No migration or Edge
+Function was deployed remotely. The retention policy is technically verified
+but remains a candidate with scheduling and production approval disabled.
+Production still requires policy-owner acceptance, migration review, secret
+provisioning, network/rate limiting, scheduler operations and a separately
+authorized release.

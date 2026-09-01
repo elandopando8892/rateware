@@ -4,13 +4,15 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const image = process.env.RATEWARE_LEDGER_POSTGRES_IMAGE || "public.ecr.aws/supabase/postgres:17.6.1.165";
-const container = `rateware-resolver-ledger-95-${process.pid}`;
-const database = "rateware_ledger_95";
+const container = `rateware-resolver-ledger-96-${process.pid}`;
+const database = "rateware_ledger_96";
 const password = `local-only-${process.pid}`;
 const migrationPath = resolve(import.meta.dirname, "../supabase/migrations/20260901193000_rfx_private_resolver_request_ledger.sql");
 const migration = await readFile(migrationPath, "utf8");
 const healthMigrationPath = resolve(import.meta.dirname, "../supabase/migrations/20260901230000_rfx_private_resolver_ledger_health.sql");
 const healthMigration = await readFile(healthMigrationPath, "utf8");
+const retentionMigrationPath = resolve(import.meta.dirname, "../supabase/migrations/20260902003000_rfx_private_resolver_retention.sql");
+const retentionMigration = await readFile(retentionMigrationPath, "utf8");
 
 function run(command, args, { input = "", allowFailure = false } = {}) {
   return new Promise((resolveRun, reject) => {
@@ -52,7 +54,7 @@ async function waitReady() {
 
 function claimSql({ requestId, requestHash, action = "resolve_and_submit_bid_canary" }) {
   return `select public.claim_rfx_private_resolver_request(
-    '${requestId}'::uuid, '${requestHash}', '${action}', 'marksman-loads', 'preview-9-5',
+    '${requestId}'::uuid, '${requestHash}', '${action}', 'marksman-loads', 'preview-9-6',
     'org-acme', '22222222-2222-4222-8222-222222222222'::uuid,
     '33333333-3333-4333-8333-333333333333'::uuid,
     '44444444-4444-4444-8444-444444444444'::uuid,
@@ -82,6 +84,7 @@ try {
   `);
   await psql(migration);
   await psql(healthMigration);
+  await psql(retentionMigration);
 
   const requestId = "55555555-5555-4555-8555-555555555555";
   const requestHash = "a".repeat(64);
@@ -136,6 +139,11 @@ try {
   assert.equal(health.requestBodyStored, false);
   assert.equal(health.credentialMaterialStored, false);
   assert.equal(health.externalExecutionPossible, false);
+  assert.equal(health.retentionPolicyVersion, "rfx-private-resolver-retention.v1");
+  assert.equal(Number(health.detailRetentionDays), 90);
+  assert.equal(Number(health.tombstoneRetentionDays), 400);
+  assert.equal(health.schedulerEnabled, false);
+  assert.equal(health.approvedForProduction, false);
 
   for (const role of ["anon", "authenticated"]) {
     const denied = await psql(`set role ${role}; select count(*) from public.rfx_private_resolver_requests;`, { allowFailure: true });
@@ -144,11 +152,45 @@ try {
     const healthDenied = await psql(`set role ${role}; select public.get_rfx_private_resolver_ledger_health();`, { allowFailure: true });
     assert.notEqual(healthDenied.code, 0, `${role} must not execute ledger health`);
     assert.match(healthDenied.stderr, /permission denied/);
+    const tombstonesDenied = await psql(`set role ${role}; select count(*) from public.rfx_private_resolver_request_tombstones;`, { allowFailure: true });
+    assert.notEqual(tombstonesDenied.code, 0, `${role} must not read tombstones`);
+    assert.match(tombstonesDenied.stderr, /permission denied/);
+    const retentionDenied = await psql(`set role ${role}; select public.run_rfx_private_resolver_retention(now());`, { allowFailure: true });
+    assert.notEqual(retentionDenied.code, 0, `${role} must not run retention`);
+    assert.match(retentionDenied.stderr, /permission denied/);
   }
   const serviceCount = await asServiceRole("select count(*) from public.rfx_private_resolver_requests;");
   assert.equal(Number(serviceCount.stdout.split(/\r?\n/).at(-1)), 3);
 
-  const externalWrite = await psql(`update public.rfx_private_resolver_requests set external_execution=true where request_id='${requestId}'::uuid;`, { allowFailure: true });
+  const retentionRaw = await asServiceRole("select public.run_rfx_private_resolver_retention('2027-01-01T00:00:00Z'::timestamptz);");
+  const retention = JSON.parse(retentionRaw.stdout.split(/\r?\n/).at(-1));
+  assert.equal(retention.policyVersion, "rfx-private-resolver-retention.v1");
+  assert.equal(Number(retention.processingRecovered), 1);
+  assert.equal(Number(retention.detailsCompacted), 2);
+  assert.equal(Number(retention.detailsDeleted), 2);
+  assert.equal(Number(retention.tombstonesPurged), 0);
+  assert.equal(retention.schedulerEnabled, false);
+  assert.equal(retention.approvedForProduction, false);
+  assert.equal(retention.externalExecutionPossible, false);
+
+  const tombstonedRetryRaw = await asServiceRole(claimSql({ requestId, requestHash }));
+  const tombstonedRetry = JSON.parse(tombstonedRetryRaw.stdout.split(/\r?\n/).at(-1));
+  assert.equal(tombstonedRetry.claimed, false);
+  assert.equal(tombstonedRetry.mismatch, false);
+  assert.equal(tombstonedRetry.record.status, "tombstoned");
+  assert.equal(tombstonedRetry.record.error_code, "REQUEST_RETENTION_TOMBSTONE");
+
+  const tombstoneMismatchRaw = await asServiceRole(claimSql({ requestId, requestHash: "e".repeat(64) }));
+  const tombstoneMismatch = JSON.parse(tombstoneMismatchRaw.stdout.split(/\r?\n/).at(-1));
+  assert.equal(tombstoneMismatch.claimed, false);
+  assert.equal(tombstoneMismatch.mismatch, true);
+
+  const activeAfterRetention = await asServiceRole("select count(*) from public.rfx_private_resolver_requests;");
+  assert.equal(Number(activeAfterRetention.stdout.split(/\r?\n/).at(-1)), 1);
+  const tombstonesAfterRetention = await asServiceRole("select count(*) from public.rfx_private_resolver_request_tombstones;");
+  assert.equal(Number(tombstonesAfterRetention.stdout.split(/\r?\n/).at(-1)), 2);
+
+  const externalWrite = await psql(`update public.rfx_private_resolver_requests set external_execution=true where request_id='${processingId}'::uuid;`, { allowFailure: true });
   assert.notEqual(externalWrite.code, 0);
   assert.match(externalWrite.stderr, /check constraint/);
 
@@ -156,11 +198,21 @@ try {
   const columns = columnsRaw.stdout.split(/\r?\n/).filter(Boolean);
   const forbidden = ["request_body", "signature", "invitation_token", "operational_fit", "bid_rate", "notes", "commercial_model"];
   assert.deepEqual(columns.filter((column) => forbidden.includes(column)), []);
+  const tombstoneColumnsRaw = await psql("select column_name from information_schema.columns where table_schema='public' and table_name='rfx_private_resolver_request_tombstones' order by ordinal_position;");
+  const tombstoneColumns = tombstoneColumnsRaw.stdout.split(/\r?\n/).filter(Boolean);
+  assert.deepEqual(tombstoneColumns.filter((column) => forbidden.includes(column)), []);
+
+  const purgeRaw = await asServiceRole("select public.run_rfx_private_resolver_retention('2028-03-01T00:00:00Z'::timestamptz);");
+  const purge = JSON.parse(purgeRaw.stdout.split(/\r?\n/).at(-1));
+  assert.equal(Number(purge.detailsCompacted), 1);
+  assert.equal(Number(purge.tombstonesPurged), 2);
+  const tombstonesAfterPurge = await asServiceRole("select count(*) from public.rfx_private_resolver_request_tombstones;");
+  assert.equal(Number(tombstonesAfterPurge.stdout.split(/\r?\n/).at(-1)), 1);
 
   console.log(JSON.stringify({
     status: "PASS",
     image,
-    migrations: ["20260901193000_rfx_private_resolver_request_ledger.sql", "20260901230000_rfx_private_resolver_ledger_health.sql"],
+    migrations: ["20260901193000_rfx_private_resolver_request_ledger.sql", "20260901230000_rfx_private_resolver_ledger_health.sql", "20260902003000_rfx_private_resolver_retention.sql"],
     concurrentClaims: claims.length,
     atomicWinners: 1,
     exactRetry: "same_terminal_result",
@@ -169,8 +221,16 @@ try {
     rls: { anon: "denied", authenticated: "denied", service_role: "allowed" },
     externalExecutionConstraint: "enforced_false",
     aggregateHealth: "service_role_only",
-    retentionPolicy: "not_configured_release_blocker",
+    retentionPolicy: {
+      version: "rfx-private-resolver-retention.v1",
+      detailDays: 90,
+      tombstoneDays: 400,
+      replayAfterCompaction: "blocked_by_tombstone",
+      scheduler: "not_configured_release_gate",
+      productionApproval: false,
+    },
     storedColumns: columns.length,
+    tombstoneColumns: tombstoneColumns.length,
     sensitiveColumns: 0,
     remoteEffects: false,
   }, null, 2));

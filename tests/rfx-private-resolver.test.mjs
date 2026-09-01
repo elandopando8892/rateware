@@ -179,6 +179,22 @@ test("fails closed when an identical request is already processing", async () =>
   assert.equal(calls, 0);
 });
 
+test("fails closed when retention already compacted an identical request to a tombstone", async () => {
+  let calls = 0;
+  const tombstoneLedger = {
+    claim: async (input) => ({
+      claimed: false,
+      mismatch: false,
+      record: { requestId: input.requestId, requestHash: input.requestHash, status: "tombstoned", errorCode: "REQUEST_RETENTION_TOMBSTONE" },
+    }),
+    complete: async () => null,
+    fail: async () => null,
+  };
+  const candidate = createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, requestLedger: tombstoneLedger, findInvitations: async () => { calls += 1; return [invitation()]; } });
+  await assert.rejects(candidate.resolve(await signedEnvelope()), (error) => error.code === "REQUEST_RETENTION_TOMBSTONE" && error.status === 409);
+  assert.equal(calls, 0);
+});
+
 test("fails closed before invitation lookup when the durable ledger is unavailable", async () => {
   let calls = 0;
   const candidate = createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, findInvitations: async () => { calls += 1; return [invitation()]; } });
@@ -250,4 +266,21 @@ test("health migration exposes aggregate service-role evidence without adding a 
   assert.match(sql, /requestBodyStored'[\s\S]+false/i);
   assert.match(sql, /credentialMaterialStored'[\s\S]+false/i);
   assert.doesNotMatch(sql, /delete\s+from|truncate|drop\s+table/i);
+});
+
+test("retention migration compacts to purpose-limited tombstones without scheduling production work", async () => {
+  const sql = await readFile(new URL("../supabase/migrations/20260902003000_rfx_private_resolver_retention.sql", import.meta.url), "utf8");
+  assert.match(sql, /rfx-private-resolver-retention\.v1/i);
+  assert.match(sql, /interval '90 days'/i);
+  assert.match(sql, /interval '400 days'/i);
+  assert.match(sql, /REQUEST_RETENTION_TOMBSTONE/i);
+  assert.match(sql, /pg_advisory_xact_lock_shared/i);
+  assert.match(sql, /pg_advisory_xact_lock\(/i);
+  assert.match(sql, /run_rfx_private_resolver_retention/i);
+  assert.match(sql, /approved_for_production boolean not null default false/i);
+  assert.match(sql, /scheduler_enabled boolean not null default false/i);
+  assert.match(sql, /revoke all[\s\S]+from public, anon, authenticated/i);
+  assert.match(sql, /grant execute[\s\S]+to service_role/i);
+  assert.doesNotMatch(sql, /cron\.schedule|create extension[^;]+pg_cron/i);
+  assert.doesNotMatch(sql, /\n\s*(request_body|signature|invitation_token|operational_fit|bid_rate|notes|commercial_model)\s+/i);
 });
