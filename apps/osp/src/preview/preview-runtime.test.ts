@@ -16,9 +16,16 @@ describe('synthetic preview runtime', () => {
     await expect(runtime.apiClient.listClarificationReviews()).resolves.toHaveLength(1);
     await expect(runtime.apiClient.listFormTemplates()).resolves.toMatchObject({ templates: [{ latest: { status: 'published' } }, { latest: { status: 'draft' } }] });
     const cases = await runtime.apiClient.listCustomerRegistrationCases();
-    expect(cases).toHaveLength(6);
+    expect(cases).toHaveLength(7);
     await expect(runtime.apiClient.getCustomerRegistrationCase(cases[0].case_id)).resolves.toMatchObject({
-      supplier_name: 'Northstar Components', state: 'ready_to_send', message_count: '4',
+      supplier_name: 'Grupo Salzillo',
+      state: 'analyzing_requirements',
+      message_count: '1',
+      request_manifest: {
+        sourceCoverage: { xlsm: 1 },
+        spreadsheetProtection: { macroEnabledFiles: 1, macroExecution: 'blocked', analysisMode: 'sanitized_copy' },
+        externalEffects: false,
+      },
     });
     const formCase = cases.find((item) => item.supplier_name === 'Sierra Retail México');
     expect(formCase).toBeDefined();

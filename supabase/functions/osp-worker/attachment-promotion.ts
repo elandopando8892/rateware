@@ -16,7 +16,8 @@ export type RegisteredRequirementDocument = Readonly<{
 
 export type SourceSafetyReason =
   | "managed_malware_scan_clean"
-  | "strict_xlsx_package_policy";
+  | "strict_xlsx_package_policy"
+  | "macro_quarantined_openxml_policy";
 
 export interface AttachmentPromotionStore {
   listCaseAttachments(input: {
@@ -61,12 +62,14 @@ type MalwareScanner = (
     sourceUrl: () => Promise<string>;
     sourceSha256: string;
     sizeBytes: number;
+    contentType: string;
   },
 ) => Promise<"clean" | "infected" | "unknown">;
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
+const XLSM = "application/vnd.ms-excel.sheet.macroEnabled.12";
 const CONTENT_TYPES = new Set([
   "application/pdf",
   "image/jpeg",
@@ -74,6 +77,7 @@ const CONTENT_TYPES = new Set([
   "image/tiff",
   "image/webp",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  XLSM,
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
 const LEGACY_EXTRACTION_CONTENT_TYPES = new Set([
@@ -82,6 +86,7 @@ const LEGACY_EXTRACTION_CONTENT_TYPES = new Set([
   "image/png",
   "image/tiff",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  XLSM,
 ]);
 
 async function sha256(bytes: Uint8Array): Promise<string> {
@@ -113,7 +118,7 @@ export function createAttachmentPromotionService(deps: {
   store: AttachmentPromotionStore;
   storage: AttachmentPromotionStorage;
   scan: MalwareScanner;
-  sourceSafetyReason?: SourceSafetyReason;
+  sourceSafetyReason?: SourceSafetyReason | ((source: GmailAttachmentSource) => SourceSafetyReason);
   contentTypes?: readonly string[];
   jobs: Pick<BackgroundJobStore, "enqueue">;
 }): AttachmentPromotionService {
@@ -150,6 +155,7 @@ export function createAttachmentPromotionService(deps: {
               }),
             sourceSha256: source.sourceSha256,
             sizeBytes: bytes.byteLength,
+            contentType: source.contentType,
           }) !== "clean"
         ) {
           throw new Error("MALWARE_SCAN_REJECTED");
@@ -164,8 +170,9 @@ export function createAttachmentPromotionService(deps: {
         const registered = await deps.store.register({
           ...source,
           corporateObjectKey,
-          sourceSafetyReason: deps.sourceSafetyReason ??
-            "managed_malware_scan_clean",
+          sourceSafetyReason: typeof deps.sourceSafetyReason === "function"
+            ? deps.sourceSafetyReason(source)
+            : deps.sourceSafetyReason ?? "managed_malware_scan_clean",
         });
         if (LEGACY_EXTRACTION_CONTENT_TYPES.has(source.contentType)) {
           await deps.jobs.enqueue({

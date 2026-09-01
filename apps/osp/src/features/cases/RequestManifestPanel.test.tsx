@@ -9,7 +9,8 @@ const manifest: RequestManifestReadModel = {
   status: 'review_required',
   modelVersion: 'gpt-synthetic',
   sourceCount: 3,
-  sourceCoverage: { email: 1, xlsx: 1, pdf: 0, docx: 1, image: 0 },
+  sourceCoverage: { email: 1, xlsx: 1, xlsm: 0, pdf: 0, docx: 1, image: 0 },
+  spreadsheetProtection: { macroEnabledFiles: 0, macroExecution: 'blocked' as const, analysisMode: 'not_required' as const },
   generatedAt: '2026-08-31T12:00:00.000Z',
   requestType: 'customer_setup',
   language: 'en',
@@ -55,5 +56,20 @@ describe('RequestManifestPanel', () => {
     render(<RequestManifestPanel manifest={null} />);
     expect(screen.getByRole('heading', { name: /request interpretation pending/i })).toBeInTheDocument();
     expect(screen.getByText(/no governed case-level interpretation/i)).toBeInTheDocument();
+  });
+
+  it('shows the macro isolation boundary for an XLSM request', () => {
+    render(<RequestManifestPanel manifest={{
+      ...manifest,
+      sourceCoverage: { email: 1, xlsx: 0, xlsm: 1, pdf: 0, docx: 1, image: 0 },
+      spreadsheetProtection: { macroEnabledFiles: 1, macroExecution: 'blocked', analysisMode: 'sanitized_copy' },
+      forms: [{ name: 'Alta Cliente.xlsm', format: 'xlsm', action: 'complete', required: true, evidenceIds: ['xlsm:workbook'] }],
+    }} />);
+
+    expect(screen.getByLabelText('1 XLSM')).toBeInTheDocument();
+    expect(screen.getByText('Macro-enabled workbook isolated')).toBeInTheDocument();
+    expect(screen.getByText(/source preserved unchanged/i)).toBeInTheDocument();
+    expect(screen.getByText(/macro execution remained blocked/i)).toBeInTheDocument();
+    expect(screen.getByText('sanitized copy')).toBeInTheDocument();
   });
 });

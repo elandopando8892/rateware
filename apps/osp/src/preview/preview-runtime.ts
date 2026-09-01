@@ -16,6 +16,7 @@ const previewSession: BoundSession = Object.freeze({
 });
 
 const caseId = '11111111-1111-4111-8111-111111111111';
+const salzilloCaseId = '11111111-1111-4111-8111-111111111117';
 const caseFormCaseId = '11111111-1111-4111-8111-111111111115';
 const finalResponseCaseId = '11111111-1111-4111-8111-111111111116';
 const payloadId = '22222222-2222-4222-8222-222222222222';
@@ -110,7 +111,8 @@ const previewRequestManifest: NonNullable<CaseDetail['request_manifest']> = Obje
   status: 'review_required',
   modelVersion: 'openai-structured-preview',
   sourceCount: 7,
-  sourceCoverage: { email: 1, xlsx: 1, pdf: 3, docx: 1, image: 1 },
+  sourceCoverage: { email: 1, xlsx: 1, xlsm: 0, pdf: 3, docx: 1, image: 1 },
+  spreadsheetProtection: { macroEnabledFiles: 0, macroExecution: 'blocked', analysisMode: 'not_required' },
   generatedAt: '2026-08-26T18:02:00.000Z',
   requestType: 'customer_setup',
   language: 'en',
@@ -154,7 +156,53 @@ const previewRequestManifest: NonNullable<CaseDetail['request_manifest']> = Obje
   externalEffects: false,
 });
 
+const salzilloRequestManifest: NonNullable<CaseDetail['request_manifest']> = Object.freeze({
+  schemaVersion: 1,
+  status: 'review_required',
+  modelVersion: 'openai-structured-preview',
+  sourceCount: 2,
+  sourceCoverage: { email: 1, xlsx: 0, xlsm: 1, pdf: 0, docx: 0, image: 0 },
+  spreadsheetProtection: { macroEnabledFiles: 1, macroExecution: 'blocked', analysisMode: 'sanitized_copy' },
+  generatedAt: '2026-08-31T23:40:00.000Z',
+  requestType: 'customer_setup',
+  language: 'es',
+  targetXbfEntity: 'unknown',
+  requesterLegalName: null,
+  dueDate: null,
+  forms: [{
+    name: 'Copia de Formato 3.3 Alta Cliente.xlsm',
+    format: 'xlsm',
+    action: 'complete',
+    required: true,
+    evidenceIds: ['email:salzillo', 'xlsx:alta-cliente:workbook'],
+  }],
+  requestedFields: [],
+  requestedDocuments: [],
+  signature: { required: true, signerTitle: 'Representante legal', evidenceIds: ['email:salzillo'] },
+  submission: { method: 'reply_email', recipients: [], instructions: 'Return the completed workbook in the original thread.', evidenceIds: ['email:salzillo'] },
+  requirements: [
+    { id: 'complete_both_pages', text: 'Complete both pages of the customer registration workbook in full.', evidenceIds: ['email:salzillo'] },
+    { id: 'handwritten_signature', text: 'The legal representative must provide a handwritten signature.', evidenceIds: ['email:salzillo'] },
+    { id: 'preserve_original', text: 'Preserve the original macro-enabled workbook as immutable source evidence.', evidenceIds: ['xlsx:alta-cliente:workbook'] },
+  ],
+  contradictions: [],
+  missingInformation: [
+    { fieldId: 'targetXbfEntity', description: 'The request does not identify which XBF legal entity must be registered.', evidenceIds: ['email:salzillo'] },
+  ],
+  clarificationQuestions: [
+    { fieldId: 'targetXbfEntity', question: 'Should this registration use XBF Mexico or XBF US?', evidenceIds: ['email:salzillo'] },
+  ],
+  readiness: { status: 'needs_clarification', reasonCodes: ['target_entity_unresolved'] },
+  aiGenerated: true,
+  externalEffects: false,
+});
+
 const previewCases: readonly CaseSummary[] = Object.freeze([
+  {
+    case_id: salzilloCaseId, supplier_name: 'Grupo Salzillo', state: 'analyzing_requirements', aggregate_version: 1,
+    blocked_by_duplicate_review: false, created_at: '2026-08-10T15:00:00.000Z', updated_at: '2026-08-31T23:40:00.000Z',
+    message_count: '1', attachment_count: '1', document_count: '1',
+  },
   {
     case_id: caseId, supplier_name: 'Northstar Components', state: 'ready_to_send', aggregate_version: 12,
     blocked_by_duplicate_review: false, created_at: '2026-08-22T14:30:00.000Z', updated_at: '2026-08-26T18:20:00.000Z',
@@ -187,8 +235,23 @@ const previewCases: readonly CaseSummary[] = Object.freeze([
   },
 ]);
 
-const previewCaseDetail: CaseDetail = Object.freeze({
+const salzilloCaseDetail: CaseDetail = Object.freeze({
   ...previewCases[0],
+  latest_request: {
+    subject: 'PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN',
+    sender_domain: 'example.test',
+    received_at: '2026-08-10T15:00:00.000Z',
+  },
+  recent_events: [
+    { sequence: 2, state: 'analyzing_requirements', occurred_at: '2026-08-31T23:40:00.000Z', reason_code: 'historical_preview_analysis' },
+    { sequence: 1, state: 'received', occurred_at: '2026-08-10T15:00:00.000Z', reason_code: 'historical_request_identified' },
+  ],
+  request_manifest: salzilloRequestManifest,
+  profile_workspace: previewProfileWorkspace,
+});
+
+const previewCaseDetail: CaseDetail = Object.freeze({
+  ...previewCases[1],
   latest_request: {
     subject: 'Customer setup package and compliance questionnaire',
     sender_domain: 'northstar.example',
@@ -262,8 +325,8 @@ const previewWorkspace: ApprovalCommunicationsWorkspace = {
 };
 
 const previewOperationsWorkspace: ApprovalCommunicationsWorkspace = {
-  caseId: previewCases[1].case_id,
-  caseVersion: previewCases[1].aggregate_version,
+  caseId: previewCases[2].case_id,
+  caseVersion: previewCases[2].aggregate_version,
   caseState: 'operations_review',
   inputSnapshot: { sha256: shaB, documentCount: 4, extractionCount: 16, reviewDecisionCount: 5, formInstanceVersion: 2 },
   supplierPackage: {
@@ -475,8 +538,8 @@ function createPreviewClient(): OspClient {
     },
     listCustomerRegistrationCases: async () => structuredClone(previewCaseRows),
     getCustomerRegistrationCase: async (requestedCaseId) => {
-      const caseRecord = previewCaseRows.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCaseRows[3];
-      const base = requestedCaseId === caseId ? previewCaseDetail : {
+      const caseRecord = previewCaseRows.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCaseRows[4];
+      const base = requestedCaseId === caseId ? previewCaseDetail : requestedCaseId === salzilloCaseId ? salzilloCaseDetail : {
           ...caseRecord,
           latest_request: {
             subject: 'Supplier onboarding request — synthetic preview',

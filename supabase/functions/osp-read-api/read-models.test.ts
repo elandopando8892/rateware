@@ -198,6 +198,60 @@ Deno.test('case read models expose bounded metadata, canonical counts and no mes
   expectDependency(() => normalizeCaseDetail({ ...caseSummary, latest_subject: 'Only subject', latest_sender_domain: null, latest_received_at: null, recent_events: [], request_manifest: null, profile_workspace: profileWorkspace }));
 });
 
+Deno.test('case detail normalizes new XLSM protection and preserves old manifest compatibility', () => {
+  const manifest = {
+    aiGenerated: true,
+    clarificationQuestions: [],
+    contradictions: [],
+    dueDate: null,
+    externalEffects: false,
+    forms: [],
+    generatedAt: '2030-01-01T00:00:00Z',
+    language: 'es',
+    missingInformation: [],
+    modelVersion: 'synthetic-model',
+    readiness: { status: 'needs_clarification', reasonCodes: [] },
+    requestedDocuments: [],
+    requestedFields: [],
+    requesterLegalName: null,
+    requestType: 'customer_setup',
+    requirements: [],
+    schemaVersion: 1,
+    signature: { required: true, signerTitle: null, evidenceIds: [] },
+    sourceCount: 1,
+    sourceCoverage: { docx: 0, email: 1, image: 0, pdf: 0, xlsx: 0 },
+    status: 'review_required',
+    submission: { method: 'reply_email', recipients: [], instructions: null, evidenceIds: [] },
+    targetXbfEntity: 'unknown',
+  };
+  const detail = (requestManifest: unknown) => normalizeCaseDetail({
+    ...caseSummary,
+    latest_subject: 'Customer setup request',
+    latest_sender_domain: 'supplier.example',
+    latest_received_at: '2030-01-01T00:00:00Z',
+    recent_events: [],
+    request_manifest: requestManifest,
+    profile_workspace: profileWorkspace,
+  });
+
+  assert.deepEqual(detail(manifest).request_manifest, {
+    ...manifest,
+    sourceCoverage: { ...manifest.sourceCoverage, xlsm: 0 },
+    spreadsheetProtection: { analysisMode: 'not_required', macroEnabledFiles: 0, macroExecution: 'blocked' },
+  });
+  assert.deepEqual(detail({
+    ...manifest,
+    sourceCount: 2,
+    sourceCoverage: { ...manifest.sourceCoverage, xlsm: 1 },
+    spreadsheetProtection: { analysisMode: 'sanitized_copy', macroEnabledFiles: 1, macroExecution: 'blocked' },
+  }).request_manifest, {
+    ...manifest,
+    sourceCount: 2,
+    sourceCoverage: { ...manifest.sourceCoverage, xlsm: 1 },
+    spreadsheetProtection: { analysisMode: 'sanitized_copy', macroEnabledFiles: 1, macroExecution: 'blocked' },
+  });
+});
+
 Deno.test('case detail decodes RFC 2047 subjects and safely preserves malformed or unsafe values', () => {
   const detail = (latestSubject: string) => normalizeCaseDetail({
     ...caseSummary,

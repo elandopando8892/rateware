@@ -64,6 +64,7 @@ export interface StructuredExtractor {
 
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const XLSM = "application/vnd.ms-excel.sheet.macroEnabled.12";
 const PROMPT_VERSION = "osp-supplier-requirement-v1";
 const SCHEMA_VERSION = "osp-supplier-extraction-schema-v1";
 
@@ -235,10 +236,11 @@ export function createManagedExtractionService(deps: {
           throw new Error("SOURCE_HASH_MISMATCH");
         }
         let created: ExtractionSnapshot;
-        if (source.contentType === XLSX) {
+        if ([XLSX, XLSM].includes(source.contentType)) {
           const structure = await parseXlsxStructure({
             sourceVersionId: source.documentVersionId,
             bytes,
+            contentType: source.contentType as typeof XLSX | typeof XLSM,
           });
           created = await createXlsxStructuralSnapshot({ source, structure });
         } else {

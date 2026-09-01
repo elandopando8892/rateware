@@ -110,6 +110,7 @@ Deno.test("exact multimodal canary downloads evidence and persists only one revi
   assertEquals(result.sourceCoverage, {
     email: 1,
     xlsx: 0,
+    xlsm: 0,
     pdf: 1,
     docx: 0,
     image: 0,

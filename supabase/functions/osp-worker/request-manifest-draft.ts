@@ -4,13 +4,17 @@ import type {
   RequestManifestEvidence,
   RequestManifestTelemetry,
 } from "./openai-request-manifest.ts";
-import { parseXlsxStructure } from "./xlsx-structure.ts";
+import {
+  parseXlsxStructure,
+  XLSM_CONTENT_TYPE,
+  XLSX_CONTENT_TYPE,
+} from "./xlsx-structure.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256 = /^[0-9a-f]{64}$/;
-const XLSX =
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const XLSX = XLSX_CONTENT_TYPE;
+const XLSM = XLSM_CONTENT_TYPE;
 const DOCX =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -19,6 +23,7 @@ export type RequestManifestDocument = Readonly<{
   sourceName: string;
   contentType:
     | typeof XLSX
+    | typeof XLSM
     | typeof DOCX
     | "application/pdf"
     | "image/jpeg"
@@ -49,9 +54,15 @@ export type RequestManifestReadDraft = Readonly<{
   sourceCoverage: Readonly<{
     email: number;
     xlsx: number;
+    xlsm: number;
     pdf: number;
     docx: number;
     image: number;
+  }>;
+  spreadsheetProtection: Readonly<{
+    macroEnabledFiles: number;
+    macroExecution: "blocked";
+    analysisMode: "not_required" | "sanitized_copy";
   }>;
   generatedAt: string;
   requestType: RequestManifest["requestType"];
@@ -254,6 +265,7 @@ function readDraft(
   telemetry: RequestManifestTelemetry,
   sourceCount: number,
   sourceCoverage: RequestManifestReadDraft["sourceCoverage"],
+  spreadsheetProtection: RequestManifestReadDraft["spreadsheetProtection"],
   generatedAt: string,
 ): RequestManifestReadDraft {
   return Object.freeze({
@@ -262,6 +274,7 @@ function readDraft(
     modelVersion: telemetry.model,
     sourceCount,
     sourceCoverage,
+    spreadsheetProtection,
     generatedAt,
     requestType: manifest.requestType,
     language: manifest.language,
@@ -300,7 +313,15 @@ export function createRequestManifestDraftService(options: {
           `Subject: ${source.message.subject}\n\n${source.message.safeBody}`,
       })];
       const attachments: RequestManifestAttachment[] = [];
-      const coverage = { email: 1, xlsx: 0, pdf: 0, docx: 0, image: 0 };
+      const coverage = {
+        email: 1,
+        xlsx: 0,
+        xlsm: 0,
+        pdf: 0,
+        docx: 0,
+        image: 0,
+      };
+      let macroEnabledFiles = 0;
       const documents = [...source.documents].sort((left, right) =>
         left.versionId.localeCompare(right.versionId)
       );
@@ -308,15 +329,27 @@ export function createRequestManifestDraftService(options: {
         if (await sha256(document.bytes) !== document.sourceSha256) {
           throw new Error("SOURCE_HASH_MISMATCH");
         }
-        if (document.contentType === XLSX) {
+        if ([XLSX, XLSM].includes(document.contentType as typeof XLSX)) {
           const structure = await parseXlsxStructure({
             sourceVersionId: document.versionId,
             bytes: document.bytes,
+            contentType: document.contentType as typeof XLSX | typeof XLSM,
           });
           evidence.push(
             ...xlsxEvidence(document.versionId, document.sourceName, structure),
           );
-          coverage.xlsx += 1;
+          if (document.contentType === XLSM) {
+            if (
+              !structure.protection.macroEnabled ||
+              structure.protection.analysisMode !== "sanitized_copy" ||
+              !structure.protection.analysisSha256 ||
+              !structure.protection.macroSha256
+            ) throw new Error("XLSM_PACKAGE_POLICY_REJECTED");
+            coverage.xlsm += 1;
+            macroEnabledFiles += 1;
+          } else {
+            coverage.xlsx += 1;
+          }
         } else {
           attachments.push(attachment(document));
           if (document.contentType === "application/pdf") coverage.pdf += 1;
@@ -358,6 +391,13 @@ export function createRequestManifestDraftService(options: {
         interpreted.telemetry,
         1 + documents.length,
         coverage,
+        Object.freeze({
+          macroEnabledFiles,
+          macroExecution: "blocked" as const,
+          analysisMode: macroEnabledFiles > 0
+            ? "sanitized_copy" as const
+            : "not_required" as const,
+        }),
         generatedAt,
       );
       const manifestSha256 = await sha256(

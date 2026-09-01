@@ -20,6 +20,7 @@ const OBJECT_KEY = /^[0-9a-f-]{36}\/[0-9a-f-]{36}$/i;
 const SUPPORTED = new Set<SupportedContentType>([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel.sheet.macroEnabled.12",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "image/jpeg",
   "image/png",
@@ -73,6 +74,7 @@ function bounded(value: unknown, maximum: number, allowEmpty = false): string {
 function extension(contentType: SupportedContentType): string {
   if (contentType === "application/pdf") return "pdf";
   if (contentType.endsWith("spreadsheetml.sheet")) return "xlsx";
+  if (contentType === "application/vnd.ms-excel.sheet.macroEnabled.12") return "xlsm";
   if (contentType.endsWith("wordprocessingml.document")) return "docx";
   if (contentType === "image/jpeg") return "jpg";
   if (contentType === "image/png") return "png";

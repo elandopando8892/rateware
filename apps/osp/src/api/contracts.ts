@@ -151,10 +151,18 @@ export const RequestManifestSchema = z.strictObject({
   sourceCoverage: z.strictObject({
     email: z.number().int().min(1).max(100),
     xlsx: z.number().int().min(0).max(100),
+    xlsm: z.number().int().min(0).max(100),
     pdf: z.number().int().min(0).max(100),
     docx: z.number().int().min(0).max(100),
     image: z.number().int().min(0).max(100),
-  }).refine((coverage) => coverage.email + coverage.xlsx + coverage.pdf + coverage.docx + coverage.image <= 300),
+  }).refine((coverage) => coverage.email + coverage.xlsx + coverage.xlsm + coverage.pdf + coverage.docx + coverage.image <= 300),
+  spreadsheetProtection: z.strictObject({
+    macroEnabledFiles: z.number().int().min(0).max(100),
+    macroExecution: z.literal('blocked'),
+    analysisMode: z.enum(['not_required', 'sanitized_copy']),
+  }).refine((protection) => protection.macroEnabledFiles === 0
+    ? protection.analysisMode === 'not_required'
+    : protection.analysisMode === 'sanitized_copy'),
   generatedAt: utcDate,
   requestType: z.enum(['customer_setup', 'credit_application', 'compliance_update', 'unknown']),
   language: z.enum(['en', 'es', 'bilingual', 'unknown']),
@@ -163,7 +171,7 @@ export const RequestManifestSchema = z.strictObject({
   dueDate: dateOnly.nullable(),
   forms: z.array(z.strictObject({
     name: z.string().min(1).max(256),
-    format: z.enum(['xlsx', 'pdf', 'docx', 'other']),
+    format: z.enum(['xlsx', 'xlsm', 'pdf', 'docx', 'other']),
     action: z.enum(['complete', 'sign', 'review', 'attach']),
     required: z.boolean(),
     evidenceIds: ManifestEvidenceIdsSchema.min(1),
@@ -205,12 +213,19 @@ export const RequestManifestSchema = z.strictObject({
   externalEffects: z.literal(false),
 }).superRefine((manifest, context) => {
   const coverage = manifest.sourceCoverage;
-  const covered = coverage.email + coverage.xlsx + coverage.pdf + coverage.docx + coverage.image;
+  const covered = coverage.email + coverage.xlsx + coverage.xlsm + coverage.pdf + coverage.docx + coverage.image;
   if (covered !== manifest.sourceCount) {
     context.addIssue({
       code: 'custom',
       path: ['sourceCoverage'],
       message: 'Source coverage must equal the preserved source count',
+    });
+  }
+  if (manifest.spreadsheetProtection.macroEnabledFiles !== coverage.xlsm) {
+    context.addIssue({
+      code: 'custom',
+      path: ['spreadsheetProtection', 'macroEnabledFiles'],
+      message: 'Macro-enabled file count must match XLSM source coverage',
     });
   }
 });

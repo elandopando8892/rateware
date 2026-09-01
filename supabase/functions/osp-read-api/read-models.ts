@@ -176,12 +176,16 @@ const CASE_DETAIL_FIELDS = [
 
 function normalizeRequestManifest(value: unknown): unknown | null {
   if (value === null) return null;
-  const row = recordWithExactKeys(value, [
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const hasSpreadsheetProtection = Object.hasOwn(raw, 'spreadsheetProtection');
+  const manifestKeys = [
     'aiGenerated', 'clarificationQuestions', 'contradictions', 'dueDate', 'externalEffects', 'forms',
     'generatedAt', 'language', 'missingInformation', 'modelVersion', 'readiness', 'requestedDocuments',
     'requestedFields', 'requesterLegalName', 'requestType', 'requirements', 'schemaVersion', 'signature',
     'sourceCount', 'sourceCoverage', 'status', 'submission', 'targetXbfEntity',
-  ]);
+    ...(hasSpreadsheetProtection ? ['spreadsheetProtection'] : []),
+  ].sort();
+  const row = recordWithExactKeys(value, manifestKeys);
   if (row.schemaVersion !== 1 || row.status !== 'review_required' || row.aiGenerated !== true || row.externalEffects !== false ||
     typeof row.sourceCount !== 'number' || !Number.isSafeInteger(row.sourceCount) || row.sourceCount < 1 || row.sourceCount > 300 ||
     !['customer_setup', 'credit_application', 'compliance_update', 'unknown'].includes(String(row.requestType)) ||
@@ -191,12 +195,27 @@ function normalizeRequestManifest(value: unknown): unknown | null {
   }
   normalizeBoundedText(row.modelVersion, 128);
   normalizeRequiredUtcDate(row.generatedAt);
-  const coverage = recordWithExactKeys(row.sourceCoverage, ['docx', 'email', 'image', 'pdf', 'xlsx']);
+  const rawCoverage = row.sourceCoverage && typeof row.sourceCoverage === 'object' && !Array.isArray(row.sourceCoverage)
+    ? row.sourceCoverage as Record<string, unknown>
+    : {};
+  const hasXlsm = Object.hasOwn(rawCoverage, 'xlsm');
+  const coverageKeys = ['docx', 'email', 'image', 'pdf', 'xlsx', ...(hasXlsm ? ['xlsm'] : [])].sort();
+  const coverage = recordWithExactKeys(row.sourceCoverage, coverageKeys);
   const counts = Object.values(coverage).map((count) => {
     if (typeof count !== 'number') throw new OspApiError('DEPENDENCY_UNAVAILABLE');
     return normalizeSafeInteger(count, 0);
   });
-  if (counts[0] + counts[1] + counts[2] + counts[3] + counts[4] !== row.sourceCount || Number(coverage.email) < 1) {
+  if (counts.reduce((sum, count) => sum + count, 0) !== row.sourceCount || Number(coverage.email) < 1) {
+    throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  }
+  const xlsm = hasXlsm ? normalizeSafeInteger(coverage.xlsm, 0) : 0;
+  const spreadsheetProtection = hasSpreadsheetProtection
+    ? recordWithExactKeys(row.spreadsheetProtection, ['analysisMode', 'macroEnabledFiles', 'macroExecution'])
+    : { analysisMode: 'not_required', macroEnabledFiles: 0, macroExecution: 'blocked' };
+  if (spreadsheetProtection.macroExecution !== 'blocked' ||
+      !['not_required', 'sanitized_copy'].includes(String(spreadsheetProtection.analysisMode)) ||
+      normalizeSafeInteger(spreadsheetProtection.macroEnabledFiles, 0) !== xlsm ||
+      (xlsm === 0) !== (spreadsheetProtection.analysisMode === 'not_required')) {
     throw new OspApiError('DEPENDENCY_UNAVAILABLE');
   }
   for (const key of ['forms', 'requestedFields', 'requestedDocuments', 'requirements', 'contradictions', 'missingInformation', 'clarificationQuestions'] as const) {
@@ -207,7 +226,11 @@ function normalizeRequestManifest(value: unknown): unknown | null {
     !row.readiness || typeof row.readiness !== 'object' || Array.isArray(row.readiness)) {
     throw new OspApiError('DEPENDENCY_UNAVAILABLE');
   }
-  return value;
+  return {
+    ...row,
+    sourceCoverage: { ...coverage, xlsm },
+    spreadsheetProtection,
+  };
 }
 
 function normalizeCaseProfileWorkspace(value: unknown): CaseDetailReadModel['profile_workspace'] {

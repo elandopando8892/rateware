@@ -48,7 +48,7 @@ export type RequestManifest = Readonly<{
   dueDate: CitedText;
   forms: readonly Readonly<{
     name: string;
-    format: "xlsx" | "pdf" | "docx" | "other";
+    format: "xlsx" | "xlsm" | "pdf" | "docx" | "other";
     action: "complete" | "sign" | "review" | "attach";
     required: boolean;
     evidenceIds: readonly string[];
@@ -165,7 +165,7 @@ const OUTPUT_SCHEMA = {
         additionalProperties: false,
         properties: {
           name: { type: "string" },
-          format: { type: "string", enum: ["xlsx", "pdf", "docx", "other"] },
+          format: { type: "string", enum: ["xlsx", "xlsm", "pdf", "docx", "other"] },
           action: {
             type: "string",
             enum: ["complete", "sign", "review", "attach"],
@@ -494,7 +494,7 @@ function parseManifest(
     }
     return {
       name: boundedString(row.name, 256),
-      format: oneOf(row.format, ["xlsx", "pdf", "docx", "other"] as const),
+      format: oneOf(row.format, ["xlsx", "xlsm", "pdf", "docx", "other"] as const),
       action: oneOf(
         row.action,
         ["complete", "sign", "review", "attach"] as const,

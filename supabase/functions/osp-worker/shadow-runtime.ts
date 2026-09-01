@@ -23,7 +23,10 @@ import { createPostgresAutomaticPreparationStore } from "./postgres-automatic-pr
 import type { SupabaseClient } from "supabase";
 import type { GovernedAutomationConfiguration } from "./governed-automation-config.ts";
 import type { XlsxShadowConfiguration } from "./xlsx-shadow-config.ts";
-import { createStrictXlsxPackageScanner } from "./strict-xlsx-package-scanner.ts";
+import {
+  createMacroSafeXlsmPackageScanner,
+  createStrictXlsxPackageScanner,
+} from "./strict-xlsx-package-scanner.ts";
 import type { AttachmentPromotionService } from "./attachment-promotion.ts";
 import type { ManagedExtractionService } from "./worker.ts";
 import type { AutomaticPreparationService } from "./automatic-preparation.ts";
@@ -56,6 +59,7 @@ import {
 
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const XLSM = "application/vnd.ms-excel.sheet.macroEnabled.12";
 
 type XlsxDocumentExtractCanary = {
   organizationId: string;
@@ -254,12 +258,20 @@ export function createShadowWorkerRuntime(input: {
       storage: createSupabaseAttachmentPromotionStorage({
         client: automationStorage!,
       }),
-      scan: async ({ sourceUrl, sourceSha256, sizeBytes }) =>
-        await managedScan({
+      scan: async ({ bytes, contentType, sourceUrl, sourceSha256, sizeBytes }) => {
+        const malwareResult = await managedScan({
           sourceUrl: await sourceUrl(),
           sourceSha256,
           sizeBytes,
-        }),
+        });
+        if (malwareResult !== "clean" || contentType !== XLSM) {
+          return malwareResult;
+        }
+        return await createMacroSafeXlsmPackageScanner()(bytes);
+      },
+      sourceSafetyReason: (source) => source.contentType === XLSM
+        ? "macro_quarantined_openxml_policy"
+        : "managed_malware_scan_clean",
       jobs,
     });
   } else if (input.xlsxShadow) {
@@ -294,9 +306,13 @@ export function createShadowWorkerRuntime(input: {
       storage: createSupabaseAttachmentPromotionStorage({
         client: automationStorage!,
       }),
-      scan: ({ bytes }) => createStrictXlsxPackageScanner()(bytes),
-      sourceSafetyReason: "strict_xlsx_package_policy",
-      contentTypes: [XLSX],
+      scan: ({ bytes, contentType }) => contentType === XLSM
+        ? createMacroSafeXlsmPackageScanner()(bytes)
+        : createStrictXlsxPackageScanner()(bytes),
+      sourceSafetyReason: (source) => source.contentType === XLSM
+        ? "macro_quarantined_openxml_policy"
+        : "strict_xlsx_package_policy",
+      contentTypes: [XLSX, XLSM],
       jobs,
     });
   }

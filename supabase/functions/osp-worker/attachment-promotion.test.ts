@@ -57,6 +57,7 @@ Deno.test("attachment promotion verifies, scans, registers and queues one determ
   );
   assertEquals(scans, [{
     bytes,
+    contentType: "application/pdf",
     sourceUrl: "https://storage.example.test/signed-source?token=synthetic",
     sourceSha256,
     sizeBytes: bytes.byteLength,

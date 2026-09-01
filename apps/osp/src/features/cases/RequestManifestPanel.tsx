@@ -14,7 +14,7 @@ const READINESS_LABELS: Record<RequestManifestReadModel['readiness']['status'], 
 };
 
 const HUMAN_DATE = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' });
-const SOURCE_LABELS = { email: 'Email', xlsx: 'XLSX', pdf: 'PDF', docx: 'DOCX', image: 'Image' } as const;
+const SOURCE_LABELS = { email: 'Email', xlsx: 'XLSX', xlsm: 'XLSM', pdf: 'PDF', docx: 'DOCX', image: 'Image' } as const;
 
 function EvidenceCount({ ids }: { ids: readonly string[] }) {
   return <span className="manifest-evidence">{ids.length} {ids.length === 1 ? 'source' : 'sources'}</span>;
@@ -41,7 +41,7 @@ export function RequestManifestPanel({ manifest }: { manifest: RequestManifestRe
         <div>
           <p className="eyebrow">AI request manifest · human review required</p>
           <h2 id="request-manifest-title">What this carrier is asking XBF to complete</h2>
-          <p>One governed interpretation across the email and its PDF, XLSX and DOCX evidence.</p>
+          <p>One governed interpretation across the email and its PDF, XLSX, XLSM and DOCX evidence.</p>
         </div>
         <span className="manifest-status">{manifest.status.replaceAll('_', ' ')}</span>
       </div>
@@ -62,6 +62,17 @@ export function RequestManifestPanel({ manifest }: { manifest: RequestManifestRe
         </ul>
         <small>Every conclusion remains linked to preserved evidence.</small>
       </div>
+
+      {manifest.spreadsheetProtection.macroEnabledFiles > 0 ? (
+        <div className="manifest-macro-protection" role="status">
+          <span aria-hidden="true">&#128274;</span>
+          <div>
+            <strong>Macro-enabled workbook isolated</strong>
+            <p>{manifest.spreadsheetProtection.macroEnabledFiles} XLSM source preserved unchanged. VBA and formulas were removed only from the temporary analysis copy; macro execution remained blocked.</p>
+          </div>
+          <code>{manifest.spreadsheetProtection.analysisMode.replaceAll('_', ' ')}</code>
+        </div>
+      ) : null}
 
       <div className={`manifest-readiness manifest-readiness-${readinessTone}`} role="status">
         <div><span className="manifest-readiness-dot" aria-hidden="true" /><strong>{READINESS_LABELS[manifest.readiness.status]}</strong></div>

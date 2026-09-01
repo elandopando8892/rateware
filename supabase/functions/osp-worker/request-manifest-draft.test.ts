@@ -160,9 +160,15 @@ Deno.test("multimodal request manifest preserves hashes, sends each supported fo
   assertEquals(result.manifest.sourceCoverage, {
     email: 1,
     xlsx: 0,
+    xlsm: 0,
     pdf: 1,
     docx: 1,
     image: 1,
+  });
+  assertEquals(result.manifest.spreadsheetProtection, {
+    macroEnabledFiles: 0,
+    macroExecution: "blocked",
+    analysisMode: "not_required",
   });
   assertEquals(result.manifest.externalEffects, false);
   assertEquals(result.manifest.status, "review_required");
@@ -223,7 +229,8 @@ Deno.test("multimodal request manifest reuses an exact evidence draft before cal
     status: "review_required" as const,
     modelVersion: "gpt-synthetic",
     sourceCount: 1,
-    sourceCoverage: { email: 1, xlsx: 0, pdf: 0, docx: 0, image: 0 },
+    sourceCoverage: { email: 1, xlsx: 0, xlsm: 0, pdf: 0, docx: 0, image: 0 },
+    spreadsheetProtection: { macroEnabledFiles: 0, macroExecution: "blocked" as const, analysisMode: "not_required" as const },
     generatedAt: "2026-09-01T03:00:00.000Z",
     requestType: manifest.requestType,
     language: manifest.language,
