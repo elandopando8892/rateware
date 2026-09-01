@@ -9,7 +9,8 @@
     "test:integration:resolver-ledger": "node tools/verify-rfx-private-resolver-ledger-postgres.mjs",
     "test:release-review": "node tools/verify-rfx-private-resolver-release-review.mjs",
     "test:readiness-intake": "node tools/verify-rfx-private-resolver-readiness-intake.mjs",
-    "test:release:private-resolver": "npm test && npm run test:integration:resolver-ledger && deno check supabase/functions/rfx-private-resolver/index.ts && npm run test:release-review && npm run test:readiness-intake",
+    "test:local-rehearsal": "node tools/verify-rfx-private-resolver-local-rehearsal.mjs",
+    "test:release:private-resolver": "npm test && npm run test:integration:resolver-ledger && deno check supabase/functions/rfx-private-resolver/index.ts && npm run test:release-review && npm run test:readiness-intake && npm run test:local-rehearsal",
     "test": "node tests/upload-center.test.mjs && node tests/rateware-stability.test.mjs && node --test tests/rfx-private-resolver.test.mjs"
   }
 }

@@ -1,0 +1,48 @@
+{
+  "contractVersion": "rateware.private-resolver.local-rehearsal.v1",
+  "rehearsalVersion": "beta-10.0",
+  "visibility": "internal_release_evidence",
+  "candidate": {
+    "repository": "rateware",
+    "sha": "3c6ae8636d293eb51c1fd7b520f13ce63d62d49a",
+    "function": "rfx-private-resolver",
+    "environmentClass": "local_disposable_only",
+    "remoteTarget": null,
+    "rollbackTarget": null,
+    "fixtureDataOnly": true
+  },
+  "steps": [
+    { "id": "candidate_provenance", "scope": "LOCAL", "status": "VERIFIED_LOCAL", "evidenceRef": "git:3c6ae8636d293eb51c1fd7b520f13ce63d62d49a" },
+    { "id": "resolver_unit_suite", "scope": "LOCAL", "status": "VERIFIED_LOCAL", "evidenceRef": "npm test" },
+    { "id": "disposable_postgres_preflight", "scope": "LOCAL", "status": "VERIFIED_LOCAL", "evidenceRef": "npm run test:integration:resolver-ledger" },
+    { "id": "edge_typescript_check", "scope": "LOCAL", "status": "VERIFIED_LOCAL", "evidenceRef": "deno check supabase/functions/rfx-private-resolver/index.ts" },
+    { "id": "durable_rate_limit_proof", "scope": "LOCAL", "status": "VERIFIED_LOCAL", "evidenceRef": "postgres-proof:40-checks:30-allowed:10-denied" },
+    { "id": "kill_switch_fail_closed", "scope": "LOCAL", "status": "VERIFIED_LOCAL", "evidenceRef": "test:rfx-private-resolver:CANARY_EXECUTION_DISABLED" },
+    { "id": "provider_monitoring", "scope": "REMOTE", "status": "BLOCKED_REMOTE", "evidenceRef": null },
+    { "id": "remote_rollback", "scope": "REMOTE", "status": "BLOCKED_REMOTE", "evidenceRef": null },
+    { "id": "remote_staging_canary", "scope": "REMOTE", "status": "BLOCKED_REMOTE", "evidenceRef": null }
+  ],
+  "decision": {
+    "status": "LOCAL_REHEARSAL_COMPLETE_REMOTE_BLOCKED",
+    "localSteps": 6,
+    "localStepsVerified": 6,
+    "remoteSteps": 3,
+    "remoteStepsBlocked": 3,
+    "killSwitchVerifiedLocally": true,
+    "remoteRollbackRehearsed": false,
+    "stagingRehearsalAuthorized": false,
+    "releaseReady": false,
+    "productionApproved": false
+  },
+  "safety": {
+    "remoteProjectCreated": false,
+    "remoteBranchCreated": false,
+    "gitEnvironmentCreated": false,
+    "secretMutation": false,
+    "remoteMigration": false,
+    "functionDeployment": false,
+    "schedulerMutation": false,
+    "ratewareSubmission": false,
+    "externalExecution": false
+  }
+}
