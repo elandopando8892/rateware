@@ -46,6 +46,7 @@ const expectedProductionSourcePaths = [
   'apps/osp/src/features/approval/FinalResponseComposer.tsx',
   'apps/osp/src/features/approval/SalesAuthorizationPage.tsx',
   'apps/osp/src/features/approval/SignatureApprovalPage.tsx',
+  'apps/osp/src/features/cases/AdaptiveReviewWorkbench.tsx',
   'apps/osp/src/features/cases/case-presenter.ts',
   'apps/osp/src/features/cases/CaseWorkspace.tsx',
   'apps/osp/src/features/cases/HistoricalIntakePanel.tsx',

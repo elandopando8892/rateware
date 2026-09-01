@@ -17,6 +17,7 @@ const previewSession: BoundSession = Object.freeze({
 
 const caseId = '11111111-1111-4111-8111-111111111111';
 const salzilloCaseId = '11111111-1111-4111-8111-111111111117';
+const craneCaseId = '11111111-1111-4111-8111-111111111118';
 const caseFormCaseId = '11111111-1111-4111-8111-111111111115';
 const finalResponseCaseId = '11111111-1111-4111-8111-111111111116';
 const payloadId = '22222222-2222-4222-8222-222222222222';
@@ -106,7 +107,7 @@ const previewCorporateProfile: CorporateProfileReadModel = {
   ],
 };
 
-const previewRequestManifest: NonNullable<CaseDetail['request_manifest']> = Object.freeze({
+const previewRequestManifest: NonNullable<CaseDetail['request_manifest']> = Object.freeze<NonNullable<CaseDetail['request_manifest']>>({
   schemaVersion: 1,
   status: 'review_required',
   modelVersion: 'openai-structured-preview',
@@ -156,7 +157,7 @@ const previewRequestManifest: NonNullable<CaseDetail['request_manifest']> = Obje
   externalEffects: false,
 });
 
-const salzilloRequestManifest: NonNullable<CaseDetail['request_manifest']> = Object.freeze({
+const salzilloRequestManifest: NonNullable<CaseDetail['request_manifest']> = Object.freeze<NonNullable<CaseDetail['request_manifest']>>({
   schemaVersion: 1,
   status: 'review_required',
   modelVersion: 'openai-structured-preview',
@@ -197,6 +198,58 @@ const salzilloRequestManifest: NonNullable<CaseDetail['request_manifest']> = Obj
   externalEffects: false,
 });
 
+const craneRequestManifest: NonNullable<CaseDetail['request_manifest']> = Object.freeze<NonNullable<CaseDetail['request_manifest']>>({
+  schemaVersion: 1,
+  status: 'review_required',
+  modelVersion: 'openai-structured-preview',
+  sourceCount: 3,
+  sourceCoverage: { email: 1, xlsx: 0, xlsm: 0, pdf: 1, docx: 1, image: 0 },
+  spreadsheetProtection: { macroEnabledFiles: 0, macroExecution: 'blocked', analysisMode: 'not_required' },
+  generatedAt: '2026-09-01T09:30:00.000Z',
+  requestType: 'customer_setup',
+  language: 'en',
+  targetXbfEntity: 'unknown',
+  requesterLegalName: 'Crane Worldwide Logistics',
+  dueDate: null,
+  forms: [
+    { name: 'CWW-QF-147 Supplier Registration.pdf', format: 'pdf', action: 'complete', required: true, evidenceIds: ['pdf:cww-qf-147:p1'] },
+    { name: 'Supplier Credit Reference.docx', format: 'docx', action: 'complete', required: true, evidenceIds: ['docx:credit-reference:p1'] },
+  ],
+  requestedFields: [
+    { id: 'business.legalName', sourceLabel: 'Legal company name', canonicalFieldId: 'business.legalName', valueType: 'text', required: true, evidenceIds: ['pdf:cww-qf-147:p1'] },
+    { id: 'business.address', sourceLabel: 'Registered address', canonicalFieldId: 'business.registeredAddress', valueType: 'text', required: true, evidenceIds: ['pdf:cww-qf-147:p1'] },
+    { id: 'fiscal.taxIdentifier', sourceLabel: 'Tax identification number', canonicalFieldId: 'fiscal.taxIdentifier', valueType: 'text', required: true, evidenceIds: ['pdf:cww-qf-147:p1'] },
+    { id: 'business.tradeReferences', sourceLabel: 'Trade references', canonicalFieldId: 'business.tradeReferences', valueType: 'table', required: true, evidenceIds: ['docx:credit-reference:p1'] },
+    { id: 'signature.authorized', sourceLabel: 'Authorized signature', canonicalFieldId: 'signature.authorizedRepresentative', valueType: 'signature', required: true, evidenceIds: ['pdf:cww-qf-147:p2'] },
+    { id: 'submission.recipient', sourceLabel: 'Return instructions', canonicalFieldId: null, valueType: 'text', required: true, evidenceIds: ['email:body', 'pdf:cww-qf-147:p2'] },
+  ],
+  requestedDocuments: [
+    { documentType: 'Tax form', required: true, acceptableAlternatives: ['W-9', 'Tax status certificate'], evidenceIds: ['pdf:cww-qf-147:p2'] },
+    { documentType: 'Operating authority', required: false, acceptableAlternatives: ['Broker authority'], evidenceIds: ['docx:credit-reference:p2'] },
+  ],
+  signature: { required: true, signerTitle: null, evidenceIds: ['pdf:cww-qf-147:p2'] },
+  submission: { method: 'unknown', recipients: [], instructions: null, evidenceIds: ['email:body'] },
+  requirements: [
+    { id: 'complete_pdf', text: 'Complete the supplier registration PDF without changing its layout.', evidenceIds: ['pdf:cww-qf-147:p1'] },
+    { id: 'complete_credit_reference', text: 'Complete the attached credit reference document.', evidenceIds: ['docx:credit-reference:p1'] },
+  ],
+  contradictions: [
+    { text: 'The effective-date language differs between the PDF and DOCX package.', evidenceIds: ['pdf:cww-qf-147:p2', 'docx:credit-reference:p2'] },
+  ],
+  missingInformation: [
+    { fieldId: 'targetXbfEntity', description: 'The request does not identify whether Crane is registering XBF Mexico or XBF US.', evidenceIds: ['email:body'] },
+    { fieldId: 'submission.recipient', description: 'The package does not provide an unambiguous return address or portal instruction.', evidenceIds: ['email:body', 'pdf:cww-qf-147:p2'] },
+    { fieldId: 'signature.signerTitle', description: 'A signature is required, but the required signer authority is not stated.', evidenceIds: ['pdf:cww-qf-147:p2'] },
+  ],
+  clarificationQuestions: [
+    { fieldId: 'targetXbfEntity', question: 'Should this Crane registration use XBF Mexico or XBF US?', evidenceIds: ['email:body'] },
+    { fieldId: 'submission.recipient', question: 'Where should the completed package be returned?', evidenceIds: ['email:body', 'pdf:cww-qf-147:p2'] },
+  ],
+  readiness: { status: 'needs_clarification', reasonCodes: ['target_entity_unresolved', 'submission_instructions_unclear', 'signature_authority_unclear', 'date_contradiction'] },
+  aiGenerated: true,
+  externalEffects: false,
+});
+
 const previewCases: readonly CaseSummary[] = Object.freeze([
   {
     case_id: salzilloCaseId, supplier_name: 'Grupo Salzillo', state: 'analyzing_requirements', aggregate_version: 1,
@@ -233,9 +286,14 @@ const previewCases: readonly CaseSummary[] = Object.freeze([
     blocked_by_duplicate_review: false, created_at: '2026-08-26T12:10:00.000Z', updated_at: '2026-08-26T21:05:00.000Z',
     message_count: '3', attachment_count: '6', document_count: '6',
   },
+  {
+    case_id: craneCaseId, supplier_name: 'Crane canary · CWW-QF-147', state: 'awaiting_clarification', aggregate_version: 2,
+    blocked_by_duplicate_review: false, created_at: '2026-09-01T09:20:00.000Z', updated_at: '2026-09-01T09:30:00.000Z',
+    message_count: '1', attachment_count: '2', document_count: '2',
+  },
 ]);
 
-const salzilloCaseDetail: CaseDetail = Object.freeze({
+const salzilloCaseDetail: CaseDetail = Object.freeze<CaseDetail>({
   ...previewCases[0],
   latest_request: {
     subject: 'PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN',
@@ -243,8 +301,8 @@ const salzilloCaseDetail: CaseDetail = Object.freeze({
     received_at: '2026-08-10T15:00:00.000Z',
   },
   recent_events: [
-    { sequence: 2, state: 'analyzing_requirements', occurred_at: '2026-08-31T23:40:00.000Z', reason_code: 'historical_preview_analysis' },
-    { sequence: 1, state: 'received', occurred_at: '2026-08-10T15:00:00.000Z', reason_code: 'historical_request_identified' },
+    { sequence: 2, state: 'analyzing_requirements' as const, occurred_at: '2026-08-31T23:40:00.000Z', reason_code: 'historical_preview_analysis' },
+    { sequence: 1, state: 'received' as const, occurred_at: '2026-08-10T15:00:00.000Z', reason_code: 'historical_request_identified' },
   ],
   request_manifest: salzilloRequestManifest,
   historical_intake: {
@@ -261,7 +319,7 @@ const salzilloCaseDetail: CaseDetail = Object.freeze({
   profile_workspace: previewProfileWorkspace,
 });
 
-const previewCaseDetail: CaseDetail = Object.freeze({
+const previewCaseDetail: CaseDetail = Object.freeze<CaseDetail>({
   ...previewCases[1],
   latest_request: {
     subject: 'Customer setup package and compliance questionnaire',
@@ -275,6 +333,21 @@ const previewCaseDetail: CaseDetail = Object.freeze({
     { sequence: 1, state: 'received' as const, occurred_at: '2026-08-22T14:30:00.000Z', reason_code: 'case_received' },
   ],
   request_manifest: previewRequestManifest,
+  profile_workspace: previewProfileWorkspace,
+});
+
+const craneCaseDetail: CaseDetail = Object.freeze<CaseDetail>({
+  ...previewCases[7]!,
+  latest_request: {
+    subject: 'Supplier registration package CWW-QF-147 — synthetic canary',
+    sender_domain: 'example.test',
+    received_at: '2026-09-01T09:20:00.000Z',
+  },
+  recent_events: [
+    { sequence: 2, state: 'awaiting_clarification' as const, occurred_at: '2026-09-01T09:30:00.000Z', reason_code: 'adaptive_review_required' },
+    { sequence: 1, state: 'received' as const, occurred_at: '2026-09-01T09:20:00.000Z', reason_code: 'pdf_docx_canary_received' },
+  ],
+  request_manifest: craneRequestManifest,
   profile_workspace: previewProfileWorkspace,
 });
 
@@ -550,7 +623,7 @@ function createPreviewClient(): OspClient {
     listCustomerRegistrationCases: async () => structuredClone(previewCaseRows),
     getCustomerRegistrationCase: async (requestedCaseId) => {
       const caseRecord = previewCaseRows.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCaseRows[4];
-      const base = requestedCaseId === caseId ? previewCaseDetail : requestedCaseId === salzilloCaseId ? salzilloCaseDetail : {
+      const base = requestedCaseId === caseId ? previewCaseDetail : requestedCaseId === salzilloCaseId ? salzilloCaseDetail : requestedCaseId === craneCaseId ? craneCaseDetail : {
           ...caseRecord,
           latest_request: {
             subject: 'Supplier onboarding request — synthetic preview',

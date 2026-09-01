@@ -16,7 +16,7 @@ describe('synthetic preview runtime', () => {
     await expect(runtime.apiClient.listClarificationReviews()).resolves.toHaveLength(1);
     await expect(runtime.apiClient.listFormTemplates()).resolves.toMatchObject({ templates: [{ latest: { status: 'published' } }, { latest: { status: 'draft' } }] });
     const cases = await runtime.apiClient.listCustomerRegistrationCases();
-    expect(cases).toHaveLength(7);
+    expect(cases).toHaveLength(8);
     await expect(runtime.apiClient.getCustomerRegistrationCase(cases[0].case_id)).resolves.toMatchObject({
       supplier_name: 'Grupo Salzillo',
       state: 'analyzing_requirements',
@@ -42,6 +42,19 @@ describe('synthetic preview runtime', () => {
       subjectPhrase: 'SALZILLO', afterDate: '2026-08-18', beforeDate: '2026-08-21',
       candidateId: 'salzillo_message_1', idempotencyKey: 'historical_gmail:preview',
     })).resolves.toMatchObject({ import_status: 'replayed', persisted: true, outbound_enabled: false });
+    const craneCase = cases.find((item) => item.supplier_name.includes('Crane canary'));
+    expect(craneCase).toBeDefined();
+    await expect(runtime.apiClient.getCustomerRegistrationCase(craneCase!.case_id)).resolves.toMatchObject({
+      state: 'awaiting_clarification',
+      attachment_count: '2',
+      document_count: '2',
+      request_manifest: {
+        sourceCoverage: { email: 1, pdf: 1, docx: 1 },
+        forms: [{ format: 'pdf' }, { format: 'docx' }],
+        readiness: { status: 'needs_clarification' },
+        externalEffects: false,
+      },
+    });
     const formCase = cases.find((item) => item.supplier_name === 'Sierra Retail México');
     expect(formCase).toBeDefined();
     await expect(runtime.apiClient.getCaseFormWorkspace(formCase!.case_id)).resolves.toMatchObject({

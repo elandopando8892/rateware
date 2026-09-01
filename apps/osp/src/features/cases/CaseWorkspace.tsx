@@ -6,6 +6,7 @@ import type { OspCaseReadClient, OspClient } from '../../api/osp-client';
 import { caseNextGates, casePrimaryAction, caseStateLabels, caseStateTone, formatCaseDate, type CasePrimaryAction } from './case-presenter';
 import { RequestManifestPanel } from './RequestManifestPanel';
 import { HistoricalIntakePanel } from './HistoricalIntakePanel';
+import { AdaptiveReviewWorkbench } from './AdaptiveReviewWorkbench';
 
 const emptyProfileWorkspace = { candidates: [], binding: null, draft: null, disclosure_locked: true as const };
 
@@ -103,14 +104,16 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
         <div><dt>Last updated</dt><dd>{formatCaseDate(caseRecord.updated_at)}</dd></div>
       </dl>
 
+      <AdaptiveReviewWorkbench caseId={caseId} manifest={caseRecord.request_manifest ?? null} profile={profile} />
+
       <RequestManifestPanel
         manifest={caseRecord.request_manifest ?? null}
-        attachmentCount={caseRecord.attachment_count}
-        documentCount={caseRecord.document_count}
+        attachmentCount={Number(caseRecord.attachment_count)}
+        documentCount={Number(caseRecord.document_count)}
       />
       <HistoricalIntakePanel intake={caseRecord.historical_intake ?? null} subject={latest.subject} client={client} />
 
-      <section className="panel case-profile-assembler" aria-labelledby="profile-assembler-title">
+      <section className="panel case-profile-assembler" id="case-profile-assembler" aria-labelledby="profile-assembler-title">
         <div className="panel-heading">
           <div><p className="eyebrow">Governed package draft</p><h2 id="profile-assembler-title">Choose the XBF legal entity for this request</h2></div>
           <span className="read-only-badge">Disclosure locked</span>

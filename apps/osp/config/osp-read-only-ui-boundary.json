@@ -120,13 +120,18 @@
     },
     {
       "kind": "production-ui",
+      "path": "apps/osp/src/features/cases/AdaptiveReviewWorkbench.tsx",
+      "sha256": "2ebbf2ff770536bb37cec70fc295a718a2845db00437605c517fe769f14191a0"
+    },
+    {
+      "kind": "production-ui",
       "path": "apps/osp/src/features/cases/case-presenter.ts",
       "sha256": "3620874b2781e09480d33ad389c62386b15922e299dbe109b10665d5b2fba1e7"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/cases/CaseWorkspace.tsx",
-      "sha256": "7261c4714ddc912520ca2467e7c6dd228c105c062ba00c90b3b67877b22bbc66"
+      "sha256": "85226514cc3ba58c8cce3f5f0e4efe5d6ee5b4afba624ed0f6eaf7b723c3c0f2"
     },
     {
       "kind": "production-ui",
@@ -226,7 +231,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "34d0ec0758be2b2547febd06d410467933dc3fda2f3fc9a638805e39b9d74a83"
+      "sha256": "8765425e8849a45032debb421fc0ba963f422b07928afec08742d59b4913e37d"
     },
     {
       "kind": "production-ui",
@@ -241,7 +246,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/pipeline.css",
-      "sha256": "1a8eec6bbcdddf668070d8390f6bd18a82a59519a1af30f10b918ce64b595506"
+      "sha256": "23abc8de505a2eec82f9b399000af049ae93a2282cd571266b3c308e48a0e020"
     },
     {
       "kind": "production-ui",
