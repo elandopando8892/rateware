@@ -5,10 +5,17 @@ export type SupplierArtifactRoute =
   | { kind: "pdf_acroform" }
   | { kind: "pdf_flat" }
   | { kind: "xlsx" }
+  | { kind: "docx" }
   | { kind: "generated_form" };
 
 export type AppliedArtifactMapping = {
-  kind: "acroform" | "pdf_overlay" | "xlsx_cell";
+  kind:
+    | "acroform"
+    | "pdf_overlay"
+    | "pdf_appendix"
+    | "xlsx_cell"
+    | "docx_content_control"
+    | "docx_appendix";
   mappingDecisionId: string;
   canonicalFieldId: string;
   target: string;
@@ -23,7 +30,8 @@ export type SupplierArtifactReceipt = {
   version: number;
   contentType:
     | "application/pdf"
-    | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   mappings: readonly AppliedArtifactMapping[];
 };
 
@@ -102,6 +110,15 @@ export function classifySupplierArtifact(
       throw new Error("ARTIFACT_ROUTE_INVALID");
     }
     return Object.freeze({ kind: "xlsx" });
+  }
+  if (
+    input.contentType ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    if (!exactKeys(input, ["kind", "contentType"])) {
+      throw new Error("ARTIFACT_ROUTE_INVALID");
+    }
+    return Object.freeze({ kind: "docx" });
   }
   throw new Error("ARTIFACT_ROUTE_INVALID");
 }

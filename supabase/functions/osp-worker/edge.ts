@@ -15,6 +15,7 @@ import { createPostgresSignatureVaultReader } from "./signature-runtime.ts";
 import { resolveSignatureCanary } from "./signature-canary-config.ts";
 import { resolveRequestManifestShadow } from "./request-manifest-shadow-config.ts";
 import { resolveRequestManifestCanary } from "./request-manifest-canary-config.ts";
+import { resolveAdaptiveManifest } from "./adaptive-manifest-config.ts";
 
 function required(name: string): string {
   const value = Deno.env.get(name)?.trim();
@@ -93,6 +94,7 @@ const supplierPackageCanary = resolveSupplierPackageCanary(Deno.env);
 const signatureCanary = resolveSignatureCanary(Deno.env);
 const requestManifestShadow = resolveRequestManifestShadow(Deno.env);
 const requestManifestCanary = resolveRequestManifestCanary(Deno.env);
+const adaptiveManifest = resolveAdaptiveManifest(Deno.env);
 const signatureVault = createPostgresSignatureVaultReader({ databaseUrl });
 const runtime = createShadowWorkerRuntime({
   databaseUrl,
@@ -106,6 +108,7 @@ const runtime = createShadowWorkerRuntime({
   signatureCanary,
   requestManifestShadow,
   requestManifestCanary,
+  adaptiveManifest,
   signatureVault,
 });
 

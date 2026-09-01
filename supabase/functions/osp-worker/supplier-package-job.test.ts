@@ -31,6 +31,7 @@ async function preparation(): Promise<
     objectId:
       `${ids.organizationId}:${ids.caseId}:${ids.snapshotId}:supplier_completed:1`,
     input: {
+      kind: "xlsx",
       sourceVersionId: ids.sourceVersionId,
       sourceBytes,
       sourceSha256: await sha256Hex(sourceBytes),

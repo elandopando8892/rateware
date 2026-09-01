@@ -154,6 +154,31 @@ Deno.test("PDF completer fills a reviewed flat-PDF overlay deterministically", a
   assertEquals((await PDFDocument.load(first.bytes)).getPageCount(), 1);
 });
 
+Deno.test("PDF completer appends a deterministic reviewed response when the source has no fields", async () => {
+  const sourceBytes = await flatPdfSource();
+  const input = {
+    sourceVersionId,
+    sourceBytes,
+    sourceSha256: await sha256Hex(sourceBytes),
+    packageSnapshotId,
+    packageSnapshotSha256,
+    approvedMappingDecisionIds: [mappingDecisionId],
+    version: 1,
+    flatten: false,
+    mappings: [{
+      kind: "appendix" as const,
+      mappingDecisionId,
+      canonicalFieldId: "supplier.legalName",
+      value: "XBF Logistics",
+    }],
+  };
+  const first = await completePdfArtifact(input);
+  const repeated = await completePdfArtifact(input);
+  assertEquals(first.bytes, repeated.bytes);
+  assertEquals((await PDFDocument.load(first.bytes)).getPageCount(), 2);
+  assertEquals(first.receipt.mappings[0].kind, "pdf_appendix");
+});
+
 Deno.test("PDF completer rejects source drift, unknown AcroForm fields, and unreviewed overlays", async () => {
   const sourceBytes = await acroFormSource();
   const base = {

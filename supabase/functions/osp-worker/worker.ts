@@ -33,6 +33,13 @@ export interface ManagedExtractionService {
     },
   ): Promise<void>;
 }
+export interface RequestManifestJobService {
+  analyze(input: {
+    organizationId: string;
+    caseId: string;
+    correlationId: string;
+  }): Promise<unknown>;
+}
 export interface QuarterlyDocumentService {
   check(
     input: {
@@ -128,7 +135,18 @@ async function execute(
   signatures?: SignatureJobService,
   outboundSends?: OutboundSendJobService,
   attachmentPromotions?: AttachmentPromotionService,
+  requestManifests?: RequestManifestJobService,
 ): Promise<void> {
+  if (job.kind === "request_manifest") {
+    const caseId = job.opaquePayload.caseId;
+    if (!caseId || !requestManifests) throw new Error("INVALID_INPUT");
+    await requestManifests.analyze({
+      organizationId: job.organizationId,
+      caseId,
+      correlationId: job.id,
+    });
+    return;
+  }
   if (job.kind === "generate_supplier_package") {
     const caseId = job.opaquePayload.caseId;
     const snapshotId = job.opaquePayload.snapshotId;
@@ -257,6 +275,7 @@ export async function runWorker(
     signatures?: SignatureJobService;
     outboundSends?: OutboundSendJobService;
     attachmentPromotions?: AttachmentPromotionService;
+    requestManifests?: RequestManifestJobService;
     reportFailure?: (input: {
       jobId: string;
       kind: string;
@@ -288,6 +307,7 @@ export async function runWorker(
         deps.signatures,
         deps.outboundSends,
         deps.attachmentPromotions,
+        deps.requestManifests,
       );
       await deps.jobs.complete({
         jobId: job.id,

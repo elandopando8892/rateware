@@ -29,11 +29,22 @@ type OverlayMapping = {
   fontSize: number;
   value: string | number | boolean;
 };
-export type PdfArtifactMapping = AcroFormMapping | OverlayMapping;
+type AppendixMapping = {
+  kind: "appendix";
+  mappingDecisionId: string;
+  canonicalFieldId: string;
+  value: string | number | boolean;
+};
+export type PdfArtifactMapping =
+  | AcroFormMapping
+  | OverlayMapping
+  | AppendixMapping;
 
 function target(mapping: PdfArtifactMapping): string {
   return mapping.kind === "acroform"
     ? mapping.fieldName
+    : mapping.kind === "appendix"
+    ? `appendix:${mapping.canonicalFieldId}`
     : `page:${mapping.page}:${mapping.x}:${mapping.y}:${mapping.width}:${mapping.height}:${mapping.fontSize}`;
 }
 
@@ -64,6 +75,7 @@ function validateMappings(
       ) throw new Error("ARTIFACT_MAPPING_INVALID");
       continue;
     }
+    if (mapping.kind === "appendix") continue;
     if (
       !Number.isSafeInteger(mapping.page) || mapping.page < 1 ||
       [mapping.x, mapping.y].some((value) =>
@@ -110,6 +122,8 @@ export async function completePdfArtifact(
   const form = document.getForm();
   let overlayFont: Awaited<ReturnType<PDFDocument["embedFont"]>> | undefined;
   const applied: AppliedArtifactMapping[] = [];
+  let appendixPage: ReturnType<PDFDocument["addPage"]> | undefined;
+  let appendixLine = 0;
   for (const mapping of mappings) {
     if (mapping.kind === "acroform") {
       let field;
@@ -127,6 +141,35 @@ export async function completePdfArtifact(
         mappingDecisionId: mapping.mappingDecisionId,
         canonicalFieldId: mapping.canonicalFieldId,
         target: mapping.fieldName,
+      });
+      continue;
+    }
+    if (mapping.kind === "appendix") {
+      overlayFont ??= await document.embedFont(StandardFonts.Helvetica);
+      if (!appendixPage || appendixLine >= 36) {
+        appendixPage = document.addPage([612, 792]);
+        appendixLine = 0;
+        appendixPage.drawText("XBF completed response", {
+          x: 54,
+          y: 742,
+          size: 14,
+          font: overlayFont,
+        });
+      }
+      const value = String(mapping.value).replace(/\s+/g, " ").slice(0, 180);
+      appendixPage.drawText(`${mapping.canonicalFieldId}: ${value}`, {
+        x: 54,
+        y: 714 - appendixLine * 18,
+        size: 9,
+        font: overlayFont,
+        maxWidth: 504,
+      });
+      appendixLine += 1;
+      applied.push({
+        kind: "pdf_appendix",
+        mappingDecisionId: mapping.mappingDecisionId,
+        canonicalFieldId: mapping.canonicalFieldId,
+        target: target(mapping),
       });
       continue;
     }

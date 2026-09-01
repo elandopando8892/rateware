@@ -32,6 +32,7 @@ Deno.test("copied Gmail request reaches a grounded no-effects Operations draft t
     }
     | undefined;
   const plans: unknown[] = [];
+  const manifests: unknown[] = [];
   let outboundCalls = 0;
 
   const attachmentPromotions = createAttachmentPromotionService({
@@ -158,7 +159,7 @@ Deno.test("copied Gmail request reaches a grounded no-effects Operations draft t
     }),
     refreshDuplicateReview: async () => undefined,
   };
-  for (let pass = 0; pass < 3; pass++) {
+  for (let pass = 0; pass < 4; pass++) {
     await runWorker({
       workerId: "synthetic-flow",
       now: () => new Date(`2026-08-27T00:00:0${pass}.000Z`),
@@ -167,6 +168,12 @@ Deno.test("copied Gmail request reaches a grounded no-effects Operations draft t
       attachmentPromotions,
       extraction: extractionService,
       formMappings,
+      requestManifests: {
+        analyze: async (input) => {
+          manifests.push(input);
+          return { status: "review_required", externalEffects: false };
+        },
+      },
       outboundSends: {
         execute: async () => {
           outboundCalls += 1;
@@ -185,6 +192,13 @@ Deno.test("copied Gmail request reaches a grounded no-effects Operations draft t
       evidenceIds: [extraction!.fields[0].id],
     }],
     externalEffects: false,
+  }]);
+  assertEquals(manifests, [{
+    organizationId,
+    caseId,
+    correlationId: manifests.length > 0
+      ? (manifests[0] as { correlationId: string }).correlationId
+      : "",
   }]);
   assertEquals(outboundCalls, 0);
 });

@@ -283,6 +283,55 @@ Deno.test("worker routes document extraction and retries only its temporary prov
   assertEquals(failures[0].retryAt?.toISOString(), "2026-08-22T00:00:05.000Z");
 });
 
+Deno.test("worker routes an adaptive request manifest without outbound effects", async () => {
+  const analyzed: unknown[] = [];
+  const completed: string[] = [];
+  let outboundCalls = 0;
+  await runWorker({
+    workerId: "local-worker",
+    now: () => new Date("2026-09-01T12:00:00.000Z"),
+    jobs: {
+      claim: async () => [{
+        id: "job-manifest",
+        organizationId: "org-1",
+        kind: "request_manifest",
+        opaquePayload: { caseId: "case-1" },
+        attempt: 1,
+        leaseToken: "11111111-1111-4111-8111-111111111111",
+        leasedUntil: "2026-09-01T12:05:00.000Z",
+      }],
+      complete: async ({ jobId }) => completed.push(jobId),
+      fail: async () => {
+        throw new Error("unexpected manifest failure");
+      },
+    },
+    intake: {
+      ingest: async () => {
+        throw new Error("manifest must not enter Gmail intake");
+      },
+      refreshDuplicateReview: async () => undefined,
+    },
+    requestManifests: {
+      analyze: async (input) => {
+        analyzed.push(input);
+        return { status: "review_required", externalEffects: false };
+      },
+    },
+    outboundSends: {
+      execute: async () => {
+        outboundCalls += 1;
+      },
+    },
+  });
+  assertEquals(analyzed, [{
+    organizationId: "org-1",
+    caseId: "case-1",
+    correlationId: "job-manifest",
+  }]);
+  assertEquals(completed, ["job-manifest"]);
+  assertEquals(outboundCalls, 0);
+});
+
 Deno.test("worker promotes attachments only after a created or exact-attached Gmail intake", async () => {
   const promoted: string[] = [];
   const completed: string[] = [];

@@ -9,6 +9,7 @@ import {
 export type JobKind =
   | "gmail_ingest"
   | "duplicate_review_refresh"
+  | "request_manifest"
   | "document_extract"
   | "quarterly_document_check"
   | "form_ai_mapping"
@@ -130,6 +131,7 @@ const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const JOB_KINDS: readonly JobKind[] = [
   "gmail_ingest",
   "duplicate_review_refresh",
+  "request_manifest",
   "document_extract",
   "quarterly_document_check",
   "form_ai_mapping",

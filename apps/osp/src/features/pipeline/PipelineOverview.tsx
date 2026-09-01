@@ -111,13 +111,13 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
       <header className="page-heading">
         <p className="eyebrow">Customer onboarding</p>
         <h1>Onboarding pipeline</h1>
-        <p>Read-only status for provider setup requests and mailbox intake.</p>
+        <p>Adaptive setup requests from Gmail to a Sales-approved response package.</p>
       </header>
 
       <section className="panel" aria-labelledby="pipeline-title">
         <div className="panel-heading">
           <h2 id="pipeline-title">Pipeline</h2>
-          <span className="read-only-badge">Read only</span>
+          <span className="read-only-badge">Human approved</span>
         </div>
         {!pipeline.data && !pipeline.isError ? <p role="status" aria-label={pipelineActivity[0]}>{pipelineActivity[1]}</p> : null}
         {pipeline.isError ? <p role="alert" aria-label="Pipeline unavailable">Pipeline data is temporarily unavailable.</p> : null}
@@ -206,7 +206,7 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
           </li>
           <li className={evidenceCases > 0 ? 'automation-step-complete' : 'automation-step-pending'}>
             <span className="automation-step-marker" aria-hidden="true">3</span>
-            <div><strong>Evidence extracted</strong><p>{evidenceCases} case(s) have hash-verified attachment evidence or passed that point.</p></div>
+            <div><strong>Request interpreted</strong><p>{evidenceCases} case(s) have hash-verified PDF, XLSX, XLSM or DOCX evidence, or passed that point.</p></div>
           </li>
           <li className={preparedCases > 0 ? 'automation-step-complete' : 'automation-step-pending'}>
             <span className="automation-step-marker" aria-hidden="true">4</span>
@@ -220,7 +220,7 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
 
         <div className="effects-lock" role="note">
           <span aria-hidden="true">🔒</span>
-          <div><strong>External delivery locked</strong><p>No reply, signature, authorization or provider write occurs in this automatic path.</p></div>
+          <div><strong>Human-approved delivery</strong><p>AI prepares the case; accountable users review it. No reply, signature, authorization or provider write occurs until Sales approves the exact recipients, wording and attachments.</p></div>
         </div>
 
         <div className={`sync-card watch-card${automaticIntake ? ' sync-card-fallback' : ''}`}>

@@ -3,12 +3,12 @@ name: osp-release-gate
 on:
   pull_request:
     paths:
-      - 'apps/osp/**'
-      - 'supabase/functions/osp-*/**'
-      - 'supabase/functions/_shared/osp/**'
-      - 'supabase/functions/_shared/provider-gmail*.ts'
-      - 'supabase/migrations/*osp*'
-      - '.github/workflows/osp-release-gate.yml'
+      - "apps/osp/**"
+      - "supabase/functions/osp-*/**"
+      - "supabase/functions/_shared/osp/**"
+      - "supabase/functions/_shared/provider-gmail*.ts"
+      - "supabase/migrations/*osp*"
+      - ".github/workflows/osp-release-gate.yml"
   workflow_dispatch:
 
 permissions:
@@ -25,7 +25,7 @@ jobs:
       - name: Set up Node 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '24'
+          node-version: "24"
 
       - name: Activate pinned pnpm
         run: corepack enable && corepack prepare pnpm@11.19.0 --activate
@@ -59,7 +59,17 @@ jobs:
         with:
           deno-version: v2.5.6
 
+      - name: Check OSP production entrypoints
+        run: |
+          deno check \
+            supabase/functions/osp-gmail-poll/index.ts \
+            supabase/functions/osp-worker/edge.ts \
+            supabase/functions/osp-case-api/index.ts \
+            supabase/functions/osp-read-api/index.ts \
+            supabase/functions/osp-document-api/index.ts \
+            supabase/functions/osp-form-api/index.ts \
+            supabase/functions/osp-gmail-sync-api/index.ts
+
       - name: Test OSP Gmail poll and adaptive worker
         run: |
-          deno check supabase/functions/osp-gmail-poll/index.ts supabase/functions/osp-worker/edge.ts
           deno test --no-check --allow-env --allow-read supabase/functions/osp-gmail-poll supabase/functions/osp-worker

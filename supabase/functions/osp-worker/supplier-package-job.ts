@@ -6,10 +6,32 @@ import {
   completeXlsxArtifact,
   type XlsxArtifactMapping,
 } from "../_shared/osp/xlsx-form-completer.ts";
+import {
+  completePdfArtifact,
+  type PdfArtifactMapping,
+} from "../_shared/osp/pdf-form-completer.ts";
+import {
+  completeDocxArtifact,
+  type DocxArtifactMapping,
+} from "../_shared/osp/docx-form-completer.ts";
 
 type XlsxArtifactInput = SupplierArtifactContext & {
+  kind: "xlsx";
   mappings: readonly XlsxArtifactMapping[];
 };
+type PdfArtifactInput = SupplierArtifactContext & {
+  kind: "pdf";
+  flatten: boolean;
+  mappings: readonly PdfArtifactMapping[];
+};
+type DocxArtifactInput = SupplierArtifactContext & {
+  kind: "docx";
+  mappings: readonly DocxArtifactMapping[];
+};
+type SupplierArtifactInput =
+  | XlsxArtifactInput
+  | PdfArtifactInput
+  | DocxArtifactInput;
 
 export type SupplierPackageJobInput = Readonly<{
   organizationId: string;
@@ -30,7 +52,7 @@ export type SupplierPackageJobPreparation =
     kind: "ready";
     packageId: string;
     objectId: string;
-    input: XlsxArtifactInput;
+    input: SupplierArtifactInput;
   }>
   | Readonly<{ kind: "generated"; receipt: GeneratedSupplierPackageReceipt }>
   | Readonly<{ kind: "failed" }>
@@ -57,7 +79,9 @@ export interface SupplierPackageObjectStore {
     objectId: string;
     bytes: Uint8Array;
     contentType:
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      | "application/pdf"
+      | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   }): Promise<void>;
 }
 
@@ -85,13 +109,16 @@ export async function generateSupplierPackageJob(
   }
 
   try {
-    const completed = await completeXlsxArtifact(prepared.input);
+    const completed = prepared.input.kind === "xlsx"
+      ? await completeXlsxArtifact(prepared.input)
+      : prepared.input.kind === "pdf"
+      ? await completePdfArtifact(prepared.input)
+      : await completeDocxArtifact(prepared.input);
     await deps.objects.writeExclusive({
       organizationId: input.organizationId,
       objectId: prepared.objectId,
       bytes: completed.bytes,
-      contentType:
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      contentType: completed.receipt.contentType,
     });
     const receipt: GeneratedSupplierPackageReceipt = Object.freeze({
       packageId: prepared.packageId,

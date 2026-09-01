@@ -56,10 +56,16 @@ import {
   createRequestManifestCanaryService,
   type RequestManifestCanaryRequest,
 } from "./request-manifest-canary.ts";
+import type { AdaptiveManifestConfiguration } from "./adaptive-manifest-config.ts";
+import { createRequestManifestJobService } from "./request-manifest-job.ts";
+import { createStrictDocumentPackageScanner } from "./strict-document-package-scanner.ts";
 
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const XLSM = "application/vnd.ms-excel.sheet.macroEnabled.12";
+const PDF = "application/pdf";
+const DOCX =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 type XlsxDocumentExtractCanary = {
   organizationId: string;
@@ -100,6 +106,7 @@ export function createShadowWorkerRuntime(input: {
   signatureCanary?: SignatureCanaryConfiguration;
   requestManifestShadow?: RequestManifestShadowConfiguration;
   requestManifestCanary?: RequestManifestCanaryConfiguration;
+  adaptiveManifest?: AdaptiveManifestConfiguration;
   signatureVault?: SignatureVaultReader;
   fetch?: typeof globalThis.fetch;
 }): {
@@ -199,6 +206,33 @@ export function createShadowWorkerRuntime(input: {
       }),
     })
     : undefined;
+  const requestManifestJobs = input.adaptiveManifest
+    ? createRequestManifestJobService({
+      source: createPostgresRequestManifestSource({
+        databaseUrl: input.databaseUrl,
+        postgresFactory: input.postgresFactory,
+      }),
+      storage: {
+        async download(bucketId, objectKey) {
+          const result = await governedStorage(input.storageClient).storage
+            .from(bucketId)
+            .download(objectKey);
+          if (result.error || !result.data) return null;
+          return new Uint8Array(await result.data.arrayBuffer());
+        },
+      },
+      interpreter: createOpenAiRequestManifest({
+        baseUrl: "https://api.openai.com",
+        apiKey: input.adaptiveManifest.openAiApiKey,
+        model: input.adaptiveManifest.openAiModel,
+        request,
+      }),
+      store: createPostgresRequestManifestDraftStore({
+        databaseUrl: input.databaseUrl,
+        postgresFactory: input.postgresFactory,
+      }),
+    })
+    : undefined;
   let outboundStore:
     | ReturnType<typeof createPostgresOutboundSendStore>
     | undefined;
@@ -240,7 +274,7 @@ export function createShadowWorkerRuntime(input: {
     },
   });
   const automationStorage = input.automation || input.xlsxShadow ||
-      input.xlsxIntake
+      input.xlsxIntake || input.adaptiveManifest
     ? governedStorage(input.storageClient)
     : undefined;
   let attachmentPromotions: AttachmentPromotionService | undefined;
@@ -258,7 +292,9 @@ export function createShadowWorkerRuntime(input: {
       storage: createSupabaseAttachmentPromotionStorage({
         client: automationStorage!,
       }),
-      scan: async ({ bytes, contentType, sourceUrl, sourceSha256, sizeBytes }) => {
+      scan: async (
+        { bytes, contentType, sourceUrl, sourceSha256, sizeBytes },
+      ) => {
         const malwareResult = await managedScan({
           sourceUrl: await sourceUrl(),
           sourceSha256,
@@ -269,9 +305,10 @@ export function createShadowWorkerRuntime(input: {
         }
         return await createMacroSafeXlsmPackageScanner()(bytes);
       },
-      sourceSafetyReason: (source) => source.contentType === XLSM
-        ? "macro_quarantined_openxml_policy"
-        : "managed_malware_scan_clean",
+      sourceSafetyReason: (source) =>
+        source.contentType === XLSM
+          ? "macro_quarantined_openxml_policy"
+          : "managed_malware_scan_clean",
       jobs,
     });
   } else if (input.xlsxShadow) {
@@ -306,13 +343,21 @@ export function createShadowWorkerRuntime(input: {
       storage: createSupabaseAttachmentPromotionStorage({
         client: automationStorage!,
       }),
-      scan: ({ bytes, contentType }) => contentType === XLSM
-        ? createMacroSafeXlsmPackageScanner()(bytes)
-        : createStrictXlsxPackageScanner()(bytes),
-      sourceSafetyReason: (source) => source.contentType === XLSM
-        ? "macro_quarantined_openxml_policy"
-        : "strict_xlsx_package_policy",
-      contentTypes: [XLSX, XLSM],
+      scan: ({ bytes, contentType }) =>
+        contentType === XLSM
+          ? createMacroSafeXlsmPackageScanner()(bytes)
+          : contentType === XLSX
+          ? createStrictXlsxPackageScanner()(bytes)
+          : createStrictDocumentPackageScanner(contentType)(bytes),
+      sourceSafetyReason: (source) =>
+        source.contentType === XLSM
+          ? "macro_quarantined_openxml_policy"
+          : source.contentType === XLSX
+          ? "strict_xlsx_package_policy"
+          : "strict_passive_document_policy",
+      contentTypes: input.adaptiveManifest
+        ? [XLSX, XLSM, PDF, DOCX]
+        : [XLSX, XLSM],
       jobs,
     });
   }
@@ -507,6 +552,7 @@ export function createShadowWorkerRuntime(input: {
         jobs,
         intake,
         attachmentPromotions,
+        requestManifests: requestManifestJobs,
         extraction,
         formMappings,
         signatures,
@@ -520,7 +566,8 @@ export function createShadowWorkerRuntime(input: {
       ? (request: RequestManifestShadowRequest) => requestManifest.run(request)
       : undefined,
     runRequestManifestCanary: requestManifestCanary
-      ? (request: RequestManifestCanaryRequest) => requestManifestCanary.run(request)
+      ? (request: RequestManifestCanaryRequest) =>
+        requestManifestCanary.run(request)
       : undefined,
   });
 }

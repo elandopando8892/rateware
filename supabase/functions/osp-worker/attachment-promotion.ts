@@ -17,7 +17,8 @@ export type RegisteredRequirementDocument = Readonly<{
 export type SourceSafetyReason =
   | "managed_malware_scan_clean"
   | "strict_xlsx_package_policy"
-  | "macro_quarantined_openxml_policy";
+  | "macro_quarantined_openxml_policy"
+  | "strict_passive_document_policy";
 
 export interface AttachmentPromotionStore {
   listCaseAttachments(input: {
@@ -118,7 +119,9 @@ export function createAttachmentPromotionService(deps: {
   store: AttachmentPromotionStore;
   storage: AttachmentPromotionStorage;
   scan: MalwareScanner;
-  sourceSafetyReason?: SourceSafetyReason | ((source: GmailAttachmentSource) => SourceSafetyReason);
+  sourceSafetyReason?:
+    | SourceSafetyReason
+    | ((source: GmailAttachmentSource) => SourceSafetyReason);
   contentTypes?: readonly string[];
   jobs: Pick<BackgroundJobStore, "enqueue">;
 }): AttachmentPromotionService {
@@ -186,6 +189,13 @@ export function createAttachmentPromotionService(deps: {
         }
         promoted.push(registered);
       }
+      await deps.jobs.enqueue({
+        organizationId: input.organizationId,
+        kind: "request_manifest",
+        opaquePayload: { caseId: input.caseId },
+        idempotencyKey:
+          `request-manifest:${input.caseId}:${input.correlationId}`,
+      });
       return Object.freeze(promoted);
     },
   };
