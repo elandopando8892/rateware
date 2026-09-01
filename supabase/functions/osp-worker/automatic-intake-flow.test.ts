@@ -160,7 +160,7 @@ Deno.test("copied Gmail request reaches a grounded no-effects Operations draft t
     }),
     refreshDuplicateReview: async () => undefined,
   };
-  for (let pass = 0; pass < 4; pass++) {
+  for (let pass = 0; pass < 5; pass++) {
     await runWorker({
       workerId: "synthetic-flow",
       now: () => new Date(`2026-08-27T00:00:0${pass}.000Z`),

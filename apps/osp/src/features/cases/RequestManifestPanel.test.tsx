@@ -53,9 +53,16 @@ describe('RequestManifestPanel', () => {
   });
 
   it('fails visibly closed when no request manifest exists', () => {
-    render(<RequestManifestPanel manifest={null} />);
+    render(<RequestManifestPanel manifest={null} attachmentCount={2} documentCount={0} />);
     expect(screen.getByRole('heading', { name: /request interpretation pending/i })).toBeInTheDocument();
     expect(screen.getByText(/no governed case-level interpretation/i)).toBeInTheDocument();
+    expect(screen.getByText(/source inventory gap: 2 more preserved attachments than registered documents/i)).toBeInTheDocument();
+  });
+
+  it('shows preserved evidence that is not yet included in an existing interpretation', () => {
+    render(<RequestManifestPanel manifest={manifest} attachmentCount={3} documentCount={2} />);
+    expect(screen.getByText(/source inventory gap: 1 more preserved attachment than registered document/i)).toBeInTheDocument();
+    expect(screen.getByText(/current interpretation excludes unmatched evidence/i)).toBeInTheDocument();
   });
 
   it('shows the macro isolation boundary for an XLSM request', () => {

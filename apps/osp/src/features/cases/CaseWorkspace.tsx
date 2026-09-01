@@ -103,7 +103,11 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
         <div><dt>Last updated</dt><dd>{formatCaseDate(caseRecord.updated_at)}</dd></div>
       </dl>
 
-      <RequestManifestPanel manifest={caseRecord.request_manifest ?? null} />
+      <RequestManifestPanel
+        manifest={caseRecord.request_manifest ?? null}
+        attachmentCount={caseRecord.attachment_count}
+        documentCount={caseRecord.document_count}
+      />
       <HistoricalIntakePanel intake={caseRecord.historical_intake ?? null} subject={latest.subject} client={client} />
 
       <section className="panel case-profile-assembler" aria-labelledby="profile-assembler-title">

@@ -91,7 +91,7 @@ Deno.test("worker persists the safe intake stage for an unknown terminal failure
   );
 });
 
-Deno.test("worker preserves a deterministic XLSX policy rejection", async () => {
+Deno.test("worker preserves a deterministic attachment policy rejection", async () => {
   const failures: unknown[] = [];
   await runWorker({
     workerId: "local-worker",
@@ -100,11 +100,8 @@ Deno.test("worker preserves a deterministic XLSX policy rejection", async () => 
       claim: async () => [{
         id: "job-xlsx-policy",
         organizationId: "org-1",
-        kind: "gmail_ingest",
-        opaquePayload: {
-          gmailMessageId: "message_1",
-          deliveryIdempotencyKey: "delivery_1",
-        },
+        kind: "attachment_promote",
+        opaquePayload: { caseId: "case-1" },
         attempt: 1,
         leaseToken: "11111111-1111-4111-8111-111111111111",
         leasedUntil: "2026-08-28T00:05:00.000Z",
@@ -115,11 +112,9 @@ Deno.test("worker preserves a deterministic XLSX policy rejection", async () => 
       },
     },
     intake: {
-      ingest: async () => ({
-        outcome: "created",
-        caseId: "case-1",
-        eventId: "event-1",
-      }),
+      ingest: async () => {
+        throw new Error("attachment promotion must not enter Gmail intake");
+      },
       refreshDuplicateReview: async () => undefined,
     },
     attachmentPromotions: {
@@ -373,8 +368,8 @@ Deno.test("worker preserves a safe terminal manifest diagnostic", async () => {
   }]);
 });
 
-Deno.test("worker promotes attachments only after a created or exact-attached Gmail intake", async () => {
-  const promoted: string[] = [];
+Deno.test("worker queues attachment promotion only after a created or exact-attached Gmail intake", async () => {
+  const enqueued: unknown[] = [];
   const completed: string[] = [];
   await runWorker({
     workerId: "local-worker",
@@ -395,6 +390,10 @@ Deno.test("worker promotes attachments only after a created or exact-attached Gm
       complete: async (input) => {
         completed.push(input.jobId);
       },
+      enqueue: async (input) => {
+        enqueued.push(input);
+        return "job-promote";
+      },
       fail: async () => {
         throw new Error("unexpected failure");
       },
@@ -407,17 +406,57 @@ Deno.test("worker promotes attachments only after a created or exact-attached Gm
       }),
       refreshDuplicateReview: async () => undefined,
     },
+    attachmentPromotions: { promoteCase: async () => {
+      throw new Error("promotion must run in its own bounded job");
+    } },
+  });
+  assertEquals(enqueued, [{
+    organizationId: "org-1",
+    kind: "attachment_promote",
+    opaquePayload: { caseId: "case-1" },
+    idempotencyKey: "attachment-promote:case-1:job-intake-promote",
+  }]);
+  assertEquals(completed, ["job-intake-promote"]);
+});
+
+Deno.test("worker routes attachment promotion without invoking Gmail intake", async () => {
+  const promoted: string[] = [];
+  const completed: string[] = [];
+  await runWorker({
+    workerId: "local-worker",
+    now: () => new Date("2026-09-01T00:00:00.000Z"),
+    jobs: {
+      claim: async () => [{
+        id: "job-promote",
+        organizationId: "org-1",
+        kind: "attachment_promote",
+        opaquePayload: { caseId: "case-1" },
+        attempt: 1,
+        leaseToken: "11111111-1111-4111-8111-111111111111",
+        leasedUntil: "2026-09-01T00:05:00.000Z",
+      }],
+      complete: async (input) => {
+        completed.push(input.jobId);
+      },
+      fail: async () => {
+        throw new Error("unexpected failure");
+      },
+    },
+    intake: {
+      ingest: async () => {
+        throw new Error("attachment promotion must not enter Gmail intake");
+      },
+      refreshDuplicateReview: async () => undefined,
+    },
     attachmentPromotions: {
       promoteCase: async (input) => {
-        promoted.push(
-          `${input.organizationId}:${input.caseId}:${input.correlationId}`,
-        );
+        promoted.push(`${input.organizationId}:${input.caseId}:${input.correlationId}`);
         return [];
       },
     },
   });
-  assertEquals(promoted, ["org-1:case-1:job-intake-promote"]);
-  assertEquals(completed, ["job-intake-promote"]);
+  assertEquals(promoted, ["org-1:case-1:job-promote"]);
+  assertEquals(completed, ["job-promote"]);
 });
 
 Deno.test("worker routes form mapping to a no-effects preparation service", async () => {

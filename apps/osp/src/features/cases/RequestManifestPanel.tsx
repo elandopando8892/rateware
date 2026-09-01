@@ -20,7 +20,16 @@ function EvidenceCount({ ids }: { ids: readonly string[] }) {
   return <span className="manifest-evidence">{ids.length} {ids.length === 1 ? 'source' : 'sources'}</span>;
 }
 
-export function RequestManifestPanel({ manifest }: { manifest: RequestManifestReadModel | null }) {
+export function RequestManifestPanel({
+  manifest,
+  attachmentCount = 0,
+  documentCount = 0,
+}: {
+  manifest: RequestManifestReadModel | null;
+  attachmentCount?: number;
+  documentCount?: number;
+}) {
+  const preservedPendingPromotion = Math.max(0, attachmentCount - documentCount);
   if (!manifest) {
     return (
       <section className="panel request-manifest request-manifest-empty" aria-labelledby="request-manifest-title">
@@ -29,6 +38,7 @@ export function RequestManifestPanel({ manifest }: { manifest: RequestManifestRe
           <span className="manual-mode-badge">No analysis</span>
         </div>
         <p>OSP has preserved the request, but no governed case-level interpretation is available yet.</p>
+        {preservedPendingPromotion > 0 ? <p className="manifest-source-gap" role="status"><strong>Source inventory gap: {preservedPendingPromotion} more preserved {preservedPendingPromotion === 1 ? 'attachment' : 'attachments'} than registered {preservedPendingPromotion === 1 ? 'document' : 'documents'}.</strong> The source remains unchanged and is not yet included in the analysis.</p> : null}
       </section>
     );
   }
@@ -41,7 +51,7 @@ export function RequestManifestPanel({ manifest }: { manifest: RequestManifestRe
         <div>
           <p className="eyebrow">AI request manifest · human review required</p>
           <h2 id="request-manifest-title">What this carrier is asking XBF to complete</h2>
-          <p>One governed interpretation across the email and its PDF, XLSX, XLSM and DOCX evidence.</p>
+          <p>One governed interpretation across the email and its PDF, XLSX, XLSM, DOCX and image evidence.</p>
         </div>
         <span className="manifest-status">{manifest.status.replaceAll('_', ' ')}</span>
       </div>
@@ -62,6 +72,8 @@ export function RequestManifestPanel({ manifest }: { manifest: RequestManifestRe
         </ul>
         <small>Every conclusion remains linked to preserved evidence.</small>
       </div>
+
+      {preservedPendingPromotion > 0 ? <p className="manifest-source-gap" role="status"><strong>Source inventory gap: {preservedPendingPromotion} more preserved {preservedPendingPromotion === 1 ? 'attachment' : 'attachments'} than registered {preservedPendingPromotion === 1 ? 'document' : 'documents'}.</strong> The current interpretation excludes unmatched evidence until it is registered or explicitly excluded.</p> : null}
 
       {manifest.spreadsheetProtection.macroEnabledFiles > 0 ? (
         <div className="manifest-macro-protection" role="status">

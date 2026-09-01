@@ -59,6 +59,7 @@ import {
 import type { AdaptiveManifestConfiguration } from "./adaptive-manifest-config.ts";
 import { createRequestManifestJobService } from "./request-manifest-job.ts";
 import { createStrictDocumentPackageScanner } from "./strict-document-package-scanner.ts";
+import { createStrictImageFormatScanner } from "./strict-image-format-scanner.ts";
 
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -66,6 +67,8 @@ const XLSM = "application/vnd.ms-excel.sheet.macroEnabled.12";
 const PDF = "application/pdf";
 const DOCX =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const JPEG = "image/jpeg";
+const PNG = "image/png";
 
 type XlsxDocumentExtractCanary = {
   organizationId: string;
@@ -348,16 +351,21 @@ export function createShadowWorkerRuntime(input: {
           ? createMacroSafeXlsmPackageScanner()(bytes)
           : contentType === XLSX
           ? createStrictXlsxPackageScanner()(bytes)
+          : [JPEG, PNG].includes(contentType)
+          ? createStrictImageFormatScanner(contentType)(bytes)
           : createStrictDocumentPackageScanner(contentType)(bytes),
       sourceSafetyReason: (source) =>
         source.contentType === XLSM
           ? "macro_quarantined_openxml_policy"
           : source.contentType === XLSX
           ? "strict_xlsx_package_policy"
+          : [JPEG, PNG].includes(source.contentType)
+          ? "strict_passive_image_policy"
           : "strict_passive_document_policy",
       contentTypes: input.adaptiveManifest
-        ? [XLSX, XLSM, PDF, DOCX]
+        ? [XLSX, XLSM, PDF, DOCX, JPEG, PNG]
         : [XLSX, XLSM],
+      legacyExtractionContentTypes: [XLSX, XLSM],
       jobs,
     });
   }

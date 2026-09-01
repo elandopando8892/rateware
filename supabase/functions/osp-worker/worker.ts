@@ -153,11 +153,22 @@ async function execute(
   outboundSends?: OutboundSendJobService,
   attachmentPromotions?: AttachmentPromotionService,
   requestManifests?: RequestManifestJobService,
+  enqueueJob?: BackgroundJobStore["enqueue"],
 ): Promise<void> {
   if (job.kind === "request_manifest") {
     const caseId = job.opaquePayload.caseId;
     if (!caseId || !requestManifests) throw new Error("INVALID_INPUT");
     await requestManifests.analyze({
+      organizationId: job.organizationId,
+      caseId,
+      correlationId: job.id,
+    });
+    return;
+  }
+  if (job.kind === "attachment_promote") {
+    const caseId = job.opaquePayload.caseId;
+    if (!caseId || !attachmentPromotions) throw new Error("INVALID_INPUT");
+    await attachmentPromotions.promoteCase({
       organizationId: job.organizationId,
       caseId,
       correlationId: job.id,
@@ -271,10 +282,12 @@ async function execute(
     attachmentPromotions &&
     (result.outcome === "created" || result.outcome === "attached")
   ) {
-    await attachmentPromotions.promoteCase({
+    if (!enqueueJob) throw new Error("INVALID_INPUT");
+    await enqueueJob({
       organizationId: job.organizationId,
-      caseId: result.caseId,
-      correlationId: job.id,
+      kind: "attachment_promote",
+      opaquePayload: { caseId: result.caseId },
+      idempotencyKey: `attachment-promote:${result.caseId}:${job.id}`,
     });
   }
 }
@@ -283,7 +296,8 @@ export async function runWorker(
   deps: {
     workerId: string;
     now: () => Date;
-    jobs: Pick<BackgroundJobStore, "claim" | "complete" | "fail">;
+    jobs: Pick<BackgroundJobStore, "claim" | "complete" | "fail"> &
+      Partial<Pick<BackgroundJobStore, "enqueue">>;
     intake: IntakeService;
     extraction?: ManagedExtractionService;
     formMappings?: AutomaticPreparationService;
@@ -326,6 +340,7 @@ export async function runWorker(
         deps.outboundSends,
         deps.attachmentPromotions,
         deps.requestManifests,
+        deps.jobs.enqueue,
       );
       await deps.jobs.complete({
         jobId: job.id,

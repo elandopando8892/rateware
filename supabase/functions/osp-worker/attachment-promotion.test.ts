@@ -220,3 +220,43 @@ Deno.test("DOCX promotion preserves safe evidence and queues only adaptive manif
   assertEquals(job.kind, "request_manifest");
   assertEquals(job.opaquePayload, { caseId });
 });
+
+Deno.test("attachment promotion resumes manifest analysis after every source was already registered", async () => {
+  const jobs = createInMemoryBackgroundJobStore();
+  const service = createAttachmentPromotionService({
+    store: {
+      listCaseAttachments: async () => [],
+      register: async () => {
+        throw new Error("already registered evidence must not be registered twice");
+      },
+    },
+    storage: {
+      downloadOriginal: async () => {
+        throw new Error("already registered evidence must not be downloaded twice");
+      },
+      createOriginalReadUrl: async () => {
+        throw new Error("already registered evidence must not be read twice");
+      },
+      putCorporate: async () => {
+        throw new Error("already registered evidence must not be copied twice");
+      },
+    },
+    scan: async () => {
+      throw new Error("already registered evidence must not be scanned twice");
+    },
+    jobs,
+  });
+  assertEquals(await service.promoteCase({
+    organizationId,
+    caseId,
+    correlationId: "resume-job",
+  }), []);
+  const [job] = await jobs.claim({
+    workerId: "test",
+    now: new Date(),
+    leaseMs: 60_000,
+    limit: 1,
+  });
+  assertEquals(job.kind, "request_manifest");
+  assertEquals(job.opaquePayload, { caseId });
+});

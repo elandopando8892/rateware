@@ -85,6 +85,8 @@
 .manifest-source-coverage li { display: inline-flex; align-items: center; gap: .3rem; border: 1px solid var(--line); border-radius: 999px; padding: .28rem .55rem; color: var(--xbf-navy); background: var(--canvas); font-weight: 800; }
 .manifest-source-coverage li span { display: grid; place-items: center; min-width: 1.15rem; height: 1.15rem; border-radius: 50%; color: #fff; background: var(--xbf-navy); font-size: .64rem; }
 .manifest-source-coverage small { margin-left: auto; }
+.manifest-source-gap { margin: -.25rem 0 1rem; padding: .8rem 1rem; border: 1px solid #efc862; border-left: 4px solid var(--warning); color: #684900; background: #fff9e9; font-size: .8rem; }
+.manifest-source-gap strong { color: #684900; }
 .manifest-macro-protection { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .85rem; margin: -.25rem 0 1.25rem; padding: .85rem 1rem; border: 1px solid #a8b8da; border-left: 4px solid var(--xbf-navy); background: #eef1f8; }
 .manifest-macro-protection > span { font-size: 1.15rem; }
 .manifest-macro-protection strong { color: var(--xbf-navy); }

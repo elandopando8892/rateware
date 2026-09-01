@@ -18,7 +18,8 @@ export type SourceSafetyReason =
   | "managed_malware_scan_clean"
   | "strict_xlsx_package_policy"
   | "macro_quarantined_openxml_policy"
-  | "strict_passive_document_policy";
+  | "strict_passive_document_policy"
+  | "strict_passive_image_policy";
 
 export interface AttachmentPromotionStore {
   listCaseAttachments(input: {
@@ -123,6 +124,7 @@ export function createAttachmentPromotionService(deps: {
     | SourceSafetyReason
     | ((source: GmailAttachmentSource) => SourceSafetyReason);
   contentTypes?: readonly string[];
+  legacyExtractionContentTypes?: readonly string[];
   jobs: Pick<BackgroundJobStore, "enqueue">;
 }): AttachmentPromotionService {
   const contentTypes = deps.contentTypes
@@ -131,6 +133,13 @@ export function createAttachmentPromotionService(deps: {
   if (
     contentTypes?.size === 0 ||
     [...contentTypes ?? []].some((value) => !CONTENT_TYPES.has(value))
+  ) throw new Error("INVALID_RUNTIME_CONFIGURATION");
+  const legacyExtractionContentTypes = deps.legacyExtractionContentTypes
+    ? new Set(deps.legacyExtractionContentTypes)
+    : LEGACY_EXTRACTION_CONTENT_TYPES;
+  if (
+    legacyExtractionContentTypes.size === 0 ||
+    [...legacyExtractionContentTypes].some((value) => !CONTENT_TYPES.has(value))
   ) throw new Error("INVALID_RUNTIME_CONFIGURATION");
   const service: AttachmentPromotionService = {
     async promoteCase(input) {
@@ -177,7 +186,7 @@ export function createAttachmentPromotionService(deps: {
             ? deps.sourceSafetyReason(source)
             : deps.sourceSafetyReason ?? "managed_malware_scan_clean",
         });
-        if (LEGACY_EXTRACTION_CONTENT_TYPES.has(source.contentType)) {
+        if (legacyExtractionContentTypes.has(source.contentType)) {
           await deps.jobs.enqueue({
             organizationId: input.organizationId,
             kind: "document_extract",
