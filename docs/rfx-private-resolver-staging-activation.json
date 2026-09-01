@@ -1,0 +1,96 @@
+{
+  "contractVersion": "rateware.private-resolver.staging-activation.v1",
+  "activationVersion": "beta-10.1",
+  "visibility": "internal_release_evidence",
+  "authorization": {
+    "source": "current_task_user_authorization",
+    "authorizedScope": "sprint_10_1_readiness_inventory_and_staging_design",
+    "capturedOn": "2026-09-01",
+    "paidResourceCreationAuthorized": false,
+    "productionAuthorized": false,
+    "remoteMutationAuthorized": false
+  },
+  "candidate": {
+    "sha": "3c6ae8636d293eb51c1fd7b520f13ce63d62d49a",
+    "localRehearsalContract": "rateware.private-resolver.local-rehearsal.v1",
+    "localRehearsalStatus": "LOCAL_REHEARSAL_COMPLETE_REMOTE_BLOCKED"
+  },
+  "discovery": {
+    "supabaseCliAuthenticated": true,
+    "repositoryRemoteObserved": true,
+    "linkedProject": false,
+    "parentProject": {
+      "name": "rateware-prod",
+      "ref": "alqjqzqagdmcywpjtnnr",
+      "classification": "PRODUCTION_EXISTING",
+      "status": "ACTIVE_HEALTHY"
+    },
+    "branches": [
+      {
+        "name": "fcm-gmail-staging",
+        "projectRef": "kyjdyqayuznhowlpcoab",
+        "gitBranch": "codex/fcm-gmail-receiver-current",
+        "persistent": true,
+        "withProductionData": false,
+        "status": "ACTIVE_HEALTHY",
+        "suitability": "REJECTED_PURPOSE_AND_BRANCH_MISMATCH"
+      },
+      {
+        "name": "main",
+        "projectRef": "alqjqzqagdmcywpjtnnr",
+        "gitBranch": "main",
+        "persistent": false,
+        "withProductionData": false,
+        "status": "MIGRATIONS_FAILED",
+        "suitability": "REJECTED_PRODUCTION_DEFAULT"
+      }
+    ],
+    "githubEnvironments": ["Preview", "Production"],
+    "githubStagingEnvironmentObserved": false,
+    "credentialPresenceObserved": true,
+    "secretCustodyVerified": false
+  },
+  "targetDesign": {
+    "desiredClass": "DEDICATED_PERSISTENT_PREVIEW_BRANCH",
+    "desiredName": "marksman-loads-staging",
+    "fixtureDataOnly": true,
+    "cloneProductionData": false,
+    "selected": false,
+    "projectRef": null,
+    "region": "us-east-1",
+    "billingAcknowledged": false,
+    "githubEnvironment": null
+  },
+  "gates": [
+    { "id": "user_sprint_authorization", "status": "VERIFIED", "evidenceRef": "task:current:user-authorized-sprint-10.1" },
+    { "id": "candidate_provenance", "status": "VERIFIED", "evidenceRef": "git:3c6ae8636d293eb51c1fd7b520f13ce63d62d49a" },
+    { "id": "local_rehearsal", "status": "VERIFIED", "evidenceRef": "contract:rateware.private-resolver.local-rehearsal.v1" },
+    { "id": "branching_capability", "status": "VERIFIED", "evidenceRef": "supabase:branches-list:read-only" },
+    { "id": "dedicated_staging_target", "status": "BLOCKED", "evidenceRef": null },
+    { "id": "billing_acknowledgement", "status": "BLOCKED", "evidenceRef": null },
+    { "id": "github_staging_environment", "status": "BLOCKED", "evidenceRef": null },
+    { "id": "named_release_owners", "status": "BLOCKED", "evidenceRef": null },
+    { "id": "secret_and_network_custody", "status": "BLOCKED", "evidenceRef": null },
+    { "id": "monitoring_and_rollback_owners", "status": "BLOCKED", "evidenceRef": null }
+  ],
+  "decision": {
+    "status": "ACTIVATION_PREPARED_TARGET_NOT_SELECTED",
+    "verifiedGates": 4,
+    "blockedGates": 6,
+    "remoteCanaryReady": false,
+    "stagingTargetSelected": false,
+    "stagingCreated": false,
+    "productionApproved": false
+  },
+  "safety": {
+    "remoteProjectCreated": false,
+    "remoteBranchCreated": false,
+    "gitEnvironmentCreated": false,
+    "secretMutation": false,
+    "remoteMigration": false,
+    "functionDeployment": false,
+    "schedulerMutation": false,
+    "ratewareSubmission": false,
+    "externalExecution": false
+  }
+}
