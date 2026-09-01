@@ -93,6 +93,10 @@ Deno.test("Postgres request manifest store appends a tenant-scoped review draft 
     replayed: false,
   });
   assertMatch(calls[0].text, /set local role osp_worker/i);
+  assertMatch(
+    calls.find(({ text }) => /pg_advisory_xact_lock/i.test(text))?.text ?? "",
+    /json_build_array\(\?::text, 'request_manifest_draft', \?::text\)/i,
+  );
   assertEquals(
     calls.some(({ text }) => /\b(?:update|delete)\b/i.test(text)),
     false,

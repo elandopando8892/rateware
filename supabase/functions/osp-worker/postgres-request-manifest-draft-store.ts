@@ -161,7 +161,7 @@ export function createPostgresRequestManifestDraftStore(options: {
       return await sql.begin!(async (tx) => {
         await tx`set local role osp_worker`;
         await tx`select set_config('osp.organization_id', ${input.organizationId}, true)`;
-        await tx`select pg_advisory_xact_lock(pg_catalog.hashtextextended(pg_catalog.json_build_array(${input.organizationId}, 'request_manifest_draft', ${input.caseId})::text, 0))`;
+        await tx`select pg_advisory_xact_lock(pg_catalog.hashtextextended(pg_catalog.json_build_array(${input.organizationId}::text, 'request_manifest_draft', ${input.caseId}::text)::text, 0))`;
         const existing =
           await tx`select id, version, manifest_sha256 from osp_private.request_manifest_drafts where organization_id = ${input.organizationId} and case_id = ${input.caseId} and evidence_sha256 = ${input.evidenceSha256}`;
         if (existing.length > 0) {
