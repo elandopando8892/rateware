@@ -282,6 +282,7 @@ export async function importProviderGmailMessageById(
   connection: Record<string, unknown>,
   messageIdValue: unknown,
   accessTokenValue?: string,
+  options: Readonly<{ allowHistoricalArchive?: boolean }> = {},
 ) {
   const legalEntityId = cleanProviderGmailText(connection.legal_entity_id);
   const mailbox = cleanProviderGmailText(connection.mailbox_email)?.toLowerCase();
@@ -297,7 +298,10 @@ export async function importProviderGmailMessageById(
   }
   const accessToken = accessTokenValue || await getProviderGmailAccessToken(supabase, connection);
   const raw = await gmailJson(accessToken, `/messages/${encodeURIComponent(messageId)}?format=FULL`);
-  if (!Array.isArray(raw.labelIds) || !raw.labelIds.includes('INBOX')) {
+  if (
+    !Array.isArray(raw.labelIds) ||
+    (!raw.labelIds.includes('INBOX') && !options.allowHistoricalArchive)
+  ) {
     throw new Error('Provider Gmail message is not in the inbox.');
   }
   const message = parsedGmailMessage(raw, mailbox);

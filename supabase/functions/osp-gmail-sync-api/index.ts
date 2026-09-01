@@ -179,6 +179,7 @@ try {
         connection,
         input.candidateId,
         accessToken,
+        { allowHistoricalArchive: true },
       );
       if (
         imported.gmailThreadId !== candidate.gmailThreadId ||
