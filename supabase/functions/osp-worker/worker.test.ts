@@ -335,6 +335,44 @@ Deno.test("worker routes an adaptive request manifest without outbound effects",
   assertEquals(outboundCalls, 0);
 });
 
+Deno.test("worker preserves a safe terminal manifest diagnostic", async () => {
+  const failures: Array<{ errorCode: string; retryAt: Date | null }> = [];
+  await runWorker({
+    workerId: "local-worker",
+    now: () => new Date("2026-09-01T12:00:00.000Z"),
+    jobs: {
+      claim: async () => [{
+        id: "job-manifest-invalid",
+        organizationId: "org-1",
+        kind: "request_manifest",
+        opaquePayload: { caseId: "case-1" },
+        attempt: 1,
+        leaseToken: "11111111-1111-4111-8111-111111111111",
+        leasedUntil: "2026-09-01T12:05:00.000Z",
+      }],
+      complete: async () => undefined,
+      fail: async ({ errorCode, retryAt }) => {
+        failures.push({ errorCode, retryAt });
+      },
+    },
+    intake: {
+      ingest: async () => {
+        throw new Error("manifest must not enter Gmail intake");
+      },
+      refreshDuplicateReview: async () => undefined,
+    },
+    requestManifests: {
+      analyze: async () => {
+        throw new Error("OPENAI_MANIFEST_INVALID");
+      },
+    },
+  });
+  assertEquals(failures, [{
+    errorCode: "OPENAI_MANIFEST_INVALID",
+    retryAt: null,
+  }]);
+});
+
 Deno.test("worker promotes attachments only after a created or exact-attached Gmail intake", async () => {
   const promoted: string[] = [];
   const completed: string[] = [];

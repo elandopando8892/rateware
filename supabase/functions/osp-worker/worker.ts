@@ -22,6 +22,21 @@ const TEMPORARY = new Set<JobErrorCode>([
   "OPENAI_TEMPORARY",
 ]);
 const POSTGRES_TEMPORARY = new Set(["40001", "40P01"]);
+const MANIFEST_TERMINAL = new Set<JobErrorCode>([
+  "OPENAI_MANIFEST_INVALID",
+  "OPENAI_EVIDENCE_REQUIRED",
+  "OPENAI_EVIDENCE_CLOSURE",
+  "OPENAI_INVALID_RESPONSE",
+  "OPENAI_INCOMPLETE",
+  "OPENAI_REFUSAL",
+  "OPENAI_CONFIGURATION_INVALID",
+  "OPENAI_MANIFEST_INPUT_INVALID",
+  "REQUEST_MANIFEST_SOURCE_INVALID",
+  "REQUEST_MANIFEST_SOURCE_MISMATCH",
+  "REQUEST_MANIFEST_CONTENT_TYPE_UNSUPPORTED",
+  "REQUEST_MANIFEST_ATTACHMENT_LIMIT",
+  "REQUEST_MANIFEST_DRAFT_INVALID",
+]);
 
 export interface ManagedExtractionService {
   extract(
@@ -106,6 +121,8 @@ function errorCode(error: unknown): JobErrorCode {
   }
   const code = error instanceof Error ? error.message : "";
   const classified = TEMPORARY.has(code as JobErrorCode)
+    ? code as JobErrorCode
+    : MANIFEST_TERMINAL.has(code as JobErrorCode)
     ? code as JobErrorCode
     : code === "SOURCE_HASH_MISMATCH"
     ? "SOURCE_HASH_MISMATCH"
