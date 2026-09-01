@@ -9,6 +9,7 @@ import {
   PrivateResolverError,
   SUBMIT_BID_CONTRACT_VERSION,
   SUBMIT_BID_FIELDS,
+  createMemoryRateLimiter,
   createMemoryRequestLedger,
   createPrivateResolver,
   fingerprint,
@@ -70,7 +71,7 @@ function invitation(overrides = {}) {
 }
 
 function resolver(findInvitations = async () => [invitation()]) {
-  return createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, findInvitations, requestLedger: createMemoryRequestLedger() });
+  return createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, findInvitations, requestLedger: createMemoryRequestLedger(), rateLimiter: createMemoryRateLimiter() });
 }
 
 test("resolves one eligible private invitation without returning credentials or writing a bid", async () => {
@@ -174,7 +175,7 @@ test("fails closed when an identical request is already processing", async () =>
     complete: async () => null,
     fail: async () => null,
   };
-  const candidate = createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, requestLedger: processingLedger, findInvitations: async () => { calls += 1; return [invitation()]; } });
+  const candidate = createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, requestLedger: processingLedger, rateLimiter: createMemoryRateLimiter(), findInvitations: async () => { calls += 1; return [invitation()]; } });
   await assert.rejects(candidate.resolve(await signedEnvelope()), (error) => error.code === "REQUEST_IN_PROGRESS");
   assert.equal(calls, 0);
 });
@@ -190,7 +191,7 @@ test("fails closed when retention already compacted an identical request to a to
     complete: async () => null,
     fail: async () => null,
   };
-  const candidate = createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, requestLedger: tombstoneLedger, findInvitations: async () => { calls += 1; return [invitation()]; } });
+  const candidate = createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, requestLedger: tombstoneLedger, rateLimiter: createMemoryRateLimiter(), findInvitations: async () => { calls += 1; return [invitation()]; } });
   await assert.rejects(candidate.resolve(await signedEnvelope()), (error) => error.code === "REQUEST_RETENTION_TOMBSTONE" && error.status === 409);
   assert.equal(calls, 0);
 });
@@ -200,6 +201,41 @@ test("fails closed before invitation lookup when the durable ledger is unavailab
   const candidate = createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, findInvitations: async () => { calls += 1; return [invitation()]; } });
   await assert.rejects(candidate.resolve(await signedEnvelope()), (error) => error.code === "PRIVATE_RESOLVER_LEDGER_UNAVAILABLE");
   assert.equal(calls, 0);
+});
+
+test("fails closed before invitation lookup when the rate limiter is unavailable", async () => {
+  let calls = 0;
+  const candidate = createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, requestLedger: createMemoryRequestLedger(), findInvitations: async () => { calls += 1; return [invitation()]; } });
+  await assert.rejects(candidate.resolve(await signedEnvelope()), (error) => error.code === "PRIVATE_RESOLVER_RATE_LIMITER_UNAVAILABLE" && error.status === 503);
+  assert.equal(calls, 0);
+});
+
+test("records a rate-limit denial as terminal without querying the invitation", async () => {
+  let calls = 0;
+  const requestLedger = createMemoryRequestLedger();
+  const rateLimiter = { check: async () => ({ allowed:false, code:"PRIVATE_RESOLVER_RATE_LIMITED", controlVersion:"test.v1", retryAfterSeconds:42 }) };
+  const candidate = createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, requestLedger, rateLimiter, findInvitations: async () => { calls += 1; return [invitation()]; } });
+  const envelope = await signedEnvelope();
+  await assert.rejects(candidate.resolve(envelope), (error) => error.code === "PRIVATE_RESOLVER_RATE_LIMITED" && error.status === 429 && error.details.retryAfterSeconds === 42);
+  await assert.rejects(candidate.resolve(envelope), (error) => error.code === "PRIVATE_RESOLVER_RATE_LIMITED" && error.status === 409);
+  assert.equal(calls, 0);
+});
+
+test("does not consume another rate-limit slot for an exact completed replay", async () => {
+  let checks = 0;
+  const candidate = createPrivateResolver({
+    sharedSecret: secret,
+    keyId,
+    canaryEnabled: true,
+    now,
+    requestLedger: createMemoryRequestLedger(),
+    rateLimiter: { check: async () => { checks += 1; return { allowed:true, code:"RATE_LIMIT_OK" }; } },
+    findInvitations: async () => [invitation()],
+  });
+  const envelope = await signedEnvelope();
+  await candidate.resolve(envelope);
+  await candidate.resolve(envelope);
+  assert.equal(checks, 1);
 });
 
 test("records a terminal failure and does not silently retry the invitation query", async () => {
@@ -230,6 +266,7 @@ test("file-backed candidate returns the same result after resolver restart witho
     canaryEnabled: true,
     now,
     requestLedger: createFileRequestLedger(path),
+    rateLimiter: createMemoryRateLimiter(),
     findInvitations: async () => { calls += 1; return [invitation()]; },
   });
   try {
@@ -283,4 +320,31 @@ test("retention migration compacts to purpose-limited tombstones without schedul
   assert.match(sql, /grant execute[\s\S]+to service_role/i);
   assert.doesNotMatch(sql, /cron\.schedule|create extension[^;]+pg_cron/i);
   assert.doesNotMatch(sql, /\n\s*(request_body|signature|invitation_token|operational_fit|bid_rate|notes|commercial_model)\s+/i);
+});
+
+test("operational controls add hashed durable rate limits and keep release gates false", async () => {
+  const sql = await readFile(new URL("../supabase/migrations/20260902013000_rfx_private_resolver_operational_controls.sql", import.meta.url), "utf8");
+  assert.match(sql, /rfx-private-resolver-controls\.v1/i);
+  assert.match(sql, /rate_limit_per_minute[^\n]+30|true, 30, interval '24 hours'/i);
+  assert.match(sql, /check_rfx_private_resolver_rate_limit/i);
+  assert.match(sql, /get_rfx_private_resolver_operational_readiness/i);
+  assert.match(sql, /scope_hash text not null/i);
+  assert.match(sql, /secret_custody_verified boolean not null default false/i);
+  assert.match(sql, /network_controls_verified boolean not null default false/i);
+  assert.match(sql, /monitoring_owner_assigned boolean not null default false/i);
+  assert.match(sql, /rollback_rehearsed boolean not null default false/i);
+  assert.match(sql, /production_approved boolean not null default false/i);
+  assert.match(sql, /revoke all[\s\S]+from public, anon, authenticated/i);
+  assert.match(sql, /grant execute[\s\S]+to service_role/i);
+  assert.doesNotMatch(sql, /cron\.schedule|supabase secrets set|db push/i);
+  assert.doesNotMatch(sql, /\n\s*(request_body|signature|invitation_token|organization_id|vendor_id|rfx_lane_id|bid_rate|notes)\s+/i);
+});
+
+test("Edge candidate hashes the limiter scope and fails through a service-role RPC", async () => {
+  const index = await readFile(new URL("../supabase/functions/rfx-private-resolver/index.ts", import.meta.url), "utf8");
+  assert.match(index, /fingerprint\(\{[\s\S]+issuer:[\s\S]+keyId:[\s\S]+organizationId:/i);
+  assert.match(index, /check_rfx_private_resolver_rate_limit/i);
+  assert.match(index, /PRIVATE_RESOLVER_RATE_LIMITER_UNAVAILABLE/i);
+  assert.match(index, /rateLimiter,/i);
+  assert.doesNotMatch(index, /console\.(?:log|info|warn|error)\([^)]*(?:SHARED_SECRET|SERVICE_ROLE_KEY)/i);
 });

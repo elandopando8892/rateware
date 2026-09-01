@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { PrivateResolverError, createPrivateResolver } from "./resolver-core.mjs";
+import { PrivateResolverError, createPrivateResolver, fingerprint } from "./resolver-core.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -91,11 +91,30 @@ const requestLedger = {
   },
 };
 
+const rateLimiter = {
+  async check(input: Record<string, string>) {
+    const scopeHash = await fingerprint({
+      issuer: input.issuer,
+      keyId: input.keyId,
+      organizationId: input.organizationId,
+    });
+    const result = await getClient().rpc("check_rfx_private_resolver_rate_limit", {
+      p_scope_hash: scopeHash,
+      p_now: input.checkedAt,
+    });
+    if (result.error) throw new PrivateResolverError("Rateware resolver rate limit failed", "PRIVATE_RESOLVER_RATE_LIMITER_UNAVAILABLE", 503);
+    const data = result.data as Record<string, unknown> | null;
+    if (!data || typeof data.allowed !== "boolean") throw new PrivateResolverError("Rateware resolver rate limit returned invalid evidence", "PRIVATE_RESOLVER_RATE_LIMITER_UNAVAILABLE", 503);
+    return data;
+  },
+};
+
 const resolver = createPrivateResolver({
   sharedSecret: SHARED_SECRET,
   keyId: KEY_ID,
   canaryEnabled: CANARY_ENABLED,
   requestLedger,
+  rateLimiter,
   async findInvitations({ vendorId, laneId, eventId, limit }: { vendorId: string; laneId: string; eventId: string; limit: number }) {
     const result = await getClient()
       .from("rfx_lane_vendors")

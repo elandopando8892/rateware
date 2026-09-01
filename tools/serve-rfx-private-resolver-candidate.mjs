@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { PrivateResolverError, createPrivateResolver } from "../supabase/functions/rfx-private-resolver/resolver-core.mjs";
+import { PrivateResolverError, createMemoryRateLimiter, createPrivateResolver } from "../supabase/functions/rfx-private-resolver/resolver-core.mjs";
 import { createFileRequestLedger } from "./file-request-ledger.mjs";
 
 const port = Number(process.env.PORT || 4193);
@@ -17,6 +17,7 @@ const resolver = createPrivateResolver({
   canaryEnabled: String(process.env.RATEWARE_PRIVATE_RESOLVER_CANARY_ENABLED || "").trim() === "true",
   evidenceClass: "RATEWARE_PRIVATE_RESOLUTION_CANDIDATE_FIXTURE",
   requestLedger: createFileRequestLedger(ledgerPath),
+  rateLimiter: createMemoryRateLimiter({ limitPerMinute: 30 }),
   async findInvitations({ vendorId, laneId, eventId, limit }) {
     return rows.filter((row) => row.vendor_id === vendorId && row.rfx_lane_id === laneId && row.rfx_event_id === eventId).slice(0, limit);
   },
@@ -29,7 +30,7 @@ function json(response, status, body) {
 
 createServer(async (request, response) => {
   if (request.method === "GET" && request.url === "/status") {
-    return json(response, 200, { status: "ready", environment: "candidate_fixture", evidenceLevel: "durable", canaryEnabled: true, liveEnabled: false, externalExecution: false });
+    return json(response, 200, { status: "ready", environment: "candidate_fixture", evidenceLevel: "durable", rateLimitEvidence: "memory_fixture", canaryEnabled: true, liveEnabled: false, externalExecution: false });
   }
   if (request.method !== "POST" || request.url !== "/") return json(response, 404, { error: "Not found.", code: "NOT_FOUND" });
   try {

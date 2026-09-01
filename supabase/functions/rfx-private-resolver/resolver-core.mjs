@@ -117,6 +117,28 @@ export function createMemoryRequestLedger() {
   };
 }
 
+export function createMemoryRateLimiter({ limitPerMinute = 30 } = {}) {
+  const windows = new Map();
+  return {
+    async check(input) {
+      const checkedAt = new Date(input.checkedAt);
+      const bucket = Number.isFinite(checkedAt.getTime()) ? checkedAt.toISOString().slice(0, 16) : "invalid";
+      const scope = `${text(input.issuer)}|${text(input.keyId)}|${text(input.organizationId)}|${bucket}`;
+      const count = (windows.get(scope) || 0) + 1;
+      windows.set(scope, count);
+      return {
+        allowed: count <= limitPerMinute,
+        code: count <= limitPerMinute ? "RATE_LIMIT_OK" : "PRIVATE_RESOLVER_RATE_LIMITED",
+        controlVersion: "memory-candidate.v1",
+        limitPerMinute,
+        remaining: Math.max(limitPerMinute - count, 0),
+        retryAfterSeconds: 60,
+        externalExecutionPossible: false,
+      };
+    },
+  };
+}
+
 function assertExactAcceptedFields(value) {
   if (!Array.isArray(value) || value.length !== SUBMIT_BID_FIELDS.length || value.some((field, index) => field !== SUBMIT_BID_FIELDS[index])) {
     throw new PrivateResolverError("Rateware accepted fields do not match the current submit_bid contract", "RATEWARE_CONTRACT_MISMATCH", 409);
@@ -174,6 +196,7 @@ function assertEligibleInvitation(row, now) {
  *   now?: () => Date,
  *   evidenceClass?: string,
  *   requestLedger?: any,
+ *   rateLimiter?: any,
  * }} options
  */
 export function createPrivateResolver({
@@ -184,12 +207,19 @@ export function createPrivateResolver({
   now = () => new Date(),
   evidenceClass = "RATEWARE_PRIVATE_RESOLUTION_CANDIDATE",
   requestLedger,
+  rateLimiter,
 }) {
   if (typeof findInvitations !== "function") throw new TypeError("findInvitations is required");
 
   function assertLedger() {
     if (!requestLedger || typeof requestLedger.claim !== "function" || typeof requestLedger.complete !== "function" || typeof requestLedger.fail !== "function") {
       throw ledgerError("durable request ledger is not configured", "PRIVATE_RESOLVER_LEDGER_UNAVAILABLE", 503);
+    }
+  }
+
+  function assertRateLimiter() {
+    if (!rateLimiter || typeof rateLimiter.check !== "function") {
+      throw new PrivateResolverError("private resolver rate limiter is not configured", "PRIVATE_RESOLVER_RATE_LIMITER_UNAVAILABLE", 503);
     }
   }
 
@@ -240,6 +270,7 @@ export function createPrivateResolver({
     const verified = await verifyEnvelope(envelope, { sharedSecret, expectedKeyId: keyId, now });
     await validateHandoff(verified.body);
     assertLedger();
+    assertRateLimiter();
     const body = verified.body;
     const { signature: _signature, ...unsigned } = verified;
     const requestHash = await fingerprint(unsigned);
@@ -265,6 +296,28 @@ export function createPrivateResolver({
     }
 
     try {
+      let rateLimit;
+      try {
+        rateLimit = await rateLimiter.check({
+          issuer: text(verified.issuer),
+          keyId: text(verified.keyId),
+          organizationId: text(body.organizationId),
+          checkedAt: claimedAt,
+        });
+      } catch (error) {
+        if (error instanceof PrivateResolverError) throw error;
+        throw new PrivateResolverError("private resolver rate limiter is unavailable", "PRIVATE_RESOLVER_RATE_LIMITER_UNAVAILABLE", 503);
+      }
+      if (!rateLimit || typeof rateLimit.allowed !== "boolean") {
+        throw new PrivateResolverError("private resolver rate limiter returned invalid evidence", "PRIVATE_RESOLVER_RATE_LIMITER_UNAVAILABLE", 503);
+      }
+      if (rateLimit.allowed !== true) {
+        throw new PrivateResolverError("private resolver request limit exceeded", text(rateLimit.code) || "PRIVATE_RESOLVER_RATE_LIMITED", 429, {
+          retryAfterSeconds: Number(rateLimit.retryAfterSeconds) || 60,
+          controlVersion: text(rateLimit.controlVersion) || null,
+        });
+      }
+
       const rows = await findInvitations({ vendorId: text(body.vendorId), laneId: text(body.laneId), eventId: text(body.eventId), limit: 2 });
       if (!Array.isArray(rows)) throw new PrivateResolverError("private invitation source returned an invalid result", "PRIVATE_RESOLVER_SOURCE_ERROR", 502);
       if (rows.length === 0) throw new PrivateResolverError("no private invitation matches this carrier and lane", "PRIVATE_INVITATION_NOT_FOUND", 404);

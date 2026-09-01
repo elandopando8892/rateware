@@ -4,8 +4,8 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const image = process.env.RATEWARE_LEDGER_POSTGRES_IMAGE || "public.ecr.aws/supabase/postgres:17.6.1.165";
-const container = `rateware-resolver-ledger-96-${process.pid}`;
-const database = "rateware_ledger_96";
+const container = `rateware-resolver-ledger-97-${process.pid}`;
+const database = "rateware_ledger_97";
 const password = `local-only-${process.pid}`;
 const migrationPath = resolve(import.meta.dirname, "../supabase/migrations/20260901193000_rfx_private_resolver_request_ledger.sql");
 const migration = await readFile(migrationPath, "utf8");
@@ -13,6 +13,8 @@ const healthMigrationPath = resolve(import.meta.dirname, "../supabase/migrations
 const healthMigration = await readFile(healthMigrationPath, "utf8");
 const retentionMigrationPath = resolve(import.meta.dirname, "../supabase/migrations/20260902003000_rfx_private_resolver_retention.sql");
 const retentionMigration = await readFile(retentionMigrationPath, "utf8");
+const controlsMigrationPath = resolve(import.meta.dirname, "../supabase/migrations/20260902013000_rfx_private_resolver_operational_controls.sql");
+const controlsMigration = await readFile(controlsMigrationPath, "utf8");
 
 function run(command, args, { input = "", allowFailure = false } = {}) {
   return new Promise((resolveRun, reject) => {
@@ -54,7 +56,7 @@ async function waitReady() {
 
 function claimSql({ requestId, requestHash, action = "resolve_and_submit_bid_canary" }) {
   return `select public.claim_rfx_private_resolver_request(
-    '${requestId}'::uuid, '${requestHash}', '${action}', 'marksman-loads', 'preview-9-6',
+    '${requestId}'::uuid, '${requestHash}', '${action}', 'marksman-loads', 'preview-9-7',
     'org-acme', '22222222-2222-4222-8222-222222222222'::uuid,
     '33333333-3333-4333-8333-333333333333'::uuid,
     '44444444-4444-4444-8444-444444444444'::uuid,
@@ -85,6 +87,7 @@ try {
   await psql(migration);
   await psql(healthMigration);
   await psql(retentionMigration);
+  await psql(controlsMigration);
 
   const requestId = "55555555-5555-4555-8555-555555555555";
   const requestHash = "a".repeat(64);
@@ -209,10 +212,56 @@ try {
   const tombstonesAfterPurge = await asServiceRole("select count(*) from public.rfx_private_resolver_request_tombstones;");
   assert.equal(Number(tombstonesAfterPurge.stdout.split(/\r?\n/).at(-1)), 1);
 
+  const rateScope = "9".repeat(64);
+  const limitChecks = await Promise.all(Array.from({ length: 40 }, () => asServiceRole(`select public.check_rfx_private_resolver_rate_limit('${rateScope}', now());`)));
+  const limitResults = limitChecks.map((item) => JSON.parse(item.stdout.split(/\r?\n/).at(-1)));
+  assert.equal(limitResults.filter((item) => item.allowed === true).length, 30);
+  assert.equal(limitResults.filter((item) => item.allowed === false).length, 10);
+  assert.ok(limitResults.every((item) => item.limitPerMinute === 30));
+  assert.ok(limitResults.every((item) => item.externalExecutionPossible === false));
+
+  const readinessRaw = await asServiceRole("select public.get_rfx_private_resolver_operational_readiness();");
+  const readiness = JSON.parse(readinessRaw.stdout.split(/\r?\n/).at(-1));
+  assert.equal(readiness.controlVersion, "rfx-private-resolver-controls.v1");
+  assert.equal(readiness.rateLimitEnabled, true);
+  assert.equal(Number(readiness.rateLimitPerMinute), 30);
+  assert.equal(Number(readiness.denied24h), 10);
+  assert.equal(readiness.secretCustodyVerified, false);
+  assert.equal(readiness.networkControlsVerified, false);
+  assert.equal(readiness.monitoringOwnerAssigned, false);
+  assert.equal(readiness.rollbackRehearsed, false);
+  assert.equal(readiness.productionApproved, false);
+  assert.equal(readiness.releaseReady, false);
+  assert.equal(readiness.requestBodyStored, false);
+  assert.equal(readiness.credentialMaterialStored, false);
+  assert.equal(readiness.externalExecutionPossible, false);
+
+  const oldScope = "8".repeat(64);
+  await asServiceRole(`select public.check_rfx_private_resolver_rate_limit('${oldScope}', '2026-01-01T00:00:00Z'::timestamptz);`);
+  const purgeWindowsRaw = await asServiceRole("select public.purge_rfx_private_resolver_rate_limit_windows(now());");
+  const purgeWindows = JSON.parse(purgeWindowsRaw.stdout.split(/\r?\n/).at(-1));
+  assert.equal(Number(purgeWindows.windowsPurged), 1);
+
+  for (const role of ["anon", "authenticated"]) {
+    const windowsDenied = await psql(`set role ${role}; select count(*) from public.rfx_private_resolver_rate_limit_windows;`, { allowFailure: true });
+    assert.notEqual(windowsDenied.code, 0, `${role} must not read rate-limit windows`);
+    assert.match(windowsDenied.stderr, /permission denied/);
+    const limiterDenied = await psql(`set role ${role}; select public.check_rfx_private_resolver_rate_limit('${rateScope}', now());`, { allowFailure: true });
+    assert.notEqual(limiterDenied.code, 0, `${role} must not execute rate limiter`);
+    assert.match(limiterDenied.stderr, /permission denied/);
+    const readinessDenied = await psql(`set role ${role}; select public.get_rfx_private_resolver_operational_readiness();`, { allowFailure: true });
+    assert.notEqual(readinessDenied.code, 0, `${role} must not execute readiness`);
+    assert.match(readinessDenied.stderr, /permission denied/);
+  }
+
+  const windowColumnsRaw = await psql("select column_name from information_schema.columns where table_schema='public' and table_name='rfx_private_resolver_rate_limit_windows' order by ordinal_position;");
+  const windowColumns = windowColumnsRaw.stdout.split(/\r?\n/).filter(Boolean);
+  assert.deepEqual(windowColumns.filter((column) => forbidden.includes(column) || ["organization_id", "vendor_id", "rfx_lane_id", "issuer", "key_id"].includes(column)), []);
+
   console.log(JSON.stringify({
     status: "PASS",
     image,
-    migrations: ["20260901193000_rfx_private_resolver_request_ledger.sql", "20260901230000_rfx_private_resolver_ledger_health.sql", "20260902003000_rfx_private_resolver_retention.sql"],
+    migrations: ["20260901193000_rfx_private_resolver_request_ledger.sql", "20260901230000_rfx_private_resolver_ledger_health.sql", "20260902003000_rfx_private_resolver_retention.sql", "20260902013000_rfx_private_resolver_operational_controls.sql"],
     concurrentClaims: claims.length,
     atomicWinners: 1,
     exactRetry: "same_terminal_result",
@@ -231,6 +280,16 @@ try {
     },
     storedColumns: columns.length,
     tombstoneColumns: tombstoneColumns.length,
+    operationalControls: {
+      version: "rfx-private-resolver-controls.v1",
+      limitPerMinute: 30,
+      allowed: 30,
+      denied: 10,
+      scopeStorage: "sha256_only",
+      releaseReady: false,
+      productionApproval: false,
+    },
+    rateLimitWindowColumns: windowColumns.length,
     sensitiveColumns: 0,
     remoteEffects: false,
   }, null, 2));
