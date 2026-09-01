@@ -241,14 +241,14 @@ assert.ok(codes(validateActionContract(contractFor([malformed], [{ ...inlineActu
 // 25-30: committed baseline, status preservation, non-governable declaration, divergence and explicit limitations.
 const baseline = discoverGovernableSurfaces(process.cwd());
 const baselineResult = validateActionContract(ACTION_CONTRACT, baseline, { repoRoot: process.cwd() });
-assert.equal(baseline.length, 413);
-assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, 301);
-assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length, 112);
+assert.equal(baseline.length, 558);
+assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, 349);
+assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length, 209);
 assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.rateware-api.")).length, 255);
-assert.equal(ACTION_CONTRACT.surfaces.length, 415);
+assert.equal(ACTION_CONTRACT.surfaces.length, 560);
 assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 267);
-assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "explicitly_allowed").length, 33);
-assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "internal_only").length, 115);
+assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "explicitly_allowed").length, 69);
+assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "internal_only").length, 224);
 for (const [actionName, access, proposedPermissionKey] of [
   ["list_carrier_list_templates", "read", "vendors.read"],
   ["get_carrier_list_template", "read", "vendors.read"],
@@ -788,7 +788,7 @@ assert.equal(formatValidationResult(validateActionContract(deterministicContract
 assert.equal(formatValidationResult(validateActionContract(deterministicContract, inlineActual)).includes(secretMarker), false);
 const finalBaseline = discoverGovernableSurfaces(process.cwd());
 const finalBaselineResult = validateActionContract(ACTION_CONTRACT, finalBaseline, { repoRoot: process.cwd() });
-assert.deepEqual({ total: finalBaseline.length, edge: finalBaseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, rpc: finalBaseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length }, { total: 413, edge: 301, rpc: 112 });
+assert.deepEqual({ total: finalBaseline.length, edge: finalBaseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, rpc: finalBaseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length }, { total: 558, edge: 349, rpc: 209 });
 assert.deepEqual(finalBaselineResult.issues.filter((entry) => entry.level === "error").map((entry) => entry.code), []);
 assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 267);
 assert.equal(ACTION_CONTRACT.nonGovernableDeclarations.some((entry) => entry.canonicalId === "declaration.edge.whatsapp-healthcheck" && entry.decisionStatus === "pending_human_approval"), true);
