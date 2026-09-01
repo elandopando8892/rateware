@@ -29,6 +29,15 @@ const signatureCanary = {
   inputPackageSha256: "d".repeat(64),
   signaturePositionVersion: 1,
 };
+const manifestCanary = {
+  action: "run_request_manifest_shadow",
+  organizationId: "11111111-1111-4111-8111-111111111111",
+  caseId: "22222222-2222-4222-8222-222222222222",
+  gmailMessageId: "33333333-3333-4333-8333-333333333333",
+  gmailSourceSha256: "e".repeat(64),
+  documentVersionId: "44444444-4444-4444-8444-444444444444",
+  documentSourceSha256: "f".repeat(64),
+};
 const request = (body: unknown, authorization = `Bearer ${token}`) =>
   new Request("https://example.test/functions/v1/osp-worker", {
     method: "POST",
@@ -95,6 +104,50 @@ Deno.test("OSP worker fails closed when the bridge is unavailable", async () => 
   const response = await handler(request({ action: "drain_rateware_gmail" }));
   assertEquals(response.status, 503);
   assertEquals(await response.json(), { error: "WORKER_UNAVAILABLE" });
+});
+
+Deno.test("OSP worker runs only one exact read-only request manifest shadow", async () => {
+  let received: Record<string, string> | undefined;
+  const result = {
+    manifest: { schemaVersion: 1 },
+    telemetry: { totalTokens: 150 },
+    evidence: { count: 3 },
+  };
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    runRequestManifestShadow: async (input) => {
+      received = input;
+      return result;
+    },
+  });
+  const response = await handler(request(manifestCanary));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), result);
+  assertEquals(received, {
+    organizationId: manifestCanary.organizationId,
+    caseId: manifestCanary.caseId,
+    gmailMessageId: manifestCanary.gmailMessageId,
+    gmailSourceSha256: manifestCanary.gmailSourceSha256,
+    documentVersionId: manifestCanary.documentVersionId,
+    documentSourceSha256: manifestCanary.documentSourceSha256,
+  });
+  assertEquals(
+    (await handler(request({ ...manifestCanary, extra: true }))).status,
+    400,
+  );
+});
+
+Deno.test("OSP worker fails closed when request manifest shadow is disabled", async () => {
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: async () => 0,
+    run: async () => 0,
+  });
+  const response = await handler(request(manifestCanary));
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), { error: "CANARY_DISABLED" });
 });
 
 Deno.test("OSP worker runs one exact XLSX extraction canary", async () => {

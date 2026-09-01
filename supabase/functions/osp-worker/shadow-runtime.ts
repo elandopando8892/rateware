@@ -14,6 +14,7 @@ import { createPostgresAttachmentPromotionStore } from "./postgres-attachment-pr
 import { createSupabaseAttachmentPromotionStorage } from "./supabase-attachment-promotion-storage.ts";
 import { createAzureDocumentIntelligence } from "./azure-document-intelligence.ts";
 import { createOpenAiStructuredExtraction } from "./openai-structured-extraction.ts";
+import { createOpenAiRequestManifest } from "./openai-request-manifest.ts";
 import { createManagedExtractionService } from "./managed-extraction.ts";
 import { createPostgresManagedExtractionStore } from "./postgres-managed-extraction-store.ts";
 import { createSupabaseManagedExtractionStorage } from "./supabase-managed-extraction-storage.ts";
@@ -38,6 +39,13 @@ import { createGmailSendAdapter } from "../_shared/osp/gmail-send-adapter.ts";
 import { createOutboundStoragePorts } from "../osp-case-api/outbound-draft.ts";
 import { createPostgresOutboundSendStore } from "./outbound-receipt.ts";
 import { runOutboundSendJob } from "./outbound-send-job.ts";
+import type { RequestManifestShadowConfiguration } from "./request-manifest-shadow-config.ts";
+import { createPostgresRequestManifestShadowSource } from "./postgres-request-manifest-shadow.ts";
+import {
+  createRequestManifestShadowService,
+  type RequestManifestShadowRequest,
+  type RequestManifestShadowResult,
+} from "./request-manifest-shadow.ts";
 
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -79,6 +87,7 @@ export function createShadowWorkerRuntime(input: {
   xlsxIntake?: OspXlsxIntakeConfiguration;
   supplierPackageCanary?: SupplierPackageCanaryConfiguration;
   signatureCanary?: SignatureCanaryConfiguration;
+  requestManifestShadow?: RequestManifestShadowConfiguration;
   signatureVault?: SignatureVaultReader;
   fetch?: typeof globalThis.fetch;
 }): {
@@ -93,6 +102,9 @@ export function createShadowWorkerRuntime(input: {
   runSignatureApplicationCanary?: (
     request: SignatureApplicationCanary,
   ) => Promise<number>;
+  runRequestManifestShadow?: (
+    request: RequestManifestShadowRequest,
+  ) => Promise<RequestManifestShadowResult>;
 } {
   if (
     [input.automation, input.xlsxShadow, input.xlsxIntake].filter(
@@ -120,6 +132,30 @@ export function createShadowWorkerRuntime(input: {
     postgresFactory: input.postgresFactory,
   });
   const request = input.fetch ?? globalThis.fetch;
+  const requestManifest = input.requestManifestShadow
+    ? createRequestManifestShadowService({
+      configuration: input.requestManifestShadow,
+      source: createPostgresRequestManifestShadowSource({
+        databaseUrl: input.databaseUrl,
+        postgresFactory: input.postgresFactory,
+      }),
+      storage: {
+        async download(bucketId, objectKey) {
+          const result = await governedStorage(input.storageClient).storage
+            .from(bucketId)
+            .download(objectKey);
+          if (result.error || !result.data) return null;
+          return new Uint8Array(await result.data.arrayBuffer());
+        },
+      },
+      interpreter: createOpenAiRequestManifest({
+        baseUrl: "https://api.openai.com",
+        apiKey: input.requestManifestShadow.openAiApiKey,
+        model: input.requestManifestShadow.openAiModel,
+        request,
+      }),
+    })
+    : undefined;
   let outboundStore:
     | ReturnType<typeof createPostgresOutboundSendStore>
     | undefined;
@@ -425,5 +461,8 @@ export function createShadowWorkerRuntime(input: {
     runXlsxDocumentExtractCanary,
     runSupplierPackageCanary,
     runSignatureApplicationCanary,
+    runRequestManifestShadow: requestManifest
+      ? (request: RequestManifestShadowRequest) => requestManifest.run(request)
+      : undefined,
   });
 }

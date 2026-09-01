@@ -13,6 +13,7 @@ import { resolveOspXlsxIntake } from "./osp-xlsx-intake-config.ts";
 import { resolveSupplierPackageCanary } from "./supplier-package-canary-config.ts";
 import { createPostgresSignatureVaultReader } from "./signature-runtime.ts";
 import { resolveSignatureCanary } from "./signature-canary-config.ts";
+import { resolveRequestManifestShadow } from "./request-manifest-shadow-config.ts";
 
 function required(name: string): string {
   const value = Deno.env.get(name)?.trim();
@@ -89,6 +90,7 @@ const xlsxShadow = resolveXlsxShadow(Deno.env);
 const xlsxIntake = resolveOspXlsxIntake(Deno.env);
 const supplierPackageCanary = resolveSupplierPackageCanary(Deno.env);
 const signatureCanary = resolveSignatureCanary(Deno.env);
+const requestManifestShadow = resolveRequestManifestShadow(Deno.env);
 const signatureVault = createPostgresSignatureVaultReader({ databaseUrl });
 const runtime = createShadowWorkerRuntime({
   databaseUrl,
@@ -100,6 +102,7 @@ const runtime = createShadowWorkerRuntime({
   xlsxIntake,
   supplierPackageCanary,
   signatureCanary,
+  requestManifestShadow,
   signatureVault,
 });
 
@@ -110,4 +113,5 @@ Deno.serve(createOspWorkerHandler({
   runXlsxDocumentExtractCanary: runtime.runXlsxDocumentExtractCanary,
   runSupplierPackageCanary: runtime.runSupplierPackageCanary,
   runSignatureApplicationCanary: runtime.runSignatureApplicationCanary,
+  runRequestManifestShadow: runtime.runRequestManifestShadow,
 }));

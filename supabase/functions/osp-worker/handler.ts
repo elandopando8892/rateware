@@ -1,4 +1,4 @@
-function json(status: number, body: Record<string, unknown>): Response {
+function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -65,6 +65,15 @@ type SignatureApplicationCanary = {
   signaturePositionVersion: number;
 };
 
+type RequestManifestShadow = {
+  organizationId: string;
+  caseId: string;
+  gmailMessageId: string;
+  gmailSourceSha256: string;
+  documentVersionId: string;
+  documentSourceSha256: string;
+};
+
 export function createOspWorkerHandler(deps: {
   expectedToken: string;
   enqueue(limit: number): Promise<number>;
@@ -78,6 +87,9 @@ export function createOspWorkerHandler(deps: {
   runSignatureApplicationCanary?: (
     input: SignatureApplicationCanary,
   ) => Promise<number>;
+  runRequestManifestShadow?: (
+    input: RequestManifestShadow,
+  ) => Promise<unknown>;
 }): (request: Request) => Promise<Response> {
   if (deps.expectedToken.length < 32) {
     throw new Error("INVALID_RUNTIME_CONFIGURATION");
@@ -114,6 +126,49 @@ export function createOspWorkerHandler(deps: {
           if (current < limit) break;
         }
         return json(200, { enqueued, processed, batches });
+      } catch {
+        return json(503, { error: "WORKER_UNAVAILABLE" });
+      }
+    }
+
+    const manifestKeys = [
+      "action",
+      "caseId",
+      "documentSourceSha256",
+      "documentVersionId",
+      "gmailMessageId",
+      "gmailSourceSha256",
+      "organizationId",
+    ];
+    if (body.action === "run_request_manifest_shadow") {
+      if (
+        keys.length !== manifestKeys.length ||
+        keys.some((key, index) => key !== manifestKeys[index]) ||
+        typeof body.organizationId !== "string" ||
+        typeof body.caseId !== "string" ||
+        typeof body.gmailMessageId !== "string" ||
+        typeof body.gmailSourceSha256 !== "string" ||
+        typeof body.documentVersionId !== "string" ||
+        typeof body.documentSourceSha256 !== "string" ||
+        !UUID.test(body.organizationId) || !UUID.test(body.caseId) ||
+        !UUID.test(body.gmailMessageId) ||
+        !SHA256.test(body.gmailSourceSha256) ||
+        !UUID.test(body.documentVersionId) ||
+        !SHA256.test(body.documentSourceSha256)
+      ) return json(400, { error: "INVALID_REQUEST" });
+      if (!deps.runRequestManifestShadow) {
+        return json(409, { error: "CANARY_DISABLED" });
+      }
+      try {
+        const result = await deps.runRequestManifestShadow({
+          organizationId: body.organizationId,
+          caseId: body.caseId,
+          gmailMessageId: body.gmailMessageId,
+          gmailSourceSha256: body.gmailSourceSha256,
+          documentVersionId: body.documentVersionId,
+          documentSourceSha256: body.documentSourceSha256,
+        });
+        return json(200, result);
       } catch {
         return json(503, { error: "WORKER_UNAVAILABLE" });
       }
