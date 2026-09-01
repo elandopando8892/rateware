@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "npx serve .",
-    "test": "node tests/upload-center.test.mjs && node tests/rateware-stability.test.mjs"
+    "dev:private-resolver-candidate": "node tools/serve-rfx-private-resolver-candidate.mjs",
+    "test": "node tests/upload-center.test.mjs && node tests/rateware-stability.test.mjs && node --test tests/rfx-private-resolver.test.mjs"
   }
 }
