@@ -53,6 +53,7 @@ Deno.test("copied Gmail request reaches a grounded no-effects Operations draft t
     },
     storage: {
       downloadOriginal: async () => bytes,
+      createOriginalReadUrl: async () => "https://storage.example.test/source",
       putCorporate: async () => undefined,
     },
     scan: async () => "clean",
