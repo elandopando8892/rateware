@@ -49,8 +49,8 @@ const manualRequestCanary = {
   organizationId: "11111111-1111-4111-8111-111111111111",
   pdfSha256: "a".repeat(64),
   docxSha256: "b".repeat(64),
-  pdfBase64: new Uint8Array([1, 2, 3]).toBase64(),
-  docxBase64: new Uint8Array([4, 5, 6]).toBase64(),
+  pdfBase64: btoa(String.fromCharCode(1, 2, 3)),
+  docxBase64: btoa(String.fromCharCode(4, 5, 6)),
 };
 const request = (body: unknown, authorization = `Bearer ${token}`) =>
   new Request("https://example.test/functions/v1/osp-worker", {

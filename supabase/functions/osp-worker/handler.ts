@@ -96,7 +96,10 @@ function decodeBase64(value: unknown): Uint8Array | null {
     )
   ) return null;
   try {
-    return Uint8Array.fromBase64(value);
+    return Uint8Array.from(
+      atob(value),
+      (character) => character.charCodeAt(0),
+    );
   } catch {
     return null;
   }

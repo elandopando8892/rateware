@@ -45,7 +45,14 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 }
 
 function base64Lines(bytes: Uint8Array): string {
-  return bytes.toBase64().match(/.{1,76}/g)?.join("\r\n") ?? "";
+  const chunkSize = 0x8000;
+  const chunks: string[] = [];
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    chunks.push(
+      String.fromCharCode(...bytes.subarray(offset, offset + chunkSize)),
+    );
+  }
+  return btoa(chunks.join("")).match(/.{1,76}/g)?.join("\r\n") ?? "";
 }
 
 export function buildManualRequestCanaryMime(
