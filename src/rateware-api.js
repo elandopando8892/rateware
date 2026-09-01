@@ -59,6 +59,7 @@ export async function callRatewareFunction(functionName, action, payload = {}) {
     error.incidentId = data?.incident_id || response.headers.get("x-request-id") || "";
     error.action = data?.action || action;
     error.stage = data?.stage || "";
+    if (typeof data?.enabled === "boolean") error.enabled = data.enabled;
     throw error;
   }
   return data;

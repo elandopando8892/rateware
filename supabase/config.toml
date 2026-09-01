@@ -415,17 +415,18 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 [functions.shipper-profile-api]
 verify_jwt = false
 
-# Rateware uses Kinde RS256 access tokens. The Edge gateway only understands
-# Supabase-issued JWTs, so authentication is performed inside rateware-api by
-# requireKindeUser against Kinde's issuer and remote JWKS.
+# Rateware accepts Supabase Auth sessions only. Verification remains inside the
+# function while the gateway verification setting is kept compatible with the
+# existing Edge deployment contract.
 [functions.rateware-api]
 verify_jwt = false
 
 [functions.shipper-directory-api]
 verify_jwt = false
 
-# Provider Gmail uses Kinde for the operator API and a one-time OAuth state for
-# the Google callback. Both functions perform authentication inside the runtime.
+# Provider Gmail accepts governed Supabase Auth sessions from Rateware and OSP,
+# plus a one-time OAuth state for the Google callback. Authentication remains
+# inside the runtime so both apps can share the provider without sharing roles.
 [functions.provider-gmail-intake-api]
 verify_jwt = false
 
@@ -436,16 +437,14 @@ verify_jwt = false
 [functions.provider-gmail-push]
 verify_jwt = false
 
-# OSP validates Kinde identities and internal worker/release credentials inside
-# each function because the Edge gateway cannot validate Kinde access tokens.
+# OSP verifies Supabase/Kinde identities and internal worker credentials inside
+# each function. Production uses Supabase Auth; Kinde remains rollback-only.
 [functions.osp-read-api]
 verify_jwt = false
 
 [functions.osp-gmail-sync-api]
 verify_jwt = false
 
-# Scheduled Gmail polling authenticates a Vault-held bearer inside the runtime.
-# The database control remains disabled until an explicitly authorized activation.
 [functions.osp-gmail-poll]
 verify_jwt = false
 

@@ -1,4 +1,5 @@
-const PROVIDER = "kinde";
+const KINDE_PROVIDER = "kinde";
+const SUPABASE_PROVIDER = "supabase";
 
 export class IdentityContractError extends Error {
   constructor(code, message) {
@@ -58,10 +59,34 @@ export function normalizeVerifiedKindeIdentity(payload) {
 
   const email = cleanClaim(payload.email || payload.preferred_email || payload["https://kinde.com/email"])?.toLowerCase() || null;
   return Object.freeze({
-    provider: PROVIDER,
+    provider: KINDE_PROVIDER,
     externalSubject,
     externalOrganizationId: organizations[0],
     email
+  });
+}
+
+export function normalizeVerifiedIdentity(payload) {
+  const provider = cleanClaim(payload?.auth_provider)?.toLowerCase();
+  if (provider !== SUPABASE_PROVIDER) {
+    throw new IdentityContractError("IDENTITY_PROVIDER_UNSUPPORTED", "A verified Supabase identity is required.");
+  }
+  const externalSubject = cleanClaim(payload?.sub);
+  if (!externalSubject) {
+    throw new IdentityContractError("IDENTITY_SUBJECT_REQUIRED", "Verified Supabase subject is required.");
+  }
+  const organizations = [...new Set(organizationCandidates(payload))];
+  if (!organizations.length) {
+    throw new IdentityContractError("IDENTITY_ORGANIZATION_REQUIRED", "Reviewed Rateware organization claim is required.");
+  }
+  if (organizations.length !== 1) {
+    throw new IdentityContractError("IDENTITY_ORGANIZATION_AMBIGUOUS", "Conflicting Rateware organization claims are not allowed.");
+  }
+  return Object.freeze({
+    provider,
+    externalSubject,
+    externalOrganizationId: organizations[0],
+    email: cleanClaim(payload?.email)?.toLowerCase() || null
   });
 }
 
@@ -89,7 +114,7 @@ function requireOneActive(rows, missingCode, ambiguousCode, inactiveCode, label)
 }
 
 export async function resolveCanonicalTenant(client, verifiedClaims) {
-  const identity = normalizeVerifiedKindeIdentity(verifiedClaims);
+  const identity = normalizeVerifiedIdentity(verifiedClaims);
 
   const identityRows = await selectRows(
     client,

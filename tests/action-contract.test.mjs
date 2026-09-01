@@ -103,6 +103,15 @@ assert.equal(namedActual[0].handlerStatus, "named-existing");
 assert.equal(namedActual[0].handler, "namedHandler");
 assert.equal(validateActionContract(contractFor([entryFrom(namedActual[0])], namedActual), namedActual).ok, true);
 
+const factoryActual = selector('export function createFixtureApiHandler(){return async()=>{const body={};if(body.action==="factory_action") return await namedHandler();};}\nasync function namedHandler(){return {ok:true};}\nDeno.serve(createFixtureApiHandler());');
+assert.equal(factoryActual.length, 1, "a named Deno.serve handler factory must keep its literal dispatch governable");
+assert.equal(factoryActual[0].actionName, "factory_action");
+assert.equal(factoryActual[0].handler, "namedHandler");
+const factoryInlineActual = selector('export function createFixtureApiHandler(){return async()=>{const body={};const rows=[];if(body.action==="factory_inline_action") return jsonResponse(rows.map((row)=>row));};}\nDeno.serve(createFixtureApiHandler());');
+assert.equal(factoryInlineActual[0].handlerStatus, "inline-real", "a named handler factory must preserve safe inline-array handler analysis");
+const factoryDefaultDependencyActual = selector('import {createClient} from "https://esm.sh/@supabase/supabase-js@2.57.4";\nexport function createFixtureApiHandler(dependencies={}){const clientFactory=dependencies.getClient??createClient;return async()=>{const body={};const supabase=clientFactory();const result=await supabase.from("rows").select("*");const rows=result.data||[];if(body.action==="factory_default_dependency") return jsonResponse(rows.map((row)=>row));};}\nDeno.serve(createFixtureApiHandler());');
+assert.equal(factoryDefaultDependencyActual[0].handlerStatus, "inline-real", "an omitted dependency object must use its static default during factory analysis");
+
 const missingActual = selector(edgeSource('if (body.action === "missing_action") { return await absentHandler(); }'));
 assert.equal(missingActual[0].handlerStatus, "named-missing");
 assert.ok(codes(validateActionContract(contractFor([entryFrom(missingActual[0])], missingActual), missingActual)).includes("HANDLER_MISSING"));
@@ -232,14 +241,42 @@ assert.ok(codes(validateActionContract(contractFor([malformed], [{ ...inlineActu
 // 25-30: committed baseline, status preservation, non-governable declaration, divergence and explicit limitations.
 const baseline = discoverGovernableSurfaces(process.cwd());
 const baselineResult = validateActionContract(ACTION_CONTRACT, baseline, { repoRoot: process.cwd() });
-assert.equal(baseline.length, 399);
-assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, 291);
-assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length, 108);
-assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.rateware-api.")).length, 245);
-assert.equal(ACTION_CONTRACT.surfaces.length, 401);
-assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 257);
+assert.equal(baseline.length, 413);
+assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, 301);
+assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length, 112);
+assert.equal(baseline.filter((entry) => entry.canonicalId.startsWith("edge.rateware-api.")).length, 255);
+assert.equal(ACTION_CONTRACT.surfaces.length, 415);
+assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 267);
 assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "explicitly_allowed").length, 33);
-assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "internal_only").length, 111);
+assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "internal_only").length, 115);
+for (const [actionName, access, proposedPermissionKey] of [
+  ["list_carrier_list_templates", "read", "vendors.read"],
+  ["get_carrier_list_template", "read", "vendors.read"],
+  ["resolve_carrier_list_template_rows", "read", "vendors.read"],
+  ["create_carrier_list_template", "write", "vendors.manage"],
+  ["update_carrier_list_template", "write", "vendors.manage"],
+  ["duplicate_carrier_list_template", "write", "vendors.manage"],
+  ["archive_carrier_list_template", "write", "vendors.manage"],
+  ["restore_carrier_list_template", "write", "vendors.manage"]
+]) {
+  const canonicalId = `edge.rateware-api.${actionName}`;
+  assert.equal(baseline.some((entry) => entry.canonicalId === canonicalId), true, `${canonicalId} must be reproducibly discovered`);
+  const surface = ACTION_CONTRACT.surfaces.find((entry) => entry.canonicalId === canonicalId);
+  assert.equal(surface?.access, access);
+  assert.equal(surface?.tenantRelevance, "tenant-scoped");
+  assert.equal(surface?.proposedPermissionKey, proposedPermissionKey);
+  assert.equal(surface?.decisionStatus, "pending_human_approval");
+}
+for (const canonicalId of [
+  "rpc.public.rateware_duplicate_carrier_list_template(text,uuid,bigint,text,text,text,text,text)",
+  "rpc.public.rateware_validate_participant_template_membership()",
+  "rpc.public.search_workspace_vendors_keyset(text,text,text,timestamptz,uuid,integer)"
+]) {
+  assert.equal(baseline.some((entry) => entry.canonicalId === canonicalId), true, `${canonicalId} must be reproducibly discovered`);
+  const surface = ACTION_CONTRACT.surfaces.find((entry) => entry.canonicalId === canonicalId);
+  assert.equal(surface?.exposure, "internal/service-role");
+  assert.equal(surface?.decisionStatus, "internal_only");
+}
 for (const canonicalId of [
   "rpc.public.provider_onboarding_decide_release_package_approval(uuid,uuid,text,text,text,text)",
   "rpc.public.provider_onboarding_revoke_release_package(uuid,uuid,text,text)",
@@ -751,9 +788,9 @@ assert.equal(formatValidationResult(validateActionContract(deterministicContract
 assert.equal(formatValidationResult(validateActionContract(deterministicContract, inlineActual)).includes(secretMarker), false);
 const finalBaseline = discoverGovernableSurfaces(process.cwd());
 const finalBaselineResult = validateActionContract(ACTION_CONTRACT, finalBaseline, { repoRoot: process.cwd() });
-assert.deepEqual({ total: finalBaseline.length, edge: finalBaseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, rpc: finalBaseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length }, { total: 399, edge: 291, rpc: 108 });
+assert.deepEqual({ total: finalBaseline.length, edge: finalBaseline.filter((entry) => entry.canonicalId.startsWith("edge.")).length, rpc: finalBaseline.filter((entry) => entry.canonicalId.startsWith("rpc.")).length }, { total: 413, edge: 301, rpc: 112 });
 assert.deepEqual(finalBaselineResult.issues.filter((entry) => entry.level === "error").map((entry) => entry.code), []);
-assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 257);
+assert.equal(ACTION_CONTRACT.surfaces.filter((entry) => entry.decisionStatus === "pending_human_approval").length, 267);
 assert.equal(ACTION_CONTRACT.nonGovernableDeclarations.some((entry) => entry.canonicalId === "declaration.edge.whatsapp-healthcheck" && entry.decisionStatus === "pending_human_approval"), true);
 for (const actual of [dynamicTemplate, spreadRegistry, computedDynamic, callbackWrapper, multipleRegistries, multipleDispatchers, fallbackDispatch]) {
   assert.equal(actual.dispatchCandidates.length > 0, true, "No unsupported dispatch fixture may omit its blocking candidate.");

@@ -1,5 +1,6 @@
 exports/
-output/
+output/*
+!output/carrier-list-templates-preview.html
 supabase/
 tests/
 tools/

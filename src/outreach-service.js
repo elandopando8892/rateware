@@ -77,6 +77,20 @@ export async function previewOutreachAudience(filters = {}) {
   return await callRatewareApi("preview_outreach_audience", filters);
 }
 
+export async function fetchInvitationWaveReviews(rfxEventId) {
+  return await callRatewareApi("list_rfx_invitation_wave_reviews", { rfx_event_id: rfxEventId });
+}
+
+export async function recordInvitationWaveReview({ rfxEventId, vendorId, reviewed = true, contactSnapshot = {}, channel = "" }) {
+  return await callRatewareApi("record_rfx_invitation_wave_review", {
+    rfx_event_id: rfxEventId,
+    vendor_id: vendorId,
+    reviewed,
+    contact_snapshot: contactSnapshot,
+    channel
+  });
+}
+
 export async function fetchOutreachAudienceSegments(rfxEventId = "") {
   return (await callRatewareApi("list_outreach_audience_segments", {
     rfx_event_id: rfxEventId || undefined

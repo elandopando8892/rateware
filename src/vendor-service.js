@@ -157,6 +157,29 @@ export async function deleteVendorSegment(id, { segmentType = "" } = {}) {
   })).row;
 }
 
+export function createCarrierListTemplateService(callApi = callRatewareApi) {
+  return {
+    fetchCarrierListTemplates: (filters = {}) => callApi("list_carrier_list_templates", filters),
+    getCarrierListTemplate: (id, { usageContext = "" } = {}) => callApi("get_carrier_list_template", { id, usage_context: usageContext }),
+    resolveCarrierListTemplateRows: (rows) => callApi("resolve_carrier_list_template_rows", { rows }),
+    createCarrierListTemplate: (template) => callApi("create_carrier_list_template", { template }),
+    updateCarrierListTemplate: (id, template, expectedVersion) => callApi("update_carrier_list_template", { id, template, expected_version: expectedVersion }),
+    duplicateCarrierListTemplate: (id, name, expectedVersion) => callApi("duplicate_carrier_list_template", { id, name, expected_version: expectedVersion }),
+    archiveCarrierListTemplate: (id, expectedVersion) => callApi("archive_carrier_list_template", { id, expected_version: expectedVersion }),
+    restoreCarrierListTemplate: (id, expectedVersion) => callApi("restore_carrier_list_template", { id, expected_version: expectedVersion })
+  };
+}
+
+const carrierListTemplateService = createCarrierListTemplateService();
+export const fetchCarrierListTemplates = carrierListTemplateService.fetchCarrierListTemplates;
+export const getCarrierListTemplate = carrierListTemplateService.getCarrierListTemplate;
+export const resolveCarrierListTemplateRows = carrierListTemplateService.resolveCarrierListTemplateRows;
+export const createCarrierListTemplate = carrierListTemplateService.createCarrierListTemplate;
+export const updateCarrierListTemplate = carrierListTemplateService.updateCarrierListTemplate;
+export const duplicateCarrierListTemplate = carrierListTemplateService.duplicateCarrierListTemplate;
+export const archiveCarrierListTemplate = carrierListTemplateService.archiveCarrierListTemplate;
+export const restoreCarrierListTemplate = carrierListTemplateService.restoreCarrierListTemplate;
+
 export async function fetchVendorSupportTickets(filters = {}) {
   return await callRatewareApi("list_vendor_support_tickets", filters);
 }

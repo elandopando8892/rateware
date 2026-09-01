@@ -19,6 +19,7 @@ Rateware reaches 100% production readiness only when all of the following are tr
 - Tenant isolation is supported by production evidence rather than local mocks.
 - Rollback procedures are documented and exercised sufficiently to be credible.
 - Production monitoring remains healthy for the agreed 24-to-48-hour stabilization window.
+- Materially redesigned surfaces have documented visual and verbal conformance with the MARKSMAN Brand Manual while preserving accessibility, operational clarity, and human-approval boundaries.
 
 Local implementation, a green preview, or a package labelled production candidate does not independently satisfy this definition.
 
@@ -163,6 +164,8 @@ Make releases observable, recoverable, tenant-aware, and resistant to duplicate 
 - Review Admin, Finance, and Operations mutations for role, tenant, and approval enforcement.
 - Document rollback procedures for database changes, Edge Functions, frontend, cache, and configuration.
 - Verify environment identity and tenant-mode configuration without leaking secret contents.
+- Establish the MARKSMAN product token layer from the approved manual: Charcoal `#1e1e1e`, Electric Orange `#ea5e27`, Industrial Grey `#484848`, Cloud Grey `#efefef`, approved logo variants, New Black Typeface, Lenia Mono, and the `Precision Freight Networks` promise.
+- Audit current Platform 55 surfaces against the MARKSMAN voice: short, clear, structured, disciplined, and free of generic logistics buzzwords.
 
 ### Exit criteria
 
@@ -170,6 +173,7 @@ Make releases observable, recoverable, tenant-aware, and resistant to duplicate 
 - No critical mutation lacks tenant scope, authorization evidence, and correlation identifiers.
 - Rollback runbooks identify exact triggers, commands, owners, and verification queries.
 - Operational dashboards or equivalent queries can show errors and latency during the release window.
+- Brand tokens and approved assets are reusable rather than page-specific, and desktop/mobile evidence confirms contrast, focus visibility, hierarchy, operational legibility, and correct logo use.
 
 ## Sprint P4: Authenticated End-to-End Acceptance
 
@@ -188,12 +192,14 @@ Validate the complete user and data journey in a controlled deployed environment
 - Admin permissions and cross-tenant denial controls.
 - Read-only or dry-run integration smokes where a write is unnecessary.
 - A rollback drill for at least one representative frontend, Edge Function, and database release failure.
+- Visual acceptance against the MARKSMAN Brand Manual for representative desktop and mobile states, including logo, palette, typography, hierarchy, UX copy, loading, empty, error, blocked, and approval states.
 
 ### Exit criteria
 
 - Each required flow has timestamped evidence tied to the release commit and deployed versions.
 - No test automatically approves a staged rate or performs an unapproved consequential action.
 - Independent release review produces a final GO recommendation.
+- Product/design acceptance confirms that brand conformance did not weaken accessibility, data density, tenant context, or explicit human confirmation.
 
 ## Sprint P5: Controlled Go-Live and Stabilization
 
@@ -204,6 +210,7 @@ Release the approved candidate and establish stable production behavior.
 ### Work
 
 - Freeze release scope and record the exact Git SHA, migrations, functions, frontend deployment, and environment posture.
+- Pin the MARKSMAN manual revision, approved logo assets, font availability or documented fallbacks, and the final brand-conformance evidence used for the release decision.
 - Deploy in the approved dependency order.
 - Execute authenticated production smokes.
 - Monitor errors, latency, tenant resolution, and unexpected writes for 24 to 48 hours.

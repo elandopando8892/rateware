@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
-import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
+import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
+import { requireRatewareUser } from "../_shared/auth.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from "../_shared/runtime-identity.ts";
 import { handleProviderServiceAction, isProviderServiceAction } from "./provider-service.ts";
 
@@ -760,7 +761,7 @@ Deno.serve(async (request) => {
 
   try {
     const supabase = getClient();
-    const identity = await requireKindeUser(request);
+    const identity = await requireRatewareUser(request);
     const user = await resolveRuntimeWorkspaceUser(
       supabase,
       identity as Record<string, unknown>,

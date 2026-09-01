@@ -1,20 +1,18 @@
-import { createRemoteJWKSet, jwtVerify } from "https://esm.sh/jose@5.9.6";
-
-const KINDE_DOMAIN = Deno.env.get("KINDE_DOMAIN");
-const KINDE_AUDIENCE = Deno.env.get("KINDE_AUDIENCE") || undefined;
 const DEFAULT_CORS_ORIGINS = [
   "https://rateware.vercel.app",
   "http://127.0.0.1:3000",
   "http://localhost:3000"
 ];
-const configuredCorsOrigins = (Deno.env.get("RATEWARE_CORS_ORIGINS") || Deno.env.get("RATEWARE_CORS_ORIGIN") || DEFAULT_CORS_ORIGINS.join(","))
+const configuredCorsOrigins = [
+  Deno.env.get("RATEWARE_CORS_ORIGINS") || Deno.env.get("RATEWARE_CORS_ORIGIN") || DEFAULT_CORS_ORIGINS.join(","),
+  Deno.env.get("RATEWARE_CORS_EXTRA_ORIGINS") || ""
+]
+  .join(",")
   .split(",")
   .map((origin) => origin.trim())
   .filter((origin) => /^https?:\/\/[^\s,]+$/i.test(origin));
 const CORS_ORIGINS = new Set(configuredCorsOrigins.length ? configuredCorsOrigins : DEFAULT_CORS_ORIGINS);
 const FALLBACK_CORS_ORIGIN = configuredCorsOrigins[0] || DEFAULT_CORS_ORIGINS[0];
-
-let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 export function corsHeaders(request?: Request) {
   const requestOrigin = request?.headers.get("Origin")?.trim() || "";
@@ -46,26 +44,4 @@ export function jsonResponse(body: unknown, status = 200, request?: Request) {
       "Pragma": "no-cache"
     }
   });
-}
-
-export async function requireKindeUser(request: Request) {
-  if (!KINDE_DOMAIN) throw new Error("KINDE_DOMAIN secret is not configured.");
-
-  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!token) throw new Error("Kinde bearer token is required.");
-
-  if (!jwks) {
-    jwks = createRemoteJWKSet(new URL(`${KINDE_DOMAIN.replace(/\/$/, "")}/.well-known/jwks.json`));
-  }
-
-  const verifyOptions: Parameters<typeof jwtVerify>[2] = {
-    issuer: KINDE_DOMAIN.replace(/\/$/, "")
-  };
-
-  if (KINDE_AUDIENCE) {
-    verifyOptions.audience = KINDE_AUDIENCE;
-  }
-
-  const { payload } = await jwtVerify(token, jwks, verifyOptions);
-  return payload;
 }

@@ -25,9 +25,11 @@ function printHelp() {
 Bid Room production E2E runner
 
 Required:
-  RATEWARE_E2E_KINDE_TOKEN=<token> node tools/bid-room-e2e.mjs
+  RATEWARE_E2E_AUTH_TOKEN=<supabase-token> node tools/bid-room-e2e.mjs
 
 Optional:
+  --carrier-list-templates-preview
+                               Verifies the public simulated Carrier List Templates preview without auth or writes.
   --recipient sales@heymarksman.com
   --send-gmail                 Sends the generated email draft through Gmail.
   --send-closeout-email        Sends the three final outcome notices through Gmail.
@@ -44,12 +46,52 @@ Safe defaults:
 `);
 }
 
+function requirePreviewText(source, pattern, label) {
+  if (!pattern.test(source)) throw new Error(`Carrier-template preview is missing ${label}.`);
+}
+
+async function verifyCarrierTemplatePreview(appOrigin) {
+  const origin = new URL(appOrigin);
+  if (origin.hostname.toLowerCase() === "rateware.vercel.app") {
+    throw new Error("Refusing carrier-template preview verification against production.");
+  }
+
+  const pageUrl = new URL("/output/carrier-list-templates-preview", origin);
+  const pageResponse = await fetch(pageUrl, { redirect: "error" });
+  if (!pageResponse.ok) throw new Error(`Carrier-template preview returned HTTP ${pageResponse.status}.`);
+  const html = await pageResponse.text();
+  requirePreviewText(html, /noindex,\s*noarchive/i, "the noindex/noarchive boundary");
+  requirePreviewText(html, /Preview con datos simulados · sin acciones externas/, "the simulated-data safety notice");
+  const modulePath = html.match(/<script\s+type="module"\s+src="([^"]*carrier-list-templates-preview\.js)"/i)?.[1];
+  if (!modulePath) throw new Error("Carrier-template preview module was not declared.");
+
+  const moduleUrl = new URL(modulePath, pageUrl);
+  const moduleResponse = await fetch(moduleUrl, { redirect: "error" });
+  if (!moduleResponse.ok) throw new Error(`Carrier-template preview module returned HTTP ${moduleResponse.status}.`);
+  const source = await moduleResponse.text();
+  if (/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\s*\(/.test(source)) {
+    throw new Error("Carrier-template preview contains an outbound network primitive.");
+  }
+  requirePreviewText(source, /Add \$\{count\} carrier/, "the exact Carrier Fit add CTA");
+  requirePreviewText(source, /No draft was prepared, nothing was sent, and Delivery queue was not touched\./, "the Message/Delivery human gate");
+
+  return {
+    mode: "carrier-list-templates-preview",
+    page_url: pageUrl.href,
+    module_url: moduleUrl.href,
+    noindex: true,
+    simulated_data: true,
+    outbound_network_primitives: 0,
+    external_effects: "No API, persistence, invitation, draft, Delivery, or provider call was issued"
+  };
+}
+
 if (hasFlag("--help")) {
   printHelp();
   process.exit(0);
 }
 
-const kindeToken = (argValue("--kinde-token", process.env.RATEWARE_E2E_KINDE_TOKEN || process.env.KINDE_TOKEN || "") || "").trim();
+const authToken = (argValue("--auth-token", process.env.RATEWARE_E2E_AUTH_TOKEN || "") || "").trim();
 const recipient = argValue("--recipient", process.env.RATEWARE_E2E_RECIPIENT || defaultRecipient).trim().toLowerCase();
 const sendGmail = hasFlag("--send-gmail");
 const sendCloseoutEmail = hasFlag("--send-closeout-email");
@@ -60,8 +102,22 @@ const visibility = argValue("--visibility", "open_leaderboard");
 const senderEmail = "sales@heymarksman.com";
 const safeRecipientPattern = /@(heymarksman\.com|xbfreight\.com)$/i;
 
-if (!kindeToken) {
-  console.error("Missing RATEWARE_E2E_KINDE_TOKEN. Sign in to Rateware, provide a current Kinde token, then rerun this script.");
+if (hasFlag("--carrier-list-templates-preview")) {
+  if (sendGmail || sendCloseoutEmail || allowExternalEmail) {
+    console.error("Carrier-template preview verification refuses all communication flags.");
+    process.exit(1);
+  }
+  try {
+    console.log(JSON.stringify(await verifyCarrierTemplatePreview(appOrigin), null, 2));
+    process.exit(0);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+if (!authToken) {
+  console.error("Missing RATEWARE_E2E_AUTH_TOKEN. Sign in to Rateware and provide a current Supabase access token.");
   printHelp();
   process.exit(1);
 }
@@ -121,7 +177,7 @@ async function rateware(action, payload = {}) {
   const response = await fetch(`${SUPABASE_URL}/functions/v1/rateware-api`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${kindeToken}`,
+      Authorization: `Bearer ${authToken}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ action, ...payload })

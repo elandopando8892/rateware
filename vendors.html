@@ -74,6 +74,10 @@
               <strong>Intelligence</strong>
               <span>Signals and fit</span>
             </button>
+            <button class="vendor-tab" type="button" data-vendor-tab="list-templates" hidden>
+              <strong>List Templates</strong>
+              <span>Static carrier lists</span>
+            </button>
             <details class="vendor-secondary-tools">
               <summary>More tools</summary>
               <button class="vendor-secondary-tool" type="button" data-vendor-tab="matching">
@@ -82,6 +86,11 @@
               </button>
             </details>
           </section>
+
+          <aside class="carrier-template-capability-error" data-template-capability-error role="alert" hidden>
+            <span data-template-capability-message>List Templates could not be verified.</span>
+            <button class="secondary small-button" type="button" data-template-capability-retry>Retry List Templates</button>
+          </aside>
 
           <section class="workspace-panel wide-section" data-tab-panel="funnel">
             <div class="split-heading">
@@ -218,6 +227,175 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </section>
+
+          <section class="workspace-panel wide-section hidden carrier-template-workspace" data-tab-panel="list-templates" data-vendor-workspace="list-templates" hidden>
+            <header class="split-heading">
+              <div>
+                <p class="eyebrow">Carrier CRM</p>
+                <h2>List Templates</h2>
+                <p>Static carrier lists built only from carriers already in this workspace.</p>
+              </div>
+              <button type="button" data-template-action="new">New template</button>
+            </header>
+            <div class="carrier-template-toolbar" aria-label="Template library filters">
+              <label>
+                Search
+                <input type="search" data-template-search aria-label="Search templates" placeholder="Name or description" />
+              </label>
+              <label>
+                Status
+                <select data-template-status aria-label="Template status">
+                  <option value="active">Active</option>
+                  <option value="draft">Draft</option>
+                  <option value="archived">Archived</option>
+                  <option value="all">All</option>
+                </select>
+              </label>
+              <p class="status-message" data-template-library-status role="status" aria-live="polite"></p>
+            </div>
+            <div class="carrier-template-library-layout">
+              <div class="table-wrap carrier-template-library-table" data-template-library-table></div>
+              <aside class="carrier-template-detail" data-template-detail aria-live="polite" tabindex="-1">
+                <p class="eyebrow">Template detail</p>
+                <h3>Select a template</h3>
+                <p>Open a row to review its static membership and current version.</p>
+              </aside>
+            </div>
+            <div class="carrier-template-wizard" data-template-wizard role="dialog" aria-modal="true" aria-labelledby="carrier-template-wizard-title" hidden>
+              <header class="carrier-template-wizard-heading">
+                <div>
+                  <p class="eyebrow">Carrier CRM · List Templates</p>
+                  <h2 id="carrier-template-wizard-title">Build carrier template</h2>
+                  <p>Choose only carriers already present in this workspace. This builder never creates or edits carrier profiles.</p>
+                </div>
+                <button class="secondary" type="button" data-template-wizard-close aria-label="Close template builder">Close</button>
+              </header>
+              <form class="carrier-template-wizard-form" data-template-wizard-form data-unsaved-guard>
+                <input type="hidden" data-template-dirty-signal value="0" />
+                <nav class="carrier-template-wizard-steps" aria-label="Template builder steps">
+                  <button type="button" data-template-wizard-step="0" aria-controls="carrier-template-step-details">Details</button>
+                  <button type="button" data-template-wizard-step="1" aria-controls="carrier-template-step-add">Add carriers</button>
+                  <button type="button" data-template-wizard-step="2" aria-controls="carrier-template-step-review">Review</button>
+                  <button type="button" data-template-wizard-step="3" aria-controls="carrier-template-step-save">Save</button>
+                </nav>
+
+                <div class="carrier-template-wizard-panel" id="carrier-template-step-details" data-template-wizard-panel="0" tabindex="-1">
+                  <div class="carrier-template-details-grid">
+                    <label>
+                      Template name
+                      <input type="text" data-template-draft-name required maxlength="160" autocomplete="off" />
+                    </label>
+                    <label>
+                      Description
+                      <textarea data-template-draft-description rows="4" maxlength="2000"></textarea>
+                    </label>
+                  </div>
+                  <p class="carrier-template-static-note">Membership is an exact ordered UUID list. Later carrier-profile edits do not change it.</p>
+                </div>
+
+                <div class="carrier-template-wizard-panel" id="carrier-template-step-add" data-template-wizard-panel="1" tabindex="-1" hidden>
+                  <div class="carrier-template-builder-grid">
+                    <div class="carrier-template-builder-card">
+                      <div class="section-heading compact">
+                        <div>
+                          <p class="eyebrow">Carrier CRM</p>
+                          <h3>Add existing carriers</h3>
+                        </div>
+                      </div>
+                      <div class="carrier-template-crm-filters">
+                        <label>
+                          Search
+                          <input type="search" data-template-crm-search data-unsaved-ignore placeholder="Name, domain, email" />
+                        </label>
+                        <label>
+                          Status
+                          <select data-template-crm-status data-unsaved-ignore>
+                            <option value="">All</option>
+                            <option value="active">Active</option>
+                            <option value="invited">Invited</option>
+                            <option value="blocked">Blocked</option>
+                            <option value="inactive">Inactive</option>
+                          </select>
+                        </label>
+                        <label>
+                          Channel
+                          <select data-template-crm-channel data-unsaved-ignore>
+                            <option value="">Any</option>
+                            <option value="email">Email</option>
+                            <option value="whatsapp">WhatsApp</option>
+                            <option value="portal">Portal</option>
+                          </select>
+                        </label>
+                        <label>
+                          Tag / equipment
+                          <input type="text" data-template-crm-tag data-unsaved-ignore placeholder="reefer, flatbed" />
+                        </label>
+                        <label>
+                          Coverage / market
+                          <input type="text" data-template-crm-coverage data-unsaved-ignore placeholder="Monterrey, Laredo" />
+                        </label>
+                      </div>
+                      <p class="status-message" data-template-crm-status-message role="status"></p>
+                      <div class="carrier-template-crm-results" data-template-crm-results></div>
+                      <div class="pagination-bar" aria-label="Template carrier search pagination">
+                        <strong data-template-crm-page-status>Showing 0 of 0</strong>
+                        <div class="action-row">
+                          <button class="secondary small-button" type="button" data-template-crm-page="previous">Previous</button>
+                          <button class="secondary small-button" type="button" data-template-crm-page="next">Next</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="carrier-template-builder-card">
+                      <div class="section-heading compact">
+                        <div>
+                          <p class="eyebrow">Exact membership</p>
+                          <h3>Selected carriers</h3>
+                        </div>
+                      </div>
+                      <div class="carrier-template-selected-members" data-template-selected-members></div>
+                    </div>
+                  </div>
+
+                  <div class="carrier-template-import-card">
+                    <div>
+                      <p class="eyebrow">Reconciliation aid</p>
+                      <h3>Match a CSV/XLSX to existing Carrier CRM records</h3>
+                      <p>Only deterministic matches are added. Ambiguous rows require a human choice; unresolved and duplicate rows stay excluded.</p>
+                    </div>
+                    <label class="import-zone compact" for="carrier-template-import-file">
+                      <span>Choose reconciliation file</span>
+                      <small>First sheet only · maximum 5 MB and 1,000 data rows</small>
+                      <input id="carrier-template-import-file" type="file" data-template-import-file data-unsaved-ignore accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                    </label>
+                    <p class="status-message" data-template-import-status role="status"></p>
+                    <div class="carrier-template-resolution-summary" data-template-resolution-summary></div>
+                    <div class="carrier-template-resolution-rows" data-template-resolution-rows></div>
+                    <button class="secondary" type="button" data-template-download-exceptions hidden>Download exception CSV</button>
+                  </div>
+                </div>
+
+                <div class="carrier-template-wizard-panel" id="carrier-template-step-review" data-template-wizard-panel="2" tabindex="-1" hidden>
+                  <div class="carrier-template-review" data-template-review></div>
+                </div>
+
+                <div class="carrier-template-wizard-panel" id="carrier-template-step-save" data-template-wizard-panel="3" tabindex="-1" hidden>
+                  <div class="carrier-template-save-summary" data-template-save-summary></div>
+                  <div class="carrier-template-conflict" data-template-conflict role="alert" hidden></div>
+                  <div class="action-row">
+                    <button class="secondary" type="button" data-template-save="draft">Save draft</button>
+                    <button type="button" data-template-save="active">Activate template</button>
+                  </div>
+                </div>
+
+                <footer class="carrier-template-wizard-footer">
+                  <button class="secondary" type="button" data-template-wizard-back>Back</button>
+                  <p class="status-message" data-template-wizard-status role="status" aria-live="polite"></p>
+                  <button type="button" data-template-wizard-next>Next</button>
+                </footer>
+              </form>
             </div>
           </section>
 

@@ -1,7 +1,16 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
-import { corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser } from "../_shared/kinde.ts";
+import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
+import { requireRatewareUser } from "../_shared/auth.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import type { WorkspaceUser } from "../_shared/workspace.ts";
+import {
+  CARRIER_TEMPLATE_IMPORT_MAX_ROWS,
+  carrierTemplateNameKey,
+  normalizeCarrierTemplateInput,
+  normalizeCarrierTemplateVendorIds,
+  requireCarrierTemplateManagePermission,
+  resolveCarrierTemplateImportRows
+} from "./carrier-list-templates.ts";
 import { handleGrowthAction, isGrowthAction } from "./growth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -67,6 +76,24 @@ const META_APP_ID = (Deno.env.get("META_APP_ID") || "").trim();
 const META_CONFIG_ID = (Deno.env.get("META_CONFIG_ID") || "").trim();
 const META_REDIRECT_URI = (Deno.env.get("META_REDIRECT_URI") || "").trim();
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CORRELATION_ID_PATTERN = /^[A-Za-z0-9_.:-]{8,128}$/;
+const CORRELATED_HIGH_RISK_ACTIONS = new Set([
+  "award_rfx_lane_vendor",
+  "bulk_update_staging",
+  "bulk_update_rate_rows_by_filter",
+  "bulk_update_rateware",
+  "closeout_awarded_rfx_to_rateware",
+  "create_rfx_award_package",
+  "generate_outreach_drafts",
+  "generate_rfx_award_notices",
+  "send_bid_room_carrier_message",
+  "send_fcm_customer_quote_email",
+  "send_outreach_messages",
+  "send_ratebook_distribution",
+  "send_whatsapp_group_outreach_messages",
+  "send_whatsapp_outreach_messages",
+  "update_staging"
+]);
 const BULK_SELECTED_ID_LIMIT = 1000;
 const BULK_SEND_LIMIT = 100;
 const EXACT_VENDOR_CONSOLIDATION_BATCH_LIMIT = 1;
@@ -108,6 +135,40 @@ function normalizeOutreachChannel(value: unknown) {
 const BULK_SHORTLIST_VENDOR_LIMIT = 1000;
 const BULK_FILTER_LIMIT = 100000;
 const BULK_FILTER_CONFIRM_THRESHOLD = 250;
+export const CARRIER_LIST_TEMPLATE_ACTIONS = [
+  "list_carrier_list_templates",
+  "get_carrier_list_template",
+  "resolve_carrier_list_template_rows",
+  "create_carrier_list_template",
+  "update_carrier_list_template",
+  "duplicate_carrier_list_template",
+  "archive_carrier_list_template",
+  "restore_carrier_list_template"
+] as const;
+export const CARRIER_LIST_TEMPLATES_V2_ENABLED =
+  (Deno.env.get("CARRIER_LIST_TEMPLATES_V2_ENABLED") || "false").trim().toLowerCase() === "true";
+
+export function carrierTemplateLegacyReadScope(
+  enabled: boolean,
+  requestedSegmentType: string | null,
+  user: { owner_email: string | null; organization_id: string | null }
+) {
+  if (requestedSegmentType !== "participant_template") return null;
+  return enabled
+    ? { column: "organization_id", value: cleanText(user.organization_id) }
+    : { column: "owner_email", value: cleanText(user.owner_email) };
+}
+
+export function carrierTemplateLegacyMutationBlocked(
+  enabled: boolean,
+  requestedSegmentType: string | null,
+  currentSegmentType: string | null
+) {
+  return enabled && (
+    requestedSegmentType === "participant_template" ||
+    currentSegmentType === "participant_template"
+  );
+}
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -118,6 +179,1675 @@ function getClient() {
 }
 
 type RatewareSupabaseClient = ReturnType<typeof getClient>;
+
+type RatewareIdentityDependencies = {
+  resolveUser: (
+    client: RatewareSupabaseClient,
+    claims: Record<string, unknown>,
+    options: { persistLegacyIdentity: boolean }
+  ) => Promise<RuntimeWorkspaceUser>;
+};
+
+export async function resolveRatewareApiPrincipal(
+  supabase: RatewareSupabaseClient,
+  claims: Record<string, unknown>,
+  dependencies: RatewareIdentityDependencies = {
+    resolveUser: resolveRuntimeWorkspaceUser
+  }
+) {
+  const user = dependencies.resolveUser === resolveRuntimeWorkspaceUser
+    ? await resolveRuntimeWorkspaceUser(supabase, claims, { persistLegacyIdentity: false })
+    : await dependencies.resolveUser(supabase, claims, { persistLegacyIdentity: false });
+  return { claims, user };
+}
+
+type CarrierTemplateActionResult = {
+  status: number;
+  body: Record<string, unknown>;
+};
+
+type CarrierTemplateActionOptions = {
+  enabled?: boolean;
+};
+
+const CARRIER_LIST_TEMPLATE_WRITE_ACTIONS = new Set([
+  "create_carrier_list_template",
+  "update_carrier_list_template",
+  "duplicate_carrier_list_template",
+  "archive_carrier_list_template",
+  "restore_carrier_list_template"
+]);
+
+function carrierTemplateResult(
+  status: number,
+  body: Record<string, unknown>
+): CarrierTemplateActionResult {
+  return { status, body: { enabled: true, ...body } };
+}
+
+function carrierTemplateId(input: Record<string, unknown>) {
+  const id = cleanText(input.template_id || input.id);
+  return id && UUID_PATTERN.test(id) ? id : null;
+}
+
+function carrierTemplateExpectedVersion(value: unknown) {
+  const version = Number(value);
+  return Number.isSafeInteger(version) && version >= 1 ? version : null;
+}
+
+function carrierTemplateActor(
+  user: RuntimeWorkspaceUser,
+  claims: Record<string, unknown>
+) {
+  const ownerUserId = cleanText(user.owner_user_id) || cleanText(user.owner_email);
+  const ownerEmail = cleanText(user.owner_email) || ownerUserId;
+  const userId = cleanText(claims.sub || claims.id) || ownerUserId;
+  const claimEmail = cleanText(claims.email || claims.preferred_email || claims["https://kinde.com/email"]);
+  const email = claimEmail?.toLowerCase() || ownerEmail || userId;
+  const organizationId = cleanText(user.organization_id);
+  if (!ownerUserId || !ownerEmail || !userId || !email || !organizationId) return null;
+  return {
+    user_id: userId,
+    email,
+    organization_id: organizationId,
+    owner_user_id: ownerUserId,
+    owner_email: ownerEmail
+  };
+}
+
+function carrierTemplateNameDatabaseConflict(error: unknown) {
+  const databaseError = objectRecord(error);
+  if (cleanText(databaseError.code) !== "23505") return false;
+  const constraintName = "vendor_segments_participant_template_org_name_uidx";
+  const expectedMessage = `duplicate key value violates unique constraint "${constraintName}"`;
+  const message = cleanText(databaseError.message) || "";
+  if (message === expectedMessage) return true;
+  if (/^duplicate key value violates unique constraint "[^"]+"$/.test(message)) return false;
+  const details = cleanText(databaseError.details) || "";
+  return /^Key \(organization_id, rateware_vendor_search_key\(segment_name\)\)=\(.+\) already exists\.$/.test(details);
+}
+
+function carrierTemplateDuplicateNameResult() {
+  return carrierTemplateResult(409, {
+    code: "template_name_conflict",
+    error: "A carrier list template with that name already exists in this organization."
+  });
+}
+
+function carrierTemplateVersionConflict(row: Record<string, unknown>) {
+  return carrierTemplateResult(409, {
+    code: "template_version_conflict",
+    error: "Carrier list template changed since it was loaded.",
+    current_version: Number(row.template_version) || 1,
+    current_updated_at: cleanText(row.updated_at),
+    template_id: cleanText(row.id)
+  });
+}
+
+async function loadCarrierTemplate(
+  supabase: RatewareSupabaseClient,
+  organizationId: string,
+  templateId: string
+) {
+  const result = await supabase
+    .from("vendor_segments")
+    .select("*")
+    .eq("id", templateId)
+    .eq("organization_id", organizationId)
+    .eq("segment_type", "participant_template")
+    .maybeSingle();
+  if (result.error) throw result.error;
+  return (result.data || null) as Record<string, unknown> | null;
+}
+
+const CARRIER_TEMPLATE_MEMBER_VALIDATION_BATCH_SIZE = 500;
+
+export async function validateCarrierTemplateMembers(
+  supabase: RatewareSupabaseClient,
+  organizationId: string,
+  vendorIds: string[]
+) {
+  if (!vendorIds.length) return true;
+  for (let offset = 0; offset < vendorIds.length; offset += CARRIER_TEMPLATE_MEMBER_VALIDATION_BATCH_SIZE) {
+    const batch = vendorIds.slice(offset, offset + CARRIER_TEMPLATE_MEMBER_VALIDATION_BATCH_SIZE);
+    const result = await supabase
+      .from("vendors")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .in("id", batch);
+    if (result.error) throw result.error;
+    const found = new Set((result.data || []).map((row: Record<string, unknown>) => cleanText(row.id)).filter(Boolean));
+    if (!batch.every((id) => found.has(id))) return false;
+  }
+  return true;
+}
+
+export const CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE = 1000;
+export const CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT = 200000;
+
+export async function fetchCarrierTemplateResolverVendors(
+  supabase: RatewareSupabaseClient,
+  organizationId: string,
+  options: {
+    pageSize?: number;
+    safetyLimit?: number;
+    snapshotAt?: string;
+  } = {}
+) {
+  const pageSize = Number.isSafeInteger(options.pageSize) && Number(options.pageSize) > 0
+    ? Number(options.pageSize)
+    : CARRIER_TEMPLATE_RESOLVER_VENDOR_PAGE_SIZE;
+  const safetyLimit = Number.isSafeInteger(options.safetyLimit) && Number(options.safetyLimit) > 0
+    ? Number(options.safetyLimit)
+    : CARRIER_TEMPLATE_RESOLVER_VENDOR_SAFETY_LIMIT;
+  const vendors: Record<string, unknown>[] = [];
+  const snapshotAt = cleanText(options.snapshotAt) || new Date().toISOString();
+  let afterId = "";
+  while (vendors.length < safetyLimit) {
+    const requestedPageSize = Math.min(pageSize, safetyLimit - vendors.length);
+    let query = supabase
+      .from("vendors")
+      .select("id,vendor_name,name,legal_name,primary_email,secondary_emails,profile_data,status,base_stage,organization_id")
+      .eq("organization_id", organizationId)
+      .lte("created_at", snapshotAt);
+    if (afterId) query = query.gt("id", afterId);
+    const result = await query
+      .order("id", { ascending: true })
+      .limit(requestedPageSize);
+    if (result.error) throw result.error;
+    const page = (result.data || []) as Record<string, unknown>[];
+    if (!page.length) return vendors;
+    const nextAfterId = cleanText(page[page.length - 1]?.id);
+    if (!nextAfterId || (afterId && nextAfterId <= afterId)) {
+      throw new Error("Carrier import resolution keyset did not advance; no rows were resolved.");
+    }
+    vendors.push(...page);
+    if (page.length < requestedPageSize) return vendors;
+    afterId = nextAfterId;
+  }
+  let sentinelQuery = supabase
+    .from("vendors")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .lte("created_at", snapshotAt);
+  if (afterId) sentinelQuery = sentinelQuery.gt("id", afterId);
+  const sentinel = await sentinelQuery
+    .order("id", { ascending: true })
+    .limit(1);
+  if (sentinel.error) throw sentinel.error;
+  if (!(sentinel.data || []).length) return vendors;
+  throw new Error(
+    `Carrier import resolution exceeded the ${safetyLimit.toLocaleString()}-vendor safety limit; no rows were resolved.`
+  );
+}
+
+async function hasCurrentCarrierTemplateMember(
+  supabase: RatewareSupabaseClient,
+  organizationId: string,
+  vendorIds: string[]
+) {
+  if (!vendorIds.length) return false;
+  const result = await supabase
+    .from("vendors")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .in("id", vendorIds);
+  if (result.error) throw result.error;
+  return Boolean(result.data?.length);
+}
+
+async function findCarrierTemplateNameConflict(
+  supabase: RatewareSupabaseClient,
+  organizationId: string,
+  segmentName: string,
+  excludeId = ""
+) {
+  const nameKey = carrierTemplateNameKey(segmentName);
+  const pageSize = 1000;
+  for (let offset = 0; offset < 200000; offset += pageSize) {
+    const result = await supabase
+      .from("vendor_segments")
+      .select("id,segment_name")
+      .eq("organization_id", organizationId)
+      .eq("segment_type", "participant_template")
+      .order("id", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (result.error) throw result.error;
+    const rows = result.data || [];
+    if (rows.some((row: Record<string, unknown>) =>
+      cleanText(row.id) !== excludeId && carrierTemplateNameKey(row.segment_name) === nameKey
+    )) return true;
+    if (rows.length < pageSize) return false;
+  }
+  throw new Error("Carrier list template name validation exceeded its safe row limit.");
+}
+
+function carrierTemplateInsertRow(
+  normalized: Record<string, unknown>,
+  actor: {
+    user_id: string;
+    email: string;
+    organization_id: string;
+    owner_user_id: string;
+    owner_email: string;
+  },
+  now: string
+) {
+  return {
+    segment_name: normalized.segment_name,
+    description: normalized.description,
+    segment_type: "participant_template",
+    lifecycle_status: normalized.lifecycle_status,
+    status: normalized.lifecycle_status,
+    vendor_ids: normalized.vendor_ids,
+    owner_user_id: actor.owner_user_id,
+    owner_email: actor.owner_email,
+    organization_id: actor.organization_id,
+    template_version: 1,
+    created_by_user_id: actor.user_id,
+    created_by_email: actor.email,
+    updated_by_user_id: actor.user_id,
+    updated_by_email: actor.email,
+    archived_at: null,
+    archived_by_user_id: null,
+    archived_by_email: null,
+    updated_at: now
+  };
+}
+
+async function writeCarrierTemplateAudit(
+  supabase: RatewareSupabaseClient,
+  user: RuntimeWorkspaceUser,
+  action: string,
+  templateId: string,
+  metadata: Record<string, unknown>
+) {
+  await tryWriteAuditLog(
+    supabase,
+    user,
+    action,
+    "vendor_segments",
+    templateId,
+    action,
+    metadata
+  );
+}
+
+async function writeCarrierTemplateRfxMaterializationAudit(
+  supabase: RatewareSupabaseClient,
+  user: RuntimeWorkspaceUser,
+  context: {
+    template_id: string;
+    template_version: number;
+    rfx_event_id: string;
+    selected_count: number;
+    confirmed_count: number;
+    already_present_count: number;
+    inserted_count: number;
+    rejected_count: number;
+    pending_count: number;
+    result: string;
+  }
+) {
+  await tryWriteAuditLog(
+    supabase,
+    user,
+    "carrier_template.add_selected_to_rfx",
+    "rfx_events",
+    context.rfx_event_id,
+    "Materialized selected carrier template members into an RFx",
+    {
+      template_id: context.template_id,
+      template_version: context.template_version,
+      rfx_event_id: context.rfx_event_id,
+      selected_count: context.selected_count,
+      confirmed_count: context.confirmed_count,
+      already_present_count: context.already_present_count,
+      inserted_count: context.inserted_count,
+      rejected_count: context.rejected_count,
+      pending_count: context.pending_count,
+      result: context.result
+    }
+  );
+}
+
+export function carrierTemplateVendorHasUsableContact(vendor: Record<string, unknown> = {}) {
+  return Boolean(
+    cleanText(vendor.primary_email) ||
+    (Array.isArray(vendor.secondary_emails) && vendor.secondary_emails.some((email) => cleanText(email))) ||
+    cleanText(vendor.whatsapp_phone)
+  );
+}
+
+export function carrierTemplateVendorIsAvailable(vendor: Record<string, unknown> = {}) {
+  const status = cleanText(vendor.status)?.toLowerCase() || "";
+  const baseStage = cleanText(vendor.base_stage)?.toLowerCase() || "";
+  return Boolean(cleanText(vendor.id)) &&
+    !["blocked", "inactive", "archived", "deleted"].includes(status) &&
+    baseStage !== "archived";
+}
+
+function carrierTemplateVendorIneligibleReason(vendor: Record<string, unknown> | null) {
+  if (!vendor || !cleanText(vendor.id)) return "unavailable";
+  const status = cleanText(vendor.status)?.toLowerCase() || "";
+  if (["blocked", "inactive", "archived", "deleted"].includes(status)) return `status_${status}`;
+  if ((cleanText(vendor.base_stage)?.toLowerCase() || "") === "archived") return "base_stage_archived";
+  if (!carrierTemplateVendorHasUsableContact(vendor)) return "missing_contact";
+  return "";
+}
+
+const CARRIER_TEMPLATE_MATERIALIZATION_WRITE_BATCH_SIZE = 500;
+const CARRIER_TEMPLATE_MATERIALIZATION_READ_BATCH_SIZE = 250;
+const CARRIER_TEMPLATE_MATERIALIZATION_MATRIX_LIMIT = 50000;
+const CARRIER_TEMPLATE_MATERIALIZATION_FINAL_RESULT_CEILING = 900;
+const CARRIER_TEMPLATE_MATERIALIZATION_FINAL_LANE_BATCH_SIZE = 25;
+const CARRIER_TEMPLATE_MATERIALIZATION_FINAL_VENDOR_BATCH_SIZE = Math.floor(
+  CARRIER_TEMPLATE_MATERIALIZATION_FINAL_RESULT_CEILING /
+    CARRIER_TEMPLATE_MATERIALIZATION_FINAL_LANE_BATCH_SIZE
+);
+
+type CarrierTemplateMaterializationResult = {
+  status: number;
+  body: Record<string, unknown>;
+};
+
+function carrierTemplateMaterializationCounts(
+  selected: number,
+  confirmed: number,
+  inserted: number,
+  alreadyPresent: number,
+  rejected: number,
+  pending = 0
+) {
+  return {
+    selected,
+    confirmed,
+    inserted,
+    already_present: alreadyPresent,
+    rejected,
+    pending
+  };
+}
+
+function carrierTemplateInvitationKey(laneId: unknown, vendorId: unknown) {
+  return `${cleanText(laneId) || ""}:${cleanText(vendorId) || ""}`;
+}
+
+function carrierTemplateUuidArrayLiteral(values: string[]) {
+  return `{${values.join(",")}}`;
+}
+
+type CarrierTemplateMaterializationOperationContext = {
+  id: string;
+  organization_id: string;
+  rfx_event_id: string;
+  template_id: string;
+  template_version: number;
+  lane_ids: string[];
+  selected_vendor_ids: string[];
+  actor_user_id: string;
+  actor_email: string;
+  selected_count: number;
+};
+
+type CarrierTemplateMaterializationJournalStatus =
+  | "pending"
+  | "mutation_issued"
+  | "reconcile_required"
+  | "rejected"
+  | "reconciled";
+
+const CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS = [
+  "id",
+  "organization_id",
+  "rfx_event_id",
+  "template_id",
+  "template_version",
+  "lane_ids",
+  "selected_vendor_ids",
+  "actor_user_id",
+  "actor_email",
+  "status",
+  "result",
+  "selected_count",
+  "confirmed_count",
+  "inserted_count",
+  "already_present_count",
+  "rejected_count",
+  "pending_count",
+  "confirmed_vendor_ids",
+  "outcomes",
+  "correlation_id"
+].join(",");
+
+const CARRIER_TEMPLATE_MATERIALIZATION_ALLOWED_FINALIZATION_FROM: Record<
+  "reconciled" | "reconcile_required" | "rejected",
+  CarrierTemplateMaterializationJournalStatus[]
+> = {
+  // Success is terminal, but it may resolve either an initial write or a
+  // previously uncertain write whose committed matrix is now complete.
+  reconciled: ["pending", "mutation_issued", "reconcile_required"],
+  // Uncertainty can advance a pending/issued mutation, never terminal state.
+  reconcile_required: ["pending", "mutation_issued"],
+  // Zero-mutation rejection is valid only before any uncertain/success state.
+  rejected: ["pending"]
+};
+
+function carrierTemplateMaterializationOperationMatches(
+  row: Record<string, unknown>,
+  expected: CarrierTemplateMaterializationOperationContext
+) {
+  const normalizedIds = (value: unknown) => (Array.isArray(value) ? value : [])
+    .map((item) => (cleanText(item) || "").toLowerCase())
+    .filter(Boolean);
+  return (cleanText(row.id) || "").toLowerCase() === expected.id &&
+    cleanText(row.organization_id) === expected.organization_id &&
+    (cleanText(row.rfx_event_id) || "").toLowerCase() === expected.rfx_event_id &&
+    (cleanText(row.template_id) || "").toLowerCase() === expected.template_id &&
+    Number(row.template_version) === expected.template_version &&
+    JSON.stringify(normalizedIds(row.lane_ids)) === JSON.stringify(expected.lane_ids) &&
+    JSON.stringify(normalizedIds(row.selected_vendor_ids)) === JSON.stringify(expected.selected_vendor_ids) &&
+    cleanText(row.actor_user_id) === expected.actor_user_id &&
+    (cleanText(row.actor_email) || "").toLowerCase() === expected.actor_email.toLowerCase() &&
+    Number(row.selected_count) === expected.selected_count;
+}
+
+async function loadOrCreateCarrierTemplateMaterializationOperation(
+  supabase: RatewareSupabaseClient,
+  context: CarrierTemplateMaterializationOperationContext
+) {
+  const now = new Date().toISOString();
+  const createResult = await supabase
+    .from("carrier_template_materialization_operations")
+    .upsert({
+      ...context,
+      status: "pending",
+      result: null,
+      confirmed_count: 0,
+      inserted_count: 0,
+      already_present_count: 0,
+      rejected_count: 0,
+      pending_count: 0,
+      updated_at: now
+    }, { onConflict: "id", ignoreDuplicates: true });
+  if (createResult.error) throw createResult.error;
+
+  // The conflict-safe create intentionally never updates an existing UUID. A
+  // second server-scoped read therefore resolves both normal retries and the
+  // unique-key race without trusting client context.
+  const loadResult = await supabase
+    .from("carrier_template_materialization_operations")
+    .select(CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS)
+    .eq("id", context.id)
+    .maybeSingle();
+  if (loadResult.error) throw loadResult.error;
+  const row = objectRecord(loadResult.data);
+  return row.id && carrierTemplateMaterializationOperationMatches(row, context)
+    ? { row, conflict: false }
+    : { row, conflict: true };
+}
+
+async function claimCarrierTemplateMaterializationMutation(
+  supabase: RatewareSupabaseClient,
+  context: CarrierTemplateMaterializationOperationContext
+) {
+  const now = new Date().toISOString();
+  const claimResult = await supabase
+    .from("carrier_template_materialization_operations")
+    .update({
+      status: "mutation_issued",
+      pending_count: context.selected_count,
+      mutation_started_at: now,
+      updated_at: now
+    })
+    .eq("id", context.id)
+    .eq("organization_id", context.organization_id)
+    .eq("rfx_event_id", context.rfx_event_id)
+    .eq("template_id", context.template_id)
+    .eq("template_version", context.template_version)
+    .filter("lane_ids", "eq", carrierTemplateUuidArrayLiteral(context.lane_ids))
+    .filter("selected_vendor_ids", "eq", carrierTemplateUuidArrayLiteral(context.selected_vendor_ids))
+    .eq("actor_user_id", context.actor_user_id)
+    .eq("actor_email", context.actor_email)
+    .eq("selected_count", context.selected_count)
+    .eq("status", "pending")
+    .select(CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS)
+    .maybeSingle();
+  if (claimResult.error) throw claimResult.error;
+  const claimedRow = objectRecord(claimResult.data);
+  if (claimedRow.id) return { won: true, row: claimedRow };
+
+  const canonicalResult = await supabase
+    .from("carrier_template_materialization_operations")
+    .select(CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS)
+    .eq("id", context.id)
+    .maybeSingle();
+  if (canonicalResult.error) throw canonicalResult.error;
+  const canonicalRow = objectRecord(canonicalResult.data);
+  if (!canonicalRow.id || !carrierTemplateMaterializationOperationMatches(canonicalRow, context)) {
+    throw new Error("Carrier template materialization journal context changed during mutation claim.");
+  }
+  return { won: false, row: canonicalRow };
+}
+
+async function finalizeCarrierTemplateMaterializationOperation(
+  supabase: RatewareSupabaseClient,
+  context: CarrierTemplateMaterializationOperationContext,
+  status: "reconciled" | "reconcile_required" | "rejected",
+  result: string,
+  counts: ReturnType<typeof carrierTemplateMaterializationCounts>,
+  outcomes: Record<string, unknown>[],
+  confirmedVendorIds: string[],
+  correlationId: string | null = null
+) {
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    status,
+    result,
+    selected_count: counts.selected,
+    confirmed_count: counts.confirmed,
+    inserted_count: counts.inserted,
+    already_present_count: counts.already_present,
+    rejected_count: counts.rejected,
+    pending_count: counts.pending,
+    outcomes,
+    confirmed_vendor_ids: confirmedVendorIds,
+    correlation_id: correlationId,
+    updated_at: now
+  };
+  if (status === "reconciled") {
+    patch.reconciled_at = now;
+    patch.finalized_at = now;
+  } else if (status === "reconcile_required") {
+    patch.reconcile_required_at = now;
+  } else {
+    patch.finalized_at = now;
+  }
+  const updateResult = await supabase
+    .from("carrier_template_materialization_operations")
+    .update(patch)
+    .eq("id", context.id)
+    .eq("organization_id", context.organization_id)
+    .eq("rfx_event_id", context.rfx_event_id)
+    .eq("template_id", context.template_id)
+    .eq("template_version", context.template_version)
+    // PostgREST array equality requires a PostgreSQL array literal. Using the
+    // scalar `.eq([...])` serializer would collapse UUIDs to an invalid CSV and
+    // would not reliably preserve ordered immutable context.
+    .filter("lane_ids", "eq", carrierTemplateUuidArrayLiteral(context.lane_ids))
+    .filter("selected_vendor_ids", "eq", carrierTemplateUuidArrayLiteral(context.selected_vendor_ids))
+    .eq("actor_user_id", context.actor_user_id)
+    .eq("actor_email", context.actor_email)
+    .eq("selected_count", context.selected_count)
+    .in("status", CARRIER_TEMPLATE_MATERIALIZATION_ALLOWED_FINALIZATION_FROM[status])
+    .select(CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS)
+    .maybeSingle();
+  if (updateResult.error) throw updateResult.error;
+  const wonRow = objectRecord(updateResult.data);
+  if (wonRow.id) return { won: true, row: wonRow };
+
+  // A no-row CAS is a concurrency result, not a mutation failure. Reload the
+  // authoritative journal so the losing request can converge on its winner.
+  const canonicalResult = await supabase
+    .from("carrier_template_materialization_operations")
+    .select(CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS)
+    .eq("id", context.id)
+    .maybeSingle();
+  if (canonicalResult.error) throw canonicalResult.error;
+  const canonicalRow = objectRecord(canonicalResult.data);
+  if (!canonicalRow.id || !carrierTemplateMaterializationOperationMatches(canonicalRow, context)) {
+    throw new Error("Carrier template materialization journal context changed during finalization.");
+  }
+  return { won: false, row: canonicalRow };
+}
+
+function carrierTemplateMaterializationJournalCounts(row: Record<string, unknown>) {
+  return carrierTemplateMaterializationCounts(
+    Number(row.selected_count) || 0,
+    Number(row.confirmed_count) || 0,
+    Number(row.inserted_count) || 0,
+    Number(row.already_present_count) || 0,
+    Number(row.rejected_count) || 0,
+    Number(row.pending_count) || 0
+  );
+}
+
+function carrierTemplateMaterializationJournalOutcomes(row: Record<string, unknown>) {
+  return Array.isArray(row.outcomes)
+    ? row.outcomes.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    : [];
+}
+
+async function canonicalCarrierTemplateMaterializationResult(
+  supabase: RatewareSupabaseClient,
+  context: CarrierTemplateMaterializationOperationContext,
+  responseContext: Record<string, unknown>,
+  journal: Record<string, unknown>
+): Promise<CarrierTemplateMaterializationResult> {
+  const status = cleanText(journal.status)?.toLowerCase() as CarrierTemplateMaterializationJournalStatus | null;
+  const counts = carrierTemplateMaterializationJournalCounts(journal);
+  const outcomes = carrierTemplateMaterializationJournalOutcomes(journal);
+  const confirmedVendorIds = (Array.isArray(journal.confirmed_vendor_ids) ? journal.confirmed_vendor_ids : [])
+    .map((value) => (cleanText(value) || "").toLowerCase())
+    .filter((value): value is string => Boolean(value));
+  const rejectedVendorIds = new Set(outcomes
+    .filter((outcome) => cleanText(outcome.outcome)?.toLowerCase() === "rejected")
+    .map((outcome) => (cleanText(outcome.vendor_id) || "").toLowerCase())
+    .filter(Boolean));
+  const matrixVendorIds = confirmedVendorIds.length
+    ? confirmedVendorIds
+    : context.selected_vendor_ids.filter((vendorId) => !rejectedVendorIds.has(vendorId));
+  let finalRows: Record<string, unknown>[] = [];
+  if (matrixVendorIds.length) {
+    try {
+      // Every CAS loser reloads the scoped matrix as well as the journal. The
+      // journal decides status; this read prevents a stale request from using
+      // its own pre-CAS snapshot as browser output.
+      finalRows = await fetchFinalCarrierTemplateInvitations(
+        supabase,
+        context.organization_id,
+        context.rfx_event_id,
+        context.lane_ids,
+        matrixVendorIds
+      );
+    } catch (_) {
+      // An incomplete current journal remains reconcile_required. A durable
+      // terminal success is never downgraded because optional hydration failed.
+    }
+  }
+
+  if (status === "reconciled") {
+    return {
+      status: 200,
+      body: {
+        ...responseContext,
+        result: cleanText(journal.result) || "reconciled",
+        counts,
+        outcomes,
+        confirmed_audience_vendor_ids: confirmedVendorIds,
+        rows: finalRows.map(publicRfxParticipantRow)
+      }
+    };
+  }
+
+  if (status === "rejected") {
+    return {
+      status: 200,
+      body: {
+        ...responseContext,
+        result: cleanText(journal.result) || "rejected",
+        counts,
+        outcomes,
+        confirmed_audience_vendor_ids: []
+      }
+    };
+  }
+
+  return {
+    status: 202,
+    body: {
+      ...responseContext,
+      code: "carrier_template_reconcile_required",
+      error: "Carrier additions are still awaiting canonical reconciliation. Retry the same operation.",
+      correlation_id: cleanText(journal.correlation_id) || context.id,
+      result: "reconcile_required",
+      counts,
+      outcomes,
+      confirmed_audience_vendor_ids: confirmedVendorIds
+    }
+  };
+}
+
+async function fetchFinalCarrierTemplateInvitations(
+  supabase: RatewareSupabaseClient,
+  organizationId: string,
+  eventId: string,
+  laneIds: string[],
+  vendorIds: string[]
+) {
+  const rowByKey = new Map<string, Record<string, unknown>>();
+  const expectedLaneIds = new Set(laneIds);
+  const expectedVendorIds = new Set(vendorIds);
+  for (const laneBatch of chunkValues(laneIds, CARRIER_TEMPLATE_MATERIALIZATION_FINAL_LANE_BATCH_SIZE)) {
+    for (const vendorBatch of chunkValues(vendorIds, CARRIER_TEMPLATE_MATERIALIZATION_FINAL_VENDOR_BATCH_SIZE)) {
+      if (laneBatch.length * vendorBatch.length > CARRIER_TEMPLATE_MATERIALIZATION_FINAL_RESULT_CEILING) {
+        throw new Error("Carrier template reconciliation query exceeded its provider result ceiling.");
+      }
+      const result = await supabase
+        .from("rfx_lane_vendors")
+        .select("id,rfx_event_id,rfx_lane_id,vendor_id,carrier_template_materialization_operation_id,rfx_events!inner(organization_id)")
+        .eq("rfx_event_id", eventId)
+        .eq("rfx_events.organization_id", organizationId)
+        .in("rfx_lane_id", laneBatch)
+        .in("vendor_id", vendorBatch);
+      if (result.error) throw result.error;
+      for (const row of (result.data || []) as Record<string, unknown>[]) {
+        const rowEventId = cleanText(row.rfx_event_id) || "";
+        const laneId = cleanText(row.rfx_lane_id) || "";
+        const vendorId = cleanText(row.vendor_id) || "";
+        if (
+          rowEventId !== eventId ||
+          !expectedLaneIds.has(laneId) ||
+          !expectedVendorIds.has(vendorId) ||
+          !laneBatch.includes(laneId) ||
+          !vendorBatch.includes(vendorId)
+        ) {
+          throw new Error("Carrier template reconciliation returned a row outside its organization/event matrix.");
+        }
+        const key = carrierTemplateInvitationKey(laneId, vendorId);
+        if (rowByKey.has(key)) {
+          throw new Error("Carrier template reconciliation returned a duplicate carrier/lane outcome.");
+        }
+        rowByKey.set(key, row);
+      }
+    }
+  }
+  const expectedCount = laneIds.length * vendorIds.length;
+  if (rowByKey.size !== expectedCount) {
+    throw new Error(`Carrier template reconciliation was incomplete: expected ${expectedCount} rows and received ${rowByKey.size}.`);
+  }
+  return laneIds.flatMap((laneId) => vendorIds.map((vendorId) =>
+    rowByKey.get(carrierTemplateInvitationKey(laneId, vendorId))!
+  ));
+}
+
+async function materializeCarrierTemplateRfxParticipants(
+  supabase: RatewareSupabaseClient,
+  user: RuntimeWorkspaceUser,
+  claims: Record<string, unknown>,
+  input: Record<string, unknown>,
+  carrierTemplatesEnabled: boolean
+): Promise<CarrierTemplateMaterializationResult> {
+  if (!carrierTemplatesEnabled) {
+    return {
+      status: 404,
+      body: { enabled: false, error: "Carrier list templates are not enabled." }
+    };
+  }
+  const organizationId = cleanText(user.organization_id) || "";
+  if (!organizationId) {
+    return {
+      status: 403,
+      body: {
+        code: "carrier_template_workspace_required",
+        error: "An organization-scoped workspace is required."
+      }
+    };
+  }
+
+  const rawTemplateContext = objectRecord(input.carrier_template_context);
+  const templateId = carrierTemplateId(rawTemplateContext);
+  const templateVersion = carrierTemplateExpectedVersion(rawTemplateContext.template_version);
+  const materializationOperationId = (cleanText(rawTemplateContext.materialization_operation_id) || "").toLowerCase();
+  const vendorIds = normalizeBulkIds(input.vendor_ids, {
+    label: "Vendor ids",
+    limit: BULK_SHORTLIST_VENDOR_LIMIT
+  }).map((vendorId) => vendorId.toLowerCase());
+  const laneIds = normalizeBulkIds(
+    Array.isArray(input.lane_ids) ? input.lane_ids : [input.lane_id],
+    { label: "RFx lane ids", limit: BULK_SELECTED_ID_LIMIT }
+  ).map((laneId) => laneId.toLowerCase());
+  if (!templateId || !templateVersion || !UUID_PATTERN.test(materializationOperationId)) {
+    return {
+      status: 400,
+      body: { error: "Valid carrier template identity, version, and materialization operation id are required." }
+    };
+  }
+  if (!vendorIds.length || !laneIds.length) {
+    return {
+      status: 400,
+      body: { error: "At least one carrier and one RFx lane are required for template materialization." }
+    };
+  }
+  const selectedMatrixCount = vendorIds.length * laneIds.length;
+  if (selectedMatrixCount > CARRIER_TEMPLATE_MATERIALIZATION_MATRIX_LIMIT) {
+    return {
+      status: 400,
+      body: {
+        error: `Carrier template materialization is limited to ${CARRIER_TEMPLATE_MATERIALIZATION_MATRIX_LIMIT.toLocaleString()} carrier/lane outcomes per operation.`
+      }
+    };
+  }
+
+  const template = await loadCarrierTemplate(supabase, organizationId, templateId);
+  if (!template) {
+    return {
+      status: 409,
+      body: { code: "carrier_template_unavailable", error: "Carrier list template is unavailable." }
+    };
+  }
+  if ((cleanText(template.lifecycle_status || template.status)?.toLowerCase() || "") !== "active") {
+    return {
+      status: 409,
+      body: { code: "carrier_template_inactive", error: "Carrier list template is no longer active." }
+    };
+  }
+  const currentVersion = Number(template.template_version) || 1;
+  if (currentVersion !== templateVersion) {
+    return {
+      status: 409,
+      body: {
+        code: "template_version_conflict",
+        error: "Carrier list template changed since it was loaded.",
+        current_version: currentVersion,
+        template_id: templateId
+      }
+    };
+  }
+  const templateVendorIds = new Set(normalizeCarrierTemplateVendorIds(template.vendor_ids || []));
+  if (vendorIds.some((vendorId) => !templateVendorIds.has(vendorId.toLowerCase()))) {
+    return {
+      status: 400,
+      body: {
+        code: "carrier_template_invalid_selection",
+        error: "Selected carriers must belong to the validated carrier template."
+      }
+    };
+  }
+
+  const vendorById = new Map<string, Record<string, unknown>>();
+  for (const vendorBatch of chunkValues(vendorIds, CARRIER_TEMPLATE_MATERIALIZATION_READ_BATCH_SIZE)) {
+    const result = await supabase
+      .from("vendors")
+      .select("id,status,base_stage,primary_email,secondary_emails,whatsapp_phone")
+      .eq("organization_id", organizationId)
+      .in("id", vendorBatch);
+    if (result.error) throw result.error;
+    for (const row of (result.data || []) as Record<string, unknown>[]) {
+      const vendorId = cleanText(row.id);
+      if (vendorId && vendorBatch.includes(vendorId)) vendorById.set(vendorId, row);
+    }
+  }
+  const rejectionReasonByVendorId = new Map<string, string>();
+  for (const vendorId of vendorIds) {
+    const reason = carrierTemplateVendorIneligibleReason(vendorById.get(vendorId) || null);
+    if (reason) rejectionReasonByVendorId.set(vendorId, reason);
+  }
+  const eligibleVendorIds = vendorIds.filter((vendorId) => !rejectionReasonByVendorId.has(vendorId));
+
+  const lanesResult = await supabase
+    .from("rfx_lanes")
+    .select("id,rfx_event_id,rfx_events!inner(id,owner_email)")
+    .in("id", laneIds)
+    .eq("rfx_events.owner_email", user.owner_email);
+  if (lanesResult.error) throw lanesResult.error;
+  const laneById = new Map(
+    ((lanesResult.data || []) as Record<string, unknown>[])
+      .filter((lane) => cleanText(lane.id))
+      .map((lane) => [cleanText(lane.id) as string, lane])
+  );
+  if (!laneIds.every((laneId) => laneById.has(laneId))) {
+    return {
+      status: 403,
+      body: { code: "rfx_lane_scope_forbidden", error: "One or more RFx lanes are unavailable in this workspace." }
+    };
+  }
+  const eventIds = new Set(laneIds.map((laneId) => cleanText(laneById.get(laneId)?.rfx_event_id)).filter(Boolean));
+  if (eventIds.size !== 1) {
+    return {
+      status: 409,
+      body: { code: "rfx_lane_scope_changed", error: "All materialization lanes must belong to the same RFx event." }
+    };
+  }
+  const eventId = [...eventIds][0] as string;
+  const rejectedCount = rejectionReasonByVendorId.size * laneIds.length;
+  const responseContext = {
+    materialization_operation_id: materializationOperationId,
+    template_id: templateId,
+    template_version: templateVersion,
+    rfx_event_id: eventId,
+    lane_ids: laneIds
+  };
+  const rejectedOutcomes = laneIds.flatMap((laneId) => vendorIds
+    .filter((vendorId) => rejectionReasonByVendorId.has(vendorId))
+    .map((vendorId) => ({
+      lane_id: laneId,
+      vendor_id: vendorId,
+      outcome: "rejected",
+      reason: rejectionReasonByVendorId.get(vendorId)
+    })));
+  const operationContext: CarrierTemplateMaterializationOperationContext = {
+    id: materializationOperationId,
+    organization_id: organizationId,
+    rfx_event_id: eventId,
+    template_id: templateId,
+    template_version: templateVersion,
+    lane_ids: laneIds,
+    selected_vendor_ids: vendorIds,
+    actor_user_id: cleanText(claims.sub || claims.id) || cleanText(user.owner_user_id) || "",
+    actor_email: (
+      cleanText(claims.email || claims.preferred_email || claims["https://kinde.com/email"]) ||
+      cleanText(user.owner_email) ||
+      ""
+    ).toLowerCase(),
+    selected_count: selectedMatrixCount
+  };
+  const operationJournal = await loadOrCreateCarrierTemplateMaterializationOperation(
+    supabase,
+    operationContext
+  );
+  if (operationJournal.conflict) {
+    return {
+      status: 409,
+      body: {
+        ...responseContext,
+        code: "carrier_template_materialization_operation_conflict",
+        error: "This materialization operation id is already bound to different RFx or template context."
+      }
+    };
+  }
+  let canonicalJournal = operationJournal.row;
+  let journalStatus = (cleanText(canonicalJournal.status)?.toLowerCase() || "") as CarrierTemplateMaterializationJournalStatus | "";
+  let mutationIssued = ["mutation_issued", "reconcile_required"].includes(journalStatus);
+  let mutationClaimWon = false;
+
+  if (["rejected", "reconciled"].includes(journalStatus)) {
+    // Terminal operations cannot be reopened. In particular, an eligible
+    // request that lost the pending claim to rejection must issue no upsert.
+    return await canonicalCarrierTemplateMaterializationResult(
+      supabase,
+      operationContext,
+      responseContext,
+      canonicalJournal
+    );
+  }
+
+  if (eligibleVendorIds.length && !mutationIssued) {
+    const mutationClaim = await claimCarrierTemplateMaterializationMutation(
+      supabase,
+      operationContext
+    );
+    canonicalJournal = mutationClaim.row;
+    journalStatus = (cleanText(canonicalJournal.status)?.toLowerCase() || "") as CarrierTemplateMaterializationJournalStatus | "";
+    if (mutationClaim.won) {
+      mutationIssued = true;
+      mutationClaimWon = true;
+    } else if (["rejected", "reconciled"].includes(journalStatus)) {
+      return await canonicalCarrierTemplateMaterializationResult(
+        supabase,
+        operationContext,
+        responseContext,
+        canonicalJournal
+      );
+    } else {
+      mutationIssued = ["mutation_issued", "reconcile_required"].includes(journalStatus);
+    }
+  }
+
+  if (!eligibleVendorIds.length && !mutationIssued) {
+    const counts = carrierTemplateMaterializationCounts(selectedMatrixCount, 0, 0, 0, rejectedCount);
+    const finalization = await finalizeCarrierTemplateMaterializationOperation(
+      supabase,
+      operationContext,
+      "rejected",
+      "rejected",
+      counts,
+      rejectedOutcomes,
+      []
+    );
+    if (finalization.won) {
+      return {
+        status: 200,
+        body: {
+          ...responseContext,
+          result: "rejected",
+          counts,
+          outcomes: rejectedOutcomes,
+          confirmed_audience_vendor_ids: []
+        }
+      };
+    }
+    canonicalJournal = finalization.row;
+    journalStatus = (cleanText(canonicalJournal.status)?.toLowerCase() || "") as CarrierTemplateMaterializationJournalStatus | "";
+    if (["rejected", "reconciled"].includes(journalStatus)) {
+      return await canonicalCarrierTemplateMaterializationResult(
+        supabase,
+        operationContext,
+        responseContext,
+        canonicalJournal
+      );
+    }
+    mutationIssued = ["mutation_issued", "reconcile_required"].includes(journalStatus);
+  }
+
+  if (!mutationIssued) {
+    // A missing claim is never permission to mutate. Return the canonical
+    // pending/current state and let a same-UUID retry resolve it.
+    return await canonicalCarrierTemplateMaterializationResult(
+      supabase,
+      operationContext,
+      responseContext,
+      canonicalJournal
+    );
+  }
+
+  // A request continuing someone else's issued mutation reconciles the
+  // immutable journal audience. It may idempotently upsert only members that
+  // still pass current primary eligibility; already-issued rows remain part of
+  // the final canonical matrix even if this concurrent read now sees blocked.
+  const canonicalContinuation = !mutationClaimWon;
+  const reconciliationVendorIds = canonicalContinuation
+    ? operationContext.selected_vendor_ids
+    : eligibleVendorIds;
+  const reconciliationRejectedOutcomes = canonicalContinuation ? [] : rejectedOutcomes;
+  const reconciliationRejectedCount = canonicalContinuation ? 0 : rejectedCount;
+  const reconciliationPendingOutcomes = laneIds.flatMap((laneId) => reconciliationVendorIds.map((vendorId) => ({
+    lane_id: laneId,
+    vendor_id: vendorId,
+    outcome: "pending_reconciliation"
+  })));
+
+  const reconcileRequired = async (message: string): Promise<CarrierTemplateMaterializationResult> => {
+    const correlationId = crypto.randomUUID();
+    const pendingCount = reconciliationVendorIds.length * laneIds.length;
+    const counts = carrierTemplateMaterializationCounts(
+      selectedMatrixCount,
+      0,
+      0,
+      0,
+      reconciliationRejectedCount,
+      pendingCount
+    );
+    const outcomes = [...reconciliationPendingOutcomes, ...reconciliationRejectedOutcomes];
+    const finalization = await finalizeCarrierTemplateMaterializationOperation(
+      supabase,
+      operationContext,
+      "reconcile_required",
+      "reconcile_required",
+      counts,
+      outcomes,
+      [],
+      correlationId
+    );
+    if (!finalization.won) {
+      return await canonicalCarrierTemplateMaterializationResult(
+        supabase,
+        operationContext,
+        responseContext,
+        finalization.row
+      );
+    }
+    await writeCarrierTemplateRfxMaterializationAudit(supabase, user, {
+      template_id: templateId,
+      template_version: templateVersion,
+      rfx_event_id: eventId,
+      selected_count: selectedMatrixCount,
+      confirmed_count: 0,
+      already_present_count: 0,
+      inserted_count: 0,
+      rejected_count: reconciliationRejectedCount,
+      pending_count: pendingCount,
+      result: "reconcile_required"
+    });
+    return {
+      status: 202,
+      body: {
+        ...responseContext,
+        code: "carrier_template_reconcile_required",
+        error: message,
+        correlation_id: correlationId,
+        result: "reconcile_required",
+        counts,
+        outcomes,
+        confirmed_audience_vendor_ids: []
+      }
+    };
+  };
+
+  const insertRows = await Promise.all(laneIds.flatMap((laneId) => eligibleVendorIds.map(async (vendorId) => ({
+    rfx_event_id: eventId,
+    rfx_lane_id: laneId,
+    vendor_id: vendorId,
+    invitation_status: "drafted",
+    carrier_template_materialization_operation_id: materializationOperationId,
+    ...(await newRfxInvitationTokenFields())
+  }))));
+  for (const batch of chunkValues(insertRows, CARRIER_TEMPLATE_MATERIALIZATION_WRITE_BATCH_SIZE)) {
+    if (!mutationIssued) {
+      throw new Error("Carrier template participant mutation requires an issued journal claim.");
+    }
+    let result: { data: unknown; error: unknown };
+    try {
+      result = await supabase
+        .from("rfx_lane_vendors")
+        .upsert(batch, { onConflict: "rfx_lane_id,vendor_id", ignoreDuplicates: true })
+        .select("id,rfx_event_id,rfx_lane_id,vendor_id,carrier_template_materialization_operation_id");
+    } catch (_) {
+      // A transport or response error after issuing any upsert, including the
+      // first batch, cannot prove zero mutation. Stop issuing new writes and
+      // reconcile the complete server-scoped matrix below.
+      break;
+    }
+    if (result.error) break;
+  }
+
+  let finalRows: Record<string, unknown>[];
+  try {
+    finalRows = await fetchFinalCarrierTemplateInvitations(
+      supabase,
+      organizationId,
+      eventId,
+      laneIds,
+      reconciliationVendorIds
+    );
+  } catch (_) {
+    return await reconcileRequired(
+      "Carrier additions may have committed but their complete final audience could not be confirmed. Retry the same operation."
+    );
+  }
+
+  const finalByKey = new Map<string, Record<string, unknown>>();
+  for (const row of finalRows) {
+    const key = carrierTemplateInvitationKey(row.rfx_lane_id, row.vendor_id);
+    if (key !== ":" && !finalByKey.has(key)) finalByKey.set(key, row);
+  }
+  const expectedEligibleKeys = laneIds.flatMap((laneId) => reconciliationVendorIds.map((vendorId) => carrierTemplateInvitationKey(laneId, vendorId)));
+  if (!expectedEligibleKeys.every((key) => finalByKey.has(key))) {
+    return await reconcileRequired(
+      "Carrier additions did not reconcile to a complete final RFx audience. Retry the same operation."
+    );
+  }
+
+  const eligibleOutcomes = laneIds.flatMap((laneId) => reconciliationVendorIds.map((vendorId) => {
+    const key = carrierTemplateInvitationKey(laneId, vendorId);
+    const invitation = finalByKey.get(key)!;
+    return {
+      lane_id: laneId,
+      vendor_id: vendorId,
+      outcome: (cleanText(invitation.carrier_template_materialization_operation_id) || "").toLowerCase() ===
+          materializationOperationId
+        ? "inserted"
+        : "reconciled",
+      invitation_id: cleanText(invitation.id)
+    };
+  }));
+  const insertedCount = eligibleOutcomes.filter((row) => row.outcome === "inserted").length;
+  const confirmedCount = eligibleOutcomes.length;
+  const alreadyPresentCount = confirmedCount - insertedCount;
+  const resultName = reconciliationRejectedCount
+    ? "partial"
+    : insertedCount && alreadyPresentCount
+      ? "mixed"
+      : insertedCount
+        ? "inserted"
+        : "reconciled";
+  const counts = carrierTemplateMaterializationCounts(
+    selectedMatrixCount,
+    confirmedCount,
+    insertedCount,
+    alreadyPresentCount,
+    reconciliationRejectedCount
+  );
+  const outcomes = [...eligibleOutcomes, ...reconciliationRejectedOutcomes];
+  const finalization = await finalizeCarrierTemplateMaterializationOperation(
+    supabase,
+    operationContext,
+    "reconciled",
+    resultName,
+    counts,
+    outcomes,
+    reconciliationVendorIds
+  );
+  if (!finalization.won) {
+    return await canonicalCarrierTemplateMaterializationResult(
+      supabase,
+      operationContext,
+      responseContext,
+      finalization.row
+    );
+  }
+  await writeCarrierTemplateRfxMaterializationAudit(supabase, user, {
+    template_id: templateId,
+    template_version: templateVersion,
+    rfx_event_id: eventId,
+    selected_count: selectedMatrixCount,
+    confirmed_count: confirmedCount,
+    already_present_count: alreadyPresentCount,
+    inserted_count: insertedCount,
+    rejected_count: reconciliationRejectedCount,
+    pending_count: 0,
+    result: resultName
+  });
+  return {
+    status: 200,
+    body: {
+      ...responseContext,
+      result: resultName,
+      counts,
+      outcomes,
+      confirmed_audience_vendor_ids: reconciliationVendorIds,
+      rows: finalRows.map(publicRfxParticipantRow)
+    }
+  };
+}
+
+async function conditionalCarrierTemplateUpdate(
+  supabase: RatewareSupabaseClient,
+  organizationId: string,
+  templateId: string,
+  expectedVersion: number,
+  patch: Record<string, unknown>
+) {
+  const result = await supabase
+    .from("vendor_segments")
+    .update(patch)
+    .eq("id", templateId)
+    .eq("organization_id", organizationId)
+    .eq("segment_type", "participant_template")
+    .eq("template_version", expectedVersion)
+    .select()
+    .maybeSingle();
+  if (result.error) {
+    if (carrierTemplateNameDatabaseConflict(result.error)) return carrierTemplateDuplicateNameResult();
+    throw result.error;
+  }
+  if (result.data) {
+    return carrierTemplateResult(200, { row: result.data });
+  }
+  const current = await loadCarrierTemplate(supabase, organizationId, templateId);
+  return current
+    ? carrierTemplateVersionConflict(current)
+    : carrierTemplateResult(404, { error: "Carrier list template was not found." });
+}
+
+function carrierTemplateAuditMetadata(
+  templateId: string,
+  oldVersion: number,
+  newVersion: number,
+  oldVendorIds: string[],
+  newVendorIds: string[]
+) {
+  return {
+    template_id: templateId,
+    old_version: oldVersion,
+    new_version: newVersion,
+    old_member_count: oldVendorIds.length,
+    new_member_count: newVendorIds.length
+  };
+}
+
+export async function handleCarrierTemplateApiAction(
+  supabase: RatewareSupabaseClient,
+  user: RuntimeWorkspaceUser,
+  claims: Record<string, unknown>,
+  input: Record<string, unknown>,
+  options: CarrierTemplateActionOptions = {}
+): Promise<CarrierTemplateActionResult | null> {
+  const action = cleanText(input.action) || "";
+  if (!(CARRIER_LIST_TEMPLATE_ACTIONS as readonly string[]).includes(action)) return null;
+
+  const enabled = options.enabled ?? CARRIER_LIST_TEMPLATES_V2_ENABLED;
+  if (!enabled) {
+    return {
+      status: 404,
+      body: { enabled: false, error: "Carrier list templates are not enabled." }
+    };
+  }
+
+  const actor = carrierTemplateActor(user, claims);
+  if (!actor) return carrierTemplateResult(403, { error: "An organization-scoped workspace is required." });
+
+  if (CARRIER_LIST_TEMPLATE_WRITE_ACTIONS.has(action)) {
+    try {
+      requireCarrierTemplateManagePermission(claims);
+    } catch (error) {
+      return carrierTemplateResult(403, {
+        error: error instanceof Error ? error.message : "Missing required permission: vendors:manage"
+      });
+    }
+  }
+
+  if (action === "list_carrier_list_templates") {
+    const requestedLimit = Number(input.limit);
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(Math.floor(requestedLimit), 200)
+      : 50;
+    const offset = Math.max(Math.floor(Number(input.offset) || 0), 0);
+    const lifecycleStatus = cleanText(input.lifecycle_status)?.toLowerCase() || "";
+    if (lifecycleStatus && !["draft", "active", "archived"].includes(lifecycleStatus)) {
+      return carrierTemplateResult(400, { error: "Invalid carrier template lifecycle." });
+    }
+    const search = cleanText(input.search)?.slice(0, 120) || "";
+    let query = supabase
+      .from("vendor_segments")
+      .select("*", { count: "exact" })
+      .eq("organization_id", actor.organization_id)
+      .eq("segment_type", "participant_template");
+    if (lifecycleStatus) query = query.eq("lifecycle_status", lifecycleStatus);
+    if (search) query = query.ilike("segment_name", `%${search}%`);
+    const result = await query
+      .order("updated_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (result.error) throw result.error;
+    const rows = result.data || [];
+    const total = result.count || 0;
+    return carrierTemplateResult(200, {
+      rows,
+      total,
+      limit,
+      offset,
+      has_more: offset + rows.length < total
+    });
+  }
+
+  if (action === "get_carrier_list_template") {
+    const templateId = carrierTemplateId(input);
+    if (!templateId) return carrierTemplateResult(400, { error: "A valid carrier list template id is required." });
+    const usageContext = cleanText(input.usage_context);
+    if (usageContext && usageContext !== "carrier_fit") {
+      return carrierTemplateResult(400, { error: "Unsupported carrier list template usage context." });
+    }
+    const row = await loadCarrierTemplate(supabase, actor.organization_id, templateId);
+    if (!row) return carrierTemplateResult(404, { error: "Carrier list template was not found." });
+    if (usageContext === "carrier_fit") {
+      await writeCarrierTemplateAudit(
+        supabase,
+        user,
+        "carrier_template.load_in_carrier_fit",
+        templateId,
+        {
+          template_id: templateId,
+          template_version: Number(row.template_version) || 1,
+          member_count: normalizeCarrierTemplateVendorIds(row.vendor_ids || []).length
+        }
+      );
+    }
+    return carrierTemplateResult(200, { row });
+  }
+
+  if (action === "resolve_carrier_list_template_rows") {
+    const rows = Array.isArray(input.rows)
+      ? input.rows.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object" && !Array.isArray(row))
+      : [];
+    if (!rows.length) return carrierTemplateResult(400, { error: "At least one carrier import row is required." });
+    if (rows.length > CARRIER_TEMPLATE_IMPORT_MAX_ROWS) {
+      return carrierTemplateResult(400, {
+        error: `Resolve up to ${CARRIER_TEMPLATE_IMPORT_MAX_ROWS.toLocaleString()} carrier rows at a time.`
+      });
+    }
+    const vendors = await fetchCarrierTemplateResolverVendors(supabase, actor.organization_id);
+    const resolution = resolveCarrierTemplateImportRows(rows, vendors, actor.organization_id);
+    const templateId = carrierTemplateId(input) || "import";
+    await writeCarrierTemplateAudit(
+      supabase,
+      user,
+      "carrier_template.resolve_import",
+      templateId,
+      { template_id: templateId === "import" ? null : templateId, ...resolution.summary }
+    );
+    return carrierTemplateResult(200, resolution);
+  }
+
+  if (action === "create_carrier_list_template") {
+    const templateInput = objectRecord(input.template || input);
+    let normalized: Record<string, unknown>;
+    try {
+      normalized = normalizeCarrierTemplateInput(templateInput, actor);
+    } catch (error) {
+      return carrierTemplateResult(400, { error: error instanceof Error ? error.message : "Invalid carrier list template." });
+    }
+    if (normalized.lifecycle_status === "archived") {
+      return carrierTemplateResult(400, { error: "Create a draft or active template, then use the explicit archive action." });
+    }
+    const vendorIds = normalized.vendor_ids as string[];
+    if (!await validateCarrierTemplateMembers(supabase, actor.organization_id, vendorIds)) {
+      return carrierTemplateResult(400, { error: "One or more selected carriers are unavailable in this organization." });
+    }
+    if (await findCarrierTemplateNameConflict(supabase, actor.organization_id, String(normalized.segment_name))) {
+      return carrierTemplateDuplicateNameResult();
+    }
+    const row = carrierTemplateInsertRow(normalized, actor, new Date().toISOString());
+    const result = await supabase.from("vendor_segments").insert(row).select().single();
+    if (result.error) {
+      if (carrierTemplateNameDatabaseConflict(result.error)) return carrierTemplateDuplicateNameResult();
+      throw result.error;
+    }
+    const templateId = String(result.data.id);
+    const auditAction = normalized.lifecycle_status === "active"
+      ? "carrier_template.activate"
+      : "carrier_template.create_draft";
+    await writeCarrierTemplateAudit(supabase, user, auditAction, templateId, {
+      template_id: templateId,
+      old_version: null,
+      new_version: 1,
+      old_member_count: 0,
+      new_member_count: vendorIds.length
+    });
+    return carrierTemplateResult(201, { row: result.data });
+  }
+
+  if (action === "update_carrier_list_template") {
+    const templateId = carrierTemplateId(input);
+    if (!templateId) return carrierTemplateResult(400, { error: "A valid carrier list template id is required." });
+    const expectedVersion = carrierTemplateExpectedVersion(input.expected_version);
+    if (!expectedVersion) return carrierTemplateResult(400, { error: "expected_version is required." });
+    const current = await loadCarrierTemplate(supabase, actor.organization_id, templateId);
+    if (!current) return carrierTemplateResult(404, { error: "Carrier list template was not found." });
+    if ((Number(current.template_version) || 1) !== expectedVersion) return carrierTemplateVersionConflict(current);
+
+    const patchInput = objectRecord(input.template || input.patch || input);
+    const oldVendorIds = normalizeCarrierTemplateVendorIds(current.vendor_ids || []);
+    const mergedInput = {
+      segment_name: patchInput.segment_name ?? current.segment_name,
+      ...(Object.prototype.hasOwnProperty.call(patchInput, "segment_description")
+        ? { segment_description: patchInput.segment_description }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(patchInput, "description")
+        ? { description: patchInput.description }
+        : {}),
+      ...(!Object.prototype.hasOwnProperty.call(patchInput, "segment_description") &&
+          !Object.prototype.hasOwnProperty.call(patchInput, "description")
+        ? { description: current.description }
+        : {}),
+      lifecycle_status: patchInput.lifecycle_status ?? patchInput.status ?? current.lifecycle_status ?? current.status,
+      vendor_ids: patchInput.vendor_ids ?? oldVendorIds
+    };
+    let normalized: Record<string, unknown>;
+    try {
+      normalized = normalizeCarrierTemplateInput(mergedInput, actor, { existing: current });
+    } catch (error) {
+      return carrierTemplateResult(400, { error: error instanceof Error ? error.message : "Invalid carrier list template." });
+    }
+    const oldLifecycle = cleanText(current.lifecycle_status || current.status);
+    const newLifecycle = cleanText(normalized.lifecycle_status);
+    if (oldLifecycle !== "archived" && newLifecycle === "archived") {
+      return carrierTemplateResult(400, { error: "Use the explicit archive action to archive a carrier list template." });
+    }
+    if (oldLifecycle === "archived" && newLifecycle !== "archived") {
+      return carrierTemplateResult(400, { error: "Use the explicit restore action to reactivate an archived carrier list template." });
+    }
+    const newVendorIds = normalized.vendor_ids as string[];
+    const addedVendorIds = newVendorIds.filter((id) => !oldVendorIds.includes(id));
+    const removedVendorIds = oldVendorIds.filter((id) => !newVendorIds.includes(id));
+    if (!await validateCarrierTemplateMembers(supabase, actor.organization_id, addedVendorIds)) {
+      return carrierTemplateResult(400, { error: "One or more selected carriers are unavailable in this organization." });
+    }
+    const nameChanged = carrierTemplateNameKey(normalized.segment_name) !== carrierTemplateNameKey(current.segment_name);
+    if (
+      nameChanged &&
+      await findCarrierTemplateNameConflict(supabase, actor.organization_id, String(normalized.segment_name), templateId)
+    ) {
+      return carrierTemplateDuplicateNameResult();
+    }
+
+    const now = new Date().toISOString();
+    const newVersion = expectedVersion + 1;
+    const updateResult = await conditionalCarrierTemplateUpdate(
+      supabase,
+      actor.organization_id,
+      templateId,
+      expectedVersion,
+      {
+        segment_name: normalized.segment_name,
+        description: normalized.description,
+        lifecycle_status: normalized.lifecycle_status,
+        status: normalized.lifecycle_status,
+        vendor_ids: newVendorIds,
+        organization_id: actor.organization_id,
+        template_version: newVersion,
+        updated_by_user_id: actor.user_id,
+        updated_by_email: actor.email,
+        updated_at: now
+      }
+    );
+    if (updateResult.status !== 200) return updateResult;
+
+    const metadata = carrierTemplateAuditMetadata(templateId, expectedVersion, newVersion, oldVendorIds, newVendorIds);
+    if (newLifecycle === "active" && oldLifecycle !== "active") {
+      await writeCarrierTemplateAudit(supabase, user, "carrier_template.activate", templateId, metadata);
+    } else if (
+      nameChanged ||
+      newLifecycle !== oldLifecycle ||
+      cleanText(normalized.description) !== cleanText(current.description)
+    ) {
+      await writeCarrierTemplateAudit(supabase, user, "carrier_template.update_details", templateId, metadata);
+    }
+    if (addedVendorIds.length) {
+      await writeCarrierTemplateAudit(supabase, user, "carrier_template.add_members", templateId, {
+        ...metadata,
+        added_vendor_ids: addedVendorIds
+      });
+    }
+    if (removedVendorIds.length) {
+      await writeCarrierTemplateAudit(supabase, user, "carrier_template.remove_members", templateId, {
+        ...metadata,
+        removed_vendor_ids: removedVendorIds
+      });
+    }
+    return updateResult;
+  }
+
+  if (action === "duplicate_carrier_list_template") {
+    const sourceId = carrierTemplateId(input);
+    if (!sourceId) return carrierTemplateResult(400, { error: "A valid carrier list template id is required." });
+    const expectedVersion = carrierTemplateExpectedVersion(input.expected_version);
+    if (!expectedVersion) return carrierTemplateResult(400, { error: "expected_version is required." });
+    const canonicalName = cleanText(input.name);
+    const legacyName = cleanText(input.segment_name || objectRecord(input.template).segment_name);
+    if (canonicalName && legacyName && carrierTemplateNameKey(canonicalName) !== carrierTemplateNameKey(legacyName)) {
+      return carrierTemplateResult(400, { error: "Conflicting carrier list template names were provided." });
+    }
+    const requestedName = canonicalName || legacyName;
+    if (!requestedName) return carrierTemplateResult(400, { error: "name is required." });
+    const normalizedName = requestedName.replace(/\s+/g, " ").trim();
+    const result = await supabase.rpc("rateware_duplicate_carrier_list_template", {
+      p_organization_id: actor.organization_id,
+      p_source_template_id: sourceId,
+      p_expected_version: expectedVersion,
+      p_name: normalizedName,
+      p_owner_user_id: actor.owner_user_id,
+      p_owner_email: actor.owner_email,
+      p_actor_user_id: actor.user_id,
+      p_actor_email: actor.email
+    });
+    if (result.error) {
+      if (carrierTemplateNameDatabaseConflict(result.error)) return carrierTemplateDuplicateNameResult();
+      throw result.error;
+    }
+    const rpcRow = objectRecord(Array.isArray(result.data) ? result.data[0] : result.data);
+    const outcome = cleanText(rpcRow.outcome);
+    if (outcome === "not_found") {
+      return carrierTemplateResult(404, { error: "Carrier list template was not found." });
+    }
+    if (outcome === "version_conflict") {
+      return carrierTemplateVersionConflict({
+        id: sourceId,
+        template_version: rpcRow.current_version,
+        updated_at: rpcRow.current_updated_at
+      });
+    }
+    if (outcome === "name_conflict") return carrierTemplateDuplicateNameResult();
+    const row = objectRecord(rpcRow.row_data);
+    const newId = cleanText(row.id);
+    if (outcome !== "success" || !newId) {
+      throw new Error("Carrier list template duplicate transaction returned an invalid outcome.");
+    }
+    const vendorIds = normalizeCarrierTemplateVendorIds(row.vendor_ids || []);
+    await writeCarrierTemplateAudit(supabase, user, "carrier_template.duplicate", newId, {
+      template_id: newId,
+      source_template_id: sourceId,
+      old_version: expectedVersion,
+      new_version: 1,
+      old_member_count: vendorIds.length,
+      new_member_count: vendorIds.length
+    });
+    return carrierTemplateResult(201, { row });
+  }
+
+  if (action === "archive_carrier_list_template" || action === "restore_carrier_list_template") {
+    const templateId = carrierTemplateId(input);
+    if (!templateId) return carrierTemplateResult(400, { error: "A valid carrier list template id is required." });
+    const expectedVersion = carrierTemplateExpectedVersion(input.expected_version);
+    if (!expectedVersion) return carrierTemplateResult(400, { error: "expected_version is required." });
+    const current = await loadCarrierTemplate(supabase, actor.organization_id, templateId);
+    if (!current) return carrierTemplateResult(404, { error: "Carrier list template was not found." });
+    if ((Number(current.template_version) || 1) !== expectedVersion) return carrierTemplateVersionConflict(current);
+    const vendorIds = normalizeCarrierTemplateVendorIds(current.vendor_ids || []);
+    const restoring = action === "restore_carrier_list_template";
+    if (restoring) {
+      if (!await hasCurrentCarrierTemplateMember(supabase, actor.organization_id, vendorIds)) {
+        return carrierTemplateResult(400, { error: "Restore requires at least one current carrier in this organization." });
+      }
+    }
+    const now = new Date().toISOString();
+    const newVersion = expectedVersion + 1;
+    const patch = restoring
+      ? {
+        lifecycle_status: "active",
+        status: "active",
+        vendor_ids: vendorIds,
+        template_version: newVersion,
+        updated_by_user_id: actor.user_id,
+        updated_by_email: actor.email,
+        archived_at: null,
+        archived_by_user_id: null,
+        archived_by_email: null,
+        updated_at: now
+      }
+      : {
+        lifecycle_status: "archived",
+        status: "archived",
+        template_version: newVersion,
+        updated_by_user_id: actor.user_id,
+        updated_by_email: actor.email,
+        archived_at: now,
+        archived_by_user_id: actor.user_id,
+        archived_by_email: actor.email,
+        updated_at: now
+      };
+    const result = await conditionalCarrierTemplateUpdate(
+      supabase,
+      actor.organization_id,
+      templateId,
+      expectedVersion,
+      patch
+    );
+    if (result.status !== 200) return result;
+    await writeCarrierTemplateAudit(
+      supabase,
+      user,
+      restoring ? "carrier_template.restore" : "carrier_template.archive",
+      templateId,
+      carrierTemplateAuditMetadata(templateId, expectedVersion, newVersion, vendorIds, vendorIds)
+    );
+    return result;
+  }
+
+  return null;
+}
+
+async function carrierTemplateApiResponse(
+  supabase: RatewareSupabaseClient,
+  user: RuntimeWorkspaceUser,
+  claims: Record<string, unknown>,
+  input: Record<string, unknown>,
+  enabled: boolean,
+  request: Request
+) {
+  const result = await handleCarrierTemplateApiAction(supabase, user, claims, input, { enabled });
+  if (!result) throw new Error("Carrier list template action dispatch failed.");
+  return baseJsonResponse(result.body, result.status, request);
+}
 
 const CARRIER_INTELLIGENCE_SCHEMA = {
   type: "object",
@@ -7322,15 +9052,6 @@ function normalizeSegment(input: Record<string, unknown>, user?: { owner_user_id
   };
 }
 
-function participantTemplateNameKey(value: unknown) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLocaleLowerCase();
-}
-
 async function findParticipantTemplateNameConflict(
   supabase: RatewareSupabaseClient,
   user: { owner_email: string | null },
@@ -7344,9 +9065,9 @@ async function findParticipantTemplateNameConflict(
     .eq("segment_type", "participant_template")
     .limit(250);
   if (result.error) throw result.error;
-  const key = participantTemplateNameKey(segmentName);
+  const key = carrierTemplateNameKey(segmentName);
   return (result.data || []).find((segment) =>
-    segment.id !== excludeId && participantTemplateNameKey(segment.segment_name) === key
+    segment.id !== excludeId && carrierTemplateNameKey(segment.segment_name) === key
   ) || null;
 }
 
@@ -8996,64 +10717,34 @@ async function rejectRfxBid(
 async function awardRfxLaneVendor(
   supabase: RatewareSupabaseClient,
   user: { owner_user_id: string | null; owner_email: string | null },
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  operationId: string | null
 ) {
   const invitation = await requireOwnedRfxLaneVendor(supabase, user, input.id || input.rfx_lane_vendor_id || input.invitation_id);
   if (cleanNumber(invitation.bid_rate) === null) throw new Error("A carrier bid rate is required before awarding.");
   const role = normalizeAwardRole(input.award_role || input.role);
-  const now = new Date().toISOString();
+  if (!operationId) throw new Error("RFx award operation id is required.");
+  const transition = await supabase.rpc("rateware_award_rfx_lane_vendor", {
+    p_owner_email: user.owner_email,
+    p_operation_id: operationId,
+    p_rfx_lane_vendor_id: invitation.id,
+    p_award_role: role,
+    p_award_reason: cleanText(input.award_reason || input.reason),
+    p_award_notes: cleanText(input.award_notes || input.notes),
+    p_awarded_by: user.owner_email
+  });
+  if (transition.error) throw transition.error;
 
-  if (role === "primary") {
-    const previousPrimary = await supabase
-      .from("rfx_lane_vendors")
-      .select("id,bid_rate_staging_id")
-      .eq("rfx_lane_id", invitation.rfx_lane_id)
-      .eq("award_role", "primary")
-      .neq("id", invitation.id);
-    if (previousPrimary.error) throw previousPrimary.error;
-
-    const clearResult = await supabase
-      .from("rfx_lane_vendors")
-      .update({
-        award_role: null,
-        award_reason: null,
-        award_notes: null,
-        awarded_at: null,
-        awarded_by: null,
-        updated_at: now
-      })
-      .eq("rfx_lane_id", invitation.rfx_lane_id)
-      .eq("award_role", "primary")
-      .neq("id", invitation.id);
-    if (clearResult.error) throw clearResult.error;
-
-    for (const previous of previousPrimary.data || []) {
-      await setRfxBidRateHistoryOutcome(supabase, previous, "not_awarded", now);
-    }
-  }
-
-  const result = await supabase
-    .from("rfx_lane_vendors")
-    .update({
-      award_role: role,
-      award_reason: cleanText(input.award_reason || input.reason) || (role === "primary" ? "Primary procurement award" : "Backup carrier"),
-      award_notes: cleanText(input.award_notes || input.notes),
-      awarded_at: now,
-      awarded_by: user.owner_email,
-      invitation_status: role === "primary" ? "awarded" : "quoted",
-      updated_at: now
-    })
-    .eq("id", invitation.id)
-    .select("*, vendors(id,vendor_name,domain,primary_email,base_stage,status)")
-    .single();
-  if (result.error) throw result.error;
-
-  await setRfxBidRateHistoryOutcome(supabase, invitation, role === "primary" ? "awarded" : "backup", now);
+  const result = await requireOwnedRfxLaneVendor(supabase, user, invitation.id);
+  const receipt = objectRecord(transition.data);
+  const before = receipt.before && typeof receipt.before === "object" ? objectRecord(receipt.before) : invitation;
 
   return {
-    row: withoutRfxInvitationTokenColumns(result.data),
-    before: withoutRfxInvitationTokenColumns(invitation),
-    award_role: role
+    row: publicRfxParticipantRow(result),
+    before: publicRfxParticipantRow(before),
+    award_role: role,
+    operation_id: operationId,
+    idempotent: Boolean(receipt.idempotent)
   };
 }
 
@@ -9102,8 +10793,8 @@ async function clearRfxAward(
   }
 
   return {
-    row: withoutRfxInvitationTokenColumns(result.data),
-    before: withoutRfxInvitationTokenColumns(invitation)
+    row: publicRfxParticipantRow(result.data),
+    before: publicRfxParticipantRow(invitation)
   };
 }
 
@@ -15966,12 +17657,17 @@ async function loadBidComparisonFxRate(supabase: RatewareSupabaseClient) {
   }
 }
 
-// `select("*")` on rfx_lane_vendors carries the stored token ciphertext and hash.
-// Neither belongs in an API response, so strip them before anything is returned.
-function withoutRfxInvitationTokenColumns<T>(row: T): T {
+// `select("*")` on rfx_lane_vendors carries server-only token material and the
+// durable materialization attribution marker. None belongs in a browser-facing
+// participant row; internal final reconciliation uses its own explicit select.
+function publicRfxParticipantRow<T>(row: T): T {
   if (!row || typeof row !== "object") return row;
-  const { invitation_token_encrypted: _encrypted, invitation_token_hash: _hash, ...safeRow } =
-    row as Record<string, unknown>;
+  const {
+    invitation_token_encrypted: _encrypted,
+    invitation_token_hash: _hash,
+    carrier_template_materialization_operation_id: _operationId,
+    ...safeRow
+  } = row as Record<string, unknown>;
   return safeRow as T;
 }
 
@@ -16000,8 +17696,7 @@ async function hydrateRfxBoardInvitationTokens(
         token = null;
       }
     }
-    const { invitation_token_encrypted: _encrypted, invitation_token_hash: _hash, ...safeRow } = row;
-    hydrated.push({ ...safeRow, invitation_token: token || "" });
+    hydrated.push({ ...publicRfxParticipantRow(row), invitation_token: token || "" });
   }
   return hydrated;
 }
@@ -20230,7 +21925,8 @@ async function writeRfxProcessAudit(
   entityType: string,
   entityId: unknown,
   summary: string,
-  metadata: Record<string, unknown> = {}
+  metadata: Record<string, unknown> = {},
+  operationId: string | null = null
 ) {
   const row = withOwner({
     project_id: cleanText(projectId),
@@ -20239,10 +21935,15 @@ async function writeRfxProcessAudit(
     entity_type: entityType,
     entity_id: cleanText(entityId),
     summary,
-    metadata
+    metadata,
+    operation_id: operationId
   }, user);
-  const result = await supabase.from("rfx_process_audit").insert(row);
+  const query = operationId
+    ? supabase.from("rfx_process_audit").upsert(row, { onConflict: "owner_email,action,operation_id", ignoreDuplicates: true }).select("id")
+    : supabase.from("rfx_process_audit").insert(row).select("id");
+  const result = await query;
   if (result.error) throw result.error;
+  if (operationId && !(result.data || []).length) return;
   await writeAuditLog(supabase, user, action, entityType, entityId, summary, { ...metadata, rfx_project_id: cleanText(projectId) });
 }
 
@@ -23749,27 +25450,17 @@ async function syncShipperOpportunityFromImplementationReadyAward(
   return result.data as Record<string, unknown>;
 }
 
-async function createRfxAwardPackage(supabase: RatewareSupabaseClient, user: { owner_user_id: string | null; owner_email: string | null }, input: Record<string, unknown>) {
+async function createRfxAwardPackage(
+  supabase: RatewareSupabaseClient,
+  user: { owner_user_id: string | null; owner_email: string | null },
+  input: Record<string, unknown>,
+  operationId: string | null
+) {
+  if (!operationId) throw new Error("RFx award package operation id is required.");
   const project = await requireOwnedRfxProcessProject(supabase, user, input.project_id || input.id);
   const scenarioType = cleanText(input.scenario_type || input.scenarioType)?.toLowerCase() || "best_value";
   const status = cleanText(input.status)?.toLowerCase() || "draft";
-  const awardRow = withOwner({
-    project_id: project.id,
-    rfx_package_id: cleanText(input.rfx_package_id || input.package_id),
-    linked_rfx_event_id: cleanText(input.linked_rfx_event_id || project.linked_rfx_event_id),
-    scenario_name: cleanText(input.scenario_name || input.name) || "Primary award scenario",
-    scenario_type: ["cheapest", "best_value", "primary_backup", "capacity_split", "incumbent_comparison"].includes(scenarioType) ? scenarioType : "best_value",
-    status: ["draft", "approved", "implementation_ready", "archived"].includes(status) ? status : "draft",
-    evaluation_summary: objectRecord(input.evaluation_summary || input.evaluationSummary),
-    implementation_checklist: objectRecord(input.implementation_checklist || input.implementationChecklist),
-    approved_at: ["approved", "implementation_ready"].includes(status) ? new Date().toISOString() : null,
-    notes: cleanText(input.notes)
-  }, user);
-  const awardInsert = await supabase.from("rfx_award_packages").insert(awardRow).select().single();
-  if (awardInsert.error) throw awardInsert.error;
-  const lines = Array.isArray(input.lines) ? input.lines : [];
-  const lineRows = lines.slice(0, 1000).map((line: Record<string, unknown>) => withOwner({
-    award_package_id: awardInsert.data.id,
+  const normalizedLines = (Array.isArray(input.lines) ? input.lines : []).slice(0, 1000).map((line: Record<string, unknown>) => ({
     lane_id: cleanText(line.lane_id || line.laneId),
     awarded_carrier_id: cleanText(line.awarded_carrier_id || line.awardedCarrierId),
     backup_carrier_id: cleanText(line.backup_carrier_id || line.backupCarrierId),
@@ -23781,26 +25472,98 @@ async function createRfxAwardPackage(supabase: RatewareSupabaseClient, user: { o
     accepted_exceptions: Array.isArray(line.accepted_exceptions) ? line.accepted_exceptions : [],
     implementation_notes: cleanText(line.implementation_notes || line.implementationNotes),
     status: cleanText(line.status) || "draft"
+  }));
+  const awardRow: Record<string, unknown> = withOwner({
+    project_id: project.id,
+    rfx_package_id: cleanText(input.rfx_package_id || input.package_id),
+    linked_rfx_event_id: cleanText(input.linked_rfx_event_id || project.linked_rfx_event_id),
+    scenario_name: cleanText(input.scenario_name || input.name) || "Primary award scenario",
+    scenario_type: ["cheapest", "best_value", "primary_backup", "capacity_split", "incumbent_comparison"].includes(scenarioType) ? scenarioType : "best_value",
+    status: ["draft", "approved", "implementation_ready", "archived"].includes(status) ? status : "draft",
+    evaluation_summary: objectRecord(input.evaluation_summary || input.evaluationSummary),
+    implementation_checklist: objectRecord(input.implementation_checklist || input.implementationChecklist),
+    approved_at: ["approved", "implementation_ready"].includes(status) ? new Date().toISOString() : null,
+    notes: cleanText(input.notes),
+    operation_id: operationId
+  }, user);
+  const payloadFingerprint = await fcmSha256Hex(JSON.stringify({
+    project_id: awardRow.project_id,
+    rfx_package_id: awardRow.rfx_package_id,
+    linked_rfx_event_id: awardRow.linked_rfx_event_id,
+    scenario_name: awardRow.scenario_name,
+    scenario_type: awardRow.scenario_type,
+    status: awardRow.status,
+    evaluation_summary: awardRow.evaluation_summary,
+    implementation_checklist: awardRow.implementation_checklist,
+    notes: awardRow.notes,
+    lines: normalizedLines
+  }));
+  awardRow.operation_payload_fingerprint = payloadFingerprint;
+
+  let awardPackage: Record<string, unknown> | null = null;
+  let idempotent = false;
+  const existing = await supabase.from("rfx_award_packages").select("*")
+    .eq("owner_email", user.owner_email)
+    .eq("operation_id", operationId)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  if (existing.data) {
+    awardPackage = existing.data;
+    idempotent = true;
+  } else {
+    const awardInsert = await supabase.from("rfx_award_packages").insert(awardRow).select().single();
+    if (awardInsert.error?.code === "23505") {
+      const raced = await supabase.from("rfx_award_packages").select("*")
+        .eq("owner_email", user.owner_email)
+        .eq("operation_id", operationId)
+        .single();
+      if (raced.error) throw raced.error;
+      awardPackage = raced.data;
+      idempotent = true;
+    } else if (awardInsert.error) throw awardInsert.error;
+    else awardPackage = awardInsert.data;
+  }
+  if (cleanText(awardPackage?.operation_payload_fingerprint) !== payloadFingerprint) {
+    throw new Error("RFx award package operation id was already used with a different payload.");
+  }
+
+  const lineRows = normalizedLines.map((line, operationLineIndex) => withOwner({
+    ...line,
+    award_package_id: awardPackage?.id,
+    operation_line_index: operationLineIndex
   }, user));
   for (const batch of chunkValues(lineRows, 500)) {
-    const insert = await supabase.from("rfx_award_package_lanes").insert(batch).select("id");
+    const insert = await supabase.from("rfx_award_package_lanes")
+      .upsert(batch, { onConflict: "award_package_id,operation_line_index" })
+      .select("id");
     if (insert.error) throw insert.error;
   }
   let shipperOpportunity: Record<string, unknown> | null = null;
   if (awardRow.status === "implementation_ready") {
-    const projectUpdate = await supabase.from("rfx_projects")
-      .update({ status: "implementation_ready", updated_at: new Date().toISOString() })
-      .eq("id", project.id)
-      .eq("owner_email", user.owner_email);
-    if (projectUpdate.error) throw projectUpdate.error;
-    shipperOpportunity = await syncShipperOpportunityFromImplementationReadyAward(supabase, user, project.id, awardInsert.data.id);
+    if (!cleanText(awardPackage?.operation_completed_at)) {
+      const projectUpdate = await supabase.from("rfx_projects")
+        .update({ status: "implementation_ready", updated_at: new Date().toISOString() })
+        .eq("id", project.id)
+        .eq("owner_email", user.owner_email);
+      if (projectUpdate.error) throw projectUpdate.error;
+      shipperOpportunity = await syncShipperOpportunityFromImplementationReadyAward(supabase, user, project.id, awardPackage?.id);
+    }
   }
-  await writeRfxProcessAudit(supabase, user, project.id, "award_scenario_created", "rfx_award_packages", awardInsert.data.id, `Created RFx Award Package ${awardInsert.data.scenario_name}`, {
-    scenario_type: awardInsert.data.scenario_type,
+  await writeRfxProcessAudit(supabase, user, project.id, "award_scenario_created", "rfx_award_packages", awardPackage?.id, `Created RFx Award Package ${awardPackage?.scenario_name}`, {
+    scenario_type: awardPackage?.scenario_type,
     lines: lineRows.length,
-    shipper_opportunity_id: shipperOpportunity?.id || null
-  });
-  return { row: awardInsert.data, lines: lineRows.length, shipper_opportunity: shipperOpportunity };
+    shipper_opportunity_id: shipperOpportunity?.id || null,
+    operation_id: operationId
+  }, operationId);
+  const completedAt = cleanText(awardPackage?.operation_completed_at) || new Date().toISOString();
+  const completion = await supabase.from("rfx_award_packages")
+    .update({ operation_completed_at: completedAt, updated_at: new Date().toISOString() })
+    .eq("owner_email", user.owner_email)
+    .eq("id", awardPackage?.id)
+    .select()
+    .single();
+  if (completion.error) throw completion.error;
+  return { row: completion.data, lines: lineRows.length, shipper_opportunity: shipperOpportunity, operation_id: operationId, idempotent };
 }
 
 async function markRfxAwardPackageImplementationReady(
@@ -23852,33 +25615,92 @@ async function markRfxAwardPackageImplementationReady(
   return { row: awardUpdate.data, project_id: project.id, shipper_opportunity: shipperOpportunity };
 }
 
-Deno.serve(async (request) => {
+type RatewareApiHandlerDependencies = {
+  getClient?: () => RatewareSupabaseClient;
+  authenticate?: typeof requireRatewareUser;
+  resolveUser?: RatewareIdentityDependencies["resolveUser"];
+  carrierTemplatesEnabled?: boolean;
+};
+
+export function ratewareRequestId(request: Request) {
+  const supplied = request.headers.get("x-request-id")?.trim() || "";
+  return CORRELATION_ID_PATTERN.test(supplied) ? supplied : crypto.randomUUID();
+}
+
+export function ratewareOperationId(request: Request, body: Record<string, unknown>) {
+  const action = cleanText(body.action) || "";
+  if (!CORRELATED_HIGH_RISK_ACTIONS.has(action)) return null;
+  const supplied = cleanText(request.headers.get("x-operation-id") || body.operation_id);
+  return supplied && UUID_PATTERN.test(supplied) ? supplied.toLowerCase() : crypto.randomUUID();
+}
+
+function correlatedJsonResponse(
+  request: Request,
+  requestId: string,
+  operationId: string | null,
+  body: unknown,
+  status = 200
+) {
+  const response = baseJsonResponse(body, status, request);
+  const headers = new Headers(response.headers);
+  headers.set("X-Request-Id", requestId);
+  if (operationId) headers.set("X-Operation-Id", operationId);
+  headers.set("Access-Control-Expose-Headers", "X-Request-Id, X-Operation-Id");
+  return new Response(response.body, { status: response.status, headers });
+}
+
+function correlatedPreflightResponse(request: Request, requestId: string) {
+  const headers = new Headers(corsHeaders(request));
+  headers.set("Access-Control-Allow-Headers", "authorization, x-client-info, apikey, content-type, x-request-id, x-operation-id");
+  headers.set("Access-Control-Expose-Headers", "X-Request-Id, X-Operation-Id");
+  headers.set("X-Request-Id", requestId);
+  return new Response("ok", { headers });
+}
+
+export function createRatewareApiHandler(
+  dependencies: RatewareApiHandlerDependencies = {}
+) {
+  const clientFactory = dependencies.getClient ?? getClient;
+  const authenticate = dependencies.authenticate ?? requireRatewareUser;
+  const resolveUser = dependencies.resolveUser ?? resolveRuntimeWorkspaceUser;
+  const carrierTemplatesEnabled = dependencies.carrierTemplatesEnabled ?? CARRIER_LIST_TEMPLATES_V2_ENABLED;
+
+  return async (request: Request) => {
   const requestStartedAt = performance.now();
-  const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
-  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
+  const requestId = ratewareRequestId(request);
+  let operationId: string | null = null;
+  const jsonResponse = (body: unknown, status = 200) => correlatedJsonResponse(request, requestId, operationId, body, status);
+  if (request.method === "OPTIONS") return correlatedPreflightResponse(request, requestId);
 
   let auditSupabase: RatewareSupabaseClient | null = null;
   let auditUser: RatewareUser | null = null;
   let body: Record<string, unknown> = {};
 
   try {
-    const supabase = getClient();
+    const supabase = clientFactory();
     auditSupabase = supabase;
     const authenticationStartedAt = performance.now();
-    const user: RuntimeWorkspaceUser = await resolveRuntimeWorkspaceUser(
-      supabase,
-      await requireKindeUser(request),
-      { persistLegacyIdentity: false }
-    );
+    const claims = await authenticate(request);
+    const { user } = await resolveRatewareApiPrincipal(supabase, claims, { resolveUser });
     const authenticationCompletedAt = performance.now();
     auditUser = user;
     body = await request.json();
+    operationId = ratewareOperationId(request, body);
     const bodyParsedAt = performance.now();
 
     const growthAction = typeof body.action === "string" ? body.action : "";
     if (isGrowthAction(growthAction)) {
       return jsonResponse(await handleGrowthAction(supabase, user, body));
     }
+
+    if (body.action === "list_carrier_list_templates") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "get_carrier_list_template") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "resolve_carrier_list_template_rows") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "create_carrier_list_template") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "update_carrier_list_template") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "duplicate_carrier_list_template") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "archive_carrier_list_template") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
+    if (body.action === "restore_carrier_list_template") return await carrierTemplateApiResponse(supabase, user, claims, body, carrierTemplatesEnabled, request);
 
     if (body.action === "list_rfx_process_projects") {
       return jsonResponse(await listRfxProcessProjects(supabase, user, body));
@@ -24077,7 +25899,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "create_rfx_award_package") {
-      return jsonResponse(await createRfxAwardPackage(supabase, user, body));
+      return jsonResponse(await createRfxAwardPackage(supabase, user, body, operationId));
     }
 
     if (body.action === "mark_rfx_award_package_implementation_ready") {
@@ -25568,88 +27390,131 @@ Deno.serve(async (request) => {
       const vendorSelect = lightweight
         ? "id,vendor_name,name,legal_name,contact_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,whatsapp_permission_basis,whatsapp_do_not_contact,whatsapp_opt_in_status,whatsapp_group_url,whatsapp_group_name,whatsapp_meta_group_id,whatsapp_group_status,whatsapp_notes,base_stage,funnel_stage,status,tags,coverage_notes,notes,logo_url,created_at,updated_at"
         : "*";
-      let searchIds: string[] | null = null;
       let searchTotal = 0;
-      let searchCapped = false;
+      let filteredTotal = 0;
+      let rows: Record<string, unknown>[] = [];
+
+      const applyVendorFilters = (unfilteredQuery: any) => {
+        let filteredQuery = unfilteredQuery;
+        if (body.status) filteredQuery = filteredQuery.eq("status", body.status);
+        if (effectiveBaseStage) filteredQuery = filteredQuery.eq("base_stage", effectiveBaseStage);
+        if (view === "missing-contact") {
+          filteredQuery = filteredQuery.is("primary_email", null).is("whatsapp_phone", null);
+        }
+        if (view === "cross-border") {
+          filteredQuery = filteredQuery.or("coverage_notes.ilike.%Cross-border%,notes.ilike.%Cross-border%");
+        }
+        if (view === "high-confidence") filteredQuery = filteredQuery.contains("tags", ["alta"]);
+        if (view === "procurement-ready") {
+          filteredQuery = filteredQuery.not("primary_email", "is", null).not("domain", "is", null).not("coverage_notes", "is", null);
+        }
+        if (body.channel) {
+          filteredQuery = filteredQuery.eq("preferred_channel", String(body.channel).trim().toLowerCase());
+        }
+        if (body.tag) {
+          const tag = String(body.tag).trim().toLowerCase();
+          if (tag) filteredQuery = filteredQuery.contains("tags", [tag]);
+        }
+        if (body.coverage) {
+          const coverage = String(body.coverage).trim();
+          if (coverage) filteredQuery = filteredQuery.or(`coverage_notes.ilike.%${coverage}%,notes.ilike.%${coverage}%`);
+        }
+        return filteredQuery;
+      };
 
       if (vendorSearch) {
-        const searchResult = await supabase.rpc("search_workspace_vendors", {
-          p_owner_email: user.owner_email,
-          p_search: vendorSearch,
-          p_limit: 1000,
-          p_offset: 0
-        });
-        if (searchResult.error) throw new Error(`Vendor search failed: ${searchResult.error.message}`);
-        const matches = (searchResult.data || []) as Array<Record<string, unknown>>;
-        searchIds = matches.map((row) => cleanText(row.id)).filter((id): id is string => Boolean(id));
-        searchTotal = Number(matches[0]?.total_count || searchIds.length);
-        searchCapped = searchTotal > searchIds.length;
-        if (!searchIds.length) {
-          return jsonResponse({ rows: [], total: 0, limit, offset, warnings: [], search_total: 0, search_capped: false });
+        const searchPageSize = 1000;
+        const searchSafetyLimit = 200000;
+        const requestedIdSet = requestedIds.length ? new Set(requestedIds) : null;
+        const rankedRows: Array<{ matchRank: number; sortKey: string; id: string; row: Record<string, unknown> }> = [];
+        const seenSearchIds = new Set<string>();
+        const searchSnapshotAt = new Date().toISOString();
+        let searchAfterId = "";
+        let searchComplete = false;
+        while (seenSearchIds.size < searchSafetyLimit) {
+          const searchResult = await supabase.rpc("search_workspace_vendors_keyset", {
+            p_owner_email: user.owner_email,
+            p_organization_id: user.organization_id,
+            p_search: vendorSearch,
+            p_snapshot_at: searchSnapshotAt,
+            p_after_id: searchAfterId || null,
+            p_limit: searchPageSize,
+          });
+          if (searchResult.error) throw new Error(`Vendor search failed: ${searchResult.error.message}`);
+          const matches = (searchResult.data || []) as Array<Record<string, unknown>>;
+          if (!searchAfterId) searchTotal = Number(matches[0]?.total_count || matches.length);
+          if (searchTotal > searchSafetyLimit) {
+            throw new Error(`Vendor search exceeds the ${searchSafetyLimit.toLocaleString()}-row safety limit; refine the search.`);
+          }
+          const rankedIds = matches
+            .map((match) => ({
+              id: cleanText(match.id),
+              matchRank: Number(match.match_rank) || 0,
+              sortKey: cleanText(match.sort_key) || cleanText(match.id) || "",
+            }))
+            .filter((match): match is { id: string; matchRank: number; sortKey: string } => Boolean(match.id));
+          if (rankedIds.some((match) => seenSearchIds.has(match.id))) {
+            throw new Error("Vendor search keyset returned a duplicate carrier; no partial result was returned.");
+          }
+          for (const match of rankedIds) seenSearchIds.add(match.id);
+          const scopedRankedIds = requestedIdSet
+            ? rankedIds.filter((match) => requestedIdSet.has(match.id))
+            : rankedIds;
+          if (scopedRankedIds.length) {
+            let vendorQuery = supabase
+              .from("vendors")
+              .select(vendorSelect)
+              .eq("owner_email", user.owner_email)
+              .eq("organization_id", user.organization_id)
+              .order("created_at", { ascending: false })
+              .order("id", { ascending: false })
+              .in("id", scopedRankedIds.map((match) => match.id));
+            vendorQuery = applyVendorFilters(vendorQuery);
+            const vendorResult = await vendorQuery;
+            if (vendorResult.error) throw vendorResult.error;
+            const rankById = new Map(scopedRankedIds.map((match) => [match.id, match]));
+            for (const row of (vendorResult.data || []) as unknown as Record<string, unknown>[]) {
+              const id = cleanText(row.id);
+              if (!id) continue;
+              const rank = rankById.get(id);
+              if (rank) rankedRows.push({ ...rank, row });
+            }
+          }
+          const hasMore = matches.some((match) => match.has_more === true);
+          if (!hasMore) {
+            searchComplete = true;
+            break;
+          }
+          const nextAfterId = rankedIds[rankedIds.length - 1]?.id || "";
+          if (!nextAfterId || (searchAfterId && nextAfterId <= searchAfterId)) {
+            throw new Error("Vendor search keyset did not advance; no partial result was returned.");
+          }
+          searchAfterId = nextAfterId;
         }
-      }
-      const shouldPageSearchInMemory = Boolean(searchIds);
-      let query = supabase
-        .from("vendors")
-        .select(vendorSelect, { count: "exact" })
-        .eq("owner_email", user.owner_email)
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false });
-
-      const scopedIds = requestedIds.length && searchIds
-        ? requestedIds.filter((id) => searchIds?.includes(id))
-        : requestedIds.length
-          ? requestedIds
-          : searchIds;
-      if (scopedIds) {
-        if (!scopedIds.length) return jsonResponse({ rows: [], total: 0, limit, offset, warnings: [], search_total: searchTotal, search_capped: searchCapped });
-        query = query.in("id", scopedIds);
-      }
-
-      if (body.status) query = query.eq("status", body.status);
-      if (effectiveBaseStage) {
-        query = query.eq("base_stage", effectiveBaseStage);
-      }
-      if (view === "missing-contact") {
-        query = query.is("primary_email", null).is("whatsapp_phone", null);
-      }
-      if (view === "cross-border") {
-        query = query.or("coverage_notes.ilike.%Cross-border%,notes.ilike.%Cross-border%");
-      }
-      if (view === "high-confidence") {
-        query = query.contains("tags", ["alta"]);
-      }
-      if (view === "procurement-ready") {
-        query = query.not("primary_email", "is", null).not("domain", "is", null).not("coverage_notes", "is", null);
-      }
-      if (body.channel) {
-        query = query.eq("preferred_channel", String(body.channel).trim().toLowerCase());
-      }
-      if (body.tag) {
-        const tag = String(body.tag).trim().toLowerCase();
-        if (tag) query = query.contains("tags", [tag]);
-      }
-      if (body.coverage) {
-        const coverage = String(body.coverage).trim();
-        if (coverage) query = query.or(`coverage_notes.ilike.%${coverage}%,notes.ilike.%${coverage}%`);
-      }
-      if (shouldPageSearchInMemory) {
-        query = query.limit(1000);
+        if (!searchComplete) {
+          throw new Error(`Vendor search did not complete within the ${searchSafetyLimit.toLocaleString()}-row safety limit.`);
+        }
+        rankedRows.sort((left, right) => (
+          left.matchRank - right.matchRank ||
+          left.sortKey.localeCompare(right.sortKey) ||
+          left.id.localeCompare(right.id)
+        ));
+        filteredTotal = rankedRows.length;
+        rows = rankedRows.slice(offset, offset + limit).map((entry) => entry.row);
       } else {
-        query = query.range(offset, offset + limit - 1);
-      }
-      const result = await query;
-      if (result.error) throw result.error;
-      let rows = (result.data || []) as unknown as Record<string, unknown>[];
-      const filteredTotal = result.count || rows.length;
-      if (shouldPageSearchInMemory && searchIds) {
-        const rankById = new Map(searchIds.map((id, index) => [id, index]));
-        rows = rows
-          .sort((left, right) =>
-            (rankById.get(cleanText(left.id) || "") ?? Number.MAX_SAFE_INTEGER)
-            - (rankById.get(cleanText(right.id) || "") ?? Number.MAX_SAFE_INTEGER)
-          )
-          .slice(offset, offset + limit);
+        let query = supabase
+          .from("vendors")
+          .select(vendorSelect, { count: "exact" })
+          .eq("owner_email", user.owner_email)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false });
+        if (requestedIds.length) query = query.in("id", requestedIds);
+        query = applyVendorFilters(query).range(offset, offset + limit - 1);
+        const result = await query;
+        if (result.error) throw result.error;
+        rows = (result.data || []) as unknown as Record<string, unknown>[];
+        filteredTotal = result.count || rows.length;
+        searchTotal = filteredTotal;
       }
       let enrichedRows = rows;
       let warnings: string[] = [];
@@ -25669,12 +27534,12 @@ Deno.serve(async (request) => {
       }
       return jsonResponse({
         rows: enrichedRows,
-        total: vendorSearch ? searchTotal : filteredTotal,
+        total: filteredTotal,
         limit,
         offset,
         warnings,
         search_total: vendorSearch ? searchTotal : filteredTotal,
-        search_capped: searchCapped
+        search_capped: false
       });
     }
 
@@ -26442,7 +28307,9 @@ Deno.serve(async (request) => {
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
       if (requestedSegmentType === "participant_template") {
-        query = query.eq("owner_email", user.owner_email).eq("segment_type", "participant_template");
+        const scope = carrierTemplateLegacyReadScope(carrierTemplatesEnabled, requestedSegmentType, user);
+        if (!scope?.value) return jsonResponse({ error: "An organization-scoped workspace is required." }, 403);
+        query = query.eq(scope.column, scope.value).eq("segment_type", "participant_template");
       } else {
         query = query.or(`owner_email.is.null,owner_email.eq.${user.owner_email}`);
       }
@@ -26455,6 +28322,9 @@ Deno.serve(async (request) => {
 
     if (body.action === "create_vendor_segment") {
       const row = normalizeSegment(objectRecord(body.segment), user);
+      if (carrierTemplateLegacyMutationBlocked(carrierTemplatesEnabled, row.segment_type, null)) {
+        return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+      }
       if (row.segment_type === "participant_template") {
         if (!row.vendor_ids.length) return jsonResponse({ error: "Participant templates must include at least one carrier." }, 400);
         const conflict = await findParticipantTemplateNameConflict(supabase, user, row.segment_name);
@@ -26475,6 +28345,21 @@ Deno.serve(async (request) => {
     if (body.action === "update_vendor_segment") {
       if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
       const patch = normalizeSegment(objectRecord(body.segment || body.patch), user);
+      if (carrierTemplateLegacyMutationBlocked(carrierTemplatesEnabled, patch.segment_type, null)) {
+        return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+      }
+      if (carrierTemplatesEnabled && user.organization_id) {
+        const currentSegment = await supabase
+          .from("vendor_segments")
+          .select("segment_type")
+          .eq("id", body.id)
+          .eq("organization_id", user.organization_id)
+          .maybeSingle();
+        if (currentSegment.error) throw currentSegment.error;
+        if (carrierTemplateLegacyMutationBlocked(true, patch.segment_type, cleanText(currentSegment.data?.segment_type))) {
+          return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+        }
+      }
       if (patch.segment_type === "participant_template") {
         if (!patch.vendor_ids.length) return jsonResponse({ error: "Participant templates must include at least one carrier." }, 400);
         const conflict = await findParticipantTemplateNameConflict(supabase, user, patch.segment_name, String(body.id));
@@ -26482,14 +28367,21 @@ Deno.serve(async (request) => {
           return jsonResponse({ error: `A participant template named "${conflict.segment_name}" already exists. Choose a different name.` }, 409);
         }
       }
-      const result = await supabase
+      let mutation = supabase
         .from("vendor_segments")
         .update(patch)
         .eq("owner_email", user.owner_email)
-        .eq("id", body.id)
-        .select()
-        .single();
+        .eq("id", body.id);
+      if (carrierTemplatesEnabled) {
+        mutation = mutation.neq("segment_type", "participant_template");
+      }
+      const result = carrierTemplatesEnabled
+        ? await mutation.select().maybeSingle()
+        : await mutation.select().single();
       if (result.error) throw result.error;
+      if (carrierTemplatesEnabled && !result.data) {
+        return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+      }
       await tryWriteAuditLog(supabase, user, "vendor.segment.update", "vendor_segments", result.data.id,
         `Updated vendor segment ${cleanText(result.data.segment_name) || result.data.id}`, {
           segment_type: result.data.segment_type,
@@ -26500,12 +28392,33 @@ Deno.serve(async (request) => {
 
     if (body.action === "delete_vendor_segment") {
       if (!body.id) return jsonResponse({ error: "Segment id is required." }, 400);
-      requireBulkConfirmation(body, { action: "delete_vendor_segment", label: "Vendor segment deletion", count: 1 });
       const requestedSegmentType = cleanText(body.segment_type)?.toLowerCase();
+      if (carrierTemplateLegacyMutationBlocked(carrierTemplatesEnabled, requestedSegmentType || null, null)) {
+        return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+      }
+      if (carrierTemplatesEnabled && user.organization_id) {
+        const currentSegment = await supabase
+          .from("vendor_segments")
+          .select("segment_type")
+          .eq("id", body.id)
+          .eq("organization_id", user.organization_id)
+          .maybeSingle();
+        if (currentSegment.error) throw currentSegment.error;
+        if (carrierTemplateLegacyMutationBlocked(true, requestedSegmentType || null, cleanText(currentSegment.data?.segment_type))) {
+          return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+        }
+      }
+      requireBulkConfirmation(body, { action: "delete_vendor_segment", label: "Vendor segment deletion", count: 1 });
       let query = supabase.from("vendor_segments").delete().eq("owner_email", user.owner_email).eq("id", body.id);
+      if (carrierTemplatesEnabled) query = query.neq("segment_type", "participant_template");
       if (requestedSegmentType) query = query.eq("segment_type", requestedSegmentType);
-      const result = await query.select().single();
+      const result = carrierTemplatesEnabled
+        ? await query.select().maybeSingle()
+        : await query.select().single();
       if (result.error) throw result.error;
+      if (carrierTemplatesEnabled && !result.data) {
+        return jsonResponse({ error: "Participant templates must use the explicit carrier list template actions." }, 409);
+      }
       await tryWriteAuditLog(supabase, user, "vendor.segment.delete", "vendor_segments", result.data.id,
         `Deleted vendor segment ${cleanText(result.data.segment_name || result.data.name) || result.data.id}`);
       return jsonResponse({ row: result.data });
@@ -26947,6 +28860,8 @@ Deno.serve(async (request) => {
       const actionCompletedAt = performance.now();
       console.info(JSON.stringify({
         event: "rateware_api.performance",
+        request_id: requestId,
+        operation_id: operationId,
         action: "list_bid_room_chat",
         authentication_ms: Math.round(authenticationCompletedAt - authenticationStartedAt),
         body_parse_ms: Math.round(bodyParsedAt - authenticationCompletedAt),
@@ -27074,6 +28989,17 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "shortlist_rfx_lane_vendors") {
+      const rawTemplateContext = objectRecord(body.carrier_template_context);
+      if (Object.keys(rawTemplateContext).length) {
+        const materialization = await materializeCarrierTemplateRfxParticipants(
+          supabase,
+          user,
+          claims,
+          body,
+          carrierTemplatesEnabled
+        );
+        return jsonResponse(materialization.body, materialization.status);
+      }
       const lane = await requireOwnedRfxLane(supabase, user, body.lane_id);
       const vendorIds = normalizeBulkIds(body.vendor_ids, { label: "Vendor ids", limit: BULK_SHORTLIST_VENDOR_LIMIT });
       if (!vendorIds.length) return jsonResponse({ inserted: 0, rows: [] });
@@ -27084,11 +29010,11 @@ Deno.serve(async (request) => {
         .in("id", vendorIds);
       if (vendorsResult.error) throw vendorsResult.error;
       const insertRows = await Promise.all((vendorsResult.data || []).map(async (vendor) => ({
-        rfx_event_id: lane.rfx_event_id,
-        rfx_lane_id: lane.id,
-        vendor_id: vendor.id,
-        invitation_status: "drafted",
-        ...(await newRfxInvitationTokenFields())
+          rfx_event_id: lane.rfx_event_id,
+          rfx_lane_id: lane.id,
+          vendor_id: vendor.id,
+          invitation_status: "drafted",
+          ...(await newRfxInvitationTokenFields())
       })));
       const result = await supabase
         .from("rfx_lane_vendors")
@@ -27218,8 +29144,8 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "award_rfx_lane_vendor") {
-      const result = await awardRfxLaneVendor(supabase, user, body);
-      await writeAuditLog(
+      const result = await awardRfxLaneVendor(supabase, user, body, operationId);
+      if (!result.idempotent) await writeAuditLog(
         supabase,
         user,
         "rfx.award.save",
@@ -27230,7 +29156,8 @@ Deno.serve(async (request) => {
           award_role: result.award_role,
           award_reason: result.row.award_reason,
           rfx_event_id: result.row.rfx_event_id,
-          rfx_lane_id: result.row.rfx_lane_id
+          rfx_lane_id: result.row.rfx_lane_id,
+          operation_id: result.operation_id
         }
       );
       return jsonResponse(result);
@@ -27756,6 +29683,84 @@ Deno.serve(async (request) => {
         return acc;
       }, {} as Record<string, number>);
       return jsonResponse({ rows, counts, total: allRows.length, filtered_total: rows.length, channel, rfx_event_id: eventId });
+    }
+
+    if (body.action === "list_rfx_invitation_wave_reviews") {
+      const eventId = cleanText(body.rfx_event_id || body.event_id);
+      if (!eventId || !UUID_PATTERN.test(eventId)) return jsonResponse({ error: "A valid RFx event id is required." }, 400);
+      await requireOwnedRfxEvent(supabase, user, eventId);
+      const result = await supabase
+        .from("saas_audit_log")
+        .select("id,created_at,actor_email,action,entity_id,summary,metadata")
+        .eq("owner_email", user.owner_email)
+        .eq("entity_type", "rfx_event_carrier_review")
+        .contains("metadata", { rfx_event_id: eventId })
+        .order("created_at", { ascending: false })
+        .limit(5000);
+      if (result.error) throw result.error;
+      const latestByVendor = new Map<string, Record<string, unknown>>();
+      for (const row of result.data || []) {
+        const metadata = objectRecord(row.metadata);
+        const vendorId = cleanText(metadata.vendor_id);
+        if (!vendorId || latestByVendor.has(vendorId)) continue;
+        latestByVendor.set(vendorId, {
+          id: row.id,
+          vendor_id: vendorId,
+          reviewed: row.action === "rfx.invitation_carrier.reviewed",
+          reviewed_at: row.created_at,
+          reviewed_by: row.actor_email,
+          channel: cleanText(metadata.channel),
+          contact_snapshot: objectRecord(metadata.contact_snapshot),
+          review_version: Number(metadata.review_version || 1)
+        });
+      }
+      return jsonResponse({ rows: [...latestByVendor.values()] });
+    }
+
+    if (body.action === "record_rfx_invitation_wave_review") {
+      const eventId = cleanText(body.rfx_event_id || body.event_id);
+      const vendorId = cleanText(body.vendor_id);
+      if (!eventId || !UUID_PATTERN.test(eventId)) return jsonResponse({ error: "A valid RFx event id is required." }, 400);
+      if (!vendorId || !UUID_PATTERN.test(vendorId)) return jsonResponse({ error: "A valid carrier id is required." }, 400);
+      await requireOwnedRfxEvent(supabase, user, eventId);
+      const participation = await supabase
+        .from("rfx_lane_vendors")
+        .select("id")
+        .eq("rfx_event_id", eventId)
+        .eq("vendor_id", vendorId)
+        .limit(1);
+      if (participation.error) throw participation.error;
+      if (!participation.data?.length) return jsonResponse({ error: "This carrier is not part of the selected RFx." }, 409);
+      const reviewed = body.reviewed !== false;
+      const contactInput = objectRecord(body.contact_snapshot);
+      const contactSnapshot = {
+        contact_name: cleanText(contactInput.contact_name),
+        email: cleanText(contactInput.email)?.toLowerCase() || null,
+        phone: cleanText(contactInput.phone),
+        vendor_name: cleanText(contactInput.vendor_name),
+        vendor_domain: cleanText(contactInput.vendor_domain)
+      };
+      const channel = cleanText(body.channel)?.toLowerCase() || null;
+      const action = reviewed ? "rfx.invitation_carrier.reviewed" : "rfx.invitation_carrier.review_revoked";
+      const inserted = await supabase.from("saas_audit_log").insert(withOwner({
+        actor_email: user.owner_email,
+        action,
+        entity_type: "rfx_event_carrier_review",
+        entity_id: `${eventId}:${vendorId}`,
+        summary: reviewed ? "Reviewed carrier for RFx invitation wave" : "Revoked carrier review for RFx invitation wave",
+        metadata: { rfx_event_id: eventId, vendor_id: vendorId, channel, contact_snapshot: contactSnapshot, review_version: 1 }
+      }, user)).select("id,created_at,actor_email,action,metadata").single();
+      if (inserted.error) throw inserted.error;
+      return jsonResponse({ row: {
+        id: inserted.data.id,
+        vendor_id: vendorId,
+        reviewed,
+        reviewed_at: inserted.data.created_at,
+        reviewed_by: inserted.data.actor_email,
+        channel,
+        contact_snapshot: contactSnapshot,
+        review_version: 1
+      } });
     }
 
     if (body.action === "list_outreach_campaigns") {
@@ -31283,6 +33288,8 @@ Deno.serve(async (request) => {
     const errorStatus = identityStatus === 403 ? 403 : apiErrorStatus(errorInfo);
     console.error(JSON.stringify({
       event: "rateware_api.error",
+      request_id: requestId,
+      operation_id: operationId,
       incident_id: incidentId,
       action: failedApiAction,
       status: errorStatus,
@@ -31319,6 +33326,8 @@ Deno.serve(async (request) => {
             : `Rateware API action failed: ${failedApiAction}`,
           {
             incident_id: incidentId,
+            request_id: requestId,
+            operation_id: operationId,
             action: failedApiAction,
             status: errorStatus,
             error: errorMessage,
@@ -31344,8 +33353,13 @@ Deno.serve(async (request) => {
       details: errorDetails,
       hint: errorHint,
       incident_id: incidentId,
+      request_id: requestId,
+      operation_id: operationId,
       action: failedApiAction,
       stage: errorStage
     }, errorStatus);
   }
-});
+  };
+}
+
+Deno.serve(createRatewareApiHandler());

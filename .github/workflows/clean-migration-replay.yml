@@ -3,25 +3,25 @@ name: clean-migration-replay
 on:
   pull_request:
     paths:
-      - 'supabase/migrations/**'
-      - 'supabase/functions/shipper-directory-api/**'
-      - 'supabase/config.toml'
-      - 'supabase/functions/_shared/action-contract*.mjs'
-      - 'src/provider-service-*.js'
-      - 'src/provider-service-360.css'
-      - 'src/vendor-service.js'
-      - 'tests/provider-service-*.test.mjs'
-      - 'tests/action-contract.test.mjs'
-      - 'tests/supabase-migration-ledger.test.mjs'
-      - 'tools/action-contract-*.mjs'
-      - 'tools/effective-action-contract.mjs'
-      - 'tools/validate-action-contract-no-regression.mjs'
-      - 'tools/verify-migration-history.mjs'
-      - 'tools/validate-action-contract-delta.mjs'
-      - 'tools/validate-provider-service-runtime-syntax.mjs'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/clean-migration-replay.yml'
+      - "supabase/migrations/**"
+      - "supabase/functions/shipper-directory-api/**"
+      - "supabase/config.toml"
+      - "supabase/functions/_shared/action-contract*.mjs"
+      - "src/provider-service-*.js"
+      - "src/provider-service-360.css"
+      - "src/vendor-service.js"
+      - "tests/provider-service-*.test.mjs"
+      - "tests/action-contract.test.mjs"
+      - "tests/supabase-migration-ledger.test.mjs"
+      - "tools/action-contract-*.mjs"
+      - "tools/effective-action-contract.mjs"
+      - "tools/validate-action-contract-no-regression.mjs"
+      - "tools/verify-migration-history.mjs"
+      - "tools/validate-action-contract-delta.mjs"
+      - "tools/validate-provider-service-runtime-syntax.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/clean-migration-replay.yml"
   workflow_dispatch:
 
 jobs:
@@ -96,7 +96,7 @@ jobs:
           container='supabase_db_alqjqzqagdmcywpjtnnr'
           ledger="$(docker exec "$container" psql -U postgres -d postgres -Atc \
             "select count(*)::text || '|' || max(version)::text from supabase_migrations.schema_migrations")"
-          test "$ledger" = '369|20260821011805'
+          test "$ledger" = '373|20260831031500'
 
           grants="$(docker exec "$container" psql -U postgres -d postgres -Atc \
             "select has_table_privilege('service_role','public.provider_legal_entity_fact_promotions','SELECT'),

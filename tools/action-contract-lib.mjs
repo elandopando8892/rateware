@@ -101,6 +101,7 @@ function hash(value) { return createHash("sha256").update(value).digest("hex"); 
 
 // Format/comment-insensitive lexical tokens. This is intentionally not a semantic parser.
 export function semanticTokens(value, { sql = false } = {}) {
+  value = value.replace(/\r\n?/g, "\n");
   const out = [];
   let i = 0;
   while (i < value.length) {
@@ -861,7 +862,7 @@ function memberValue(node, scope) {
   const object = evaluateAst(member.object, scope);
   const property = member.computed ? astPropertyName(member.property, scope) : astPropertyName(member.property);
   if (object?.kind !== "object" || property == null) return UNKNOWN_VALUE;
-  return object.props.get(property) || (object.unknownProps ? UNKNOWN_VALUE : OTHER_VALUE);
+  return object.props.get(property) || (object.unknownProps ? UNKNOWN_VALUE : NULL_VALUE);
 }
 
 function evaluateObject(node, scope) {
@@ -1066,10 +1067,21 @@ function applyAstAssignment(node, scope, state) {
   return value;
 }
 
+function declareAstFunctionParameters(fnValue, args, state, functionScope) {
+  for (let index = 0; index < (fnValue.node.params || []).length; index += 1) {
+    const parameter = fnValue.node.params[index];
+    if (parameter.type === "AssignmentPattern" && index >= (args?.length || 0)) {
+      declareAstPattern(parameter.left, evaluateAst(parameter.right, functionScope, state), functionScope);
+      continue;
+    }
+    declareAstPattern(parameter, evaluateAst(args?.[index], state?.scope || fnValue.scope, state), functionScope);
+  }
+}
+
 function executeAstFunction(fnValue, args, state, target = null) {
   if (fnValue?.kind !== "function" || state?.activeFunctions?.has(fnValue.node)) return null;
   const functionScope = new AstScope(fnValue.scope);
-  for (let index = 0; index < (fnValue.node.params || []).length; index += 1) declareAstPattern(fnValue.node.params[index], evaluateAst(args?.[index], state?.scope || fnValue.scope, state), functionScope);
+  declareAstFunctionParameters(fnValue, args, state, functionScope);
   state?.activeFunctions?.add(fnValue.node);
   const result = target ? executeAstToward(fnValue.node.body, functionScope, target, state) : executeAstStatement(fnValue.node.body, functionScope, state);
   state?.activeFunctions?.delete(fnValue.node);
@@ -1099,7 +1111,7 @@ function astAlwaysReturns(node) {
 function evaluateAstFunctionResult(fnValue, args, state) {
   if (fnValue?.kind !== "function" || state?.activeFunctions?.has(fnValue.node)) return null;
   const functionScope = new AstScope(fnValue.scope);
-  for (let index = 0; index < (fnValue.node.params || []).length; index += 1) declareAstPattern(fnValue.node.params[index], evaluateAst(args?.[index], state?.scope || fnValue.scope, state), functionScope);
+  declareAstFunctionParameters(fnValue, args, state, functionScope);
   if (fnValue.node.body?.type !== "BlockStatement") return evaluateAst(fnValue.node.body, functionScope, state);
   const statements = (fnValue.node.body.body || []).filter((statement) => statement.type !== "EmptyStatement");
   const alternativeReturns = [];
@@ -1220,7 +1232,16 @@ function executeAstToward(node, scope, target, state) {
     }
     return blockScope;
   }
-  if (node.type === "ReturnStatement") return scope;
+  if (node.type === "FunctionDeclaration" && astContains(node.body, target.start)) {
+    return executeAstFunction(functionValue(node, scope), [], state, target);
+  }
+  if (node.type === "ReturnStatement") {
+    const returned = unwrapAst(node.argument);
+    if (["FunctionExpression", "ArrowFunctionExpression"].includes(returned?.type) && astContains(returned.body, target.start)) {
+      return executeAstFunction(functionValue(returned, scope), [], state, target);
+    }
+    return scope;
+  }
   if (node.type === "IfStatement") {
     if (astContains(node.consequent, target.start)) return executeAstToward(node.consequent, new AstScope(scope), target, state);
     if (node.alternate && astContains(node.alternate, target.start)) return executeAstToward(node.alternate, new AstScope(scope), target, state);
@@ -1593,9 +1614,52 @@ function dispatchAnalysis(source, minimum = 0, trustedAliases = []) {
   return { items, candidates };
 }
 
+function selectorDispatchScope(source) {
+  const fallback = Math.max(0, source.indexOf("Deno.serve"));
+  const ast = actionAst(source);
+  if (!ast) return { minimum: fallback, candidates: [] };
+
+  const serveCalls = [];
+  walkAst(ast.program, (node) => {
+    if (node.type !== "CallExpression") return;
+    const callee = unwrapAst(node.callee);
+    if (
+      callee?.type === "MemberExpression" &&
+      unwrapAst(callee.object)?.type === "Identifier" &&
+      unwrapAst(callee.object)?.name === "Deno" &&
+      astPropertyName(callee.property) === "serve"
+    ) serveCalls.push(node);
+  });
+  if (serveCalls.length !== 1) return { minimum: fallback, candidates: [] };
+
+  const argument = unwrapAst(serveCalls[0].arguments[0]);
+  if (["ArrowFunctionExpression", "FunctionExpression"].includes(argument?.type)) {
+    return { minimum: serveCalls[0].start ?? fallback, candidates: [] };
+  }
+
+  const factoryCall = argument?.type === "CallExpression" ? argument : null;
+  const handlerName = factoryCall
+    ? (factoryCall.arguments.length === 0 && unwrapAst(factoryCall.callee)?.type === "Identifier" ? unwrapAst(factoryCall.callee).name : null)
+    : (argument?.type === "Identifier" ? argument.name : null);
+  if (!handlerName) return { minimum: fallback, candidates: [] };
+
+  const declarations = [];
+  walkAst(ast.program, (node) => {
+    if (node.type === "FunctionDeclaration" && node.id?.name === handlerName) declarations.push(node);
+  });
+  if (declarations.length !== 1) {
+    return {
+      minimum: fallback,
+      candidates: [{ code: "UNRESOLVED_EDGE_HANDLER_FACTORY", detail: handlerName }]
+    };
+  }
+  return { minimum: declarations[0].start ?? fallback, candidates: [] };
+}
+
 export function discoverSelectorSurfacesFromText(functionName, sourceFile, source, _legacyRegex, options = {}) {
-  const minimum = Math.max(0, source.indexOf("Deno.serve"));
-  const dispatch = dispatchAnalysis(source, minimum);
+  const scope = selectorDispatchScope(source);
+  const dispatch = dispatchAnalysis(source, scope.minimum);
+  dispatch.candidates.push(...scope.candidates);
   const found = dispatch.items;
   const envelope = options.envelope || { authorizationFingerprint: fingerprint(source), dependencyFiles: [sourceFile], unresolvedDependencies: [], analysisCoverage: "direct" };
   const surfaces = found.map((item, index) => {

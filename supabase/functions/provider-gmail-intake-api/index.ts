@@ -3,6 +3,11 @@ import {
   corsHeaders,
   jsonResponse as baseJsonResponse,
 } from "../_shared/kinde.ts";
+import { requireRatewareUser } from "../_shared/auth.ts";
+import {
+  resolveRuntimeWorkspaceUser,
+  runtimeIdentityStatus,
+} from "../_shared/runtime-identity.ts";
 import { createOspRuntimeJwtVerifier } from "../osp-read-api/auth-runtime.ts";
 import {
   cleanProviderGmailText,
@@ -23,10 +28,6 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get(
   "RATEWARE_SUPABASE_SERVICE_ROLE_KEY",
 );
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
-const OSP_AUTH = createOspRuntimeJwtVerifier({
-  env: Deno.env,
-  fetch: globalThis.fetch.bind(globalThis),
-});
 const PROVIDER_GMAIL_PUBSUB_TOPIC = cleanProviderGmailText(
   Deno.env.get("PROVIDER_GMAIL_PUBSUB_TOPIC"),
 );
@@ -118,10 +119,20 @@ function bearer(request: Request) {
 }
 
 async function requireSalesSuperuser(request: Request) {
-  const verified = await OSP_AUTH.verifyWorkflow(
-    bearer(request),
-    AbortSignal.timeout(5_000),
-  );
+  if (!cleanProviderGmailText(Deno.env.get("OSP_AUTH_PROVIDER"))) return null;
+  let verified;
+  try {
+    const verifier = createOspRuntimeJwtVerifier({
+      env: Deno.env,
+      fetch: globalThis.fetch.bind(globalThis),
+    });
+    verified = await verifier.verifyWorkflow(
+      bearer(request),
+      AbortSignal.timeout(5_000),
+    );
+  } catch {
+    return null;
+  }
   if (
     verified.identity.email !== "sales@heymarksman.com" ||
     verified.permissions.length !== 2 ||
@@ -133,6 +144,56 @@ async function requireSalesSuperuser(request: Request) {
     throw error;
   }
   return verified;
+}
+
+async function resolveRatewareScope(
+  supabase: any,
+  user: Record<string, unknown>,
+) {
+  const workspaceId = cleanProviderGmailText(user.organization_id);
+  if (!workspaceId) {
+    throw new Error("Organization workspace is required for Provider Gmail.");
+  }
+  const registry = await supabase.from("workspace_registry")
+    .select("organization_uuid")
+    .eq("organization_id", workspaceId)
+    .maybeSingle();
+  if (registry.error) throw registry.error;
+  const organizationUuid = cleanProviderGmailText(
+    registry.data?.organization_uuid,
+  );
+  if (!organizationUuid || !UUID_PATTERN.test(organizationUuid)) {
+    throw new Error("Workspace tenant mapping is incomplete.");
+  }
+  return organizationUuid;
+}
+
+async function resolveProviderGmailActor(supabase: any, request: Request) {
+  const osp = await requireSalesSuperuser(request);
+  if (osp) {
+    return {
+      user: {
+        id: osp.identity.subject,
+        email: osp.identity.email,
+        owner_email: osp.identity.email,
+      } as Record<string, unknown>,
+      organizationUuid: osp.identity.organization,
+    };
+  }
+
+  const identity = await requireRatewareUser(request);
+  const user = await resolveRuntimeWorkspaceUser(
+    supabase,
+    identity as Record<string, unknown>,
+    { persistLegacyIdentity: false },
+  );
+  return {
+    user: user as Record<string, unknown>,
+    organizationUuid: await resolveRatewareScope(
+      supabase,
+      user as Record<string, unknown>,
+    ),
+  };
 }
 
 async function requireLegalEntity(
@@ -324,13 +385,10 @@ Deno.serve(async (request) => {
 
   try {
     const supabase = getClient();
-    const verified = await requireSalesSuperuser(request);
-    const user = {
-      id: verified.identity.subject,
-      email: verified.identity.email,
-      owner_email: verified.identity.email,
-    };
-    const organizationUuid = verified.identity.organization;
+    const { user, organizationUuid } = await resolveProviderGmailActor(
+      supabase,
+      request,
+    );
     const body = await request.json() as Record<string, unknown>;
     if (typeof body.action !== "string" || !ACTIONS.has(body.action)) {
       return jsonResponse({ error: "Unknown Provider Gmail action." }, 400);
@@ -356,9 +414,10 @@ Deno.serve(async (request) => {
     }
     return jsonResponse({ error: "Unknown Provider Gmail action." }, 400);
   } catch (error) {
+    const identityStatus = runtimeIdentityStatus(error);
     return jsonResponse(
       { error: errorMessage(error) },
-      errorStatus(error),
+      identityStatus === 403 ? 403 : errorStatus(error),
     );
   }
 });

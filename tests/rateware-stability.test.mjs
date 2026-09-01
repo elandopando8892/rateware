@@ -35,6 +35,12 @@ const ratewareHtml = readFileSync(new URL("../rateware.html", import.meta.url), 
 const vendorsSource = readFileSync(new URL("../src/vendors.js", import.meta.url), "utf8");
 const vendorsHtml = readFileSync(new URL("../vendors.html", import.meta.url), "utf8");
 const vendorServiceSource = readFileSync(new URL("../src/vendor-service.js", import.meta.url), "utf8");
+const carrierListTemplatesUrl = new URL("../src/carrier-list-templates.js", import.meta.url);
+const carrierListTemplatesSource = existsSync(carrierListTemplatesUrl)
+  ? readFileSync(carrierListTemplatesUrl, "utf8")
+  : "";
+const carrierTemplatePreviewSource = readFileSync(new URL("../src/carrier-list-templates-preview.js", import.meta.url), "utf8");
+const carrierTemplateCapabilitySource = readFileSync(new URL("../src/carrier-list-template-capability.js", import.meta.url), "utf8");
 const vendorSupportSource = readFileSync(new URL("../src/vendor-support.js", import.meta.url), "utf8");
 const vendorSupportServiceSource = readFileSync(new URL("../src/vendor-support-service.js", import.meta.url), "utf8");
 const vendorSupportHtml = readFileSync(new URL("../vendor-support.html", import.meta.url), "utf8");
@@ -115,6 +121,7 @@ const rfxAwardCloseoutMigration = readFileSync(new URL("../supabase/migrations/2
 const rfxBidSubmissionV2Migration = readFileSync(new URL("../supabase/migrations/20260704093000_rfx_bid_submission_v2.sql", import.meta.url), "utf8");
 const rfxBidRatewareCaptureMigration = readFileSync(new URL("../supabase/migrations/20260708162000_rfx_bid_rateware_capture.sql", import.meta.url), "utf8");
 const rfxBidCostHistoryMigration = readFileSync(new URL("../supabase/migrations/20260723173000_rfx_bid_cost_history.sql", import.meta.url), "utf8");
+const rfxAtomicAwardMigration = readFileSync(new URL("../supabase/migrations/20260831022000_atomic_rfx_lane_vendor_award.sql", import.meta.url), "utf8");
 const rfxBidValidityMigration = readFileSync(new URL("../supabase/migrations/20260708170000_rfx_bid_validity.sql", import.meta.url), "utf8");
 const rfxBidDeadheadMigration = readFileSync(new URL("../supabase/migrations/20260709090000_rfx_bid_deadhead_commitment.sql", import.meta.url), "utf8");
 const rfxBidWithdrawnStatusMigration = readFileSync(new URL("../supabase/migrations/20260710183000_rfx_bid_withdrawn_status.sql", import.meta.url), "utf8");
@@ -123,6 +130,7 @@ const emailBounceResolutionMigration = readFileSync(new URL("../supabase/migrati
 const vendorContinuousImprovementMigration = readFileSync(new URL("../supabase/migrations/20260710100000_vendor_continuous_improvement.sql", import.meta.url), "utf8");
 const rfxProcessMigration = readFileSync(new URL("../supabase/migrations/20260710120000_rfx_process.sql", import.meta.url), "utf8");
 const vendorSegmentsCoverageMigration = readFileSync(new URL("../supabase/migrations/20260706143000_vendor_segments_coverage_filter.sql", import.meta.url), "utf8");
+const carrierTemplateMigration = readFileSync(new URL("../supabase/migrations/20260825160000_carrier_list_templates.sql", import.meta.url), "utf8");
 const vendorProfileRequestsMigration = readFileSync(new URL("../supabase/migrations/20260706152000_vendor_profile_requests.sql", import.meta.url), "utf8");
 const vendorProfileTokenMigration = readFileSync(new URL("../supabase/migrations/20260801021411_hash_vendor_profile_request_tokens.sql", import.meta.url), "utf8");
 const rfxInvitationTokenMigration = readFileSync(new URL("../supabase/migrations/20260801023832_hash_rfx_bid_invitation_tokens.sql", import.meta.url), "utf8");
@@ -305,14 +313,6 @@ for (const mutationName of [
   assert.match(mutationSource, /const eventId = selectedEventId;/, `${mutationName} should capture its initiating Bid Room`);
   assert.match(mutationSource, /selectedEventId !== eventId/, `${mutationName} should stop stale updates after navigation`);
 }
-for (const listenerName of ["importCarrierTemplateButton"]) {
-  const start = rfxEventsSource.indexOf(`${listenerName}?.addEventListener`);
-  const end = rfxEventsSource.indexOf("\n\n", start + 1);
-  const listenerSource = rfxEventsSource.slice(start, end > start ? end : undefined);
-  assert.ok(start >= 0, `${listenerName} handler should exist`);
-  assert.match(listenerSource, /const eventId = selectedEventId;/, `${listenerName} should capture its initiating Bid Room`);
-  assert.match(listenerSource, /selectedEventId !== eventId/, `${listenerName} should stop stale updates after navigation`);
-}
 const addParticipantsStart = rfxEventsSource.indexOf("async function addSelectedManualCarriersToBid");
 const addParticipantsEnd = rfxEventsSource.indexOf("\nasync function ", addParticipantsStart + 1);
 const addParticipantsSource = rfxEventsSource.slice(addParticipantsStart, addParticipantsEnd > addParticipantsStart ? addParticipantsEnd : undefined);
@@ -326,7 +326,8 @@ assert.match(rfxEventsSource, /function currentRfxManagedVendorIds\(\)/, "Carrie
 assert.match(rfxEventsSource, /outreachMessages\.forEach\(\(row\) => \{[\s\S]*?rfx_event_id[\s\S]*?vendorId/, "Carrier fit should keep every carrier already handled in this RFx out of the recommendation pool, including archived delivery messages");
 assert.match(apiSource, /async function listRfxResponseVendorIds[\s\S]+direction\.eq\.inbound,status\.in\.\(replied,responded,quoted,quote,bid_submitted,declined,rejected,withdrawn\)[\s\S]+vendor_ids/, "Carrier fit should identify responses without downloading complete contact-history rows");
 assert.match(rfxEventsSource, /rfxResponseVendorIds\.forEach\(\(vendorId\) => ids\.add\(String\(vendorId\)\)\)/, "Carrier fit should merge response vendor ids into the managed participant set");
-assert.match(rfxEventsSource, /\.filter\(\(vendor\) => !existingParticipantIds\.has\(String\(vendor\.id \|\| ""\)\)\)/, "Carrier fit should not offer an existing RFx participant again");
+assert.match(rfxEventsSource, /alreadyInRfx: existingParticipantIds\.has\(String\(vendor\.id \|\| ""\)\)/, "Carrier fit should retain existing RFx participants as visible status rows");
+assert.match(rfxEventsSource, /alreadyInRfx \|\| selected \|\| !contactReady \? "disabled"/, "Carrier fit should never offer an existing RFx participant for selection again");
 assert.match(rfxEventsSource, /Use Delivery queue to follow up or re-invite/, "Existing RFx participants should be directed to the event-scoped delivery queue");
 assert.match(rfxEventsSource, /Continue \$\{formatNumber\(selectedCount\)\} to Message/, "Carrier fit should make the next Message step explicit without sending outreach");
 assert.match(rfxEventsSource, /Select all ready/, "Carrier fit should expose a direct selection action for eligible carriers");
@@ -729,7 +730,7 @@ assert.match(sendWhatsappGroupOutreachSource, /WhatsApp groups are manual-only\.
 assert.doesNotMatch(sendWhatsappGroupOutreachSource, /activeWhatsappConnection|delivery_status:\s*"failed"/, "Manual WhatsApp group actions should not require a Meta connection or mark drafts as provider failures");
 assert.match(rfxEventsSource, /function syncOutreachChannelUi/, "Bid Room should render controls for only the active outreach channel");
 assert.match(rfxEventsSource, /clearDraftQueueSelection\(\);[\s\S]+syncOutreachChannelUi\(\);/, "Changing outreach channels should clear mixed draft selections");
-assert.match(rfxEventsSource, /const selectable = channel === "whatsapp"[\s\S]+selectable\.forEach\(rememberDraftRow\)/, "Select-all should only select drafts from the active channel queue");
+assert.match(rfxEventsSource, /const selectable = channel === "whatsapp"[\s\S]+selectable\.filter\(draftWasReviewed\)\.forEach\(rememberDraftRow\)/, "Select-all should only select reviewed drafts from the active channel queue");
 assert.match(rfxEventsHtml, /data-rfx-draft-action-channel="email"[\s\S]+data-rfx-draft-action-channel="whatsapp"[\s\S]+data-rfx-draft-action-channel="whatsapp_group"/, "Draft queue actions should be scoped to Gmail, direct WhatsApp, or manual group delivery");
 assert.match(apiSource, /test_whatsapp_business_connection/, "Rateware API should expose WhatsApp Business connection test");
 assert.match(apiSource, /testWhatsappBusinessConnection[\s\S]+validateWhatsappConnectionAgainstMeta/, "Test line should validate token, Phone Number ID, and WABA together");
@@ -1025,17 +1026,174 @@ assert.match(spreadsheetGridSource, /control\.dataset\.gridInvalidOption = text/
 assert.match(stylesSource, /sheet-issue-nav/, "Spreadsheet issue navigator should have compact styling");
 assert.match(apiSource, /vendor_ids: vendorIds/, "Vendor segments should support exact participant template vendor ids");
 assert.match(apiSource, /update_vendor_segment/, "API should support updating reusable vendor participant templates");
-assert.match(rfxEventsSource, /createVendorSegment/, "Bid Room should save selected participants as reusable vendor templates");
-assert.match(rfxEventsSource, /updateVendorSegment/, "Bid Room should update saved participant templates after carrier changes");
-assert.match(rfxEventsSource, /deleteVendorSegment/, "Bid Room should delete saved participant templates without touching CRM carriers");
-assert.match(rfxEventsSource, /segmentVendorIds/, "Bid Room should preload exact vendor id templates");
-assert.match(rfxEventsSource, /fetchVendorSegments\(\{ segmentType: "participant_template" \}\)/, "Bid Room should load only reusable participant templates, not unrelated CRM segments");
-assert.match(rfxEventsSource, /participantTemplateNameKey/, "Bid Room should normalize participant template names before creating duplicates");
-assert.match(rfxEventsSource, /participantTemplateMutationRunning/, "Bid Room should serialize participant template save, update, and delete actions");
-assert.match(rfxEventsHtml, /manual-shortlist-template-name/, "Bid Room should render a named participant template input");
-assert.match(rfxEventsHtml, /load-manual-shortlist-template/, "Bid Room should render a saved participant template loader");
-assert.match(rfxEventsHtml, /update-manual-shortlist-template/, "Bid Room should render an update button for selected participant templates");
-assert.match(rfxEventsHtml, /delete-manual-shortlist-template/, "Bid Room should render a delete button for selected participant templates");
+const buildParticipantsHtml = rfxEventsHtml.slice(
+  rfxEventsHtml.indexOf('<details id="rfx-participant-manager"'),
+  rfxEventsHtml.indexOf('<section class="bid-room-stage-panel" data-workbench-view-panel="outreach"')
+);
+const legacyParticipantTemplateHtml = buildParticipantsHtml.slice(
+  buildParticipantsHtml.indexOf('id="rfx-participant-template-legacy-fallback"'),
+  buildParticipantsHtml.indexOf('id="rfx-participant-template-crm-link"')
+);
+const carrierCrmTemplateLinkHtml = buildParticipantsHtml.slice(
+  buildParticipantsHtml.indexOf('id="rfx-participant-template-crm-link"')
+);
+assert.match(buildParticipantsHtml, /id="rfx-participant-template-capability-status"[^>]*role="status"/, "Build Participants should expose a capability status without replacing manual carrier selection");
+assert.match(buildParticipantsHtml, /id="retry-rfx-participant-template-capability"/, "Build Participants should expose a safe capability retry");
+assert.match(legacyParticipantTemplateHtml, /^id="rfx-participant-template-legacy-fallback"[^>]*hidden[^>]*disabled/, "The legacy fallback should be an identifiable disabled fieldset hidden by default");
+assert.match(carrierCrmTemplateLinkHtml, /^id="rfx-participant-template-crm-link"[^>]*hidden/, "The Carrier CRM link surface should be identifiable and hidden by default");
+for (const legacyControlId of [
+  "manual-shortlist-template-name",
+  "save-manual-shortlist-template",
+  "load-manual-shortlist-template",
+  "update-manual-shortlist-template",
+  "delete-manual-shortlist-template",
+  "download-rfx-carrier-template",
+  "rfx-carrier-template-file",
+  "rfx-carrier-template-preview",
+  "rfx-carrier-template-preview-body",
+  "import-rfx-carrier-template",
+  "rfx-carrier-template-status"
+]) {
+  assert.match(legacyParticipantTemplateHtml, new RegExp(`id=["']${legacyControlId}["']`), `Disabled-mode fallback should contain #${legacyControlId}`);
+  assert.doesNotMatch(carrierCrmTemplateLinkHtml, new RegExp(`id=["']${legacyControlId}["']`), `The enabled-mode Carrier CRM surface should not contain #${legacyControlId}`);
+}
+assert.deepEqual(
+  [...legacyParticipantTemplateHtml.matchAll(/data-rfx-legacy-template-action="([^"]+)"/g)].map((match) => match[1]).sort(),
+  ["delete", "download", "file", "import", "load", "save", "update"],
+  "Disabled mode should expose exactly the legacy create/load/update/delete/download/file-import action set"
+);
+assert.equal([...carrierCrmTemplateLinkHtml.matchAll(/data-rfx-legacy-template-action=/g)].length, 0, "Enabled mode should expose zero legacy mutation/import actions");
+assert.match(carrierCrmTemplateLinkHtml, /<a href="\.\/vendors\.html\?tab=list-templates">Manage carrier list templates in Carrier CRM<\/a>/, "Enabled-mode Build Participants should link to the single Carrier CRM template editor");
+assert.doesNotMatch(legacyParticipantTemplateHtml, /vendors\.html\?tab=list-templates/, "Disabled-mode legacy fallback should not expose the V2 editor link");
+
+const capabilityControllerStart = rfxEventsSource.indexOf("// BID_ROOM_TEMPLATE_CAPABILITY_CONTROLLER_START");
+const capabilityControllerEnd = rfxEventsSource.indexOf("// BID_ROOM_TEMPLATE_CAPABILITY_CONTROLLER_END");
+assert.ok(capabilityControllerStart >= 0 && capabilityControllerEnd > capabilityControllerStart, "Bid Room should provide an executable template capability controller");
+const capabilityControllerSource = rfxEventsSource.slice(capabilityControllerStart, capabilityControllerEnd);
+const createCapabilityController = new Function(`${capabilityControllerSource}\nreturn createBidRoomCarrierTemplateCapabilityController;`)();
+const dispatchLegacyTemplateEvent = new Function(`${capabilityControllerSource}\nreturn dispatchBidRoomLegacyTemplateEvent;`)();
+const legacyTemplateActionKeys = new Function(`${capabilityControllerSource}\nreturn BID_ROOM_LEGACY_TEMPLATE_ACTION_KEYS;`)();
+const legacyTemplateEvent = (action) => ({
+  target: {
+    closest: (selector) => selector === "[data-rfx-legacy-template-action]"
+      ? { dataset: { rfxLegacyTemplateAction: action } }
+      : null
+  }
+});
+const capabilityTransitions = [];
+const capabilityController = createCapabilityController({ onTransition: (state) => capabilityTransitions.push(state) });
+let legacyApiCalls = 0;
+const firstProbe = capabilityController.beginProbe();
+const secondProbe = capabilityController.beginProbe();
+assert.equal(capabilityController.resolveProbe(secondProbe, { enabled: true }), true, "The newest explicit enabled response should settle the gate");
+assert.equal(capabilityController.rejectProbe(firstProbe, Object.assign(new Error("late disabled"), { enabled: false })), false, "An out-of-order disabled response should be ignored");
+assert.equal(capabilityController.state, "enabled", "An out-of-order response must not race Carrier Fit into the opposite mode");
+assert.deepEqual([...legacyTemplateActionKeys].sort(), ["delete", "download", "file", "import", "load", "save", "update"], "The controller should derive one exact fallback action allowlist");
+for (const action of legacyTemplateActionKeys) {
+  dispatchLegacyTemplateEvent(capabilityController, legacyTemplateEvent(action), () => { legacyApiCalls += 1; });
+}
+assert.equal(legacyApiCalls, 0, "Enabled mode should keep every stale legacy mutation/import action inert");
+const successfulDisabledController = createCapabilityController();
+const successfulDisabledProbe = successfulDisabledController.beginProbe();
+successfulDisabledController.resolveProbe(successfulDisabledProbe, { enabled: false });
+assert.equal(successfulDisabledController.state, "disabled", "A successful explicit disabled envelope should enable only the legacy fallback");
+const pendingProbe = capabilityController.beginProbe();
+for (const action of ["save", "load", "delete", "file", "import"]) {
+  dispatchLegacyTemplateEvent(capabilityController, legacyTemplateEvent(action), () => { legacyApiCalls += 1; });
+}
+assert.equal(legacyApiCalls, 0, "Pending mode should keep stale delegated clicks and file events inert");
+capabilityController.rejectProbe(pendingProbe, Object.assign(new Error("ordinary outage"), { status: 500 }));
+for (const action of ["save", "load", "delete", "file", "import"]) {
+  dispatchLegacyTemplateEvent(capabilityController, legacyTemplateEvent(action), () => { legacyApiCalls += 1; });
+}
+assert.equal(capabilityController.state, "error", "An ordinary failure should fail closed instead of silently enabling legacy templates");
+assert.equal(legacyApiCalls, 0, "Error mode should keep stale delegated clicks and file events inert");
+const disabledProbe = capabilityController.beginProbe();
+capabilityController.rejectProbe(disabledProbe, Object.assign(new Error("structured disabled"), { enabled: false }));
+assert.equal(capabilityController.state, "disabled", "Only an explicit disabled capability error should enable the fallback");
+dispatchLegacyTemplateEvent(capabilityController, legacyTemplateEvent("save"), () => { legacyApiCalls += 1; });
+assert.equal(legacyApiCalls, 1, "Disabled mode should permit the guarded fallback action");
+for (const unknownAction of ["hard-delete", "remove", "DELETE", ""]) {
+  assert.equal(
+    dispatchLegacyTemplateEvent(capabilityController, legacyTemplateEvent(unknownAction), () => { legacyApiCalls += 1; }),
+    false,
+    `Disabled mode should block unknown delegated action alias ${unknownAction || "<blank>"}`
+  );
+}
+assert.equal(legacyApiCalls, 1, "Unknown delegated aliases should never invoke a callback, even while the fallback is enabled");
+
+function deferredLegacyResult() {
+  let resolve;
+  const promise = new Promise((settle) => { resolve = settle; });
+  return { promise, resolve };
+}
+
+async function assertStaleLegacyContinuation({ label, action, transition, delegated = false }) {
+  const controller = createCapabilityController();
+  const disabledToken = controller.beginProbe();
+  controller.resolveProbe(disabledToken, { enabled: false });
+  const deferred = deferredLegacyResult();
+  const selection = ["preserved-carrier"];
+  let selectionChanges = 0;
+  let stateChanges = 0;
+  let domChanges = 0;
+  const continuation = (_action, operation) => (async () => {
+    const rows = await deferred.promise;
+    if (!controller.isLegacyOperationCurrent(operation)) return false;
+    selection.splice(0, selection.length, ...rows);
+    selectionChanges += 1;
+    stateChanges += 1;
+    domChanges += 1;
+    return true;
+  })();
+  const pendingWork = delegated
+    ? dispatchLegacyTemplateEvent(controller, legacyTemplateEvent(action), continuation)
+    : controller.runLegacyAction(action, continuation);
+  const transitionToken = controller.beginProbe();
+  if (transition === "enabled") controller.resolveProbe(transitionToken, { enabled: true });
+  if (transition === "error") controller.rejectProbe(transitionToken, Object.assign(new Error("capability failed"), { status: 500 }));
+  deferred.resolve(["stale-carrier"]);
+  await pendingWork;
+  assert.deepEqual(selection, ["preserved-carrier"], `${label} should preserve manual selection after capability ${transition}`);
+  assert.equal(selectionChanges, 0, `${label} should make zero selection changes after capability ${transition}`);
+  assert.equal(stateChanges, 0, `${label} should make zero state changes after capability ${transition}`);
+  assert.equal(domChanges, 0, `${label} should make zero DOM changes after capability ${transition}`);
+}
+
+for (const transition of ["pending", "error", "enabled"]) {
+  await assertStaleLegacyContinuation({ label: "legacy load", action: "load", transition, delegated: true });
+  await assertStaleLegacyContinuation({ label: "legacy scope selection", action: "load", transition });
+  await assertStaleLegacyContinuation({ label: "legacy file parse", action: "file", transition, delegated: true });
+}
+const supersededController = createCapabilityController();
+const supersededDisabledProbe = supersededController.beginProbe();
+supersededController.resolveProbe(supersededDisabledProbe, { enabled: false });
+let olderOperation;
+let newerOperation;
+supersededController.runLegacyAction("load", (_action, operation) => { olderOperation = operation; });
+supersededController.runLegacyAction("load", (_action, operation) => { newerOperation = operation; });
+assert.equal(Number.isInteger(newerOperation.capabilityGeneration), true, "Legacy operations should capture the capability generation before awaiting");
+assert.equal(Number.isInteger(newerOperation.legacyOperationGeneration), true, "Legacy operations should capture their own operation generation before awaiting");
+assert.equal(supersededController.isLegacyOperationCurrent(olderOperation), false, "A newer disabled operation should invalidate older disabled work");
+assert.equal(supersededController.isLegacyOperationCurrent(newerOperation), true, "The newest disabled operation should retain both current generations");
+const malformedProbe = capabilityController.beginProbe();
+capabilityController.resolveProbe(malformedProbe, { rows: [] });
+assert.equal(capabilityController.state, "error", "A successful response without an explicit boolean capability should fail closed");
+assert.match(rfxEventsSource, /function renderBidRoomParticipantTemplateCapability[\s\S]+legacyParticipantTemplateFallback\.hidden = !legacyEnabled;[\s\S]+legacyParticipantTemplateFallback\.disabled = !legacyEnabled;[\s\S]+participantTemplateCrmLink\.hidden = !carrierCrmEnabled;/, "Capability rendering should make the legacy fallback and Carrier CRM link mutually exclusive and disable the inactive fieldset");
+assert.match(rfxEventsSource, /async function loadActiveCarrierTemplates\(\)[\s\S]+beginProbe\(\)[\s\S]+fetchCarrierListTemplates\([\s\S]+resolveProbe\(capabilityProbe, page\)[\s\S]+rejectProbe\(capabilityProbe, error\)/, "Carrier Fit and Build should share one ordered list-service capability probe");
+assert.match(rfxEventsSource, /async function loadVendorSegments\(\) \{[\s\S]{0,180}state !== "disabled"\) return;/, "Legacy template reads should run only in explicit disabled mode");
+assert.match(rfxEventsSource, /legacyParticipantTemplateFallback\?\.addEventListener\("click"[\s\S]+dispatchBidRoomLegacyTemplateEvent/, "Legacy click actions should use one delegated semantic guard");
+assert.match(rfxEventsSource, /legacyParticipantTemplateFallback\?\.addEventListener\("change"[\s\S]+dispatchBidRoomLegacyTemplateEvent/, "Legacy file actions should use one delegated semantic guard");
+assert.match(rfxEventsSource, /selectSegmentCarriersButton\?\.addEventListener\("click"[\s\S]+runLegacyAction\("load"[\s\S]+await loadManualScopeCandidateRows\(scopeId, \{ guard: legacyGuard \}\)[\s\S]+isLegacyOperationCurrent\(legacyOperation\)[\s\S]+selectManualVendorIds/, "Legacy scope selection should verify both operation generations after its await before selecting carriers");
+assert.match(rfxEventsSource, /loadManualShortlistTemplateButton\?\.addEventListener\("click", async \(event\)[\s\S]+await loadManualScopeCandidateRows\(segmentId, \{ guard: legacyGuard \}\)[\s\S]+isLegacyOperationCurrent\(legacyOperation\)[\s\S]+selectedManualVendorIdsState = new Set/, "Legacy load should verify both operation generations after its await before replacing manual selection");
+assert.match(rfxEventsSource, /carrierTemplateFileInput\?\.addEventListener\("change", async \(event\)[\s\S]+await parseCarrierTemplateFile\(file\)[\s\S]+isLegacyOperationCurrent\(legacyOperation\)[\s\S]+pendingCarrierTemplateRows = rows/, "Legacy file parsing should verify both operation generations after its await before changing preview state or DOM");
+assert.match(rfxEventsSource, /async function hydrateVendorOptionIds\([\s\S]+await fetchVendors\([\s\S]+if \(typeof guard === "function" && !guard\(\)\) return \[\];[\s\S]+mergeVendorOptionRows/, "Legacy saved-ID hydration should verify its operation guard after every vendor await before mutating the shared CRM cache");
+assert.match(rfxEventsSource, /error\?\.enabled === false/, "Bid Room should recognize disabled fallback only from structured capability metadata");
+assert.doesNotMatch(rfxEventsSource, /status\s*===\s*404[\s\S]{0,160}disabled|message[\s\S]{0,160}not enabled/i, "Bid Room should not infer disabled mode from generic status or message text");
+assert.match(rfxEventsHtml, /id="manual-shortlist-search"/, "Build Participants should preserve manual Carrier CRM search");
+assert.match(rfxEventsHtml, /id="manual-shortlist-button"/, "Build Participants should preserve the manual RFx add action");
+assert.match(rfxEventsHtml, /id="rfx-lane-template-file"/, "Build should preserve the unrelated RFx lane template import");
+assert.match(rfxEventsSource, /async function parseLaneTemplateFile/, "Bid Room should preserve the unrelated RFx lane template parser");
 assert.match(apiSource, /findParticipantTemplateNameConflict/, "Rateware API should reject duplicate participant template names server-side");
 assert.match(apiSource, /vendor\.segment\.create/, "Rateware API should audit participant template creation");
 assert.match(apiSource, /vendor\.segment\.update/, "Rateware API should audit participant template updates");
@@ -1051,23 +1209,19 @@ assert.match(rfxEventsSource, /inviteSelectedButton\?\.addEventListener\("click"
 assert.match(rfxEventsSource, /archiveSelectedButton\?\.addEventListener\("click", async \(\) => \{[\s\S]+const ids = selectedVisibleInvitationIds\(\);/, "Bid Room archive bulk action should ignore hidden stale selected participants");
 assert.match(ratewareApiClientSource, /function apiErrorMessage/, "Rateware API client should normalize object error payloads before throwing");
 assert.doesNotMatch(ratewareApiClientSource, /new Error\(data\.error \|\| data\.message/, "Rateware API client should not throw raw object errors that render as [object Object]");
-assert.match(authSource, /return await kinde\.getAccessToken\?\.\(\)/, "Kinde auth should use the supported access-token API for normal authenticated requests");
-assert.match(authSource, /let kindeRefreshPromise/, "Kinde session restoration should be single-flight across concurrent bulk requests");
-assert.match(authSource, /let kindeReauthenticationPromise;/, "Kinde reauthentication should be single-flight across repeated sign-in clicks");
-assert.match(authSource, /if \(kindeReauthenticationPromise\) return kindeReauthenticationPromise;/, "Kinde reauthentication should reuse an in-flight login restart");
-assert.match(authSource, /kindePromise = null;[\s\S]+await getKindeClient\(\)/, "Kinde session restoration should reinitialize the PKCE client so checkAuth can renew the cached token");
+assert.match(authSource, /authClient\.auth\.getSession\(\)/, "Supabase Auth should restore the persisted Rateware session");
+assert.match(authSource, /authClient\.auth\.refreshSession\(\)/, "Supabase Auth should refresh an expired Rateware session");
+assert.match(authSource, /let loginPromise;/, "Supabase sign-in should be single-flight across repeated sign-in clicks");
+assert.match(authSource, /if \(loginPromise\) return loginPromise;/, "Supabase sign-in should reuse an open login flow");
+assert.doesNotMatch(authSource, /Kinde|getKinde|kinde/i, "The browser auth runtime should no longer depend on Kinde");
 assert.match(authSource, /export async function authenticatedFetch/, "Authenticated requests should use one shared session-aware fetch executor");
-assert.match(authSource, /response\.status !== 401[\s\S]+forceRefresh: true[\s\S]+fetch\(input, withBearerToken\(init, freshToken\)\)/, "Authenticated fetch should retry one unauthorized request after session restoration");
-assert.match(authSource, /rateware:session-required/, "Failed silent restoration should raise one controlled reauthentication signal");
-assert.match(authSource, /app_state: \{ returnTo \}/, "Kinde reauthentication should preserve the current module route");
-assert.match(authSource, /async function hasUsableKindeSession\(\)/, "The shell should distinguish a usable Kinde token from stale local authentication state");
-assert.match(authSource, /locallyAuthenticated && await hasUsableKindeSession\(\)/, "The shell should not render a stale Kinde session as an authenticated user");
-assert.match(authSource, /kindePromise = null;[\s\S]+await kinde\.login\(\{ app_state: \{ returnTo \} \}\)/, "Reauthentication should recreate the Kinde client before restarting OAuth");
-assert.match(authSource, /let authControlActionRunning = false;/, "Auth controls should block duplicate sign-in and sign-out clicks");
-assert.match(authSource, /if \(authControlActionRunning\) return;[\s\S]+authButton\.disabled = true;[\s\S]+await reauthenticateKinde\(\)/, "Sign-in control should serialize reauthentication");
-assert.match(authSource, /authButton\.textContent = "Opening sign-in\.\.\."/, "Sign-in control should show an in-progress state");
+assert.match(authSource, /response\.status !== 401[\s\S]+forceRefresh: true[\s\S]+fetch\(input, withBearerToken\(init, fresh\)\)/, "Authenticated fetch should retry one unauthorized request after session restoration");
+assert.match(authSource, /showSessionRecovery/, "Failed silent restoration should expose controlled reauthentication");
+assert.match(authSource, /persistSession: true[\s\S]+autoRefreshToken: true/, "Supabase Auth should persist and refresh sessions");
+assert.match(authSource, /signInWithOAuth\(\{[\s\S]+provider: "google"[\s\S]+redirectTo/, "Rateware login should use Supabase Google OAuth with an explicit return URL");
+assert.doesNotMatch(authSource, /signInWithPassword|resetPasswordForEmail/, "Rateware login should not expose legacy password flows");
 assert.match(landingSource, /heroButton\.textContent = "Opening sign-in\.\.\."/, "Landing sign-in should show an in-progress state");
-assert.match(authSource, /if \(authControlActionRunning\) return;[\s\S]+signOutButton\.disabled = true;[\s\S]+await kinde\.logout\(\)/, "Sign-out control should serialize logout");
+assert.match(authSource, /authClient\.auth\.signOut\(\)/, "Sign-out should revoke the Supabase browser session");
 assert.doesNotMatch(authSource, /setStatus\(error\.message\)/, "Auth controls should pass caught errors through shared humanization");
 assert.match(authSource, /showSessionRecovery\(\);\s*throw error;/, "Protected modules should expose session recovery rather than continuing with an expired token");
 assert.doesNotMatch(readFileSync(new URL("../index.html", import.meta.url), "utf8"), /Open SaaS dashboard/, "Landing should not offer a redundant unauthenticated dashboard link");
@@ -1098,8 +1252,10 @@ for (const [source, label] of [
 ]) {
   assert.match(source, /requirePrivatePage\(\)\.then\([\s\S]+\.catch\(\(\) => \{\}\);/, `${label} should absorb the expected unauthenticated redirect rejection`);
 }
-assert.match(supabaseConfigSource, /\[functions\.rateware-api\]\s*verify_jwt\s*=\s*false/, "Rateware API must bypass Supabase gateway JWT verification so its Kinde RS256 verifier can authenticate requests");
-assert.match(apiSource, /requireKindeUser\(request\)/, "Rateware API must authenticate every request with the custom Kinde verifier when gateway JWT verification is disabled");
+assert.match(supabaseConfigSource, /\[functions\.rateware-api\]\s*verify_jwt\s*=\s*false/, "Rateware API must bypass gateway JWT verification while its staged dual-provider verifier authenticates requests");
+assert.match(apiSource, /const authenticate = dependencies\.authenticate \?\? requireRatewareUser/, "Rateware API handler factory must default to the staged Rateware verifier when gateway JWT verification is disabled");
+assert.match(apiSource, /const claims = await authenticate\(request\)/, "Rateware API handler must preserve verified raw claims before workspace resolution");
+assert.match(apiSource, /Deno\.serve\(createRatewareApiHandler\(\)\)/, "Production serving must use the same injectable Rateware API handler factory as request tests");
 assert.match(ratewareApiClientSource, /import \{ authenticatedFetch \} from "\.\/auth\.js"/, "Rateware API calls should use the shared authenticated request executor");
 assert.doesNotMatch(ratewareApiClientSource, /getKindeToken|response\.status === 401/, "Rateware API calls should not duplicate token refresh and retry logic");
 assert.doesNotMatch(ratewareApiClientSource, /JSON\.stringify\(value\)/, "Rateware API client should not render opaque backend objects as raw JSON errors");
@@ -1267,7 +1423,7 @@ assert.match(rfxEventsHtml, /id="rfx-chat-signal-queue"[\s\S]+No communication s
 assert.match(rfxEventsHtml, /id="rfx-chat-thread-list"[\s\S]+Select a bid event/, "Bid Room threads should explain their required context");
 assert.match(stylesSource, /\.priority-queue > \.ui-state[\s\S]+\.bid-room-chat-thread-list > \.ui-state/, "Command Center and chat states should share compact spacing");
 assert.match(rfxEventsSource, /let carrierWorkspaceLoadPromise = null;/, "Bid Room should track deferred carrier workspace loading");
-assert.match(rfxEventsSource, /function loadCarrierWorkspaceData\(\{ force = false \} = \{\}\)[\s\S]+loadVendorOptions\(\{ force \}\)[\s\S]+loadVendorSegments\(\)/, "Bid Room should load CRM carriers and segments as one deferred request with an explicit refresh path");
+assert.match(rfxEventsSource, /function loadCarrierWorkspaceData\(\{ force = false \} = \{\}\)[\s\S]+loadVendorOptions\(\{ force \}\)[\s\S]+loadActiveCarrierTemplates\(\)/, "Bid Room should load CRM carriers and active Carrier Fit templates as one deferred request with an explicit refresh path");
 assert.match(rfxEventsSource, /const initialView = rfxWorkbench\?\.current\(\) \|\| "setup";[\s\S]+if \(initialView === "carriers"\) loadCarrierWorkspaceData\(\)/, "Bid Room should avoid carrier CRM loading on the default Event view");
 assert.match(rfxEventsSource, /data-workbench-view-button='carriers'[\s\S]+loadCarrierWorkspaceData\(\)/, "Bid Room should load carrier CRM when Participants is opened");
 assert.match(rfxEventsSource, /data-workbench-view-button='outreach'[\s\S]+loadOutreachAssets\(\)[\s\S]+loadWhatsappConnectionReadiness\(\)[\s\S]+loadCarrierWorkspaceData\(\)/, "Bid Room should load outreach assets, WhatsApp readiness, and non-blocking CRM fit when Launch is opened");
@@ -1379,8 +1535,13 @@ assert.match(rfxEventsHtml, /rfx-outreach-carrier-lane/, "Bid Room Launch should
 assert.match(rfxEventsSource, /const lanes = activeOutreachCarrierLanes\(\);/, "Carrier fit evidence should use the same selected lane as the visible recommendation list");
 assert.match(rfxEventsSource, /rfxOutreachCarrierLane\?\.addEventListener\("change", \(\) => \{[\s\S]*loadRfxCarrierFitEvidence\(\{ force: true \}\)/, "Changing the Carrier fit lane should refresh its Rateware evidence");
 assert.match(rfxEventsHtml, /Find carriers for this opportunity/, "Bid Room Launch should name candidate selection by the operational task");
-assert.match(rfxEventsHtml, /Invitation status/, "Bid Room Launch should keep event invitation status separate from CRM candidate selection");
-assert.match(rfxEventsHtml, /rfx-outreach-launch-grid/, "Bid Room Launch should place Carrier fit and event invitation status in a clear two-column workflow");
+assert.match(rfxEventsHtml, /<span>RFx status<\/span>/, "Carrier Fit should integrate current RFx membership directly in the results table");
+assert.match(rfxEventsHtml, /id="rfx-outreach-audience-builder"[\s\S]*?hidden/, "Invitation-status data may remain available to Message and Delivery without rendering a competing Carrier Fit surface");
+assert.doesNotMatch(rfxEventsHtml, /rfx-open-this-rfx-drawer|rfx-this-rfx-backdrop|rfx-this-rfx-drawer/, "Carrier Fit should not use a modal drawer or backdrop");
+assert.doesNotMatch(rfxEventsSource, /setThisRfxDrawerOpen|is-this-rfx-drawer-open/, "Carrier Fit should not retain drawer behavior");
+assert.match(stylesSource, /\.rfx-outreach-launch-grid \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/, "Carrier fit should own the full Launch canvas");
+assert.match(stylesSource, /\.rfx-carrier-fit-table-header,[\s\S]*?grid-template-columns:[\s\S]*?92px/, "Carrier Fit should use one full-width operational table with a dedicated selection column");
+assert.match(rfxEventsSource, /alreadyInRfx[\s\S]*?Already in this RFx[\s\S]*?Not in RFx/, "Carrier Fit rows should show event membership inline and lock existing participants");
 assert.match(rfxEventsHtml, /data-rfx-launch-workspace="carrier"/, "Bid Room Launch should provide a dedicated Carrier fit workspace");
 assert.match(rfxEventsHtml, /data-rfx-launch-workspace="message"/, "Bid Room Launch should provide a dedicated Message workspace");
 assert.match(rfxEventsHtml, /data-rfx-launch-workspace="delivery"/, "Bid Room Launch should provide a dedicated Delivery queue workspace");
@@ -1419,7 +1580,7 @@ assert.match(rfxEventsSource, /const draftTargets = channelReadyTargets\.filter\
 assert.match(rfxEventsSource, /rfx-select-visible-outreach-carriers/, "Carrier fit should offer a direct action to select the compatible carriers currently visible");
 assert.match(rfxEventsSource, /rfx-select-all-outreach-carriers/, "Carrier fit should offer a direct action to select the full matching carrier wave");
 assert.match(rfxEventsSource, /function carrierCanReceiveOutreachChannel\(vendor, channel = selectedOutreachChannel\(\)\)/, "Carrier Fit should evaluate eligibility against the chosen delivery channel");
-assert.match(rfxEventsSource, /const contactReadyCandidates = candidates\.filter\(\(\{ vendor \}\) => carrierCanReceiveOutreachChannel\(vendor, deliveryChannel\)\);/, "Carrier Fit should distinguish matching carriers that can actually receive delivery");
+assert.match(rfxEventsSource, /const contactReadyCandidates = selectableCandidates\.filter\(\(\{ vendor \}\) => carrierCanReceiveOutreachChannel\(vendor, deliveryChannel\)\);/, "Carrier Fit should distinguish selectable matching carriers that can actually receive delivery");
 assert.match(rfxEventsSource, /const candidates = allCandidates\.filter\(\(\{ vendor \}\) => carrierCanReceiveOutreachChannel\(vendor, channel\)\);/, "Select all matching should exclude carriers without a contact compatible with the selected channel");
 assert.match(rfxEventsSource, /need a compatible contact before they can enter delivery/, "Message should identify selected carriers that still need a channel-compatible contact");
 assert.match(rfxEventsSource, /const channelReadyTargets = scopedTargets\.filter\(\(target\) => targetHasChannel\(target, outreachChannel\)\);/, "Queue preparation should keep only recipients compatible with the selected channel");
@@ -1547,6 +1708,68 @@ assert.match(rfxEventsSource, /Generate the draft queue to reach only new carrie
 assert.match(rfxEventsHtml, /rfx-outreach-carrier-wave-summary/, "Carrier Fit should expose the next invitation-wave action above the candidate lists");
 assert.match(rfxEventsHtml, /1\. Select carriers\. 2\. Add them to this RFx\. 3\. Prepare their delivery queue from Message\./, "Carrier Fit should state that selected carriers are added to the current RFx before drafting outreach");
 assert.match(rfxEventsHtml, /Prepare their delivery queue from Message/, "Carrier Fit should explain the transition from participant selection to the delivery queue");
+assert.match(rfxEventsSource, /fetchCarrierListTemplates[\s\S]+getCarrierListTemplate[\s\S]+fetchVendors/, "Carrier Fit should import the explicit template list/get and exact vendor read services");
+assert.match(rfxEventsSource, /partitionCarrierTemplateMembers[\s\S]+templateMemberIds/, "Carrier Fit should consume the shared exact-membership partition domain");
+assert.match(rfxEventsSource, /fetchCarrierListTemplates\(\{[\s\S]{0,180}lifecycle_status: "active"/, "Carrier Fit should list only active carrier templates");
+assert.match(rfxEventsSource, /getCarrierListTemplate\([^\n]+\{ usageContext: "carrier_fit" \}\)/, "Carrier Fit template reads should use the audited carrier_fit usage context");
+assert.match(rfxEventsSource, /fetchVendors\(\{[\s\S]{0,220}ids: batch[\s\S]{0,220}lightweight: false/, "Carrier Fit should hydrate every exact template id in bounded full-profile batches");
+assert.match(rfxEventsSource, /function pruneCarrierTemplateSelection\([\s\S]{0,700}visibleEligibleCarrierTemplateIds/, "Carrier Fit should prune stale selections against visible eligible template members");
+assert.match(rfxEventsSource, /data-rfx-carrier-template-select[\s\S]{0,300}disabled/, "Carrier Fit template rows should disable noneligible selection controls");
+assert.match(rfxEventsSource, /templateMemberRowsInOrder/, "Carrier Fit should render exact template members in source order, including unavailable placeholders");
+assert.match(rfxEventsHtml, /Add \{N\} carriers to this RFx and open Message/, "Carrier Fit should document the exact materialization CTA contract");
+assert.match(rfxEventsHtml, /id="rfx-outreach-launch-readiness"[\s\S]+Review this template wave before adding carriers/, "Carrier Fit should expose a visible launch-readiness review before materialization");
+assert.match(rfxEventsHtml, /rfx-outreach-wave-coverage[\s\S]+rfx-outreach-wave-exceptions/, "Carrier Fit should review lane coverage and excluded template members before materialization");
+assert.match(rfxEventsSource, /Ready for human confirmation:[\s\S]+Carrier Fit will not draft or send messages/, "Launch readiness should summarize the immutable template and lane scope without implying a send");
+assert.match(rfxEventsSource, /carrierTemplateWaveCoverage[\s\S]+Every lane covered[\s\S]+data-rfx-review-wave-lane/, "Carrier Fit should calculate selected coverage per RFx lane and expose a safe lane-review control");
+assert.match(carrierTemplatePreviewSource, /clt-launch-readiness[\s\S]+template snapshot[\s\S]+will not draft or send messages/, "The deterministic preview should expose the launch-readiness review with the same no-send boundary");
+assert.match(carrierTemplatePreviewSource, /LANE COVERAGE[\s\S]+Why members stay out/, "The deterministic preview should expose the Review Wave coverage and exception composition");
+assert.match(rfxEventsSource, /`Add \$\{formatNumber\(selectedIds\.length\)\} carriers to this RFx and open Message`/, "Carrier Fit should render the exact count-bearing materialization CTA");
+assert.match(rfxEventsSource, /carrier_template_context:[\s\S]{0,220}template_id:[\s\S]{0,220}template_version:[\s\S]{0,220}materialization_operation_id:/, "Carrier Fit should pass validated template identity/version and one retained operation id into the idempotent participant action");
+assert.match(rfxEventsSource, /requestRfxDetail\(operation\.event_id, \{ force: true \}\)[\s\S]{0,300}getCarrierListTemplate\(operation\.template_id/, "Carrier Fit should re-read RFx participants and template metadata immediately before add");
+assert.match(rfxEventsSource, /createCarrierTemplateMaterializationController\(\)/, "Carrier Fit should own one immutable materialization operation generation");
+assert.match(rfxEventsSource, /lane_ids: operation\.lane_ids,[\s\S]{0,120}vendor_ids: operation\.selected_vendor_ids/, "Carrier Fit retries the immutable all-lane operation audience instead of pruning newly reconciled participants");
+assert.match(rfxEventsSource, /confirmCarrierTemplateMaterializationResponse\(operation, response/, "Carrier Fit should validate exact per-lane outcomes before accepting a server audience");
+assert.match(rfxEventsSource, /selectedOutreachAudienceVendorIds = new Set\(materialization\.confirmation\.confirmed_vendor_ids\)/, "Message should receive only the server-confirmed operation audience");
+assert.match(rfxEventsSource, /const materializationLocked = Boolean\(carrierTemplateMaterializationController\.active\)/, "Carrier Fit should derive its control lock from the retained operation");
+assert.match(rfxEventsSource, /rfxOutreachCarrierScope\.disabled = materializationLocked[\s\S]{0,300}rfxOutreachCarrierSearch\.disabled = materializationLocked[\s\S]{0,300}rfxOutreachCarrierFit\.disabled = materializationLocked[\s\S]{0,300}rfxOutreachCarrierLane\.disabled = materializationLocked/, "Carrier Fit should lock scope, lane, and filters while an operation is retained");
+assert.match(rfxEventsSource, /carrierTemplateMaterializationController\.markRequestStarted\(operation\)[\s\S]{0,500}callRatewareApi\("shortlist_rfx_lane_vendors"[\s\S]{0,500}markRequestSettled\(operation\)/, "Carrier Fit should explicitly distinguish a fresh first attempt from any request that may have committed");
+assert.match(rfxEventsSource, /carrierTemplateMaterializationSubmissionVendorIds\([\s\S]{0,700}participantVendorIds,[\s\S]{0,300}passesFilters:/, "A fresh first attempt should apply refreshed participants and the immutable Carrier Fit filter snapshot before dispatch");
+assert.match(rfxEventsSource, /function selectedManualVendorIds\([\s\S]{0,220}carrierTemplateMaterializationSelectionIds/, "Build and Carrier Fit should render the retained operation snapshot instead of mutable shared selection");
+assert.match(rfxEventsSource, /Cancel pending add/, "Carrier Fit should expose one explicit accessible cancellation path for a retained operation");
+assert.match(rfxEventsSource, /function activateRfxLaunchWorkspace\(workspace, options = \{\}\) \{[\s\S]{0,700}carrierTemplateMaterializationNavigationDecision[\s\S]{0,700}navigationBlocked = !navigation\.allowed[\s\S]{0,700}rfxLaunchWorkspace = normalizeRfxLaunchWorkspace/, "Every click and programmatic Message or Delivery transition must pass through the central retained-operation gate");
+assert.match(rfxEventsSource, /rfxUseOutreachAudienceInMessageButton\?\.addEventListener\("click"[\s\S]{0,500}if \(!activateRfxLaunchWorkspace\("message"\)\) return;/, "The colocated This RFx Message action must stop when the central retained-operation gate blocks it");
+assert.match(rfxEventsSource, /rfxEventDeliveryOverview\?\.addEventListener\("click"[\s\S]{0,500}!activateRfxLaunchWorkspace\("delivery"\)[\s\S]{0,80}return;/, "Direct Delivery transitions must stop when the central retained-operation gate blocks them");
+assert.doesNotMatch(rfxEventsSource, /clear its immutable carrier selection|clear the selection to cancel/i, "Pending-add cancellation copy must say selection is retained, not cleared");
+assert.match(rfxEventsSource, /Cancel pending add[^\n]{0,220}retains (?:the |this )?selection[^\n]{0,220}does not roll back invitations/i, "Cancellation copy must explain retained selection and irreversible invitations");
+assert.match(rfxEventsSource, /carrierTemplateMaterializationController\.requestInFlight[\s\S]{0,400}cannot be cancelled while its request is in flight/i, "Explicit cancellation should fail closed while a participant mutation request is in flight");
+assert.match(rfxEventsSource, /data-workbench-view-button[\s\S]{0,900}carrierTemplateMaterializationNavigationDecision[\s\S]{0,900}pending Add operation is retained in Carrier Fit/, "Build navigation should preserve and restore the retained Carrier Fit retry affordance");
+assert.match(rfxEventsSource, /if \(carrierTemplateSelectionMutationBlocked\(manualShortlistStatus\)\) return;/, "Stale Build selection actions should fail closed while a template materialization operation is retained");
+assert.match(rfxEventsSource, /incidentId[\s\S]{0,180}Correlation ID/, "Carrier Fit add failures should surface the server correlation id");
+assert.match(apiSource, /carrier_template\.add_selected_to_rfx/, "The existing RFx participant action should audit carrier-template materialization");
+assert.match(apiSource, /selected_count:[\s\S]{0,220}confirmed_count:[\s\S]{0,220}already_present_count:[\s\S]{0,220}inserted_count:[\s\S]{0,220}rejected_count:[\s\S]{0,220}pending_count:[\s\S]{0,220}result:/, "Carrier-template participant audits should contain final server-resolved counts and result only");
+assert.match(apiSource, /async function fetchFinalCarrierTemplateInvitations[\s\S]{0,2400}for \(const laneBatch[\s\S]{0,500}for \(const vendorBatch[\s\S]{0,900}\.eq\("rfx_event_id", eventId\)[\s\S]{0,300}\.eq\("rfx_events\.organization_id", organizationId\)[\s\S]{0,300}\.in\("rfx_lane_id", laneBatch\)[\s\S]{0,300}\.in\("vendor_id", vendorBatch\)/, "Carrier-template final reconciliation should batch both dimensions under provider limits with organization and event scope");
+assert.doesNotMatch(apiSource, /if \(!committedBatchCount\) throw result\.error/, "A first upsert response loss must reconcile instead of being classified as definite zero mutation");
+assert.match(apiSource, /expectedEligibleKeys\.every\(\(key\) => finalByKey\.has\(key\)\)/, "Carrier-template materialization should prove every expected committed lane/vendor outcome before success");
+assert.match(apiSource, /carrier_template_materialization_operations[\s\S]+carrier_template_materialization_operation_id[\s\S]+ignoreDuplicates: true/, "The server must journal immutable context before marker-preserving participant insertion");
+assert.match(apiSource, /claimCarrierTemplateMaterializationMutation[\s\S]{0,2600}status: "mutation_issued"[\s\S]{0,1600}\.eq\("status", "pending"\)[\s\S]{0,500}\.select\(CARRIER_TEMPLATE_MATERIALIZATION_JOURNAL_COLUMNS\)/, "Participant mutation ownership must atomically advance a full-context pending journal to mutation_issued");
+const materializationMutationClaimCall = apiSource.indexOf("const mutationClaim = await claimCarrierTemplateMaterializationMutation");
+const materializationMutationFlagSet = apiSource.indexOf("mutationIssued = true", materializationMutationClaimCall);
+const materializationParticipantUpsert = apiSource.indexOf('.from("rfx_lane_vendors")\n        .upsert(', materializationMutationFlagSet);
+assert.ok(materializationMutationClaimCall >= 0 && materializationMutationFlagSet > materializationMutationClaimCall && materializationParticipantUpsert > materializationMutationFlagSet, "The runtime mutationIssued flag must be set and used before every participant upsert");
+assert.match(apiSource, /select\("id,rfx_event_id,rfx_lane_id,vendor_id,carrier_template_materialization_operation_id,rfx_events!inner\(organization_id\)"\)/, "Final scoped reconciliation must read durable operation attribution");
+assert.match(apiSource, /invitation\.carrier_template_materialization_operation_id[\s\S]{0,300}materializationOperationId[\s\S]{0,300}\? "inserted"[\s\S]{0,80}: "reconciled"/, "Final outcome attribution must come from the committed participant marker");
+assert.match(apiSource, /carrier_template_reconcile_required[\s\S]{0,500}correlation_id:/, "Post-commit enrichment uncertainty should return a retryable reconcile-required result with correlation context");
+const carrierTemplateRfxAuditSource = apiSource.slice(
+  apiSource.indexOf("async function writeCarrierTemplateRfxMaterializationAudit"),
+  apiSource.indexOf("export function carrierTemplateVendorHasUsableContact")
+);
+assert.doesNotMatch(carrierTemplateRfxAuditSource, /primary_email|secondary_emails|whatsapp_phone|vendor_ids/, "Carrier-template RFx audits must never persist carrier contact contents or membership payloads");
+const carrierTemplateMaterializationSource = rfxEventsSource.slice(
+  rfxEventsSource.indexOf("async function revalidateCarrierTemplateMaterialization"),
+  rfxEventsSource.indexOf("rfxSelectVisibleOutreachCarriersButton?.addEventListener")
+);
+assert.doesNotMatch(carrierTemplateMaterializationSource, /generateOutreachDrafts|sendOutreachMessages|sendWhatsappOutreachMessages/, "Carrier Fit template materialization must not draft or send communication");
+assert.doesNotMatch(rfxEventsSource.slice(rfxEventsSource.indexOf("function renderOutreachCarrierFitControls"), rfxEventsSource.indexOf("function renderManualShortlistControls")), /createCarrierListTemplate|updateCarrierListTemplate|archiveCarrierListTemplate|restoreCarrierListTemplate|deleteVendorSegment/, "Carrier Fit must not expose template mutations");
 assert.match(stylesSource, /\.rfx-outreach-carrier-wave-actions \{[\s\S]*?position: sticky/, "Carrier Fit should keep the selected-wave action visible while reviewing a long candidate list");
 assert.match(rfxEventsHtml, /rfx-message-wave-context/, "Message setup should explain the exact carrier wave that will receive drafts");
 assert.match(rfxEventsHtml, /id="rfx-message-readiness"/, "Message setup should keep a compact delivery preflight visible before queue preparation");
@@ -1554,6 +1777,15 @@ assert.match(rfxEventsSource, /function renderMessageReadiness/, "Message setup 
 assert.match(rfxEventsSource, /rfxGmailSenderNote\.hidden = !emailChannel/, "Gmail sender guidance should only appear when Gmail is the selected delivery channel");
 assert.match(rfxEventsSource, /rfxWhatsappReadiness\.hidden = !whatsappChannel/, "Meta readiness should only appear when a WhatsApp delivery channel is selected");
 assert.match(rfxEventsHtml, /rfx-delivery-wave-state/, "Delivery queue should keep the currently selected carrier wave visible after queue preparation");
+assert.match(rfxEventsHtml, /data-rfx-delivery-view="participation"/, "Delivery queue should separate carrier participation into a focused view");
+assert.match(rfxEventsHtml, /data-rfx-delivery-view="queue"/, "Delivery queue should provide a focused message release view");
+assert.match(rfxEventsHtml, /Nothing sends without confirmation/, "Delivery control should keep the no-automatic-send boundary visible");
+assert.match(rfxEventsSource, /function activateRfxDeliveryView/, "Delivery queue views should be keyboard-accessible native controls with deterministic state");
+assert.match(rfxEventsHtml, /id="rfx-draft-review-inspector"/, "Message queue should provide a per-carrier delivery review inspector");
+assert.match(rfxEventsSource, /function renderDraftReviewInspector/, "Delivery review should render from the already-loaded event-scoped draft row");
+assert.match(rfxEventsSource, /data-rfx-review-draft/, "Every delivery row should expose an explicit review action before selection");
+assert.match(rfxEventsSource, /Select this message for the governed bulk action/, "The inspector should connect review to the existing governed selection without sending");
+assert.match(rfxEventsSource, /activateRfxDeliveryView\("queue"\)/, "Opening a prepared delivery queue should focus the message queue without sending anything");
 assert.match(rfxEventsSource, /function renderDeliveryWaveState/, "Delivery queue should render a compact event-scoped status for the active carrier wave");
 assert.match(rfxEventsSource, /Only this selected wave belongs to this RFx delivery queue/, "Delivery queue should explain that selected-wave activity never mixes with other RFx history");
 assert.match(rfxEventsSource, /const nextWorkspace = activeDelivery \? "delivery" : ready \? "message" : "carrier"/, "Delivery queue should return an active carrier wave to Message without creating or sending drafts automatically");
@@ -1875,7 +2107,7 @@ assert.match(apiSource, /body\.action === "reject_rfx_bid"/, "Internal API shoul
 assert.match(apiSource, /source_bid_status: "declined"/, "Operator-rejected bid history should record its source status");
 assert.match(apiSource, /rfx\.bid\.reject/, "Operator bid rejection should be auditable");
 assert.match(apiSource, /rfx_bid_outcome: outcome/, "RFx award actions should persist the selected bid outcome");
-assert.match(apiSource, /setRfxBidRateHistoryOutcome\(supabase, previous, "not_awarded", now\)/, "Replacing a primary award should preserve the former carrier cost as not awarded");
+assert.match(rfxAtomicAwardMigration, /rfx_bid_outcome = 'not_awarded'[\s\S]+previous\.award_role = 'primary'/, "Replacing a primary award should atomically preserve the former carrier cost as not awarded");
 assert.match(apiSource, /carrier_cost_rate: cleanNumber\(invitation\.bid_rate\)/, "Award closeout should retain the carrier cost alongside the active Rateware row");
 assert.match(apiSource, /rfx_bid_outcome: "awarded"/, "Award closeout should identify the awarded carrier cost history");
 assert.match(apiSource, /"carrier_cost_rate"[\s\S]*"customer_board_rate"[\s\S]*"commercial_model"[\s\S]*"source_bid_status"[\s\S]*"rfx_bid_outcome"/, "Rateware list responses should expose RFx bid history fields for audit views");
@@ -1939,7 +2171,7 @@ assert.match(stylesSource, /rfx-close-workspace-tabs/, "Close workspace tabs sho
 assert.match(stylesSource, /rfx-award-notice-layout/, "Notices should use a queue and preview layout");
 assert.match(packageJsonSource, /"e2e:bid-room": "node tools\/bid-room-e2e\.mjs"/, "Package scripts should expose the Bid Room production E2E runner");
 assert.match(packageJsonSource, /"smoke:integrations": "node tools\/integration-smoke\.mjs"/, "Package scripts should expose the production integration smoke runner");
-assert.match(bidRoomE2eSource, /RATEWARE_E2E_KINDE_TOKEN/, "Bid Room E2E should require a real Kinde token for production API calls");
+assert.match(bidRoomE2eSource, /RATEWARE_E2E_AUTH_TOKEN/, "Bid Room E2E should require a real Supabase token for authenticated API calls");
 assert.match(bidRoomE2eSource, /create_rfx_event/, "Bid Room E2E should create a real RFx event");
 assert.match(bidRoomE2eSource, /import_rfx_lanes/, "Bid Room E2E should load lane book rows");
 assert.match(bidRoomE2eSource, /shortlist_rfx_lane_vendors/, "Bid Room E2E should select CRM carriers as participants");
@@ -1971,7 +2203,7 @@ assert.match(rfxGmailAccessTokenSource, /\.eq\("mailbox_email", GMAIL_ALLOWED_SE
 assert.match(rfxGmailAccessTokenSource, /const connectionOwner = cleanEmail\(connection\.owner_email\) \|\| owner/, "Bid Room Gmail token refresh should update the actual connection owner");
 assert.match(rfxGmailAccessTokenSource, /\.eq\("owner_email", connectionOwner\)/, "Bid Room Gmail token refresh should not write against stale event owner metadata");
 assert.match(integrationSmokeSource, /Vercel deploy/, "Integration smoke should confirm Vercel deployment");
-assert.match(integrationSmokeSource, /Kinde login/, "Integration smoke should confirm Kinde login");
+assert.match(integrationSmokeSource, /Supabase login/, "Integration smoke should confirm Supabase login");
 assert.match(integrationSmokeSource, /get_saas_settings/, "Integration smoke should confirm authenticated Supabase API access");
 assert.match(integrationSmokeSource, /list_gmail_connections/, "Integration smoke should check Gmail connection status");
 assert.match(integrationSmokeSource, /send_outreach_messages/, "Integration smoke should cover real Gmail sending when enabled");
@@ -2095,7 +2327,7 @@ for (const functionName of ["sendSelectedDraftEmails", "sendSelectedDraftWhatsap
   const source = rfxEventsSource.slice(start, nextFunction > start ? nextFunction : undefined);
   assert.match(source, /finally \{[\s\S]*?updateDraftSendControls\(draftQueueRows\);[\s\S]*?\}/, `${functionName} should always restore Bid Room Draft Queue controls after success or failure`);
 }
-assert.match(rfxEventsSource, /const selectable = channel === "whatsapp"[\s\S]+selectable\.forEach\(rememberDraftRow\)/, "Select sendable should add only drafts from the active channel queue without replacing previous selections");
+assert.match(rfxEventsSource, /const selectable = channel === "whatsapp"[\s\S]+selectable\.filter\(draftWasReviewed\)\.forEach\(rememberDraftRow\)/, "Select sendable should add only reviewed drafts from the active channel queue without replacing previous selections");
 assert.doesNotMatch(rfxEventsSource, /draftRowsForEvent\(\)\.slice\(0, 200\)/, "Draft queue selection should not be capped to the first 200 unfiltered rows");
 for (const source of [rfxInvitationTableSource, apiInvitationTableSource]) {
   assert.doesNotMatch(source, /Tu tarifa|Tu capacidad|Rango objetivo|Millas|Peso/, "RFx invitation lane table should not include carrier response or heavy analysis columns");
@@ -2735,6 +2967,11 @@ assert.match(apiSource, /function apiErrorStatus/, "Rateware API should return a
 assert.match(apiSource, /function safeOperationalError/, "Rateware API errors should be sanitized before returning or auditing them");
 assert.match(apiSource, /event: "rateware_api\.error"/, "Rateware API should emit structured server-side error logs");
 assert.match(apiSource, /incident_id: incidentId/, "Rateware API failures should carry a correlation incident ID");
+assert.match(apiSource, /headers\.set\("X-Request-Id", requestId\)/, "Rateware API responses should expose one request correlation id");
+assert.match(apiSource, /headers\.set\("X-Operation-Id", operationId\)/, "High-risk Rateware mutations should expose one operation id");
+assert.match(apiSource, /x-request-id, x-operation-id/, "Rateware preflight should allow caller correlation headers");
+assert.match(apiSource, /CORRELATED_HIGH_RISK_ACTIONS[\s\S]+generate_outreach_drafts[\s\S]+send_bid_room_carrier_message/, "Outreach effects should be included in the initial high-risk correlation set");
+assert.match(apiSource, /request_id: requestId[\s\S]{0,120}operation_id: operationId/, "Operational logs should reuse request and operation correlation ids");
 assert.match(apiSource, /cause_chain: errorCauseChain/, "Rateware API should preserve the nested backend cause chain");
 assert.match(apiSource, /stack: safeOperationalValue\(errorInfo\.stack/, "Backend stacks should remain sanitized and server-side only");
 assert.match(ratewareApiClientSource, /error\.incidentId = data\?\.incident_id/, "Rateware API client should preserve backend incident IDs");
@@ -3584,9 +3821,9 @@ assert.match(workspaceIdentitySource, /WORKSPACE_IDENTITY_CACHE_TTL_MS = 5 \* 60
 assert.match(workspaceIdentitySource, /identityKeys\.every\(\(identityKey\) => cachedWorkspace\.identity_keys\.has\(identityKey\)\)/, "Workspace cache hits should avoid database work only when every authenticated identity is registered");
 assert.match(workspaceIdentitySource, /from\("workspace_registry"\)[\s\S]+\.select\("organization_id,canonical_owner_key"\)[\s\S]+if \(registryRow\)/, "Cold workspace resolution should read the registry before attempting a write");
 assert.match(workspaceIdentitySource, /const missingIdentityKeys = uncachedIdentityKeys\.filter/, "Workspace resolution should write only aliases that do not already exist");
-assert.match(apiSource, /resolveRuntimeWorkspaceUser\([\s\S]+?requireKindeUser/, "Rateware API should enforce the reviewed tenant identity before action routing");
+assert.match(apiSource, /const resolveUser = dependencies\.resolveUser \?\? resolveRuntimeWorkspaceUser/, "Rateware API handler factory should default to the reviewed runtime tenant resolver");
 assert.match(workspaceIdentitySource, /if \(options\.persistIdentity === false\)[\s\S]+owner_email: canonicalOwnerKey/, "Read-heavy APIs should derive the canonical organization owner without database identity writes");
-assert.match(apiSource, /resolveRuntimeWorkspaceUser\([\s\S]+await requireKindeUser\(request\)/, "Rateware API polling should use the staged runtime tenant resolver");
+assert.match(apiSource, /const claims = await authenticate\(request\)[\s\S]+resolveRatewareApiPrincipal\(supabase, claims, \{ resolveUser \}\)/, "Rateware API must preserve raw claims before the staged runtime tenant resolver scopes actions");
 assert.match(apiSource, /supabase\.rpc\("rateware_bid_room_chat_snapshot"/, "Bid Room polling should load its database snapshot through one backend RPC");
 assert.match(apiSource, /if \(input\.sync_google_chat === true\) return listBidRoomChatLegacy/, "Explicit Google Chat inbound sync should retain its external synchronization path");
 assert.match(apiSource, /isMissingBidRoomChatSnapshotRpc/, "Bid Room polling should fall back safely during a staged database deployment");
@@ -3598,7 +3835,7 @@ assert.match(bidRoomChatSnapshotMigration, /vendor_row\.owner_email = p_owner_em
 assert.match(bidRoomChatSnapshotMigration, /security invoker[\s\S]+set search_path = pg_catalog, public, pg_temp/, "Bid Room snapshot should use caller privileges and pin its search path");
 assert.match(bidRoomChatSnapshotMigration, /revoke all on function public\.rateware_bid_room_chat_snapshot[\s\S]+from public, anon, authenticated/, "Bid Room snapshot RPC should remain backend-only");
 assert.match(createRawUploadSource, /resolveRuntimeWorkspaceUser\(supabase, identity\)/, "Upload creation should enforce the reviewed tenant identity");
-assert.match(interpretUploadSource, /resolveRuntimeWorkspaceUser\(supabase, await requireKindeUser/, "Interpretation should enforce the reviewed tenant identity");
+assert.match(interpretUploadSource, /resolveRuntimeWorkspaceUser\(supabase, await requireRatewareUser/, "Interpretation should enforce the reviewed tenant identity through the staged provider verifier");
 assert.match(canonicalWorkspaceMigration, /create table if not exists public\.workspace_registry/, "Canonical workspace ownership should be persisted");
 assert.match(canonicalWorkspaceMigration, /with recursive owner_edges as/, "Legacy owners should be discovered through existing vendor-rate relationships");
 assert.match(canonicalWorkspaceMigration, /rate_staging_vendor_workspace_guard/, "Staged rates should reject cross-workspace vendor links");
@@ -3679,14 +3916,16 @@ assert.match(listVendorsSource, /fetchVendorRateMetricsSafe/, "Carrier CRM direc
 assert.match(listVendorsSource, /buildVendorIntelligenceRows\(rows, metricsResult\.metrics, bidMetricsResult\.metrics\)/, "Carrier CRM directory should share the unified quote and Bid Room scoring model");
 assert.match(listVendorsSource, /const lightweight =/, "Carrier CRM vendor list should support lightweight selector loading");
 assert.match(listVendorsSource, /contact_name/, "Lightweight Carrier CRM loading should include contact names for Bid Room search");
-assert.match(listVendorsSource, /search_workspace_vendors/, "Carrier CRM search should use the workspace-scoped vendor search RPC");
-assert.match(listVendorsSource, /search_capped/, "Carrier CRM search should disclose when the server search is capped");
-assert.match(listVendorsSource, /shouldPageSearchInMemory/, "Carrier CRM search should preserve RPC relevance ordering before page slicing");
+assert.match(listVendorsSource, /search_workspace_vendors_keyset/, "Carrier CRM search should use the fixed-snapshot workspace vendor keyset RPC");
+assert.match(listVendorsSource, /while \(seenSearchIds\.size < searchSafetyLimit\)/, "Carrier CRM search should scan every bounded keyset RPC page");
+assert.match(listVendorsSource, /p_snapshot_at: searchSnapshotAt[\s\S]+p_after_id: searchAfterId \|\| null/, "Carrier CRM search should keep one snapshot cutoff and advance a unique UUID keyset");
+assert.doesNotMatch(listVendorsSource, /p_offset: searchOffset/, "Carrier CRM search must not traverse mutable matches by offset");
 assert.match(listVendorsSource, /rankById/, "Carrier CRM search should sort returned vendors by search match rank");
 assert.match(listVendorsSource, /\.slice\(offset, offset \+ limit\)/, "Carrier CRM search should page after relevance sorting");
-assert.match(listVendorsSource, /total: vendorSearch \? searchTotal : filteredTotal/, "Carrier CRM search should report the full server-side search total to CRM and Bid Room");
+assert.match(listVendorsSource, /total: filteredTotal/, "Carrier CRM search should report the complete post-filter total to CRM and Bid Room");
+assert.match(listVendorsSource, /search_capped: false/, "Carrier CRM search should not claim a complete result is capped");
 assert.match(listVendorsSource, /const viewBaseStage = \["sourcing", "procurement", "archived"\]\.includes\(view\) \? view : ""/, "Vendor API should treat sourcing, procurement, and archived as first-class CRM views");
-assert.match(listVendorsSource, /query = query\.eq\("base_stage", effectiveBaseStage\)/, "Vendor API should resolve CRM base-stage filters consistently across modules");
+assert.match(listVendorsSource, /filteredQuery = filteredQuery\.eq\("base_stage", effectiveBaseStage\)/, "Vendor API should resolve CRM base-stage filters consistently across modules");
 assert.match(vendorWorkspaceSearchMigration, /secondary_emails/, "Workspace vendor search should include secondary emails");
 assert.match(vendorWorkspaceSearchMigration, /contact_name/, "Workspace vendor search should include contact names");
 assert.match(vendorWorkspaceSearchMigration, /rateware_vendor_search_key/, "Workspace vendor search should normalize accents and punctuation");
@@ -3701,7 +3940,7 @@ assert.match(vendorPagePerformanceMigration, /vendors_refresh_search_document/, 
 assert.match(vendorPagePerformanceMigration, /vendor_rate_metrics_for_owner_ids/, "Vendor rate enrichment should be scoped to requested CRM rows");
 assert.match(vendorPagePerformanceMigration, /vendor_bid_metrics_for_owner_ids/, "Bid Room enrichment should aggregate requested CRM rows server-side");
 assert.match(listVendorsSource, /const vendorIds = rows\.map\(\(row\) => row\.id\)/, "Carrier CRM should request metrics only for the current page");
-assert.match(rfxEventsSource, /rawTerm\.length >= 2\s*\? segmentRows/, "Bid Room should trust server-side vendor search matches");
+assert.match(rfxEventsSource, /rawTerm\.length >= 2\s*\? scopeRows/, "Bid Room should trust server-side vendor search matches");
 assert.match(vendorImprovementSource, /const matchingRows = rows;/, "Vendor CI should trust server-side vendor search matches");
 assert.match(listVendorsSource, /if \(!lightweight && rows\.length\)/, "Bid Room carrier selector should be able to skip heavy CRM metric enrichment");
 assert.match(listVendorsSource, /rows: enrichedRows,[\s\S]*warnings,/, "Carrier CRM directory should surface partial metric warnings");
@@ -3726,6 +3965,131 @@ assert.match(apiSource, /secondary_emails: emails\.slice\(1\)/, "Rateware API sh
 assert.match(vendorsSource, /function renderDrawerRatewareEvidence/, "Vendor drawer should explain Rateware evidence");
 assert.match(vendorsHtml, /drawer-rateware-evidence/, "Vendor drawer should have a Rateware evidence section");
 assert.match(vendorSegmentsCoverageMigration, /coverage_filter text/, "Vendor saved lists should persist a coverage filter");
+const vendorWorkflowTabsHtml = vendorsHtml.match(/<section class="vendor-tabs vendor-workflow-tabs[\s\S]*?<\/section>/)?.[0] || "";
+const dynamicSegmentsPanelHtml = vendorsHtml.match(/<section[^>]*data-tab-panel="segments"[\s\S]*?<\/section>/)?.[0] || "";
+const carrierTemplateWorkspaceHtml = vendorsHtml.match(/<section[^>]*data-vendor-workspace="list-templates"[\s\S]*?<\/section>/)?.[0] || "";
+assert.match(
+  vendorWorkflowTabsHtml,
+  /data-vendor-tab="intelligence"[\s\S]*data-vendor-tab="list-templates"/,
+  "Carrier CRM should expose List Templates as a top-level workflow tab immediately after Intelligence"
+);
+assert.doesNotMatch(dynamicSegmentsPanelHtml, /data-vendor-tab="list-templates"|data-vendor-workspace="list-templates"/, "Carrier templates must not be nested in the dynamic Saved vendor lists panel");
+assert.match(carrierTemplateWorkspaceHtml, /data-template-action="new"/, "Carrier template library should expose New template");
+assert.match(carrierTemplateWorkspaceHtml, /data-template-search[^>]+aria-label="Search templates"/, "Carrier template library search should have an accessible name");
+assert.match(carrierTemplateWorkspaceHtml, /data-template-status[^>]+aria-label="Template status"/, "Carrier template lifecycle filter should have an accessible name");
+assert.match(vendorsHtml, /data-template-capability-error[^>]+role="alert"[\s\S]+data-template-capability-retry/, "Carrier CRM should surface retryable capability failures outside the inaccessible template workspace");
+for (const action of ["open", "duplicate", "archive", "restore"]) {
+  assert.match(carrierListTemplatesSource, new RegExp(`data-template-action="${action}"`), `Carrier template library should render ${action} controls`);
+  assert.ok(carrierListTemplatesSource.includes(`aria-label="${action.charAt(0).toUpperCase() + action.slice(1)} \${name}"`), `Carrier template ${action} controls should identify their template`);
+}
+assert.doesNotMatch(
+  `${carrierTemplateWorkspaceHtml}\n${carrierListTemplatesSource}`,
+  /data-template-action="(?:delete|remove)"|>\s*(?:Delete|Remove)(?:\s+template)?\s*</i,
+  "Carrier template library must use reversible archive and restore controls, never hard delete"
+);
+assert.match(vendorsSource, /initCarrierListTemplateLibrary/, "Carrier CRM should initialize the shared template library controller");
+assert.match(carrierListTemplatesSource, /fetchCarrierListTemplates/, "Carrier template list action should provide capability discovery");
+assert.match(carrierListTemplatesSource, /getAccessContext/, "Carrier template write affordances should use the current Kinde access context");
+assert.doesNotMatch(carrierListTemplatesSource, /\bcanUse\s*\(/, "Carrier template UI must not change or depend on global canUse semantics");
+assert.match(carrierListTemplatesSource, /template_version/, "Carrier template rows should display and retain their optimistic-lock version");
+assert.match(carrierListTemplatesSource, /const displayedVersion = Number\(button\.dataset\.templateVersion\)[\s\S]+duplicateCarrierListTemplate\(id, duplicateName, displayedVersion\)[\s\S]+archiveCarrierListTemplate\(id, displayedVersion\)[\s\S]+restoreCarrierListTemplate\(id, displayedVersion\)/, "Duplicate, archive, and restore should send the exact version displayed on the clicked control");
+assert.match(carrierListTemplatesSource, /template_version_conflict/, "Carrier template version conflicts should use the stable API conflict code");
+assert.match(carrierListTemplatesSource, /template_name_conflict/, "Carrier template duplicate-name conflicts should present separate rename guidance");
+const carrierTemplateLibraryMutationSource = carrierListTemplatesSource.slice(
+  carrierListTemplatesSource.indexOf("async function mutateTemplate"),
+  carrierListTemplatesSource.indexOf('workspace?.addEventListener("click"')
+);
+assert.doesNotMatch(carrierTemplateLibraryMutationSource, /error\?\.status === 409[\s\S]+getCarrierListTemplate/, "Carrier template library must not refresh every generic 409 as if it were a version conflict");
+assert.match(carrierListTemplatesSource, /createCarrierListTemplateController/, "Carrier template UI should use the executable request-order controller");
+for (const state of ["pending", "enabled", "error", "disabled"]) {
+  assert.match(carrierTemplateCapabilitySource, new RegExp(`"${state}"`), `Carrier template capability should preserve the explicit ${state} state`);
+}
+assert.match(carrierTemplateCapabilitySource, /const changed = previousCapability !== nextCapability[\s\S]+if \(changed\) onTransition\(capability/, "Carrier template capability callbacks should fire only on semantic transitions and avoid navigation recursion");
+assert.match(carrierListTemplatesSource, /capabilityView\.transition\("pending"\)/, "Carrier template loads should enter an inaccessible pending capability state");
+assert.match(vendorsSource, /onCapabilityChange: \(capability\) => \{[\s\S]+vendorTemplateNavigationGuard\.transitionCapability\(capability\)/, "Carrier CRM navigation should receive every explicit library capability transition");
+assert.doesNotMatch(vendorsSource, /resolveCapability/, "Carrier CRM navigation should not collapse semantic capability states back to a boolean");
+assert.match(carrierListTemplatesSource, /const lifecycleFilter = [^;]+[\s\S]+templateLifecycle\(row\) !== lifecycleFilter/, "Carrier template client rendering should keep deep-linked or newly mutated rows out of the wrong lifecycle filter");
+assert.match(carrierListTemplatesSource, /activate:[\s\S]+selectedTemplateId = "";[\s\S]+render\(\)/, "Carrier template history navigation without a template id should clear stale detail selection");
+assert.match(carrierListTemplatesSource, /const retryAction = action === "duplicate"[\s\S]+templateLifecycle\(current\.row\)[\s\S]+: action;[\s\S]+focusSelectedAction\(retryAction\)/, "Carrier template version-conflict recovery should return keyboard focus to the refreshed action or the original action when refresh fails");
+const carrierTemplateWizardHtml = vendorsHtml.match(/<form[^>]*data-template-wizard-form[\s\S]*?<\/form>/)?.[0] || "";
+assert.deepEqual(
+  [...carrierTemplateWizardHtml.matchAll(/<button[^>]*data-template-wizard-step="\d"[^>]*>\s*([^<]+?)\s*<\/button>/g)].map((match) => match[1]),
+  ["Details", "Add carriers", "Review", "Save"],
+  "Carrier template builder should expose exactly the four approved labelled steps"
+);
+assert.match(carrierTemplateWizardHtml, /data-template-wizard-form[^>]+data-unsaved-guard/, "Carrier template builder should participate in the existing unsaved-changes guard");
+assert.match(vendorsHtml, /data-template-wizard-close[^>]+aria-label="Close template builder"/, "Carrier template builder close control should have an accessible name");
+assert.match(carrierTemplateWizardHtml, /data-template-import-file[^>]+accept="\.csv,\.xlsx,text\/csv,application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet"/, "Carrier template import should advertise only supported CSV and XLSX types");
+assert.match(carrierTemplateWizardHtml, /data-template-save="draft"[^>]*>Save draft<\/button>[\s\S]+data-template-save="active"[^>]*>Activate template<\/button>/, "Carrier template Save step should keep draft and activation decisions separate");
+assert.match(carrierListTemplatesSource, /createCarrierTemplateCandidatePoolController\(\{[\s\S]+maxCandidates: CRM_MATERIALIZATION_LIMIT/, "Template membership search should create one bounded candidate pool");
+assert.match(carrierListTemplatesSource, /crmCandidates\.page\(crmPageOffset, CRM_PAGE_SIZE\)/, "Template membership pagination should use local candidate slices");
+assert.match(carrierListTemplatesSource, /await crmCandidates\.materialize\(filters, fetchVendors\)/, "Template membership search should materialize through one bounded server request per signature");
+assert.match(carrierListTemplatesSource, /crmRequiresRefinement[\s\S]+Refine the search or filters[\s\S]+incomplete candidate traversal is blocked/, "Template membership search must block traversal when more than 1,000 candidates match");
+assert.match(carrierListTemplatesSource, /carrierTemplateImportValidation\(file\)[\s\S]+sheet_to_json\(firstSheet, \{ header: 1, defval: "" \}\)[\s\S]+carrierTemplateImportValidation\(file, \{ row_count: normalizedRows\.length \}\)[\s\S]+resolveCarrierListTemplateRows\(normalizedRows\)/, "Template import should validate file bounds, parse only a matrix, bound rows, then call only the resolver");
+assert.match(carrierListTemplatesSource, /status === "matched"[\s\S]+apply_resolution_preview/, "Only matched reconciliation rows should flow into automatic membership");
+assert.match(carrierListTemplatesSource, /confirm_manual_match/, "Ambiguous rows should require an explicit manual existing-carrier choice");
+assert.match(carrierListTemplatesSource, /carrierTemplateExceptionCsv\(exceptionRows\)/, "Template exception downloads should use the shared audited serializer");
+assert.match(carrierListTemplatesSource, /function downloadTextFile[\s\S]+try \{[\s\S]+link\.click\(\);[\s\S]+finally \{[\s\S]+link\?\.remove\(\);[\s\S]+setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 0\)/, "Template downloads should always remove the anchor and defer Blob URL revocation until after click consumption");
+assert.match(carrierListTemplatesSource, /updateCarrierListTemplate\(savedTemplateId, payload, savedExpectedVersion\)/, "Template edits should send the exact immutable loaded expected version");
+assert.match(carrierListTemplatesSource, /template_version_conflict[\s\S]+getCarrierListTemplate\(savedTemplateId\)[\s\S]+Reload current/, "Template update conflicts should preserve local state and fetch current state for explicit reload");
+assert.match(carrierListTemplatesSource, /ratewareConfirmUnsavedChanges/, "Template close/navigation should invoke the existing unsaved-changes confirmation");
+assert.match(carrierListTemplatesSource, /beforeLeave: \(\{ restoreFocus = false \} = \{\}\) => closeTemplateWizard\(\{ restoreFocus \}\)/, "Template library should expose one guarded beforeLeave contract that suppresses stale opener focus during navigation");
+assert.match(carrierListTemplatesSource, /wizardAsync\.begin\("file-import"\)[\s\S]+wizardAsync\.begin\(`ambiguity-search:\$\{generation\}:\$\{rowIdentity\}`\)[\s\S]+wizardAsync\.begin\("save"\)[\s\S]+wizardAsync\.begin\("current-fetch"\)/, "Wizard async operations should be session, reconciliation-generation, and operation gated");
+assert.match(carrierListTemplatesSource, /renderWizard\(\);\s*modalFocus\.open\(/, "Template modal should move focus inside synchronously before hydration");
+assert.match(carrierListTemplatesSource, /modalFocus\.trapTab\(event\)/, "Template modal should trap Tab and Shift+Tab");
+assert.match(carrierListTemplatesSource, /modalFocus\.close\(\{ restoreFocus \}\)/, "Template modal should restore its re-resolved opener only on ordinary close");
+assert.match(carrierTemplateWizardHtml, /maximum 5 MB and 1,000 data rows/, "Template import copy should disclose the shared 1,000-row limit");
+assert.doesNotMatch(carrierListTemplatesSource, /\b(?:createVendor|updateVendor|importVendors|importVendorOnboardingCorrections|applyVendorTemplateUpdates)\b/, "Template builder must not import or call Carrier CRM master-data mutations");
+assert.match(stylesSource, /\.carrier-template-workspace\.hidden\s*\{\s*display:\s*none;/, "Inactive Carrier CRM template workspace should remain hidden after capability discovery");
+assert.match(vendorsSource, /URLSearchParams[\s\S]+template[\s\S]+popstate/, "Carrier CRM should preserve template deep links and browser history navigation");
+assert.match(vendorsSource, /createCarrierTemplateNavigationCoordinator\([\s\S]+carrierListTemplateLibraryController\?\.beforeLeave\?\.\(\{[\s\S]+restoreFocus: false/, "Carrier CRM tab and deep-link navigation should pass through the wizard beforeLeave contract without stale opener restoration");
+assert.match(vendorsSource, /vendorPopRestoreInFlight[\s\S]+window\.history\.go\(acceptedVendorHistoryPosition - route\.targetPosition\)/, "Declined Back or Forward navigation should restore the accepted history entry without a popstate loop");
+assert.match(vendorsSource, /createVendorTemplateNavigationGuard/, "Carrier CRM should route List Templates history through the capability-aware navigation guard");
+assert.match(vendorsSource, /tabName === "list-templates" && vendorTemplateNavigationGuard\.capability !== "enabled"[\s\S]+activateVendorTab\("funnel"/, "Every List Templates activation should fail back to Funnel until capability is enabled");
+assert.doesNotMatch(vendorsSource, /requestedVendorTemplateId/, "Carrier CRM must re-read the current template route after asynchronous capability discovery");
+for (const field of ['lifecycle_status', 'template_version', 'created_by_user_id', 'updated_by_user_id', 'archived_at']) {
+  assert.match(carrierTemplateMigration, new RegExp(field), `carrier template migration must define ${field}`);
+}
+assert.match(carrierTemplateMigration, /segment_type\s*=\s*'participant_template'/);
+assert.match(carrierTemplateMigration, /workspace_identity_aliases/);
+assert.match(carrierTemplateMigration, /search_workspace_vendors_keyset\([\s\S]+security invoker/, "Carrier template migration should add the fixed-snapshot vendor search keyset RPC as security invoker");
+assert.match(carrierTemplateMigration, /revoke execute on function public\.search_workspace_vendors_keyset[\s\S]+from public, anon, authenticated;[\s\S]+grant execute[\s\S]+to service_role;/, "Vendor search keyset RPC should be callable only by the service role");
+assert.match(carrierTemplateMigration, /create table if not exists public\.carrier_template_materialization_operations[\s\S]+id uuid primary key[\s\S]+organization_id text not null[\s\S]+rfx_event_id uuid not null[\s\S]+template_id uuid not null[\s\S]+template_version bigint not null[\s\S]+lane_ids uuid\[\] not null[\s\S]+selected_vendor_ids uuid\[\] not null[\s\S]+actor_user_id text not null[\s\S]+actor_email text not null[\s\S]+status text not null/i, "Carrier template materialization must journal immutable server-resolved operation context");
+assert.match(carrierTemplateMigration, /check \(status in \('pending', 'mutation_issued', 'reconciled', 'reconcile_required', 'rejected'\)\)/i, "Materialization lifecycle must persist mutation_issued between pending and final reconciliation");
+assert.match(carrierTemplateMigration, /alter table public\.carrier_template_materialization_operations enable row level security/i, "Materialization journal must enable RLS in the exposed public schema");
+assert.match(carrierTemplateMigration, /revoke all on table public\.carrier_template_materialization_operations from public, anon, authenticated;[\s\S]+grant select, insert, update on table public\.carrier_template_materialization_operations to service_role;/i, "Materialization journal must be service-role only");
+assert.match(carrierTemplateMigration, /alter table public\.rfx_lane_vendors[\s\S]+add column if not exists carrier_template_materialization_operation_id uuid[\s\S]+references public\.carrier_template_materialization_operations\(id\)/i, "RFx participants must retain durable materialization attribution");
+assert.match(carrierTemplateMigration, /create index if not exists rfx_lane_vendors_carrier_template_materialization_operation_idx[\s\S]+carrier_template_materialization_operation_id/i, "Participant operation attribution needs a lookup index");
+assert.match(carrierTemplateMigration, /create index if not exists carrier_template_materialization_operations_rfx_event_idx\s+on public\.carrier_template_materialization_operations\s*\(rfx_event_id(?:\s*,|\s*\))/i, "Materialization journal RFx foreign-key lookups need an index beginning with rfx_event_id");
+assert.match(carrierTemplateMigration, /raise exception/i);
+assert.match(carrierTemplateMigration, /select organization_id, public\.rateware_vendor_search_key\(segment_name\) as normalized_segment_name[\s\S]+group by organization_id, public\.rateware_vendor_search_key\(segment_name\)/i, "Carrier template legacy duplicate preflight must use the canonical SQL search key");
+assert.match(carrierTemplateMigration, /create unique index vendor_segments_participant_template_org_name_uidx[\s\S]+\(organization_id, public\.rateware_vendor_search_key\(segment_name\)\)[\s\S]+where segment_type = 'participant_template'/i, "Carrier template uniqueness must use the same canonical SQL search key as the API");
+assert.doesNotMatch(carrierTemplateMigration, /organization_id, lower\(btrim\(segment_name\)\)/i, "Carrier template uniqueness must not retain the narrower legacy lower-trim key");
+const legacyVendorSegmentPolicyDrop = carrierTemplateMigration.indexOf('drop policy if exists "authenticated users can read vendor segments" on public.vendor_segments');
+assert.ok(legacyVendorSegmentPolicyDrop >= 0, "Carrier template migration must drop the legacy permissive vendor_segments read policy");
+assert.doesNotMatch(carrierTemplateMigration, /create policy[\s\S]+on public\.vendor_segments[\s\S]+to authenticated/i, "Carrier template migration must not recreate authenticated browser access to vendor_segments");
+assert.match(carrierTemplateMigration, /revoke all on table public\.vendor_segments from public, anon, authenticated;[\s\S]+revoke all on table public\.vendor_segments from service_role;[\s\S]+grant select, insert, update, delete on table public\.vendor_segments to service_role;/i, "Vendor segments must remain service-role only after removing the legacy browser policy");
+assert.match(carrierTemplateMigration, /create or replace function public\.rateware_duplicate_carrier_list_template[\s\S]+security invoker[\s\S]+set search_path = ''/i, "Carrier template duplication should use a narrow SECURITY INVOKER RPC");
+assert.match(carrierTemplateMigration, /from public\.vendor_segments[\s\S]+segment\.organization_id = p_organization_id[\s\S]+segment\.segment_type = 'participant_template'[\s\S]+for update/i, "Carrier template duplication should lock the organization-scoped participant source row");
+const carrierTemplateDuplicateRpc = carrierTemplateMigration.slice(carrierTemplateMigration.indexOf("create or replace function public.rateware_duplicate_carrier_list_template"));
+for (const outcome of ["success", "not_found", "version_conflict", "name_conflict"]) {
+  assert.match(carrierTemplateDuplicateRpc, new RegExp(`outcome := '${outcome}'`), `Carrier template duplicate RPC should expose the stable ${outcome} outcome`);
+}
+assert.match(carrierTemplateDuplicateRpc, /if source_template\.template_version <> p_expected_version[\s\S]+outcome := 'version_conflict'[\s\S]+insert into public\.vendor_segments/i, "Carrier template duplication must return before insert when the locked source version is stale");
+assert.match(carrierTemplateDuplicateRpc, /insert into public\.vendor_segments[\s\S]+lifecycle_status[\s\S]+vendor_ids[\s\S]+template_version[\s\S]+values[\s\S]+'draft'[\s\S]+source_template\.vendor_ids[\s\S]+1/i, "Carrier template duplication should preserve ordered membership in a new draft at version 1");
+assert.match(carrierTemplateDuplicateRpc, /exception[\s\S]+when unique_violation[\s\S]+outcome := 'name_conflict'/i, "Concurrent duplicate names should map to a stable RPC outcome");
+assert.match(carrierTemplateDuplicateRpc, /revoke execute[\s\S]+from public, anon, authenticated[\s\S]+grant execute[\s\S]+to service_role/i, "Only the server service role should execute the duplicate RPC");
+assert.match(apiSource, /supabase\.rpc\("rateware_duplicate_carrier_list_template"/, "The duplicate API must delegate the locked version-and-copy transaction to the RPC");
+const carrierTemplateDuplicateApi = apiSource.slice(apiSource.indexOf('if (action === "duplicate_carrier_list_template")'), apiSource.indexOf('if (action === "archive_carrier_list_template"'));
+assert.doesNotMatch(carrierTemplateDuplicateApi, /loadCarrierTemplate|\.from\("vendor_segments"\).*insert/s, "The duplicate API must not recreate an unlocked read-then-insert flow");
+const carrierTemplateNameConflictMatcher = apiSource.slice(apiSource.indexOf("function carrierTemplateNameDatabaseConflict"), apiSource.indexOf("function carrierTemplateDuplicateNameResult"));
+assert.match(carrierTemplateNameConflictMatcher, /databaseError\.message[\s\S]+databaseError\.details/, "Expected template-name conflicts should recognize production-shaped PostgREST message or details fields");
+assert.match(carrierTemplateNameConflictMatcher, /message === expectedMessage[\s\S]+unique constraint/, "Template-name conflict matching should require the exact quoted PostgREST message and reject other named constraints before details fallback");
+assert.ok(carrierTemplateNameConflictMatcher.includes("/^Key \\(organization_id, rateware_vendor_search_key"), "Template-name conflict fallback should require the exact PostgREST details key label");
+assert.doesNotMatch(carrierTemplateNameConflictMatcher, /databaseError\.constraint|constraint_name/, "Template-name conflict matching should not depend on synthetic constraint fields omitted by PostgREST");
+assert.match(carrierTemplateMigration, /cardinality\(new\.vendor_ids\)/i);
+assert.match(carrierTemplateMigration, /from public\.vendor_segments segment[\s\S]+?unnest\(segment\.vendor_ids\)[\s\S]+?carrier template migration blocked: % participant templates contain duplicate vendor_ids/i, "Carrier template migration must fail closed when a legacy template has duplicate member UUIDs");
+assert.match(carrierTemplateMigration, /from public\.vendor_segments segment[\s\S]+?public\.vendors v[\s\S]+?v\.id = any\(segment\.vendor_ids\)[\s\S]+?v\.organization_id is distinct from segment\.organization_id[\s\S]+?carrier template migration blocked: % participant templates include members from another organization/i, "Carrier template migration must fail closed when an existing member belongs to another organization");
 assert.match(apiSource, /coverage_filter: coverageFilter/, "Vendor segment API should persist coverage filters");
 assert.match(vendorsSource, /segment\.coverage_filter/, "Vendor saved lists should apply coverage filters in the UI");
 assert.match(vendorProfileRequestsMigration, /create table if not exists public\.vendor_profile_requests/, "Carrier profile requests should have a token table");
@@ -3769,15 +4133,13 @@ assert.match(rfxEventsSource, /const vendorOptionCache = new Map\(\)/, "Bid Room
 assert.doesNotMatch(rfxEventsSource, /selectedManualVendorIdsState = new Set\(\[\.\.\.selectedManualVendorIdsState\]\.filter\(/, "Changing the CRM search must not discard selected bid participants");
 assert.match(rfxEventsSource, /vendorSearchRows = sortedVendorOptions\(rows\)/, "Bid Room should render server-side CRM search results instead of waiting for the complete CRM preload");
 assert.match(rfxEventsSource, /async function hydrateRemainingVendorOptions[\s\S]+limit: CRM_VENDOR_PAGE_SIZE/, "Bid Room should hydrate further Carrier CRM pages in the background after the initial page is usable");
-assert.match(vendorServiceSource, /ids = \[\]/, "Vendor service should support resolving saved participant IDs without relying on the visible list");
+assert.match(vendorServiceSource, /ids = \[\]/, "Vendor service should support resolving retained participant and Carrier Fit template IDs without relying on the visible list");
 assert.match(listVendorsSource, /const requestedIds = normalizeUuidList\(body\.ids \|\| body\.vendor_ids\)/, "Vendor API should support owner-scoped vendor resolution by ID");
-assert.match(rfxEventsSource, /async function hydrateVendorOptionIds\(ids = \[\]\)/, "Bid Room should hydrate saved participant templates by ID from Carrier CRM");
-assert.match(rfxEventsSource, /ids: requestedIds\.slice\(offset, offset \+ CRM_VENDOR_SEARCH_LIMIT\)/, "Saved participant hydration should use bounded CRM requests");
-assert.match(rfxEventsSource, /async function loadSegmentCandidateRows\(segmentId = selectedSegmentId\(\)\)/, "Bid Room should resolve saved or procurement participants through Carrier CRM before selecting them");
+assert.match(rfxEventsSource, /async function hydrateVendorOptionIds\(ids = \[\], \{ guard = null \} = \{\}\)/, "Bid Room should hydrate retained manual participant IDs from Carrier CRM with an optional stale-operation guard");
+assert.match(rfxEventsSource, /ids: requestedIds\.slice\(offset, offset \+ CRM_VENDOR_SEARCH_LIMIT\)/, "Retained participant hydration should use bounded CRM requests");
+assert.match(rfxEventsSource, /async function loadManualScopeCandidateRows\(scopeId = selectedManualScopeId\(\), \{ guard = null \} = \{\}\)/, "Bid Room should resolve the manual all-active or procurement scope before selecting carriers with an optional legacy guard");
 assert.match(rfxEventsSource, /base_stage: "procurement"[\s\S]*lightweight: true/, "Procurement participant loading should use the server-side CRM procurement filter");
-assert.match(rfxEventsSource, /const rows = await loadSegmentCandidateRows\(segmentId\);/, "Loading a saved participant list should not depend on the currently visible CRM rows");
-assert.match(rfxEventsSource, /loadSegmentCandidateRows\(segmentId\)[\s\S]*selectManualVendorIds\(rows\.map\(\(vendor\) => vendor\.id\)\)/, "Selecting a participant segment should hydrate CRM rows before selecting carrier ids");
-assert.match(rfxEventsSource, /const savedIds = segmentVendorIds\(selectedSegment\);/, "Saved templates should remain loadable even when their vendors are outside the initial CRM page");
+assert.match(rfxEventsSource, /loadManualScopeCandidateRows\(scopeId, \{ guard: legacyGuard \}\)[\s\S]*selectManualVendorIds\(rows\.map\(\(vendor\) => vendor\.id\)\)/, "Selecting a manual Carrier CRM scope should hydrate guarded rows before selecting carrier ids");
 assert.match(rfxEventsSource, /row\.contact_name/, "Bid Room participant search should include CRM contact names");
 assert.match(rfxEventsSource, /\.normalize\("NFD"\)/, "Bid Room participant search should normalize accents for Spanish names");
 assert.match(rfxEventsSource, /<strong>\$\{escapeHtml\(vendorDisplayName\(row\)\)\}<\/strong>/, "Bid Room participant cards should stay focused on vendor name only");
@@ -4497,6 +4859,14 @@ assert.match(rfxEventsHtml, /id="rfx-open-delivery-queue"/, "Message should prov
 assert.match(rfxEventsSource, /Select one or more carriers in Carrier fit or This RFx before preparing a delivery queue\./, "Draft preparation should require an explicit RFx carrier wave");
 assert.match(rfxEventsSource, /deliveryParticipationStatus = "in_delivery";[\s\S]+draftQueueTrackingStatus = "drafted";[\s\S]+activateRfxLaunchWorkspace\("delivery", \{ refresh: true \}\)/, "Draft preparation should open Delivery queue filtered to the new draft wave");
 assert.match(rfxEventsSource, /if \(rfxLaunchWorkspace === "message"\) renderOutreachPreview\(\);/, "Changing a selected carrier wave should immediately refresh the Message preview");
+assert.match(rfxEventsHtml, /id="rfx-message-recipient-list"/, "Message should expose the selected carrier wave as a recipient workspace");
+assert.match(rfxEventsHtml, /Back to Carrier Fit/, "Message should provide a direct return to Carrier Fit");
+assert.match(rfxEventsHtml, /No invitations are sent here/, "Message should make its zero-send boundary visible");
+assert.match(rfxEventsSource, /function renderMessageRecipients/, "Message should render one previewable row per selected carrier");
+assert.match(rfxEventsSource, /selectedOutreachPreviewVendorId/, "Message should retain the carrier selected for personalized preview");
+assert.match(stylesSource, /grid-template-areas:\s*"recipients preview setup"/, "Message should use the approved recipients, preview, and setup hierarchy");
+assert.match(rfxEventsSource, /const carrierTargets = uniqueOutreachWaveTargets\(\);/, "Message should report readiness per carrier instead of multiplying it by lane rows");
+assert.match(stylesSource, /body:has\(#rfx-launch-message-workspace:not\(\[hidden\]\)\) \.bid-room-control-panel \{[\s\S]*?display: none/, "Message should reclaim the full canvas from the secondary command panel");
 const outreachPreviewStart = rfxEventsSource.indexOf("function renderOutreachPreview");
 const outreachPreviewEnd = rfxEventsSource.indexOf("\n\nfunction", outreachPreviewStart + 1);
 const outreachPreviewSource = rfxEventsSource.slice(outreachPreviewStart, outreachPreviewEnd > outreachPreviewStart ? outreachPreviewEnd : undefined);
@@ -4532,7 +4902,8 @@ assert.match(uploadServiceSource, /fetchUploadHistory[\s\S]+page\.has_more[\s\S]
 assert.match(uploadServiceSource, /fetchUploadStagedRows[\s\S]+page\.has_more[\s\S]+return rows/, "Upload History should load every staged row page for source comparison");
 assert.match(apiSource, /body\.action === "list_vendor_segments"[\s\S]+count: "exact"[\s\S]+has_more/, "Vendor segment reads should expose pagination metadata instead of silently truncating at 100 rows");
 assert.match(vendorServiceSource, /fetchVendorSegments[\s\S]+page\.has_more[\s\S]+return rows/, "Vendor segment consumers should load every paginated segment page");
-assert.match(interpretUploadSource, /import \{ corsHeaders, jsonResponse as baseJsonResponse, requireKindeUser \} from "\.\.\/_shared\/kinde\.ts"/, "Interpretation should use the shared response hardening contract");
+assert.match(interpretUploadSource, /import \{ corsHeaders, jsonResponse as baseJsonResponse \} from "\.\.\/_shared\/kinde\.ts"/, "Interpretation should use the shared response hardening contract");
+assert.match(interpretUploadSource, /import \{ requireRatewareUser \} from "\.\.\/_shared\/auth\.ts"/, "Interpretation should use the staged Rateware identity verifier");
 assert.doesNotMatch(interpretUploadSource, /const corsHeaders = \{/, "Interpretation should not maintain a divergent wildcard CORS response helper");
 assert.match(shipperProfileApiSource, /organization_id[\s\S]+contactsQuery\.eq\("organization_id"/, "Shipper profile links should scope public contacts to their workspace");
 assert.match(shipperProfileApiSource, /organization_id[\s\S]+locationsQuery\.eq\("organization_id"/, "Shipper profile links should scope public locations to their workspace");
