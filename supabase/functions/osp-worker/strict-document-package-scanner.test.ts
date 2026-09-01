@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import JSZip from "npm:jszip@3.10.1";
-import { PDFDocument } from "pdf-lib";
+import { PDFDict, PDFDocument, PDFName, StandardFonts } from "pdf-lib";
 
 import {
   assertStrictDocxPackage,
@@ -37,7 +37,14 @@ async function safeDocx(external = false) {
 Deno.test("strict PDF policy accepts passive pages and rejects active content", async () => {
   const bytes = await safePdf();
   await assertStrictPdfPackage(bytes);
-  const active = new TextEncoder().encode("%PDF-1.7\n/JavaScript /JS\n%%EOF");
+  const activeDocument = await PDFDocument.create();
+  activeDocument.addPage([612, 792]);
+  const action = activeDocument.context.obj({
+    S: PDFName.of("JavaScript"),
+    JS: "app.alert('blocked')",
+  }) as PDFDict;
+  activeDocument.catalog.set(PDFName.of("OpenAction"), action);
+  const active = await activeDocument.save({ useObjectStreams: false });
   await assertRejects(
     () => assertStrictPdfPackage(active),
     Error,
@@ -47,6 +54,18 @@ Deno.test("strict PDF policy accepts passive pages and rejects active content", 
     await createStrictDocumentPackageScanner("application/pdf")(bytes),
     "clean",
   );
+});
+
+Deno.test("strict PDF policy does not treat passive compressed text as an action dictionary", async () => {
+  const document = await PDFDocument.create();
+  const page = document.addPage([612, 792]);
+  const font = await document.embedFont(StandardFonts.Helvetica);
+  page.drawText("Passive supplier text /AA is not an action", {
+    font,
+    x: 36,
+    y: 740,
+  });
+  await assertStrictPdfPackage(await document.save());
 });
 
 Deno.test("strict DOCX policy accepts passive OOXML and rejects external relationships", async () => {

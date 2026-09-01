@@ -3,6 +3,7 @@ import { assertEquals } from "jsr:@std/assert@1.0.14";
 import { createOspWorkerHandler } from "./handler.ts";
 
 const token = "s".repeat(64);
+const manualToken = "m".repeat(64);
 const canary = {
   action: "run_xlsx_document_extract_canary",
   organizationId: "11111111-1111-4111-8111-111111111111",
@@ -43,6 +44,14 @@ const manifestDraftCanary = {
   organizationId: "11111111-1111-4111-8111-111111111111",
   caseId: "22222222-2222-4222-8222-222222222222",
 };
+const manualRequestCanary = {
+  action: "run_manual_request_canary",
+  organizationId: "11111111-1111-4111-8111-111111111111",
+  pdfSha256: "a".repeat(64),
+  docxSha256: "b".repeat(64),
+  pdfBase64: new Uint8Array([1, 2, 3]).toBase64(),
+  docxBase64: new Uint8Array([4, 5, 6]).toBase64(),
+};
 const request = (body: unknown, authorization = `Bearer ${token}`) =>
   new Request("https://example.test/functions/v1/osp-worker", {
     method: "POST",
@@ -69,6 +78,42 @@ Deno.test("OSP worker rejects unauthorized and ambiguous requests", async () => 
     (await handler(request({ action: "drain_rateware_gmail", limit: 26 })))
       .status,
     400,
+  );
+});
+
+Deno.test("OSP worker accepts one exact manual PDF and DOCX canary only with its temporary token", async () => {
+  let received: Record<string, unknown> | undefined;
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    manualCanaryToken: manualToken,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    runManualRequestCanary: async (input) => {
+      received = input;
+      return {
+        caseId: "22222222-2222-4222-8222-222222222222",
+        externalEffects: false,
+      };
+    },
+  });
+  assertEquals((await handler(request(manualRequestCanary))).status, 401);
+  const response = await handler(
+    request(manualRequestCanary, `Bearer ${manualToken}`),
+  );
+  assertEquals(response.status, 200);
+  assertEquals((received?.pdfBytes as Uint8Array).byteLength, 3);
+  assertEquals((received?.docxBytes as Uint8Array).byteLength, 3);
+  assertEquals(
+    (await handler(
+      request({ ...manualRequestCanary, extra: true }, `Bearer ${manualToken}`),
+    )).status,
+    400,
+  );
+  assertEquals(
+    (await handler(
+      request({ action: "drain_rateware_gmail" }, `Bearer ${manualToken}`),
+    )).status,
+    401,
   );
 });
 
@@ -174,7 +219,10 @@ Deno.test("OSP worker runs only the exact multimodal manifest canary", async () 
     organizationId: manifestDraftCanary.organizationId,
     caseId: manifestDraftCanary.caseId,
   });
-  assertEquals((await handler(request({ ...manifestDraftCanary, extra: true }))).status, 400);
+  assertEquals(
+    (await handler(request({ ...manifestDraftCanary, extra: true }))).status,
+    400,
+  );
 });
 
 Deno.test("OSP worker fails closed when multimodal manifest canary is disabled", async () => {

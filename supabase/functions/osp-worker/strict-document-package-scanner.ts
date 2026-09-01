@@ -1,5 +1,12 @@
 import JSZip from "npm:jszip@3.10.1";
-import { PDFDocument } from "pdf-lib";
+import {
+  PDFArray,
+  PDFDict,
+  PDFDocument,
+  PDFName,
+  type PDFObject,
+  PDFRawStream,
+} from "pdf-lib";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 const MAX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024;
@@ -25,6 +32,48 @@ function reject(
   throw new Error(code);
 }
 
+const FORBIDDEN_PDF_KEYS = new Set([
+  "/AA",
+  "/EF",
+  "/EmbeddedFile",
+  "/EmbeddedFiles",
+  "/JS",
+  "/JavaScript",
+  "/Launch",
+  "/OpenAction",
+]);
+const FORBIDDEN_PDF_ACTIONS = new Set(["/JavaScript", "/Launch"]);
+
+function hasForbiddenPdfObject(
+  object: PDFObject,
+  visited: Set<PDFObject>,
+): boolean {
+  if (visited.has(object)) return false;
+  visited.add(object);
+  if (object instanceof PDFRawStream) {
+    return hasForbiddenPdfObject(object.dict, visited);
+  }
+  if (object instanceof PDFArray) {
+    for (let index = 0; index < object.size(); index += 1) {
+      const child = object.lookup(index);
+      if (child && hasForbiddenPdfObject(child, visited)) return true;
+    }
+    return false;
+  }
+  if (!(object instanceof PDFDict)) return false;
+  for (const key of object.keys()) {
+    const name = key.toString();
+    if (FORBIDDEN_PDF_KEYS.has(name)) return true;
+    const child = object.lookup(key);
+    if (
+      name === "/S" && child instanceof PDFName &&
+      FORBIDDEN_PDF_ACTIONS.has(child.toString())
+    ) return true;
+    if (child && hasForbiddenPdfObject(child, visited)) return true;
+  }
+  return false;
+}
+
 export async function assertStrictPdfPackage(bytes: Uint8Array): Promise<void> {
   if (
     !(bytes instanceof Uint8Array) || bytes.byteLength < 8 ||
@@ -33,16 +82,18 @@ export async function assertStrictPdfPackage(bytes: Uint8Array): Promise<void> {
     reject("PDF_PACKAGE_POLICY_REJECTED");
   }
   const header = new TextDecoder().decode(bytes.slice(0, 8));
-  const source = new TextDecoder("latin1").decode(bytes);
-  if (
-    !header.startsWith("%PDF-") ||
-    /\/(?:JavaScript|JS|Launch|EmbeddedFile|OpenAction|AA)\b/i.test(source)
-  ) reject("PDF_PACKAGE_POLICY_REJECTED");
+  if (!header.startsWith("%PDF-")) reject("PDF_PACKAGE_POLICY_REJECTED");
   try {
     const document = await PDFDocument.load(bytes.slice(), {
       ignoreEncryption: false,
     });
-    if (document.getPageCount() < 1 || document.isEncrypted) {
+    const objects = document.context.enumerateIndirectObjects();
+    if (
+      document.getPageCount() < 1 || document.isEncrypted ||
+      objects.some(([, object]) =>
+        hasForbiddenPdfObject(object, new Set<PDFObject>())
+      )
+    ) {
       reject("PDF_PACKAGE_POLICY_REJECTED");
     }
   } catch {

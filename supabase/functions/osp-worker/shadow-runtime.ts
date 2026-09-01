@@ -60,6 +60,11 @@ import type { AdaptiveManifestConfiguration } from "./adaptive-manifest-config.t
 import { createRequestManifestJobService } from "./request-manifest-job.ts";
 import { createStrictDocumentPackageScanner } from "./strict-document-package-scanner.ts";
 import { createStrictImageFormatScanner } from "./strict-image-format-scanner.ts";
+import type { ManualRequestCanaryConfiguration } from "./manual-request-canary-config.ts";
+import {
+  createManualRequestCanaryService,
+  type ManualRequestCanaryInput,
+} from "./manual-request-canary.ts";
 
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -110,6 +115,7 @@ export function createShadowWorkerRuntime(input: {
   requestManifestShadow?: RequestManifestShadowConfiguration;
   requestManifestCanary?: RequestManifestCanaryConfiguration;
   adaptiveManifest?: AdaptiveManifestConfiguration;
+  manualRequestCanary?: ManualRequestCanaryConfiguration;
   signatureVault?: SignatureVaultReader;
   fetch?: typeof globalThis.fetch;
 }): {
@@ -130,6 +136,9 @@ export function createShadowWorkerRuntime(input: {
   runRequestManifestCanary?: (
     request: RequestManifestCanaryRequest,
   ) => Promise<unknown>;
+  runManualRequestCanary?: (
+    request: ManualRequestCanaryInput,
+  ) => Promise<unknown>;
 } {
   if (
     [input.automation, input.xlsxShadow, input.xlsxIntake].filter(
@@ -146,9 +155,12 @@ export function createShadowWorkerRuntime(input: {
     databaseUrl: input.databaseUrl,
     postgresFactory: input.postgresFactory,
   });
+  const originalObjects = createSupabaseOriginalObjectStore({
+    client: input.storageClient,
+  });
   const intake = createIntakeService({
     gmail: createGmailApiInboundPort({ accessToken: input.gmailAccessToken }),
-    objects: createSupabaseOriginalObjectStore({ client: input.storageClient }),
+    objects: originalObjects,
     persistence,
     jobs,
   });
@@ -277,7 +289,7 @@ export function createShadowWorkerRuntime(input: {
     },
   });
   const automationStorage = input.automation || input.xlsxShadow ||
-      input.xlsxIntake || input.adaptiveManifest
+      input.xlsxIntake || input.adaptiveManifest || input.manualRequestCanary
     ? governedStorage(input.storageClient)
     : undefined;
   let attachmentPromotions: AttachmentPromotionService | undefined;
@@ -551,6 +563,32 @@ export function createShadowWorkerRuntime(input: {
       });
     }
     : undefined;
+  const ignoredCanaryJobs = {
+    enqueue: () => Promise.resolve(crypto.randomUUID()),
+  };
+  const manualRequestCanary = input.manualRequestCanary && requestManifestJobs
+    ? createManualRequestCanaryService({
+      configuration: input.manualRequestCanary,
+      objects: originalObjects,
+      persistence,
+      promotions: createAttachmentPromotionService({
+        store: createPostgresAttachmentPromotionStore({
+          databaseUrl: input.databaseUrl,
+          postgresFactory: input.postgresFactory,
+        }),
+        storage: createSupabaseAttachmentPromotionStorage({
+          client: automationStorage!,
+        }),
+        scan: ({ bytes, contentType }) =>
+          createStrictDocumentPackageScanner(contentType)(bytes),
+        sourceSafetyReason: "strict_passive_document_policy",
+        contentTypes: [PDF, DOCX],
+        legacyExtractionContentTypes: [XLSX],
+        jobs: ignoredCanaryJobs,
+      }),
+      manifests: requestManifestJobs,
+    })
+    : undefined;
   return Object.freeze({
     enqueue: (limit: number) => bridge.enqueue(limit),
     run: (limit: number) =>
@@ -576,6 +614,9 @@ export function createShadowWorkerRuntime(input: {
     runRequestManifestCanary: requestManifestCanary
       ? (request: RequestManifestCanaryRequest) =>
         requestManifestCanary.run(request)
+      : undefined,
+    runManualRequestCanary: manualRequestCanary
+      ? (request: ManualRequestCanaryInput) => manualRequestCanary.run(request)
       : undefined,
   });
 }

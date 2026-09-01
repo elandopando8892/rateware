@@ -16,6 +16,7 @@ import { resolveSignatureCanary } from "./signature-canary-config.ts";
 import { resolveRequestManifestShadow } from "./request-manifest-shadow-config.ts";
 import { resolveRequestManifestCanary } from "./request-manifest-canary-config.ts";
 import { resolveAdaptiveManifest } from "./adaptive-manifest-config.ts";
+import { resolveManualRequestCanary } from "./manual-request-canary-config.ts";
 
 function required(name: string): string {
   const value = Deno.env.get(name)?.trim();
@@ -95,6 +96,7 @@ const signatureCanary = resolveSignatureCanary(Deno.env);
 const requestManifestShadow = resolveRequestManifestShadow(Deno.env);
 const requestManifestCanary = resolveRequestManifestCanary(Deno.env);
 const adaptiveManifest = resolveAdaptiveManifest(Deno.env);
+const manualRequestCanary = resolveManualRequestCanary(Deno.env);
 const signatureVault = createPostgresSignatureVaultReader({ databaseUrl });
 const runtime = createShadowWorkerRuntime({
   databaseUrl,
@@ -109,11 +111,13 @@ const runtime = createShadowWorkerRuntime({
   requestManifestShadow,
   requestManifestCanary,
   adaptiveManifest,
+  manualRequestCanary,
   signatureVault,
 });
 
 Deno.serve(createOspWorkerHandler({
   expectedToken: serviceRoleKey,
+  manualCanaryToken: manualRequestCanary?.token,
   enqueue: runtime.enqueue,
   run: runtime.run,
   runXlsxDocumentExtractCanary: runtime.runXlsxDocumentExtractCanary,
@@ -121,4 +125,5 @@ Deno.serve(createOspWorkerHandler({
   runSignatureApplicationCanary: runtime.runSignatureApplicationCanary,
   runRequestManifestShadow: runtime.runRequestManifestShadow,
   runRequestManifestCanary: runtime.runRequestManifestCanary,
+  runManualRequestCanary: runtime.runManualRequestCanary,
 }));

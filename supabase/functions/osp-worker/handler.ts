@@ -79,8 +79,32 @@ type RequestManifestCanary = {
   caseId: string;
 };
 
+type ManualRequestCanary = {
+  organizationId: string;
+  pdfSha256: string;
+  docxSha256: string;
+  pdfBytes: Uint8Array;
+  docxBytes: Uint8Array;
+};
+
+function decodeBase64(value: unknown): Uint8Array | null {
+  if (
+    typeof value !== "string" || value.length < 4 ||
+    value.length > 14 * 1024 * 1024 || value.length % 4 !== 0 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+      value,
+    )
+  ) return null;
+  try {
+    return Uint8Array.fromBase64(value);
+  } catch {
+    return null;
+  }
+}
+
 export function createOspWorkerHandler(deps: {
   expectedToken: string;
+  manualCanaryToken?: string;
   enqueue(limit: number): Promise<number>;
   run(limit: number): Promise<number>;
   runXlsxDocumentExtractCanary?: (
@@ -98,13 +122,20 @@ export function createOspWorkerHandler(deps: {
   runRequestManifestCanary?: (
     input: RequestManifestCanary,
   ) => Promise<unknown>;
+  runManualRequestCanary?: (
+    input: ManualRequestCanary,
+  ) => Promise<unknown>;
 }): (request: Request) => Promise<Response> {
   if (deps.expectedToken.length < 32) {
     throw new Error("INVALID_RUNTIME_CONFIGURATION");
   }
   return async (request: Request): Promise<Response> => {
     if (request.method !== "POST") return json(405, { error: "POST_REQUIRED" });
-    if (!await authorized(request, deps.expectedToken)) {
+    const serviceAuthorized = await authorized(request, deps.expectedToken);
+    const manualCanaryAuthorized = deps.manualCanaryToken
+      ? await authorized(request, deps.manualCanaryToken)
+      : false;
+    if (!serviceAuthorized && !manualCanaryAuthorized) {
       return json(401, { error: "UNAUTHORIZED" });
     }
 
@@ -114,6 +145,47 @@ export function createOspWorkerHandler(deps: {
     } catch {
       return json(400, { error: "INVALID_REQUEST" });
     }
+    if (body.action === "run_manual_request_canary") {
+      if (!manualCanaryAuthorized) return json(401, { error: "UNAUTHORIZED" });
+      const manualKeys = [
+        "action",
+        "docxBase64",
+        "docxSha256",
+        "organizationId",
+        "pdfBase64",
+        "pdfSha256",
+      ];
+      const keys = Object.keys(body).sort();
+      const pdfBytes = decodeBase64(body.pdfBase64);
+      const docxBytes = decodeBase64(body.docxBase64);
+      if (
+        keys.length !== manualKeys.length ||
+        keys.some((key, index) => key !== manualKeys[index]) ||
+        typeof body.organizationId !== "string" ||
+        typeof body.pdfSha256 !== "string" ||
+        typeof body.docxSha256 !== "string" ||
+        !UUID.test(body.organizationId) || !SHA256.test(body.pdfSha256) ||
+        !SHA256.test(body.docxSha256) || !pdfBytes || !docxBytes
+      ) return json(400, { error: "INVALID_REQUEST" });
+      if (!deps.runManualRequestCanary) {
+        return json(409, { error: "CANARY_DISABLED" });
+      }
+      try {
+        return json(
+          200,
+          await deps.runManualRequestCanary({
+            organizationId: body.organizationId,
+            pdfSha256: body.pdfSha256,
+            docxSha256: body.docxSha256,
+            pdfBytes,
+            docxBytes,
+          }),
+        );
+      } catch {
+        return json(409, { error: "CANARY_NOT_READY" });
+      }
+    }
+    if (!serviceAuthorized) return json(401, { error: "UNAUTHORIZED" });
     const keys = Object.keys(body).sort();
     if (body.action === "drain_rateware_gmail") {
       if (keys.some((key) => !["action", "limit"].includes(key))) {
