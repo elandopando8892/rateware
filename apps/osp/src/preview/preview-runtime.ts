@@ -105,6 +105,54 @@ const previewCorporateProfile: CorporateProfileReadModel = {
   ],
 };
 
+const previewRequestManifest: NonNullable<CaseDetail['request_manifest']> = Object.freeze({
+  schemaVersion: 1,
+  status: 'review_required',
+  modelVersion: 'openai-structured-preview',
+  sourceCount: 9,
+  generatedAt: '2026-08-26T18:02:00.000Z',
+  requestType: 'customer_setup',
+  language: 'en',
+  targetXbfEntity: 'XBFUS',
+  requesterLegalName: 'Northstar Components',
+  dueDate: '2026-09-08',
+  forms: [
+    { name: 'Supplier registration workbook.xlsx', format: 'xlsx', action: 'complete', required: true, evidenceIds: ['email:body', 'xlsx:registration:A1'] },
+    { name: 'Bank reference authorization.docx', format: 'docx', action: 'sign', required: true, evidenceIds: ['docx:bank-reference:p1'] },
+  ],
+  requestedFields: [
+    { id: 'business.legalName', sourceLabel: 'Legal business name', canonicalFieldId: 'business.legalName', valueType: 'text', required: true, evidenceIds: ['xlsx:registration:B6'] },
+    { id: 'fiscal.taxIdentifier', sourceLabel: 'Federal Tax ID', canonicalFieldId: 'fiscal.taxIdentifier', valueType: 'text', required: true, evidenceIds: ['xlsx:registration:B7'] },
+    { id: 'business.address', sourceLabel: 'Billing address', canonicalFieldId: 'business.commercialAddress', valueType: 'text', required: true, evidenceIds: ['xlsx:registration:B9'] },
+    { id: 'credit.amount', sourceLabel: 'Amount of credit requested', canonicalFieldId: 'credit.requestedAmount', valueType: 'number', required: true, evidenceIds: ['xlsx:credit:C18'] },
+    { id: 'credit.terms', sourceLabel: 'Payment terms', canonicalFieldId: 'credit.netDays', valueType: 'number', required: true, evidenceIds: ['xlsx:credit:C19'] },
+    { id: 'trade.references', sourceLabel: 'Three trade references', canonicalFieldId: null, valueType: 'table', required: true, evidenceIds: ['xlsx:references:A23:F27'] },
+    { id: 'signature.authorized', sourceLabel: 'Authorized signature', canonicalFieldId: 'signature.authorizedRepresentative', valueType: 'signature', required: true, evidenceIds: ['docx:bank-reference:p1'] },
+  ],
+  requestedDocuments: [
+    { documentType: 'W-9', required: true, acceptableAlternatives: [], evidenceIds: ['email:body', 'xlsx:documents:A31'] },
+    { documentType: 'Broker authority', required: true, acceptableAlternatives: ['Operating authority'], evidenceIds: ['xlsx:documents:A32'] },
+    { documentType: 'Surety bond', required: true, acceptableAlternatives: ['Bond certificate'], evidenceIds: ['xlsx:documents:A33'] },
+    { documentType: 'Bank letter', required: false, acceptableAlternatives: ['Voided check'], evidenceIds: ['docx:bank-reference:p2'] },
+  ],
+  signature: { required: true, signerTitle: 'Managing Director', evidenceIds: ['docx:bank-reference:p1'] },
+  submission: { method: 'reply_email', recipients: ['onboarding@northstar.example'], instructions: 'Reply to the original thread with the completed forms and requested support.', evidenceIds: ['email:body'] },
+  requirements: [
+    { id: 'retain_format', text: 'Return the registration workbook without changing its layout.', evidenceIds: ['email:body'] },
+    { id: 'signed_package', text: 'The authorization page must be signed by an authorized representative.', evidenceIds: ['docx:bank-reference:p1'] },
+  ],
+  contradictions: [],
+  missingInformation: [
+    { fieldId: 'trade.references.3', description: 'A third trade reference is requested but only two verified references are available.', evidenceIds: ['xlsx:references:A23:F27'] },
+  ],
+  clarificationQuestions: [
+    { fieldId: 'trade.references.3', question: 'Provide or approve a third trade reference for this request.', evidenceIds: ['xlsx:references:A23:F27'] },
+  ],
+  readiness: { status: 'needs_clarification', reasonCodes: ['third_trade_reference_missing'] },
+  aiGenerated: true,
+  externalEffects: false,
+});
+
 const previewCases: readonly CaseSummary[] = Object.freeze([
   {
     case_id: caseId, supplier_name: 'Northstar Components', state: 'ready_to_send', aggregate_version: 12,
@@ -151,6 +199,7 @@ const previewCaseDetail: CaseDetail = Object.freeze({
     { sequence: 10, state: 'signature_approval' as const, occurred_at: '2026-08-26T16:25:00.000Z', reason_code: 'operations_review_completed' },
     { sequence: 1, state: 'received' as const, occurred_at: '2026-08-22T14:30:00.000Z', reason_code: 'case_received' },
   ],
+  request_manifest: previewRequestManifest,
   profile_workspace: previewProfileWorkspace,
 });
 
@@ -434,6 +483,7 @@ function createPreviewClient(): OspClient {
             received_at: '2026-08-26T14:05:00.000Z',
           },
           recent_events: [{ sequence: 1, state: 'received' as const, occurred_at: '2026-08-26T14:05:00.000Z', reason_code: 'case_received' }],
+          request_manifest: null,
           profile_workspace: previewProfileWorkspace,
         };
       return structuredClone({ ...base, ...caseRecord, profile_workspace: profileWorkspaces.get(requestedCaseId) ?? previewProfileWorkspace });

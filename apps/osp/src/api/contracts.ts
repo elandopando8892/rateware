@@ -40,6 +40,12 @@ const utcDate = z.string().refine((value) => {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
 }, 'Expected normalized RFC3339 UTC date');
 
+const dateOnly = z.string().refine((value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}, 'Expected a real UTC calendar date');
+
 export const GmailErrorCodeSchema = z.enum([
   'AUTH_REQUIRED',
   'TOKEN_EXPIRED',
@@ -134,6 +140,64 @@ export const CaseEventSchema = z.strictObject({
   reason_code: z.string().min(1).max(128),
 });
 
+const ManifestEvidenceIdsSchema = z.array(z.string().regex(/^[A-Za-z0-9:_.-]{1,256}$/)).max(20)
+  .refine((values) => new Set(values).size === values.length);
+
+export const RequestManifestSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  status: z.enum(['review_required', 'confirmed']),
+  modelVersion: z.string().min(1).max(128),
+  sourceCount: z.number().int().min(1).max(300),
+  generatedAt: utcDate,
+  requestType: z.enum(['customer_setup', 'credit_application', 'compliance_update', 'unknown']),
+  language: z.enum(['en', 'es', 'bilingual', 'unknown']),
+  targetXbfEntity: z.enum(['XBFMX', 'XBFUS', 'unknown']),
+  requesterLegalName: z.string().min(1).max(256).nullable(),
+  dueDate: dateOnly.nullable(),
+  forms: z.array(z.strictObject({
+    name: z.string().min(1).max(256),
+    format: z.enum(['xlsx', 'pdf', 'docx', 'other']),
+    action: z.enum(['complete', 'sign', 'review', 'attach']),
+    required: z.boolean(),
+    evidenceIds: ManifestEvidenceIdsSchema.min(1),
+  })).max(100),
+  requestedFields: z.array(z.strictObject({
+    id: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/),
+    sourceLabel: z.string().min(1).max(256),
+    canonicalFieldId: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/).nullable(),
+    valueType: z.enum(['text', 'number', 'date', 'boolean', 'table', 'signature', 'unknown']),
+    required: z.boolean(),
+    evidenceIds: ManifestEvidenceIdsSchema.min(1),
+  })).max(500),
+  requestedDocuments: z.array(z.strictObject({
+    documentType: z.string().min(1).max(128),
+    required: z.boolean(),
+    acceptableAlternatives: z.array(z.string().min(1).max(128)).max(20),
+    evidenceIds: ManifestEvidenceIdsSchema.min(1),
+  })).max(100),
+  signature: z.strictObject({
+    required: z.boolean(),
+    signerTitle: z.string().min(1).max(256).nullable(),
+    evidenceIds: ManifestEvidenceIdsSchema,
+  }),
+  submission: z.strictObject({
+    method: z.enum(['reply_email', 'new_email', 'portal', 'unknown']),
+    recipients: z.array(z.email()).max(50),
+    instructions: z.string().min(1).max(10_000).nullable(),
+    evidenceIds: ManifestEvidenceIdsSchema,
+  }),
+  requirements: z.array(z.strictObject({ id: z.string().min(1).max(128), text: z.string().min(1).max(10_000), evidenceIds: ManifestEvidenceIdsSchema.min(1) })).max(500),
+  contradictions: z.array(z.strictObject({ text: z.string().min(1).max(10_000), evidenceIds: ManifestEvidenceIdsSchema.min(1) })).max(100),
+  missingInformation: z.array(z.strictObject({ fieldId: z.string().min(1).max(128), description: z.string().min(1).max(500), evidenceIds: ManifestEvidenceIdsSchema })).max(200),
+  clarificationQuestions: z.array(z.strictObject({ fieldId: z.string().min(1).max(128), question: z.string().min(3).max(500), evidenceIds: ManifestEvidenceIdsSchema })).max(100),
+  readiness: z.strictObject({
+    status: z.enum(['ready_for_prefill', 'needs_clarification', 'unsupported']),
+    reasonCodes: z.array(z.string().regex(/^[a-z][a-z0-9_]{0,127}$/)).max(50),
+  }),
+  aiGenerated: z.literal(true),
+  externalEffects: z.literal(false),
+});
+
 export const CaseDetailSchema = CaseSummarySchema.extend({
   latest_request: z.strictObject({
     subject: z.string().min(1).max(998).nullable(),
@@ -144,6 +208,7 @@ export const CaseDetailSchema = CaseSummarySchema.extend({
     return populated === 0 || populated === 3;
   }, 'Latest request fields must be populated together'),
   recent_events: z.array(CaseEventSchema).max(20),
+  request_manifest: RequestManifestSchema.nullable().optional(),
   profile_workspace: z.strictObject({
     candidates: z.array(z.strictObject({
       entity_id: z.uuid(), entity_code: z.string().regex(/^[A-Z0-9]{2,16}$/), legal_name: z.string().min(1).max(256),
@@ -321,12 +386,6 @@ export const QuarterlyDocumentTypeSchema = z.enum([
   'tax_status_certificate',
   'bank_statement',
 ]);
-
-const dateOnly = z.string().refine((value) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-}, 'Expected a real UTC calendar date');
 
 export const DocumentVersionSchema = z.strictObject({
   id: z.uuid(),
@@ -658,6 +717,7 @@ export type OspPublicErrorCode = z.infer<typeof OspPublicErrorCodeSchema>;
 export type CaseState = z.infer<typeof CaseStateSchema>;
 export type CaseSummary = z.infer<typeof CaseSummarySchema>;
 export type CaseDetail = z.infer<typeof CaseDetailSchema>;
+export type RequestManifestReadModel = z.infer<typeof RequestManifestSchema>;
 export type QuarterlyDocumentType = z.infer<typeof QuarterlyDocumentTypeSchema>;
 export type DocumentVersion = z.infer<typeof DocumentVersionSchema>;
 export type ClarificationQuestion = z.infer<typeof ClarificationQuestionSchema>;

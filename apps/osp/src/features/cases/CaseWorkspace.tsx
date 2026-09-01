@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 import type { OspCaseReadClient } from '../../api/osp-client';
 import { caseNextGates, casePrimaryAction, caseStateLabels, caseStateTone, formatCaseDate, type CasePrimaryAction } from './case-presenter';
+import { RequestManifestPanel } from './RequestManifestPanel';
 
 const emptyProfileWorkspace = { candidates: [], binding: null, draft: null, disclosure_locked: true as const };
 
@@ -98,6 +99,8 @@ export function CaseWorkspace({ client, caseId }: { client: OspCaseReadClient; c
         <div><dt>Documents</dt><dd>{caseRecord.document_count}</dd></div>
         <div><dt>Last updated</dt><dd>{formatCaseDate(caseRecord.updated_at)}</dd></div>
       </dl>
+
+      <RequestManifestPanel manifest={caseRecord.request_manifest ?? null} />
 
       <section className="panel case-profile-assembler" aria-labelledby="profile-assembler-title">
         <div className="panel-heading">
