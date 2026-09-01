@@ -1,0 +1,111 @@
+{
+  "contractVersion": "rateware.private-resolver.release-review.v1",
+  "reviewVersion": "beta-9.8",
+  "candidate": {
+    "repository": "rateware",
+    "branch": "codex/marksman-loads-private-resolver-9-7",
+    "sha": "3c6ae8636d293eb51c1fd7b520f13ce63d62d49a",
+    "function": "rfx-private-resolver",
+    "evidenceClass": "local_disposable",
+    "targetEnvironment": null,
+    "migrations": [
+      "20260901193000_rfx_private_resolver_request_ledger.sql",
+      "20260901230000_rfx_private_resolver_ledger_health.sql",
+      "20260902003000_rfx_private_resolver_retention.sql",
+      "20260902013000_rfx_private_resolver_operational_controls.sql"
+    ]
+  },
+  "gates": [
+    {
+      "id": "candidate_provenance",
+      "ownerRole": "Engineering",
+      "assignee": null,
+      "status": "VERIFIED_LOCAL",
+      "satisfiedForRelease": true,
+      "evidenceRef": "git:3c6ae8636d293eb51c1fd7b520f13ce63d62d49a"
+    },
+    {
+      "id": "local_postgres_preflight",
+      "ownerRole": "Engineering",
+      "assignee": null,
+      "status": "VERIFIED_LOCAL",
+      "satisfiedForRelease": true,
+      "evidenceRef": "npm run test:release:private-resolver"
+    },
+    {
+      "id": "secret_custody",
+      "ownerRole": "Security or Platform",
+      "assignee": null,
+      "status": "UNASSIGNED",
+      "satisfiedForRelease": false,
+      "evidenceRef": null
+    },
+    {
+      "id": "network_controls",
+      "ownerRole": "Platform or Infrastructure",
+      "assignee": null,
+      "status": "UNASSIGNED",
+      "satisfiedForRelease": false,
+      "evidenceRef": null
+    },
+    {
+      "id": "monitoring_owner",
+      "ownerRole": "Operations or On-call",
+      "assignee": null,
+      "status": "UNASSIGNED",
+      "satisfiedForRelease": false,
+      "evidenceRef": null
+    },
+    {
+      "id": "rollback_rehearsal",
+      "ownerRole": "Release Manager",
+      "assignee": null,
+      "status": "NOT_PERFORMED",
+      "satisfiedForRelease": false,
+      "evidenceRef": null
+    },
+    {
+      "id": "target_environment",
+      "ownerRole": "Platform",
+      "assignee": null,
+      "status": "NOT_SELECTED",
+      "satisfiedForRelease": false,
+      "evidenceRef": null
+    },
+    {
+      "id": "separation_of_duties",
+      "ownerRole": "Release Governance",
+      "assignee": null,
+      "status": "UNASSIGNED",
+      "satisfiedForRelease": false,
+      "evidenceRef": null
+    },
+    {
+      "id": "production_authorization",
+      "ownerRole": "Product Owner and Technical Owner",
+      "assignee": null,
+      "status": "NOT_REQUESTED",
+      "satisfiedForRelease": false,
+      "evidenceRef": null
+    }
+  ],
+  "separationOfDuties": {
+    "technicalReviewer": null,
+    "releaseApprover": null,
+    "samePrincipalAllowed": false
+  },
+  "decision": {
+    "status": "NO_GO",
+    "releaseReady": false,
+    "authorizationRequested": false,
+    "productionApproved": false,
+    "decidedAt": null
+  },
+  "safety": {
+    "remoteMigration": false,
+    "functionDeployment": false,
+    "secretMutation": false,
+    "schedulerMutation": false,
+    "externalExecution": false
+  }
+}

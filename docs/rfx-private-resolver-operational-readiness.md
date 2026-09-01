@@ -82,3 +82,11 @@ requests may still be in flight.
 - Rollback rehearsal: not performed against a deployed environment.
 - Production approval: false.
 - Release ready: false.
+
+## Sprint 9.8 review contract
+
+`rfx-private-resolver-release-review.json` turns the remaining gates into a
+machine-verifiable `NO_GO` decision. It pins the locally tested candidate SHA,
+requires all nine gates, keeps unassigned owners explicit and forbids a release
+ready result while any gate lacks evidence. This review does not choose a
+target environment, assign a person or request production authorization.
