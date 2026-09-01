@@ -11,8 +11,8 @@ import { getProviderGmailAccessToken } from "../_shared/provider-gmail.ts";
 import { renewProviderGmailWatch } from "../_shared/provider-gmail-watch.ts";
 import { triggerOspGmailWorker } from "../_shared/osp/worker-trigger.ts";
 import { OSP_PRODUCTION_ORGANIZATION_BINDING } from "../osp-read-api/auth-policy.ts";
+import { createOspRuntimeJwtVerifier } from "../osp-read-api/auth-runtime.ts";
 import { OspApiError } from "../osp-read-api/http.ts";
-import { createKindeJwtVerifier } from "../osp-read-api/kinde-jwt.ts";
 import { createPostgresOspReadStore } from "../osp-read-api/postgres-store.ts";
 import { createOspGmailSyncHandler } from "./handler.ts";
 import { createPostgresHistoricalImportStore } from "./historical-import-store.ts";
@@ -21,20 +21,6 @@ function required(name: string): string {
   const value = Deno.env.get(name)?.trim();
   if (!value) throw new Error("INVALID_RUNTIME_CONFIGURATION");
   return value;
-}
-
-function issuer(value: string): string {
-  try {
-    const url = new URL(value);
-    if (
-      url.protocol !== "https:" || url.username || url.password || url.search ||
-      url.hash ||
-      (url.pathname !== "" && url.pathname !== "/")
-    ) throw new Error();
-    return url.origin;
-  } catch {
-    throw new Error("INVALID_RUNTIME_CONFIGURATION");
-  }
 }
 
 async function sha256(value: string): Promise<string> {
@@ -47,10 +33,9 @@ let runtime: (request: Request) => Promise<Response>;
 try {
   const supabaseUrl = required("SUPABASE_URL");
   const serviceRoleKey = required("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
-  const verifier = createKindeJwtVerifier({
-    issuer: issuer(required("OSP_KINDE_ISSUER")),
-    clientId: required("OSP_KINDE_CLIENT_ID"),
-    jwksFetch: globalThis.fetch.bind(globalThis),
+  const verifier = createOspRuntimeJwtVerifier({
+    env: Deno.env,
+    fetch: globalThis.fetch.bind(globalThis),
     organizationBinding: OSP_PRODUCTION_ORGANIZATION_BINDING,
   });
   const databaseUrl = Deno.env.get("OSP_READ_DATABASE_URL")?.trim() ||
