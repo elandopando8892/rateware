@@ -46,6 +46,13 @@ import {
   type RequestManifestShadowRequest,
   type RequestManifestShadowResult,
 } from "./request-manifest-shadow.ts";
+import type { RequestManifestCanaryConfiguration } from "./request-manifest-canary-config.ts";
+import { createPostgresRequestManifestSource } from "./postgres-request-manifest-source.ts";
+import { createPostgresRequestManifestDraftStore } from "./postgres-request-manifest-draft-store.ts";
+import {
+  createRequestManifestCanaryService,
+  type RequestManifestCanaryRequest,
+} from "./request-manifest-canary.ts";
 
 const XLSX =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -88,6 +95,7 @@ export function createShadowWorkerRuntime(input: {
   supplierPackageCanary?: SupplierPackageCanaryConfiguration;
   signatureCanary?: SignatureCanaryConfiguration;
   requestManifestShadow?: RequestManifestShadowConfiguration;
+  requestManifestCanary?: RequestManifestCanaryConfiguration;
   signatureVault?: SignatureVaultReader;
   fetch?: typeof globalThis.fetch;
 }): {
@@ -105,6 +113,9 @@ export function createShadowWorkerRuntime(input: {
   runRequestManifestShadow?: (
     request: RequestManifestShadowRequest,
   ) => Promise<RequestManifestShadowResult>;
+  runRequestManifestCanary?: (
+    request: RequestManifestCanaryRequest,
+  ) => Promise<unknown>;
 } {
   if (
     [input.automation, input.xlsxShadow, input.xlsxIntake].filter(
@@ -153,6 +164,34 @@ export function createShadowWorkerRuntime(input: {
         apiKey: input.requestManifestShadow.openAiApiKey,
         model: input.requestManifestShadow.openAiModel,
         request,
+      }),
+    })
+    : undefined;
+  const requestManifestCanary = input.requestManifestCanary
+    ? createRequestManifestCanaryService({
+      configuration: input.requestManifestCanary,
+      source: createPostgresRequestManifestSource({
+        databaseUrl: input.databaseUrl,
+        postgresFactory: input.postgresFactory,
+      }),
+      storage: {
+        async download(bucketId, objectKey) {
+          const result = await governedStorage(input.storageClient).storage
+            .from(bucketId)
+            .download(objectKey);
+          if (result.error || !result.data) return null;
+          return new Uint8Array(await result.data.arrayBuffer());
+        },
+      },
+      interpreter: createOpenAiRequestManifest({
+        baseUrl: "https://api.openai.com",
+        apiKey: input.requestManifestCanary.openAiApiKey,
+        model: input.requestManifestCanary.openAiModel,
+        request,
+      }),
+      store: createPostgresRequestManifestDraftStore({
+        databaseUrl: input.databaseUrl,
+        postgresFactory: input.postgresFactory,
       }),
     })
     : undefined;
@@ -463,6 +502,9 @@ export function createShadowWorkerRuntime(input: {
     runSignatureApplicationCanary,
     runRequestManifestShadow: requestManifest
       ? (request: RequestManifestShadowRequest) => requestManifest.run(request)
+      : undefined,
+    runRequestManifestCanary: requestManifestCanary
+      ? (request: RequestManifestCanaryRequest) => requestManifestCanary.run(request)
       : undefined,
   });
 }

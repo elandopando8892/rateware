@@ -38,6 +38,11 @@ const manifestCanary = {
   documentVersionId: "44444444-4444-4444-8444-444444444444",
   documentSourceSha256: "f".repeat(64),
 };
+const manifestDraftCanary = {
+  action: "run_request_manifest_canary",
+  organizationId: "11111111-1111-4111-8111-111111111111",
+  caseId: "22222222-2222-4222-8222-222222222222",
+};
 const request = (body: unknown, authorization = `Bearer ${token}`) =>
   new Request("https://example.test/functions/v1/osp-worker", {
     method: "POST",
@@ -146,6 +151,39 @@ Deno.test("OSP worker fails closed when request manifest shadow is disabled", as
     run: async () => 0,
   });
   const response = await handler(request(manifestCanary));
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), { error: "CANARY_DISABLED" });
+});
+
+Deno.test("OSP worker runs only the exact multimodal manifest canary", async () => {
+  let received: Record<string, string> | undefined;
+  const result = { status: "review_required", externalEffects: false };
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    runRequestManifestCanary: async (input) => {
+      received = input;
+      return result;
+    },
+  });
+  const response = await handler(request(manifestDraftCanary));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), result);
+  assertEquals(received, {
+    organizationId: manifestDraftCanary.organizationId,
+    caseId: manifestDraftCanary.caseId,
+  });
+  assertEquals((await handler(request({ ...manifestDraftCanary, extra: true }))).status, 400);
+});
+
+Deno.test("OSP worker fails closed when multimodal manifest canary is disabled", async () => {
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: async () => 0,
+    run: async () => 0,
+  });
+  const response = await handler(request(manifestDraftCanary));
   assertEquals(response.status, 409);
   assertEquals(await response.json(), { error: "CANARY_DISABLED" });
 });

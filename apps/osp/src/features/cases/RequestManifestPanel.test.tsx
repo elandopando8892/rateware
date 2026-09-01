@@ -9,6 +9,7 @@ const manifest: RequestManifestReadModel = {
   status: 'review_required',
   modelVersion: 'gpt-synthetic',
   sourceCount: 3,
+  sourceCoverage: { email: 1, xlsx: 1, pdf: 0, docx: 1, image: 0 },
   generatedAt: '2026-08-31T12:00:00.000Z',
   requestType: 'customer_setup',
   language: 'en',
@@ -40,6 +41,8 @@ describe('RequestManifestPanel', () => {
     expect(screen.getByText('XBFUS')).toBeInTheDocument();
     expect(screen.getByText('Supplier form.xlsx')).toBeInTheDocument();
     expect(screen.getByText('W-9')).toBeInTheDocument();
+    expect(screen.getByLabelText('1 XLSX')).toBeInTheDocument();
+    expect(screen.getByLabelText('1 DOCX')).toBeInTheDocument();
     const fields = screen.getByRole('table', { name: /requested fields/i });
     expect(within(fields).getByText('business.legalName')).toBeInTheDocument();
     expect(within(fields).getByText('Needs mapping')).toBeInTheDocument();

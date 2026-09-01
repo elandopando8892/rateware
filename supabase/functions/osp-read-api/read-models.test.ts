@@ -186,6 +186,7 @@ Deno.test('case read models expose bounded metadata, canonical counts and no mes
     ...caseSummary,
     latest_subject: 'Customer setup request', latest_sender_domain: 'supplier.example', latest_received_at: '2030-01-01T00:00:00Z',
     recent_events: [{ sequence: '1', state: 'received', occurred_at: '2030-01-01T00:00:00Z', reason_code: 'case_received' }],
+    request_manifest: null,
     profile_workspace: profileWorkspace,
   });
   assert.deepEqual(detail.latest_request, {
@@ -194,7 +195,7 @@ Deno.test('case read models expose bounded metadata, canonical counts and no mes
   assert.equal('safe_body' in detail, false);
   assert.equal(detail.recent_events[0].sequence, 1);
   expectDependency(() => normalizeCaseSummary({ ...caseSummary, supplier_name: ' Synthetic Supplier' }));
-  expectDependency(() => normalizeCaseDetail({ ...caseSummary, latest_subject: 'Only subject', latest_sender_domain: null, latest_received_at: null, recent_events: [], profile_workspace: profileWorkspace }));
+  expectDependency(() => normalizeCaseDetail({ ...caseSummary, latest_subject: 'Only subject', latest_sender_domain: null, latest_received_at: null, recent_events: [], request_manifest: null, profile_workspace: profileWorkspace }));
 });
 
 Deno.test('case detail decodes RFC 2047 subjects and safely preserves malformed or unsafe values', () => {
@@ -204,6 +205,7 @@ Deno.test('case detail decodes RFC 2047 subjects and safely preserves malformed 
     latest_sender_domain: 'supplier.example',
     latest_received_at: '2030-01-01T00:00:00Z',
     recent_events: [],
+    request_manifest: null,
     profile_workspace: profileWorkspace,
   }).latest_request.subject;
 
@@ -274,7 +276,7 @@ Deno.test('listOnboardingWorkspace and getGmailHealth scope each read to the res
     async readCases(id: string) { seen.push(id); return [caseSummary]; },
     async readCase(id: string) {
       seen.push(id);
-      return { ...caseSummary, latest_subject: null, latest_sender_domain: null, latest_received_at: null, recent_events: [], profile_workspace: profileWorkspace };
+      return { ...caseSummary, latest_subject: null, latest_sender_domain: null, latest_received_at: null, recent_events: [], request_manifest: null, profile_workspace: profileWorkspace };
     },
     async readCorporateProfile(id: string) { seen.push(id); return []; },
   };

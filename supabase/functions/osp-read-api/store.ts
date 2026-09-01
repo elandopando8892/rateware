@@ -39,6 +39,7 @@ export type CaseDetailSeamRow = CaseSummarySeamRow & {
   latest_sender_domain: unknown;
   latest_received_at: unknown;
   recent_events: unknown;
+  request_manifest: unknown;
   profile_workspace: unknown;
 };
 

@@ -148,6 +148,13 @@ export const RequestManifestSchema = z.strictObject({
   status: z.enum(['review_required', 'confirmed']),
   modelVersion: z.string().min(1).max(128),
   sourceCount: z.number().int().min(1).max(300),
+  sourceCoverage: z.strictObject({
+    email: z.number().int().min(1).max(100),
+    xlsx: z.number().int().min(0).max(100),
+    pdf: z.number().int().min(0).max(100),
+    docx: z.number().int().min(0).max(100),
+    image: z.number().int().min(0).max(100),
+  }).refine((coverage) => coverage.email + coverage.xlsx + coverage.pdf + coverage.docx + coverage.image <= 300),
   generatedAt: utcDate,
   requestType: z.enum(['customer_setup', 'credit_application', 'compliance_update', 'unknown']),
   language: z.enum(['en', 'es', 'bilingual', 'unknown']),
@@ -196,6 +203,16 @@ export const RequestManifestSchema = z.strictObject({
   }),
   aiGenerated: z.literal(true),
   externalEffects: z.literal(false),
+}).superRefine((manifest, context) => {
+  const coverage = manifest.sourceCoverage;
+  const covered = coverage.email + coverage.xlsx + coverage.pdf + coverage.docx + coverage.image;
+  if (covered !== manifest.sourceCount) {
+    context.addIssue({
+      code: 'custom',
+      path: ['sourceCoverage'],
+      message: 'Source coverage must equal the preserved source count',
+    });
+  }
 });
 
 export const CaseDetailSchema = CaseSummarySchema.extend({

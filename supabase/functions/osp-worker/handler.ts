@@ -74,6 +74,11 @@ type RequestManifestShadow = {
   documentSourceSha256: string;
 };
 
+type RequestManifestCanary = {
+  organizationId: string;
+  caseId: string;
+};
+
 export function createOspWorkerHandler(deps: {
   expectedToken: string;
   enqueue(limit: number): Promise<number>;
@@ -89,6 +94,9 @@ export function createOspWorkerHandler(deps: {
   ) => Promise<number>;
   runRequestManifestShadow?: (
     input: RequestManifestShadow,
+  ) => Promise<unknown>;
+  runRequestManifestCanary?: (
+    input: RequestManifestCanary,
   ) => Promise<unknown>;
 }): (request: Request) => Promise<Response> {
   if (deps.expectedToken.length < 32) {
@@ -167,6 +175,29 @@ export function createOspWorkerHandler(deps: {
           gmailSourceSha256: body.gmailSourceSha256,
           documentVersionId: body.documentVersionId,
           documentSourceSha256: body.documentSourceSha256,
+        });
+        return json(200, result);
+      } catch {
+        return json(503, { error: "WORKER_UNAVAILABLE" });
+      }
+    }
+
+    const manifestDraftKeys = ["action", "caseId", "organizationId"];
+    if (body.action === "run_request_manifest_canary") {
+      if (
+        keys.length !== manifestDraftKeys.length ||
+        keys.some((key, index) => key !== manifestDraftKeys[index]) ||
+        typeof body.organizationId !== "string" ||
+        typeof body.caseId !== "string" ||
+        !UUID.test(body.organizationId) || !UUID.test(body.caseId)
+      ) return json(400, { error: "INVALID_REQUEST" });
+      if (!deps.runRequestManifestCanary) {
+        return json(409, { error: "CANARY_DISABLED" });
+      }
+      try {
+        const result = await deps.runRequestManifestCanary({
+          organizationId: body.organizationId,
+          caseId: body.caseId,
         });
         return json(200, result);
       } catch {

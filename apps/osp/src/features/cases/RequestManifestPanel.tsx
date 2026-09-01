@@ -14,6 +14,7 @@ const READINESS_LABELS: Record<RequestManifestReadModel['readiness']['status'], 
 };
 
 const HUMAN_DATE = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' });
+const SOURCE_LABELS = { email: 'Email', xlsx: 'XLSX', pdf: 'PDF', docx: 'DOCX', image: 'Image' } as const;
 
 function EvidenceCount({ ids }: { ids: readonly string[] }) {
   return <span className="manifest-evidence">{ids.length} {ids.length === 1 ? 'source' : 'sources'}</span>;
@@ -51,6 +52,16 @@ export function RequestManifestPanel({ manifest }: { manifest: RequestManifestRe
         <div><dt>Deadline</dt><dd>{manifest.dueDate ? HUMAN_DATE.format(new Date(`${manifest.dueDate}T00:00:00.000Z`)) : 'Not stated'}</dd></div>
         <div><dt>Evidence</dt><dd>{manifest.sourceCount} sources</dd></div>
       </dl>
+
+      <div className="manifest-source-coverage" aria-label="Analyzed source formats">
+        <strong>Analyzed directly</strong>
+        <ul>
+          {Object.entries(manifest.sourceCoverage).filter(([, count]) => count > 0).map(([kind, count]) => (
+            <li key={kind} aria-label={`${count} ${SOURCE_LABELS[kind as keyof typeof SOURCE_LABELS]}`}><span>{count}</span>{SOURCE_LABELS[kind as keyof typeof SOURCE_LABELS]}</li>
+          ))}
+        </ul>
+        <small>Every conclusion remains linked to preserved evidence.</small>
+      </div>
 
       <div className={`manifest-readiness manifest-readiness-${readinessTone}`} role="status">
         <div><span className="manifest-readiness-dot" aria-hidden="true" /><strong>{READINESS_LABELS[manifest.readiness.status]}</strong></div>
@@ -109,7 +120,7 @@ export function RequestManifestPanel({ manifest }: { manifest: RequestManifestRe
       ) : null}
 
       <footer className="manifest-guardrail">
-        <span>Model {manifest.modelVersion}</span>
+        <span>Model {manifest.modelVersion} · {HUMAN_DATE.format(new Date(manifest.generatedAt))}</span>
         <strong>AI proposes. Operations confirms. No external effects.</strong>
       </footer>
     </section>

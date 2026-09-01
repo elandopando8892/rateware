@@ -195,3 +195,42 @@ Deno.test("request manifest closes citations and enforces bounded evidence", asy
     "OPENAI_MANIFEST_INVALID",
   );
 });
+
+Deno.test("request manifest sends PDF, DOCX and image evidence inline without creating OpenAI files", async () => {
+  const attachmentIds = {
+    pdf: "file:11111111-1111-4111-8111-111111111111",
+    docx: "file:22222222-2222-4222-8222-222222222222",
+    image: "file:33333333-3333-4333-8333-333333333333",
+  };
+  const output = {
+    ...validManifest,
+    requesterLegalName: { value: "Synthetic Carrier", confidence: 0.9, evidenceIds: [attachmentIds.pdf] },
+    signature: { required: true, signerTitle: null, evidenceIds: [attachmentIds.image] },
+    requestedDocuments: [{ documentType: "W-9", required: true, acceptableAlternatives: [], evidenceIds: [attachmentIds.docx] }],
+  };
+  let body: Record<string, unknown> | undefined;
+  const adapter = createOpenAiRequestManifest({
+    baseUrl,
+    apiKey: "synthetic-key",
+    model: "gpt-synthetic",
+    request: async (_input, init) => {
+      body = JSON.parse(String(init?.body));
+      return Response.json(completed(output));
+    },
+  });
+  const attachments = [
+    { id: attachmentIds.pdf, kind: "pdf_file" as const, sourceName: "setup.pdf", contentType: "application/pdf" as const, bytes: new Uint8Array([1, 2, 3]) },
+    { id: attachmentIds.docx, kind: "docx_file" as const, sourceName: "instructions.docx", contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const, bytes: new Uint8Array([4, 5, 6]) },
+    { id: attachmentIds.image, kind: "image_file" as const, sourceName: "signature.png", contentType: "image/png" as const, bytes: new Uint8Array([7, 8, 9]) },
+  ];
+  const result = await adapter.interpret({ evidence, attachments });
+  assertEquals(result.requesterLegalName.evidenceIds, [attachmentIds.pdf]);
+  assert(body);
+  const input = body.input as Array<{ role: string; content: unknown }>;
+  const userContent = input[1].content as Array<Record<string, unknown>>;
+  assertEquals(userContent.filter((item) => item.type === "input_file").length, 2);
+  assertEquals(userContent.filter((item) => item.type === "input_image").length, 1);
+  assertEquals(userContent.some((item) => "file_id" in item || "file_url" in item), false);
+  assertMatch(String(userContent.find((item) => item.type === "input_file")?.file_data), /^data:application\/pdf;base64,/);
+  assertMatch(String(userContent.find((item) => item.type === "input_image")?.image_url), /^data:image\/png;base64,/);
+});

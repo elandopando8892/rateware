@@ -72,6 +72,15 @@ const CONTENT_TYPES = new Set([
   "image/jpeg",
   "image/png",
   "image/tiff",
+  "image/webp",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+const LEGACY_EXTRACTION_CONTENT_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/tiff",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
 
@@ -158,14 +167,16 @@ export function createAttachmentPromotionService(deps: {
           sourceSafetyReason: deps.sourceSafetyReason ??
             "managed_malware_scan_clean",
         });
-        await deps.jobs.enqueue({
-          organizationId: input.organizationId,
-          kind: "document_extract",
-          opaquePayload: {
-            documentVersionId: registered.documentVersionId,
-          },
-          idempotencyKey: `extract:${registered.documentVersionId}`,
-        });
+        if (LEGACY_EXTRACTION_CONTENT_TYPES.has(source.contentType)) {
+          await deps.jobs.enqueue({
+            organizationId: input.organizationId,
+            kind: "document_extract",
+            opaquePayload: {
+              documentVersionId: registered.documentVersionId,
+            },
+            idempotencyKey: `extract:${registered.documentVersionId}`,
+          });
+        }
         promoted.push(registered);
       }
       return Object.freeze(promoted);

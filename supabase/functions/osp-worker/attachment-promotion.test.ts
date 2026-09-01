@@ -172,3 +172,30 @@ Deno.test("attachment promotion can limit a free deterministic route to XLSX", a
   );
   assertEquals(downloaded, 0);
 });
+
+Deno.test("DOCX promotion preserves safe evidence without queuing the legacy extractor", async () => {
+  const sourceSha256 = await sha256Hex(bytes);
+  const jobs = createInMemoryBackgroundJobStore();
+  const service = createAttachmentPromotionService({
+    store: {
+      listCaseAttachments: async () => [{
+        id: attachmentId,
+        organizationId,
+        caseId,
+        sourceObjectKey: `${organizationId}/44444444-4444-4444-8444-444444444444`,
+        sourceSha256,
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      }],
+      register: async () => ({ documentVersionId: attachmentId, templateVersionId: null }),
+    },
+    storage: {
+      downloadOriginal: async () => bytes,
+      createOriginalReadUrl: async () => "https://storage.example.test/signed-source?token=synthetic",
+      putCorporate: async () => undefined,
+    },
+    scan: async () => "clean",
+    jobs,
+  });
+  assertEquals((await service.promoteCase({ organizationId, caseId, correlationId: "docx" })).length, 1);
+  assertEquals(await jobs.claim({ workerId: "test", now: new Date(), leaseMs: 60_000, limit: 1 }), []);
+});

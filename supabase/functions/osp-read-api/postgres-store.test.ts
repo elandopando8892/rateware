@@ -86,6 +86,7 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
       aggregate_version: '1', blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00Z', updated_at: '2030-01-01T00:00:00Z',
       message_count: '1', attachment_count: '0', document_count: '0', latest_subject: null, latest_sender_domain: null,
       latest_received_at: null, recent_events: [],
+      request_manifest: null,
       profile_workspace: { candidates: [], binding: null, draft: null, disclosure_locked: true },
     }],
     [{
@@ -126,6 +127,7 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
   assert.match(fake.calls[3].text, /LIMIT\s+100/i);
   assert.match(fake.calls[4].text, /case_record\.organization_id\s*=\s*\$/i);
   assert.match(fake.calls[4].text, /case_record\.id\s*=\s*\$/i);
+  assert.match(fake.calls[4].text, /FROM\s+osp_private\.request_manifest_drafts\s+manifest/i);
   assert.match(fake.calls[5].text, /FROM\s+public\.legal_entities\s+entity/i);
   assert.match(fake.calls[5].text, /provider_legal_entity_profile_fields/i);
   assert.match(fake.calls[5].text, /provider_legal_entity_document_assets/i);

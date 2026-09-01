@@ -93,6 +93,7 @@ export type CaseDetailReadModel = CaseSummaryReadModel & {
     received_at: string | null;
   };
   recent_events: readonly CaseEventReadModel[];
+  request_manifest: unknown | null;
   profile_workspace: {
     candidates: readonly { entity_id: string; entity_code: string; legal_name: string; country_code: string; fact_count: string; facts_sha256: string }[];
     binding: { legal_entity_id: string; entity_code: string; binding_revision: number; facts_sha256: string } | null;
@@ -170,8 +171,44 @@ const CASE_SUMMARY_FIELDS = [
 const CASE_DETAIL_FIELDS = [
   'aggregate_version', 'attachment_count', 'blocked_by_duplicate_review', 'case_id',
   'created_at', 'document_count', 'latest_received_at', 'latest_sender_domain',
-  'latest_subject', 'message_count', 'profile_workspace', 'recent_events', 'state', 'supplier_name', 'updated_at',
+  'latest_subject', 'message_count', 'profile_workspace', 'recent_events', 'request_manifest', 'state', 'supplier_name', 'updated_at',
 ] as const;
+
+function normalizeRequestManifest(value: unknown): unknown | null {
+  if (value === null) return null;
+  const row = recordWithExactKeys(value, [
+    'aiGenerated', 'clarificationQuestions', 'contradictions', 'dueDate', 'externalEffects', 'forms',
+    'generatedAt', 'language', 'missingInformation', 'modelVersion', 'readiness', 'requestedDocuments',
+    'requestedFields', 'requesterLegalName', 'requestType', 'requirements', 'schemaVersion', 'signature',
+    'sourceCount', 'sourceCoverage', 'status', 'submission', 'targetXbfEntity',
+  ]);
+  if (row.schemaVersion !== 1 || row.status !== 'review_required' || row.aiGenerated !== true || row.externalEffects !== false ||
+    typeof row.sourceCount !== 'number' || !Number.isSafeInteger(row.sourceCount) || row.sourceCount < 1 || row.sourceCount > 300 ||
+    !['customer_setup', 'credit_application', 'compliance_update', 'unknown'].includes(String(row.requestType)) ||
+    !['en', 'es', 'bilingual', 'unknown'].includes(String(row.language)) ||
+    !['XBFMX', 'XBFUS', 'unknown'].includes(String(row.targetXbfEntity))) {
+    throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  }
+  normalizeBoundedText(row.modelVersion, 128);
+  normalizeRequiredUtcDate(row.generatedAt);
+  const coverage = recordWithExactKeys(row.sourceCoverage, ['docx', 'email', 'image', 'pdf', 'xlsx']);
+  const counts = Object.values(coverage).map((count) => {
+    if (typeof count !== 'number') throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+    return normalizeSafeInteger(count, 0);
+  });
+  if (counts[0] + counts[1] + counts[2] + counts[3] + counts[4] !== row.sourceCount || Number(coverage.email) < 1) {
+    throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  }
+  for (const key of ['forms', 'requestedFields', 'requestedDocuments', 'requirements', 'contradictions', 'missingInformation', 'clarificationQuestions'] as const) {
+    if (!Array.isArray(row[key])) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  }
+  if (!row.signature || typeof row.signature !== 'object' || Array.isArray(row.signature) ||
+    !row.submission || typeof row.submission !== 'object' || Array.isArray(row.submission) ||
+    !row.readiness || typeof row.readiness !== 'object' || Array.isArray(row.readiness)) {
+    throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  }
+  return value;
+}
 
 function normalizeCaseProfileWorkspace(value: unknown): CaseDetailReadModel['profile_workspace'] {
   const workspace = recordWithExactKeys(value, ['binding', 'candidates', 'disclosure_locked', 'draft']);
@@ -336,6 +373,7 @@ export function normalizeCaseDetail(value: unknown): CaseDetailReadModel {
     ...summary,
     latest_request: { subject, sender_domain: senderDomain, received_at: receivedAt },
     recent_events: normalizeRecentEvents(row.recent_events),
+    request_manifest: normalizeRequestManifest(row.request_manifest),
     profile_workspace: normalizeCaseProfileWorkspace(row.profile_workspace),
   };
 }
