@@ -527,7 +527,7 @@ export function createPostgresOspReadStore({
                   AND candidate_field.field_status IN ('accepted','corrected')
               ), '{}'::jsonb),
               'promotion_status', COALESCE(promotion.promotion_status, 'ready')
-            ) ORDER BY approved_review.reviewed_at, approved_review.id)
+            ) ORDER BY approved_review.decided_at, approved_review.id)
             FROM public.provider_entity_document_reviews approved_review
             JOIN public.provider_legal_entity_document_assets approved_asset
               ON approved_asset.organization_id = approved_review.organization_id

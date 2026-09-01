@@ -135,6 +135,8 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
   assert.match(fake.calls[5].text, /provider_legal_entity_facts/i);
   assert.match(fake.calls[5].text, /provider_entity_document_reviews/i);
   assert.match(fake.calls[5].text, /provider_entity_document_review_fields/i);
+  assert.match(fake.calls[5].text, /ORDER BY\s+approved_review\.decided_at,\s*approved_review\.id/i);
+  assert.doesNotMatch(fake.calls[5].text, /approved_review\.reviewed_at/i);
   assert.match(fake.calls[5].text, /fact_value\s*=\s*field\.field_value/i);
   assert.deepEqual(fake.calls[1].values, [organizationId]);
   assert.deepEqual(fake.calls[2].values, [true, organizationId]);
