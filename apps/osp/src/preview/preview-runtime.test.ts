@@ -36,10 +36,10 @@ describe('synthetic preview runtime', () => {
       },
     });
     await expect(runtime.apiClient.previewHistoricalGmailSearch?.({
-      subjectPhrase: 'SALZILLO', afterDate: '2026-08-18', beforeDate: '2026-08-21',
+      subjectPhrase: 'SALZILLO', afterDate: '2026-08-09', beforeDate: '2026-08-12',
     })).resolves.toMatchObject({ candidates: [{ duplicate_state: 'already_imported' }], checkpoint_unchanged: true, persisted: false });
     await expect(runtime.apiClient.importHistoricalGmailMessage?.({
-      subjectPhrase: 'SALZILLO', afterDate: '2026-08-18', beforeDate: '2026-08-21',
+      subjectPhrase: 'SALZILLO', afterDate: '2026-08-09', beforeDate: '2026-08-12',
       candidateId: 'salzillo_message_1', idempotencyKey: 'historical_gmail:preview',
     })).resolves.toMatchObject({ import_status: 'replayed', persisted: true, outbound_enabled: false });
     const formCase = cases.find((item) => item.supplier_name === 'Sierra Retail México');
