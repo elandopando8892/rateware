@@ -250,6 +250,25 @@ const craneRequestManifest: NonNullable<CaseDetail['request_manifest']> = Object
   externalEffects: false,
 });
 
+const salzilloRequestReview: NonNullable<CaseDetail['request_review']> = Object.freeze({
+  manifestId: '98000000-0000-4000-8000-000000000001', manifestVersion: 1, manifestSha256: '1'.repeat(64), review: null,
+});
+const previewRequestReview: NonNullable<CaseDetail['request_review']> = Object.freeze({
+  manifestId: '98000000-0000-4000-8000-000000000002', manifestVersion: 1, manifestSha256: '2'.repeat(64), review: null,
+});
+const craneRequestReview: NonNullable<CaseDetail['request_review']> = Object.freeze({
+  manifestId: '98000000-0000-4000-8000-000000000003', manifestVersion: 1, manifestSha256: '3'.repeat(64), review: null,
+});
+
+function previewDecisionSeeds(manifest: NonNullable<CaseDetail['request_manifest']>) {
+  const clarified = new Set(manifest.clarificationQuestions.map((item) => item.fieldId));
+  return [
+    ...manifest.clarificationQuestions.map((item, index) => ({ decisionId: `clarification:${index}`, kind: 'clarification' as const, fieldId: item.fieldId, prompt: item.question, evidenceIds: item.evidenceIds })),
+    ...manifest.contradictions.map((item, index) => ({ decisionId: `contradiction:${index}`, kind: 'contradiction' as const, fieldId: null, prompt: item.text, evidenceIds: item.evidenceIds })),
+    ...manifest.missingInformation.map((item, index) => ({ item, index })).filter(({ item }) => !clarified.has(item.fieldId)).map(({ item, index }) => ({ decisionId: `missing:${index}`, kind: 'missing' as const, fieldId: item.fieldId, prompt: item.description, evidenceIds: item.evidenceIds })),
+  ];
+}
+
 const previewCases: readonly CaseSummary[] = Object.freeze([
   {
     case_id: salzilloCaseId, supplier_name: 'Grupo Salzillo', state: 'analyzing_requirements', aggregate_version: 1,
@@ -305,6 +324,7 @@ const salzilloCaseDetail: CaseDetail = Object.freeze<CaseDetail>({
     { sequence: 1, state: 'received' as const, occurred_at: '2026-08-10T15:00:00.000Z', reason_code: 'historical_request_identified' },
   ],
   request_manifest: salzilloRequestManifest,
+  request_review: salzilloRequestReview,
   historical_intake: {
     status: 'preview_only',
     query: 'in:anywhere subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/18 before:2026/08/21',
@@ -333,6 +353,7 @@ const previewCaseDetail: CaseDetail = Object.freeze<CaseDetail>({
     { sequence: 1, state: 'received' as const, occurred_at: '2026-08-22T14:30:00.000Z', reason_code: 'case_received' },
   ],
   request_manifest: previewRequestManifest,
+  request_review: previewRequestReview,
   profile_workspace: previewProfileWorkspace,
 });
 
@@ -348,6 +369,7 @@ const craneCaseDetail: CaseDetail = Object.freeze<CaseDetail>({
     { sequence: 1, state: 'received' as const, occurred_at: '2026-09-01T09:20:00.000Z', reason_code: 'pdf_docx_canary_received' },
   ],
   request_manifest: craneRequestManifest,
+  request_review: craneRequestReview,
   profile_workspace: previewProfileWorkspace,
 });
 
@@ -480,6 +502,12 @@ function createPreviewAuthPort(): AuthPort {
 function createPreviewClient(): OspClient {
   let previewCaseRows = previewCases.map((caseRecord) => structuredClone(caseRecord));
   const profileWorkspaces = new Map<string, CaseDetail['profile_workspace']>(previewCaseRows.map((caseRecord) => [caseRecord.case_id, structuredClone(previewProfileWorkspace)]));
+  const requestManifests = new Map<string, NonNullable<CaseDetail['request_manifest']>>([
+    [salzilloCaseId, structuredClone(salzilloRequestManifest)], [caseId, structuredClone(previewRequestManifest)], [craneCaseId, structuredClone(craneRequestManifest)],
+  ]);
+  const requestReviews = new Map<string, NonNullable<CaseDetail['request_review']>>([
+    [salzilloCaseId, structuredClone(salzilloRequestReview)], [caseId, structuredClone(previewRequestReview)], [craneCaseId, structuredClone(craneRequestReview)],
+  ]);
   let corporateProfile = structuredClone(previewCorporateProfile);
   const reviewCandidates = () => corporateProfile.entities.flatMap((entity) => entity.fields.flatMap((field) => field.review_candidates.map((candidate) => ({ entity, field, candidate }))));
   const replaceReviewCandidates = (reviewId: string, transform: (candidate: CorporateProfileReadModel['entities'][number]['fields'][number]['review_candidates'][number]) => CorporateProfileReadModel['entities'][number]['fields'][number]['review_candidates'][number] | null) => {
@@ -634,13 +662,35 @@ function createPreviewClient(): OspClient {
           request_manifest: null,
           profile_workspace: previewProfileWorkspace,
         };
-      return structuredClone({ ...base, ...caseRecord, profile_workspace: profileWorkspaces.get(requestedCaseId) ?? previewProfileWorkspace });
+      return structuredClone({ ...base, ...caseRecord, request_review: requestReviews.get(requestedCaseId) ?? base.request_review ?? null, profile_workspace: profileWorkspaces.get(requestedCaseId) ?? previewProfileWorkspace });
+    },
+    saveRequestManifestReview: async (input) => {
+      const currentCase = previewCaseRows.find((candidate) => candidate.case_id === input.caseId);
+      const manifest = requestManifests.get(input.caseId);
+      const envelope = requestReviews.get(input.caseId);
+      if (!currentCase || !manifest || !envelope || currentCase.aggregate_version !== input.expectedCaseVersion || envelope.manifestSha256 !== input.expectedManifestSha256) throw new Error('VERSION_CONFLICT');
+      const seeds = previewDecisionSeeds(manifest);
+      const submitted = new Map(input.decisions.map((decision) => [decision.decisionId, decision]));
+      if (submitted.size !== seeds.length || seeds.some((seed) => {
+        const decision = submitted.get(seed.decisionId);
+        return !decision || decision.resolution.trim().length < 3 || !['answered', 'external', 'not_applicable'].includes(decision.outcome);
+      })) throw new Error('REQUEST_MANIFEST_REVIEW_SCOPE_MISMATCH');
+      const decisions = seeds.map((seed) => ({ ...seed, ...submitted.get(seed.decisionId)!, resolution: submitted.get(seed.decisionId)!.resolution.trim() }));
+      const status = decisions.some((decision) => decision.outcome === 'external') ? 'needs_external_clarification' as const : 'resolved' as const;
+      const reviewVersion = (envelope.review?.reviewVersion ?? 0) + 1;
+      const reviewId = crypto.randomUUID();
+      const canonicalSha256 = status === 'resolved' ? shaA : shaB;
+      requestReviews.set(input.caseId, { ...envelope, review: { reviewId, reviewVersion, status, decisions, canonicalSha256 } });
+      const caseVersion = currentCase.aggregate_version + 1;
+      previewCaseRows = previewCaseRows.map((row) => row.case_id === input.caseId ? { ...row, aggregate_version: caseVersion, state: status === 'resolved' ? 'awaiting_xbf_information' : 'awaiting_clarification', updated_at: new Date().toISOString() } : row);
+      return { reviewId, caseId: input.caseId, caseVersion, manifestId: envelope.manifestId, manifestVersion: envelope.manifestVersion, manifestSha256: envelope.manifestSha256, reviewVersion, status, decisions, canonicalSha256, replayed: false };
     },
     bindCaseProfile: async (input) => {
       const currentCase = previewCaseRows.find((candidate) => candidate.case_id === input.caseId);
       const workspace = profileWorkspaces.get(input.caseId);
+      const review = requestReviews.get(input.caseId)?.review;
       const candidate = workspace?.candidates.find((item) => item.entity_id === input.legalEntityId);
-      if (!currentCase || !workspace || !candidate || currentCase.aggregate_version !== input.expectedCaseVersion || (workspace.binding?.binding_revision ?? 0) !== input.expectedBindingRevision || input.confirmation !== 'BIND_CASE_TO_XBF_ENTITY') throw new Error('VERSION_CONFLICT');
+      if (!currentCase || !workspace || !candidate || (requestManifests.has(input.caseId) && review?.status !== 'resolved') || currentCase.aggregate_version !== input.expectedCaseVersion || (workspace.binding?.binding_revision ?? 0) !== input.expectedBindingRevision || input.confirmation !== 'BIND_CASE_TO_XBF_ENTITY') throw new Error('VERSION_CONFLICT');
       const replayed = workspace.binding?.legal_entity_id === candidate.entity_id;
       const bindingRevision = replayed ? workspace.binding!.binding_revision : (workspace.binding?.binding_revision ?? 0) + 1;
       const caseVersion = replayed ? currentCase.aggregate_version : currentCase.aggregate_version + 1;
@@ -651,9 +701,10 @@ function createPreviewClient(): OspClient {
     assembleCaseProfileDraft: async (input) => {
       const currentCase = previewCaseRows.find((candidate) => candidate.case_id === input.caseId);
       const workspace = profileWorkspaces.get(input.caseId);
+      const review = requestReviews.get(input.caseId)?.review;
       const binding = workspace?.binding;
       const candidate = workspace?.candidates.find((item) => item.entity_id === binding?.legal_entity_id);
-      if (!currentCase || !workspace || !binding || !candidate || currentCase.aggregate_version !== input.expectedCaseVersion || binding.binding_revision !== input.expectedBindingRevision || binding.facts_sha256 !== input.expectedFactsSha256 || input.confirmation !== 'ASSEMBLE_INTERNAL_PROFILE_DRAFT') throw new Error('VERSION_CONFLICT');
+      if (!currentCase || !workspace || !binding || !candidate || (requestManifests.has(input.caseId) && review?.status !== 'resolved') || currentCase.aggregate_version !== input.expectedCaseVersion || binding.binding_revision !== input.expectedBindingRevision || binding.facts_sha256 !== input.expectedFactsSha256 || input.confirmation !== 'ASSEMBLE_INTERNAL_PROFILE_DRAFT') throw new Error('VERSION_CONFLICT');
       const replayed = workspace.draft?.binding_revision === binding.binding_revision && workspace.draft.manifest_sha256 === binding.facts_sha256;
       const caseVersion = replayed ? currentCase.aggregate_version : currentCase.aggregate_version + 1;
       const draft = { draft_id: workspace.draft?.draft_id ?? '96000000-0000-4000-8000-000000000001', manifest_sha256: binding.facts_sha256, fact_count: candidate.fact_count, restricted_fact_count: candidate.entity_code === 'XBFUS' ? '7' : '5', binding_revision: binding.binding_revision };

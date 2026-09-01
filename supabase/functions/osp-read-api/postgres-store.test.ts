@@ -87,6 +87,7 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
       message_count: '1', attachment_count: '0', document_count: '0', latest_subject: null, latest_sender_domain: null,
       latest_received_at: null, recent_events: [],
       request_manifest: null,
+      request_review: null,
       profile_workspace: { candidates: [], binding: null, draft: null, disclosure_locked: true },
     }],
     [{

@@ -174,6 +174,36 @@ Deno.test("case API saves only an exact Operations review under operate authorit
   }]);
 });
 
+Deno.test('case API saves one exact evidence-bound request manifest review without outbound effects', async () => {
+  const caseId = '33333333-3333-4333-8333-333333333333';
+  const manifestId = '55555555-5555-4555-8555-555555555555';
+  const reviewId = '66666666-6666-4666-8666-666666666666';
+  const saved: unknown[] = [];
+  const handler = createCaseApiHandler({
+    verifyToken: async () => identity,
+    clarificationStore: {
+      listForReview: async () => [],
+      saveOperationsReview: async () => row,
+      saveRequestManifestReview: async (input) => {
+        saved.push(input);
+        return {
+          reviewId, caseId, caseVersion: 5, manifestId, manifestVersion: 1, manifestSha256: sourceHash,
+          reviewVersion: 1, status: 'resolved' as const,
+          decisions: [{ decisionId: 'clarification:0', kind: 'clarification' as const, fieldId: 'targetXbfEntity', prompt: 'Which XBF entity?', evidenceIds: ['email:body'], outcome: 'answered' as const, resolution: 'Use XBFUS.' }],
+          canonicalSha256: 'b'.repeat(64), replayed: false,
+        };
+      },
+    },
+    incidentId: () => 'incident-manifest-review',
+  });
+  const response = await handler(request(
+    `action=save_request_manifest_review&case_id=${caseId}&expected_case_version=4&expected_manifest_sha256=${sourceHash}`,
+    { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decisions: [{ decisionId: 'clarification:0', outcome: 'answered', resolution: 'Use XBFUS.' }] }) },
+  ));
+  assertEquals(response.status, 200);
+  assertEquals(saved, [{ organizationId, subject: 'ops-subject', caseId, expectedCaseVersion: 4, expectedManifestSha256: sourceHash, decisions: [{ decisionId: 'clarification:0', outcome: 'answered', resolution: 'Use XBFUS.' }] }]);
+});
+
 Deno.test("clarification review rejects mixed Operations and Sales authority before persistence", async () => {
   let saves = 0;
   const handler = createCaseApiHandler({

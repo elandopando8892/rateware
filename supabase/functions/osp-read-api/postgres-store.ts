@@ -266,15 +266,27 @@ export function createPostgresOspReadStore({
               LIMIT 20
             ) recent_event
           ), '[]'::jsonb) AS recent_events,
-          (
-            SELECT manifest.manifest_json
-            FROM osp_private.request_manifest_drafts manifest
-            WHERE manifest.organization_id = case_record.organization_id
-              AND manifest.case_id = case_record.id
-              AND manifest.status = 'review_required'
-            ORDER BY manifest.version DESC
-            LIMIT 1
-          ) AS request_manifest,
+          latest_manifest.manifest_json AS request_manifest,
+          CASE WHEN latest_manifest.id IS NULL THEN NULL ELSE jsonb_build_object(
+            'manifestId', latest_manifest.id,
+            'manifestVersion', latest_manifest.version,
+            'manifestSha256', latest_manifest.manifest_sha256,
+            'review', (
+              SELECT jsonb_build_object(
+                'reviewId', review.id,
+                'reviewVersion', review.review_version,
+                'status', review.status,
+                'decisions', review.decisions_json,
+                'canonicalSha256', review.canonical_sha256
+              )
+              FROM osp_private.request_manifest_decision_reviews review
+              WHERE review.organization_id = case_record.organization_id
+                AND review.case_id = case_record.id
+                AND review.manifest_draft_id = latest_manifest.id
+              ORDER BY review.review_version DESC
+              LIMIT 1
+            )
+          ) END AS request_review,
           jsonb_build_object(
             'candidates', COALESCE((
               SELECT jsonb_agg(jsonb_build_object(
@@ -312,6 +324,15 @@ export function createPostgresOspReadStore({
           ORDER BY message.received_at DESC, message.id ASC
           LIMIT 1
         ) latest_message ON true
+        LEFT JOIN LATERAL (
+          SELECT manifest.id, manifest.version, manifest.manifest_json, manifest.manifest_sha256
+          FROM osp_private.request_manifest_drafts manifest
+          WHERE manifest.organization_id = case_record.organization_id
+            AND manifest.case_id = case_record.id
+            AND manifest.status = 'review_required'
+          ORDER BY manifest.version DESC
+          LIMIT 1
+        ) latest_manifest ON true
         WHERE case_record.organization_id = ${organizationId} AND case_record.id = ${caseId}
       `, signal, STATEMENT_TIMEOUT_MS);
       return exactlyOneRow(rows, 'DEPENDENCY_UNAVAILABLE') as CaseDetailSeamRow;

@@ -4,6 +4,11 @@ import { withOrganizationTransaction, type SqlPort, type SqlRow } from '../_shar
 import type { OspAuthorityContext } from '../_shared/osp/workflow-authority.ts';
 import type { CaseEvent, CaseState, OspWriteCommand } from '../_shared/osp/workflow-contracts.ts';
 import { buildClarificationDraft, reviewClarificationDraft, type ClarificationDraft } from '../osp-worker/clarification-draft.ts';
+import {
+  buildRequestManifestDecisionReview,
+  type RequestManifestDecision,
+  type RequestManifestDecisionInput,
+} from './request-manifest-review.ts';
 import type {
   AddCommentCommand, AssignCaseCommand, CaseDetail, CasePage, CaseStore, CaseTransaction,
   ResolveDuplicateCommand, SaveClarificationDraftCommand,
@@ -243,6 +248,20 @@ export type ClarificationReviewSummary = {
   authorizationMailbox: 'sales@heymarksman.com';
 };
 
+export type RequestManifestReviewSummary = {
+  reviewId: string;
+  caseId: string;
+  caseVersion: number;
+  manifestId: string;
+  manifestVersion: number;
+  manifestSha256: string;
+  reviewVersion: number;
+  status: 'resolved' | 'needs_external_clarification';
+  decisions: readonly RequestManifestDecision[];
+  canonicalSha256: string;
+  replayed: boolean;
+};
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -407,6 +426,79 @@ export function createPostgresClarificationStore({ databaseUrl, postgresFactory 
           evidenceIds: reviewed.evidenceIds,
           canonicalSha256: reviewed.canonicalSha256,
           authorizationMailbox: 'sales@heymarksman.com' as const,
+        });
+      });
+    },
+    async saveRequestManifestReview(input: {
+      organizationId: string;
+      subject: string;
+      caseId: string;
+      expectedCaseVersion: number;
+      expectedManifestSha256: string;
+      decisions: readonly RequestManifestDecisionInput[];
+    }): Promise<RequestManifestReviewSummary> {
+      if (!UUID_PATTERN.test(input.organizationId) || !UUID_PATTERN.test(input.caseId) ||
+          !Number.isSafeInteger(input.expectedCaseVersion) || input.expectedCaseVersion < 0 || input.expectedCaseVersion > 2_147_483_647 ||
+          !SHA256_PATTERN.test(input.expectedManifestSha256) || !/^[A-Za-z0-9:_@.-]{1,256}$/.test(input.subject) || !Array.isArray(input.decisions)) {
+        fail('REQUEST_MANIFEST_REVIEW_INVALID');
+      }
+      return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        const cases = await tx`select id, state, aggregate_version, blocked_by_duplicate_review from osp_private.customer_registration_cases where organization_id = ${input.organizationId} and id = ${input.caseId} for update`;
+        if (cases.length !== 1 || typeof cases[0].state !== 'string' || cases[0].blocked_by_duplicate_review === true) fail('REQUEST_MANIFEST_REVIEW_NOT_FOUND');
+        const caseVersion = Number(cases[0].aggregate_version);
+        if (!Number.isSafeInteger(caseVersion) || caseVersion < 0 || caseVersion > 2_147_483_647) fail('REQUEST_MANIFEST_REVIEW_VERSION_CONFLICT');
+        const manifests = await tx`select id, version, manifest_json, manifest_sha256 from osp_private.request_manifest_drafts where organization_id = ${input.organizationId} and case_id = ${input.caseId} and status = 'review_required' order by version desc limit 1`;
+        if (manifests.length !== 1) fail('REQUEST_MANIFEST_REVIEW_NOT_FOUND');
+        const manifest = manifests[0];
+        const manifestVersion = Number(manifest.version);
+        if (typeof manifest.id !== 'string' || !UUID_PATTERN.test(manifest.id) || !Number.isSafeInteger(manifestVersion) || manifestVersion < 1 ||
+            manifest.manifest_sha256 !== input.expectedManifestSha256) fail('REQUEST_MANIFEST_REVIEW_VERSION_CONFLICT');
+        const review = await buildRequestManifestDecisionReview({ manifest: manifest.manifest_json, decisions: input.decisions });
+        const prior = await tx`select id, review_version, source_case_version, status, decisions_json, canonical_sha256 from osp_private.request_manifest_decision_reviews where organization_id = ${input.organizationId} and case_id = ${input.caseId} and manifest_draft_id = ${manifest.id} order by review_version desc limit 1`;
+        if (prior.length === 1 && prior[0].canonical_sha256 === review.canonicalSha256) {
+          const sourceCaseVersion = Number(prior[0].source_case_version);
+          const priorVersion = Number(prior[0].review_version);
+          if (caseVersion !== sourceCaseVersion + 1 || input.expectedCaseVersion !== sourceCaseVersion || typeof prior[0].id !== 'string' || !UUID_PATTERN.test(prior[0].id) || !Number.isSafeInteger(priorVersion) || priorVersion < 1) {
+            fail('REQUEST_MANIFEST_REVIEW_VERSION_CONFLICT');
+          }
+          return Object.freeze({
+            reviewId: prior[0].id,
+            caseId: input.caseId,
+            caseVersion,
+            manifestId: manifest.id,
+            manifestVersion,
+            manifestSha256: input.expectedManifestSha256,
+            reviewVersion: priorVersion,
+            status: review.status,
+            decisions: review.decisions,
+            canonicalSha256: review.canonicalSha256,
+            replayed: true,
+          });
+        }
+        if (caseVersion !== input.expectedCaseVersion) fail('REQUEST_MANIFEST_REVIEW_VERSION_CONFLICT');
+        const previousReviewId = prior.length === 1 && typeof prior[0].id === 'string' && UUID_PATTERN.test(prior[0].id) ? prior[0].id : null;
+        const previousVersion = prior.length === 1 ? Number(prior[0].review_version) : 0;
+        if (!Number.isSafeInteger(previousVersion) || previousVersion < 0 || previousVersion >= 2_147_483_647) fail('REQUEST_MANIFEST_REVIEW_PERSISTENCE_FAILED');
+        const reviewId = crypto.randomUUID();
+        const reviewVersion = previousVersion + 1;
+        const inserted = await tx`insert into osp_private.request_manifest_decision_reviews (id, organization_id, case_id, manifest_draft_id, manifest_version, review_version, source_case_version, status, decisions_json, canonical_sha256, manifest_sha256, previous_review_id, reviewed_by_subject) values (${reviewId}, ${input.organizationId}, ${input.caseId}, ${manifest.id}, ${manifestVersion}, ${reviewVersion}, ${input.expectedCaseVersion}, ${review.status}, ${JSON.stringify(review.decisions)}::jsonb, ${review.canonicalSha256}, ${input.expectedManifestSha256}, ${previousReviewId}, ${input.subject}) returning id`;
+        if (inserted.length !== 1 || inserted[0].id !== reviewId) fail('REQUEST_MANIFEST_REVIEW_PERSISTENCE_FAILED');
+        const nextState = review.status === 'resolved' ? 'awaiting_xbf_information' : 'awaiting_clarification';
+        const advanced = await tx`update osp_private.customer_registration_cases set state = ${nextState}, aggregate_version = aggregate_version + 1, updated_at = statement_timestamp() where organization_id = ${input.organizationId} and id = ${input.caseId} and aggregate_version = ${input.expectedCaseVersion} returning aggregate_version`;
+        if (advanced.length !== 1 || Number(advanced[0].aggregate_version) !== input.expectedCaseVersion + 1) fail('REQUEST_MANIFEST_REVIEW_VERSION_CONFLICT');
+        await tx`insert into osp_private.case_events (id, organization_id, case_id, sequence, state, actor_subject, authority_role, source_version, occurred_at, reason_code, correlation_id, evidence_json) values (${crypto.randomUUID()}, ${input.organizationId}, ${input.caseId}, ${input.expectedCaseVersion + 1}, ${nextState}, ${input.subject}, 'operations', ${input.expectedCaseVersion}, statement_timestamp(), ${review.status === 'resolved' ? 'request_manifest_review_resolved' : 'request_manifest_external_clarification'}, ${crypto.randomUUID()}, ${JSON.stringify([`request-manifest:${manifest.id}`, `decision-review:${reviewId}`])}::jsonb)`;
+        return Object.freeze({
+          reviewId,
+          caseId: input.caseId,
+          caseVersion: input.expectedCaseVersion + 1,
+          manifestId: manifest.id,
+          manifestVersion,
+          manifestSha256: input.expectedManifestSha256,
+          reviewVersion,
+          status: review.status,
+          decisions: review.decisions,
+          canonicalSha256: review.canonicalSha256,
+          replayed: false,
         });
       });
     },

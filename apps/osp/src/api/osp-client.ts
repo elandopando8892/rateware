@@ -5,6 +5,8 @@ import {
   CaseDetailSuccessResponseSchema,
   CaseProfileBindingResponseSchema,
   CaseProfileDraftResponseSchema,
+  RequestManifestReviewResponseSchema,
+  type RequestManifestReviewReceipt,
   CaseListSuccessResponseSchema,
   CorporateProfileSuccessResponseSchema,
   type CorporateProfileReadModel,
@@ -76,6 +78,7 @@ export interface OspCaseReadClient {
   getCustomerRegistrationCase(caseId: string): Promise<CaseDetail>;
   bindCaseProfile(input: BindCaseProfileInput): Promise<{ caseId: string; legalEntityId: string; entityCode: string; bindingRevision: number; caseVersion: number; replayed: boolean }>;
   assembleCaseProfileDraft(input: AssembleCaseProfileDraftInput): Promise<{ draftId: string; manifestSha256: string; factCount: number; restrictedFactCount: number; caseVersion: number; replayed: boolean }>;
+  saveRequestManifestReview(input: SaveRequestManifestReviewInput): Promise<RequestManifestReviewReceipt>;
 }
 
 export type DocumentUploadInput = { documentType: QuarterlyDocumentType; validFrom: string; contentType: string; bytes: Uint8Array };
@@ -97,6 +100,12 @@ export type PromoteProfileReviewFactsInput = ClaimProfileReviewInput & {
 };
 export type BindCaseProfileInput = { caseId: string; legalEntityId: string; expectedCaseVersion: number; expectedBindingRevision: number; confirmation: 'BIND_CASE_TO_XBF_ENTITY' };
 export type AssembleCaseProfileDraftInput = { caseId: string; expectedCaseVersion: number; expectedBindingRevision: number; expectedFactsSha256: string; confirmation: 'ASSEMBLE_INTERNAL_PROFILE_DRAFT' };
+export type SaveRequestManifestReviewInput = {
+  caseId: string;
+  expectedCaseVersion: number;
+  expectedManifestSha256: string;
+  decisions: readonly { decisionId: string; outcome: 'answered' | 'external' | 'not_applicable'; resolution: string }[];
+};
 export type HistoricalGmailPreviewInput = { subjectPhrase: string; afterDate: string; beforeDate: string };
 export type HistoricalGmailImportInput = HistoricalGmailPreviewInput & { candidateId: string; idempotencyKey: string };
 
@@ -169,6 +178,10 @@ function formEndpointFor(supabaseUrl: string): string {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const hasUnsafeControlCharacter = (value: string) => [...value].some((character) => {
+  const code = character.charCodeAt(0);
+  return code <= 8 || code === 11 || code === 12 || (code >= 14 && code <= 31) || code === 127;
+});
 const SHA = /^[0-9a-f]{64}$/;
 const OPAQUE = /^[A-Za-z0-9:_-]{1,256}$/;
 const DATE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
@@ -524,6 +537,28 @@ export function createOspClient(options: ClientOptions): OspClient {
       const encoded = new TextEncoder().encode(JSON.stringify(input));
       const response = await documentRequest({ query: [['action', 'assemble_case_profile_draft']], expectedStatus: 200, schema: CaseProfileDraftResponseSchema, contentType: 'application/json', body: encoded.buffer });
       return response.data;
+    },
+    saveRequestManifestReview: async (input: SaveRequestManifestReviewInput) => {
+      if (!UUID.test(input.caseId) || !Number.isSafeInteger(input.expectedCaseVersion) || input.expectedCaseVersion < 0 || input.expectedCaseVersion > 2_147_483_647 ||
+          !SHA.test(input.expectedManifestSha256) || !Array.isArray(input.decisions) || input.decisions.length > 200 ||
+          input.decisions.some((decision) => !decision || !/^(?:clarification|contradiction|missing):(?:0|[1-9][0-9]{0,2})$/.test(decision.decisionId) ||
+            !['answered', 'external', 'not_applicable'].includes(decision.outcome) || typeof decision.resolution !== 'string' || decision.resolution.trim() !== decision.resolution ||
+            decision.resolution.length < 3 || decision.resolution.length > 2_000 || hasUnsafeControlCharacter(decision.resolution)) ||
+          new Set(input.decisions.map((decision) => decision.decisionId)).size !== input.decisions.length) {
+        throw new OspClientError('INVALID_REQUEST');
+      }
+      const body = JSON.stringify({ decisions: input.decisions });
+      if (new TextEncoder().encode(body).byteLength > 65_536) throw new OspClientError('INVALID_REQUEST');
+      return (await caseRequest({
+        query: [
+          ['action', 'save_request_manifest_review'],
+          ['case_id', input.caseId],
+          ['expected_case_version', String(input.expectedCaseVersion)],
+          ['expected_manifest_sha256', input.expectedManifestSha256],
+        ],
+        schema: RequestManifestReviewResponseSchema,
+        body,
+      })).data;
     },
     syncGmailInbox,
     renewGmailWatch,

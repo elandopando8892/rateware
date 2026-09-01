@@ -241,6 +241,26 @@ export const CaseDetailSchema = CaseSummarySchema.extend({
   }, 'Latest request fields must be populated together'),
   recent_events: z.array(CaseEventSchema).max(20),
   request_manifest: RequestManifestSchema.nullable().optional(),
+  request_review: z.strictObject({
+    manifestId: z.uuid(),
+    manifestVersion: z.number().int().min(1).max(2_147_483_647),
+    manifestSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    review: z.strictObject({
+      reviewId: z.uuid(),
+      reviewVersion: z.number().int().min(1).max(2_147_483_647),
+      status: z.enum(['resolved', 'needs_external_clarification']),
+      decisions: z.array(z.strictObject({
+        decisionId: z.string().regex(/^(?:clarification|contradiction|missing):(?:0|[1-9][0-9]{0,2})$/),
+        kind: z.enum(['clarification', 'contradiction', 'missing']),
+        fieldId: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/).nullable(),
+        prompt: z.string().min(1).max(10_000),
+        evidenceIds: ManifestEvidenceIdsSchema,
+        outcome: z.enum(['answered', 'external', 'not_applicable']),
+        resolution: z.string().min(3).max(2_000),
+      })).max(200),
+      canonicalSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    }).nullable(),
+  }).nullable().optional(),
   historical_intake: z.strictObject({
     status: z.enum(['preview_only', 'imported']),
     query: z.string().min(1).max(512),
@@ -276,6 +296,18 @@ export const CaseProfileBindingResponseSchema = z.strictObject({ data: z.strictO
 export const CaseProfileDraftResponseSchema = z.strictObject({ data: z.strictObject({
   draftId: z.uuid(), manifestSha256: z.string().regex(/^[0-9a-f]{64}$/), factCount: z.number().int().min(1).max(128),
   restrictedFactCount: z.number().int().min(0).max(128), caseVersion: z.number().int().min(0).max(2_147_483_647), replayed: z.boolean(),
+}) });
+
+export const RequestManifestReviewResponseSchema = z.strictObject({ data: z.strictObject({
+  reviewId: z.uuid(), caseId: z.uuid(), caseVersion: z.number().int().min(0).max(2_147_483_647),
+  manifestId: z.uuid(), manifestVersion: z.number().int().min(1).max(2_147_483_647), manifestSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  reviewVersion: z.number().int().min(1).max(2_147_483_647), status: z.enum(['resolved', 'needs_external_clarification']),
+  decisions: z.array(z.strictObject({
+    decisionId: z.string().regex(/^(?:clarification|contradiction|missing):(?:0|[1-9][0-9]{0,2})$/),
+    kind: z.enum(['clarification', 'contradiction', 'missing']), fieldId: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/).nullable(),
+    prompt: z.string().min(1).max(10_000), evidenceIds: ManifestEvidenceIdsSchema,
+    outcome: z.enum(['answered', 'external', 'not_applicable']), resolution: z.string().min(3).max(2_000),
+  })).max(200), canonicalSha256: z.string().regex(/^[0-9a-f]{64}$/), replayed: z.boolean(),
 }) });
 
 export const CaseListSuccessResponseSchema = z.strictObject({
@@ -797,6 +829,8 @@ export type CaseState = z.infer<typeof CaseStateSchema>;
 export type CaseSummary = z.infer<typeof CaseSummarySchema>;
 export type CaseDetail = z.infer<typeof CaseDetailSchema>;
 export type RequestManifestReadModel = z.infer<typeof RequestManifestSchema>;
+export type RequestManifestReviewReadModel = NonNullable<z.infer<typeof CaseDetailSchema>['request_review']>;
+export type RequestManifestReviewReceipt = z.infer<typeof RequestManifestReviewResponseSchema>['data'];
 export type QuarterlyDocumentType = z.infer<typeof QuarterlyDocumentTypeSchema>;
 export type DocumentVersion = z.infer<typeof DocumentVersionSchema>;
 export type ClarificationQuestion = z.infer<typeof ClarificationQuestionSchema>;

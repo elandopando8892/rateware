@@ -54,6 +54,7 @@ function baseStore(overrides: Partial<OspReadStore> = {}): OspReadStore {
         latest_subject: 'Customer setup request', latest_sender_domain: 'supplier.example', latest_received_at: '2030-01-01T00:00:00Z',
         recent_events: [{ sequence: 1, state: 'received', occurred_at: '2030-01-01T00:00:00Z', reason_code: 'case_received' }],
         request_manifest: null,
+        request_review: null,
         profile_workspace: { candidates: [], binding: null, draft: null, disclosure_locked: true },
       };
     },
@@ -162,6 +163,7 @@ Deno.test('createOspReadHandler returns the exact pipeline, Gmail and case read 
       latest_request: { subject: 'Customer setup request', sender_domain: 'supplier.example', received_at: '2030-01-01T00:00:00.000Z' },
       recent_events: [{ sequence: 1, state: 'received', occurred_at: '2030-01-01T00:00:00.000Z', reason_code: 'case_received' }],
       request_manifest: null,
+      request_review: null,
       profile_workspace: { candidates: [], binding: null, draft: null, disclosure_locked: true },
     },
   });

@@ -46,6 +46,25 @@ function integer(value: unknown, code: string): number {
   return parsed;
 }
 
+async function assertLatestRequestReviewResolved(tx: SqlPort, organizationId: string, caseId: string): Promise<void> {
+  const gate = await tx`select manifest.id as manifest_id, review.status as review_status
+    from osp_private.request_manifest_drafts manifest
+    left join lateral (
+      select candidate.status
+      from osp_private.request_manifest_decision_reviews candidate
+      where candidate.organization_id = manifest.organization_id
+        and candidate.case_id = manifest.case_id
+        and candidate.manifest_draft_id = manifest.id
+      order by candidate.review_version desc
+      limit 1
+    ) review on true
+    where manifest.organization_id = ${organizationId}
+      and manifest.case_id = ${caseId}
+    order by manifest.manifest_version desc
+    limit 1`;
+  if (gate.length > 0 && gate[0].review_status !== 'resolved') throw new Error('CASE_PROFILE_REQUEST_REVIEW_REQUIRED');
+}
+
 export function createPostgresDocumentStore(options: { databaseUrl: string; postgresFactory?: PostgresFactory }) {
   const created = (options.postgresFactory ?? postgres as unknown as PostgresFactory)(databaseUrl(options.databaseUrl), {
     ssl: 'verify-full', fetch_types: false, prepare: false, max: 1, connect_timeout: 5,
@@ -172,6 +191,7 @@ export function createPostgresDocumentStore(options: { databaseUrl: string; post
     },
     async bindCaseProfile(input: CaseProfileBindingInput) {
       return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        await assertLatestRequestReviewResolved(tx, input.organizationId, input.caseId);
         const row = one(await tx`select case_id, legal_entity_id, entity_code, binding_revision, case_version, replayed from osp_private.bind_case_profile_command(${input.organizationId}, ${input.caseId}, ${input.legalEntityId}, ${input.expectedCaseVersion}, ${input.expectedBindingRevision}, ${input.actorSubject}, ${input.actorPermission})`, 'CASE_PROFILE_BINDING_CONFLICT');
         if (row.case_id !== input.caseId || row.legal_entity_id !== input.legalEntityId || typeof row.entity_code !== 'string' || typeof row.replayed !== 'boolean') throw new Error('CASE_PROFILE_BINDING_REJECTED');
         return Object.freeze({ caseId: input.caseId, legalEntityId: input.legalEntityId, entityCode: row.entity_code, bindingRevision: integer(row.binding_revision, 'CASE_PROFILE_BINDING_REJECTED'), caseVersion: integer(row.case_version, 'CASE_PROFILE_BINDING_REJECTED'), replayed: row.replayed });
@@ -180,6 +200,7 @@ export function createPostgresDocumentStore(options: { databaseUrl: string; post
     async assembleCaseProfileDraft(input: CaseProfileDraftInput) {
       if (!SHA.test(input.expectedFactsSha256)) throw new Error('CASE_PROFILE_DRAFT_REJECTED');
       return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        await assertLatestRequestReviewResolved(tx, input.organizationId, input.caseId);
         const row = one(await tx`select draft_id, manifest_sha256, fact_count, restricted_fact_count, case_version, replayed from osp_private.assemble_case_profile_draft_command(${input.organizationId}, ${input.caseId}, ${input.expectedCaseVersion}, ${input.expectedBindingRevision}, ${input.expectedFactsSha256}, ${input.actorSubject}, ${input.actorPermission})`, 'CASE_PROFILE_DRAFT_CONFLICT');
         if (typeof row.draft_id !== 'string' || !UUID.test(row.draft_id) || typeof row.manifest_sha256 !== 'string' || !SHA.test(row.manifest_sha256) || typeof row.replayed !== 'boolean') throw new Error('CASE_PROFILE_DRAFT_REJECTED');
         return Object.freeze({ draftId: row.draft_id, manifestSha256: row.manifest_sha256, factCount: integer(row.fact_count, 'CASE_PROFILE_DRAFT_REJECTED'), restrictedFactCount: integer(row.restricted_fact_count, 'CASE_PROFILE_DRAFT_REJECTED'), caseVersion: integer(row.case_version, 'CASE_PROFILE_DRAFT_REJECTED'), replayed: row.replayed });

@@ -569,3 +569,17 @@ test('semantic UI boundary permits only the governed internal outbound draft mut
     );
   }
 });
+
+test('semantic UI boundary permits only the evidence-bound request decision review', async () => {
+  const sourcePath = 'apps/osp/src/features/cases/AdaptiveReviewWorkbench.tsx';
+  const source = await readFile(path.join(repositoryRoot, sourcePath), 'utf8');
+  assert.doesNotThrow(() => assertNoUnsafeUiSyntax(source, sourcePath));
+  for (const [label, candidate] of [
+    ['direct network call', source.replace('await onSaveReview(', "await fetch('/functions/v1/osp-case-api');\n    await onSaveReview(")],
+    ['direct draft assembly', source.replace('await onSaveReview(', 'await assembleCaseProfileDraft();\n    await onSaveReview(')],
+    ['second review callback', source.replace('await onSaveReview(', 'await onSaveReview([]);\n    await onSaveReview(')],
+    ['implicit button', source.replace('type="button"', 'type="submit"')],
+  ]) {
+    assert.throws(() => assertNoUnsafeUiSyntax(candidate, sourcePath), (error) => error instanceof Error && error.message === 'UI_MUTATION_CONTROL', label);
+  }
+});

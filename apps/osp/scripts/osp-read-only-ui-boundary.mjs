@@ -31,7 +31,9 @@ const OPERATIONAL_CONTROL_NAMES = new Set([
   'approve', 'authorize', 'digitalsignature', 'oauth', 'renew', 'send', 'signature', 'sync', 'upload',
 ]);
 const OUTBOUND_DRAFT_COMPOSER_PATH = 'apps/osp/src/features/approval/FinalResponseComposer.tsx';
+const REQUEST_REVIEW_WORKBENCH_PATH = 'apps/osp/src/features/cases/AdaptiveReviewWorkbench.tsx';
 const OUTBOUND_DRAFT_ALLOWED_IMPORTS = new Set(['../../api/contracts', 'react']);
+const REQUEST_REVIEW_ALLOWED_IMPORTS = new Set(['../../api/contracts', '@tanstack/react-router', 'react']);
 const OUTBOUND_DRAFT_FORBIDDEN_CALLS = new Set([
   'approveandapplysignature',
   'authorizeoutboundpayload',
@@ -347,16 +349,46 @@ function assertGovernedOutboundDraftSurface(file, sourcePath) {
   }
 }
 
+function assertGovernedRequestReviewSurface(file, sourcePath) {
+  if (sourcePath.replace(/\\/g, '/') !== REQUEST_REVIEW_WORKBENCH_PATH) return;
+  const imports = [];
+  let declarations = 0;
+  let reviewCalls = 0;
+  let forms = 0;
+  const buttonTypes = [];
+  visit(file, (node) => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) imports.push(node.moduleSpecifier.text);
+    if (ts.isFunctionDeclaration(node) && node.name?.text === 'AdaptiveReviewWorkbench') declarations += 1;
+    if (ts.isCallExpression(node)) {
+      const name = normalizedControlName(expressionName(node.expression));
+      if (name === 'onsavereview') reviewCalls += 1;
+      if (OUTBOUND_DRAFT_FORBIDDEN_CALLS.has(name) || ['assemblecaseprofiledraft', 'bindcaseprofile'].includes(name)) fail('UI_MUTATION_CONTROL');
+    }
+    if (ts.isNewExpression(node) && OUTBOUND_DRAFT_FORBIDDEN_CONSTRUCTORS.has(normalizedControlName(expressionName(node.expression)))) fail('UI_MUTATION_CONTROL');
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const name = jsxName(node.tagName).toLowerCase();
+      if (name === 'form') forms += 1;
+      if (name === 'button') buttonTypes.push(literalJsxAttribute(node.attributes, 'type'));
+    }
+  });
+  if (declarations !== 1 || reviewCalls !== 1 || forms !== 1 ||
+      JSON.stringify(buttonTypes.sort()) !== JSON.stringify(['button', 'submit']) ||
+      imports.some((specifier) => !REQUEST_REVIEW_ALLOWED_IMPORTS.has(specifier)) || new Set(imports).size !== imports.length) {
+    fail('UI_MUTATION_CONTROL');
+  }
+}
+
 export function assertNoUnsafeUiSyntax(source, sourcePath = 'fixture.tsx') {
   if (sourcePath.endsWith('.css')) return;
   const file = parseTypeScript(source, sourcePath);
   const allowDocumentMutation = sourcePath.replace(/\\/g, '/').endsWith('apps/osp/src/features/documents/QuarterlyDocumentVault.tsx');
+  const allowRequestReview = sourcePath.replace(/\\/g, '/') === REQUEST_REVIEW_WORKBENCH_PATH;
   let documentForms = 0;
   let documentFileInputs = 0;
   visit(file, (node) => {
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const elementName = jsxName(node.tagName).toLowerCase();
-      assertSafeElementName(elementName, allowDocumentMutation);
+      assertSafeElementName(elementName, allowDocumentMutation || allowRequestReview);
       assertSafeJsxAttributes(node.attributes, allowDocumentMutation);
       if (allowDocumentMutation && elementName === 'form') documentForms += 1;
       if (allowDocumentMutation && elementName === 'input' && node.attributes.properties.some((attribute) =>
@@ -375,6 +407,7 @@ export function assertNoUnsafeUiSyntax(source, sourcePath = 'fixture.tsx') {
   });
   if (allowDocumentMutation && (documentForms !== 1 || documentFileInputs !== 1)) fail('UI_MUTATION_CONTROL');
   assertGovernedOutboundDraftSurface(file, sourcePath);
+  assertGovernedRequestReviewSurface(file, sourcePath);
 }
 
 function cssImports(source) {

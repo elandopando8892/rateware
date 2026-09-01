@@ -6,7 +6,7 @@ import type { OspCaseReadClient, OspClient } from '../../api/osp-client';
 import { caseNextGates, casePrimaryAction, caseStateLabels, caseStateTone, formatCaseDate, type CasePrimaryAction } from './case-presenter';
 import { RequestManifestPanel } from './RequestManifestPanel';
 import { HistoricalIntakePanel } from './HistoricalIntakePanel';
-import { AdaptiveReviewWorkbench } from './AdaptiveReviewWorkbench';
+import { AdaptiveReviewWorkbench, type RequestDecisionSubmission } from './AdaptiveReviewWorkbench';
 
 const emptyProfileWorkspace = { candidates: [], binding: null, draft: null, disclosure_locked: true as const };
 
@@ -31,8 +31,9 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
   const [selectedEntityId, setSelectedEntityId] = useState('');
   const [bindingConfirmed, setBindingConfirmed] = useState(false);
   const [draftConfirmed, setDraftConfirmed] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'binding' | 'draft' | null>(null);
+  const [pendingAction, setPendingAction] = useState<'review' | 'binding' | 'draft' | null>(null);
   const [actionError, setActionError] = useState(false);
+  const [reviewError, setReviewError] = useState(false);
   const query = useQuery({
     queryKey: ['osp', 'case', caseId],
     queryFn: () => client.getCustomerRegistrationCase(caseId),
@@ -57,6 +58,26 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
   const profile = caseRecord.profile_workspace ?? emptyProfileWorkspace;
   const selectedEntity = profile.candidates.find((candidate) => candidate.entity_id === selectedEntityId);
   const bindingMatchesSelection = profile.binding?.legal_entity_id === selectedEntityId;
+  const requestReview = caseRecord.request_review ?? null;
+  const requestReviewResolved = caseRecord.request_manifest === null || caseRecord.request_manifest === undefined || requestReview?.review?.status === 'resolved';
+  const saveRequestReview = async (decisions: readonly RequestDecisionSubmission[]) => {
+    if (!requestReview) return;
+    setPendingAction('review');
+    setReviewError(false);
+    try {
+      await client.saveRequestManifestReview({
+        caseId,
+        expectedCaseVersion: caseRecord.aggregate_version,
+        expectedManifestSha256: requestReview.manifestSha256,
+        decisions,
+      });
+      await query.refetch();
+    } catch {
+      setReviewError(true);
+    } finally {
+      setPendingAction(null);
+    }
+  };
   const runProfileAction = async (action: 'binding' | 'draft') => {
     setPendingAction(action);
     setActionError(false);
@@ -104,7 +125,16 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
         <div><dt>Last updated</dt><dd>{formatCaseDate(caseRecord.updated_at)}</dd></div>
       </dl>
 
-      <AdaptiveReviewWorkbench caseId={caseId} manifest={caseRecord.request_manifest ?? null} profile={profile} />
+      <AdaptiveReviewWorkbench
+        key={`${requestReview?.manifestSha256 ?? 'no-manifest'}:${requestReview?.review?.reviewId ?? 'unreviewed'}`}
+        caseId={caseId}
+        manifest={caseRecord.request_manifest ?? null}
+        profile={profile}
+        review={requestReview}
+        saving={pendingAction === 'review'}
+        saveError={reviewError}
+        onSaveReview={saveRequestReview}
+      />
 
       <RequestManifestPanel
         manifest={caseRecord.request_manifest ?? null}
@@ -130,7 +160,7 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
         {selectedEntity ? (
           <div className="case-profile-control">
             <label><input type="checkbox" checked={bindingConfirmed} onChange={(event) => setBindingConfirmed(event.target.checked)} /> Confirm this supplier request must use {selectedEntity.entity_code}.</label>
-            <button type="button" disabled={!bindingConfirmed || bindingMatchesSelection || pendingAction !== null || caseRecord.blocked_by_duplicate_review} onClick={() => void runProfileAction('binding')}>{pendingAction === 'binding' ? 'Binding…' : bindingMatchesSelection ? 'Entity bound' : 'Bind entity to case'}</button>
+            <button type="button" disabled={!requestReviewResolved || !bindingConfirmed || bindingMatchesSelection || pendingAction !== null || caseRecord.blocked_by_duplicate_review} onClick={() => void runProfileAction('binding')}>{pendingAction === 'binding' ? 'Binding…' : bindingMatchesSelection ? 'Entity bound' : 'Bind entity to case'}</button>
           </div>
         ) : <p>No active XBF entity with canonical facts is available.</p>}
         <div className="case-profile-summary">
@@ -141,9 +171,10 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
         {profile.binding ? (
           <div className="case-profile-control">
             <label><input type="checkbox" checked={draftConfirmed} onChange={(event) => setDraftConfirmed(event.target.checked)} /> Assemble a reference-only internal draft from the currently bound facts.</label>
-            <button type="button" disabled={!draftConfirmed || pendingAction !== null || caseRecord.blocked_by_duplicate_review} onClick={() => void runProfileAction('draft')}>{pendingAction === 'draft' ? 'Assembling…' : profile.draft ? 'Refresh internal draft' : 'Assemble internal draft'}</button>
+            <button type="button" disabled={!requestReviewResolved || !draftConfirmed || pendingAction !== null || caseRecord.blocked_by_duplicate_review} onClick={() => void runProfileAction('draft')}>{pendingAction === 'draft' ? 'Assembling…' : profile.draft ? 'Refresh internal draft' : 'Assemble internal draft'}</button>
           </div>
         ) : null}
+        {!requestReviewResolved ? <p className="case-warning" role="status">Resolve the request decision queue before binding XBF facts or assembling a draft.</p> : null}
         {profile.draft ? <p className="case-profile-manifest">Manifest {profile.draft.manifest_sha256.slice(0, 12)}… · binding revision {profile.draft.binding_revision}</p> : null}
         {actionError ? <p className="case-warning" role="alert">The profile action was not applied. Refresh the case and retry with the current version.</p> : null}
       </section>

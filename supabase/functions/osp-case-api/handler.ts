@@ -12,7 +12,9 @@ import {
 import type {
   ClarificationQuestion,
   ClarificationReviewSummary,
+  RequestManifestReviewSummary,
 } from "./postgres-store.ts";
+import type { RequestManifestDecisionInput } from './request-manifest-review.ts';
 import type { CaseApprovalActions } from "./actions.ts";
 import type { CaseOutboundActions } from "./actions.ts";
 import {
@@ -48,6 +50,14 @@ type ClarificationStorePort = {
     expectedCanonicalSha256: string;
     questions: ClarificationReviewSummary["questions"];
   }): Promise<ClarificationReviewSummary>;
+  saveRequestManifestReview?(input: {
+    organizationId: string;
+    subject: string;
+    caseId: string;
+    expectedCaseVersion: number;
+    expectedManifestSha256: string;
+    decisions: readonly RequestManifestDecisionInput[];
+  }): Promise<RequestManifestReviewSummary>;
 };
 
 export type CaseApiHandlerOptions = {
@@ -151,6 +161,15 @@ function preflightHeaders(url: URL): readonly string[] {
       "draft_id",
       "expected_case_version",
       "expected_canonical_sha256",
+    ]);
+    return ["authorization", "content-type"];
+  }
+  if (action === "save_request_manifest_review") {
+    exactQuery(url, [
+      "action",
+      "case_id",
+      "expected_case_version",
+      "expected_manifest_sha256",
     ]);
     return ["authorization", "content-type"];
   }
@@ -324,6 +343,48 @@ async function reviewBody(
   return Object.freeze(parsed);
 }
 
+function safeManifestDecision(value: unknown): RequestManifestDecisionInput {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new OspApiError('INVALID_REQUEST');
+  const row = value as Record<string, unknown>;
+  if (Object.keys(row).sort().join(',') !== 'decisionId,outcome,resolution' ||
+      typeof row.decisionId !== 'string' || !/^(?:clarification|contradiction|missing):(?:0|[1-9][0-9]{0,2})$/.test(row.decisionId) ||
+      !['answered', 'external', 'not_applicable'].includes(String(row.outcome)) ||
+      typeof row.resolution !== 'string' || row.resolution.trim() !== row.resolution || row.resolution.length < 3 || row.resolution.length > 2_000 ||
+      /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(row.resolution)) {
+    throw new OspApiError('INVALID_REQUEST');
+  }
+  return Object.freeze({
+    decisionId: row.decisionId,
+    outcome: row.outcome as RequestManifestDecisionInput['outcome'],
+    resolution: row.resolution,
+  });
+}
+
+async function manifestReviewBody(request: Request): Promise<readonly RequestManifestDecisionInput[]> {
+  if (request.headers.get('content-type')?.toLowerCase() !== 'application/json' || request.headers.has('content-encoding') || request.headers.has('transfer-encoding')) {
+    throw new OspApiError('INVALID_REQUEST');
+  }
+  const declared = request.headers.get('content-length');
+  if (declared !== null && (!/^[0-9]+$/.test(declared) || Number(declared) < 1 || Number(declared) > REVIEW_BODY_LIMIT)) {
+    throw new OspApiError('INVALID_REQUEST');
+  }
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  if (bytes.byteLength < 1 || bytes.byteLength > REVIEW_BODY_LIMIT || (declared !== null && Number(declared) !== bytes.byteLength)) {
+    throw new OspApiError('INVALID_REQUEST');
+  }
+  let decoded: unknown;
+  try { decoded = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+  catch { throw new OspApiError('INVALID_REQUEST'); }
+  if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded) || Object.keys(decoded).join(',') !== 'decisions') {
+    throw new OspApiError('INVALID_REQUEST');
+  }
+  const decisions = (decoded as { decisions?: unknown }).decisions;
+  if (!Array.isArray(decisions) || decisions.length > 200) throw new OspApiError('INVALID_REQUEST');
+  const parsed = decisions.map(safeManifestDecision);
+  if (new Set(parsed.map((item) => item.decisionId)).size !== parsed.length) throw new OspApiError('INVALID_REQUEST');
+  return Object.freeze(parsed);
+}
+
 async function outboundDraftBody(
   request: Request,
   input: {
@@ -419,6 +480,8 @@ function serviceError(error: unknown): OspApiError {
   if (/^(CLARIFICATION_PERSISTENCE_FAILED|DATABASE_TEMPORARY)$/.test(code)) {
     return new OspApiError("DEPENDENCY_UNAVAILABLE");
   }
+  if (/^REQUEST_MANIFEST_REVIEW_(?:INVALID|NOT_FOUND)$/.test(code)) return new OspApiError('INVALID_REQUEST');
+  if (code === 'REQUEST_MANIFEST_REVIEW_PERSISTENCE_FAILED') return new OspApiError('DEPENDENCY_UNAVAILABLE');
   if (/^(APPROVAL_FORBIDDEN)$/.test(code)) return new OspApiError("FORBIDDEN");
   if (/^(APPROVAL_PERSISTENCE_FAILED|SNAPSHOT_REBUILD_FAILED)$/.test(code)) {
     return new OspApiError("DEPENDENCY_UNAVAILABLE");
@@ -582,6 +645,24 @@ export function createCaseApiHandler(
           expectedCaseVersion,
           expectedCanonicalSha256: query.expected_canonical_sha256,
           questions: await reviewBody(request),
+        });
+        return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+      }
+      if (action === 'save_request_manifest_review') {
+        if (!options.clarificationStore.saveRequestManifestReview) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+        const verified = await options.verifyToken(bearer(request), request.signal);
+        const query = exactQuery(url, ['action', 'case_id', 'expected_case_version', 'expected_manifest_sha256']);
+        const scope = authority(verified, 'operate');
+        const expectedCaseVersion = Number(query.expected_case_version);
+        if (!UUID.test(query.case_id) || !Number.isSafeInteger(expectedCaseVersion) || expectedCaseVersion < 0 || expectedCaseVersion > 2_147_483_647 || !SHA.test(query.expected_manifest_sha256)) {
+          throw new OspApiError('INVALID_REQUEST');
+        }
+        const result = await options.clarificationStore.saveRequestManifestReview({
+          ...scope,
+          caseId: query.case_id,
+          expectedCaseVersion,
+          expectedManifestSha256: query.expected_manifest_sha256,
+          decisions: await manifestReviewBody(request),
         });
         return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
       }
@@ -818,7 +899,7 @@ export function createCaseApiHandler(
     } catch (error) {
       if (
         error instanceof Error &&
-        /^(?:VERSION_CONFLICT|APPROVAL_VERSION_CONFLICT|OUTBOUND_VERSION_CONFLICT|OUTBOUND_SEND_STALE|OUTBOUND_SEND_ALREADY_RESERVED)$/
+        /^(?:VERSION_CONFLICT|REQUEST_MANIFEST_REVIEW_VERSION_CONFLICT|APPROVAL_VERSION_CONFLICT|OUTBOUND_VERSION_CONFLICT|OUTBOUND_SEND_STALE|OUTBOUND_SEND_ALREADY_RESERVED)$/
           .test(error.message)
       ) {
         return versionConflictResponse(incident(nextIncident), allowedOrigin);

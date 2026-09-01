@@ -248,6 +248,42 @@ Deno.test('clarification store persists a grounded draft and an immutable Operat
   assert.equal(queries.some((entry) => entry.text.startsWith('insert into osp_private.case_events')), true);
 });
 
+Deno.test('clarification store persists an append-only manifest decision review and advances only the case state', async () => {
+  const exported = postgresStoreModule as unknown as Record<string, unknown>;
+  const manifestId = '44444444-4444-4444-8444-444444444444';
+  const queries: Array<{ text: string; values: unknown[] }> = [];
+  const manifest = {
+    clarificationQuestions: [{ fieldId: 'targetXbfEntity', question: 'Which XBF entity?', evidenceIds: ['email:body'] }],
+    contradictions: [], missingInformation: [],
+  };
+  const query = Object.assign(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const text = strings.join('?').replace(/\s+/g, ' ').trim().toLowerCase();
+    queries.push({ text, values });
+    if (text.startsWith('set local role') || text.startsWith('select set_config')) return [];
+    if (text.includes('from osp_private.customer_registration_cases') && text.includes('for update')) return [{ id: caseId, state: 'analyzing_requirements', aggregate_version: 4, blocked_by_duplicate_review: false }];
+    if (text.includes('from osp_private.request_manifest_drafts') && text.includes("status = 'review_required'")) return [{ id: manifestId, version: 1, manifest_json: manifest, manifest_sha256: 'a'.repeat(64) }];
+    if (text.includes('from osp_private.request_manifest_decision_reviews')) return [];
+    if (text.startsWith('insert into osp_private.request_manifest_decision_reviews')) return [{ id: values[0] }];
+    if (text.startsWith('update osp_private.customer_registration_cases set state')) return [{ aggregate_version: 5 }];
+    if (text.startsWith('insert into osp_private.case_events')) return [];
+    throw new Error(`UNEXPECTED_QUERY:${text}`);
+  }, { begin: async <T>(operation: (transaction: typeof query) => Promise<T>) => await operation(query) });
+  const createStore = exported.createPostgresClarificationStore as (options: unknown) => {
+    saveRequestManifestReview(input: unknown): Promise<Record<string, unknown>>;
+  };
+  const store = createStore({ databaseUrl: 'postgresql://synthetic.example.test/db', postgresFactory: () => query });
+  const reviewed = await store.saveRequestManifestReview({
+    organizationId: authority.organizationId, subject: authority.subject, caseId, expectedCaseVersion: 4,
+    expectedManifestSha256: 'a'.repeat(64), decisions: [{ decisionId: 'clarification:0', outcome: 'answered', resolution: 'Use XBFUS.' }],
+  });
+  assert.equal(reviewed.status, 'resolved');
+  assert.equal(reviewed.caseVersion, 5);
+  assert.equal(reviewed.replayed, false);
+  assert.equal(queries.some((entry) => entry.text.startsWith('insert into osp_private.request_manifest_decision_reviews')), true);
+  assert.equal(queries.some((entry) => entry.text.startsWith('update osp_private.customer_registration_cases set state') && entry.values.includes('awaiting_xbf_information')), true);
+  assert.equal(queries.some((entry) => /\b(?:send|webhook|email)\b/.test(entry.text)), false);
+});
+
 Deno.test('an Operations clarification edit after Sales authorization supersedes authority and returns to review', async () => {
   const exported = postgresStoreModule as unknown as Record<string, unknown>;
   const grounded = await buildClarificationDraft({

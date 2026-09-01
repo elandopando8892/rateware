@@ -94,6 +94,26 @@ export type CaseDetailReadModel = CaseSummaryReadModel & {
   };
   recent_events: readonly CaseEventReadModel[];
   request_manifest: unknown | null;
+  request_review: {
+    manifestId: string;
+    manifestVersion: number;
+    manifestSha256: string;
+    review: null | {
+      reviewId: string;
+      reviewVersion: number;
+      status: 'resolved' | 'needs_external_clarification';
+      decisions: readonly {
+        decisionId: string;
+        kind: 'clarification' | 'contradiction' | 'missing';
+        fieldId: string | null;
+        prompt: string;
+        evidenceIds: readonly string[];
+        outcome: 'answered' | 'external' | 'not_applicable';
+        resolution: string;
+      }[];
+      canonicalSha256: string;
+    };
+  } | null;
   profile_workspace: {
     candidates: readonly { entity_id: string; entity_code: string; legal_name: string; country_code: string; fact_count: string; facts_sha256: string }[];
     binding: { legal_entity_id: string; entity_code: string; binding_revision: number; facts_sha256: string } | null;
@@ -171,7 +191,7 @@ const CASE_SUMMARY_FIELDS = [
 const CASE_DETAIL_FIELDS = [
   'aggregate_version', 'attachment_count', 'blocked_by_duplicate_review', 'case_id',
   'created_at', 'document_count', 'latest_received_at', 'latest_sender_domain',
-  'latest_subject', 'message_count', 'profile_workspace', 'recent_events', 'request_manifest', 'state', 'supplier_name', 'updated_at',
+  'latest_subject', 'message_count', 'profile_workspace', 'recent_events', 'request_manifest', 'request_review', 'state', 'supplier_name', 'updated_at',
 ] as const;
 
 function normalizeRequestManifest(value: unknown): unknown | null {
@@ -230,6 +250,53 @@ function normalizeRequestManifest(value: unknown): unknown | null {
     ...row,
     sourceCoverage: { ...coverage, xlsm },
     spreadsheetProtection,
+  };
+}
+
+function normalizeRequestReview(value: unknown): CaseDetailReadModel['request_review'] {
+  if (value === null) return null;
+  const row = recordWithExactKeys(value, ['manifestId', 'manifestSha256', 'manifestVersion', 'review']);
+  if (typeof row.manifestId !== 'string' || !UUID_PATTERN.test(row.manifestId) || typeof row.manifestSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(row.manifestSha256)) {
+    throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  }
+  const manifestVersion = normalizeSafeInteger(row.manifestVersion, 1);
+  if (row.review === null) return { manifestId: row.manifestId, manifestVersion, manifestSha256: row.manifestSha256, review: null };
+  const review = recordWithExactKeys(row.review, ['canonicalSha256', 'decisions', 'reviewId', 'reviewVersion', 'status']);
+  if (typeof review.reviewId !== 'string' || !UUID_PATTERN.test(review.reviewId) || typeof review.canonicalSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(review.canonicalSha256) ||
+      !['resolved', 'needs_external_clarification'].includes(String(review.status)) || !Array.isArray(review.decisions) || review.decisions.length > 200) {
+    throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  }
+  const decisions = review.decisions.map((value) => {
+    const decision = recordWithExactKeys(value, ['decisionId', 'evidenceIds', 'fieldId', 'kind', 'outcome', 'prompt', 'resolution']);
+    if (typeof decision.decisionId !== 'string' || !/^(?:clarification|contradiction|missing):(?:0|[1-9][0-9]{0,2})$/.test(decision.decisionId) ||
+        !['clarification', 'contradiction', 'missing'].includes(String(decision.kind)) ||
+        !(decision.fieldId === null || typeof decision.fieldId === 'string' && /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(decision.fieldId)) ||
+        !['answered', 'external', 'not_applicable'].includes(String(decision.outcome)) || !Array.isArray(decision.evidenceIds) || decision.evidenceIds.length > 20 ||
+        new Set(decision.evidenceIds).size !== decision.evidenceIds.length || decision.evidenceIds.some((id) => typeof id !== 'string' || !/^[A-Za-z0-9:_-]{1,256}$/.test(id))) {
+      throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+    }
+    return Object.freeze({
+      decisionId: decision.decisionId,
+      kind: decision.kind as 'clarification' | 'contradiction' | 'missing',
+      fieldId: decision.fieldId as string | null,
+      prompt: normalizeBoundedText(decision.prompt, 10_000) as string,
+      evidenceIds: Object.freeze([...decision.evidenceIds] as string[]),
+      outcome: decision.outcome as 'answered' | 'external' | 'not_applicable',
+      resolution: normalizeBoundedText(decision.resolution, 2_000) as string,
+    });
+  });
+  if (new Set(decisions.map((item) => item.decisionId)).size !== decisions.length) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  return {
+    manifestId: row.manifestId,
+    manifestVersion,
+    manifestSha256: row.manifestSha256,
+    review: {
+      reviewId: review.reviewId,
+      reviewVersion: normalizeSafeInteger(review.reviewVersion, 1),
+      status: review.status as 'resolved' | 'needs_external_clarification',
+      decisions,
+      canonicalSha256: review.canonicalSha256,
+    },
   };
 }
 
@@ -392,11 +459,15 @@ export function normalizeCaseDetail(value: unknown): CaseDetailReadModel {
       !(subject === null && senderDomain === null && receivedAt === null)) {
     throw new OspApiError('DEPENDENCY_UNAVAILABLE');
   }
+  const requestManifest = normalizeRequestManifest(row.request_manifest);
+  const requestReview = normalizeRequestReview(row.request_review);
+  if ((requestManifest === null) !== (requestReview === null)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
   return {
     ...summary,
     latest_request: { subject, sender_domain: senderDomain, received_at: receivedAt },
     recent_events: normalizeRecentEvents(row.recent_events),
-    request_manifest: normalizeRequestManifest(row.request_manifest),
+    request_manifest: requestManifest,
+    request_review: requestReview,
     profile_workspace: normalizeCaseProfileWorkspace(row.profile_workspace),
   };
 }
