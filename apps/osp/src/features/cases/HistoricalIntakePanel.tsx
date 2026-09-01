@@ -83,8 +83,8 @@ export function HistoricalIntakePanel({ intake, subject, client }: {
       </dl>
       <div className="historical-search-fields" aria-label="Bounded Gmail search criteria">
         <label className="historical-subject-field"><span>Subject phrase</span><input type="text" maxLength={200} value={subjectPhrase} onChange={(event) => changeCriteria(() => setSubjectPhrase(event.target.value))} /></label>
-        <label><span>After date</span><input type="date" value={afterDate} onChange={(event) => changeCriteria(() => setAfterDate(event.target.value))} /></label>
-        <label><span>Before date</span><input type="date" value={beforeDate} onChange={(event) => changeCriteria(() => setBeforeDate(event.target.value))} /></label>
+        <label><span>After date</span><input type="text" inputMode="numeric" autoComplete="off" maxLength={10} pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={afterDate} onChange={(event) => changeCriteria(() => setAfterDate(event.target.value))} /></label>
+        <label><span>Before date</span><input type="text" inputMode="numeric" autoComplete="off" maxLength={10} pattern="\d{4}-\d{2}-\d{2}" placeholder="YYYY-MM-DD" value={beforeDate} onChange={(event) => changeCriteria(() => setBeforeDate(event.target.value))} /></label>
       </div>
       <div className="historical-intake-query"><span>Exact Gmail query</span><code>{exactQuery}</code></div>
       <ul className="historical-intake-guards" aria-label="Historical intake safety controls">
