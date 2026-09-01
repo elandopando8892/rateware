@@ -1,15 +1,20 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
   PrivateResolverError,
   SUBMIT_BID_CONTRACT_VERSION,
   SUBMIT_BID_FIELDS,
+  createMemoryRequestLedger,
   createPrivateResolver,
   fingerprint,
   stableStringify,
 } from "../supabase/functions/rfx-private-resolver/resolver-core.mjs";
+import { createFileRequestLedger } from "../tools/file-request-ledger.mjs";
 
 const secret = "test-only-rateware-private-resolver-secret";
 const keyId = "candidate-key";
@@ -65,7 +70,7 @@ function invitation(overrides = {}) {
 }
 
 function resolver(findInvitations = async () => [invitation()]) {
-  return createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, findInvitations });
+  return createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, findInvitations, requestLedger: createMemoryRequestLedger() });
 }
 
 test("resolves one eligible private invitation without returning credentials or writing a bid", async () => {
@@ -78,6 +83,10 @@ test("resolves one eligible private invitation without returning credentials or 
   assert.equal(result.externalExecution, false);
   assert.equal(result.ratewareSubmission, false);
   assert.equal(result.credentialExposure, false);
+  assert.equal(result.ledgerEvidence.persisted, true);
+  assert.equal(result.ledgerEvidence.duplicate, false);
+  assert.equal(result.ledgerEvidence.requestBodyStored, false);
+  assert.equal(result.ledgerEvidence.credentialMaterialStored, false);
   assert.equal(JSON.stringify(result).includes("invitation_token"), false);
   assert.equal(JSON.stringify(result).includes(secret), false);
 });
@@ -133,6 +142,102 @@ test("requires exact current submit_bid fields and preserves the MARKSMAN sideca
 });
 
 test("keeps the canary disabled unless explicitly enabled", async () => {
-  const candidate = createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: false, now, findInvitations: async () => [invitation()] });
+  const candidate = createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: false, now, findInvitations: async () => [invitation()], requestLedger: createMemoryRequestLedger() });
   await assert.rejects(candidate.resolve(await signedEnvelope()), (error) => error instanceof PrivateResolverError && error.code === "CANARY_EXECUTION_DISABLED");
+});
+
+test("returns the persisted result for an identical retry without a second invitation lookup", async () => {
+  let calls = 0;
+  const candidate = resolver(async () => { calls += 1; return [invitation()]; });
+  const envelope = await signedEnvelope();
+  const first = await candidate.resolve(envelope);
+  const duplicate = await candidate.resolve(envelope);
+  assert.equal(calls, 1);
+  assert.equal(duplicate.privateResolution.resolverRef, first.privateResolution.resolverRef);
+  assert.equal(duplicate.occurredAt, first.occurredAt);
+  assert.equal(duplicate.ledgerEvidence.duplicate, true);
+});
+
+test("blocks a re-signed altered body that reuses a completed request identifier", async () => {
+  let calls = 0;
+  const candidate = resolver(async () => { calls += 1; return [invitation()]; });
+  await candidate.resolve(await signedEnvelope());
+  const altered = await signedEnvelope({ evidenceSidecar: { contractVersion: "marksman-loads.rateware-handoff-evidence.v1", acceptedByCurrentSubmitBid: false, operationalFit: { answered: 5, total: 6 } } });
+  await assert.rejects(candidate.resolve(altered), (error) => error.code === "REQUEST_REPLAY_MISMATCH");
+  assert.equal(calls, 1);
+});
+
+test("fails closed when an identical request is already processing", async () => {
+  let calls = 0;
+  const processingLedger = {
+    claim: async (input) => ({ claimed: false, mismatch: false, record: { ...input, status: "processing" } }),
+    complete: async () => null,
+    fail: async () => null,
+  };
+  const candidate = createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, requestLedger: processingLedger, findInvitations: async () => { calls += 1; return [invitation()]; } });
+  await assert.rejects(candidate.resolve(await signedEnvelope()), (error) => error.code === "REQUEST_IN_PROGRESS");
+  assert.equal(calls, 0);
+});
+
+test("fails closed before invitation lookup when the durable ledger is unavailable", async () => {
+  let calls = 0;
+  const candidate = createPrivateResolver({ sharedSecret: secret, keyId, canaryEnabled: true, now, findInvitations: async () => { calls += 1; return [invitation()]; } });
+  await assert.rejects(candidate.resolve(await signedEnvelope()), (error) => error.code === "PRIVATE_RESOLVER_LEDGER_UNAVAILABLE");
+  assert.equal(calls, 0);
+});
+
+test("records a terminal failure and does not silently retry the invitation query", async () => {
+  let calls = 0;
+  const candidate = resolver(async () => { calls += 1; return []; });
+  const envelope = await signedEnvelope();
+  await assert.rejects(candidate.resolve(envelope), (error) => error.code === "PRIVATE_INVITATION_NOT_FOUND");
+  await assert.rejects(candidate.resolve(envelope), (error) => error.code === "PRIVATE_INVITATION_NOT_FOUND" && error.status === 409);
+  assert.equal(calls, 1);
+});
+
+test("durable response contains hashes but no request body or credential material", async () => {
+  const result = await resolver().resolve(await signedEnvelope());
+  const serialized = JSON.stringify(result);
+  assert.match(result.ledgerEvidence.requestHash, /^[0-9a-f]{64}$/);
+  assert.equal(serialized.includes("evidenceSidecar"), false);
+  assert.equal(serialized.includes("humanConfirmation"), false);
+  assert.equal(/invitation_token|signature|secret/i.test(serialized), false);
+});
+
+test("file-backed candidate returns the same result after resolver restart without persisting the body", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "rateware-resolver-ledger-"));
+  const path = join(directory, "ledger.json");
+  let calls = 0;
+  const options = () => ({
+    sharedSecret: secret,
+    keyId,
+    canaryEnabled: true,
+    now,
+    requestLedger: createFileRequestLedger(path),
+    findInvitations: async () => { calls += 1; return [invitation()]; },
+  });
+  try {
+    const envelope = await signedEnvelope();
+    const first = await createPrivateResolver(options()).resolve(envelope);
+    const duplicate = await createPrivateResolver(options()).resolve(envelope);
+    const stored = await readFile(path, "utf8");
+    assert.equal(calls, 1);
+    assert.equal(duplicate.privateResolution.resolverRef, first.privateResolution.resolverRef);
+    assert.equal(duplicate.ledgerEvidence.duplicate, true);
+    assert.equal(stored.includes("evidenceSidecar"), false);
+    assert.equal(stored.includes("humanConfirmation"), false);
+    assert.equal(/invitation_token|signature|secret/i.test(stored), false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("unapplied migration exposes only service-role RPCs and no request-body columns", async () => {
+  const sql = await readFile(new URL("../supabase/migrations/20260901193000_rfx_private_resolver_request_ledger.sql", import.meta.url), "utf8");
+  assert.match(sql, /enable row level security/i);
+  assert.match(sql, /grant execute[\s\S]+to service_role/i);
+  assert.match(sql, /claim_rfx_private_resolver_request/i);
+  assert.match(sql, /complete_rfx_private_resolver_request/i);
+  assert.match(sql, /fail_rfx_private_resolver_request/i);
+  assert.doesNotMatch(sql, /\n\s*(request_body|signature|invitation_token|operational_fit|bid_rate)\s+/i);
 });

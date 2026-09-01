@@ -19,10 +19,83 @@ function getClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
+function normalizeLedgerRecord(row: Record<string, unknown> | null) {
+  if (!row) return null;
+  return {
+    requestId: row.request_id,
+    requestHash: row.request_hash,
+    action: row.action,
+    issuer: row.issuer,
+    keyId: row.key_id,
+    organizationId: row.organization_id,
+    vendorId: row.vendor_id,
+    laneId: row.rfx_lane_id,
+    eventId: row.rfx_event_id,
+    payloadFingerprint: row.payload_fingerprint,
+    evidenceFingerprint: row.evidence_fingerprint,
+    handoffFingerprint: row.handoff_fingerprint,
+    status: row.status,
+    resolverRef: row.resolver_ref,
+    invitationStatus: row.invitation_status,
+    evidenceClass: row.evidence_class,
+    errorCode: row.error_code,
+    claimedAt: row.claimed_at,
+    expiresAt: row.expires_at,
+    completedAt: row.completed_at,
+  };
+}
+
+const requestLedger = {
+  async claim(input: Record<string, string>) {
+    const result = await getClient().rpc("claim_rfx_private_resolver_request", {
+      p_request_id: input.requestId,
+      p_request_hash: input.requestHash,
+      p_action: input.action,
+      p_issuer: input.issuer,
+      p_key_id: input.keyId,
+      p_organization_id: input.organizationId,
+      p_vendor_id: input.vendorId,
+      p_rfx_lane_id: input.laneId,
+      p_rfx_event_id: input.eventId,
+      p_payload_fingerprint: input.payloadFingerprint,
+      p_evidence_fingerprint: input.evidenceFingerprint,
+      p_handoff_fingerprint: input.handoffFingerprint,
+      p_claimed_at: input.claimedAt,
+      p_expires_at: input.expiresAt,
+    });
+    if (result.error) throw new PrivateResolverError("Rateware request ledger claim failed", "PRIVATE_RESOLVER_LEDGER_UNAVAILABLE", 503);
+    const data = result.data as { claimed?: boolean; mismatch?: boolean; record?: Record<string, unknown> } | null;
+    return { claimed: data?.claimed === true, mismatch: data?.mismatch === true, record: normalizeLedgerRecord(data?.record || null) };
+  },
+  async complete(input: Record<string, string>) {
+    const result = await getClient().rpc("complete_rfx_private_resolver_request", {
+      p_request_id: input.requestId,
+      p_request_hash: input.requestHash,
+      p_resolver_ref: input.resolverRef,
+      p_invitation_status: input.invitationStatus,
+      p_evidence_class: input.evidenceClass,
+      p_completed_at: input.completedAt,
+    });
+    if (result.error) throw new PrivateResolverError("Rateware request ledger completion failed", "REQUEST_LEDGER_STATE_CONFLICT", 409);
+    return normalizeLedgerRecord(result.data as Record<string, unknown>);
+  },
+  async fail(input: Record<string, string>) {
+    const result = await getClient().rpc("fail_rfx_private_resolver_request", {
+      p_request_id: input.requestId,
+      p_request_hash: input.requestHash,
+      p_error_code: input.errorCode,
+      p_completed_at: input.completedAt,
+    });
+    if (result.error) throw new PrivateResolverError("Rateware request ledger failure could not be recorded", "PRIVATE_RESOLVER_LEDGER_UNAVAILABLE", 503);
+    return normalizeLedgerRecord(result.data as Record<string, unknown> | null);
+  },
+};
+
 const resolver = createPrivateResolver({
   sharedSecret: SHARED_SECRET,
   keyId: KEY_ID,
   canaryEnabled: CANARY_ENABLED,
+  requestLedger,
   async findInvitations({ vendorId, laneId, eventId, limit }: { vendorId: string; laneId: string; eventId: string; limit: number }) {
     const result = await getClient()
       .from("rfx_lane_vendors")

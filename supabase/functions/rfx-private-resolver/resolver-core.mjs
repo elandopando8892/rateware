@@ -25,6 +25,10 @@ export class PrivateResolverError extends Error {
 const text = (value) => String(value == null ? "" : value).trim();
 const clone = (value) => structuredClone(value);
 
+function ledgerError(message, code = "PRIVATE_RESOLVER_LEDGER_ERROR", status = 503, details = {}) {
+  return new PrivateResolverError(message, code, status, details);
+}
+
 export function stableStringify(value) {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
   if (value && typeof value === "object") {
@@ -78,6 +82,39 @@ async function verifyEnvelope(envelope, { sharedSecret, expectedKeyId, now }) {
   if (expires < current) throw new PrivateResolverError("internal authorization has expired", "INTERNAL_AUTHORIZATION_EXPIRED", 401);
   if (expires - issued > 5 * 60_000) throw new PrivateResolverError("internal authorization lifetime is too long", "INVALID_INTERNAL_TIMESTAMP", 401);
   return clone(envelope);
+}
+
+export function createMemoryRequestLedger() {
+  const records = new Map();
+  return {
+    async claim(input) {
+      const current = records.get(input.requestId);
+      if (!current) {
+        const record = { ...clone(input), status: "processing", claimedAt: input.claimedAt, completedAt: null };
+        records.set(input.requestId, record);
+        return { claimed: true, record: clone(record) };
+      }
+      if (current.requestHash !== input.requestHash) return { claimed: false, mismatch: true, record: clone(current) };
+      return { claimed: false, mismatch: false, record: clone(current) };
+    },
+    async complete(input) {
+      const current = records.get(input.requestId);
+      if (!current || current.requestHash !== input.requestHash || current.status !== "processing") {
+        throw ledgerError("resolver request could not be completed from its current state", "REQUEST_LEDGER_STATE_CONFLICT", 409);
+      }
+      const record = { ...current, ...clone(input), status: "resolution_canary_passed", errorCode: null };
+      records.set(input.requestId, record);
+      return clone(record);
+    },
+    async fail(input) {
+      const current = records.get(input.requestId);
+      if (!current || current.requestHash !== input.requestHash || current.status !== "processing") return current ? clone(current) : null;
+      const record = { ...current, status: "failed", errorCode: text(input.errorCode) || "PRIVATE_RESOLVER_ERROR", completedAt: input.completedAt };
+      records.set(input.requestId, record);
+      return clone(record);
+    },
+    snapshot() { return [...records.values()].map(clone); },
+  };
 }
 
 function assertExactAcceptedFields(value) {
@@ -136,6 +173,7 @@ function assertEligibleInvitation(row, now) {
  *   canaryEnabled?: boolean,
  *   now?: () => Date,
  *   evidenceClass?: string,
+ *   requestLedger?: any,
  * }} options
  */
 export function createPrivateResolver({
@@ -145,51 +183,113 @@ export function createPrivateResolver({
   canaryEnabled = false,
   now = () => new Date(),
   evidenceClass = "RATEWARE_PRIVATE_RESOLUTION_CANDIDATE",
+  requestLedger,
 }) {
   if (typeof findInvitations !== "function") throw new TypeError("findInvitations is required");
 
-  async function resolve(envelope) {
-    if (canaryEnabled !== true) throw new PrivateResolverError("private resolution canary is disabled", "CANARY_EXECUTION_DISABLED", 403);
-    const verified = await verifyEnvelope(envelope, { sharedSecret, expectedKeyId: keyId, now });
-    await validateHandoff(verified.body);
-    const body = verified.body;
-    const rows = await findInvitations({ vendorId: text(body.vendorId), laneId: text(body.laneId), eventId: text(body.eventId), limit: 2 });
-    if (!Array.isArray(rows)) throw new PrivateResolverError("private invitation source returned an invalid result", "PRIVATE_RESOLVER_SOURCE_ERROR", 502);
-    if (rows.length === 0) throw new PrivateResolverError("no private invitation matches this carrier and lane", "PRIVATE_INVITATION_NOT_FOUND", 404);
-    if (rows.length !== 1) throw new PrivateResolverError("private invitation resolution is ambiguous", "PRIVATE_INVITATION_AMBIGUOUS", 409, { matchCount: rows.length });
-    const row = rows[0];
-    if (text(row.vendor_id) !== text(body.vendorId) || text(row.rfx_lane_id) !== text(body.laneId) || text(row.rfx_event_id) !== text(body.eventId)) {
-      throw new PrivateResolverError("private invitation source did not preserve requested identifiers", "PRIVATE_RESOLUTION_MISMATCH", 409);
+  function assertLedger() {
+    if (!requestLedger || typeof requestLedger.claim !== "function" || typeof requestLedger.complete !== "function" || typeof requestLedger.fail !== "function") {
+      throw ledgerError("durable request ledger is not configured", "PRIVATE_RESOLVER_LEDGER_UNAVAILABLE", 503);
     }
-    assertEligibleInvitation(row, now);
+  }
 
-    const resolverDigest = (await fingerprint({ type: "rfx_lane_vendor", id: text(row.id) })).slice(0, 24);
+  function responseFromRecord(record, { duplicate = false } = {}) {
+    if (!record?.resolverRef || !record?.invitationStatus || record.status !== "resolution_canary_passed") {
+      throw ledgerError("resolver ledger result is incomplete", "PRIVATE_RESOLVER_LEDGER_ERROR", 503);
+    }
     return {
       status: "resolution_canary_passed",
-      requestId: verified.requestId,
-      executionReference: `rateware-resolver-canary-${verified.requestId}`,
+      requestId: record.requestId,
+      executionReference: `rateware-resolver-canary-${record.requestId}`,
       privateResolution: {
         status: "matched",
-        resolverRef: `rlv-${resolverDigest}`,
-        vendorId: text(body.vendorId),
-        laneId: text(body.laneId),
-        eventId: text(body.eventId),
-        invitationStatus: text(row.invitation_status).toLowerCase(),
-        evidenceClass,
+        resolverRef: record.resolverRef,
+        vendorId: record.vendorId,
+        laneId: record.laneId,
+        eventId: record.eventId,
+        invitationStatus: record.invitationStatus,
+        evidenceClass: record.evidenceClass,
         credentialExposure: false,
       },
       authorizationEvidence: {
         algorithm: "HMAC-SHA256",
-        keyId: verified.keyId,
+        keyId: record.keyId,
         verified: true,
-        requestExpiresAt: verified.expiresAt,
+        requestExpiresAt: record.expiresAt,
+      },
+      ledgerEvidence: {
+        persisted: true,
+        requestHash: record.requestHash,
+        status: record.status,
+        duplicate,
+        claimedAt: record.claimedAt,
+        completedAt: record.completedAt,
+        requestBodyStored: false,
+        credentialMaterialStored: false,
       },
       projectedAction: "submit_bid",
       externalExecution: false,
       ratewareSubmission: false,
       credentialExposure: false,
-      occurredAt: now().toISOString(),
+      occurredAt: record.completedAt,
     };
+  }
+
+  async function resolve(envelope) {
+    if (canaryEnabled !== true) throw new PrivateResolverError("private resolution canary is disabled", "CANARY_EXECUTION_DISABLED", 403);
+    const verified = await verifyEnvelope(envelope, { sharedSecret, expectedKeyId: keyId, now });
+    await validateHandoff(verified.body);
+    assertLedger();
+    const body = verified.body;
+    const { signature: _signature, ...unsigned } = verified;
+    const requestHash = await fingerprint(unsigned);
+    const claimedAt = now().toISOString();
+    let claim;
+    try {
+      claim = await requestLedger.claim({
+        requestId: text(verified.requestId), requestHash, action: text(body.action), issuer: text(verified.issuer), keyId: text(verified.keyId),
+        organizationId: text(body.organizationId), vendorId: text(body.vendorId), laneId: text(body.laneId), eventId: text(body.eventId),
+        payloadFingerprint: text(body.payloadFingerprint), evidenceFingerprint: text(body.evidenceFingerprint), handoffFingerprint: text(body.handoffFingerprint),
+        claimedAt, expiresAt: text(verified.expiresAt),
+      });
+    } catch (error) {
+      if (error instanceof PrivateResolverError) throw error;
+      throw ledgerError("resolver request ledger is unavailable", "PRIVATE_RESOLVER_LEDGER_UNAVAILABLE", 503);
+    }
+    if (!claim || typeof claim !== "object" || !claim.record) throw ledgerError("resolver request ledger returned an invalid claim", "PRIVATE_RESOLVER_LEDGER_ERROR", 503);
+    if (claim.mismatch === true) throw new PrivateResolverError("request identifier was reused with altered content", "REQUEST_REPLAY_MISMATCH", 409);
+    if (claim.claimed !== true) {
+      if (claim.record.status === "resolution_canary_passed") return responseFromRecord(claim.record, { duplicate: true });
+      if (claim.record.status === "processing") throw new PrivateResolverError("an identical resolver request is already processing", "REQUEST_IN_PROGRESS", 409);
+      throw new PrivateResolverError("the resolver request already reached a terminal failure", text(claim.record.errorCode) || "REQUEST_TERMINAL_FAILURE", 409);
+    }
+
+    try {
+      const rows = await findInvitations({ vendorId: text(body.vendorId), laneId: text(body.laneId), eventId: text(body.eventId), limit: 2 });
+      if (!Array.isArray(rows)) throw new PrivateResolverError("private invitation source returned an invalid result", "PRIVATE_RESOLVER_SOURCE_ERROR", 502);
+      if (rows.length === 0) throw new PrivateResolverError("no private invitation matches this carrier and lane", "PRIVATE_INVITATION_NOT_FOUND", 404);
+      if (rows.length !== 1) throw new PrivateResolverError("private invitation resolution is ambiguous", "PRIVATE_INVITATION_AMBIGUOUS", 409, { matchCount: rows.length });
+      const row = rows[0];
+      if (text(row.vendor_id) !== text(body.vendorId) || text(row.rfx_lane_id) !== text(body.laneId) || text(row.rfx_event_id) !== text(body.eventId)) {
+        throw new PrivateResolverError("private invitation source did not preserve requested identifiers", "PRIVATE_RESOLUTION_MISMATCH", 409);
+      }
+      assertEligibleInvitation(row, now);
+      const completedAt = now().toISOString();
+      const resolverDigest = (await fingerprint({ type: "rfx_lane_vendor", id: text(row.id) })).slice(0, 24);
+      const completed = await requestLedger.complete({
+        requestId: text(verified.requestId), requestHash, resolverRef: `rlv-${resolverDigest}`,
+        invitationStatus: text(row.invitation_status).toLowerCase(), evidenceClass, completedAt,
+      });
+      return responseFromRecord(completed);
+    } catch (error) {
+      if (error?.code === "REQUEST_LEDGER_STATE_CONFLICT" || error?.code === "PRIVATE_RESOLVER_LEDGER_ERROR" || error?.code === "PRIVATE_RESOLVER_LEDGER_UNAVAILABLE") throw error;
+      try {
+        await requestLedger.fail({ requestId: text(verified.requestId), requestHash, errorCode: text(error?.code) || "PRIVATE_RESOLVER_ERROR", completedAt: now().toISOString() });
+      } catch {
+        throw ledgerError("resolver failure could not be recorded", "PRIVATE_RESOLVER_LEDGER_UNAVAILABLE", 503);
+      }
+      throw error;
+    }
   }
 
   return { resolve };
