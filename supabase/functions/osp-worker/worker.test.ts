@@ -301,7 +301,9 @@ Deno.test("worker routes an adaptive request manifest without outbound effects",
         leaseToken: "11111111-1111-4111-8111-111111111111",
         leasedUntil: "2026-09-01T12:05:00.000Z",
       }],
-      complete: async ({ jobId }) => completed.push(jobId),
+      complete: async ({ jobId }) => {
+        completed.push(jobId);
+      },
       fail: async () => {
         throw new Error("unexpected manifest failure");
       },
