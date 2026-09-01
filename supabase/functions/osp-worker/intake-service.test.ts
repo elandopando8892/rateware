@@ -31,6 +31,18 @@ Deno.test("parser accepts encoded sender and multiple quoted Cc mailboxes but no
     ),
   );
   assertEquals(missingMessageId.internetMessageId, null);
+  const salzillo = await parseCopiedRequest(
+    raw(
+      "From: Sales <sales@heymarksman.com>\r\nTo: telemarketing@salzillo.com.mx, carriers@xbfreight.com",
+    ),
+  );
+  assertEquals(salzillo.senderEmail, "sales@heymarksman.com");
+  assertEquals(salzillo.supplierDomain, "salzillo.com.mx");
+  assertEquals(salzillo.to, [
+    "telemarketing@salzillo.com.mx",
+    "carriers@xbfreight.com",
+  ]);
+  assertEquals(salzillo.cc, []);
   await assertRejects(
     () =>
       parseCopiedRequest(
@@ -65,6 +77,14 @@ Deno.test("parser accepts encoded sender and multiple quoted Cc mailboxes but no
     () =>
       parseCopiedRequest(
         raw("From: requester@example.test\r\nCc: carriers@xbfreight.com"),
+      ),
+    Error,
+    "UNQUALIFIED_GMAIL_MESSAGE",
+  );
+  await assertRejects(
+    () =>
+      parseCopiedRequest(
+        raw("From: other@heymarksman.com\r\nCc: carriers@xbfreight.com"),
       ),
     Error,
     "UNQUALIFIED_GMAIL_MESSAGE",
