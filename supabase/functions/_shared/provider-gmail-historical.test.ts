@@ -18,7 +18,7 @@ const criteria = {
 Deno.test("historical Gmail recovery builds one bounded mailbox query", () => {
   assertEquals(
     buildProviderGmailHistoricalQuery(criteria),
-    'subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/09 before:2026/08/12',
+    'in:anywhere subject:"PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN" after:2026/08/09 before:2026/08/12',
   );
   assertThrows(
     () =>

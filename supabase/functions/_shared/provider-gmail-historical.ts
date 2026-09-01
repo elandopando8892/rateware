@@ -64,6 +64,7 @@ export function buildProviderGmailHistoricalQuery(
 ): string {
   const criteria = normalizeProviderGmailHistoricalCriteria(input);
   return [
+    "in:anywhere",
     `subject:"${criteria.subjectPhrase}"`,
     `after:${criteria.afterDate.replaceAll("-", "/")}`,
     `before:${criteria.beforeDate.replaceAll("-", "/")}`,
@@ -112,6 +113,7 @@ export async function searchProviderGmailHistoricalInbox(
   const query = buildProviderGmailHistoricalQuery(criteria);
   const params = new URLSearchParams({
     maxResults: String(MAX_RESULTS),
+    includeSpamTrash: "true",
     q: query,
   });
   const listed = await requestGmailJson(
