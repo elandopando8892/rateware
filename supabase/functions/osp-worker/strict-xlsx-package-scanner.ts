@@ -10,10 +10,15 @@ const MAX_ENTRIES = 2_000;
 const SHA256 = /^[0-9a-f]{64}$/;
 const XLSX_MAIN =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
-const XLSM_MAIN =
-  "application/vnd.ms-excel.sheet.macroEnabled.main+xml";
+const XLSM_MAIN = "application/vnd.ms-excel.sheet.macroEnabled.main+xml";
 const VBA_CONTENT_TYPE = "application/vnd.ms-office.vbaProject";
 const VBA_PATH = "xl/vbaProject.bin";
+const PRINTER_SETTINGS_PATH =
+  /^xl\/printerSettings\/printerSettings[1-9][0-9]*\.bin$/i;
+const PRINTER_SETTINGS_RELATIONSHIP =
+  /<Relationship\b(?=[^>]*\bType=["'][^"']*\/printerSettings["'])[^>]*\/>/gi;
+const PRINTER_SETTINGS_CONTENT_TYPE =
+  /<(?:Default|Override)\b(?=[^>]*\bContentType=["']application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.printerSettings["'])[^>]*\/>/gi;
 const FORBIDDEN_PATH =
   /(?:^|\/)(?:activex|embeddings|externallinks|macrosheets|dialogsheets|customui|_xmlsignatures|querytables|webextensions|pivotcache)(?:\/|$)|(?:^|\/)connections\.xml$|\.(?:bin|exe|dll|com|bat|cmd|js|vbs|ps1|jar|msi|scr|hta)$/i;
 const FORBIDDEN_XML =
@@ -38,9 +43,14 @@ function validEntryPath(entry: ZipEntryMetadata): boolean {
 }
 
 function validMacroEntryPath(entry: ZipEntryMetadata): boolean {
-  if (entry.name.toLowerCase() === VBA_PATH.toLowerCase()) {
+  if (
+    entry.name.toLowerCase() === VBA_PATH.toLowerCase() ||
+    PRINTER_SETTINGS_PATH.test(entry.name)
+  ) {
     const original = entry.unsafeOriginalName ?? entry.name;
-    return entry.name === original && !entry.dir;
+    return entry.name === original && !entry.dir &&
+      !entry.name.startsWith("/") && !entry.name.includes("\\") &&
+      !entry.name.split("/").includes("..");
   }
   return validEntryPath(entry);
 }
@@ -169,7 +179,10 @@ export type MacroSafeSpreadsheet = Readonly<{
 
 function stripFormulaMarkup(xml: string): string {
   return xml
-    .replace(/<(?:[A-Za-z0-9_]+:)?f\b[^>]*>[\s\S]*?<\/(?:[A-Za-z0-9_]+:)?f\s*>/gi, "")
+    .replace(
+      /<(?:[A-Za-z0-9_]+:)?f\b[^>]*>[\s\S]*?<\/(?:[A-Za-z0-9_]+:)?f\s*>/gi,
+      "",
+    )
     .replace(/<(?:[A-Za-z0-9_]+:)?f\b[^>]*\/>/gi, "");
 }
 
@@ -182,8 +195,12 @@ export async function createMacroSafeSpreadsheetAnalysis(
   const vbaEntry = zip.file(VBA_PATH) as unknown as ZipEntryMetadata | null;
   if (!vbaEntry) throw new Error("XLSM_PACKAGE_POLICY_REJECTED");
 
-  const contentTypesEntry = zip.file("[Content_Types].xml") as unknown as ZipEntryMetadata;
-  const workbookRelsEntry = zip.file("xl/_rels/workbook.xml.rels") as unknown as ZipEntryMetadata;
+  const contentTypesEntry = zip.file(
+    "[Content_Types].xml",
+  ) as unknown as ZipEntryMetadata;
+  const workbookRelsEntry = zip.file(
+    "xl/_rels/workbook.xml.rels",
+  ) as unknown as ZipEntryMetadata;
   const contentTypes = await boundedXml(contentTypesEntry);
   const workbookRelationships = await boundedXml(workbookRelsEntry);
   if (
@@ -195,39 +212,63 @@ export async function createMacroSafeSpreadsheetAnalysis(
     FORBIDDEN_XLSM_XML.test(workbookRelationships)
   ) throw new Error("XLSM_PACKAGE_POLICY_REJECTED");
 
-  const workbookEntry = zip.file("xl/workbook.xml") as unknown as ZipEntryMetadata;
+  const workbookEntry = zip.file(
+    "xl/workbook.xml",
+  ) as unknown as ZipEntryMetadata;
   let workbookXml = await boundedXml(workbookEntry);
   if (/<(?:[A-Za-z0-9_]+:)?externalReferences(?:\s|>)/i.test(workbookXml)) {
     throw new Error("XLSM_PACKAGE_POLICY_REJECTED");
   }
   workbookXml = workbookXml
-    .replace(/<(?:[A-Za-z0-9_]+:)?definedNames\b[^>]*>[\s\S]*?<\/(?:[A-Za-z0-9_]+:)?definedNames\s*>/gi, "")
+    .replace(
+      /<(?:[A-Za-z0-9_]+:)?definedNames\b[^>]*>[\s\S]*?<\/(?:[A-Za-z0-9_]+:)?definedNames\s*>/gi,
+      "",
+    )
     .replace(/<(?:[A-Za-z0-9_]+:)?definedNames\b[^>]*\/>/gi, "");
   zip.file("xl/workbook.xml", workbookXml);
 
-  for (const entry of entries.filter((candidate) =>
-    /^xl\/worksheets\/sheet[1-9][0-9]*\.xml$/i.test(candidate.name)
-  )) {
-    const worksheet = await boundedXml(entry);
+  for (
+    const entry of entries.filter((candidate) =>
+      /^xl\/worksheets\/sheet[1-9][0-9]*\.xml$/i.test(candidate.name)
+    )
+  ) {
+    let worksheet = await boundedXml(entry);
     if (/<(?:[A-Za-z0-9_]+:)?hyperlink(?:\s|>)/i.test(worksheet)) {
       throw new Error("XLSM_PACKAGE_POLICY_REJECTED");
     }
+    worksheet = worksheet.replace(
+      /<(?:[A-Za-z0-9_]+:)?pageSetup\b[^>]*(?:\/>|>[\s\S]*?<\/(?:[A-Za-z0-9_]+:)?pageSetup\s*>)/gi,
+      "",
+    );
     zip.file(entry.name, stripFormulaMarkup(worksheet));
   }
 
-  for (const entry of entries.filter((candidate) => candidate.name.endsWith(".rels"))) {
-    const relationships = await boundedXml(entry);
+  for (
+    const entry of entries.filter((candidate) =>
+      candidate.name.endsWith(".rels")
+    )
+  ) {
+    let relationships = await boundedXml(entry);
     if (
       /TargetMode\s*=\s*["']External["']/i.test(relationships) ||
       FORBIDDEN_XLSM_XML.test(relationships)
     ) throw new Error("XLSM_PACKAGE_POLICY_REJECTED");
+    relationships = relationships.replace(PRINTER_SETTINGS_RELATIONSHIP, "");
+    zip.file(entry.name, relationships);
   }
 
   const vbaBytes = await vbaEntry.async("uint8array");
   const sanitizedContentTypes = contentTypes
     .replaceAll(XLSM_MAIN, XLSX_MAIN)
-    .replace(/<Override\b(?=[^>]*\bPartName=["']\/xl\/vbaProject\.bin["'])[^>]*\/>/gi, "")
-    .replace(/<Default\b(?=[^>]*\bExtension=["']bin["'])(?=[^>]*\bContentType=["']application\/vnd\.ms-office\.vbaProject["'])[^>]*\/>/gi, "");
+    .replace(
+      /<Override\b(?=[^>]*\bPartName=["']\/xl\/vbaProject\.bin["'])[^>]*\/>/gi,
+      "",
+    )
+    .replace(
+      /<Default\b(?=[^>]*\bExtension=["']bin["'])(?=[^>]*\bContentType=["']application\/vnd\.ms-office\.vbaProject["'])[^>]*\/>/gi,
+      "",
+    )
+    .replace(PRINTER_SETTINGS_CONTENT_TYPE, "");
   const sanitizedWorkbookRels = workbookRelationships.replace(
     /<Relationship\b(?=[^>]*(?:\bType=["'][^"']*\/vbaProject["']|\bTarget=["'](?:\.\.\/)?vbaProject\.bin["']))[^>]*\/>/gi,
     "",
@@ -235,6 +276,13 @@ export async function createMacroSafeSpreadsheetAnalysis(
   zip.file("[Content_Types].xml", sanitizedContentTypes);
   zip.file("xl/_rels/workbook.xml.rels", sanitizedWorkbookRels);
   zip.remove(VBA_PATH);
+  for (
+    const entry of entries.filter((candidate) =>
+      PRINTER_SETTINGS_PATH.test(candidate.name)
+    )
+  ) {
+    zip.remove(entry.name);
+  }
 
   const analysisBytes = await zip.generateAsync({
     type: "uint8array",

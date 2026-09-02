@@ -25,7 +25,10 @@ async function xlsx(
   return new Uint8Array(await workbook.xlsx.writeBuffer());
 }
 
-async function xlsm(extraUnsafePart = false): Promise<Uint8Array> {
+async function xlsm(
+  extraUnsafePart = false,
+  printerSettings = false,
+): Promise<Uint8Array> {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Formato 3.3");
   sheet.getCell("A1").value = "Legal name";
@@ -44,7 +47,9 @@ async function xlsm(extraUnsafePart = false): Promise<Uint8Array> {
         '<Override PartName="/xl/vbaProject.bin" ContentType="application/vnd.ms-office.vbaProject"/></Types>',
       ),
   );
-  const relationships = await zip.file("xl/_rels/workbook.xml.rels")!.async("string");
+  const relationships = await zip.file("xl/_rels/workbook.xml.rels")!.async(
+    "string",
+  );
   zip.file(
     "xl/_rels/workbook.xml.rels",
     relationships.replace(
@@ -53,7 +58,39 @@ async function xlsm(extraUnsafePart = false): Promise<Uint8Array> {
     ),
   );
   zip.file("xl/vbaProject.bin", new Uint8Array([1, 2, 3, 4]));
-  if (extraUnsafePart) zip.file("xl/embeddings/object.bin", new Uint8Array([9]));
+  if (printerSettings) {
+    const withPrinterContentType = await zip.file("[Content_Types].xml")!.async(
+      "string",
+    );
+    zip.file(
+      "[Content_Types].xml",
+      withPrinterContentType.replace(
+        "</Types>",
+        '<Default Extension="bin" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.printerSettings"/></Types>',
+      ),
+    );
+    const worksheet = await zip.file("xl/worksheets/sheet1.xml")!.async(
+      "string",
+    );
+    zip.file(
+      "xl/worksheets/sheet1.xml",
+      worksheet.replace(
+        "</worksheet>",
+        '<pageSetup r:id="rIdPrinter"/></worksheet>',
+      ),
+    );
+    zip.file(
+      "xl/worksheets/_rels/sheet1.xml.rels",
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdPrinter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/printerSettings" Target="../printerSettings/printerSettings1.bin"/></Relationships>',
+    );
+    zip.file(
+      "xl/printerSettings/printerSettings1.bin",
+      new Uint8Array([9, 8, 7, 6]),
+    );
+  }
+  if (extraUnsafePart) {
+    zip.file("xl/embeddings/object.bin", new Uint8Array([9]));
+  }
   return await zip.generateAsync({ type: "uint8array" });
 }
 
@@ -95,8 +132,17 @@ Deno.test("macro-safe XLSM analysis preserves the source boundary while strippin
   assert(sanitized.analysisSha256 !== await sha256Hex(bytes));
   const analysisZip = await JSZip.loadAsync(sanitized.analysisBytes);
   assertEquals(analysisZip.file("xl/vbaProject.bin"), null);
-  assertEquals((await analysisZip.file("[Content_Types].xml")!.async("string")).includes("macroEnabled"), false);
-  assertEquals((await analysisZip.file("xl/worksheets/sheet1.xml")!.async("string")).includes("<f>"), false);
+  assertEquals(
+    (await analysisZip.file("[Content_Types].xml")!.async("string")).includes(
+      "macroEnabled",
+    ),
+    false,
+  );
+  assertEquals(
+    (await analysisZip.file("xl/worksheets/sheet1.xml")!.async("string"))
+      .includes("<f>"),
+    false,
+  );
   await assertStrictXlsxPackage(sanitized.analysisBytes);
 
   const structure = await parseXlsxStructure({
@@ -107,9 +153,15 @@ Deno.test("macro-safe XLSM analysis preserves the source boundary while strippin
   assertEquals(structure.protection.macroEnabled, true);
   assertEquals(structure.protection.macroExecution, "blocked");
   assertEquals(structure.protection.analysisMode, "sanitized_copy");
-  assertEquals(structure.sheets[0].cells.some((cell) => cell.address === "A1"), true);
+  assertEquals(
+    structure.sheets[0].cells.some((cell) => cell.address === "A1"),
+    true,
+  );
   assertEquals(await createMacroSafeXlsmPackageScanner()(bytes), "clean");
-  assertEquals(await createMacroSafeXlsmPackageScanner("0".repeat(64))(bytes), "unknown");
+  assertEquals(
+    await createMacroSafeXlsmPackageScanner("0".repeat(64))(bytes),
+    "unknown",
+  );
 });
 
 Deno.test("macro-safe XLSM policy rejects embedded executable parts", async () => {
@@ -118,4 +170,37 @@ Deno.test("macro-safe XLSM policy rejects embedded executable parts", async () =
     Error,
     "XLSX_PACKAGE_POLICY_REJECTED",
   );
+});
+
+Deno.test("macro-safe XLSM analysis removes inert printer settings before strict analysis", async () => {
+  const sanitized = await createMacroSafeSpreadsheetAnalysis(
+    await xlsm(false, true),
+  );
+  const analysisZip = await JSZip.loadAsync(sanitized.analysisBytes);
+  assertEquals(
+    analysisZip.file("xl/printerSettings/printerSettings1.bin"),
+    null,
+  );
+  assertEquals(
+    (await analysisZip.file("[Content_Types].xml")!.async("string")).includes(
+      "printerSettings",
+    ),
+    false,
+  );
+  assertEquals(
+    (await analysisZip.file("xl/worksheets/sheet1.xml")!.async("string"))
+      .includes(
+        "pageSetup",
+      ),
+    false,
+  );
+  assertEquals(
+    (await analysisZip.file("xl/worksheets/_rels/sheet1.xml.rels")!.async(
+      "string",
+    )).includes(
+      "printerSettings",
+    ),
+    false,
+  );
+  await assertStrictXlsxPackage(sanitized.analysisBytes);
 });
