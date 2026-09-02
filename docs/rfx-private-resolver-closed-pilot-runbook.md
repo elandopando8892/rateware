@@ -1,8 +1,10 @@
 # Runbook: MARKSMAN Loads private resolver closed pilot
 
-**Owner role:** Authorized MARKSMAN Loads ADMIN conducting the pilot  
-**Frequency:** Before the pilot, every 15 minutes while it is open, and immediately after closing  
-**Environment:** `marksman-loads-staging` only  
+**Owner role:** Authorized MARKSMAN Loads ADMIN conducting the pilot
+
+**Frequency:** Before the pilot, every 15 minutes while it is open, and immediately after closing
+
+**Environment:** `marksman-loads-staging` only
 **Production:** Not authorized
 
 ## Purpose
