@@ -85,6 +85,13 @@ function fakeDatabase(initialState = "received") {
       ) {
         return instance ? [{ values_json: instance.values_json }] : [];
       }
+      if (
+        text.startsWith(
+          "select mapping_json from osp_private.supplier_form_mappings",
+        )
+      ) {
+        return mapping ? [{ mapping_json: mapping.mapping_json }] : [];
+      }
       if (text.startsWith("select id, version, status, mapping_json")) {
         return mapping ? [mapping] : [];
       }
@@ -278,6 +285,13 @@ Deno.test("postgres preparation persists a reviewable draft and stops at prepari
     fake.calls.some((call) => call.text.includes("for share")),
     false,
   );
+  const reloaded = await store.load({
+    organizationId,
+    caseId,
+    extractionId,
+    templateVersionId,
+  });
+  assertEquals(reloaded.currentValues, {});
 });
 
 Deno.test("postgres preparation refuses to rewrite a human-governed downstream case", async () => {

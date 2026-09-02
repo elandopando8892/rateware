@@ -170,6 +170,17 @@ async function loadPreparation(
   const instances = lockSources
     ? await tx`select values_json from osp_private.case_form_instances where organization_id = ${input.organizationId} and case_id = ${input.caseId} and template_version_id = ${input.templateVersionId} order by updated_at desc, id asc limit 1 for update`
     : await tx`select values_json from osp_private.case_form_instances where organization_id = ${input.organizationId} and case_id = ${input.caseId} and template_version_id = ${input.templateVersionId} order by updated_at desc, id asc limit 1`;
+  const mappings = lockSources
+    ? await tx`select mapping_json from osp_private.supplier_form_mappings where organization_id = ${input.organizationId} and case_id = ${input.caseId} and extraction_id = ${input.extractionId} and template_version_id = ${input.templateVersionId} and status = 'unresolved' order by updated_at desc, id asc limit 1 for update`
+    : await tx`select mapping_json from osp_private.supplier_form_mappings where organization_id = ${input.organizationId} and case_id = ${input.caseId} and extraction_id = ${input.extractionId} and template_version_id = ${input.templateVersionId} and status = 'unresolved' order by updated_at desc, id asc limit 1`;
+  const instanceValues = instances.length === 0
+    ? {}
+    : jsonObject(instances[0].values_json);
+  const mappingValues = mappings.length === 0
+    ? null
+    : jsonObject(jsonObject(mappings[0].mapping_json).values);
+  const automaticDraft = mappingValues !== null &&
+    canonical(instanceValues) === canonical(mappingValues);
   return Object.freeze({
     caseId: input.caseId,
     extractionId: input.extractionId,
@@ -179,9 +190,7 @@ async function loadPreparation(
       ...ratewareRows.map(ratewareCandidate),
       ...extractionRows.map(extractionCandidate),
     ]),
-    currentValues: Object.freeze(
-      instances.length === 0 ? {} : jsonObject(instances[0].values_json),
-    ),
+    currentValues: Object.freeze(automaticDraft ? {} : instanceValues),
   });
 }
 
@@ -325,8 +334,9 @@ async function advanceCase(
   const target = targetState(input.plan);
   if (state === target) return;
   const allowed = state === "analyzing_requirements" ||
-    (state === "awaiting_xbf_information" &&
-      (target === "preparing" || target === "awaiting_clarification"));
+    (["awaiting_xbf_information", "awaiting_clarification"].includes(state) &&
+      ["preparing", "awaiting_xbf_information", "awaiting_clarification"]
+        .includes(target));
   if (!allowed) fail("INVALID_INPUT");
   await transition(tx, {
     ...input,

@@ -83,9 +83,13 @@ function stable(value: PreparationScalar): string {
 }
 
 function eligible(candidate: PreparationCandidate): boolean {
+  const value = scalar(candidate.value);
+  const labelOnlyAttachment = candidate.source === "attachment" &&
+    typeof value === "string" && value.length <= 96 &&
+    value.endsWith(":") && !/[0-9]/.test(value);
   return candidate.validation === "valid" &&
     Number.isFinite(candidate.confidence) && candidate.confidence >= 0.8 &&
-    scalar(candidate.value) !== null && candidate.evidenceIds.length > 0;
+    value !== null && !labelOnlyAttachment && candidate.evidenceIds.length > 0;
 }
 
 function matches(

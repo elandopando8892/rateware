@@ -117,6 +117,25 @@ Deno.test("low-confidence values never enter the prepared form", () => {
   assertEquals(Object.hasOwn(plan.values, "tax_id"), false);
 });
 
+Deno.test("label-only attachment cells never enter the prepared form", () => {
+  const plan = prepareCaseForm({
+    ...base,
+    candidates: base.candidates.map((candidate) =>
+      candidate.fieldKey === "RFC"
+        ? { ...candidate, value: "OPINIÓN POSITIVA SAT:" }
+        : candidate
+    ),
+  });
+  assertEquals(plan.status, "awaiting_xbf_information");
+  assertEquals(Object.hasOwn(plan.values, "tax_id"), false);
+  assertEquals(plan.fields[1], {
+    fieldId: "tax_id",
+    source: "missing",
+    status: "missing",
+    evidenceIds: [],
+  });
+});
+
 Deno.test("the service persists one no-effects plan with the job correlation", async () => {
   const persisted: unknown[] = [];
   const service = createAutomaticPreparationService({
