@@ -12,6 +12,10 @@ import {
   deriveReplyContext,
   type ReplyContext,
 } from "../_shared/osp/reply-context.ts";
+import {
+  assertRequestSemanticGate,
+  type RequestSemanticGate,
+} from "../_shared/osp/request-contract.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -132,10 +136,29 @@ function validSave(input: SavedOutboundDraftInput): void {
 
 export async function saveOutboundDraft(
   input: SavedOutboundDraftInput,
-  deps: { store: OutboundDraftRecordStore },
+  deps: {
+    store: OutboundDraftRecordStore;
+    semanticGate?: RequestSemanticGate;
+  },
 ): Promise<OutboundDraft> {
   validSave(input);
-  const draft = assertOutboundDraft(input.draft);
+  let draft = assertOutboundDraft(input.draft);
+  if (draft.kind === "final_response" && deps.semanticGate) {
+    await assertRequestSemanticGate(deps.semanticGate, {
+      organizationId: input.organizationId,
+      caseId: input.caseId,
+      stage: "outbound_draft",
+    });
+    if (deps.semanticGate.requiredOutboundAttachments) {
+      draft = assertOutboundDraft({
+        ...draft,
+        attachments: await deps.semanticGate.requiredOutboundAttachments({
+          organizationId: input.organizationId,
+          caseId: input.caseId,
+        }),
+      });
+    }
+  }
   requireCurrentOutboundPolicy(
     draft,
     await deps.store.currentContext({
@@ -154,6 +177,7 @@ export async function freezeOutboundDraft(
     store: OutboundDraftRecordStore;
     attachments: OutboundAttachmentObjectPort;
     objects: OutboundMimeObjectPort;
+    semanticGate?: RequestSemanticGate;
   },
 ): Promise<FrozenOutboundRecord> {
   if (
@@ -181,6 +205,13 @@ export async function freezeOutboundDraft(
         context.caseVersion !== input.expectedCaseVersion
       ) {
         throw new Error("OUTBOUND_VERSION_CONFLICT");
+      }
+      if (draft.kind === "final_response" && deps.semanticGate) {
+        await assertRequestSemanticGate(deps.semanticGate, {
+          organizationId: input.organizationId,
+          caseId: input.caseId,
+          stage: "outbound_freeze",
+        });
       }
       requireCurrentOutboundPolicy(draft, context);
       const frozen = await freezeOutboundPayload(
@@ -315,7 +346,8 @@ async function contextFromTransaction(
         (typeof authorizations[0].signed_package_sha256 !== "string" ||
           typeof authorizations[0].signed_package_id !== "string" ||
           !UUID.test(authorizations[0].signed_package_id) ||
-          (authorizations[0].signed_package_content_type !== "application/pdf" &&
+          (authorizations[0].signed_package_content_type !==
+              "application/pdf" &&
             authorizations[0].signed_package_content_type !== XLSX))) ||
       (authorizations[0].payload_kind === "clarification" &&
         (authorizations[0].signed_package_sha256 !== null ||
@@ -368,7 +400,9 @@ async function contextFromTransaction(
 async function replySourceFromTransaction(
   tx: SqlPort,
   input: { organizationId: string; caseId: string },
-): Promise<{ replyContext: ReplyContext | null; gmailThreadId: string | null }> {
+): Promise<
+  { replyContext: ReplyContext | null; gmailThreadId: string | null }
+> {
   const rows =
     await tx`select gmail_thread_id, sender_email, internet_message_id, subject, to_jsonb(to_addresses) as to_addresses, to_jsonb(cc_addresses) as cc_addresses from osp_private.gmail_messages where organization_id = ${input.organizationId} and case_id = ${input.caseId} order by received_at asc, created_at asc, id asc limit 1`;
   if (rows.length !== 1) {

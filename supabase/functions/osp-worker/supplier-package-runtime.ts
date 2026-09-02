@@ -31,7 +31,7 @@ const XLSM = "application/vnd.ms-excel.sheet.macroEnabled.12" as const;
 const PDF = "application/pdf" as const;
 const DOCX =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const;
-type PackageContentType = typeof XLSX | typeof PDF | typeof DOCX;
+type PackageContentType = typeof XLSX | typeof XLSM | typeof PDF | typeof DOCX;
 type SourceContentType = PackageContentType | typeof XLSM;
 
 type SourceRow = {
@@ -205,6 +205,7 @@ export function createPostgresSupplierPackageRecordStore(options: {
               prepared.source.content_type === XLSM
             ? {
               kind: "xlsx" as const,
+              sourceContentType: prepared.source.content_type,
               mappings: mappings(prepared.source.mappings),
             }
             : prepared.source.content_type === PDF

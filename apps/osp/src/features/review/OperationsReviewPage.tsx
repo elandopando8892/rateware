@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import type { ApprovalCommunicationsWorkspace } from '../../api/contracts';
+import { FulfillmentMatrixPanel } from './FulfillmentMatrixPanel';
 
 export function OperationsReviewPage({ workspace, conflict = false, onComplete }: { workspace: ApprovalCommunicationsWorkspace; conflict?: boolean; onComplete(): Promise<void> }) {
   const [confirmed, setConfirmed] = useState(false);
@@ -25,6 +26,7 @@ export function OperationsReviewPage({ workspace, conflict = false, onComplete }
       <div><dt>Decisions</dt><dd>{snapshot.reviewDecisionCount} review decisions</dd></div>
       <div><dt>Evidence fingerprint</dt><dd><code>{snapshot.sha256.slice(0, 12)}</code></dd></div>
     </dl>
+    <FulfillmentMatrixPanel workspace={workspace} />
     <section className="review-package" aria-labelledby="supplier-package-title">
       <p className="eyebrow">GENERATED OUTPUT</p>
       <h2 id="supplier-package-title">Completed supplier workbook</h2>
@@ -35,7 +37,7 @@ export function OperationsReviewPage({ workspace, conflict = false, onComplete }
           : <p>The workbook is generated; refresh to request a new secure download link.</p>}
       </> : <p>The reviewed workbook is being generated. Operations cannot complete this gate until it is available.</p>}
     </section>
-    <label className="control-confirmation"><input type="checkbox" checked={confirmed} disabled={!supplierPackage || reviewComplete} onChange={(event) => setConfirmed(event.target.checked)} /> The evidence package is complete and ready for signature review.</label>
+    <label className="control-confirmation"><input type="checkbox" checked={confirmed} disabled={!supplierPackage || reviewComplete || workspace.fulfillment?.gates.operationsReview !== true} onChange={(event) => setConfirmed(event.target.checked)} /> All pre-signature requirements are satisfied and the evidence package is ready for signature review.</label>
     {conflict ? <p role="alert">The review was not completed. Current state was reloaded; review it before retrying explicitly.</p> : failed ? <p role="alert">The review was not completed. Reload the current state before retrying explicitly.</p> : null}
     {workspace.capabilities.completeOperationsReview ? <button type="button" disabled={!confirmed || pending} onClick={() => void submit()}>{pending ? 'Completing…' : 'Complete Operations review'}</button> : reviewComplete ? <p role="status">Operations review complete.</p> : workspace.caseState === 'operations_review' ? <p role="status">Operations authority is required for this step.</p> : <p role="status">Operations review is not active for the current state.</p>}
   </section>;

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ApprovalCommunicationsWorkspace } from '../../api/contracts';
+import { FulfillmentMatrixPanel } from '../review/FulfillmentMatrixPanel';
 
 export function OutboundPayloadPage({ workspace, conflict = false, onFreeze, onRequestSend }: { workspace: ApprovalCommunicationsWorkspace; conflict?: boolean; onFreeze(): Promise<void>; onRequestSend(): Promise<void> }) {
   const [pending, setPending] = useState<'freeze' | 'send' | null>(null);
@@ -10,6 +11,7 @@ export function OutboundPayloadPage({ workspace, conflict = false, onFreeze, onR
   return <section className="workflow-page" aria-labelledby="outbound-title">
     <p className="eyebrow">CONTROL 04 · CARRIERS</p><h1 id="outbound-title">Outbound execution</h1>
     <p className="lede">Authorized mailbox: carriers@xbfreight.com. Every request is idempotent and auditable.</p>
+    {outbound.kind === 'final_response' ? <FulfillmentMatrixPanel workspace={workspace} /> : null}
     <dl className="evidence-grid"><div><dt>Status</dt><dd>{outbound.status}</dd></div><div><dt>Payload</dt><dd><code>{outbound.payloadId}</code></dd></div><div><dt>Send outcome</dt><dd>{outbound.sendOutcome ?? 'Not requested'}</dd></div></dl>
     {conflict ? <p role="alert">The command failed safely. Current state was reloaded; review it before an explicit retry.</p> : failed ? <p role="alert">The command failed safely. Reload the current state before an explicit retry.</p> : null}
     {outbound.sendOutcome === 'manual_reconciliation_required' ? <p role="alert">Manual reconciliation required. The Gmail outcome is ambiguous; do not retry automatically. Operations must reconcile the provider state.</p> : null}

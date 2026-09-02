@@ -126,6 +126,8 @@ Deno.test("Postgres outbound authorization uses the isolated nested-read pool", 
       download: async () => null,
     },
   });
-  assertEquals(authorizationConnections, 1);
+  // Current-payload verification and the independent semantic gate each use
+  // the isolated nested-read pool; neither can wait on the command transaction.
+  assertEquals(authorizationConnections, 2);
   assertEquals(primaryConnections, 4);
 });

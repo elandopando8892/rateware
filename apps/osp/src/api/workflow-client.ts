@@ -46,7 +46,7 @@ export type WorkflowClient = {
   requestAuthorizedSend(input: CommandBase & { salesAuthorizationId: string; payloadSha256: string }): Promise<SendCommandReceipt>;
 };
 
-export type OspWorkflowErrorCode = 'NO_SESSION' | 'NETWORK_UNAVAILABLE' | 'INVALID_RESPONSE' | 'STALE_SESSION' | 'INVALID_REQUEST' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'VERSION_CONFLICT' | 'DEPENDENCY_UNAVAILABLE' | 'INTERNAL_ERROR';
+export type OspWorkflowErrorCode = 'NO_SESSION' | 'NETWORK_UNAVAILABLE' | 'INVALID_RESPONSE' | 'STALE_SESSION' | 'INVALID_REQUEST' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'VERSION_CONFLICT' | 'DEPENDENCY_UNAVAILABLE' | 'FULFILLMENT_BLOCKED' | 'INTERNAL_ERROR';
 
 export class OspWorkflowError extends Error {
   constructor(readonly code: OspWorkflowErrorCode, readonly incidentId?: string) {
@@ -65,6 +65,7 @@ const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const ERROR_STATUS: Readonly<Record<string, number>> = Object.freeze({
   INVALID_REQUEST: 400, UNAUTHORIZED: 401, FORBIDDEN: 403, VERSION_CONFLICT: 409,
   DEPENDENCY_UNAVAILABLE: 503, INTERNAL_ERROR: 500,
+  FULFILLMENT_BLOCKED: 409,
 });
 
 function hasForbiddenControl(value: string, body: boolean): boolean {

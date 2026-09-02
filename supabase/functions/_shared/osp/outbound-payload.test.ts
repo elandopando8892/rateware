@@ -5,6 +5,7 @@ import {
 } from "jsr:@std/assert@1.0.14";
 
 import {
+  assertOutboundDraft,
   freezeOutboundPayload,
   type OutboundDraft,
 } from "./outbound-payload.ts";
@@ -82,7 +83,49 @@ Deno.test("freezing the same clarification draft produces identical MIME bytes a
   assertEquals(mime.endsWith("\r\n"), true);
 });
 
-Deno.test("final response MIME binds exactly one signed package and changes after one body byte", async () => {
+Deno.test("final response contract accepts large reviewed document sets up to one hundred attachments", async () => {
+  const signedPackageSha256 = "a".repeat(64);
+  const attachments = Array.from({ length: 21 }, (_, index) => ({
+    bucketId: index === 0
+      ? "osp-derived-documents" as const
+      : "osp-corporate-documents" as const,
+    objectId: `44444444-4444-4444-8444-${String(index + 1).padStart(12, "0")}`,
+    name: `reviewed-evidence-${index + 1}.pdf`,
+    contentType: "application/pdf" as const,
+    sha256: index === 0
+      ? signedPackageSha256
+      : index.toString(16).padStart(64, "0"),
+  }));
+  const source = await draft({
+    kind: "final_response",
+    signedPackageSha256,
+    attachments,
+  });
+  assertEquals(assertOutboundDraft(source).attachments.length, 21);
+  await assertRejects(
+    async () =>
+      assertOutboundDraft({
+        ...source,
+        attachments: Array.from({ length: 101 }, (_, index) => ({
+          bucketId: index === 0
+            ? "osp-derived-documents" as const
+            : "osp-corporate-documents" as const,
+          objectId: `55555555-5555-4555-8555-${
+            String(index + 1).padStart(12, "0")
+          }`,
+          name: `reviewed-document-${index + 1}.pdf`,
+          contentType: "application/pdf" as const,
+          sha256: index === 0
+            ? signedPackageSha256
+            : index.toString(16).padStart(64, "0"),
+        })),
+      }),
+    Error,
+    "OUTBOUND_PAYLOAD_INVALID",
+  );
+});
+
+Deno.test("final response MIME binds one signed package plus reviewed supporting evidence and changes after one body byte", async () => {
   const signedPackageSha256 = await sha256(attachmentA);
   const attachments = [
     {
@@ -103,24 +146,39 @@ Deno.test("final response MIME binds exactly one signed package and changes afte
       objectId === "44444444-4444-4444-8444-444444444444"
         ? attachmentA.slice()
         : attachmentB.slice(),
-  );
+    );
   const frozen = await freezeOutboundPayload(source, resolver);
   const edited = await freezeOutboundPayload({
     ...source,
     bodyText: `${source.bodyText}.`,
   }, resolver);
   assertNotEquals(edited.mimeSha256, frozen.mimeSha256);
+  const withSupportingEvidence = await freezeOutboundPayload({
+    ...source,
+    attachments: [...attachments, {
+      bucketId: "osp-corporate-documents" as const,
+      objectId: "55555555-5555-4555-8555-555555555555",
+      name: "tax-status-certificate.pdf",
+      contentType: "application/pdf" as const,
+      sha256: await sha256(attachmentB),
+    }],
+  }, resolver);
+  assertEquals(withSupportingEvidence.attachmentSha256, [
+    await sha256(attachmentA),
+    await sha256(attachmentB),
+  ]);
   await assertRejects(
-    () => freezeOutboundPayload({
-      ...source,
-      attachments: [...attachments, {
-        bucketId: "osp-derived-documents" as const,
-        objectId: "55555555-5555-4555-8555-555555555555",
-        name: "evidence.pdf",
-        contentType: "application/pdf" as const,
-        sha256: "c".repeat(64),
-      }],
-    }, resolver),
+    () =>
+      freezeOutboundPayload({
+        ...source,
+        attachments: [...attachments, {
+          bucketId: "osp-derived-documents" as const,
+          objectId: "55555555-5555-4555-8555-555555555555",
+          name: "duplicate-signed-package.pdf",
+          contentType: "application/pdf" as const,
+          sha256: signedPackageSha256,
+        }],
+      }, resolver),
     Error,
     "OUTBOUND_PAYLOAD_INVALID",
   );
@@ -133,22 +191,24 @@ Deno.test("outbound body length matches the browser contract and final responses
     () => Promise.resolve(attachmentA.slice()),
   );
   await assertRejects(
-    () => freezeOutboundPayload(
-      { ...source, bodyText: "a".repeat(100_001) },
-      () => Promise.resolve(attachmentA.slice()),
-    ),
+    () =>
+      freezeOutboundPayload(
+        { ...source, bodyText: "a".repeat(100_001) },
+        () => Promise.resolve(attachmentA.slice()),
+      ),
     Error,
     "OUTBOUND_PAYLOAD_INVALID",
   );
   await assertRejects(
-    () => freezeOutboundPayload(
-      {
-        ...source,
-        kind: "final_response",
-        signedPackageSha256: "b".repeat(64),
-      },
-      () => Promise.resolve(attachmentA.slice()),
-    ),
+    () =>
+      freezeOutboundPayload(
+        {
+          ...source,
+          kind: "final_response",
+          signedPackageSha256: "b".repeat(64),
+        },
+        () => Promise.resolve(attachmentA.slice()),
+      ),
     Error,
     "OUTBOUND_PAYLOAD_INVALID",
   );

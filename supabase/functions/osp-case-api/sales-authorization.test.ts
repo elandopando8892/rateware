@@ -82,6 +82,67 @@ Deno.test("Sales authorization binds current payload hash and full attachment li
   }
 });
 
+Deno.test("Sales semantic stop prevents a final-response authorization event", async () => {
+  const approvals = createInMemoryApprovalStore({
+    cases: [{
+      organizationId,
+      caseId,
+      state: "sales_authorization",
+      version: 7,
+      currentSnapshotSha256: "c".repeat(64),
+    }],
+    payloads: [{
+      organizationId,
+      caseId,
+      payloadId,
+      payloadSha256,
+      kind: "final_response",
+      attachmentSha256,
+    }],
+    now: () => new Date("2026-08-24T12:00:00.000Z"),
+  });
+  await assertRejects(
+    () =>
+      authorizeOutbound({
+        organizationId,
+        caseId,
+        payloadId,
+        payloadSha256,
+        attachmentSha256,
+        expectedCaseVersion: 7,
+        idempotencyKey: "sales-semantic-stop",
+        actor: sales,
+      }, {
+        payloads: source("final_response"),
+        approvals,
+        semanticGate: {
+          load: () =>
+            Promise.resolve({
+              schemaVersion: 1,
+              manifestSha256: "b".repeat(64),
+              assessedAt: "2026-09-02T12:00:00.000Z",
+              totalRequired: 1,
+              satisfiedRequired: 0,
+              blockingCount: 1,
+              items: [],
+              gates: {
+                operationsReview: true,
+                signatureApproval: true,
+                outboundDraft: false,
+                outboundFreeze: false,
+                salesAuthorization: false,
+                send: false,
+              },
+            }),
+        },
+        now: () => new Date("2026-08-24T12:00:00.000Z"),
+      }),
+    Error,
+    "REQUEST_FULFILLMENT_BLOCKED",
+  );
+  assertEquals((await approvals.events(caseId)).length, 0);
+});
+
 Deno.test("authorization rejects wrong Sales identity, multi-role claims, stale hash, stale version, and changed attachment list", async () => {
   const approvals = createInMemoryApprovalStore({
     cases: [{
@@ -199,7 +260,9 @@ Deno.test("Postgres Sales authorization resolves only the latest append-only dra
   const query = Object.assign(async (strings: TemplateStringsArray) => {
     const text = strings.join("?").replace(/\s+/g, " ").trim().toLowerCase();
     queries.push(text);
-    if (text.startsWith("set local role") || text.startsWith("select set_config")) return [];
+    if (
+      text.startsWith("set local role") || text.startsWith("select set_config")
+    ) return [];
     if (text.includes("from osp_private.outbound_payloads payload")) return [];
     throw new Error(`UNEXPECTED_QUERY:${text}`);
   }, {
@@ -215,12 +278,15 @@ Deno.test("Postgres Sales authorization resolves only the latest append-only dra
     Error,
     "OUTBOUND_AUTHORIZATION_STALE",
   );
-  assertEquals(queries.some((text) =>
-    text.includes("join osp_private.outbound_drafts draft") &&
-    text.includes("draft.version = (select max(latest.version)") &&
-    text.includes("latest.payload_kind = draft.payload_kind") &&
-    text.includes(
-      "to_jsonb(payload.attachment_sha256s) as attachment_sha256s",
-    )
-  ), true);
+  assertEquals(
+    queries.some((text) =>
+      text.includes("join osp_private.outbound_drafts draft") &&
+      text.includes("draft.version = (select max(latest.version)") &&
+      text.includes("latest.payload_kind = draft.payload_kind") &&
+      text.includes(
+        "to_jsonb(payload.attachment_sha256s) as attachment_sha256s",
+      )
+    ),
+    true,
+  );
 });

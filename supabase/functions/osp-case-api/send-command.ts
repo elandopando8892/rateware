@@ -4,6 +4,10 @@ import type {
   OutboundSendStore,
   SendReservation,
 } from "../osp-worker/outbound-receipt.ts";
+import {
+  assertRequestSemanticGate,
+  type RequestSemanticGate,
+} from "../_shared/osp/request-contract.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -51,7 +55,11 @@ export async function authorizedSendCommandHash(
 
 export async function requestAuthorizedSend(
   input: RequestAuthorizedSendInput,
-  deps: { store: Pick<OutboundSendStore, "reserve">; now?: () => Date },
+  deps: {
+    store: Pick<OutboundSendStore, "reserve">;
+    semanticGate?: RequestSemanticGate;
+    now?: () => Date;
+  },
 ): Promise<SendReservation> {
   if (
     !input || !UUID.test(input.organizationId) || !UUID.test(input.caseId) ||
@@ -67,6 +75,13 @@ export async function requestAuthorizedSend(
     "request_authorized_send",
     (deps.now ?? (() => new Date()))(),
   );
+  if (deps.semanticGate) {
+    await assertRequestSemanticGate(deps.semanticGate, {
+      organizationId: input.organizationId,
+      caseId: input.caseId,
+      stage: "send",
+    });
+  }
   const commandSha256 = await authorizedSendCommandHash(input);
   return await deps.store.reserve({
     organizationId: input.organizationId,

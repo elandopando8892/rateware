@@ -11,6 +11,10 @@ import {
   type ReplyContext,
 } from "../_shared/osp/reply-context.ts";
 import type { VerifiedWorkflowIdentity } from "../_shared/osp/workflow-authority.ts";
+import type {
+  RequestFulfillmentMatrix,
+  RequestSemanticGate,
+} from "../_shared/osp/request-contract.ts";
 
 const GMAIL_ID = /^[A-Za-z0-9_-]{1,256}$/;
 
@@ -105,6 +109,7 @@ export type WorkflowViewRecord = {
   signature: SignatureView | null;
   outbound: OutboundView | null;
   outboundIsLatest?: boolean;
+  fulfillment?: RequestFulfillmentMatrix;
 };
 
 export type WorkflowViewSource = {
@@ -197,9 +202,8 @@ function hashes(value: unknown): readonly string[] {
 function messageIds(value: unknown): readonly string[] {
   if (
     !Array.isArray(value) || value.length > 50 ||
-    value.some((messageId) =>
-      !isReplyMessageId(messageId)
-    ) || new Set(value).size !== value.length
+    value.some((messageId) => !isReplyMessageId(messageId)) ||
+    new Set(value).size !== value.length
   ) fail();
   return Object.freeze([...value] as string[]);
 }
@@ -370,16 +374,16 @@ export function approvalCommunicationsWorkspace(
     authorityPermissions[0] === "osp:superuser" &&
     identity.identity.email === "sales@heymarksman.com";
   const operations = superuser || authorityPermissions.length === 1 &&
-    authorityPermissions[0] === "osp:operate";
+      authorityPermissions[0] === "osp:operate";
   const jose = superuser || authorityPermissions.length === 1 &&
-    authorityPermissions[0] === "osp:signature-approve" &&
-    identity.identity.email === "jgonzalez@xbfreight.com";
+      authorityPermissions[0] === "osp:signature-approve" &&
+      identity.identity.email === "jgonzalez@xbfreight.com";
   const sales = superuser || authorityPermissions.length === 1 &&
-    authorityPermissions[0] === "osp:sales-authorize" &&
-    identity.identity.email === "sales@heymarksman.com";
+      authorityPermissions[0] === "osp:sales-authorize" &&
+      identity.identity.email === "sales@heymarksman.com";
   const carriers = superuser || authorityPermissions.length === 1 &&
-    authorityPermissions[0] === "osp:send-authorized" &&
-    identity.identity.email === "carriers@xbfreight.com";
+      authorityPermissions[0] === "osp:send-authorized" &&
+      identity.identity.email === "carriers@xbfreight.com";
   const outboundWritableCurrent = record.outbound !== null &&
     record.outbound.caseVersion === record.caseVersion &&
     record.outboundIsLatest !== false;
@@ -388,6 +392,11 @@ export function approvalCommunicationsWorkspace(
     (record.outbound.status === "failed" &&
       record.outbound.sendOutcome === "failed")
   );
+  // Undefined is retained only for isolated legacy fixtures. The production
+  // source always loads a matrix and fails closed if it cannot be evaluated.
+  const semanticReady = record.fulfillment === undefined
+    ? true
+    : record.fulfillment.blockingCount === 0;
   return Object.freeze({
     caseId: record.caseId,
     caseVersion: record.caseVersion,
@@ -412,8 +421,10 @@ export function approvalCommunicationsWorkspace(
     replyContext: record.replyContext,
     signature: record.signature,
     outbound: record.outbound,
+    fulfillment: record.fulfillment ?? null,
     capabilities: Object.freeze({
       saveOutboundDraft: operations &&
+        record.fulfillment?.gates.outboundDraft !== false &&
         record.caseState === "sales_authorization" &&
         record.inputSnapshot !== null && record.signedPackage !== null &&
         record.signedPackage !== undefined && record.replyContext !== null &&
@@ -422,14 +433,17 @@ export function approvalCommunicationsWorkspace(
             record.outbound.kind === "final_response" &&
             record.outbound.status === "draft")),
       completeOperationsReview: operations &&
+        record.fulfillment?.gates.operationsReview !== false &&
         record.caseState === "operations_review" &&
         record.inputSnapshot !== null && record.supplierPackage !== null &&
         record.supplierPackage !== undefined,
       approveAndApplySignature: jose &&
+        record.fulfillment?.gates.signatureApproval !== false &&
         record.caseState === "signature_approval" &&
         record.inputSnapshot !== null && record.signature !== null &&
         record.signature.approvalId === null,
       freezeOutboundPayload: operations && outboundWritableCurrent &&
+        semanticReady && record.fulfillment?.gates.outboundFreeze !== false &&
         record.outbound?.status === "draft" &&
         (
           (record.outbound.kind === "clarification" &&
@@ -438,6 +452,8 @@ export function approvalCommunicationsWorkspace(
             record.caseState === "sales_authorization")
         ),
       authorizeOutboundPayload: sales && outboundWritableCurrent &&
+        semanticReady &&
+        record.fulfillment?.gates.salesAuthorization !== false &&
         record.outbound?.status === "frozen" &&
         (
           (record.outbound.kind === "clarification" &&
@@ -446,6 +462,7 @@ export function approvalCommunicationsWorkspace(
             record.caseState === "sales_authorization")
         ),
       requestAuthorizedSend: carriers && authorizedSendCurrent &&
+        semanticReady && record.fulfillment?.gates.send !== false &&
         record.caseState === "ready_to_send" &&
         (record.outbound?.status === "authorized" ||
           record.outbound?.status === "failed") &&
@@ -483,6 +500,7 @@ export function createPostgresWorkflowViewSource(
     databaseUrl: string;
     postgresFactory?: PostgresFactory;
     signSupplierPackage?: (objectId: string) => Promise<string>;
+    semanticGate?: RequestSemanticGate;
   },
 ): WorkflowViewSource {
   const sql = sqlClient(options.databaseUrl, options.postgresFactory);
@@ -657,14 +675,21 @@ export function createPostgresWorkflowViewSource(
           return parseRow(rows[0], organizationId, caseId);
         },
       );
+      const fulfillment = options.semanticGate
+        ? await options.semanticGate.load({ organizationId, caseId })
+        : undefined;
       if (!record.supplierPackage || !options.signSupplierPackage) {
-        return record;
+        return Object.freeze({
+          ...record,
+          ...(fulfillment ? { fulfillment } : {}),
+        });
       }
       const downloadUrl = optionalHttpsUrl(
         await options.signSupplierPackage(record.supplierPackage.objectId),
       );
       return Object.freeze({
         ...record,
+        ...(fulfillment ? { fulfillment } : {}),
         supplierPackage: Object.freeze({
           ...record.supplierPackage,
           downloadUrl,

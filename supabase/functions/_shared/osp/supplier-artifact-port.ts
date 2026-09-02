@@ -31,8 +31,18 @@ export type SupplierArtifactReceipt = {
   contentType:
     | "application/pdf"
     | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    | "application/vnd.ms-excel.sheet.macroEnabled.12"
     | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   mappings: readonly AppliedArtifactMapping[];
+  formCoverage?: Readonly<{
+    visiblePageCount: number;
+    writableFieldCount: number;
+    completedWritableFieldCount: number;
+    completionPercent: number;
+    blankWritableTargets: readonly string[];
+    macroPreserved: boolean;
+    printerSettingsPreserved: boolean;
+  }>;
 };
 
 export type SupplierArtifactContext = {
@@ -43,6 +53,9 @@ export type SupplierArtifactContext = {
   packageSnapshotSha256: string;
   approvedMappingDecisionIds: readonly string[];
   version: number;
+  sourceContentType?:
+    | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    | "application/vnd.ms-excel.sheet.macroEnabled.12";
 };
 
 const UUID =
@@ -201,6 +214,7 @@ export async function artifactReceipt(
   contentType: SupplierArtifactReceipt["contentType"],
   bytes: Uint8Array,
   mappings: readonly AppliedArtifactMapping[],
+  formCoverage?: SupplierArtifactReceipt["formCoverage"],
 ): Promise<SupplierArtifactReceipt> {
   const outputSha256 = await sha256Hex(bytes);
   return Object.freeze({
@@ -214,5 +228,15 @@ export async function artifactReceipt(
     mappings: Object.freeze(
       mappings.map((mapping) => Object.freeze({ ...mapping })),
     ),
+    ...(formCoverage
+      ? {
+        formCoverage: Object.freeze({
+          ...formCoverage,
+          blankWritableTargets: Object.freeze([
+            ...formCoverage.blankWritableTargets,
+          ]),
+        }),
+      }
+      : {}),
   });
 }

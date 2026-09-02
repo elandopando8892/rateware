@@ -61,6 +61,63 @@ Deno.test("only Jose approval resolves the private vault reference server-side",
   assertEquals(JSON.stringify(result).includes("vault"), false);
 });
 
+Deno.test("signature semantic stop runs before private policy resolution", async () => {
+  let policyReads = 0;
+  await assertRejects(
+    () =>
+      approveAndApplySignature({
+        organizationId,
+        caseId,
+        inputSnapshotSha256: "a".repeat(64),
+        signaturePositionVersion: 3,
+        expectedCaseVersion: 11,
+        idempotencyKey: "signature-semantic-stop",
+        actor,
+      }, {
+        policy: {
+          resolveActive: () => {
+            policyReads += 1;
+            return Promise.resolve({
+              vaultRef: "private-vault-ref",
+              positionVersion: 3,
+            });
+          },
+        },
+        approvals: {
+          transact: async (_command, prepare) => {
+            await prepare?.();
+            throw new Error("unexpected transition");
+          },
+          events: async () => [],
+        },
+        semanticGate: {
+          load: () =>
+            Promise.resolve({
+              schemaVersion: 1,
+              manifestSha256: "b".repeat(64),
+              assessedAt: "2026-09-02T12:00:00.000Z",
+              totalRequired: 1,
+              satisfiedRequired: 0,
+              blockingCount: 1,
+              items: [],
+              gates: {
+                operationsReview: true,
+                signatureApproval: false,
+                outboundDraft: false,
+                outboundFreeze: false,
+                salesAuthorization: false,
+                send: false,
+              },
+            }),
+        },
+        now: () => new Date("2026-08-24T12:00:00.000Z"),
+      }),
+    Error,
+    "REQUEST_FULFILLMENT_BLOCKED",
+  );
+  assertEquals(policyReads, 0);
+});
+
 Deno.test("signature approval rejects policy version drift and non-Jose actor", async () => {
   const deps = {
     policy: {
@@ -113,7 +170,8 @@ Deno.test("signature approval rejects policy version drift and non-Jose actor", 
 
 Deno.test("an exact signature replay returns its receipt before reading the mutable vault policy", async () => {
   let policyCalls = 0;
-  let receipt: Awaited<ReturnType<typeof approveAndApplySignature>> | null = null;
+  let receipt: Awaited<ReturnType<typeof approveAndApplySignature>> | null =
+    null;
   const approvals = {
     transact: async (
       _command: ApprovalCommand,

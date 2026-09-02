@@ -583,7 +583,7 @@ function attachmentHashes(value: string): readonly string[] {
   if (value === "none") return Object.freeze([]);
   const values = value.split(",");
   if (
-    values.length < 1 || values.length > 20 ||
+    values.length < 1 || values.length > 100 ||
     values.some((hash) => !SHA.test(hash))
   ) throw new OspApiError("INVALID_REQUEST");
   return Object.freeze(values);
@@ -591,6 +591,12 @@ function attachmentHashes(value: string): readonly string[] {
 
 function serviceError(error: unknown): OspApiError {
   const code = error instanceof Error ? error.message : "";
+  if (code === "REQUEST_FULFILLMENT_BLOCKED") {
+    return new OspApiError("FULFILLMENT_BLOCKED");
+  }
+  if (/^REQUEST_FULFILLMENT_(?:SOURCE_INVALID|INVALID)$/.test(code)) {
+    return new OspApiError("DEPENDENCY_UNAVAILABLE");
+  }
   if (
     /^(CLARIFICATION_(?:NOT_FOUND|REVIEW_REJECTED|REVIEW_CONFLICT|REVIEW_SCOPE_MISMATCH|VERSION_CONFLICT))$/
       .test(code)

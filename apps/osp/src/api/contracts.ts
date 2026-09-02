@@ -534,6 +534,7 @@ export const OspPublicErrorCodeSchema = z.enum([
   'UNSUPPORTED_MEDIA_TYPE',
   'WORKSPACE_UNAVAILABLE',
   'DEPENDENCY_UNAVAILABLE',
+  'FULFILLMENT_BLOCKED',
   'INTERNAL_ERROR',
 ]);
 
@@ -610,6 +611,33 @@ const capabilitySchema = z.strictObject({
   requestAuthorizedSend: z.boolean(),
 });
 
+export const RequestFulfillmentMatrixSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  manifestSha256: workflowSha,
+  assessedAt: utcDate,
+  totalRequired: z.number().int().min(0).max(600),
+  satisfiedRequired: z.number().int().min(0).max(600),
+  blockingCount: z.number().int().min(0).max(600),
+  items: z.array(z.strictObject({
+    requirementId: z.string().min(1).max(256),
+    kind: z.enum(['form', 'document']),
+    canonicalKey: z.string().regex(/^[a-z][a-z0-9_.-]{0,127}$/),
+    label: z.string().min(1).max(256),
+    status: z.enum(['satisfied', 'missing', 'stale', 'wrong_format', 'incomplete', 'signature_missing', 'not_attached', 'review_required', 'not_applicable', 'waived']),
+    blocking: z.boolean(),
+    reason: z.string().min(1).max(2_000),
+    evidenceIds: z.array(z.string().min(1).max(256)).max(100),
+  })).max(600),
+  gates: z.strictObject({
+    operationsReview: z.boolean(),
+    signatureApproval: z.boolean(),
+    outboundDraft: z.boolean(),
+    outboundFreeze: z.boolean(),
+    salesAuthorization: z.boolean(),
+    send: z.boolean(),
+  }),
+});
+
 export const ApprovalCommunicationsWorkspaceSchema = z.strictObject({
   caseId: z.uuid(),
   caseVersion: workflowVersion,
@@ -668,6 +696,7 @@ export const ApprovalCommunicationsWorkspaceSchema = z.strictObject({
     salesAuthorizationId: z.uuid().nullable(),
     sendOutcome: z.enum(['reserved', 'sent', 'failed', 'manual_reconciliation_required']).nullable(),
   }).nullable(),
+  fulfillment: RequestFulfillmentMatrixSchema.nullable().optional(),
   capabilities: capabilitySchema,
 });
 

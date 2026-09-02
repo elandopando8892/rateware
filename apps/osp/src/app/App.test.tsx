@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { OspClient } from '../api/osp-client';
+import type { ApprovalCommunicationsWorkspace } from '../api/contracts';
 import type { AuthPort, BoundSession } from '../auth/auth-port';
 import { App, isApprovalSessionFresh } from './App';
 
@@ -20,6 +21,17 @@ const session: BoundSession = {
     email: 'operator@example.test',
     emailVerified: true,
   },
+};
+
+const readyToSignFulfillment: NonNullable<ApprovalCommunicationsWorkspace['fulfillment']> = {
+  schemaVersion: 1, manifestSha256: 'f'.repeat(64), assessedAt: '2026-09-02T12:00:00.000Z',
+  totalRequired: 1, satisfiedRequired: 0, blockingCount: 1,
+  items: [{
+    requirementId: 'form:supplier.registration:1', kind: 'form', canonicalKey: 'form.supplier.registration',
+    label: 'Supplier registration form', status: 'signature_missing', blocking: true,
+    reason: 'The completed source is ready for controlled signing.', evidenceIds: ['package:55555555-5555-4555-8555-555555555551'],
+  }],
+  gates: { operationsReview: true, signatureApproval: true, outboundDraft: false, outboundFreeze: false, salesAuthorization: false, send: false },
 };
 
 beforeEach(() => { window.scrollTo = vi.fn(); });
@@ -331,6 +343,7 @@ describe('App authentication and routing', () => {
         signedPackage: null,
         replyContext: null,
         signature: null, outbound: null,
+        fulfillment: readyToSignFulfillment,
         capabilities: { completeOperationsReview: true, approveAndApplySignature: false, saveOutboundDraft: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
       })
       .mockResolvedValue({
@@ -345,7 +358,7 @@ describe('App authentication and routing', () => {
     const history = createMemoryHistory({ initialEntries: [`/app/cases/${caseId}/review`] });
     render(<App authPort={authPort(session)} apiClient={api} routerHistory={history} />);
 
-    await userEvent.click(await screen.findByRole('checkbox', { name: /evidence package is complete/i }));
+    await userEvent.click(await screen.findByRole('checkbox', { name: /pre-signature requirements are satisfied/i }));
     await userEvent.click(screen.getByRole('button', { name: /complete operations review/i }));
 
     expect(await screen.findByRole('heading', { name: /signature approval/i })).toBeInTheDocument();

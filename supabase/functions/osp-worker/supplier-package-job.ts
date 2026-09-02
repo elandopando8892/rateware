@@ -81,6 +81,7 @@ export interface SupplierPackageObjectStore {
     contentType:
       | "application/pdf"
       | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      | "application/vnd.ms-excel.sheet.macroEnabled.12"
       | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   }): Promise<void>;
 }

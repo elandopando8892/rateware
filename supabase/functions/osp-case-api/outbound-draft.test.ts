@@ -184,19 +184,232 @@ Deno.test("final response save rejects any envelope that diverges from the captu
     },
   };
   await assertRejects(
-    () => saveOutboundDraft({
-      organizationId,
-      caseId,
-      expectedCaseVersion: 7,
-      sourceSnapshotSha256: "a".repeat(64),
-      signedPackageSha256,
-      createdBySubject: "operations-subject",
-      draft,
-    }, { store }),
+    () =>
+      saveOutboundDraft({
+        organizationId,
+        caseId,
+        expectedCaseVersion: 7,
+        sourceSnapshotSha256: "a".repeat(64),
+        signedPackageSha256,
+        createdBySubject: "operations-subject",
+        draft,
+      }, { store }),
     Error,
     "OUTBOUND_CONTEXT_STALE",
   );
   assertEquals(saves, 0);
+});
+
+Deno.test("final response save replaces browser attachments with the exact reviewed requirement set", async () => {
+  const signedPackageSha256 = await sha256(bytes);
+  const signedPackageId = "44444444-4444-4444-8444-444444444444";
+  const evidenceId = "55555555-5555-4555-8555-555555555555";
+  const evidenceSha256 = "c".repeat(64);
+  const draft: OutboundDraft = {
+    payloadId,
+    organizationId,
+    caseId,
+    kind: "final_response",
+    caseVersion: 7,
+    sourceSnapshotSha256: "a".repeat(64),
+    signedPackageSha256,
+    from: "carriers@xbfreight.com",
+    to: [{ email: "requester@xbfreight.com", source: "reviewed_manual" }],
+    cc: [{ email: "sales@heymarksman.com", source: "reviewed_manual" }],
+    subject: "Re: Supplier registration request",
+    inReplyTo: replyMessageId,
+    references: [replyMessageId],
+    bodyText:
+      "The reviewed registration package and requested evidence are attached.",
+    attachments: [{
+      bucketId: "osp-derived-documents",
+      objectId: signedPackageId,
+      name: "signed-package.pdf",
+      contentType: "application/pdf",
+      sha256: signedPackageSha256,
+    }],
+  };
+  const persisted: OutboundDraft[] = [];
+  const store: OutboundDraftRecordStore = {
+    save: async (input) => {
+      persisted.push(input.draft);
+      return input.draft;
+    },
+    load: async () => draft,
+    currentContext: async () => ({
+      organizationId,
+      caseId,
+      state: "sales_authorization",
+      caseVersion: 7,
+      sourceSnapshotSha256: "a".repeat(64),
+      signedPackageSha256,
+      signedPackageId,
+      signedPackageContentType: "application/pdf",
+      gmailThreadId: "gmail-thread-1",
+      replyContext: {
+        to: ["requester@xbfreight.com"],
+        cc: ["sales@heymarksman.com"],
+        subject: "Re: Supplier registration request",
+        inReplyTo: replyMessageId,
+        references: [replyMessageId],
+      },
+    }),
+    commitFrozen: async () => {
+      throw new Error("unexpected freeze");
+    },
+  };
+  const saved = await saveOutboundDraft({
+    organizationId,
+    caseId,
+    expectedCaseVersion: 7,
+    sourceSnapshotSha256: "a".repeat(64),
+    signedPackageSha256,
+    createdBySubject: "operations-subject",
+    draft,
+  }, {
+    store,
+    semanticGate: {
+      load: async () => ({
+        schemaVersion: 1,
+        manifestSha256: "b".repeat(64),
+        assessedAt: "2026-09-02T12:00:00.000Z",
+        totalRequired: 2,
+        satisfiedRequired: 0,
+        blockingCount: 2,
+        items: [],
+        gates: {
+          operationsReview: true,
+          signatureApproval: true,
+          outboundDraft: true,
+          outboundFreeze: false,
+          salesAuthorization: false,
+          send: false,
+        },
+      }),
+      requiredOutboundAttachments: async () => [{
+        bucketId: "osp-derived-documents",
+        objectId: signedPackageId,
+        name: "XBF-signed-supplier-package.pdf",
+        contentType: "application/pdf",
+        sha256: signedPackageSha256,
+      }, {
+        bucketId: "osp-corporate-documents",
+        objectId: evidenceId,
+        name: "XBF-tax-status-certificate.pdf",
+        contentType: "application/pdf",
+        sha256: evidenceSha256,
+      }],
+    },
+  });
+  assertEquals(saved.attachments.length, 2);
+  assertEquals(persisted[0].attachments, saved.attachments);
+  assertEquals(saved.attachments[1].objectId, evidenceId);
+});
+
+Deno.test("final-response semantic stop runs before attachment reads or MIME persistence", async () => {
+  const signedPackageSha256 = await sha256(bytes);
+  const draft: OutboundDraft = {
+    payloadId,
+    organizationId,
+    caseId,
+    kind: "final_response",
+    caseVersion: 7,
+    sourceSnapshotSha256: "a".repeat(64),
+    signedPackageSha256,
+    from: "carriers@xbfreight.com",
+    to: [{ email: "requester@xbfreight.com", source: "captured_supplier" }],
+    cc: [{ email: "sales@heymarksman.com", source: "reviewed_manual" }],
+    subject: "Re: Supplier registration request",
+    inReplyTo: replyMessageId,
+    references: [replyMessageId],
+    bodyText: "Reviewed supplier package attached.",
+    attachments: [{
+      bucketId: "osp-derived-documents",
+      objectId: "44444444-4444-4444-8444-444444444444",
+      name: "signed-package.pdf",
+      contentType: "application/pdf",
+      sha256: signedPackageSha256,
+    }],
+  };
+  let attachmentReads = 0;
+  let objectWrites = 0;
+  const store: OutboundDraftRecordStore = {
+    save: async () => draft,
+    load: async () => draft,
+    currentContext: async () => {
+      throw new Error("unexpected context read");
+    },
+    commitFrozen: async (_input, prepare) => {
+      const record = await prepare(draft, {
+        organizationId,
+        caseId,
+        state: "sales_authorization",
+        caseVersion: 7,
+        sourceSnapshotSha256: "a".repeat(64),
+        signedPackageSha256,
+        signedPackageId: "44444444-4444-4444-8444-444444444444",
+        signedPackageContentType: "application/pdf",
+        gmailThreadId: "gmail-thread-1",
+        replyContext: {
+          to: ["requester@xbfreight.com"],
+          cc: ["sales@heymarksman.com"],
+          subject: "Re: Supplier registration request",
+          inReplyTo: replyMessageId,
+          references: [replyMessageId],
+        },
+      });
+      return { ...record, replayed: false };
+    },
+  };
+  await assertRejects(
+    () =>
+      freezeOutboundDraft({
+        organizationId,
+        caseId,
+        payloadId,
+        expectedCaseVersion: 7,
+        idempotencyKey: "freeze-semantic-stop",
+      }, {
+        store,
+        attachments: {
+          read: () => {
+            attachmentReads += 1;
+            return Promise.resolve(bytes);
+          },
+        },
+        objects: {
+          writeExclusive: () => {
+            objectWrites += 1;
+            return Promise.resolve();
+          },
+          read: () => Promise.resolve(null),
+        },
+        semanticGate: {
+          load: () =>
+            Promise.resolve({
+              schemaVersion: 1,
+              manifestSha256: "b".repeat(64),
+              assessedAt: "2026-09-02T12:00:00.000Z",
+              totalRequired: 1,
+              satisfiedRequired: 0,
+              blockingCount: 1,
+              items: [],
+              gates: {
+                operationsReview: true,
+                signatureApproval: true,
+                outboundDraft: false,
+                outboundFreeze: false,
+                salesAuthorization: false,
+                send: false,
+              },
+            }),
+        },
+      }),
+    Error,
+    "REQUEST_FULFILLMENT_BLOCKED",
+  );
+  assertEquals(attachmentReads, 0);
+  assertEquals(objectWrites, 0);
 });
 
 Deno.test("a frozen draft cannot race a later correction before Sales authorization", async () => {
@@ -207,12 +420,17 @@ Deno.test("a frozen draft cannot race a later correction before Sales authorizat
     const text = strings.join("?").replace(/\s+/g, " ").trim().toLowerCase();
     queries.push(text);
     if (
-      text.startsWith("set local role") || text.startsWith("select set_config") ||
+      text.startsWith("set local role") ||
+      text.startsWith("select set_config") ||
       text.startsWith("set local statement_timeout") ||
       text.includes("pg_advisory_xact_lock")
     ) return [];
     if (text.includes("select id, state, aggregate_version")) {
-      return [{ id: caseId, state: "sales_authorization", aggregate_version: 7 }];
+      return [{
+        id: caseId,
+        state: "sales_authorization",
+        aggregate_version: 7,
+      }];
     }
     if (text.includes("from osp_private.generated_packages")) {
       return [{
@@ -222,7 +440,9 @@ Deno.test("a frozen draft cannot race a later correction before Sales authorizat
         content_type: "application/pdf",
       }];
     }
-    if (text.includes("from osp_private.gmail_messages")) return [capturedReplyRow];
+    if (text.includes("from osp_private.gmail_messages")) {
+      return [capturedReplyRow];
+    }
     if (text.includes("from osp_private.outbound_drafts")) return [];
     if (
       text.startsWith("select id from osp_private.outbound_payloads") &&
@@ -237,45 +457,58 @@ Deno.test("a frozen draft cannot race a later correction before Sales authorizat
     databaseUrl: "postgresql://synthetic.example.test/db",
     postgresFactory: () => query,
   });
-  await assertRejects(() => saveOutboundDraft({
-    organizationId,
-    caseId,
-    expectedCaseVersion: 7,
-    sourceSnapshotSha256: "a".repeat(64),
-    signedPackageSha256,
-    createdBySubject: "operations-subject",
-    draft: {
-      payloadId: "88888888-8888-4888-8888-888888888888",
-      organizationId,
-      caseId,
-      kind: "final_response",
-      caseVersion: 7,
-      sourceSnapshotSha256: "a".repeat(64),
-      signedPackageSha256,
-      from: "carriers@xbfreight.com",
-      to: [{ email: "requester@xbfreight.com", source: "reviewed_manual" }],
-      cc: [
-        { email: "supplier@example.test", source: "reviewed_manual" },
-        { email: "sales@heymarksman.com", source: "reviewed_manual" },
-      ],
-      subject: "Re: Supplier registration request",
-      inReplyTo: replyMessageId,
-      references: [replyMessageId],
-      bodyText: "A correction after freeze must fail closed.",
-      attachments: [{
-        bucketId: "osp-derived-documents",
-        objectId: packageId,
-        name: "signed-package.pdf",
-        contentType: "application/pdf",
-        sha256: signedPackageSha256,
-      }],
-    },
-  }, { store }), Error, "OUTBOUND_DRAFT_LOCKED");
-  assertEquals(queries.some((text) =>
-    text.startsWith("select id from osp_private.outbound_payloads") &&
-    text.includes("case_version = ?") && text.includes("status = 'frozen'")
-  ), true);
-  assertEquals(queries.some((text) => text.startsWith("insert into osp_private.outbound_drafts")), false);
+  await assertRejects(
+    () =>
+      saveOutboundDraft({
+        organizationId,
+        caseId,
+        expectedCaseVersion: 7,
+        sourceSnapshotSha256: "a".repeat(64),
+        signedPackageSha256,
+        createdBySubject: "operations-subject",
+        draft: {
+          payloadId: "88888888-8888-4888-8888-888888888888",
+          organizationId,
+          caseId,
+          kind: "final_response",
+          caseVersion: 7,
+          sourceSnapshotSha256: "a".repeat(64),
+          signedPackageSha256,
+          from: "carriers@xbfreight.com",
+          to: [{ email: "requester@xbfreight.com", source: "reviewed_manual" }],
+          cc: [
+            { email: "supplier@example.test", source: "reviewed_manual" },
+            { email: "sales@heymarksman.com", source: "reviewed_manual" },
+          ],
+          subject: "Re: Supplier registration request",
+          inReplyTo: replyMessageId,
+          references: [replyMessageId],
+          bodyText: "A correction after freeze must fail closed.",
+          attachments: [{
+            bucketId: "osp-derived-documents",
+            objectId: packageId,
+            name: "signed-package.pdf",
+            contentType: "application/pdf",
+            sha256: signedPackageSha256,
+          }],
+        },
+      }, { store }),
+    Error,
+    "OUTBOUND_DRAFT_LOCKED",
+  );
+  assertEquals(
+    queries.some((text) =>
+      text.startsWith("select id from osp_private.outbound_payloads") &&
+      text.includes("case_version = ?") && text.includes("status = 'frozen'")
+    ),
+    true,
+  );
+  assertEquals(
+    queries.some((text) =>
+      text.startsWith("insert into osp_private.outbound_drafts")
+    ),
+    false,
+  );
 });
 
 Deno.test("a post-authorization body edit supersedes Sales authority and returns the case to authorization", async () => {
@@ -840,12 +1073,18 @@ Deno.test("Postgres freeze selects only the latest append-only draft version", a
     const text = strings.join("?").replace(/\s+/g, " ").trim().toLowerCase();
     queries.push(text);
     if (
-      text.startsWith("set local role") || text.startsWith("select set_config") ||
-      text.startsWith("set local statement_timeout") || text.includes("pg_advisory_xact_lock")
+      text.startsWith("set local role") ||
+      text.startsWith("select set_config") ||
+      text.startsWith("set local statement_timeout") ||
+      text.includes("pg_advisory_xact_lock")
     ) return [];
     if (text.includes("from osp_private.command_receipts")) return [];
     if (text.includes("from osp_private.customer_registration_cases")) {
-      return [{ id: caseId, state: "awaiting_clarification", aggregate_version: 7 }];
+      return [{
+        id: caseId,
+        state: "awaiting_clarification",
+        aggregate_version: 7,
+      }];
     }
     if (text.includes("from osp_private.case_package_input_snapshots")) {
       return [{ canonical_sha256: "a".repeat(64) }];
@@ -861,23 +1100,30 @@ Deno.test("Postgres freeze selects only the latest append-only draft version", a
     postgresFactory: () => query,
   });
   await assertRejects(
-    () => freezeOutboundDraft({
-      organizationId,
-      caseId,
-      payloadId,
-      expectedCaseVersion: 7,
-      idempotencyKey: "freeze-historical",
-    }, {
-      store,
-      attachments: { read: async () => bytes },
-      objects: { writeExclusive: async () => undefined, read: async () => null },
-    }),
+    () =>
+      freezeOutboundDraft({
+        organizationId,
+        caseId,
+        payloadId,
+        expectedCaseVersion: 7,
+        idempotencyKey: "freeze-historical",
+      }, {
+        store,
+        attachments: { read: async () => bytes },
+        objects: {
+          writeExclusive: async () => undefined,
+          read: async () => null,
+        },
+      }),
     Error,
     "OUTBOUND_DRAFT_NOT_FOUND",
   );
-  assertEquals(queries.some((text) =>
-    text.includes("version = (select max(latest.version)") &&
-    text.includes("latest.payload_kind = draft.payload_kind") &&
-    text.includes("to_jsonb(references_header) as references_header")
-  ), true);
+  assertEquals(
+    queries.some((text) =>
+      text.includes("version = (select max(latest.version)") &&
+      text.includes("latest.payload_kind = draft.payload_kind") &&
+      text.includes("to_jsonb(references_header) as references_header")
+    ),
+    true,
+  );
 });

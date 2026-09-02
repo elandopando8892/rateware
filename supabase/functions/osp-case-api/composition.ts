@@ -12,6 +12,7 @@ import {
 } from "./actions.ts";
 import type { OutboundStorageClient } from "./outbound-draft.ts";
 import { createPostgresWorkflowViewSource } from "./workflow-view.ts";
+import { createPostgresRequestSemanticGate } from "./request-semantic-gate.ts";
 
 type PostgresFactory = (
   databaseUrl: string,
@@ -100,9 +101,18 @@ export function createCaseApiRuntime(options: {
   const workflowStorage = "storage" in options.storageClient
     ? options.storageClient
     : null;
+  const semanticGate = createPostgresRequestSemanticGate({
+    databaseUrl: databaseConnection,
+    // Workflow reads finish their shared transaction before semantic
+    // assessment. Reuse the isolated outbound support pool rather than
+    // opening a fifth max:1 connection.
+    postgresFactory: outboundSupportFactory,
+    now: () => new Date(options.clock?.() ?? Date.now()),
+  });
   const workflowView = createPostgresWorkflowViewSource({
     databaseUrl: databaseConnection,
     postgresFactory: sharedFactory,
+    semanticGate,
     signSupplierPackage: workflowStorage
       ? async (objectId) => {
         const result = await workflowStorage.storage

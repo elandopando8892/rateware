@@ -21,6 +21,19 @@ code { display: inline-block; max-width: 100%; color: var(--xbf-navy); font-fami
 .control-confirmation input { width: 1.2rem; height: 1.2rem; margin-top: .1rem; accent-color: var(--xbf-navy); }
 .review-package { margin: 1.5rem 0; padding: 1.25rem; border: 1px solid var(--line); border-left: 4px solid var(--xbf-cyan); background: #f7f9fc; }
 .review-package h2 { margin: .25rem 0 .5rem; font-family: var(--font-display); text-transform: uppercase; }
+.fulfillment-matrix { display: grid; gap: 1rem; margin: 1.5rem 0; padding: 1.25rem; border: 1px solid var(--line); border-left: 4px solid #b42318; background: #fff8f7; }
+.fulfillment-matrix.ready { border-left-color: #16794b; background: #f4fbf7; }
+.fulfillment-matrix > header { display: flex; align-items: end; justify-content: space-between; gap: 1.5rem; }
+.fulfillment-matrix h2, .fulfillment-matrix p { margin: .2rem 0 0; }
+.fulfillment-matrix > header > p { color: var(--muted); text-align: right; }
+.fulfillment-matrix ul { display: grid; gap: 1px; margin: 0; padding: 1px; list-style: none; background: var(--line); }
+.fulfillment-matrix li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-width: 0; padding: .8rem 1rem; background: var(--surface); }
+.fulfillment-matrix li strong, .fulfillment-matrix li small { display: block; }
+.fulfillment-matrix li small { margin-top: .2rem; color: var(--muted); }
+.fulfillment-matrix li > span { flex: none; border-radius: 999px; padding: .28rem .55rem; background: #e4f2ee; color: #11623d; font-size: .7rem; font-weight: 900; text-transform: uppercase; }
+.fulfillment-matrix li.blocking > span { background: #fde8e8; color: #8b1e1e; }
+.semantic-stop, .semantic-ready { padding: .8rem 1rem; border-left: 3px solid #b42318; background: #fde8e8; }
+.semantic-ready { border-left-color: #16794b; background: #e4f2ee; }
 .button-link { display: inline-flex; align-items: center; min-height: 2.75rem; padding: .65rem 1rem; border-radius: .35rem; background: var(--xbf-navy); color: #fff; font-weight: 800; text-decoration: none; }
 .button-link:hover, .button-link:focus-visible { background: var(--xbf-blue); }
 .workflow-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
@@ -48,6 +61,8 @@ code { display: inline-block; max-width: 100%; color: var(--xbf-navy); font-fami
 .auth-google-login p { margin: 0; color: var(--muted); }
 .auth-google-login button { justify-self: start; min-height: 3rem; padding-inline: 1.3rem; font-weight: 800; }
 @media (max-width: 42rem) {
+  .fulfillment-matrix > header, .fulfillment-matrix li { align-items: flex-start; flex-direction: column; }
+  .fulfillment-matrix > header > p { text-align: left; }
   .outbound-composer-heading { align-items: start; flex-direction: column; }
   .outbound-composer-heading p[role="status"] { text-align: left; }
   .outbound-field-grid, .outbound-attachment { grid-template-columns: 1fr; }

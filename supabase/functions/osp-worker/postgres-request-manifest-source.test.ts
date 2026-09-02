@@ -40,6 +40,7 @@ function factory(contentType = "application/pdf", includeKnowledge = true) {
           display_label: "Trade references",
           aliases_json: ["Trade references", "Commercial references"],
           value_type: "table",
+          constraints_json: [],
         }]
         : [];
     }
@@ -69,6 +70,7 @@ Deno.test("request manifest source loads the latest safe supported evidence", as
     displayLabel: "Trade references",
     aliases: ["Trade references", "Commercial references"],
     valueType: "table",
+    constraints: [],
   }]);
 });
 

@@ -131,12 +131,20 @@ Deno.test("request manifest uses strict stored-off Responses output for email, X
       displayLabel: "Tax identifier",
       aliases: ["RFC", "Tax ID"],
       valueType: "text",
+      constraints: [],
     }, {
       kind: "document",
       canonicalKey: "w.9",
       displayLabel: "W-9",
       aliases: ["W-9", "IRS Form W-9"],
       valueType: null,
+      constraints: [{
+        required: true,
+        sourceLabel: "W-9",
+        sourceRequirements: ["Attach a current W-9."],
+        humanReviewed: true,
+        externalEffects: false,
+      }],
     }],
   });
   assertEquals(interpreted.manifest, validManifest);

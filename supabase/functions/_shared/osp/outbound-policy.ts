@@ -40,14 +40,16 @@ export function requireCurrentOutboundPolicy(
         JSON.stringify(replyContext.cc) &&
       draft.subject === replyContext.subject &&
       draft.inReplyTo === replyContext.inReplyTo &&
-      JSON.stringify(draft.references) === JSON.stringify(replyContext.references));
-  const signedAttachment = draft.attachments[0];
+      JSON.stringify(draft.references) ===
+        JSON.stringify(replyContext.references));
+  const signedAttachments = draft.attachments.filter((attachment) =>
+    attachment.bucketId === "osp-derived-documents" &&
+    attachment.objectId === current.signedPackageId &&
+    attachment.sha256 === current.signedPackageSha256 &&
+    attachment.contentType === current.signedPackageContentType
+  );
   const exactSignedAttachment = draft.kind !== "final_response" ||
-    (draft.attachments.length === 1 && signedAttachment !== undefined &&
-      signedAttachment.bucketId === "osp-derived-documents" &&
-      signedAttachment.objectId === current.signedPackageId &&
-      signedAttachment.sha256 === current.signedPackageSha256 &&
-      signedAttachment.contentType === current.signedPackageContentType);
+    signedAttachments.length === 1;
   const exactGmailThread = draft.kind !== "final_response" ||
     (typeof current.gmailThreadId === "string" &&
       GMAIL_ID.test(current.gmailThreadId));

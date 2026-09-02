@@ -104,6 +104,9 @@ function fakeSql() {
         replayed: false,
       }];
     }
+    if (statement.includes("record_request_knowledge_constraints_command(")) {
+      return [{ recorded_count: 1, replayed: false }];
+    }
     throw new Error(`Unexpected SQL: ${statement}`);
   }) as SqlPort;
   sql.begin = async <T>(operation: (transaction: SqlPort) => Promise<T>) =>
@@ -227,6 +230,12 @@ Deno.test("request knowledge store promotes an exact reviewed selection idempote
   assertEquals(
     fake.statements.filter((statement) =>
       statement.includes("promote_request_knowledge_command(")
+    ).length,
+    1,
+  );
+  assertEquals(
+    fake.statements.filter((statement) =>
+      statement.includes("record_request_knowledge_constraints_command(")
     ).length,
     1,
   );

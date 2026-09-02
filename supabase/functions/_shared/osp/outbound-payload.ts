@@ -13,6 +13,8 @@ export type OutboundAttachment = {
   contentType:
     | "application/pdf"
     | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    | "application/vnd.ms-excel.sheet.macroEnabled.12"
+    | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     | "image/jpeg"
     | "image/png"
     | "image/tiff";
@@ -65,6 +67,8 @@ const ATTACHMENT_NAME = /^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$/;
 const CONTENT_TYPES = new Set<OutboundAttachment["contentType"]>([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel.sheet.macroEnabled.12",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "image/jpeg",
   "image/png",
   "image/tiff",
@@ -142,7 +146,7 @@ function safeBody(value: string): string {
 function safeAttachments(
   value: readonly OutboundAttachment[],
 ): readonly OutboundAttachment[] {
-  if (!Array.isArray(value) || value.length > 20) invalid();
+  if (!Array.isArray(value) || value.length > 100) invalid();
   const objects = new Set<string>();
   const names = new Set<string>();
   return Object.freeze(value.map((attachment) => {
@@ -206,9 +210,11 @@ export function assertOutboundDraft(value: OutboundDraft): OutboundDraft {
   const attachments = safeAttachments(value.attachments);
   if (
     value.kind === "final_response" &&
-    (attachments.length !== 1 ||
-      attachments[0].bucketId !== "osp-derived-documents" ||
-      attachments[0].sha256 !== value.signedPackageSha256)
+    (attachments.length < 1 ||
+      attachments.filter((attachment) =>
+          attachment.bucketId === "osp-derived-documents" &&
+          attachment.sha256 === value.signedPackageSha256
+        ).length !== 1)
   ) invalid();
   return Object.freeze({
     ...value,

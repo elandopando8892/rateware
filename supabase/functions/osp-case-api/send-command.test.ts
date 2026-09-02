@@ -77,6 +77,45 @@ Deno.test("authorized send reservation is one Carriers action and exact duplicat
   assertEquals((await store.pendingJobs()).length, 1);
 });
 
+Deno.test("send semantic stop runs before reserving any outbound attempt", async () => {
+  let reservations = 0;
+  await assertRejects(
+    () =>
+      requestAuthorizedSend(command(), {
+        store: {
+          reserve: () => {
+            reservations += 1;
+            throw new Error("unexpected reservation");
+          },
+        },
+        semanticGate: {
+          load: () =>
+            Promise.resolve({
+              schemaVersion: 1,
+              manifestSha256: "b".repeat(64),
+              assessedAt: "2026-09-02T12:00:00.000Z",
+              totalRequired: 1,
+              satisfiedRequired: 0,
+              blockingCount: 1,
+              items: [],
+              gates: {
+                operationsReview: true,
+                signatureApproval: true,
+                outboundDraft: false,
+                outboundFreeze: false,
+                salesAuthorization: false,
+                send: false,
+              },
+            }),
+        },
+        now: () => new Date("2026-08-24T18:00:00.000Z"),
+      }),
+    Error,
+    "REQUEST_FULFILLMENT_BLOCKED",
+  );
+  assertEquals(reservations, 0);
+});
+
 Deno.test("an exact command replay after provider acceptance returns the stored opaque outcome", async () => {
   const store = ledger();
   const reservation = await requestAuthorizedSend(command(), {

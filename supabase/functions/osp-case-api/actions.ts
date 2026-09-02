@@ -53,6 +53,8 @@ import {
   type OutboundSendStore,
   type SendReservation,
 } from "../osp-worker/outbound-receipt.ts";
+import type { RequestSemanticGate } from "../_shared/osp/request-contract.ts";
+import { createPostgresRequestSemanticGate } from "./request-semantic-gate.ts";
 
 type PostgresFactory = (
   databaseUrl: string,
@@ -125,6 +127,7 @@ export function createCaseApprovalActions(deps: {
   snapshots: CurrentPackageSnapshotSource;
   signaturePolicies: SignatureVaultPolicySource;
   approvals: ReturnType<typeof createPostgresApprovalStore>;
+  semanticGate?: RequestSemanticGate;
   now?: () => Date;
 }): CaseApprovalActions {
   return Object.freeze({
@@ -139,7 +142,11 @@ export function createCaseApprovalActions(deps: {
         expectedSnapshotSha256: input.inputSnapshotSha256,
         idempotencyKey: input.idempotencyKey,
         actor: actor(identity, "operations_reviewer"),
-      }, { snapshots: deps.snapshots, approvals: deps.approvals }),
+      }, {
+        snapshots: deps.snapshots,
+        approvals: deps.approvals,
+        semanticGate: deps.semanticGate,
+      }),
     approveSignature: async (
       input: SignatureApprovalActionInput,
       identity: VerifiedApprovalIdentity,
@@ -155,6 +162,7 @@ export function createCaseApprovalActions(deps: {
       }, {
         policy: deps.signaturePolicies,
         approvals: deps.approvals,
+        semanticGate: deps.semanticGate,
         now: deps.now,
       }),
   });
@@ -185,6 +193,7 @@ export function createCaseOutboundActions(deps: {
   payloads: CurrentOutboundAuthorizationSource;
   approvals: ApprovalStore;
   sendStore: Pick<OutboundSendStore, "reserve">;
+  semanticGate?: RequestSemanticGate;
   now?: () => Date;
 }): CaseOutboundActions {
   const actions: CaseOutboundActions = {
@@ -199,7 +208,7 @@ export function createCaseOutboundActions(deps: {
       const saved = await saveOutboundDraft({
         ...input,
         createdBySubject: identity.identity.subject,
-      }, { store: deps.store });
+      }, { store: deps.store, semanticGate: deps.semanticGate });
       return Object.freeze({
         payloadId: saved.payloadId,
         kind: saved.kind,
@@ -218,6 +227,7 @@ export function createCaseOutboundActions(deps: {
         store: deps.store,
         attachments: deps.attachments,
         objects: deps.objects,
+        semanticGate: deps.semanticGate,
       });
     },
     authorizePayload: async (
@@ -227,7 +237,12 @@ export function createCaseOutboundActions(deps: {
       await authorizeOutbound({
         ...input,
         actor: actor(identity, "sales_authorizer"),
-      }, { payloads: deps.payloads, approvals: deps.approvals, now: deps.now }),
+      }, {
+        payloads: deps.payloads,
+        approvals: deps.approvals,
+        semanticGate: deps.semanticGate,
+        now: deps.now,
+      }),
     requestSend: async (
       input: Omit<RequestAuthorizedSendInput, "actor">,
       identity: VerifiedApprovalIdentity,
@@ -235,7 +250,11 @@ export function createCaseOutboundActions(deps: {
       await requestAuthorizedSend({
         ...input,
         actor: actor(identity, "carriers_sender"),
-      }, { store: deps.sendStore, now: deps.now }),
+      }, {
+        store: deps.sendStore,
+        semanticGate: deps.semanticGate,
+        now: deps.now,
+      }),
   };
   return Object.freeze(actions);
 }
@@ -358,6 +377,10 @@ export function createPostgresCaseApprovalActions(options: {
       ...options,
       postgresFactory: factory,
     }),
+    semanticGate: createPostgresRequestSemanticGate({
+      ...options,
+      postgresFactory: supportFactory,
+    }),
     now: options.now,
   });
 }
@@ -387,6 +410,11 @@ export function createPostgresCaseOutboundActions(options: {
     }),
     approvals: createPostgresApprovalStore(options),
     sendStore: createPostgresOutboundSendStore(options),
+    semanticGate: createPostgresRequestSemanticGate({
+      ...options,
+      postgresFactory: options.authorizationPostgresFactory ??
+        options.postgresFactory,
+    }),
     now: options.now,
   });
 }

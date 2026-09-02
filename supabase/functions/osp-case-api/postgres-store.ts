@@ -654,13 +654,11 @@ function requestKnowledgeCandidate(row: Row): RequestKnowledgeCandidateSummary {
     "REQUEST_KNOWLEDGE_PERSISTENCE_FAILED",
   );
   const valueType = row.value_type === null ? null : String(row.value_type);
-  const catalogVersion = row.catalog_version === null
-    ? null
-    : safeCount(
-      row.catalog_version,
-      2_147_483_647,
-      "REQUEST_KNOWLEDGE_PERSISTENCE_FAILED",
-    );
+  const catalogVersion = row.catalog_version === null ? null : safeCount(
+    row.catalog_version,
+    2_147_483_647,
+    "REQUEST_KNOWLEDGE_PERSISTENCE_FAILED",
+  );
   const matchedCanonicalKey = row.matched_canonical_key === null
     ? null
     : String(row.matched_canonical_key);
@@ -676,7 +674,8 @@ function requestKnowledgeCandidate(row: Row): RequestKnowledgeCandidateSummary {
   const targetDisplayLabel = row.target_display_label === null
     ? null
     : String(row.target_display_label);
-  const matched = row.catalog_match === "exact" || row.catalog_match === "alias";
+  const matched = row.catalog_match === "exact" ||
+    row.catalog_match === "alias";
   if (
     (row.knowledge_kind !== "field" && row.knowledge_kind !== "document") ||
     typeof row.canonical_key !== "string" ||
@@ -743,9 +742,16 @@ function requestKnowledgeCandidate(row: Row): RequestKnowledgeCandidateSummary {
     required: row.required,
     evidenceCount,
     catalogState: row.catalog_state,
-    catalogMatch: row.catalog_match as RequestKnowledgeCandidateSummary["catalogMatch"],
-    reuseEligibility: row.reuse_eligibility as RequestKnowledgeCandidateSummary["reuseEligibility"],
-    eligibilityReason: row.eligibility_reason as RequestKnowledgeCandidateSummary["eligibilityReason"],
+    catalogMatch: row
+      .catalog_match as RequestKnowledgeCandidateSummary["catalogMatch"],
+    reuseEligibility: row
+      .reuse_eligibility as RequestKnowledgeCandidateSummary[
+        "reuseEligibility"
+      ],
+    eligibilityReason: row
+      .eligibility_reason as RequestKnowledgeCandidateSummary[
+        "eligibilityReason"
+      ],
     targetCanonicalKey,
     targetDisplayLabel,
     matchedCanonicalKey,
@@ -1253,6 +1259,22 @@ export function createPostgresClarificationStore(
             !UUID_PATTERN.test(rows[0].promotion_id) ||
             rows[0].promotion_status !== "applied" ||
             typeof rows[0].replayed !== "boolean"
+          ) {
+            fail("REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
+          }
+          const constraintRows = await tx`
+            select recorded_count, replayed
+            from osp_private.record_request_knowledge_constraints_command(
+              ${input.organizationId}, ${rows[0].promotion_id}, ${input.subject}
+            )`;
+          if (
+            constraintRows.length !== 1 ||
+            safeCount(
+                constraintRows[0].recorded_count,
+                600,
+                "REQUEST_KNOWLEDGE_PERSISTENCE_FAILED",
+              ) < 1 ||
+            typeof constraintRows[0].replayed !== "boolean"
           ) {
             fail("REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
           }

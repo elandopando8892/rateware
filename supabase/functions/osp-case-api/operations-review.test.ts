@@ -130,3 +130,55 @@ Deno.test("Operations completion replays its receipt before rebuilding stale pac
   assertEquals(replay.replayed, true);
   assertEquals(rebuilds, 1);
 });
+
+Deno.test("Operations semantic stop runs before rebuilding or transitioning", async () => {
+  let rebuilds = 0;
+  await assertRejects(
+    () =>
+      completeOperationsReview({
+        organizationId,
+        caseId,
+        expectedCaseVersion: 10,
+        expectedSnapshotSha256: snapshotSha256,
+        idempotencyKey: "operations-semantic-stop",
+        actor,
+      }, {
+        snapshots: {
+          rebuildCurrent: () => {
+            rebuilds += 1;
+            return Promise.resolve({ canonicalSha256: snapshotSha256 });
+          },
+        },
+        approvals: {
+          transact: async (_command, prepare) => {
+            await prepare?.();
+            throw new Error("unexpected transition");
+          },
+          events: async () => [],
+        },
+        semanticGate: {
+          load: () =>
+            Promise.resolve({
+              schemaVersion: 1,
+              manifestSha256: "b".repeat(64),
+              assessedAt: "2026-09-02T12:00:00.000Z",
+              totalRequired: 1,
+              satisfiedRequired: 0,
+              blockingCount: 1,
+              items: [],
+              gates: {
+                operationsReview: false,
+                signatureApproval: false,
+                outboundDraft: false,
+                outboundFreeze: false,
+                salesAuthorization: false,
+                send: false,
+              },
+            }),
+        },
+      }),
+    Error,
+    "REQUEST_FULFILLMENT_BLOCKED",
+  );
+  assertEquals(rebuilds, 0);
+});

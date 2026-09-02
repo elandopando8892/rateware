@@ -5,6 +5,10 @@ import type {
   ApprovalStore,
 } from "../_shared/osp/approval-types.ts";
 import type { OutboundKind } from "../_shared/osp/outbound-payload.ts";
+import {
+  assertRequestSemanticGate,
+  type RequestSemanticGate,
+} from "../_shared/osp/request-contract.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -54,6 +58,7 @@ export async function authorizeOutbound(
   deps: {
     payloads: CurrentOutboundAuthorizationSource;
     approvals: ApprovalStore;
+    semanticGate?: RequestSemanticGate;
     now?: () => Date;
   },
 ): Promise<ApprovalResult> {
@@ -102,6 +107,13 @@ export async function authorizeOutbound(
         hash !== input.attachmentSha256[index]
       )
     ) stale();
+    if (current.kind === "final_response" && deps.semanticGate) {
+      await assertRequestSemanticGate(deps.semanticGate, {
+        organizationId: input.organizationId,
+        caseId: input.caseId,
+        stage: "sales_authorization",
+      });
+    }
   });
 }
 

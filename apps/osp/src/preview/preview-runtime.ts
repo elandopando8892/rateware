@@ -409,6 +409,35 @@ const previewClarification: ClarificationReview = {
   authorizationMailbox: 'sales@heymarksman.com',
 };
 
+const previewReadyFulfillment: NonNullable<ApprovalCommunicationsWorkspace['fulfillment']> = {
+  schemaVersion: 1,
+  manifestSha256: shaA,
+  assessedAt: '2026-09-02T12:00:00.000Z',
+  totalRequired: 1,
+  satisfiedRequired: 1,
+  blockingCount: 0,
+  items: [{
+    requirementId: 'form:supplier.registration:1', kind: 'form',
+    canonicalKey: 'form.supplier.registration', label: 'Supplier registration form',
+    status: 'satisfied', blocking: false,
+    reason: 'Approved evidence satisfies the request contract.',
+    evidenceIds: ['package:56000000-0000-4000-8000-000000000009'],
+  }],
+  gates: { operationsReview: true, signatureApproval: true, outboundDraft: true, outboundFreeze: true, salesAuthorization: true, send: true },
+};
+
+const previewReadyToSignFulfillment: NonNullable<ApprovalCommunicationsWorkspace['fulfillment']> = {
+  ...previewReadyFulfillment,
+  satisfiedRequired: 0,
+  blockingCount: 1,
+  items: [{
+    ...previewReadyFulfillment.items[0],
+    status: 'wrong_format', blocking: true,
+    reason: 'The completed source is ready to sign; the final carrier copy must be PDF.',
+  }],
+  gates: { operationsReview: true, signatureApproval: true, outboundDraft: false, outboundFreeze: false, salesAuthorization: false, send: false },
+};
+
 const previewWorkspace: ApprovalCommunicationsWorkspace = {
   caseId,
   caseVersion: 12,
@@ -435,6 +464,7 @@ const previewWorkspace: ApprovalCommunicationsWorkspace = {
     salesAuthorizationId: '50000000-0000-4000-8000-000000000002',
     sendOutcome: null,
   },
+  fulfillment: previewReadyFulfillment,
   capabilities: {
     completeOperationsReview: false,
     approveAndApplySignature: false,
@@ -460,6 +490,7 @@ const previewOperationsWorkspace: ApprovalCommunicationsWorkspace = {
   replyContext: null,
   signature: null,
   outbound: null,
+  fulfillment: previewReadyToSignFulfillment,
   capabilities: {
     completeOperationsReview: true,
     approveAndApplySignature: false,
@@ -486,6 +517,7 @@ const previewFinalResponseWorkspace: ApprovalCommunicationsWorkspace = {
   },
   signature: { positionVersion: 2, approvalStatus: 'approved', approvalId: '50000000-0000-4000-8000-000000000010', outputSha256: shaB },
   outbound: null,
+  fulfillment: previewReadyFulfillment,
   capabilities: {
     completeOperationsReview: false,
     approveAndApplySignature: false,
@@ -971,6 +1003,7 @@ function createPreviewClient(): OspClient {
         signedPackage: null,
         replyContext: null,
         signature: null, outbound: null,
+        fulfillment: previewReadyToSignFulfillment,
         capabilities: { completeOperationsReview: true, approveAndApplySignature: false, saveOutboundDraft: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
       });
       return { instance: structuredClone(instance), caseState: 'operations_review', caseVersion, snapshotSha256: shaB, replayed: false };

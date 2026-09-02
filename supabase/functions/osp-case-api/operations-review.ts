@@ -3,6 +3,10 @@ import type {
   ApprovalResult,
   ApprovalStore,
 } from "../_shared/osp/approval-types.ts";
+import {
+  assertRequestSemanticGate,
+  type RequestSemanticGate,
+} from "../_shared/osp/request-contract.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -32,7 +36,11 @@ function invalid(): never {
 
 export async function completeOperationsReview(
   input: OperationsReviewInput,
-  deps: { snapshots: CurrentPackageSnapshotSource; approvals: ApprovalStore },
+  deps: {
+    snapshots: CurrentPackageSnapshotSource;
+    approvals: ApprovalStore;
+    semanticGate?: RequestSemanticGate;
+  },
 ): Promise<ApprovalResult> {
   if (
     !input || !UUID.test(input.organizationId) || !UUID.test(input.caseId) ||
@@ -52,6 +60,13 @@ export async function completeOperationsReview(
     idempotencyKey: input.idempotencyKey,
     actor: input.actor,
   }, async () => {
+    if (deps.semanticGate) {
+      await assertRequestSemanticGate(deps.semanticGate, {
+        organizationId: input.organizationId,
+        caseId: input.caseId,
+        stage: "operations_review",
+      });
+    }
     const rebuilt = await deps.snapshots.rebuildCurrent({
       organizationId: input.organizationId,
       caseId: input.caseId,

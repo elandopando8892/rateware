@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import ExcelJS from "exceljs";
+import JSZip from "npm:jszip@3.10.1";
 
 import { sha256Hex } from "./source-hash.ts";
 import { completeXlsxArtifact } from "./xlsx-form-completer.ts";
@@ -198,4 +199,72 @@ Deno.test("XLSX completer rejects source drift, formulas, hyperlinks, and duplic
     Error,
     "ARTIFACT_MAPPING_INVALID",
   );
+});
+
+Deno.test("XLSM completer patches OOXML without stripping VBA or printer settings and records form coverage", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "xl/workbook.xml",
+    '<?xml version="1.0"?><workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="1-2" sheetId="1" r:id="rId1"/></sheets></workbook>',
+  );
+  zip.file(
+    "xl/_rels/workbook.xml.rels",
+    '<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+  );
+  zip.file(
+    "xl/styles.xml",
+    '<?xml version="1.0"?><styleSheet><cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="0" applyProtection="1"><protection locked="0"/></xf></cellXfs></styleSheet>',
+  );
+  zip.file(
+    "xl/worksheets/sheet1.xml",
+    '<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1"><v>1</v></c><c r="B1" s="1"/><c r="C1" s="1"/></row></sheetData></worksheet>',
+  );
+  const vba = new Uint8Array([1, 3, 3, 7, 9]);
+  const printer = new Uint8Array([9, 7, 3, 1]);
+  zip.file("xl/vbaProject.bin", vba);
+  zip.file("xl/printerSettings/printerSettings1.bin", printer);
+  const sourceBytes = await zip.generateAsync({ type: "uint8array" });
+  const completed = await completeXlsxArtifact({
+    sourceVersionId,
+    sourceBytes,
+    sourceSha256: await sha256Hex(sourceBytes),
+    packageSnapshotId,
+    packageSnapshotSha256,
+    approvedMappingDecisionIds: [mappingDecisionId],
+    version: 1,
+    sourceContentType: "application/vnd.ms-excel.sheet.macroEnabled.12",
+    mappings: [{
+      mappingDecisionId,
+      canonicalFieldId: "supplier.legalName",
+      sheet: "1-2",
+      cell: "B1",
+      value: "XBF SISTEMAS LOGISTICOS",
+    }],
+  });
+  const output = await JSZip.loadAsync(completed.bytes);
+  assertEquals(
+    await output.file("xl/vbaProject.bin")?.async("uint8array"),
+    vba,
+  );
+  assertEquals(
+    await output.file("xl/printerSettings/printerSettings1.bin")?.async(
+      "uint8array",
+    ),
+    printer,
+  );
+  assertEquals(
+    completed.receipt.contentType,
+    "application/vnd.ms-excel.sheet.macroEnabled.12",
+  );
+  assertEquals(completed.receipt.formCoverage, {
+    visiblePageCount: 1,
+    writableFieldCount: 2,
+    completedWritableFieldCount: 1,
+    completionPercent: 50,
+    blankWritableTargets: ["1-2!C1"],
+    macroPreserved: true,
+    printerSettingsPreserved: true,
+  });
+  const sheet = await output.file("xl/worksheets/sheet1.xml")?.async("text");
+  assertEquals(sheet?.includes("XBF SISTEMAS LOGISTICOS"), true);
 });

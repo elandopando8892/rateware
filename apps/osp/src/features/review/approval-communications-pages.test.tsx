@@ -41,6 +41,22 @@ const workspace: ApprovalCommunicationsWorkspace = {
     attachmentSha256: ['c'.repeat(64)], mimeSha256: 'd'.repeat(64),
     salesAuthorizationId: null, sendOutcome: null,
   },
+  fulfillment: {
+    schemaVersion: 1,
+    manifestSha256: 'f'.repeat(64),
+    assessedAt: '2026-09-02T12:00:00.000Z',
+    totalRequired: 1,
+    satisfiedRequired: 1,
+    blockingCount: 0,
+    items: [{
+      requirementId: 'form:provider.registration:1', kind: 'form',
+      canonicalKey: 'form.provider.registration', label: 'Supplier form',
+      status: 'satisfied', blocking: false,
+      reason: 'Approved evidence satisfies the request contract.',
+      evidenceIds: ['package:66666666-6666-4666-8666-666666666666'],
+    }],
+    gates: { operationsReview: true, signatureApproval: true, outboundDraft: true, outboundFreeze: true, salesAuthorization: true, send: true },
+  },
   capabilities: {
     completeOperationsReview: true, approveAndApplySignature: true,
     saveOutboundDraft: false,
@@ -71,9 +87,32 @@ describe('controlled approval and communications pages', () => {
     expect(screen.getByRole('link', { name: /download reviewed xlsx/i })).toHaveAttribute('href', 'https://example.test/reviewed-package');
     const action = screen.getByRole('button', { name: /complete operations review/i });
     expect(action).toBeDisabled();
-    await userEvent.click(screen.getByRole('checkbox', { name: /evidence package is complete/i }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /pre-signature requirements are satisfied/i }));
     await userEvent.click(action);
     expect(complete).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the semantic stop visible and disables Operations completion when one carrier requirement is missing', () => {
+    const blocked = {
+      ...workspace.fulfillment!,
+      satisfiedRequired: 0,
+      blockingCount: 1,
+      items: [{ ...workspace.fulfillment!.items[0], status: 'missing' as const, blocking: true, reason: 'No matching evidence is attached.', evidenceIds: [] }],
+      gates: { operationsReview: false, signatureApproval: false, outboundDraft: false, outboundFreeze: false, salesAuthorization: false, send: false },
+    };
+    render(<OperationsReviewPage
+      workspace={{
+        ...workspace,
+        caseState: 'operations_review',
+        supplierPackage: { packageId: '66666666-6666-4666-8666-666666666666', version: 1, outputSha256: 'e'.repeat(64), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', downloadUrl: null },
+        fulfillment: blocked,
+        capabilities: { ...workspace.capabilities, completeOperationsReview: false },
+      }}
+      onComplete={vi.fn()}
+    />);
+    expect(screen.getByRole('alert')).toHaveTextContent(/semantic stop active/i);
+    expect(screen.getByRole('checkbox', { name: /pre-signature requirements are satisfied/i })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /complete operations review/i })).not.toBeInTheDocument();
   });
 
   it('shows José only fingerprints and requires his explicit signature confirmation', async () => {
