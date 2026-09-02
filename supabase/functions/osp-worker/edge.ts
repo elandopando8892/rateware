@@ -18,6 +18,8 @@ import { resolveRequestManifestCanary } from "./request-manifest-canary-config.t
 import { resolveAdaptiveManifest } from "./adaptive-manifest-config.ts";
 import { resolveManualRequestCanary } from "./manual-request-canary-config.ts";
 
+const WORKER_BUILD_REVISION = "20260902-p8-salzillo-package-canary";
+
 function required(name: string): string {
   const value = Deno.env.get(name)?.trim();
   if (!value) throw new Error("INVALID_RUNTIME_CONFIGURATION");
@@ -102,7 +104,7 @@ const runtime = createShadowWorkerRuntime({
   databaseUrl,
   gmailAccessToken,
   storageClient: supabase,
-  workerId: `osp-edge:${crypto.randomUUID()}`,
+  workerId: `osp-edge:${WORKER_BUILD_REVISION}:${crypto.randomUUID()}`,
   automation,
   xlsxShadow,
   xlsxIntake,
