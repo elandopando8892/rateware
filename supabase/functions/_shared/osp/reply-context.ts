@@ -40,11 +40,14 @@ function addresses(value: unknown): readonly string[] | null {
 export function deriveReplyContext(
   source: CapturedReplySource,
 ): ReplyContext | null {
+  const senderIsXbf = typeof source.senderEmail === "string" &&
+    source.senderEmail.endsWith("@xbfreight.com");
+  const senderIsSales = source.senderEmail === "sales@heymarksman.com";
   if (
     typeof source.senderEmail !== "string" ||
     source.senderEmail !== source.senderEmail.trim().toLowerCase() ||
     source.senderEmail.length > 254 || !EMAIL.test(source.senderEmail) ||
-    !source.senderEmail.endsWith("@xbfreight.com") ||
+    (!senderIsXbf && !senderIsSales) ||
     source.senderEmail === "carriers@xbfreight.com" ||
     !isReplyMessageId(source.internetMessageId) ||
     typeof source.subject !== "string"
@@ -52,9 +55,11 @@ export function deriveReplyContext(
   const originalTo = addresses(source.to);
   const originalCc = addresses(source.cc);
   const originalSubject = source.subject.trim();
+  const carriersCaptured = originalTo?.includes("carriers@xbfreight.com") ||
+    originalCc?.includes("carriers@xbfreight.com");
   if (
     originalTo === null || originalTo.length === 0 || originalCc === null ||
-    !originalCc.includes("carriers@xbfreight.com") ||
+    !carriersCaptured ||
     originalSubject.length === 0 || originalSubject.includes("\r") ||
     originalSubject.includes("\n")
   ) return null;
@@ -62,6 +67,25 @@ export function deriveReplyContext(
   if (subjectBase.length === 0) return null;
   const subject = `Re: ${subjectBase}`;
   if (subject.length > 998) return null;
+  if (senderIsSales) {
+    const internal = (email: string) =>
+      email.endsWith("@xbfreight.com") || email.endsWith("@heymarksman.com");
+    const to = [...new Set(originalTo)].filter((email) => !internal(email));
+    const cc = [
+      source.senderEmail,
+      ...new Set(
+        originalCc.filter((email) => !internal(email) && !to.includes(email)),
+      ),
+    ];
+    if (to.length === 0 || to.length > 50 || cc.length > 50) return null;
+    return Object.freeze({
+      to: Object.freeze(to),
+      cc: Object.freeze(cc),
+      subject,
+      inReplyTo: source.internetMessageId,
+      references: Object.freeze([source.internetMessageId]),
+    });
+  }
   const cc = [...new Set([...originalTo, ...originalCc])].filter((email) =>
     email !== source.senderEmail && email !== "carriers@xbfreight.com"
   );
