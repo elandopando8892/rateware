@@ -531,6 +531,11 @@ export type RequestKnowledgeCandidateSummary = {
   required: boolean;
   evidenceCount: number;
   catalogState: "new" | "known";
+  catalogMatch: "none" | "exact" | "alias" | "ambiguous";
+  matchedCanonicalKey: string | null;
+  matchedDisplayLabel: string | null;
+  catalogVersion: number | null;
+  sourceCaseId: string | null;
 };
 
 export type RequestKnowledgeWorkspaceSummary = {
@@ -639,6 +644,23 @@ function requestKnowledgeCandidate(row: Row): RequestKnowledgeCandidateSummary {
     "REQUEST_KNOWLEDGE_PERSISTENCE_FAILED",
   );
   const valueType = row.value_type === null ? null : String(row.value_type);
+  const catalogVersion = row.catalog_version === null
+    ? null
+    : safeCount(
+      row.catalog_version,
+      2_147_483_647,
+      "REQUEST_KNOWLEDGE_PERSISTENCE_FAILED",
+    );
+  const matchedCanonicalKey = row.matched_canonical_key === null
+    ? null
+    : String(row.matched_canonical_key);
+  const matchedDisplayLabel = row.matched_display_label === null
+    ? null
+    : String(row.matched_display_label);
+  const sourceCaseId = row.source_case_id === null
+    ? null
+    : String(row.source_case_id);
+  const matched = row.catalog_match === "exact" || row.catalog_match === "alias";
   if (
     (row.knowledge_kind !== "field" && row.knowledge_kind !== "document") ||
     typeof row.canonical_key !== "string" ||
@@ -660,7 +682,21 @@ function requestKnowledgeCandidate(row: Row): RequestKnowledgeCandidateSummary {
       ? valueType === null
       : valueType !== null) ||
     typeof row.required !== "boolean" ||
-    (row.catalog_state !== "new" && row.catalog_state !== "known")
+    (row.catalog_state !== "new" && row.catalog_state !== "known") ||
+    !["none", "exact", "alias", "ambiguous"].includes(
+      String(row.catalog_match),
+    ) ||
+    (matched
+      ? row.catalog_state !== "known" || catalogVersion === null ||
+        catalogVersion < 1 || matchedCanonicalKey === null ||
+        !/^[a-z][a-z0-9_.-]{0,127}$/.test(matchedCanonicalKey) ||
+        matchedDisplayLabel === null ||
+        matchedDisplayLabel.trim() !== matchedDisplayLabel ||
+        matchedDisplayLabel.length < 1 || matchedDisplayLabel.length > 256 ||
+        sourceCaseId === null || !UUID_PATTERN.test(sourceCaseId)
+      : row.catalog_state !== "new" || catalogVersion !== null ||
+        matchedCanonicalKey !== null || matchedDisplayLabel !== null ||
+        sourceCaseId !== null)
   ) {
     fail("REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
   }
@@ -673,6 +709,11 @@ function requestKnowledgeCandidate(row: Row): RequestKnowledgeCandidateSummary {
     required: row.required,
     evidenceCount,
     catalogState: row.catalog_state,
+    catalogMatch: row.catalog_match as RequestKnowledgeCandidateSummary["catalogMatch"],
+    matchedCanonicalKey,
+    matchedDisplayLabel,
+    catalogVersion,
+    sourceCaseId,
   });
 }
 
@@ -1091,9 +1132,9 @@ export function createPostgresClarificationStore(
           );
           if (reviewVersion < 1) fail("REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
           const candidateRows =
-            await tx`select candidate.knowledge_kind, candidate.canonical_key, candidate.display_label, candidate.aliases_json, candidate.value_type, candidate.required, candidate.evidence_count, case when entry.id is null then 'new' else 'known' end as catalog_state from osp_private.request_knowledge_candidates(${input.organizationId}, ${input.caseId}, ${
+            await tx`select candidate.knowledge_kind, candidate.canonical_key, candidate.display_label, candidate.aliases_json, candidate.value_type, candidate.required, candidate.evidence_count, case when exact_entry.id is not null or alias_entry.match_count = 1 then 'known' else 'new' end as catalog_state, case when exact_entry.id is not null then 'exact' when alias_entry.match_count = 1 then 'alias' when alias_entry.match_count > 1 then 'ambiguous' else 'none' end as catalog_match, case when exact_entry.id is not null then exact_entry.canonical_key when alias_entry.match_count = 1 then alias_entry.canonical_key else null end as matched_canonical_key, case when exact_entry.id is not null then exact_entry.display_label when alias_entry.match_count = 1 then alias_entry.display_label else null end as matched_display_label, case when exact_entry.id is not null then exact_entry.version when alias_entry.match_count = 1 then alias_entry.version else null end as catalog_version, case when exact_entry.id is not null then exact_entry.source_case_id when alias_entry.match_count = 1 then alias_entry.source_case_id else null end as source_case_id from osp_private.request_knowledge_candidates(${input.organizationId}, ${input.caseId}, ${
               source[0].review_id
-            }) candidate left join osp_private.request_knowledge_catalog_entries entry on entry.organization_id = ${input.organizationId} and entry.knowledge_kind = candidate.knowledge_kind and entry.canonical_key = candidate.canonical_key order by candidate.knowledge_kind, candidate.canonical_key`;
+            }) candidate left join lateral (select entry.id, entry.canonical_key, entry.display_label, entry.version, entry.source_case_id from osp_private.request_knowledge_catalog_entries entry where entry.organization_id = ${input.organizationId} and entry.knowledge_kind = candidate.knowledge_kind and entry.canonical_key = candidate.canonical_key limit 1) exact_entry on true left join lateral (select entry.canonical_key, entry.display_label, entry.version, entry.source_case_id, count(*) over ()::integer as match_count from osp_private.request_knowledge_catalog_entries entry where exact_entry.id is null and entry.organization_id = ${input.organizationId} and entry.knowledge_kind = candidate.knowledge_kind and exists (select 1 from jsonb_array_elements_text(entry.aliases_json) catalog_alias(value) where lower(btrim(catalog_alias.value)) = lower(btrim(candidate.display_label))) order by entry.canonical_key limit 1) alias_entry on true order by candidate.knowledge_kind, candidate.canonical_key`;
           if (candidateRows.length > 600) {
             fail("REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
           }

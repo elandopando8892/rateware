@@ -55,6 +55,16 @@ describe('synthetic preview runtime', () => {
         externalEffects: false,
       },
     });
+    const knowledgeCase = cases.find((item) => item.supplier_name === 'Northstar Components');
+    expect(knowledgeCase).toBeDefined();
+    await expect(runtime.apiClient.getRequestKnowledgeWorkspace(knowledgeCase!.case_id)).resolves.toMatchObject({
+      catalogEntryCount: 4,
+      candidates: expect.arrayContaining([
+        expect.objectContaining({ displayLabel: 'W-9', catalogMatch: 'exact', matchedCanonicalKey: 'w.9' }),
+        expect.objectContaining({ displayLabel: 'Bank letter', catalogMatch: 'alias', matchedCanonicalKey: 'bank.reference.letter', catalogVersion: 1, sourceCaseId: '11111111-1111-4111-8111-111111111117' }),
+      ]),
+      externalEffects: false,
+    });
     const formCase = cases.find((item) => item.supplier_name === 'Sierra Retail México');
     expect(formCase).toBeDefined();
     await expect(runtime.apiClient.getCaseFormWorkspace(formCase!.case_id)).resolves.toMatchObject({

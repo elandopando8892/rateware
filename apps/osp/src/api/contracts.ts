@@ -317,6 +317,11 @@ const RequestKnowledgeCandidateBase = {
   required: z.boolean(),
   evidenceCount: z.number().int().min(1).max(20),
   catalogState: z.enum(['new', 'known']),
+  catalogMatch: z.enum(['none', 'exact', 'alias', 'ambiguous']),
+  matchedCanonicalKey: z.string().regex(/^[a-z][a-z0-9_.-]{0,127}$/).nullable(),
+  matchedDisplayLabel: z.string().min(1).max(256).nullable(),
+  catalogVersion: z.number().int().min(1).max(2_147_483_647).nullable(),
+  sourceCaseId: z.uuid().nullable(),
 };
 
 export const RequestKnowledgeCandidateSchema = z.discriminatedUnion('kind', [

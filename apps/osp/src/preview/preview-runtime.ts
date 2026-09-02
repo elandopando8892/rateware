@@ -254,7 +254,22 @@ const salzilloRequestReview: NonNullable<CaseDetail['request_review']> = Object.
   manifestId: '98000000-0000-4000-8000-000000000001', manifestVersion: 1, manifestSha256: '1'.repeat(64), review: null,
 });
 const previewRequestReview: NonNullable<CaseDetail['request_review']> = Object.freeze({
-  manifestId: '98000000-0000-4000-8000-000000000002', manifestVersion: 1, manifestSha256: '2'.repeat(64), review: null,
+  manifestId: '98000000-0000-4000-8000-000000000002', manifestVersion: 1, manifestSha256: '2'.repeat(64),
+  review: {
+    reviewId: '98100000-0000-4000-8000-000000000002',
+    reviewVersion: 1,
+    status: 'resolved' as const,
+    decisions: [{
+      decisionId: 'clarification:0',
+      kind: 'clarification' as const,
+      fieldId: 'trade.references.3',
+      prompt: 'Provide or approve a third trade reference for this request.',
+      evidenceIds: ['xlsx:references:A23:F27'],
+      outcome: 'answered' as const,
+      resolution: 'Use the third approved trade reference held by XBF.',
+    }],
+    canonicalSha256: '4'.repeat(64),
+  },
 });
 const craneRequestReview: NonNullable<CaseDetail['request_review']> = Object.freeze({
   manifestId: '98000000-0000-4000-8000-000000000003', manifestVersion: 1, manifestSha256: '3'.repeat(64), review: null,
@@ -508,7 +523,18 @@ function createPreviewClient(): OspClient {
   const requestReviews = new Map<string, NonNullable<CaseDetail['request_review']>>([
     [salzilloCaseId, structuredClone(salzilloRequestReview)], [caseId, structuredClone(previewRequestReview)], [craneCaseId, structuredClone(craneRequestReview)],
   ]);
-  const reusableKnowledge = new Set<string>(['field:supplier.legalname', 'field:fiscal.taxidentifier', 'document:w.9']);
+  const reusableKnowledge = new Map<string, {
+    canonicalKey: string;
+    displayLabel: string;
+    aliases: readonly string[];
+    version: number;
+    sourceCaseId: string;
+  }>([
+    ['field:supplier.legalname', { canonicalKey: 'supplier.legalname', displayLabel: 'Legal business name', aliases: ['Legal name', 'Company legal name'], version: 1, sourceCaseId: caseId }],
+    ['field:fiscal.taxidentifier', { canonicalKey: 'fiscal.taxidentifier', displayLabel: 'Federal tax identifier', aliases: ['Federal tax ID', 'Tax ID'], version: 1, sourceCaseId: caseId }],
+    ['document:w.9', { canonicalKey: 'w.9', displayLabel: 'W-9 / tax form', aliases: ['W-9', 'Tax form'], version: 2, sourceCaseId: salzilloCaseId }],
+    ['document:bank.reference.letter', { canonicalKey: 'bank.reference.letter', displayLabel: 'Bank reference letter', aliases: ['Bank letter', 'Bank reference'], version: 1, sourceCaseId: salzilloCaseId }],
+  ]);
   const knowledgePromotions = new Map<string, number>();
   const knowledgeKey = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '').slice(0, 128);
   const knowledgeWorkspace = (requestedCaseId: string) => {
@@ -536,7 +562,23 @@ function createPreviewClient(): OspClient {
       })),
     ].filter((candidate, index, all) => candidate.canonicalKey.length > 0 && all.findIndex((item) => item.kind === candidate.kind && item.canonicalKey === candidate.canonicalKey) === index)
       .sort((left, right) => `${left.kind}:${left.canonicalKey}`.localeCompare(`${right.kind}:${right.canonicalKey}`))
-      .map((candidate) => ({ ...candidate, catalogState: reusableKnowledge.has(`${candidate.kind}:${candidate.canonicalKey}`) ? 'known' as const : 'new' as const }));
+      .map((candidate) => {
+        const exact = reusableKnowledge.get(`${candidate.kind}:${candidate.canonicalKey}`);
+        const aliasMatches = exact ? [] : [...reusableKnowledge.entries()]
+          .filter(([key, entry]) => key.startsWith(`${candidate.kind}:`) && entry.aliases.some((alias) => alias.localeCompare(candidate.displayLabel, undefined, { sensitivity: 'accent' }) === 0))
+          .map(([, entry]) => entry);
+        const matched = exact ?? (aliasMatches.length === 1 ? aliasMatches[0] : null);
+        const catalogMatch = exact ? 'exact' as const : aliasMatches.length === 1 ? 'alias' as const : aliasMatches.length > 1 ? 'ambiguous' as const : 'none' as const;
+        return {
+          ...candidate,
+          catalogState: matched ? 'known' as const : 'new' as const,
+          catalogMatch,
+          matchedCanonicalKey: matched?.canonicalKey ?? null,
+          matchedDisplayLabel: matched?.displayLabel ?? null,
+          catalogVersion: matched?.version ?? null,
+          sourceCaseId: matched?.sourceCaseId ?? null,
+        };
+      });
     return {
       caseId: requestedCaseId,
       manifestId: envelope.manifestId,
@@ -738,7 +780,12 @@ function createPreviewClient(): OspClient {
       let unchangedCount = 0;
       for (const key of input.selectedKeys) {
         if (reusableKnowledge.has(key)) unchangedCount += 1;
-        else { reusableKnowledge.add(key); promotedCount += 1; }
+        else {
+          const candidate = workspace.candidates.find((item) => `${item.kind}:${item.canonicalKey}` === key);
+          if (!candidate) throw new Error('REQUEST_KNOWLEDGE_SELECTION_INVALID');
+          reusableKnowledge.set(key, { canonicalKey: candidate.canonicalKey, displayLabel: candidate.displayLabel, aliases: candidate.aliases, version: 1, sourceCaseId: input.caseId });
+          promotedCount += 1;
+        }
       }
       knowledgePromotions.set(input.reviewId, (knowledgePromotions.get(input.reviewId) ?? 0) + 1);
       return {

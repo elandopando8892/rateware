@@ -8,6 +8,7 @@ const caseId = "22222222-2222-4222-8222-222222222222";
 const reviewId = "33333333-3333-4333-8333-333333333333";
 const manifestId = "44444444-4444-4444-8444-444444444444";
 const promotionId = "55555555-5555-4555-8555-555555555555";
+const sourceCaseId = "66666666-6666-4666-8666-666666666666";
 const digest = "a".repeat(64);
 
 function fakeSql() {
@@ -40,6 +41,39 @@ function fakeSql() {
         required: true,
         evidence_count: 2,
         catalog_state: "new",
+        catalog_match: "none",
+        matched_canonical_key: null,
+        matched_display_label: null,
+        catalog_version: null,
+        source_case_id: null,
+      }, {
+        knowledge_kind: "document",
+        canonical_key: "w.9",
+        display_label: "W-9",
+        aliases_json: ["W-9"],
+        value_type: null,
+        required: true,
+        evidence_count: 1,
+        catalog_state: "known",
+        catalog_match: "alias",
+        matched_canonical_key: "w9.form",
+        matched_display_label: "IRS Form W-9",
+        catalog_version: 2,
+        source_case_id: sourceCaseId,
+      }, {
+        knowledge_kind: "document",
+        canonical_key: "bank.reference",
+        display_label: "Bank reference",
+        aliases_json: ["Bank reference"],
+        value_type: null,
+        required: false,
+        evidence_count: 1,
+        catalog_state: "new",
+        catalog_match: "ambiguous",
+        matched_canonical_key: null,
+        matched_display_label: null,
+        catalog_version: null,
+        source_case_id: null,
       }];
     }
     if (statement.includes("request_knowledge_candidate_sha256(")) {
@@ -90,6 +124,39 @@ Deno.test("request knowledge store reads semantic candidates without external ef
       required: true,
       evidenceCount: 2,
       catalogState: "new",
+      catalogMatch: "none",
+      matchedCanonicalKey: null,
+      matchedDisplayLabel: null,
+      catalogVersion: null,
+      sourceCaseId: null,
+    }, {
+      kind: "document",
+      canonicalKey: "w.9",
+      displayLabel: "W-9",
+      aliases: ["W-9"],
+      valueType: null,
+      required: true,
+      evidenceCount: 1,
+      catalogState: "known",
+      catalogMatch: "alias",
+      matchedCanonicalKey: "w9.form",
+      matchedDisplayLabel: "IRS Form W-9",
+      catalogVersion: 2,
+      sourceCaseId,
+    }, {
+      kind: "document",
+      canonicalKey: "bank.reference",
+      displayLabel: "Bank reference",
+      aliases: ["Bank reference"],
+      valueType: null,
+      required: false,
+      evidenceCount: 1,
+      catalogState: "new",
+      catalogMatch: "ambiguous",
+      matchedCanonicalKey: null,
+      matchedDisplayLabel: null,
+      catalogVersion: null,
+      sourceCaseId: null,
     }],
     catalogEntryCount: 4,
     priorPromotionCount: 1,
@@ -99,6 +166,13 @@ Deno.test("request knowledge store reads semantic candidates without external ef
     fake.statements.some((statement) =>
       /gmail|webhook|signature|outbound/i.test(statement)
     ),
+  );
+  assertEquals(
+    fake.statements.some((statement) =>
+      statement.includes("jsonb_array_elements_text(entry.aliases_json)") &&
+      statement.includes("alias_entry.match_count")
+    ),
+    true,
   );
 });
 
