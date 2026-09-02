@@ -29,16 +29,17 @@ export function evaluateDemandRadarGatewayPreflight(input = {}) {
   const productionRef = clean(input.productionProjectRef || RATEWARE_PRODUCTION_PROJECT_REF, 80).toLowerCase();
   const targetRef = clean(input.targetProjectRef, 80).toLowerCase();
   const endpointRef = endpointProjectRef(input.endpoint);
-  const targetIsStaging = Boolean(targetRef && targetRef !== productionRef);
-  const endpointMatches = Boolean(targetIsStaging && endpointRef === targetRef);
-  const writeFlagsLocked = input.writesEnabled !== true && input.productionWritesAuthorized !== true;
+  const targetIsExistingRateware = Boolean(targetRef && targetRef === productionRef);
+  const endpointMatches = Boolean(targetIsExistingRateware && endpointRef === targetRef);
+  const productionReadAuthorized = input.productionReadsAuthorized === true;
+  const writeFlagsLocked = input.gatewayWritesEnabled !== true && input.writesEnabled !== true && input.productionWritesAuthorized !== true;
   const gates = [
-    gate("target_non_production", targetIsStaging, targetRef === productionRef ? "Production target is forbidden for the Sprint 25 canary." : "A dedicated Rateware staging project ref is required."),
-    gate("endpoint_matches_target", endpointMatches, endpointMatches ? "HTTPS gateway URL matches the staging project ref." : "Gateway URL and staging project ref must match exactly."),
+    gate("existing_rateware_only", targetIsExistingRateware, targetRef && targetRef !== productionRef ? "Third hosted projects and marksman-erp are forbidden." : "The existing rateware-prod project ref is required."),
+    gate("endpoint_matches_target", endpointMatches, endpointMatches ? "HTTPS gateway URL matches the existing Rateware project ref." : "Gateway URL must match rateware-prod exactly."),
+    gate("production_read_authorized", productionReadAuthorized, "A separate explicit authorization is required for the production read canary."),
     gate("gateway_function_present", input.gatewayFunctionPresent === true, "Gateway function source must be present."),
-    gate("migration_present", input.migrationPresent === true, "Gateway migration source must be present."),
     gate("action_contract_present", input.actionContractPresent === true, "Governed action contract entries must be present."),
-    gate("writes_locked", writeFlagsLocked, writeFlagsLocked ? "All write flags are off." : "Write flags are forbidden in Sprint 25."),
+    gate("writes_locked", writeFlagsLocked, writeFlagsLocked ? "Gateway and Demand Radar write flags are off." : "Every write flag is forbidden in the read-only canary."),
     gate("exact_sha", input.expectedSha ? input.expectedSha === input.actualSha : true, input.expectedSha ? "Actual SHA must match the approved SHA." : "No release SHA was supplied; pin one before deployment."),
     gate("clean_worktree", input.workingTreeClean === true, "Deployment must start from a clean isolated worktree."),
   ];
@@ -50,6 +51,8 @@ export function evaluateDemandRadarGatewayPreflight(input = {}) {
     productionRef,
     endpointRef,
     externalWrites: 0,
+    newCloudProjects: 0,
+    additionalFixedMonthlyCostUsd: 0,
     gates,
     blockers: blockers.map((item) => item.id),
   };
@@ -73,8 +76,9 @@ function currentPreflight() {
     actualSha: git(["rev-parse", "HEAD"]),
     workingTreeClean: git(["status", "--porcelain"]) === "",
     gatewayFunctionPresent: existsSync(path.join(root, "supabase/functions/demand-radar-shipper-crm-gateway/index.ts")),
-    migrationPresent: existsSync(path.join(root, "supabase/migrations/20260902120000_demand_radar_shipper_crm_gateway.sql")),
     actionContractPresent: existsSync(path.join(root, "supabase/functions/_shared/action-contract.mjs")),
+    productionReadsAuthorized: /^(1|true)$/i.test(clean(process.env.RATEWARE_SHIPPER_CRM_PRODUCTION_READS_AUTHORIZED, 20)),
+    gatewayWritesEnabled: /^(1|true)$/i.test(clean(process.env.DEMAND_RADAR_SHIPPER_CRM_WRITES_ENABLED, 20)),
     writesEnabled: /^(1|true)$/i.test(clean(process.env.RATEWARE_SHIPPER_CRM_WRITES_ENABLED, 20)),
     productionWritesAuthorized: /^(1|true)$/i.test(clean(process.env.RATEWARE_SHIPPER_CRM_PRODUCTION_WRITES_AUTHORIZED, 20)),
   });
@@ -86,4 +90,3 @@ if (isMain) {
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   if (!result.ok) process.exitCode = 1;
 }
-

@@ -11,6 +11,9 @@ import {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
+const DEMAND_RADAR_WRITES_ENABLED = /^(1|true|yes|on)$/i.test(
+  String(Deno.env.get("DEMAND_RADAR_SHIPPER_CRM_WRITES_ENABLED") || "").trim(),
+);
 const MAX_PAGE_SIZE = 250;
 
 function clean(value: unknown, max = 500) {
@@ -68,7 +71,7 @@ Deno.serve(async (request) => {
         ok: true,
         gateway: "demand-radar-shipper-crm-gateway",
         authority: "rateware",
-        capabilities: { pull: true, commit: true, cas: true, idempotency: true, canonical_receipt: true },
+        capabilities: { pull: true, commit: DEMAND_RADAR_WRITES_ENABLED, cas: true, idempotency: true, canonical_receipt: true },
         production_write_executed: false,
       });
     }
@@ -98,6 +101,9 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === "commit_change") {
+      if (!DEMAND_RADAR_WRITES_ENABLED) {
+        return jsonResponse({ error: "Demand Radar writes are disabled at the Rateware gateway.", code: "DEMAND_RADAR_WRITES_DISABLED" }, 403);
+      }
       if (body.confirmed !== true || clean(body.confirmation_phrase, 80) !== DEMAND_RADAR_COMMIT_PHRASE) {
         return jsonResponse({ error: "Exact human write confirmation is required.", code: "EXACT_WRITE_CONFIRMATION_REQUIRED" }, 422);
       }

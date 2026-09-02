@@ -51,6 +51,8 @@ assert.doesNotMatch(
   /primary_contact_email|primary_contact_phone|notes/,
 );
 assert.match(gateway, /body\.confirmed !== true/);
+assert.match(gateway, /if \(!DEMAND_RADAR_WRITES_ENABLED\)/);
+assert.match(gateway, /DEMAND_RADAR_WRITES_DISABLED/);
 assert.match(gateway, /DEMAND_RADAR_COMMIT_PHRASE/);
 assert.match(gateway, /RATEWARE_REVISION_CONFLICT/);
 
