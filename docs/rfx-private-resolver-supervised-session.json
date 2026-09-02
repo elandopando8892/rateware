@@ -1,0 +1,92 @@
+{
+  "contractVersion": "rateware.private-resolver.supervised-session.v1",
+  "sessionVersion": "beta-10.5",
+  "visibility": "internal_release_evidence",
+  "authorization": {
+    "source": "current_task_user_authorization",
+    "authorizedScope": "sprint_10_5_fixture_only_technical_rehearsal",
+    "stagingMutationAuthorized": true,
+    "productionAuthorized": false,
+    "realBusinessEffectsAuthorized": false
+  },
+  "sessionWindow": {
+    "startedAt": "2026-09-02T02:43:11.8223900Z",
+    "endedAt": "2026-09-02T02:44:36.1439292Z",
+    "durationSeconds": 84,
+    "checkpointCount": 4
+  },
+  "target": {
+    "branchName": "marksman-loads-staging",
+    "branchProjectRef": "ilcpzfgxjrkaxmtnvzud",
+    "gitBranch": "codex/marksman-loads-private-resolver-10-5",
+    "persistent": true,
+    "withProductionData": false,
+    "controlPlaneStatus": "FUNCTIONS_DEPLOYED",
+    "retainedFunction": "rfx-private-resolver",
+    "functionCount": 1
+  },
+  "supervision": {
+    "mode": "FIXTURE_ONLY_TECHNICAL_REHEARSAL",
+    "authorizationSourceRecorded": true,
+    "automatedEvidenceObserver": true,
+    "privateChangeTicketCreated": false,
+    "namedHumanOperatorRecorded": false,
+    "namedHumanObserverRecorded": false,
+    "actualHumanPilotExecuted": false,
+    "humanPilotGate": "BLOCKED_PENDING_TWO_NAMED_HUMANS_AND_PRIVATE_TICKET"
+  },
+  "network": {
+    "state": "RESTRICTED_CURRENT_OPERATOR_HOST",
+    "ipv4EntryCount": 1,
+    "ipv6EntryCount": 0,
+    "openIpv4Present": false,
+    "openIpv6Present": false,
+    "cidrRecorded": false
+  },
+  "checkpoints": {
+    "preflight": {
+      "status": "PASSED",
+      "processingCurrent": 0,
+      "processingExpired": 0,
+      "failed24h": 0
+    },
+    "syntheticCanary": {
+      "status": "PASSED",
+      "syntheticMatchCount": 1,
+      "persistedReplay": "PASSED",
+      "tampering": "BLOCKED",
+      "liveExecution": "BLOCKED",
+      "externalExecution": false
+    },
+    "postflight": {
+      "status": "PASSED",
+      "processingCurrent": 0,
+      "processingExpired": 0,
+      "failed24h": 0
+    },
+    "closeout": {
+      "status": "PASSED",
+      "processingCurrent": 0,
+      "processingExpired": 0,
+      "failed24h": 0,
+      "ledgerRows": 3,
+      "bidRows": 0,
+      "finalCanaryState": "DISABLED"
+    }
+  },
+  "decision": {
+    "status": "SYNTHETIC_SESSION_PASSED_HUMAN_PILOT_BLOCKED",
+    "technicalRehearsalPassed": true,
+    "humanPilotReady": false,
+    "productionReady": false,
+    "productionApproved": false
+  },
+  "businessEffects": {
+    "realBidCreated": false,
+    "externalMessageSent": false,
+    "paymentCreated": false,
+    "fleetRocketMutation": false,
+    "erpMutation": false,
+    "productionMutation": false
+  }
+}

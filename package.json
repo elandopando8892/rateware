@@ -16,7 +16,8 @@
     "test:staging-reproducibility": "node tools/verify-rfx-private-resolver-staging-reproducibility.mjs",
     "test:staging-health": "node --test tests/rfx-private-resolver-staging-health.test.mjs",
     "test:closed-pilot": "node tools/verify-rfx-private-resolver-closed-pilot.mjs",
-    "test:release:private-resolver": "npm test && npm run test:integration:vendor-seed && npm run test:integration:resolver-ledger && deno check supabase/functions/rfx-private-resolver/index.ts && npm run test:release-review && npm run test:readiness-intake && npm run test:local-rehearsal && npm run test:staging-activation && npm run test:staging-canary && npm run test:staging-reproducibility && npm run test:staging-health && npm run test:closed-pilot",
+    "test:supervised-session": "node --test tests/rfx-private-resolver-supervised-session.test.mjs && node tools/verify-rfx-private-resolver-supervised-session.mjs",
+    "test:release:private-resolver": "npm test && npm run test:integration:vendor-seed && npm run test:integration:resolver-ledger && deno check supabase/functions/rfx-private-resolver/index.ts && npm run test:release-review && npm run test:readiness-intake && npm run test:local-rehearsal && npm run test:staging-activation && npm run test:staging-canary && npm run test:staging-reproducibility && npm run test:staging-health && npm run test:closed-pilot && npm run test:supervised-session",
     "test": "node tests/upload-center.test.mjs && node tests/rateware-stability.test.mjs && node tests/vendor-seed-migration.test.mjs && node --test tests/rfx-private-resolver.test.mjs"
   }
 }
