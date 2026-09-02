@@ -7,6 +7,7 @@
     "dev": "npx serve .",
     "e2e:bid-room": "node tools/bid-room-e2e.mjs",
     "smoke:integrations": "node tools/integration-smoke.mjs",
+    "preflight:demand-radar": "node tools/demand-radar-gateway-preflight.mjs",
     "validate:action-contract": "node tools/validate-action-contract.mjs",
     "release:progress": "node tools/production-readiness-report.mjs",
     "release:preflight": "node tools/release-preflight.mjs",
