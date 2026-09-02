@@ -7,6 +7,15 @@ const STATUS_LABEL: Readonly<Record<string, string>> = Object.freeze({
   not_applicable: 'Not applicable', waived: 'Waived',
 });
 
+type FulfillmentItem = NonNullable<ApprovalCommunicationsWorkspace['fulfillment']>['items'][number];
+
+function correctionRoute(caseId: string, item: FulfillmentItem) {
+  if (!item.blocking) return null;
+  if (item.status === 'signature_missing') return { href: `/app/cases/${caseId}/signature`, label: 'Review signature' };
+  if (item.kind === 'form') return { href: `/app/cases/${caseId}/form`, label: 'Complete form' };
+  return { href: '/app/documents', label: item.status === 'stale' ? 'Renew document' : 'Review documents' };
+}
+
 export function FulfillmentMatrixPanel({ workspace }: { workspace: ApprovalCommunicationsWorkspace }) {
   const matrix = workspace.fulfillment;
   if (!matrix) {
@@ -21,10 +30,12 @@ export function FulfillmentMatrixPanel({ workspace }: { workspace: ApprovalCommu
       <p><strong>{matrix.satisfiedRequired} / {matrix.totalRequired}</strong> required items complete · <strong>{matrix.blockingCount}</strong> blockers</p>
     </header>
     <ul>
-      {matrix.items.map((item) => <li key={item.requirementId} className={item.blocking ? 'blocking' : 'satisfied'}>
-        <div><strong>{item.label}</strong><small>{item.reason}</small></div>
+      {matrix.items.map((item) => {
+        const correction = correctionRoute(workspace.caseId, item);
+        return <li key={item.requirementId} className={item.blocking ? 'blocking' : 'satisfied'}>
+        <div><strong>{item.label}</strong><small>{item.reason}</small>{correction ? <a className="matrix-correction" href={correction.href}>{correction.label}</a> : null}</div>
         <span aria-label={`${item.label}: ${STATUS_LABEL[item.status] ?? item.status}`}>{STATUS_LABEL[item.status] ?? item.status}</span>
-      </li>)}
+      </li>})}
     </ul>
     {matrix.blockingCount > 0
       ? matrix.gates.signatureApproval

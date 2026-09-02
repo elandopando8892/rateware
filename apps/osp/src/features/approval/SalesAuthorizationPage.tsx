@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { ApprovalCommunicationsWorkspace } from '../../api/contracts';
 import { FinalResponseComposer, type FinalResponseDraftFields } from './FinalResponseComposer';
 import { FulfillmentMatrixPanel } from '../review/FulfillmentMatrixPanel';
+import { CarrierPackageInventory } from '../review/CarrierPackageInventory';
 
 type SalesAuthorizationPageProps = {
   workspace: ApprovalCommunicationsWorkspace;
@@ -27,7 +28,6 @@ function PayloadReview({ workspace }: { workspace: ApprovalCommunicationsWorkspa
     <div><dt>In-Reply-To</dt><dd>{outbound.inReplyTo ?? 'None'}</dd></div>
     <div><dt>References</dt><dd>{outbound.references.length ? outbound.references.join(' ') : 'None'}</dd></div>
     <div><dt>Body</dt><dd className="message-preview">{outbound.bodyText}</dd></div>
-    <div><dt>Attachments</dt><dd>{outbound.attachmentSha256.length ? outbound.attachmentSha256.map((hash) => <code key={hash}>{hash}</code>) : 'None'}</dd></div>
     <div><dt>MIME fingerprint</dt><dd>{outbound.mimeSha256 ? <code>{outbound.mimeSha256}</code> : 'Created when Operations freezes this exact draft'}</dd></div>
   </dl>;
 }
@@ -84,6 +84,7 @@ export function SalesAuthorizationPage({
       <p className="eyebrow">CONTROL 03 · OPERATIONS</p><h1 id="sales-title">Freeze final response</h1>
       <p className="lede">Review the exact internal draft. Freezing creates an immutable review artifact for Sales; it does not send email.</p>
       <FulfillmentMatrixPanel workspace={workspace} />
+      <CarrierPackageInventory workspace={workspace} />
       <PayloadReview workspace={workspace} />
       {workspace.capabilities.saveOutboundDraft && workspace.signedPackage && workspace.replyContext
         ? <FinalResponseComposer key={outbound.payloadId} signedPackage={workspace.signedPackage} replyContext={workspace.replyContext} initialBodyText={outbound.bodyText} revision onDirtyChange={setDraftDirty} onSave={onSaveDraft} />
@@ -103,6 +104,7 @@ export function SalesAuthorizationPage({
     <p className="eyebrow">CONTROL 03 · SALES</p><h1 id="sales-title">Authorize exact outbound payload</h1>
     <p className="lede">Review every recipient, word and attachment fingerprint. Authorization does not send.</p>
     <FulfillmentMatrixPanel workspace={workspace} />
+    <CarrierPackageInventory workspace={workspace} />
     <PayloadReview workspace={workspace} />
     {workspace.capabilities.authorizeOutboundPayload && reauthenticationRequired ? <>
       <p role="status">A fresh Sales authentication is required before authorization. No authorization command will be sent yet.</p>

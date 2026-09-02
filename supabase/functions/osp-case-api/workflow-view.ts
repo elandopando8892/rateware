@@ -67,6 +67,18 @@ type SignedPackageView = {
     | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 };
 type ReplyContextView = ReplyContext;
+type OutboundAttachmentView = {
+  name: string;
+  contentType:
+    | "application/pdf"
+    | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    | "application/vnd.ms-excel.sheet.macroEnabled.12"
+    | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    | "image/jpeg"
+    | "image/png"
+    | "image/tiff";
+  sha256: string;
+};
 type OutboundView = {
   payloadId: string;
   kind: "clarification" | "final_response";
@@ -86,6 +98,7 @@ type OutboundView = {
   inReplyTo: string | null;
   references: readonly string[];
   bodyText: string;
+  attachments: readonly OutboundAttachmentView[];
   attachmentSha256: readonly string[];
   mimeSha256: string | null;
   salesAuthorizationId: string | null;
@@ -122,6 +135,16 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ATTACHMENT_NAME = /^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$/;
+const ATTACHMENT_CONTENT_TYPES = new Set<OutboundAttachmentView["contentType"]>([
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel.sheet.macroEnabled.12",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/jpeg",
+  "image/png",
+  "image/tiff",
+]);
 const STATES = new Set<CaseState>([
   "received",
   "analyzing_requirements",
@@ -198,6 +221,32 @@ function hashes(value: unknown): readonly string[] {
     value.some((hash) => typeof hash !== "string" || !SHA.test(hash))
   ) fail();
   return Object.freeze([...value] as string[]);
+}
+function attachmentDetails(
+  value: unknown,
+  expectedHashes: readonly string[],
+): readonly OutboundAttachmentView[] {
+  if (!Array.isArray(value) || value.length !== expectedHashes.length || value.length > 100) {
+    fail();
+  }
+  const names = new Set<string>();
+  return Object.freeze(value.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) fail();
+    const row = item as Record<string, unknown>;
+    if (
+      typeof row.name !== "string" || row.name !== row.name.normalize("NFC") ||
+      !ATTACHMENT_NAME.test(row.name) || names.has(row.name.toLowerCase()) ||
+      typeof row.contentType !== "string" ||
+      !ATTACHMENT_CONTENT_TYPES.has(row.contentType as OutboundAttachmentView["contentType"]) ||
+      typeof row.sha256 !== "string" || row.sha256 !== expectedHashes[index]
+    ) fail();
+    names.add(row.name.toLowerCase());
+    return Object.freeze({
+      name: row.name,
+      contentType: row.contentType as OutboundAttachmentView["contentType"],
+      sha256: row.sha256,
+    });
+  }));
 }
 function messageIds(value: unknown): readonly string[] {
   if (
@@ -326,6 +375,7 @@ function parseRow(
       : mimeSha256
       ? "frozen" as const
       : "draft" as const;
+    const attachmentSha256 = hashes(row.attachment_sha256s ?? []);
     outbound = {
       payloadId: parsedPayloadId,
       kind: row.payload_kind,
@@ -338,7 +388,8 @@ function parseRow(
       inReplyTo: typeof row.in_reply_to === "string" ? row.in_reply_to : null,
       references: messageIds(row.references_header ?? []),
       bodyText: row.body_text,
-      attachmentSha256: hashes(row.attachment_sha256s ?? []),
+      attachments: attachmentDetails(row.attachment_details ?? [], attachmentSha256),
+      attachmentSha256,
       mimeSha256,
       salesAuthorizationId: authorizationId,
       sendOutcome,
@@ -397,6 +448,9 @@ export function approvalCommunicationsWorkspace(
   const semanticReady = record.fulfillment === undefined
     ? true
     : record.fulfillment.blockingCount === 0;
+  const exactFinalPackage = record.outbound === null ||
+    record.outbound.kind !== "final_response" ||
+    record.outbound.attachments.length > 0;
   return Object.freeze({
     caseId: record.caseId,
     caseVersion: record.caseVersion,
@@ -443,7 +497,8 @@ export function approvalCommunicationsWorkspace(
         record.inputSnapshot !== null && record.signature !== null &&
         record.signature.approvalId === null,
       freezeOutboundPayload: operations && outboundWritableCurrent &&
-        semanticReady && record.fulfillment?.gates.outboundFreeze !== false &&
+        semanticReady && exactFinalPackage &&
+        record.fulfillment?.gates.outboundFreeze !== false &&
         record.outbound?.status === "draft" &&
         (
           (record.outbound.kind === "clarification" &&
@@ -452,7 +507,7 @@ export function approvalCommunicationsWorkspace(
             record.caseState === "sales_authorization")
         ),
       authorizeOutboundPayload: sales && outboundWritableCurrent &&
-        semanticReady &&
+        semanticReady && exactFinalPackage &&
         record.fulfillment?.gates.salesAuthorization !== false &&
         record.outbound?.status === "frozen" &&
         (
@@ -462,7 +517,8 @@ export function approvalCommunicationsWorkspace(
             record.caseState === "sales_authorization")
         ),
       requestAuthorizedSend: carriers && authorizedSendCurrent &&
-        semanticReady && record.fulfillment?.gates.send !== false &&
+        semanticReady && exactFinalPackage &&
+        record.fulfillment?.gates.send !== false &&
         record.caseState === "ready_to_send" &&
         (record.outbound?.status === "authorized" ||
           record.outbound?.status === "failed") &&
@@ -548,6 +604,7 @@ export function createPostgresWorkflowViewSource(
                draft.from_email, draft.to_recipients, draft.cc_recipients, draft.subject,
                draft.in_reply_to, to_jsonb(draft.references_header) as references_header, draft.body_text,
                frozen.status as payload_status, frozen.canonical_sha256 as mime_sha256,
+               to_jsonb(coalesce(draft.attachments_json, '[]'::jsonb)) as attachment_details,
                to_jsonb(coalesce(
                  frozen.attachment_sha256s,
                  (

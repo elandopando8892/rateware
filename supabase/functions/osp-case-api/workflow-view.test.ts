@@ -66,6 +66,12 @@ const record: WorkflowViewRecord = {
     inReplyTo: "<supplier-request@example.test>",
     references: ["<original-thread@example.test>"],
     bodyText: "Ready for review.",
+    attachments: [{
+      name: "XBF-Supplier-Package.xlsx",
+      contentType:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      sha256: "c".repeat(64),
+    }],
     attachmentSha256: ["c".repeat(64)],
     mimeSha256: "d".repeat(64),
     salesAuthorizationId: null,
@@ -298,6 +304,19 @@ Deno.test("workflow view grants freeze only for the matching workflow state and 
     }, baseIdentity).capabilities.freezeOutboundPayload,
     true,
   );
+  assertEquals(
+    approvalCommunicationsWorkspace({
+      ...record,
+      caseState: "sales_authorization",
+      outbound: {
+        ...record.outbound!,
+        status: "draft",
+        attachments: [],
+        attachmentSha256: [],
+      },
+    }, baseIdentity).capabilities.freezeOutboundPayload,
+    false,
+  );
 });
 
 Deno.test("workflow view exposes the active signature policy before the first approval", async () => {
@@ -418,6 +437,12 @@ Deno.test("Postgres workflow view is tenant-scoped and rejects malformed rows", 
         in_reply_to: "<supplier-request@example.test>",
         references_header: ["<original-thread@example.test>"],
         body_text: "Ready for review.",
+        attachment_details: [{
+          name: "XBF-Supplier-Package.xlsx",
+          contentType:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          sha256: "c".repeat(64),
+        }],
         attachment_sha256s: ["c".repeat(64)],
         mime_sha256: "d".repeat(64),
         sales_authorization_id: null,
@@ -450,6 +475,12 @@ Deno.test("Postgres workflow view is tenant-scoped and rejects malformed rows", 
   });
   assertEquals(result.outbound?.inReplyTo, "<supplier-request@example.test>");
   assertEquals(result.outbound?.references, ["<original-thread@example.test>"]);
+  assertEquals(result.outbound?.attachments, [{
+    name: "XBF-Supplier-Package.xlsx",
+    contentType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    sha256: "c".repeat(64),
+  }]);
   assertEquals(
     calls.some((call) =>
       call.values.includes(organizationId) && call.values.includes(caseId) &&
@@ -476,6 +507,7 @@ Deno.test("Postgres workflow view is tenant-scoped and rejects malformed rows", 
         "signed_package.input_snapshot_sha256 = snapshot.canonical_sha256",
       ) &&
       query.includes("jsonb_array_elements(draft.attachments_json)") &&
+      query.includes("draft.attachments_json, '[]'::jsonb") &&
       query.includes("draft_attachment.value ->> 'sha256'") &&
       query.includes(
         "to_jsonb(draft.references_header) as references_header",
@@ -561,6 +593,7 @@ Deno.test("Postgres workflow view is tenant-scoped and rejects malformed rows", 
     in_reply_to: null,
     references_header: [],
     body_text: "a".repeat(100_001),
+    attachment_details: [],
     attachment_sha256s: [],
     mime_sha256: null,
     sales_authorization_id: null,

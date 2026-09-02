@@ -38,6 +38,7 @@ const workspace: ApprovalCommunicationsWorkspace = {
     cc: ['sales@heymarksman.com'], subject: 'Supplier registration response',
     inReplyTo: '<source@example.test>', references: ['<source@example.test>'],
     bodyText: 'The reviewed supplier package is ready.',
+    attachments: [{ name: 'Formato 3.3 Alta Cliente.pdf', contentType: 'application/pdf', sha256: 'c'.repeat(64) }],
     attachmentSha256: ['c'.repeat(64)], mimeSha256: 'd'.repeat(64),
     salesAuthorizationId: null, sendOutcome: null,
   },
@@ -111,6 +112,7 @@ describe('controlled approval and communications pages', () => {
       onComplete={vi.fn()}
     />);
     expect(screen.getByRole('alert')).toHaveTextContent(/semantic stop active/i);
+    expect(screen.getByRole('link', { name: /complete form/i })).toHaveAttribute('href', `/app/cases/${caseId}/form`);
     expect(screen.getByRole('checkbox', { name: /pre-signature requirements are satisfied/i })).toBeDisabled();
     expect(screen.queryByRole('button', { name: /complete operations review/i })).not.toBeInTheDocument();
   });
@@ -152,6 +154,9 @@ describe('controlled approval and communications pages', () => {
     expect(screen.getByText('sales@heymarksman.com')).toBeInTheDocument();
     expect(screen.getByText('Supplier registration response')).toBeInTheDocument();
     expect(screen.getByText('The reviewed supplier package is ready.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /files returning to the carrier/i })).toBeInTheDocument();
+    expect(screen.getByText('Formato 3.3 Alta Cliente.pdf')).toBeInTheDocument();
+    expect(screen.getByText('PDF')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('checkbox', { name: /exact recipients, content and attachments/i }));
     expect(screen.getByRole('button', { name: /authorize outbound payload/i })).toBeEnabled();
     view.rerender(<SalesAuthorizationPage

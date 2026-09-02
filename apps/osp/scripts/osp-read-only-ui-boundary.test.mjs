@@ -67,6 +67,8 @@ const expectedProductionSourcePaths = [
   'apps/osp/src/features/pipeline/PipelineOverview.tsx',
   'apps/osp/src/features/pipeline/use-pipeline-overview.ts',
   'apps/osp/src/features/profile/CorporateProfileWorkspace.tsx',
+  'apps/osp/src/features/review/CarrierPackageInventory.tsx',
+  'apps/osp/src/features/review/FulfillmentMatrixPanel.tsx',
   'apps/osp/src/features/review/OperationsReviewPage.tsx',
   'apps/osp/src/main.tsx',
   'apps/osp/src/preview/preview-runtime.ts',

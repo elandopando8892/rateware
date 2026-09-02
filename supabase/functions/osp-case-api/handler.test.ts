@@ -747,6 +747,12 @@ Deno.test("case API returns a tenant-safe approval workspace and a typed version
           inReplyTo: "<supplier-request@example.test>",
           references: ["<original-thread@example.test>"],
           bodyText: "Ready for review.",
+          attachments: [{
+            name: "XBF-Supplier-Package.xlsx",
+            contentType:
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            sha256: "c".repeat(64),
+          }],
           attachmentSha256: ["c".repeat(64)],
           mimeSha256: "d".repeat(64),
           salesAuthorizationId: null,

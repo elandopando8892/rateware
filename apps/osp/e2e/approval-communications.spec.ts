@@ -56,6 +56,7 @@ function workspace(state: State, claims: { email?: unknown; permissions?: unknow
     subject: state.kind === 'final_response' ? replyContext!.subject : 'Supplier registration response',
     inReplyTo: state.kind === 'final_response' ? replyContext!.inReplyTo : null, references: state.kind === 'final_response' ? replyContext!.references : [],
     bodyText: 'The reviewed supplier package is ready.',
+    attachments: state.kind === 'final_response' ? [{ name: 'Formato 3.3 Alta Cliente.pdf', contentType: 'application/pdf', sha256: signedSha }] : [],
     attachmentSha256: state.kind === 'final_response' ? [signedSha] : [], mimeSha256: state.payload === 'draft' ? null : mimeSha, salesAuthorizationId: ['authorized', 'send_pending'].includes(state.payload) ? approvalId : null, sendOutcome: state.outcome ?? (state.reservations ? 'reserved' : null),
   };
   return {

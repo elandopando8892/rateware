@@ -691,6 +691,17 @@ export const ApprovalCommunicationsWorkspaceSchema = z.strictObject({
     inReplyTo: z.string().nullable().default(null),
     references: z.array(z.string()).max(50).default([]),
     bodyText: z.string().min(1).max(100_000),
+    attachments: z.array(z.strictObject({
+      name: z.string().min(1).max(128),
+      contentType: z.enum([
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel.sheet.macroEnabled.12',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'image/jpeg', 'image/png', 'image/tiff',
+      ]),
+      sha256: workflowSha,
+    })).max(100),
     attachmentSha256: z.array(workflowSha).max(100),
     mimeSha256: workflowSha.nullable(),
     salesAuthorizationId: z.uuid().nullable(),

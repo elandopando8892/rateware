@@ -60,6 +60,7 @@ const workspace = {
     inReplyTo: '<source@example.test>',
     references: ['<source@example.test>'],
     bodyText: 'The reviewed supplier package is ready.',
+    attachments: [{ name: 'Formato 3.3 Alta Cliente.pdf', contentType: 'application/pdf' as const, sha256: 'c'.repeat(64) }],
     attachmentSha256: ['c'.repeat(64)],
     mimeSha256: 'd'.repeat(64),
     salesAuthorizationId: null,

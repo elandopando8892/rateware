@@ -23,6 +23,7 @@ const finalResponseCaseId = '11111111-1111-4111-8111-111111111116';
 const payloadId = '22222222-2222-4222-8222-222222222222';
 const shaA = 'a'.repeat(64);
 const shaB = 'b'.repeat(64);
+const packageAttachmentHashes = ['b', 'c', 'd', 'e', 'f', '1', '2', '3'].map((value) => value.repeat(64));
 const mxEntityId = '91000000-0000-4000-8000-000000000001';
 const usEntityId = '91000000-0000-4000-8000-000000000002';
 
@@ -413,28 +414,36 @@ const previewReadyFulfillment: NonNullable<ApprovalCommunicationsWorkspace['fulf
   schemaVersion: 1,
   manifestSha256: shaA,
   assessedAt: '2026-09-02T12:00:00.000Z',
-  totalRequired: 1,
-  satisfiedRequired: 1,
+  totalRequired: 8,
+  satisfiedRequired: 8,
   blockingCount: 0,
-  items: [{
-    requirementId: 'form:supplier.registration:1', kind: 'form',
-    canonicalKey: 'form.supplier.registration', label: 'Supplier registration form',
-    status: 'satisfied', blocking: false,
-    reason: 'Approved evidence satisfies the request contract.',
-    evidenceIds: ['package:56000000-0000-4000-8000-000000000009'],
-  }],
+  items: [
+    ['form:salzillo.3_3:1', 'form', 'form.salzillo.3_3', 'Formato 3.3 · two pages · signed PDF'],
+    ['document:articles:1', 'document', 'document.articles_of_incorporation', 'Articles of incorporation'],
+    ['document:legal_id:1', 'document', 'document.legal_representative_id', 'Legal representative ID'],
+    ['document:power:1', 'document', 'document.power_of_attorney', 'Power of attorney'],
+    ['document:sat_opinion:1', 'document', 'document.sat_compliance_opinion', 'Positive SAT opinion · max 1 month'],
+    ['document:tax_status:1', 'document', 'document.tax_status_certificate', 'Tax status certificate · max 1 month'],
+    ['document:bank:1', 'document', 'document.bank_statement', 'MXN bank cover · max 1 month'],
+    ['document:address:1', 'document', 'document.proof_of_address', 'Proof of address · max 3 months'],
+  ].map(([requirementId, kind, canonicalKey, label], index) => ({
+    requirementId, kind: kind as 'form' | 'document', canonicalKey, label,
+    status: 'satisfied' as const, blocking: false,
+    reason: 'Reviewed evidence is included in the exact outbound package.',
+    evidenceIds: [`attachment:${packageAttachmentHashes[index]}`],
+  })),
   gates: { operationsReview: true, signatureApproval: true, outboundDraft: true, outboundFreeze: true, salesAuthorization: true, send: true },
 };
 
 const previewReadyToSignFulfillment: NonNullable<ApprovalCommunicationsWorkspace['fulfillment']> = {
   ...previewReadyFulfillment,
-  satisfiedRequired: 0,
+  satisfiedRequired: 7,
   blockingCount: 1,
-  items: [{
-    ...previewReadyFulfillment.items[0],
-    status: 'wrong_format', blocking: true,
-    reason: 'The completed source is ready to sign; the final carrier copy must be PDF.',
-  }],
+  items: previewReadyFulfillment.items.map((item, index) => index === 0 ? {
+    ...item,
+    status: 'wrong_format' as const, blocking: true,
+    reason: 'The two completed pages are ready to sign; the final carrier copy must be PDF.',
+  } : item),
   gates: { operationsReview: true, signatureApproval: true, outboundDraft: false, outboundFreeze: false, salesAuthorization: false, send: false },
 };
 
@@ -444,7 +453,7 @@ const previewWorkspace: ApprovalCommunicationsWorkspace = {
   caseState: 'ready_to_send',
   inputSnapshot: { sha256: shaA, documentCount: 8, extractionCount: 42, reviewDecisionCount: 11, formInstanceVersion: 3 },
   supplierPackage: null,
-  signedPackage: { packageId: '56000000-0000-4000-8000-000000000009', outputSha256: shaB, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  signedPackage: { packageId: '56000000-0000-4000-8000-000000000009', outputSha256: shaB, contentType: 'application/pdf' },
   replyContext: null,
   signature: { positionVersion: 2, approvalStatus: 'approved', approvalId: '50000000-0000-4000-8000-000000000001', outputSha256: shaB },
   outbound: {
@@ -459,7 +468,17 @@ const previewWorkspace: ApprovalCommunicationsWorkspace = {
     inReplyTo: null,
     references: [],
     bodyText: 'Synthetic preview only. The reviewed onboarding package is ready for controlled delivery.',
-    attachmentSha256: [shaB],
+    attachments: [
+      ['Formato 3.3 Alta Cliente.pdf', 'application/pdf'],
+      ['Acta Constitutiva XBFMX.pdf', 'application/pdf'],
+      ['INE Representante Legal.pdf', 'application/pdf'],
+      ['Poder Notarial.pdf', 'application/pdf'],
+      ['Opinion Positiva SAT.pdf', 'application/pdf'],
+      ['Constancia Situacion Fiscal.pdf', 'application/pdf'],
+      ['Caratula Bancaria MXN.pdf', 'application/pdf'],
+      ['Comprobante Domicilio.pdf', 'application/pdf'],
+    ].map(([name, contentType], index) => ({ name, contentType: contentType as 'application/pdf', sha256: packageAttachmentHashes[index]! })),
+    attachmentSha256: packageAttachmentHashes,
     mimeSha256: shaA,
     salesAuthorizationId: '50000000-0000-4000-8000-000000000002',
     sendOutcome: null,
@@ -1049,6 +1068,7 @@ function createPreviewClient(): OspClient {
         payloadId: input.payloadId, kind: 'final_response', status: 'draft', caseVersion: current.caseVersion,
         from: 'carriers@xbfreight.com', to: [...input.to], cc: [...input.cc], subject: input.subject,
         inReplyTo: input.inReplyTo, references: [...input.references], bodyText: input.bodyText,
+        attachments: [{ name: 'XBF-Supplier-Registration-Package.xlsx', contentType: current.signedPackage.contentType, sha256: current.signedPackage.outputSha256 }],
         attachmentSha256: [current.signedPackage.outputSha256], mimeSha256: null, salesAuthorizationId: null, sendOutcome: null,
       };
       outboundHistories.set(input.caseId, [...(outboundHistories.get(input.caseId) ?? []), structuredClone(outbound)]);
