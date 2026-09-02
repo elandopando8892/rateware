@@ -912,7 +912,7 @@ export function createPostgresClarificationStore(
           const inserted =
             await tx`insert into osp_private.request_manifest_decision_reviews (id, organization_id, case_id, manifest_draft_id, manifest_version, review_version, source_case_version, status, decisions_json, canonical_sha256, manifest_sha256, previous_review_id, reviewed_by_subject) values (${reviewId}, ${input.organizationId}, ${input.caseId}, ${manifest.id}, ${manifestVersion}, ${reviewVersion}, ${input.expectedCaseVersion}, ${review.status}, ${
               JSON.stringify(review.decisions)
-            }::jsonb, ${review.canonicalSha256}, ${input.expectedManifestSha256}, ${previousReviewId}, ${input.subject}) returning id`;
+            }::text::jsonb, ${review.canonicalSha256}, ${input.expectedManifestSha256}, ${previousReviewId}, ${input.subject}) returning id`;
           if (inserted.length !== 1 || inserted[0].id !== reviewId) {
             fail("REQUEST_MANIFEST_REVIEW_PERSISTENCE_FAILED");
           }
@@ -937,7 +937,7 @@ export function createPostgresClarificationStore(
               `request-manifest:${manifest.id}`,
               `decision-review:${reviewId}`,
             ])
-          }::jsonb)`;
+          }::text::jsonb)`;
           return Object.freeze({
             reviewId,
             caseId: input.caseId,

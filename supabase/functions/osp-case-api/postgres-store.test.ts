@@ -686,6 +686,25 @@ Deno.test("clarification store persists an append-only manifest decision review 
     ),
     true,
   );
+  const reviewInsert = queries.find((entry) =>
+    entry.text.startsWith(
+      "insert into osp_private.request_manifest_decision_reviews",
+    )
+  );
+  assert.ok(reviewInsert);
+  assert.match(reviewInsert.text, /\?::text::jsonb/);
+  const storedDecisions = reviewInsert.values.find((value) =>
+    typeof value === "string" && value.includes('"decisionId"')
+  );
+  assert.deepEqual(JSON.parse(String(storedDecisions)), [{
+    decisionId: "clarification:0",
+    kind: "clarification",
+    fieldId: "targetXbfEntity",
+    prompt: "Which XBF entity?",
+    outcome: "answered",
+    resolution: "Use XBFUS.",
+    evidenceIds: ["email:body"],
+  }]);
   assert.equal(
     queries.some((entry) => /\b(?:send|webhook|email)\b/.test(entry.text)),
     false,
