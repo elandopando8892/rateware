@@ -1,0 +1,102 @@
+{
+  "contractVersion": "rateware.private-resolver.staging-reproducibility.v1",
+  "canaryVersion": "beta-10.3",
+  "visibility": "internal_release_evidence",
+  "authorization": {
+    "source": "current_task_user_authorization",
+    "authorizedScope": "sprint_10_3_staging_reproducibility",
+    "persistentStagingAuthorized": true,
+    "stagingMutationAuthorized": true,
+    "productionAuthorized": false,
+    "realBusinessEffectsAuthorized": false
+  },
+  "migrationRepair": {
+    "failedMigration": "20260617150000_import_sourcing_base_google_sheet.sql",
+    "sqlState": "42P10",
+    "rootCause": "domain-only ON CONFLICT did not match the historical composite vendor constraint",
+    "replacementArbiter": ["vendor_name", "domain"],
+    "sourceSha": "115a8ba46f46f23c2c954b27c12d4f17ae359b8a",
+    "staticRegressionTest": "PASSED",
+    "disposablePostgresReplay": "PASSED",
+    "fullLocalMigrationReset": "PASSED"
+  },
+  "automaticProof": {
+    "branchName": "marksman-loads-migration-proof-10-3",
+    "branchProjectRef": "hsdchismykkvdcrengjv",
+    "persistent": false,
+    "withProductionData": false,
+    "status": "MIGRATIONS_PASSED",
+    "migrationCount": 69,
+    "latestMigration": "20260902013000",
+    "sourceVendorRows": 1269,
+    "deletedAfterProof": true
+  },
+  "target": {
+    "parentName": "rateware-prod",
+    "parentProjectRef": "alqjqzqagdmcywpjtnnr",
+    "branchName": "marksman-loads-staging",
+    "branchProjectRef": "ilcpzfgxjrkaxmtnvzud",
+    "gitBranch": "codex/marksman-loads-private-resolver-10-3",
+    "sourceSha": "e9fabaeaeedb597ed36523d51e9713f71c060286",
+    "region": "us-east-1",
+    "persistent": true,
+    "withProductionData": false,
+    "previewProjectStatus": "ACTIVE_HEALTHY",
+    "controlPlaneWorkflowStatus": "FUNCTIONS_DEPLOYED",
+    "automaticMigrationPath": "PASSED"
+  },
+  "credentialRotation": {
+    "fixtureOnlyPredecessorDeleted": true,
+    "predecessorProjectRef": "yyugsgepluffuufebxjl",
+    "replacementUsesFreshBranchCredentials": true,
+    "credentialMaterialRecorded": false
+  },
+  "databaseEvidence": {
+    "migrationCount": 69,
+    "latestMigration": "20260902013000",
+    "sourceVendorRows": 1269,
+    "fixtureVendorRows": 1,
+    "ledgerRows": 1,
+    "bidRows": 0,
+    "requestBodyColumns": 0,
+    "globalVendorArbiterPresentAfterOwnerScope": false
+  },
+  "isolation": {
+    "inheritedFunctionsRemoved": 34,
+    "retainedFunctions": ["rfx-private-resolver"],
+    "retainedFunctionVersion": 4,
+    "retainedFunctionBundleSha256": "b7c36fea0a869a0fb78e7d0e1be039ffb1830336075a573319629e2fd209f429",
+    "schedulerPresent": false
+  },
+  "canary": {
+    "status": "PASSED",
+    "syntheticMatchCount": 1,
+    "persistedReplay": "PASSED",
+    "tampering": "BLOCKED",
+    "liveExecution": "BLOCKED",
+    "ratewareSubmission": false,
+    "externalExecution": false,
+    "killSwitch": "VERIFIED",
+    "finalCanaryState": "DISABLED"
+  },
+  "openControls": {
+    "networkRestrictionState": "UNRESTRICTED",
+    "networkRestrictionsNarrowed": false,
+    "monitoringOwnerAssigned": false,
+    "productionApproved": false
+  },
+  "decision": {
+    "status": "STAGING_REPRODUCIBLE_CANARY_PASSED_PRODUCTION_BLOCKED",
+    "stagingReadyForSupervisedRehearsal": true,
+    "productionReady": false,
+    "productionApproved": false
+  },
+  "businessEffects": {
+    "realBidCreated": false,
+    "messageSent": false,
+    "paymentCreated": false,
+    "fleetRocketMutation": false,
+    "erpMutation": false,
+    "productionMutation": false
+  }
+}
