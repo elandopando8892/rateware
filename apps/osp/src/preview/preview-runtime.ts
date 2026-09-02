@@ -537,6 +537,39 @@ function createPreviewClient(): OspClient {
   ]);
   const knowledgePromotions = new Map<string, number>();
   const knowledgeKey = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '').slice(0, 128);
+  const reusePolicy = (candidate: { kind: 'field' | 'document'; canonicalKey: string; displayLabel: string }) => {
+    const label = candidate.displayLabel.trim().toLocaleLowerCase();
+    if (/(cww[- _]?qf[- _]?\d+|formato\s+\d+|supplier\s+(registration|setup)\s+(form|application)|provider\s+(form|template)|cuestionario|questionnaire|plantilla|template)/i.test(label) ||
+        /^(llenado|completar|complete and sign|fill out|submit|enviar|firmado|signed)\s/i.test(label)) {
+      return { reuseEligibility: 'case_specific' as const, eligibilityReason: 'provider_specific_requirement' as const, targetCanonicalKey: null, targetDisplayLabel: null };
+    }
+    const documents: ReadonlyArray<[RegExp, string, string]> = [
+      [/(^|[^a-z0-9])w[ -]?9([^a-z0-9]|$)|^irs form w-9$|^tax form$/i, 'fiscal.w9', 'IRS Form W-9'],
+      [/^(carátula del banco|caratula del banco|bank account evidence|bank account verification|voided check)$/i, 'banking.account_evidence', 'Bank account evidence'],
+      [/^(bank reference|bank reference letter|bank letter|carta bancaria|carta de referencia bancaria)$/i, 'banking.reference_letter', 'Bank reference letter'],
+      [/^(comprobante( de)? domicilio|proof of address|address proof)$/i, 'legal.proof_of_address', 'Proof of address'],
+      [/^(constancia( de)? situaci[oó]n fiscal|tax status certificate)$/i, 'fiscal.tax_status_certificate', 'Tax status certificate'],
+      [/^(acta constitutiva|articles of incorporation|certificate of formation)$/i, 'legal.articles_of_incorporation', 'Articles of incorporation'],
+      [/^(ine( del)? representante|identificaci[oó]n del representante legal|legal representative id)$/i, 'identity.legal_representative', 'Legal representative identification'],
+      [/^(opini[oó]n (positiva|de cumplimiento) sat|sat positive opinion|tax compliance opinion)$/i, 'fiscal.sat_compliance_opinion', 'SAT tax compliance opinion'],
+      [/^(poder notarial|power of attorney)$/i, 'legal.power_of_attorney', 'Power of attorney'],
+      [/^(broker authority|mc authority|operating authority)$/i, 'operations.broker_authority', 'Broker operating authority'],
+      [/^(bond insurance|surety bond|broker bond)$/i, 'insurance.surety_bond', 'Surety bond'],
+    ];
+    if (candidate.kind === 'document') {
+      const match = documents.find(([pattern]) => pattern.test(label));
+      return match
+        ? { reuseEligibility: 'eligible' as const, eligibilityReason: 'curated_common_concept' as const, targetCanonicalKey: match[1], targetDisplayLabel: match[2] }
+        : { reuseEligibility: 'review_required' as const, eligibilityReason: 'taxonomy_review_required' as const, targetCanonicalKey: null, targetDisplayLabel: null };
+    }
+    if (/^(supplier|business|fiscal|banking|legal|identity|contact|billing|shipping|operations|finance|credit|tax)\.[a-z0-9_.-]+$/.test(candidate.canonicalKey) && candidate.displayLabel.length <= 128) {
+      return { reuseEligibility: 'eligible' as const, eligibilityReason: 'stable_canonical_field' as const, targetCanonicalKey: candidate.canonicalKey, targetDisplayLabel: candidate.displayLabel };
+    }
+    if (candidate.canonicalKey === 'trade.references' && /^((three|3) )?trade references$/i.test(label)) {
+      return { reuseEligibility: 'eligible' as const, eligibilityReason: 'curated_common_concept' as const, targetCanonicalKey: 'business.trade.references', targetDisplayLabel: 'Trade references' };
+    }
+    return { reuseEligibility: 'review_required' as const, eligibilityReason: 'taxonomy_review_required' as const, targetCanonicalKey: null, targetDisplayLabel: null };
+  };
   const knowledgeWorkspace = (requestedCaseId: string) => {
     const manifest = requestManifests.get(requestedCaseId);
     const envelope = requestReviews.get(requestedCaseId);
@@ -563,6 +596,7 @@ function createPreviewClient(): OspClient {
     ].filter((candidate, index, all) => candidate.canonicalKey.length > 0 && all.findIndex((item) => item.kind === candidate.kind && item.canonicalKey === candidate.canonicalKey) === index)
       .sort((left, right) => `${left.kind}:${left.canonicalKey}`.localeCompare(`${right.kind}:${right.canonicalKey}`))
       .map((candidate) => {
+        const policy = reusePolicy(candidate);
         const exact = reusableKnowledge.get(`${candidate.kind}:${candidate.canonicalKey}`);
         const aliasMatches = exact ? [] : [...reusableKnowledge.entries()]
           .filter(([key, entry]) => key.startsWith(`${candidate.kind}:`) && entry.aliases.some((alias) => alias.localeCompare(candidate.displayLabel, undefined, { sensitivity: 'accent' }) === 0))
@@ -573,6 +607,10 @@ function createPreviewClient(): OspClient {
           ...candidate,
           catalogState: matched ? 'known' as const : 'new' as const,
           catalogMatch,
+          reuseEligibility: matched ? 'eligible' as const : catalogMatch === 'ambiguous' ? 'review_required' as const : policy.reuseEligibility,
+          eligibilityReason: matched ? 'approved_catalog_match' as const : catalogMatch === 'ambiguous' ? 'ambiguous_catalog_match' as const : policy.eligibilityReason,
+          targetCanonicalKey: matched?.canonicalKey ?? policy.targetCanonicalKey,
+          targetDisplayLabel: matched?.displayLabel ?? policy.targetDisplayLabel,
           matchedCanonicalKey: matched?.canonicalKey ?? null,
           matchedDisplayLabel: matched?.displayLabel ?? null,
           catalogVersion: matched?.version ?? null,
@@ -773,7 +811,7 @@ function createPreviewClient(): OspClient {
       const workspace = knowledgeWorkspace(input.caseId);
       if (workspace.reviewId !== input.reviewId || workspace.candidateSha256 !== input.expectedCandidateSha256 ||
           input.confirmation !== 'PROMOTE_REVIEWED_REQUEST_KNOWLEDGE' || input.selectedKeys.length < 1 ||
-          input.selectedKeys.some((key) => !workspace.candidates.some((candidate) => `${candidate.kind}:${candidate.canonicalKey}` === key))) {
+          input.selectedKeys.some((key) => !workspace.candidates.some((candidate) => `${candidate.kind}:${candidate.canonicalKey}` === key && candidate.reuseEligibility === 'eligible'))) {
         throw new Error('REQUEST_KNOWLEDGE_VERSION_CONFLICT');
       }
       let promotedCount = 0;
@@ -783,7 +821,8 @@ function createPreviewClient(): OspClient {
         else {
           const candidate = workspace.candidates.find((item) => `${item.kind}:${item.canonicalKey}` === key);
           if (!candidate) throw new Error('REQUEST_KNOWLEDGE_SELECTION_INVALID');
-          reusableKnowledge.set(key, { canonicalKey: candidate.canonicalKey, displayLabel: candidate.displayLabel, aliases: candidate.aliases, version: 1, sourceCaseId: input.caseId });
+          const targetKey = `${candidate.kind}:${candidate.targetCanonicalKey}`;
+          reusableKnowledge.set(targetKey, { canonicalKey: candidate.targetCanonicalKey!, displayLabel: candidate.targetDisplayLabel!, aliases: candidate.aliases, version: 1, sourceCaseId: input.caseId });
           promotedCount += 1;
         }
       }

@@ -151,17 +151,23 @@
 .request-knowledge-item small { margin-top: .2rem; color: var(--muted); }
 .request-knowledge-known { cursor: default; background: #f5f7fb; }
 .request-knowledge-ambiguous { cursor: default; background: #fff9e9; }
+.request-knowledge-held { cursor: default; background: #f7f7f5; }
 .request-knowledge-state { border-radius: 999px; padding: .3rem .55rem; color: #684900; background: #fff0bf; font-size: .68rem; font-weight: 900; text-transform: uppercase; }
 .request-knowledge-state-known { color: #075743; background: #dff5ec; }
 .request-knowledge-state-ambiguous { color: #7a2f0b; background: #ffe0ce; }
+.request-knowledge-state-held { color: #4e5055; background: #e8e8e4; }
 .request-knowledge-item .request-knowledge-provenance { margin-top: .45rem; color: #075743; font-weight: 750; }
 .request-knowledge-item .request-knowledge-provenance code { display: inline; color: inherit; }
+.request-knowledge-item .request-knowledge-target { margin-top: .45rem; color: #075743; font-weight: 750; }
+.request-knowledge-item .request-knowledge-target code { display: inline; color: inherit; }
 .request-knowledge-item .request-knowledge-conflict { margin-top: .45rem; color: #7a2f0b; font-weight: 750; }
+.request-knowledge-item .request-knowledge-held-note { margin-top: .45rem; color: #4e5055; font-weight: 750; }
 .request-knowledge-action { display: grid; justify-items: start; gap: .75rem; margin-top: 1rem; }
 .request-knowledge-action > label { display: flex; gap: .55rem; align-items: flex-start; color: var(--xbf-navy); font-size: .8rem; font-weight: 800; }
 .request-knowledge-action input { margin-top: .15rem; accent-color: var(--xbf-navy); }
 .request-knowledge-success, .request-knowledge-complete { margin: 1rem 0 0; padding: .75rem .9rem; border-left: 4px solid var(--success); color: #075743; background: #eaf8f3; }
 .request-knowledge-conflict-summary { margin: 1rem 0 0; padding: .75rem .9rem; border-left: 4px solid var(--warning); color: #684900; background: #fff9e9; }
+.request-knowledge-held-summary { margin: 1rem 0 0; padding: .75rem .9rem; border-left: 4px solid #777a80; color: #34363a; background: #f3f3f1; }
 .request-knowledge-empty { color: var(--muted); }
 .request-knowledge-panel > footer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .7rem; align-items: center; margin: 1.5rem -2rem -2rem; padding: .85rem 2rem; color: #fff; background: var(--xbf-navy-deep); font-size: .76rem; }
 .request-knowledge-panel > footer span { color: rgba(255,255,255,.7); }

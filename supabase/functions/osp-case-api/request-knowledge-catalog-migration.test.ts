@@ -13,6 +13,12 @@ const hotfixSql = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const reusePolicySql = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260902070000_osp_request_knowledge_reuse_policy.sql",
+    import.meta.url,
+  ),
+);
 
 Deno.test("request knowledge catalog is human-promoted, tenant-scoped and has no external effects", () => {
   assertMatch(
@@ -65,6 +71,26 @@ Deno.test("request knowledge promotion keeps the 256-character contract without 
   );
   assertNotMatch(
     hotfixSql.replace(/^--.*$/gm, ""),
+    /\b(?:http_post|net\.http|pg_net|cron\.|gmail_send|webhook)\b/i,
+  );
+});
+
+Deno.test("request knowledge reuse policy normalizes common concepts and rejects provider forms", () => {
+  assertMatch(
+    reusePolicySql,
+    /create or replace function osp_private\.request_knowledge_reuse_policy/i,
+  );
+  assertMatch(reusePolicySql, /'case_specific'/);
+  assertMatch(reusePolicySql, /'provider_specific_requirement'/);
+  assertMatch(reusePolicySql, /'fiscal\.tax_status_certificate'/);
+  assertMatch(reusePolicySql, /'legal\.articles_of_incorporation'/);
+  assertMatch(reusePolicySql, /REQUEST_KNOWLEDGE_SELECTION_NOT_REUSABLE/);
+  assertMatch(
+    reusePolicySql,
+    /candidate_policy\.target_canonical_key/i,
+  );
+  assertNotMatch(
+    reusePolicySql.replace(/^--.*$/gm, ""),
     /\b(?:http_post|net\.http|pg_net|cron\.|gmail_send|webhook)\b/i,
   );
 });

@@ -532,6 +532,16 @@ export type RequestKnowledgeCandidateSummary = {
   evidenceCount: number;
   catalogState: "new" | "known";
   catalogMatch: "none" | "exact" | "alias" | "ambiguous";
+  reuseEligibility: "eligible" | "case_specific" | "review_required";
+  eligibilityReason:
+    | "approved_catalog_match"
+    | "curated_common_concept"
+    | "stable_canonical_field"
+    | "provider_specific_requirement"
+    | "taxonomy_review_required"
+    | "ambiguous_catalog_match";
+  targetCanonicalKey: string | null;
+  targetDisplayLabel: string | null;
   matchedCanonicalKey: string | null;
   matchedDisplayLabel: string | null;
   catalogVersion: number | null;
@@ -660,6 +670,12 @@ function requestKnowledgeCandidate(row: Row): RequestKnowledgeCandidateSummary {
   const sourceCaseId = row.source_case_id === null
     ? null
     : String(row.source_case_id);
+  const targetCanonicalKey = row.target_canonical_key === null
+    ? null
+    : String(row.target_canonical_key);
+  const targetDisplayLabel = row.target_display_label === null
+    ? null
+    : String(row.target_display_label);
   const matched = row.catalog_match === "exact" || row.catalog_match === "alias";
   if (
     (row.knowledge_kind !== "field" && row.knowledge_kind !== "document") ||
@@ -686,6 +702,24 @@ function requestKnowledgeCandidate(row: Row): RequestKnowledgeCandidateSummary {
     !["none", "exact", "alias", "ambiguous"].includes(
       String(row.catalog_match),
     ) ||
+    !["eligible", "case_specific", "review_required"].includes(
+      String(row.reuse_eligibility),
+    ) ||
+    ![
+      "approved_catalog_match",
+      "curated_common_concept",
+      "stable_canonical_field",
+      "provider_specific_requirement",
+      "taxonomy_review_required",
+      "ambiguous_catalog_match",
+    ].includes(String(row.eligibility_reason)) ||
+    (row.reuse_eligibility === "eligible"
+      ? targetCanonicalKey === null ||
+        !/^[a-z][a-z0-9_.-]{0,127}$/.test(targetCanonicalKey) ||
+        targetDisplayLabel === null ||
+        targetDisplayLabel.trim() !== targetDisplayLabel ||
+        targetDisplayLabel.length < 1 || targetDisplayLabel.length > 256
+      : targetCanonicalKey !== null || targetDisplayLabel !== null) ||
     (matched
       ? row.catalog_state !== "known" || catalogVersion === null ||
         catalogVersion < 1 || matchedCanonicalKey === null ||
@@ -710,6 +744,10 @@ function requestKnowledgeCandidate(row: Row): RequestKnowledgeCandidateSummary {
     evidenceCount,
     catalogState: row.catalog_state,
     catalogMatch: row.catalog_match as RequestKnowledgeCandidateSummary["catalogMatch"],
+    reuseEligibility: row.reuse_eligibility as RequestKnowledgeCandidateSummary["reuseEligibility"],
+    eligibilityReason: row.eligibility_reason as RequestKnowledgeCandidateSummary["eligibilityReason"],
+    targetCanonicalKey,
+    targetDisplayLabel,
     matchedCanonicalKey,
     matchedDisplayLabel,
     catalogVersion,
@@ -1132,9 +1170,9 @@ export function createPostgresClarificationStore(
           );
           if (reviewVersion < 1) fail("REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
           const candidateRows =
-            await tx`select candidate.knowledge_kind, candidate.canonical_key, candidate.display_label, candidate.aliases_json, candidate.value_type, candidate.required, candidate.evidence_count, case when exact_entry.id is not null or alias_entry.match_count = 1 then 'known' else 'new' end as catalog_state, case when exact_entry.id is not null then 'exact' when alias_entry.match_count = 1 then 'alias' when alias_entry.match_count > 1 then 'ambiguous' else 'none' end as catalog_match, case when exact_entry.id is not null then exact_entry.canonical_key when alias_entry.match_count = 1 then alias_entry.canonical_key else null end as matched_canonical_key, case when exact_entry.id is not null then exact_entry.display_label when alias_entry.match_count = 1 then alias_entry.display_label else null end as matched_display_label, case when exact_entry.id is not null then exact_entry.version when alias_entry.match_count = 1 then alias_entry.version else null end as catalog_version, case when exact_entry.id is not null then exact_entry.source_case_id when alias_entry.match_count = 1 then alias_entry.source_case_id else null end as source_case_id from osp_private.request_knowledge_candidates(${input.organizationId}, ${input.caseId}, ${
+            await tx`select candidate.knowledge_kind, candidate.canonical_key, candidate.display_label, candidate.aliases_json, candidate.value_type, candidate.required, candidate.evidence_count, case when exact_entry.id is not null or alias_entry.match_count = 1 then 'known' else 'new' end as catalog_state, case when exact_entry.id is not null then 'exact' when alias_entry.match_count = 1 then 'alias' when alias_entry.match_count > 1 then 'ambiguous' else 'none' end as catalog_match, case when exact_entry.id is not null or alias_entry.match_count = 1 then 'eligible' when alias_entry.match_count > 1 then 'review_required' else reuse_policy.reuse_eligibility end as reuse_eligibility, case when exact_entry.id is not null or alias_entry.match_count = 1 then 'approved_catalog_match' when alias_entry.match_count > 1 then 'ambiguous_catalog_match' else reuse_policy.eligibility_reason end as eligibility_reason, case when exact_entry.id is not null then exact_entry.canonical_key when alias_entry.match_count = 1 then alias_entry.canonical_key when reuse_policy.reuse_eligibility = 'eligible' then reuse_policy.target_canonical_key else null end as target_canonical_key, case when exact_entry.id is not null then exact_entry.display_label when alias_entry.match_count = 1 then alias_entry.display_label when reuse_policy.reuse_eligibility = 'eligible' then reuse_policy.target_display_label else null end as target_display_label, case when exact_entry.id is not null then exact_entry.canonical_key when alias_entry.match_count = 1 then alias_entry.canonical_key else null end as matched_canonical_key, case when exact_entry.id is not null then exact_entry.display_label when alias_entry.match_count = 1 then alias_entry.display_label else null end as matched_display_label, case when exact_entry.id is not null then exact_entry.version when alias_entry.match_count = 1 then alias_entry.version else null end as catalog_version, case when exact_entry.id is not null then exact_entry.source_case_id when alias_entry.match_count = 1 then alias_entry.source_case_id else null end as source_case_id from osp_private.request_knowledge_candidates(${input.organizationId}, ${input.caseId}, ${
               source[0].review_id
-            }) candidate left join lateral (select entry.id, entry.canonical_key, entry.display_label, entry.version, entry.source_case_id from osp_private.request_knowledge_catalog_entries entry where entry.organization_id = ${input.organizationId} and entry.knowledge_kind = candidate.knowledge_kind and entry.canonical_key = candidate.canonical_key limit 1) exact_entry on true left join lateral (select entry.canonical_key, entry.display_label, entry.version, entry.source_case_id, count(*) over ()::integer as match_count from osp_private.request_knowledge_catalog_entries entry where exact_entry.id is null and entry.organization_id = ${input.organizationId} and entry.knowledge_kind = candidate.knowledge_kind and exists (select 1 from jsonb_array_elements_text(entry.aliases_json) catalog_alias(value) where lower(btrim(catalog_alias.value)) = lower(btrim(candidate.display_label))) order by entry.canonical_key limit 1) alias_entry on true order by candidate.knowledge_kind, candidate.canonical_key`;
+            }) candidate cross join lateral osp_private.request_knowledge_reuse_policy(candidate.knowledge_kind, candidate.canonical_key, candidate.display_label, candidate.aliases_json, candidate.value_type) reuse_policy left join lateral (select entry.id, entry.canonical_key, entry.display_label, entry.version, entry.source_case_id from osp_private.request_knowledge_catalog_entries entry where entry.organization_id = ${input.organizationId} and entry.knowledge_kind = candidate.knowledge_kind and entry.canonical_key = candidate.canonical_key limit 1) exact_entry on true left join lateral (select entry.canonical_key, entry.display_label, entry.version, entry.source_case_id, count(*) over ()::integer as match_count from osp_private.request_knowledge_catalog_entries entry where exact_entry.id is null and entry.organization_id = ${input.organizationId} and entry.knowledge_kind = candidate.knowledge_kind and exists (select 1 from jsonb_array_elements_text(entry.aliases_json) catalog_alias(value) where lower(btrim(catalog_alias.value)) = lower(btrim(candidate.display_label))) order by entry.canonical_key limit 1) alias_entry on true order by candidate.knowledge_kind, candidate.canonical_key`;
           if (candidateRows.length > 600) {
             fail("REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
           }

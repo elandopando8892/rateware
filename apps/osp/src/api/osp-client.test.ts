@@ -328,7 +328,9 @@ it('reads and promotes only an exact reviewed request-knowledge selection', asyn
     candidates: [{
       kind: 'field', canonicalKey: 'business.trade.references', displayLabel: 'Trade references',
       aliases: ['Trade references'], valueType: 'table', required: true, evidenceCount: 2, catalogState: 'new',
-      catalogMatch: 'none', matchedCanonicalKey: null, matchedDisplayLabel: null, catalogVersion: null, sourceCaseId: null,
+      catalogMatch: 'none', reuseEligibility: 'eligible', eligibilityReason: 'stable_canonical_field',
+      targetCanonicalKey: 'business.trade.references', targetDisplayLabel: 'Trade references',
+      matchedCanonicalKey: null, matchedDisplayLabel: null, catalogVersion: null, sourceCaseId: null,
     }],
     catalogEntryCount: 4,
     priorPromotionCount: 0,

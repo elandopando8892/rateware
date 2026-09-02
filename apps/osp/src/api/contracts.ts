@@ -318,6 +318,13 @@ const RequestKnowledgeCandidateBase = {
   evidenceCount: z.number().int().min(1).max(20),
   catalogState: z.enum(['new', 'known']),
   catalogMatch: z.enum(['none', 'exact', 'alias', 'ambiguous']),
+  reuseEligibility: z.enum(['eligible', 'case_specific', 'review_required']),
+  eligibilityReason: z.enum([
+    'approved_catalog_match', 'curated_common_concept', 'stable_canonical_field',
+    'provider_specific_requirement', 'taxonomy_review_required', 'ambiguous_catalog_match',
+  ]),
+  targetCanonicalKey: z.string().regex(/^[a-z][a-z0-9_.-]{0,127}$/).nullable(),
+  targetDisplayLabel: z.string().min(1).max(256).nullable(),
   matchedCanonicalKey: z.string().regex(/^[a-z][a-z0-9_.-]{0,127}$/).nullable(),
   matchedDisplayLabel: z.string().min(1).max(256).nullable(),
   catalogVersion: z.number().int().min(1).max(2_147_483_647).nullable(),
