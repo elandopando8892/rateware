@@ -1,0 +1,107 @@
+{
+  "contractVersion": "rateware.private-resolver.staging-canary.v1",
+  "canaryVersion": "beta-10.2",
+  "visibility": "internal_release_evidence",
+  "authorization": {
+    "source": "current_task_user_authorization",
+    "authorizedScope": "sprint_10_2_persistent_staging_and_fixture_canary",
+    "capturedOn": "2026-09-01",
+    "paidBranchAuthorized": true,
+    "stagingMutationAuthorized": true,
+    "productionAuthorized": false,
+    "realBusinessEffectsAuthorized": false
+  },
+  "candidate": {
+    "sourceSha": "3c6ae8636d293eb51c1fd7b520f13ce63d62d49a",
+    "deploymentBaseSha": "2a8b16ca79e4f33de3241932b2901bb881786a6e",
+    "functionBundleSha256": "84520d7a900b0795b458034fb0151c40d99385b5b13fc3a827657f85fdd08f7e",
+    "functionVersion": 2
+  },
+  "target": {
+    "parentName": "rateware-prod",
+    "parentProjectRef": "alqjqzqagdmcywpjtnnr",
+    "branchName": "marksman-loads-staging",
+    "branchProjectRef": "yyugsgepluffuufebxjl",
+    "branchClass": "DEDICATED_PERSISTENT_PREVIEW_BRANCH",
+    "region": "us-east-1",
+    "persistent": true,
+    "withProductionData": false,
+    "previewProjectStatus": "ACTIVE_HEALTHY",
+    "controlPlaneWorkflowStatus": "MIGRATIONS_FAILED_AUTO_PATH",
+    "manualResolverPath": "VERIFIED",
+    "gitBranchAssociation": null
+  },
+  "githubEnvironment": {
+    "repository": "elandopando8892/rateware",
+    "name": "Staging",
+    "customBranchPolicy": true,
+    "allowedBranch": "codex/marksman-loads-private-resolver-10-2"
+  },
+  "automaticMigrationFailure": {
+    "preserved": true,
+    "failedBranchProjectRef": "xnyzziiijtpbbfurbtqw",
+    "failedMigration": "20260617150000_import_sourcing_base_google_sheet.sql",
+    "sqlState": "42P10",
+    "reason": "historical vendor seed expected an absent unique constraint",
+    "resolution": "failed branch deleted; replacement created without Git migration automation",
+    "productionTouched": false
+  },
+  "fixtureSchema": {
+    "sourceMigration": "20260618165000_rfx_spot_book.sql",
+    "resolverMigrations": [
+      "20260901193000_rfx_private_resolver_request_ledger.sql",
+      "20260901230000_rfx_private_resolver_ledger_health.sql",
+      "20260902003000_rfx_private_resolver_retention.sql",
+      "20260902013000_rfx_private_resolver_operational_controls.sql"
+    ],
+    "fixtureFile": "supabase/staging/marksman-loads-private-resolver-fixture.sql",
+    "fixtureOnly": true,
+    "events": 1,
+    "lanes": 1,
+    "vendors": 1,
+    "invitations": 1,
+    "bidRows": 0
+  },
+  "isolation": {
+    "inheritedFunctionsRemoved": 33,
+    "retainedFunctions": ["rfx-private-resolver"],
+    "schedulerPresent": false,
+    "requestBodyColumns": 0,
+    "ledgerRlsEnabled": true,
+    "serviceRoleRpcCount": 5
+  },
+  "canary": {
+    "status": "PASSED",
+    "syntheticMatchCount": 1,
+    "ledgerRows": 1,
+    "persistedReplay": "PASSED",
+    "tampering": "BLOCKED",
+    "liveExecution": "BLOCKED",
+    "ratewareSubmission": false,
+    "externalExecution": false,
+    "credentialExposure": false,
+    "killSwitch": "VERIFIED",
+    "finalCanaryState": "DISABLED"
+  },
+  "releaseControls": {
+    "secretCustodyVerified": true,
+    "rollbackRehearsed": true,
+    "networkControlsVerified": false,
+    "monitoringOwnerAssigned": false,
+    "productionApproved": false
+  },
+  "decision": {
+    "status": "REMOTE_STAGING_CANARY_PASSED_PRODUCTION_BLOCKED",
+    "stagingReadyForSupervisedRehearsal": true,
+    "productionReady": false,
+    "productionApproved": false
+  },
+  "businessEffects": {
+    "realBidCreated": false,
+    "messageSent": false,
+    "paymentCreated": false,
+    "fleetRocketMutation": false,
+    "erpMutation": false,
+    "productionMutation": false
+  }
+}

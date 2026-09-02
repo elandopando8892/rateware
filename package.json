@@ -11,7 +11,8 @@
     "test:readiness-intake": "node tools/verify-rfx-private-resolver-readiness-intake.mjs",
     "test:local-rehearsal": "node tools/verify-rfx-private-resolver-local-rehearsal.mjs",
     "test:staging-activation": "node tools/verify-rfx-private-resolver-staging-activation.mjs",
-    "test:release:private-resolver": "npm test && npm run test:integration:resolver-ledger && deno check supabase/functions/rfx-private-resolver/index.ts && npm run test:release-review && npm run test:readiness-intake && npm run test:local-rehearsal && npm run test:staging-activation",
+    "test:staging-canary": "node tools/verify-rfx-private-resolver-staging-canary.mjs",
+    "test:release:private-resolver": "npm test && npm run test:integration:resolver-ledger && deno check supabase/functions/rfx-private-resolver/index.ts && npm run test:release-review && npm run test:readiness-intake && npm run test:local-rehearsal && npm run test:staging-activation && npm run test:staging-canary",
     "test": "node tests/upload-center.test.mjs && node tests/rateware-stability.test.mjs && node --test tests/rfx-private-resolver.test.mjs"
   }
 }
