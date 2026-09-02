@@ -325,7 +325,8 @@ async function advanceCase(
   const target = targetState(input.plan);
   if (state === target) return;
   const allowed = state === "analyzing_requirements" ||
-    (state === "awaiting_xbf_information" && target === "preparing");
+    (state === "awaiting_xbf_information" &&
+      (target === "preparing" || target === "awaiting_clarification"));
   if (!allowed) fail("INVALID_INPUT");
   await transition(tx, {
     ...input,

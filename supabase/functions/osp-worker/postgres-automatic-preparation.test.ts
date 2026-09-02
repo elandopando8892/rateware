@@ -1,7 +1,10 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 
 import type { SqlPort, SqlRow } from "../_shared/osp/database-context.ts";
-import type { AutomaticPreparationPlan } from "./automatic-preparation.ts";
+import {
+  type AutomaticPreparationPlan,
+  prepareCaseForm,
+} from "./automatic-preparation.ts";
 import { createPostgresAutomaticPreparationStore } from "./postgres-automatic-preparation.ts";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
@@ -296,6 +299,36 @@ Deno.test("postgres preparation refuses to rewrite a human-governed downstream c
     Error,
     "INVALID_INPUT",
   );
+});
+
+Deno.test("postgres preparation may surface a new contradiction while awaiting XBF information", async () => {
+  const fake = fakeDatabase("awaiting_xbf_information");
+  fake.setExtractionValue("Conflicting supplier value");
+  const store = createPostgresAutomaticPreparationStore({
+    databaseUrl: "postgresql://synthetic.example.test/db",
+    postgresFactory: () => fake.sql,
+  });
+  const loaded = await store.load({
+    organizationId,
+    caseId,
+    extractionId,
+    templateVersionId,
+  });
+  const plan = prepareCaseForm(loaded);
+  assertEquals(plan.status, "awaiting_clarification");
+  await store.persist({
+    organizationId,
+    correlationId: "job-contradiction",
+    caseId,
+    extractionId,
+    templateVersionId,
+    plan,
+  });
+  assertEquals(fake.state(), "awaiting_clarification");
+  assertEquals(fake.events, [{
+    state: "awaiting_clarification",
+    reason: "clarification_requested",
+  }]);
 });
 
 Deno.test("postgres preparation rejects a stale plan when source evidence changed", async () => {
