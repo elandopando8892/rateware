@@ -7,6 +7,12 @@ const sql = await Deno.readTextFile(
   ),
 );
 const executableSql = sql.replace(/^--.*$/gm, "");
+const hotfixSql = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260902054500_osp_request_knowledge_idempotency_regex_hotfix.sql",
+    import.meta.url,
+  ),
+);
 
 Deno.test("request knowledge catalog is human-promoted, tenant-scoped and has no external effects", () => {
   assertMatch(
@@ -37,5 +43,28 @@ Deno.test("request knowledge catalog is human-promoted, tenant-scoped and has no
   assertNotMatch(
     executableSql,
     /\b(?:fact_value|reviewer_value|proposed_value|signature_bytes)\b/i,
+  );
+});
+
+Deno.test("request knowledge promotion keeps the 256-character contract without unsupported ARE bounds", () => {
+  assertMatch(hotfixSql, /REQUEST_KNOWLEDGE_HOTFIX_TARGET_MISMATCH/);
+  assertMatch(hotfixSql, /\^\[A-Za-z0-9:_-\]\+\$/);
+  assertMatch(
+    hotfixSql,
+    /char_length\(p_idempotency_key\) not between 1 and 256/i,
+  );
+  assertMatch(
+    hotfixSql,
+    /char_length\(idempotency_key\) between 1 and 256/i,
+  );
+  assertMatch(hotfixSql, /available_candidate\.knowledge_kind/);
+  assertMatch(hotfixSql, /PL\/pgSQL record shadowing/);
+  assertNotMatch(
+    hotfixSql.replace(/invalid_bound constant text :=[\s\S]*?;/, ""),
+    /\{1,256\}/,
+  );
+  assertNotMatch(
+    hotfixSql.replace(/^--.*$/gm, ""),
+    /\b(?:http_post|net\.http|pg_net|cron\.|gmail_send|webhook)\b/i,
   );
 });
