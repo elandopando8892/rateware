@@ -316,6 +316,21 @@ Deno.test("OSP worker runs only one exact supplier package canary", async () => 
   assertEquals(ambiguous.status, 400);
 });
 
+Deno.test("manual canary credentials cannot run a supplier package", async () => {
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    manualCanaryToken: manualToken,
+    enqueue: async () => 0,
+    run: async () => 0,
+    runSupplierPackageCanary: async () => 1,
+  });
+  const response = await handler(
+    request(packageCanary, `Bearer ${manualToken}`),
+  );
+  assertEquals(response.status, 401);
+  assertEquals(await response.json(), { error: "UNAUTHORIZED" });
+});
+
 Deno.test("OSP worker fails closed when supplier package canary is disabled or not ready", async () => {
   const disabled = createOspWorkerHandler({
     expectedToken: token,

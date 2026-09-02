@@ -288,6 +288,7 @@ export function createOspWorkerHandler(deps: {
       "snapshotSha256",
     ];
     if (body.action === "run_supplier_package_canary") {
+      if (!serviceAuthorized) return json(401, { error: "UNAUTHORIZED" });
       if (
         keys.length !== supplierPackageKeys.length ||
         keys.some((key, index) => key !== supplierPackageKeys[index]) ||

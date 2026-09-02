@@ -480,13 +480,11 @@ export function createShadowWorkerRuntime(input: {
       });
     }
     : undefined;
-  const supplierPackages = input.supplierPackageCanary
-    ? createSupplierPackageJobService({
-      databaseUrl: input.databaseUrl,
-      postgresFactory: input.postgresFactory,
-      storageClient: governedStorage(input.storageClient),
-    })
-    : undefined;
+  const supplierPackages = createSupplierPackageJobService({
+    databaseUrl: input.databaseUrl,
+    postgresFactory: input.postgresFactory,
+    storageClient: governedStorage(input.storageClient),
+  });
   const signatures = input.signatureVault
     ? createSignatureJobService({
       databaseUrl: input.databaseUrl,
@@ -495,44 +493,44 @@ export function createShadowWorkerRuntime(input: {
       vault: input.signatureVault,
     })
     : undefined;
-  const runSupplierPackageCanary = input.supplierPackageCanary &&
-      supplierPackages
-    ? async (request: SupplierPackageCanary): Promise<number> => {
-      const allowed = input.supplierPackageCanary!;
-      if (
-        request.organizationId !== allowed.organizationId ||
+  const runSupplierPackageCanary = async (
+    request: SupplierPackageCanary,
+  ): Promise<number> => {
+    const allowed = input.supplierPackageCanary;
+    if (
+      allowed &&
+      (request.organizationId !== allowed.organizationId ||
         request.caseId !== allowed.caseId ||
         request.snapshotId !== allowed.snapshotId ||
-        request.snapshotSha256 !== allowed.snapshotSha256
-      ) throw new Error("INVALID_INPUT");
-      const jobId = await jobs.enqueue({
-        organizationId: request.organizationId,
-        kind: "generate_supplier_package",
-        opaquePayload: {
-          caseId: request.caseId,
-          snapshotId: request.snapshotId,
-        },
-        idempotencyKey: `supplier-package:${request.snapshotId}`,
-      });
-      return await runWorker({
-        workerId: input.workerId,
-        now: () => new Date(),
-        jobs: {
-          claim: ({ leaseMs }) =>
-            jobs.claimSupplierPackageCanary({
-              ...request,
-              jobId,
-              leaseMs,
-            }),
-          complete: jobs.complete,
-          fail: jobs.fail,
-        },
-        intake,
-        supplierPackages,
-        limit: 1,
-      });
-    }
-    : undefined;
+        request.snapshotSha256 !== allowed.snapshotSha256)
+    ) throw new Error("INVALID_INPUT");
+    const jobId = await jobs.enqueue({
+      organizationId: request.organizationId,
+      kind: "generate_supplier_package",
+      opaquePayload: {
+        caseId: request.caseId,
+        snapshotId: request.snapshotId,
+      },
+      idempotencyKey: `supplier-package:${request.snapshotId}`,
+    });
+    return await runWorker({
+      workerId: input.workerId,
+      now: () => new Date(),
+      jobs: {
+        claim: ({ leaseMs }) =>
+          jobs.claimSupplierPackageCanary({
+            ...request,
+            jobId,
+            leaseMs,
+          }),
+        complete: jobs.complete,
+        fail: jobs.fail,
+      },
+      intake,
+      supplierPackages,
+      limit: 1,
+    });
+  };
   const runSignatureApplicationCanary = input.signatureCanary && signatures
     ? async (request: SignatureApplicationCanary): Promise<number> => {
       const allowed = input.signatureCanary!;

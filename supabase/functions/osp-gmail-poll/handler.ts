@@ -8,58 +8,82 @@ export type ScheduledGmailPollReceipt = Readonly<{
 }>;
 
 export type ScheduledGmailPollFailureCode =
-  | 'POLL_DEPENDENCY_UNAVAILABLE'
-  | 'POLL_GMAIL_CONNECTION_UNAVAILABLE'
-  | 'POLL_TOKEN_DECRYPT_FAILED'
-  | 'POLL_REFRESH_TOKEN_MISSING'
-  | 'POLL_OAUTH_CLIENT_MISSING'
-  | 'POLL_TOKEN_REFRESH_REJECTED'
-  | 'POLL_ACCESS_TOKEN_UNAVAILABLE'
-  | 'POLL_SCOPE_INVALID'
-  | 'POLL_GMAIL_SYNC_UNAVAILABLE'
-  | 'POLL_WORKER_UNAVAILABLE';
+  | "POLL_DEPENDENCY_UNAVAILABLE"
+  | "POLL_GMAIL_CONNECTION_UNAVAILABLE"
+  | "POLL_TOKEN_DECRYPT_FAILED"
+  | "POLL_REFRESH_TOKEN_MISSING"
+  | "POLL_OAUTH_CLIENT_MISSING"
+  | "POLL_TOKEN_REFRESH_REJECTED"
+  | "POLL_ACCESS_TOKEN_UNAVAILABLE"
+  | "POLL_SCOPE_INVALID"
+  | "POLL_GMAIL_SYNC_UNAVAILABLE"
+  | "POLL_WORKER_UNAVAILABLE";
 
 export class ScheduledGmailPollDependencyError extends Error {
   constructor(readonly code: ScheduledGmailPollFailureCode) {
     super(code);
-    this.name = 'ScheduledGmailPollDependencyError';
+    this.name = "ScheduledGmailPollDependencyError";
   }
 }
 
-export function classifyScheduledGmailPollFailure(error: unknown): ScheduledGmailPollFailureCode {
+export function classifyScheduledGmailPollFailure(
+  error: unknown,
+): ScheduledGmailPollFailureCode {
   if (error instanceof ScheduledGmailPollDependencyError) return error.code;
-  const message = error instanceof Error ? `${error.name} ${error.message}` : '';
-  if (/unsupported gmail token envelope|operationerror|decrypt|cipher/i.test(message)) return 'POLL_TOKEN_DECRYPT_FAILED';
-  if (/refresh token is unavailable/i.test(message)) return 'POLL_REFRESH_TOKEN_MISSING';
-  if (/oauth client is not configured/i.test(message)) return 'POLL_OAUTH_CLIENT_MISSING';
-  if (/invalid_grant|expired or revoked|token refresh|refresh token.*(?:failed|rejected)|bad request/i.test(message)) {
-    return 'POLL_TOKEN_REFRESH_REJECTED';
+  const message = error instanceof Error
+    ? `${error.name} ${error.message}`
+    : "";
+  if (
+    /unsupported gmail token envelope|operationerror|decrypt|cipher/i.test(
+      message,
+    )
+  ) return "POLL_TOKEN_DECRYPT_FAILED";
+  if (/refresh token is unavailable/i.test(message)) {
+    return "POLL_REFRESH_TOKEN_MISSING";
   }
-  if (/access token/i.test(message)) return 'POLL_ACCESS_TOKEN_UNAVAILABLE';
-  if (/scope/i.test(message)) return 'POLL_SCOPE_INVALID';
-  if (/gmail/i.test(message)) return 'POLL_GMAIL_SYNC_UNAVAILABLE';
-  return 'POLL_DEPENDENCY_UNAVAILABLE';
+  if (/oauth client is not configured/i.test(message)) {
+    return "POLL_OAUTH_CLIENT_MISSING";
+  }
+  if (
+    /invalid_grant|expired or revoked|token refresh|refresh token.*(?:failed|rejected)|bad request/i
+      .test(message)
+  ) {
+    return "POLL_TOKEN_REFRESH_REJECTED";
+  }
+  if (/access token/i.test(message)) return "POLL_ACCESS_TOKEN_UNAVAILABLE";
+  if (/scope/i.test(message)) return "POLL_SCOPE_INVALID";
+  if (/gmail/i.test(message)) return "POLL_GMAIL_SYNC_UNAVAILABLE";
+  return "POLL_DEPENDENCY_UNAVAILABLE";
 }
 
 export type ScheduledGmailPollHandlerOptions = Readonly<{
   expectedToken: string;
   drain?(): Promise<Readonly<{ enqueued: number; processed: number }>>;
-  claim(): Promise<Readonly<{ status: 'claimed'; leaseId: string }> | Readonly<{ status: 'disabled' | 'busy' }>>;
+  runSupplierPackageCanary?(
+    input: SupplierPackageCanaryRequest,
+  ): Promise<Readonly<{ processed: 1 }>>;
+  claim(): Promise<
+    | Readonly<{ status: "claimed"; leaseId: string }>
+    | Readonly<{ status: "disabled" | "busy" }>
+  >;
   poll(): Promise<ScheduledGmailPollReceipt>;
   complete(receipt: ScheduledGmailPollReceipt, leaseId: string): Promise<void>;
   fail(code: ScheduledGmailPollFailureCode, leaseId: string): Promise<void>;
   incidentId?: () => string;
 }>;
 
-const MAX_BODY_BYTES = 96;
+const MAX_BODY_BYTES = 512;
 const NO_STORE_HEADERS = {
-  'content-type': 'application/json; charset=utf-8',
-  'cache-control': 'no-store',
-  pragma: 'no-cache',
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "no-store",
+  pragma: "no-cache",
 };
 
 function json(body: unknown, status: number): Response {
-  return new Response(JSON.stringify(body), { status, headers: NO_STORE_HEADERS });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: NO_STORE_HEADERS,
+  });
 }
 
 function exactToken(actual: string, expected: string): boolean {
@@ -73,58 +97,152 @@ function exactToken(actual: string, expected: string): boolean {
   return mismatch === 0;
 }
 
-type ScheduledAction =
-  | 'poll_connected_provider_mailbox'
-  | 'drain_queued_osp_jobs';
+type SupplierPackageCanaryRequest = Readonly<{
+  organizationId: string;
+  caseId: string;
+  snapshotId: string;
+  snapshotSha256: string;
+}>;
 
-async function strictBody(request: Request): Promise<ScheduledAction> {
-  if (request.headers.get('transfer-encoding')) throw new Error('INVALID_REQUEST');
-  const encoding = request.headers.get('content-encoding');
-  if (encoding && encoding.trim().toLowerCase() !== 'identity') throw new Error('INVALID_REQUEST');
-  if (request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
-    throw new Error('INVALID_REQUEST');
+type ScheduledRequest =
+  | Readonly<
+    { action: "poll_connected_provider_mailbox" | "drain_queued_osp_jobs" }
+  >
+  | (
+    & Readonly<{ action: "run_supplier_package_canary" }>
+    & SupplierPackageCanaryRequest
+  );
+
+async function strictBody(request: Request): Promise<ScheduledRequest> {
+  if (request.headers.get("transfer-encoding")) {
+    throw new Error("INVALID_REQUEST");
+  }
+  const encoding = request.headers.get("content-encoding");
+  if (encoding && encoding.trim().toLowerCase() !== "identity") {
+    throw new Error("INVALID_REQUEST");
+  }
+  if (
+    request.headers.get("content-type")?.split(";", 1)[0].trim()
+      .toLowerCase() !== "application/json"
+  ) {
+    throw new Error("INVALID_REQUEST");
   }
   const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES) throw new Error('INVALID_REQUEST');
+  if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES) {
+    throw new Error("INVALID_REQUEST");
+  }
   let body: unknown;
   try {
     body = JSON.parse(text);
   } catch {
-    throw new Error('INVALID_REQUEST');
+    throw new Error("INVALID_REQUEST");
   }
-  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('INVALID_REQUEST');
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error("INVALID_REQUEST");
+  }
   const record = body as Record<string, unknown>;
+  if (record.version !== 1) throw new Error("INVALID_REQUEST");
+  if (record.action === "run_supplier_package_canary") {
+    if (
+      Object.keys(record).sort().join(",") !==
+        "action,caseId,organizationId,snapshotId,snapshotSha256,version" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        .test(String(record.organizationId)) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        .test(String(record.caseId)) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        .test(String(record.snapshotId)) ||
+      !/^[0-9a-f]{64}$/.test(String(record.snapshotSha256))
+    ) throw new Error("INVALID_REQUEST");
+    return {
+      action: record.action,
+      organizationId: String(record.organizationId),
+      caseId: String(record.caseId),
+      snapshotId: String(record.snapshotId),
+      snapshotSha256: String(record.snapshotSha256),
+    };
+  }
   if (
-    Object.keys(record).sort().join(',') !== 'action,version' ||
-    record.version !== 1 ||
-    ![
-      'poll_connected_provider_mailbox',
-      'drain_queued_osp_jobs',
-    ].includes(String(record.action))
-  ) throw new Error('INVALID_REQUEST');
-  return record.action as ScheduledAction;
+    Object.keys(record).sort().join(",") !== "action,version" ||
+    !["poll_connected_provider_mailbox", "drain_queued_osp_jobs"].includes(
+      String(record.action),
+    )
+  ) throw new Error("INVALID_REQUEST");
+  return {
+    action: record.action as
+      | "poll_connected_provider_mailbox"
+      | "drain_queued_osp_jobs",
+  };
 }
 
-function safeReceipt(receipt: ScheduledGmailPollReceipt): ScheduledGmailPollReceipt {
+function safeReceipt(
+  receipt: ScheduledGmailPollReceipt,
+): ScheduledGmailPollReceipt {
   for (const value of Object.values(receipt)) {
-    if (!Number.isSafeInteger(value) || value < 0 || value > 100_000) throw new Error('INVALID_RECEIPT');
+    if (!Number.isSafeInteger(value) || value < 0 || value > 100_000) {
+      throw new Error("INVALID_RECEIPT");
+    }
   }
   return receipt;
 }
 
-export function createScheduledGmailPollHandler(options: ScheduledGmailPollHandlerOptions) {
+export function createScheduledGmailPollHandler(
+  options: ScheduledGmailPollHandlerOptions,
+) {
   const incidentId = options.incidentId ?? (() => crypto.randomUUID());
   return async (request: Request): Promise<Response> => {
     try {
-      if (request.method !== 'POST') return json({ error: { code: 'METHOD_NOT_ALLOWED', incident_id: incidentId() } }, 405);
-      const match = request.headers.get('authorization')?.match(/^Bearer ([^\s]+)$/);
+      if (request.method !== "POST") {
+        return json({
+          error: { code: "METHOD_NOT_ALLOWED", incident_id: incidentId() },
+        }, 405);
+      }
+      const match = request.headers.get("authorization")?.match(
+        /^Bearer ([^\s]+)$/,
+      );
       if (!match || !exactToken(match[1], options.expectedToken)) {
-        return json({ error: { code: 'UNAUTHORIZED', incident_id: incidentId() } }, 401);
+        return json({
+          error: { code: "UNAUTHORIZED", incident_id: incidentId() },
+        }, 401);
       }
       const action = await strictBody(request);
-      if (action === 'drain_queued_osp_jobs') {
+      if (action.action === "run_supplier_package_canary") {
+        if (!options.runSupplierPackageCanary) {
+          return json({
+            error: {
+              code: "DEPENDENCY_UNAVAILABLE",
+              incident_id: incidentId(),
+            },
+          }, 503);
+        }
+        try {
+          const result = await options.runSupplierPackageCanary(action);
+          if (result.processed !== 1) throw new Error("INVALID_RECEIPT");
+          return json({
+            version: 1,
+            data: {
+              status: "completed",
+              processed: 1,
+              outbound_enabled: false,
+            },
+          }, 200);
+        } catch {
+          return json({
+            error: {
+              code: "DEPENDENCY_UNAVAILABLE",
+              incident_id: incidentId(),
+            },
+          }, 503);
+        }
+      }
+      if (action.action === "drain_queued_osp_jobs") {
         if (!options.drain) {
-          return json({ error: { code: 'DEPENDENCY_UNAVAILABLE', incident_id: incidentId() } }, 503);
+          return json({
+            error: {
+              code: "DEPENDENCY_UNAVAILABLE",
+              incident_id: incidentId(),
+            },
+          }, 503);
         }
         try {
           const drained = await options.drain();
@@ -139,7 +257,7 @@ export function createScheduledGmailPollHandler(options: ScheduledGmailPollHandl
           return json({
             version: 1,
             data: {
-              status: 'completed',
+              status: "completed",
               source_sync_performed: false,
               osp_enqueued: receipt.ospEnqueued,
               osp_processed: receipt.ospProcessed,
@@ -147,14 +265,23 @@ export function createScheduledGmailPollHandler(options: ScheduledGmailPollHandl
             },
           }, 200);
         } catch {
-          return json({ error: { code: 'DEPENDENCY_UNAVAILABLE', incident_id: incidentId() } }, 503);
+          return json({
+            error: {
+              code: "DEPENDENCY_UNAVAILABLE",
+              incident_id: incidentId(),
+            },
+          }, 503);
         }
       }
       const claim = await options.claim();
-      if (claim.status !== 'claimed') {
+      if (claim.status !== "claimed") {
         return json({
           version: 1,
-          data: { status: 'skipped', reason: claim.status, outbound_enabled: false },
+          data: {
+            status: "skipped",
+            reason: claim.status,
+            outbound_enabled: false,
+          },
         }, 200);
       }
       try {
@@ -163,7 +290,7 @@ export function createScheduledGmailPollHandler(options: ScheduledGmailPollHandl
         return json({
           version: 1,
           data: {
-            status: 'completed',
+            status: "completed",
             discovered: receipt.discovered,
             inserted_messages: receipt.insertedMessages,
             duplicates: receipt.duplicates,
@@ -174,11 +301,18 @@ export function createScheduledGmailPollHandler(options: ScheduledGmailPollHandl
           },
         }, 200);
       } catch (error) {
-        await options.fail(classifyScheduledGmailPollFailure(error), claim.leaseId).catch(() => undefined);
-        return json({ error: { code: 'DEPENDENCY_UNAVAILABLE', incident_id: incidentId() } }, 503);
+        await options.fail(
+          classifyScheduledGmailPollFailure(error),
+          claim.leaseId,
+        ).catch(() => undefined);
+        return json({
+          error: { code: "DEPENDENCY_UNAVAILABLE", incident_id: incidentId() },
+        }, 503);
       }
     } catch {
-      return json({ error: { code: 'INVALID_REQUEST', incident_id: incidentId() } }, 400);
+      return json({
+        error: { code: "INVALID_REQUEST", incident_id: incidentId() },
+      }, 400);
     }
   };
 }
