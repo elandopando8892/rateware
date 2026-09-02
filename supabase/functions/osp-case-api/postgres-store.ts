@@ -514,6 +514,46 @@ export type RequestManifestReviewSummary = {
   replayed: boolean;
 };
 
+export type RequestKnowledgeCandidateSummary = {
+  kind: "field" | "document";
+  canonicalKey: string;
+  displayLabel: string;
+  aliases: readonly string[];
+  valueType:
+    | "text"
+    | "number"
+    | "date"
+    | "boolean"
+    | "table"
+    | "signature"
+    | "unknown"
+    | null;
+  required: boolean;
+  evidenceCount: number;
+  catalogState: "new" | "known";
+};
+
+export type RequestKnowledgeWorkspaceSummary = {
+  caseId: string;
+  manifestId: string;
+  reviewId: string;
+  reviewVersion: number;
+  candidateSha256: string;
+  candidates: readonly RequestKnowledgeCandidateSummary[];
+  catalogEntryCount: number;
+  priorPromotionCount: number;
+  externalEffects: false;
+};
+
+export type RequestKnowledgePromotionSummary = {
+  promotionId: string;
+  promotionStatus: "applied";
+  promotedCount: number;
+  unchangedCount: number;
+  replayed: boolean;
+  externalEffects: false;
+};
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
@@ -567,6 +607,72 @@ function clarificationSummary(row: Row): ClarificationReviewSummary {
     evidenceIds: clarificationEvidence(row.evidence_ids),
     canonicalSha256: row.canonical_sha256,
     authorizationMailbox: "sales@heymarksman.com" as const,
+  });
+}
+
+function safeCount(value: unknown, maximum: number, code: string): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > maximum) {
+    fail(code);
+  }
+  return parsed;
+}
+
+function requestKnowledgeAliases(value: unknown): readonly string[] {
+  const decoded = decodedJson(value, "REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
+  if (
+    !Array.isArray(decoded) || decoded.length < 1 || decoded.length > 21 ||
+    decoded.some((item) =>
+      typeof item !== "string" || item.trim() !== item || item.length < 1 ||
+      item.length > 256
+    )
+  ) {
+    fail("REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
+  }
+  return Object.freeze([...decoded] as string[]);
+}
+
+function requestKnowledgeCandidate(row: Row): RequestKnowledgeCandidateSummary {
+  const evidenceCount = safeCount(
+    row.evidence_count,
+    20,
+    "REQUEST_KNOWLEDGE_PERSISTENCE_FAILED",
+  );
+  const valueType = row.value_type === null ? null : String(row.value_type);
+  if (
+    (row.knowledge_kind !== "field" && row.knowledge_kind !== "document") ||
+    typeof row.canonical_key !== "string" ||
+    !/^[a-z][a-z0-9_.-]{0,127}$/.test(row.canonical_key) ||
+    typeof row.display_label !== "string" ||
+    row.display_label.trim() !== row.display_label ||
+    row.display_label.length < 1 || row.display_label.length > 256 ||
+    ![
+      null,
+      "text",
+      "number",
+      "date",
+      "boolean",
+      "table",
+      "signature",
+      "unknown",
+    ].includes(valueType) ||
+    (row.knowledge_kind === "field"
+      ? valueType === null
+      : valueType !== null) ||
+    typeof row.required !== "boolean" ||
+    (row.catalog_state !== "new" && row.catalog_state !== "known")
+  ) {
+    fail("REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
+  }
+  return Object.freeze({
+    kind: row.knowledge_kind,
+    canonicalKey: row.canonical_key,
+    displayLabel: row.display_label,
+    aliases: requestKnowledgeAliases(row.aliases_json),
+    valueType: valueType as RequestKnowledgeCandidateSummary["valueType"],
+    required: row.required,
+    evidenceCount,
+    catalogState: row.catalog_state,
   });
 }
 
@@ -950,6 +1056,142 @@ export function createPostgresClarificationStore(
             decisions: review.decisions,
             canonicalSha256: review.canonicalSha256,
             replayed: false,
+          });
+        },
+      );
+    },
+    async getRequestKnowledgeWorkspace(input: {
+      organizationId: string;
+      caseId: string;
+    }): Promise<RequestKnowledgeWorkspaceSummary> {
+      if (
+        !UUID_PATTERN.test(input.organizationId) ||
+        !UUID_PATTERN.test(input.caseId)
+      ) {
+        fail("REQUEST_KNOWLEDGE_INVALID");
+      }
+      return await withOrganizationTransaction(
+        sql,
+        input.organizationId,
+        async (tx) => {
+          const source =
+            await tx`select review.id as review_id, review.review_version, manifest.id as manifest_id from osp_private.request_manifest_decision_reviews review join osp_private.request_manifest_drafts manifest on manifest.organization_id = review.organization_id and manifest.id = review.manifest_draft_id and manifest.case_id = review.case_id and manifest.version = review.manifest_version and manifest.manifest_sha256 = review.manifest_sha256 where review.organization_id = ${input.organizationId} and review.case_id = ${input.caseId} and review.status = 'resolved' and not exists (select 1 from osp_private.request_manifest_decision_reviews later where later.organization_id = review.organization_id and later.case_id = review.case_id and later.manifest_draft_id = review.manifest_draft_id and later.review_version > review.review_version) order by manifest.version desc, review.review_version desc limit 1`;
+          if (
+            source.length !== 1 || typeof source[0].review_id !== "string" ||
+            !UUID_PATTERN.test(source[0].review_id) ||
+            typeof source[0].manifest_id !== "string" ||
+            !UUID_PATTERN.test(source[0].manifest_id)
+          ) {
+            fail("REQUEST_KNOWLEDGE_REVIEW_NOT_FOUND");
+          }
+          const reviewVersion = safeCount(
+            source[0].review_version,
+            2_147_483_647,
+            "REQUEST_KNOWLEDGE_PERSISTENCE_FAILED",
+          );
+          if (reviewVersion < 1) fail("REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
+          const candidateRows =
+            await tx`select candidate.knowledge_kind, candidate.canonical_key, candidate.display_label, candidate.aliases_json, candidate.value_type, candidate.required, candidate.evidence_count, case when entry.id is null then 'new' else 'known' end as catalog_state from osp_private.request_knowledge_candidates(${input.organizationId}, ${input.caseId}, ${
+              source[0].review_id
+            }) candidate left join osp_private.request_knowledge_catalog_entries entry on entry.organization_id = ${input.organizationId} and entry.knowledge_kind = candidate.knowledge_kind and entry.canonical_key = candidate.canonical_key order by candidate.knowledge_kind, candidate.canonical_key`;
+          if (candidateRows.length > 600) {
+            fail("REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
+          }
+          const digestRows =
+            await tx`select osp_private.request_knowledge_candidate_sha256(${input.organizationId}, ${input.caseId}, ${
+              source[0].review_id
+            }) as candidate_sha256, (select count(*) from osp_private.request_knowledge_catalog_entries entry where entry.organization_id = ${input.organizationId}) as catalog_entry_count, (select count(*) from osp_private.request_knowledge_promotions promotion where promotion.organization_id = ${input.organizationId} and promotion.review_id = ${
+              source[0].review_id
+            }) as prior_promotion_count`;
+          if (
+            digestRows.length !== 1 ||
+            typeof digestRows[0].candidate_sha256 !== "string" ||
+            !SHA256_PATTERN.test(digestRows[0].candidate_sha256)
+          ) {
+            fail("REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
+          }
+          return Object.freeze({
+            caseId: input.caseId,
+            manifestId: source[0].manifest_id,
+            reviewId: source[0].review_id,
+            reviewVersion,
+            candidateSha256: digestRows[0].candidate_sha256,
+            candidates: Object.freeze(
+              candidateRows.map(requestKnowledgeCandidate),
+            ),
+            catalogEntryCount: safeCount(
+              digestRows[0].catalog_entry_count,
+              100_000,
+              "REQUEST_KNOWLEDGE_PERSISTENCE_FAILED",
+            ),
+            priorPromotionCount: safeCount(
+              digestRows[0].prior_promotion_count,
+              100_000,
+              "REQUEST_KNOWLEDGE_PERSISTENCE_FAILED",
+            ),
+            externalEffects: false as const,
+          });
+        },
+      );
+    },
+    async promoteRequestKnowledge(input: {
+      organizationId: string;
+      subject: string;
+      permission: "osp:operate" | "osp:superuser";
+      caseId: string;
+      reviewId: string;
+      expectedCandidateSha256: string;
+      selectedKeys: readonly string[];
+      idempotencyKey: string;
+    }): Promise<RequestKnowledgePromotionSummary> {
+      if (
+        !UUID_PATTERN.test(input.organizationId) ||
+        !UUID_PATTERN.test(input.caseId) ||
+        !UUID_PATTERN.test(input.reviewId) ||
+        !SHA256_PATTERN.test(input.expectedCandidateSha256) ||
+        !/^[A-Za-z0-9:_-]{1,256}$/.test(input.idempotencyKey) ||
+        !/^[A-Za-z0-9:_@.-]{1,256}$/.test(input.subject) ||
+        !["osp:operate", "osp:superuser"].includes(input.permission) ||
+        !Array.isArray(input.selectedKeys) || input.selectedKeys.length < 1 ||
+        input.selectedKeys.length > 600 ||
+        new Set(input.selectedKeys).size !== input.selectedKeys.length ||
+        input.selectedKeys.some((item) =>
+          !/^(?:field|document):[a-z][a-z0-9_.-]{0,127}$/.test(item)
+        )
+      ) {
+        fail("REQUEST_KNOWLEDGE_INVALID");
+      }
+      return await withOrganizationTransaction(
+        sql,
+        input.organizationId,
+        async (tx) => {
+          const rows =
+            await tx`select promotion_id, promotion_status, promoted_count, unchanged_count, replayed from osp_private.promote_request_knowledge_command(${input.organizationId}, ${input.caseId}, ${input.reviewId}, ${input.expectedCandidateSha256}, ${
+              JSON.stringify(input.selectedKeys)
+            }::text::jsonb, ${input.idempotencyKey}, ${input.subject}, ${input.permission})`;
+          if (
+            rows.length !== 1 || typeof rows[0].promotion_id !== "string" ||
+            !UUID_PATTERN.test(rows[0].promotion_id) ||
+            rows[0].promotion_status !== "applied" ||
+            typeof rows[0].replayed !== "boolean"
+          ) {
+            fail("REQUEST_KNOWLEDGE_PERSISTENCE_FAILED");
+          }
+          return Object.freeze({
+            promotionId: rows[0].promotion_id,
+            promotionStatus: "applied" as const,
+            promotedCount: safeCount(
+              rows[0].promoted_count,
+              600,
+              "REQUEST_KNOWLEDGE_PERSISTENCE_FAILED",
+            ),
+            unchangedCount: safeCount(
+              rows[0].unchanged_count,
+              600,
+              "REQUEST_KNOWLEDGE_PERSISTENCE_FAILED",
+            ),
+            replayed: rows[0].replayed,
+            externalEffects: false as const,
           });
         },
       );

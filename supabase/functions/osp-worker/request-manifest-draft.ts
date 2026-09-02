@@ -1,4 +1,5 @@
 import type {
+  RequestKnowledgeCatalogEntry,
   RequestManifest,
   RequestManifestAttachment,
   RequestManifestEvidence,
@@ -44,6 +45,7 @@ export type RequestManifestSource = Readonly<{
     safeBody: string;
   }>;
   documents: readonly RequestManifestDocument[];
+  knowledgeCatalog?: readonly RequestKnowledgeCatalogEntry[];
 }>;
 
 export type RequestManifestReadDraft = Readonly<{
@@ -127,6 +129,7 @@ type InterpreterPort = Readonly<{
     input: Readonly<{
       evidence: readonly RequestManifestEvidence[];
       attachments?: readonly RequestManifestAttachment[];
+      knowledgeCatalog?: readonly RequestKnowledgeCatalogEntry[];
     }>,
   ): Promise<
     Readonly<{
@@ -364,6 +367,7 @@ export function createRequestManifestDraftService(options: {
           sourceSha256: document.sourceSha256,
           contentType: document.contentType,
         })),
+        knowledgeCatalog: source.knowledgeCatalog ?? [],
       };
       const evidenceSha256 = await sha256(
         new TextEncoder().encode(JSON.stringify(evidenceInventory)),
@@ -384,6 +388,7 @@ export function createRequestManifestDraftService(options: {
       const interpreted = await options.interpreter.interpretWithTelemetry({
         evidence,
         attachments,
+        knowledgeCatalog: source.knowledgeCatalog ?? [],
       });
       const generatedAt = clock().toISOString();
       const manifest = readDraft(

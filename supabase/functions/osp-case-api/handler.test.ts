@@ -174,10 +174,10 @@ Deno.test("case API saves only an exact Operations review under operate authorit
   }]);
 });
 
-Deno.test('case API saves one exact evidence-bound request manifest review without outbound effects', async () => {
-  const caseId = '33333333-3333-4333-8333-333333333333';
-  const manifestId = '55555555-5555-4555-8555-555555555555';
-  const reviewId = '66666666-6666-4666-8666-666666666666';
+Deno.test("case API saves one exact evidence-bound request manifest review without outbound effects", async () => {
+  const caseId = "33333333-3333-4333-8333-333333333333";
+  const manifestId = "55555555-5555-4555-8555-555555555555";
+  const reviewId = "66666666-6666-4666-8666-666666666666";
   const saved: unknown[] = [];
   const handler = createCaseApiHandler({
     verifyToken: async () => identity,
@@ -187,21 +187,174 @@ Deno.test('case API saves one exact evidence-bound request manifest review witho
       saveRequestManifestReview: async (input) => {
         saved.push(input);
         return {
-          reviewId, caseId, caseVersion: 5, manifestId, manifestVersion: 1, manifestSha256: sourceHash,
-          reviewVersion: 1, status: 'resolved' as const,
-          decisions: [{ decisionId: 'clarification:0', kind: 'clarification' as const, fieldId: 'targetXbfEntity', prompt: 'Which XBF entity?', evidenceIds: ['email:body'], outcome: 'answered' as const, resolution: 'Use XBFUS.' }],
-          canonicalSha256: 'b'.repeat(64), replayed: false,
+          reviewId,
+          caseId,
+          caseVersion: 5,
+          manifestId,
+          manifestVersion: 1,
+          manifestSha256: sourceHash,
+          reviewVersion: 1,
+          status: "resolved" as const,
+          decisions: [{
+            decisionId: "clarification:0",
+            kind: "clarification" as const,
+            fieldId: "targetXbfEntity",
+            prompt: "Which XBF entity?",
+            evidenceIds: ["email:body"],
+            outcome: "answered" as const,
+            resolution: "Use XBFUS.",
+          }],
+          canonicalSha256: "b".repeat(64),
+          replayed: false,
         };
       },
     },
-    incidentId: () => 'incident-manifest-review',
+    incidentId: () => "incident-manifest-review",
   });
   const response = await handler(request(
     `action=save_request_manifest_review&case_id=${caseId}&expected_case_version=4&expected_manifest_sha256=${sourceHash}`,
-    { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decisions: [{ decisionId: 'clarification:0', outcome: 'answered', resolution: 'Use XBFUS.' }] }) },
+    {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        decisions: [{
+          decisionId: "clarification:0",
+          outcome: "answered",
+          resolution: "Use XBFUS.",
+        }],
+      }),
+    },
   ));
   assertEquals(response.status, 200);
-  assertEquals(saved, [{ organizationId, subject: 'ops-subject', caseId, expectedCaseVersion: 4, expectedManifestSha256: sourceHash, decisions: [{ decisionId: 'clarification:0', outcome: 'answered', resolution: 'Use XBFUS.' }] }]);
+  assertEquals(saved, [{
+    organizationId,
+    subject: "ops-subject",
+    caseId,
+    expectedCaseVersion: 4,
+    expectedManifestSha256: sourceHash,
+    decisions: [{
+      decisionId: "clarification:0",
+      outcome: "answered",
+      resolution: "Use XBFUS.",
+    }],
+  }]);
+});
+
+Deno.test("case API reads and promotes only an exact reviewed knowledge selection", async () => {
+  const caseId = "33333333-3333-4333-8333-333333333333";
+  const manifestId = "55555555-5555-4555-8555-555555555555";
+  const reviewId = "66666666-6666-4666-8666-666666666666";
+  const promotionId = "77777777-7777-4777-8777-777777777777";
+  const selectedKeys = ["field:business.trade.references", "document:w.9"];
+  const promoted: unknown[] = [];
+  const handler = createCaseApiHandler({
+    verifyToken: async () => identity,
+    clarificationStore: {
+      listForReview: async () => [],
+      saveOperationsReview: async () => row,
+      getRequestKnowledgeWorkspace: async () => ({
+        caseId,
+        manifestId,
+        reviewId,
+        reviewVersion: 1,
+        candidateSha256: sourceHash,
+        candidates: [{
+          kind: "field",
+          canonicalKey: "business.trade.references",
+          displayLabel: "Trade references",
+          aliases: ["Trade references"],
+          valueType: "table",
+          required: true,
+          evidenceCount: 2,
+          catalogState: "new",
+        }],
+        catalogEntryCount: 0,
+        priorPromotionCount: 0,
+        externalEffects: false,
+      }),
+      promoteRequestKnowledge: async (input) => {
+        promoted.push(input);
+        return {
+          promotionId,
+          promotionStatus: "applied",
+          promotedCount: 2,
+          unchangedCount: 0,
+          replayed: false,
+          externalEffects: false,
+        };
+      },
+    },
+    incidentId: () => "incident-request-knowledge",
+  });
+  const readResponse = await handler(
+    request(`action=get_request_knowledge_workspace&case_id=${caseId}`, {
+      headers: { "x-osp-approval-proof": "" },
+    }),
+  );
+  assertEquals(readResponse.status, 200);
+  assertEquals((await readResponse.json()).data.candidateSha256, sourceHash);
+
+  const promotionResponse = await handler(request(
+    `action=promote_request_knowledge&case_id=${caseId}&review_id=${reviewId}&expected_candidate_sha256=${sourceHash}&idempotency_key=knowledge:test-1`,
+    {
+      headers: {
+        "content-type": "application/json",
+        "x-osp-approval-proof": "",
+      },
+      body: JSON.stringify({
+        selectedKeys,
+        confirmation: "PROMOTE_REVIEWED_REQUEST_KNOWLEDGE",
+      }),
+    },
+  ));
+  assertEquals(promotionResponse.status, 200);
+  assertEquals(await promotionResponse.json(), {
+    data: {
+      promotionId,
+      promotionStatus: "applied",
+      promotedCount: 2,
+      unchangedCount: 0,
+      replayed: false,
+      externalEffects: false,
+    },
+  });
+  assertEquals(promoted, [{
+    organizationId,
+    subject: "ops-subject",
+    permission: "osp:operate",
+    caseId,
+    reviewId,
+    expectedCandidateSha256: sourceHash,
+    selectedKeys,
+    idempotencyKey: "knowledge:test-1",
+  }]);
+});
+
+Deno.test("request knowledge promotion rejects unreviewed or ambiguous payload shapes before persistence", async () => {
+  let calls = 0;
+  const handler = createCaseApiHandler({
+    verifyToken: async () => identity,
+    clarificationStore: {
+      listForReview: async () => [],
+      saveOperationsReview: async () => row,
+      promoteRequestKnowledge: async () => {
+        calls += 1;
+        throw new Error("unexpected");
+      },
+    },
+    incidentId: () => "incident-request-knowledge-invalid",
+  });
+  const response = await handler(request(
+    `action=promote_request_knowledge&case_id=33333333-3333-4333-8333-333333333333&review_id=66666666-6666-4666-8666-666666666666&expected_candidate_sha256=${sourceHash}&idempotency_key=knowledge:test-2`,
+    {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        selectedKeys: ["field:business.trade.references"],
+        confirmation: "AUTO_PROMOTE",
+      }),
+    },
+  ));
+  assertEquals(response.status, 400);
+  assertEquals(calls, 0);
 });
 
 Deno.test("clarification review rejects mixed Operations and Sales authority before persistence", async () => {

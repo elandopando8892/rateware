@@ -82,6 +82,7 @@ export function createRequestManifestCanaryService(options: {
         caseId: reference.caseId,
         message: reference.message,
         documents: Object.freeze(documents),
+        knowledgeCatalog: reference.knowledgeCatalog,
       }));
       const telemetry: RequestManifestTelemetry = result.telemetry;
       return Object.freeze({

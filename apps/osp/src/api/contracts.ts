@@ -310,6 +310,49 @@ export const RequestManifestReviewResponseSchema = z.strictObject({ data: z.stri
   })).max(200), canonicalSha256: z.string().regex(/^[0-9a-f]{64}$/), replayed: z.boolean(),
 }) });
 
+const RequestKnowledgeCandidateBase = {
+  canonicalKey: z.string().regex(/^[a-z][a-z0-9_.-]{0,127}$/),
+  displayLabel: z.string().min(1).max(256),
+  aliases: z.array(z.string().min(1).max(256)).min(1).max(21),
+  required: z.boolean(),
+  evidenceCount: z.number().int().min(1).max(20),
+  catalogState: z.enum(['new', 'known']),
+};
+
+export const RequestKnowledgeCandidateSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('field'),
+    ...RequestKnowledgeCandidateBase,
+    valueType: z.enum(['text', 'number', 'date', 'boolean', 'table', 'signature', 'unknown']),
+  }),
+  z.strictObject({
+    kind: z.literal('document'),
+    ...RequestKnowledgeCandidateBase,
+    valueType: z.null(),
+  }),
+]);
+
+export const RequestKnowledgeWorkspaceResponseSchema = z.strictObject({ data: z.strictObject({
+  caseId: z.uuid(),
+  manifestId: z.uuid(),
+  reviewId: z.uuid(),
+  reviewVersion: z.number().int().min(1).max(2_147_483_647),
+  candidateSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  candidates: z.array(RequestKnowledgeCandidateSchema).max(600),
+  catalogEntryCount: z.number().int().min(0).max(100_000),
+  priorPromotionCount: z.number().int().min(0).max(100_000),
+  externalEffects: z.literal(false),
+}) });
+
+export const RequestKnowledgePromotionResponseSchema = z.strictObject({ data: z.strictObject({
+  promotionId: z.uuid(),
+  promotionStatus: z.literal('applied'),
+  promotedCount: z.number().int().min(0).max(600),
+  unchangedCount: z.number().int().min(0).max(600),
+  replayed: z.boolean(),
+  externalEffects: z.literal(false),
+}) });
+
 export const CaseListSuccessResponseSchema = z.strictObject({
   version: z.literal(1),
   data: z.strictObject({ cases: z.array(CaseSummarySchema).max(100) }),
@@ -831,6 +874,8 @@ export type CaseDetail = z.infer<typeof CaseDetailSchema>;
 export type RequestManifestReadModel = z.infer<typeof RequestManifestSchema>;
 export type RequestManifestReviewReadModel = NonNullable<z.infer<typeof CaseDetailSchema>['request_review']>;
 export type RequestManifestReviewReceipt = z.infer<typeof RequestManifestReviewResponseSchema>['data'];
+export type RequestKnowledgeWorkspace = z.infer<typeof RequestKnowledgeWorkspaceResponseSchema>['data'];
+export type RequestKnowledgePromotionReceipt = z.infer<typeof RequestKnowledgePromotionResponseSchema>['data'];
 export type QuarterlyDocumentType = z.infer<typeof QuarterlyDocumentTypeSchema>;
 export type DocumentVersion = z.infer<typeof DocumentVersionSchema>;
 export type ClarificationQuestion = z.infer<typeof ClarificationQuestionSchema>;

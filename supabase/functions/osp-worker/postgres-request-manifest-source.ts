@@ -6,6 +6,7 @@ import {
   withOrganizationTransaction,
 } from "../_shared/osp/database-context.ts";
 import type { RequestManifestDocument } from "./request-manifest-draft.ts";
+import type { RequestKnowledgeCatalogEntry } from "./openai-request-manifest.ts";
 
 type PostgresFactory = (
   databaseUrl: string,
@@ -45,6 +46,7 @@ export type RequestManifestSourceReference = Readonly<{
     objectKey: string;
     contentType: SupportedContentType;
   }>[];
+  knowledgeCatalog?: readonly RequestKnowledgeCatalogEntry[];
 }>;
 
 function databaseUrl(value: string): string {
@@ -74,7 +76,9 @@ function bounded(value: unknown, maximum: number, allowEmpty = false): string {
 function extension(contentType: SupportedContentType): string {
   if (contentType === "application/pdf") return "pdf";
   if (contentType.endsWith("spreadsheetml.sheet")) return "xlsx";
-  if (contentType === "application/vnd.ms-excel.sheet.macroEnabled.12") return "xlsm";
+  if (contentType === "application/vnd.ms-excel.sheet.macroEnabled.12") {
+    return "xlsm";
+  }
   if (contentType.endsWith("wordprocessingml.document")) return "docx";
   if (contentType === "image/jpeg") return "jpg";
   if (contentType === "image/png") return "png";
@@ -86,8 +90,12 @@ function manifestSource(
   caseId: string,
   messages: SqlRow[],
   documents: SqlRow[],
+  knowledgeRows: SqlRow[],
 ): RequestManifestSourceReference {
-  if (messages.length !== 1 || documents.length > 20) {
+  if (
+    messages.length !== 1 || documents.length > 20 ||
+    knowledgeRows.length > 1_000
+  ) {
     throw new Error("REQUEST_MANIFEST_SOURCE_MISMATCH");
   }
   const message = messages[0];
@@ -121,6 +129,57 @@ function manifestSource(
       contentType,
     });
   });
+  const knowledgeCatalog = knowledgeRows.map((row) => {
+    const kind = row.knowledge_kind;
+    const canonicalKey = String(row.canonical_key ?? "");
+    const displayLabel = String(row.display_label ?? "");
+    const valueType = row.value_type === null ? null : String(row.value_type);
+    let aliases: unknown = row.aliases_json;
+    if (typeof aliases === "string") {
+      try {
+        aliases = JSON.parse(aliases);
+      } catch {
+        throw new Error("REQUEST_KNOWLEDGE_CATALOG_INVALID");
+      }
+    }
+    if (
+      (kind !== "field" && kind !== "document") ||
+      !/^[a-z][a-z0-9_.-]{0,127}$/.test(canonicalKey) ||
+      displayLabel.trim() !== displayLabel || displayLabel.length < 1 ||
+      displayLabel.length > 256 ||
+      !Array.isArray(aliases) || aliases.length < 1 || aliases.length > 21 ||
+      aliases.some((item) =>
+        typeof item !== "string" || item.trim() !== item || item.length < 1 ||
+        item.length > 256
+      ) ||
+      ![
+        null,
+        "text",
+        "number",
+        "date",
+        "boolean",
+        "table",
+        "signature",
+        "unknown",
+      ].includes(valueType) ||
+      (kind === "field" ? valueType === null : valueType !== null)
+    ) {
+      throw new Error("REQUEST_KNOWLEDGE_CATALOG_INVALID");
+    }
+    return Object.freeze({
+      kind,
+      canonicalKey,
+      displayLabel,
+      aliases: Object.freeze([...(aliases as string[])]),
+      valueType,
+    }) as RequestKnowledgeCatalogEntry;
+  });
+  if (
+    new Set(knowledgeCatalog.map((item) => `${item.kind}:${item.canonicalKey}`))
+      .size !== knowledgeCatalog.length
+  ) {
+    throw new Error("REQUEST_KNOWLEDGE_CATALOG_INVALID");
+  }
   return Object.freeze({
     organizationId,
     caseId,
@@ -131,6 +190,7 @@ function manifestSource(
       safeBody: bounded(message.safe_body, 40_000, true),
     }),
     documents: Object.freeze(documentRefs),
+    knowledgeCatalog: Object.freeze(knowledgeCatalog),
   });
 }
 
@@ -178,11 +238,14 @@ export function createPostgresRequestManifestSource(options: {
             await tx`select id, source_sha256, subject, safe_body from osp_private.gmail_messages where organization_id = ${input.organizationId} and case_id = ${input.caseId} order by received_at desc, id desc limit 1`;
           const documents =
             await tx`select version.id, version.source_sha256, version.bucket_id, version.opaque_object_key, version.content_type, safety.status as source_safety from osp_private.document_versions version join osp_private.documents document on document.organization_id = version.organization_id and document.id = version.document_id join lateral (select assessment.status from osp_private.source_safety_assessments assessment where assessment.organization_id = version.organization_id and assessment.document_version_id = version.id order by assessment.version desc limit 1) safety on true where version.organization_id = ${input.organizationId} and document.case_id = ${input.caseId} and version.document_type = 'supplier_requirement' and version.status in ('review_required', 'approved') and not exists (select 1 from osp_private.document_versions later where later.organization_id = version.organization_id and later.document_id = version.document_id and later.version > version.version) order by version.id limit 21`;
+          const knowledgeRows =
+            await tx`select entry.knowledge_kind, entry.canonical_key, entry.display_label, entry.aliases_json, entry.value_type from osp_private.request_knowledge_catalog_entries entry where entry.organization_id = ${input.organizationId} order by entry.knowledge_kind, entry.canonical_key limit 1001`;
           return manifestSource(
             input.organizationId,
             input.caseId,
             messages,
             documents,
+            knowledgeRows,
           );
         },
       );

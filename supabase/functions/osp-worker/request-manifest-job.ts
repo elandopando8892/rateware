@@ -63,6 +63,7 @@ export function createRequestManifestJobService(options: {
         caseId: reference.caseId,
         message: reference.message,
         documents: Object.freeze(documents),
+        knowledgeCatalog: reference.knowledgeCatalog,
       }));
       return Object.freeze({
         correlationId: input.correlationId,

@@ -32,8 +32,10 @@ const OPERATIONAL_CONTROL_NAMES = new Set([
 ]);
 const OUTBOUND_DRAFT_COMPOSER_PATH = 'apps/osp/src/features/approval/FinalResponseComposer.tsx';
 const REQUEST_REVIEW_WORKBENCH_PATH = 'apps/osp/src/features/cases/AdaptiveReviewWorkbench.tsx';
+const REQUEST_KNOWLEDGE_PANEL_PATH = 'apps/osp/src/features/cases/RequestKnowledgePanel.tsx';
 const OUTBOUND_DRAFT_ALLOWED_IMPORTS = new Set(['../../api/contracts', 'react']);
 const REQUEST_REVIEW_ALLOWED_IMPORTS = new Set(['../../api/contracts', '@tanstack/react-router', 'react']);
+const REQUEST_KNOWLEDGE_ALLOWED_IMPORTS = new Set(['../../api/osp-client', '@tanstack/react-query', 'react']);
 const OUTBOUND_DRAFT_FORBIDDEN_CALLS = new Set([
   'approveandapplysignature',
   'authorizeoutboundpayload',
@@ -378,6 +380,51 @@ function assertGovernedRequestReviewSurface(file, sourcePath) {
   }
 }
 
+function assertGovernedRequestKnowledgeSurface(file, sourcePath) {
+  if (sourcePath.replace(/\\/g, '/') !== REQUEST_KNOWLEDGE_PANEL_PATH) return;
+  const imports = [];
+  let declarations = 0;
+  let workspaceReads = 0;
+  let promotionCalls = 0;
+  let confirmationLiterals = 0;
+  let forms = 0;
+  const buttonTypes = [];
+  visit(file, (node) => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) imports.push(node.moduleSpecifier.text);
+    if (ts.isFunctionDeclaration(node) && node.name?.text === 'RequestKnowledgePanel') declarations += 1;
+    if (ts.isStringLiteral(node) && node.text === 'PROMOTE_REVIEWED_REQUEST_KNOWLEDGE') confirmationLiterals += 1;
+    if (ts.isCallExpression(node)) {
+      const expression = expressionName(node.expression);
+      const name = normalizedControlName(expression);
+      if (expression === 'client.getRequestKnowledgeWorkspace') workspaceReads += 1;
+      if (expression === 'client.promoteRequestKnowledge') promotionCalls += 1;
+      if (expression.startsWith('client.') &&
+          !['client.getRequestKnowledgeWorkspace', 'client.promoteRequestKnowledge'].includes(expression)) {
+        fail('UI_MUTATION_CONTROL');
+      }
+      if (OUTBOUND_DRAFT_FORBIDDEN_CALLS.has(name) ||
+          ['assemblecaseprofiledraft', 'bindcaseprofile', 'onsavereview'].includes(name)) {
+        fail('UI_MUTATION_CONTROL');
+      }
+    }
+    if (ts.isNewExpression(node) &&
+        OUTBOUND_DRAFT_FORBIDDEN_CONSTRUCTORS.has(normalizedControlName(expressionName(node.expression)))) {
+      fail('UI_MUTATION_CONTROL');
+    }
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const name = jsxName(node.tagName).toLowerCase();
+      if (name === 'form') forms += 1;
+      if (name === 'button') buttonTypes.push(literalJsxAttribute(node.attributes, 'type'));
+    }
+  });
+  if (declarations !== 1 || workspaceReads !== 1 || promotionCalls !== 1 || confirmationLiterals !== 1 ||
+      forms !== 0 || JSON.stringify(buttonTypes) !== JSON.stringify(['button']) ||
+      imports.some((specifier) => !REQUEST_KNOWLEDGE_ALLOWED_IMPORTS.has(specifier)) ||
+      new Set(imports).size !== imports.length) {
+    fail('UI_MUTATION_CONTROL');
+  }
+}
+
 export function assertNoUnsafeUiSyntax(source, sourcePath = 'fixture.tsx') {
   if (sourcePath.endsWith('.css')) return;
   const file = parseTypeScript(source, sourcePath);
@@ -408,6 +455,7 @@ export function assertNoUnsafeUiSyntax(source, sourcePath = 'fixture.tsx') {
   if (allowDocumentMutation && (documentForms !== 1 || documentFileInputs !== 1)) fail('UI_MUTATION_CONTROL');
   assertGovernedOutboundDraftSurface(file, sourcePath);
   assertGovernedRequestReviewSurface(file, sourcePath);
+  assertGovernedRequestKnowledgeSurface(file, sourcePath);
 }
 
 function cssImports(source) {

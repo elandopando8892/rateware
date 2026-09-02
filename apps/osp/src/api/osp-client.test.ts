@@ -316,6 +316,52 @@ it('saves an exact clarification review without automatic network retry', async 
   expect(JSON.parse(String(init.body))).toEqual({ questions: input.questions });
 });
 
+it('reads and promotes only an exact reviewed request-knowledge selection', async () => {
+  const caseId = '33333333-3333-4333-8333-333333333333';
+  const reviewId = '44444444-4444-4444-8444-444444444444';
+  const workspace = {
+    caseId,
+    manifestId: '55555555-5555-4555-8555-555555555555',
+    reviewId,
+    reviewVersion: 2,
+    candidateSha256: 'a'.repeat(64),
+    candidates: [{
+      kind: 'field', canonicalKey: 'business.trade.references', displayLabel: 'Trade references',
+      aliases: ['Trade references'], valueType: 'table', required: true, evidenceCount: 2, catalogState: 'new',
+    }],
+    catalogEntryCount: 4,
+    priorPromotionCount: 0,
+    externalEffects: false,
+  } as const;
+  const receipt = {
+    promotionId: '66666666-6666-4666-8666-666666666666', promotionStatus: 'applied',
+    promotedCount: 1, unchangedCount: 0, replayed: false, externalEffects: false,
+  } as const;
+  const input = {
+    caseId,
+    reviewId,
+    expectedCandidateSha256: workspace.candidateSha256,
+    selectedKeys: ['field:business.trade.references'],
+    idempotencyKey: 'knowledge:review-2',
+    confirmation: 'PROMOTE_REVIEWED_REQUEST_KNOWLEDGE' as const,
+  };
+  const h = harness([json({ data: workspace }), json({ data: receipt })]);
+  await expect(h.client.getRequestKnowledgeWorkspace(caseId)).resolves.toEqual(workspace);
+  await expect(h.client.promoteRequestKnowledge(input)).resolves.toEqual(receipt);
+  expect(h.fetch.mock.calls.map((call) => call[0])).toEqual([
+    `https://synthetic.supabase.co/functions/v1/osp-case-api?action=get_request_knowledge_workspace&case_id=${caseId}`,
+    `https://synthetic.supabase.co/functions/v1/osp-case-api?action=promote_request_knowledge&case_id=${caseId}&review_id=${reviewId}&expected_candidate_sha256=${'a'.repeat(64)}&idempotency_key=knowledge%3Areview-2`,
+  ]);
+  expect(JSON.parse(String((h.fetch.mock.calls[1][1] as RequestInit).body))).toEqual({
+    selectedKeys: input.selectedKeys,
+    confirmation: 'PROMOTE_REVIEWED_REQUEST_KNOWLEDGE',
+  });
+
+  const ambiguous = harness([new TypeError('response lost'), json({ data: receipt })]);
+  await expect(ambiguous.client.promoteRequestKnowledge(input)).rejects.toMatchObject({ code: 'NETWORK_UNAVAILABLE' });
+  expect(ambiguous.fetch).toHaveBeenCalledOnce();
+});
+
 it('uses the dedicated form endpoint for strict catalog reads and idempotent draft writes', async () => {
   const template = {
     templateId: '11111111-1111-4111-8111-111111111111', name: 'XBF customer setup', updatedAt: '2026-08-26T20:00:00.000Z',

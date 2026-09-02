@@ -123,7 +123,22 @@ Deno.test("request manifest uses strict stored-off Responses output for email, X
     },
   });
 
-  const interpreted = await adapter.interpretWithTelemetry({ evidence });
+  const interpreted = await adapter.interpretWithTelemetry({
+    evidence,
+    knowledgeCatalog: [{
+      kind: "field",
+      canonicalKey: "fiscal.tax.identifier",
+      displayLabel: "Tax identifier",
+      aliases: ["RFC", "Tax ID"],
+      valueType: "text",
+    }, {
+      kind: "document",
+      canonicalKey: "w.9",
+      displayLabel: "W-9",
+      aliases: ["W-9", "IRS Form W-9"],
+      valueType: null,
+    }],
+  });
   assertEquals(interpreted.manifest, validManifest);
   assertEquals(
     {
@@ -157,6 +172,15 @@ Deno.test("request manifest uses strict stored-off Responses output for email, X
     "osp_request_manifest",
   );
   assertMatch(JSON.stringify(captured.body.input), /untrusted data/i);
+  assertMatch(JSON.stringify(captured.body.input), /fiscal\.tax\.identifier/i);
+  assertMatch(
+    JSON.stringify(captured.body.input),
+    /human-approved semantic vocabulary/i,
+  );
+  assertEquals(
+    JSON.stringify(captured.body.input).includes("tax identifier value"),
+    false,
+  );
 });
 
 Deno.test("request manifest closes citations and enforces bounded evidence", async () => {
@@ -204,9 +228,22 @@ Deno.test("request manifest sends PDF, DOCX and image evidence inline without cr
   };
   const output = {
     ...validManifest,
-    requesterLegalName: { value: "Synthetic Carrier", confidence: 0.9, evidenceIds: [attachmentIds.pdf] },
-    signature: { required: true, signerTitle: null, evidenceIds: [attachmentIds.image] },
-    requestedDocuments: [{ documentType: "W-9", required: true, acceptableAlternatives: [], evidenceIds: [attachmentIds.docx] }],
+    requesterLegalName: {
+      value: "Synthetic Carrier",
+      confidence: 0.9,
+      evidenceIds: [attachmentIds.pdf],
+    },
+    signature: {
+      required: true,
+      signerTitle: null,
+      evidenceIds: [attachmentIds.image],
+    },
+    requestedDocuments: [{
+      documentType: "W-9",
+      required: true,
+      acceptableAlternatives: [],
+      evidenceIds: [attachmentIds.docx],
+    }],
   };
   let body: Record<string, unknown> | undefined;
   const adapter = createOpenAiRequestManifest({
@@ -219,18 +256,52 @@ Deno.test("request manifest sends PDF, DOCX and image evidence inline without cr
     },
   });
   const attachments = [
-    { id: attachmentIds.pdf, kind: "pdf_file" as const, sourceName: "setup.pdf", contentType: "application/pdf" as const, bytes: new Uint8Array([1, 2, 3]) },
-    { id: attachmentIds.docx, kind: "docx_file" as const, sourceName: "instructions.docx", contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const, bytes: new Uint8Array([4, 5, 6]) },
-    { id: attachmentIds.image, kind: "image_file" as const, sourceName: "signature.png", contentType: "image/png" as const, bytes: new Uint8Array([7, 8, 9]) },
+    {
+      id: attachmentIds.pdf,
+      kind: "pdf_file" as const,
+      sourceName: "setup.pdf",
+      contentType: "application/pdf" as const,
+      bytes: new Uint8Array([1, 2, 3]),
+    },
+    {
+      id: attachmentIds.docx,
+      kind: "docx_file" as const,
+      sourceName: "instructions.docx",
+      contentType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const,
+      bytes: new Uint8Array([4, 5, 6]),
+    },
+    {
+      id: attachmentIds.image,
+      kind: "image_file" as const,
+      sourceName: "signature.png",
+      contentType: "image/png" as const,
+      bytes: new Uint8Array([7, 8, 9]),
+    },
   ];
   const result = await adapter.interpret({ evidence, attachments });
   assertEquals(result.requesterLegalName.evidenceIds, [attachmentIds.pdf]);
   assert(body);
   const input = body.input as Array<{ role: string; content: unknown }>;
   const userContent = input[1].content as Array<Record<string, unknown>>;
-  assertEquals(userContent.filter((item) => item.type === "input_file").length, 2);
-  assertEquals(userContent.filter((item) => item.type === "input_image").length, 1);
-  assertEquals(userContent.some((item) => "file_id" in item || "file_url" in item), false);
-  assertMatch(String(userContent.find((item) => item.type === "input_file")?.file_data), /^data:application\/pdf;base64,/);
-  assertMatch(String(userContent.find((item) => item.type === "input_image")?.image_url), /^data:image\/png;base64,/);
+  assertEquals(
+    userContent.filter((item) => item.type === "input_file").length,
+    2,
+  );
+  assertEquals(
+    userContent.filter((item) => item.type === "input_image").length,
+    1,
+  );
+  assertEquals(
+    userContent.some((item) => "file_id" in item || "file_url" in item),
+    false,
+  );
+  assertMatch(
+    String(userContent.find((item) => item.type === "input_file")?.file_data),
+    /^data:application\/pdf;base64,/,
+  );
+  assertMatch(
+    String(userContent.find((item) => item.type === "input_image")?.image_url),
+    /^data:image\/png;base64,/,
+  );
 });

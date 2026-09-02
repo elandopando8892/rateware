@@ -7,7 +7,7 @@ const caseId = "22222222-2222-4222-8222-222222222222";
 const messageId = "33333333-3333-4333-8333-333333333333";
 const documentId = "44444444-4444-4444-8444-444444444444";
 
-function factory(contentType = "application/pdf") {
+function factory(contentType = "application/pdf", includeKnowledge = true) {
   const sql = Object.assign(async (parts: TemplateStringsArray) => {
     const query = parts.join("?");
     if (
@@ -32,6 +32,17 @@ function factory(contentType = "application/pdf") {
         source_safety: "safe",
       }];
     }
+    if (query.includes("request_knowledge_catalog_entries")) {
+      return includeKnowledge
+        ? [{
+          knowledge_kind: "field",
+          canonical_key: "business.trade.references",
+          display_label: "Trade references",
+          aliases_json: ["Trade references", "Commercial references"],
+          value_type: "table",
+        }]
+        : [];
+    }
     return [];
   }, {
     begin: async <T>(operation: (tx: typeof sql) => Promise<T>) =>
@@ -52,6 +63,13 @@ Deno.test("request manifest source loads the latest safe supported evidence", as
     loaded.documents[0].sourceName,
     `supplier-requirement-${documentId}.pdf`,
   );
+  assertEquals(loaded.knowledgeCatalog, [{
+    kind: "field",
+    canonicalKey: "business.trade.references",
+    displayLabel: "Trade references",
+    aliases: ["Trade references", "Commercial references"],
+    valueType: "table",
+  }]);
 });
 
 Deno.test("request manifest source fails closed for unsupported evidence", async () => {

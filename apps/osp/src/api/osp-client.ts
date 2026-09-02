@@ -7,6 +7,10 @@ import {
   CaseProfileDraftResponseSchema,
   RequestManifestReviewResponseSchema,
   type RequestManifestReviewReceipt,
+  RequestKnowledgeWorkspaceResponseSchema,
+  RequestKnowledgePromotionResponseSchema,
+  type RequestKnowledgeWorkspace,
+  type RequestKnowledgePromotionReceipt,
   CaseListSuccessResponseSchema,
   CorporateProfileSuccessResponseSchema,
   type CorporateProfileReadModel,
@@ -79,6 +83,8 @@ export interface OspCaseReadClient {
   bindCaseProfile(input: BindCaseProfileInput): Promise<{ caseId: string; legalEntityId: string; entityCode: string; bindingRevision: number; caseVersion: number; replayed: boolean }>;
   assembleCaseProfileDraft(input: AssembleCaseProfileDraftInput): Promise<{ draftId: string; manifestSha256: string; factCount: number; restrictedFactCount: number; caseVersion: number; replayed: boolean }>;
   saveRequestManifestReview(input: SaveRequestManifestReviewInput): Promise<RequestManifestReviewReceipt>;
+  getRequestKnowledgeWorkspace(caseId: string): Promise<RequestKnowledgeWorkspace>;
+  promoteRequestKnowledge(input: PromoteRequestKnowledgeInput): Promise<RequestKnowledgePromotionReceipt>;
 }
 
 export type DocumentUploadInput = { documentType: QuarterlyDocumentType; validFrom: string; contentType: string; bytes: Uint8Array };
@@ -105,6 +111,14 @@ export type SaveRequestManifestReviewInput = {
   expectedCaseVersion: number;
   expectedManifestSha256: string;
   decisions: readonly { decisionId: string; outcome: 'answered' | 'external' | 'not_applicable'; resolution: string }[];
+};
+export type PromoteRequestKnowledgeInput = {
+  caseId: string;
+  reviewId: string;
+  expectedCandidateSha256: string;
+  selectedKeys: readonly string[];
+  idempotencyKey: string;
+  confirmation: 'PROMOTE_REVIEWED_REQUEST_KNOWLEDGE';
 };
 export type HistoricalGmailPreviewInput = { subjectPhrase: string; afterDate: string; beforeDate: string };
 export type HistoricalGmailImportInput = HistoricalGmailPreviewInput & { candidateId: string; idempotencyKey: string };
@@ -557,6 +571,35 @@ export function createOspClient(options: ClientOptions): OspClient {
           ['expected_manifest_sha256', input.expectedManifestSha256],
         ],
         schema: RequestManifestReviewResponseSchema,
+        body,
+      })).data;
+    },
+    getRequestKnowledgeWorkspace: async (caseId: string) => {
+      if (!UUID.test(caseId)) throw new OspClientError('INVALID_REQUEST');
+      return (await caseRequest({
+        query: [['action', 'get_request_knowledge_workspace'], ['case_id', caseId]],
+        schema: RequestKnowledgeWorkspaceResponseSchema,
+      })).data;
+    },
+    promoteRequestKnowledge: async (input: PromoteRequestKnowledgeInput) => {
+      if (!UUID.test(input.caseId) || !UUID.test(input.reviewId) || !SHA.test(input.expectedCandidateSha256) ||
+          !OPAQUE.test(input.idempotencyKey) || input.confirmation !== 'PROMOTE_REVIEWED_REQUEST_KNOWLEDGE' ||
+          !Array.isArray(input.selectedKeys) || input.selectedKeys.length < 1 || input.selectedKeys.length > 600 ||
+          new Set(input.selectedKeys).size !== input.selectedKeys.length ||
+          input.selectedKeys.some((key) => !/^(?:field|document):[a-z][a-z0-9_.-]{0,127}$/.test(key))) {
+        throw new OspClientError('INVALID_REQUEST');
+      }
+      const body = JSON.stringify({ selectedKeys: input.selectedKeys, confirmation: input.confirmation });
+      if (new TextEncoder().encode(body).byteLength > 131_072) throw new OspClientError('INVALID_REQUEST');
+      return (await caseRequest({
+        query: [
+          ['action', 'promote_request_knowledge'],
+          ['case_id', input.caseId],
+          ['review_id', input.reviewId],
+          ['expected_candidate_sha256', input.expectedCandidateSha256],
+          ['idempotency_key', input.idempotencyKey],
+        ],
+        schema: RequestKnowledgePromotionResponseSchema,
         body,
       })).data;
     },

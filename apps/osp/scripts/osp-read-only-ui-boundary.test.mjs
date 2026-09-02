@@ -51,6 +51,7 @@ const expectedProductionSourcePaths = [
   'apps/osp/src/features/cases/CaseWorkspace.tsx',
   'apps/osp/src/features/cases/HistoricalIntakePanel.tsx',
   'apps/osp/src/features/cases/RequestManifestPanel.tsx',
+  'apps/osp/src/features/cases/RequestKnowledgePanel.tsx',
   'apps/osp/src/features/communications/ClarificationReview.tsx',
   'apps/osp/src/features/communications/OutboundPayloadPage.tsx',
   'apps/osp/src/features/documents/QuarterlyDocumentVault.tsx',
@@ -581,5 +582,24 @@ test('semantic UI boundary permits only the evidence-bound request decision revi
     ['implicit button', source.replace('type="button"', 'type="submit"')],
   ]) {
     assert.throws(() => assertNoUnsafeUiSyntax(candidate, sourcePath), (error) => error instanceof Error && error.message === 'UI_MUTATION_CONTROL', label);
+  }
+});
+
+test('semantic UI boundary permits only supervised request knowledge promotion', async () => {
+  const sourcePath = 'apps/osp/src/features/cases/RequestKnowledgePanel.tsx';
+  const source = await readFile(path.join(repositoryRoot, sourcePath), 'utf8');
+  assert.doesNotThrow(() => assertNoUnsafeUiSyntax(source, sourcePath));
+  for (const [label, candidate] of [
+    ['direct network call', source.replace('await client.promoteRequestKnowledge({', "await fetch('/functions/v1/osp-case-api');\n      await client.promoteRequestKnowledge({")],
+    ['outbound action', source.replace('await client.promoteRequestKnowledge({', 'await client.requestAuthorizedSend({')],
+    ['different confirmation', source.replace('PROMOTE_REVIEWED_REQUEST_KNOWLEDGE', 'PROMOTE_WITHOUT_REVIEW')],
+    ['second catalog mutation', source.replace('await client.promoteRequestKnowledge({', 'await client.promoteRequestKnowledge({});\n      await client.promoteRequestKnowledge({')],
+    ['implicit submit button', source.replace('type="button"', 'type="submit"')],
+  ]) {
+    assert.throws(
+      () => assertNoUnsafeUiSyntax(candidate, sourcePath),
+      (error) => error instanceof Error && error.message === 'UI_MUTATION_CONTROL',
+      label,
+    );
   }
 });

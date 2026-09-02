@@ -7,6 +7,7 @@ import { caseNextGates, casePrimaryAction, caseStateLabels, caseStateTone, forma
 import { RequestManifestPanel } from './RequestManifestPanel';
 import { HistoricalIntakePanel } from './HistoricalIntakePanel';
 import { AdaptiveReviewWorkbench, type RequestDecisionSubmission } from './AdaptiveReviewWorkbench';
+import { RequestKnowledgePanel } from './RequestKnowledgePanel';
 
 const emptyProfileWorkspace = { candidates: [], binding: null, draft: null, disclosure_locked: true as const };
 
@@ -134,6 +135,12 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
         saving={pendingAction === 'review'}
         saveError={reviewError}
         onSaveReview={saveRequestReview}
+      />
+
+      <RequestKnowledgePanel
+        client={client}
+        caseId={caseId}
+        enabled={requestReviewResolved && requestReview?.review !== null && requestReview?.review !== undefined}
       />
 
       <RequestManifestPanel

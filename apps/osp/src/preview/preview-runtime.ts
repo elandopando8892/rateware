@@ -508,6 +508,47 @@ function createPreviewClient(): OspClient {
   const requestReviews = new Map<string, NonNullable<CaseDetail['request_review']>>([
     [salzilloCaseId, structuredClone(salzilloRequestReview)], [caseId, structuredClone(previewRequestReview)], [craneCaseId, structuredClone(craneRequestReview)],
   ]);
+  const reusableKnowledge = new Set<string>(['field:supplier.legalname', 'field:fiscal.taxidentifier', 'document:w.9']);
+  const knowledgePromotions = new Map<string, number>();
+  const knowledgeKey = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '').slice(0, 128);
+  const knowledgeWorkspace = (requestedCaseId: string) => {
+    const manifest = requestManifests.get(requestedCaseId);
+    const envelope = requestReviews.get(requestedCaseId);
+    if (!manifest || !envelope?.review || envelope.review.status !== 'resolved') throw new Error('REQUEST_KNOWLEDGE_REVIEW_NOT_FOUND');
+    const candidates = [
+      ...manifest.requestedFields.map((field) => ({
+        kind: 'field' as const,
+        canonicalKey: knowledgeKey(field.canonicalFieldId ?? field.id),
+        displayLabel: field.sourceLabel,
+        aliases: [field.sourceLabel],
+        valueType: field.valueType,
+        required: field.required,
+        evidenceCount: field.evidenceIds.length,
+      })),
+      ...manifest.requestedDocuments.map((document) => ({
+        kind: 'document' as const,
+        canonicalKey: knowledgeKey(document.documentType),
+        displayLabel: document.documentType,
+        aliases: [document.documentType, ...document.acceptableAlternatives],
+        valueType: null,
+        required: document.required,
+        evidenceCount: document.evidenceIds.length,
+      })),
+    ].filter((candidate, index, all) => candidate.canonicalKey.length > 0 && all.findIndex((item) => item.kind === candidate.kind && item.canonicalKey === candidate.canonicalKey) === index)
+      .sort((left, right) => `${left.kind}:${left.canonicalKey}`.localeCompare(`${right.kind}:${right.canonicalKey}`))
+      .map((candidate) => ({ ...candidate, catalogState: reusableKnowledge.has(`${candidate.kind}:${candidate.canonicalKey}`) ? 'known' as const : 'new' as const }));
+    return {
+      caseId: requestedCaseId,
+      manifestId: envelope.manifestId,
+      reviewId: envelope.review.reviewId,
+      reviewVersion: envelope.review.reviewVersion,
+      candidateSha256: shaA,
+      candidates,
+      catalogEntryCount: reusableKnowledge.size,
+      priorPromotionCount: knowledgePromotions.get(envelope.review.reviewId) ?? 0,
+      externalEffects: false as const,
+    };
+  };
   let corporateProfile = structuredClone(previewCorporateProfile);
   const reviewCandidates = () => corporateProfile.entities.flatMap((entity) => entity.fields.flatMap((field) => field.review_candidates.map((candidate) => ({ entity, field, candidate }))));
   const replaceReviewCandidates = (reviewId: string, transform: (candidate: CorporateProfileReadModel['entities'][number]['fields'][number]['review_candidates'][number]) => CorporateProfileReadModel['entities'][number]['fields'][number]['review_candidates'][number] | null) => {
@@ -684,6 +725,26 @@ function createPreviewClient(): OspClient {
       const caseVersion = currentCase.aggregate_version + 1;
       previewCaseRows = previewCaseRows.map((row) => row.case_id === input.caseId ? { ...row, aggregate_version: caseVersion, state: status === 'resolved' ? 'awaiting_xbf_information' : 'awaiting_clarification', updated_at: new Date().toISOString() } : row);
       return { reviewId, caseId: input.caseId, caseVersion, manifestId: envelope.manifestId, manifestVersion: envelope.manifestVersion, manifestSha256: envelope.manifestSha256, reviewVersion, status, decisions, canonicalSha256, replayed: false };
+    },
+    getRequestKnowledgeWorkspace: async (requestedCaseId) => structuredClone(knowledgeWorkspace(requestedCaseId)),
+    promoteRequestKnowledge: async (input) => {
+      const workspace = knowledgeWorkspace(input.caseId);
+      if (workspace.reviewId !== input.reviewId || workspace.candidateSha256 !== input.expectedCandidateSha256 ||
+          input.confirmation !== 'PROMOTE_REVIEWED_REQUEST_KNOWLEDGE' || input.selectedKeys.length < 1 ||
+          input.selectedKeys.some((key) => !workspace.candidates.some((candidate) => `${candidate.kind}:${candidate.canonicalKey}` === key))) {
+        throw new Error('REQUEST_KNOWLEDGE_VERSION_CONFLICT');
+      }
+      let promotedCount = 0;
+      let unchangedCount = 0;
+      for (const key of input.selectedKeys) {
+        if (reusableKnowledge.has(key)) unchangedCount += 1;
+        else { reusableKnowledge.add(key); promotedCount += 1; }
+      }
+      knowledgePromotions.set(input.reviewId, (knowledgePromotions.get(input.reviewId) ?? 0) + 1);
+      return {
+        promotionId: crypto.randomUUID(), promotionStatus: 'applied' as const,
+        promotedCount, unchangedCount, replayed: false, externalEffects: false as const,
+      };
     },
     bindCaseProfile: async (input) => {
       const currentCase = previewCaseRows.find((candidate) => candidate.case_id === input.caseId);

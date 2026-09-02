@@ -12,9 +12,11 @@ import {
 import type {
   ClarificationQuestion,
   ClarificationReviewSummary,
+  RequestKnowledgePromotionSummary,
+  RequestKnowledgeWorkspaceSummary,
   RequestManifestReviewSummary,
 } from "./postgres-store.ts";
-import type { RequestManifestDecisionInput } from './request-manifest-review.ts';
+import type { RequestManifestDecisionInput } from "./request-manifest-review.ts";
 import type { CaseApprovalActions } from "./actions.ts";
 import type { CaseOutboundActions } from "./actions.ts";
 import {
@@ -37,6 +39,7 @@ const FIELD = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/;
 const OPAQUE = /^[A-Za-z0-9:_-]{1,256}$/;
 const REVIEW_BODY_LIMIT = 65_536;
 const OUTBOUND_DRAFT_BODY_LIMIT = 1_048_576;
+const KNOWLEDGE_PROMOTION_BODY_LIMIT = 131_072;
 
 type ClarificationStorePort = {
   listForReview(
@@ -58,6 +61,20 @@ type ClarificationStorePort = {
     expectedManifestSha256: string;
     decisions: readonly RequestManifestDecisionInput[];
   }): Promise<RequestManifestReviewSummary>;
+  getRequestKnowledgeWorkspace?(input: {
+    organizationId: string;
+    caseId: string;
+  }): Promise<RequestKnowledgeWorkspaceSummary>;
+  promoteRequestKnowledge?(input: {
+    organizationId: string;
+    subject: string;
+    permission: "osp:operate" | "osp:superuser";
+    caseId: string;
+    reviewId: string;
+    expectedCandidateSha256: string;
+    selectedKeys: readonly string[];
+    idempotencyKey: string;
+  }): Promise<RequestKnowledgePromotionSummary>;
 };
 
 export type CaseApiHandlerOptions = {
@@ -170,6 +187,20 @@ function preflightHeaders(url: URL): readonly string[] {
       "case_id",
       "expected_case_version",
       "expected_manifest_sha256",
+    ]);
+    return ["authorization", "content-type"];
+  }
+  if (action === "get_request_knowledge_workspace") {
+    exactQuery(url, ["action", "case_id"]);
+    return ["authorization"];
+  }
+  if (action === "promote_request_knowledge") {
+    exactQuery(url, [
+      "action",
+      "case_id",
+      "review_id",
+      "expected_candidate_sha256",
+      "idempotency_key",
     ]);
     return ["authorization", "content-type"];
   }
@@ -344,45 +375,132 @@ async function reviewBody(
 }
 
 function safeManifestDecision(value: unknown): RequestManifestDecisionInput {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new OspApiError('INVALID_REQUEST');
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new OspApiError("INVALID_REQUEST");
+  }
   const row = value as Record<string, unknown>;
-  if (Object.keys(row).sort().join(',') !== 'decisionId,outcome,resolution' ||
-      typeof row.decisionId !== 'string' || !/^(?:clarification|contradiction|missing):(?:0|[1-9][0-9]{0,2})$/.test(row.decisionId) ||
-      !['answered', 'external', 'not_applicable'].includes(String(row.outcome)) ||
-      typeof row.resolution !== 'string' || row.resolution.trim() !== row.resolution || row.resolution.length < 3 || row.resolution.length > 2_000 ||
-      /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(row.resolution)) {
-    throw new OspApiError('INVALID_REQUEST');
+  if (
+    Object.keys(row).sort().join(",") !== "decisionId,outcome,resolution" ||
+    typeof row.decisionId !== "string" ||
+    !/^(?:clarification|contradiction|missing):(?:0|[1-9][0-9]{0,2})$/.test(
+      row.decisionId,
+    ) ||
+    !["answered", "external", "not_applicable"].includes(String(row.outcome)) ||
+    typeof row.resolution !== "string" ||
+    row.resolution.trim() !== row.resolution || row.resolution.length < 3 ||
+    row.resolution.length > 2_000 ||
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(row.resolution)
+  ) {
+    throw new OspApiError("INVALID_REQUEST");
   }
   return Object.freeze({
     decisionId: row.decisionId,
-    outcome: row.outcome as RequestManifestDecisionInput['outcome'],
+    outcome: row.outcome as RequestManifestDecisionInput["outcome"],
     resolution: row.resolution,
   });
 }
 
-async function manifestReviewBody(request: Request): Promise<readonly RequestManifestDecisionInput[]> {
-  if (request.headers.get('content-type')?.toLowerCase() !== 'application/json' || request.headers.has('content-encoding') || request.headers.has('transfer-encoding')) {
-    throw new OspApiError('INVALID_REQUEST');
+async function manifestReviewBody(
+  request: Request,
+): Promise<readonly RequestManifestDecisionInput[]> {
+  if (
+    request.headers.get("content-type")?.toLowerCase() !== "application/json" ||
+    request.headers.has("content-encoding") ||
+    request.headers.has("transfer-encoding")
+  ) {
+    throw new OspApiError("INVALID_REQUEST");
   }
-  const declared = request.headers.get('content-length');
-  if (declared !== null && (!/^[0-9]+$/.test(declared) || Number(declared) < 1 || Number(declared) > REVIEW_BODY_LIMIT)) {
-    throw new OspApiError('INVALID_REQUEST');
+  const declared = request.headers.get("content-length");
+  if (
+    declared !== null &&
+    (!/^[0-9]+$/.test(declared) || Number(declared) < 1 ||
+      Number(declared) > REVIEW_BODY_LIMIT)
+  ) {
+    throw new OspApiError("INVALID_REQUEST");
   }
   const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.byteLength < 1 || bytes.byteLength > REVIEW_BODY_LIMIT || (declared !== null && Number(declared) !== bytes.byteLength)) {
-    throw new OspApiError('INVALID_REQUEST');
+  if (
+    bytes.byteLength < 1 || bytes.byteLength > REVIEW_BODY_LIMIT ||
+    (declared !== null && Number(declared) !== bytes.byteLength)
+  ) {
+    throw new OspApiError("INVALID_REQUEST");
   }
   let decoded: unknown;
-  try { decoded = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
-  catch { throw new OspApiError('INVALID_REQUEST'); }
-  if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded) || Object.keys(decoded).join(',') !== 'decisions') {
-    throw new OspApiError('INVALID_REQUEST');
+  try {
+    decoded = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    );
+  } catch {
+    throw new OspApiError("INVALID_REQUEST");
+  }
+  if (
+    !decoded || typeof decoded !== "object" || Array.isArray(decoded) ||
+    Object.keys(decoded).join(",") !== "decisions"
+  ) {
+    throw new OspApiError("INVALID_REQUEST");
   }
   const decisions = (decoded as { decisions?: unknown }).decisions;
-  if (!Array.isArray(decisions) || decisions.length > 200) throw new OspApiError('INVALID_REQUEST');
+  if (!Array.isArray(decisions) || decisions.length > 200) {
+    throw new OspApiError("INVALID_REQUEST");
+  }
   const parsed = decisions.map(safeManifestDecision);
-  if (new Set(parsed.map((item) => item.decisionId)).size !== parsed.length) throw new OspApiError('INVALID_REQUEST');
+  if (new Set(parsed.map((item) => item.decisionId)).size !== parsed.length) {
+    throw new OspApiError("INVALID_REQUEST");
+  }
   return Object.freeze(parsed);
+}
+
+async function knowledgePromotionBody(
+  request: Request,
+): Promise<readonly string[]> {
+  if (
+    request.headers.get("content-type")?.toLowerCase() !== "application/json" ||
+    request.headers.has("content-encoding") ||
+    request.headers.has("transfer-encoding")
+  ) {
+    throw new OspApiError("INVALID_REQUEST");
+  }
+  const declared = request.headers.get("content-length");
+  if (
+    declared !== null &&
+    (!/^[0-9]+$/.test(declared) || Number(declared) < 1 ||
+      Number(declared) > KNOWLEDGE_PROMOTION_BODY_LIMIT)
+  ) {
+    throw new OspApiError("INVALID_REQUEST");
+  }
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  if (
+    bytes.byteLength < 1 || bytes.byteLength > KNOWLEDGE_PROMOTION_BODY_LIMIT ||
+    (declared !== null && Number(declared) !== bytes.byteLength)
+  ) {
+    throw new OspApiError("INVALID_REQUEST");
+  }
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    );
+  } catch {
+    throw new OspApiError("INVALID_REQUEST");
+  }
+  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
+    throw new OspApiError("INVALID_REQUEST");
+  }
+  const row = decoded as Record<string, unknown>;
+  if (
+    Object.keys(row).sort().join(",") !== "confirmation,selectedKeys" ||
+    row.confirmation !== "PROMOTE_REVIEWED_REQUEST_KNOWLEDGE" ||
+    !Array.isArray(row.selectedKeys) || row.selectedKeys.length < 1 ||
+    row.selectedKeys.length > 600 ||
+    new Set(row.selectedKeys).size !== row.selectedKeys.length ||
+    row.selectedKeys.some((item) =>
+      typeof item !== "string" ||
+      !/^(?:field|document):[a-z][a-z0-9_.-]{0,127}$/.test(item)
+    )
+  ) {
+    throw new OspApiError("INVALID_REQUEST");
+  }
+  return Object.freeze([...row.selectedKeys] as string[]);
 }
 
 async function outboundDraftBody(
@@ -480,8 +598,12 @@ function serviceError(error: unknown): OspApiError {
   if (/^(CLARIFICATION_PERSISTENCE_FAILED|DATABASE_TEMPORARY)$/.test(code)) {
     return new OspApiError("DEPENDENCY_UNAVAILABLE");
   }
-  if (/^REQUEST_MANIFEST_REVIEW_(?:INVALID|NOT_FOUND)$/.test(code)) return new OspApiError('INVALID_REQUEST');
-  if (code === 'REQUEST_MANIFEST_REVIEW_PERSISTENCE_FAILED') return new OspApiError('DEPENDENCY_UNAVAILABLE');
+  if (/^REQUEST_MANIFEST_REVIEW_(?:INVALID|NOT_FOUND)$/.test(code)) {
+    return new OspApiError("INVALID_REQUEST");
+  }
+  if (code === "REQUEST_MANIFEST_REVIEW_PERSISTENCE_FAILED") {
+    return new OspApiError("DEPENDENCY_UNAVAILABLE");
+  }
   if (/^(APPROVAL_FORBIDDEN)$/.test(code)) return new OspApiError("FORBIDDEN");
   if (/^(APPROVAL_PERSISTENCE_FAILED|SNAPSHOT_REBUILD_FAILED)$/.test(code)) {
     return new OspApiError("DEPENDENCY_UNAVAILABLE");
@@ -648,22 +770,99 @@ export function createCaseApiHandler(
         });
         return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
       }
-      if (action === 'save_request_manifest_review') {
-        if (!options.clarificationStore.saveRequestManifestReview) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
-        const verified = await options.verifyToken(bearer(request), request.signal);
-        const query = exactQuery(url, ['action', 'case_id', 'expected_case_version', 'expected_manifest_sha256']);
-        const scope = authority(verified, 'operate');
-        const expectedCaseVersion = Number(query.expected_case_version);
-        if (!UUID.test(query.case_id) || !Number.isSafeInteger(expectedCaseVersion) || expectedCaseVersion < 0 || expectedCaseVersion > 2_147_483_647 || !SHA.test(query.expected_manifest_sha256)) {
-          throw new OspApiError('INVALID_REQUEST');
+      if (action === "save_request_manifest_review") {
+        if (!options.clarificationStore.saveRequestManifestReview) {
+          throw new OspApiError("DEPENDENCY_UNAVAILABLE");
         }
-        const result = await options.clarificationStore.saveRequestManifestReview({
-          ...scope,
-          caseId: query.case_id,
-          expectedCaseVersion,
-          expectedManifestSha256: query.expected_manifest_sha256,
-          decisions: await manifestReviewBody(request),
-        });
+        const verified = await options.verifyToken(
+          bearer(request),
+          request.signal,
+        );
+        const query = exactQuery(url, [
+          "action",
+          "case_id",
+          "expected_case_version",
+          "expected_manifest_sha256",
+        ]);
+        const scope = authority(verified, "operate");
+        const expectedCaseVersion = Number(query.expected_case_version);
+        if (
+          !UUID.test(query.case_id) ||
+          !Number.isSafeInteger(expectedCaseVersion) ||
+          expectedCaseVersion < 0 || expectedCaseVersion > 2_147_483_647 ||
+          !SHA.test(query.expected_manifest_sha256)
+        ) {
+          throw new OspApiError("INVALID_REQUEST");
+        }
+        const result = await options.clarificationStore
+          .saveRequestManifestReview({
+            ...scope,
+            caseId: query.case_id,
+            expectedCaseVersion,
+            expectedManifestSha256: query.expected_manifest_sha256,
+            decisions: await manifestReviewBody(request),
+          });
+        return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+      }
+      if (action === "get_request_knowledge_workspace") {
+        if (!options.clarificationStore.getRequestKnowledgeWorkspace) {
+          throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+        }
+        const verified = await options.verifyToken(
+          bearer(request),
+          request.signal,
+        );
+        const query = exactQuery(url, ["action", "case_id"]);
+        await requireEmptyBody(request);
+        const scope = authority(verified, "read");
+        if (!UUID.test(query.case_id)) throw new OspApiError("INVALID_REQUEST");
+        const result = await options.clarificationStore
+          .getRequestKnowledgeWorkspace({
+            organizationId: scope.organizationId,
+            caseId: query.case_id,
+          });
+        return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+      }
+      if (action === "promote_request_knowledge") {
+        if (!options.clarificationStore.promoteRequestKnowledge) {
+          throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+        }
+        const verified = await options.verifyToken(
+          bearer(request),
+          request.signal,
+        );
+        const query = exactQuery(url, [
+          "action",
+          "case_id",
+          "review_id",
+          "expected_candidate_sha256",
+          "idempotency_key",
+        ]);
+        const scope = authority(verified, "operate");
+        const permission = verified.permissions.find((candidate) =>
+          candidate === "osp:operate" || candidate === "osp:superuser"
+        );
+        if (
+          !UUID.test(query.case_id) || !UUID.test(query.review_id) ||
+          !SHA.test(query.expected_candidate_sha256) ||
+          !OPAQUE.test(query.idempotency_key) ||
+          (permission !== "osp:operate" && permission !== "osp:superuser")
+        ) {
+          throw new OspApiError("INVALID_REQUEST");
+        }
+        const selectedKeys = await knowledgePromotionBody(request);
+        const result = await options.clarificationStore.promoteRequestKnowledge(
+          {
+            organizationId: scope.organizationId,
+            subject: scope.subject,
+            permission,
+            caseId: query.case_id,
+            reviewId: query.review_id,
+            expectedCandidateSha256: query.expected_candidate_sha256,
+            selectedKeys,
+            idempotencyKey: query.idempotency_key,
+          },
+        );
         return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
       }
       if (
