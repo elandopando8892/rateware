@@ -33,5 +33,16 @@ select json_build_object(
     select count(*) > 0
     from pg_constraint
     where conname = 'vendors_name_or_domain_unique'
+  ),
+  'closed_pilot_controls', (
+    select json_build_object(
+      'secret_custody_verified', secret_custody_verified,
+      'network_controls_verified', network_controls_verified,
+      'monitoring_owner_assigned', monitoring_owner_assigned,
+      'rollback_rehearsed', rollback_rehearsed,
+      'production_approved', production_approved
+    )
+    from public.rfx_private_resolver_release_controls
+    where singleton = true
   )
 ) as evidence;

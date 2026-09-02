@@ -1,0 +1,89 @@
+{
+  "contractVersion": "rateware.private-resolver.closed-pilot.v1",
+  "pilotVersion": "beta-10.4",
+  "visibility": "internal_release_evidence",
+  "authorization": {
+    "source": "current_task_user_authorization",
+    "authorizedScope": "sprint_10_4_closed_pilot_readiness",
+    "stagingMutationAuthorized": true,
+    "productionAuthorized": false,
+    "realBusinessEffectsAuthorized": false
+  },
+  "target": {
+    "parentProjectRef": "alqjqzqagdmcywpjtnnr",
+    "branchName": "marksman-loads-staging",
+    "branchProjectRef": "ilcpzfgxjrkaxmtnvzud",
+    "gitBranch": "codex/marksman-loads-private-resolver-10-4",
+    "persistent": true,
+    "withProductionData": false,
+    "previewProjectStatus": "ACTIVE_HEALTHY",
+    "controlPlaneStatus": "FUNCTIONS_DEPLOYED",
+    "retainedFunctions": ["rfx-private-resolver"]
+  },
+  "networkControls": {
+    "baselineState": "UNRESTRICTED",
+    "currentState": "RESTRICTED_CURRENT_OPERATOR_HOST",
+    "ipv4EntryCount": 1,
+    "ipv6EntryCount": 0,
+    "openIpv4Present": false,
+    "openIpv6Present": false,
+    "currentOperatorHostAllowed": true,
+    "cidrRecordedInEvidence": false,
+    "controlPlaneRollbackAvailable": true,
+    "resolverVerifiedAfterRestriction": true
+  },
+  "monitoring": {
+    "ownerRole": "AUTHORIZED_MARKSMAN_LOADS_ADMIN",
+    "cadenceMinutesDuringPilot": 15,
+    "privateOperatorAndObserverRecordRequired": true,
+    "namedHumanRequiredForProduction": true,
+    "healthCheckBeforeCanary": "PASSED",
+    "healthCheckAfterCanary": "PASSED",
+    "processingCurrent": 0,
+    "processingExpired": 0,
+    "completed24h": 2,
+    "failed24h": 0,
+    "requests24h": 2,
+    "denied24h": 0,
+    "sensitivePayloadStored": false,
+    "externalExecutionPossible": false
+  },
+  "canary": {
+    "status": "PASSED",
+    "syntheticMatchCount": 1,
+    "persistedReplay": "PASSED",
+    "tampering": "BLOCKED",
+    "liveExecution": "BLOCKED",
+    "killSwitch": "VERIFIED",
+    "finalCanaryState": "DISABLED",
+    "bidRows": 0,
+    "externalBusinessEffects": false
+  },
+  "releaseControls": {
+    "secretCustodyVerified": true,
+    "networkControlsVerified": true,
+    "monitoringOwnerAssignedForPilot": true,
+    "rollbackRehearsed": true,
+    "productionApproved": false,
+    "releaseReadyForProduction": false
+  },
+  "databaseAdvisors": {
+    "securityAdvisorRan": true,
+    "warningRecordsObserved": 43,
+    "warningsClaimedResolved": false
+  },
+  "decision": {
+    "status": "CLOSED_PILOT_TECHNICALLY_READY_PRODUCTION_BLOCKED",
+    "closedPilotReady": true,
+    "productionReady": false,
+    "productionApproved": false
+  },
+  "businessEffects": {
+    "realBidCreated": false,
+    "messageSent": false,
+    "paymentCreated": false,
+    "fleetRocketMutation": false,
+    "erpMutation": false,
+    "productionMutation": false
+  }
+}
