@@ -30,6 +30,14 @@ const signatureCanary = {
   inputPackageSha256: "d".repeat(64),
   signaturePositionVersion: 1,
 };
+const exactSend = {
+  action: "run_authorized_send_exact",
+  organizationId: "11111111-1111-4111-8111-111111111111",
+  authorizationId: "22222222-2222-4222-8222-222222222222",
+  attemptId: "33333333-3333-4333-8333-333333333333",
+  jobId: "44444444-4444-4444-8444-444444444444",
+  leaseToken: "55555555-5555-4555-8555-555555555555",
+};
 const manifestCanary = {
   action: "run_request_manifest_shadow",
   organizationId: "11111111-1111-4111-8111-111111111111",
@@ -141,6 +149,44 @@ Deno.test("OSP worker enqueues once and drains bounded batches", async () => {
     batches: 3,
   });
   assertEquals(limits, [10, 10, 10, 10]);
+});
+
+Deno.test("OSP worker executes only the exact leased authorized send", async () => {
+  let received: Record<string, string> | undefined;
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    runAuthorizedSendExact: async (input) => {
+      received = input;
+      return { outcome: "sent", replayed: false };
+    },
+  });
+  const response = await handler(request(exactSend));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { outcome: "sent", replayed: false });
+  assertEquals(received, {
+    organizationId: exactSend.organizationId,
+    authorizationId: exactSend.authorizationId,
+    attemptId: exactSend.attemptId,
+    jobId: exactSend.jobId,
+    leaseToken: exactSend.leaseToken,
+  });
+  assertEquals(
+    (await handler(request({ ...exactSend, extra: true }))).status,
+    400,
+  );
+});
+
+Deno.test("OSP worker fails closed when exact send is disabled", async () => {
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: async () => 0,
+    run: async () => 0,
+  });
+  const response = await handler(request(exactSend));
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), { error: "EXACT_SEND_DISABLED" });
 });
 
 Deno.test("OSP worker fails closed when the bridge is unavailable", async () => {

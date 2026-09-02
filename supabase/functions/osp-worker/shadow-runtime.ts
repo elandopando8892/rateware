@@ -92,6 +92,14 @@ type SupplierPackageCanary = {
 
 type SignatureApplicationCanary = SignatureCanaryConfiguration;
 
+type AuthorizedSendExact = {
+  organizationId: string;
+  authorizationId: string;
+  attemptId: string;
+  jobId: string;
+  leaseToken: string;
+};
+
 function governedStorage(
   client: Parameters<typeof createSupabaseOriginalObjectStore>[0]["client"],
 ): Pick<SupabaseClient, "storage"> {
@@ -130,6 +138,9 @@ export function createShadowWorkerRuntime(input: {
   runSignatureApplicationCanary?: (
     request: SignatureApplicationCanary,
   ) => Promise<number>;
+  runAuthorizedSendExact(
+    request: AuthorizedSendExact,
+  ): Promise<unknown>;
   runRequestManifestShadow?: (
     request: RequestManifestShadowRequest,
   ) => Promise<RequestManifestShadowResult>;
@@ -603,6 +614,15 @@ export function createShadowWorkerRuntime(input: {
         outboundSends,
         limit,
       }),
+    runAuthorizedSendExact: async (job: AuthorizedSendExact) => {
+      const result = await outboundSends.execute(job);
+      await jobs.complete({
+        jobId: job.jobId,
+        leaseToken: job.leaseToken,
+        completedAt: new Date(),
+      });
+      return result;
+    },
     runXlsxDocumentExtractCanary,
     runSupplierPackageCanary,
     runSignatureApplicationCanary,

@@ -65,6 +65,14 @@ type SignatureApplicationCanary = {
   signaturePositionVersion: number;
 };
 
+type AuthorizedSendExact = {
+  organizationId: string;
+  authorizationId: string;
+  attemptId: string;
+  jobId: string;
+  leaseToken: string;
+};
+
 type RequestManifestShadow = {
   organizationId: string;
   caseId: string;
@@ -119,6 +127,9 @@ export function createOspWorkerHandler(deps: {
   runSignatureApplicationCanary?: (
     input: SignatureApplicationCanary,
   ) => Promise<number>;
+  runAuthorizedSendExact?: (
+    input: AuthorizedSendExact,
+  ) => Promise<unknown>;
   runRequestManifestShadow?: (
     input: RequestManifestShadow,
   ) => Promise<unknown>;
@@ -190,6 +201,47 @@ export function createOspWorkerHandler(deps: {
     }
     if (!serviceAuthorized) return json(401, { error: "UNAUTHORIZED" });
     const keys = Object.keys(body).sort();
+    const exactSendKeys = [
+      "action",
+      "attemptId",
+      "authorizationId",
+      "jobId",
+      "leaseToken",
+      "organizationId",
+    ];
+    if (body.action === "run_authorized_send_exact") {
+      if (
+        keys.length !== exactSendKeys.length ||
+        keys.some((key, index) => key !== exactSendKeys[index]) ||
+        typeof body.organizationId !== "string" ||
+        typeof body.authorizationId !== "string" ||
+        typeof body.attemptId !== "string" ||
+        typeof body.jobId !== "string" ||
+        typeof body.leaseToken !== "string" ||
+        !UUID.test(body.organizationId) ||
+        !UUID.test(body.authorizationId) ||
+        !UUID.test(body.attemptId) ||
+        !UUID.test(body.jobId) ||
+        !UUID.test(body.leaseToken)
+      ) return json(400, { error: "INVALID_REQUEST" });
+      if (!deps.runAuthorizedSendExact) {
+        return json(409, { error: "EXACT_SEND_DISABLED" });
+      }
+      try {
+        return json(
+          200,
+          await deps.runAuthorizedSendExact({
+            organizationId: body.organizationId,
+            authorizationId: body.authorizationId,
+            attemptId: body.attemptId,
+            jobId: body.jobId,
+            leaseToken: body.leaseToken,
+          }),
+        );
+      } catch {
+        return json(503, { error: "EXACT_SEND_UNAVAILABLE" });
+      }
+    }
     if (body.action === "drain_rateware_gmail") {
       if (keys.some((key) => !["action", "limit"].includes(key))) {
         return json(400, { error: "INVALID_REQUEST" });

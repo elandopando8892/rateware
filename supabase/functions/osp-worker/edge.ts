@@ -122,6 +122,7 @@ Deno.serve(createOspWorkerHandler({
   manualCanaryToken: manualRequestCanary?.token,
   enqueue: runtime.enqueue,
   run: runtime.run,
+  runAuthorizedSendExact: runtime.runAuthorizedSendExact,
   runXlsxDocumentExtractCanary: runtime.runXlsxDocumentExtractCanary,
   runSupplierPackageCanary: runtime.runSupplierPackageCanary,
   runSignatureApplicationCanary: runtime.runSignatureApplicationCanary,
