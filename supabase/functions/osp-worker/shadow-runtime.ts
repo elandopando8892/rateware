@@ -399,7 +399,7 @@ export function createShadowWorkerRuntime(input: {
           if (
             source.caseId !== input.xlsxShadow!.caseId ||
             source.sourceSha256 !== input.xlsxShadow!.sourceSha256 ||
-            source.contentType !== XLSX
+            ![XLSX, XLSM].includes(source.contentType)
           ) throw new Error("INVALID_INPUT");
           return source;
         },
