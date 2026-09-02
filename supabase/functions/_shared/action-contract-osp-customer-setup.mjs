@@ -5723,7 +5723,7 @@ const DEFINITIONS = [
       "canonicalId": "rpc.osp_private.request_knowledge_reuse_policy(text,text,text,jsonb,text)",
       "actionName": "osp_private.request_knowledge_reuse_policy",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260902070000_osp_request_knowledge_reuse_policy.sql",
+      "sourceFile": "supabase/migrations/20260902074000_osp_request_knowledge_reuse_qualifiers_hotfix.sql",
       "handler": "osp_private.request_knowledge_reuse_policy(text,text,text,jsonb,text)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface osp_private.request_knowledge_reuse_policy(text,text,text,jsonb,text)",
       "businessModule": "OSP Customer Setup",
@@ -5738,19 +5738,19 @@ const DEFINITIONS = [
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "09789b34568d4e3d8b102133908221350605cb738e8c3a97cfdd92e4d45bba84",
+      "sourceFingerprint": "32e913d8df016ee87cc544dacb38a226bfbfb53c2b72b0df525bd88fa0e7ac10",
       "analysisCoverage": "direct",
       "coverageSignals": [
         "direct"
       ],
       "rpcSignature": "text,text,text,jsonb,text",
       "dependencyFiles": [
-        "supabase/migrations/20260902070000_osp_request_knowledge_reuse_policy.sql"
+        "supabase/migrations/20260902074000_osp_request_knowledge_reuse_qualifiers_hotfix.sql"
       ],
       "notes": "Internal OSP runtime or database surface; no direct browser authority."
     },
-    "metadataFingerprint": "42eaa0abb059b6629ab9de3f9567836b651c6822924e5dee31fe3477db22346e",
-    "authorizationFingerprint": "09789b34568d4e3d8b102133908221350605cb738e8c3a97cfdd92e4d45bba84"
+    "metadataFingerprint": "27226f7ca5fd3e44877ebff124f32661ef4e921969ac4db429cf04726737eb0c",
+    "authorizationFingerprint": "32e913d8df016ee87cc544dacb38a226bfbfb53c2b72b0df525bd88fa0e7ac10"
   },
   {
     "surface": {

@@ -544,17 +544,17 @@ function createPreviewClient(): OspClient {
       return { reuseEligibility: 'case_specific' as const, eligibilityReason: 'provider_specific_requirement' as const, targetCanonicalKey: null, targetDisplayLabel: null };
     }
     const documents: ReadonlyArray<[RegExp, string, string]> = [
-      [/(^|[^a-z0-9])w[ -]?9([^a-z0-9]|$)|^irs form w-9$|^tax form$/i, 'fiscal.w9', 'IRS Form W-9'],
-      [/^(carátula del banco|caratula del banco|bank account evidence|bank account verification|voided check)$/i, 'banking.account_evidence', 'Bank account evidence'],
-      [/^(bank reference|bank reference letter|bank letter|carta bancaria|carta de referencia bancaria)$/i, 'banking.reference_letter', 'Bank reference letter'],
-      [/^(comprobante( de)? domicilio|proof of address|address proof)$/i, 'legal.proof_of_address', 'Proof of address'],
-      [/^(constancia( de)? situaci[oó]n fiscal|tax status certificate)$/i, 'fiscal.tax_status_certificate', 'Tax status certificate'],
-      [/^(acta constitutiva|articles of incorporation|certificate of formation)$/i, 'legal.articles_of_incorporation', 'Articles of incorporation'],
-      [/^(ine( del)? representante|identificaci[oó]n del representante legal|legal representative id)$/i, 'identity.legal_representative', 'Legal representative identification'],
-      [/^(opini[oó]n (positiva|de cumplimiento) sat|sat positive opinion|tax compliance opinion)$/i, 'fiscal.sat_compliance_opinion', 'SAT tax compliance opinion'],
-      [/^(poder notarial|power of attorney)$/i, 'legal.power_of_attorney', 'Power of attorney'],
-      [/^(broker authority|mc authority|operating authority)$/i, 'operations.broker_authority', 'Broker operating authority'],
-      [/^(bond insurance|surety bond|broker bond)$/i, 'insurance.surety_bond', 'Surety bond'],
+      [/(^|[^a-z0-9])w[ -]?9([^a-z0-9]|$)|irs\s+form\s+w-9|tax\s+form/i, 'fiscal.w9', 'IRS Form W-9'],
+      [/car[aá]tula\s+del\s+banco|bank\s+account\s+(evidence|verification)|voided\s+check/i, 'banking.account_evidence', 'Bank account evidence'],
+      [/bank\s+(reference|letter)|carta\s+(bancaria|de\s+referencia\s+bancaria)/i, 'banking.reference_letter', 'Bank reference letter'],
+      [/comprobante(\s+de)?\s+domicilio|proof\s+of\s+address|address\s+proof/i, 'legal.proof_of_address', 'Proof of address'],
+      [/constancia(\s+de)?\s+situaci[oó]n\s+fiscal|tax\s+status\s+certificate/i, 'fiscal.tax_status_certificate', 'Tax status certificate'],
+      [/acta\s+constitutiva|articles\s+of\s+incorporation|certificate\s+of\s+formation/i, 'legal.articles_of_incorporation', 'Articles of incorporation'],
+      [/ine(\s+del)?\s+representante|identificaci[oó]n(\s+del)?\s+representante\s+legal|legal\s+representative\s+id/i, 'identity.legal_representative', 'Legal representative identification'],
+      [/opini[oó]n\s+(positiva|de\s+cumplimiento).*(sat)?|sat\s+positive\s+opinion|tax\s+compliance\s+opinion/i, 'fiscal.sat_compliance_opinion', 'SAT tax compliance opinion'],
+      [/poder\s+notarial|power\s+of\s+attorney/i, 'legal.power_of_attorney', 'Power of attorney'],
+      [/broker\s+authority|mc\s+authority|operating\s+authority/i, 'operations.broker_authority', 'Broker operating authority'],
+      [/bond\s+insurance|surety\s+bond|broker\s+bond/i, 'insurance.surety_bond', 'Surety bond'],
     ];
     if (candidate.kind === 'document') {
       const match = documents.find(([pattern]) => pattern.test(label));

@@ -19,6 +19,12 @@ const reusePolicySql = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const reuseQualifierHotfixSql = await Deno.readTextFile(
+  new URL(
+    "../../migrations/20260902074000_osp_request_knowledge_reuse_qualifiers_hotfix.sql",
+    import.meta.url,
+  ),
+);
 
 Deno.test("request knowledge catalog is human-promoted, tenant-scoped and has no external effects", () => {
   assertMatch(
@@ -91,6 +97,17 @@ Deno.test("request knowledge reuse policy normalizes common concepts and rejects
   );
   assertNotMatch(
     reusePolicySql.replace(/^--.*$/gm, ""),
+    /\b(?:http_post|net\.http|pg_net|cron\.|gmail_send|webhook)\b/i,
+  );
+});
+
+Deno.test("request knowledge reuse policy accepts supplier qualifiers without promoting supplier forms", () => {
+  assertMatch(reuseQualifierHotfixSql, /car\[aá\]tula/);
+  assertMatch(reuseQualifierHotfixSql, /acta\[\[:space:\]\]\+constitutiva/);
+  assertMatch(reuseQualifierHotfixSql, /constancia\(\[\[:space:\]\]\+de\)\?/);
+  assertMatch(reuseQualifierHotfixSql, /cww\[- _\]\?qf/);
+  assertNotMatch(
+    reuseQualifierHotfixSql.replace(/^--.*$/gm, ""),
     /\b(?:http_post|net\.http|pg_net|cron\.|gmail_send|webhook)\b/i,
   );
 });
