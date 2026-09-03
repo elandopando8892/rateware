@@ -2978,6 +2978,7 @@ assert.match(ratewareApiClientSource, /error\.incidentId = data\?\.incident_id/,
 assert.match(apiSource, /function observabilityAuditErrorDetail/, "Observability should render exact sanitized backend diagnostics");
 assert.match(apiSource, /const explicitAuthFailure = \[/, "Rateware API should classify only explicit authentication failures as 401");
 assert.doesNotMatch(apiSource.slice(apiSource.indexOf("function apiErrorStatus"), apiSource.indexOf("function bulkFilterKey")), /message\.includes\("kinde"\)|message\.includes\("jwt"\)/, "Database errors mentioning Kinde or JWT should not be misclassified as session failures");
+assert.match(apiSource.slice(apiSource.indexOf("function apiErrorStatus"), apiSource.indexOf("function bulkFilterKey")), /supabase bearer token is invalid/, "An invalid Supabase session should return 401 so the browser can refresh it");
 assert.match(apiSource, /action\.endsWith\("\.error"\)[\s\S]*observabilityAuditErrorDetail\(auditMetadata\)/, "Observability should expose sanitized details for provider and queue errors");
 assert.match(apiSource, /BULK_SEND_LIMIT = 100/, "API should cap direct Gmail send batches");
 assert.match(apiSource, /BULK_SHORTLIST_VENDOR_LIMIT = 1000/, "Bid Room participant shortlist should support up to 1,000 vendors per request");
@@ -5045,6 +5046,7 @@ assert.match(
 assert.match(whatsappTemplateMappingForeignKeyIndexMigration, /index_is_valid is distinct from true/, "WhatsApp template mapping indexing should verify the new index is valid and ready");
 assert.match(kindeSharedSource, /RATEWARE_CORS_ORIGIN/, "CORS origin should be configurable per deployment");
 assert.match(kindeSharedSource, /DEFAULT_CORS_ORIGINS = \[[\s\S]+https:\/\/rateware\.vercel\.app[\s\S]+127\.0\.0\.1:3000/, "Production and local CORS should have stable safe defaults");
+assert.match(kindeSharedSource, /https:\/\/rates\.heymarksman\.com/, "The canonical MARKSMAN Rates domain should be an allowed API origin");
 assert.doesNotMatch(kindeSharedSource, /Access-Control-Allow-Origin": "\*"/, "Shared API responses should not allow every browser origin");
 assert.match(kindeSharedSource, /"Vary": "Origin"/, "CORS responses should be cache-safe by origin");
 assert.match(kindeSharedSource, /"Access-Control-Max-Age": "86400"/, "Browser clients should reuse the trusted Edge Function preflight result");
