@@ -4860,6 +4860,7 @@ function apiErrorStatus(info: ReturnType<typeof apiErrorInfo>) {
   const explicitAuthFailure = [
     "bearer token is required",
     "invalid bearer token",
+    "supabase bearer token is invalid",
     "jwt expired",
     "invalid jwt",
     "token has expired",

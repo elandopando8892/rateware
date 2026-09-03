@@ -1,5 +1,6 @@
 const DEFAULT_CORS_ORIGINS = [
   "https://rateware.vercel.app",
+  "https://rates.heymarksman.com",
   "http://127.0.0.1:3000",
   "http://localhost:3000"
 ];

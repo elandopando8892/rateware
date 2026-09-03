@@ -67,6 +67,28 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
   })
 );
 
+// Adding the canonical MARKSMAN Rates origin changes the shared response/CORS
+// dependency envelope for every Edge Function that imports that helper. These
+// fingerprints were reviewed from the complete discovered graph after the
+// allowlist-only change; handler permissions and tenant scopes are unchanged.
+const brandedDomainAuthorizationEnvelopes = {
+  'edge.carrier-profile-api.': '47c36f1001a266b81529c3d367bc5f94eb396f40452287e8c56f293b8c3f4362',
+  'edge.create-raw-upload.': '7ddeb8dc7d6f719e958d6cca73b106c56988cb5efb805dacb304dea2d02f4cbe',
+  'edge.gmail-oauth-callback.': '17ae78313bd3d4fde034c6b9e4c40eebcd10c1e1a3eb79dc7f19fe11f805ed0c',
+  'edge.google-chat-app.': 'd19f1e0c3bd986520b898adf44f7a2c643c74a4182e7125db959a8ddd7530c42',
+  'edge.interpret-upload.': '412a464235a839d435833d21c390124885f62781a1de11de91de28fda779c431',
+  'edge.provider-gmail-intake-api.': '2ce959ddf79152822d57228b7ef5647d9b42220f372873e7b0110af75b13fa38',
+  'edge.provider-gmail-oauth-callback.': 'ee91825ed93b8562aa3693165b055884342c2555ad2c316b61ab86caacb86815',
+  'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
+  'edge.ratebook-carrier-api.': 'a7e9f3549e13c6815bcba3c0292e8c2185c0ab3f5ec37961e47c2617c775b0ee',
+  'edge.rateware-api.': '663f9a0ded1b77f2d5298030855280161b43c8096c63e51aea15062da222a007',
+  'edge.rfx-bid-api.': '874a6df13cdbda54899d7a0329fc61bfb44dbe6a10578d3e32c062f750707cdb',
+  'edge.shipper-directory-api.': 'cfb772b103dce920e5676e836b0df8153ee704b80ae8d1acc2142d5d8f467922',
+  'edge.shipper-profile-api.': 'a4c4ebcfb05982e1e9969d148d3edddfddeb38daa5db4d10c806331e82185144',
+  'edge.sync-banxico-fx.': 'a77e0713e2079ce91005b9dc1a429205826d2b3ee75b8029d732c03e10835223',
+  'edge.sync-rateware-catalog.': 'fc42c1f608b4e80f864fc2979e90c3960c24d5929e859b174c525c16b58c5266',
+  'edge.whatsapp-webhook.': 'ae8e3206c82968f670e930bdd37a5b77c18747b43e7dc55775d48c34251c1f7f',
+};
 // These eight pre-existing actions share reviewed code segments with the newly
 // added template dispatch and handler factory. Their behavior is unchanged, but
 // the scanner intentionally fingerprints the complete reachable action segment.
@@ -267,6 +289,22 @@ const gmailSurfaces = [
   },
 ];
 
+const brandedDomainAuthorizationOverrides = Object.fromEntries(
+  [
+    ...BASE_ACTION_CONTRACT.surfaces,
+    ...extension.surfaces,
+    ...providerSurfaces,
+    ...gmailSurfaces,
+    ...carrierTemplateExtension.surfaces,
+    ...rfxInvitationReviewExtension.surfaces,
+    ...rfxAtomicAwardExtension.surfaces,
+  ].flatMap((entry) => {
+    const match = Object.entries(brandedDomainAuthorizationEnvelopes)
+      .find(([prefix]) => entry.canonicalId.startsWith(prefix));
+    return match ? [[entry.canonicalId, match[1]]] : [];
+  })
+);
+
 export const ACTION_CONTRACT = {
   ...BASE_ACTION_CONTRACT,
   contractVersion,
@@ -299,6 +337,7 @@ export const ACTION_CONTRACT = {
     ...corsOnlyAuthorizationOverrides,
     ...supabaseAuthAuthorizationOverrides,
     ...ratewareApiAuthorizationOverrides,
+    ...brandedDomainAuthorizationOverrides,
   },
   surfaces: [
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({
