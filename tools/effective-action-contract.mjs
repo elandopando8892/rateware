@@ -72,22 +72,22 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // fingerprints were reviewed from the complete discovered graph after the
 // allowlist-only change; handler permissions and tenant scopes are unchanged.
 const brandedDomainAuthorizationEnvelopes = {
-  'edge.carrier-profile-api.': '47c36f1001a266b81529c3d367bc5f94eb396f40452287e8c56f293b8c3f4362',
-  'edge.create-raw-upload.': '7ddeb8dc7d6f719e958d6cca73b106c56988cb5efb805dacb304dea2d02f4cbe',
-  'edge.gmail-oauth-callback.': '17ae78313bd3d4fde034c6b9e4c40eebcd10c1e1a3eb79dc7f19fe11f805ed0c',
-  'edge.google-chat-app.': 'd19f1e0c3bd986520b898adf44f7a2c643c74a4182e7125db959a8ddd7530c42',
-  'edge.interpret-upload.': '412a464235a839d435833d21c390124885f62781a1de11de91de28fda779c431',
-  'edge.provider-gmail-intake-api.': '2ce959ddf79152822d57228b7ef5647d9b42220f372873e7b0110af75b13fa38',
-  'edge.provider-gmail-oauth-callback.': 'ee91825ed93b8562aa3693165b055884342c2555ad2c316b61ab86caacb86815',
+  'edge.carrier-profile-api.': '4cb649f3f4b7ed640aa27d80369fc6bcdecd2ace5594a6d69933e88746725d31',
+  'edge.create-raw-upload.': 'df4cea8fd1f0c048d532014136c9c0e977251e4f3ae77ddd6fdd280508ecbacc',
+  'edge.gmail-oauth-callback.': '863dea44aab4d003c11db01f1420b6e908104c54029fcaeba4809c972a151dc9',
+  'edge.google-chat-app.': '0b99e0d4b7d301006c0de6fa49419dfec47823b4cf60749bf2b8aca5350fd3d3',
+  'edge.interpret-upload.': 'fbf2c381722274f47620d56f99f39a6150546446a399493e553c9122acea0c05',
+  'edge.provider-gmail-intake-api.': '2c06a296b04565dc2f0e73438c7f0c7dc44eec0e29f42b93133f83bd6c6c3449',
+  'edge.provider-gmail-oauth-callback.': '42e3f4a12c47a5a625a170ddea2114af427443b47fe549b26cf9669044e0a922',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
-  'edge.ratebook-carrier-api.': 'a7e9f3549e13c6815bcba3c0292e8c2185c0ab3f5ec37961e47c2617c775b0ee',
-  'edge.rateware-api.': '663f9a0ded1b77f2d5298030855280161b43c8096c63e51aea15062da222a007',
-  'edge.rfx-bid-api.': '874a6df13cdbda54899d7a0329fc61bfb44dbe6a10578d3e32c062f750707cdb',
-  'edge.shipper-directory-api.': 'cfb772b103dce920e5676e836b0df8153ee704b80ae8d1acc2142d5d8f467922',
-  'edge.shipper-profile-api.': 'a4c4ebcfb05982e1e9969d148d3edddfddeb38daa5db4d10c806331e82185144',
-  'edge.sync-banxico-fx.': 'a77e0713e2079ce91005b9dc1a429205826d2b3ee75b8029d732c03e10835223',
-  'edge.sync-rateware-catalog.': 'fc42c1f608b4e80f864fc2979e90c3960c24d5929e859b174c525c16b58c5266',
-  'edge.whatsapp-webhook.': 'ae8e3206c82968f670e930bdd37a5b77c18747b43e7dc55775d48c34251c1f7f',
+  'edge.ratebook-carrier-api.': '69ec235aa42433e8cb965824a8957aff79d73fa6fce07949c70b553865b04230',
+  'edge.rateware-api.': '8d7d65c14bc6f5ce736237869f8279c7ba9c1dd36e7634fac7870bbf7e7c38df',
+  'edge.rfx-bid-api.': '4d6aab31957e1d8fb3fa539280a6a6e1c02d0cb1af74ce42aa09505f73c32ea2',
+  'edge.shipper-directory-api.': '2ed2be9625112a914b7be5b5bc14df77f417257d2644dcdd089e0dc3a22d7d7b',
+  'edge.shipper-profile-api.': '83cb7dff313890a43cbd6b0e12faa58c7beaf720d8288c186536f9e44676b12a',
+  'edge.sync-banxico-fx.': 'de62b5eeaa6c81959e63048e1d15730c3f8831834305dcbf81b9d71a54817d62',
+  'edge.sync-rateware-catalog.': '4b086635aa27a054aa1efec9def697229c25044ab548e8968ca0f667bbb4d9cd',
+  'edge.whatsapp-webhook.': 'cb8c77e28fabf73c9bed99141295193725416c5a476528281597ec402603e58a',
 };
 // These eight pre-existing actions share reviewed code segments with the newly
 // added template dispatch and handler factory. Their behavior is unchanged, but
