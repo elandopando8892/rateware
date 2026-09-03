@@ -5,15 +5,16 @@ const DEFAULT_CORS_ORIGINS = [
   "http://localhost:3000"
 ];
 const configuredCorsOrigins = [
-  Deno.env.get("RATEWARE_CORS_ORIGINS") || Deno.env.get("RATEWARE_CORS_ORIGIN") || DEFAULT_CORS_ORIGINS.join(","),
+  DEFAULT_CORS_ORIGINS.join(","),
+  Deno.env.get("RATEWARE_CORS_ORIGINS") || Deno.env.get("RATEWARE_CORS_ORIGIN") || "",
   Deno.env.get("RATEWARE_CORS_EXTRA_ORIGINS") || ""
 ]
   .join(",")
   .split(",")
   .map((origin) => origin.trim())
   .filter((origin) => /^https?:\/\/[^\s,]+$/i.test(origin));
-const CORS_ORIGINS = new Set(configuredCorsOrigins.length ? configuredCorsOrigins : DEFAULT_CORS_ORIGINS);
-const FALLBACK_CORS_ORIGIN = configuredCorsOrigins[0] || DEFAULT_CORS_ORIGINS[0];
+const CORS_ORIGINS = new Set(configuredCorsOrigins);
+const FALLBACK_CORS_ORIGIN = DEFAULT_CORS_ORIGINS[0];
 
 export function corsHeaders(request?: Request) {
   const requestOrigin = request?.headers.get("Origin")?.trim() || "";
