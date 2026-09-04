@@ -435,3 +435,5 @@ verify_jwt = false
 # Pub/Sub authenticates with a Google-signed OIDC token verified inside the function.
 [functions.provider-gmail-push]
 verify_jwt = false
+[functions.demand-radar-shipper-crm-gateway]
+verify_jwt = false
