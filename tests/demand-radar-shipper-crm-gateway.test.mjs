@@ -8,7 +8,7 @@ import {
   normalizeDemandRadarShipperPatch,
   safeDemandRadarShipperProjection,
 } from "../supabase/functions/_shared/demand-radar-shipper-crm-contract.mjs";
-import { ACTION_CONTRACT } from "../supabase/functions/_shared/action-contract.mjs";
+import { ACTION_CONTRACT } from "../tools/effective-action-contract.mjs";
 
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const gateway = readFileSync(join(root, "supabase/functions/demand-radar-shipper-crm-gateway/index.ts"), "utf8");
@@ -43,8 +43,8 @@ assert.equal("primaryContactEmail" in safe, false);
 assert.equal("primaryContactPhone" in safe, false);
 assert.equal("notes" in safe, false);
 
-assert.match(gateway, /requireKindeUser\(request\)/);
-assert.match(gateway, /resolveWorkspaceUser\(/);
+assert.match(gateway, /requireRatewareUser\(request\)/);
+assert.match(gateway, /resolveRuntimeWorkspaceUser\(/);
 assert.match(gateway, /contact_channels_returned:\s*0/);
 assert.doesNotMatch(
   gateway.match(/\.select\("([^"]+)"/)?.[1] || "",
