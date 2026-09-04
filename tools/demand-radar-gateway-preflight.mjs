@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 export const RATEWARE_PRODUCTION_PROJECT_REF = "alqjqzqagdmcywpjtnnr";
 export const DEMAND_RADAR_GATEWAY_PATH = "/functions/v1/demand-radar-shipper-crm-gateway";
+export const DEMAND_RADAR_ACTION_CONTRACT_PATH = "supabase/functions/_shared/action-contract-demand-radar-gateway.mjs";
 
 function clean(value, max = 500) {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -76,7 +77,7 @@ function currentPreflight() {
     actualSha: git(["rev-parse", "HEAD"]),
     workingTreeClean: git(["status", "--porcelain"]) === "",
     gatewayFunctionPresent: existsSync(path.join(root, "supabase/functions/demand-radar-shipper-crm-gateway/index.ts")),
-    actionContractPresent: existsSync(path.join(root, "supabase/functions/_shared/action-contract.mjs")),
+    actionContractPresent: existsSync(path.join(root, DEMAND_RADAR_ACTION_CONTRACT_PATH)),
     productionReadsAuthorized: /^(1|true)$/i.test(clean(process.env.RATEWARE_SHIPPER_CRM_PRODUCTION_READS_AUTHORIZED, 20)),
     gatewayWritesEnabled: /^(1|true)$/i.test(clean(process.env.DEMAND_RADAR_SHIPPER_CRM_WRITES_ENABLED, 20)),
     writesEnabled: /^(1|true)$/i.test(clean(process.env.RATEWARE_SHIPPER_CRM_WRITES_ENABLED, 20)),

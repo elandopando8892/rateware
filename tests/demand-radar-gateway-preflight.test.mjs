@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   evaluateDemandRadarGatewayPreflight,
+  DEMAND_RADAR_ACTION_CONTRACT_PATH,
   RATEWARE_PRODUCTION_PROJECT_REF,
 } from "../tools/demand-radar-gateway-preflight.mjs";
 
@@ -18,6 +19,8 @@ const base = {
 };
 
 const url = (ref) => `https://${ref}.supabase.co/functions/v1/demand-radar-shipper-crm-gateway`;
+
+assert.equal(DEMAND_RADAR_ACTION_CONTRACT_PATH, "supabase/functions/_shared/action-contract-demand-radar-gateway.mjs");
 
 const missingAuthorization = evaluateDemandRadarGatewayPreflight({
   ...base,
