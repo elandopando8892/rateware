@@ -1,4 +1,5 @@
 import type { OspClient } from '../api/osp-client';
+import { AnswerMemoryReviewInputSchema, type AnswerMemoryReviewReceipt } from '../features/forms/answer-memory-contract';
 import type { ApprovalCommunicationsWorkspace, CaseDetail, CaseFormWorkspace, CaseSummary, ClarificationReview, CorporateProfileReadModel, DocumentVersion, FormTemplateCatalog } from '../api/contracts';
 import type { AuthPort, BoundSession } from '../auth/auth-port';
 import { surveyJsonToCanonical } from '../features/forms/surveyjs-canonical-adapter';
@@ -773,8 +774,15 @@ function createPreviewClient(): OspClient {
     evidenceReady: false,
     // Illustrative history only; preview never writes the real answer-memory inbox.
     answerMemory: { pendingCount: 4, unboundCount: 1, staleCount: 2, approvedForReuse: false },
-    capabilities: { saveDraft: true, acceptMapping: true, correctMapping: false, submitForReview: false },
+    answerMemoryCandidates: [
+      { id: '89111111-1111-4111-8111-111111111111', label: 'Razón social de ejemplo', value: 'Sierra Retail México', canonicalFieldId: 'supplier.legalName', answerSha256: 'a'.repeat(64), sourceInstanceId: '73111111-1111-4111-8111-111111111111', sourceVersion: 2, legalEntityId: '88111111-1111-4111-8111-111111111111', stale: false, decision: 'pending_review', reason: null },
+      { id: '89111111-1111-4111-8111-111111111112', label: 'Domicilio anterior de ejemplo', value: 'Oficina anterior, ciudad ficticia', canonicalFieldId: 'supplier.address', answerSha256: 'b'.repeat(64), sourceInstanceId: '73111111-1111-4111-8111-111111111111', sourceVersion: 1, legalEntityId: '88111111-1111-4111-8111-111111111111', stale: true, decision: 'pending_review', reason: null },
+      { id: '89111111-1111-4111-8111-111111111113', label: 'Correo sin entidad de ejemplo', value: 'demo@example.test', canonicalFieldId: 'supplier.email', answerSha256: 'c'.repeat(64), sourceInstanceId: '73111111-1111-4111-8111-111111111111', sourceVersion: 1, legalEntityId: null, stale: true, decision: 'pending_review', reason: null },
+      { id: '89111111-1111-4111-8111-111111111114', label: 'Sitio web descartado de ejemplo', value: 'https://old.example.test', canonicalFieldId: 'supplier.website', answerSha256: 'd'.repeat(64), sourceInstanceId: '73111111-1111-4111-8111-111111111111', sourceVersion: 2, legalEntityId: '88111111-1111-4111-8111-111111111111', stale: false, decision: 'rejected', reason: 'Ejemplo sintético de un sitio que no corresponde.' },
+    ],
+    capabilities: { saveDraft: true, acceptMapping: true, correctMapping: false, submitForReview: false, reviewAnswerMemory: true },
   };
+  const answerReviewReceipts = new Map<string, { intent: string; receipt: AnswerMemoryReviewReceipt }>();
   const client: OspClient = {
     listOnboardingWorkspace: async () => ({ requests_total: '26', documents_pending: '7', under_review: '5', ready_for_approval: '3' }),
     getGmailStatus: async () => ({
@@ -1009,9 +1017,31 @@ function createPreviewClient(): OspClient {
       return { template, replayed: false };
     },
     getCaseFormWorkspace: async (requestedCaseId) => {
-      if (requestedCaseId === caseFormCaseId) return structuredClone(caseFormWorkspace);
+      if (requestedCaseId === caseFormCaseId) {
+        const workspace = structuredClone(caseFormWorkspace);
+        workspace.answerMemoryCandidates = workspace.answerMemoryCandidates?.map((candidate) => ({ ...candidate, stale: candidate.stale || candidate.sourceVersion !== workspace.instance?.version }));
+        return workspace;
+      }
       const caseRecord = previewCaseRows.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCaseRows[0];
       return { caseId: requestedCaseId, supplierName: caseRecord.supplier_name, caseVersion: caseRecord.aggregate_version, caseState: caseRecord.state, templateName: caseFormWorkspace.templateName, template: structuredClone(caseFormWorkspace.template), instance: null, mappings: [], evidenceReady: false, capabilities: { saveDraft: false, acceptMapping: false, correctMapping: false, submitForReview: false } };
+    },
+    reviewAnswerMemory: async (input) => {
+      const row = AnswerMemoryReviewInputSchema.parse(input);
+      if (row.caseId !== caseFormCaseId) throw new Error('FORM_MEMORY_NOT_FOUND');
+      const prior = answerReviewReceipts.get(row.idempotencyKey);
+      const intent = JSON.stringify(row);
+      if (prior) {
+        if (prior.intent !== intent) throw new Error('IDEMPOTENCY_CONFLICT');
+        return { ...prior.receipt, replayed: true };
+      }
+      const candidate = caseFormWorkspace.answerMemoryCandidates?.find((item) => item.id === row.candidateId);
+      if (!candidate || candidate.answerSha256 !== row.answerSha256 || candidate.decision !== 'pending_review') throw new Error('FORM_MEMORY_CONFLICT');
+      if (row.decision === 'accepted' && (candidate.stale || !candidate.legalEntityId || candidate.sourceVersion !== caseFormWorkspace.instance?.version)) throw new Error('FORM_MEMORY_STALE');
+      candidate.decision = row.decision;
+      candidate.reason = row.reason;
+      const receipt = { reviewId: crypto.randomUUID(), decision: row.decision, replayed: false, approvedForReuse: false as const };
+      answerReviewReceipts.set(row.idempotencyKey, { intent, receipt });
+      return receipt;
     },
     saveCaseFormDraft: async (input) => {
       if (input.caseId !== caseFormCaseId || input.templateVersionId !== caseFormWorkspace.template?.id || input.instanceId !== caseFormWorkspace.instance?.id || input.expectedVersion !== caseFormWorkspace.instance.version) throw new Error('VERSION_CONFLICT');

@@ -1,5 +1,6 @@
 import postgres from 'npm:postgres@3.4.7';
 import { readAnswerMemorySummary } from './answer-memory.ts';
+import { readAnswerMemoryCandidates, reviewAnswerMemory, type ReviewAnswerMemoryInput } from './answer-memory-review.ts';
 
 import type { FormComponent, FormTemplateVersion } from '../../../apps/osp/src/features/forms/surveyjs-canonical-adapter.ts';
 import { assessFormCompletion } from '../../../apps/osp/src/features/forms/form-completion.ts';
@@ -225,6 +226,7 @@ async function readCaseFormWorkspace(tx: SqlPort, organizationId: string, caseId
   return {
     caseId, supplierName: cases[0].supplier_name, caseVersion, caseState: cases[0].state,
     answerMemory: await readAnswerMemorySummary(tx, organizationId, caseId),
+    answerMemoryCandidates: await readAnswerMemoryCandidates(tx, organizationId, caseId),
     templateName: template?.name ?? null, template: template?.latest ?? null, instance, mappings, evidenceReady,
     saveDraftAllowed: ['awaiting_xbf_information', 'preparing'].includes(cases[0].state),
     acceptMappingAllowed: cases[0].state === 'preparing' && mappingAcceptable,
@@ -350,6 +352,9 @@ export function createPostgresFormStore(options: { databaseUrl: string; postgres
     },
     async getCaseFormWorkspace(organizationId: string, caseId: string) {
       return await withOrganizationTransaction(sql, organizationId, (tx) => readCaseFormWorkspace(tx, organizationId, caseId));
+    },
+    async reviewAnswerMemory(input: ReviewAnswerMemoryInput) {
+      return await withOrganizationTransaction(sql, input.organizationId, (tx) => reviewAnswerMemory(tx, input));
     },
     async saveCaseFormDraft(input: SaveCaseFormDraftInput) {
       return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {

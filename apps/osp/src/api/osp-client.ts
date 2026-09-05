@@ -1,4 +1,5 @@
 import type { AuthPort, BoundSession } from '../auth/auth-port';
+import { AnswerMemoryReviewInputSchema, AnswerMemoryReviewResponseSchema, type AnswerMemoryReviewInput, type AnswerMemoryReviewReceipt } from '../features/forms/answer-memory-contract';
 import { createWorkflowClient, type WorkflowClient } from './workflow-client';
 import type { ZodType } from 'zod';
 import {
@@ -137,6 +138,7 @@ export interface OspClient extends OspReadClient, OspCorporateProfileClient, Osp
   saveFormTemplateDraft(input: SaveFormTemplateDraftInput): Promise<FormTemplateMutationReceipt>;
   publishFormTemplate(input: PublishFormTemplateInput): Promise<FormTemplateMutationReceipt>;
   getCaseFormWorkspace(caseId: string): Promise<CaseFormWorkspace>;
+  reviewAnswerMemory?(input: AnswerMemoryReviewInput): Promise<AnswerMemoryReviewReceipt>;
   saveCaseFormDraft(input: SaveCaseFormDraftInput): Promise<CaseFormMutationReceipt>;
   acceptCaseFormMapping(input: AcceptCaseFormMappingInput): Promise<CaseFormMappingReviewReceipt>;
   correctCaseFormMapping(input: CorrectCaseFormMappingInput): Promise<CaseFormMappingCorrectionReceipt>;
@@ -670,6 +672,13 @@ export function createOspClient(options: ClientOptions): OspClient {
     getCaseFormWorkspace: async (caseId: string) => {
       if (!UUID.test(caseId)) throw new OspClientError('INVALID_REQUEST');
       return (await formRequest({ version: 1, action: 'get_case_form_workspace', case_id: caseId }, CaseFormWorkspaceResponseSchema)).data;
+    },
+    reviewAnswerMemory: async (input: AnswerMemoryReviewInput) => {
+      const parsed = AnswerMemoryReviewInputSchema.safeParse(input);
+      if (!parsed.success) throw new OspClientError('INVALID_REQUEST');
+      const row = parsed.data;
+      return (await formRequest({ version: 1, action: 'review_answer_memory', case_id: row.caseId, candidate_id: row.candidateId,
+        answer_sha256: row.answerSha256, decision: row.decision, reason: row.reason, idempotency_key: row.idempotencyKey }, AnswerMemoryReviewResponseSchema)).data;
     },
     saveCaseFormDraft: async (input: SaveCaseFormDraftInput) => {
       if (!OPAQUE.test(input.idempotencyKey) || !UUID.test(input.caseId) || !UUID.test(input.templateVersionId) || !(input.instanceId === null || UUID.test(input.instanceId)) || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 0 || input.expectedVersion > 2_147_483_647 || !FormValuesSchema.safeParse(input.values).success || (input.instanceId === null) !== (input.expectedVersion === 0)) throw new OspClientError('INVALID_REQUEST');

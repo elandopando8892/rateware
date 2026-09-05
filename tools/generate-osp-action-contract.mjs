@@ -12,7 +12,7 @@ const osp = inventory.surfaces.filter((entry) =>
   entry.canonicalId.startsWith('rpc.osp_private.') ||
   entry.canonicalId.startsWith('rpc.public.osp_custom_access_token_hook(')
 );
-if (osp.length !== 158) throw new Error(`Expected 158 OSP surfaces, discovered ${osp.length}.`);
+if (osp.length !== 160) throw new Error(`Expected 160 OSP surfaces, discovered ${osp.length}.`);
 
 function resource(entry) {
   if (entry.canonicalId.startsWith('rpc.')) return 'osp-workflow-database';
@@ -64,7 +64,7 @@ const definitions = osp.map((actual) => {
 });
 
 const serialized = JSON.stringify(definitions, null, 2);
-const output = `/**\n * Generated static OSP Customer Setup action-contract extension.\n * Regenerate only after deliberate review of every discovered OSP surface.\n */\nconst contractVersion = '1.3.0';\nconst DEFINITIONS = ${serialized};\n\nconst surfaces = DEFINITIONS.map(({ surface }) => ({ ...surface, contractVersion }));\n\nexport const OSP_CUSTOMER_SETUP_ACTION_CONTRACT_EXTENSION = {\n  contractVersion,\n  expectedCountsDelta: { governable: 158, edge: 50, postgres: 108, ratewareApi: 0 },\n  reviewedMetadataFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.metadataFingerprint])),\n  reviewedAuthorizationFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.authorizationFingerprint])),\n  surfaces,\n};\n`;
+const output = `/**\n * Generated static OSP Customer Setup action-contract extension.\n * Regenerate only after deliberate review of every discovered OSP surface.\n */\nconst contractVersion = '1.3.0';\nconst DEFINITIONS = ${serialized};\n\nconst surfaces = DEFINITIONS.map(({ surface }) => ({ ...surface, contractVersion }));\n\nexport const OSP_CUSTOMER_SETUP_ACTION_CONTRACT_EXTENSION = {\n  contractVersion,\n  expectedCountsDelta: { governable: 160, edge: 51, postgres: 109, ratewareApi: 0 },\n  reviewedMetadataFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.metadataFingerprint])),\n  reviewedAuthorizationFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.authorizationFingerprint])),\n  surfaces,\n};\n`;
 const outputIndex = process.argv.indexOf('--output');
 const checkIndex = process.argv.indexOf('--check');
 if (checkIndex >= 0) {

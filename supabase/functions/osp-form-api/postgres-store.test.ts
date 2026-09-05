@@ -133,7 +133,7 @@ Deno.test('Postgres form workspace keeps submission closed when document evidenc
     const text = strings.join('?').replace(/\s+/g, ' ').trim().toLowerCase();
     if (text.startsWith('set local role') || text.startsWith('select set_config')) return [];
     if (text.includes('from osp_private.customer_registration_cases case_row')) return [{ supplier_name: 'Synthetic supplier', aggregate_version: 4, state: 'preparing' }];
-    if (text.includes('from osp_private.case_answer_memory_candidates')) return [{ pending_count: 2, unbound_count: 0, stale_count: 1 }];
+    if (text.includes('from osp_private.case_answer_memory_candidates')) return text.includes('pending_count') ? [{ pending_count: 2, unbound_count: 0, stale_count: 1 }] : [];
     if (text.includes('from osp_private.form_templates template') && text.includes("status = 'published'")) return [{ template_id: templateId, name: 'XBF customer setup', updated_at: '2026-08-27T12:00:00.000Z', version_id: templateVersionId, version: 1, status: 'published', schema_sha256: 'c'.repeat(64) }];
     if (text.includes('from osp_private.form_fields')) return [{ id: '81111111-1111-4111-8111-111111111111', template_version_id: templateVersionId, position: 0, field_key: 'legal_name', definition_json: { label: 'Legal name', required: true, canonicalFieldId: 'supplier.legalName', supplierAliases: [], definition: { kind: 'text', minLength: 1, maxLength: 256 } } }];
     if (text.includes('from osp_private.form_rules')) return [];

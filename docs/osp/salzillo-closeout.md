@@ -546,3 +546,68 @@ al verificar. La protección Vercel permanece; se usó acceso temporal sin guard
 el token en Git. Smoke cloud aprobado con los mismos conteos: cero escrituras,
 cero peticiones externas permitidas, dos fuentes bloqueadas, cero errores y
 móvil sin desbordamiento. No equivale a captura ni aprobación productiva.
+
+### Sprint 13 — revisión humana de respuestas guardadas
+
+Se adaptó el patrón interno de revisión de perfil: evaluación humana y promoción
+son actos distintos. No se creó otro catálogo de hechos aprobados ni se simuló
+que una respuesta fuese evidencia documental. La pantalla muestra hasta 50
+candidatas recientes con valor, concepto canónico, formulario/versión, entidad,
+origen cambiado y decisión registrada. Permite aceptar para futura promoción o
+descartar, con motivo de 10–1000 caracteres y confirmación explícita.
+
+`review_answer_memory` en `osp-form-api` deriva organización, sujeto y permiso
+exclusivamente de la identidad verificada; sólo `osp:operate`/`osp:superuser`
+pueden decidir. El cuerpo exacto incluye candidata, caso y huella de respuesta,
+no campos de identidad. `20260905060000_osp_answer_memory_human_review.sql`
+agrega recibos append-only con RLS y un comando interno. La API no tiene
+INSERT/UPDATE/DELETE directos. El comando bloquea la candidata y, al aceptar,
+su instancia y binding; exige misma versión, valor, plantilla, entidad y
+revisión. Una candidata obsoleta o sin entidad no se acepta, pero se puede
+descartar. Un recibo sólo se repite para la misma intención, sujeto y clave;
+otra decisión para la misma candidata falla. La candidata original no cambia.
+
+Toda respuesta mantiene `approvedForReuse: false`. No se promocionan hechos,
+entrenan modelos, actualizan permisos de divulgación ni desbloquean firmas,
+autorizaciones o envíos. El estado original `pending_review` de la captura
+inmutable se complementa con el recibo; la proyección devuelve el estado de
+revisión sin sobrescribir historia. Los conteos previos siguen contando todo
+el historial, no sólo candidatas pendientes. La revisión en preview es simulada
+y se reinicia al recargar; no demuestra persistencia remota.
+
+Pruebas locales: 14 Deno (incluyendo 11 pasos SQL) aprobadas por ejecuciones
+enfocadas; 53 Vitest aprobadas con pool `forks`; TypeScript y los 39 controles
+de frontera aprobados. El primer intento con `threads` registró 7 fallos y dos
+errores de arranque/timeout del ejecutor; se conservaron los resultados y se
+repitió con procesos aislados sin modificar aserciones ni aumentar timeouts.
+También se corrigieron dos parámetros sin tipo y una expresión PostgreSQL con
+repetición 256: ahora usa clase de caracteres más longitud independiente,
+con regresión para 256/257. El test SQL aplica las migraciones reales sobre
+un esquema mínimo embebido y comprueba que el almacén de hechos permanece vacío;
+no certifica todo el esquema ni la concurrencia real de producción.
+
+La primera escritura de la actualización de la preview falló localmente;
+se verificó que el archivo seguía íntegro y había espacio libre antes de
+reintentar únicamente los cambios faltantes. No se borraron archivos ni
+terminaron procesos del usuario. Las habilidades de pruebas y checklist
+guiaron la validación y el límite de entrega sintética.
+
+Activación productiva pendiente y no realizada: las dos migraciones de captura
+y revisión, luego la UI compatible y `osp-form-api`, con smoke autenticado.
+La UI tolera API antigua; una UI antigua usa esquema estricto y no debe recibir
+primero estos campos nuevos. Ante falla se revierte API/UI y se preservan tablas
+y recibos, no se borran. Falta vincular la candidata aceptada con evidencia
+válida, alcance/vigencia y promoción explícita al catálogo existente para que
+alimente el autollenado. Sin push, migración remota, promoción ni salientes.
+
+Lint enfocado y build sintético aprobados. Contrato de acciones 160/160: se
+registraron explícitamente el comando SQL interno y la acción autenticada de
+revisión; no se ocultó el nuevo endpoint al actualizar el conteo. Smoke local
+de Chrome aprobado: una aceptación vigente, un descarte obsoleto, aceptación
+obsoleta deshabilitada y reinicio al recargar. Cero escrituras de red, cero
+solicitudes externas permitidas/intentos de fuentes y cero errores de página.
+Desktop 1280×900 y móvil 390×844 inspeccionados, sin desbordamiento; se conservaron
+colores/tipografía XBF existentes y se añadieron focos visibles a los controles.
+Evidencia privada: `tmp/osp-s13-answer-review-evidence`. El primer smoke local
+no pudo conectarse porque el servidor previo ya no estaba activo; se inició
+uno de preview del build y se repitió, sin sustituir un proceso del usuario.

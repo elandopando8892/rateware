@@ -36,6 +36,21 @@ it('uses one endpoint, exact action body, bearer token, and never transmits gene
   expect(String(init.body)).not.toContain('generation-a');
 });
 
+it('reviews a saved answer with an exact intent and never upgrades the receipt to reusable approval', async () => {
+  const id = '11111111-1111-4111-8111-111111111115';
+  const input = { caseId: id, candidateId: id, answerSha256: 'a'.repeat(64), decision: 'accepted' as const, reason: 'Verified synthetic source.', idempotencyKey: 'answer-review:one' };
+  const receipt = { reviewId: id, decision: 'accepted', replayed: false, approvedForReuse: false };
+  const h = harness([json({ version: 1, data: receipt })]);
+  await expect(h.client.reviewAnswerMemory!(input)).resolves.toEqual(receipt);
+  expect(h.fetch.mock.calls[0][0]).toBe('https://synthetic.supabase.co/functions/v1/osp-form-api');
+  expect(JSON.parse(String(h.fetch.mock.calls[0][1]?.body))).toEqual({ version: 1, action: 'review_answer_memory', case_id: id, candidate_id: id, answer_sha256: input.answerSha256, decision: 'accepted', reason: input.reason, idempotency_key: input.idempotencyKey });
+  const invalid = harness([json({ version: 1, data: { ...receipt, approvedForReuse: true } })]);
+  await expect(invalid.client.reviewAnswerMemory!(input)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  const offline = harness([new TypeError('offline')]);
+  await expect(offline.client.reviewAnswerMemory!(input)).rejects.toMatchObject({ code: 'NETWORK_UNAVAILABLE' });
+  expect(offline.fetch).toHaveBeenCalledOnce();
+});
+
 it('forces exactly one bound-token refresh after 401', async () => {
   const h = harness([json({ error: { code: 'UNAUTHORIZED', incident_id: 'i1' } }, 401), json(pipeline)]);
   await expect(h.client.listOnboardingWorkspace()).resolves.toEqual(pipeline.data);

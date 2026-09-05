@@ -38,6 +38,14 @@
 .case-form-answer-memory h2 { font-size: 1.2rem; }
 .case-form-answer-memory p { font-size: .9rem; line-height: 1.5; }
 .case-form-answer-memory p:last-child { color: var(--muted); }
+.answer-memory-review { display: grid; gap: 1rem; margin-top: 1.5rem; }
+.answer-memory-card { display: grid; gap: .6rem; padding: 1.25rem; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow-wrap: anywhere; }
+.answer-memory-card h4, .answer-memory-card p { margin: 0; }
+.answer-memory-card p { font-size: .9rem; }
+.answer-memory-value { white-space: pre-wrap; font-weight: 700; }
+.answer-memory-card textarea { display: block; width: 100%; min-height: 5rem; margin-top: .5rem; }
+.answer-memory-card input[type=checkbox] { margin-right: .5rem; }
+.answer-memory-card button:focus-visible, .answer-memory-card textarea:focus-visible, .answer-memory-card input:focus-visible { outline: 3px solid var(--xbf-navy); outline-offset: 3px; }
 .progress-track { height: .7rem; border-radius: 999px; overflow: hidden; background: #e6ebf0; }
 .progress-track span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--brand), var(--xbf-navy)); transition: width .2s ease; }
 .automatic-prefill-review { display: grid; gap: 1rem; padding: 1.25rem; border: 1px solid #d8c98e; border-radius: var(--radius); background: linear-gradient(135deg, #fffdf6, #fff 65%); box-shadow: var(--shadow); }

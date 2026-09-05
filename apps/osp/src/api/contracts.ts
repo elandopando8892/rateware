@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AnswerMemoryCandidateSchema } from '../features/forms/answer-memory-contract';
 
 export const OSP_READ_ACTIONS = [
   'list_provider_onboarding_workspace',
@@ -863,7 +864,8 @@ export const CaseFormWorkspaceResponseSchema = z.strictObject({
     caseState: CaseStateSchema, templateName: z.string().min(3).max(128).nullable(), template: FormTemplateVersionSchema.nullable(),
     instance: CaseFormInstanceSchema.nullable(), mappings: z.array(CaseFormMappingReviewSchema).max(100), evidenceReady: z.boolean(),
     answerMemory: z.strictObject({ pendingCount: z.number().int().nonnegative(), unboundCount: z.number().int().nonnegative(), staleCount: z.number().int().nonnegative(), approvedForReuse: z.literal(false) }).optional(),
-    capabilities: z.strictObject({ saveDraft: z.boolean(), acceptMapping: z.boolean(), correctMapping: z.boolean(), submitForReview: z.boolean() }),
+    answerMemoryCandidates: z.array(AnswerMemoryCandidateSchema).max(50).optional(),
+    capabilities: z.strictObject({ saveDraft: z.boolean(), acceptMapping: z.boolean(), correctMapping: z.boolean(), submitForReview: z.boolean(), reviewAnswerMemory: z.boolean().optional() }),
   }),
 });
 

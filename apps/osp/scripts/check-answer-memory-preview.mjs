@@ -5,7 +5,7 @@ import { chromium } from '@playwright/test';
 
 const origin = process.argv[2] ?? 'http://localhost:8791';
 assert.match(origin, /^(http:\/\/localhost:8791|https:\/\/osp-customer-setup-[a-z0-9]+-elandopando8892s-projects\.vercel\.app)$/);
-const evidence = path.resolve(import.meta.dirname, '../../../tmp/osp-s13-answer-memory-evidence');
+const evidence = path.resolve(import.meta.dirname, '../../../tmp/osp-s13-answer-review-evidence');
 await mkdir(evidence, { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 try {
@@ -36,15 +36,32 @@ try {
   await panel.getByText(/4 captured candidates/).waitFor();
   await panel.getByText(/not approved reusable facts/).waitFor();
   assert.equal(await panel.getByRole('button').count(), 0);
-  await panel.scrollIntoViewIfNeeded();
+  const review = page.getByRole('region', { name: 'Review saved answers' });
+  const current = review.getByRole('article', { name: 'Razón social de ejemplo' });
+  await current.getByRole('textbox').fill('Revisé la respuesta sintética y su entidad de ejemplo.');
+  await current.getByRole('checkbox').check();
+  await current.getByRole('button', { name: 'Aceptar candidata' }).click();
+  await current.getByText(/Estado: aceptada para futura promoción; no reutilizable/).waitFor();
+  const stale = review.getByRole('article', { name: 'Domicilio anterior de ejemplo' });
+  await stale.getByRole('textbox').fill('La versión anterior no corresponde al origen actual.');
+  await stale.getByRole('checkbox').check();
+  assert.equal(await stale.getByRole('button', { name: 'Aceptar candidata' }).isDisabled(), true);
+  await stale.getByRole('button', { name: 'Descartar candidata' }).click();
+  await stale.getByText('Estado: descartada').waitFor();
+  await current.scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(evidence, 'desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
-  await panel.scrollIntoViewIfNeeded();
+  await current.scrollIntoViewIfNeeded();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
   await page.screenshot({ path: path.join(evidence, 'mobile.png') });
   assert.deepEqual(external, []);
   assert.deepEqual(errors, []);
   assert.deepEqual(writes, []);
-  console.log(JSON.stringify({ origin, pendingExample: 4, approvedForReuse: false, allowedExternalRequests: 0, blockedFontRequests: blockedFonts.length, writeRequests: 0, browserErrors: 0, mobileOverflow: false, evidence }));
+  await page.reload();
+  await page.getByRole('article', { name: 'Razón social de ejemplo' }).getByText('Estado: pendiente', { exact: true }).waitFor();
+  assert.deepEqual(external, []);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(writes, []);
+  console.log(JSON.stringify({ origin, acceptedExample: 1, rejectedStaleExample: 1, resetsOnReload: true, approvedForReuse: false, allowedExternalRequests: 0, blockedFontRequests: blockedFonts.length, writeRequests: 0, browserErrors: 0, mobileOverflow: false, evidence }));
 } finally { await browser.close(); }
 /* global document, window */

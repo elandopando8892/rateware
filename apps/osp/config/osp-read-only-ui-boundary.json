@@ -31,12 +31,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/contracts.ts",
-      "sha256": "4b9d7413e4c255f7a58cfdd956d9f388a64a3330cd62e6d3abc0cdef3bd69e4c"
+      "sha256": "78f44a93f8f694c5cc16e4c386a2f401ee707241aa45a7811c2e6d677fd84a18"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/osp-client.ts",
-      "sha256": "f2758571bc56212f0eac157ec990d83458768e2d5c15567c49b1330bad9ab5df"
+      "sha256": "37ab4aeab7f5e60b24e75063e32348e7eaf5a3fa0f590bcef626a5aeb9be5d84"
     },
     {
       "kind": "production-ui",
@@ -165,8 +165,18 @@
     },
     {
       "kind": "production-ui",
+      "path": "apps/osp/src/features/forms/answer-memory-contract.ts",
+      "sha256": "33312fbe7496b33827e8d6207f7f61805d99e472cd4a290980fb3b0d26f1fe14"
+    },
+    {
+      "kind": "production-ui",
+      "path": "apps/osp/src/features/forms/AnswerMemoryReviewPanel.tsx",
+      "sha256": "f3fb60084b8325db617e1167d99bf87c2f79d0e7371e539326dea2a0c95f5a1b"
+    },
+    {
+      "kind": "production-ui",
       "path": "apps/osp/src/features/forms/CaseFormWorkspace.tsx",
-      "sha256": "bea31f5b258c48b8ff6ed2f3121b0f513ffab38b457e870ef55921876f5e6b4e"
+      "sha256": "b97751c528d72e9211474224da5147f231ffe9234fbd5fb396f2c912648a9fff"
     },
     {
       "kind": "production-ui",
@@ -261,12 +271,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "3a79164b8e54e5f8e626df5ceb09a31ccaa5e0a9e5be1de41ac8b01630bdb513"
+      "sha256": "78a90dacd5458c90b861ad26cbdbb92104413706a82c8b7698df73b09f1f0cb5"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/forms.css",
-      "sha256": "06f18cfe52ad2e65b64a446d0a674a7c1a2641d7f6d415d11fe109d3aec08e03"
+      "sha256": "300b0354f1d1b58656adb81d6b12efc4bfa47856dac48b8b351c684311d56407"
     },
     {
       "kind": "production-ui",

@@ -1,6 +1,7 @@
 import { PGlite } from "npm:@electric-sql/pglite@0.5.8";
 import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import { readAnswerMemorySummary } from "./answer-memory.ts";
+import { readAnswerMemoryCandidates } from "./answer-memory-review.ts";
 import type { SqlPort, SqlRow } from "../_shared/osp/database-context.ts";
 
 const org = "11111111-1111-4111-8111-111111111111";
@@ -295,6 +296,180 @@ Deno.test("saved answers create an isolated, versioned pending inbox without ent
               row.reuse_scope === "case_only"
             ),
             true,
+          );
+        } finally {
+          await db.exec("rollback");
+        }
+      },
+    );
+    await t.step(
+      "human reviews preserve candidates, validate source and replay only the same intent",
+      async () => {
+        await db.exec(
+          await Deno.readTextFile(
+            new URL(
+              "../../migrations/20260905060000_osp_answer_memory_human_review.sql",
+              import.meta.url,
+            ),
+          ),
+        );
+        await db.exec(
+          `select set_config('osp.organization_id','${org}',false), set_config('osp.actor_subject','operator',false), set_config('osp.actor_permission','osp:operate',false);
+        insert into osp_private.case_profile_bindings values('${org}','${caseId}','${entityId}',3);
+        update osp_private.case_form_instances set version=8,values_json='{"website":"https://review.example.test"}';`,
+        );
+        const candidates = await rows();
+        const current = candidates.at(-1)!;
+        const old = candidates[0];
+        const review = async (
+          candidate: Record<string, unknown>,
+          decision: string,
+          key: string,
+          reason = "Verified against the current saved form.",
+          hash = candidate.answer_sha256,
+        ) =>
+          (await db.query<
+            {
+              receipt: {
+                reviewId: string;
+                decision: string;
+                replayed: boolean;
+                approvedForReuse: boolean;
+              };
+            }
+          >(
+            "select osp_private.review_case_answer_memory($1,$2,$3,$4,$5,$6,$7,$8) as receipt",
+            [
+              org,
+              caseId,
+              candidate.id,
+              hash,
+              decision,
+              reason,
+              "operator",
+              key,
+            ],
+          )).rows[0].receipt;
+        await db.exec("set role osp_workflow_api");
+        try {
+          await assertRejects(
+            () => review(old, "accepted", "stale"),
+            Error,
+            "FORM_MEMORY_STALE",
+          );
+          await assertRejects(
+            () =>
+              review(
+                current,
+                "accepted",
+                "hash",
+                "Valid review reason",
+                "0".repeat(64),
+              ),
+            Error,
+            "FORM_MEMORY_CONFLICT",
+          );
+          await assertRejects(
+            () => review(current, "accepted", "reason", "short"),
+            Error,
+            "FORM_MEMORY_INVALID",
+          );
+          await db.exec(
+            `select set_config('osp.actor_permission','osp:read',false)`,
+          );
+          await assertRejects(
+            () => review(current, "accepted", "role"),
+            Error,
+            "FORM_MEMORY_FORBIDDEN",
+          );
+          await db.exec(
+            `select set_config('osp.actor_permission','osp:operate',false), set_config('osp.organization_id','${other}',false)`,
+          );
+          await assertRejects(
+            () => review(current, "accepted", "tenant"),
+            Error,
+            "FORM_MEMORY_FORBIDDEN",
+          );
+          await db.exec(
+            `select set_config('osp.organization_id','${org}',false)`,
+          );
+          await assertRejects(
+            () => review(old, "accepted", "x".repeat(256)),
+            Error,
+            "FORM_MEMORY_STALE",
+          );
+          await assertRejects(
+            () => review(old, "accepted", "x".repeat(257)),
+            Error,
+            "FORM_MEMORY_INVALID",
+          );
+          const first = await review(current, "accepted", "accept-one");
+          assertEquals(first.approvedForReuse, false);
+          assertEquals(first.replayed, false);
+          assertEquals(
+            (await review(current, "accepted", "accept-one")).reviewId,
+            first.reviewId,
+          );
+          assertEquals(
+            (await review(current, "accepted", "accept-one")).replayed,
+            true,
+          );
+          await assertRejects(
+            () => review(current, "rejected", "accept-one"),
+            Error,
+            "IDEMPOTENCY_CONFLICT",
+          );
+          await assertRejects(
+            () => review(current, "accepted", "accept-two"),
+            Error,
+            "FORM_MEMORY_CONFLICT",
+          );
+          assertEquals(
+            (await review(old, "rejected", "reject-old")).decision,
+            "rejected",
+          );
+          const tx =
+            (async (strings: TemplateStringsArray, ...values: unknown[]) => {
+              const query = strings.reduce(
+                (text, part, index) => text + (index ? `$${index}` : "") + part,
+                "",
+              );
+              return (await db.query<SqlRow>(query, values)).rows;
+            }) as SqlPort;
+          const projected = await readAnswerMemoryCandidates(tx, org, caseId);
+          assertEquals(
+            projected.find((item) => item.id === current.id)?.decision,
+            "accepted",
+          );
+          assertEquals(
+            projected.find((item) => item.id === old.id)?.stale,
+            true,
+          );
+          assertEquals(
+            projected.find((item) => item.id === current.id)?.value,
+            "https://review.example.test",
+          );
+          await assertRejects(
+            () => db.exec("delete from osp_private.case_answer_memory_reviews"),
+            Error,
+            "permission denied",
+          );
+        } finally {
+          await db.exec("reset role");
+        }
+        assertEquals(
+          (await rows()).every((row) => row.review_status === "pending_review"),
+          true,
+        );
+        await db.exec("begin");
+        try {
+          await db.exec("update osp_private.case_form_instances set version=9");
+          const next = (await rows()).at(-1)!;
+          await db.exec("delete from osp_private.case_profile_bindings");
+          await assertRejects(
+            () => review(next, "accepted", "missing-binding"),
+            Error,
+            "FORM_MEMORY_UNBOUND_OR_STALE",
           );
         } finally {
           await db.exec("rollback");

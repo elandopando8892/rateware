@@ -6,6 +6,25 @@ import { createInMemoryFormStore } from './store.ts';
 const organizationId = '11111111-1111-4111-8111-111111111111';
 const caseId = '41111111-1111-4111-8111-111111111111';
 const origin = 'http://localhost:8791';
+
+Deno.test('answer memory review derives actor and tenant from verified identity, not the body', async () => {
+  const calls: unknown[] = [];
+  const subject = createFormApiHandler({
+    store: { ...createInMemoryFormStore(), reviewAnswerMemory: async (input) => { calls.push(input); return { reviewId: caseId, decision: input.decision, replayed: false, approvedForReuse: false }; } },
+    canonicalFieldIds: [],
+    verifyToken: async (token) => ({ identity: { issuer: 'https://auth.example.test', authorizedParty: 'client', subject: 'verified-operator', organization: organizationId, email: 'operator@example.test', emailVerified: true }, permissions: token === 'read-token' ? ['osp:read'] : ['osp:operate'] }),
+  });
+  const payload = { version: 1, action: 'review_answer_memory', case_id: caseId, candidate_id: caseId, answer_sha256: 'a'.repeat(64), decision: 'accepted', reason: 'Verified synthetic answer.', idempotency_key: 'review-one' };
+  assert.equal((await subject(request(payload, 'read-token'))).status, 403);
+  assert.equal((await subject(request({ ...payload, organization_id: organizationId }))).status, 400);
+  assert.equal((await subject(request({ ...payload, reason: 'short' }))).status, 400);
+  assert.equal((await subject(request({ ...payload, decision: ['accepted'] }))).status, 400);
+  assert.equal(calls.length, 0);
+  const result = await subject(request(payload));
+  assert.equal(result.status, 200);
+  assert.equal((await result.json()).data.approvedForReuse, false);
+  assert.deepEqual(calls, [{ organizationId, subject: 'verified-operator', permission: 'osp:operate', caseId, candidateId: caseId, answerSha256: 'a'.repeat(64), decision: 'accepted', reason: 'Verified synthetic answer.', idempotencyKey: 'review-one' }]);
+});
 const surveyJson = {
   title: 'XBF customer setup', pages: [{ name: 'company', elements: [
     { type: 'text', name: 'legal_name', title: 'Legal name', isRequired: true, ospKind: 'text', ospCanonicalFieldId: 'supplier.legalName', minLength: 1, maxLength: 256 },

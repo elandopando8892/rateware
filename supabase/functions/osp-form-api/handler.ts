@@ -117,9 +117,21 @@ export function createFormApiHandler(options: FormApiHandlerOptions): (request: 
         if (row.version !== 1 || row.action !== 'get_case_form_workspace' || typeof row.case_id !== 'string' || !UUID.test(row.case_id)) throw new OspApiError('INVALID_REQUEST');
         const result = await options.store.getCaseFormWorkspace(verified.identity.organization, row.case_id);
         const { saveDraftAllowed, acceptMappingAllowed, correctMappingAllowed, submitForReviewAllowed, ...workspace } = result;
-        return jsonResponse({ version: 1, data: { ...workspace, capabilities: { saveDraft: canOperate(verified) && saveDraftAllowed, acceptMapping: canOperate(verified) && acceptMappingAllowed, correctMapping: canOperate(verified) && correctMappingAllowed, submitForReview: canOperate(verified) && submitForReviewAllowed } } }, 200, postCorsHeaders(allowed));
+        return jsonResponse({ version: 1, data: { ...workspace, capabilities: { saveDraft: canOperate(verified) && saveDraftAllowed, acceptMapping: canOperate(verified) && acceptMappingAllowed, correctMapping: canOperate(verified) && correctMappingAllowed, submitForReview: canOperate(verified) && submitForReviewAllowed, ...(workspace.answerMemoryCandidates ? { reviewAnswerMemory: canOperate(verified) && !!options.store.reviewAnswerMemory } : {}) } } }, 200, postCorsHeaders(allowed));
       }
       if (!canOperate(verified)) throw new OspApiError('FORBIDDEN');
+      if ((payload as { action?: unknown })?.action === 'review_answer_memory') {
+        const row = exact(payload, ['action', 'version', 'case_id', 'candidate_id', 'answer_sha256', 'decision', 'reason', 'idempotency_key']);
+        if (row.version !== 1 || typeof row.case_id !== 'string' || !UUID.test(row.case_id) || typeof row.candidate_id !== 'string' || !UUID.test(row.candidate_id)
+          || typeof row.answer_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(row.answer_sha256) || typeof row.decision !== 'string' || !['accepted', 'rejected'].includes(row.decision)
+          || typeof row.reason !== 'string' || row.reason.trim().length < 10 || row.reason.trim().length > 1000
+          || typeof row.idempotency_key !== 'string' || !OPAQUE.test(row.idempotency_key)) throw new OspApiError('INVALID_REQUEST');
+        if (!options.store.reviewAnswerMemory) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+        const result = await options.store.reviewAnswerMemory({ organizationId: verified.identity.organization, subject: verified.identity.subject,
+          permission: verified.permissions.includes('osp:superuser') ? 'osp:superuser' : 'osp:operate', caseId: row.case_id, candidateId: row.candidate_id,
+          answerSha256: row.answer_sha256, decision: row.decision as 'accepted' | 'rejected', reason: row.reason.trim(), idempotencyKey: row.idempotency_key });
+        return jsonResponse({ version: 1, data: result }, 200, postCorsHeaders(allowed));
+      }
       if ((payload as { action?: unknown })?.action === 'save_form_template_draft') {
         const row = exact(payload, ['action', 'expected_version', 'idempotency_key', 'name', 'survey_json', 'template_id', 'version']);
         if (row.version !== 1 || row.action !== 'save_form_template_draft' || typeof row.idempotency_key !== 'string' || !OPAQUE.test(row.idempotency_key) || !(row.template_id === null || typeof row.template_id === 'string' && UUID.test(row.template_id))) throw new OspApiError('INVALID_REQUEST');

@@ -5,17 +5,18 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { CaseFormWorkspace as CaseFormWorkspaceModel, FormValues } from '../../api/contracts';
 import type { OspClient } from '../../api/osp-client';
 import { assessFormCompletion } from './form-completion';
+import { AnswerMemoryReviewPanel } from './AnswerMemoryReviewPanel';
 
 const FormRuntime = lazy(() => import('./FormRuntime').then((module) => ({ default: module.FormRuntime })));
 
-type CaseFormClient = Pick<OspClient, 'getCaseFormWorkspace' | 'saveCaseFormDraft' | 'acceptCaseFormMapping' | 'correctCaseFormMapping' | 'submitCaseFormForReview'>;
+type CaseFormClient = Pick<OspClient, 'getCaseFormWorkspace' | 'saveCaseFormDraft' | 'acceptCaseFormMapping' | 'correctCaseFormMapping' | 'submitCaseFormForReview' | 'reviewAnswerMemory'>;
 
 export function CaseFormWorkspace({ client, caseId }: { client: CaseFormClient; caseId: string }) {
   const navigate = useNavigate();
   const query = useQuery({ queryKey: ['case-form-workspace', caseId], queryFn: () => client.getCaseFormWorkspace(caseId), retry: false, refetchOnWindowFocus: false });
   if (query.isPending) return <section className="case-form-page"><p role="status">Loading the controlled case form…</p></section>;
   if (query.isError || !query.data) return <section className="case-form-page"><Link to="/app/cases/$caseId" params={{ caseId }}>← Back to case</Link><p role="alert">The case form is unavailable. Return to the case and retry.</p></section>;
-  return <CaseFormEditor key={`${query.data.instance?.id ?? 'new'}:${query.data.instance?.version ?? 0}`} workspace={query.data} onSave={async (values, idempotencyKey) => {
+  return <><CaseFormEditor key={`${query.data.instance?.id ?? 'new'}:${query.data.instance?.version ?? 0}`} workspace={query.data} onSave={async (values, idempotencyKey) => {
     await client.saveCaseFormDraft({
       idempotencyKey, caseId, templateVersionId: query.data.template?.id ?? '',
       instanceId: query.data.instance?.id ?? null, expectedVersion: query.data.instance?.version ?? 0, values,
@@ -34,7 +35,14 @@ export function CaseFormWorkspace({ client, caseId }: { client: CaseFormClient; 
       instanceId: query.data.instance?.id ?? null, expectedVersion: query.data.instance?.version ?? 0, values,
     });
     await navigate({ to: '/app/cases/$caseId/review', params: { caseId } });
-  }} />;
+  }} />{query.data.answerMemoryCandidates ? <AnswerMemoryReviewPanel caseId={caseId} candidates={query.data.answerMemoryCandidates}
+    allowed={query.data.capabilities.reviewAnswerMemory === true && !!client.reviewAnswerMemory}
+    onReview={async (input) => {
+      if (!client.reviewAnswerMemory) throw new Error('MEMORY_REVIEW_UNAVAILABLE');
+      const receipt = await client.reviewAnswerMemory(input);
+      await query.refetch();
+      return receipt;
+    }} /> : null}</>;
 }
 
 function CaseFormEditor({ workspace, onSave, onAcceptMapping, onCorrectMapping, onSubmit }: { workspace: Awaited<ReturnType<CaseFormClient['getCaseFormWorkspace']>>; onSave(values: FormValues, idempotencyKey: string): Promise<void>; onAcceptMapping(mappingId: string, expectedMappingVersion: number, expectedAfterSha256: string, idempotencyKey: string): Promise<void>; onCorrectMapping(mappingId: string, expectedMappingVersion: number, expectedAfterSha256: string, idempotencyKey: string): Promise<void>; onSubmit(values: FormValues, idempotencyKey: string): Promise<void> }) {

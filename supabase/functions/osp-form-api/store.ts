@@ -1,6 +1,8 @@
 import type { FormComponent, FormTemplateVersion } from '../../../apps/osp/src/features/forms/surveyjs-canonical-adapter.ts';
 import { assessFormCompletion } from '../../../apps/osp/src/features/forms/form-completion.ts';
 import type { AnswerMemorySummary } from './answer-memory.ts';
+import type { ReviewAnswerMemoryInput } from './answer-memory-review.ts';
+import type { AnswerMemoryCandidate, AnswerMemoryReviewReceipt } from '../../../apps/osp/src/features/forms/answer-memory-contract.ts';
 
 export type FormTemplateCatalogItem = {
   templateId: string;
@@ -72,6 +74,7 @@ export type CaseFormMappingReview = {
 };
 export type CaseFormWorkspaceRecord = {
   answerMemory?: AnswerMemorySummary;
+  answerMemoryCandidates?: AnswerMemoryCandidate[];
   caseId: string;
   supplierName: string;
   caseVersion: number;
@@ -142,6 +145,7 @@ export type CaseFormSubmissionReceipt = {
 };
 
 export interface FormStore {
+  reviewAnswerMemory?(input: ReviewAnswerMemoryInput): Promise<AnswerMemoryReviewReceipt>;
   list(organizationId: string): Promise<readonly FormTemplateCatalogItem[]>;
   saveDraft(input: SaveFormDraftInput): Promise<FormMutationReceipt>;
   publish(input: PublishFormInput): Promise<FormMutationReceipt>;
