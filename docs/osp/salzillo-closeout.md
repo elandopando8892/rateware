@@ -389,6 +389,52 @@ El CLI rechazó `--skip-domain` antes de desplegar porque esa bandera sólo sirv
 para producción. Se retiró únicamente esa bandera y se mantuvo el destino
 preview. No hubo promoción, migración, función nueva ni push de Git.
 
+### Memoria corporativa aprobada conectada al autollenado
+
+Implementación local: `20260905050000_osp_approved_profile_memory_reuse.sql`.
+Se inspeccionaron dos bases internas: el catálogo semántico supervisado y el
+registro `provider_legal_entity_facts`. Se reutiliza el segundo para valores;
+el primero conserva conceptos, no respuestas empresariales. No hay tabla nueva,
+reentrenamiento, proveedor adicional ni modificación del contrato del RPC.
+
+El worker ya consume `load_xbf_customer_setup_candidates_for_case`. Su proyección
+pasa de cuatro conceptos a diez mediante trece códigos explícitos: razón social,
+identificador fiscal, domicilio fiscal, teléfono, correo, sitio web, representante
+legal, régimen fiscal, banco y número de cuenta. Los aliases cuenta/CLABE no se
+resuelven por prioridad si difieren: el motor conserva ambos y pide aclaración.
+Una plantilla debe declarar el identificador canónico correspondiente para usarlo.
+
+Sólo se devuelven valores escalares del perfil de la entidad activa vinculada al
+caso y al tenant actual. Se exige hecho vigente, promoción aplicada, revisión
+aprobada, campo aceptado/corregido con el mismo valor promovido y soporte activo
+y verificado. Se respetan fechas efectivas y expiración declaradas del soporte.
+Datos o campos restringidos quedan fuera de esta reutilización genérica; no se
+relajan las políticas separadas de divulgación ni se adjunta el documento fuente.
+La referencia `rateware:legal-entity-fact:<id>` acompaña el valor al borrador.
+
+Validación: 13 pruebas Deno con 19 escenarios PostgreSQL efímeros aprobados;
+incluye dos casos de la misma entidad, aislamiento de otra entidad/tenant,
+revisión pendiente, dato retirado, soporte vencido/no verificado/revocado,
+corrección aprobada, valor cambiado tras aprobación y los trece códigos.
+Se ejecuta la migración real dos veces sobre esquemas mínimos basados en las
+columnas existentes; no sustituye probar el esquema completo de Supabase.
+El pipeline de autollenado mantiene conflictos, evidencia y cero efectos
+externos. Lint enfocado y contrato de acciones 157/157 aprobados. La habilidad
+de pruebas guio las comprobaciones de persistencia, consumo y aislamiento.
+
+Límites: no presume fecha de expiración cuando no está declarada, no acredita
+la antigüedad máxima que pida un carrier y no sustituye la matriz documental.
+No incorpora tablas de referencias, respuestas de seguridad o términos de
+crédito particulares como hechos generales. Tampoco captura automáticamente
+respuestas nuevas del formulario o de la preview: sigue pendiente presentarlas
+como candidatas con alcance, fuente y decisión humana antes de incorporarlas
+a memoria persistente. Este bloque consume hechos ya aprobados y promovidos.
+
+Sin aplicación remota, push, despliegue, canary productivo, promoción de datos,
+firma o correo. La preview de revisión PDF no cambió. Para activar esta parte
+se requiere aplicar la migración autorizada y verificar lectura en el backend
+compartido; el worker conserva la misma llamada y firma del RPC.
+
 ## Esfuerzo recomendado de Codex
 
 Estos son ajustes de razonamiento, no estimaciones de horas ni cambios del modelo

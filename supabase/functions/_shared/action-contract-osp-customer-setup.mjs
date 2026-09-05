@@ -4354,7 +4354,7 @@ const DEFINITIONS = [
       "canonicalId": "rpc.osp_private.load_xbf_customer_setup_candidates_for_case(uuid,uuid)",
       "actionName": "osp_private.load_xbf_customer_setup_candidates_for_case",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260828220609_osp_case_profile_package_draft.sql",
+      "sourceFile": "supabase/migrations/20260905050000_osp_approved_profile_memory_reuse.sql",
       "handler": "osp_private.load_xbf_customer_setup_candidates_for_case(uuid,uuid)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface osp_private.load_xbf_customer_setup_candidates_for_case(uuid,uuid)",
       "businessModule": "OSP Customer Setup",
@@ -4369,19 +4369,19 @@ const DEFINITIONS = [
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "fd5f7df2aaf09d6b7a895405f4509bfd9b538ec1835c12514ac6f419821b91a8",
+      "sourceFingerprint": "b45d746e51706269fb5a8ad35cf1eec1dab2286ac9009c12b054e0eecbe5301c",
       "analysisCoverage": "direct",
       "coverageSignals": [
         "direct"
       ],
       "rpcSignature": "uuid,uuid",
       "dependencyFiles": [
-        "supabase/migrations/20260828220609_osp_case_profile_package_draft.sql"
+        "supabase/migrations/20260905050000_osp_approved_profile_memory_reuse.sql"
       ],
       "notes": "Internal OSP runtime or database surface; no direct browser authority."
     },
-    "metadataFingerprint": "f9c0e01651ff67b59b6226a97d086e3a7845bb59309fa4511d09fa5200019d7a",
-    "authorizationFingerprint": "fd5f7df2aaf09d6b7a895405f4509bfd9b538ec1835c12514ac6f419821b91a8"
+    "metadataFingerprint": "9954f8d8fa4e5871a0e8452f6f51b96f7119f5aded03b3b1b1ad3af271f26a6c",
+    "authorizationFingerprint": "b45d746e51706269fb5a8ad35cf1eec1dab2286ac9009c12b054e0eecbe5301c"
   },
   {
     "surface": {

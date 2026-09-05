@@ -45,6 +45,30 @@ const base: AutomaticPreparationInput = {
   currentValues: {},
 };
 
+Deno.test("conflicting corporate-memory aliases require clarification and preserve both facts", () => {
+  const plan = prepareCaseForm({
+    ...base,
+    fields: [{
+      fieldId: "account",
+      canonicalFieldId: "banking.accountNumber",
+      supplierAliases: [],
+      required: true,
+    }],
+    candidates: ["account", "clabe"].map((name, index) => ({
+      fieldKey: "banking.accountNumber",
+      value: index ? "002222222222222222" : "1111111111",
+      source: "rateware" as const,
+      validation: "valid" as const,
+      confidence: 1,
+      evidenceIds: [`rateware:legal-entity-fact:${name}`],
+    })),
+  });
+  assertEquals(plan.status, "awaiting_clarification");
+  assertEquals(plan.fields[0].status, "contradictory");
+  assertEquals(plan.fields[0].evidenceIds.length, 2);
+  assertEquals(plan.externalEffects, false);
+});
+
 Deno.test("automatic preparation fills a complete draft and stops at Operations review", () => {
   assertEquals(prepareCaseForm(base), {
     status: "ready_for_operations_review",
@@ -139,9 +163,10 @@ Deno.test("label-only attachment cells never enter the prepared form", () => {
 Deno.test("the service persists one no-effects plan with the job correlation", async () => {
   const persisted: unknown[] = [];
   const service = createAutomaticPreparationService({
-    load: async () => base,
-    persist: async (input) => {
+    load: () => Promise.resolve(base),
+    persist: (input) => {
       persisted.push(input);
+      return Promise.resolve();
     },
   });
   const plan = await service.prepare({
