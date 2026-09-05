@@ -9,7 +9,7 @@ const decision = "33333333-3333-4333-8333-333333333333";
 const references = ["Alpha", "Beta", "Gamma"].map((company, index) => ({
   company,
   contact: `Demo ${index}`,
-  phone: "+52 81 0000 0000",
+  phone: index === 2 ? "+521550000001" : "+52 81 0000 0000",
   email: `reference${index}@example.test`,
 }));
 const columns = ["company", "contact", "phone", "email"];
@@ -256,6 +256,10 @@ Deno.test("joined reference values survive spreadsheet generation without changi
   );
   assertEquals(await sha256Hex(sourceBytes), sourceSha256);
   assertEquals(output.receipt.mappings.length, 9);
+  assertEquals(
+    reopened.getWorksheet("1-2")!.getCell("C48").value,
+    "+521550000001",
+  );
 });
 
 Deno.test("joined reference projections preserve all unrelated XLSM ZIP parts and merged anchors", async () => {
@@ -331,6 +335,16 @@ Deno.test("joined reference projections preserve all unrelated XLSM ZIP parts an
   assertEquals(output.receipt.mappings.length, 9);
   assertEquals(output.receipt.formCoverage?.macroPreserved, true);
   assertEquals(output.receipt.formCoverage?.printerSettingsPreserved, true);
+  assertEquals(
+    workbook.getWorksheet("1-2")!.getCell("C48").value,
+    "+521550000001",
+  );
+  const xml = await reopened.file("xl/worksheets/sheet1.xml")!.async("text");
+  assertEquals(
+    /<c\b[^>]*r="C48"[^>]*t="inlineStr"[^>]*><is><t[^>]*>\+521550000001<\/t><\/is><\/c>/
+      .test(xml),
+    true,
+  );
   assertEquals(await sha256Hex(sourceBytes), sourceSha256);
 });
 

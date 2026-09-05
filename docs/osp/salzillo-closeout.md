@@ -235,6 +235,47 @@ Salzillo. Una cadena correctamente persistida no prueba que se vea completa al
 imprimir. Faltan valores reales, aplicabilidad, evidencia vigente, PDF y revisión
 de Sales. Sin push, despliegue, migración, firma, correo o cambio de caso real.
 
+### Verificación visual del bloque de referencias
+
+Se inspeccionó el original y se generaron capturas locales con las tres empresas,
+contactos y teléfonos comunicados. Los correos se muestran como pendientes; no
+se inventó ninguno. Los datos permanecen en `tmp`, fuera de los fixtures y Git.
+
+- La vista de una línea muestra completos los tres pares empresa/contacto en
+  `1-2!C43`, `G43` y `C47`, sin cambiar alturas ni anchos. Se propone separador
+  ` — ` para la revisión del mapa, no su publicación automática.
+- La alternativa con salto de línea y filas 43/47 a 30 puntos fue legible pero
+  cambia la geometría vertical. No se aplicó al original ni al worker.
+- La primera captura muestra un teléfono internacional sin espacios en notación
+  científica pese a que el getter de Artifact Tool devuelve el string exacto.
+  Aplicar formato de texto en el probe no corrigió esa representación. La
+  captura legible añade sólo espacios de presentación después de comprobar que
+  los dígitos y el prefijo no cambian. No se atribuye este comportamiento a OSP.
+- Se reforzaron las pruebas sintéticas del generador: al reabrir XLSX y XLSM se
+  conserva un teléfono sin espacios, con `+`, como string exacto. En el XML de
+  XLSM se verifica `inlineStr` y el valor literal, sin conversión numérica.
+  Nueve pruebas enfocadas aprobadas, incluidas las dos rutas de archivo.
+- Las celdas de referencia del original declaran Arial Nova Cond Light, 10 pt.
+  No se encontró esa fuente en las carpetas de fuentes Windows consultadas;
+  no se verificó el fallback interno de Artifact Tool. El ajuste observado es
+  evidencia del visor, no certificación de impresión ni del PDF definitivo.
+- El proceso de render imprimió resultados y generó las capturas pero devolvió
+  código 1 al terminar, sin diagnóstico adicional. Se conserva esa limitación;
+  no se etiqueta la ejecución completa como un gate automático aprobado.
+- El hash del original permaneció
+  `af45f6627106edc5fd5fd114dca56a337290301a5a059aa07f7e36f8e236b3ee`.
+  No se exportó una conversión XLSX que pudiera perder sus macros o controles.
+
+La habilidad de hojas de cálculo se aplicó a inspección de estilos y coordenadas,
+comparación visual y preservación del original. Informe privado navegable:
+`tmp/osp-s13-artifacts/revision-visual-referencias.html`.
+
+Esta iteración **no entrega el PDF final**. Las imágenes son probes en memoria,
+no el paquete real producido por el worker. Falta verificar el render de los
+bytes exactos del paquete con los valores completos y el entorno tipográfico
+elegido. La verificación visual del bloque no acredita las otras secciones,
+documentos, aprobación de Sales o firma autógrafa.
+
 | Resultado necesario | Pendiente concreto |
 | --- | --- |
 | Formulario original completo | Vincular todos los campos aplicables a valores comprobados o una exclusión razonada; no usar cantidad de celdas desbloqueadas como prueba de completitud. |
