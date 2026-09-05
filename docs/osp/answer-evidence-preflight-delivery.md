@@ -69,6 +69,26 @@ cliente de autenticación sintético. La opción de build no modifica la autenti
 Supabase de producción. Se reutiliza el proyecto Vercel existente; sin funciones,
 secretos, infraestructura nueva, push ni promoción productiva.
 
+Preview publicada y verificada en el proveedor:
+
+- Código: `50111e4556075e0fa11e34668b5557cfabadcd79`.
+- Deployment: `dpl_9stxxL3C4oLrcKGrb64n8qp31LVa`, estado `READY`, target `null`.
+- Proyecto: `prj_6mVnZ4DNVH3U2KCyQgyRMZDCJx8s` (`osp-customer-setup`).
+- Ruta: [formulario sintético](https://osp-customer-setup-gvf1j2hpg-elandopando8892s-projects.vercel.app/app/cases/11111111-1111-4111-8111-111111111115/form).
+- `gitCommitSha` y `ospSourceSha` coinciden. `gitDirty=1` corresponde únicamente
+  a `tmp/` no rastreado; el árbol rastreado estaba limpio al publicar el prebuilt.
+
+El primer smoke cloud sin acceso temporal agotó la espera de la región: HEAD
+confirmó redirección a la protección SSO de Vercel (302). No se desactivó la
+protección ni se repitió el despliegue. Con acceso temporal, el smoke completo
+pasó: una aceptación y un descarte sintéticos, dos comparaciones, cero controles
+de escritura en ellas, cero escrituras/solicitudes externas permitidas, dos
+intentos de fuentes bloqueados, cero errores de página, cero desbordamiento y
+reinicio de las decisiones al recargar. Las capturas desktop/mobile de la misma
+carpeta de evidencia fueron actualizadas por el smoke cloud e inspeccionadas.
+El token temporal no se guarda en Git. Esta prueba no autentica un usuario OSP
+real ni demuestra persistencia o funcionamiento del backend en producción.
+
 La futura activación de API requiere comprobar/aplicar, con autorización específica,
 las migraciones locales previas de memoria aprobada, captura, revisión y esta
 función de lectura; no asumir que estar en Git implica estar en Supabase.

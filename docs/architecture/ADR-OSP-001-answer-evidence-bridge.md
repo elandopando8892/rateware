@@ -167,7 +167,9 @@ declaraciones sin documento, referencias comerciales o banca en este bloque.
 1. [x] Inspeccionar bases existentes y ejecutar prueba SQL de compatibilidad.
 2. [x] Definir límites, estados visibles y alternativas sin modificar producción.
 3. [x] Diseño B y política de renovación aprobados por el usuario para local/preview.
-4. [ ] Implementar preflight en lectura y comparación UI; preview sintética visible.
+4. [x] Implementar preflight en lectura y comparación UI; preview sintética visible
+   (`50111e4`, `dpl_9stxxL3C4oLrcKGrb64n8qp31LVa`); ver entrega y pruebas en
+   `../osp/answer-evidence-preflight-delivery.md`.
 5. [ ] Implementar enlace/renovación atómicos con pruebas de conflicto, vigencia,
    permisos y concurrencia; verificar el catálogo existente y el aislamiento Rateware.
 6. [ ] Activación productiva únicamente con autorización de alcance/SHA/migraciones
