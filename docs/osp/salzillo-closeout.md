@@ -611,3 +611,16 @@ colores/tipografía XBF existentes y se añadieron focos visibles a los controle
 Evidencia privada: `tmp/osp-s13-answer-review-evidence`. El primer smoke local
 no pudo conectarse porque el servidor previo ya no estaba activo; se inició
 uno de preview del build y se repitió, sin sustituir un proceso del usuario.
+
+Preview de `aa2b3d9c8bbf5048ece67006c667ed1074c70ab1` publicada:
+`dpl_ELbuN5vX6tx2DqacrVgjihrqgz62`, `READY`, target `null`, proyecto existente
+`prj_6mVnZ4DNVH3U2KCyQgyRMZDCJx8s`.
+[Revisión sintética de respuestas](https://osp-customer-setup-7bdy8w5gt-elandopando8892s-projects.vercel.app/app/cases/11111111-1111-4111-8111-111111111115/form).
+El proveedor confirma el SHA y scope `synthetic-answer-review-preview`.
+`gitDirty=1` corresponde a `tmp/` sin seguimiento; no había diferencias de
+archivos versionados al validar. Se desplegó únicamente el build estático,
+sin funciones ni migración. La protección Vercel se conserva y el acceso
+temporal no se almacena en Git. Smoke cloud aprobado: una aceptación vigente,
+un descarte obsoleto, bloqueo de aceptación obsoleta, reinicio al recargar,
+cero escrituras/solicitudes externas permitidas, dos intentos de fuente
+bloqueados, cero errores y móvil sin desbordamiento. No hubo push ni promoción.
