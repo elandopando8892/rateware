@@ -534,3 +534,15 @@ sin permitirlos ni confundirlos con cero intentos. Se reutilizó el servidor
 de preview existente al encontrar ocupado 8791; no se terminó ningún proceso.
 Evidencia privada: `tmp/osp-s13-answer-memory-evidence`. El panel conserva las
 variables visuales XBF existentes y no introduce fuentes, logos ni controles.
+
+Preview publicada de `8bba2af8b2d623fafcdde92dc9a5c40594b4110f`:
+`dpl_BgAvA79vKUtNboCz3c3ZvzHSVzK5`, `READY`, target `null`, proyecto existente
+`prj_6mVnZ4DNVH3U2KCyQgyRMZDCJx8s`.
+[Formulario sintético con resumen de candidatas](https://osp-customer-setup-k326sheit-elandopando8892s-projects.vercel.app/app/cases/11111111-1111-4111-8111-111111111115/form).
+Se enviaron exclusivamente archivos estáticos preconstruidos; sin funciones,
+migración, promoción ni push. La metadata del proveedor confirma el SHA; marca
+`gitDirty=1` por `tmp/` sin seguimiento, con `git diff HEAD --name-only` vacío
+al verificar. La protección Vercel permanece; se usó acceso temporal sin guardar
+el token en Git. Smoke cloud aprobado con los mismos conteos: cero escrituras,
+cero peticiones externas permitidas, dos fuentes bloqueadas, cero errores y
+móvil sin desbordamiento. No equivale a captura ni aprobación productiva.
