@@ -475,3 +475,62 @@ deno test --allow-env --allow-read --allow-sys --node-modules-dir=none --no-lock
 La dependencia PostgreSQL está fijada en `npm:@electric-sql/pglite@0.5.8` sólo en
 la prueba. La primera ejecución puede descargarla. Los casos son sintéticos;
 no lee archivos de clientes ni envía comunicaciones.
+
+### Sprint 13 — captura de respuestas pendientes para memoria
+
+Se reutiliza el guardado existente de `case_form_instances`: un trigger captura
+únicamente futuras revisiones persistidas, en la misma transacción. No hay
+backfill ni una nueva fuente de datos aprobados. Conserva caso, plantilla y
+huella del esquema, campo canónico, valor/huella, versión de origen y entidad
+XBF/revisión de binding al capturar; sin binding queda explícitamente nulo.
+Un cambio de valor necesita una nueva versión y no sobrescribe la anterior.
+La API sólo tiene SELECT con RLS por organización; no puede aprobar, editar ni
+borrar estas candidatas. El mismo guardado/versionado es idempotente.
+
+El alcance inicial son siete conceptos: razón social, domicilio, teléfono,
+correo, sitio web, representante y régimen fiscal, con campos escalares text,
+textarea, phone o email. Banca, RFC/Tax ID, firmas, credenciales, tablas de
+referencias, crédito y conceptos no clasificados quedan fuera. No se infiere
+la veracidad del valor ni quién lo escribió: también un borrador guardado por
+el worker puede producir candidatas. Todo permanece `case_only` y
+`pending_review`; no entra en `provider_legal_entity_facts`, autollenado,
+entrenamiento del LLM, autorización de divulgación ni acciones salientes.
+
+El formulario muestra conteos de candidatas capturadas, con origen cambiado
+y sin entidad al capturar. Son conteos del historial, no de campos únicos, y
+pueden solaparse. Se compara la versión/valor actual y el binding actual para
+detectar origen cambiado. La API no expone valores en este resumen y fuerza
+`approvedForReuse: false`. La preview Sierra contiene un ejemplo fijo y
+sintético (4/2/1), no una simulación de persistencia ni una aprobación.
+
+Validación local: 13 pruebas Deno con 10 pasos de PostgreSQL embebido, 49
+pruebas Vitest y 39 de frontera de UI aprobadas; lint enfocado aprobado.
+La prueba SQL aplica la migración real sobre un esquema mínimo compatible,
+no representa una validación del esquema completo de producción. Cubre
+versiones, rollback, tenant, exclusiones, cambios de entidad y resumen sin
+valores. Se añadió un índice organización/caso para la lectura del historial.
+
+Activación pendiente: aplicar `20260905053000_osp_case_answer_memory_candidates.sql`
+y coordinar UI/API. La UI nueva tolera el campo ausente de la API anterior;
+la API nueva necesita la migración y la UI anterior usa respuesta estricta,
+por lo que no debe desplegarse primero la API contra aquella UI. El rollback
+preferido es volver a la API anterior y conservar la evidencia capturada, no
+borrar la tabla. No se ha aplicado la migración ni tocado casos productivos.
+
+El siguiente cierre funcional sigue siendo revisión humana de candidatas,
+alcance/vigencia y promoción explícita al catálogo aprobado existente, sin
+fabricar evidencia documental. Este bloque **no completa todavía** ese ciclo.
+Las habilidades de pruebas y checklist de despliegue guiaron las comprobaciones
+de aislamiento y el límite de preview sintética; no hay CI remoto ni aceptación
+productiva. No hubo push, firma, correo, llamada LLM ni nueva infraestructura.
+
+TypeScript, build sintético y contrato de acciones 158/158 aprobados. Smoke
+local del build en Chrome: indicador de sólo lectura, cero escrituras, cero
+solicitudes externas permitidas y cero errores de página; desktop 1280×900 y
+móvil 390×844 inspeccionados, sin desbordamiento. Dos intentos de cargar Open
+Sans desde la hoja existente de SurveyJS se bloquearon explícitamente; el
+primer smoke los señaló y falló, después se reportaron como fuentes bloqueadas,
+sin permitirlos ni confundirlos con cero intentos. Se reutilizó el servidor
+de preview existente al encontrar ocupado 8791; no se terminó ningún proceso.
+Evidencia privada: `tmp/osp-s13-answer-memory-evidence`. El panel conserva las
+variables visuales XBF existentes y no introduce fuentes, logos ni controles.

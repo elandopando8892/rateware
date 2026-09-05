@@ -3,6 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { createPreviewRuntime } from './preview-runtime';
 
 describe('synthetic preview runtime', () => {
+  it('shows pending answer-memory examples without granting reusable approval', async () => {
+    const runtime = createPreviewRuntime();
+    const workspace = await runtime.apiClient.getCaseFormWorkspace('11111111-1111-4111-8111-111111111115');
+    expect(workspace.answerMemory).toEqual({ pendingCount: 4, unboundCount: 1, staleCount: 2, approvedForReuse: false });
+  });
+
   it('starts authenticated with realistic XBF onboarding data and no network calls', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const runtime = createPreviewRuntime();

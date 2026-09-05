@@ -1,4 +1,5 @@
 import postgres from 'npm:postgres@3.4.7';
+import { readAnswerMemorySummary } from './answer-memory.ts';
 
 import type { FormComponent, FormTemplateVersion } from '../../../apps/osp/src/features/forms/surveyjs-canonical-adapter.ts';
 import { assessFormCompletion } from '../../../apps/osp/src/features/forms/form-completion.ts';
@@ -223,6 +224,7 @@ async function readCaseFormWorkspace(tx: SqlPort, organizationId: string, caseId
   const evidenceReady = template && mappingsAccepted ? await readEvidenceReady(tx, organizationId, caseId, template.latest.id) : false;
   return {
     caseId, supplierName: cases[0].supplier_name, caseVersion, caseState: cases[0].state,
+    answerMemory: await readAnswerMemorySummary(tx, organizationId, caseId),
     templateName: template?.name ?? null, template: template?.latest ?? null, instance, mappings, evidenceReady,
     saveDraftAllowed: ['awaiting_xbf_information', 'preparing'].includes(cases[0].state),
     acceptMappingAllowed: cases[0].state === 'preparing' && mappingAcceptable,

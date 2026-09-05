@@ -117,6 +117,12 @@ function CaseFormEditor({ workspace, onSave, onAcceptMapping, onCorrectMapping, 
         onCorrect={() => void correctMapping()}
       />
 
+      {workspace.answerMemory ? <section className="case-form-answer-memory" aria-label="Answer memory candidates">
+        <h2>Saved answers awaiting memory review</h2>
+        <p>{workspace.answerMemory.pendingCount} captured candidates · {workspace.answerMemory.staleCount} with changed source · {workspace.answerMemory.unboundCount} without an XBF entity at capture.</p>
+        <p>These counts can overlap. Candidates remain case-only, not approved reusable facts. Saving a form does not train the LLM, update the corporate profile, or approve disclosure.</p>
+      </section> : null}
+
       <div className="case-form-layout">
         <aside className="case-form-rail" aria-label="Case form stages">
           <ol>

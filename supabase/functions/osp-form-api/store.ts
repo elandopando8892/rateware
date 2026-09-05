@@ -1,5 +1,6 @@
 import type { FormComponent, FormTemplateVersion } from '../../../apps/osp/src/features/forms/surveyjs-canonical-adapter.ts';
 import { assessFormCompletion } from '../../../apps/osp/src/features/forms/form-completion.ts';
+import type { AnswerMemorySummary } from './answer-memory.ts';
 
 export type FormTemplateCatalogItem = {
   templateId: string;
@@ -70,6 +71,7 @@ export type CaseFormMappingReview = {
   updatedAt: string;
 };
 export type CaseFormWorkspaceRecord = {
+  answerMemory?: AnswerMemorySummary;
   caseId: string;
   supplierName: string;
   caseVersion: number;

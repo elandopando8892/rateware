@@ -771,6 +771,8 @@ function createPreviewClient(): OspClient {
       },
     }],
     evidenceReady: false,
+    // Illustrative history only; preview never writes the real answer-memory inbox.
+    answerMemory: { pendingCount: 4, unboundCount: 1, staleCount: 2, approvedForReuse: false },
     capabilities: { saveDraft: true, acceptMapping: true, correctMapping: false, submitForReview: false },
   };
   const client: OspClient = {

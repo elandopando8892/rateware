@@ -862,6 +862,7 @@ export const CaseFormWorkspaceResponseSchema = z.strictObject({
     caseId: z.uuid(), supplierName: z.string().min(1).max(256), caseVersion: z.number().int().min(0).max(2_147_483_647),
     caseState: CaseStateSchema, templateName: z.string().min(3).max(128).nullable(), template: FormTemplateVersionSchema.nullable(),
     instance: CaseFormInstanceSchema.nullable(), mappings: z.array(CaseFormMappingReviewSchema).max(100), evidenceReady: z.boolean(),
+    answerMemory: z.strictObject({ pendingCount: z.number().int().nonnegative(), unboundCount: z.number().int().nonnegative(), staleCount: z.number().int().nonnegative(), approvedForReuse: z.literal(false) }).optional(),
     capabilities: z.strictObject({ saveDraft: z.boolean(), acceptMapping: z.boolean(), correctMapping: z.boolean(), submitForReview: z.boolean() }),
   }),
 });
