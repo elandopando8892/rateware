@@ -225,6 +225,16 @@
     },
     {
       "kind": "production-ui",
+      "path": "apps/osp/src/features/review/artifact-review.ts",
+      "sha256": "c95ee5b33aea53292dbae45c4508ad97efa3da86193b1acc33a4b892c193e5e2"
+    },
+    {
+      "kind": "production-ui",
+      "path": "apps/osp/src/features/review/ArtifactReviewPanel.tsx",
+      "sha256": "0b57a53b0656166db76e6d5458e970fb9636910ad9c45a12003bd7a724316b1b"
+    },
+    {
+      "kind": "production-ui",
       "path": "apps/osp/src/features/review/CarrierPackageInventory.tsx",
       "sha256": "2565155a5ffcc2e384dd404bf72b9df38a7a2373e4a4fbbfd608d288d988f439"
     },
@@ -236,7 +246,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/review/OperationsReviewPage.tsx",
-      "sha256": "07611f232cbccc835f9b83805d50364205f34f656bd7dc7d4a7c5ff02ffd41c2"
+      "sha256": "496e682b45de2fd466126ac19e905f01c534a65533a9f1837c40a17c34db8f3e"
     },
     {
       "kind": "production-ui",
@@ -245,8 +255,13 @@
     },
     {
       "kind": "production-ui",
+      "path": "apps/osp/src/preview/artifact-review-inventory.ts",
+      "sha256": "c0a9c4dbeda0441063e8d24d8f6ce9b089d56cf58a8616ba3b44aec932f43382"
+    },
+    {
+      "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "d2d7dbf3beef52197caa658f7d72219d84bfe3282064f306f68ed121cefead82"
+      "sha256": "8b5c0b5bfeaf48377f4d1cb6690316e45ca2891aca0930d174dcdec325d0a4e6"
     },
     {
       "kind": "production-ui",
@@ -256,7 +271,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/global.css",
-      "sha256": "4e415ece616847242114d37091c80e3501b6d8e2c0a7b80f4343ab49f7e3b745"
+      "sha256": "963b93e4fdd0889ee8dc7b09444cb78a26acfe9cebd4f05dd76f4d37437308eb"
     },
     {
       "kind": "production-ui",

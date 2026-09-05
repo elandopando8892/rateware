@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 
 import type { ApprovalCommunicationsWorkspace } from '../../api/contracts';
 import { FulfillmentMatrixPanel } from './FulfillmentMatrixPanel';
+import { ArtifactReviewPanel } from './ArtifactReviewPanel';
+import { syntheticArtifactInventory } from '../../preview/artifact-review-inventory';
 
 export function OperationsReviewPage({ workspace, conflict = false, onComplete }: { workspace: ApprovalCommunicationsWorkspace; conflict?: boolean; onComplete(): Promise<void> }) {
   const [confirmed, setConfirmed] = useState(false);
@@ -27,6 +29,7 @@ export function OperationsReviewPage({ workspace, conflict = false, onComplete }
       <div><dt>Evidence fingerprint</dt><dd><code>{snapshot.sha256.slice(0, 12)}</code></dd></div>
     </dl>
     <FulfillmentMatrixPanel workspace={workspace} />
+    {import.meta.env.VITE_OSP_BUILD_PROFILE === 'preview-synthetic' ? <ArtifactReviewPanel key={workspace.caseId} caseId={workspace.caseId} manifestSha256={workspace.fulfillment?.manifestSha256 ?? ''} inventory={syntheticArtifactInventory} /> : null}
     <section className="review-package" aria-labelledby="supplier-package-title">
       <p className="eyebrow">GENERATED OUTPUT</p>
       <h2 id="supplier-package-title">Completed supplier workbook</h2>

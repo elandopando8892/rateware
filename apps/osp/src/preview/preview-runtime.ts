@@ -696,6 +696,18 @@ function createPreviewClient(): OspClient {
     };
   };
   const workflowWorkspaces = new Map<string, ApprovalCommunicationsWorkspace>([
+    [caseFormCaseId, {
+      ...structuredClone(previewOperationsWorkspace), caseId: caseFormCaseId, caseState: 'preparing', supplierPackage: null,
+      fulfillment: {
+        ...structuredClone(previewReadyFulfillment), satisfiedRequired: 7, blockingCount: 1,
+        items: previewReadyFulfillment.items.map((item) => item.kind === 'form' ? {
+          ...item, status: 'incomplete' as const, blocking: true, evidenceIds: [],
+          reason: 'Synthetic scenario: the exact final PDF and its field review are still pending.',
+        } : item),
+        gates: { operationsReview: false, signatureApproval: false, outboundDraft: false, outboundFreeze: false, salesAuthorization: false, send: false },
+      },
+      capabilities: { completeOperationsReview: false, approveAndApplySignature: false, saveOutboundDraft: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
+    }],
     [previewWorkspace.caseId, structuredClone(previewWorkspace)],
     [previewOperationsWorkspace.caseId, structuredClone(previewOperationsWorkspace)],
     [previewFinalResponseWorkspace.caseId, structuredClone(previewFinalResponseWorkspace)],

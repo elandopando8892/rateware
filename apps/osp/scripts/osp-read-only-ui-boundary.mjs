@@ -272,17 +272,17 @@ function assertSafeElementName(name, allowDocumentMutation = false) {
   if (OPERATIONAL_CONTROL_NAMES.has(normalizedControlName(name))) fail('UI_OPERATIONAL_CONTROL');
 }
 
-function assertSafeJsxAttributes(attributes, allowDocumentMutation = false) {
+function assertSafeJsxAttributes(attributes, allowDocumentMutation = false, allowLocalPdfReview = false) {
   for (const attribute of attributes.properties) {
     if (!ts.isJsxAttribute(attribute)) continue;
     const name = attribute.name.getText();
     if (name === 'dangerouslySetInnerHTML') fail('UI_DANGEROUS_HTML');
     if (name === 'type' && attribute.initializer && ts.isStringLiteral(attribute.initializer) &&
         attribute.initializer.text.toLowerCase() === 'file') {
-      if (!allowDocumentMutation) fail('UI_MUTATION_CONTROL');
+      if (!allowDocumentMutation && !allowLocalPdfReview) fail('UI_MUTATION_CONTROL');
       const accept = attributes.properties.find((candidate) => ts.isJsxAttribute(candidate) && candidate.name.getText() === 'accept');
       if (!accept || !accept.initializer || !ts.isStringLiteral(accept.initializer) ||
-          accept.initializer.text !== 'application/pdf,image/jpeg,image/png,image/tiff') fail('UI_MUTATION_CONTROL');
+          accept.initializer.text !== (allowLocalPdfReview ? 'application/pdf,.pdf' : 'application/pdf,image/jpeg,image/png,image/tiff')) fail('UI_MUTATION_CONTROL');
     }
   }
 }
@@ -430,13 +430,15 @@ export function assertNoUnsafeUiSyntax(source, sourcePath = 'fixture.tsx') {
   const file = parseTypeScript(source, sourcePath);
   const allowDocumentMutation = sourcePath.replace(/\\/g, '/').endsWith('apps/osp/src/features/documents/QuarterlyDocumentVault.tsx');
   const allowRequestReview = sourcePath.replace(/\\/g, '/') === REQUEST_REVIEW_WORKBENCH_PATH;
+  const allowLocalPdfReview = sourcePath.replace(/\\/g, '/') === 'apps/osp/src/features/review/ArtifactReviewPanel.tsx';
   let documentForms = 0;
   let documentFileInputs = 0;
   visit(file, (node) => {
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const elementName = jsxName(node.tagName).toLowerCase();
       assertSafeElementName(elementName, allowDocumentMutation || allowRequestReview);
-      assertSafeJsxAttributes(node.attributes, allowDocumentMutation);
+      assertSafeJsxAttributes(node.attributes, allowDocumentMutation, allowLocalPdfReview);
+      if (allowLocalPdfReview && elementName === 'button' && literalJsxAttribute(node.attributes, 'type') !== 'button') fail('UI_MUTATION_CONTROL');
       if (allowDocumentMutation && elementName === 'form') documentForms += 1;
       if (allowDocumentMutation && elementName === 'input' && node.attributes.properties.some((attribute) =>
         ts.isJsxAttribute(attribute) && attribute.name.getText() === 'type' && attribute.initializer && ts.isStringLiteral(attribute.initializer) && attribute.initializer.text === 'file')) documentFileInputs += 1;
@@ -452,6 +454,16 @@ export function assertNoUnsafeUiSyntax(source, sourcePath = 'fixture.tsx') {
       }
     }
   });
+  if (allowLocalPdfReview) {
+    visit(file, (node) => {
+      if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) && !['react', './artifact-review'].includes(node.moduleSpecifier.text)) fail('UI_MUTATION_CONTROL');
+      if (ts.isCallExpression(node)) {
+        const name = normalizedControlName(expressionName(node.expression));
+        if (OUTBOUND_DRAFT_FORBIDDEN_CALLS.has(name) || ['setitem', 'sendbeacon', 'open', 'onsave', 'oncomplete'].includes(name)) fail('UI_MUTATION_CONTROL');
+      }
+      if (ts.isNewExpression(node) && OUTBOUND_DRAFT_FORBIDDEN_CONSTRUCTORS.has(normalizedControlName(expressionName(node.expression)))) fail('UI_MUTATION_CONTROL');
+    });
+  }
   if (allowDocumentMutation && (documentForms !== 1 || documentFileInputs !== 1)) fail('UI_MUTATION_CONTROL');
   assertGovernedOutboundDraftSurface(file, sourcePath);
   assertGovernedRequestReviewSurface(file, sourcePath);

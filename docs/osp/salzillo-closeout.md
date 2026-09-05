@@ -329,6 +329,50 @@ firmó ni envió. Sin push, despliegue o migración. Siguiente integración:
 conciliar campos aplicables y evidencia revisada con el PDF final exacto, sin
 confundir una captura o el mero número de páginas con el cumplimiento.
 
+### Revisión local por campo del PDF exacto
+
+Continuación del Sprint 13: panel integrado en Operaciones exclusivamente en
+build `preview-synthetic`, con seis requisitos ficticios. Reutiliza React, la
+pantalla y estilos operativos XBF; no instala dependencias ni crea otro flujo.
+
+Cada decisión conserva su campo, ubicación en el PDF y nota. La exclusión exige
+motivo y sólo se ofrece donde el inventario permite no aplicabilidad. Caso,
+manifiesto, inventario y bytes del archivo forman el contexto de la revisión;
+cambiar cualquiera invalida las decisiones. La huella del inventario incluye
+identificador, etiqueta, ubicación fuente y aplicabilidad, con orden canónico.
+Una lectura de archivo lenta no puede sustituir una selección posterior.
+
+La selección lee como máximo 25 MB en memoria y exige cabecera PDF. **No es un
+parser PDF ni valida contenido, páginas o renderizado**. No sube el archivo,
+no persiste decisiones, no emite recibo autorizado ni modifica el gate del
+servidor. Se muestran comprobados, no aplicables y pendientes por separado,
+nunca un porcentaje de cumplimiento. Un borrador local completo sólo está
+listo para futura revisión autenticada; `authorizesWorkflow` siempre es falso.
+
+El escenario Sierra ahora muestra explícitamente su PDF pendiente en lugar
+del fallback de caso completo. Otros escenarios mantienen sus estados.
+La frontera de UI admite únicamente el selector PDF de este archivo revisado;
+rechaza otros tipos, importaciones de cliente API, red, almacenamiento local
+y acciones productivas. Las huellas e inventario se actualizaron explícitamente.
+
+Evidencia local: 39 pruebas Vitest, 39 de frontera, TypeScript y lint enfocado
+aprobados. Smoke Chrome sobre el build estático: seis decisiones, invalidación
+al cambiar bytes, reinicio explícito, Operaciones todavía bloqueado, cero
+solicitudes externas y cero errores de página. Desktop 1280×900 y móvil 390×844
+inspeccionados; sin desbordamiento horizontal. Capturas privadas bajo
+`tmp/osp-s13-review-preview-evidence`. El fixture del smoke es deliberadamente
+sólo una cabecera PDF: prueba identidad de bytes, no validez documental.
+
+La habilidad de pruebas guio identidad, exclusiones y carreras asíncronas; la
+lista de despliegue limita la entrega a preview estática en el proyecto Vercel
+existente. No hay CI remoto ni validación productiva. Ante un fallo de preview,
+no promoverla; la URL anterior y producción permanecen sin cambios.
+
+Pendiente real: inventario aprobado completo por formulario, persistencia con
+identidad/versión y verificación del archivo por el servidor, integración de
+esa evidencia en el gate y revisión del paquete corregido por Sales. No se
+aplicó al caso Salzillo, firmó, envió ni promovió conocimiento.
+
 ## Esfuerzo recomendado de Codex
 
 Estos son ajustes de razonamiento, no estimaciones de horas ni cambios del modelo

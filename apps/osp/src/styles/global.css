@@ -79,3 +79,13 @@ code { display: inline-block; max-width: 100%; color: var(--xbf-navy); font-fami
   .outbound-field-grid, .outbound-attachment { grid-template-columns: 1fr; }
   .outbound-wide-field, .outbound-attachment > p { grid-column: auto; }
 }
+/* Local-only artifact review reuses the XBF operational palette and controls. */
+.artifact-review { margin-block: 1.5rem; padding: 1.25rem; }
+.artifact-review-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 1rem; }
+.artifact-review fieldset { min-width: 0; padding: 1rem; border: 1px solid #cbd5e1; border-radius: .5rem; }
+.artifact-review legend { font-weight: 700; }
+.artifact-review label { display: grid; gap: .35rem; margin-block: .75rem; }
+.artifact-review input, .artifact-review select, .artifact-review textarea { box-sizing: border-box; width: 100%; min-width: 0; font: inherit; padding: .55rem; }
+.artifact-review textarea { min-height: 5rem; resize: vertical; }
+.artifact-review :focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+.artifact-fingerprint code { display: block; overflow-wrap: anywhere; }

@@ -13,6 +13,20 @@ import {
 } from './osp-read-only-ui-boundary.mjs';
 
 const appRoot = path.resolve(import.meta.dirname, '..');
+test('local PDF review permits only its exact file picker, without persistence or network', () => {
+  const sourcePath = 'apps/osp/src/features/review/ArtifactReviewPanel.tsx';
+  const picker = 'const view = <input type="file" accept="application/pdf,.pdf" />;';
+  assert.doesNotThrow(() => assertNoUnsafeUiSyntax(picker, sourcePath));
+  assert.throws(() => assertNoUnsafeUiSyntax(picker, 'fixture.tsx'), /UI_MUTATION_CONTROL/);
+  assert.throws(() => assertNoUnsafeUiSyntax(picker.replace('application/pdf,.pdf', '*/*'), sourcePath), /UI_MUTATION_CONTROL/);
+  for (const addition of [
+    'fetch("https://example.test");',
+    'localStorage.setItem("review", "approved");',
+    'client.completeOperationsReview();',
+    'navigator.sendBeacon("https://example.test", "review");',
+    'import client from "../../api/osp-client";',
+  ]) assert.throws(() => assertNoUnsafeUiSyntax(picker + addition, sourcePath), /UI_MUTATION_CONTROL/);
+});
 const repositoryRoot = path.resolve(appRoot, '..', '..');
 const sourceRoot = path.join(appRoot, 'src');
 const manifestPath = path.join(appRoot, 'config', 'osp-read-only-ui-boundary.json');
@@ -67,10 +81,13 @@ const expectedProductionSourcePaths = [
   'apps/osp/src/features/pipeline/PipelineOverview.tsx',
   'apps/osp/src/features/pipeline/use-pipeline-overview.ts',
   'apps/osp/src/features/profile/CorporateProfileWorkspace.tsx',
+  'apps/osp/src/features/review/artifact-review.ts',
+  'apps/osp/src/features/review/ArtifactReviewPanel.tsx',
   'apps/osp/src/features/review/CarrierPackageInventory.tsx',
   'apps/osp/src/features/review/FulfillmentMatrixPanel.tsx',
   'apps/osp/src/features/review/OperationsReviewPage.tsx',
   'apps/osp/src/main.tsx',
+  'apps/osp/src/preview/artifact-review-inventory.ts',
   'apps/osp/src/preview/preview-runtime.ts',
   'apps/osp/src/styles/global.css',
   'apps/osp/src/styles/forms.css',
