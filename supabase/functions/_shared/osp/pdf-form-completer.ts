@@ -40,6 +40,36 @@ export type PdfArtifactMapping =
   | OverlayMapping
   | AppendixMapping;
 
+/** Preserve all characters; inserted line breaks never replace or truncate data. */
+export function wrapPdfText(
+  text: string,
+  width: number,
+  measure: (value: string) => number,
+): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.replace(/\r\n?/g, "\n").split("\n")) {
+    let remaining = [...paragraph];
+    if (!remaining.length) lines.push("");
+    while (remaining.length) {
+      let length = 0, measured = 0;
+      while (length < remaining.length) {
+        const next = measure(remaining[length]);
+        if (measured + next > width) break;
+        measured += next;
+        length++;
+      }
+      if (!length) throw new Error("ARTIFACT_MAPPING_INVALID");
+      if (length < remaining.length) {
+        const lastSpace = remaining.slice(0, length).lastIndexOf(" ");
+        if (lastSpace >= 0) length = lastSpace + 1;
+      }
+      lines.push(remaining.slice(0, length).join(""));
+      remaining = remaining.slice(length);
+    }
+  }
+  return lines;
+}
+
 function target(mapping: PdfArtifactMapping): string {
   return mapping.kind === "acroform"
     ? mapping.fieldName
@@ -124,6 +154,7 @@ export async function completePdfArtifact(
   const applied: AppliedArtifactMapping[] = [];
   let appendixPage: ReturnType<PDFDocument["addPage"]> | undefined;
   let appendixLine = 0;
+  let appendixPageCount = 0;
   for (const mapping of mappings) {
     if (mapping.kind === "acroform") {
       let field;
@@ -146,25 +177,38 @@ export async function completePdfArtifact(
     }
     if (mapping.kind === "appendix") {
       overlayFont ??= await document.embedFont(StandardFonts.Helvetica);
-      if (!appendixPage || appendixLine >= 36) {
-        appendixPage = document.addPage([612, 792]);
-        appendixLine = 0;
-        appendixPage.drawText("XBF completed response", {
+      let lines: string[];
+      try {
+        lines = wrapPdfText(
+          `${mapping.canonicalFieldId}: ${String(mapping.value)}`,
+          504,
+          (value) => overlayFont!.widthOfTextAtSize(value, 9),
+        );
+      } catch {
+        throw new Error("ARTIFACT_MAPPING_INVALID");
+      }
+      for (const line of lines) {
+        if (!appendixPage || appendixLine >= 36) {
+          if (++appendixPageCount > 100) {
+            throw new Error("ARTIFACT_OUTPUT_INVALID");
+          }
+          appendixPage = document.addPage([612, 792]);
+          appendixLine = 0;
+          appendixPage.drawText("XBF completed response", {
+            x: 54,
+            y: 742,
+            size: 14,
+            font: overlayFont,
+          });
+        }
+        appendixPage.drawText(line, {
           x: 54,
-          y: 742,
-          size: 14,
+          y: 714 - appendixLine * 18,
+          size: 9,
           font: overlayFont,
         });
+        appendixLine++;
       }
-      const value = String(mapping.value).replace(/\s+/g, " ").slice(0, 180);
-      appendixPage.drawText(`${mapping.canonicalFieldId}: ${value}`, {
-        x: 54,
-        y: 714 - appendixLine * 18,
-        size: 9,
-        font: overlayFont,
-        maxWidth: 504,
-      });
-      appendixLine += 1;
       applied.push({
         kind: "pdf_appendix",
         mappingDecisionId: mapping.mappingDecisionId,
@@ -180,12 +224,17 @@ export async function completePdfArtifact(
     ) throw new Error("ARTIFACT_MAPPING_INVALID");
     overlayFont ??= await document.embedFont(StandardFonts.Helvetica);
     try {
+      if (
+        overlayFont.widthOfTextAtSize(String(mapping.value), mapping.fontSize) >
+          mapping.width
+      ) {
+        throw new Error("ARTIFACT_MAPPING_INVALID");
+      }
       page.drawText(String(mapping.value), {
         x: mapping.x,
         y: mapping.y,
         size: mapping.fontSize,
         font: overlayFont,
-        maxWidth: mapping.width,
       });
     } catch {
       throw new Error("ARTIFACT_MAPPING_INVALID");
@@ -217,8 +266,23 @@ export async function completePdfArtifact(
   if (bytes.byteLength < 1 || bytes.byteLength > 25 * 1024 * 1024) {
     throw new Error("ARTIFACT_OUTPUT_INVALID");
   }
+  const receipt = await artifactReceipt(
+    input,
+    "application/pdf",
+    bytes,
+    applied,
+  );
+  // Read the serialized output rather than inferring pages from worksheets or mappings.
+  const reopened = await PDFDocument.load(bytes, { ignoreEncryption: false });
   return Object.freeze({
     bytes,
-    receipt: await artifactReceipt(input, "application/pdf", bytes, applied),
+    receipt: Object.freeze({
+      ...receipt,
+      pdfStructure: Object.freeze({
+        schemaVersion: 1 as const,
+        outputSha256: receipt.outputSha256,
+        pageCount: reopened.getPageCount(),
+      }),
+    }),
   });
 }

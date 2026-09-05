@@ -287,6 +287,48 @@ documentos, aprobación de Sales o firma autógrafa.
 | Decisiones y declaración | Presentar las condiciones y el alcance de la declaración al firmante; no confundir la aprobación de desarrollo con su aceptación. |
 | Resultado de negocio | Sales revisa el paquete corregido. No modificar ni reenviar el caso Salzillo productivo antes de esa revisión. |
 
+### PDF sin truncación y evidencia del archivo exacto
+
+Continuación local del Sprint 13, 2026-09-04. Se reutilizó `pdf-lib` y el
+generador existente; sin nuevas dependencias, infraestructura ni proveedores.
+
+- El anexo PDF ya no recorta valores a 180 caracteres. Conserva el texto y los
+  párrafos, ajusta líneas y pagina; rechaza una salida que exceda 100 páginas
+  adicionales, en lugar de descartar contenido silenciosamente.
+- Una escritura sobre un PDF plano rechaza texto más ancho que su rectángulo
+  revisado; no lo deja desbordar mediante ajuste automático de líneas.
+- El recibo incluye `pdfStructure`, con páginas contadas al reabrir los bytes
+  serializados y su SHA-256. Es estructura, no prueba de legibilidad, cobertura
+  del original ni cumplimiento del carrier.
+- El gate acepta esa estructura sólo para un PDF y su hash exacto. Ya no
+  interpreta hojas visibles o celdas ocupadas del Excel como páginas PDF o
+  cumplimiento al 100%, ni hereda el recibo de un paquete anterior a la firma.
+- `completionPercent` queda desconocido en este adaptador hasta implementar
+  evidencia revisada de campos aplicables vinculada a los bytes finales. Por
+  tanto, un requisito de llenado al 100% permanece bloqueado: esta corrección
+  elimina un falso PASS, **no termina la integración del paquete corregido**.
+  Los PDF firmados también necesitan su propia evidencia de estructura.
+
+Validación de esta iteración: 43 pruebas Deno y ocho escenarios SQL aprobados;
+contrato de acciones 157/157, formato, lint enfocado y `git diff --check`
+aprobados. La habilidad de estrategia de pruebas guio
+la regresión de recibos heredados, hash incorrecto, páginas fraccionarias,
+tipo incorrecto y diferencia entre firma electrónica y autógrafa.
+
+La habilidad PDF añadió verificación independiente de los bytes y revisión
+visual. Un PDF sintético conserva 120 entradas y el marcador final: pypdf
+recuperó las 121 líneas esperadas, sin faltantes. Se inspeccionaron las cinco
+páginas renderizadas con Poppler: una página fuente vacía deliberada y cuatro
+de anexo, sin recortes ni solapamientos visibles. Poppler terminó con código 0
+y advertencias de fuentes de respaldo Symbol/ArialUnicode; este fixture usa
+Helvetica y texto ASCII. No acredita tipografía ni impresión de Salzillo.
+Los archivos de prueba permanecen en `tmp/osp-s13-pdf-regression`, fuera de Git.
+
+No se generó el PDF final Salzillo, convirtió su XLSM, modificó su caso real,
+firmó ni envió. Sin push, despliegue o migración. Siguiente integración:
+conciliar campos aplicables y evidencia revisada con el PDF final exacto, sin
+confundir una captura o el mero número de páginas con el cumplimiento.
+
 ## Esfuerzo recomendado de Codex
 
 Estos son ajustes de razonamiento, no estimaciones de horas ni cambios del modelo

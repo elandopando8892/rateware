@@ -8,138 +8,187 @@ const caseId = "22222222-2222-4222-8222-222222222222";
 const manifestSha256 = "a".repeat(64);
 
 for (const method of ["electrónica", "autógrafa"] as const) {
-  Deno.test(`Applied signature satisfies ${method} only when its actual method matches`, async () => {
-    const statements: string[] = [];
-    const sql = (async (strings: TemplateStringsArray) => {
-      const statement = strings.join("?");
-      statements.push(statement);
-      if (
-        statement.startsWith("set local role") ||
-        statement.includes("set_config('osp.organization_id'") ||
-        statement.includes("set local statement_timeout")
-      ) return [];
-      if (statement.includes("request_manifest_decision_reviews")) {
-        return [{
-          current_review_resolved: true,
-          manifest_sha256: manifestSha256,
-          manifest_json: {
-            requestType: "customer_setup",
-            targetXbfEntity: "XBFMX",
-            forms: [{
-              name: "Formato Información 3.3",
-              format: "xlsm",
-              action: "sign",
-              required: true,
-              evidenceIds: ["email:salzillo"],
-            }],
-            requestedDocuments: [{
-              documentType: "Constancia de situación fiscal",
-              required: true,
-              acceptableAlternatives: [],
-              evidenceIds: ["email:salzillo"],
-            }],
-            requirements: [{
-              text:
-                `Formato Información 3.3 con firma ${method}, compartir en formato PDF y llenar las dos páginas al 100%`,
+  for (const fullCompletion of [false, true]) {
+    for (
+      const proof of [
+        "current",
+        "legacy",
+        "other_bytes",
+        "fractional",
+        "wrong_type",
+      ] as const
+    ) {
+      Deno.test(`PDF gate: ${method}; full completion ${fullCompletion}; structure ${proof}`, async () => {
+        const statements: string[] = [];
+        const query = (strings: TemplateStringsArray) => {
+          const statement = strings.join("?");
+          statements.push(statement);
+          if (
+            statement.startsWith("set local role") ||
+            statement.includes("set_config('osp.organization_id'") ||
+            statement.includes("set local statement_timeout")
+          ) return [];
+          if (statement.includes("request_manifest_decision_reviews")) {
+            return [{
+              current_review_resolved: true,
+              manifest_sha256: manifestSha256,
+              manifest_json: {
+                requestType: "customer_setup",
+                targetXbfEntity: "XBFMX",
+                forms: [{
+                  name: "Formato Información 3.3",
+                  format: "xlsm",
+                  action: "sign",
+                  required: true,
+                  evidenceIds: ["email:salzillo"],
+                }],
+                requestedDocuments: [{
+                  documentType: "Constancia de situación fiscal",
+                  required: true,
+                  acceptableAlternatives: [],
+                  evidenceIds: ["email:salzillo"],
+                }],
+                requirements: [{
+                  text:
+                    `Formato Información 3.3 con firma ${method}, compartir en formato PDF y llenar las dos páginas${
+                      fullCompletion ? " al 100%" : ""
+                    }`,
+                }, {
+                  text:
+                    "Constancia de situación fiscal con antigüedad máxima de un mes",
+                }],
+              },
+            }];
+          }
+          if (statement.includes("from osp_private.outbound_drafts draft")) {
+            return [{
+              attachments_json: [{
+                bucketId: "osp-derived-documents",
+                objectId: "55555555-5555-4555-8555-555555555555",
+                name: "XBF-signed-supplier-package.pdf",
+                contentType: "application/pdf",
+                sha256: "c".repeat(64),
+              }, {
+                bucketId: "osp-corporate-documents",
+                objectId: "33333333-3333-4333-8333-333333333333",
+                name: "XBF-tax-status-certificate.pdf",
+                contentType: "application/pdf",
+                sha256: "b".repeat(64),
+              }],
+            }];
+          }
+          if (
+            statement.includes("from osp_private.document_versions version")
+          ) {
+            return [{
+              id: "33333333-3333-4333-8333-333333333333",
+              document_type: "tax_status_certificate",
+              status: "approved",
+              bucket_id: "osp-corporate-documents",
+              source_sha256: "b".repeat(64),
+              content_type: "application/pdf",
+              valid_from: "2026-08-20",
+              expires_at: null,
+              page_count: null,
+            }];
+          }
+          if (statement.includes("from osp_private.generated_packages value")) {
+            return [{
+              id: "44444444-4444-4444-8444-444444444444",
+              package_kind: "supplier_completed",
+              content_type: "application/vnd.ms-excel.sheet.macroEnabled.12",
+              output_sha256: "d".repeat(64),
+              artifact_receipt_json: {
+                formCoverage: { visiblePageCount: 2, completionPercent: 100 },
+              },
+              signature_verified: false,
             }, {
-              text:
-                "Constancia de situación fiscal con antigüedad máxima de un mes",
+              id: "55555555-5555-4555-8555-555555555555",
+              package_kind: "signed",
+              content_type: "application/pdf",
+              output_sha256: "c".repeat(64),
+              artifact_receipt_json: {
+                outputSha256: proof === "other_bytes"
+                  ? "d".repeat(64)
+                  : "c".repeat(64),
+                contentType: proof === "wrong_type"
+                  ? "image/png"
+                  : "application/pdf",
+                ...(proof === "legacy" ? {} : {
+                  pdfStructure: {
+                    schemaVersion: 1,
+                    outputSha256: "c".repeat(64),
+                    pageCount: proof === "fractional" ? 2.5 : 2,
+                  },
+                }),
+                formCoverage: { visiblePageCount: 2, completionPercent: 100 },
+              },
+              signature_verified: true,
+            }];
+          }
+          throw new Error(`Unexpected SQL: ${statement}`);
+        };
+        const sql = ((strings: TemplateStringsArray) =>
+          Promise.resolve(query(strings))) as SqlPort;
+        sql.begin = async <T>(
+          operation: (transaction: SqlPort) => Promise<T>,
+        ) =>
+          await operation(sql);
+        const gate = createPostgresRequestSemanticGate({
+          databaseUrl: "postgresql://example.invalid/test",
+          postgresFactory: () => sql,
+          now: () => new Date("2026-09-02T12:00:00.000Z"),
+        });
+        const matrix = await gate.load({ organizationId, caseId });
+        const digitalAccepted = method === "electrónica" && !fullCompletion &&
+          proof === "current";
+        assertEquals(matrix.satisfiedRequired, digitalAccepted ? 2 : 1);
+        assertEquals(matrix.blockingCount, digitalAccepted ? 0 : 1);
+        assertEquals(matrix.gates.send, digitalAccepted);
+        assertEquals(matrix.gates.salesAuthorization, digitalAccepted);
+        assertEquals(matrix.gates.outboundFreeze, digitalAccepted);
+        if (digitalAccepted) {
+          assertEquals(
+            await gate.requiredOutboundAttachments?.({
+              organizationId,
+              caseId,
+            }),
+            [{
+              bucketId: "osp-derived-documents",
+              objectId: "55555555-5555-4555-8555-555555555555",
+              name: "XBF-signed-supplier-package.pdf",
+              contentType: "application/pdf",
+              sha256: "c".repeat(64),
+            }, {
+              bucketId: "osp-corporate-documents",
+              objectId: "33333333-3333-4333-8333-333333333333",
+              name: "XBF-tax-status-certificate.pdf",
+              contentType: "application/pdf",
+              sha256: "b".repeat(64),
             }],
-          },
-        }];
-      }
-      if (statement.includes("from osp_private.outbound_drafts draft")) {
-        return [{
-          attachments_json: [{
-            bucketId: "osp-derived-documents",
-            objectId: "55555555-5555-4555-8555-555555555555",
-            name: "XBF-signed-supplier-package.pdf",
-            contentType: "application/pdf",
-            sha256: "c".repeat(64),
-          }, {
-            bucketId: "osp-corporate-documents",
-            objectId: "33333333-3333-4333-8333-333333333333",
-            name: "XBF-tax-status-certificate.pdf",
-            contentType: "application/pdf",
-            sha256: "b".repeat(64),
-          }],
-        }];
-      }
-      if (statement.includes("from osp_private.document_versions version")) {
-        return [{
-          id: "33333333-3333-4333-8333-333333333333",
-          document_type: "tax_status_certificate",
-          status: "approved",
-          bucket_id: "osp-corporate-documents",
-          source_sha256: "b".repeat(64),
-          content_type: "application/pdf",
-          valid_from: "2026-08-20",
-          expires_at: null,
-          page_count: null,
-        }];
-      }
-      if (statement.includes("from osp_private.generated_packages value")) {
-        return [{
-          id: "44444444-4444-4444-8444-444444444444",
-          package_kind: "supplier_completed",
-          content_type: "application/vnd.ms-excel.sheet.macroEnabled.12",
-          output_sha256: "d".repeat(64),
-          artifact_receipt_json: {
-            formCoverage: { visiblePageCount: 2, completionPercent: 100 },
-          },
-          signature_verified: false,
-        }, {
-          id: "55555555-5555-4555-8555-555555555555",
-          package_kind: "signed",
-          content_type: "application/pdf",
-          output_sha256: "c".repeat(64),
-          artifact_receipt_json: {
-            formCoverage: { visiblePageCount: 2, completionPercent: 100 },
-          },
-          signature_verified: true,
-        }];
-      }
-      throw new Error(`Unexpected SQL: ${statement}`);
-    }) as SqlPort;
-    sql.begin = async <T>(operation: (transaction: SqlPort) => Promise<T>) =>
-      await operation(sql);
-    const gate = createPostgresRequestSemanticGate({
-      databaseUrl: "postgresql://example.invalid/test",
-      postgresFactory: () => sql,
-      now: () => new Date("2026-09-02T12:00:00.000Z"),
-    });
-    const matrix = await gate.load({ organizationId, caseId });
-    const digitalAccepted = method === "electrónica";
-    assertEquals(matrix.satisfiedRequired, digitalAccepted ? 2 : 1);
-    assertEquals(matrix.blockingCount, digitalAccepted ? 0 : 1);
-    assertEquals(matrix.gates.send, digitalAccepted);
-    assertEquals(matrix.gates.salesAuthorization, digitalAccepted);
-    assertEquals(matrix.gates.outboundFreeze, digitalAccepted);
-    if (digitalAccepted) {
-      assertEquals(
-        await gate.requiredOutboundAttachments?.({ organizationId, caseId }),
-        [{
-          bucketId: "osp-derived-documents",
-          objectId: "55555555-5555-4555-8555-555555555555",
-          name: "XBF-signed-supplier-package.pdf",
-          contentType: "application/pdf",
-          sha256: "c".repeat(64),
-        }, {
-          bucketId: "osp-corporate-documents",
-          objectId: "33333333-3333-4333-8333-333333333333",
-          name: "XBF-tax-status-certificate.pdf",
-          contentType: "application/pdf",
-          sha256: "b".repeat(64),
-        }],
-      );
-    } else {
-      assertEquals(matrix.items[0].status, "signature_missing");
+          );
+        } else {
+          assertEquals(
+            matrix.items[0].status,
+            fullCompletion || proof !== "current"
+              ? "incomplete"
+              : "signature_missing",
+          );
+        }
+        const packageStatement = statements.find((statement) =>
+          statement.includes("from osp_private.generated_packages value")
+        ) ?? "";
+        assertStringIncludes(packageStatement, "value.artifact_receipt_json");
+        assertEquals(
+          packageStatement.includes("source.artifact_receipt_json"),
+          false,
+        );
+        assertStringIncludes(
+          packageStatement,
+          "signature_application_receipts",
+        );
+        assertStringIncludes(packageStatement, "receipt.outcome = 'applied'");
+      });
     }
-    const packageStatement = statements.find((statement) =>
-      statement.includes("from osp_private.generated_packages value")
-    ) ?? "";
-    assertStringIncludes(packageStatement, "source.artifact_receipt_json");
-    assertStringIncludes(packageStatement, "signature_application_receipts");
-    assertStringIncludes(packageStatement, "receipt.outcome = 'applied'");
-  });
+  }
 }

@@ -34,6 +34,12 @@ export type SupplierArtifactReceipt = {
     | "application/vnd.ms-excel.sheet.macroEnabled.12"
     | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   mappings: readonly AppliedArtifactMapping[];
+  /** Structural count of the serialized PDF, not visual or semantic completion. */
+  pdfStructure?: Readonly<{
+    schemaVersion: 1;
+    outputSha256: string;
+    pageCount: number;
+  }>;
   formCoverage?: Readonly<{
     visiblePageCount: number;
     writableFieldCount: number;

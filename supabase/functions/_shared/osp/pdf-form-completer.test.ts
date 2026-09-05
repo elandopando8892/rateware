@@ -2,7 +2,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import { PDFDocument } from "pdf-lib";
 
 import { sha256Hex } from "./source-hash.ts";
-import { completePdfArtifact } from "./pdf-form-completer.ts";
+import { completePdfArtifact, wrapPdfText } from "./pdf-form-completer.ts";
 import { classifySupplierArtifact } from "./supplier-artifact-port.ts";
 
 const sourceVersionId = "11111111-1111-4111-8111-111111111111";
@@ -107,6 +107,11 @@ Deno.test("PDF completer fills a copy, preserves the source, and binds every rev
   assertEquals(first.receipt.sourceSha256, sourceSha256);
   assertEquals(first.receipt.packageSnapshotSha256, packageSnapshotSha256);
   assertEquals(first.receipt.outputSha256, await sha256Hex(first.bytes));
+  assertEquals(first.receipt.pdfStructure, {
+    schemaVersion: 1,
+    outputSha256: first.receipt.outputSha256,
+    pageCount: 1,
+  });
   assertEquals(first.receipt.mappings, [{
     kind: "acroform",
     mappingDecisionId,
@@ -176,7 +181,87 @@ Deno.test("PDF completer appends a deterministic reviewed response when the sour
   const repeated = await completePdfArtifact(input);
   assertEquals(first.bytes, repeated.bytes);
   assertEquals((await PDFDocument.load(first.bytes)).getPageCount(), 2);
+  assertEquals(first.receipt.pdfStructure?.pageCount, 2);
   assertEquals(first.receipt.mappings[0].kind, "pdf_appendix");
+});
+
+Deno.test("PDF wrapping preserves long text and unbroken identifiers without truncation", () => {
+  const text = "Start " + "longword ".repeat(70) + "Z".repeat(120) +
+    " END-MARKER";
+  const lines = wrapPdfText(text, 40, () => 1);
+  assertEquals(lines.join(""), text);
+  assertEquals(lines.every((line) => line.length <= 40), true);
+  assertEquals(wrapPdfText("first\n\nlast", 40, () => 1), [
+    "first",
+    "",
+    "last",
+  ]);
+});
+
+Deno.test("PDF appendix retains a long reviewed response across pages, and small overlays reject overflow", async () => {
+  const sourceBytes = await flatPdfSource();
+  const base = {
+    sourceVersionId,
+    sourceBytes,
+    sourceSha256: await sha256Hex(sourceBytes),
+    packageSnapshotId,
+    packageSnapshotSha256,
+    approvedMappingDecisionIds: [mappingDecisionId],
+    version: 1,
+    flatten: false,
+  };
+  const value = Array.from(
+    { length: 120 },
+    (_, index) =>
+      `Entry ${
+        String(index).padStart(3, "0")
+      }: Preserve the full carrier requirement and its complete response.`,
+  ).join("\n") + "\nFINAL-MARKER-RETAINED";
+  const result = await completePdfArtifact({
+    ...base,
+    mappings: [{
+      kind: "appendix",
+      mappingDecisionId,
+      canonicalFieldId: "supplier.notes",
+      value,
+    }],
+  });
+  assertEquals((await PDFDocument.load(result.bytes)).getPageCount(), 5);
+  assertEquals(result.receipt.pdfStructure, {
+    schemaVersion: 1,
+    outputSha256: await sha256Hex(result.bytes),
+    pageCount: 5,
+  });
+  assertEquals(result.receipt.formCoverage, undefined);
+  await assertRejects(
+    () =>
+      completePdfArtifact({
+        ...base,
+        mappings: [{
+          kind: "overlay",
+          mappingDecisionId,
+          canonicalFieldId: "supplier.name",
+          value:
+            "This full name must never wrap outside its approved rectangle",
+          page: 1,
+          x: 10,
+          y: 10,
+          width: 20,
+          height: 12,
+          fontSize: 10,
+        }],
+      }),
+    Error,
+    "ARTIFACT_MAPPING_INVALID",
+  );
+  if (Deno.args.includes("--export-synthetic")) {
+    await Deno.mkdir("tmp/osp-s13-pdf-regression", { recursive: true });
+    await Deno.writeFile(
+      "tmp/osp-s13-pdf-regression/long-response.pdf",
+      result.bytes,
+    );
+    await Deno.writeTextFile("tmp/osp-s13-pdf-regression/expected.txt", value);
+  }
 });
 
 Deno.test("PDF completer rejects source drift, unknown AcroForm fields, and unreviewed overlays", async () => {

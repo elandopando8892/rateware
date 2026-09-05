@@ -231,10 +231,21 @@ function formEvidence(
     const receipt = row.artifact_receipt_json === null
       ? null
       : parsedJson(row.artifact_receipt_json);
-    const coverage = receipt && receipt.formCoverage &&
-        typeof receipt.formCoverage === "object" &&
-        !Array.isArray(receipt.formCoverage)
-      ? receipt.formCoverage as Record<string, unknown>
+    // XLSX occupancy is neither rendered PDF pagination nor semantic completion.
+    // Never inherit structure from the unsigned/source package after bytes change.
+    const structure = receipt && receipt.outputSha256 === row.output_sha256 &&
+        receipt.contentType === "application/pdf" &&
+        row.content_type === "application/pdf" &&
+        receipt.pdfStructure && typeof receipt.pdfStructure === "object" &&
+        !Array.isArray(receipt.pdfStructure)
+      ? receipt.pdfStructure as Record<string, unknown>
+      : null;
+    const pageCount = structure?.schemaVersion === 1 &&
+        structure.outputSha256 === row.output_sha256 &&
+        typeof structure.pageCount === "number" &&
+        Number.isSafeInteger(structure.pageCount) &&
+        structure.pageCount > 0 && structure.pageCount <= 1000
+      ? structure.pageCount
       : null;
     const signature =
       row.package_kind === "signed" && row.signature_verified === true
@@ -259,8 +270,10 @@ function formEvidence(
         status: "approved" as const,
         validFrom: null,
         expiresAt: null,
-        pageCount: nonNegative(coverage?.visiblePageCount),
-        completionPercent: nonNegative(coverage?.completionPercent),
+        pageCount,
+        // No producer currently certifies reviewed carrier-field coverage on exact bytes.
+        // Keep unknown until that evidence exists; do not turn occupied cells into 100%.
+        completionPercent: null,
         signatureMethod: signature,
         includedForOutbound: included.has(attachmentKey(outboundAttachment)!),
       }),
@@ -361,8 +374,7 @@ export function createPostgresRequestSemanticGate(options: {
         const packages = await tx`
         select value.id::text, value.package_kind, value.content_type,
                value.output_sha256,
-               coalesce(value.artifact_receipt_json, source.artifact_receipt_json)
-                 as artifact_receipt_json,
+               value.artifact_receipt_json,
                case when value.package_kind = 'signed' then exists (
                  select 1 from osp_private.signature_application_receipts receipt
                  where receipt.organization_id = value.organization_id
@@ -373,10 +385,6 @@ export function createPostgresRequestSemanticGate(options: {
                    and receipt.output_sha256 = value.output_sha256
                ) else false end as signature_verified
         from osp_private.generated_packages value
-        left join osp_private.generated_packages source
-          on source.organization_id = value.organization_id
-         and source.case_id = value.case_id
-         and source.id = value.supersedes_package_id
         where value.organization_id = ${input.organizationId}
           and value.case_id = ${input.caseId}
           and value.package_kind in ('supplier_completed', 'signed')
