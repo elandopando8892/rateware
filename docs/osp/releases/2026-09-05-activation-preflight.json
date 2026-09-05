@@ -1,0 +1,387 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Read-only deployment reconciliation; not deployment authority or product acceptance",
+  "project": {
+    "supabaseRef": "alqjqzqagdmcywpjtnnr",
+    "supabaseName": "rateware-prod",
+    "vercelProjectId": "prj_6mVnZ4DNVH3U2KCyQgyRMZDCJx8s",
+    "vercelTeamId": "team_KUG1PtOwoJ16eUqxiOJ330Os"
+  },
+  "source": {
+    "previewSha": "dc31dec7e7316ec5aaeccb349dfeecff5d5b420d",
+    "candidateSha": "e4924b5d6f75d859fdfc1a8f9cf5304a6eed8406",
+    "remoteBranchSha": "1291fced0b6d9090a597d0a7b3fa0aea8e52ecc1",
+    "branch": "codex/osp-s7-main-integration"
+  },
+  "productionUi": {
+    "deploymentId": "dpl_Ggf4PYD79X66rfFLipw3kNuj5Fhe",
+    "sourceSha": "ed12d1658fcef898fdadbc848d3b94b7684c601b",
+    "state": "READY",
+    "target": "production",
+    "domain": "osp.heymarksman.com"
+  },
+  "currentPreview": {
+    "deploymentId": "dpl_eeDrKcQeJubUUpjeLtEhDCNreBQL",
+    "profile": "preview-synthetic",
+    "directProductionPromotionAllowed": false
+  },
+  "pendingMigrations": [
+    {
+      "file": "20260902120000_osp_request_contract_semantic_stop.sql",
+      "sha256": "43368e0bcb6e7c5d0b0a4dd317266df11cb00feaa203b3bbbb7e59441e6bd9a1"
+    },
+    {
+      "file": "20260902130000_osp_operations_review_contract_gate.sql",
+      "sha256": "38c0fb420c3b9c2fbc8899641ec4f3e6c508f41093aefc85909f141c6c054d54"
+    },
+    {
+      "file": "20260905050000_osp_approved_profile_memory_reuse.sql",
+      "sha256": "d4745dedc3bda6fe5b3b49c2a3da61d24188ff00686bd3ef247237414ca52598"
+    },
+    {
+      "file": "20260905053000_osp_case_answer_memory_candidates.sql",
+      "sha256": "5ee7a3f93bcc4674e5e9b55016c7da0d87c82d6ecb74abb9dd0cf1e062eace29"
+    },
+    {
+      "file": "20260905060000_osp_answer_memory_human_review.sql",
+      "sha256": "409d36bee02aef85dd8e7d5eeaf7879ab027a70e2fe7ac01a361181c2771ab3d"
+    },
+    {
+      "file": "20260905083000_osp_answer_memory_evidence_preflight.sql",
+      "sha256": "271b8fefdfb777a3a28922e546adc951d1d90b544edca5147179d5c315e0f2a4"
+    },
+    {
+      "file": "20260905110000_osp_answer_memory_evidence_links.sql",
+      "sha256": "895e7e945980d9f89e43c318ffdea56ef9562d7490298cf8bb698998375fcfb9"
+    },
+    {
+      "file": "20260905143000_osp_profile_complete_batch_confirmation.sql",
+      "sha256": "f74d9cdd28e203a92e85b75fb0ef18a142b085008c7392bab76f73b914c795e7"
+    },
+    {
+      "file": "20260905173000_osp_request_constraint_actor_regex_hotfix.sql",
+      "sha256": "45ecd034b6038f85460f74bdbc184c263c40b8b664855c4e65db86cc3771e324"
+    }
+  ],
+  "edgeComparison": {
+    "method": "Exact file text after CRLF-to-LF normalization; existing remote files only. Includes type-only files. Bundle hashes are provider metadata, not Git SHAs.",
+    "functions": [
+      {
+        "slug": "osp-form-api",
+        "remoteVersion": 82,
+        "bundleSha256": "f874d3ad4338ae17376e2222298133d91e30afc1a75c6b1a5885191524901eb6",
+        "remoteFileCount": 13,
+        "identicalFiles": 7,
+        "changedOrMissing": [
+          "supabase/functions/osp-read-api/http.ts",
+          "supabase/functions/osp-form-api/handler.ts",
+          "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
+          "supabase/functions/osp-form-api/postgres-store.ts",
+          "apps/osp/src/features/forms/form-completion.ts",
+          "supabase/functions/osp-form-api/store.ts"
+        ]
+      },
+      {
+        "slug": "osp-document-api",
+        "remoteVersion": 92,
+        "bundleSha256": "4ca8efedbd8ca35182eb4610128e147f3716fb100448e4426345a58c87bbe7ab",
+        "remoteFileCount": 13,
+        "identicalFiles": 10,
+        "changedOrMissing": [
+          "supabase/functions/osp-read-api/http.ts",
+          "supabase/functions/osp-document-api/handler.ts",
+          "supabase/functions/osp-document-api/postgres-document-store.ts"
+        ]
+      },
+      {
+        "slug": "osp-read-api",
+        "remoteVersion": 109,
+        "bundleSha256": "a01470b4c0717be50b6293b67e64d75cfd483e8988768174148a5a86483c0e00",
+        "remoteFileCount": 12,
+        "identicalFiles": 9,
+        "changedOrMissing": [
+          "supabase/functions/osp-read-api/http.ts",
+          "supabase/functions/osp-read-api/read-models.ts",
+          "supabase/functions/osp-read-api/postgres-store.ts"
+        ]
+      },
+      {
+        "slug": "osp-case-api",
+        "remoteVersion": 111,
+        "bundleSha256": "9de1fc64f29f83c1f6b1e7f0db17825ea1f614d585711de412a44d6ad3d5dfbd",
+        "remoteFileCount": 26,
+        "identicalFiles": 13,
+        "changedOrMissing": [
+          "supabase/functions/osp-case-api/composition.ts",
+          "supabase/functions/osp-read-api/http.ts",
+          "supabase/functions/osp-case-api/handler.ts",
+          "supabase/functions/_shared/osp/outbound-payload.ts",
+          "supabase/functions/osp-case-api/workflow-view.ts",
+          "supabase/functions/osp-case-api/postgres-store.ts",
+          "supabase/functions/osp-case-api/actions.ts",
+          "supabase/functions/osp-case-api/operations-review.ts",
+          "supabase/functions/osp-case-api/signature-approval.ts",
+          "supabase/functions/osp-case-api/outbound-draft.ts",
+          "supabase/functions/_shared/osp/outbound-policy.ts",
+          "supabase/functions/osp-case-api/sales-authorization.ts",
+          "supabase/functions/osp-case-api/send-command.ts"
+        ]
+      },
+      {
+        "slug": "osp-worker",
+        "remoteVersion": 141,
+        "bundleSha256": "810f2d9b51c67197a59f6a7b5b7218252c4b7543b476839df26c944efca1433f",
+        "remoteFileCount": 68,
+        "identicalFiles": 56,
+        "changedOrMissing": [
+          "supabase/functions/_shared/osp/original-object-store.ts",
+          "supabase/functions/osp-worker/openai-request-manifest.ts",
+          "supabase/functions/osp-worker/automatic-preparation.ts",
+          "supabase/functions/osp-worker/supplier-package-runtime.ts",
+          "supabase/functions/osp-worker/supplier-package-job.ts",
+          "supabase/functions/_shared/osp/xlsx-form-completer.ts",
+          "supabase/functions/_shared/osp/supplier-artifact-port.ts",
+          "supabase/functions/_shared/osp/pdf-form-completer.ts",
+          "supabase/functions/osp-case-api/outbound-draft.ts",
+          "supabase/functions/_shared/osp/outbound-payload.ts",
+          "supabase/functions/_shared/osp/outbound-policy.ts",
+          "supabase/functions/osp-worker/postgres-request-manifest-source.ts"
+        ]
+      }
+    ]
+  },
+  "database": {
+    "ospCron": [
+      {
+        "name": "osp-gmail-poll-every-5-minutes",
+        "active": true,
+        "schedule": "*/5 * * * *"
+      },
+      {
+        "name": "osp-quarterly-document-check",
+        "active": true,
+        "schedule": "0 6 * * *"
+      }
+    ],
+    "controls": [
+      {
+        "id": "singleton",
+        "releaseMode": "shadow",
+        "outboundEnabled": false
+      }
+    ],
+    "functions": [
+      {
+        "signature": "osp_private.load_xbf_customer_setup_candidates_for_case(uuid,uuid)",
+        "definitionMd5": "3617bbe4acc7d231817a5080bdf84373",
+        "hasUnsupportedActorBound": false
+      },
+      {
+        "signature": "osp_private.promote_profile_review_facts_command(uuid,uuid,integer,text,jsonb,text,text)",
+        "definitionMd5": "375ff508cf6fd9c963a06b30833b6ed9",
+        "hasUnsupportedActorBound": false
+      }
+    ],
+    "observedAt": "2026-09-05T17:19:12.842384+00:00",
+    "newRelations": [
+      {
+        "name": "osp_private.answer_memory_evidence_links",
+        "exists": false
+      },
+      {
+        "name": "osp_private.case_answer_memory_candidates",
+        "exists": false
+      },
+      {
+        "name": "osp_private.case_answer_memory_reviews",
+        "exists": false
+      },
+      {
+        "name": "osp_private.request_knowledge_constraint_rules",
+        "exists": false
+      }
+    ],
+    "caseBaselines": [
+      {
+        "id": "ddbb675c-a769-4741-9b85-7d4798509913",
+        "forms": 1,
+        "state": "sent",
+        "payloads": 1,
+        "manifests": 2,
+        "aggregateVersion": 16,
+        "signatureReceipts": 1,
+        "gmailLedgerReceipts": 0
+      },
+      {
+        "id": "f2fa004f-d674-446c-80ca-e929cce75b51",
+        "forms": 0,
+        "state": "received",
+        "payloads": 0,
+        "manifests": 1,
+        "aggregateVersion": 1,
+        "signatureReceipts": 0,
+        "gmailLedgerReceipts": 0
+      }
+    ],
+    "derivedBucket": {
+      "id": "osp-derived-documents",
+      "public": false,
+      "fileSizeLimit": 26214400,
+      "allowedMimeTypes": [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ]
+    },
+    "serverVersion": "17.6",
+    "unfinishedJobs": [
+      {
+        "kind": "generate_supplier_package",
+        "count": 1
+      },
+      {
+        "kind": "quarterly_document_check",
+        "count": 10
+      }
+    ],
+    "migrationLedger": [
+      {
+        "exactEntry": false,
+        "expectedName": "osp_request_contract_semantic_stop",
+        "expectedVersion": "20260902120000",
+        "sameNameVersions": [],
+        "sameVersionNames": []
+      },
+      {
+        "exactEntry": false,
+        "expectedName": "osp_operations_review_contract_gate",
+        "expectedVersion": "20260902130000",
+        "sameNameVersions": [],
+        "sameVersionNames": []
+      },
+      {
+        "exactEntry": false,
+        "expectedName": "osp_approved_profile_memory_reuse",
+        "expectedVersion": "20260905050000",
+        "sameNameVersions": [],
+        "sameVersionNames": []
+      },
+      {
+        "exactEntry": false,
+        "expectedName": "osp_case_answer_memory_candidates",
+        "expectedVersion": "20260905053000",
+        "sameNameVersions": [],
+        "sameVersionNames": []
+      },
+      {
+        "exactEntry": false,
+        "expectedName": "osp_answer_memory_human_review",
+        "expectedVersion": "20260905060000",
+        "sameNameVersions": [],
+        "sameVersionNames": []
+      },
+      {
+        "exactEntry": false,
+        "expectedName": "osp_answer_memory_evidence_preflight",
+        "expectedVersion": "20260905083000",
+        "sameNameVersions": [],
+        "sameVersionNames": []
+      },
+      {
+        "exactEntry": false,
+        "expectedName": "osp_answer_memory_evidence_links",
+        "expectedVersion": "20260905110000",
+        "sameNameVersions": [],
+        "sameVersionNames": []
+      },
+      {
+        "exactEntry": false,
+        "expectedName": "osp_profile_complete_batch_confirmation",
+        "expectedVersion": "20260905143000",
+        "sameNameVersions": [],
+        "sameVersionNames": []
+      },
+      {
+        "exactEntry": false,
+        "expectedName": "osp_request_constraint_actor_regex_hotfix",
+        "expectedVersion": "20260905173000",
+        "sameNameVersions": [],
+        "sameVersionNames": []
+      }
+    ],
+    "requiredRelations": [
+      {
+        "name": "osp_private.case_form_instances",
+        "exists": true
+      },
+      {
+        "name": "osp_private.case_profile_bindings",
+        "exists": true
+      },
+      {
+        "name": "osp_private.customer_registration_cases",
+        "exists": true
+      },
+      {
+        "name": "osp_private.form_fields",
+        "exists": true
+      },
+      {
+        "name": "osp_private.form_template_versions",
+        "exists": true
+      },
+      {
+        "name": "osp_private.request_knowledge_promotions",
+        "exists": true
+      },
+      {
+        "name": "osp_private.request_manifest_decision_reviews",
+        "exists": true
+      },
+      {
+        "name": "osp_private.request_manifest_drafts",
+        "exists": true
+      },
+      {
+        "name": "public.legal_entities",
+        "exists": true
+      },
+      {
+        "name": "public.provider_entity_document_review_fields",
+        "exists": true
+      },
+      {
+        "name": "public.provider_entity_document_reviews",
+        "exists": true
+      },
+      {
+        "name": "public.provider_legal_entity_document_assets",
+        "exists": true
+      },
+      {
+        "name": "public.provider_legal_entity_fact_promotions",
+        "exists": true
+      },
+      {
+        "name": "public.provider_legal_entity_facts",
+        "exists": true
+      }
+    ],
+    "transactionReadOnly": "on"
+  },
+  "untouchedQueuedPackage": {
+    "jobId": "1cdf4b0a-6d24-419e-b579-1046c4fae35a",
+    "caseId": "ddbb675c-a769-4741-9b85-7d4798509913",
+    "attempt": 0,
+    "leased": false,
+    "completed": false
+  },
+  "limits": [
+    "No remote migration or function deployment",
+    "No push or UI promotion",
+    "No business command, signature, Sales authorization, email or webhook",
+    "No Vault contents read",
+    "No assumption that a zero receipt table count means no historical email",
+    "Full nine-migration rehearsal and authenticated API/UI compatibility still pending"
+  ]
+}
