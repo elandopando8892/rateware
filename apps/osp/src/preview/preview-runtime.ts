@@ -1,4 +1,5 @@
 import type { OspClient } from '../api/osp-client';
+import { previewProfilePromotion } from './profile-batch-fixture';
 import { AnswerMemoryReviewInputSchema, type AnswerMemoryReviewReceipt } from '../features/forms/answer-memory-contract';
 import { AnswerMemoryEvidenceLinkInputSchema, type AnswerMemoryEvidenceLinkReceipt } from '../features/forms/answer-memory-evidence-contract';
 import type { ApprovalCommunicationsWorkspace, CaseDetail, CaseFormWorkspace, CaseSummary, ClarificationReview, CorporateProfileReadModel, DocumentVersion, FormTemplateCatalog } from '../api/contracts';
@@ -91,17 +92,7 @@ const previewCorporateProfile: CorporateProfileReadModel = {
         { code: 'requested_credit_amount', label: 'Credit requested', display_value: '$25,000 USD', verification_status: 'needs_review', sensitivity: 'confidential', support_status: 'unsupported', evidence_candidate_count: '0', reviewed_candidate_count: '0', review_candidates: [] },
         { code: 'bank_name', label: 'Bank reference', display_value: 'Withheld', verification_status: 'needs_review', sensitivity: 'restricted', support_status: 'evidence_available', evidence_candidate_count: '1', reviewed_candidate_count: '0', review_candidates: [usBankReview] },
       ],
-      promotion_candidates: [{
-        review_id: '92000000-0000-4000-8000-000000000004', review_revision: 6,
-        document_type: 'formation_document', evidence_label: 'Formation document',
-        candidate_sha256: '9'.repeat(64), candidate_count: '3', change_count: '2',
-        unchanged_count: '1', withheld_count: '1', promotion_status: 'ready',
-        expected_current_fact_ids: {
-          entity_type: null,
-          business_start_year: '94000000-0000-4000-8000-000000000001',
-          affiliated_company: null,
-        },
-      }],
+      promotion_candidates: [previewProfilePromotion],
       evidence: [
         { name: 'W-9', document_type: 'w9', verification_status: 'needs_review', sensitivity: 'restricted', release_policy: 'approval_required', expiry_state: 'no_expiry' },
         { name: 'Broker authority', document_type: 'operating_authority', verification_status: 'verified', sensitivity: 'restricted', release_policy: 'approval_required', expiry_state: 'current' },
@@ -841,6 +832,7 @@ function createPreviewClient(): OspClient {
       const promotion = entity?.promotion_candidates.find((candidate) => candidate.review_id === input.reviewId);
       if (!entity || !promotion || promotion.promotion_status !== 'ready' || promotion.review_revision !== input.expectedRevision ||
           promotion.candidate_sha256 !== input.candidateSha256 || input.confirmation !== 'PROMOTE_VERIFIED_PROFILE_FACTS' ||
+          !promotion.batch?.ready || promotion.batch.comparisonSha256 !== input.comparisonSha256 ||
           JSON.stringify(promotion.expected_current_fact_ids) !== JSON.stringify(input.expectedCurrentFactIds)) throw new Error('Preview promotion conflict');
       corporateProfile = {
         ...corporateProfile,

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { OspCorporateProfileClient } from '../../api/osp-client';
 import { CorporateProfileWorkspace } from './CorporateProfileWorkspace';
+import { previewProfilePromotion } from '../../preview/profile-batch-fixture';
 
 const client: OspCorporateProfileClient = {
   async getCorporateProfile() { return {
@@ -48,12 +49,7 @@ describe('CorporateProfileWorkspace', () => {
   });
 
   it('requires an explicit confirmation before promoting the exact reviewed snapshot', async () => {
-    const promotion = {
-      review_id: '92000000-0000-4000-8000-000000000004', review_revision: 6,
-      document_type: 'formation_document', evidence_label: 'Formation document', candidate_sha256: '9'.repeat(64),
-      candidate_count: '3', change_count: '2', unchanged_count: '1', withheld_count: '1', promotion_status: 'ready' as const,
-      expected_current_fact_ids: { entity_type: null, business_start_year: '94000000-0000-4000-8000-000000000001' },
-    };
+    const promotion = structuredClone(previewProfilePromotion);
     const base = await client.getCorporateProfile();
     const promote = vi.fn(async () => ({ promotionId: '95000000-0000-4000-8000-000000000001', promotionStatus: 'applied' as const, promotedFactCount: 2, unchangedFactCount: 1, withheldFieldCount: 1, reviewId: promotion.review_id, reviewRevision: 6, replayed: false }));
     const promotionClient: OspCorporateProfileClient = {
@@ -62,12 +58,13 @@ describe('CorporateProfileWorkspace', () => {
       promoteProfileReviewFacts: promote,
     };
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CorporateProfileWorkspace client={promotionClient} /></QueryClientProvider>);
-    const action = await screen.findByRole('button', { name: /promote reviewed facts/i });
+    const action = await screen.findByRole('button', { name: /publicar lote completo/i });
     expect(action).toBeDisabled();
-    await userEvent.click(screen.getByRole('checkbox', { name: /exact reviewed snapshot/i }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /todos los cambios visibles/i }));
     await userEvent.click(action);
     expect(promote).toHaveBeenCalledWith({
       reviewId: promotion.review_id, expectedRevision: 6, candidateSha256: promotion.candidate_sha256,
+      comparisonSha256: promotion.batch!.comparisonSha256,
       expectedCurrentFactIds: promotion.expected_current_fact_ids, confirmation: 'PROMOTE_VERIFIED_PROFILE_FACTS',
     });
     expect(await screen.findByText(/2 reviewed facts promoted/i)).toBeInTheDocument();

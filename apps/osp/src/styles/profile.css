@@ -36,6 +36,22 @@
 .profile-promotion-queue .panel-heading p:not(.eyebrow) { max-width: 48rem; margin: .25rem 0 0; color: var(--muted); }
 .promotion-empty { margin: 1rem 0; color: var(--muted); }
 .promotion-list { display: grid; gap: .75rem; margin: 1rem 0; padding: 0; list-style: none; }
+.profile-batch-panel { grid-column: 1 / -1; min-width: 0; scroll-margin-top: 6rem; }
+.profile-batch-panel h3 { margin: .5rem 0; }
+.profile-batch-panel p { color: var(--muted); }
+.profile-batch-fields { display: grid; gap: .75rem; padding: 0; list-style: none; }
+.profile-batch-fields > li { padding: 1rem; border: 1px solid var(--line); border-radius: .6rem; background: white; min-width: 0; overflow-wrap: anywhere; }
+.profile-batch-field-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; }
+.profile-batch-field-heading span { font-weight: 650; font-size: .85rem; }
+.profile-batch-fields dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; margin: .75rem 0 0; }
+.profile-batch-fields dt { color: var(--muted); font-size: .85rem; }
+.profile-batch-fields dd { margin: .2rem 0 0; white-space: pre-wrap; }
+.profile-batch-stamp { overflow-wrap: anywhere; font-size: .85rem; }
+@media (max-width: 600px) {
+  .profile-batch-fields dl { grid-template-columns: 1fr; }
+  .profile-batch-panel .promotion-control { flex-direction: column; align-items: stretch; }
+  .profile-batch-panel .promotion-control button { width: 100%; min-height: 44px; }
+}
 .promotion-list > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .8rem 1rem; align-items: center; padding: 1rem; border: 1px solid var(--line); border-radius: .75rem; background: #f8f9fc; }
 .promotion-copy { display: grid; gap: .18rem; }
 .promotion-copy span, .promotion-copy small { color: var(--muted); }

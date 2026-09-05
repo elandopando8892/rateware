@@ -31,12 +31,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/contracts.ts",
-      "sha256": "78f44a93f8f694c5cc16e4c386a2f401ee707241aa45a7811c2e6d677fd84a18"
+      "sha256": "6a32656cedeb8cf97850db67d14195489754bf01bb1387f1e796709eeeea8bca"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/osp-client.ts",
-      "sha256": "525c5eccdea7da1ce85f619d3579d1c268c6f92de137347a9f52719a2974e4b2"
+      "sha256": "960850fe889bdc12406b130261d1e77ba422f3cbcf47eabade13d64ad7cf4f1e"
     },
     {
       "kind": "production-ui",
@@ -246,7 +246,17 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/profile/CorporateProfileWorkspace.tsx",
-      "sha256": "1d4906526bee6cdcfb101332e62efd46805455af92a89e13169a80c2aa35c45a"
+      "sha256": "fcf4cfab7024c9043e29288ec060e341909acbd3bd8119aacecd10c9b33ebe4d"
+    },
+    {
+      "kind": "production-ui",
+      "path": "apps/osp/src/features/profile/profile-promotion-batch-contract.ts",
+      "sha256": "ce712e6b9e57aabc7f96b8e09f09bdd191c5425e99bdbced51122e3eb92fa0a5"
+    },
+    {
+      "kind": "production-ui",
+      "path": "apps/osp/src/features/profile/ProfilePromotionBatchPanel.tsx",
+      "sha256": "956b4cca3046bfceee5e579580f18de3692cb5210d0864d30f2b9b51bb7687c3"
     },
     {
       "kind": "production-ui",
@@ -286,7 +296,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "8614115f6230dd29fb932c8f05828124ff6b0841f7ec9015cca5f0eacd1fa758"
+      "sha256": "2801f209931136f9aa85b13950129482a7a234154d2d36e129118820c004eae3"
+    },
+    {
+      "kind": "production-ui",
+      "path": "apps/osp/src/preview/profile-batch-fixture.ts",
+      "sha256": "09845f051188df5d39e6a0c50ce9108170736586e62df1de484a8443d78824a9"
     },
     {
       "kind": "production-ui",
@@ -306,7 +321,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/styles/profile.css",
-      "sha256": "a4bf17c14f971cc22fd7ff90923928dadd73200426b023b3ce9a78a327418dea"
+      "sha256": "850f91594fadc23a0e0a50abb5a722a1fc2f96e9d8dd8f73c3e7b5208975332b"
     },
     {
       "kind": "production-ui",

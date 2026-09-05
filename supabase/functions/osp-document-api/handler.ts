@@ -269,8 +269,9 @@ export function createDocumentApiHandler(options: DocumentApiHandlerOptions): (r
       if (action === 'promote_profile_review_facts') {
         exactQuery(url, ['action']);
         const authority = permission(verified, 'operate');
-        const body = await strictJsonObject(request, ['candidateSha256', 'confirmation', 'expectedCurrentFactIds', 'expectedRevision', 'reviewId']);
+        const body = await strictJsonObject(request, ['candidateSha256', 'comparisonSha256', 'confirmation', 'expectedCurrentFactIds', 'expectedRevision', 'reviewId']);
         if (typeof body.reviewId !== 'string' || !UUID.test(body.reviewId) || typeof body.candidateSha256 !== 'string' || !SHA.test(body.candidateSha256) ||
+            typeof body.comparisonSha256 !== 'string' || !SHA.test(body.comparisonSha256) ||
             body.confirmation !== 'PROMOTE_VERIFIED_PROFILE_FACTS' || !body.expectedCurrentFactIds || typeof body.expectedCurrentFactIds !== 'object' || Array.isArray(body.expectedCurrentFactIds)) throw new OspApiError('INVALID_REQUEST');
         const expectedCurrentFactIds = body.expectedCurrentFactIds as Record<string, unknown>;
         const expectations = Object.entries(expectedCurrentFactIds);
@@ -281,6 +282,7 @@ export function createDocumentApiHandler(options: DocumentApiHandlerOptions): (r
           reviewId: body.reviewId,
           expectedRevision: positiveRevision(body.expectedRevision),
           candidateSha256: body.candidateSha256,
+          comparisonSha256: body.comparisonSha256,
           expectedCurrentFactIds: expectedCurrentFactIds as Record<string, string | null>,
           actorSubject: authority.subject,
           actorPermission: 'osp:operate',

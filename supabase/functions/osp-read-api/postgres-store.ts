@@ -464,6 +464,7 @@ export function createPostgresOspReadStore({
           COALESCE((
             SELECT jsonb_agg(jsonb_build_object(
               'review_id', approved_review.id::text,
+              'batch', osp_private.load_profile_review_promotion_batch(approved_review.organization_id, approved_review.id),
               'review_revision', approved_review.revision,
               'document_type', approved_asset.document_type,
               'evidence_label', initcap(replace(approved_asset.document_type, '_', ' ')),

@@ -1,4 +1,5 @@
 import { decodeWords } from 'npm:postal-mime@3.0.0';
+import { ProfilePromotionBatchSchema, type ProfilePromotionBatch } from '../../../apps/osp/src/features/profile/profile-promotion-batch-contract.ts';
 
 import { OspApiError } from './http.ts';
 import type { CaseDetailSeamRow, CaseSummarySeamRow, CorporateProfileSeamRow, GmailSeamRow, OspReadStore, PipelineSeamRow } from './store.ts';
@@ -167,6 +168,7 @@ export type CorporateProfileEntityReadModel = {
   total_fields: string;
   fields: readonly CorporateProfileFieldReadModel[];
   promotion_candidates: readonly {
+    batch?: ProfilePromotionBatch | null;
     review_id: string;
     review_revision: number;
     document_type: string;
@@ -634,7 +636,9 @@ function normalizeCorporateProfileEntity(value: unknown): CorporateProfileEntity
   const fields = row.fields.map(normalizeProfileField);
   if (new Set(fields.map((field) => field.code)).size !== fields.length) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
   const promotionCandidates = row.promotion_candidates.map((value) => {
+    const hasBatch = typeof value === 'object' && value !== null && 'batch' in value;
     const candidate = recordWithExactKeys(value, [
+      ...(hasBatch ? ['batch'] : []),
       'candidate_count', 'candidate_sha256', 'change_count', 'document_type', 'evidence_label',
       'expected_current_fact_ids', 'promotion_status', 'review_id', 'review_revision',
       'unchanged_count', 'withheld_count',
@@ -646,6 +650,8 @@ function normalizeCorporateProfileEntity(value: unknown): CorporateProfileEntity
       throw new OspApiError('DEPENDENCY_UNAVAILABLE');
     }
     const reviewRevision = Number(candidate.review_revision);
+    const batch = candidate.batch == null ? null : ProfilePromotionBatchSchema.safeParse(candidate.batch);
+    if (batch && (!batch.success || batch.data.reviewId !== candidate.review_id || batch.data.reviewRevision !== reviewRevision)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
     if (!Number.isSafeInteger(reviewRevision) || reviewRevision < 1 || reviewRevision > 2_147_483_647) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
     const expectedCurrentFactIds: Record<string, string | null> = {};
     for (const [key, currentId] of Object.entries(candidate.expected_current_fact_ids as Record<string, unknown>)) {
@@ -663,6 +669,7 @@ function normalizeCorporateProfileEntity(value: unknown): CorporateProfileEntity
       unchanged_count: normalizeCanonicalDecimal(candidate.unchanged_count),
       withheld_count: normalizeCanonicalDecimal(candidate.withheld_count),
       expected_current_fact_ids: Object.freeze(expectedCurrentFactIds),
+      ...(hasBatch ? { batch: batch && batch.success ? batch.data : null } : {}),
       promotion_status: enumValue(candidate.promotion_status, PROFILE_PROMOTION_STATUS),
     });
   });

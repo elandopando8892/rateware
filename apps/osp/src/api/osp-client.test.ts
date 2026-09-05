@@ -26,6 +26,19 @@ function harness(responses: Array<Response | Error>, current = session()) {
   return { client, fetch, getAccessToken, setSession(value: BoundSession | null) { active = value; } };
 }
 
+it('requires the full batch fingerprint and never retries a promotion on network ambiguity', async () => {
+  const id = '11111111-1111-4111-8111-111111111115';
+  const input = { reviewId: id, expectedRevision: 1, candidateSha256: 'a'.repeat(64), comparisonSha256: 'b'.repeat(64), expectedCurrentFactIds: { phone: null }, confirmation: 'PROMOTE_VERIFIED_PROFILE_FACTS' as const };
+  const h = harness([new TypeError('offline')]);
+  await expect(h.client.promoteProfileReviewFacts(input)).rejects.toBeInstanceOf(OspClientError);
+  expect(h.fetch).toHaveBeenCalledOnce();
+  const body = h.fetch.mock.calls[0][1]!.body as ArrayBuffer;
+  expect(JSON.parse(new TextDecoder().decode(body))).toEqual(input);
+  const invalid = harness([]);
+  await expect(invalid.client.promoteProfileReviewFacts({ ...input, comparisonSha256: '' })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+  expect(invalid.fetch).not.toHaveBeenCalled();
+});
+
 it('uses one endpoint, exact action body, bearer token, and never transmits generation', async () => {
   const h = harness([json(pipeline)]);
   await expect(h.client.listOnboardingWorkspace()).resolves.toEqual(pipeline.data);

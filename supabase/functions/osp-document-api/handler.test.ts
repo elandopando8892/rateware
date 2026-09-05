@@ -167,10 +167,16 @@ Deno.test('document API separates profile review from explicit fact promotion an
   }))).status, 200);
   assertEquals(calls.map(({ action }) => action), ['claim', 'decide', 'finalize']);
   assertEquals((await handler(jsonRequest('promote_profile_review_facts', {
-    reviewId, expectedRevision: 4, candidateSha256: 'a'.repeat(64),
+    reviewId, expectedRevision: 4, candidateSha256: 'a'.repeat(64), comparisonSha256: 'b'.repeat(64),
     expectedCurrentFactIds: { legal_name: null }, confirmation: 'PROMOTE_VERIFIED_PROFILE_FACTS',
   }))).status, 200);
   assertEquals(calls.map(({ action }) => action), ['claim', 'decide', 'finalize', 'promote']);
+  assertEquals(calls.find(({ action }) => action === 'promote')?.input.comparisonSha256, 'b'.repeat(64));
+  assertEquals((await handler(jsonRequest('promote_profile_review_facts', {
+    reviewId, expectedRevision: 4, candidateSha256: 'a'.repeat(64),
+    expectedCurrentFactIds: { legal_name: null }, confirmation: 'PROMOTE_VERIFIED_PROFILE_FACTS',
+  }))).status, 400);
+  assertEquals(calls.filter(({ action }) => action === 'promote').length, 1);
   assertEquals(calls.every(({ input }) => input.organizationId === identity.identity.organization && input.actorSubject === identity.identity.subject), true);
   assertEquals(calls.some(({ input }) => 'send' in input), false);
 
@@ -186,7 +192,7 @@ Deno.test('document API separates profile review from explicit fact promotion an
   });
   assertEquals((await readOnly(jsonRequest('claim_profile_review', { reviewId, expectedRevision: 1 }))).status, 403);
   assertEquals((await readOnly(jsonRequest('promote_profile_review_facts', {
-    reviewId, expectedRevision: 4, candidateSha256: 'a'.repeat(64),
+    reviewId, expectedRevision: 4, candidateSha256: 'a'.repeat(64), comparisonSha256: 'b'.repeat(64),
     expectedCurrentFactIds: { legal_name: null }, confirmation: 'PROMOTE_VERIFIED_PROFILE_FACTS',
   }))).status, 403);
   assertEquals(calls.length, 4);

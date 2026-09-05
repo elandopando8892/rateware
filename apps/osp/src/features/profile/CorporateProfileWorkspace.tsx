@@ -3,6 +3,7 @@ import { useState } from 'react';
 
 import type { CorporateProfileEntity } from '../../api/contracts';
 import type { OspCorporateProfileClient } from '../../api/osp-client';
+import { ProfilePromotionBatchPanel } from './ProfilePromotionBatchPanel';
 
 type Readiness = 'verified' | 'review_required' | 'withheld';
 type SupportFilter = 'all' | CorporateProfileEntity['fields'][number]['support_status'];
@@ -57,7 +58,6 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
   const [selectedReview, setSelectedReview] = useState<{ fieldCode: string; reviewId: string } | null>(null);
   const [decisionNote, setDecisionNote] = useState('');
   const [lastOutcome, setLastOutcome] = useState('');
-  const [confirmedPromotionReviewId, setConfirmedPromotionReviewId] = useState('');
   const mutation = useMutation({
     mutationFn: async (operation: () => Promise<unknown>) => await operation(),
     onSuccess: async () => { setLastOutcome('Review action stored in the audit ledger. No profile facts were promoted.'); await query.refetch(); },
@@ -67,12 +67,12 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
       reviewId: candidate.review_id,
       expectedRevision: candidate.review_revision,
       candidateSha256: candidate.candidate_sha256,
+      comparisonSha256: candidate.batch!.comparisonSha256,
       expectedCurrentFactIds: candidate.expected_current_fact_ids,
       confirmation: 'PROMOTE_VERIFIED_PROFILE_FACTS',
     }),
     onSuccess: async (receipt) => {
       setLastOutcome(`${receipt.promotedFactCount} reviewed facts promoted to the private XBF ledger; ${receipt.unchangedFactCount} already matched and ${receipt.withheldFieldCount} remained withheld.`);
-      setConfirmedPromotionReviewId('');
       await query.refetch();
     },
   });
@@ -149,10 +149,7 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
             {entity.promotion_candidates.map((candidate) => <li key={candidate.review_id}>
               <div className="promotion-copy"><strong>{candidate.evidence_label}</strong><span>{candidate.candidate_count} reviewed facts · {candidate.change_count} changes · {candidate.unchanged_count} unchanged</span><small>{candidate.withheld_count} restricted field(s) remain withheld · fingerprint {candidate.candidate_sha256.slice(0, 10)}…</small></div>
               <span className={`profile-status profile-status-${candidate.promotion_status === 'applied' ? 'verified' : candidate.promotion_status === 'ready' ? 'review_required' : 'withheld'}`}>{candidate.promotion_status === 'ready' ? 'Ready to promote' : candidate.promotion_status.replace('_', ' ')}</span>
-              {candidate.promotion_status === 'ready' ? <div className="promotion-control">
-                <label><input type="checkbox" checked={confirmedPromotionReviewId === candidate.review_id} disabled={promotionMutation.isPending} onChange={(event) => setConfirmedPromotionReviewId(event.target.checked ? candidate.review_id : '')} /> I confirm this exact reviewed snapshot becomes the reusable XBF profile.</label>
-                <button type="button" className="primary-action" disabled={confirmedPromotionReviewId !== candidate.review_id || promotionMutation.isPending} onClick={() => promotionMutation.mutate(candidate)}>{promotionMutation.isPending ? 'Promoting…' : 'Promote reviewed facts'}</button>
-              </div> : null}
+              <ProfilePromotionBatchPanel key={JSON.stringify([candidate.review_id, candidate.review_revision, candidate.candidate_sha256, candidate.batch, candidate.expected_current_fact_ids])} candidate={candidate} pending={promotionMutation.isPending} onPromote={(item) => promotionMutation.mutate(item)} />
             </li>)}
           </ul>}
           {promotionMutation.isError ? <p role="alert">The profile or current fact version changed. Reload and review the new comparison before promoting.</p> : null}

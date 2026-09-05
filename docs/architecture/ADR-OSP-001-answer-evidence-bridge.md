@@ -170,10 +170,11 @@ declaraciones sin documento, referencias comerciales o banca en este bloque.
 4. [x] Implementar preflight en lectura y comparación UI; preview sintética visible
    (`50111e4`, `dpl_9stxxL3C4oLrcKGrb64n8qp31LVa`); ver entrega y pruebas en
    `../osp/answer-evidence-preflight-delivery.md`.
-5. [ ] Implementar enlace/renovación atómicos con pruebas de conflicto, vigencia,
+5. [x] Implementar enlace/renovación atómicos con pruebas de conflicto, vigencia,
    permisos y concurrencia; verificar el catálogo existente y el aislamiento Rateware.
-   Enlace, renovación y lectura implementados y probados con SQL embebido;
-   falta el canary de contención entre sesiones PostgreSQL independientes.
+   SQL embebido y canary local con tres sesiones PostgreSQL 16.15 independientes
+   aprobados; también comparación completa y publicación documental explícita.
+   Ver `../osp/profile-complete-batch-delivery.md`. No implica activación productiva.
 6. [ ] Activación productiva únicamente con autorización de alcance/SHA/migraciones
    exactas; sin enviar un correo final por aprobar memoria.
 

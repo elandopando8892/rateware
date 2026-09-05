@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AnswerMemoryCandidateSchema } from '../features/forms/answer-memory-contract';
+import { ProfilePromotionBatchSchema } from '../features/profile/profile-promotion-batch-contract';
 
 export const OSP_READ_ACTIONS = [
   'list_provider_onboarding_workspace',
@@ -412,6 +413,7 @@ export const ProfileReviewMutationResponseSchema = z.strictObject({
 });
 
 export const ProfileFactPromotionCandidateSchema = z.strictObject({
+  batch: ProfilePromotionBatchSchema.nullable().optional(),
   review_id: z.uuid(),
   review_revision: z.number().int().min(1).max(2_147_483_647),
   document_type: z.string().regex(/^[a-z][a-z0-9_]{1,127}$/),

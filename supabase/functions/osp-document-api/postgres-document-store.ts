@@ -20,7 +20,7 @@ export type DocumentVersionSummary = {
 export type ProfileReviewClaimInput = { organizationId: string; reviewId: string; expectedRevision: number; actorSubject: string; actorPermission: 'osp:operate' };
 export type ProfileReviewFieldDecisionInput = ProfileReviewClaimInput & { fieldId: string; decision: 'accepted' | 'corrected' | 'rejected' | 'withheld'; decisionNote: string; reviewerValue: unknown | null };
 export type ProfileReviewFinalizationInput = ProfileReviewClaimInput & { decision: 'approved' | 'rejected' | 'changes_required'; decisionNote: string };
-export type ProfileFactPromotionInput = ProfileReviewClaimInput & { candidateSha256: string; expectedCurrentFactIds: Readonly<Record<string, string | null>> };
+export type ProfileFactPromotionInput = ProfileReviewClaimInput & { candidateSha256: string; comparisonSha256: string; expectedCurrentFactIds: Readonly<Record<string, string | null>> };
 export type CaseProfileBindingInput = { organizationId: string; caseId: string; legalEntityId: string; expectedCaseVersion: number; expectedBindingRevision: number; actorSubject: string; actorPermission: 'osp:operate' };
 export type CaseProfileDraftInput = Omit<CaseProfileBindingInput, 'legalEntityId'> & { expectedFactsSha256: string };
 
@@ -173,9 +173,9 @@ export function createPostgresDocumentStore(options: { databaseUrl: string; post
       });
     },
     async promoteProfileReviewFacts(input: ProfileFactPromotionInput) {
-      if (!SHA.test(input.candidateSha256) || Object.keys(input.expectedCurrentFactIds).length > 128) throw new Error('PROFILE_FACT_PROMOTION_REJECTED');
+      if (!SHA.test(input.candidateSha256) || !SHA.test(input.comparisonSha256) || Object.keys(input.expectedCurrentFactIds).length > 128) throw new Error('PROFILE_FACT_PROMOTION_REJECTED');
       return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
-        const row = one(await tx`select promotion_id, promotion_status, promoted_fact_count, unchanged_fact_count, withheld_field_count, review_id, review_revision, replayed from osp_private.promote_profile_review_facts_command(${input.organizationId}, ${input.reviewId}, ${input.expectedRevision}, ${input.candidateSha256}, ${JSON.stringify(input.expectedCurrentFactIds)}::jsonb, ${input.actorSubject}, ${input.actorPermission})`, 'PROFILE_FACT_PROMOTION_CONFLICT');
+        const row = one(await tx`select promotion_id, promotion_status, promoted_fact_count, unchanged_fact_count, withheld_field_count, review_id, review_revision, replayed from osp_private.promote_profile_review_complete_batch(${input.organizationId}, ${input.reviewId}, ${input.expectedRevision}, ${input.candidateSha256}, ${JSON.stringify(input.expectedCurrentFactIds)}::text::jsonb, ${input.actorSubject}, ${input.actorPermission}, ${input.comparisonSha256})`, 'PROFILE_FACT_PROMOTION_CONFLICT');
         if (row.promotion_status !== 'applied' || row.review_id !== input.reviewId || typeof row.promotion_id !== 'string' || !UUID.test(row.promotion_id) || typeof row.replayed !== 'boolean') throw new Error('PROFILE_FACT_PROMOTION_REJECTED');
         return Object.freeze({
           promotionId: row.promotion_id,

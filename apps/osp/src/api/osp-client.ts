@@ -103,6 +103,7 @@ export type ClaimProfileReviewInput = { reviewId: string; expectedRevision: numb
 export type DecideProfileReviewFieldInput = ClaimProfileReviewInput & { fieldId: string; decision: 'accepted' | 'corrected' | 'rejected' | 'withheld'; decisionNote: string; reviewerValue: unknown | null };
 export type FinalizeProfileReviewInput = ClaimProfileReviewInput & { decision: 'approved' | 'rejected' | 'changes_required'; decisionNote: string };
 export type PromoteProfileReviewFactsInput = ClaimProfileReviewInput & {
+  comparisonSha256: string;
   candidateSha256: string;
   expectedCurrentFactIds: Readonly<Record<string, string | null>>;
   confirmation: 'PROMOTE_VERIFIED_PROFILE_FACTS';
@@ -524,12 +525,13 @@ export function createOspClient(options: ClientOptions): OspClient {
     promoteProfileReviewFacts: async (input: PromoteProfileReviewFactsInput) => {
       const entries = Object.entries(input.expectedCurrentFactIds);
       if (!UUID.test(input.reviewId) || !Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 1 || input.expectedRevision > 2_147_483_647 ||
-          !SHA.test(input.candidateSha256) || input.confirmation !== 'PROMOTE_VERIFIED_PROFILE_FACTS' || entries.length > 128 ||
+          !SHA.test(input.candidateSha256) || !SHA.test(input.comparisonSha256) || input.confirmation !== 'PROMOTE_VERIFIED_PROFILE_FACTS' || entries.length > 128 ||
           entries.some(([key, value]) => !/^[a-z][a-z0-9_]{1,127}$/.test(key) || !(value === null || UUID.test(value)))) throw new OspClientError('INVALID_REQUEST');
       const encoded = new TextEncoder().encode(JSON.stringify({
         reviewId: input.reviewId,
         expectedRevision: input.expectedRevision,
         candidateSha256: input.candidateSha256,
+        comparisonSha256: input.comparisonSha256,
         expectedCurrentFactIds: input.expectedCurrentFactIds,
         confirmation: input.confirmation,
       }));
