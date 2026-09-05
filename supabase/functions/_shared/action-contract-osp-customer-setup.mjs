@@ -67,7 +67,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "7b6a8b69d6f04255353acdb450fd50c38d937ab1225f20a272a9ee817a1c0d47",
-    "authorizationFingerprint": "f65647a8f41489ad9e62d2234805e00426a5be6848f9296c66253d6657ac41dd"
+    "authorizationFingerprint": "02245cdcb4bfa017047074117ca606881141e73c55c4329bf40164567dfc530b"
   },
   {
     "surface": {
@@ -132,7 +132,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "880f12e402f8067961aff071110a2dcc9bbc3dc406e9f08aa323de0302b82ff1",
-    "authorizationFingerprint": "f65647a8f41489ad9e62d2234805e00426a5be6848f9296c66253d6657ac41dd"
+    "authorizationFingerprint": "02245cdcb4bfa017047074117ca606881141e73c55c4329bf40164567dfc530b"
   },
   {
     "surface": {
@@ -197,7 +197,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "164fb1dd586a7d3e1ee388e8401deb560e8d706650d27fa7b7818194b57b574c",
-    "authorizationFingerprint": "f65647a8f41489ad9e62d2234805e00426a5be6848f9296c66253d6657ac41dd"
+    "authorizationFingerprint": "02245cdcb4bfa017047074117ca606881141e73c55c4329bf40164567dfc530b"
   },
   {
     "surface": {
@@ -262,7 +262,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "0faf1ec477a2830a53edfc6b31d38f39ada77058ed91e891205888606f3bd53f",
-    "authorizationFingerprint": "f65647a8f41489ad9e62d2234805e00426a5be6848f9296c66253d6657ac41dd"
+    "authorizationFingerprint": "02245cdcb4bfa017047074117ca606881141e73c55c4329bf40164567dfc530b"
   },
   {
     "surface": {
@@ -327,7 +327,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "36e95978ec60aebd89dfc592c3c3d9edd6c8275b3b95a3177c80742d9b66b589",
-    "authorizationFingerprint": "f65647a8f41489ad9e62d2234805e00426a5be6848f9296c66253d6657ac41dd"
+    "authorizationFingerprint": "02245cdcb4bfa017047074117ca606881141e73c55c4329bf40164567dfc530b"
   },
   {
     "surface": {
@@ -392,7 +392,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "e80dda65e6ddc26c190a70409d38ea28ec7cf99505b6951a05fb7093e35d9543",
-    "authorizationFingerprint": "f65647a8f41489ad9e62d2234805e00426a5be6848f9296c66253d6657ac41dd"
+    "authorizationFingerprint": "02245cdcb4bfa017047074117ca606881141e73c55c4329bf40164567dfc530b"
   },
   {
     "surface": {
@@ -457,7 +457,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "b42c5f920e234a8da4dec39c908f540cbedc2c9b4318d835bc953e01c9c34f9b",
-    "authorizationFingerprint": "f65647a8f41489ad9e62d2234805e00426a5be6848f9296c66253d6657ac41dd"
+    "authorizationFingerprint": "02245cdcb4bfa017047074117ca606881141e73c55c4329bf40164567dfc530b"
   },
   {
     "surface": {
@@ -522,7 +522,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "1972d83b13046482abe2fe55c65796845ce8adba1910949a98c6be8c512cd43a",
-    "authorizationFingerprint": "f65647a8f41489ad9e62d2234805e00426a5be6848f9296c66253d6657ac41dd"
+    "authorizationFingerprint": "02245cdcb4bfa017047074117ca606881141e73c55c4329bf40164567dfc530b"
   },
   {
     "surface": {
@@ -587,7 +587,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "89b5e8ad5a7c621b45ab6554889dc35b00132de0086547f5899446931908023b",
-    "authorizationFingerprint": "f65647a8f41489ad9e62d2234805e00426a5be6848f9296c66253d6657ac41dd"
+    "authorizationFingerprint": "02245cdcb4bfa017047074117ca606881141e73c55c4329bf40164567dfc530b"
   },
   {
     "surface": {
@@ -652,7 +652,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "af7647287038bba1b87192e603a8253b06901eb1aef76dd8cf3666ab5013f6c7",
-    "authorizationFingerprint": "f65647a8f41489ad9e62d2234805e00426a5be6848f9296c66253d6657ac41dd"
+    "authorizationFingerprint": "02245cdcb4bfa017047074117ca606881141e73c55c4329bf40164567dfc530b"
   },
   {
     "surface": {
@@ -717,7 +717,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "021fad4c0cd923d5a2747b53fab86965265bbb5e331741fbebeb35e38dc5f27a",
-    "authorizationFingerprint": "f65647a8f41489ad9e62d2234805e00426a5be6848f9296c66253d6657ac41dd"
+    "authorizationFingerprint": "02245cdcb4bfa017047074117ca606881141e73c55c4329bf40164567dfc530b"
   },
   {
     "surface": {
@@ -782,7 +782,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "37b59e18c631cf79d63c46d35ad4e60162e112dcbef36c40a5e5a5565ab560bb",
-    "authorizationFingerprint": "f65647a8f41489ad9e62d2234805e00426a5be6848f9296c66253d6657ac41dd"
+    "authorizationFingerprint": "02245cdcb4bfa017047074117ca606881141e73c55c4329bf40164567dfc530b"
   },
   {
     "surface": {
@@ -1262,7 +1262,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "90ec08938959c7a1f2e5fd855240d0e8bd6903e5a69d4c9d7b18e25c9ab2cc2d",
-    "authorizationFingerprint": "1a2e0b9a2f9151175b3e768137961f4f1541368f7df3aaad53b3961b3c659fde"
+    "authorizationFingerprint": "cb74a292267b7601d22bae28a1155d4102b54e3ab92c8193ec430fd9965cb083"
   },
   {
     "surface": {
@@ -1310,7 +1310,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "1b07949b275dad11e71ae1b77e4539e80dd465b4c578754adf9a9c2b502530bd",
-    "authorizationFingerprint": "1a2e0b9a2f9151175b3e768137961f4f1541368f7df3aaad53b3961b3c659fde"
+    "authorizationFingerprint": "cb74a292267b7601d22bae28a1155d4102b54e3ab92c8193ec430fd9965cb083"
   },
   {
     "surface": {
@@ -1358,7 +1358,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "5a31c1a77f496088a175ef1f543477b4afa2058931f093060d4bad5f60e4c420",
-    "authorizationFingerprint": "1a2e0b9a2f9151175b3e768137961f4f1541368f7df3aaad53b3961b3c659fde"
+    "authorizationFingerprint": "cb74a292267b7601d22bae28a1155d4102b54e3ab92c8193ec430fd9965cb083"
   },
   {
     "surface": {
@@ -1406,7 +1406,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "93e3e82102c8d874a87d4ed09dd275bfe11387db29ff6ae3128c73bd603a78e3",
-    "authorizationFingerprint": "1a2e0b9a2f9151175b3e768137961f4f1541368f7df3aaad53b3961b3c659fde"
+    "authorizationFingerprint": "cb74a292267b7601d22bae28a1155d4102b54e3ab92c8193ec430fd9965cb083"
   },
   {
     "surface": {
@@ -1454,7 +1454,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "00bb1a802d9066535037d8131bc9ba8c5ad19b11db5706118aa47b9c0d775ec4",
-    "authorizationFingerprint": "1a2e0b9a2f9151175b3e768137961f4f1541368f7df3aaad53b3961b3c659fde"
+    "authorizationFingerprint": "cb74a292267b7601d22bae28a1155d4102b54e3ab92c8193ec430fd9965cb083"
   },
   {
     "surface": {
@@ -1502,7 +1502,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "48cdb3519c5cc0c84ac5c4cc06e90ff39690328e78495e9888646a6cea8fce9b",
-    "authorizationFingerprint": "1a2e0b9a2f9151175b3e768137961f4f1541368f7df3aaad53b3961b3c659fde"
+    "authorizationFingerprint": "cb74a292267b7601d22bae28a1155d4102b54e3ab92c8193ec430fd9965cb083"
   },
   {
     "surface": {
@@ -1550,7 +1550,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "9f5967c5c4d87420a0fc4e931223e4ee3fc547862bbfcb879cb4df0712f666eb",
-    "authorizationFingerprint": "1a2e0b9a2f9151175b3e768137961f4f1541368f7df3aaad53b3961b3c659fde"
+    "authorizationFingerprint": "cb74a292267b7601d22bae28a1155d4102b54e3ab92c8193ec430fd9965cb083"
   },
   {
     "surface": {
@@ -1598,7 +1598,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "f10c50a12a3a0e8197370177af25b985cd3862a5e7883530942231f64a831e5e",
-    "authorizationFingerprint": "1a2e0b9a2f9151175b3e768137961f4f1541368f7df3aaad53b3961b3c659fde"
+    "authorizationFingerprint": "cb74a292267b7601d22bae28a1155d4102b54e3ab92c8193ec430fd9965cb083"
   },
   {
     "surface": {
@@ -3133,6 +3133,40 @@ const DEFINITIONS = [
   },
   {
     "surface": {
+      "canonicalId": "rpc.osp_private.assert_request_contract_ready(uuid,uuid)",
+      "actionName": "osp_private.assert_request_contract_ready",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20260902130000_osp_operations_review_contract_gate.sql",
+      "handler": "osp_private.assert_request_contract_ready(uuid,uuid)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface osp_private.assert_request_contract_ready(uuid,uuid)",
+      "businessModule": "OSP Customer Setup",
+      "operation": "read",
+      "resource": "osp-workflow-database",
+      "access": "read",
+      "exposure": "internal/service-role",
+      "sensitivity": "high",
+      "tenantRelevance": "record-derived",
+      "proposedPermissionKey": "osp.workflow.database.osp_private.assert_request_contract_ready.read",
+      "functionalOwner": "XBF Operations",
+      "decisionStatus": "internal_only",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "25d6b24ca43065052586459a115b9a5145b4f9660c1758e5bcc621f988ad97ef",
+      "analysisCoverage": "direct",
+      "coverageSignals": [
+        "direct"
+      ],
+      "rpcSignature": "uuid,uuid",
+      "dependencyFiles": [
+        "supabase/migrations/20260902130000_osp_operations_review_contract_gate.sql"
+      ],
+      "notes": "Internal OSP runtime or database surface; no direct browser authority."
+    },
+    "metadataFingerprint": "7034f6c936c496cfe88447b6e80d45abf05eabfdd1320e55d06cee78a5cde3a8",
+    "authorizationFingerprint": "25d6b24ca43065052586459a115b9a5145b4f9660c1758e5bcc621f988ad97ef"
+  },
+  {
+    "surface": {
       "canonicalId": "rpc.osp_private.authorize_outbound_command(uuid,uuid,uuid,text,text[],bigint,text,text,text,text[],text,text,timestamptz,text)",
       "actionName": "osp_private.authorize_outbound_command",
       "sourceKind": "postgres-function",
@@ -4150,6 +4184,40 @@ const DEFINITIONS = [
     },
     "metadataFingerprint": "5cbe11eead9e67dc46da62f7ff954fc0e4a2f0a93272237e80da3a5b310f99c2",
     "authorizationFingerprint": "5b8718d41b71869e39793050e944f4b9311ab214bd6667c9df95209a3528b607"
+  },
+  {
+    "surface": {
+      "canonicalId": "rpc.osp_private.guard_operations_review_contract()",
+      "actionName": "osp_private.guard_operations_review_contract",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20260902130000_osp_operations_review_contract_gate.sql",
+      "handler": "osp_private.guard_operations_review_contract()",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface osp_private.guard_operations_review_contract()",
+      "businessModule": "OSP Customer Setup",
+      "operation": "execute",
+      "resource": "osp-workflow-database",
+      "access": "write",
+      "exposure": "internal/service-role",
+      "sensitivity": "critical",
+      "tenantRelevance": "record-derived",
+      "proposedPermissionKey": "osp.workflow.database.osp_private.guard_operations_review_contract.write",
+      "functionalOwner": "XBF Operations",
+      "decisionStatus": "internal_only",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "85c2beb71527e9bbfb913b9676940514f010301c0d33e0be0ee0f8cceb8f5c5b",
+      "analysisCoverage": "direct",
+      "coverageSignals": [
+        "direct"
+      ],
+      "rpcSignature": null,
+      "dependencyFiles": [
+        "supabase/migrations/20260902130000_osp_operations_review_contract_gate.sql"
+      ],
+      "notes": "Internal OSP runtime or database surface; no direct browser authority."
+    },
+    "metadataFingerprint": "2cfa74c531cbe7c8e61c2d9ea7ccc52e83c772f6fd4e7f52196d2b5523b89437",
+    "authorizationFingerprint": "85c2beb71527e9bbfb913b9676940514f010301c0d33e0be0ee0f8cceb8f5c5b"
   },
   {
     "surface": {
@@ -6333,7 +6401,7 @@ const surfaces = DEFINITIONS.map(({ surface }) => ({ ...surface, contractVersion
 
 export const OSP_CUSTOMER_SETUP_ACTION_CONTRACT_EXTENSION = {
   contractVersion,
-  expectedCountsDelta: { governable: 155, edge: 50, postgres: 105, ratewareApi: 0 },
+  expectedCountsDelta: { governable: 157, edge: 50, postgres: 107, ratewareApi: 0 },
   reviewedMetadataFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.metadataFingerprint])),
   reviewedAuthorizationFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.authorizationFingerprint])),
   surfaces,

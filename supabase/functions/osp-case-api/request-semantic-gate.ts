@@ -238,7 +238,8 @@ function formEvidence(
       : null;
     const signature =
       row.package_kind === "signed" && row.signature_verified === true
-        ? "wet" as const
+        // An applied image proves an electronic application, not a wet-ink act.
+        ? "digital" as const
         : "none" as const;
     const outboundAttachment = attachment({
       bucketId: "osp-derived-documents",
@@ -301,28 +302,27 @@ export function createPostgresRequestSemanticGate(options: {
       async (tx) => {
         await tx`set local statement_timeout = '3000ms'`;
         const sources = await tx`
-        select manifest.manifest_json, manifest.manifest_sha256
-        from osp_private.request_manifest_decision_reviews review
-        join osp_private.request_manifest_drafts manifest
-          on manifest.organization_id = review.organization_id
-         and manifest.id = review.manifest_draft_id
-         and manifest.case_id = review.case_id
-         and manifest.version = review.manifest_version
-         and manifest.manifest_sha256 = review.manifest_sha256
-        where review.organization_id = ${input.organizationId}
-          and review.case_id = ${input.caseId}
-          and review.status = 'resolved'
-          and not exists (
-            select 1 from osp_private.request_manifest_decision_reviews later
-            where later.organization_id = review.organization_id
-              and later.case_id = review.case_id
-              and later.manifest_draft_id = review.manifest_draft_id
-              and later.review_version > review.review_version
-          )
-        order by manifest.version desc, review.review_version desc
-        limit 2`;
+        select manifest.manifest_json, manifest.manifest_sha256,
+               (review.status = 'resolved'
+                and review.manifest_version = manifest.version
+                and review.manifest_sha256 = manifest.manifest_sha256)
+                 as current_review_resolved
+        from osp_private.request_manifest_drafts manifest
+        left join lateral (
+          select candidate.status, candidate.manifest_version, candidate.manifest_sha256
+          from osp_private.request_manifest_decision_reviews candidate
+          where candidate.organization_id = manifest.organization_id
+            and candidate.case_id = manifest.case_id
+            and candidate.manifest_draft_id = manifest.id
+          order by candidate.review_version desc
+          limit 1
+        ) review on true
+        where manifest.organization_id = ${input.organizationId}
+          and manifest.case_id = ${input.caseId}
+        order by manifest.version desc
+        limit 1`;
         if (
-          sources.length !== 1 ||
+          sources.length !== 1 || sources[0].current_review_resolved !== true ||
           typeof sources[0].manifest_sha256 !== "string" ||
           !SHA.test(sources[0].manifest_sha256)
         ) throw new Error("REQUEST_FULFILLMENT_BLOCKED");

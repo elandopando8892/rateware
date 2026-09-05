@@ -37,6 +37,16 @@ function renderRoute(client: Pick<OspClient, 'getCaseFormWorkspace' | 'saveCaseF
 }
 
 describe('CaseFormWorkspace', () => {
+  it('distinguishes template progress from carrier fulfillment and shows conditional exclusions', async () => {
+    const conditionalField = { ...workspace.template.fields[0], id: 'conditional_contact', label: 'Conditional contact', visibility: { all: [{ fieldId: 'needs_contact', operator: 'equals' as const, value: true }] } };
+    renderRoute({ getCaseFormWorkspace: vi.fn().mockResolvedValue({ ...workspace, template: { ...workspace.template, fields: [...workspace.template.fields, conditionalField] } }), saveCaseFormDraft: vi.fn(), acceptCaseFormMapping: vi.fn(), correctCaseFormMapping: vi.fn(), submitCaseFormForReview: vi.fn() });
+    expect(await screen.findByText(/published-template fields only/i)).toBeInTheDocument();
+    expect(screen.getByText('50%')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('1 fields excluded by template conditions'));
+    expect(screen.getByText('Conditional contact')).toBeVisible();
+    expect(screen.getByText(/not approved as waived carrier requirements/i)).toBeVisible();
+  });
+
   it('shows prefilled progress and saves the exact case draft', async () => {
     const save = vi.fn().mockResolvedValue({ instance: { ...workspace.instance, version: 3 }, replayed: false });
     renderRoute({ getCaseFormWorkspace: vi.fn().mockResolvedValue(workspace), saveCaseFormDraft: save, acceptCaseFormMapping: vi.fn(), correctCaseFormMapping: vi.fn(), submitCaseFormForReview: vi.fn() });

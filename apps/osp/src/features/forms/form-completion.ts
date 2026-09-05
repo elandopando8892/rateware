@@ -7,9 +7,20 @@ export type FormCompletionIssue = {
 };
 
 function isBlank(value: unknown): boolean {
-  return value === null || value === undefined || value === false ||
+  return value === null || value === undefined ||
     typeof value === 'string' && value.trim().length === 0 ||
     Array.isArray(value) && value.length === 0;
+}
+
+function missingValue(field: FormComponent, value: unknown): boolean {
+  if (isBlank(value)) return true;
+  // A negative answer is supplied data; an unchecked required consent is not acceptance.
+  if (field.definition.kind === 'checkbox') return value === false;
+  if (field.definition.kind === 'repeating_table' && Array.isArray(value)) {
+    return value.every((row) => row && typeof row === 'object' && !Array.isArray(row) &&
+      Object.values(row).every(isBlank));
+  }
+  return false;
 }
 
 function visible(field: FormComponent, values: Record<string, unknown>): boolean {
@@ -67,6 +78,7 @@ function validValue(field: FormComponent, value: unknown): boolean {
     case 'repeating_table':
       return Array.isArray(value) && value.length <= definition.maxRows && value.every((row) => {
         if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+        if (Object.values(row).every(isBlank)) return false;
         return Object.entries(row as Record<string, unknown>).every(([key, item]) => {
           const column = definition.columns.find((candidate) => candidate.id === key);
           if (!column) return false;
@@ -88,11 +100,13 @@ function collectsInput(field: FormComponent): boolean {
 
 export function assessFormCompletion(template: Pick<FormTemplateVersion, 'fields'>, values: Record<string, unknown>) {
   const visibleFields = template.fields.filter((field) => collectsInput(field) && visible(field, values));
+  const conditionalExclusions = template.fields.filter((field) => collectsInput(field) && !visible(field, values))
+    .map((field) => ({ fieldId: field.id, label: field.label }));
   const requiredFields = visibleFields.filter((field) => field.required);
   const issues: FormCompletionIssue[] = [];
   for (const field of visibleFields) {
     const value = values[field.id];
-    if (field.required && isBlank(value)) issues.push({ fieldId: field.id, label: field.label, code: 'missing' });
+    if (field.required && missingValue(field, value)) issues.push({ fieldId: field.id, label: field.label, code: 'missing' });
     else if (isBlank(value)) continue;
     else if (!validValue(field, value)) issues.push({ fieldId: field.id, label: field.label, code: 'invalid' });
   }
@@ -103,6 +117,7 @@ export function assessFormCompletion(template: Pick<FormTemplateVersion, 'fields
     completed,
     progress: requiredFields.length === 0 ? 0 : Math.round(completed / requiredFields.length * 100),
     issues: Object.freeze(issues),
+    conditionalExclusions: Object.freeze(conditionalExclusions),
     ready: requiredFields.length > 0 && issues.length === 0,
   });
 }

@@ -53,7 +53,7 @@ function CaseFormEditor({ workspace, onSave, onAcceptMapping, onCorrectMapping, 
   const [mappingConfirmed, setMappingConfirmed] = useState(false);
   const [mappingFailed, setMappingFailed] = useState(false);
   const [submitFailed, setSubmitFailed] = useState(false);
-  const completion = useMemo(() => workspace.template ? assessFormCompletion(workspace.template, values) : { required: 0, completed: 0, progress: 0, issues: [], ready: false }, [workspace.template, values]);
+  const completion = useMemo(() => workspace.template ? assessFormCompletion(workspace.template, values) : { required: 0, completed: 0, progress: 0, issues: [], conditionalExclusions: [], ready: false }, [workspace.template, values]);
   const draftChanged = JSON.stringify(values) !== JSON.stringify(initialValues);
   const mappingResolved = workspace.mappings.length > 0 && workspace.mappings.every((item) => item.status === 'accepted' || item.status === 'corrected');
   useEffect(() => { setMappingConfirmed(false); setMappingFailed(false); }, [mapping?.id, mapping?.status, mapping?.version]);
@@ -99,6 +99,8 @@ function CaseFormEditor({ workspace, onSave, onAcceptMapping, onCorrectMapping, 
       <section className="case-form-progress" aria-label="Form completion">
         <div><p className="eyebrow">Completion</p><strong>{completion.progress}%</strong><span>{completion.completed} of {completion.required} required fields</span></div>
         <div className="progress-track" aria-hidden="true"><span style={{ width: `${completion.progress}%` }} /></div>
+        <p>Published-template fields only. This percentage does not certify the original carrier form, required attachments, or signature.</p>
+        {completion.conditionalExclusions.length > 0 ? <details><summary>{completion.conditionalExclusions.length} fields excluded by template conditions</summary><p>Excluded from this percentage, not approved as waived carrier requirements.</p><ul>{completion.conditionalExclusions.map((field) => <li key={field.fieldId}>{field.label}</li>)}</ul></details> : null}
         <p>{workspace.instance ? `Last saved ${new Date(workspace.instance.updatedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Mexico_City' })}` : 'Not saved yet'}</p>
       </section>
 

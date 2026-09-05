@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { FormTemplateVersion } from './surveyjs-canonical-adapter';
+import type { FormComponent, FormTemplateVersion } from './surveyjs-canonical-adapter';
 import { assessFormCompletion } from './form-completion';
 
 const template: FormTemplateVersion = {
@@ -17,6 +17,33 @@ const template: FormTemplateVersion = {
 };
 
 describe('assessFormCompletion', () => {
+  const field = (kind: 'yes_no' | 'checkbox'): FormComponent => ({ id: 'security', label: 'Security answer', required: true, canonicalFieldId: null, supplierAliases: [], visibility: null, definition: { kind } });
+
+  it('accepts an explicit No but still requires consent for a required checkbox', () => {
+    expect(assessFormCompletion({ fields: [field('yes_no')] }, { security: false })).toMatchObject({ ready: true, progress: 100 });
+    expect(assessFormCompletion({ fields: [field('yes_no')] }, {})).toMatchObject({ ready: false, progress: 0 });
+    expect(assessFormCompletion({ fields: [field('checkbox')] }, { security: false }).issues[0].code).toBe('missing');
+    expect(assessFormCompletion({ fields: [field('checkbox')] }, { security: true }).ready).toBe(true);
+  });
+
+  it('treats No as present in visibility rules and reports conditional exclusions separately', () => {
+    const followup: FormComponent = { ...template.fields[0], visibility: { all: [{ fieldId: 'security', operator: 'is_present' }] } };
+    expect(assessFormCompletion({ fields: [field('yes_no'), followup] }, { security: false })).toMatchObject({ required: 2, completed: 1, conditionalExclusions: [] });
+    expect(assessFormCompletion({ fields: [followup] }, {})).toMatchObject({ required: 0, conditionalExclusions: [{ fieldId: 'legal_name', label: 'Legal name' }] });
+    const whenBlank = { ...followup, visibility: { all: [{ fieldId: 'security', operator: 'is_blank' as const }] } };
+    expect(assessFormCompletion({ fields: [whenBlank] }, { security: false }).required).toBe(0);
+  });
+
+  const table: FormComponent = { ...field('yes_no'), id: 'references', definition: { kind: 'repeating_table', columns: [{ id: 'name', label: 'Name', valueType: 'text' }, { id: 'years', label: 'Years', valueType: 'number' }], maxRows: 4 } };
+  it.each([{ rows: [] }, { rows: [{}] }, { rows: [{ name: ' ' }] }])('does not count empty reference rows as completion: $rows', ({ rows }) => {
+    expect(assessFormCompletion({ fields: [table] }, { references: rows })).toMatchObject({ ready: false, progress: 0 });
+  });
+
+  it('rejects blank extra rows and unknown columns, while preserving numeric zero', () => {
+    expect(assessFormCompletion({ fields: [table] }, { references: [{ name: 'Example' }, {}] }).ready).toBe(false);
+    expect(assessFormCompletion({ fields: [table] }, { references: [{ invented: 'Example' }] }).ready).toBe(false);
+    expect(assessFormCompletion({ fields: [table] }, { references: [{ years: 0 }] }).ready).toBe(true);
+  });
   it('tracks visible required fields and rejects invalid values', () => {
     expect(assessFormCompletion(template, { legal_name: 'X', tax_identifier: 'XAXX010101000', needs_bank: false })).toMatchObject({ required: 2, completed: 1, progress: 50, ready: false });
     expect(assessFormCompletion(template, { legal_name: 'Sierra Retail', tax_identifier: 'XAXX010101000', needs_bank: true, bank_account: '1234' })).toMatchObject({ required: 3, completed: 3, progress: 100, ready: true });

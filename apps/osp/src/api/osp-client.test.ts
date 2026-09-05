@@ -43,6 +43,12 @@ it('forces exactly one bound-token refresh after 401', async () => {
   expect(h.fetch).toHaveBeenCalledTimes(2);
 });
 
+it('preserves the fulfillment blocker without retrying or treating it as a malformed response', async () => {
+  const h = harness([json({ error: { code: 'FULFILLMENT_BLOCKED', incident_id: 'i1' } }, 409)]);
+  await expect(h.client.listOnboardingWorkspace()).rejects.toMatchObject({ code: 'FULFILLMENT_BLOCKED', incidentId: 'i1' });
+  expect(h.fetch).toHaveBeenCalledOnce();
+});
+
 it('uses forced token refresh exactly once across a later transient retry', async () => {
   const h = harness([
     json({ error: { code: 'UNAUTHORIZED', incident_id: 'i1' } }, 401),
