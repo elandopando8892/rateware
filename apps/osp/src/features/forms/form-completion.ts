@@ -4,6 +4,7 @@ export type FormCompletionIssue = {
   fieldId: string;
   label: string;
   code: 'missing' | 'invalid';
+  details?: readonly string[];
 };
 
 function isBlank(value: unknown): boolean {
@@ -44,6 +45,42 @@ function validDate(value: string): boolean {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+function tableProblems(field: FormComponent, value: unknown): string[] {
+  const table = field.definition;
+  if (table.kind !== 'repeating_table') return [];
+  if (!Array.isArray(value)) return ['A table of rows is required.'];
+  const minimum = Math.max(table.minRows ?? 0, field.required ? 1 : 0);
+  const problems: string[] = [];
+  if (value.length < minimum) problems.push(`At least ${minimum} rows required; ${value.length} provided.`);
+  if (value.length > table.maxRows) return [`At most ${table.maxRows} rows allowed.`];
+  const keys = new Set<string>();
+  value.forEach((row, index) => {
+    const prefix = `Row ${index + 1}`;
+    if (!row || typeof row !== 'object' || Array.isArray(row)) { problems.push(`${prefix}: invalid row.`); return; }
+    if (Object.values(row).every(isBlank)) { problems.push(`${prefix}: empty row.`); return; }
+    if (Object.keys(row).some((key) => !table.columns.some((column) => column.id === key))) problems.push(`${prefix}: unrecognized column.`);
+    for (const column of table.columns) {
+      const item: unknown = row[column.id];
+      if (isBlank(item)) {
+        if (column.required || column.id === table.uniqueBy) problems.push(`${prefix}: ${column.label} is required.`);
+        continue;
+      }
+      const valid = column.valueType === 'number' ? typeof item === 'number' && Number.isFinite(item)
+        : column.valueType === 'date' ? typeof item === 'string' && validDate(item)
+        : column.valueType === 'email' ? typeof item === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)
+        : column.valueType === 'phone' ? typeof item === 'string' && /^[+\d\s().-]+$/.test(item) && item.replace(/\D/g, '').length >= 7 && item.replace(/\D/g, '').length <= 15
+        : typeof item === 'string';
+      if (!valid) problems.push(`${prefix}: ${column.label} is invalid.`);
+    }
+    if (table.uniqueBy && !isBlank(row[table.uniqueBy])) {
+      const key = String(row[table.uniqueBy]).trim().toLocaleLowerCase('en-US');
+      if (keys.has(key)) problems.push(`${prefix}: duplicate ${table.columns.find((column) => column.id === table.uniqueBy)!.label}.`);
+      keys.add(key);
+    }
+  });
+  return problems;
+}
+
 function validValue(field: FormComponent, value: unknown): boolean {
   const definition = field.definition;
   switch (definition.kind) {
@@ -76,18 +113,7 @@ function validValue(field: FormComponent, value: unknown): boolean {
     case 'checkbox':
       return typeof value === 'boolean';
     case 'repeating_table':
-      return Array.isArray(value) && value.length <= definition.maxRows && value.every((row) => {
-        if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
-        if (Object.values(row).every(isBlank)) return false;
-        return Object.entries(row as Record<string, unknown>).every(([key, item]) => {
-          const column = definition.columns.find((candidate) => candidate.id === key);
-          if (!column) return false;
-          if (isBlank(item)) return true;
-          if (column.valueType === 'number') return typeof item === 'number' && Number.isFinite(item);
-          if (column.valueType === 'date') return typeof item === 'string' && validDate(item);
-          return typeof item === 'string';
-        });
-      });
+      return tableProblems(field, value).length === 0;
     case 'document_request':
       return typeof value === 'string' && value.trim().length > 0 || Array.isArray(value) && value.every((item) => typeof item === 'string' && item.trim().length > 0);
   }
@@ -106,6 +132,11 @@ export function assessFormCompletion(template: Pick<FormTemplateVersion, 'fields
   const issues: FormCompletionIssue[] = [];
   for (const field of visibleFields) {
     const value = values[field.id];
+    if (field.definition.kind === 'repeating_table' && (field.required || !isBlank(value))) {
+      const details = tableProblems(field, value ?? []);
+      if (details.length > 0) issues.push({ fieldId: field.id, label: field.label, code: missingValue(field, value) ? 'missing' : 'invalid', details });
+      continue;
+    }
     if (field.required && missingValue(field, value)) issues.push({ fieldId: field.id, label: field.label, code: 'missing' });
     else if (isBlank(value)) continue;
     else if (!validValue(field, value)) issues.push({ fieldId: field.id, label: field.label, code: 'invalid' });

@@ -31,7 +31,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/contracts.ts",
-      "sha256": "3a60955c6a11e176549545f79e9c0c2557726eed384e206e6a5956f42ec6c981"
+      "sha256": "530ce85236a61a5d9ae57a1a2a9f25c60d5abe128013ff9637d24d804b476f84"
     },
     {
       "kind": "production-ui",
@@ -166,17 +166,17 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/CaseFormWorkspace.tsx",
-      "sha256": "afc538e348d69989a3ceb0d7502f4768f2098b95b1ea28bdc64ccdf8b9e7561e"
+      "sha256": "e5c1e1aec6d4027942aa61a2ece700c5c61bf00e0f30d36a56cf0f50c968bad0"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/form-completion.ts",
-      "sha256": "b60b5766138b99c509cf228c7e28ca1131dd5262af24f4eaf6077ece327633fc"
+      "sha256": "ae91d5f7e0af2b6d263d0eedf5a6425eeffd915a57c7b0d4d5df38eff7602fd7"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/FormRuntime.tsx",
-      "sha256": "9d2d0201c9c2a9ac0f72f6ea865226eceea5d7af37b835849dc0014b31545222"
+      "sha256": "ee29f9d03e66381dcd5bd376b5dd167362acf5b7f651cf1eb64a593c3caa1e86"
     },
     {
       "kind": "production-ui",
@@ -186,12 +186,12 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
-      "sha256": "e97f009bff0b44ca542ad42b3babaf0b3f9483112a3eead3d626682046f8d5fd"
+      "sha256": "6f49b7ad9c0a9634e4bc77c723332343e02c2d7ea74d63ebc52b9352164f2818"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/surveyjs-preset.ts",
-      "sha256": "8d1851cbdc18fa258122d4ddda947414ccaf46f6b942c0d6e42e09b117740761"
+      "sha256": "f485e2b9ff1eb652b63c3c9627647de48d3824cd7e21e617f70bf48260541153"
     },
     {
       "kind": "production-ui",
@@ -246,7 +246,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "af87ff95b45c7ab3d3453ac9c670e09e6ffaf8f2dd7761e96980793cb19d287a"
+      "sha256": "d2d7dbf3beef52197caa658f7d72219d84bfe3282064f306f68ed121cefead82"
     },
     {
       "kind": "production-ui",

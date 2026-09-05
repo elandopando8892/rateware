@@ -37,6 +37,15 @@ function renderRoute(client: Pick<OspClient, 'getCaseFormWorkspace' | 'saveCaseF
 }
 
 describe('CaseFormWorkspace', () => {
+  it('shows exactly which reference cells are missing and keeps submission disabled', async () => {
+    const referenceField = { id: 'refs', label: 'References', required: true, canonicalFieldId: null, supplierAliases: [], visibility: null, definition: { kind: 'repeating_table' as const, minRows: 3, maxRows: 4, columns: [{ id: 'company', label: 'Company', valueType: 'text' as const, required: true }, { id: 'email', label: 'Email', valueType: 'email' as const, required: true }] } };
+    renderRoute({ getCaseFormWorkspace: vi.fn().mockResolvedValue({ ...workspace, template: { ...workspace.template, fields: [referenceField] }, instance: { ...workspace.instance, values: { refs: ['A', 'B', 'C'].map((company) => ({ company })) } } }), saveCaseFormDraft: vi.fn(), acceptCaseFormMapping: vi.fn(), correctCaseFormMapping: vi.fn(), submitCaseFormForReview: vi.fn() });
+    expect(await screen.findByText('Row 1: Email is required.')).toBeInTheDocument();
+    expect(screen.getByText('Row 2: Email is required.')).toBeInTheDocument();
+    expect(screen.getByText('Row 3: Email is required.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /submit for operations review/i })).toBeDisabled();
+  });
+
   it('distinguishes template progress from carrier fulfillment and shows conditional exclusions', async () => {
     const conditionalField = { ...workspace.template.fields[0], id: 'conditional_contact', label: 'Conditional contact', visibility: { all: [{ fieldId: 'needs_contact', operator: 'equals' as const, value: true }] } };
     renderRoute({ getCaseFormWorkspace: vi.fn().mockResolvedValue({ ...workspace, template: { ...workspace.template, fields: [...workspace.template.fields, conditionalField] } }), saveCaseFormDraft: vi.fn(), acceptCaseFormMapping: vi.fn(), correctCaseFormMapping: vi.fn(), submitCaseFormForReview: vi.fn() });

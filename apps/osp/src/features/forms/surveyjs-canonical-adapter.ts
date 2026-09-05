@@ -16,7 +16,7 @@ export type FormComponentDefinition =
   | { kind: 'date' | 'number' | 'currency'; minimum: number | null; maximum: number | null }
   | { kind: 'single_select' | 'multi_select'; options: readonly { value: string; label: string }[] }
   | { kind: 'yes_no' | 'checkbox' }
-  | { kind: 'repeating_table'; columns: readonly { id: string; label: string; valueType: 'text' | 'number' | 'date' }[]; maxRows: number }
+  | { kind: 'repeating_table'; columns: readonly { id: string; label: string; valueType: 'text' | 'number' | 'date' | 'email' | 'phone'; required?: boolean }[]; maxRows: number; minRows?: number; uniqueBy?: string }
   | { kind: 'document_request'; documentType: string }
   | { kind: 'derived_readonly'; sourceFieldIds: readonly string[]; operation: 'join' | 'sum' | 'copy' }
   | { kind: 'signature_position'; page: number; anchor: string; x: number; y: number; width: number; height: number };
@@ -170,12 +170,20 @@ function definition(element: Record<string, unknown>, kind: FormComponentKind, p
     if (!Array.isArray(element.columns)) throw new Error('FORM_SCHEMA_INVALID');
     if (element.columns.length < 1 || element.columns.length > MAX_COLUMNS) throw new Error(element.columns.length > MAX_COLUMNS ? 'FORM_LIMIT_EXCEEDED' : 'FORM_SCHEMA_INVALID');
     const columns = element.columns.map((columnValue) => {
-      const column = exactRecord(columnValue, ['name', 'title', 'cellType']);
+      const column = exactRecord(columnValue, ['name', 'title', 'cellType'], ['inputType', 'isRequired']);
       if (!['text', 'number', 'date'].includes(column.cellType as string)) throw new Error('FORM_SCHEMA_INVALID');
-      return { id: safeId(column.name), label: safeText(column.title, 128), valueType: column.cellType as 'text' | 'number' | 'date' };
+      if (column.inputType !== undefined && (column.cellType !== 'text' || !['text', 'number', 'date', 'email', 'tel'].includes(column.inputType as string))) throw new Error('FORM_SCHEMA_INVALID');
+      if (column.isRequired !== undefined && typeof column.isRequired !== 'boolean') throw new Error('FORM_SCHEMA_INVALID');
+      const valueType = column.inputType === 'tel' ? 'phone' : column.inputType ?? column.cellType;
+      return { id: safeId(column.name), label: safeText(column.title, 128), valueType: valueType as 'text' | 'number' | 'date' | 'email' | 'phone', ...(column.isRequired === undefined ? {} : { required: column.isRequired as boolean }) };
     });
     if (new Set(columns.map((column) => column.id)).size !== columns.length) throw new Error('FORM_SCHEMA_INVALID');
-    return { kind, columns, maxRows: safeInteger(element.maxRowCount, 1, 100, 20) };
+    const maxRows = safeInteger(element.maxRowCount, 1, 100, 20);
+    const minRows = element.minRowCount === undefined ? undefined : safeInteger(element.minRowCount, 0, maxRows);
+    const uniqueBy = element.keyName === undefined ? undefined : safeId(element.keyName);
+    if (uniqueBy !== undefined && !columns.some((column) => column.id === uniqueBy)) throw new Error('FORM_SCHEMA_INVALID');
+    // Preserve omitted properties so existing published schema hashes do not change.
+    return { kind, columns, maxRows, ...(minRows === undefined ? {} : { minRows }), ...(uniqueBy === undefined ? {} : { uniqueBy }) };
   }
   if (kind === 'document_request') {
     const documentType = safeText(element.ospDocumentType, 128);
@@ -212,7 +220,7 @@ const KEYS_BY_KIND: Record<FormComponentKind, readonly string[]> = {
   multi_select: ['type', 'name', 'title', 'isRequired', 'ospKind', 'ospCanonicalFieldId', 'ospAliases', 'ospVisibility', 'choices'],
   yes_no: ['type', 'name', 'title', 'isRequired', 'ospKind', 'ospCanonicalFieldId', 'ospAliases', 'ospVisibility'],
   checkbox: ['type', 'name', 'title', 'isRequired', 'ospKind', 'ospCanonicalFieldId', 'ospAliases', 'ospVisibility'],
-  repeating_table: ['type', 'name', 'title', 'isRequired', 'ospKind', 'ospCanonicalFieldId', 'ospAliases', 'ospVisibility', 'maxRowCount', 'columns'],
+  repeating_table: ['type', 'name', 'title', 'isRequired', 'ospKind', 'ospCanonicalFieldId', 'ospAliases', 'ospVisibility', 'maxRowCount', 'minRowCount', 'keyName', 'columns'],
   document_request: ['type', 'name', 'title', 'isRequired', 'ospKind', 'ospCanonicalFieldId', 'ospAliases', 'ospVisibility', 'ospDocumentType'],
   derived_readonly: ['type', 'name', 'title', 'isRequired', 'readOnly', 'ospKind', 'ospCanonicalFieldId', 'ospAliases', 'ospVisibility', 'ospSourceFieldIds', 'ospOperation'],
   signature_position: ['type', 'name', 'title', 'isRequired', 'readOnly', 'ospKind', 'ospCanonicalFieldId', 'ospAliases', 'ospVisibility', 'ospSignature'],
@@ -308,7 +316,9 @@ export function canonicalToSurveyJson(template: FormTemplateVersion): Record<str
     } else if (kind === 'repeating_table') {
       const table = definition as Extract<FormComponentDefinition, { columns: readonly unknown[] }>;
       output.maxRowCount = table.maxRows;
-      output.columns = table.columns.map((column) => ({ name: column.id, title: column.label, cellType: column.valueType }));
+      if (table.minRows !== undefined) output.minRowCount = table.minRows;
+      if (table.uniqueBy !== undefined) output.keyName = table.uniqueBy;
+      output.columns = table.columns.map((column) => ({ name: column.id, title: column.label, cellType: 'text', ...(column.valueType === 'text' ? {} : { inputType: column.valueType === 'phone' ? 'tel' : column.valueType }), ...(column.required === undefined ? {} : { isRequired: column.required }) }));
     } else if (kind === 'document_request') output.ospDocumentType = (definition as Extract<FormComponentDefinition, { documentType: string }>).documentType;
     else if (kind === 'derived_readonly') {
       const derived = definition as Extract<FormComponentDefinition, { sourceFieldIds: readonly string[] }>;

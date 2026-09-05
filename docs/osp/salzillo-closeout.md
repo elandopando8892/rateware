@@ -46,10 +46,28 @@ ese resultado.
 7. El cliente reconoce `FULFILLMENT_BLOCKED` con HTTP 409 y no reintenta ese bloqueo.
    Su omisión anterior también impedía la comprobación estática de TypeScript.
 
-La tabla genérica aún no declara mínimo de referencias ni obligatoriedad por
-columna: una fila no vacía no prueba tres referencias completas. Esas exigencias
-del original deben conservarse en la matriz de cumplimiento; no se infieren de
-este porcentaje. Tampoco se han promovido datos personales del borrador privado.
+La continuación del Sprint 13 agrega mínimo de filas, obligatoriedad por columna,
+formatos de correo/teléfono y una clave de unicidad opcional a la tabla canónica.
+La omisión de estas propiedades conserva la estructura anterior y sus hashes.
+Estas reglas se aplican sólo donde la versión de plantilla las declara; no se
+han publicado nuevas plantillas ni promovido datos personales en producción.
+
+La preview sintética del formulario Sierra incluye tres empresas ficticias sin
+correo, muestra el faltante por fila y bloquea la entrega. No es el expediente
+Salzillo ni evidencia de que su formulario original esté completo.
+
+Se adapta la matriz existente de SurveyJS 3.0.1 (licencia MIT del paquete local),
+sin dependencias nuevas ni cambios de licencia del editor. Referencia técnica:
+[matriz dinámica oficial](https://surveyjs.io/form-library/examples/dynamic-matrix-add-new-rows/documentation).
+No se introduce un generador paralelo de formularios.
+
+Validación del bloque de referencias: 80 pruebas Vitest, 12 Deno, 38 de frontera
+de UI; TypeScript, lint enfocado y build sintético aprobados. La guía de pruebas
+se aplicó a tres capas: round-trip de esquema y reglas, interacción real con
+SurveyJS y comandos HTTP con almacenamiento en memoria. La prueba HTTP verifica
+que un rechazo no cree instancia ni avance el caso. No sustituye un replay en
+el Supabase compartido. La prueba de interfaz completa tres correos ficticios y
+comprueba que sólo entonces se ejecuta la entrega del formulario.
 
 ## Pendientes para cerrar Salzillo
 

@@ -5,7 +5,7 @@ export type SurveyLicenseEvidence = { approved: boolean; licenseKey: string };
 
 export const SURVEYJS_ALLOWED_PROPERTIES = Object.freeze([
   'name', 'title', 'description', 'isRequired', 'inputType', 'minLength', 'maxLength', 'min', 'max', 'choices',
-  'columns', 'maxRowCount', 'readOnly', 'ospKind', 'ospCanonicalFieldId', 'ospAliases', 'ospDocumentType',
+  'columns', 'maxRowCount', 'minRowCount', 'keyName', 'cellType', 'readOnly', 'ospKind', 'ospCanonicalFieldId', 'ospAliases', 'ospDocumentType',
   'ospSourceFieldIds', 'ospOperation', 'ospSignature', 'ospVisibility',
 ]);
 

@@ -195,7 +195,7 @@ describe('synthetic preview runtime', () => {
     const cases = await runtime.apiClient.listCustomerRegistrationCases();
     const formCase = cases.find((item) => item.supplier_name === 'Sierra Retail México')!;
     const form = await runtime.apiClient.getCaseFormWorkspace(formCase.case_id);
-    const values = form.instance!.values;
+    const values = { ...form.instance!.values, commercial_references: ['A', 'B', 'C'].map((company) => ({ company, contact: 'Demo contact', phone: '+52 81 0000 0000', email: `${company}@example.test` })) };
     await runtime.apiClient.acceptCaseFormMapping({
       caseId: form.caseId,
       mappingId: form.mappings[0].id,

@@ -2,6 +2,7 @@ import type { OspClient } from '../api/osp-client';
 import type { ApprovalCommunicationsWorkspace, CaseDetail, CaseFormWorkspace, CaseSummary, ClarificationReview, CorporateProfileReadModel, DocumentVersion, FormTemplateCatalog } from '../api/contracts';
 import type { AuthPort, BoundSession } from '../auth/auth-port';
 import { surveyJsonToCanonical } from '../features/forms/surveyjs-canonical-adapter';
+import { assessFormCompletion } from '../features/forms/form-completion';
 
 const previewSession: BoundSession = Object.freeze({
   generation: 'osp-preview-synthetic-v1',
@@ -711,6 +712,12 @@ function createPreviewClient(): OspClient {
           { id: 'legal_name', label: 'Legal name', required: true, canonicalFieldId: 'supplier.legalName', supplierAliases: ['Razón social'], visibility: null, definition: { kind: 'text', minLength: 1, maxLength: 256 } },
           { id: 'tax_identifier', label: 'Tax identifier', required: true, canonicalFieldId: 'fiscal.taxIdentifier', supplierAliases: ['RFC', 'Tax ID'], visibility: null, definition: { kind: 'canonical_identifier', minLength: 8, maxLength: 32 } },
           { id: 'registered_address', label: 'Registered address', required: true, canonicalFieldId: 'supplier.address', supplierAliases: [], visibility: null, definition: { kind: 'textarea', minLength: 8, maxLength: 500 } },
+          { id: 'commercial_references', label: 'Commercial references — minimum three', required: true, canonicalFieldId: null, supplierAliases: ['Referencias comerciales'], visibility: null, definition: { kind: 'repeating_table', minRows: 3, maxRows: 4, uniqueBy: 'company', columns: [
+            { id: 'company', label: 'Company', valueType: 'text', required: true },
+            { id: 'contact', label: 'Contact', valueType: 'text', required: true },
+            { id: 'phone', label: 'Phone', valueType: 'phone', required: true },
+            { id: 'email', label: 'Email', valueType: 'email', required: true },
+          ] } },
         ] },
       },
       {
@@ -731,7 +738,11 @@ function createPreviewClient(): OspClient {
     instance: {
       id: '73111111-1111-4111-8111-111111111111',
       version: 2,
-      values: { legal_name: 'Sierra Retail México', tax_identifier: 'SRM010101AA1', registered_address: 'Av. Insurgentes Sur 1602, Ciudad de México' },
+      values: { legal_name: 'Sierra Retail México', tax_identifier: 'SRM010101AA1', registered_address: 'Av. Insurgentes Sur 1602, Ciudad de México', commercial_references: [
+        { company: 'Demo Transport A', contact: 'Demo contact A', phone: '+52 81 0000 0001', email: '' },
+        { company: 'Demo Transport B', contact: 'Demo contact B', phone: '+52 81 0000 0002', email: '' },
+        { company: 'Demo Transport C', contact: 'Demo contact C', phone: '+52 81 0000 0003', email: '' },
+      ] },
       updatedAt: '2026-08-26T20:10:00.000Z',
     },
     mappings: [{
@@ -1003,6 +1014,7 @@ function createPreviewClient(): OspClient {
     },
     correctCaseFormMapping: async () => { throw new Error('FORM_MAPPING_NOT_FOUND'); },
     submitCaseFormForReview: async (input) => {
+      if (!caseFormWorkspace.template || !assessFormCompletion(caseFormWorkspace.template, input.values).ready) throw new Error('FORM_INCOMPLETE');
       if (input.caseId !== caseFormCaseId || input.expectedCaseVersion !== caseFormWorkspace.caseVersion || input.templateVersionId !== caseFormWorkspace.template?.id || input.instanceId !== caseFormWorkspace.instance?.id || input.expectedVersion !== caseFormWorkspace.instance.version) throw new Error('VERSION_CONFLICT');
       const instance = { ...caseFormWorkspace.instance, version: caseFormWorkspace.instance.version + 1, values: structuredClone(input.values), updatedAt: new Date().toISOString() };
       const caseVersion = caseFormWorkspace.caseVersion + 1;

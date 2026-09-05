@@ -17,6 +17,28 @@ const template: FormTemplateVersion = {
 };
 
 describe('assessFormCompletion', () => {
+  const references: FormComponent = { id: 'references', label: 'Commercial references', required: true, canonicalFieldId: null, supplierAliases: [], visibility: null, definition: { kind: 'repeating_table', minRows: 3, maxRows: 4, uniqueBy: 'company', columns: [
+    { id: 'company', label: 'Company', valueType: 'text', required: true },
+    { id: 'contact', label: 'Contact', valueType: 'text', required: true },
+    { id: 'phone', label: 'Phone', valueType: 'phone', required: true },
+    { id: 'email', label: 'Email', valueType: 'email', required: true },
+  ] } };
+  const completeReferences = ['A', 'B', 'C'].map((company) => ({ company, contact: 'Test contact', phone: '+52 81 1234 5678', email: `${company}@example.test` }));
+
+  it('requires three distinct complete references and explains missing cells without exposing their values', () => {
+    expect(assessFormCompletion({ fields: [references] }, { references: completeReferences.slice(0, 2) }).issues[0].details).toContain('At least 3 rows required; 2 provided.');
+    const missing = assessFormCompletion({ fields: [references] }, { references: completeReferences.map((row) => ({ ...row, email: '' })) });
+    expect(missing.ready).toBe(false);
+    expect(missing.issues[0].details).toEqual([1, 2, 3].map((row) => `Row ${row}: Email is required.`));
+    expect(assessFormCompletion({ fields: [references] }, { references: [...completeReferences.slice(0, 2), { ...completeReferences[0], company: ' a ' }] }).issues[0].details).toContain('Row 3: duplicate Company.');
+    expect(assessFormCompletion({ fields: [references] }, { references: completeReferences })).toMatchObject({ ready: true, progress: 100 });
+  });
+
+  it.each(['email', 'phone'])('blocks invalid reference %s while allowing an empty optional table', (column) => {
+    expect(assessFormCompletion({ fields: [references] }, { references: completeReferences.map((row) => ({ ...row, [column]: 'N/A' })) }).ready).toBe(false);
+    expect(assessFormCompletion({ fields: [{ ...references, required: false }] }, {}).issues).toEqual([]);
+  });
+
   const field = (kind: 'yes_no' | 'checkbox'): FormComponent => ({ id: 'security', label: 'Security answer', required: true, canonicalFieldId: null, supplierAliases: [], visibility: null, definition: { kind } });
 
   it('accepts an explicit No but still requires consent for a required checkbox', () => {

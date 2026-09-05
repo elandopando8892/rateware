@@ -24,6 +24,23 @@ const template: FormTemplateVersion = {
 };
 
 describe('FormRuntime', () => {
+  it('keeps incomplete reference rows blocked and completes only after all three emails are entered', async () => {
+    const complete = vi.fn();
+    const references: FormTemplateVersion = { ...template, fields: [{ id: 'refs', label: 'Commercial references', required: true, canonicalFieldId: null, supplierAliases: [], visibility: null, definition: { kind: 'repeating_table', minRows: 3, maxRows: 4, uniqueBy: 'company', columns: [
+      { id: 'company', label: 'Company', valueType: 'text', required: true },
+      { id: 'email', label: 'Email', valueType: 'email', required: true },
+    ] } }] };
+    const { container } = render(<FormRuntime template={references} initialValues={{ refs: ['A', 'B', 'C'].map((company) => ({ company })) }} onComplete={complete} />);
+    await userEvent.click(screen.getByRole('button', { name: /complete/i }));
+    expect(complete).not.toHaveBeenCalled();
+    const emails = container.querySelectorAll('input[type="email"]');
+    expect(emails).toHaveLength(3);
+    for (const [index, input] of [...emails].entries()) await userEvent.type(input, `reference${index}@example.test`);
+    await userEvent.click(screen.getByRole('button', { name: /complete/i }));
+    expect(complete).toHaveBeenCalledOnce();
+    expect(complete.mock.calls[0][0].refs).toHaveLength(3);
+  });
+
   it('renders only published canonical versions and returns validated values', async () => {
     const complete = vi.fn();
     render(<FormRuntime template={template} onComplete={complete} />);

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { canonicalToSurveyJson, surveyJsonToCanonical } from './surveyjs-canonical-adapter';
+import { FormTemplateVersionSchema } from '../../api/contracts';
+import { Model, QuestionMatrixDynamicModel } from 'survey-core';
 
 const ids = {
   template: '11111111-1111-4111-8111-111111111111',
@@ -42,6 +44,35 @@ async function convert(survey: unknown = baseSurvey()) {
 }
 
 describe('SurveyJS canonical adapter', () => {
+  const constrained = { type: 'matrixdynamic', name: 'references', title: 'References', ospKind: 'repeating_table', isRequired: true, minRowCount: 3, maxRowCount: 4, keyName: 'company', columns: [
+    { name: 'company', title: 'Company', cellType: 'text', isRequired: true },
+    { name: 'email', title: 'Email', cellType: 'text', inputType: 'email', isRequired: true },
+    { name: 'phone', title: 'Phone', cellType: 'text', inputType: 'tel', isRequired: true },
+  ] };
+  const tableSurvey = (element: unknown) => ({ title: 'References', pages: [{ name: 'references', elements: [element] }] });
+
+  it('preserves constraints through save/read/runtime and schema hashes', async () => {
+    const canonical = await convert(tableSurvey(constrained));
+    expect(FormTemplateVersionSchema.parse(canonical)).toEqual(canonical);
+    expect(canonical.fields[0].definition).toMatchObject({ minRows: 3, maxRows: 4, uniqueBy: 'company' });
+    expect(await convert(canonicalToSurveyJson(canonical))).toEqual(canonical);
+    const model = new Model(canonicalToSurveyJson(canonical));
+    const question = model.getQuestionByName('references') as QuestionMatrixDynamicModel;
+    expect(question.minRowCount).toBe(3);
+    expect(question.columns[1].isRequired).toBe(true);
+    expect(question.visibleRows[0].cells[1].question.getPropertyValue('inputType')).toBe('email');
+    expect((await convert(tableSurvey({ ...constrained, minRowCount: 2 }))).schemaSha256).not.toBe(canonical.schemaSha256);
+  });
+
+  it.each([{ minRowCount: -1 }, { minRowCount: 5 }, { minRowCount: 2.5 }, { keyName: 'unknown' }, { columns: [{ name: 'x', title: 'X', cellType: 'text', inputType: 'file' }] }, { columns: [{ name: 'x', title: 'X', cellType: 'text', isRequired: 'true' }] }])('rejects unsafe or contradictory table constraints %j', async (override) => {
+    await expect(convert(tableSurvey({ ...constrained, ...override }))).rejects.toThrow('FORM_SCHEMA_INVALID');
+  });
+
+  it('retains omitted legacy constraints without silently changing existing definitions', async () => {
+    const legacy = await convert();
+    const table = legacy.fields.find((field) => field.id === 'contacts')!;
+    expect(table.definition).toEqual({ kind: 'repeating_table', maxRows: 10, columns: [{ id: 'name', label: 'Name', valueType: 'text' }] });
+  });
   it('maps every MVP component to one bounded canonical template and round-trips safely', async () => {
     const template = await convert();
     expect(template.fields).toHaveLength(18);

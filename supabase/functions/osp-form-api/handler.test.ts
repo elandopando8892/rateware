@@ -73,6 +73,35 @@ Deno.test('form API exposes an exact browser preflight without credentials', asy
   assert.equal(response.headers.has('access-control-allow-credentials'), false);
 });
 
+Deno.test('reference constraints survive publishing and block incomplete submission before persistence', async () => {
+  const subject = handler();
+  const survey = { title: 'Reference requirements', pages: [{ name: 'references', elements: [{ type: 'matrixdynamic', name: 'references', title: 'References', ospKind: 'repeating_table', isRequired: true, minRowCount: 3, maxRowCount: 4, keyName: 'company', columns: [
+    { name: 'company', title: 'Company', cellType: 'text', isRequired: true },
+    { name: 'email', title: 'Email', cellType: 'text', inputType: 'email', isRequired: true },
+  ] }] }] };
+  const saved = await subject(request({ version: 1, action: 'save_form_template_draft', idempotency_key: 'refs-template', template_id: null, expected_version: 0, name: 'References', survey_json: survey }));
+  assert.equal(saved.status, 201);
+  const template = (await saved.json()).data.template;
+  const published = await subject(request({ version: 1, action: 'publish_form_template', idempotency_key: 'refs-publish', template_id: template.templateId, template_version_id: template.latest.id, expected_version: 1 }));
+  assert.equal(published.status, 200);
+  const read = async () => (await (await subject(request({ version: 1, action: 'get_case_form_workspace', case_id: caseId }))).json()).data;
+  assert.equal((await read()).template.fields[0].definition.minRows, 3);
+  const command = { version: 1, action: 'submit_case_form_for_review', case_id: caseId, expected_case_version: 4, template_version_id: template.latest.id, instance_id: null, expected_version: 0 };
+  const complete = ['A', 'B', 'C'].map((company) => ({ company, email: `${company}@example.test` }));
+  const invalid = [complete.slice(0, 2), complete.map(({ company }) => ({ company })), [...complete.slice(0, 2), complete[0]]];
+  for (const [index, references] of invalid.entries()) {
+    const blocked = await subject(request({ ...command, idempotency_key: `refs-blocked-${index}`, values: { references } }));
+    assert.equal(blocked.status, 400);
+    const state = await read();
+    assert.equal(state.instance, null);
+    assert.equal(state.caseState, 'preparing');
+    assert.equal(state.caseVersion, 4);
+  }
+  const accepted = await subject(request({ ...command, idempotency_key: 'refs-complete', values: { references: complete } }));
+  assert.equal(accepted.status, 200);
+  assert.equal((await read()).caseState, 'operations_review');
+});
+
 Deno.test('form API binds a published template to a case and saves an idempotent draft', async () => {
   const subject = handler();
   const saved = await subject(request({ version: 1, action: 'save_form_template_draft', idempotency_key: 'case-template-save', template_id: null, expected_version: 0, name: 'Customer setup — Case', survey_json: surveyJson }));
