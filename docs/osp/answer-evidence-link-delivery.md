@@ -95,7 +95,24 @@ política global ni se presenta ese lint amplio como aprobado.
 Sólo preview estática prebuilt en `osp-customer-setup` existente, perfil
 `preview-synthetic`; no push, migraciones remotas, functions, secretos ni promoción
 productiva. La selección de auth sintética del build no cambia Supabase Auth real.
-Metadata y smoke cloud se registrarán al terminar el despliegue exacto.
+Metadata verificada en Vercel:
+
+- SHA `6dae48db3c1d52c6ecff04d3dc131c5e4c12e59d` (`gitCommitSha` y `ospSourceSha`).
+- Deployment `dpl_FHoyEVEucHnWDmXFwXCcahu8vmMd`, `READY`, target `null`, sin alias productivo.
+- Proyecto `prj_6mVnZ4DNVH3U2KCyQgyRMZDCJx8s`; scope `synthetic-evidence-link-preview`.
+- [Preview del formulario](https://osp-customer-setup-daiwx0guf-elandopando8892s-projects.vercel.app/app/cases/11111111-1111-4111-8111-111111111115/form).
+
+El árbol rastreado estaba limpio al publicar; `gitDirty=1` corresponde sólo a
+`tmp/` sin rastrear. Se copiaron únicamente 33 archivos del build estático.
+HEAD confirmó protección SSO de Vercel (302); se usó acceso temporal sin cambiar
+la protección. El token no se guarda en Git.
+
+Smoke cloud e inspección visual aprobados en desktop/mobile: una renovación
+sintética con recibo, dos comparaciones, cero escrituras persistentes o de red,
+cero solicitudes externas permitidas, dos fuentes bloqueadas, cero errores y
+cero desbordamiento; recargar reinicia las decisiones. La carpeta de evidencia
+contiene las capturas cloud finales. Esto no es un canary autenticado con datos
+reales ni prueba de funcionamiento productivo de la migración/API nuevas.
 
 Rollback de preview: usar la anterior `50111e4`, sin borrar datos. Para una futura
 activación, revertir primero UI/API y restaurar la definición anterior del lector;
