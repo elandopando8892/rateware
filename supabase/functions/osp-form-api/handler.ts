@@ -119,6 +119,12 @@ export function createFormApiHandler(options: FormApiHandlerOptions): (request: 
         const { saveDraftAllowed, acceptMappingAllowed, correctMappingAllowed, submitForReviewAllowed, ...workspace } = result;
         return jsonResponse({ version: 1, data: { ...workspace, capabilities: { saveDraft: canOperate(verified) && saveDraftAllowed, acceptMapping: canOperate(verified) && acceptMappingAllowed, correctMapping: canOperate(verified) && correctMappingAllowed, submitForReview: canOperate(verified) && submitForReviewAllowed, ...(workspace.answerMemoryCandidates ? { reviewAnswerMemory: canOperate(verified) && !!options.store.reviewAnswerMemory } : {}) } } }, 200, postCorsHeaders(allowed));
       }
+      if ((payload as { action?: unknown })?.action === 'get_answer_memory_evidence') {
+        const row = exact(payload, ['action', 'version', 'case_id', 'candidate_id']);
+        if (row.version !== 1 || typeof row.case_id !== 'string' || !UUID.test(row.case_id) || typeof row.candidate_id !== 'string' || !UUID.test(row.candidate_id)) throw new OspApiError('INVALID_REQUEST');
+        if (!options.store.getAnswerMemoryEvidence) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+        return jsonResponse({ version: 1, data: await options.store.getAnswerMemoryEvidence(verified.identity.organization, row.case_id, row.candidate_id) }, 200, postCorsHeaders(allowed));
+      }
       if (!canOperate(verified)) throw new OspApiError('FORBIDDEN');
       if ((payload as { action?: unknown })?.action === 'review_answer_memory') {
         const row = exact(payload, ['action', 'version', 'case_id', 'candidate_id', 'answer_sha256', 'decision', 'reason', 'idempotency_key']);

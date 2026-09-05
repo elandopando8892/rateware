@@ -48,6 +48,7 @@ const FIXED_EDGE_OPERATIONS = new Map([
   ["osp-form-api", [
     ["list_form_templates", "POST /functions/v1/osp-form-api action=list_form_templates", "human"],
     ["get_case_form_workspace", "POST /functions/v1/osp-form-api action=get_case_form_workspace", "human"],
+    ["get_answer_memory_evidence", "POST /functions/v1/osp-form-api action=get_answer_memory_evidence", "human"],
     ["review_answer_memory", "POST /functions/v1/osp-form-api action=review_answer_memory", "human"],
     ["save_form_template_draft", "POST /functions/v1/osp-form-api action=save_form_template_draft", "human"],
     ["publish_form_template", "POST /functions/v1/osp-form-api action=publish_form_template", "human"],

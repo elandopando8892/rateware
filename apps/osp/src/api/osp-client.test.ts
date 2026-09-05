@@ -51,6 +51,16 @@ it('reviews a saved answer with an exact intent and never upgrades the receipt t
   expect(offline.fetch).toHaveBeenCalledOnce();
 });
 
+it('evidence preflight uses verified-session context and refuses a write-capable response', async () => {
+  const id = '11111111-1111-4111-8111-111111111115';
+  const data = { options: [], readOnly: true, externalEffects: false };
+  const h = harness([json({ version: 1, data })]);
+  await expect(h.client.getAnswerMemoryEvidence!(id, id)).resolves.toEqual(data);
+  expect(JSON.parse(String(h.fetch.mock.calls[0][1]?.body))).toEqual({ version: 1, action: 'get_answer_memory_evidence', case_id: id, candidate_id: id });
+  const invalid = harness([json({ version: 1, data: { ...data, readOnly: false } })]);
+  await expect(invalid.client.getAnswerMemoryEvidence!(id, id)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+});
+
 it('forces exactly one bound-token refresh after 401', async () => {
   const h = harness([json({ error: { code: 'UNAUTHORIZED', incident_id: 'i1' } }, 401), json(pipeline)]);
   await expect(h.client.listOnboardingWorkspace()).resolves.toEqual(pipeline.data);

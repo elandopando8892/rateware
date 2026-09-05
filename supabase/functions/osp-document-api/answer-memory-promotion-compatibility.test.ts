@@ -1,5 +1,7 @@
 import { PGlite } from "npm:@electric-sql/pglite@0.5.8";
 import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
+import { readAnswerMemoryEvidence } from "../osp-form-api/answer-memory-evidence.ts";
+import type { SqlPort, SqlRow } from "../_shared/osp/database-context.ts";
 
 const org = "11111111-1111-4111-8111-111111111111";
 const entity = "22222222-2222-4222-8222-222222222222";
@@ -54,6 +56,51 @@ Deno.test("existing fact promotion compatibility exposes batch scope and unchang
         ),
       );
     }
+    await db.exec(`
+      alter table osp_private.case_profile_bindings add column revision integer default 1;
+      create table osp_private.case_form_instances(organization_id uuid,case_id uuid,id uuid,version integer,template_version_id uuid,values_json jsonb);
+      create table osp_private.case_answer_memory_candidates(id uuid,organization_id uuid,case_id uuid,source_instance_id uuid,source_instance_version integer,
+        source_template_version_id uuid,field_key text,answer_value jsonb,canonical_field_id text,legal_entity_id uuid,binding_revision integer,answer_sha256 text);
+      create table osp_private.case_answer_memory_reviews(organization_id uuid,candidate_id uuid,decision text,answer_sha256 text);
+      insert into osp_private.case_form_instances values('${org}','${caseId}','${caseId}',1,'${caseId}','{"phone":"+52 81 0000 0001"}');
+      insert into osp_private.case_answer_memory_candidates values('${caseId}','${org}','${caseId}','${caseId}',1,'${caseId}','phone','"+52 81 0000 0001"','supplier.phone','${entity}',1,repeat('a',64));
+      insert into osp_private.case_answer_memory_reviews values('${org}','${caseId}','accepted',repeat('a',64));
+    `);
+    const tx = (async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const sql = strings.reduce(
+        (text, part, index) => text + (index ? `$${index}` : "") + part,
+        "",
+      );
+      return (await db.query(sql, values)).rows as SqlRow[];
+    }) as SqlPort;
+    await db.exec(
+      await Deno.readTextFile(
+        new URL(
+          "../../migrations/20260905083000_osp_answer_memory_evidence_preflight.sql",
+          import.meta.url,
+        ),
+      ),
+    );
+    const preflight = async () => {
+      await db.exec("set role osp_workflow_api");
+      try {
+        return await readAnswerMemoryEvidence(tx, org, caseId, caseId);
+      } finally {
+        await db.exec("reset role");
+      }
+    };
+    await t.step(
+      "preflight shows full document scope without promoting or granting reuse",
+      async () => {
+        const result = await preflight();
+        assertEquals(result.readOnly, true);
+        assertEquals(result.externalEffects, false);
+        assertEquals(result.options.length, 1);
+        assertEquals(result.options[0].state, "document_promotion_required");
+        assertEquals(result.options[0].documentFieldCount, 2);
+        assertEquals(result.options[0].currentFactId, null);
+      },
+    );
     const counts = async () =>
       (await db.query<{ facts: number; promotions: number }>(
         `select (select count(*)::int from public.provider_legal_entity_facts) as facts,
@@ -114,6 +161,7 @@ Deno.test("existing fact promotion compatibility exposes batch scope and unchang
         );
         assertEquals(await counts(), { facts: 2, promotions: 1 });
         assertEquals((await load()).length, 2);
+        assertEquals((await preflight()).options[0].state, "already_reusable");
       },
     );
     await t.step(
@@ -149,6 +197,39 @@ Deno.test("existing fact promotion compatibility exposes batch scope and unchang
         );
         assertEquals(await load(), []);
         assertEquals(await counts(), { facts: 2, promotions: 2 });
+        assertEquals(
+          (await preflight()).options.map((option) => option.state),
+          ["renewal_required"],
+        );
+      },
+    );
+    await t.step(
+      "preflight fails closed for stale, foreign, restricted or unreviewed sources",
+      async () => {
+        for (
+          const change of [
+            "update osp_private.case_answer_memory_reviews set decision='pending_review'",
+            "update osp_private.case_form_instances set version=2",
+            "update osp_private.case_profile_bindings set revision=2",
+            "update public.legal_entities set status='draft'",
+            "update public.provider_legal_entity_facts set sensitivity='restricted'",
+            "update public.provider_entity_document_review_fields set sensitivity='restricted'",
+            `update public.provider_legal_entity_document_assets set expiration_date=current_date-1 where id='${newReviewId}'`,
+            `select set_config('osp.organization_id','${newReviewId}',false)`,
+          ]
+        ) {
+          await db.exec("begin");
+          try {
+            await db.exec(change);
+            assertEquals((await preflight()).options, [], change);
+          } finally {
+            await db.exec("rollback");
+          }
+        }
+        const before = await counts();
+        await preflight();
+        await preflight();
+        assertEquals(await counts(), before);
       },
     );
   } finally {

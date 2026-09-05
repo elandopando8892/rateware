@@ -1,20 +1,24 @@
 import { useRef, useState } from 'react';
 import type { AnswerMemoryCandidate, AnswerMemoryReviewInput, AnswerMemoryReviewReceipt } from './answer-memory-contract';
+import type { AnswerMemoryEvidence } from './answer-memory-evidence-contract';
+import { AnswerMemoryEvidencePanel } from './AnswerMemoryEvidencePanel';
 
-export function AnswerMemoryReviewPanel({ caseId, candidates, allowed, onReview }: {
+export function AnswerMemoryReviewPanel({ caseId, candidates, allowed, onReview, loadEvidence }: {
   caseId: string; candidates: readonly AnswerMemoryCandidate[]; allowed: boolean;
   onReview(input: AnswerMemoryReviewInput): Promise<AnswerMemoryReviewReceipt>;
+  loadEvidence?(candidateId: string): Promise<AnswerMemoryEvidence>;
 }) {
   return <section className="answer-memory-review" aria-label="Review saved answers">
     <h3>Revisar respuestas para la memoria XBF</h3>
     <p>Hasta 50 candidatas recientes. Aceptar conserva tu evaluación; todavía no publica un dato maestro ni permite reutilizarlo. La promoción requiere evidencia y alcance propios.</p>
-    {candidates.length === 0 ? <p>No hay candidatas capturadas para mostrar.</p> : candidates.map((candidate) => <CandidateReview key={`${candidate.id}:${candidate.answerSha256}:${candidate.stale}:${candidate.legalEntityId}`} candidate={candidate} caseId={caseId} allowed={allowed} onReview={onReview} />)}
+    {candidates.length === 0 ? <p>No hay candidatas capturadas para mostrar.</p> : candidates.map((candidate) => <CandidateReview key={`${candidate.id}:${candidate.answerSha256}:${candidate.stale}:${candidate.legalEntityId}`} candidate={candidate} caseId={caseId} allowed={allowed} onReview={onReview} loadEvidence={loadEvidence} />)}
   </section>;
 }
 
-function CandidateReview({ candidate, caseId, allowed, onReview }: {
+function CandidateReview({ candidate, caseId, allowed, onReview, loadEvidence }: {
   candidate: AnswerMemoryCandidate; caseId: string; allowed: boolean;
   onReview(input: AnswerMemoryReviewInput): Promise<AnswerMemoryReviewReceipt>;
+  loadEvidence?(candidateId: string): Promise<AnswerMemoryEvidence>;
 }) {
   const [reason, setReason] = useState('');
   const [confirmed, setConfirmed] = useState(false);
@@ -50,5 +54,6 @@ function CandidateReview({ candidate, caseId, allowed, onReview }: {
     {busy ? <p role="status">Guardando evaluación…</p> : null}
     {receipt ? <p role="status">Evaluación registrada. No habilita autollenado ni salientes.</p> : null}
     {uncertain ? <p role="alert">No se pudo confirmar el resultado. Recarga para conciliar el estado antes de otro intento.</p> : null}
+    {status === 'accepted' && !candidate.stale && candidate.legalEntityId && loadEvidence ? <AnswerMemoryEvidencePanel candidate={candidate} load={() => loadEvidence(candidate.id)} /> : null}
   </article>;
 }

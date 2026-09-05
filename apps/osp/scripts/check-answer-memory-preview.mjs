@@ -5,7 +5,7 @@ import { chromium } from '@playwright/test';
 
 const origin = process.argv[2] ?? 'http://localhost:8791';
 assert.match(origin, /^(http:\/\/localhost:8791|https:\/\/osp-customer-setup-[a-z0-9]+-elandopando8892s-projects\.vercel\.app)$/);
-const evidence = path.resolve(import.meta.dirname, '../../../tmp/osp-s13-answer-review-evidence');
+const evidence = path.resolve(import.meta.dirname, '../../../tmp/osp-s13-evidence-preflight-evidence');
 await mkdir(evidence, { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 try {
@@ -42,16 +42,22 @@ try {
   await current.getByRole('checkbox').check();
   await current.getByRole('button', { name: 'Aceptar candidata' }).click();
   await current.getByText(/Estado: aceptada para futura promoción; no reutilizable/).waitFor();
+  await current.getByRole('button', { name: 'Comparar evidencia documental' }).click();
+  await current.getByText('Necesita renovación auditable de evidencia').waitFor();
+  await current.getByText('La revisión documental requiere publicación explícita').waitFor();
+  const comparison = current.getByRole('region', { name: 'Comparación de evidencia' });
+  assert.equal(await comparison.getByRole('button').count(), 1);
+  assert.equal(await comparison.getByText(/El documento contiene 3 campos aprobados/).count(), 2);
   const stale = review.getByRole('article', { name: 'Domicilio anterior de ejemplo' });
   await stale.getByRole('textbox').fill('La versión anterior no corresponde al origen actual.');
   await stale.getByRole('checkbox').check();
   assert.equal(await stale.getByRole('button', { name: 'Aceptar candidata' }).isDisabled(), true);
   await stale.getByRole('button', { name: 'Descartar candidata' }).click();
   await stale.getByText('Estado: descartada').waitFor();
-  await current.scrollIntoViewIfNeeded();
+  await comparison.scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(evidence, 'desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
-  await current.scrollIntoViewIfNeeded();
+  await comparison.getByRole('button').scrollIntoViewIfNeeded();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
   await page.screenshot({ path: path.join(evidence, 'mobile.png') });
   assert.deepEqual(external, []);
@@ -62,6 +68,6 @@ try {
   assert.deepEqual(external, []);
   assert.deepEqual(errors, []);
   assert.deepEqual(writes, []);
-  console.log(JSON.stringify({ origin, acceptedExample: 1, rejectedStaleExample: 1, resetsOnReload: true, approvedForReuse: false, allowedExternalRequests: 0, blockedFontRequests: blockedFonts.length, writeRequests: 0, browserErrors: 0, mobileOverflow: false, evidence }));
+  console.log(JSON.stringify({ origin, acceptedExample: 1, rejectedStaleExample: 1, evidenceComparisons: 2, comparisonWriteControls: 0, resetsOnReload: true, approvedForReuse: false, allowedExternalRequests: 0, blockedFontRequests: blockedFonts.length, writeRequests: 0, browserErrors: 0, mobileOverflow: false, evidence }));
 } finally { await browser.close(); }
 /* global document, window */

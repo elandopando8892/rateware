@@ -1245,10 +1245,12 @@ const DEFINITIONS = [
       "rpcSignature": null,
       "dependencyFiles": [
         "apps/osp/src/features/forms/answer-memory-contract.ts",
+        "apps/osp/src/features/forms/answer-memory-evidence-contract.ts",
         "apps/osp/src/features/forms/form-completion.ts",
         "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
         "supabase/functions/_shared/osp/database-context.ts",
         "supabase/functions/_shared/osp/workflow-authority.ts",
+        "supabase/functions/osp-form-api/answer-memory-evidence.ts",
         "supabase/functions/osp-form-api/answer-memory-review.ts",
         "supabase/functions/osp-form-api/answer-memory.ts",
         "supabase/functions/osp-form-api/composition.ts",
@@ -1265,7 +1267,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "90ec08938959c7a1f2e5fd855240d0e8bd6903e5a69d4c9d7b18e25c9ab2cc2d",
-    "authorizationFingerprint": "302067359b4c65a921a833fd4b04388dcb81fb7445d17913233bfbc44768cb7a"
+    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
   },
   {
     "surface": {
@@ -1296,10 +1298,12 @@ const DEFINITIONS = [
       "rpcSignature": null,
       "dependencyFiles": [
         "apps/osp/src/features/forms/answer-memory-contract.ts",
+        "apps/osp/src/features/forms/answer-memory-evidence-contract.ts",
         "apps/osp/src/features/forms/form-completion.ts",
         "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
         "supabase/functions/_shared/osp/database-context.ts",
         "supabase/functions/_shared/osp/workflow-authority.ts",
+        "supabase/functions/osp-form-api/answer-memory-evidence.ts",
         "supabase/functions/osp-form-api/answer-memory-review.ts",
         "supabase/functions/osp-form-api/answer-memory.ts",
         "supabase/functions/osp-form-api/composition.ts",
@@ -1316,7 +1320,60 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "1b07949b275dad11e71ae1b77e4539e80dd465b4c578754adf9a9c2b502530bd",
-    "authorizationFingerprint": "302067359b4c65a921a833fd4b04388dcb81fb7445d17913233bfbc44768cb7a"
+    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
+  },
+  {
+    "surface": {
+      "canonicalId": "edge.osp-form-api.get_answer_memory_evidence",
+      "actionName": "get_answer_memory_evidence",
+      "sourceKind": "edge-method",
+      "sourceFile": "supabase/functions/osp-form-api/index.ts",
+      "handler": "Deno.serve",
+      "endpoint": "POST /functions/v1/osp-form-api action=get_answer_memory_evidence",
+      "businessModule": "OSP Customer Setup",
+      "operation": "read",
+      "resource": "osp-form-api",
+      "access": "read",
+      "exposure": "human",
+      "sensitivity": "high",
+      "tenantRelevance": "tenant-scoped",
+      "proposedPermissionKey": "osp.form.api.get_answer_memory_evidence.read",
+      "functionalOwner": "XBF Operations",
+      "decisionStatus": "explicitly_allowed",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "a75bc28939de407cabd82cc400f80cb0a97a1a87252a1309209c19f47c1f81c6",
+      "analysisCoverage": "shared-observed",
+      "coverageSignals": [
+        "shared_dependency_observed",
+        "external_dependency"
+      ],
+      "rpcSignature": null,
+      "dependencyFiles": [
+        "apps/osp/src/features/forms/answer-memory-contract.ts",
+        "apps/osp/src/features/forms/answer-memory-evidence-contract.ts",
+        "apps/osp/src/features/forms/form-completion.ts",
+        "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
+        "supabase/functions/_shared/osp/database-context.ts",
+        "supabase/functions/_shared/osp/workflow-authority.ts",
+        "supabase/functions/osp-form-api/answer-memory-evidence.ts",
+        "supabase/functions/osp-form-api/answer-memory-review.ts",
+        "supabase/functions/osp-form-api/answer-memory.ts",
+        "supabase/functions/osp-form-api/composition.ts",
+        "supabase/functions/osp-form-api/handler.ts",
+        "supabase/functions/osp-form-api/index.ts",
+        "supabase/functions/osp-form-api/postgres-store.ts",
+        "supabase/functions/osp-form-api/store.ts",
+        "supabase/functions/osp-read-api/auth-policy.ts",
+        "supabase/functions/osp-read-api/auth-runtime.ts",
+        "supabase/functions/osp-read-api/http.ts",
+        "supabase/functions/osp-read-api/kinde-jwt.ts",
+        "supabase/functions/osp-read-api/supabase-jwt.ts"
+      ],
+      "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
+    },
+    "metadataFingerprint": "26ae6790d24cc807fb9694687f6ded013114c5ddabab3e00194a16f3fa585b9d",
+    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
   },
   {
     "surface": {
@@ -1347,10 +1404,12 @@ const DEFINITIONS = [
       "rpcSignature": null,
       "dependencyFiles": [
         "apps/osp/src/features/forms/answer-memory-contract.ts",
+        "apps/osp/src/features/forms/answer-memory-evidence-contract.ts",
         "apps/osp/src/features/forms/form-completion.ts",
         "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
         "supabase/functions/_shared/osp/database-context.ts",
         "supabase/functions/_shared/osp/workflow-authority.ts",
+        "supabase/functions/osp-form-api/answer-memory-evidence.ts",
         "supabase/functions/osp-form-api/answer-memory-review.ts",
         "supabase/functions/osp-form-api/answer-memory.ts",
         "supabase/functions/osp-form-api/composition.ts",
@@ -1367,7 +1426,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "5a31c1a77f496088a175ef1f543477b4afa2058931f093060d4bad5f60e4c420",
-    "authorizationFingerprint": "302067359b4c65a921a833fd4b04388dcb81fb7445d17913233bfbc44768cb7a"
+    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
   },
   {
     "surface": {
@@ -1398,10 +1457,12 @@ const DEFINITIONS = [
       "rpcSignature": null,
       "dependencyFiles": [
         "apps/osp/src/features/forms/answer-memory-contract.ts",
+        "apps/osp/src/features/forms/answer-memory-evidence-contract.ts",
         "apps/osp/src/features/forms/form-completion.ts",
         "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
         "supabase/functions/_shared/osp/database-context.ts",
         "supabase/functions/_shared/osp/workflow-authority.ts",
+        "supabase/functions/osp-form-api/answer-memory-evidence.ts",
         "supabase/functions/osp-form-api/answer-memory-review.ts",
         "supabase/functions/osp-form-api/answer-memory.ts",
         "supabase/functions/osp-form-api/composition.ts",
@@ -1418,7 +1479,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "93e3e82102c8d874a87d4ed09dd275bfe11387db29ff6ae3128c73bd603a78e3",
-    "authorizationFingerprint": "302067359b4c65a921a833fd4b04388dcb81fb7445d17913233bfbc44768cb7a"
+    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
   },
   {
     "surface": {
@@ -1449,10 +1510,12 @@ const DEFINITIONS = [
       "rpcSignature": null,
       "dependencyFiles": [
         "apps/osp/src/features/forms/answer-memory-contract.ts",
+        "apps/osp/src/features/forms/answer-memory-evidence-contract.ts",
         "apps/osp/src/features/forms/form-completion.ts",
         "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
         "supabase/functions/_shared/osp/database-context.ts",
         "supabase/functions/_shared/osp/workflow-authority.ts",
+        "supabase/functions/osp-form-api/answer-memory-evidence.ts",
         "supabase/functions/osp-form-api/answer-memory-review.ts",
         "supabase/functions/osp-form-api/answer-memory.ts",
         "supabase/functions/osp-form-api/composition.ts",
@@ -1469,7 +1532,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "00bb1a802d9066535037d8131bc9ba8c5ad19b11db5706118aa47b9c0d775ec4",
-    "authorizationFingerprint": "302067359b4c65a921a833fd4b04388dcb81fb7445d17913233bfbc44768cb7a"
+    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
   },
   {
     "surface": {
@@ -1500,10 +1563,12 @@ const DEFINITIONS = [
       "rpcSignature": null,
       "dependencyFiles": [
         "apps/osp/src/features/forms/answer-memory-contract.ts",
+        "apps/osp/src/features/forms/answer-memory-evidence-contract.ts",
         "apps/osp/src/features/forms/form-completion.ts",
         "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
         "supabase/functions/_shared/osp/database-context.ts",
         "supabase/functions/_shared/osp/workflow-authority.ts",
+        "supabase/functions/osp-form-api/answer-memory-evidence.ts",
         "supabase/functions/osp-form-api/answer-memory-review.ts",
         "supabase/functions/osp-form-api/answer-memory.ts",
         "supabase/functions/osp-form-api/composition.ts",
@@ -1520,7 +1585,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "ed647bdc05d0756764748af8c8954d6ad7732b7f82788332f71a00c305f6183f",
-    "authorizationFingerprint": "302067359b4c65a921a833fd4b04388dcb81fb7445d17913233bfbc44768cb7a"
+    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
   },
   {
     "surface": {
@@ -1551,10 +1616,12 @@ const DEFINITIONS = [
       "rpcSignature": null,
       "dependencyFiles": [
         "apps/osp/src/features/forms/answer-memory-contract.ts",
+        "apps/osp/src/features/forms/answer-memory-evidence-contract.ts",
         "apps/osp/src/features/forms/form-completion.ts",
         "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
         "supabase/functions/_shared/osp/database-context.ts",
         "supabase/functions/_shared/osp/workflow-authority.ts",
+        "supabase/functions/osp-form-api/answer-memory-evidence.ts",
         "supabase/functions/osp-form-api/answer-memory-review.ts",
         "supabase/functions/osp-form-api/answer-memory.ts",
         "supabase/functions/osp-form-api/composition.ts",
@@ -1571,7 +1638,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "48cdb3519c5cc0c84ac5c4cc06e90ff39690328e78495e9888646a6cea8fce9b",
-    "authorizationFingerprint": "302067359b4c65a921a833fd4b04388dcb81fb7445d17913233bfbc44768cb7a"
+    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
   },
   {
     "surface": {
@@ -1602,10 +1669,12 @@ const DEFINITIONS = [
       "rpcSignature": null,
       "dependencyFiles": [
         "apps/osp/src/features/forms/answer-memory-contract.ts",
+        "apps/osp/src/features/forms/answer-memory-evidence-contract.ts",
         "apps/osp/src/features/forms/form-completion.ts",
         "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
         "supabase/functions/_shared/osp/database-context.ts",
         "supabase/functions/_shared/osp/workflow-authority.ts",
+        "supabase/functions/osp-form-api/answer-memory-evidence.ts",
         "supabase/functions/osp-form-api/answer-memory-review.ts",
         "supabase/functions/osp-form-api/answer-memory.ts",
         "supabase/functions/osp-form-api/composition.ts",
@@ -1622,7 +1691,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "9f5967c5c4d87420a0fc4e931223e4ee3fc547862bbfcb879cb4df0712f666eb",
-    "authorizationFingerprint": "302067359b4c65a921a833fd4b04388dcb81fb7445d17913233bfbc44768cb7a"
+    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
   },
   {
     "surface": {
@@ -1653,10 +1722,12 @@ const DEFINITIONS = [
       "rpcSignature": null,
       "dependencyFiles": [
         "apps/osp/src/features/forms/answer-memory-contract.ts",
+        "apps/osp/src/features/forms/answer-memory-evidence-contract.ts",
         "apps/osp/src/features/forms/form-completion.ts",
         "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
         "supabase/functions/_shared/osp/database-context.ts",
         "supabase/functions/_shared/osp/workflow-authority.ts",
+        "supabase/functions/osp-form-api/answer-memory-evidence.ts",
         "supabase/functions/osp-form-api/answer-memory-review.ts",
         "supabase/functions/osp-form-api/answer-memory.ts",
         "supabase/functions/osp-form-api/composition.ts",
@@ -1673,7 +1744,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "f10c50a12a3a0e8197370177af25b985cd3862a5e7883530942231f64a831e5e",
-    "authorizationFingerprint": "302067359b4c65a921a833fd4b04388dcb81fb7445d17913233bfbc44768cb7a"
+    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
   },
   {
     "surface": {
@@ -4467,6 +4538,40 @@ const DEFINITIONS = [
   },
   {
     "surface": {
+      "canonicalId": "rpc.osp_private.load_answer_memory_evidence(uuid,uuid,uuid)",
+      "actionName": "osp_private.load_answer_memory_evidence",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20260905083000_osp_answer_memory_evidence_preflight.sql",
+      "handler": "osp_private.load_answer_memory_evidence(uuid,uuid,uuid)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface osp_private.load_answer_memory_evidence(uuid,uuid,uuid)",
+      "businessModule": "OSP Customer Setup",
+      "operation": "read",
+      "resource": "osp-workflow-database",
+      "access": "read",
+      "exposure": "internal/service-role",
+      "sensitivity": "high",
+      "tenantRelevance": "record-derived",
+      "proposedPermissionKey": "osp.workflow.database.osp_private.load_answer_memory_evidence.read",
+      "functionalOwner": "XBF Operations",
+      "decisionStatus": "internal_only",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "48d1204caad5f16bd70a973a2546fc2397500ca4c6bdf71224e9f499b42c9c50",
+      "analysisCoverage": "direct",
+      "coverageSignals": [
+        "direct"
+      ],
+      "rpcSignature": "uuid,uuid,uuid",
+      "dependencyFiles": [
+        "supabase/migrations/20260905083000_osp_answer_memory_evidence_preflight.sql"
+      ],
+      "notes": "Internal OSP runtime or database surface; no direct browser authority."
+    },
+    "metadataFingerprint": "a4fd18a575057ae19abf3dc32c39815eb7220e1cb278921f30e1823e4335fca1",
+    "authorizationFingerprint": "48d1204caad5f16bd70a973a2546fc2397500ca4c6bdf71224e9f499b42c9c50"
+  },
+  {
+    "surface": {
       "canonicalId": "rpc.osp_private.load_xbf_customer_setup_candidates_for_case(uuid,uuid)",
       "actionName": "osp_private.load_xbf_customer_setup_candidates_for_case",
       "sourceKind": "postgres-function",
@@ -6579,7 +6684,7 @@ const surfaces = DEFINITIONS.map(({ surface }) => ({ ...surface, contractVersion
 
 export const OSP_CUSTOMER_SETUP_ACTION_CONTRACT_EXTENSION = {
   contractVersion,
-  expectedCountsDelta: { governable: 160, edge: 51, postgres: 109, ratewareApi: 0 },
+  expectedCountsDelta: { governable: 162, edge: 52, postgres: 110, ratewareApi: 0 },
   reviewedMetadataFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.metadataFingerprint])),
   reviewedAuthorizationFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.authorizationFingerprint])),
   surfaces,

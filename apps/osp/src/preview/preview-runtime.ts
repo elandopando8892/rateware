@@ -1025,6 +1025,16 @@ function createPreviewClient(): OspClient {
       const caseRecord = previewCaseRows.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCaseRows[0];
       return { caseId: requestedCaseId, supplierName: caseRecord.supplier_name, caseVersion: caseRecord.aggregate_version, caseState: caseRecord.state, templateName: caseFormWorkspace.templateName, template: structuredClone(caseFormWorkspace.template), instance: null, mappings: [], evidenceReady: false, capabilities: { saveDraft: false, acceptMapping: false, correctMapping: false, submitForReview: false } };
     },
+    getAnswerMemoryEvidence: async (requestedCaseId, candidateId) => {
+      if (requestedCaseId !== caseFormCaseId) throw new Error('FORM_MEMORY_NOT_FOUND');
+      const candidate = caseFormWorkspace.answerMemoryCandidates?.find((item) => item.id === candidateId);
+      if (!candidate || candidate.decision !== 'accepted' || candidate.stale || !candidate.legalEntityId || candidate.sourceVersion !== caseFormWorkspace.instance?.version) return { options: [], readOnly: true, externalEffects: false };
+      const base = { reviewRevision: 2, fieldCode: 'legal_name', reviewedValue: candidate.value, currentFactId: '92111111-1111-4111-8111-111111111111', currentValue: candidate.value, evidenceExpiresOn: '2099-12-31', documentFieldCount: 3 };
+      return { options: [
+        { ...base, reviewId: '93111111-1111-4111-8111-111111111111', reviewFieldId: '94111111-1111-4111-8111-111111111111', documentAssetId: '95111111-1111-4111-8111-111111111111', state: 'renewal_required' },
+        { ...base, reviewId: '93111111-1111-4111-8111-111111111112', reviewFieldId: '94111111-1111-4111-8111-111111111112', documentAssetId: '95111111-1111-4111-8111-111111111112', state: 'document_promotion_required' },
+      ], readOnly: true, externalEffects: false };
+    },
     reviewAnswerMemory: async (input) => {
       const row = AnswerMemoryReviewInputSchema.parse(input);
       if (row.caseId !== caseFormCaseId) throw new Error('FORM_MEMORY_NOT_FOUND');

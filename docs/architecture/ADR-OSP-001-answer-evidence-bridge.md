@@ -1,6 +1,6 @@
 # ADR-OSP-001: conectar respuestas aceptadas con evidencia reutilizable
 
-**Status:** Proposed
+**Status:** Accepted for local/preview implementation; production not authorized
 
 **Date:** 2026-09-05
 
@@ -166,7 +166,7 @@ declaraciones sin documento, referencias comerciales o banca en este bloque.
 
 1. [x] Inspeccionar bases existentes y ejecutar prueba SQL de compatibilidad.
 2. [x] Definir límites, estados visibles y alternativas sin modificar producción.
-3. [ ] Aprobar diseño B y su política de renovación antes del esquema/comando nuevos.
+3. [x] Diseño B y política de renovación aprobados por el usuario para local/preview.
 4. [ ] Implementar preflight en lectura y comparación UI; preview sintética visible.
 5. [ ] Implementar enlace/renovación atómicos con pruebas de conflicto, vigencia,
    permisos y concurrencia; verificar el catálogo existente y el aislamiento Rateware.

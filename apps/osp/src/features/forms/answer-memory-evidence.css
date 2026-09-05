@@ -1,0 +1,9 @@
+.answer-memory-evidence { margin-top: 1rem; padding: 1rem; border: 1px solid currentColor; border-radius: .5rem; }
+.answer-memory-evidence h5 { font-size: 1rem; margin: 0 0 .75rem; }
+.answer-memory-evidence-option { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid currentColor; }
+.answer-memory-evidence dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: .5rem 1rem; }
+.answer-memory-evidence dt { font-weight: 600; }
+.answer-memory-evidence dd { margin: 0; overflow-wrap: anywhere; }
+.answer-memory-evidence button { max-width: 100%; white-space: normal; }
+.answer-memory-evidence button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+@media (max-width: 600px) { .answer-memory-evidence dl { grid-template-columns: minmax(0, 1fr); } .answer-memory-evidence dd { margin-bottom: .5rem; } }
