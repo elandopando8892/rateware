@@ -2397,7 +2397,7 @@ const DEFINITIONS = [
       "notes": "Internal OSP runtime or database surface; no direct browser authority."
     },
     "metadataFingerprint": "81d696c42011cb4c73161e041c1f150d122e4efc559f086dcc79d8aae7d6c97d",
-    "authorizationFingerprint": "aa23f559107d7a817479ef7e45039e732d08e78d0921abaf7040fdf0cec1601b"
+    "authorizationFingerprint": "c93fa447f1a3b10c443e7039db9ff18c225425bf26c6023f43fae7a655a5e890"
   },
   {
     "surface": {
@@ -2475,7 +2475,7 @@ const DEFINITIONS = [
       "notes": "Internal OSP runtime or database surface; no direct browser authority."
     },
     "metadataFingerprint": "777744ad9ac01412bab4f59bbe48c91bbae1322bc2c7d7f8879bfc892f328ab1",
-    "authorizationFingerprint": "aa23f559107d7a817479ef7e45039e732d08e78d0921abaf7040fdf0cec1601b"
+    "authorizationFingerprint": "c93fa447f1a3b10c443e7039db9ff18c225425bf26c6023f43fae7a655a5e890"
   },
   {
     "surface": {
@@ -2553,7 +2553,7 @@ const DEFINITIONS = [
       "notes": "Internal OSP runtime or database surface; no direct browser authority."
     },
     "metadataFingerprint": "04ed76a70618faf41150794b18464c40c257ccb1d2feb95583d2a27cf51e9ed8",
-    "authorizationFingerprint": "aa23f559107d7a817479ef7e45039e732d08e78d0921abaf7040fdf0cec1601b"
+    "authorizationFingerprint": "c93fa447f1a3b10c443e7039db9ff18c225425bf26c6023f43fae7a655a5e890"
   },
   {
     "surface": {
@@ -2631,7 +2631,7 @@ const DEFINITIONS = [
       "notes": "Internal OSP runtime or database surface; no direct browser authority."
     },
     "metadataFingerprint": "8230f2b0e69ddf804aecb7542436ca4a5222c48dd9eacefcc0d32018a8ded2c7",
-    "authorizationFingerprint": "aa23f559107d7a817479ef7e45039e732d08e78d0921abaf7040fdf0cec1601b"
+    "authorizationFingerprint": "c93fa447f1a3b10c443e7039db9ff18c225425bf26c6023f43fae7a655a5e890"
   },
   {
     "surface": {
@@ -2709,7 +2709,7 @@ const DEFINITIONS = [
       "notes": "Internal OSP runtime or database surface; no direct browser authority."
     },
     "metadataFingerprint": "0acd3bce4feafd6adc3402eec47f3520f8bd9e0d214dfb4e2055da3c6cd25a70",
-    "authorizationFingerprint": "aa23f559107d7a817479ef7e45039e732d08e78d0921abaf7040fdf0cec1601b"
+    "authorizationFingerprint": "c93fa447f1a3b10c443e7039db9ff18c225425bf26c6023f43fae7a655a5e890"
   },
   {
     "surface": {
@@ -2787,7 +2787,7 @@ const DEFINITIONS = [
       "notes": "Internal OSP runtime or database surface; no direct browser authority."
     },
     "metadataFingerprint": "9f9f29b38e3fb3b871fbf66ee1392f9d375f8c5f9920c0e27b5a4295cb269abd",
-    "authorizationFingerprint": "aa23f559107d7a817479ef7e45039e732d08e78d0921abaf7040fdf0cec1601b"
+    "authorizationFingerprint": "c93fa447f1a3b10c443e7039db9ff18c225425bf26c6023f43fae7a655a5e890"
   },
   {
     "surface": {
@@ -2865,7 +2865,7 @@ const DEFINITIONS = [
       "notes": "Internal OSP runtime or database surface; no direct browser authority."
     },
     "metadataFingerprint": "8e6dd085c155215432947e7c5246f3b22ead95dcdd50e1ac9f314e20758ae398",
-    "authorizationFingerprint": "aa23f559107d7a817479ef7e45039e732d08e78d0921abaf7040fdf0cec1601b"
+    "authorizationFingerprint": "c93fa447f1a3b10c443e7039db9ff18c225425bf26c6023f43fae7a655a5e890"
   },
   {
     "surface": {

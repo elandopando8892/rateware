@@ -131,21 +131,27 @@ export function prepareCaseForm(
   let contradiction = false;
 
   for (const field of input.fields) {
+    const candidates = input.candidates.filter((candidate) =>
+      eligible(candidate) && matches(field, candidate)
+    );
     const current = scalar(input.currentValues[field.fieldId]);
     if (current !== null) {
+      // A saved value is not a receipt resolving contradictory evidence. Keep
+      // the user's value, but require clarification when eligible sources differ.
+      const isContradictory = candidates.some((candidate) =>
+        stable(scalar(candidate.value)!) !== stable(current)
+      );
+      contradiction ||= isContradictory;
       values[field.fieldId] = current;
       fields.push({
         fieldId: field.fieldId,
         source: "existing_draft",
-        status: "prepared",
-        evidenceIds: [],
+        status: isContradictory ? "contradictory" : "prepared",
+        evidenceIds: evidence(candidates),
       });
       continue;
     }
 
-    const candidates = input.candidates.filter((candidate) =>
-      eligible(candidate) && matches(field, candidate)
-    );
     const rateware = distinct(
       candidates.filter((candidate) => candidate.source === "rateware"),
     );
@@ -177,7 +183,8 @@ export function prepareCaseForm(
       fieldId: field.fieldId,
       source: selected.source,
       status: isContradictory ? "contradictory" : "prepared",
-      evidenceIds: evidence([...rateware, ...attachment]),
+      // Deduplicate values to detect conflicts, never the supporting sources.
+      evidenceIds: evidence(candidates),
     });
   }
 

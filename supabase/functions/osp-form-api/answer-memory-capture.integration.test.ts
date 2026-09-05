@@ -26,6 +26,7 @@ Deno.test("saved answers create an isolated, versioned pending inbox without ent
       create table osp_private.case_profile_bindings(organization_id uuid,case_id uuid,legal_entity_id uuid,revision integer);
       create table osp_private.case_form_instances(organization_id uuid,id uuid,case_id uuid,template_version_id uuid,
         version integer,values_json jsonb,unique(organization_id,id));
+      create table osp_private.case_package_input_snapshots(organization_id uuid,form_instance_id uuid);
       create table public.provider_legal_entity_facts(id uuid);
       insert into public.legal_entities values('${org}','${entityId}'),('${org}','${other}');
       insert into osp_private.customer_registration_cases values('${org}','${caseId}');
@@ -35,6 +36,40 @@ Deno.test("saved answers create an isolated, versioned pending inbox without ent
       insert into osp_private.case_profile_bindings values('${org}','${caseId}','${entityId}',1);
       select set_config('osp.organization_id','${org}',false);
     `);
+    // Use the existing database guards, not a permissive imitation of versioning.
+    // This remains a reduced schema test, not a full migration/concurrency test.
+    const foundation = await Deno.readTextFile(
+      new URL(
+        "../../migrations/20260824015136_osp_sprint2_intelligence_forms.sql",
+        import.meta.url,
+      ),
+    );
+    for (
+      const name of [
+        "protect_form_instance",
+        "protect_published_template_version",
+      ]
+    ) {
+      const definition = foundation.match(
+        new RegExp(
+          `create function osp_private\\.${name}\\(\\)[\\s\\S]*?\\$function\\$;`,
+        ),
+      )?.[0];
+      if (!definition) throw new Error(`Missing production guard: ${name}`);
+      await db.exec(definition);
+    }
+    for (
+      const name of [
+        "osp_form_instance_integrity",
+        "osp_published_template_versions_append_only",
+      ]
+    ) {
+      const definition = foundation.match(
+        new RegExp(`create trigger ${name}[\\s\\S]*?;`),
+      )?.[0];
+      if (!definition) throw new Error(`Missing production trigger: ${name}`);
+      await db.exec(definition);
+    }
     const field = async (key: string, canonical: string, kind = "text") =>
       await db.query(
         "insert into osp_private.form_fields values ($1,$2,$3,$4::jsonb)",
@@ -133,7 +168,7 @@ Deno.test("saved answers create an isolated, versioned pending inbox without ent
       async () => {
         await db.exec(
           `update osp_private.case_profile_bindings set legal_entity_id='${other}',revision=2;
-        update osp_private.case_form_instances set version=4;`,
+        update osp_private.case_form_instances set version=4,values_json=values_json || '{"edit_note":"new entity"}'::jsonb;`,
         );
         assertEquals((await rows()).map((row) => row.legal_entity_id), [
           entityId,
@@ -146,7 +181,7 @@ Deno.test("saved answers create an isolated, versioned pending inbox without ent
       "missing entity binding remains explicit, never guessed",
       async () => {
         await db.exec(
-          "delete from osp_private.case_profile_bindings; update osp_private.case_form_instances set version=5;",
+          'delete from osp_private.case_profile_bindings; update osp_private.case_form_instances set version=5,values_json=values_json || \'{"edit_note":"unbound"}\'::jsonb;',
         );
         assertEquals((await rows()).at(-1)?.legal_entity_id, null);
         assertEquals((await rows()).at(-1)?.binding_revision, null);
@@ -187,7 +222,31 @@ Deno.test("saved answers create an isolated, versioned pending inbox without ent
               [JSON.stringify({ website: "https://unversioned.example.test" })],
             ),
           Error,
-          "ANSWER_MEMORY_REVISION_REQUIRED",
+          "FORM_INSTANCE_VERSION_INVALID",
+        );
+        assertEquals((await rows()).length, 4);
+      },
+    );
+    await t.step(
+      "production guards forbid version rollback, phantom revisions and template changes",
+      async () => {
+        for (const version of [5, 7]) {
+          await assertRejects(
+            () =>
+              db.exec(
+                `update osp_private.case_form_instances set version=${version}`,
+              ),
+            Error,
+            "FORM_INSTANCE_VERSION_INVALID",
+          );
+        }
+        await assertRejects(
+          () =>
+            db.exec(
+              "update osp_private.form_template_versions set schema_sha256=repeat('b',64)",
+            ),
+          Error,
+          "PUBLISHED_TEMPLATE_APPEND_ONLY",
         );
         assertEquals((await rows()).length, 4);
       },
@@ -199,7 +258,10 @@ Deno.test("saved answers create an isolated, versioned pending inbox without ent
           `select set_config('osp.organization_id','${other}',false)`,
         );
         await assertRejects(
-          () => db.exec("update osp_private.case_form_instances set version=7"),
+          () =>
+            db.exec(
+              'update osp_private.case_form_instances set version=7,values_json=values_json || \'{"edit_note":"foreign"}\'::jsonb',
+            ),
           Error,
           "ANSWER_MEMORY_TENANT_MISMATCH",
         );
@@ -316,7 +378,7 @@ Deno.test("saved answers create an isolated, versioned pending inbox without ent
         await db.exec(
           `select set_config('osp.organization_id','${org}',false), set_config('osp.actor_subject','operator',false), set_config('osp.actor_permission','osp:operate',false);
         insert into osp_private.case_profile_bindings values('${org}','${caseId}','${entityId}',3);
-        update osp_private.case_form_instances set version=8,values_json='{"website":"https://review.example.test"}';`,
+        update osp_private.case_form_instances set version=7,values_json='{"website":"https://review.example.test"}';`,
         );
         const candidates = await rows();
         const current = candidates.at(-1)!;
@@ -463,7 +525,9 @@ Deno.test("saved answers create an isolated, versioned pending inbox without ent
         );
         await db.exec("begin");
         try {
-          await db.exec("update osp_private.case_form_instances set version=9");
+          await db.exec(
+            'update osp_private.case_form_instances set version=8,values_json=values_json || \'{"edit_note":"next revision"}\'::jsonb',
+          );
           const next = (await rows()).at(-1)!;
           await db.exec("delete from osp_private.case_profile_bindings");
           await assertRejects(

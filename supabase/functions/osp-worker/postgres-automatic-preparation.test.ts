@@ -16,13 +16,23 @@ function queryText(strings: TemplateStringsArray): string {
   return strings.join("?").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-function fakeDatabase(initialState = "received") {
+function fakeDatabase(
+  initialState = "received",
+  initialValues?: Record<string, unknown>,
+) {
   const calls: Array<{ text: string; values: unknown[] }> = [];
   const events: Array<{ state: string; reason: string }> = [];
   let state = initialState;
   let aggregateVersion = 1;
   let mapping: SqlRow | null = null;
-  let instance: SqlRow | null = null;
+  let instance: SqlRow | null = initialValues
+    ? {
+      id: "77777777-7777-4777-8777-777777777777",
+      version: 1,
+      values_json: initialValues,
+      consumed: false,
+    }
+    : null;
   let extractionValue = "X Border Freight";
 
   const sql = Object.assign(
@@ -199,6 +209,48 @@ const readyPlan: AutomaticPreparationPlan = {
   }],
   externalEffects: false,
 };
+
+Deno.test("persisted human draft conflict goes to clarification without changing its value or version", async () => {
+  const fake = fakeDatabase("awaiting_xbf_information", {
+    legal_name: "Human entered company",
+  });
+  const store = createPostgresAutomaticPreparationStore({
+    databaseUrl: "postgresql://synthetic.example.test/db",
+    postgresFactory: () => fake.sql,
+  });
+  const source = await store.load({
+    organizationId,
+    caseId,
+    extractionId,
+    templateVersionId,
+  });
+  const plan = prepareCaseForm(source);
+  assertEquals(plan.status, "awaiting_clarification");
+  await store.persist({
+    organizationId,
+    caseId,
+    extractionId,
+    templateVersionId,
+    correlationId: "human-conflict",
+    plan,
+  });
+  assertEquals(fake.state(), "awaiting_clarification");
+  assertEquals(fake.instance()?.values_json, {
+    legal_name: "Human entered company",
+  });
+  assertEquals(fake.instance()?.version, 1);
+  assertEquals(
+    (fake.mapping()?.mapping_json as AutomaticPreparationPlan).fields[0]
+      .evidenceIds.length,
+    2,
+  );
+  assertEquals(
+    fake.calls.some((call) =>
+      call.text.startsWith("update osp_private.case_form_instances")
+    ),
+    false,
+  );
+});
 
 Deno.test("postgres preparation loads published fields and grounded extraction candidates", async () => {
   const fake = fakeDatabase();

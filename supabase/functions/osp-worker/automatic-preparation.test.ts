@@ -45,6 +45,66 @@ const base: AutomaticPreparationInput = {
   currentValues: {},
 };
 
+Deno.test("a saved answer never hides conflicting evidence or gets overwritten", () => {
+  const plan = prepareCaseForm({
+    ...base,
+    currentValues: { legal_name: "Human entered company" },
+  });
+  assertEquals(plan.values.legal_name, "Human entered company");
+  assertEquals(plan.status, "awaiting_clarification");
+  assertEquals(plan.fields[0], {
+    fieldId: "legal_name",
+    source: "existing_draft",
+    status: "contradictory",
+    evidenceIds: ["rateware:company"],
+  });
+  assertEquals(plan.externalEffects, false);
+});
+
+Deno.test("equal values retain every source instead of deduplicating evidence away", () => {
+  const plan = prepareCaseForm({
+    ...base,
+    candidates: [
+      ...base.candidates,
+      { ...base.candidates[0], evidenceIds: ["rateware:second-review"] },
+    ],
+  });
+  assertEquals(plan.status, "ready_for_operations_review");
+  assertEquals(plan.fields[0].evidenceIds, [
+    "rateware:company",
+    "rateware:second-review",
+  ]);
+});
+
+Deno.test("matching saved answers retain corroboration without a false conflict", () => {
+  const plan = prepareCaseForm({
+    ...base,
+    currentValues: { legal_name: " X Border Freight " },
+  });
+  assertEquals(plan.status, "ready_for_operations_review");
+  assertEquals(plan.fields[0].status, "prepared");
+  assertEquals(plan.fields[0].evidenceIds, ["rateware:company"]);
+});
+
+Deno.test("untrusted candidates do not override or falsely contradict a saved answer", () => {
+  const plan = prepareCaseForm({
+    ...base,
+    currentValues: { legal_name: "Human entered company" },
+    candidates: base.candidates.map((candidate) =>
+      candidate.source === "rateware"
+        ? { ...candidate, confidence: 0.1 }
+        : candidate
+    ),
+  });
+  assertEquals(plan.status, "ready_for_operations_review");
+  assertEquals(plan.fields[0], {
+    fieldId: "legal_name",
+    source: "existing_draft",
+    status: "prepared",
+    evidenceIds: [],
+  });
+});
+
 Deno.test("conflicting corporate-memory aliases require clarification and preserve both facts", () => {
   const plan = prepareCaseForm({
     ...base,
