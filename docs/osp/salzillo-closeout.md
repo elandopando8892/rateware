@@ -127,6 +127,57 @@ Pendiente de producción: preparar y revisar el mapa concreto del Salzillo real,
 con sus datos faltantes resueltos. Este cambio no publica ese mapa, no modifica
 el expediente ni prueba PDF, firma autógrafa o cumplimiento total del carrier.
 
+### Inventario concreto del original Salzillo (borrador local)
+
+El archivo `docs/osp/maps/salzillo-format-3-3.json` contiene 114 destinos y sus
+áreas combinadas reales, vinculados al SHA-256 del original. Se verificaron las
+dos hojas renderizadas y su OOXML sin ejecutar macros. El inventario no contiene
+datos personales ni secciones de `artifactTargets` ejecutables: no es una
+plantilla publicada ni una aprobación semántica.
+
+- Clasificación: 42 datos por comprobar, 38 decisiones, 10 comprobaciones de
+  evidencia, 3 destinos de cuarta referencia, 11 datos del carrier a conservar,
+  3 contenidos/cálculos preservados, 3 espacios sin campo, 2 credenciales en
+  espera, 1 espacio de firma y 1 entrada bloqueada en el original.
+- Las secciones internas `2-2!B53:M62` quedan excluidas. Se identificaron además
+  seis anclas desbloqueadas dentro de esa exclusión; no se cuentan como datos
+  XBF faltantes. Se preserva el pie de control `2-2!D64:J65`.
+- Referencias reales: primera `C43/C44/C45`, segunda `G43/G44/G45`, tercera
+  `C47/C48/C49`, todas en `1-2`. La cuarta ocupa `G47/G48/G49`.
+  El original no tiene columna separada para contacto: aún se debe revisar una
+  proyección empresa/contacto y comprobar su ajuste visual. El worker actual
+  no admite dos valores independientes sobre un mismo destino; no omitir el
+  contacto para forzar la generación.
+- Seguridad: `1-2!D52:D55`, `H52:H55` y `J53` (CCTV). Son celdas de respuesta,
+  no las celdas de sus etiquetas. Mantener las nueve respuestas pendientes.
+- `1-2!H16:J16` (país) está bloqueada aunque tiene etiqueta de entrada. Se
+  registra como `locked_input_review`; no quitar protección ni marcar completa.
+- Usuario y contraseña del portal (`2-2!D17/D18`) requieren una decisión de
+  acceso seguro o exclusión documentada; no recopilar ni incluir credenciales
+  automáticamente en el paquete enviado.
+- `tools/osp-check-workbook-map.py` sólo lee: comprueba huella, celdas existentes,
+  anclas de combinaciones, unicidad, fórmulas preservadas, áreas excluidas y que
+  ninguna ancla desbloqueada quede sin clasificación. No interpreta ni aprueba
+  valores, listas desplegables, requisitos, firmas, PDF o completitud del paquete.
+- Prueba real del inventario: 114 entradas, cero anclas desbloqueadas sin
+  clasificar, archivo fuente sin cambio. Nueve pruebas sintéticas cubren XML
+  real, deriva de huella, anclas interiores, omisiones, fórmulas/protección,
+  área interna, duplicados, hoja oculta, tratamiento desconocido y límites.
+- Se preparó el mapa privado navegable en
+  `tmp/osp-s13-artifacts/salzillo-mapa-de-celdas.html`. No se publica el formulario
+  del carrier ni los datos reales en una preview abierta.
+
+Reproducción, sin servicios ni efectos de negocio:
+
+```powershell
+python -B tests/osp-workbook-map.test.py
+python -B tools/osp-check-workbook-map.py --source "<original.xlsm>" --map docs/osp/maps/salzillo-format-3-3.json
+```
+
+Pendiente: revisión semántica del mapa, decisiones y datos faltantes, enlace a
+la extracción/plantilla/snapshot revisados, llenado del original y prueba del
+PDF. No se modificó el caso Salzillo productivo, ni se firmó o reenvió correo.
+
 | Resultado necesario | Pendiente concreto |
 | --- | --- |
 | Formulario original completo | Vincular todos los campos aplicables a valores comprobados o una exclusión razonada; no usar cantidad de celdas desbloqueadas como prueba de completitud. |

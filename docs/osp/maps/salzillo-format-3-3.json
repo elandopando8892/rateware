@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "status": "draft_for_human_review",
+  "sourceSha256": "af45f6627106edc5fd5fd114dca56a337290301a5a059aa07f7e36f8e236b3ee",
+  "sourceFilename": "Copia de Formato 3.3 Alta Cliente (1).xlsm",
+  "purpose": "Cell inventory only; not artifactTargets, an approved template or permission to fill/sign/send.",
+  "entryColumns": ["id", "cell", "expectedRange", "disposition"],
+  "dispositions": {
+    "review_value": "Proposed XBF input; requires a verified Mexican-entity value and human mapping review.",
+    "review_decision": "Requires an explicit answer or reasoned applicability decision; no default yes/acceptance.",
+    "evidence_review": "Document/requirement checklist; derive only from reviewed exact package evidence, never occupancy.",
+    "optional_reference": "Fourth slot; decide applicability after three complete distinct references, not silently discarded.",
+    "carrier_only": "Preserve; carrier administrative decision or assignment, not XBF data.",
+    "preserve": "Preserve source content or calculation; no write.",
+    "layout_only": "Unlabelled layout cell; no write and not a missing business field.",
+    "sensitive_hold": "Portal credential field; no automated disclosure. Decide secure onboarding or documented exclusion.",
+    "manual_signature": "Reserved for the separately approved requested signature method; no value mapping.",
+    "locked_input_review": "Label suggests XBF input but source anchor is locked. Requires explicit handling; no automatic unprotect."
+  },
+  "excludedRanges": [
+    {"sheet": "2-2", "range": "B53:M62", "reason": "Carrier administration/finance and security-only sections."},
+    {"sheet": "2-2", "range": "D64:J65", "reason": "Carrier document control footer."}
+  ],
+  "groups": [
+    {"title": "Carrier header and assignment", "sheet": "1-2", "entries": [
+      ["carrier.folio", "I1", "I1:J2", "carrier_only"],
+      ["carrier.requesting_executive", "C3", "C3:E3", "carrier_only"],
+      ["carrier.company", "H3", "H3:J3", "carrier_only"],
+      ["carrier.registration_type", "H4", "H4:J4", "carrier_only"],
+      ["carrier.assignment_1", "H5", "H5", "carrier_only"],
+      ["carrier.assignment_2", "I5", "I5:J5", "carrier_only"],
+      ["carrier.assignment_3", "H6", "H6", "carrier_only"],
+      ["carrier.assignment_4", "I6", "I6:J6", "carrier_only"],
+      ["carrier.assignment_5", "H7", "H7", "carrier_only"],
+      ["carrier.assignment_6", "I7", "I7:J7", "carrier_only"],
+      ["carrier.assignment_7", "I8", "I8:J8", "carrier_only"]
+    ]},
+    {"title": "Mexican company and fiscal address", "sheet": "1-2", "entries": [
+      ["company.person_type", "C5", "C5:F5", "review_value"],
+      ["company.tax_regime", "C6", "C6:F6", "review_value"],
+      ["company.rfc", "C7", "C7:F7", "review_value"],
+      ["company.legal_name", "C8", "C8:F8", "review_value"],
+      ["company.trade_name", "C9", "C9:F9", "review_value"],
+      ["request.date", "H9", "H9:J9", "review_decision"],
+      ["company.curp", "H11", "H11:J11", "review_decision"],
+      ["address.street", "C12", "C12:F12", "review_value"],
+      ["company.phone", "H12", "H12:J12", "review_value"],
+      ["address.neighborhood", "C13", "C13:F13", "review_value"],
+      ["address.postal_code", "H13", "H13:J13", "review_value"],
+      ["address.exterior_number", "C14", "C14:F14", "review_value"],
+      ["address.city", "H14", "H14:J14", "review_value"],
+      ["address.interior_number", "C15", "C15:F15", "review_decision"],
+      ["address.state", "H15", "H15:J15", "review_value"],
+      ["company.website", "C16", "C16:F16", "review_value"],
+      ["address.country", "H16", "H16:J16", "locked_input_review"],
+      ["layout.date_spacer_h", "H10", "H10", "layout_only"],
+      ["layout.date_spacer_i", "I10", "I10", "layout_only"],
+      ["layout.date_spacer_j", "J10", "J10", "layout_only"]
+    ]},
+    {"title": "Commercial information and credit", "sheet": "1-2", "entries": [
+      ["commercial.activity", "D19", "D19:F20", "review_value"],
+      ["commercial.services", "D21", "D21:F21", "review_value"],
+      ["commercial.main_customers", "D22", "D22:F22", "review_value"],
+      ["commercial.employee_count", "D23", "D23:E23", "review_value"],
+      ["credit.requested_amount", "D24", "D24:E24", "review_decision"],
+      ["commercial.acquisition_source", "D25", "D25:E25", "review_decision"],
+      ["credit.payment_type", "H19", "H19:J19", "review_decision"],
+      ["credit.term", "H20", "H20:J20", "review_decision"],
+      ["billing.cfdi_use", "H21", "H21:J21", "review_decision"],
+      ["billing.payment_method", "H22", "H22:J22", "review_decision"],
+      ["billing.purchase_order", "H23", "H23:J23", "review_decision"],
+      ["commercial.existing_agreement", "H24", "H24:J24", "review_decision"],
+      ["commercial.pod_format", "H25", "H25:J25", "review_decision"]
+    ]},
+    {"title": "Evidence checklist, not form completeness", "sheet": "1-2", "entries": [
+      ["evidence.incorporation", "J30", "J30", "evidence_review"],
+      ["evidence.address", "J31", "J31", "evidence_review"],
+      ["evidence.identity", "J32", "J32", "evidence_review"],
+      ["evidence.tax_status", "J33", "J33", "evidence_review"],
+      ["evidence.tax_opinion", "J34", "J34", "evidence_review"],
+      ["evidence.power_of_attorney", "J35", "J35", "evidence_review"],
+      ["evidence.references", "J36", "J36", "evidence_review"],
+      ["evidence.security", "J37", "J37", "evidence_review"],
+      ["evidence.credit_policy_acceptance", "J38", "J38", "evidence_review"],
+      ["evidence.declaration_acceptance", "J39", "J39", "evidence_review"],
+      ["calculation.document_percentage", "F40", "F40", "preserve"],
+      ["calculation.finance_requirement", "G40", "G40:J40", "preserve"]
+    ]},
+    {"title": "Commercial references", "sheet": "1-2", "entries": [
+      ["references.row1.name", "C43", "C43:E43", "review_value"],
+      ["references.row1.phone", "C44", "C44:E44", "review_value"],
+      ["references.row1.email", "C45", "C45:E45", "review_value"],
+      ["references.row2.name", "G43", "G43:H43", "review_value"],
+      ["references.row2.phone", "G44", "G44:H44", "review_value"],
+      ["references.row2.email", "G45", "G45:H45", "review_value"],
+      ["references.row3.name", "C47", "C47:E47", "review_value"],
+      ["references.row3.phone", "C48", "C48:E48", "review_value"],
+      ["references.row3.email", "C49", "C49:E49", "review_value"],
+      ["references.row4.name", "G47", "G47:H47", "optional_reference"],
+      ["references.row4.phone", "G48", "G48:H48", "optional_reference"],
+      ["references.row4.email", "G49", "G49:H49", "optional_reference"]
+    ]},
+    {"title": "Nine security answers", "sheet": "1-2", "entries": [
+      ["security.visitor_identification", "D52", "D52", "review_decision"],
+      ["security.goods_handling", "D53", "D53", "review_decision"],
+      ["security.responsible_person", "D54", "D54", "review_decision"],
+      ["security.access_controls", "D55", "D55", "review_decision"],
+      ["security.incident_reporting", "H52", "H52", "review_decision"],
+      ["security.background_checks", "H53", "H53", "review_decision"],
+      ["security.certification", "H54", "H54", "review_decision"],
+      ["security.documented_policies", "H55", "H55", "review_decision"],
+      ["security.cctv", "J53", "J53", "review_decision"]
+    ]},
+    {"title": "Billing and collections", "sheet": "2-2", "entries": [
+      ["billing.contact_name", "E5", "E5:G5", "review_value"],
+      ["billing.contact_title", "E6", "E6:G6", "review_value"],
+      ["billing.invoice_email", "E7", "E7:G7", "review_value"],
+      ["billing.payment_complement_email", "E8", "E8:G8", "review_value"],
+      ["billing.receipt_hours", "E9", "E9:G9", "review_value"],
+      ["billing.landline", "D10", "D10", "review_decision"],
+      ["billing.mobile", "F10", "F10", "review_value"],
+      ["billing.requirements", "C12", "C12:G12", "review_decision"],
+      ["collections.contact_name", "J5", "J5:L5", "review_value"],
+      ["collections.contact_title", "J6", "J6:L6", "review_value"],
+      ["collections.email", "J7", "J7:L7", "review_value"],
+      ["collections.landline", "J8", "J8:L8", "review_decision"],
+      ["collections.mobile", "J9", "J9:L9", "review_value"],
+      ["collections.payment_requirements", "I12", "I12:L12", "review_decision"]
+    ]},
+    {"title": "Portal and invoice delivery", "sheet": "2-2", "entries": [
+      ["portal.exists", "D15", "D15:G15", "review_decision"],
+      ["portal.url", "D16", "D16:G16", "review_decision"],
+      ["portal.username", "D17", "D17:G17", "sensitive_hold"],
+      ["portal.password", "D18", "D18:G18", "sensitive_hold"],
+      ["portal.user_request_email", "D19", "D19:G19", "review_decision"],
+      ["portal.email", "D20", "D20:G20", "review_decision"],
+      ["billing.authorized_delivery", "D21", "D21:G21", "review_decision"],
+      ["billing.upload_deadline", "D22", "D22:G22", "review_decision"],
+      ["billing.other", "D23", "D23:G23", "review_decision"],
+      ["billing.special_requirements", "D24", "D24:G24", "review_decision"],
+      ["billing.special_requirements_detail", "D25", "D25:L26", "review_decision"]
+    ]},
+    {"title": "Mexican bank account", "sheet": "2-2", "entries": [
+      ["bank.name", "J15", "J15:L15", "review_value"],
+      ["bank.account_holder", "J16", "J16:L16", "review_value"],
+      ["bank.account", "J17", "J17:L17", "review_value"],
+      ["bank.clabe", "J18", "J18:L18", "review_value"],
+      ["bank.branch", "J19", "J19:L19", "review_value"],
+      ["bank.currency", "J20", "J20:L20", "preserve"],
+      ["bank.payment_reference_type", "J21", "J21:L21", "review_decision"],
+      ["bank.payment_reference", "J22", "J22:L22", "review_decision"]
+    ]},
+    {"title": "Declaration and signature", "sheet": "2-2", "entries": [
+      ["declaration.name", "C49", "C49:E49", "review_value"],
+      ["declaration.date", "I49", "I49:J49", "review_decision"],
+      ["declaration.signature", "C50", "C50:E50", "manual_signature"],
+      ["declaration.holder", "C51", "C51:E51", "review_decision"]
+    ]}
+  ],
+  "requirementsOutsideValueMapping": [
+    {"id": "credit_policy", "sheet": "2-2", "range": "B31:L42", "decision": "Explicit acceptance or exception, not an inferred signature."},
+    {"id": "credit_inquiry_and_truth_declaration", "sheet": "2-2", "range": "B44:L51", "decision": "Present the actual declaration to the signatory before acceptance."},
+    {"id": "email_package", "decision": "Two complete pages in PDF with requested wet-ink signature plus seven exact supporting documents; requires Sales review."},
+    {"id": "document_dates", "decision": "Preserve workbook and email requirements. SAT opinion and tax status: email maximum one month versus workbook three months; bank cover one month; address three months."}
+  ],
+  "unresolvedDesignDecisions": [
+    "Reference name anchors have no separate contact column. Review a company/contact display projection and its fit; do not silently drop contacts or map two values to one destination.",
+    "Fourth reference slot is optional relative to minimum three; an applicability decision is still needed for both pages at 100%.",
+    "Country is a locked blank in this exact source, although labelled as an input; current locked-cell protection must not be bypassed.",
+    "Drop-down/control selections and data-validation vocabularies require compatible serialization; a physical anchor alone does not approve a value.",
+    "This inventory must be bound to reviewed extraction/template/snapshot records before worker use. It contains no business values or runtime mapping decision identifiers."
+  ]
+}
