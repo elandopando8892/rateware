@@ -373,6 +373,22 @@ identidad/versión y verificación del archivo por el servidor, integración de
 esa evidencia en el gate y revisión del paquete corregido por Sales. No se
 aplicó al caso Salzillo, firmó, envió ni promovió conocimiento.
 
+Preview de este bloque: código `e0969ec`, deployment
+`dpl_C648QP6b3xMZ4opxP3QwAYdQX5Sj`, estado `READY`, target preview (`null`).
+Proyecto existente `prj_6mVnZ4DNVH3U2KCyQgyRMZDCJx8s`; sólo archivos estáticos.
+[Revisión sintética Sierra](https://osp-customer-setup-hfuvpt64m-elandopando8892s-projects.vercel.app/app/cases/11111111-1111-4111-8111-111111111115/review).
+La protección Vercel permanece activa. Se generó un enlace temporal de acceso;
+no se conserva su token en Git. El primer smoke sin sesión terminó en la
+protección de Vercel, y el HTTP 200 observado era login, no OSP. Tras obtener
+acceso temporal se repitió el smoke sobre cloud: seis campos, cambio de bytes
+invalidante, workflow bloqueado, cero peticiones externas desde la interacción,
+cero errores de página y móvil sin desbordamiento. No equivale a aceptación
+del documento Salzillo ni prueba autenticada del backend productivo.
+
+El CLI rechazó `--skip-domain` antes de desplegar porque esa bandera sólo sirve
+para producción. Se retiró únicamente esa bandera y se mantuvo el destino
+preview. No hubo promoción, migración, función nueva ni push de Git.
+
 ## Esfuerzo recomendado de Codex
 
 Estos son ajustes de razonamiento, no estimaciones de horas ni cambios del modelo

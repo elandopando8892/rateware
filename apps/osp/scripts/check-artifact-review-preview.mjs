@@ -10,6 +10,12 @@ await mkdir(evidence, { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  if (process.env.OSP_REVIEW_PREVIEW_ACCESS_URL) {
+    const access = new URL(process.env.OSP_REVIEW_PREVIEW_ACCESS_URL);
+    assert.equal(access.origin, origin);
+    assert.equal(access.searchParams.has('_vercel_share'), true);
+    await page.goto(access.href);
+  }
   const external = [], errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route('**/*', async (route) => {
