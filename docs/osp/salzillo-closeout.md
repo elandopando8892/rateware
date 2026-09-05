@@ -89,6 +89,44 @@ comprueba que sólo entonces se ejecuta la entrega del formulario.
 
 ## Pendientes para cerrar Salzillo
 
+### Puente de tablas al Excel original
+
+La siguiente continuación del Sprint 13 corrige una omisión del worker: su
+consulta sólo aceptaba valores JSON simples y no podía llevar tablas al original.
+Ahora resuelve los destinos explícitos del mapa asociado al snapshot de revisión:
+
+```json
+{"fieldKey":"references","rowIndex":0,"columnId":"email","sheet":"1-2","cell":"E10"}
+```
+
+`rowIndex` comienza en cero. Es un ejemplo sintético, no una coordenada aprobada
+de Salzillo. Los destinos simples existentes conservan su forma
+`canonicalFieldId` + `sheet` + `cell`. No se infieren destinos usando celdas
+desbloqueadas ni se escriben secciones internas del carrier automáticamente.
+
+- La consulta conserva destinos desconocidos para rechazarlos, en vez de
+  descartarlos mediante un `JOIN` o un filtro y generar un archivo abreviado.
+- Las tablas requeridas no pueden omitirse por completo; tampoco se permite un
+  mapa parcial de sus celdas obligatorias o provistas. Se validan los datos con
+  el mismo validador de formulario antes de reservar la generación.
+- Prueba de archivo: 12 valores sintéticos, dos hojas; se reabre el XLSX y se
+  comprueban las celdas, fórmulas, combinaciones, estilo, áreas de impresión y
+  catálogo oculto. El hash de los bytes originales permanece intacto.
+- Prueba de integración: se ejecutan las dos consultas nuevas/revisadas reales
+  en PGlite. Cinco escenarios incluyen mapa completo, destino desconocido,
+  tabla parcial, tabla omitida y huella distinta. Lease, reserva y descarga son
+  dobles de prueba; no se presenta como replay completo de RLS/Supabase.
+- Artefactos locales reproducibles con el test `reviewed-spreadsheet-targets.test.ts`
+  y argumento `--export-synthetic`: `tmp/osp-s13-original-targets/DEMO-original.xlsx`,
+  `DEMO-references-completed.xlsx` y `DEMO-receipt.json`. No contienen referencias
+  personales del usuario y no son un paquete aprobado para enviar.
+- Lint enfocado conserva la convención de imports versionados de pruebas del
+  repositorio (`--rules-exclude=no-import-prefix`); no se alteró la configuración global.
+
+Pendiente de producción: preparar y revisar el mapa concreto del Salzillo real,
+con sus datos faltantes resueltos. Este cambio no publica ese mapa, no modifica
+el expediente ni prueba PDF, firma autógrafa o cumplimiento total del carrier.
+
 | Resultado necesario | Pendiente concreto |
 | --- | --- |
 | Formulario original completo | Vincular todos los campos aplicables a valores comprobados o una exclusión razonada; no usar cantidad de celdas desbloqueadas como prueba de completitud. |
