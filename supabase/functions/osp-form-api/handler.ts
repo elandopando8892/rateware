@@ -2,6 +2,7 @@ import type { VerifiedWorkflowIdentity } from '../_shared/osp/workflow-authority
 import { jsonResponse, NO_CACHE_HEADERS, OspApiError, postCorsHeaders, safeErrorResponse } from '../osp-read-api/http.ts';
 import { surveyJsonToCanonical } from '../../../apps/osp/src/features/forms/surveyjs-canonical-adapter.ts';
 import type { FormStore } from './store.ts';
+import { AnswerMemoryEvidenceLinkInputSchema } from '../../../apps/osp/src/features/forms/answer-memory-evidence-contract.ts';
 
 const ORIGINS = new Set(['http://localhost:8791', 'https://osp.heymarksman.com']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -126,6 +127,15 @@ export function createFormApiHandler(options: FormApiHandlerOptions): (request: 
         return jsonResponse({ version: 1, data: await options.store.getAnswerMemoryEvidence(verified.identity.organization, row.case_id, row.candidate_id) }, 200, postCorsHeaders(allowed));
       }
       if (!canOperate(verified)) throw new OspApiError('FORBIDDEN');
+      if ((payload as { action?: unknown })?.action === 'link_answer_memory_evidence') {
+        const row = exact(payload, ['action', 'version', 'input']);
+        const parsed = AnswerMemoryEvidenceLinkInputSchema.safeParse(row.input);
+        if (row.version !== 1 || !parsed.success) throw new OspApiError('INVALID_REQUEST');
+        if (!options.store.linkAnswerMemoryEvidence) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+        const result = await options.store.linkAnswerMemoryEvidence({ ...parsed.data, organizationId: verified.identity.organization,
+          subject: verified.identity.subject, permission: verified.permissions.includes('osp:superuser') ? 'osp:superuser' : 'osp:operate' });
+        return jsonResponse({ version: 1, data: result }, 200, postCorsHeaders(allowed));
+      }
       if ((payload as { action?: unknown })?.action === 'review_answer_memory') {
         const row = exact(payload, ['action', 'version', 'case_id', 'candidate_id', 'answer_sha256', 'decision', 'reason', 'idempotency_key']);
         if (row.version !== 1 || typeof row.case_id !== 'string' || !UUID.test(row.case_id) || typeof row.candidate_id !== 'string' || !UUID.test(row.candidate_id)

@@ -1,6 +1,7 @@
 import type { AuthPort, BoundSession } from '../auth/auth-port';
 import { AnswerMemoryReviewInputSchema, AnswerMemoryReviewResponseSchema, type AnswerMemoryReviewInput, type AnswerMemoryReviewReceipt } from '../features/forms/answer-memory-contract';
 import { AnswerMemoryEvidenceResponseSchema, type AnswerMemoryEvidence } from '../features/forms/answer-memory-evidence-contract';
+import { AnswerMemoryEvidenceLinkInputSchema, AnswerMemoryEvidenceLinkResponseSchema, type AnswerMemoryEvidenceLinkInput, type AnswerMemoryEvidenceLinkReceipt } from '../features/forms/answer-memory-evidence-contract';
 import { createWorkflowClient, type WorkflowClient } from './workflow-client';
 import type { ZodType } from 'zod';
 import {
@@ -141,6 +142,7 @@ export interface OspClient extends OspReadClient, OspCorporateProfileClient, Osp
   getCaseFormWorkspace(caseId: string): Promise<CaseFormWorkspace>;
   reviewAnswerMemory?(input: AnswerMemoryReviewInput): Promise<AnswerMemoryReviewReceipt>;
   getAnswerMemoryEvidence?(caseId: string, candidateId: string): Promise<AnswerMemoryEvidence>;
+  linkAnswerMemoryEvidence?(input: AnswerMemoryEvidenceLinkInput): Promise<AnswerMemoryEvidenceLinkReceipt>;
   saveCaseFormDraft(input: SaveCaseFormDraftInput): Promise<CaseFormMutationReceipt>;
   acceptCaseFormMapping(input: AcceptCaseFormMappingInput): Promise<CaseFormMappingReviewReceipt>;
   correctCaseFormMapping(input: CorrectCaseFormMappingInput): Promise<CaseFormMappingCorrectionReceipt>;
@@ -685,6 +687,11 @@ export function createOspClient(options: ClientOptions): OspClient {
     getAnswerMemoryEvidence: async (caseId: string, candidateId: string) => {
       if (!UUID.test(caseId) || !UUID.test(candidateId)) throw new OspClientError('INVALID_REQUEST');
       return (await formRequest({ version: 1, action: 'get_answer_memory_evidence', case_id: caseId, candidate_id: candidateId }, AnswerMemoryEvidenceResponseSchema)).data;
+    },
+    linkAnswerMemoryEvidence: async (input: AnswerMemoryEvidenceLinkInput) => {
+      const parsed = AnswerMemoryEvidenceLinkInputSchema.safeParse(input);
+      if (!parsed.success) throw new OspClientError('INVALID_REQUEST');
+      return (await formRequest({ version: 1, action: 'link_answer_memory_evidence', input: parsed.data }, AnswerMemoryEvidenceLinkResponseSchema)).data;
     },
     saveCaseFormDraft: async (input: SaveCaseFormDraftInput) => {
       if (!OPAQUE.test(input.idempotencyKey) || !UUID.test(input.caseId) || !UUID.test(input.templateVersionId) || !(input.instanceId === null || UUID.test(input.instanceId)) || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 0 || input.expectedVersion > 2_147_483_647 || !FormValuesSchema.safeParse(input.values).success || (input.instanceId === null) !== (input.expectedVersion === 0)) throw new OspClientError('INVALID_REQUEST');

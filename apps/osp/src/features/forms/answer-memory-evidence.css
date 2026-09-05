@@ -6,4 +6,7 @@
 .answer-memory-evidence dd { margin: 0; overflow-wrap: anywhere; }
 .answer-memory-evidence button { max-width: 100%; white-space: normal; }
 .answer-memory-evidence button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.answer-memory-evidence textarea { display: block; box-sizing: border-box; width: 100%; min-height: 5rem; }
+.answer-memory-evidence label { display: block; margin: .75rem 0; }
+.answer-memory-evidence [role="status"] { overflow-wrap: anywhere; }
 @media (max-width: 600px) { .answer-memory-evidence dl { grid-template-columns: minmax(0, 1fr); } .answer-memory-evidence dd { margin-bottom: .5rem; } }

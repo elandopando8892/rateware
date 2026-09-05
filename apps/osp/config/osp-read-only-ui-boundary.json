@@ -36,7 +36,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/api/osp-client.ts",
-      "sha256": "7de5972b36d44d17fbbabdc13be95665b44cd4620f333adfc44654971dcecabf"
+      "sha256": "525c5eccdea7da1ce85f619d3579d1c268c6f92de137347a9f52719a2974e4b2"
     },
     {
       "kind": "production-ui",
@@ -171,27 +171,27 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/answer-memory-evidence-contract.ts",
-      "sha256": "168b6a69e60e450b271ef8308a365d6b47a3bd512c6433b8e5e869e25f2f5058"
+      "sha256": "0bcd73a61626dbbfb47d7ca0ee23f062bb4efd14619afd0e812c0564cb9fbdb3"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/answer-memory-evidence.css",
-      "sha256": "552d2753e11b43586e2919baa810bfe0cab1fc883bdea8a65bdf04c9f7520e77"
+      "sha256": "3be48f451e6601af3c0bb2a29194a719319ac919b38d15e79a3a68550382b839"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/AnswerMemoryEvidencePanel.tsx",
-      "sha256": "f05d80dab72df505dd751d019389f05e2a07e25acce616f16f7d4dff17ad8f8b"
+      "sha256": "f110861b4b7e9e8f10b577ea2b17e158dd49ff0134370a94c188dc09d98a9bf9"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/AnswerMemoryReviewPanel.tsx",
-      "sha256": "dd941c2634d347798839a57d994afe0df878bc4825081ff1cf3c6b0445b1207c"
+      "sha256": "fa5d22daf4cd7ca5e68334f36771abd7651f6d1b3eba790010dabfd2bb85a968"
     },
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/forms/CaseFormWorkspace.tsx",
-      "sha256": "350124475a756d1ea6a6efc0ffdf198905cc9e7983b4fc987ffe082bbf57613a"
+      "sha256": "f1c5faa4c3183690afb1f4f3dc34d5dad8c2e1994d6b9fd8fbbd445a2f63bd45"
     },
     {
       "kind": "production-ui",
@@ -286,7 +286,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/preview/preview-runtime.ts",
-      "sha256": "f0ac54b27d8d75e9e609921c364cc3dbd7dd3341643b3ea871147805c4beeade"
+      "sha256": "8614115f6230dd29fb932c8f05828124ff6b0841f7ec9015cca5f0eacd1fa758"
     },
     {
       "kind": "production-ui",

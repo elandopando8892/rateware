@@ -1,6 +1,6 @@
 import postgres from 'npm:postgres@3.4.7';
 import { readAnswerMemorySummary } from './answer-memory.ts';
-import { readAnswerMemoryEvidence } from './answer-memory-evidence.ts';
+import { readAnswerMemoryEvidence, linkAnswerMemoryEvidence, type LinkAnswerMemoryEvidenceInput } from './answer-memory-evidence.ts';
 import { readAnswerMemoryCandidates, reviewAnswerMemory, type ReviewAnswerMemoryInput } from './answer-memory-review.ts';
 
 import type { FormComponent, FormTemplateVersion } from '../../../apps/osp/src/features/forms/surveyjs-canonical-adapter.ts';
@@ -359,6 +359,9 @@ export function createPostgresFormStore(options: { databaseUrl: string; postgres
     },
     async getAnswerMemoryEvidence(organizationId: string, caseId: string, candidateId: string) {
       return await withOrganizationTransaction(sql, organizationId, (tx) => readAnswerMemoryEvidence(tx, organizationId, caseId, candidateId));
+    },
+    async linkAnswerMemoryEvidence(input: LinkAnswerMemoryEvidenceInput) {
+      return await withOrganizationTransaction(sql, input.organizationId, (tx) => linkAnswerMemoryEvidence(tx, input));
     },
     async saveCaseFormDraft(input: SaveCaseFormDraftInput) {
       return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {

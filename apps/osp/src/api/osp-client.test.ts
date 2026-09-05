@@ -61,6 +61,21 @@ it('evidence preflight uses verified-session context and refuses a write-capable
   await expect(invalid.client.getAnswerMemoryEvidence!(id, id)).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
 });
 
+it('links evidence with one exact request, no invented identity or automatic network retry', async () => {
+  const id='11111111-1111-4111-8111-111111111115';
+  const input={caseId:id,candidateId:id,reviewFieldId:id,factId:id,answerSha256:'a'.repeat(64),expectationSha256:'b'.repeat(64),action:'renew' as const,reason:'Verified evidence renewal.',idempotencyKey:'evidence:one',confirmed:true as const};
+  const receipt={receiptId:id,factId:id,action:'renew',replayed:false,externalEffects:false};
+  const h=harness([json({version:1,data:receipt})]);
+  await expect(h.client.linkAnswerMemoryEvidence!(input)).resolves.toEqual(receipt);
+  expect(h.fetch.mock.calls[0][0]).toBe('https://synthetic.supabase.co/functions/v1/osp-form-api');
+  expect(JSON.parse(String(h.fetch.mock.calls[0][1]?.body))).toEqual({version:1,action:'link_answer_memory_evidence',input});
+  const offline=harness([new TypeError('lost response')]);
+  await expect(offline.client.linkAnswerMemoryEvidence!(input)).rejects.toMatchObject({code:'NETWORK_UNAVAILABLE'});
+  expect(offline.fetch).toHaveBeenCalledOnce();
+  const invalid=harness([json({version:1,data:{...receipt,externalEffects:true}})]);
+  await expect(invalid.client.linkAnswerMemoryEvidence!(input)).rejects.toMatchObject({code:'INVALID_RESPONSE'});
+});
+
 it('forces exactly one bound-token refresh after 401', async () => {
   const h = harness([json({ error: { code: 'UNAUTHORIZED', incident_id: 'i1' } }, 401), json(pipeline)]);
   await expect(h.client.listOnboardingWorkspace()).resolves.toEqual(pipeline.data);

@@ -9,7 +9,7 @@ import { AnswerMemoryReviewPanel } from './AnswerMemoryReviewPanel';
 
 const FormRuntime = lazy(() => import('./FormRuntime').then((module) => ({ default: module.FormRuntime })));
 
-type CaseFormClient = Pick<OspClient, 'getCaseFormWorkspace' | 'saveCaseFormDraft' | 'acceptCaseFormMapping' | 'correctCaseFormMapping' | 'submitCaseFormForReview' | 'reviewAnswerMemory' | 'getAnswerMemoryEvidence'>;
+type CaseFormClient = Pick<OspClient, 'getCaseFormWorkspace' | 'saveCaseFormDraft' | 'acceptCaseFormMapping' | 'correctCaseFormMapping' | 'submitCaseFormForReview' | 'reviewAnswerMemory' | 'getAnswerMemoryEvidence' | 'linkAnswerMemoryEvidence'>;
 
 export function CaseFormWorkspace({ client, caseId }: { client: CaseFormClient; caseId: string }) {
   const navigate = useNavigate();
@@ -38,6 +38,7 @@ export function CaseFormWorkspace({ client, caseId }: { client: CaseFormClient; 
   }} />{query.data.answerMemoryCandidates ? <AnswerMemoryReviewPanel caseId={caseId} candidates={query.data.answerMemoryCandidates}
     allowed={query.data.capabilities.reviewAnswerMemory === true && !!client.reviewAnswerMemory}
     loadEvidence={client.getAnswerMemoryEvidence ? (candidateId) => client.getAnswerMemoryEvidence!(caseId, candidateId) : undefined}
+    onLinkEvidence={client.linkAnswerMemoryEvidence ? (input) => client.linkAnswerMemoryEvidence!(input) : undefined}
     onReview={async (input) => {
       if (!client.reviewAnswerMemory) throw new Error('MEMORY_REVIEW_UNAVAILABLE');
       const receipt = await client.reviewAnswerMemory(input);

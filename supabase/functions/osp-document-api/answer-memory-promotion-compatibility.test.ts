@@ -1,6 +1,10 @@
 import { PGlite } from "npm:@electric-sql/pglite@0.5.8";
 import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import { readAnswerMemoryEvidence } from "../osp-form-api/answer-memory-evidence.ts";
+import {
+  linkAnswerMemoryEvidence,
+  type LinkAnswerMemoryEvidenceInput,
+} from "../osp-form-api/answer-memory-evidence.ts";
 import type { SqlPort, SqlRow } from "../_shared/osp/database-context.ts";
 
 const org = "11111111-1111-4111-8111-111111111111";
@@ -59,12 +63,12 @@ Deno.test("existing fact promotion compatibility exposes batch scope and unchang
     await db.exec(`
       alter table osp_private.case_profile_bindings add column revision integer default 1;
       create table osp_private.case_form_instances(organization_id uuid,case_id uuid,id uuid,version integer,template_version_id uuid,values_json jsonb);
-      create table osp_private.case_answer_memory_candidates(id uuid,organization_id uuid,case_id uuid,source_instance_id uuid,source_instance_version integer,
+      create table osp_private.case_answer_memory_candidates(id uuid primary key,organization_id uuid,case_id uuid,source_instance_id uuid,source_instance_version integer,
         source_template_version_id uuid,field_key text,answer_value jsonb,canonical_field_id text,legal_entity_id uuid,binding_revision integer,answer_sha256 text);
-      create table osp_private.case_answer_memory_reviews(organization_id uuid,candidate_id uuid,decision text,answer_sha256 text);
+      create table osp_private.case_answer_memory_reviews(id uuid primary key default gen_random_uuid(),organization_id uuid,candidate_id uuid,decision text,answer_sha256 text);
       insert into osp_private.case_form_instances values('${org}','${caseId}','${caseId}',1,'${caseId}','{"phone":"+52 81 0000 0001"}');
       insert into osp_private.case_answer_memory_candidates values('${caseId}','${org}','${caseId}','${caseId}',1,'${caseId}','phone','"+52 81 0000 0001"','supplier.phone','${entity}',1,repeat('a',64));
-      insert into osp_private.case_answer_memory_reviews values('${org}','${caseId}','accepted',repeat('a',64));
+      insert into osp_private.case_answer_memory_reviews(organization_id,candidate_id,decision,answer_sha256) values('${org}','${caseId}','accepted',repeat('a',64));
     `);
     const tx = (async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const sql = strings.reduce(
@@ -89,6 +93,31 @@ Deno.test("existing fact promotion compatibility exposes batch scope and unchang
         await db.exec("reset role");
       }
     };
+    const bridgeSql = await Deno.readTextFile(
+      new URL(
+        "../../migrations/20260905110000_osp_answer_memory_evidence_links.sql",
+        import.meta.url,
+      ),
+    );
+    try {
+      await db.exec(bridgeSql);
+    } catch (error) {
+      const detail = error as {
+        message: string;
+        position?: string;
+        internalPosition?: string;
+        internalQuery?: string;
+      };
+      const position = Number(detail.position ?? detail.internalPosition);
+      throw new Error(
+        `${detail.message}; position=${position}; context=${
+          (detail.internalQuery ?? bridgeSql).slice(
+            Math.max(0, position - 160),
+            position + 160,
+          )
+        }`,
+      );
+    }
     await t.step(
       "preflight shows full document scope without promoting or granting reuse",
       async () => {
@@ -133,7 +162,9 @@ Deno.test("existing fact promotion compatibility exposes batch scope and unchang
       }
     };
     const load = async () =>
-      (await db.query(
+      (await db.query<
+        { field_key: string; value_json: unknown; evidence_id: string }
+      >(
         "select * from osp_private.load_xbf_customer_setup_candidates_for_case($1,$2)",
         [org, caseId],
       )).rows;
@@ -230,6 +261,191 @@ Deno.test("existing fact promotion compatibility exposes batch scope and unchang
         await preflight();
         await preflight();
         assertEquals(await counts(), before);
+      },
+    );
+    const linkCount = async () =>
+      (await db.query<{ count: number }>(
+        "select count(*)::int as count from osp_private.answer_memory_evidence_links",
+      )).rows[0].count;
+    const option = (await preflight()).options[0];
+    const request: LinkAnswerMemoryEvidenceInput = {
+      organizationId: org,
+      subject: "verified-operator",
+      permission: "osp:operate",
+      caseId,
+      candidateId: caseId,
+      answerSha256: "a".repeat(64),
+      reviewFieldId: option.reviewFieldId,
+      factId: option.currentFactId!,
+      expectationSha256: option.expectationSha256!,
+      action: "renew",
+      reason: "Confirmo el nuevo respaldo documental.",
+      idempotencyKey: "renew-test",
+      confirmed: true,
+    };
+    const invoke = async (input = request, change?: string) => {
+      await db.exec("begin");
+      try {
+        if (change) await db.exec(change);
+        await db.exec("set local role osp_workflow_api");
+        const result = await linkAnswerMemoryEvidence(tx, input);
+        await db.exec("commit");
+        return result;
+      } catch (error) {
+        await db.exec("rollback");
+        throw error;
+      }
+    };
+    await t.step(
+      "renewal rejects changed expectations and every stale or unauthorized source without a receipt",
+      async () => {
+        for (
+          const change of [
+            "update osp_private.case_answer_memory_reviews set decision='rejected'",
+            "update osp_private.case_form_instances set version=2",
+            "update osp_private.case_profile_bindings set revision=2",
+            "update public.legal_entities set status='draft'",
+            "update public.provider_legal_entity_facts set sensitivity='restricted'",
+            "update public.provider_legal_entity_facts set fact_status='withdrawn'",
+            "update public.provider_legal_entity_facts set fact_value='\"different\"'",
+            `update public.provider_entity_document_reviews set revision=2 where id='${newReviewId}'`,
+            `update public.provider_entity_document_review_fields set field_status='withheld' where review_id='${newReviewId}'`,
+            `update public.provider_legal_entity_document_assets set expiration_date=current_date-1 where id='${newReviewId}'`,
+            `update public.provider_legal_entity_document_assets set lifecycle_status='withdrawn' where id='${reviewId}'`,
+            `update public.provider_legal_entity_document_assets set expiration_date=current_date+40 where id='${newReviewId}'`,
+            `select set_config('osp.organization_id','${newReviewId}',false)`,
+          ]
+        ) await assertRejects(() => invoke(request, change));
+        await assertRejects(
+          () => invoke({ ...request, expectationSha256: "f".repeat(64) }),
+          Error,
+          "FORM_MEMORY_EVIDENCE_CHANGED",
+        );
+        await assertRejects(
+          () => invoke({ ...request, permission: "osp:read" as "osp:operate" }),
+          Error,
+          "FORM_MEMORY_FORBIDDEN",
+        );
+        await assertRejects(
+          () => invoke({ ...request, action: "link" }),
+          Error,
+          "FORM_MEMORY_EVIDENCE_CHANGED",
+        );
+        assertEquals(await linkCount(), 0);
+      },
+    );
+    await t.step(
+      "explicit renewal restores only the confirmed fact and leaves original sources and other facts untouched",
+      async () => {
+        const before = await db.query(
+          "select * from public.provider_legal_entity_facts order by id",
+        );
+        const result = await invoke();
+        assertEquals(result.action, "renew");
+        assertEquals(result.externalEffects, false);
+        assertEquals(result.replayed, false);
+        assertEquals(await linkCount(), 1);
+        assertEquals((await load()).map((row) => row.field_key), [
+          "supplier.phone",
+        ]);
+        assertEquals((await preflight()).options[0].state, "already_reusable");
+        assertEquals(
+          (await db.query(
+            "select * from public.provider_legal_entity_facts order by id",
+          )).rows,
+          before.rows,
+        );
+        const replay = await invoke();
+        assertEquals(replay.receiptId, result.receiptId);
+        assertEquals(replay.replayed, true);
+        await assertRejects(
+          () => invoke({ ...request, reason: "Otra intención documental." }),
+          Error,
+          "IDEMPOTENCY_CONFLICT",
+        );
+        assertEquals(await linkCount(), 1);
+        assertEquals(await counts(), { facts: 2, promotions: 2 });
+      },
+    );
+    await t.step(
+      "a renewal receipt is not evergreen permission; reader rechecks evidence, dates, scope and original source",
+      async () => {
+        for (
+          const change of [
+            "update public.provider_legal_entity_facts set fact_status='withdrawn'",
+            "update public.provider_legal_entity_facts set sensitivity='restricted'",
+            "update public.legal_entities set status='draft'",
+            `update public.provider_entity_document_reviews set revision=2 where id='${newReviewId}'`,
+            `update public.provider_entity_document_reviews set review_status='rejected' where id='${newReviewId}'`,
+            `update public.provider_legal_entity_document_assets set expiration_date=current_date-1 where id='${newReviewId}'`,
+            `update public.provider_legal_entity_document_assets set expiration_date=current_date+99 where id='${newReviewId}'`,
+            `update public.provider_legal_entity_document_assets set lifecycle_status='withdrawn' where id='${reviewId}'`,
+            `update public.provider_legal_entity_document_assets set verification_status='rejected' where id='${newReviewId}'`,
+            `update public.provider_entity_document_review_fields set sensitivity='restricted' where review_id='${newReviewId}'`,
+            `update public.provider_legal_entity_fact_promotions set promotion_status='failed' where review_id='${newReviewId}'`,
+            `select set_config('osp.organization_id','${newReviewId}',false)`,
+          ]
+        ) {
+          await db.exec("begin");
+          try {
+            await db.exec(change);
+            assertEquals(await load(), [], change);
+          } finally {
+            await db.exec("rollback");
+          }
+        }
+        // Other cases bound to this entity receive the validated fact, not answers
+        // from the originating case. Another entity receives nothing.
+        await db.exec(
+          `insert into osp_private.case_profile_bindings values('${org}','${newReviewId}','${entity}',1)`,
+        );
+        assertEquals(
+          (await db.query(
+            "select * from osp_private.load_xbf_customer_setup_candidates_for_case($1,$2)",
+            [org, newReviewId],
+          )).rows.length,
+          1,
+        );
+        await db.exec(
+          `update osp_private.case_profile_bindings set legal_entity_id='${newReviewId}' where case_id='${newReviewId}'`,
+        );
+        assertEquals(
+          (await db.query(
+            "select * from osp_private.load_xbf_customer_setup_candidates_for_case($1,$2)",
+            [org, newReviewId],
+          )).rows.length,
+          0,
+        );
+      },
+    );
+    await t.step(
+      "link an already reusable fact without another renewal or fact write, with no direct receipt mutation grants",
+      async () => {
+        const fresh = (await preflight()).options[0];
+        const result = await invoke({
+          ...request,
+          action: "link",
+          expectationSha256: fresh.expectationSha256!,
+          idempotencyKey: "link-test",
+        });
+        assertEquals(result.action, "link");
+        assertEquals(await linkCount(), 2);
+        for (
+          const role of [
+            "osp_workflow_api",
+            "osp_worker",
+            "authenticated",
+            "anon",
+            "service_role",
+          ]
+        ) {
+          await db.exec(`set role ${role}`);
+          await assertRejects(() =>
+            db.exec("delete from osp_private.answer_memory_evidence_links")
+          );
+          await db.exec("reset role");
+        }
+        assertEquals(await linkCount(), 2);
       },
     );
   } finally {

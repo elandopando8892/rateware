@@ -1,5 +1,6 @@
 import type { OspClient } from '../api/osp-client';
 import { AnswerMemoryReviewInputSchema, type AnswerMemoryReviewReceipt } from '../features/forms/answer-memory-contract';
+import { AnswerMemoryEvidenceLinkInputSchema, type AnswerMemoryEvidenceLinkReceipt } from '../features/forms/answer-memory-evidence-contract';
 import type { ApprovalCommunicationsWorkspace, CaseDetail, CaseFormWorkspace, CaseSummary, ClarificationReview, CorporateProfileReadModel, DocumentVersion, FormTemplateCatalog } from '../api/contracts';
 import type { AuthPort, BoundSession } from '../auth/auth-port';
 import { surveyJsonToCanonical } from '../features/forms/surveyjs-canonical-adapter';
@@ -783,6 +784,8 @@ function createPreviewClient(): OspClient {
     capabilities: { saveDraft: true, acceptMapping: true, correctMapping: false, submitForReview: false, reviewAnswerMemory: true },
   };
   const answerReviewReceipts = new Map<string, { intent: string; receipt: AnswerMemoryReviewReceipt }>();
+  const answerEvidenceReceipts = new Map<string, { intent: string; receipt: AnswerMemoryEvidenceLinkReceipt }>();
+  let answerEvidenceRenewed = false;
   const client: OspClient = {
     listOnboardingWorkspace: async () => ({ requests_total: '26', documents_pending: '7', under_review: '5', ready_for_approval: '3' }),
     getGmailStatus: async () => ({
@@ -1031,9 +1034,28 @@ function createPreviewClient(): OspClient {
       if (!candidate || candidate.decision !== 'accepted' || candidate.stale || !candidate.legalEntityId || candidate.sourceVersion !== caseFormWorkspace.instance?.version) return { options: [], readOnly: true, externalEffects: false };
       const base = { reviewRevision: 2, fieldCode: 'legal_name', reviewedValue: candidate.value, currentFactId: '92111111-1111-4111-8111-111111111111', currentValue: candidate.value, evidenceExpiresOn: '2099-12-31', documentFieldCount: 3 };
       return { options: [
-        { ...base, reviewId: '93111111-1111-4111-8111-111111111111', reviewFieldId: '94111111-1111-4111-8111-111111111111', documentAssetId: '95111111-1111-4111-8111-111111111111', state: 'renewal_required' },
+        { ...base, reviewId: '93111111-1111-4111-8111-111111111111', reviewFieldId: '94111111-1111-4111-8111-111111111111', documentAssetId: '95111111-1111-4111-8111-111111111111', state: answerEvidenceRenewed ? 'already_reusable' : 'renewal_required', expectationSha256: (answerEvidenceRenewed ? 'c' : 'b').repeat(64) },
         { ...base, reviewId: '93111111-1111-4111-8111-111111111112', reviewFieldId: '94111111-1111-4111-8111-111111111112', documentAssetId: '95111111-1111-4111-8111-111111111112', state: 'document_promotion_required' },
       ], readOnly: true, externalEffects: false };
+    },
+    linkAnswerMemoryEvidence: async (input) => {
+      const row = AnswerMemoryEvidenceLinkInputSchema.parse(input);
+      const prior = answerEvidenceReceipts.get(row.idempotencyKey);
+      const intent = JSON.stringify(row);
+      if (prior) {
+        if (prior.intent !== intent) throw new Error('IDEMPOTENCY_CONFLICT');
+        return { ...prior.receipt, replayed: true };
+      }
+      const candidate = caseFormWorkspace.answerMemoryCandidates?.find((item) => item.id === row.candidateId);
+      if (row.caseId !== caseFormCaseId || !candidate || candidate.decision !== 'accepted' || candidate.stale || !candidate.legalEntityId
+        || candidate.answerSha256 !== row.answerSha256 || candidate.sourceVersion !== caseFormWorkspace.instance?.version
+        || row.factId !== '92111111-1111-4111-8111-111111111111' || row.reviewFieldId !== '94111111-1111-4111-8111-111111111111'
+        || row.expectationSha256 !== (answerEvidenceRenewed ? 'c' : 'b').repeat(64) || row.action !== (answerEvidenceRenewed ? 'link' : 'renew')) throw new Error('FORM_MEMORY_EVIDENCE_CHANGED');
+      if ([...answerEvidenceReceipts.values()].some((item) => item.receipt.action === row.action)) throw new Error('FORM_MEMORY_EVIDENCE_CONFLICT');
+      const receipt = { receiptId: crypto.randomUUID(), factId: row.factId, action: row.action, replayed: false, externalEffects: false as const };
+      answerEvidenceReceipts.set(row.idempotencyKey, { intent, receipt });
+      if (row.action === 'renew') answerEvidenceRenewed = true;
+      return receipt;
     },
     reviewAnswerMemory: async (input) => {
       const row = AnswerMemoryReviewInputSchema.parse(input);

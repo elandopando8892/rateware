@@ -12,7 +12,7 @@ const osp = inventory.surfaces.filter((entry) =>
   entry.canonicalId.startsWith('rpc.osp_private.') ||
   entry.canonicalId.startsWith('rpc.public.osp_custom_access_token_hook(')
 );
-if (osp.length !== 162) throw new Error(`Expected 162 OSP surfaces, discovered ${osp.length}.`);
+if (osp.length !== 166) throw new Error(`Expected 166 OSP surfaces, discovered ${osp.length}.`);
 
 function resource(entry) {
   if (entry.canonicalId.startsWith('rpc.')) return 'osp-workflow-database';
@@ -22,7 +22,7 @@ function resource(entry) {
 function isRead(entry) {
   return /^(?:get_|list_|preview_|normalize_|request_knowledge_candidates$|request_knowledge_reuse_policy$|provider_gmail_status$)/.test(entry.actionName) ||
     /(?:^|\.)(?:assert_|valid_|validate_|canonical_|compute_|load_|resolve_|request_knowledge_reuse_policy$|xlsx_column_number|sha256_)/.test(entry.actionName) ||
-    /(?:_hash(?:es)?|_sha256|_is_|_are_)/.test(entry.actionName);
+    /(?:_hash(?:es)?|_sha256|_is_|_are_|^answer_memory_evidence_fingerprint$)/.test(entry.actionName);
 }
 
 const definitions = osp.map((actual) => {
@@ -64,7 +64,7 @@ const definitions = osp.map((actual) => {
 });
 
 const serialized = JSON.stringify(definitions, null, 2);
-const output = `/**\n * Generated static OSP Customer Setup action-contract extension.\n * Regenerate only after deliberate review of every discovered OSP surface.\n */\nconst contractVersion = '1.3.0';\nconst DEFINITIONS = ${serialized};\n\nconst surfaces = DEFINITIONS.map(({ surface }) => ({ ...surface, contractVersion }));\n\nexport const OSP_CUSTOMER_SETUP_ACTION_CONTRACT_EXTENSION = {\n  contractVersion,\n  expectedCountsDelta: { governable: 162, edge: 52, postgres: 110, ratewareApi: 0 },\n  reviewedMetadataFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.metadataFingerprint])),\n  reviewedAuthorizationFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.authorizationFingerprint])),\n  surfaces,\n};\n`;
+const output = `/**\n * Generated static OSP Customer Setup action-contract extension.\n * Regenerate only after deliberate review of every discovered OSP surface.\n */\nconst contractVersion = '1.3.0';\nconst DEFINITIONS = ${serialized};\n\nconst surfaces = DEFINITIONS.map(({ surface }) => ({ ...surface, contractVersion }));\n\nexport const OSP_CUSTOMER_SETUP_ACTION_CONTRACT_EXTENSION = {\n  contractVersion,\n  expectedCountsDelta: { governable: 166, edge: 53, postgres: 113, ratewareApi: 0 },\n  reviewedMetadataFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.metadataFingerprint])),\n  reviewedAuthorizationFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.authorizationFingerprint])),\n  surfaces,\n};\n`;
 const outputIndex = process.argv.indexOf('--output');
 const checkIndex = process.argv.indexOf('--check');
 if (checkIndex >= 0) {

@@ -145,6 +145,7 @@ export type CaseFormSubmissionReceipt = {
 };
 
 export interface FormStore {
+  linkAnswerMemoryEvidence?(input: import('./answer-memory-evidence.ts').LinkAnswerMemoryEvidenceInput): Promise<import('../../../apps/osp/src/features/forms/answer-memory-evidence-contract.ts').AnswerMemoryEvidenceLinkReceipt>;
   getAnswerMemoryEvidence?(organizationId: string, caseId: string, candidateId: string): Promise<import('../../../apps/osp/src/features/forms/answer-memory-evidence-contract.ts').AnswerMemoryEvidence>;
   reviewAnswerMemory?(input: ReviewAnswerMemoryInput): Promise<AnswerMemoryReviewReceipt>;
   list(organizationId: string): Promise<readonly FormTemplateCatalogItem[]>;

@@ -1267,7 +1267,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "90ec08938959c7a1f2e5fd855240d0e8bd6903e5a69d4c9d7b18e25c9ab2cc2d",
-    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
+    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
   },
   {
     "surface": {
@@ -1320,7 +1320,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "1b07949b275dad11e71ae1b77e4539e80dd465b4c578754adf9a9c2b502530bd",
-    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
+    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
   },
   {
     "surface": {
@@ -1373,7 +1373,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "26ae6790d24cc807fb9694687f6ded013114c5ddabab3e00194a16f3fa585b9d",
-    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
+    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
   },
   {
     "surface": {
@@ -1426,7 +1426,60 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "5a31c1a77f496088a175ef1f543477b4afa2058931f093060d4bad5f60e4c420",
-    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
+    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
+  },
+  {
+    "surface": {
+      "canonicalId": "edge.osp-form-api.link_answer_memory_evidence",
+      "actionName": "link_answer_memory_evidence",
+      "sourceKind": "edge-method",
+      "sourceFile": "supabase/functions/osp-form-api/index.ts",
+      "handler": "Deno.serve",
+      "endpoint": "POST /functions/v1/osp-form-api action=link_answer_memory_evidence",
+      "businessModule": "OSP Customer Setup",
+      "operation": "execute",
+      "resource": "osp-form-api",
+      "access": "write",
+      "exposure": "human",
+      "sensitivity": "critical",
+      "tenantRelevance": "tenant-scoped",
+      "proposedPermissionKey": "osp.form.api.link_answer_memory_evidence.write",
+      "functionalOwner": "XBF Operations",
+      "decisionStatus": "explicitly_allowed",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "a75bc28939de407cabd82cc400f80cb0a97a1a87252a1309209c19f47c1f81c6",
+      "analysisCoverage": "shared-observed",
+      "coverageSignals": [
+        "shared_dependency_observed",
+        "external_dependency"
+      ],
+      "rpcSignature": null,
+      "dependencyFiles": [
+        "apps/osp/src/features/forms/answer-memory-contract.ts",
+        "apps/osp/src/features/forms/answer-memory-evidence-contract.ts",
+        "apps/osp/src/features/forms/form-completion.ts",
+        "apps/osp/src/features/forms/surveyjs-canonical-adapter.ts",
+        "supabase/functions/_shared/osp/database-context.ts",
+        "supabase/functions/_shared/osp/workflow-authority.ts",
+        "supabase/functions/osp-form-api/answer-memory-evidence.ts",
+        "supabase/functions/osp-form-api/answer-memory-review.ts",
+        "supabase/functions/osp-form-api/answer-memory.ts",
+        "supabase/functions/osp-form-api/composition.ts",
+        "supabase/functions/osp-form-api/handler.ts",
+        "supabase/functions/osp-form-api/index.ts",
+        "supabase/functions/osp-form-api/postgres-store.ts",
+        "supabase/functions/osp-form-api/store.ts",
+        "supabase/functions/osp-read-api/auth-policy.ts",
+        "supabase/functions/osp-read-api/auth-runtime.ts",
+        "supabase/functions/osp-read-api/http.ts",
+        "supabase/functions/osp-read-api/kinde-jwt.ts",
+        "supabase/functions/osp-read-api/supabase-jwt.ts"
+      ],
+      "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
+    },
+    "metadataFingerprint": "8db12b7f7745b246fb66a05ebb4d94c4a3735bab7750636dce5376ee9864828e",
+    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
   },
   {
     "surface": {
@@ -1479,7 +1532,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "93e3e82102c8d874a87d4ed09dd275bfe11387db29ff6ae3128c73bd603a78e3",
-    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
+    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
   },
   {
     "surface": {
@@ -1532,7 +1585,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "00bb1a802d9066535037d8131bc9ba8c5ad19b11db5706118aa47b9c0d775ec4",
-    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
+    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
   },
   {
     "surface": {
@@ -1585,7 +1638,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "ed647bdc05d0756764748af8c8954d6ad7732b7f82788332f71a00c305f6183f",
-    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
+    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
   },
   {
     "surface": {
@@ -1638,7 +1691,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "48cdb3519c5cc0c84ac5c4cc06e90ff39690328e78495e9888646a6cea8fce9b",
-    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
+    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
   },
   {
     "surface": {
@@ -1691,7 +1744,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "9f5967c5c4d87420a0fc4e931223e4ee3fc547862bbfcb879cb4df0712f666eb",
-    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
+    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
   },
   {
     "surface": {
@@ -1744,7 +1797,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "f10c50a12a3a0e8197370177af25b985cd3862a5e7883530942231f64a831e5e",
-    "authorizationFingerprint": "fa1774328c3ba774e6ea3ee7b39a0c3352fef433fb3dbca265abb5c173e02850"
+    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
   },
   {
     "surface": {
@@ -2971,6 +3024,40 @@ const DEFINITIONS = [
     },
     "metadataFingerprint": "c9f505ced9c29aded963ed2bd283d4206a578f830314b0a2ab2a7c56c7f6cd02",
     "authorizationFingerprint": "a4554c81bb7ab662b504f4067f8bc96cde108d9286c32068202c8919b2853579"
+  },
+  {
+    "surface": {
+      "canonicalId": "rpc.osp_private.answer_memory_evidence_fingerprint(uuid,uuid,uuid,uuid)",
+      "actionName": "osp_private.answer_memory_evidence_fingerprint",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20260905110000_osp_answer_memory_evidence_links.sql",
+      "handler": "osp_private.answer_memory_evidence_fingerprint(uuid,uuid,uuid,uuid)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface osp_private.answer_memory_evidence_fingerprint(uuid,uuid,uuid,uuid)",
+      "businessModule": "OSP Customer Setup",
+      "operation": "execute",
+      "resource": "osp-workflow-database",
+      "access": "write",
+      "exposure": "internal/service-role",
+      "sensitivity": "critical",
+      "tenantRelevance": "record-derived",
+      "proposedPermissionKey": "osp.workflow.database.osp_private.answer_memory_evidence_fingerprint.write",
+      "functionalOwner": "XBF Operations",
+      "decisionStatus": "internal_only",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "cceb50722a202e5cf2ac552d46b4b3a3b6d52fb8044cd7157c67efdef93ad6db",
+      "analysisCoverage": "direct",
+      "coverageSignals": [
+        "direct"
+      ],
+      "rpcSignature": "uuid,uuid,uuid,uuid",
+      "dependencyFiles": [
+        "supabase/migrations/20260905110000_osp_answer_memory_evidence_links.sql"
+      ],
+      "notes": "Internal OSP runtime or database surface; no direct browser authority."
+    },
+    "metadataFingerprint": "c6ff68b448ec331da8a709ae59595587028c62c3efc23f097f862c73935e1059",
+    "authorizationFingerprint": "cceb50722a202e5cf2ac552d46b4b3a3b6d52fb8044cd7157c67efdef93ad6db"
   },
   {
     "surface": {
@@ -4538,6 +4625,74 @@ const DEFINITIONS = [
   },
   {
     "surface": {
+      "canonicalId": "rpc.osp_private.link_answer_memory_evidence(uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,text)",
+      "actionName": "osp_private.link_answer_memory_evidence",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20260905110000_osp_answer_memory_evidence_links.sql",
+      "handler": "osp_private.link_answer_memory_evidence(uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,text)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface osp_private.link_answer_memory_evidence(uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,text)",
+      "businessModule": "OSP Customer Setup",
+      "operation": "execute",
+      "resource": "osp-workflow-database",
+      "access": "write",
+      "exposure": "internal/service-role",
+      "sensitivity": "critical",
+      "tenantRelevance": "record-derived",
+      "proposedPermissionKey": "osp.workflow.database.osp_private.link_answer_memory_evidence.write",
+      "functionalOwner": "XBF Operations",
+      "decisionStatus": "internal_only",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "416ad6902410dfc695e0eb394ab725cd24f8b23b34386e52987b3617c77a82fb",
+      "analysisCoverage": "direct",
+      "coverageSignals": [
+        "direct"
+      ],
+      "rpcSignature": "uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,text",
+      "dependencyFiles": [
+        "supabase/migrations/20260905110000_osp_answer_memory_evidence_links.sql"
+      ],
+      "notes": "Internal OSP runtime or database surface; no direct browser authority."
+    },
+    "metadataFingerprint": "9b9c288f9e6d52fe2916d492ae614436fd305ab6c974f770813885b420c07f72",
+    "authorizationFingerprint": "416ad6902410dfc695e0eb394ab725cd24f8b23b34386e52987b3617c77a82fb"
+  },
+  {
+    "surface": {
+      "canonicalId": "rpc.osp_private.load_answer_memory_evidence_intents(uuid,uuid,uuid)",
+      "actionName": "osp_private.load_answer_memory_evidence_intents",
+      "sourceKind": "postgres-function",
+      "sourceFile": "supabase/migrations/20260905110000_osp_answer_memory_evidence_links.sql",
+      "handler": "osp_private.load_answer_memory_evidence_intents(uuid,uuid,uuid)",
+      "endpoint": "PostgreSQL function / PostgREST RPC surface osp_private.load_answer_memory_evidence_intents(uuid,uuid,uuid)",
+      "businessModule": "OSP Customer Setup",
+      "operation": "read",
+      "resource": "osp-workflow-database",
+      "access": "read",
+      "exposure": "internal/service-role",
+      "sensitivity": "high",
+      "tenantRelevance": "record-derived",
+      "proposedPermissionKey": "osp.workflow.database.osp_private.load_answer_memory_evidence_intents.read",
+      "functionalOwner": "XBF Operations",
+      "decisionStatus": "internal_only",
+      "lifecycle": "active",
+      "replacementAction": null,
+      "sourceFingerprint": "7ccda5c59e0eb401b9521c3e35b048e75830a9342a450a5a0faf2f0baa6aabed",
+      "analysisCoverage": "direct",
+      "coverageSignals": [
+        "direct"
+      ],
+      "rpcSignature": "uuid,uuid,uuid",
+      "dependencyFiles": [
+        "supabase/migrations/20260905110000_osp_answer_memory_evidence_links.sql"
+      ],
+      "notes": "Internal OSP runtime or database surface; no direct browser authority."
+    },
+    "metadataFingerprint": "e0e05f8e9a29c9d02bfe16da3e376fc59876b3be25eed58009862ba2d54f96ec",
+    "authorizationFingerprint": "7ccda5c59e0eb401b9521c3e35b048e75830a9342a450a5a0faf2f0baa6aabed"
+  },
+  {
+    "surface": {
       "canonicalId": "rpc.osp_private.load_answer_memory_evidence(uuid,uuid,uuid)",
       "actionName": "osp_private.load_answer_memory_evidence",
       "sourceKind": "postgres-function",
@@ -4575,7 +4730,7 @@ const DEFINITIONS = [
       "canonicalId": "rpc.osp_private.load_xbf_customer_setup_candidates_for_case(uuid,uuid)",
       "actionName": "osp_private.load_xbf_customer_setup_candidates_for_case",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260905050000_osp_approved_profile_memory_reuse.sql",
+      "sourceFile": "supabase/migrations/20260905110000_osp_answer_memory_evidence_links.sql",
       "handler": "osp_private.load_xbf_customer_setup_candidates_for_case(uuid,uuid)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface osp_private.load_xbf_customer_setup_candidates_for_case(uuid,uuid)",
       "businessModule": "OSP Customer Setup",
@@ -4590,19 +4745,19 @@ const DEFINITIONS = [
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "b45d746e51706269fb5a8ad35cf1eec1dab2286ac9009c12b054e0eecbe5301c",
+      "sourceFingerprint": "39e0967cc9c609c96fd83ce204dc70d39193da4d62299713be0a42ac0470a046",
       "analysisCoverage": "direct",
       "coverageSignals": [
         "direct"
       ],
       "rpcSignature": "uuid,uuid",
       "dependencyFiles": [
-        "supabase/migrations/20260905050000_osp_approved_profile_memory_reuse.sql"
+        "supabase/migrations/20260905110000_osp_answer_memory_evidence_links.sql"
       ],
       "notes": "Internal OSP runtime or database surface; no direct browser authority."
     },
-    "metadataFingerprint": "9954f8d8fa4e5871a0e8452f6f51b96f7119f5aded03b3b1b1ad3af271f26a6c",
-    "authorizationFingerprint": "b45d746e51706269fb5a8ad35cf1eec1dab2286ac9009c12b054e0eecbe5301c"
+    "metadataFingerprint": "4312d7aeb152ec10024ac16693fb608d251b99678b7ad17e3182e7d17409b358",
+    "authorizationFingerprint": "39e0967cc9c609c96fd83ce204dc70d39193da4d62299713be0a42ac0470a046"
   },
   {
     "surface": {
@@ -6684,7 +6839,7 @@ const surfaces = DEFINITIONS.map(({ surface }) => ({ ...surface, contractVersion
 
 export const OSP_CUSTOMER_SETUP_ACTION_CONTRACT_EXTENSION = {
   contractVersion,
-  expectedCountsDelta: { governable: 162, edge: 52, postgres: 110, ratewareApi: 0 },
+  expectedCountsDelta: { governable: 166, edge: 53, postgres: 113, ratewareApi: 0 },
   reviewedMetadataFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.metadataFingerprint])),
   reviewedAuthorizationFingerprints: Object.fromEntries(DEFINITIONS.map((entry) => [entry.surface.canonicalId, entry.authorizationFingerprint])),
   surfaces,

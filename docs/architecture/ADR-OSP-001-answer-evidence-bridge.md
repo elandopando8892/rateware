@@ -132,9 +132,9 @@ La renovación no debe reactivar hechos retirados, fuentes rechazadas, restricci
 de divulgación ni una entidad inactiva. La validación de antigüedad específica de
 cada carrier permanece en el Request Contract, aunque la memoria general sea válida.
 
-Esta extensión del esquema/lector compartido requiere aprobar este diseño antes
-de implementarla. No se ha añadido aún una tabla, un comando de renovación, un
-endpoint ni una ruta alternativa que salte la validación existente.
+Esta extensión fue aprobada para local/preview. La implementación del recibo,
+comando y lector renovado se documenta en `../osp/answer-evidence-link-delivery.md`;
+no implica activación en el Supabase compartido ni autoridad de envío.
 
 ## Options Considered
 
@@ -172,6 +172,8 @@ declaraciones sin documento, referencias comerciales o banca en este bloque.
    `../osp/answer-evidence-preflight-delivery.md`.
 5. [ ] Implementar enlace/renovación atómicos con pruebas de conflicto, vigencia,
    permisos y concurrencia; verificar el catálogo existente y el aislamiento Rateware.
+   Enlace, renovación y lectura implementados y probados con SQL embebido;
+   falta el canary de contención entre sesiones PostgreSQL independientes.
 6. [ ] Activación productiva únicamente con autorización de alcance/SHA/migraciones
    exactas; sin enviar un correo final por aprobar memoria.
 
