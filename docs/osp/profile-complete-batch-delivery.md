@@ -126,3 +126,29 @@ No borrar evidencia. Si se activara el SQL nuevo, no basta volver a una API viej
 su comando directo quedó revocado. Mantener publicaciones deshabilitadas y lectura
 compatible hasta un forward-fix o una restauración de permisos expresamente revisada.
 No restaurar automáticamente la publicación sin comparación.
+
+## Preview cloud verificada
+
+- Fuente: `dc31dec7e7316ec5aaeccb349dfeecff5d5b420d`.
+- Deployment: `dpl_eeDrKcQeJubUUpjeLtEhDCNreBQL`.
+- Proyecto existente: `prj_6mVnZ4DNVH3U2KCyQgyRMZDCJx8s`.
+- Vercel confirmó `READY`, target `null`, aliases vacíos, `gitCommitSha` y
+  `ospSourceSha` iguales a la fuente; scope `synthetic-complete-batch-preview`.
+- [Perfil en preview](https://osp-customer-setup-p16vcw55o-elandopando8892s-projects.vercel.app/app/profile).
+
+Se enviaron sólo 33 archivos estáticos más configuración de rutas (4,566,687 bytes
+en el output). No se publicaron ZIP, bases de prueba, SQL, .env ni documentos reales.
+El árbol rastreado estaba limpio; `gitDirty=1` corresponde a `tmp/` sin rastrear.
+Se conservó la protección SSO de Vercel y se usó acceso temporal para probarla.
+
+Smoke cloud del perfil: cinco campos/disposiciones, un recibo sintético de lote,
+confirmación reiniciada al recargar, cero solicitudes externas o escrituras de
+red/persistentes, cero errores y cero overflow en 390×844. Inspección visual cloud
+del botón móvil, exclusiones y antes/después. Capturas y `proof.json` en
+`tmp/osp-s13-complete-batch-evidence/cloud/`.
+
+Regresión cloud del formulario también aprobada: dos comparaciones, una aceptación,
+un descarte obsoleto y una renovación sintética; dos fuentes externas existentes
+bloqueadas, ninguna escritura o solicitud externa permitida, sin errores/overflow.
+Esta evidencia no es autenticación Google real ni validación del backend productivo.
+El panel de la app aceptó la apertura del enlace en estado `queued`.
