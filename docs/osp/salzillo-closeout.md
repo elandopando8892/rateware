@@ -69,6 +69,24 @@ que un rechazo no cree instancia ni avance el caso. No sustituye un replay en
 el Supabase compartido. La prueba de interfaz completa tres correos ficticios y
 comprueba que sólo entonces se ejecuta la entrega del formulario.
 
+### Preview del bloque de referencias
+
+- Código: `182c5b4`. Proyecto existente `osp-customer-setup`.
+- Deployment: `dpl_JECJPE8vKEZzkz5Muwd5VG1jKmfv`, estado `READY`, preview.
+- [Formulario sintético](https://osp-customer-setup-1pnidaqea-elandopando8892s-projects.vercel.app/app/cases/11111111-1111-4111-8111-111111111115/form).
+- Sólo build estático precompilado; no funciones, migraciones ni backend nuevos.
+- SHA-256 del HTML desplegado:
+  `78cd07dee6d284e1b134827bbd81625a1d84f36e9b1149288548f3c5e6fd98f1`.
+- Verificación en navegador: tres correos faltantes visibles, porcentaje 75%;
+  al introducir correos `example.test` y salir del campo, porcentaje 100%.
+  La revisión de evidencia sigue separada. No se guardó ni entregó el borrador.
+- Vista móvil 390×844: referencias apiladas con etiquetas y valores legibles.
+  En escritorio la tabla conserva desplazamiento horizontal. Se reutilizan
+  logo, paleta y estilos existentes; no se declara una auditoría integral de marca.
+- Se restableció el tamaño del navegador y se recargó el ejemplo: los cambios
+  de prueba sólo existían en memoria. No se alteró Salzillo productivo.
+- El contrato de acciones continúa aprobado: 157/157 superficies.
+
 ## Pendientes para cerrar Salzillo
 
 | Resultado necesario | Pendiente concreto |
