@@ -178,6 +178,63 @@ Pendiente: revisión semántica del mapa, decisiones y datos faltantes, enlace a
 la extracción/plantilla/snapshot revisados, llenado del original y prueba del
 PDF. No se modificó el caso Salzillo productivo, ni se firmó o reenvió correo.
 
+### Empresa y contacto sobre un mismo destino revisado
+
+La continuación del Sprint 13 permite una proyección explícita de varias
+columnas de texto de la misma fila sobre una sola celda, reutilizando el
+resolver y generador existentes. Ejemplo de forma del mapa (no publicado):
+
+```json
+{"fieldKey":"references","rowIndex":0,"columnIds":["company","contact"],"separator":" — ","sheet":"1-2","cell":"C43"}
+```
+
+Se admiten entre dos y ocho columnas distintas de texto, en el orden revisado,
+y separador ` — ` o salto de línea. El target normal de una columna no cambia.
+No se infieren combinaciones, eliminan partes vacías, truncan valores largos ni
+mezclan filas. Cada componente seleccionado, aunque sea opcional en la tabla,
+debe existir y tener texto; los datos restantes requeridos o provistos deben
+conservar sus destinos. Correo y teléfono mantienen sus columnas tipadas y su
+validación, no entran a esta concatenación de texto.
+
+El recibo identifica `references.row1.joined.company.contact`; el mapa revisado
+conserva los selectores, su orden y separador. La consulta productiva existente
+transporta ese target sin cambios: siguen aplicando los enlaces de tenant,
+extracción, decisión, versión y snapshot. No se publicó ningún mapa real.
+
+Pruebas nuevas y ampliadas:
+
+- Combinación completa de tres referencias en nueve celdas: se conservan las
+  doce piezas de información. Orden, separadores, duplicados, campos inexistentes,
+  componentes vacíos/opcionales, columnas tipadas, texto excesivo y cobertura
+  parcial se comprueban sin datos personales.
+- Generación y reapertura XLSX sobre áreas combinadas con las coordenadas de
+  referencia inspeccionadas; preservación de estilos, altura, área de impresión
+  y sección interna. La fixture es sintética, no una copia de Salzillo.
+- Variante XLSM sintética: el archivo reabre, mantiene los valores escapados y
+  todas las partes ZIP ajenas a la hoja editada idénticas. Los bytes de VBA e
+  impresión son centinelas inertes, no macros ejecutadas ni prueba de impresión.
+- SQL real del worker en PGlite: ocho escenarios, incluidos selectores combinados,
+  selector inválido y mapa sin revisión aceptada. Los rechazos no reservan ni
+  descargan archivos; infraestructura restante simulada, no smoke en Supabase.
+
+La primera prueba de reapertura XLSM falló con XML inválido. La guía de depuración
+permitió aislar el parser regex de celdas: una etiqueta vacía `<c .../>` se tomaba
+como apertura y consumía hasta el cierre de una celda posterior. Se corrigieron
+la sustitución y el conteo de ocupación para reconocer primero el autocierre.
+La regresión comprueba también el valor y la fórmula vecinos y el listado de
+celdas realmente vacías. No se atribuyen fallos productivos históricos a esta
+causa sin inspeccionar sus artefactos.
+
+Validación enfocada: 18 pruebas Deno y ocho escenarios SQL aprobados; lint de
+los archivos afectados y contrato de acciones 157/157. La guía de pruebas
+organizó validación, transformación, integración SQL y reapertura de artefactos.
+No se instaló dependencia ni servicio nuevo.
+
+Pendiente: elegir y revisar la proyección real y su ajuste visual en el original
+Salzillo. Una cadena correctamente persistida no prueba que se vea completa al
+imprimir. Faltan valores reales, aplicabilidad, evidencia vigente, PDF y revisión
+de Sales. Sin push, despliegue, migración, firma, correo o cambio de caso real.
+
 | Resultado necesario | Pendiente concreto |
 | --- | --- |
 | Formulario original completo | Vincular todos los campos aplicables a valores comprobados o una exclusión razonada; no usar cantidad de celdas desbloqueadas como prueba de completitud. |

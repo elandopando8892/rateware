@@ -36,6 +36,7 @@ Deno.test("runtime source SQL resolves reviewed tables without dropping invalid 
     const sha = "a".repeat(64);
     const references = ["Alpha", "Beta", "Gamma"].map((company) => ({
       company,
+      contact: `Contact ${company}`,
       email: `${company}@example.test`,
     }));
     const scalar = {
@@ -46,12 +47,12 @@ Deno.test("runtime source SQL resolves reviewed tables without dropping invalid 
     const targets = [
       scalar,
       ...references.flatMap((_row, rowIndex) =>
-        ["company", "email"].map((columnId, col) => ({
+        ["company", "contact", "email"].map((columnId, col) => ({
           fieldKey: "references",
           rowIndex,
           columnId,
           sheet: "2-2",
-          cell: `${col ? "C" : "B"}${10 + rowIndex}`,
+          cell: `${String.fromCharCode(66 + col)}${10 + rowIndex}`,
         }))
       ),
     ];
@@ -137,6 +138,11 @@ Deno.test("runtime source SQL resolves reviewed tables without dropping invalid 
           label: "Company",
           valueType: "text",
           required: true,
+        }, {
+          id: "contact",
+          label: "Contact",
+          valueType: "text",
+          required: true,
         }, { id: "email", label: "Email", valueType: "email", required: true }],
       }),
     ]);
@@ -191,7 +197,7 @@ Deno.test("runtime source SQL resolves reviewed tables without dropping invalid 
         if (
           prepared.kind !== "ready" || prepared.input.kind !== "xlsx"
         ) throw Error("UNEXPECTED_RESULT");
-        assertEquals(prepared.input.mappings.length, 7);
+        assertEquals(prepared.input.mappings.length, 10);
         assertEquals(
           prepared.input.mappings.find((item) =>
             item.canonicalFieldId === "references.row3.email"
@@ -212,6 +218,66 @@ Deno.test("runtime source SQL resolves reviewed tables without dropping invalid 
       assertEquals(downloads, 0);
       assertEquals(reservations, 0);
     };
+    const projectedTargets = [
+      scalar,
+      ...references.flatMap((_row, rowIndex) => [{
+        fieldKey: "references",
+        rowIndex,
+        columnIds: ["company", "contact"],
+        separator: " — ",
+        sheet: "2-2",
+        cell: `B${10 + rowIndex}`,
+      }, {
+        fieldKey: "references",
+        rowIndex,
+        columnId: "email",
+        sheet: "2-2",
+        cell: `D${10 + rowIndex}`,
+      }]),
+    ];
+    await t.step(
+      "SQL passes explicit joined selectors to the resolver without losing contacts",
+      async () => {
+        await db.query(
+          "update osp_private.supplier_form_mappings set mapping_json=$1",
+          [
+            JSON.stringify({ artifactTargets: projectedTargets }),
+          ],
+        );
+        const prepared = await store.prepare(input);
+        if (prepared.kind !== "ready" || prepared.input.kind !== "xlsx") {
+          throw Error("UNEXPECTED_RESULT");
+        }
+        assertEquals(prepared.input.mappings.length, 7);
+        assertEquals(
+          prepared.input.mappings.find((item) =>
+            item.canonicalFieldId === "references.row3.joined.company.contact"
+          )?.value,
+          "Gamma — Contact Gamma",
+        );
+      },
+    );
+    await t.step(
+      "invalid joined selector fails before reservation or source download",
+      () =>
+        blocked([
+          scalar,
+          { ...projectedTargets[1], columnIds: ["company", "missing"] },
+          ...projectedTargets.slice(2),
+        ], "ARTIFACT_MAPPING_INVALID"),
+    );
+    await t.step(
+      "joined mapping still requires accepted or corrected review authority",
+      async () => {
+        await db.query(
+          "update osp_private.supplier_form_mappings set status='suggested'",
+        );
+        await blocked(projectedTargets, "SUPPLIER_PACKAGE_INPUT_INVALID");
+        await db.query(
+          "update osp_private.supplier_form_mappings set status='accepted'",
+        );
+      },
+    );
     await t.step(
       "unknown target is retained and rejected instead of silently filtered",
       () =>

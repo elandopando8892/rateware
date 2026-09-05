@@ -46,14 +46,32 @@ export function resolveReviewedSpreadsheetTargets(
     let value: unknown = row.value;
     let canonicalFieldId: string;
     if (field.definition.kind === "repeating_table") {
-      exact(target, ["fieldKey", "rowIndex", "columnId", "sheet", "cell"]);
+      const tableDefinition = field.definition;
+      const joined = Object.hasOwn(target, "columnIds");
+      exact(
+        target,
+        joined
+          ? ["fieldKey", "rowIndex", "columnIds", "separator", "sheet", "cell"]
+          : ["fieldKey", "rowIndex", "columnId", "sheet", "cell"],
+      );
+      const selectedColumns = joined ? target.columnIds : [target.columnId];
+      if (
+        !Array.isArray(selectedColumns) ||
+        selectedColumns.length < (joined ? 2 : 1) ||
+        selectedColumns.length > 8 ||
+        new Set(selectedColumns).size !== selectedColumns.length ||
+        selectedColumns.some((id) =>
+          typeof id !== "string" ||
+          !tableDefinition.columns.some((column) =>
+            column.id === id &&
+            (!joined || column.valueType === "text")
+          )
+        ) ||
+        joined && target.separator !== " — " && target.separator !== "\n"
+      ) throw new Error("ARTIFACT_MAPPING_INVALID");
       if (
         target.fieldKey !== field.id ||
         !Number.isSafeInteger(target.rowIndex) || Number(target.rowIndex) < 0 ||
-        typeof target.columnId !== "string" ||
-        !field.definition.columns.some((column) =>
-          column.id === target.columnId
-        ) ||
         !Array.isArray(value) || Number(target.rowIndex) >= value.length
       ) throw new Error("ARTIFACT_MAPPING_INVALID");
       if (
@@ -79,11 +97,25 @@ export function resolveReviewedSpreadsheetTargets(
         });
         tables.set(field.id, coverage);
       }
-      coverage.mapped.add(`${target.rowIndex}:${target.columnId}`);
-      value = record(value[Number(target.rowIndex)])[target.columnId];
-      canonicalFieldId = `${field.id}.row${
-        Number(target.rowIndex) + 1
-      }.${target.columnId}`;
+      const entry = record(value[Number(target.rowIndex)]);
+      if (joined) {
+        // No inference, fallback, truncation or dropped optional components: the
+        // reviewed target explicitly selects the ordered source columns and separator.
+        const parts = selectedColumns.map((id) => entry[id]);
+        if (parts.some((part) => typeof part !== "string" || !part.trim())) {
+          throw new Error("ARTIFACT_TABLE_INCOMPLETE");
+        }
+        parts.forEach(validateArtifactValue);
+        value = parts.join(String(target.separator));
+      } else {
+        value = entry[selectedColumns[0]];
+      }
+      selectedColumns.forEach((id) =>
+        coverage!.mapped.add(`${target.rowIndex}:${id}`)
+      );
+      canonicalFieldId = `${field.id}.row${Number(target.rowIndex) + 1}.${
+        joined ? `joined.${selectedColumns.join(".")}` : selectedColumns[0]
+      }`;
     } else {
       exact(target, ["canonicalFieldId", "sheet", "cell"]);
       if (

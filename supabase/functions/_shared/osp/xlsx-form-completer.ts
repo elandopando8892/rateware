@@ -195,13 +195,14 @@ function patchCellXml(xml: string, mapping: XlsxArtifactMapping): string {
     throw new Error("ARTIFACT_MAPPING_INVALID");
   }
   const matcher = new RegExp(
-    `<c\\b([^>]*\\br="${mapping.cell}"[^>]*)>([\\s\\S]*?)<\\/c>|<c\\b([^>]*\\br="${mapping.cell}"[^>]*)\\/>`,
+    // A self-closing blank must end here, never consume a later cell's </c>.
+    `<c\\b([^>]*\\br="${mapping.cell}"[^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/c>)`,
   );
   const match = matcher.exec(xml);
   if (!match || /<f\b/.test(match[2] ?? "")) {
     throw new Error("ARTIFACT_MAPPING_INVALID");
   }
-  const attributes = (match[1] ?? match[3]).replace(/\s+t="[^"]*"/g, "");
+  const attributes = match[1].replace(/\s+t="[^"]*"/g, "");
   const safe = macroCellValue(mapping.value);
   return `${
     xml.slice(0, match.index)
@@ -223,7 +224,7 @@ function macroCoverage(
   for (const sheet of input.sheets.filter((item) => item.visible)) {
     for (
       const match of sheet.xml.matchAll(
-        /<c\b([^>]*\br="([A-Z]{1,3}[1-9][0-9]*)"[^>]*)(?:\/>|>([\s\S]*?)<\/c>)/g,
+        /<c\b([^>]*\br="([A-Z]{1,3}[1-9][0-9]*)"[^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g,
       )
     ) {
       const style = /\bs="(\d+)"/.exec(match[1]);

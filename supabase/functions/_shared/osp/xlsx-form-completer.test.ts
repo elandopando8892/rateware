@@ -217,7 +217,8 @@ Deno.test("XLSM completer patches OOXML without stripping VBA or printer setting
   );
   zip.file(
     "xl/worksheets/sheet1.xml",
-    '<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1"><v>1</v></c><c r="B1" s="1"/><c r="C1" s="1"/></row></sheetData></worksheet>',
+    // Regression: an empty B1 followed by a populated C1 must not consume C1.
+    '<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1"><v>1</v></c><c r="B1" s="1"/><c r="C1" s="1"><v>73</v></c><c r="D1" s="1"/><c r="E1"><f>2+2</f><v>4</v></c></row></sheetData></worksheet>',
   );
   const vba = new Uint8Array([1, 3, 3, 7, 9]);
   const printer = new Uint8Array([9, 7, 3, 1]);
@@ -258,13 +259,16 @@ Deno.test("XLSM completer patches OOXML without stripping VBA or printer setting
   );
   assertEquals(completed.receipt.formCoverage, {
     visiblePageCount: 1,
-    writableFieldCount: 2,
-    completedWritableFieldCount: 1,
-    completionPercent: 50,
-    blankWritableTargets: ["1-2!C1"],
+    writableFieldCount: 3,
+    completedWritableFieldCount: 2,
+    completionPercent: 66.67,
+    blankWritableTargets: ["1-2!D1"],
     macroPreserved: true,
     printerSettingsPreserved: true,
   });
   const sheet = await output.file("xl/worksheets/sheet1.xml")?.async("text");
   assertEquals(sheet?.includes("XBF SISTEMAS LOGISTICOS"), true);
+  assertEquals(sheet?.includes('<c r="C1" s="1"><v>73</v></c>'), true);
+  assertEquals(sheet?.includes('<c r="D1" s="1"/>'), true);
+  assertEquals(sheet?.includes('<c r="E1"><f>2+2</f><v>4</v></c>'), true);
 });
