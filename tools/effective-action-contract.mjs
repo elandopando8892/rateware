@@ -33,7 +33,10 @@ const legacyAuthorizationOverrides = Object.fromEntries([
 // The Rateware API handler factory and Carrier List Templates imports change the
 // shared authorization envelope for every action hosted by rateware-api. This is
 // a static reviewed fingerprint; it is not derived from source at validation time.
-const ratewareApiEnvelope = '0efdf3cd406cd5d03481c26204e40aa9592ae97f23f9cb2f9ddd1c639efce5f5';
+// P3 implementation-ready concurrency guard adds a reviewed local dependency
+// to the shared rateware-api authorization envelope without changing tenant or
+// permission semantics.
+const ratewareApiEnvelope = '5aabd3ac9b5217b539bce429b366d2b472884bbc0a9bf5defa34d796a6d0025a';
 const ratewareApiAuthorizationOverrides = Object.fromEntries([
   ...BASE_ACTION_CONTRACT.surfaces,
   ...carrierTemplateExtension.surfaces,
@@ -81,7 +84,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-oauth-callback.': '42e3f4a12c47a5a625a170ddea2114af427443b47fe549b26cf9669044e0a922',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '69ec235aa42433e8cb965824a8957aff79d73fa6fce07949c70b553865b04230',
-  'edge.rateware-api.': '8d7d65c14bc6f5ce736237869f8279c7ba9c1dd36e7634fac7870bbf7e7c38df',
+  'edge.rateware-api.': '5aabd3ac9b5217b539bce429b366d2b472884bbc0a9bf5defa34d796a6d0025a',
   'edge.rfx-bid-api.': '4d6aab31957e1d8fb3fa539280a6a6e1c02d0cb1af74ce42aa09505f73c32ea2',
   'edge.shipper-directory-api.': '2ed2be9625112a914b7be5b5bc14df77f417257d2644dcdd089e0dc3a22d7d7b',
   'edge.shipper-profile-api.': '83cb7dff313890a43cbd6b0e12faa58c7beaf720d8288c186536f9e44676b12a',
