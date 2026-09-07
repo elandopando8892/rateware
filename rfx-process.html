@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-procurement.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="rfx-process">
     <div class="rw-app" data-platform55-app>
@@ -21,7 +22,7 @@
           </form>
         </header>
 
-        <main class="rfx-process-layout rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="process-readiness">
+        <main class="rfx-process-layout rw-procurement-page p55-v3-page p55-v3-page--rfx-process" data-platform55-page-content data-platform55-procurement-state="process-readiness" data-p3v3-route="rfx-process">
           <header class="rw-operate-heading" data-platform55-page-header>
             <div>
               <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Source · Carrier CRM · RFx Process</p>
@@ -30,6 +31,13 @@
             </div>
             <button id="new-rfx-project" class="page-primary-action" type="button">New RFx Project</button>
           </header>
+          <section class="p55-v3-context-banner" data-p3v3-boundary="rfx-process" aria-label="RFx process operating boundary">
+            <span class="p55-v3-context-mark" aria-hidden="true">02</span>
+            <div>
+              <strong>RFx lifecycle workspace</strong>
+              <p>Move from demand to reviewed implementation handoff with project context visible at every step. Status changes remain governed by the existing confirmation rules.</p>
+            </div>
+          </section>
           <section class="rfx-process-list-panel rfx-process-directory">
             <div class="split-heading compact">
               <div>

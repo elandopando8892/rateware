@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "sprint": "P3-V3",
+  "verdict": "LOCAL-GO",
+  "release_credit": "withheld",
+  "product_candidate_sha": "08ef68a63b5a16c9aa4a4e5c61816ec78fc2d52d",
+  "product_candidate_tree": "e737711b2859e0947dfbd0591c3e2d65311ffa47",
+  "product_base_sha": "59580828dc8bf8c26d6af82b8d5675f18806cb84",
+  "source_paths": [
+    "vendors.html",
+    "rfx-events.html",
+    "rfx-process.html",
+    "ratebook.html",
+    "outreach.html",
+    "src/platform55-visual-parity.css"
+  ],
+  "source_blobs": {
+    "vendors.html": "b6ec5fd8b52eba30e36dff6e9aa8ce4b447e92a0",
+    "rfx-events.html": "5eb4853ea737d862cf29c47367bcc3bfa42275c3",
+    "rfx-process.html": "f254affe2854aa47ed6286335aec8ab7e79b605f",
+    "ratebook.html": "d74142d873fcf46c3bc9a2d5235982ebb9ca725b",
+    "outreach.html": "b006e17b0e942d71b56cf49ddac640aec19111dd",
+    "src/platform55-visual-parity.css": "a491441fd29d04d4406c977bb65dc9420680664a"
+  },
+  "record_sha256": "c691ee1e04fd04d51b78eb15db1e8fc706543d22384bf92711b38b6bc4424921"
+}

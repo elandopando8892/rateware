@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-procurement.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body class="app-shell-page" data-platform55-shell="tenant" data-platform55-page="ratebook">
     <div class="rw-app" data-platform55-app>
@@ -21,7 +22,7 @@
           </form>
         </header>
 
-      <main class="page-frame ratebook-workspace rw-main rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="ratebook-review">
+      <main class="page-frame ratebook-workspace rw-main rw-procurement-page p55-v3-page p55-v3-page--ratebook" data-platform55-page-content data-platform55-procurement-state="ratebook-review" data-p3v3-route="ratebook">
         <header class="page-header" data-platform55-page-header>
           <div>
             <p class="eyebrow">RFx Route Books</p>
@@ -32,6 +33,14 @@
             <button class="button button-secondary" id="refresh-ratebooks" type="button">Refresh</button>
           </div>
         </header>
+
+        <section class="p55-v3-context-banner" data-p3v3-boundary="ratebook" aria-label="Ratebook operating boundary">
+          <span class="p55-v3-context-mark" aria-hidden="true">04</span>
+          <div>
+            <strong>Ratebook review workspace</strong>
+            <p>Trace every route book back to its RFx source before sharing a proposal. Distribution creates drafts and links; approval remains explicit.</p>
+          </div>
+        </section>
 
         <section class="ratebook-toolbar" aria-label="Ratebook filters">
           <label class="ratebook-filter-field ratebook-search-field">
