@@ -135,3 +135,21 @@ Regresión sintética adicional:
 El cambio es sólo de presentación y cálculo determinista del bloqueo visible;
 no altera el manifiesto persistido, no resuelve decisiones, no promueve
 conocimiento y no cambia el contrato de firma o envío.
+
+## Incremento ejecutado — cola humana alineada con el mismo freno
+
+La cola de `AdaptiveReviewWorkbench` reutiliza ahora la identidad normalizada
+de los bloqueos. El primer índice original se conserva como `decisionId`, por
+lo que una revisión persistida no cambia de referencia al retirar una
+duplicación posterior. La cola sólo colapsa la misma condición textual para el
+mismo campo; una condición distinta del mismo campo permanece visible y exige
+su propia resolución humana.
+
+Regresión sintética adicional:
+
+- `AdaptiveReviewWorkbench.test.ts` y `RequestManifestPanel.test.tsx`: 12/12
+  pruebas pasan con Node 24.19.0.
+- ESLint enfocado, TypeScript (`tsc --noEmit`) y `git diff --check` pasan.
+
+El incremento mantiene el modo human-approved: no marca decisiones como
+resueltas, no crea registros y no habilita firma, Sales, correo o webhook.

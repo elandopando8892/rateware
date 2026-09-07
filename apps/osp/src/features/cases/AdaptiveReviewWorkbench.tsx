@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 
 import type { CaseDetail, RequestManifestReadModel, RequestManifestReviewReadModel } from '../../api/contracts';
+import { manifestDecisionKey } from './manifest-blockers';
 
 type ProfileWorkspace = CaseDetail['profile_workspace'];
 type DecisionOutcome = 'answered' | 'external' | 'not_applicable';
@@ -21,13 +22,19 @@ const stageCopy = [
   ['04', 'Prepare', 'Assemble an internal package draft.'],
 ] as const;
 
-function decisionSeeds(manifest: RequestManifestReadModel): readonly DecisionSeed[] {
-  const clarifiedFieldIds = new Set(manifest.clarificationQuestions.map((item) => item.fieldId));
-  return [
-    ...manifest.clarificationQuestions.map((item, index) => ({ decisionId: `clarification:${index}`, kind: 'clarification' as const, fieldId: item.fieldId, prompt: item.question, evidenceIds: item.evidenceIds })),
-    ...manifest.contradictions.map((item, index) => ({ decisionId: `contradiction:${index}`, kind: 'contradiction' as const, fieldId: null, prompt: item.text, evidenceIds: item.evidenceIds })),
-    ...manifest.missingInformation.map((item, index) => ({ item, index })).filter(({ item }) => !clarifiedFieldIds.has(item.fieldId)).map(({ item, index }) => ({ decisionId: `missing:${index}`, kind: 'missing' as const, fieldId: item.fieldId, prompt: item.description, evidenceIds: item.evidenceIds })),
-  ];
+export function decisionSeeds(manifest: RequestManifestReadModel): readonly DecisionSeed[] {
+  const seen = new Set<string>();
+  const seeds: DecisionSeed[] = [];
+  const append = (seed: DecisionSeed) => {
+    const key = manifestDecisionKey(seed.kind, seed.fieldId, seed.prompt);
+    if (seen.has(key)) return;
+    seen.add(key);
+    seeds.push(seed);
+  };
+  manifest.clarificationQuestions.forEach((item, index) => append({ decisionId: `clarification:${index}`, kind: 'clarification', fieldId: item.fieldId, prompt: item.question, evidenceIds: item.evidenceIds }));
+  manifest.contradictions.forEach((item, index) => append({ decisionId: `contradiction:${index}`, kind: 'contradiction', fieldId: null, prompt: item.text, evidenceIds: item.evidenceIds }));
+  manifest.missingInformation.forEach((item, index) => append({ decisionId: `missing:${index}`, kind: 'missing', fieldId: item.fieldId, prompt: item.description, evidenceIds: item.evidenceIds }));
+  return seeds;
 }
 
 function stageState(index: number, reviewResolved: boolean, profile: ProfileWorkspace, openDecisionCount: number) {

@@ -13,6 +13,15 @@ function normalizeText(value: string) {
   return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+export function manifestBlockerKey(kind: ManifestBlockerKind, fieldId: string | null, text: string) {
+  return `${kind}:${fieldId ?? ''}:${normalizeText(text)}`;
+}
+
+export function manifestDecisionKey(kind: ManifestBlockerKind, fieldId: string | null, text: string) {
+  const scope = kind === 'contradiction' ? 'contradiction' : `field:${fieldId ?? ''}`;
+  return `${scope}:${normalizeText(text)}`;
+}
+
 /**
  * Returns one entry per distinct evidence issue without hiding different
  * constraints for the same field. Exact duplicates retain the union of their
@@ -26,7 +35,7 @@ export function manifestBlockers(manifest: RequestManifestReadModel): readonly M
   ];
   const grouped = new Map<string, ManifestBlocker>();
   for (const candidate of candidates) {
-    const key = `${candidate.kind}:${candidate.fieldId ?? ''}:${normalizeText(candidate.text)}`;
+    const key = manifestBlockerKey(candidate.kind, candidate.fieldId, candidate.text);
     const previous = grouped.get(key);
     if (!previous) {
       grouped.set(key, candidate);
