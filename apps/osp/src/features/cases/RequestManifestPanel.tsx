@@ -43,7 +43,7 @@ export function RequestManifestPanel({
     );
   }
 
-  const unresolved = manifest.missingInformation.length + manifest.contradictions.length;
+  const unresolved = manifest.missingInformation.length + manifest.clarificationQuestions.length + manifest.contradictions.length;
   const readinessTone = manifest.readiness.status === 'ready_for_prefill' ? 'ready' : manifest.readiness.status === 'needs_clarification' ? 'warning' : 'blocked';
   return (
     <section className="panel request-manifest" aria-labelledby="request-manifest-title">

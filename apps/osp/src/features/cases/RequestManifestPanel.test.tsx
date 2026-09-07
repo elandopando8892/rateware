@@ -1,5 +1,5 @@
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import type { RequestManifestReadModel } from '../../api/contracts';
 import { RequestManifestPanel } from './RequestManifestPanel';
@@ -35,6 +35,8 @@ const manifest: RequestManifestReadModel = {
 };
 
 describe('RequestManifestPanel', () => {
+  afterEach(() => cleanup());
+
   it('shows the carrier request, mapped fields and governed blocker without an action control', () => {
     render(<RequestManifestPanel manifest={manifest} />);
 
@@ -67,6 +69,18 @@ describe('RequestManifestPanel', () => {
     const blockers = (missingRow as HTMLElement).closest('section');
     expect(blockers).not.toBeNull();
     expect(within(blockers as HTMLElement).getByRole('heading', { name: /resolve before package assembly/i })).toBeInTheDocument();
+  });
+
+  it('counts an open clarification as a blocker even without another missing item', () => {
+    render(<RequestManifestPanel manifest={{
+      ...manifest,
+      missingInformation: [],
+      clarificationQuestions: [{ fieldId: 'trade.references.3.email', question: 'Provide the third reference email.', evidenceIds: ['xlsx:A2'] }],
+    }} />);
+
+    const readiness = document.querySelector('.manifest-readiness');
+    expect(readiness).not.toBeNull();
+    expect(within(readiness as HTMLElement).getByText('1 evidence issue must be resolved before signature or delivery.')).toBeInTheDocument();
   });
 
   it('fails visibly closed when no request manifest exists', () => {
