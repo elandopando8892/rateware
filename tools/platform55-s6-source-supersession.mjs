@@ -18,6 +18,10 @@ import {
   loadP3V4SourceSupersession,
   validateP3V4SourceSupersession,
 } from "./platform55-p3v4-source-supersession.mjs";
+import {
+  loadP3V5SourceSupersession,
+  validateP3V5SourceSupersession,
+} from "./platform55-p3v5-source-supersession.mjs";
 
 const SHA1 = /^[0-9a-f]{40}$/;
 
@@ -110,12 +114,15 @@ export function validateP2S6SourceGitState(rootDir, record = loadP2S6SourceSuper
 }
 
 export function loadPlatform55SourceSupersessions(rootDir = process.cwd()) {
+  let p3v5 = [];
+  try { p3v5 = [loadP3V5SourceSupersession(rootDir)]; } catch { /* P3-V5 is optional until its candidate record is written. */ }
   return Object.freeze([
     loadP2S6SourceSupersession(rootDir),
     loadP3V1SourceSupersession(rootDir),
     loadP3V2SourceSupersession(rootDir),
     loadP3V3SourceSupersession(rootDir),
     loadP3V4SourceSupersession(rootDir),
+    ...p3v5,
   ]);
 }
 
@@ -135,6 +142,7 @@ export function validateHistoricalSourceParity({
     else if (record?.sprint === "P3-V2") validateP3V2SourceSupersession(record);
     else if (record?.sprint === "P3-V3") validateP3V3SourceSupersession(record);
     else if (record?.sprint === "P3-V4") validateP3V4SourceSupersession(record);
+    else if (record?.sprint === "P3-V5") validateP3V5SourceSupersession(record);
     else throw new Error("unknown source supersession contract");
   }
   if (

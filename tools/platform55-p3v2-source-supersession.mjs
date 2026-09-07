@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadP3V4SourceSupersession } from "./platform55-p3v4-source-supersession.mjs";
+import { loadP3V5SourceSupersession } from "./platform55-p3v5-source-supersession.mjs";
 
 const SHA1 = /^[0-9a-f]{40}$/;
 
@@ -73,7 +74,9 @@ export function validateP3V2SourceGitState(rootDir, record = loadP3V2SourceSuper
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
   let newerVisualSupersession = null;
-  try { newerVisualSupersession = loadP3V4SourceSupersession(root); } catch { /* P3-V4 may not exist in historical fixtures. */ }
+  for (const loader of [loadP3V5SourceSupersession, loadP3V4SourceSupersession]) {
+    try { newerVisualSupersession = loader(root); break; } catch { /* newer sprint may not exist in historical fixtures. */ }
+  }
   for (const path of P3V2_SOURCE_PATHS) {
     const expected = record.source_blobs[path];
     const current = git(["hash-object", "--", path]);

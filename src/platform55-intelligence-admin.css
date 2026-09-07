@@ -131,3 +131,142 @@ body[data-platform55-page="catalog-workbench"] .catalog-import-preview > .table-
     transition-duration: var(--rw-motion-none);
   }
 }
+
+/* P3-V5 family geometry: evidence, proposals, and governance stay legible. */
+.p55-v5-page--intelligence .rw-intelligence-admin-page,
+.p55-v5-page--administration .rw-intelligence-admin-page {
+  gap: 18px;
+  color: var(--rw-mark-charcoal);
+}
+
+.p55-v5-page--intelligence :is(.bi-workbench-nav, .growth-tabs),
+.p55-v5-page--administration .module-workbench-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 6px;
+  border: 1px solid var(--rw-mark-line);
+  border-radius: 10px;
+  background: var(--rw-mark-white);
+}
+
+.p55-v5-page--intelligence :is(.bi-workbench-nav button, .growth-tabs button),
+.p55-v5-page--administration .module-workbench-nav button {
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--rw-mark-industrial);
+  background: transparent;
+}
+
+.p55-v5-page--intelligence :is(.bi-workbench-nav button[aria-selected="true"], .growth-tabs button.active),
+.p55-v5-page--administration .module-workbench-nav button[aria-selected="true"] {
+  border-color: var(--rw-mark-charcoal);
+  background: var(--rw-mark-charcoal);
+  color: var(--rw-mark-white);
+}
+
+.p55-v5-page--intelligence [data-platform55-evidence-summary],
+.p55-v5-page--administration [data-platform55-governance-summary] {
+  position: relative;
+}
+
+.p55-v5-page--intelligence [data-platform55-evidence-summary]::before,
+.p55-v5-page--administration [data-platform55-governance-summary]::before {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  width: 4px;
+  height: 100%;
+  border-radius: 10px 0 0 10px;
+  background: var(--rw-mark-orange);
+  content: "";
+}
+
+.p55-v5-page--administration :is(.memory-admin-layout, .memory-admin-grid, .memory-admin-grid > *, .table-wrap),
+.p55-v5-page--intelligence :is(.bi-layout, .growth-workspace, .growth-workspace > *) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.p55-v5-page--administration .memory-admin-grid .table-wrap {
+  overflow-x: auto;
+}
+
+.p55-v5-page--intelligence :is(table, .table-wrap, .growth-table-scroll),
+.p55-v5-page--administration :is(table, .table-wrap, .catalog-import-preview) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 900px) {
+  .p55-v5-page :is([data-platform55-page-header], .page-header),
+  .p55-v5-page :is([data-platform55-page-header], .page-header) > *,
+  .p55-v5-page .page-header-actions,
+  .p55-v5-page .auth-strip {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .p55-v5-page :is([data-platform55-page-header], .page-header) {
+    flex-wrap: wrap;
+  }
+
+  .p55-v5-page :is([data-platform55-page-header], .page-header) > :first-child,
+  .p55-v5-page .page-header-actions {
+    flex: 1 1 100%;
+  }
+
+  .p55-v5-page--intelligence :is(.bi-workbench-nav, .growth-tabs),
+  .p55-v5-page--administration .module-workbench-nav {
+    align-items: stretch;
+  }
+
+  .p55-v5-page--intelligence :is(.bi-workbench-nav button, .growth-tabs button),
+  .p55-v5-page--administration .module-workbench-nav button {
+    flex: 1 1 140px;
+  }
+
+  .p55-v5-page--administration .settings-layout,
+  .p55-v5-page--administration .settings-layout > *,
+  .p55-v5-page--administration .settings-grid,
+  .p55-v5-page--administration .settings-grid > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .p55-v5-page--administration .settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .p55-v5-page--administration .compact-bulk-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .p55-v5-page--administration .compact-bulk-toolbar > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .p55-v5-page--administration #google-chat-space-row,
+  .p55-v5-page--administration .observability-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .p55-v5-page--administration #google-chat-space-row > *,
+  .p55-v5-page--administration .observability-toolbar > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .p55-v5-page--administration :is(.review-insight-grid, .compact-insights) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .p55-v5-page--administration .review-insight-grid > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
