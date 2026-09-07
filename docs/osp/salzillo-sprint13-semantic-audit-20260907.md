@@ -213,3 +213,21 @@ Regresión sintética adicional:
 
 No se enviaron aclaraciones ni se modificó ningún caso. El cambio sólo
 normaliza el payload de revisión antes de persistirlo.
+
+## Incremento ejecutado — handler de revisión sin pérdida de requisitos
+
+La API de aclaraciones queda alineada con el worker y la UI. Antes rechazaba
+cualquier segundo registro del mismo campo; ahora acepta condiciones distintas,
+consolida repeticiones exactas y une sus citas antes de llamar al store. El
+alcance sigue cerrado por tipo, campo y evidencia, así que el cambio no permite
+agregar una pregunta sin fuente ni sustituir una cita durante la revisión.
+
+Regresión sintética adicional:
+
+- `osp-case-api/handler.test.ts`: 15/15 pruebas.
+- `osp-case-api/postgres-store.test.ts`: 12/12 pruebas.
+- `osp-worker/clarification-draft.test.ts`: 5/5 pruebas.
+- Total backend: 32/32 pruebas; `deno check` y `git diff --check` correctos.
+
+No se enviaron aclaraciones, no se modificaron casos ni se habilitaron acciones
+externas.
