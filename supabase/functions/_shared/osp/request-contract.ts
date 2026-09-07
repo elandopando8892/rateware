@@ -220,22 +220,44 @@ function allRequirementText(manifest: ManifestLike): readonly string[] {
   }));
 }
 
-function packageRequirementFromText(
+function unmappedPackageRequirementsFromText(
   manifest: ManifestLike,
-  canonicalKey: string,
-): Readonly<{ text: string; evidenceIds: readonly string[] }> | null {
-  if (!Array.isArray(manifest.requirements)) return null;
+): readonly Readonly<{
+  canonicalKey: string;
+  text: string;
+  evidenceIds: readonly string[];
+}>[] {
+  if (!Array.isArray(manifest.requirements)) return Object.freeze([]);
+  const seen = new Set<string>();
+  const results: Readonly<{
+    canonicalKey: string;
+    text: string;
+    evidenceIds: readonly string[];
+  }>[] = [];
   for (const item of manifest.requirements) {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const row = item as Record<string, unknown>;
     if (typeof row.text !== "string") continue;
     const requirementText = text(row.text);
-    if (documentKey(requirementText) !== canonicalKey) continue;
+    const canonicalKey = documentKey(requirementText);
+    if (
+      !DOCUMENT_CONCEPTS.some((concept) =>
+        concept.canonicalKey === canonicalKey
+      ) ||
+      seen.has(canonicalKey)
+    ) continue;
+    // Older manifests may carry the carrier text without a citation list.
+    // Do not invent an uncited package requirement; retain the source text and
+    // only synthesize when the requirement can point back to evidence.
+    if (!Object.hasOwn(row, "evidenceIds")) continue;
     const evidenceIds = stringArray(row.evidenceIds, 20);
     if (evidenceIds.length === 0) throw new Error("REQUEST_CONTRACT_INVALID");
-    return Object.freeze({ text: requirementText, evidenceIds });
+    seen.add(canonicalKey);
+    results.push(
+      Object.freeze({ canonicalKey, text: requirementText, evidenceIds }),
+    );
   }
-  return null;
+  return Object.freeze(results);
 }
 
 function relatedText(
@@ -412,37 +434,41 @@ export function buildRequestContract(
       evidenceIds,
     }));
   });
-  const bankingEvidence = packageRequirementFromText(
-    input.manifest,
-    "banking.account_evidence",
+  const mappedDocumentKeys = new Set(
+    requirements
+      .filter((requirement) => requirement.kind === "document")
+      .map((requirement) => requirement.canonicalKey),
   );
-  if (
-    bankingEvidence &&
-    !requirements.some((requirement) =>
-      requirement.canonicalKey === "banking.account_evidence"
+  let syntheticDocumentIndex = documents.length;
+  for (
+    const packageRequirement of unmappedPackageRequirementsFromText(
+      input.manifest,
     )
   ) {
-    const label = bankingEvidence.text.length > 256
-      ? `${bankingEvidence.text.slice(0, 253)}...`
-      : bankingEvidence.text;
+    if (mappedDocumentKeys.has(packageRequirement.canonicalKey)) continue;
+    const label = packageRequirement.text.length > 256
+      ? `${packageRequirement.text.slice(0, 253)}...`
+      : packageRequirement.text;
     requirements.push(Object.freeze({
       id: requirementId(
         "document",
-        "banking.account_evidence",
-        documents.length,
+        packageRequirement.canonicalKey,
+        syntheticDocumentIndex,
       ),
       kind: "document" as const,
-      canonicalKey: "banking.account_evidence",
+      canonicalKey: packageRequirement.canonicalKey,
       label,
       required: true,
-      condition: condition(bankingEvidence.text),
-      acceptedContentTypes: acceptedContentTypes(bankingEvidence.text),
-      maximumAgeDays: maximumAgeDays(bankingEvidence.text),
+      condition: condition(packageRequirement.text),
+      acceptedContentTypes: acceptedContentTypes(packageRequirement.text),
+      maximumAgeDays: maximumAgeDays(packageRequirement.text),
       minimumPageCount: null,
       minimumCompletionPercent: null,
       signatureMethod: "none" as const,
-      evidenceIds: bankingEvidence.evidenceIds,
+      evidenceIds: packageRequirement.evidenceIds,
     }));
+    mappedDocumentKeys.add(packageRequirement.canonicalKey);
+    syntheticDocumentIndex += 1;
   }
   if (
     requirements.length < 1 || requirements.length > 600 ||

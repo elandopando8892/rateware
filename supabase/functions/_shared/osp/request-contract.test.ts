@@ -124,6 +124,25 @@ Deno.test("carrier bank-cover text creates a package requirement when no form ce
   assertEquals(bank?.evidenceIds, ["email:salzillo"]);
 });
 
+Deno.test("recognized document text is not lost when the model omits its document row", () => {
+  const manifest = Object.freeze({
+    ...salzilloManifest,
+    requestedDocuments: salzilloManifest.requestedDocuments.filter((document) =>
+      document.documentType !== "Constancia de situación fiscal"
+    ),
+  });
+  const contract = buildRequestContract({
+    manifestSha256: sha,
+    manifest,
+  });
+  const taxStatus = contract.requirements.find((item) =>
+    item.canonicalKey === "fiscal.tax_status_certificate"
+  );
+  assertEquals(taxStatus?.required, true);
+  assertEquals(taxStatus?.maximumAgeDays, 31);
+  assertEquals(taxStatus?.evidenceIds, ["email:salzillo"]);
+});
+
 Deno.test("bank-account fields do not satisfy the package-level bank-cover requirement", () => {
   const manifest = Object.freeze({
     ...salzilloManifest,

@@ -83,12 +83,13 @@ modificar Salzillo productivo.
 
 ## Incremento ejecutado
 
-El contrato ahora materializa `banking.account_evidence` desde el texto citado
-por el carrier cuando el manifiesto no trae una fila documental equivalente. La
-regla conserva la cita original, exige evidencia aprobada y mantiene el requisito
-como bloqueante; los datos bancarios del formulario no pueden satisfacerlo por
-coincidencia de concepto. La matriz UI identifica el registro como evidencia de
-paquete y dirige a revisión documental.
+El contrato ahora materializa cualquier concepto documental reconocido desde el
+texto citado por el carrier cuando el manifiesto no trae una fila documental
+equivalente; esto incluye `banking.account_evidence`. La regla conserva la cita
+original, exige evidencia aprobada y mantiene el requisito como bloqueante; los
+datos bancarios del formulario no pueden satisfacer la carátula por coincidencia
+de concepto. La matriz UI identifica el registro como evidencia de paquete y
+dirige a revisión documental.
 
 Regresión sintética validada:
 
