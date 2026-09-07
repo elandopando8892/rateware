@@ -332,6 +332,10 @@ function safeQuestion(value: unknown): ClarificationQuestion {
   });
 }
 
+function clarificationQuestionKey(question: ClarificationQuestion) {
+  return `${question.kind}:${question.fieldId}:${question.question.replace(/\s+/g, " ").toLowerCase()}`;
+}
+
 async function reviewBody(
   request: Request,
 ): Promise<readonly ClarificationQuestion[]> {
@@ -367,11 +371,18 @@ async function reviewBody(
   if (
     !Array.isArray(questions) || questions.length < 1 || questions.length > 50
   ) throw new OspApiError("INVALID_REQUEST");
-  const parsed = questions.map(safeQuestion);
-  if (
-    new Set(parsed.map((question) => question.fieldId)).size !== parsed.length
-  ) throw new OspApiError("INVALID_REQUEST");
-  return Object.freeze(parsed);
+  const grouped = new Map<string, ClarificationQuestion>();
+  for (const question of questions.map(safeQuestion)) {
+    const key = clarificationQuestionKey(question);
+    const previous = grouped.get(key);
+    grouped.set(key, previous
+      ? Object.freeze({
+        ...previous,
+        evidenceIds: Object.freeze([...new Set([...previous.evidenceIds, ...question.evidenceIds])].sort()),
+      })
+      : question);
+  }
+  return Object.freeze([...grouped.values()]);
 }
 
 function safeManifestDecision(value: unknown): RequestManifestDecisionInput {

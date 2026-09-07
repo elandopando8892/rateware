@@ -174,6 +174,39 @@ Deno.test("case API saves only an exact Operations review under operate authorit
   }]);
 });
 
+Deno.test("case API keeps distinct clarification scopes and consolidates exact repeats", async () => {
+  const saved: unknown[] = [];
+  const handler = createCaseApiHandler({
+    verifyToken: async () => identity,
+    clarificationStore: {
+      listForReview: async () => [],
+      saveOperationsReview: async (input) => {
+        saved.push(input);
+        return row;
+      },
+    },
+    incidentId: () => "incident-save-distinct-clarifications",
+  });
+  const response = await handler(request(
+    `action=save_clarification_review&draft_id=${draftId}&expected_case_version=4&expected_canonical_sha256=${sourceHash}`,
+    {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        questions: [
+          { kind: "missing", fieldId: "supplier.address", question: "Please provide the registered address.", evidenceIds: ["ev-1"] },
+          { kind: "missing", fieldId: "supplier.address", question: "Please provide the registered address.", evidenceIds: ["ev-2"] },
+          { kind: "missing", fieldId: "supplier.address", question: "Confirm the address effective date.", evidenceIds: ["ev-1"] },
+        ],
+      }),
+    },
+  ));
+  assertEquals(response.status, 200);
+  const input = saved[0] as { questions: readonly { question: string; evidenceIds: readonly string[] }[] };
+  assertEquals(input.questions.length, 2);
+  assertEquals(input.questions[0]?.evidenceIds, ["ev-1", "ev-2"]);
+  assertEquals(input.questions[1]?.question, "Confirm the address effective date.");
+});
+
 Deno.test("case API saves one exact evidence-bound request manifest review without outbound effects", async () => {
   const caseId = "33333333-3333-4333-8333-333333333333";
   const manifestId = "55555555-5555-4555-8555-555555555555";

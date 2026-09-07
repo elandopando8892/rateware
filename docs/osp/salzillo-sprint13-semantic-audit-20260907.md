@@ -194,3 +194,22 @@ Regresión sintética adicional:
 El cambio sólo afecta la construcción y revisión de borradores de aclaración;
 no envía mensajes, no toca casos reales, no aplica migraciones y mantiene la
 idempotencia y el control humano.
+
+## Incremento ejecutado — API de revisión alineada con los scopes
+
+La entrada `save_clarification_review` ya no bloquea cualquier repetición de
+campo. El handler consolida antes del store únicamente la misma condición
+textual (tipo + campo + pregunta normalizada), une sus citas y deja pasar
+condiciones diferentes del mismo campo. El store mantiene el alcance de
+evidencia y el control de versión, por lo que un cliente antiguo no puede
+sortear la revisión ni crear una decisión sin fuente.
+
+Regresión sintética adicional:
+
+- `osp-case-api/handler.test.ts`: 15/15 pruebas.
+- `osp-case-api/postgres-store.test.ts`: 12/12 pruebas.
+- `osp-worker/clarification-draft.test.ts`: 5/5 pruebas.
+- Total backend: 32/32 pruebas; `deno check` y `git diff --check` correctos.
+
+No se enviaron aclaraciones ni se modificó ningún caso. El cambio sólo
+normaliza el payload de revisión antes de persistirlo.
