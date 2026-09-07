@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { PLATFORM55_ROUTES } from "../src/platform55-shell-model.js";
+import {
+  P3V5_SOURCE_PATHS,
+  loadP3V5SourceSupersession,
+  validateP3V5SourceGitState,
+} from "../tools/platform55-p3v5-source-supersession.mjs";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
@@ -99,6 +104,14 @@ test("P3-V5 does not add autonomous messaging, activation, or production writes"
   const combined = source.join("\n");
   assert.doesNotMatch(combined, /automatically[^\n]{0,100}(?:send|activate|insert|approve)/i);
   assert.doesNotMatch(combined, /without[^\n]{0,80}(?:confirmation|approval)[^\n]{0,80}(?:send|activate|insert)/i);
+});
+
+test("P3-V5 source supersession is content-addressed and keeps release credit withheld", () => {
+  const record = loadP3V5SourceSupersession();
+  assert.equal(record.verdict, "LOCAL-GO");
+  assert.equal(record.release_credit, "withheld");
+  assert.deepEqual(record.source_paths, P3V5_SOURCE_PATHS);
+  assert.equal(validateP3V5SourceGitState(process.cwd(), record), record);
 });
 
 console.log("Platform55 P3-V5 route contract passed.");
