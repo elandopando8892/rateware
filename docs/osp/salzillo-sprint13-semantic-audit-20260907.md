@@ -280,3 +280,29 @@ Regresión ejecutada:
 El cambio es determinista y fail-closed: no rellena datos no citados, no
 resuelve decisiones humanas, no crea registros, no aplica migraciones y no
 envía correos, webhooks o firmas.
+
+## Incremento ejecutado — gate de formato contra la evidencia binaria
+
+El servicio de borrador ahora valida después de la interpretación y antes de
+persistir que cada formulario declarado como `xlsx`, `xlsm`, `pdf` o `docx`
+tenga una cita que pertenezca a una fuente binaria del mismo formato. Para
+hojas de cálculo se resuelve el prefijo de evidencia estructural contra el
+`versionId`; para PDF/DOCX/imágenes se valida el `file:<versionId>` exacto.
+
+Esto cubre un riesgo de producción que no se resolvía con el esquema JSON: un
+LLM podía devolver un formato válido sintácticamente pero incompatible con el
+archivo recibido. En ese caso el servicio falla con
+`REQUEST_MANIFEST_FORM_FORMAT_MISMATCH` antes de guardar el manifiesto, sin
+crear una falsa señal de aprendizaje ni permitir que el paquete cambie de
+formato sin revisión.
+
+Regresión ejecutada:
+
+- `request-manifest-draft.test.ts`: 4/4.
+- `openai-request-manifest.test.ts`: 3/3.
+- `xlsx-structure.test.ts`: 2/2.
+- Total del gate de extracción: 9/9; `deno check` y `git diff --check`
+  correctos.
+
+El gate no ejecuta macros, no persiste un borrador incompatible y no modifica
+casos, migraciones, Supabase o acciones salientes.

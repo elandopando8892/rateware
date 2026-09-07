@@ -230,7 +230,11 @@ Deno.test("multimodal request manifest reuses an exact evidence draft before cal
     modelVersion: "gpt-synthetic",
     sourceCount: 1,
     sourceCoverage: { email: 1, xlsx: 0, xlsm: 0, pdf: 0, docx: 0, image: 0 },
-    spreadsheetProtection: { macroEnabledFiles: 0, macroExecution: "blocked" as const, analysisMode: "not_required" as const },
+    spreadsheetProtection: {
+      macroEnabledFiles: 0,
+      macroExecution: "blocked" as const,
+      analysisMode: "not_required" as const,
+    },
     generatedAt: "2026-09-01T03:00:00.000Z",
     requestType: manifest.requestType,
     language: manifest.language,
@@ -297,4 +301,60 @@ Deno.test("multimodal request manifest reuses an exact evidence draft before cal
   assertEquals(lookups, 1);
   assertEquals(result.receipt.replayed, true);
   assertEquals(result.manifest.generatedAt, storedManifest.generatedAt);
+});
+
+Deno.test("multimodal request manifest rejects a model format that has no matching source evidence", async () => {
+  const pdf = encoder.encode("synthetic-pdf-format-gate");
+  const pdfSha256 = await hash(pdf);
+  const mismatchedManifest = {
+    ...manifest,
+    forms: [{ ...manifest.forms[0], format: "docx" as const }],
+  };
+  let records = 0;
+  const service = createRequestManifestDraftService({
+    interpreter: {
+      interpretWithTelemetry: async () => ({
+        manifest: mismatchedManifest,
+        telemetry: {
+          responseId: "resp_format_gate",
+          model: "gpt-synthetic",
+          inputTokens: 10,
+          outputTokens: 20,
+          totalTokens: 30,
+          durationMs: 40,
+        },
+      }),
+    },
+    store: {
+      findByEvidence: async () => null,
+      record: async () => {
+        records += 1;
+        throw new Error("MUST_NOT_RECORD");
+      },
+    },
+  });
+  await assertRejects(
+    () =>
+      service.run({
+        organizationId,
+        caseId,
+        message: {
+          id: messageId,
+          sourceSha256: "a".repeat(64),
+          subject: "Customer setup",
+          safeBody: "Please complete the attached PDF form.",
+        },
+        documents: [{
+          versionId: pdfId,
+          sourceName: "setup.pdf",
+          contentType: "application/pdf",
+          sourceSha256: pdfSha256,
+          sourceSafety: "safe",
+          bytes: pdf,
+        }],
+      }),
+    Error,
+    "REQUEST_MANIFEST_FORM_FORMAT_MISMATCH",
+  );
+  assertEquals(records, 0);
 });

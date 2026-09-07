@@ -238,6 +238,46 @@ function attachment(
   throw new Error("REQUEST_MANIFEST_CONTENT_TYPE_UNSUPPORTED");
 }
 
+type ManifestFormFormat = RequestManifest["forms"][number]["format"];
+type SourceFormat = Exclude<ManifestFormFormat, "other">;
+
+function sourceFormat(
+  document: RequestManifestDocument,
+): SourceFormat | "image" {
+  if (document.contentType === XLSX) return "xlsx";
+  if (document.contentType === XLSM) return "xlsm";
+  if (document.contentType === "application/pdf") return "pdf";
+  if (document.contentType === DOCX) return "docx";
+  return "image";
+}
+
+function assertFormSourceFormats(
+  manifest: RequestManifest,
+  documents: readonly RequestManifestDocument[],
+): void {
+  const byEvidencePrefix = new Map<string, SourceFormat | "image">();
+  for (const document of documents) {
+    const format = sourceFormat(document);
+    // Spreadsheet evidence is emitted as xlsx:<version>:<sheet>:<row>, while
+    // binary attachments are cited as file:<version>. Keeping the mapping
+    // deterministic prevents a model from relabelling one binary format as
+    // another without a matching source citation.
+    byEvidencePrefix.set(`xlsx:${document.versionId}`, format);
+    byEvidencePrefix.set(`file:${document.versionId}`, format);
+  }
+  for (const form of manifest.forms) {
+    if (form.format === "other") continue;
+    const supported = form.evidenceIds.some((evidenceId) => {
+      if (evidenceId.startsWith("xlsx:")) {
+        const prefix = evidenceId.split(":").slice(0, 2).join(":");
+        return byEvidencePrefix.get(prefix) === form.format;
+      }
+      return byEvidencePrefix.get(evidenceId) === form.format;
+    });
+    if (!supported) throw new Error("REQUEST_MANIFEST_FORM_FORMAT_MISMATCH");
+  }
+}
+
 function assertSource(source: RequestManifestSource): void {
   if (
     !UUID.test(source.organizationId) || !UUID.test(source.caseId) ||
@@ -390,6 +430,7 @@ export function createRequestManifestDraftService(options: {
         attachments,
         knowledgeCatalog: source.knowledgeCatalog ?? [],
       });
+      assertFormSourceFormats(interpreted.manifest, documents);
       const generatedAt = clock().toISOString();
       const manifest = readDraft(
         interpreted.manifest,
