@@ -55,6 +55,17 @@ describe('RequestManifestPanel', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
+  it('keeps cited carrier wording visible when it is not represented by a mapped row', () => {
+    render(<RequestManifestPanel manifest={{
+      ...manifest,
+      requirements: [{ id: 'requirement:credit', text: 'Return the signed credit declaration.', evidenceIds: ['docx:p1'] }],
+    }} />);
+
+    const requirements = screen.getByRole('region', { name: /carrier wording retained/i });
+    expect(within(requirements).getByText('Return the signed credit declaration.')).toBeInTheDocument();
+    expect(within(requirements).getByText('1 source')).toBeInTheDocument();
+  });
+
   it('keeps a missing-information blocker visible when no clarification question was generated', () => {
     render(<RequestManifestPanel manifest={{
       ...manifest,

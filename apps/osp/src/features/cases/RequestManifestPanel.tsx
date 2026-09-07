@@ -130,6 +130,22 @@ export function RequestManifestPanel({
         </section>
       </div>
 
+      {manifest.requirements.length > 0 ? (
+        <section className="manifest-source-requirements" aria-labelledby="manifest-requirements-title">
+          <div className="manifest-section-heading">
+            <div><h3 id="manifest-requirements-title">Carrier wording retained</h3><p>Every cited requirement remains visible for Operations, even when it is not yet mapped to a field or document.</p></div>
+            <span>{manifest.requirements.length}</span>
+          </div>
+          <ol className="manifest-list">
+            {manifest.requirements.slice(0, 50).map((requirement) => <li key={requirement.id}>
+              <div><strong>{requirement.text}</strong><p>Source requirement</p></div>
+              <div className="manifest-list-meta"><EvidenceCount ids={requirement.evidenceIds} /></div>
+            </li>)}
+          </ol>
+          {manifest.requirements.length > 50 ? <small className="manifest-source-gap">Showing the first 50 requirements; the full cited manifest remains preserved.</small> : null}
+        </section>
+      ) : null}
+
       {(manifest.missingInformation.length > 0 || manifest.clarificationQuestions.length > 0 || manifest.contradictions.length > 0) ? (
         <section className="manifest-blockers" aria-labelledby="manifest-blockers-title">
           <div>
