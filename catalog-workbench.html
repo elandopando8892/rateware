@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-intelligence-admin.css" />
   </head>
-  <body data-platform55-shell="tenant" data-platform55-page="catalog-workbench">
+  <body class="p55-v5-page p55-v5-page--administration" data-platform55-shell="tenant" data-platform55-page="catalog-workbench" data-p3v5-family="administration">
     <div class="rw-app" data-platform55-app>
       <aside class="rw-sidebar" data-platform55-sidebar aria-label="Rateware navigation"></aside>
 
@@ -36,6 +36,11 @@
             </form>
           </div>
         </header>
+
+        <aside class="p55-v5-context-banner" data-p3v5-boundary="administration" aria-label="Catalog governance boundary">
+          <span class="p55-v5-context-mark" aria-hidden="true">A</span>
+          <div><strong>Catalog changes stay in review before sync</strong><p>Source rows, mapping gaps, and preview results remain visible; production catalog writes require explicit confirmation.</p></div>
+        </aside>
 
         <main class="settings-layout catalog-workbench-layout rw-intelligence-admin-page">
           <nav class="module-workbench-nav" role="tablist" aria-label="Catalog workbench">

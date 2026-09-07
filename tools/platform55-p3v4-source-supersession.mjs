@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { loadP3V5SourceSupersession } from "./platform55-p3v5-source-supersession.mjs";
 
 const SHA1 = /^[0-9a-f]{40}$/;
 
@@ -71,10 +72,14 @@ export function loadP3V4SourceSupersession(rootDir = process.cwd()) {
 export function validateP3V4SourceGitState(rootDir, record = loadP3V4SourceSupersession(rootDir)) {
   validateP3V4SourceSupersession(record);
   const root = resolve(rootDir);
+  let newerVisualSupersession = null;
+  try { newerVisualSupersession = loadP3V5SourceSupersession(root); } catch { /* P3-V5 may not exist in historical fixtures. */ }
   for (const path of P3V4_SOURCE_PATHS) {
     const expected = record.source_blobs[path];
+    const current = gitAt(root, ["hash-object", "--", path]);
+    const allowedNewerVisualBlob = path === "src/platform55-visual-parity.css" && newerVisualSupersession?.source_blobs[path] === current;
     if (gitAt(root, ["rev-parse", `${record.product_candidate_sha}:${path}`]) !== expected) throw new Error(`P3-V4 candidate source blob mismatch: ${path}`);
-    if (gitAt(root, ["hash-object", "--", path]) !== expected) throw new Error(`P3-V4 current source blob mismatch: ${path}`);
+    if (current !== expected && !allowedNewerVisualBlob) throw new Error(`P3-V4 current source blob mismatch: ${path}`);
   }
   return record;
 }

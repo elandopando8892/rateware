@@ -8,9 +8,10 @@
     <link rel="stylesheet" href="./src/customer-rfi-ui.css" />
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-public-shell.css" />
+    <link rel="stylesheet" href="./src/platform55-public.css" />
   </head>
-  <body class="public-rfi-page" data-platform55-shell="public" data-platform55-page="customer-rfi">
-    <main class="customer-rfi-shell rw-public-app" data-platform55-public-app>
+  <body class="public-rfi-page p55-v5-page p55-v5-page--public" data-platform55-shell="public" data-platform55-page="customer-rfi" data-p3v5-family="public">
+    <main class="customer-rfi-shell rw-public-app p55-v5-public-shell" data-platform55-public-app>
       <header class="customer-rfi-header customer-rfi-header-dense rw-public-header" data-platform55-public-context>
         <div>
           <a class="brand-mark" href="./index.html">Rateware</a>
@@ -30,6 +31,11 @@
           </div>
         </div>
       </header>
+
+      <aside class="p55-v5-context-banner" data-p3v5-boundary="public" aria-label="Customer RFI boundary">
+        <span class="p55-v5-context-mark" aria-hidden="true">P</span>
+        <div><strong>Customer intake · draft until you submit</strong><p>Requirements stay in this signed RFI context; Rateware only receives the final submission through the existing human-confirmed flow.</p></div>
+      </aside>
 
       <p id="customer-rfi-message" class="row-save-status rw-public-state" role="status" data-platform55-public-state></p>
 
