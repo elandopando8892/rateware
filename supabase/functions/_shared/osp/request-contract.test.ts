@@ -143,6 +143,28 @@ Deno.test("recognized document text is not lost when the model omits its documen
   assertEquals(taxStatus?.evidenceIds, ["email:salzillo"]);
 });
 
+Deno.test("mapped document rows tolerate duplicate text without citations", () => {
+  const manifest = Object.freeze({
+    ...salzilloManifest,
+    requirements: salzilloManifest.requirements.concat({
+      id: "bank-duplicate",
+      text: "Carátula del banco emisor de sus pagos en mxn",
+      evidenceIds: [],
+    }),
+  });
+  const contract = buildRequestContract({
+    manifestSha256: sha,
+    manifest,
+  });
+  assertEquals(contract.requirements.length, 8);
+  assertEquals(
+    contract.requirements.filter((item) =>
+      item.canonicalKey === "banking.account_evidence"
+    ).length,
+    1,
+  );
+});
+
 Deno.test("bank-account fields do not satisfy the package-level bank-cover requirement", () => {
   const manifest = Object.freeze({
     ...salzilloManifest,

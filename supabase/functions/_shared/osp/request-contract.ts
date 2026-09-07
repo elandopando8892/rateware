@@ -222,6 +222,7 @@ function allRequirementText(manifest: ManifestLike): readonly string[] {
 
 function unmappedPackageRequirementsFromText(
   manifest: ManifestLike,
+  mappedDocumentKeys: ReadonlySet<string>,
 ): readonly Readonly<{
   canonicalKey: string;
   text: string;
@@ -243,7 +244,7 @@ function unmappedPackageRequirementsFromText(
     if (
       !DOCUMENT_CONCEPTS.some((concept) =>
         concept.canonicalKey === canonicalKey
-      ) ||
+      ) || mappedDocumentKeys.has(canonicalKey) ||
       seen.has(canonicalKey)
     ) continue;
     // Older manifests may carry the carrier text without a citation list.
@@ -443,6 +444,7 @@ export function buildRequestContract(
   for (
     const packageRequirement of unmappedPackageRequirementsFromText(
       input.manifest,
+      mappedDocumentKeys,
     )
   ) {
     if (mappedDocumentKeys.has(packageRequirement.canonicalKey)) continue;
