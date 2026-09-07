@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-procurement.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="outreach">
     <div class="rw-app" data-platform55-app>
@@ -21,7 +22,7 @@
           </form>
         </header>
 
-        <main class="outreach-layout rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="outreach-drafts">
+        <main class="outreach-layout rw-procurement-page p55-v3-page p55-v3-page--outreach" data-platform55-page-content data-platform55-procurement-state="outreach-drafts" data-p3v3-route="outreach">
           <header class="rw-operate-heading" data-platform55-page-header>
             <div>
               <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Source · Bid Room · Invitation Admin</p>
@@ -30,6 +31,13 @@
             </div>
             <button class="page-primary-action" type="button" data-click-target="#create-campaign-button">Create campaign</button>
           </header>
+          <section class="p55-v3-context-banner" data-p3v3-boundary="outreach" aria-label="Invitation administration operating boundary">
+            <span class="p55-v3-context-mark" aria-hidden="true">05</span>
+            <div>
+              <strong>Invitation administration workspace</strong>
+              <p>Keep campaign templates, drafts, and contact history together. Message creation is allowed; external delivery stays human-confirmed.</p>
+            </div>
+          </section>
           <section class="review-insight-grid" aria-label="Invitation admin summary">
             <article><span>Campaigns</span><strong id="outreach-metric-campaigns">0</strong></article>
             <article><span>Drafts</span><strong id="outreach-metric-drafts">0</strong></article>

@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-procurement.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body class="bid-room-page" data-platform55-shell="tenant" data-platform55-page="rfx-events">
     <div class="rw-app" data-platform55-app>
@@ -42,7 +43,7 @@
           <rw-icon name="chevron"></rw-icon>
         </header>
 
-        <main class="bid-room-product rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="event-lifecycle">
+        <main class="bid-room-product rw-procurement-page p55-v3-page p55-v3-page--rfx-events" data-platform55-page-content data-platform55-procurement-state="event-lifecycle" data-p3v3-route="rfx-events">
           <header class="rw-operate-heading" data-platform55-page-header>
             <div>
               <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Source · Procurement Base · Bid Room</p>
@@ -54,6 +55,13 @@
               <a class="secondary-link" href="./bid-room-board.html" target="_blank" rel="noreferrer">Public board</a>
             </div>
           </header>
+          <section class="p55-v3-context-banner" data-p3v3-boundary="bid-room" aria-label="Bid Room operating boundary">
+            <span class="p55-v3-context-mark" aria-hidden="true">03</span>
+            <div>
+              <strong>Bid Room workspace</strong>
+              <p>Set up lanes, carrier fit, and delivery queues in one review surface. Nothing is sent without an explicit confirmation.</p>
+            </div>
+          </section>
           <aside class="bid-room-event-rail" aria-label="Bid events">
             <section class="bid-room-rail-card">
               <div class="bid-room-event-filter-strip" aria-label="Filter bid events">

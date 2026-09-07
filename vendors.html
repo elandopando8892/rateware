@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-procurement.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="vendors">
     <div class="rw-app" data-platform55-app>
@@ -21,7 +22,7 @@
           </form>
         </header>
 
-        <main class="vendors-layout rw-procurement-page" data-platform55-page-content data-platform55-procurement-state="vendor-directory">
+        <main class="vendors-layout rw-procurement-page p55-v3-page p55-v3-page--vendors" data-platform55-page-content data-platform55-procurement-state="vendor-directory" data-p3v3-route="vendors">
           <header class="rw-operate-heading" data-platform55-page-header>
             <div>
               <p class="rw-page-eyebrow" data-platform55-breadcrumbs>Source · Carrier CRM</p>
@@ -30,6 +31,13 @@
             </div>
             <button class="page-primary-action" type="button" data-vendor-open="wizard">Add vendor</button>
           </header>
+          <section class="p55-v3-context-banner" data-p3v3-boundary="carrier-crm" aria-label="Carrier CRM operating boundary">
+            <span class="p55-v3-context-mark" aria-hidden="true">01</span>
+            <div>
+              <strong>Carrier CRM workspace</strong>
+              <p>Qualify carriers and build reusable lists from CRM records. Any outreach or production insert remains a separate, human-confirmed step.</p>
+            </div>
+          </section>
           <section class="vendor-metrics wide-section rw-procurement-milestones" aria-label="Vendor health">
             <article>
               <span>Total vendors</span>

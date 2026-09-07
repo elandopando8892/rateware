@@ -246,3 +246,240 @@
     scroll-behavior: auto;
   }
 }
+
+/* P3-V3 procurement interior: MARKSMAN workspace layer. */
+.p55-v3-page {
+  --rw-brand-50: #fff0e9;
+  --rw-brand-100: #ffd2c2;
+  --rw-brand-500: #ea5e27;
+  --rw-brand-600: #c94b1f;
+  --rw-brand-700: #9d3a1c;
+  --rw-slate-25: #f7f7f5;
+  --rw-slate-50: #efefef;
+  --rw-slate-100: #e6e6e3;
+  --rw-slate-200: #d3d3cf;
+  --rw-slate-300: #b8b8b2;
+  --rw-slate-500: #686864;
+  --rw-slate-600: #484848;
+  --rw-slate-700: #383836;
+  --rw-slate-800: #2b2b2a;
+  --rw-slate-900: #1e1e1e;
+  min-width: 0;
+  color: var(--rw-slate-900);
+  background: var(--rw-slate-50);
+}
+
+.p55-v3-page > [data-platform55-page-header] {
+  margin-bottom: 0;
+  padding: 2px 0;
+}
+
+.p55-v3-page [data-platform55-page-title] {
+  color: var(--rw-slate-900);
+  letter-spacing: -0.045em;
+}
+
+.p55-v3-page [data-platform55-page-subtitle],
+.p55-v3-page .page-subtitle {
+  max-width: 720px;
+  color: var(--rw-slate-600);
+}
+
+.p55-v3-page .page-primary-action,
+.p55-v3-page .button-primary {
+  border-color: var(--rw-brand-600);
+  color: #fff;
+  background: var(--rw-brand-500);
+  box-shadow: 0 8px 18px rgba(234, 94, 39, 0.18);
+}
+
+.p55-v3-page .page-primary-action:hover:not(:disabled),
+.p55-v3-page .button-primary:hover:not(:disabled) {
+  background: var(--rw-brand-600);
+}
+
+.p55-v3-context-banner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--rw-slate-200);
+  border-left: 3px solid var(--rw-brand-500);
+  border-radius: var(--rw-radius-md);
+  background: var(--rw-white);
+  box-shadow: 0 1px 0 rgba(30, 30, 30, 0.03);
+}
+
+.p55-v3-context-mark {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--rw-brand-500);
+  border-radius: 50%;
+  color: var(--rw-brand-700);
+  background: var(--rw-brand-50);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .04em;
+}
+
+.p55-v3-context-banner strong {
+  display: block;
+  color: var(--rw-slate-900);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.p55-v3-context-banner p {
+  max-width: 980px;
+  margin: 4px 0 0;
+  color: var(--rw-slate-600);
+  font-size: 12px;
+  line-height: 1.48;
+}
+
+.p55-v3-page > :is(.vendor-metrics, .review-insight-grid, .ratebook-overview, .ratebook-health) {
+  margin-top: 0;
+}
+
+.p55-v3-page > :is(.vendor-metrics, .review-insight-grid) > article,
+.p55-v3-page .rw-procurement-milestones > *,
+.p55-v3-page .ratebook-overview article,
+.p55-v3-page .ratebook-health-summary article {
+  border-color: var(--rw-slate-200);
+  background: var(--rw-white);
+}
+
+.p55-v3-page > :is(.workspace-panel, .rfx-process-list-panel, .rfx-process-workspace, .bid-room-event-rail, .ratebook-layout, .outreach-workspace) {
+  min-width: 0;
+}
+
+.p55-v3-page :is(.workspace-panel, .rfx-process-list-panel, .rfx-process-workspace, .bid-room-rail-card, .bid-room-workspace, .ratebook-list-panel, .ratebook-detail-panel, .outreach-ops-strip) {
+  border-color: var(--rw-slate-200);
+  border-radius: var(--rw-radius-md);
+  box-shadow: 0 1px 0 rgba(30, 30, 30, 0.03);
+}
+
+.p55-v3-page :is(input, select, textarea):focus-visible {
+  border-color: var(--rw-brand-500);
+  outline: 3px solid rgba(234, 94, 39, 0.22);
+  outline-offset: 1px;
+}
+
+.p55-v3-page :is(button, a).is-active,
+.p55-v3-page :is(.vendor-tab.is-active, .module-workbench-nav button[aria-selected="true"]) {
+  border-color: var(--rw-brand-500);
+  color: var(--rw-brand-700);
+  box-shadow: inset 0 -2px var(--rw-brand-500);
+}
+
+.p55-v3-page :is(.table-wrap, .vendor-funnel-scroll, .rw-procurement-table-scroll, .ratebook-grid-wrap, .outreach-table-wrap) {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.p55-v3-page :is(.rfx-process-list-panel, .rfx-process-workspace) {
+  min-height: 0;
+}
+
+.p55-v3-page--rfx-process {
+  align-content: start;
+}
+
+.p55-v3-page--rfx-process > [data-platform55-page-header],
+.p55-v3-page--rfx-process > .p55-v3-context-banner {
+  grid-column: 1 / -1;
+}
+
+.p55-v3-page--rfx-process .rfx-process-list-panel,
+.p55-v3-page--rfx-process .rfx-process-workspace {
+  background: var(--rw-white);
+}
+
+.p55-v3-page--rfx-events .p55-v3-context-banner {
+  grid-column: 1 / -1;
+}
+
+.p55-v3-page--rfx-events > [data-platform55-page-header] {
+  grid-column: 1 / -1;
+}
+
+.p55-v3-page--ratebook .ratebook-toolbar {
+  top: var(--rw-topbar);
+  z-index: 4;
+  padding: 10px 0;
+  border-color: var(--rw-slate-200);
+  background: var(--rw-slate-50);
+}
+
+.p55-v3-page--outreach .outreach-ops-strip,
+.p55-v3-page--outreach .outreach-workspace > .workspace-panel {
+  background: var(--rw-white);
+}
+
+@media (min-width: 901px) {
+  .p55-v3-page--vendors,
+  .p55-v3-page--rfx-process,
+  .p55-v3-page--rfx-events,
+  .p55-v3-page--ratebook,
+  .p55-v3-page--outreach {
+    padding: 20px 24px 36px;
+  }
+
+  .p55-v3-page--rfx-process {
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  .p55-v3-page--rfx-events .p55-v3-context-banner {
+    margin-bottom: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .p55-v3-page {
+    padding: 14px 12px 28px;
+  }
+
+  .p55-v3-context-banner {
+    padding: 12px;
+  }
+
+  .p55-v3-page .page-header-actions,
+  .p55-v3-page [data-platform55-page-header] > .page-header-actions {
+    width: 100%;
+  }
+
+  .p55-v3-page .page-primary-action,
+  .p55-v3-page .page-header-actions > * {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .p55-v3-context-banner {
+    grid-template-columns: 1fr;
+  }
+
+  .p55-v3-context-mark {
+    width: 26px;
+    height: 26px;
+    font-size: 9px;
+  }
+
+  .p55-v3-context-banner p {
+    font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .p55-v3-page *,
+  .p55-v3-page *::before,
+  .p55-v3-page *::after {
+    scroll-behavior: auto;
+    transition-duration: 0ms;
+  }
+}
