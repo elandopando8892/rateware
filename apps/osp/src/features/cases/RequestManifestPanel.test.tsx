@@ -94,6 +94,38 @@ describe('RequestManifestPanel', () => {
     expect(within(readiness as HTMLElement).getByText('1 evidence issue must be resolved before signature or delivery.')).toBeInTheDocument();
   });
 
+  it('counts an exact duplicate issue once and preserves every citation', () => {
+    render(<RequestManifestPanel manifest={{
+      ...manifest,
+      missingInformation: [],
+      clarificationQuestions: [
+        { fieldId: 'trade.references.3.email', question: '  Provide   the third reference email. ', evidenceIds: ['xlsx:A2'] },
+        { fieldId: 'trade.references.3.email', question: 'Provide the third reference email.', evidenceIds: ['email:body'] },
+      ],
+    }} />);
+
+    const blockers = screen.getByRole('region', { name: /resolve before package assembly/i });
+    expect(within(blockers).getAllByText('Clarification')).toHaveLength(1);
+    expect(within(blockers).getByText('2 sources')).toBeInTheDocument();
+    const readiness = document.querySelector('.manifest-readiness');
+    expect(readiness).not.toBeNull();
+    expect(within(readiness as HTMLElement).getByText('1 evidence issue must be resolved before signature or delivery.')).toBeInTheDocument();
+  });
+
+  it('keeps different constraints for the same field as separate blockers', () => {
+    render(<RequestManifestPanel manifest={{
+      ...manifest,
+      missingInformation: [{ fieldId: 'trade.references.3.email', description: 'Third reference email is missing', evidenceIds: ['xlsx:A2'] }],
+      clarificationQuestions: [{ fieldId: 'trade.references.3.email', question: 'Confirm whether the third reference is still active.', evidenceIds: ['email:body'] }],
+    }} />);
+
+    const blockers = screen.getByRole('region', { name: /resolve before package assembly/i });
+    expect(within(blockers).getAllByText(/Third reference email is missing|Confirm whether the third reference is still active/)).toHaveLength(2);
+    const readiness = document.querySelector('.manifest-readiness');
+    expect(readiness).not.toBeNull();
+    expect(within(readiness as HTMLElement).getByText('2 evidence issues must be resolved before signature or delivery.')).toBeInTheDocument();
+  });
+
   it('overrides an optimistic readiness status when an issue remains open', () => {
     render(<RequestManifestPanel manifest={{
       ...manifest,

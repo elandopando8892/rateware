@@ -1,4 +1,5 @@
 import type { RequestManifestReadModel } from '../../api/contracts';
+import { manifestBlockers } from './manifest-blockers';
 
 const REQUEST_TYPE_LABELS: Record<RequestManifestReadModel['requestType'], string> = {
   customer_setup: 'Customer setup',
@@ -43,7 +44,8 @@ export function RequestManifestPanel({
     );
   }
 
-  const unresolved = manifest.missingInformation.length + manifest.clarificationQuestions.length + manifest.contradictions.length;
+  const blockers = manifestBlockers(manifest);
+  const unresolved = blockers.length;
   const readinessStatus = unresolved > 0 && manifest.readiness.status === 'ready_for_prefill' ? 'needs_clarification' : manifest.readiness.status;
   const readinessTone = readinessStatus === 'ready_for_prefill' ? 'ready' : readinessStatus === 'needs_clarification' ? 'warning' : 'blocked';
   return (
@@ -146,16 +148,14 @@ export function RequestManifestPanel({
         </section>
       ) : null}
 
-      {(manifest.missingInformation.length > 0 || manifest.clarificationQuestions.length > 0 || manifest.contradictions.length > 0) ? (
+      {blockers.length > 0 ? (
         <section className="manifest-blockers" aria-labelledby="manifest-blockers-title">
           <div>
             <p className="eyebrow">Operations checkpoint</p>
             <h3 id="manifest-blockers-title">Resolve before package assembly</h3>
           </div>
           <ul>
-            {manifest.contradictions.map((item) => <li key={item.text}><strong>Contradiction</strong><span>{item.text}</span><EvidenceCount ids={item.evidenceIds} /></li>)}
-            {manifest.missingInformation.map((item) => <li key={`${item.fieldId}:${item.description}`}><strong>Missing information</strong><span>{item.description}</span><EvidenceCount ids={item.evidenceIds} /></li>)}
-            {manifest.clarificationQuestions.map((item) => <li key={`${item.fieldId}:${item.question}`}><strong>Clarification</strong><span>{item.question}</span><EvidenceCount ids={item.evidenceIds} /></li>)}
+            {blockers.map((item) => <li key={`${item.kind}:${item.fieldId ?? ''}:${item.text}`}><strong>{item.kind === 'contradiction' ? 'Contradiction' : item.kind === 'missing' ? 'Missing information' : 'Clarification'}</strong><span>{item.text}</span><EvidenceCount ids={item.evidenceIds} /></li>)}
           </ul>
         </section>
       ) : null}

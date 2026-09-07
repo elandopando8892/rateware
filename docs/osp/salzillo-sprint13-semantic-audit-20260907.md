@@ -115,3 +115,23 @@ Regresión sintética validada:
 
 No se modificó el XLSM, el caso Salzillo, Supabase, migraciones, despliegues ni
 ningún efecto externo.
+
+## Incremento ejecutado — deduplicación segura del freno visible
+
+La pantalla del manifiesto ahora construye una lista determinista de bloqueos
+de evidencia. Dos entradas son la misma sólo cuando conservan el mismo tipo,
+campo y texto normalizado; en ese caso se muestra una sola decisión y se une la
+totalidad de sus citas. Dos restricciones distintas para el mismo campo siguen
+siendo dos bloqueos. Esto evita que una aclaración repetida infle el contador o
+parezca una nueva exigencia, sin permitir que el freno descarte requisitos
+materialmente diferentes.
+
+Regresión sintética adicional:
+
+- `RequestManifestPanel.test.tsx`: 10/10 pruebas pasan con Node 24.19.0.
+- ESLint enfocado, TypeScript (`tsc --noEmit`), build de OSP (430 módulos) y
+  `git diff --check` pasan.
+
+El cambio es sólo de presentación y cálculo determinista del bloqueo visible;
+no altera el manifiesto persistido, no resuelve decisiones, no promueve
+conocimiento y no cambia el contrato de firma o envío.
