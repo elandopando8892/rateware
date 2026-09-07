@@ -211,6 +211,14 @@ function documentKey(label: string): string {
     ?.canonicalKey ?? `supplier.${safeKey(label)}`;
 }
 
+function documentConceptKeys(label: string): readonly string[] {
+  return Object.freeze(
+    DOCUMENT_CONCEPTS.filter((candidate) => candidate.pattern.test(label)).map(
+      (candidate) => candidate.canonicalKey,
+    ),
+  );
+}
+
 function allRequirementText(manifest: ManifestLike): readonly string[] {
   if (!Array.isArray(manifest.requirements)) return Object.freeze([]);
   return Object.freeze(manifest.requirements.flatMap((item) => {
@@ -240,23 +248,24 @@ function unmappedPackageRequirementsFromText(
     const row = item as Record<string, unknown>;
     if (typeof row.text !== "string") continue;
     const requirementText = text(row.text);
-    const canonicalKey = documentKey(requirementText);
-    if (
-      !DOCUMENT_CONCEPTS.some((concept) =>
-        concept.canonicalKey === canonicalKey
-      ) || mappedDocumentKeys.has(canonicalKey) ||
-      seen.has(canonicalKey)
-    ) continue;
+    const canonicalKeys = documentConceptKeys(requirementText);
+    if (canonicalKeys.length === 0) continue;
+    const pendingKeys = canonicalKeys.filter((canonicalKey) =>
+      !mappedDocumentKeys.has(canonicalKey) && !seen.has(canonicalKey)
+    );
+    if (pendingKeys.length === 0) continue;
     // Older manifests may carry the carrier text without a citation list.
     // Do not invent an uncited package requirement; retain the source text and
     // only synthesize when the requirement can point back to evidence.
     if (!Object.hasOwn(row, "evidenceIds")) continue;
     const evidenceIds = stringArray(row.evidenceIds, 20);
     if (evidenceIds.length === 0) throw new Error("REQUEST_CONTRACT_INVALID");
-    seen.add(canonicalKey);
-    results.push(
-      Object.freeze({ canonicalKey, text: requirementText, evidenceIds }),
-    );
+    for (const canonicalKey of pendingKeys) {
+      seen.add(canonicalKey);
+      results.push(
+        Object.freeze({ canonicalKey, text: requirementText, evidenceIds }),
+      );
+    }
   }
   return Object.freeze(results);
 }
@@ -267,7 +276,7 @@ function relatedText(
 ): string {
   const concept = documentKey(label);
   const matches = requirementText.filter((item) =>
-    documentKey(item) === concept ||
+    documentConceptKeys(item).includes(concept) ||
     normalized(item).includes(normalized(label))
   );
   return [label, ...matches].join(" \n");

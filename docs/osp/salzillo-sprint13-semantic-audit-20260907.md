@@ -251,3 +251,32 @@ Regresión sintética adicional:
 - Total de la corrida: 56/56; `deno check` y `git diff --check` correctos.
 
 No se modificaron datos, casos, migraciones, Supabase ni acciones salientes.
+
+## Incremento ejecutado — regresión transversal Salzillo/Crane y extracción multi-concepto
+
+Se agregó una regresión sintética de extremo a extremo que compara el mismo
+requerimiento del carrier en cuatro superficies: semillas de decisiones del
+manifiesto, borrador de aclaraciones, contrato de cumplimiento y matriz
+semántica. Salzillo cubre dos faltantes distintos sobre el mismo campo; Crane
+cubre un paquete DOCX con anexos PDF y una frase que exige simultáneamente
+autoridad MC y fianza.
+
+La regresión descubrió y corrigió una pérdida real: el contrato sólo tomaba el
+primer concepto documental de una frase compuesta, por lo que “MC authority y
+surety bond” podía omitir la fianza. Ahora cada concepto reconocido de la misma
+fuente conserva su propia exigencia, citas y bloqueo. Las preguntas de
+aclaración ya existentes permanecen en su cola separada y no se confunden con
+los faltantes/contradicciones que genera el borrador.
+
+Regresión ejecutada:
+
+- `request-cross-view-regression.test.ts`: 3/3.
+- `request-contract.test.ts`: 11/11.
+- `request-manifest-review.test.ts`: 4/4.
+- `clarification-draft.test.ts`: 5/5.
+- Total enfocado: 23/23; `deno check` y `git diff --check` deben permanecer
+  como gates del commit.
+
+El cambio es determinista y fail-closed: no rellena datos no citados, no
+resuelve decisiones humanas, no crea registros, no aplica migraciones y no
+envía correos, webhooks o firmas.
