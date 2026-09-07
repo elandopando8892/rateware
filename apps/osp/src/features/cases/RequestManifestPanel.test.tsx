@@ -83,6 +83,20 @@ describe('RequestManifestPanel', () => {
     expect(within(readiness as HTMLElement).getByText('1 evidence issue must be resolved before signature or delivery.')).toBeInTheDocument();
   });
 
+  it('overrides an optimistic readiness status when an issue remains open', () => {
+    render(<RequestManifestPanel manifest={{
+      ...manifest,
+      readiness: { status: 'ready_for_prefill', reasonCodes: [] },
+      missingInformation: [{ fieldId: 'trade.references.3.email', description: 'Third reference email is missing', evidenceIds: ['xlsx:A2'] }],
+      clarificationQuestions: [],
+    }} />);
+
+    const readiness = document.querySelector('.manifest-readiness');
+    expect(readiness).not.toBeNull();
+    expect(within(readiness as HTMLElement).getByText('Clarification required')).toBeInTheDocument();
+    expect(within(readiness as HTMLElement).getByText('1 evidence issue must be resolved before signature or delivery.')).toBeInTheDocument();
+  });
+
   it('fails visibly closed when no request manifest exists', () => {
     render(<RequestManifestPanel manifest={null} attachmentCount={2} documentCount={0} />);
     expect(screen.getByRole('heading', { name: /request interpretation pending/i })).toBeInTheDocument();

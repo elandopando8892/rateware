@@ -44,7 +44,8 @@ export function RequestManifestPanel({
   }
 
   const unresolved = manifest.missingInformation.length + manifest.clarificationQuestions.length + manifest.contradictions.length;
-  const readinessTone = manifest.readiness.status === 'ready_for_prefill' ? 'ready' : manifest.readiness.status === 'needs_clarification' ? 'warning' : 'blocked';
+  const readinessStatus = unresolved > 0 && manifest.readiness.status === 'ready_for_prefill' ? 'needs_clarification' : manifest.readiness.status;
+  const readinessTone = readinessStatus === 'ready_for_prefill' ? 'ready' : readinessStatus === 'needs_clarification' ? 'warning' : 'blocked';
   return (
     <section className="panel request-manifest" aria-labelledby="request-manifest-title">
       <div className="panel-heading request-manifest-heading">
@@ -87,7 +88,7 @@ export function RequestManifestPanel({
       ) : null}
 
       <div className={`manifest-readiness manifest-readiness-${readinessTone}`} role="status">
-        <div><span className="manifest-readiness-dot" aria-hidden="true" /><strong>{READINESS_LABELS[manifest.readiness.status]}</strong></div>
+        <div><span className="manifest-readiness-dot" aria-hidden="true" /><strong>{READINESS_LABELS[readinessStatus]}</strong></div>
         <p>{unresolved === 0 ? 'No blockers were detected in the preserved evidence.' : `${unresolved} evidence issue${unresolved === 1 ? '' : 's'} must be resolved before signature or delivery.`}</p>
       </div>
 
