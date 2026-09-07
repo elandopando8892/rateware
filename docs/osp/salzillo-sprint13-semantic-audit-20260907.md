@@ -172,3 +172,25 @@ Regresión sintética adicional:
 
 El cambio afecta sólo la presentación y edición controlada de preguntas; no
 envía aclaraciones, no guarda datos reales y no altera autorizaciones externas.
+
+## Incremento ejecutado — deduplicación en el backend antes de persistir
+
+El worker ya no deja que una duplicación textual llegue al borrador persistido:
+normaliza tipo, campo y pregunta, conserva una sola condición y une sus citas.
+Dos preguntas distintas del mismo campo sí se conservan. La revisión de
+Operaciones empareja cada edición por tipo, campo y alcance de evidencia, con
+consumo único de cada alcance; por eso no se puede sustituir una fuente ni
+duplicar una decisión durante la edición.
+
+Regresión sintética adicional:
+
+- `clarification-draft.test.ts`: 5/5 pruebas.
+- `request-manifest-review.test.ts`: 3/3 pruebas.
+- `postgres-store.test.ts`: 12/12 pruebas.
+- `osp-case-api/handler.test.ts`: 14/14 pruebas.
+- Total de la corrida backend: 31/31 pruebas, más `deno check` y
+  `git diff --check` correctos.
+
+El cambio sólo afecta la construcción y revisión de borradores de aclaración;
+no envía mensajes, no toca casos reales, no aplica migraciones y mantiene la
+idempotencia y el control humano.

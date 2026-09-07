@@ -31,6 +31,14 @@ function safeText(value: unknown): string {
   return value;
 }
 
+function questionKey(question: { kind: 'missing' | 'contradiction'; fieldId: string; question: string }) {
+  return `${question.kind}:${question.fieldId}:${question.question.replace(/\s+/g, ' ').toLowerCase()}`;
+}
+
+function questionSort(left: { kind: 'missing' | 'contradiction'; fieldId: string; question: string }, right: { kind: 'missing' | 'contradiction'; fieldId: string; question: string }) {
+  return left.fieldId.localeCompare(right.fieldId) || left.kind.localeCompare(right.kind) || left.question.localeCompare(right.question);
+}
+
 function stable(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
   if (value && typeof value === 'object') return `{${Object.keys(value as Record<string, unknown>).sort().map((key) => `${JSON.stringify(key)}:${stable((value as Record<string, unknown>)[key])}`).join(',')}}`;
@@ -56,14 +64,17 @@ export async function buildClarificationDraft(input: {
     ...input.contradictions.map((question) => ({ ...question, kind: 'contradiction' as const })),
   ];
   if (raw.length < 1 || raw.length > 50) throw new Error('CLARIFICATION_INPUT_INVALID');
-  const fields = new Set<string>();
-  const questions = raw.map((question) => {
-    if (!FIELD.test(question.fieldId) || fields.has(question.fieldId) || !Array.isArray(question.evidenceIds) || question.evidenceIds.length > 20) throw new Error('CLARIFICATION_INPUT_INVALID');
-    fields.add(question.fieldId);
+  const grouped = new Map<string, { kind: 'missing' | 'contradiction'; fieldId: string; question: string; evidenceIds: string[] }>();
+  raw.forEach((question) => {
+    if (!FIELD.test(question.fieldId) || !Array.isArray(question.evidenceIds) || question.evidenceIds.length > 20) throw new Error('CLARIFICATION_INPUT_INVALID');
     const evidenceIds = [...question.evidenceIds].sort();
     if (evidenceIds.length < 1 || new Set(evidenceIds).size !== evidenceIds.length || evidenceIds.some((id) => !allowedEvidence.has(id))) throw new Error('CLARIFICATION_EVIDENCE_INVALID');
-    return Object.freeze({ kind: question.kind, fieldId: question.fieldId, question: safeText(question.question), evidenceIds: Object.freeze(evidenceIds) });
-  }).sort((left, right) => left.fieldId.localeCompare(right.fieldId));
+    const normalized = { kind: question.kind, fieldId: question.fieldId, question: safeText(question.question) };
+    const key = questionKey(normalized);
+    const previous = grouped.get(key);
+    grouped.set(key, previous ? { ...previous, evidenceIds: [...new Set([...previous.evidenceIds, ...evidenceIds])].sort() } : { ...normalized, evidenceIds });
+  });
+  const questions = [...grouped.values()].sort(questionSort).map((question) => Object.freeze({ ...question, evidenceIds: Object.freeze(question.evidenceIds) }));
   const canonical = { caseId: input.caseId, questions, evidenceIds: [...allowedEvidence].sort() };
   return Object.freeze({
     ...canonical,
@@ -86,16 +97,24 @@ export async function reviewClarificationDraft(input: {
   }
   const sourceCanonical = { caseId: source.caseId, questions: source.questions, evidenceIds: source.evidenceIds };
   if (await sha256(stable(sourceCanonical)) !== source.canonicalSha256) throw new Error('CLARIFICATION_REVIEW_CONFLICT');
-  const sourceByField = new Map(source.questions.map((question) => [question.fieldId, question]));
+  const sourceByScope = new Map<string, ClarificationDraft['questions'][number][]>();
+  for (const expected of source.questions) {
+    const key = `${expected.kind}:${expected.fieldId}:${[...expected.evidenceIds].sort().join('\u0000')}`;
+    const entries = sourceByScope.get(key) ?? [];
+    entries.push(expected);
+    sourceByScope.set(key, entries);
+  }
   const questions = input.questions.map((question) => {
-    const expected = sourceByField.get(question.fieldId);
     const evidenceIds = Array.isArray(question.evidenceIds) ? [...question.evidenceIds].sort() : [];
+    const key = `${question.kind}:${question.fieldId}:${evidenceIds.join('\u0000')}`;
+    const scoped = sourceByScope.get(key);
+    const expected = scoped?.shift();
     if (!expected || question.kind !== expected.kind || evidenceIds.join('\u0000') !== [...expected.evidenceIds].sort().join('\u0000')) {
       throw new Error('CLARIFICATION_REVIEW_SCOPE_MISMATCH');
     }
     return Object.freeze({ kind: expected.kind, fieldId: expected.fieldId, question: safeText(question.question), evidenceIds: Object.freeze(evidenceIds) });
-  }).sort((left, right) => left.fieldId.localeCompare(right.fieldId));
-  if (new Set(questions.map((question) => question.fieldId)).size !== source.questions.length) throw new Error('CLARIFICATION_REVIEW_SCOPE_MISMATCH');
+  }).sort(questionSort);
+  if (questions.length !== source.questions.length || [...sourceByScope.values()].some((entries) => entries.length > 0)) throw new Error('CLARIFICATION_REVIEW_SCOPE_MISMATCH');
   const canonical = { caseId: source.caseId, sourceCanonicalSha256: source.canonicalSha256, questions, evidenceIds: [...source.evidenceIds] };
   return Object.freeze({
     ...canonical,
