@@ -10,7 +10,7 @@ export type ManifestBlocker = {
 };
 
 function normalizeText(value: string) {
-  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 /**
