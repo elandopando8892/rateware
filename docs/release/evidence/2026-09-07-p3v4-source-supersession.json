@@ -3,9 +3,9 @@
   "sprint": "P3-V4",
   "verdict": "LOCAL-GO",
   "release_credit": "withheld",
-  "product_candidate_sha": "11b96bd9abd3085e70e1316c69812d2da910a5db",
-  "product_candidate_tree": "cf787e040ee6e93eabd4f918ea238b321c7ad27e",
-  "product_base_sha": "7964503088f51bec69204988d7f7aadfa65223b4",
+  "product_candidate_sha": "0fb4a3ab7cd909ea857f15d3eb00f62c6ce12bca",
+  "product_candidate_tree": "ec128dcc187f2ab30a079f974352bf34cc799ad0",
+  "product_base_sha": "9006bbd1291326014cffa6f285be4d9dabd93e2d",
   "source_paths": [
     "shipper-crm.html",
     "vendor-support.html",
@@ -25,8 +25,8 @@
     "provider-onboarding.html": "4fa48bdbe334c124be3bddf7029fe38e3c7dd20a",
     "provider-gmail.html": "d37168425763aa730671ec26380f1e5104f4584b",
     "provider-communications.html": "8635e3b7573ed6d08c0c7ed001835c1db0cdeeab",
-    "src/platform55-visual-parity.css": "3352a3a0ffae22c66ea1b04666bcb883d0dc6b18",
+    "src/platform55-visual-parity.css": "a8343b5cf42997954acba747c1209567557e901a",
     "src/platform55-network-service.css": "95fb1b0fe205f94d7d8f907c0025c64de75ad081"
   },
-  "record_sha256": "93acd2b7778a9cbaa5a2ab24253d83a45c5c6ad5b0de014919bb64e63353b1cb"
+  "record_sha256": "2658e6f5315b276cbe57443978b11b9950232599699f80882e83e6604fea6f7d"
 }
