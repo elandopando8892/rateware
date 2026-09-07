@@ -73,13 +73,14 @@ firmó ni se envió correo. Esta auditoría es local y de lectura.
 
 ## Próximo incremento seguro
 
-Implementar el contrato de requisito externo `banking.account_evidence` en la
-matriz de cumplimiento y su panel de freno, junto con una prueba que demuestre
-que la ausencia de esa evidencia bloquea el paquete aunque los campos bancarios
-del formulario estén completos. Usar **GPT-5.6 Sol · High** para esa integración
-normal; subir a Astra sólo si la implementación revela una incompatibilidad de
-persistencia, permisos o idempotencia. El resultado debe ser sintético y no debe
-modificar Salzillo productivo.
+Exponer en la matriz y en la pantalla de aclaraciones los requisitos de texto
+reconocidos que aún no tienen una fila documental, cita utilizable o respuesta
+estructurada (incluidas referencias comerciales sin correo). El objetivo es que
+ningún concepto quede silenciosamente fuera del paquete y que el freno dirija a
+una aclaración humana. Usar **GPT-5.6 Sol · High** para esta integración normal;
+subir a Astra sólo si aparece una incompatibilidad de persistencia, permisos o
+idempotencia. El resultado debe ser sintético y no debe modificar Salzillo
+productivo.
 
 ## Incremento ejecutado
 
@@ -88,16 +89,18 @@ texto citado por el carrier cuando el manifiesto no trae una fila documental
 equivalente; esto incluye `banking.account_evidence`. La regla conserva la cita
 original, exige evidencia aprobada y mantiene el requisito como bloqueante; los
 datos bancarios del formulario no pueden satisfacer la carátula por coincidencia
-de concepto. La matriz UI identifica el registro como evidencia de paquete y
-dirige a revisión documental.
+de concepto. Las filas ya mapeadas no se duplican ni se invalidan por una cita
+textual vacía de una versión antigua del manifiesto. La matriz UI identifica el
+registro como evidencia de paquete y dirige a revisión documental.
 
 Regresión sintética validada:
 
-- 9/9 pruebas de `request-contract.test.ts` pasan.
+- 11/11 pruebas de `request-contract.test.ts` pasan.
 - `request-semantic-gate.test.ts`: 20/20 pasan.
-- lint de los componentes modificados pasa.
-- build de OSP pasa bajo Node 20.14.0 con advertencia de engine; el proyecto
-  declara Node >=22.12.0.
+- `deno check` de los módulos del contrato pasa y `git diff --check` no reporta
+  errores.
+- lint y build de OSP de la integración UI previa pasan bajo Node 20.14.0 con
+  advertencia de engine; el proyecto declara Node >=22.12.0.
 - La suite Vitest de UI no pudo iniciar en este host por `ERR_REQUIRE_ESM` en
   `html-encoding-sniffer`/`@exodus/bytes`; requiere ejecutar con el runtime de
   Node declarado por el proyecto.
