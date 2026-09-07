@@ -153,3 +153,22 @@ Regresión sintética adicional:
 
 El incremento mantiene el modo human-approved: no marca decisiones como
 resueltas, no crea registros y no habilita firma, Sales, correo o webhook.
+
+## Incremento ejecutado — aclaraciones sin duplicados
+
+La revisión de aclaraciones reutiliza la misma identidad de evidencia que el
+manifiesto. Preguntas exactamente repetidas se consolidan y conservan la unión
+de sus citas tanto durante la edición como en la vista inmutable de una revisión
+ya guardada. Preguntas distintas del mismo campo siguen siendo editables por
+separado; por ello el freno no puede ocultar una condición adicional del
+carrier.
+
+Regresión sintética adicional:
+
+- `ClarificationReview.test.tsx`, `RequestManifestPanel.test.tsx` y
+  `AdaptiveReviewWorkbench.test.ts`: 17/17 pruebas pasan con Node 24.19.0.
+- ESLint enfocado, TypeScript (`tsc --noEmit`), build de OSP (430 módulos) y
+  `git diff --check` pasan.
+
+El cambio afecta sólo la presentación y edición controlada de preguntas; no
+envía aclaraciones, no guarda datos reales y no altera autorizaciones externas.

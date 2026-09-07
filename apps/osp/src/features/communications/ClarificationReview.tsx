@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+import { manifestBlockerKey } from '../cases/manifest-blockers';
+
 export type ClarificationReviewDraft = {
   canonicalSha256: string;
   authorizationMailbox: 'sales@heymarksman.com';
@@ -11,11 +13,27 @@ export type ClarificationReviewSubmission = {
   questions: ClarificationReviewDraft['questions'];
 };
 
+type ClarificationQuestion = ClarificationReviewDraft['questions'][number];
+
+function dedupeClarificationQuestions(questions: readonly ClarificationQuestion[]): readonly ClarificationQuestion[] {
+  const grouped = new Map<string, ClarificationQuestion>();
+  for (const question of questions) {
+    const key = manifestBlockerKey(question.kind, question.fieldId, question.question);
+    const previous = grouped.get(key);
+    if (!previous) {
+      grouped.set(key, question);
+      continue;
+    }
+    grouped.set(key, { ...previous, evidenceIds: [...new Set([...previous.evidenceIds, ...question.evidenceIds])] });
+  }
+  return [...grouped.values()];
+}
+
 export function ClarificationReview({ draft, onSaveReview }: {
   draft: ClarificationReviewDraft;
   onSaveReview(input: ClarificationReviewSubmission): void | Promise<void>;
 }) {
-  const [questions, setQuestions] = useState(() => draft.questions.map((question) => ({ ...question, evidenceIds: [...question.evidenceIds] })));
+  const [questions, setQuestions] = useState(() => dedupeClarificationQuestions(draft.questions).map((question) => ({ ...question, evidenceIds: [...question.evidenceIds] })));
   const [edited, setEdited] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
@@ -40,7 +58,7 @@ export function ClarificationReview({ draft, onSaveReview }: {
     return <section aria-labelledby="clarification-review-title">
       <h1 id="clarification-review-title">Clarification review</h1>
       <p role="status">The Operations review is immutable. Any external authorization remains separate and must come from <strong>{draft.authorizationMailbox}</strong>.</p>
-      <ol>{draft.questions.map((question) => <li key={question.fieldId}><strong>{question.fieldId}</strong>: {question.question}<p>Evidence: {question.evidenceIds.join(', ')}</p></li>)}</ol>
+      <ol>{dedupeClarificationQuestions(draft.questions).map((question) => <li key={`${question.kind}:${question.fieldId}:${question.question}`}><strong>{question.fieldId}</strong>: {question.question}<p>Evidence: {question.evidenceIds.join(', ')}</p></li>)}</ol>
     </section>;
   }
   return <section aria-labelledby="clarification-review-title">
