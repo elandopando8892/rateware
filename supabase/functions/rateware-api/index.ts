@@ -235,6 +235,22 @@ function carrierTemplateExpectedVersion(value: unknown) {
   return Number.isSafeInteger(version) && version >= 1 ? version : null;
 }
 
+function rfxAwardPackageExpectedVersion(value: unknown) {
+  const version = Number(value);
+  return Number.isSafeInteger(version) && version >= 1 ? version : null;
+}
+
+function rfxAwardPackageVersionConflict(row: Record<string, unknown> = {}) {
+  const currentVersion = Number(row.version) || 1;
+  return Object.assign(new Error("RFx award package changed since it was loaded."), {
+    code: "409",
+    details: `Current version is ${currentVersion}. Reload the award package before retrying.`,
+    current_version: currentVersion,
+    current_updated_at: cleanText(row.updated_at) || null,
+    award_package_id: cleanText(row.id) || null
+  });
+}
+
 function carrierTemplateActor(
   user: RuntimeWorkspaceUser,
   claims: Record<string, unknown>
@@ -25574,12 +25590,15 @@ async function markRfxAwardPackageImplementationReady(
 ) {
   const awardId = cleanText(input.award_package_id || input.id);
   if (!awardId || !UUID_PATTERN.test(awardId)) throw new Error("A valid RFx Award Package id is required.");
+  const expectedVersion = rfxAwardPackageExpectedVersion(input.expected_version);
+  if (!expectedVersion) throw Object.assign(new Error("expected_version is required."), { code: "400" });
   const awardResult = await supabase.from("rfx_award_packages").select("*")
     .eq("owner_email", user.owner_email)
     .eq("id", awardId)
     .single();
   if (awardResult.error) throw awardResult.error;
   const award = awardResult.data as Record<string, unknown>;
+  if ((Number(award.version) || 1) !== expectedVersion) throw rfxAwardPackageVersionConflict(award);
   if (cleanText(award.status)?.toLowerCase() === "archived") {
     throw new Error("Archived award packages cannot be marked implementation ready.");
   }
@@ -25590,13 +25609,23 @@ async function markRfxAwardPackageImplementationReady(
     .update({
       status: "implementation_ready",
       approved_at: cleanText(award.approved_at) || now,
+      version: expectedVersion + 1,
       updated_at: now
     })
     .eq("owner_email", user.owner_email)
     .eq("id", awardId)
+    .eq("version", expectedVersion)
     .select()
-    .single();
+    .maybeSingle();
   if (awardUpdate.error) throw awardUpdate.error;
+  if (!awardUpdate.data) {
+    const latestAward = await supabase.from("rfx_award_packages").select("id,version,updated_at")
+      .eq("owner_email", user.owner_email)
+      .eq("id", awardId)
+      .maybeSingle();
+    if (latestAward.error) throw latestAward.error;
+    throw rfxAwardPackageVersionConflict((latestAward.data || award) as Record<string, unknown>);
+  }
   const projectUpdate = await supabase.from("rfx_projects")
     .update({ status: "implementation_ready", updated_at: now })
     .eq("owner_email", user.owner_email)

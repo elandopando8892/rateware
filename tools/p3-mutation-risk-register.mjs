@@ -157,10 +157,10 @@ export const MUTATION_RISK_REGISTER = [
     effect: "Advance award package into implementation",
     likelihood: 2,
     impact: 5,
-    control: "version_guard_required",
-    evidence: "Package, opportunity, and audit updates are separate; a stale concurrent transition can overwrite newer state.",
+    control: "optimistic_version_guard",
+    evidence: "Requires the loaded package version; the status transition uses a version compare-and-set, advances the version, and returns a 409 conflict when the package changed.",
     owner: "Procurement Platform",
-    status: "open"
+    status: "controlled"
   }
 ];
 
@@ -205,7 +205,7 @@ export function renderMutationRiskRegister(register = MUTATION_RISK_REGISTER) {
     "",
     ...open.map((risk, index) => `${index + 1}. **${risk.canonicalId.replace("edge.rateware-api.", "")}** - ${risk.evidence}`),
     "",
-    "External delivery, carrier award, and award-package creation controls are durable. The remaining implementation target is the implementation-ready version guard.",
+    "External delivery, carrier award, award-package creation, and implementation-ready transitions have explicit duplicate-execution controls.",
     ""
   ].join("\n");
 }

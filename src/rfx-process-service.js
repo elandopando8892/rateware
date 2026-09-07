@@ -59,6 +59,9 @@ export async function createRfxAwardPackage(projectId, payload = {}) {
   return await callRatewareApi("create_rfx_award_package", { project_id: projectId, ...payload });
 }
 
-export async function markRfxAwardPackageImplementationReady(awardPackageId) {
-  return await callRatewareApi("mark_rfx_award_package_implementation_ready", { award_package_id: awardPackageId });
+export async function markRfxAwardPackageImplementationReady(awardPackageId, expectedVersion) {
+  return await callRatewareApi("mark_rfx_award_package_implementation_ready", {
+    award_package_id: awardPackageId,
+    expected_version: expectedVersion
+  });
 }

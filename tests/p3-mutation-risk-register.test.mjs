@@ -17,7 +17,8 @@ test("P3 register distinguishes durable delivery controls from open award risks"
   assert.equal(byId.get("edge.rateware-api.send_whatsapp_outreach_messages").status, "controlled");
   assert.equal(byId.get("edge.rateware-api.award_rfx_lane_vendor").control, "atomic_transaction_with_operation_receipt");
   assert.equal(byId.get("edge.rateware-api.create_rfx_award_package").control, "payload_bound_operation_ledger");
-  assert.equal(byId.get("edge.rateware-api.mark_rfx_award_package_implementation_ready").control, "version_guard_required");
+  assert.equal(byId.get("edge.rateware-api.mark_rfx_award_package_implementation_ready").control, "optimistic_version_guard");
+  assert.equal(byId.get("edge.rateware-api.mark_rfx_award_package_implementation_ready").status, "controlled");
 });
 
 test("P3 register renderer makes the remediation sequence reviewable", () => {

@@ -1380,7 +1380,7 @@ function awardPanel() {
             <thead><tr><th>Scenario</th><th>Status</th><th>Type</th><th>Created</th><th>Action</th></tr></thead>
             <tbody>${awards.map((row) => {
               const canPrepare = row.status !== "implementation_ready" && row.status !== "archived";
-              return `<tr><td>${escapeHtml(row.scenario_name)}</td><td>${escapeHtml(row.status)}</td><td>${escapeHtml(row.scenario_type)}</td><td>${escapeHtml(row.created_at)}</td><td>${canPrepare ? `<button type="button" class="secondary" data-rfx-action="mark-award-implementation-ready" data-award-id="${escapeHtml(row.id)}">Mark implementation ready</button>` : "-"}</td></tr>`;
+              return `<tr><td>${escapeHtml(row.scenario_name)}</td><td>${escapeHtml(row.status)}</td><td>${escapeHtml(row.scenario_type)}</td><td>${escapeHtml(row.created_at)}</td><td>${canPrepare ? `<button type="button" class="secondary" data-rfx-action="mark-award-implementation-ready" data-award-id="${escapeHtml(row.id)}" data-award-version="${escapeHtml(Number(row.version) || 1)}">Mark implementation ready</button>` : "-"}</td></tr>`;
             }).join("") || `<tr><td colspan="5">No award packages created yet.</td></tr>`}</tbody>
           </table>
         </div>
@@ -1675,7 +1675,7 @@ async function handleProjectAction(action, target) {
       setStatus("Award package created.");
     } else if (action === "mark-award-implementation-ready") {
       if (!window.confirm("Mark this award package implementation ready? This moves the linked Shipper CRM opportunity to Won at 100%.")) return;
-      const result = await markRfxAwardPackageImplementationReady(target.dataset.awardId);
+      const result = await markRfxAwardPackageImplementationReady(target.dataset.awardId, Number(target.dataset.awardVersion) || 1);
       setStatus(result.shipper_opportunity
         ? "Award package is implementation ready. The linked Shipper CRM opportunity is now Won at 100%."
         : "Award package is implementation ready.");

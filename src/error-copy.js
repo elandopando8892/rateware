@@ -50,6 +50,9 @@ export function humanizeError(errorOrMessage) {
   if (lower === "bad request" || lower.includes("bad request")) {
     return "Rateware rejected the request because some required data is missing or invalid. Refresh the module and retry; if it repeats, check Observability for the exact API failure.";
   }
+  if (lower.includes("changed since it was loaded") || lower.includes("version conflict")) {
+    return "This record changed in another session. Refresh the page and review the latest version before retrying.";
+  }
   if (lower.includes("edge function") || lower.includes("function failed")) {
     return "A processing function failed before finishing. Retry the action; if it repeats, check the function logs.";
   }
