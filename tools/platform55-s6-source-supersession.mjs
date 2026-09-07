@@ -14,6 +14,10 @@ import {
   loadP3V3SourceSupersession,
   validateP3V3SourceSupersession,
 } from "./platform55-p3v3-source-supersession.mjs";
+import {
+  loadP3V4SourceSupersession,
+  validateP3V4SourceSupersession,
+} from "./platform55-p3v4-source-supersession.mjs";
 
 const SHA1 = /^[0-9a-f]{40}$/;
 
@@ -111,6 +115,7 @@ export function loadPlatform55SourceSupersessions(rootDir = process.cwd()) {
     loadP3V1SourceSupersession(rootDir),
     loadP3V2SourceSupersession(rootDir),
     loadP3V3SourceSupersession(rootDir),
+    loadP3V4SourceSupersession(rootDir),
   ]);
 }
 
@@ -129,6 +134,7 @@ export function validateHistoricalSourceParity({
     else if (record?.sprint === "P3-V1") validateP3V1SourceSupersession(record);
     else if (record?.sprint === "P3-V2") validateP3V2SourceSupersession(record);
     else if (record?.sprint === "P3-V3") validateP3V3SourceSupersession(record);
+    else if (record?.sprint === "P3-V4") validateP3V4SourceSupersession(record);
     else throw new Error("unknown source supersession contract");
   }
   if (

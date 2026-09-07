@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-network-service.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="shipper-crm">
     <div class="rw-app" data-platform55-app>
@@ -20,7 +21,7 @@
             <p id="auth-status" role="status"></p>
           </form>
         </header>
-        <main class="shipper-crm-workspace rw-main rw-network-service-page" data-platform55-page-content data-platform55-network-state="shipper-directory">
+        <main class="shipper-crm-workspace rw-main rw-network-service-page p55-v4-page p55-v4-page--shipper-crm" data-platform55-page-content data-platform55-network-state="shipper-directory" data-p3v4-route="shipper-crm">
           <header class="page-header" data-platform55-page-header>
           <div>
             <p class="eyebrow" data-platform55-breadcrumbs>Source · Shipper CRM</p>
@@ -31,6 +32,11 @@
             <button id="add-shipper-button" class="page-primary-action" type="button">Add shipper</button>
           </div>
           </header>
+
+          <aside class="p55-v4-context-banner" data-p3v4-boundary aria-label="Shipper CRM operating boundary">
+            <span class="p55-v4-context-mark" aria-hidden="true">01</span>
+            <div><strong>Customer workspace</strong><p>Review account health and commercial progress. Won/Lost never approves rates, sends communication, creates a workspace, or commits a customer.</p></div>
+          </aside>
 
           <section class="shipper-summary-strip rw-network-service-metrics" aria-label="Shipper CRM summary">
             <article><span>Total shippers</span><strong id="shipper-total">-</strong></article>
