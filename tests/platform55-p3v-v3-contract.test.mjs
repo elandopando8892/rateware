@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import {
+  P3V3_SOURCE_PATHS,
+  loadP3V3SourceSupersession,
+  validateP3V3SourceGitState,
+} from "../tools/platform55-p3v3-source-supersession.mjs";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
@@ -50,3 +55,10 @@ test("P3-V3 does not expose an automatic delivery or production insert path", as
   assert.doesNotMatch(combined, /auto(?:matic|matically)[^\n]{0,80}(?:send|insert|approve)/i);
 });
 
+test("P3-V3 source supersession is content-addressed and keeps credit withheld", () => {
+  const record = loadP3V3SourceSupersession();
+  assert.equal(record.verdict, "LOCAL-GO");
+  assert.equal(record.release_credit, "withheld");
+  assert.deepEqual(record.source_paths, P3V3_SOURCE_PATHS);
+  assert.equal(validateP3V3SourceGitState(process.cwd(), record), record);
+});
