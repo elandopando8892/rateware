@@ -96,6 +96,8 @@ del manifiesto también muestra cada `missingInformation`, aunque el modelo no
 haya generado una pregunta de aclaración, para que el faltante no desaparezca
 de la revisión humana. El contador de bloqueos suma también las preguntas de
 aclaración abiertas, incluso cuando no existe otro faltante en la lista.
+Si el modelo declara `ready_for_prefill` mientras persiste cualquier problema,
+la UI rebaja ese estado a `Clarification required` y conserva el freno.
 
 Regresión sintética validada:
 
@@ -103,7 +105,7 @@ Regresión sintética validada:
 - `request-semantic-gate.test.ts`: 20/20 pasan.
 - `deno check` de los módulos del contrato pasa y `git diff --check` no reporta
   errores.
-- `RequestManifestPanel.test.tsx`: 6/6 pasan con el runtime empaquetado Node
+- `RequestManifestPanel.test.tsx`: 7/7 pasan con el runtime empaquetado Node
   24.19.0; lint enfocado y build de OSP pasan con los mismos cambios.
 - El Node 20.14.0 del host no puede iniciar Vitest por `ERR_REQUIRE_ESM` en
   `html-encoding-sniffer`/`@exodus/bytes`; el proyecto declara Node >=22.12.0 y
