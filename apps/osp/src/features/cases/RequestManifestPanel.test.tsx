@@ -47,9 +47,26 @@ describe('RequestManifestPanel', () => {
     const fields = screen.getByRole('table', { name: /requested fields/i });
     expect(within(fields).getByText('business.legalName')).toBeInTheDocument();
     expect(within(fields).getByText('Needs mapping')).toBeInTheDocument();
+    expect(screen.getByText('Third reference missing')).toBeInTheDocument();
     expect(screen.getByText('Provide a third trade reference.')).toBeInTheDocument();
     expect(screen.getByText(/ai proposes\. operations confirms\. no external effects/i)).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('keeps a missing-information blocker visible when no clarification question was generated', () => {
+    render(<RequestManifestPanel manifest={{
+      ...manifest,
+      clarificationQuestions: [],
+      missingInformation: [{ fieldId: 'trade.references.3.email', description: 'Third reference email is missing', evidenceIds: ['xlsx:A2'] }],
+    }} />);
+
+    expect(screen.getByText('Third reference email is missing')).toBeInTheDocument();
+    const missingRow = screen.getByText('Third reference email is missing').closest('li');
+    expect(missingRow).not.toBeNull();
+    expect(within(missingRow as HTMLElement).getByText('Missing information')).toBeInTheDocument();
+    const blockers = (missingRow as HTMLElement).closest('section');
+    expect(blockers).not.toBeNull();
+    expect(within(blockers as HTMLElement).getByRole('heading', { name: /resolve before package assembly/i })).toBeInTheDocument();
   });
 
   it('fails visibly closed when no request manifest exists', () => {

@@ -129,7 +129,7 @@ export function RequestManifestPanel({
         </section>
       </div>
 
-      {(manifest.clarificationQuestions.length > 0 || manifest.contradictions.length > 0) ? (
+      {(manifest.missingInformation.length > 0 || manifest.clarificationQuestions.length > 0 || manifest.contradictions.length > 0) ? (
         <section className="manifest-blockers" aria-labelledby="manifest-blockers-title">
           <div>
             <p className="eyebrow">Operations checkpoint</p>
@@ -137,6 +137,7 @@ export function RequestManifestPanel({
           </div>
           <ul>
             {manifest.contradictions.map((item) => <li key={item.text}><strong>Contradiction</strong><span>{item.text}</span><EvidenceCount ids={item.evidenceIds} /></li>)}
+            {manifest.missingInformation.map((item) => <li key={`${item.fieldId}:${item.description}`}><strong>Missing information</strong><span>{item.description}</span><EvidenceCount ids={item.evidenceIds} /></li>)}
             {manifest.clarificationQuestions.map((item) => <li key={`${item.fieldId}:${item.question}`}><strong>Clarification</strong><span>{item.question}</span><EvidenceCount ids={item.evidenceIds} /></li>)}
           </ul>
         </section>
