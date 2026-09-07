@@ -1691,13 +1691,17 @@ function selectVisibleVendors() {
   updateBulkState();
 }
 
-function updateVendorMetrics() {
-  const rows = allVendors;
-  vendorMetricTotal.textContent = vendorTotalCount || rows.length;
+function updateVendorMetricsForRows(rows = [], total = rows.length) {
+  vendorMetricTotal.textContent = String(total ?? rows.length);
   vendorMetricReady.textContent = rows.filter(isRfxReady).length;
   vendorMetricMissingContact.textContent = rows.filter(hasMissingContact).length;
   vendorMetricDuplicates.textContent = rows.filter((row) => duplicateSignals(row, rows).length).length;
   vendorMetricWhatsapp.textContent = rows.filter((row) => row.whatsapp_phone || row.preferred_channel === "whatsapp").length;
+}
+
+function updateVendorMetrics() {
+  const rows = allVendors;
+  updateVendorMetricsForRows(rows, vendorTotalCount || rows.length);
 }
 
 function duplicateGroups(rows = allVendors) {
@@ -2863,6 +2867,7 @@ function renderVendorFunnel(result = {}) {
   persistVendorWorkspaceContext();
   renderVendorFunnelBulkOptions();
   renderVendorFunnelMetrics(result.summary || {});
+  updateVendorMetricsForRows(vendorFunnelRows, result.summary?.total ?? vendorFunnelRows.length);
   renderVendorFunnelStrip();
   renderVendorFunnelBoard();
 }
@@ -2915,6 +2920,16 @@ async function loadVendorFunnelRequest() {
     title: "Loading procurement funnel",
     detail: "Reading Procurement Base, linked quotes, onboarding stages, and contact signals."
   });
+  updatePlatform55Shell({
+    pageState: {
+      title: "Carrier CRM",
+      subtitle: "Source, qualify, and prepare carriers for governed procurement.",
+      breadcrumbs: ["Source", "Carrier CRM"],
+      status: "Loading procurement funnel",
+      busy: true,
+      actions: []
+    }
+  });
   setStatus(vendorFunnelStatus, "Loading funnel...");
 
   try {
@@ -2924,6 +2939,16 @@ async function loadVendorFunnelRequest() {
     renderVendorFunnel(result);
     renderVendorFunnelFilters();
     const warning = Array.isArray(result.warnings) ? result.warnings.find(Boolean) : "";
+    updatePlatform55Shell({
+      pageState: {
+        title: "Carrier CRM",
+        subtitle: "Source, qualify, and prepare carriers for governed procurement.",
+        breadcrumbs: ["Source", "Carrier CRM"],
+        status: warning || `${result.summary?.total || 0} procurement vendor(s) loaded`,
+        busy: false,
+        actions: []
+      }
+    });
     setStatus(
       vendorFunnelStatus,
       warning || `${result.summary?.total || 0} procurement vendor(s) in funnel.`,
@@ -2935,6 +2960,16 @@ async function loadVendorFunnelRequest() {
       title: "Procurement funnel could not load",
       retryAction: "refresh-vendor-funnel",
       meta: "No vendor stages were changed."
+    });
+    updatePlatform55Shell({
+      pageState: {
+        title: "Carrier CRM",
+        subtitle: "Source, qualify, and prepare carriers for governed procurement.",
+        breadcrumbs: ["Source", "Carrier CRM"],
+        status: "Procurement funnel could not load",
+        busy: false,
+        actions: []
+      }
     });
     setStatus(vendorFunnelStatus, humanizeError(error), "error");
   } finally {
