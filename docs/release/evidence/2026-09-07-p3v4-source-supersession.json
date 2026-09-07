@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "sprint": "P3-V4",
+  "verdict": "LOCAL-GO",
+  "release_credit": "withheld",
+  "product_candidate_sha": "11b96bd9abd3085e70e1316c69812d2da910a5db",
+  "product_candidate_tree": "cf787e040ee6e93eabd4f918ea238b321c7ad27e",
+  "product_base_sha": "7964503088f51bec69204988d7f7aadfa65223b4",
+  "source_paths": [
+    "shipper-crm.html",
+    "vendor-support.html",
+    "vendor-improvement.html",
+    "provider-service.html",
+    "provider-onboarding.html",
+    "provider-gmail.html",
+    "provider-communications.html",
+    "src/platform55-visual-parity.css",
+    "src/platform55-network-service.css"
+  ],
+  "source_blobs": {
+    "shipper-crm.html": "b9c664c49e1a4b5cb61ffc5bbfbe67a1c10aae0e",
+    "vendor-support.html": "d4fe7f6a7f0002f3105df65231b05f74f724b62f",
+    "vendor-improvement.html": "04e344b6538de5792ab6fe821d0908e1b43dd158",
+    "provider-service.html": "0634688eb35aee9fe66e02707e4d32c69de65a83",
+    "provider-onboarding.html": "4fa48bdbe334c124be3bddf7029fe38e3c7dd20a",
+    "provider-gmail.html": "d37168425763aa730671ec26380f1e5104f4584b",
+    "provider-communications.html": "8635e3b7573ed6d08c0c7ed001835c1db0cdeeab",
+    "src/platform55-visual-parity.css": "3352a3a0ffae22c66ea1b04666bcb883d0dc6b18",
+    "src/platform55-network-service.css": "95fb1b0fe205f94d7d8f907c0025c64de75ad081"
+  },
+  "record_sha256": "93acd2b7778a9cbaa5a2ab24253d83a45c5c6ad5b0de014919bb64e63353b1cb"
+}
