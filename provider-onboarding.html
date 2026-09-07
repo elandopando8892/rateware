@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="./src/platform55-tokens.css" />
   <link rel="stylesheet" href="./src/platform55-shell.css" />
   <link rel="stylesheet" href="./src/platform55-network-service.css" />
+  <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   <link rel="stylesheet" href="./src/provider-onboarding.css" />
 </head>
 <body data-platform55-shell="tenant" data-platform55-page="provider-onboarding">
@@ -17,11 +18,15 @@
     <header class="rw-topbar" data-platform55-topbar>
       <form id="auth-form" class="auth-strip"><button id="auth-button" type="submit">Log in</button><button id="sign-out-button" type="button" class="secondary hidden">Sign out</button><p id="auth-status" role="status"></p></form>
     </header>
-    <main class="onboarding-layout rw-main rw-network-service-page" data-platform55-page-content data-platform55-network-state="onboarding-readiness">
+    <main class="onboarding-layout rw-main rw-network-service-page p55-v4-page p55-v4-page--provider-onboarding" data-platform55-page-content data-platform55-network-state="onboarding-readiness" data-p3v4-route="provider-onboarding">
       <header class="page-header" data-platform55-page-header>
         <div><p class="eyebrow" data-platform55-breadcrumbs>Service · Provider Onboarding</p><h1 data-platform55-page-title>Provider Onboarding</h1><p data-platform55-page-subtitle>Evidence collection, approval readiness, and controlled delivery status.</p></div>
         <div class="page-header-actions"><a class="secondary-link" href="./provider-communications.html">Communications</a></div>
       </header>
+      <aside class="p55-v4-context-banner" data-p3v4-boundary aria-label="Provider Onboarding operating boundary">
+        <span class="p55-v4-context-mark" aria-hidden="true">05</span>
+        <div><strong>Evidence and approval workspace</strong><p>Resolve evidence gaps and inspect readiness. Documents, recipients, signatures, and delivery remain bounded and human-controlled.</p></div>
+      </aside>
       <section class="onboarding-hero">
         <div><p class="eyebrow">Human-controlled pipeline</p><h2>Move each legal entity from evidence collection to verified delivery.</h2><p>Every gate is tied to reviewed evidence, an exact approval scope, explicit signature consent, and bounded Gmail delivery.</p></div>
         <label><span>Search cases</span><input id="onboarding-search" type="search" placeholder="Program, jurisdiction, case ID…" autocomplete="off" /></label>

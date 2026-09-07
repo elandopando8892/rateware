@@ -483,3 +483,181 @@
     transition-duration: 0ms;
   }
 }
+/* P3-V4 network, provider, support, and improvement visual layer. */
+.p55-v4-page {
+  --rw-brand-500: #ea5e27;
+  --rw-brand-600: #c84b1b;
+  --rw-brand-700: #9f3915;
+  --rw-brand-50: #fff3ed;
+  --rw-slate-50: #efefef;
+  --rw-slate-200: #d7d7d7;
+  --rw-slate-600: #484848;
+  --rw-slate-700: #363636;
+  --rw-slate-900: #1e1e1e;
+  min-width: 0;
+  color: var(--rw-slate-900);
+  background: var(--rw-slate-50);
+}
+
+.p55-v4-page > [data-platform55-page-header] {
+  margin-bottom: 0;
+  padding: 2px 0;
+}
+
+.p55-v4-page [data-platform55-page-title] {
+  color: var(--rw-slate-900);
+  letter-spacing: -0.045em;
+}
+
+.p55-v4-page [data-platform55-page-subtitle],
+.p55-v4-page .page-subtitle {
+  max-width: 720px;
+  color: var(--rw-slate-600);
+}
+
+.p55-v4-page .page-primary-action,
+.p55-v4-page .button-primary {
+  border-color: var(--rw-brand-600);
+  color: #fff;
+  background: var(--rw-brand-500);
+  box-shadow: 0 8px 18px rgba(234, 94, 39, 0.18);
+}
+
+.p55-v4-page .page-primary-action:hover:not(:disabled),
+.p55-v4-page .button-primary:hover:not(:disabled) {
+  background: var(--rw-brand-600);
+}
+
+.p55-v4-context-banner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--rw-slate-200);
+  border-left: 3px solid var(--rw-brand-500);
+  border-radius: var(--rw-radius-md);
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(30, 30, 30, 0.03);
+}
+
+.p55-v4-context-mark {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--rw-brand-500);
+  border-radius: 50%;
+  color: var(--rw-brand-700);
+  background: var(--rw-brand-50);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .04em;
+}
+
+.p55-v4-context-banner strong {
+  display: block;
+  color: var(--rw-slate-900);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.p55-v4-context-banner p {
+  max-width: 980px;
+  margin: 4px 0 0;
+  color: var(--rw-slate-600);
+  font-size: 12px;
+  line-height: 1.48;
+}
+
+.p55-v4-context-banner code {
+  padding: 1px 4px;
+  border: 1px solid var(--rw-slate-200);
+  border-radius: 4px;
+  color: var(--rw-slate-900);
+  background: var(--rw-slate-50);
+  font-family: var(--rw-font-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-size: .95em;
+}
+
+.p55-v4-page :is(.workspace-panel, .rw-network-service-state, .rw-network-service-detail, .rw-network-service-boundary) {
+  border-color: var(--rw-slate-200);
+  border-radius: var(--rw-radius-md);
+  box-shadow: 0 1px 0 rgba(30, 30, 30, 0.03);
+}
+
+.p55-v4-page :is(input, select, textarea):focus-visible {
+  border-color: var(--rw-brand-500);
+  outline: 3px solid rgba(234, 94, 39, 0.22);
+  outline-offset: 1px;
+}
+
+.p55-v4-page :is(button, a).is-active,
+.p55-v4-page :is(.active, [aria-selected="true"]) {
+  border-color: var(--rw-brand-500);
+  color: var(--rw-brand-700);
+  box-shadow: inset 0 -2px var(--rw-brand-500);
+}
+
+.p55-v4-page :is(.table-wrap, .rw-network-service-table-scroll, .shipper-directory, .provider-service-rows, .onboarding-rows, .communications-rows) {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+@media (min-width: 901px) {
+  .p55-v4-page {
+    padding: 20px 24px 36px;
+  }
+
+  .p55-v4-page > [data-platform55-page-header],
+  .p55-v4-page > .p55-v4-context-banner {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .p55-v4-page {
+    padding: 14px 12px 28px;
+  }
+
+  .p55-v4-context-banner {
+    padding: 12px;
+  }
+
+  .p55-v4-page .page-header-actions,
+  .p55-v4-page [data-platform55-page-header] > .page-header-actions {
+    width: 100%;
+  }
+
+  .p55-v4-page .page-primary-action,
+  .p55-v4-page .page-header-actions > * {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .p55-v4-context-banner {
+    grid-template-columns: 1fr;
+  }
+
+  .p55-v4-context-mark {
+    width: 26px;
+    height: 26px;
+    font-size: 9px;
+  }
+
+  .p55-v4-context-banner p {
+    font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .p55-v4-page *,
+  .p55-v4-page *::before,
+  .p55-v4-page *::after {
+    scroll-behavior: auto;
+    transition-duration: 0ms;
+  }
+}

@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-network-service.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="vendor-improvement">
     <div class="rw-app" data-platform55-app>
@@ -20,7 +21,7 @@
             <p id="auth-status" role="status"></p>
           </form>
         </header>
-        <main class="vendor-ci-layout rw-main rw-network-service-page" data-platform55-page-content data-platform55-network-state="vendor-improvement">
+        <main class="vendor-ci-layout rw-main rw-network-service-page p55-v4-page p55-v4-page--vendor-improvement" data-platform55-page-content data-platform55-network-state="vendor-improvement" data-p3v4-route="vendor-improvement">
           <header class="page-header" data-platform55-page-header>
           <div>
             <p class="eyebrow" data-platform55-breadcrumbs>Service · Vendor CI</p>
@@ -32,6 +33,11 @@
             <button id="refresh-vendor-ci" class="page-primary-action" type="button">Recalculate Value Curve</button>
           </div>
           </header>
+
+          <aside class="p55-v4-context-banner" data-p3v4-boundary aria-label="Vendor improvement operating boundary">
+            <span class="p55-v4-context-mark" aria-hidden="true">03</span>
+            <div><strong>Evidence-backed improvement</strong><p>Use carrier evidence, cases, and scorecards to plan the next step. Reminders and recalculation remain governed actions; no autonomous outreach is triggered.</p></div>
+          </aside>
 
           <section class="vendor-ci-metrics wide-section rw-network-service-metrics" aria-label="Vendor improvement metrics">
             <article><span>Open CI cases</span><strong id="ci-open">0</strong></article>

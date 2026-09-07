@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-network-service.css" />
+    <link rel="stylesheet" href="./src/platform55-visual-parity.css" />
     <link rel="stylesheet" href="./src/provider-gmail.css" />
   </head>
   <body data-platform55-shell="tenant" data-platform55-page="provider-gmail">
@@ -21,7 +22,7 @@
             <p id="auth-status" role="status"></p>
           </form>
         </header>
-        <main class="provider-gmail-layout rw-main rw-network-service-page" data-platform55-page-content data-platform55-network-state="gmail-connectivity">
+        <main class="provider-gmail-layout rw-main rw-network-service-page p55-v4-page p55-v4-page--provider-gmail" data-platform55-page-content data-platform55-network-state="gmail-connectivity" data-p3v4-route="provider-gmail">
           <header class="page-header" data-platform55-page-header>
           <div>
             <p class="eyebrow" data-platform55-breadcrumbs>Service · Provider Gmail</p>
@@ -32,6 +33,11 @@
             <a class="secondary-link" href="./provider-communications.html">Open Communications Inbox</a>
           </div>
           </header>
+
+          <aside class="p55-v4-context-banner" data-p3v4-boundary aria-label="Provider Gmail operating boundary">
+            <span class="p55-v4-context-mark" aria-hidden="true">06</span>
+            <div><strong>Inbound-only Gmail workspace</strong><p>Connectivity is limited to <code>gmail.readonly</code>. No compose, send, delete, or outbound message scope is available here.</p></div>
+          </aside>
 
           <section class="workspace-panel provider-gmail-hero wide-section">
             <div>
