@@ -117,6 +117,36 @@ describe('controlled approval and communications pages', () => {
     expect(screen.queryByRole('button', { name: /complete operations review/i })).not.toBeInTheDocument();
   });
 
+  it('labels a missing bank cover as package-level evidence and routes to documents', () => {
+    const blocked = {
+      ...workspace.fulfillment!,
+      satisfiedRequired: 0,
+      blockingCount: 1,
+      items: [{
+        ...workspace.fulfillment!.items[0],
+        canonicalKey: 'banking.account_evidence',
+        label: 'Carátula del banco emisor',
+        status: 'missing' as const,
+        blocking: true,
+        reason: 'No matching evidence is attached.',
+        evidenceIds: [],
+      }],
+      gates: { operationsReview: false, signatureApproval: false, outboundDraft: false, outboundFreeze: false, salesAuthorization: false, send: false },
+    };
+    render(<OperationsReviewPage
+      workspace={{
+        ...workspace,
+        caseState: 'operations_review',
+        supplierPackage: { packageId: '66666666-6666-4666-8666-666666666666', version: 1, outputSha256: 'e'.repeat(64), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', downloadUrl: null },
+        fulfillment: blocked,
+        capabilities: { ...workspace.capabilities, completeOperationsReview: false },
+      }}
+      onComplete={vi.fn()}
+    />);
+    expect(screen.getByText(/package-level evidence/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /review documents/i })).toHaveAttribute('href', '/app/documents');
+  });
+
   it('shows José only fingerprints and requires his explicit signature confirmation', async () => {
     const approve = vi.fn(async () => undefined);
     render(<SignatureApprovalPage workspace={workspace} onApprove={approve} />);

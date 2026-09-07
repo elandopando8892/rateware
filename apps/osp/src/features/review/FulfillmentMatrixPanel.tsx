@@ -32,8 +32,9 @@ export function FulfillmentMatrixPanel({ workspace }: { workspace: ApprovalCommu
     <ul>
       {matrix.items.map((item) => {
         const correction = correctionRoute(workspace.caseId, item);
+        const scope = item.canonicalKey === 'banking.account_evidence' ? 'Package-level evidence' : null;
         return <li key={item.requirementId} className={item.blocking ? 'blocking' : 'satisfied'}>
-        <div><strong>{item.label}</strong><small>{item.reason}</small>{correction ? <a className="matrix-correction" href={correction.href}>{correction.label}</a> : null}</div>
+        <div><strong>{item.label}</strong><small>{scope ? `${scope} · ` : ''}{item.reason}</small>{correction ? <a className="matrix-correction" href={correction.href}>{correction.label}</a> : null}</div>
         <span aria-label={`${item.label}: ${STATUS_LABEL[item.status] ?? item.status}`}>{STATUS_LABEL[item.status] ?? item.status}</span>
       </li>})}
     </ul>

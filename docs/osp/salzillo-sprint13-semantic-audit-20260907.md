@@ -80,3 +80,26 @@ del formulario estén completos. Usar **GPT-5.6 Sol · High** para esa integraci
 normal; subir a Astra sólo si la implementación revela una incompatibilidad de
 persistencia, permisos o idempotencia. El resultado debe ser sintético y no debe
 modificar Salzillo productivo.
+
+## Incremento ejecutado
+
+El contrato ahora materializa `banking.account_evidence` desde el texto citado
+por el carrier cuando el manifiesto no trae una fila documental equivalente. La
+regla conserva la cita original, exige evidencia aprobada y mantiene el requisito
+como bloqueante; los datos bancarios del formulario no pueden satisfacerlo por
+coincidencia de concepto. La matriz UI identifica el registro como evidencia de
+paquete y dirige a revisión documental.
+
+Regresión sintética validada:
+
+- 9/9 pruebas de `request-contract.test.ts` pasan.
+- `request-semantic-gate.test.ts`: 20/20 pasan.
+- lint de los componentes modificados pasa.
+- build de OSP pasa bajo Node 20.14.0 con advertencia de engine; el proyecto
+  declara Node >=22.12.0.
+- La suite Vitest de UI no pudo iniciar en este host por `ERR_REQUIRE_ESM` en
+  `html-encoding-sniffer`/`@exodus/bytes`; requiere ejecutar con el runtime de
+  Node declarado por el proyecto.
+
+No se modificó el XLSM, el caso Salzillo, Supabase, migraciones, despliegues ni
+ningún efecto externo.

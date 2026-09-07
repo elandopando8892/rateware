@@ -100,6 +100,87 @@ Deno.test("Salzillo contract preserves form, condition, freshness, page and wet-
   );
 });
 
+Deno.test("carrier bank-cover text creates a package requirement when no form cell is mapped", () => {
+  const manifest = Object.freeze({
+    ...salzilloManifest,
+    requestedDocuments: salzilloManifest.requestedDocuments.filter((document) =>
+      document.documentType !== "Carátula del banco emisor de sus pagos en mxn"
+    ),
+  });
+  const contract = buildRequestContract({
+    manifestSha256: sha,
+    manifest,
+  });
+  const bank = contract.requirements.find((item) =>
+    item.canonicalKey === "banking.account_evidence"
+  );
+  assertEquals(contract.requirements.length, 8);
+  assertEquals(
+    bank?.label,
+    "Carátula del banco emisor con antigüedad máxima de un mes",
+  );
+  assertEquals(bank?.required, true);
+  assertEquals(bank?.maximumAgeDays, 31);
+  assertEquals(bank?.evidenceIds, ["email:salzillo"]);
+});
+
+Deno.test("bank-account fields do not satisfy the package-level bank-cover requirement", () => {
+  const manifest = Object.freeze({
+    ...salzilloManifest,
+    requestedDocuments: salzilloManifest.requestedDocuments.filter((document) =>
+      document.documentType !== "Carátula del banco emisor de sus pagos en mxn"
+    ),
+  });
+  const contract = buildRequestContract({
+    manifestSha256: sha,
+    manifest,
+  });
+  const evidence: FulfillmentEvidence[] = contract.requirements
+    .filter((requirement) =>
+      requirement.canonicalKey !== "banking.account_evidence"
+    )
+    .map((requirement, index) => ({
+      evidenceId: `artifact:complete-${index + 1}`,
+      canonicalKey: requirement.canonicalKey,
+      label: requirement.label,
+      contentType: "application/pdf",
+      status: "approved" as const,
+      validFrom: requirement.maximumAgeDays === null ? null : "2026-08-20",
+      expiresAt: null,
+      pageCount: requirement.minimumPageCount,
+      completionPercent: requirement.minimumCompletionPercent,
+      signatureMethod: requirement.signatureMethod,
+      includedForOutbound: true,
+    }));
+  evidence.push({
+    evidenceId: "field:bank-account-number",
+    canonicalKey: "banking.account_number",
+    label: "Bank account number from form",
+    contentType: "text/plain",
+    status: "approved",
+    validFrom: null,
+    expiresAt: null,
+    pageCount: null,
+    completionPercent: null,
+    signatureMethod: "none",
+    includedForOutbound: true,
+  });
+  const matrix = evaluateRequestFulfillment({
+    contract,
+    evidence,
+    entity: { legalEntityKind: "company" },
+    now: new Date("2026-09-02T12:00:00.000Z"),
+  });
+  const bank = matrix.items.find((item) =>
+    item.canonicalKey === "banking.account_evidence"
+  );
+  assertEquals(bank?.status, "missing");
+  assertEquals(bank?.blocking, true);
+  assertEquals(matrix.blockingCount, 1);
+  assertEquals(matrix.gates.operationsReview, false);
+  assertEquals(matrix.gates.send, false);
+});
+
 Deno.test("four filled cells and one attachment cannot pass the Salzillo semantic gate", async () => {
   const contract = buildRequestContract({
     manifestSha256: sha,

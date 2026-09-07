@@ -220,6 +220,24 @@ function allRequirementText(manifest: ManifestLike): readonly string[] {
   }));
 }
 
+function packageRequirementFromText(
+  manifest: ManifestLike,
+  canonicalKey: string,
+): Readonly<{ text: string; evidenceIds: readonly string[] }> | null {
+  if (!Array.isArray(manifest.requirements)) return null;
+  for (const item of manifest.requirements) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const row = item as Record<string, unknown>;
+    if (typeof row.text !== "string") continue;
+    const requirementText = text(row.text);
+    if (documentKey(requirementText) !== canonicalKey) continue;
+    const evidenceIds = stringArray(row.evidenceIds, 20);
+    if (evidenceIds.length === 0) throw new Error("REQUEST_CONTRACT_INVALID");
+    return Object.freeze({ text: requirementText, evidenceIds });
+  }
+  return null;
+}
+
 function relatedText(
   label: string,
   requirementText: readonly string[],
@@ -394,6 +412,38 @@ export function buildRequestContract(
       evidenceIds,
     }));
   });
+  const bankingEvidence = packageRequirementFromText(
+    input.manifest,
+    "banking.account_evidence",
+  );
+  if (
+    bankingEvidence &&
+    !requirements.some((requirement) =>
+      requirement.canonicalKey === "banking.account_evidence"
+    )
+  ) {
+    const label = bankingEvidence.text.length > 256
+      ? `${bankingEvidence.text.slice(0, 253)}...`
+      : bankingEvidence.text;
+    requirements.push(Object.freeze({
+      id: requirementId(
+        "document",
+        "banking.account_evidence",
+        documents.length,
+      ),
+      kind: "document" as const,
+      canonicalKey: "banking.account_evidence",
+      label,
+      required: true,
+      condition: condition(bankingEvidence.text),
+      acceptedContentTypes: acceptedContentTypes(bankingEvidence.text),
+      maximumAgeDays: maximumAgeDays(bankingEvidence.text),
+      minimumPageCount: null,
+      minimumCompletionPercent: null,
+      signatureMethod: "none" as const,
+      evidenceIds: bankingEvidence.evidenceIds,
+    }));
+  }
   if (
     requirements.length < 1 || requirements.length > 600 ||
     new Set(requirements.map((item) => item.id)).size !== requirements.length
