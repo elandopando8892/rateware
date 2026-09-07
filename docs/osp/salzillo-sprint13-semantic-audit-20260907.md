@@ -231,3 +231,23 @@ Regresión sintética adicional:
 
 No se enviaron aclaraciones, no se modificaron casos ni se habilitaron acciones
 externas.
+
+## Incremento ejecutado — backend del manifiesto alineado con el freno
+
+La cola de decisiones del manifiesto ya no descarta una condición distinta sólo
+porque comparte `fieldId` con otra aclaración. El backend consolida únicamente
+la misma condición textual, conserva el primer `decisionId` y une todas sus
+citas. El alcance de una revisión sigue exigiendo una decisión exacta por cada
+condición y mantiene bloqueadas las transiciones cuando queda una respuesta
+externa.
+
+Regresión sintética adicional:
+
+- `handler.test.ts`: 15/15.
+- `postgres-store.test.ts`: 12/12.
+- `request-manifest-review.test.ts`: 4/4.
+- `request-semantic-gate.test.ts`: 20/20.
+- `clarification-draft.test.ts`: 5/5.
+- Total de la corrida: 56/56; `deno check` y `git diff --check` correctos.
+
+No se modificaron datos, casos, migraciones, Supabase ni acciones salientes.

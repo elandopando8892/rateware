@@ -82,6 +82,11 @@ async function sha256(value: unknown): Promise<string> {
   ).join("");
 }
 
+function decisionKey(kind: "clarification" | "contradiction" | "missing", fieldId: string | null, prompt: string) {
+  const scope = kind === "contradiction" ? "contradiction" : `field:${fieldId ?? ""}`;
+  return `${scope}:${prompt.replace(/\s+/g, " ").toLowerCase()}`;
+}
+
 export function requestManifestDecisionSeeds(
   manifest: unknown,
 ): readonly Omit<RequestManifestDecision, "outcome" | "resolution">[] {
@@ -92,16 +97,29 @@ export function requestManifestDecisionSeeds(
   ) {
     throw new Error("REQUEST_MANIFEST_REVIEW_INVALID");
   }
-  const clarifiedFields = new Set<string>();
   const seeds: Omit<RequestManifestDecision, "outcome" | "resolution">[] = [];
+  const seen = new Map<string, number>();
+  const append = (seed: Omit<RequestManifestDecision, "outcome" | "resolution">) => {
+    const key = decisionKey(seed.kind, seed.fieldId, seed.prompt);
+    const existingIndex = seen.get(key);
+    if (existingIndex === undefined) {
+      seen.set(key, seeds.length);
+      seeds.push(seed);
+      return;
+    }
+    const existing = seeds[existingIndex];
+    seeds[existingIndex] = Object.freeze({
+      ...existing,
+      evidenceIds: [...new Set([...existing.evidenceIds, ...seed.evidenceIds])].sort(),
+    });
+  };
   row.clarificationQuestions.forEach((value, index) => {
     const item = record(value);
     const fieldId = text(item.fieldId, 1, 128);
-    if (!FIELD_ID.test(fieldId) || clarifiedFields.has(fieldId)) {
+    if (!FIELD_ID.test(fieldId)) {
       throw new Error("REQUEST_MANIFEST_REVIEW_INVALID");
     }
-    clarifiedFields.add(fieldId);
-    seeds.push(Object.freeze({
+    append(Object.freeze({
       decisionId: `clarification:${index}`,
       kind: "clarification" as const,
       fieldId,
@@ -111,7 +129,7 @@ export function requestManifestDecisionSeeds(
   });
   row.contradictions.forEach((value, index) => {
     const item = record(value);
-    seeds.push(Object.freeze({
+    append(Object.freeze({
       decisionId: `contradiction:${index}`,
       kind: "contradiction" as const,
       fieldId: null,
@@ -125,8 +143,7 @@ export function requestManifestDecisionSeeds(
     if (!FIELD_ID.test(fieldId)) {
       throw new Error("REQUEST_MANIFEST_REVIEW_INVALID");
     }
-    if (clarifiedFields.has(fieldId)) return;
-    seeds.push(Object.freeze({
+    append(Object.freeze({
       decisionId: `missing:${index}`,
       kind: "missing" as const,
       fieldId,

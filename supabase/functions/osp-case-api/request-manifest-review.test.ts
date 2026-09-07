@@ -29,7 +29,7 @@ const manifest = {
   ],
 };
 
-Deno.test("request manifest decisions deduplicate missing fields already covered by a clarification", () => {
+Deno.test("request manifest decisions preserve distinct conditions and consolidate exact repeats", () => {
   assertEquals(requestManifestDecisionSeeds(manifest), [
     {
       decisionId: "clarification:0",
@@ -46,6 +46,13 @@ Deno.test("request manifest decisions deduplicate missing fields already covered
       evidenceIds: ["pdf:page-2"],
     },
     {
+      decisionId: "missing:0",
+      kind: "missing",
+      fieldId: "company.president",
+      prompt: "President is missing.",
+      evidenceIds: ["pdf:page-1"],
+    },
+    {
       decisionId: "missing:1",
       kind: "missing",
       fieldId: "submission.method",
@@ -53,6 +60,23 @@ Deno.test("request manifest decisions deduplicate missing fields already covered
       evidenceIds: [],
     },
   ]);
+});
+
+Deno.test("request manifest decision identity keeps the first id and all citations", () => {
+  assertEquals(requestManifestDecisionSeeds({
+    clarificationQuestions: [
+      { fieldId: "supplier.address", question: "Provide the registered address.", evidenceIds: ["email:body"] },
+      { fieldId: "supplier.address", question: "Provide the registered address.", evidenceIds: ["pdf:page-2"] },
+    ],
+    contradictions: [],
+    missingInformation: [],
+  }), [{
+    decisionId: "clarification:0",
+    kind: "clarification",
+    fieldId: "supplier.address",
+    prompt: "Provide the registered address.",
+    evidenceIds: ["email:body", "pdf:page-2"],
+  }]);
 });
 
 Deno.test("request manifest review is canonical and external decisions keep the case blocked", async () => {
@@ -70,6 +94,11 @@ Deno.test("request manifest review is canonical and external decisions keep the 
         resolution: "Use the verified Entity Vault incorporation date.",
       },
       {
+        decisionId: "missing:0",
+        outcome: "answered",
+        resolution: "Use the reviewed legal representative record.",
+      },
+      {
         decisionId: "missing:1",
         outcome: "external",
         resolution: "Carrier must confirm the submission channel.",
@@ -77,7 +106,7 @@ Deno.test("request manifest review is canonical and external decisions keep the 
     ],
   });
   assertEquals(review.status, "needs_external_clarification");
-  assertEquals(review.decisions.length, 3);
+  assertEquals(review.decisions.length, 4);
   assertEquals(review.canonicalSha256.length, 64);
 });
 
