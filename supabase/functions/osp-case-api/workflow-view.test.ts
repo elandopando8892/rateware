@@ -79,6 +79,31 @@ const record: WorkflowViewRecord = {
   },
 };
 
+Deno.test("package-set projection exposes every file but no object locators or implicit signature authority", () => {
+  const result = approvalCommunicationsWorkspace({
+    ...record,
+    caseState: "operations_review",
+    supplierPackageSet: {
+      setId: signedPackageId,
+      version: 1,
+      manifestSha256: sha,
+      files: [payloadId, signedPackageId].map((sourceVersionId) => ({
+        requirementId: `form.${sourceVersionId}`,
+        sourceVersionId,
+        outputSha256: sha,
+        contentType: "application/pdf",
+        objectId: `private:${sourceVersionId}`,
+        downloadUrl: null,
+      })),
+    },
+  }, baseIdentity);
+  assertEquals(result.supplierPackageSet?.files.length, 2);
+  assertEquals(JSON.stringify(result).includes("objectId"), false);
+  assertEquals(JSON.stringify(result).includes("private:"), false);
+  assertEquals(result.capabilities.completeOperationsReview, false);
+  assertEquals(result.capabilities.approveAndApplySignature, false);
+});
+
 Deno.test("workflow view derives mutually exclusive server capabilities and exposes no secret locators", () => {
   const operations = approvalCommunicationsWorkspace(record, baseIdentity);
   assertEquals(operations.capabilities, {
@@ -135,7 +160,8 @@ Deno.test("the Sales superuser receives only the action for the current workflow
       packageId: "88888888-8888-4888-8888-888888888888",
       version: 1,
       outputSha256: sha,
-      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      contentType:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       downloadUrl: null,
       objectId: "private-object",
     },
@@ -146,7 +172,12 @@ Deno.test("the Sales superuser receives only the action for the current workflow
     ...record,
     caseState: "signature_approval",
     outbound: null,
-    signature: { positionVersion: 1, approvalStatus: "pending", approvalId: null, outputSha256: null },
+    signature: {
+      positionVersion: 1,
+      approvalStatus: "pending",
+      approvalId: null,
+      outputSha256: null,
+    },
   }, superuser);
   assertEquals(signature.capabilities.approveAndApplySignature, true);
 
@@ -257,7 +288,11 @@ Deno.test("workflow view never grants an action for a stale outbound payload", (
   const historical = approvalCommunicationsWorkspace({
     ...record,
     outboundIsLatest: false,
-    outbound: { ...record.outbound!, status: "draft", caseVersion: record.caseVersion },
+    outbound: {
+      ...record.outbound!,
+      status: "draft",
+      caseVersion: record.caseVersion,
+    },
   }, baseIdentity);
   assertEquals(Object.values(historical.capabilities).some(Boolean), false);
 });

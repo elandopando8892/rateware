@@ -15,6 +15,33 @@ type State = { version: number; payloadVersion: number; stage: 'awaiting_clarifi
 
 let privateKey: KeyLike;
 let publicKey: KeyLike;
+
+test('multi-form package lists every download on desktop and mobile without approval', async ({page}, testInfo) => {
+  const state: State = {version:1,payloadVersion:1,stage:'operations_review',kind:'final_response',payload:'none',reservations:0,seen:new Set()};
+  await page.route('**/functions/v1/osp-case-api?**',async route=>{
+    const request=route.request();
+    const claims=(await jwtVerify((request.headers().authorization??'').replace(/^Bearer /,''),publicKey,{issuer:'https://auth.heymarksman.com',audience:'https://osp.heymarksman.com/api'})).payload;
+    expect(request.method()).toBe('POST');
+    expect(new URL(request.url()).searchParams.get('action')).toBe('get_approval_communications_workspace');
+    expect(claims.org_code).toBe(organizationId);
+    const view=workspace(state,claims);
+    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({data:{...view,supplierPackage:null,
+      supplierPackageSet:{setId:payloadId,version:1,manifestSha256:sha,files:[
+        {requirementId:'form.a',sourceVersionId:caseId,outputSha256:sha,contentType:'application/pdf',downloadUrl:'https://example.test/a'},
+        {requirementId:'form.b',sourceVersionId:payloadId,outputSha256:sha,contentType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',downloadUrl:'https://example.test/b'},
+        {requirementId:'form.c',sourceVersionId:approvalId,outputSha256:sha,contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',downloadUrl:'https://example.test/c'},
+      ]},capabilities:{...view.capabilities,completeOperationsReview:false}}})});
+  });
+  await open(page,{subject:'ops-multiform',email:'operations@example.test',permissions:['osp:read','osp:operate']},'review');
+  for(const viewport of [{width:1440,height:1100,name:'desktop'},{width:390,height:844,name:'mobile'}]) {
+    await page.setViewportSize(viewport);
+    await expect(page.getByRole('heading',{name:'Completed supplier forms'})).toBeVisible();
+    for(const label of ['Download form 1 (PDF)','Download form 2 (DOCX)','Download form 3 (XLSX)']) await expect(page.getByRole('link',{name:label})).toBeVisible();
+    await expect(page.getByRole('checkbox')).toBeDisabled();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await page.screenshot({path:testInfo.outputPath(`package-set-${viewport.name}.png`),fullPage:true});
+  }
+});
 test.beforeAll(async () => { ({ privateKey, publicKey } = await generateKeyPair('RS256')); });
 
 async function token(actor: Actor) {

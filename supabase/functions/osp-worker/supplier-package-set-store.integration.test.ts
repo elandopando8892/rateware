@@ -9,6 +9,8 @@ import {
   type SupplierPackageSetInput,
 } from "./supplier-package-set.ts";
 import { createSupplierPackageSetStore } from "./supplier-package-set-store.ts";
+import { tryGenerateSupplierPackageSet } from "./supplier-package-set-runtime.ts";
+import { loadWorkflowPackageSet } from "../osp-case-api/workflow-package-set.ts";
 
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -376,6 +378,135 @@ Deno.test("package-set persistence uses real SQL, tenant role and atomic publica
           Error,
           "SUPPLIER_PACKAGE_SET_SOURCE_CONFLICT",
         );
+      },
+    );
+    await t.step(
+      "worker resolves both originals, publishes all and reader returns both",
+      async () => {
+        await db.exec(`
+        update osp_private.document_versions set status='approved';
+        alter table osp_private.document_versions add column bucket_id text default 'osp-original-documents', add column opaque_object_key text default 'synthetic-original';
+        alter table osp_private.case_package_input_snapshots
+          add column template_version_id uuid, add column form_instance_id uuid,
+          add column form_instance_version integer default 1, add column extraction_ids uuid[],
+          add column mapping_refs jsonb, add column field_evidence_refs jsonb default '[]';
+        create table osp_private.supplier_package_generation_runs (id uuid, organization_id uuid, input_snapshot_id uuid);
+        create table osp_private.case_form_instances (id uuid,organization_id uuid,case_id uuid,version integer,values_json jsonb);
+        create table osp_private.supplier_form_mappings (id uuid,organization_id uuid,case_id uuid,template_version_id uuid,extraction_id uuid,status text,review_decision_id uuid,version integer,after_sha256 text,mapping_json jsonb);
+        create table osp_private.document_extractions (id uuid,organization_id uuid,case_id uuid,source_version_id uuid,status text);
+        create table osp_private.form_fields (id uuid,organization_id uuid,template_version_id uuid,field_key text,definition_json jsonb,position integer);
+        create table osp_private.extraction_fields (id uuid,organization_id uuid,extraction_id uuid,field_key text,evidence_json jsonb);
+        grant select on osp_private.supplier_package_generation_runs,osp_private.case_form_instances,osp_private.supplier_form_mappings,osp_private.document_extractions,osp_private.form_fields,osp_private.extraction_fields,osp_private.customer_registration_cases to osp_worker;
+        grant select on osp_private.case_package_input_snapshots,osp_private.document_versions to osp_workflow_api;
+      `);
+        const four = await createInput(4);
+        const refs = [5, 6].map((n) => ({
+          mappingId: id(40 + n),
+          mappingVersion: "1",
+          mappingSha256: "e".repeat(64),
+          extractionId: id(50 + n),
+          reviewDecisionId: id(7),
+        }));
+        await db.query(
+          "update osp_private.case_package_input_snapshots set template_version_id=$1,form_instance_id=$2,extraction_ids=$3,mapping_refs=$4 where id=$5",
+          [
+            id(30),
+            id(31),
+            [id(55), id(56)],
+            JSON.stringify(refs),
+            four.input.snapshotId,
+          ],
+        );
+        await db.query(
+          "insert into osp_private.case_form_instances values ($1,$2,$3,1,$4)",
+          [id(31), org, caseId, JSON.stringify({ name: "Synthetic XBF" })],
+        );
+        await db.query(
+          "insert into osp_private.form_fields values ($1,$2,$3,'name',$4,1)",
+          [
+            id(32),
+            org,
+            id(30),
+            JSON.stringify({ canonicalFieldId: "company.name" }),
+          ],
+        );
+        for (const n of [5, 6]) {
+          await db.query(
+            "insert into osp_private.document_extractions values ($1,$2,$3,$4,'reviewed')",
+            [id(50 + n), org, caseId, id(n)],
+          );
+          await db.query(
+            "insert into osp_private.supplier_form_mappings values ($1,$2,$3,$4,$5,'accepted',$6,1,$7,'{}')",
+            [
+              id(40 + n),
+              org,
+              caseId,
+              id(30),
+              id(50 + n),
+              id(7),
+              "e".repeat(64),
+            ],
+          );
+        }
+        const storageClient = {
+          storage: {
+            from: () => ({
+              download: () =>
+                Promise.resolve({
+                  error: null,
+                  data: new Blob([bytes as BlobPart]),
+                }),
+            }),
+          },
+        };
+        const jobInput = {
+          organizationId: org,
+          caseId,
+          snapshotId: four.input.snapshotId,
+          ...four.job,
+        };
+        const generated = await tryGenerateSupplierPackageSet(jobInput, {
+          sql,
+          objects,
+          storageClient: storageClient as never,
+        });
+        assertEquals(generated?.members.length, 2);
+        assertEquals(written.size, 8);
+        assertEquals(
+          (await tryGenerateSupplierPackageSet(jobInput, {
+            sql,
+            objects,
+            storageClient: storageClient as never,
+          }))?.manifestSha256,
+          generated?.manifestSha256,
+        );
+        assertEquals(written.size, 8);
+        await db.transaction(async (dbtx) => {
+          await dbtx.exec("set local role osp_workflow_api");
+          await dbtx.query("select set_config('osp.organization_id',$1,true)", [
+            org,
+          ]);
+          const reader =
+            (async (strings: TemplateStringsArray, ...values: unknown[]) =>
+              (await dbtx.query(
+                strings.reduce(
+                  (text, part, index) =>
+                    text + (index ? `$${index}` : "") + part,
+                  "",
+                ),
+                values,
+              )).rows as SqlRow[]) as SqlPort;
+          const view = await loadWorkflowPackageSet(reader, {
+            organizationId: org,
+            caseId,
+            snapshotSha256: four.input.snapshotSha256,
+          });
+          assertEquals(view?.files.length, 2);
+          assertEquals(view?.files.map((file) => file.sourceVersionId), [
+            id(5),
+            id(6),
+          ]);
+        });
       },
     );
   } finally {

@@ -1,6 +1,6 @@
 # ADR: immutable multi-form generation set
 
-Status: generator and SQL persistence validated locally; runtime integration pending.
+Status: generation, persistence, worker integration and Operations downloads validated locally; not deployed.
 Date: 2026-09-08
 Decider: product owner requested a versioned set and continued implementation.
 
@@ -47,10 +47,18 @@ reservation and publication check the latest snapshot, case version, job lease,
 approved originals and review-decision membership. A canonical plan hash also
 binds values/mappings to the reserved input; modified input cannot reuse a run.
 
-The existing production worker still uses the single-file path. No multi-file
-capability is being advertised as deployed or complete. The reviewed-source
-resolver must supply trusted input to this internal adapter; it is not an API
-accepting arbitrary browser or LLM mappings.
+The candidate worker resolves reviewed sources per original, retaining independent
+XLSX target/cell fallback and PDF/DOCX sources in mixed requests. Unsupported,
+missing or ambiguous originals stop the set rather than publishing a subset.
+Existing legacy runs remain authoritative; absent migration and single-original
+requests retain the legacy path. No multi-file capability is advertised as deployed.
+The resolver supplies trusted snapshot-bound input, not browser or LLM mappings.
+
+The candidate case API verifies the canonical receipt, tenant, snapshot, approved
+source hashes and exact Storage identities before minting all download links.
+Operations lists every member and retains the existing single-workbook view.
+Set-wide Operations completion and signature capabilities are deliberately disabled
+until their approval semantics are implemented; this increment is inspection only.
 
 Tests create real synthetic XLSX/PDF/DOCX bytes and reopen generated files. Storage
 is a double; the persistence integration executes the actual migration and SQL
@@ -64,9 +72,9 @@ fallbacks retain the existing semantic stop; no coverage percentage is inferred.
 - [x] Implement generation coordinator and failure/reconciliation test cases.
 - [x] Obtain passing typed tests for the generator and persistence candidate.
 - [x] Implement reservation and atomic publication plus additive migration (not applied remotely).
-- [ ] Resolve all reviewed sources independently (no global format fallback).
-- [ ] Connect worker; retain authoritative idempotency across retries.
-- [ ] List and download every member in Operations, without selecting an arbitrary
+- [x] Resolve all reviewed sources independently (no global format fallback).
+- [x] Connect worker; retain authoritative idempotency across retries.
+- [x] List and download every member in Operations, without selecting an arbitrary
   first member for signature or treating it as the entire set.
 - [x] Integration test rollback, tenant boundary, immutable receipts, expired
   leases, revoked source approval and stale snapshots; single-file regression.
@@ -108,5 +116,33 @@ expired leases and modified plans are rejected. Source approvals are rechecked.
 The action contract passes 168/168 without changing any existing fingerprint or
 introducing an exposed action. This does not certify the new helper for production.
 Only the private OSP repository is a permitted publication target for this work.
-The next increment is the worker source resolver and Operations file list; the
-point "multiple forms in the live package" is not yet closed.
+At that checkpoint the next increment was the worker source resolver and Operations
+file list. The following increment implements both; "multiple forms in the live
+package" still requires deployment verification.
+
+## Worker and Operations integration validation
+
+Typed backend tests: 36 passed, including 11 actual-SQL integration steps. The new
+step executes source resolution, generation/publication, idempotent retry and API
+reading for two PDF originals. Real format generation separately covers XLSX,
+PDF and DOCX. Mixed-source selection additionally covers reviewed and legacy XLSX
+alongside PDF/DOCX through a SQL-port double. These are not live cloud canaries.
+
+Focused UI suites: 26 passed. TypeScript and the Vite production build passed.
+Playwright verifies three independent downloads, disabled confirmation and no
+horizontal overflow at 1440px and 390px; desktop/mobile screenshots were inspected.
+Existing XBF page styles are retained, with no font, logo or palette substitution.
+The synthetic harness has no compliance assessment and correctly displays its stop.
+
+Initial UI execution failed with default Node 20, below the app's required 22.12;
+using bundled Node 24 resolved the runner issue without dependency changes. The
+browser fixture initially expected GET instead of POST and used the wrong harness
+stage; both fixture errors were corrected before the passing run. An existing
+document-evidence test fixture was explicitly classified as a document. No failed
+attempt is counted as product validation.
+
+The action-contract suite passed 168/168. Scoped dependency fingerprints cover
+only the 12 case-API and 7 worker actions;
+no permission, endpoint or action metadata expansion is intended. Signature,
+fulfillment and outbound consumers still need explicit set-wide semantics before
+multi-form approval can be released. No historical Salzillo case was modified.

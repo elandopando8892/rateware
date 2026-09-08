@@ -11,6 +11,7 @@ import type { XlsxArtifactMapping } from "../_shared/osp/xlsx-form-completer.ts"
 import type { PdfArtifactMapping } from "../_shared/osp/pdf-form-completer.ts";
 import type { DocxArtifactMapping } from "../_shared/osp/docx-form-completer.ts";
 import { resolveReviewedSpreadsheetTargets } from "./reviewed-spreadsheet-targets.ts";
+import { tryGenerateSupplierPackageSet } from "./supplier-package-set-runtime.ts";
 import {
   type GeneratedSupplierPackageReceipt,
   generateSupplierPackageJob,
@@ -346,7 +347,19 @@ export function createSupplierPackageJobService(options: {
   storageClient: StorageClient;
   postgresFactory?: PostgresFactory;
 }) {
-  const records = createPostgresSupplierPackageRecordStore(options);
+  let sharedSql: SqlPort | undefined;
+  const factory = options.postgresFactory ??
+    (postgres as unknown as PostgresFactory);
+  const records = createPostgresSupplierPackageRecordStore({
+    ...options,
+    postgresFactory: (url, config) => {
+      const created = factory(url, config);
+      if (typeof created === "function") sharedSql = created as SqlPort;
+      return created;
+    },
+  });
+  if (!sharedSql) throw new Error("INVALID_RUNTIME_CONFIGURATION");
+  const sql = sharedSql;
   const objects = Object.freeze({
     writeExclusive: async (input: {
       organizationId: string;
@@ -372,6 +385,11 @@ export function createSupplierPackageJobService(options: {
   });
   return Object.freeze({
     generate: async (input: SupplierPackageJobInput) =>
-      await generateSupplierPackageJob(input, { records, objects }),
+      await tryGenerateSupplierPackageSet(input, {
+        sql,
+        storageClient: options.storageClient,
+        objects,
+      }) ??
+        await generateSupplierPackageJob(input, { records, objects }),
   });
 }

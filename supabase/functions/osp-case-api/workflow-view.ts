@@ -1,4 +1,8 @@
 import postgres from "postgres";
+import {
+  loadWorkflowPackageSet,
+  type WorkflowPackageSet,
+} from "./workflow-package-set.ts";
 
 import {
   type SqlPort,
@@ -117,6 +121,7 @@ export type WorkflowViewRecord = {
   caseState: CaseState;
   inputSnapshot: InputSnapshot | null;
   supplierPackage?: SupplierPackageView | null;
+  supplierPackageSet?: WorkflowPackageSet | null;
   signedPackage?: SignedPackageView | null;
   replyContext: ReplyContextView | null;
   signature: SignatureView | null;
@@ -136,15 +141,17 @@ const UUID =
 const SHA = /^[0-9a-f]{64}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ATTACHMENT_NAME = /^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$/;
-const ATTACHMENT_CONTENT_TYPES = new Set<OutboundAttachmentView["contentType"]>([
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-excel.sheet.macroEnabled.12",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "image/jpeg",
-  "image/png",
-  "image/tiff",
-]);
+const ATTACHMENT_CONTENT_TYPES = new Set<OutboundAttachmentView["contentType"]>(
+  [
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel.sheet.macroEnabled.12",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "image/jpeg",
+    "image/png",
+    "image/tiff",
+  ],
+);
 const STATES = new Set<CaseState>([
   "received",
   "analyzing_requirements",
@@ -226,7 +233,10 @@ function attachmentDetails(
   value: unknown,
   expectedHashes: readonly string[],
 ): readonly OutboundAttachmentView[] {
-  if (!Array.isArray(value) || value.length !== expectedHashes.length || value.length > 100) {
+  if (
+    !Array.isArray(value) || value.length !== expectedHashes.length ||
+    value.length > 100
+  ) {
     fail();
   }
   const names = new Set<string>();
@@ -237,7 +247,9 @@ function attachmentDetails(
       typeof row.name !== "string" || row.name !== row.name.normalize("NFC") ||
       !ATTACHMENT_NAME.test(row.name) || names.has(row.name.toLowerCase()) ||
       typeof row.contentType !== "string" ||
-      !ATTACHMENT_CONTENT_TYPES.has(row.contentType as OutboundAttachmentView["contentType"]) ||
+      !ATTACHMENT_CONTENT_TYPES.has(
+        row.contentType as OutboundAttachmentView["contentType"],
+      ) ||
       typeof row.sha256 !== "string" || row.sha256 !== expectedHashes[index]
     ) fail();
     names.add(row.name.toLowerCase());
@@ -388,7 +400,10 @@ function parseRow(
       inReplyTo: typeof row.in_reply_to === "string" ? row.in_reply_to : null,
       references: messageIds(row.references_header ?? []),
       bodyText: row.body_text,
-      attachments: attachmentDetails(row.attachment_details ?? [], attachmentSha256),
+      attachments: attachmentDetails(
+        row.attachment_details ?? [],
+        attachmentSha256,
+      ),
       attachmentSha256,
       mimeSha256,
       salesAuthorizationId: authorizationId,
@@ -456,6 +471,18 @@ export function approvalCommunicationsWorkspace(
     caseVersion: record.caseVersion,
     caseState: record.caseState,
     inputSnapshot: record.inputSnapshot,
+    ...(record.supplierPackageSet
+      ? {
+        supplierPackageSet: {
+          setId: record.supplierPackageSet.setId,
+          version: record.supplierPackageSet.version,
+          manifestSha256: record.supplierPackageSet.manifestSha256,
+          files: record.supplierPackageSet.files.map((
+            { objectId: _objectId, ...file },
+          ) => file),
+        },
+      }
+      : {}),
     supplierPackage: record.supplierPackage
       ? Object.freeze({
         packageId: record.supplierPackage.packageId,
@@ -486,12 +513,12 @@ export function approvalCommunicationsWorkspace(
           (outboundWritableCurrent &&
             record.outbound.kind === "final_response" &&
             record.outbound.status === "draft")),
-      completeOperationsReview: operations &&
+      completeOperationsReview: !record.supplierPackageSet && operations &&
         record.fulfillment?.gates.operationsReview !== false &&
         record.caseState === "operations_review" &&
         record.inputSnapshot !== null && record.supplierPackage !== null &&
         record.supplierPackage !== undefined,
-      approveAndApplySignature: jose &&
+      approveAndApplySignature: !record.supplierPackageSet && jose &&
         record.fulfillment?.gates.signatureApproval !== false &&
         record.caseState === "signature_approval" &&
         record.inputSnapshot !== null && record.signature !== null &&
@@ -729,15 +756,38 @@ export function createPostgresWorkflowViewSource(
         where case_record.organization_id = ${organizationId} and case_record.id = ${caseId}
         limit 2`;
           if (rows.length !== 1) throw new Error("WORKFLOW_VIEW_INVALID");
-          return parseRow(rows[0], organizationId, caseId);
+          const parsed = parseRow(rows[0], organizationId, caseId);
+          const supplierPackageSet = parsed.inputSnapshot
+            ? await loadWorkflowPackageSet(tx, {
+              organizationId,
+              caseId,
+              snapshotSha256: parsed.inputSnapshot.sha256,
+            })
+            : null;
+          return { ...parsed, supplierPackageSet };
         },
       );
       const fulfillment = options.semanticGate
         ? await options.semanticGate.load({ organizationId, caseId })
         : undefined;
+      const supplierPackageSet =
+        record.supplierPackageSet && options.signSupplierPackage
+          ? {
+            ...record.supplierPackageSet,
+            files: await Promise.all(
+              record.supplierPackageSet.files.map(async (file) => ({
+                ...file,
+                downloadUrl: optionalHttpsUrl(
+                  await options.signSupplierPackage!(file.objectId),
+                ),
+              })),
+            ),
+          }
+          : record.supplierPackageSet;
       if (!record.supplierPackage || !options.signSupplierPackage) {
         return Object.freeze({
           ...record,
+          supplierPackageSet,
           ...(fulfillment ? { fulfillment } : {}),
         });
       }
@@ -746,6 +796,7 @@ export function createPostgresWorkflowViewSource(
       );
       return Object.freeze({
         ...record,
+        supplierPackageSet,
         ...(fulfillment ? { fulfillment } : {}),
         supplierPackage: Object.freeze({
           ...record.supplierPackage,

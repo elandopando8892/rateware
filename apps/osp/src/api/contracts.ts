@@ -642,6 +642,18 @@ export const RequestFulfillmentMatrixSchema = z.strictObject({
 });
 
 export const ApprovalCommunicationsWorkspaceSchema = z.strictObject({
+  supplierPackageSet: z.strictObject({
+    setId: z.uuid(),
+    version: z.number().int().min(1).max(2_147_483_647),
+    manifestSha256: workflowSha,
+    files: z.array(z.strictObject({
+      requirementId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9:_.-]{0,255}$/),
+      sourceVersionId: z.uuid(),
+      outputSha256: workflowSha,
+      contentType: z.enum(['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel.sheet.macroEnabled.12', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']),
+      downloadUrl: z.url().refine((value) => new URL(value).protocol === 'https:').nullable(),
+    })).min(1).max(20),
+  }).nullable().optional(),
   caseId: z.uuid(),
   caseVersion: workflowVersion,
   caseState: z.enum([

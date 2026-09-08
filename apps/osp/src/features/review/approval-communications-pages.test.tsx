@@ -69,6 +69,20 @@ const workspace: ApprovalCommunicationsWorkspace = {
 afterEach(cleanup);
 
 describe('controlled approval and communications pages', () => {
+  it('shows each file of the set without enabling partial approval', () => {
+    const complete = vi.fn();
+    render(<OperationsReviewPage workspace={{...workspace,caseState:'operations_review',supplierPackage:null,
+      supplierPackageSet:{setId:caseId,version:2,manifestSha256:'e'.repeat(64),files:[
+        {requirementId:'form.a',sourceVersionId:caseId,outputSha256:'a'.repeat(64),contentType:'application/pdf',downloadUrl:'https://example.test/a'},
+        {requirementId:'form.b',sourceVersionId:payloadId,outputSha256:'b'.repeat(64),contentType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',downloadUrl:'https://example.test/b'},
+        {requirementId:'form.c',sourceVersionId:'55555555-5555-4555-8555-555555555555',outputSha256:'c'.repeat(64),contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',downloadUrl:null},
+      ]},capabilities:{...workspace.capabilities,completeOperationsReview:false}}} onComplete={complete}/>);
+    expect(screen.getByRole('link',{name:'Download form 1 (PDF)'})).toHaveAttribute('href','https://example.test/a');
+    expect(screen.getByRole('link',{name:'Download form 2 (DOCX)'})).toHaveAttribute('href','https://example.test/b');
+    expect(screen.getByText(/new secure download link for form 3/i)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox')).toBeDisabled();
+    expect(complete).not.toHaveBeenCalled();
+  });
   it('requires an Operations evidence acknowledgment before advancing', async () => {
     const complete = vi.fn(async () => undefined);
     const operationsWorkspace: ApprovalCommunicationsWorkspace = {
@@ -125,6 +139,7 @@ describe('controlled approval and communications pages', () => {
       items: [{
         ...workspace.fulfillment!.items[0],
         canonicalKey: 'banking.account_evidence',
+        kind: 'document' as const,
         label: 'Carátula del banco emisor',
         status: 'missing' as const,
         blocking: true,
