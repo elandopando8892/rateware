@@ -38,3 +38,13 @@ were not classified. Conversion must disable active content and preserve the
 originals; determine whether these objects carry required document content before
 sanitizing, rather than silently dropping a requirement. Legacy QF-167 DOC was
 not covered by this OOXML check. No safety status was changed in Supabase.
+
+Further read-only XML inspection identifies both QF-050 objects as
+`ProgID=Acrobat.Document.DC`, `Type=Embed`, `DrawAspect=Icon`, linked by rId11
+and rId13 to the two embedded binaries. They occur adjacent to a paragraph
+requiring the representative to review the Company's Code of Business Conduct
+and Antibribery Policies and Procedures. This is a declaration/context finding,
+not confirmation of either binary's actual content or safety. Preserve both
+objects and inspect their extracted content before concluding the package is
+complete. A PDF render displaying only icons would not establish that the
+embedded policies were reviewed or delivered. No policy was accepted.
