@@ -16,7 +16,11 @@ it('compares only after acceptance, displays document scope and never offers a w
   const load = vi.fn(() => runtime.apiClient.getAnswerMemoryEvidence!(caseId, candidate.id));
   render(<AnswerMemoryEvidencePanel candidate={candidate} load={load} />);
   expect(load).not.toHaveBeenCalled();
-  await userEvent.setup().click(screen.getByRole('button', { name: 'Comparar evidencia documental' }));
+  const compare = screen.getByRole('button', { name: 'Comparar evidencia documental' });
+  expect(compare).toHaveAttribute('aria-controls', expect.stringContaining('answer-memory-evidence-results-'));
+  expect(compare).toHaveAttribute('aria-expanded', 'false');
+  await userEvent.setup().click(compare);
+  expect(compare).toHaveAttribute('aria-expanded', 'true');
   expect(await screen.findByText('Necesita renovación auditable de evidencia')).toBeVisible();
   expect(screen.getByText('La revisión documental requiere publicación explícita')).toBeVisible();
   expect(screen.getAllByText(/El documento contiene 3 campos aprobados/)).toHaveLength(2);

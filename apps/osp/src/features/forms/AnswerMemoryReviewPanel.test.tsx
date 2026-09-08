@@ -12,6 +12,9 @@ it('requires reason and confirmation; accepts only the exact fresh candidate', a
   const onReview = vi.fn(runtime.apiClient.reviewAnswerMemory!);
   render(<AnswerMemoryReviewPanel caseId={caseId} candidates={workspace.answerMemoryCandidates!} allowed onReview={onReview} />);
   const card = within(screen.getByRole('article', { name: 'Razón social de ejemplo' }));
+  const reason = card.getByRole('textbox');
+  expect(reason).toHaveAttribute('aria-describedby', expect.stringContaining('answer-memory-reason-help-'));
+  expect(card.getByRole('checkbox')).toHaveAttribute('id', expect.stringContaining('answer-memory-confirm-'));
   expect(card.getByRole('button', { name: 'Aceptar candidata' })).toBeDisabled();
   const user = userEvent.setup();
   await user.type(card.getByRole('textbox'), 'Revisé la respuesta y la entidad del ejemplo.');

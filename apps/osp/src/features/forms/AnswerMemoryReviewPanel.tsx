@@ -29,6 +29,10 @@ function CandidateReview({ candidate, caseId, allowed, onReview, loadEvidence, o
   const [uncertain, setUncertain] = useState(false);
   const [receipt, setReceipt] = useState<AnswerMemoryReviewReceipt | null>(null);
   const key = useRef(`answer-review:${crypto.randomUUID()}`);
+  const controlSuffix = `${candidate.id}-${candidate.answerSha256.slice(0, 8)}`;
+  const reasonId = `answer-memory-reason-${controlSuffix}`;
+  const reasonHelpId = `answer-memory-reason-help-${controlSuffix}`;
+  const confirmId = `answer-memory-confirm-${controlSuffix}`;
   const status = receipt?.decision ?? candidate.decision;
   const editable = allowed && status === 'pending_review' && !busy && !uncertain;
   const ready = editable && confirmed && reason.trim().length >= 10 && reason.trim().length <= 1000;
@@ -47,15 +51,18 @@ function CandidateReview({ candidate, caseId, allowed, onReview, loadEvidence, o
     <p>Estado: {status === 'pending_review' ? 'pendiente' : status === 'accepted' ? 'aceptada para futura promoción; no reutilizable' : 'descartada'}</p>
     {candidate.reason ? <p>Motivo registrado: {candidate.reason}</p> : null}
     {status === 'pending_review' ? <>
-      <label>Motivo de la decisión<textarea value={reason} maxLength={1000} disabled={!editable} onChange={(event) => setReason(event.target.value)} /></label>
-      <label><input type="checkbox" checked={confirmed} disabled={!editable} onChange={(event) => setConfirmed(event.target.checked)} /> Revisé esta respuesta y su entidad; no estoy autorizando un envío.</label>
+      <label htmlFor={reasonId}>Motivo de la decisión
+        <textarea id={reasonId} aria-describedby={reasonHelpId} value={reason} maxLength={1000} disabled={!editable} onChange={(event) => setReason(event.target.value)} />
+      </label>
+      <small id={reasonHelpId}>Escribe entre 10 y 1000 caracteres para dejar una justificación auditable.</small>
+      <label htmlFor={confirmId}><input id={confirmId} type="checkbox" checked={confirmed} disabled={!editable} onChange={(event) => setConfirmed(event.target.checked)} /> Revisé esta respuesta y su entidad; no estoy autorizando un envío.</label>
       <div className="case-form-actions">
         <button type="button" disabled={!ready || candidate.stale || !candidate.legalEntityId} onClick={() => void decide('accepted')}>Aceptar candidata</button>
         <button type="button" disabled={!ready} onClick={() => void decide('rejected')}>Descartar candidata</button>
       </div>
     </> : null}
-    {busy ? <p role="status">Guardando evaluación…</p> : null}
-    {receipt ? <p role="status">Evaluación registrada. No habilita autollenado ni salientes.</p> : null}
+    {busy ? <p role="status" aria-live="polite">Guardando evaluación…</p> : null}
+    {receipt ? <p role="status" aria-live="polite">Evaluación registrada. No habilita autollenado ni salientes.</p> : null}
     {uncertain ? <p role="alert">No se pudo confirmar el resultado. Recarga para conciliar el estado antes de otro intento.</p> : null}
     {status === 'accepted' && !candidate.stale && candidate.legalEntityId && loadEvidence ? <AnswerMemoryEvidencePanel candidate={candidate} caseId={caseId} load={() => loadEvidence(candidate.id)} onLink={allowed ? onLinkEvidence : undefined} /> : null}
   </article>;

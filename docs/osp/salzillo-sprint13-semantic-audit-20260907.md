@@ -377,3 +377,30 @@ La evidencia es automatizada y de componente; no se ejecutó un lector de
 pantalla real (NVDA/VoiceOver) ni una auditoría manual en navegador. No se
 crearon registros, no se aplicaron migraciones, no se tocó Supabase, no se
 enviaron correos/webhooks, no se firmó ni se promovió a producción.
+
+## Incremento ejecutado — controles accesibles para memoria supervisada
+
+La revisión de respuestas guardadas y su comparación documental ahora tienen
+nombres programáticos únicos por candidata/evidencia. Los motivos de decisión y
+respaldo usan `label`/`id` explícitos y anuncian la instrucción de longitud con
+`aria-describedby`; los estados de guardado, error y conciliación se anuncian
+sin abrir un flujo nuevo. El botón de comparación expone su región de
+resultados mediante `aria-controls` y `aria-expanded`, y los paneles indican
+cuando una lectura o escritura interna está ocupada con `aria-busy`.
+
+Durante la regresión se detectó que usar el encabezado completo como nombre del
+artículo cambiaba el nombre accesible que ya consume la navegación asistida.
+Se conservó deliberadamente el nombre estable de la candidata y se mantuvieron
+los IDs de controles, evitando romper el contrato existente.
+
+Regresión ejecutada:
+
+- `AnswerMemoryEvidencePanel.test.tsx` + `AnswerMemoryReviewPanel.test.tsx`:
+  9/9.
+- ESLint enfocado y TypeScript (`tsc --noEmit`): correctos.
+- Build OSP: 430 módulos transformados; `git diff --check`: correcto.
+
+La evidencia sigue siendo local y automatizada; no se ejecutó NVDA/VoiceOver ni
+se hizo una aceptación manual en navegador. No se crearon registros, no se
+aplicaron migraciones, no se tocó Supabase, no se enviaron correos/webhooks, no
+se firmó y no se promovió a producción.

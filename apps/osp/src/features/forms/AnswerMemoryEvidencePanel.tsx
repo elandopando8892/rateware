@@ -20,20 +20,24 @@ export function AnswerMemoryEvidencePanel({ candidate, load, caseId, onLink }: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const controlSuffix = `${candidate.id}-${candidate.answerSha256.slice(0, 8)}`;
+  const headingId = `answer-memory-evidence-title-${controlSuffix}`;
+  const resultsId = `answer-memory-evidence-results-${controlSuffix}`;
   async function inspect() {
     if (loading || selected) return;
     setLoading(true); setError(false); setResult(null);
     try { setResult(await load()); } catch { setError(true); }
     finally { setLoading(false); }
   }
-  return <section className="answer-memory-evidence" aria-label="Comparación de evidencia">
-    <h5>Respuesta → evidencia → dato reutilizable</h5>
+  return <section className="answer-memory-evidence" aria-labelledby={headingId} aria-busy={loading}>
+    <h5 id={headingId}>Respuesta → evidencia → dato reutilizable</h5>
     <p>Comparar es sólo lectura. Registrar un vínculo o renovar su respaldo requiere la confirmación específica de abajo; no publica otros campos ni autoriza envíos.</p>
-    <button type="button" disabled={loading || selected !== null} onClick={() => void inspect()}>{loading ? 'Comparando…' : 'Comparar evidencia documental'}</button>
-    {selected ? <p>Se conserva la comparación previa al intento. El recibo de abajo documenta su resultado.</p> : null}
-    {error ? <p role="alert">No se pudo consultar la evidencia. No se realizó ningún cambio; puedes volver a consultar.</p> : null}
-    {result?.options.length === 0 ? <p role="status">No hay evidencia coincidente disponible para esta respuesta aceptada y su entidad. Revisa el origen, la vigencia y la revisión documental.</p> : null}
-    {result?.options.map((option) => <div className="answer-memory-evidence-option" key={option.reviewFieldId}>
+    <button type="button" aria-controls={resultsId} aria-expanded={result !== null} disabled={loading || selected !== null} onClick={() => void inspect()}>{loading ? 'Comparando…' : 'Comparar evidencia documental'}</button>
+    <div id={resultsId} aria-live="polite">
+      {selected ? <p>Se conserva la comparación previa al intento. El recibo de abajo documenta su resultado.</p> : null}
+      {error ? <p role="alert">No se pudo consultar la evidencia. No se realizó ningún cambio; puedes volver a consultar.</p> : null}
+      {result?.options.length === 0 ? <p role="status">No hay evidencia coincidente disponible para esta respuesta aceptada y su entidad. Revisa el origen, la vigencia y la revisión documental.</p> : null}
+      {result?.options.map((option) => <div className="answer-memory-evidence-option" key={option.reviewFieldId}>
       <strong>{states[option.state]}</strong>
       <dl>
         <dt>Respuesta aceptada</dt><dd>{candidate.value}</dd>
@@ -47,8 +51,9 @@ export function AnswerMemoryEvidencePanel({ candidate, load, caseId, onLink }: {
         ? <EvidenceAction key={`${option.reviewFieldId}:${option.expectationSha256}`} candidate={candidate} caseId={caseId} option={option} onLink={onLink}
           disabled={selected !== null && selected !== option.reviewFieldId} onStart={() => setSelected(option.reviewFieldId)} />
         : <p>Sin acción de enlace disponible. Primero debe existir un dato publicado y evidencia vigente; no se publica el documento desde esta respuesta.</p>}
-    </div>)}
-    {result ? <p>Hasta 20 coincidencias de la misma entidad. No es una validación completa del paquete del carrier.</p> : null}
+      </div>)}
+      {result ? <p>Hasta 20 coincidencias de la misma entidad. No es una validación completa del paquete del carrier.</p> : null}
+    </div>
   </section>;
 }
 
@@ -63,6 +68,10 @@ function EvidenceAction({ candidate, caseId, option, onLink, disabled, onStart }
   const [receipt, setReceipt] = useState<AnswerMemoryEvidenceLinkReceipt | null>(null);
   const intent = useRef<AnswerMemoryEvidenceLinkInput | null>(null);
   const inFlight = useRef(false);
+  const controlSuffix = `${candidate.id}-${option.reviewFieldId}`;
+  const reasonId = `answer-memory-evidence-reason-${controlSuffix}`;
+  const reasonHelpId = `answer-memory-evidence-reason-help-${controlSuffix}`;
+  const confirmId = `answer-memory-evidence-confirm-${controlSuffix}`;
   const renew = option.state === 'renewal_required';
   const ready = !disabled && !busy && !receipt && (uncertain || confirmed && reason.trim().length >= 10 && reason.trim().length <= 1000);
   async function confirm() {
@@ -75,12 +84,15 @@ function EvidenceAction({ candidate, caseId, option, onLink, disabled, onStart }
     catch { setUncertain(true); }
     finally { inFlight.current = false; setBusy(false); }
   }
-  return <section aria-label="Confirmar respaldo de respuesta">
+  return <section aria-label="Confirmar respaldo de respuesta" aria-busy={busy}>
     <p>{renew ? 'Conserva el dato y su fuente original; añade esta evidencia vigente como respaldo auditable.' : 'Registra la relación con el dato existente; no crea ni reemplaza hechos.'}</p>
-    <label>Motivo del respaldo<textarea maxLength={1000} value={reason} disabled={disabled || busy || uncertain || !!receipt} onChange={(event) => setReason(event.target.value)} /></label>
-    <label><input type="checkbox" checked={confirmed} disabled={disabled || busy || uncertain || !!receipt} onChange={(event) => setConfirmed(event.target.checked)} /> Confirmo esta respuesta, entidad y evidencia exactas; sin firma, adjuntos ni envío.</label>
+    <label htmlFor={reasonId}>Motivo del respaldo
+      <textarea id={reasonId} aria-describedby={reasonHelpId} maxLength={1000} value={reason} disabled={disabled || busy || uncertain || !!receipt} onChange={(event) => setReason(event.target.value)} />
+    </label>
+    <small id={reasonHelpId}>Escribe entre 10 y 1000 caracteres para dejar una justificación auditable.</small>
+    <label htmlFor={confirmId}><input id={confirmId} type="checkbox" checked={confirmed} disabled={disabled || busy || uncertain || !!receipt} onChange={(event) => setConfirmed(event.target.checked)} /> Confirmo esta respuesta, entidad y evidencia exactas; sin firma, adjuntos ni envío.</label>
     <button type="button" disabled={!ready} onClick={() => void confirm()}>{busy ? 'Registrando…' : uncertain ? 'Conciliar el mismo intento' : renew ? 'Renovar respaldo y vincular' : 'Registrar vínculo'}</button>
-    {uncertain ? <p role="alert">Resultado no confirmado. Se conserva la misma clave e intención para conciliar; no se generará otra operación. Si el origen cambió, vuelve a consultar después de conciliar.</p> : null}
-    {receipt ? <p role="status">{receipt.action === 'renew' ? 'Renovación y vínculo registrados.' : 'Vínculo registrado.'} Recibo: {receipt.receiptId}. La reutilización vuelve a validar vigencia y permisos; no autoriza un paquete ni un envío.</p> : null}
+    {uncertain ? <p role="alert" aria-live="assertive">Resultado no confirmado. Se conserva la misma clave e intención para conciliar; no se generará otra operación. Si el origen cambió, vuelve a consultar después de conciliar.</p> : null}
+    {receipt ? <p role="status" aria-live="polite">{receipt.action === 'renew' ? 'Renovación y vínculo registrados.' : 'Vínculo registrado.'} Recibo: {receipt.receiptId}. La reutilización vuelve a validar vigencia y permisos; no autoriza un paquete ni un envío.</p> : null}
   </section>;
 }
