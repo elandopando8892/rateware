@@ -306,3 +306,28 @@ Regresión ejecutada:
 
 El gate no ejecuta macros, no persiste un borrador incompatible y no modifica
 casos, migraciones, Supabase o acciones salientes.
+
+## Incremento ejecutado — corpus sintético completo de entrada multi-formato
+
+Se añadió una prueba de recorrido completo con cinco documentos sintéticos en
+una misma solicitud: PDF, DOCX, imagen, XLSX y XLSM. El servicio conserva el
+conteo por formato, genera evidencia estructurada por fila para ambas hojas de
+cálculo y entrega al intérprete únicamente los binarios que corresponden a
+PDF/DOCX/imagen.
+
+El XLSM se procesa con la política de macro segura: ejecución bloqueada,
+análisis sobre copia saneada y separación entre el hash original y el hash de
+análisis. La cita del formulario XLSM sigue apuntando al `versionId` original,
+por lo que el paquete no puede confundirse con un XLSX ni perder trazabilidad.
+
+Regresión ejecutada:
+
+- `request-manifest-draft.test.ts`: 5/5.
+- `openai-request-manifest.test.ts`: 3/3.
+- `xlsx-structure.test.ts`: 2/2.
+- `strict-xlsx-package-scanner.test.ts`: 5/5.
+- Total del corpus: 15/15; `deno check` y `git diff --check` correctos.
+
+El corpus es sintético y no crea manifiestos reales, no ejecuta macros, no
+envía archivos a proveedores externos y no cambia migraciones, casos,
+Supabase, firmas, correos o webhooks.

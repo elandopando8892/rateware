@@ -1,4 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
+import ExcelJS from "exceljs";
+import JSZip from "npm:jszip@3.10.1";
 
 import type { RequestManifest } from "./openai-request-manifest.ts";
 import { createRequestManifestDraftService } from "./request-manifest-draft.ts";
@@ -17,6 +19,43 @@ async function hash(bytes: Uint8Array) {
     new Uint8Array(digest),
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
+}
+
+async function workbookBytes(): Promise<Uint8Array> {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Registration");
+  sheet.getCell("A1").value = "Legal name";
+  sheet.getCell("B1").value = "Synthetic Carrier";
+  return new Uint8Array(await workbook.xlsx.writeBuffer());
+}
+
+async function macroWorkbookBytes(): Promise<Uint8Array> {
+  const zip = await JSZip.loadAsync(await workbookBytes());
+  const contentTypes = await zip.file("[Content_Types].xml")!.async("string");
+  zip.file(
+    "[Content_Types].xml",
+    contentTypes
+      .replace(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml",
+        "application/vnd.ms-excel.sheet.macroEnabled.main+xml",
+      )
+      .replace(
+        "</Types>",
+        '<Override PartName="/xl/vbaProject.bin" ContentType="application/vnd.ms-office.vbaProject"/></Types>',
+      ),
+  );
+  const relationships = await zip.file("xl/_rels/workbook.xml.rels")!.async(
+    "string",
+  );
+  zip.file(
+    "xl/_rels/workbook.xml.rels",
+    relationships.replace(
+      "</Relationships>",
+      '<Relationship Id="rIdVba" Type="http://schemas.microsoft.com/office/2006/relationships/vbaProject" Target="vbaProject.bin"/></Relationships>',
+    ),
+  );
+  zip.file("xl/vbaProject.bin", new Uint8Array([1, 2, 3, 4]));
+  return await zip.generateAsync({ type: "uint8array" });
 }
 
 const manifest = {
@@ -357,4 +396,156 @@ Deno.test("multimodal request manifest rejects a model format that has no matchi
     "REQUEST_MANIFEST_FORM_FORMAT_MISMATCH",
   );
   assertEquals(records, 0);
+});
+
+Deno.test("multimodal request manifest preserves a complete PDF DOCX XLSX XLSM and image corpus", async () => {
+  const pdf = encoder.encode("synthetic-pdf-corpus");
+  const docx = encoder.encode("synthetic-docx-corpus");
+  const image = encoder.encode("synthetic-image-corpus");
+  const xlsx = await workbookBytes();
+  const xlsm = await macroWorkbookBytes();
+  const ids = {
+    pdf: pdfId,
+    docx: docxId,
+    image: imageId,
+    xlsx: "77777777-7777-4777-8777-777777777777",
+    xlsm: "88888888-8888-4888-8888-888888888888",
+  };
+  const corpusManifest = {
+    ...manifest,
+    forms: [
+      {
+        ...manifest.forms[0],
+        name: "Registration PDF",
+        format: "pdf" as const,
+        evidenceIds: [`file:${ids.pdf}`],
+      },
+      {
+        ...manifest.forms[0],
+        name: "Reference DOCX",
+        format: "docx" as const,
+        evidenceIds: [`file:${ids.docx}`],
+      },
+      {
+        ...manifest.forms[0],
+        name: "Registration XLSX",
+        format: "xlsx" as const,
+        evidenceIds: [`xlsx:${ids.xlsx}:1:1`],
+      },
+      {
+        ...manifest.forms[0],
+        name: "Registration XLSM",
+        format: "xlsm" as const,
+        evidenceIds: [`xlsx:${ids.xlsm}:1:1`],
+      },
+    ],
+  };
+  let interpretedInput:
+    | Readonly<
+      { evidence: readonly unknown[]; attachments?: readonly unknown[] }
+    >
+    | undefined;
+  const service = createRequestManifestDraftService({
+    clock: () => new Date("2026-09-07T03:00:00.000Z"),
+    interpreter: {
+      interpretWithTelemetry: async (input) => {
+        interpretedInput = input;
+        return {
+          manifest: corpusManifest,
+          telemetry: {
+            responseId: "resp_corpus",
+            model: "gpt-synthetic",
+            inputTokens: 10,
+            outputTokens: 20,
+            totalTokens: 30,
+            durationMs: 40,
+          },
+        };
+      },
+    },
+    store: {
+      findByEvidence: async () => null,
+      record: async (input) => ({
+        id: "99999999-9999-4999-8999-999999999999",
+        version: 1,
+        manifestSha256: input.manifestSha256,
+        replayed: false,
+      }),
+    },
+  });
+  const result = await service.run({
+    organizationId,
+    caseId,
+    message: {
+      id: messageId,
+      sourceSha256: "a".repeat(64),
+      subject: "Complete supplier package",
+      safeBody: "Return the PDF, DOCX, XLSX and XLSM sources.",
+    },
+    documents: [
+      {
+        versionId: ids.pdf,
+        sourceName: "setup.pdf",
+        contentType: "application/pdf",
+        sourceSha256: await hash(pdf),
+        sourceSafety: "safe",
+        bytes: pdf,
+      },
+      {
+        versionId: ids.docx,
+        sourceName: "references.docx",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        sourceSha256: await hash(docx),
+        sourceSafety: "safe",
+        bytes: docx,
+      },
+      {
+        versionId: ids.image,
+        sourceName: "signature.png",
+        contentType: "image/png",
+        sourceSha256: await hash(image),
+        sourceSafety: "safe",
+        bytes: image,
+      },
+      {
+        versionId: ids.xlsx,
+        sourceName: "registration.xlsx",
+        contentType:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        sourceSha256: await hash(xlsx),
+        sourceSafety: "safe",
+        bytes: xlsx,
+      },
+      {
+        versionId: ids.xlsm,
+        sourceName: "registration.xlsm",
+        contentType: "application/vnd.ms-excel.sheet.macroEnabled.12",
+        sourceSha256: await hash(xlsm),
+        sourceSafety: "safe",
+        bytes: xlsm,
+      },
+    ],
+  });
+  assertEquals(result.manifest.sourceCount, 6);
+  assertEquals(result.manifest.sourceCoverage, {
+    email: 1,
+    xlsx: 1,
+    xlsm: 1,
+    pdf: 1,
+    docx: 1,
+    image: 1,
+  });
+  assertEquals(result.manifest.spreadsheetProtection, {
+    macroEnabledFiles: 1,
+    macroExecution: "blocked",
+    analysisMode: "sanitized_copy",
+  });
+  assertEquals((interpretedInput?.attachments ?? []).length, 3);
+  assertEquals(
+    (interpretedInput?.evidence ?? []).some((item) =>
+      JSON.stringify(item).includes(ids.xlsm)
+    ),
+    true,
+  );
 });
