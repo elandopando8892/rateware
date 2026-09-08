@@ -1,7 +1,7 @@
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { OspCorporateProfileClient } from '../../api/osp-client';
 import { CorporateProfileWorkspace } from './CorporateProfileWorkspace';
@@ -29,6 +29,29 @@ const client: OspCorporateProfileClient = {
 };
 
 describe('CorporateProfileWorkspace', () => {
+  afterEach(cleanup);
+  it('blocks placeholder acceptance and records an explicitly verified correction without promotion', async () => {
+    const base = await client.getCorporateProfile();
+    const candidate = { review_id: '92000000-0000-4000-8000-000000000001', review_field_id: '93000000-0000-4000-8000-000000000001', review_revision: 2, review_status: 'in_review' as const, ownership: 'owned' as const, field_status: 'pending' as const, document_type: 'articles_of_organization', evidence_label: 'Articles', proposed_display_value: 'On file', pending_field_count: '1', total_field_count: '1' };
+    const decide = vi.fn(async () => ({ reviewId: candidate.review_id, fieldId: candidate.review_field_id, fieldStatus: 'corrected' as const, revision: 3 }));
+    const promote = vi.fn();
+    const reviewClient: OspCorporateProfileClient = { ...client, decideProfileReviewField: decide, promoteProfileReviewFacts: promote, getCorporateProfile: async () => ({ ...base, entities: [{ ...base.entities[0], fields: [{ ...base.entities[0].fields[1], review_candidates: [candidate] }] }] }) };
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CorporateProfileWorkspace client={reviewClient} /></QueryClientProvider>);
+    await userEvent.click(await screen.findByRole('button', { name: 'Review evidence' }));
+    await userEvent.type(screen.getByLabelText('Decision note'), 'Original source inspected.');
+    expect(screen.getByRole('button', { name: 'Accept evidence' })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('Value verified against original'), 'Verified address');
+    expect(screen.getByRole('button', { name: 'Save verified correction' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('checkbox', { name: /inspected the original evidence/i }));
+    await userEvent.type(screen.getByLabelText('Value verified against original'), ' updated');
+    expect(screen.getByRole('button', { name: 'Save verified correction' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('checkbox', { name: /inspected the original evidence/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save verified correction' }));
+    expect(decide).toHaveBeenCalledWith({ reviewId: candidate.review_id, fieldId: candidate.review_field_id, expectedRevision: 2, decision: 'corrected', decisionNote: 'Original source inspected.', reviewerValue: 'Verified address updated' });
+    expect(promote).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Review action stored in the audit ledger/)).toBeInTheDocument();
+  });
+
   it('shows a dual-entity profile without exposing production identifiers', async () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CorporateProfileWorkspace client={client} /></QueryClientProvider>);
     expect(screen.getByRole('heading', { name: /corporate profile/i })).toBeInTheDocument();

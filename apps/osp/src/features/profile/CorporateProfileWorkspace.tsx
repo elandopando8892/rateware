@@ -57,6 +57,8 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
   const [supportFilter, setSupportFilter] = useState<SupportFilter>('all');
   const [selectedReview, setSelectedReview] = useState<{ fieldCode: string; reviewId: string } | null>(null);
   const [decisionNote, setDecisionNote] = useState('');
+  const [reviewerValue, setReviewerValue] = useState('');
+  const [sourceChecked, setSourceChecked] = useState(false);
   const [lastOutcome, setLastOutcome] = useState('');
   const mutation = useMutation({
     mutationFn: async (operation: () => Promise<unknown>) => await operation(),
@@ -108,7 +110,9 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
   const selectedField = selectedReview ? entity.fields.find((field) => field.code === selectedReview.fieldCode) : undefined;
   const selectedCandidate = selectedField?.review_candidates.find((candidate) => candidate.review_id === selectedReview?.reviewId);
   const noteReady = decisionNote.trim() === decisionNote && decisionNote.length >= 3;
-  const restrictedDecision = selectedField ? ['restricted', 'highly_restricted'].includes(selectedField.sensitivity) : false;
+  const restrictedDecision = selectedCandidate?.proposed_display_value === 'Withheld' || (selectedField ? ['restricted', 'highly_restricted'].includes(selectedField.sensitivity) : false);
+  const unavailableProposal = !selectedCandidate?.proposed_display_value || ['On file', 'Withheld'].includes(selectedCandidate.proposed_display_value);
+  const correctionReady = sourceChecked && reviewerValue.trim().length > 0 && reviewerValue.length <= 1000;
 
   return <div className="corporate-profile-page">
     <header className="profile-hero">
@@ -176,7 +180,7 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
               <div className="verification-field-copy"><strong>{field.label}</strong><span>{field.display_value}</span><small>{field.code.replaceAll('_', ' ')}</small></div>
               <div className="verification-evidence-count"><strong>{field.reviewed_candidate_count}/{field.evidence_candidate_count}</strong><span>reviewed / found</span></div>
               <span className={`support-status support-status-${field.support_status}`}>{supportLabel[field.support_status]}</span>
-              {field.review_candidates.length > 0 ? <button type="button" className="review-evidence-button" onClick={() => { setSelectedReview({ fieldCode: field.code, reviewId: field.review_candidates[0].review_id }); setDecisionNote(''); setLastOutcome(''); }}>Review evidence</button> : null}
+              {field.review_candidates.length > 0 ? <button type="button" className="review-evidence-button" onClick={() => { setSelectedReview({ fieldCode: field.code, reviewId: field.review_candidates[0].review_id }); setDecisionNote(''); setReviewerValue(''); setSourceChecked(false); setLastOutcome(''); }}>Review evidence</button> : null}
             </li>)}
           </ul>
           {selectedCandidate && selectedField ? <section className="profile-decision-panel" aria-labelledby="profile-decision-title">
@@ -191,7 +195,13 @@ export function CorporateProfileWorkspace({ client }: { client: OspCorporateProf
             {selectedCandidate.ownership === 'owned' ? <>
               <label className="decision-note-field">Decision note<textarea value={decisionNote} maxLength={1000} onChange={(event) => setDecisionNote(event.target.value)} placeholder="State what the evidence proves or why it is rejected." /></label>
               {selectedCandidate.field_status === 'pending' ? <div className="decision-actions">
-                {restrictedDecision ? <button type="button" disabled={!noteReady || mutation.isPending} onClick={() => mutation.mutate(() => client.decideProfileReviewField({ reviewId: selectedCandidate.review_id, fieldId: selectedCandidate.review_field_id, expectedRevision: selectedCandidate.review_revision, decision: 'withheld', decisionNote, reviewerValue: null }))}>Withhold restricted value</button> : <button type="button" className="primary-action" disabled={!noteReady || mutation.isPending} onClick={() => mutation.mutate(() => client.decideProfileReviewField({ reviewId: selectedCandidate.review_id, fieldId: selectedCandidate.review_field_id, expectedRevision: selectedCandidate.review_revision, decision: 'accepted', decisionNote, reviewerValue: null }))}>Accept evidence</button>}
+                {restrictedDecision ? <button type="button" disabled={!noteReady || mutation.isPending} onClick={() => mutation.mutate(() => client.decideProfileReviewField({ reviewId: selectedCandidate.review_id, fieldId: selectedCandidate.review_field_id, expectedRevision: selectedCandidate.review_revision, decision: 'withheld', decisionNote, reviewerValue: null }))}>Withhold restricted value</button> : <>
+                  {unavailableProposal ? <p role="status">No reviewable value is shown. Inspect the original evidence and enter its exact value; do not accept a placeholder.</p> : null}
+                  <button type="button" className="primary-action" disabled={unavailableProposal || !noteReady || mutation.isPending} onClick={() => mutation.mutate(() => client.decideProfileReviewField({ reviewId: selectedCandidate.review_id, fieldId: selectedCandidate.review_field_id, expectedRevision: selectedCandidate.review_revision, decision: 'accepted', decisionNote, reviewerValue: null }))}>Accept evidence</button>
+                  <label className="decision-note-field">Value verified against original<input value={reviewerValue} maxLength={1000} onChange={(event) => { setReviewerValue(event.target.value); setSourceChecked(false); }} /></label>
+                  <label><input type="checkbox" checked={sourceChecked} onChange={(event) => setSourceChecked(event.target.checked)} />I inspected the original evidence and verified this exact value.</label>
+                  <button type="button" disabled={!noteReady || !correctionReady || mutation.isPending} onClick={() => mutation.mutate(() => client.decideProfileReviewField({ reviewId: selectedCandidate.review_id, fieldId: selectedCandidate.review_field_id, expectedRevision: selectedCandidate.review_revision, decision: 'corrected', decisionNote, reviewerValue: reviewerValue.trim() }))}>Save verified correction</button>
+                </>}
                 <button type="button" className="danger-action" disabled={!noteReady || mutation.isPending} onClick={() => mutation.mutate(() => client.decideProfileReviewField({ reviewId: selectedCandidate.review_id, fieldId: selectedCandidate.review_field_id, expectedRevision: selectedCandidate.review_revision, decision: 'rejected', decisionNote, reviewerValue: null }))}>Reject evidence</button>
               </div> : null}
               {selectedCandidate.field_status !== 'pending' && selectedCandidate.pending_field_count === '0' ? <div className="decision-actions">
