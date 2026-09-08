@@ -424,3 +424,24 @@ Regresión ejecutada:
 El cambio sólo normaliza la presentación de lectura; no infiere formatos, no
 modifica el manifiesto, no crea registros, no aplica migraciones y no habilita
 firmas, autorización de Sales, correos, webhooks ni despliegue.
+
+## Incremento ejecutado — normalización de alias de formato en el contrato
+
+El contrato de requisitos ahora interpreta de forma equivalente `PDF`, `.pdf`,
+`XLSM`, `.xlsx`, `DOCX` y sus MIME types oficiales al derivar los formatos
+aceptados de un formulario. Antes, una declaración en mayúsculas, con punto o
+como MIME podía quedar sin restricción de contenido y permitir una evaluación
+demasiado amplia. Se mantiene el texto del carrier como fuente de verdad: si
+el texto exige PDF, esa exigencia prevalece sobre el formato declarado del
+formulario.
+
+Regresión ejecutada:
+
+- `request-contract.test.ts`: 12/12.
+- `deno check --no-remote` del contrato: correcto; `git diff --check`:
+  correcto.
+
+La primera comprobación de tipos usó `--no-prompt`, opción no soportada por la
+versión instalada de Deno; se repitió con `--no-remote` y terminó correctamente.
+El cambio es determinista y local: no llama al LLM, no modifica datos, no
+aplica migraciones y no ejecuta firmas, correos, webhooks ni acciones salientes.

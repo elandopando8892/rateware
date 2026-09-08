@@ -118,6 +118,7 @@ const SIGNABLE_SOURCE_CONTENT_TYPES: readonly string[] = Object.freeze([
   CONTENT_TYPES.xlsx,
   CONTENT_TYPES.xlsm,
 ]);
+type SourceFormat = keyof typeof CONTENT_TYPES;
 
 const DOCUMENT_CONCEPTS: readonly Readonly<{
   canonicalKey: string;
@@ -300,6 +301,15 @@ function relatedFormText(
   return [label, ...matches].join(" \n");
 }
 
+function sourceFormat(value: string): SourceFormat | null {
+  const candidate = normalized(value).trim().toLowerCase();
+  if (candidate === "pdf" || candidate === ".pdf" || candidate.endsWith(".pdf") || candidate === CONTENT_TYPES.pdf) return "pdf";
+  if (candidate === "xlsx" || candidate === ".xlsx" || candidate.endsWith(".xlsx") || candidate === CONTENT_TYPES.xlsx) return "xlsx";
+  if (candidate === "xlsm" || candidate === ".xlsm" || candidate.endsWith(".xlsm") || candidate === CONTENT_TYPES.xlsm) return "xlsm";
+  if (candidate === "docx" || candidate === ".docx" || candidate.endsWith(".docx") || candidate === CONTENT_TYPES.docx) return "docx";
+  return null;
+}
+
 function maximumAgeDays(value: string): number | null {
   if (
     /antig[uü]edad\s+m[aá]xima\s+de\s+un\s+mes|maximum\s+age\s+of\s+(?:one|1)\s+month/i
@@ -325,15 +335,16 @@ function condition(value: string): RequestContractCondition {
 
 function acceptedContentTypes(
   value: string,
-  sourceFormat?: string,
+  declaredFormat?: string,
 ): readonly string[] {
   if (/formato\s+pdf|in\s+pdf\s+format|\.pdf\b/i.test(value)) {
     return Object.freeze([CONTENT_TYPES.pdf]);
   }
-  if (sourceFormat === "xlsm") return Object.freeze([CONTENT_TYPES.xlsm]);
-  if (sourceFormat === "xlsx") return Object.freeze([CONTENT_TYPES.xlsx]);
-  if (sourceFormat === "docx") return Object.freeze([CONTENT_TYPES.docx]);
-  if (sourceFormat === "pdf") return Object.freeze([CONTENT_TYPES.pdf]);
+  const format = declaredFormat ? sourceFormat(declaredFormat) : null;
+  if (format === "xlsm") return Object.freeze([CONTENT_TYPES.xlsm]);
+  if (format === "xlsx") return Object.freeze([CONTENT_TYPES.xlsx]);
+  if (format === "docx") return Object.freeze([CONTENT_TYPES.docx]);
+  if (format === "pdf") return Object.freeze([CONTENT_TYPES.pdf]);
   return Object.freeze([]);
 }
 
@@ -393,7 +404,7 @@ export function buildRequestContract(
     }
     const row = item as Record<string, unknown>;
     const label = text(row.name, 256);
-    const format = text(row.format, 16);
+    const format = text(row.format, 256);
     const evidenceIds = stringArray(row.evidenceIds, 20);
     if (typeof row.required !== "boolean") {
       throw new Error("REQUEST_CONTRACT_INVALID");

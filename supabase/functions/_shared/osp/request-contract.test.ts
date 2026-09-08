@@ -100,6 +100,34 @@ Deno.test("Salzillo contract preserves form, condition, freshness, page and wet-
   );
 });
 
+Deno.test("form format aliases normalize extension, case and MIME declarations", () => {
+  const variants = [
+    ["XLSM", "application/vnd.ms-excel.sheet.macroEnabled.12"],
+    [".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+    ["DOCX", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+    ["application/pdf", "application/pdf"],
+  ] as const;
+  for (const [declaredFormat, contentType] of variants) {
+    const contract = buildRequestContract({
+      manifestSha256: sha,
+      manifest: {
+        requestType: "customer_setup",
+        targetXbfEntity: "XBFMX",
+        forms: [{
+          name: `Carrier form ${declaredFormat}`,
+          format: declaredFormat,
+          action: "complete",
+          required: true,
+          evidenceIds: ["email:format-alias"],
+        }],
+        requestedDocuments: [],
+        requirements: [],
+      },
+    });
+    assertEquals(contract.requirements[0].acceptedContentTypes, [contentType]);
+  }
+});
+
 Deno.test("carrier bank-cover text creates a package requirement when no form cell is mapped", () => {
   const manifest = Object.freeze({
     ...salzilloManifest,
