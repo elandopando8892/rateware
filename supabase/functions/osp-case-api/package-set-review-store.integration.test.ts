@@ -446,6 +446,11 @@ Deno.test("set review receipt and existing Operations transition commit atomical
           "insert into osp_private.request_manifest_decision_reviews values ($1,$2,$3,$4,1,1,$5,'resolved')",
           [org, caseId, id(91), id(90), context.requestManifestSha256],
         );
+        await db.exec(
+          await migration(
+            "20260902130000_osp_operations_review_contract_gate.sql",
+          ),
+        );
         store = createPackageSetOperationsReviewStore({
           sql,
           now: () => new Date(),
@@ -648,6 +653,40 @@ Deno.test("set review receipt and existing Operations transition commit atomical
           Error,
           "PACKAGE_SET_MEMBER_REVIEW_IMMUTABLE",
         );
+      },
+    );
+    await t.step(
+      "database contract gate rejects stale or unresolved review without a transition",
+      async () => {
+        const before = await counts();
+        for (
+          const mutation of [
+            "delete from osp_private.request_manifest_decision_reviews",
+            "update osp_private.request_manifest_decision_reviews set status='pending'",
+            "update osp_private.request_manifest_decision_reviews set manifest_version=2",
+            "update osp_private.request_manifest_decision_reviews set manifest_sha256=repeat('f',64)",
+            "update osp_private.request_manifest_decision_reviews set manifest_draft_id='00000000-0000-4000-8000-000000000999'",
+            `insert into osp_private.request_manifest_drafts
+            select organization_id,case_id,'${
+              id(999)
+            }'::uuid,version+1,manifest_sha256,manifest_json
+            from osp_private.request_manifest_drafts`,
+          ]
+        ) {
+          await assertRejects(
+            () =>
+              db.transaction(async (tx) => {
+                await tx.exec(mutation);
+                await tx.query(
+                  "update osp_private.customer_registration_cases set state='signature_approval',aggregate_version=aggregate_version+1 where organization_id=$1 and id=$2",
+                  [org, caseId],
+                );
+              }),
+            Error,
+            "REQUEST_FULFILLMENT_BLOCKED",
+          );
+          assertEquals(await counts(), before);
+        }
       },
     );
     await t.step(

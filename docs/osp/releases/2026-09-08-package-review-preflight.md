@@ -77,3 +77,21 @@ The previous run-3 native success does not certify this new trigger coverage.
 Native acceptance remains pending; do not deploy based on the PGlite pass alone.
 The local PostgreSQL server was stopped successfully after the attempts; the
 run-4 database and prior rehearsal evidence were preserved.
+
+## Subsequent native verification
+
+After confirming the server was stopped and run-4 still had zero user tables,
+the same test passed on PostgreSQL 17.11: one test / eleven steps, zero failures
+(3s). Neither the three-second connection nor six-second statement limit changed.
+The earlier timeouts remain evidence; a specific host/network cause is unproven.
+
+Coverage was then expanded to apply the actual pending migration
+`20260902130000_osp_operations_review_contract_gate.sql` alongside the four new
+package-review migrations. Six rollback probes reject absent, pending,
+wrong-version, wrong-hash, wrong-manifest and superseded-manifest reviews on a
+direct case-state update. The actual package-set completion still succeeds with
+a resolved current review, including concurrent requests with one receipt.
+
+Fresh native database `osp_package_review_run_5`: one test / twelve steps, zero
+failures (4s). These checks reduce the SQL composition gap but are still a scoped
+fixture, not the complete thirteen-migration release or authenticated UI proof.

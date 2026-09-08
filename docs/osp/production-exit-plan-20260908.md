@@ -102,6 +102,14 @@ Pasaron además 20 pruebas y diez pasos de HTTP/proyección/integración. Sigue 
 un esquema de prueba acotado; faltan compatibilidad completa y UI autenticada.
 Evidencia: [ensayo nativo](package-review-native-rehearsal-20260908.md).
 
+La siguiente ampliación nativa pasó doce pasos en PostgreSQL 17.11: incluye
+el trigger real de encolado del snapshot, su rollback y el freno SQL pendiente
+de vigencia de revisión del requerimiento, combinado con las cuatro migraciones
+de paquetes. Se conservaron dos timeouts de conexión anteriores; el reintento
+pasó sin cambiar límites. Falta el ensayo conjunto de las trece migraciones y
+la preview autenticada; el hito 1 no se declara cerrado por estas pruebas.
+Evidencia: [conciliación y cobertura](releases/2026-09-08-package-review-preflight.md).
+
 ## Control de avance y regla de parada
 
 La próxima entrega debe incluir la demostración del hito 1, no sólo otro helper.
