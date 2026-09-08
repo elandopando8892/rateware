@@ -653,6 +653,12 @@ Deno.test("historical email identity and hash participate in manifest replay key
     );
   }
   assertEquals(keys.length, 5);
+  const legacyKey = await hash(encoder.encode(JSON.stringify({
+    message: latest.sourceSha256,
+    documents: [],
+    knowledgeCatalog: [],
+  })));
+  assertEquals(keys[0] === legacyKey, false);
   assertEquals(keys[1], keys[2]);
   assertEquals(new Set([keys[0], keys[1], keys[3], keys[4]]).size, 4);
 });

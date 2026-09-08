@@ -169,6 +169,23 @@ Deno.test("request manifest uses strict stored-off Responses output for email, X
   assertEquals(captured.init.method, "POST");
   assertEquals(captured.body.store, false);
   assertEquals(captured.body.tools, []);
+  const reconciliation =
+    (captured.body.input as Array<{ role: string; content: unknown }>).find((
+      entry,
+    ) =>
+      entry.role === "developer" &&
+      String(entry.content).includes("Reconcile all supplied email")
+    );
+  assert(reconciliation);
+  assert(
+    String(reconciliation.content).includes("retain every unaffected form"),
+  );
+  assert(
+    String(reconciliation.content).includes(
+      "both the original and amendment evidence IDs",
+    ),
+  );
+  assert(String(reconciliation.content).includes("Do not infer supersession"));
   assertEquals(captured.body.max_output_tokens, 6_000);
   assertEquals(
     (captured.body.text as { format: { strict: boolean; name: string } }).format
@@ -291,7 +308,8 @@ Deno.test("request manifest sends PDF, DOCX and image evidence inline without cr
   assertEquals(result.requesterLegalName.evidenceIds, [attachmentIds.pdf]);
   assert(body);
   const input = body.input as Array<{ role: string; content: unknown }>;
-  const userContent = input[1].content as Array<Record<string, unknown>>;
+  const userContent = input.find((entry) => entry.role === "user")
+    ?.content as Array<Record<string, unknown>>;
   assertEquals(
     userContent.filter((item) => item.type === "input_file").length,
     2,

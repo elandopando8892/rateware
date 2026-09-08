@@ -1,3 +1,4 @@
+import { REQUEST_MANIFEST_POLICY_VERSION } from "./openai-request-manifest.ts";
 import type {
   RequestKnowledgeCatalogEntry,
   RequestManifest,
@@ -424,6 +425,7 @@ export function createRequestManifestDraftService(options: {
         }
       }
       const evidenceInventory = {
+        interpretationPolicy: REQUEST_MANIFEST_POLICY_VERSION,
         message: source.message.sourceSha256,
         ...(messages.length > 1
           ? {
