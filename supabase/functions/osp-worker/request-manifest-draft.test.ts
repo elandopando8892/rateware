@@ -603,3 +603,56 @@ Deno.test("email bundle rejects duplicate identities and excessive body before i
   }
   assertEquals(calls, 0);
 });
+Deno.test("historical email identity and hash participate in manifest replay key", async () => {
+  const keys: string[] = [];
+  const service = createRequestManifestDraftService({
+    interpreter: {
+      interpretWithTelemetry: async () => {
+        throw new Error("UNEXPECTED_AI");
+      },
+    },
+    store: {
+      findByEvidence: async ({ evidenceSha256 }) => {
+        keys.push(evidenceSha256);
+        throw new Error("CAPTURED_KEY");
+      },
+      record: async () => {
+        throw new Error("UNEXPECTED_WRITE");
+      },
+    },
+  });
+  const latest = {
+    id: "33333333-3333-4333-8333-333333333333",
+    sourceSha256: "a".repeat(64),
+    subject: "Amendment",
+    safeBody: "Replace QF-168 with QF-167",
+  };
+  const original = {
+    ...latest,
+    id: "55555555-5555-4555-8555-555555555555",
+    sourceSha256: "b".repeat(64),
+    safeBody: "Six forms and fiscal documents",
+  };
+  for (
+    const previousMessages of [[], [original], [original], [{
+      ...original,
+      sourceSha256: "c".repeat(64),
+    }], [{ ...original, id: "66666666-6666-4666-8666-666666666666" }]]
+  ) {
+    await assertRejects(
+      () =>
+        service.run({
+          organizationId,
+          caseId,
+          message: latest,
+          previousMessages,
+          documents: [],
+        }),
+      Error,
+      "CAPTURED_KEY",
+    );
+  }
+  assertEquals(keys.length, 5);
+  assertEquals(keys[1], keys[2]);
+  assertEquals(new Set([keys[0], keys[1], keys[3], keys[4]]).size, 4);
+});
