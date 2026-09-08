@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "npx serve .",
     "e2e:bid-room": "node tools/bid-room-e2e.mjs",
+    "certify:carrier-list-templates:preview": "node tools/carrier-list-templates-preview-e2e.mjs",
     "smoke:integrations": "node tools/integration-smoke.mjs",
     "validate:action-contract": "node tools/validate-action-contract.mjs",
     "release:progress": "node tools/production-readiness-report.mjs",
