@@ -49,7 +49,8 @@ Deno.test("set review receipt and existing Operations transition commit atomical
         updated_at timestamptz, primary key (organization_id,id));
       create table osp_private.background_jobs (organization_id uuid,id uuid,kind text,
         lease_token uuid,completed_at timestamptz,leased_until timestamptz,opaque_payload jsonb,
-        primary key(organization_id,id));
+        idempotency_key text, primary key(organization_id,id),
+        unique(organization_id,kind,idempotency_key));
       create table osp_private.case_package_input_snapshots (
         organization_id uuid, case_id uuid, id uuid, case_version bigint,
         canonical_sha256 text, created_at timestamptz default now(),
@@ -80,6 +81,16 @@ Deno.test("set review receipt and existing Operations transition commit atomical
     `);
     const migration = (file: string) =>
       Deno.readTextFile(new URL(`../../migrations/${file}`, import.meta.url));
+    // Production enqueues generation inside the snapshot transaction. Exercise
+    // the shipped trigger instead of silently omitting this release dependency.
+    const generationSql = await migration(
+      "20260829070649_osp_supplier_package_generation.sql",
+    );
+    const enqueueStart = generationSql.indexOf(
+      "create function osp_private.enqueue_supplier_package_generation()",
+    );
+    assert(enqueueStart >= 0);
+    await db.exec(generationSql.slice(enqueueStart));
     // Execute the actual production validators, not permissive test stubs.
     // Tables remain a scoped fixture; this is not a full-schema/native rehearsal.
     await db.exec(
@@ -135,6 +146,48 @@ Deno.test("set review receipt and existing Operations transition commit atomical
     await db.query(
       "insert into osp_private.case_package_input_snapshots (organization_id,case_id,id,case_version,canonical_sha256,created_at,form_instance_id,form_instance_version,template_version_id) values ($1,$2,$3,7,$4,now(),$2,1,$3)",
       [org, caseId, snapshotId, sha],
+    );
+    await t.step(
+      "production snapshot trigger enqueues exactly once and rolls back with its snapshot",
+      async () => {
+        const jobsForSnapshot = async (value: string) =>
+          (await db.query(
+            "select kind,opaque_payload,lease_token,completed_at from osp_private.background_jobs where organization_id=$1 and idempotency_key=$2",
+            [org, `supplier-package:${value}`],
+          )).rows;
+        assertEquals(await jobsForSnapshot(snapshotId), [{
+          kind: "generate_supplier_package",
+          opaque_payload: { caseId, snapshotId },
+          lease_token: null,
+          completed_at: null,
+        }]);
+        const rolledBackSnapshot = id(990);
+        await assertRejects(
+          () =>
+            db.transaction(async (tx) => {
+              await tx.query(
+                "insert into osp_private.case_package_input_snapshots (organization_id,case_id,id,case_version,canonical_sha256) values ($1,$2,$3,7,$4)",
+                [org, caseId, rolledBackSnapshot, sha],
+              );
+              const queued = await tx.query(
+                "select id from osp_private.background_jobs where organization_id=$1 and idempotency_key=$2",
+                [org, `supplier-package:${rolledBackSnapshot}`],
+              );
+              assertEquals(queued.rows.length, 1);
+              throw new Error("ROLLBACK_SNAPSHOT_CANARY");
+            }),
+          Error,
+          "ROLLBACK_SNAPSHOT_CANARY",
+        );
+        assertEquals(await jobsForSnapshot(rolledBackSnapshot), []);
+        assertEquals(
+          (await db.query(
+            "select id from osp_private.case_package_input_snapshots where organization_id=$1 and id=$2",
+            [org, rolledBackSnapshot],
+          )).rows,
+          [],
+        );
+      },
     );
     await db.query(
       "insert into osp_private.case_form_instances values ($1,$2,$2,1,$3)",
