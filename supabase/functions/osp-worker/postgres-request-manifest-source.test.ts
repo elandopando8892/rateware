@@ -106,14 +106,16 @@ Deno.test("manifest source rejects overflow instead of silently truncating a thr
   );
 });
 
-Deno.test("request manifest source fails closed for unsupported evidence", async () => {
-  const source = createPostgresRequestManifestSource({
-    databaseUrl: "postgresql://synthetic.example.test/db",
-    postgresFactory: factory("image/tiff"),
+for (const unsupported of ["image/tiff", "application/msword"]) {
+  Deno.test(`request manifest source fails closed for ${unsupported}`, async () => {
+    const source = createPostgresRequestManifestSource({
+      databaseUrl: "postgresql://synthetic.example.test/db",
+      postgresFactory: factory(unsupported),
+    });
+    await assertRejects(
+      () => source.load({ organizationId, caseId }),
+      Error,
+      "REQUEST_MANIFEST_CONTENT_TYPE_UNSUPPORTED",
+    );
   });
-  await assertRejects(
-    () => source.load({ organizationId, caseId }),
-    Error,
-    "REQUEST_MANIFEST_CONTENT_TYPE_UNSUPPORTED",
-  );
-});
+}

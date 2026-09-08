@@ -29,3 +29,23 @@ remains unresolved, not silently substituted with Mexican entity documents.
 
 No production deployment, email, signature or webhook was performed. This is
 component validation, not end-to-end production acceptance.
+
+## Downstream review validation
+
+2026-09-08: request-review-freshness.integration.test.ts passed one test with
+eight steps against PGlite, including older resolved review/new manifest,
+hash/version mismatch, unresolved latest review and tenant isolation. Read-only
+Supabase inspection confirmed assert_request_contract_ready(uuid,uuid) compares
+the latest manifest ID/version/hash to its latest resolved review, with
+customer_registration_cases_request_contract_gate enabled (O).
+
+package-set-review-store.integration.test.ts passed one test with twelve steps
+against PGlite: transaction rollback, stale/rejected/unauthorized reviews,
+persisted final-file reviews, missing supports/incomplete output, actor and
+snapshot checks, successful atomic transition, idempotent replay, immutable
+receipt and tenant isolation. These are synthetic rehearsals, not live writes
+or an authenticated business-case acceptance test. Native PostgreSQL concurrency
+was not exercised in this run.
+
+The source-loader .doc rejection regression also passed. This proves explicit
+failure, not support for Crane QF-167. Conversion remains pending.
