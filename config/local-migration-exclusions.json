@@ -1,0 +1,14 @@
+{
+  "scope": "rateware-carrier-local-v1 only; never a production migration disposition",
+  "exclusions": [
+    {
+      "name": "20260617150000_import_sourcing_base_google_sheet.sql",
+      "sha256": "1b280bf887570c639e548f5068f61a44215b1618562d3dc43b28d8675955b695",
+      "disposition": "EXCLUDED_LOCAL_BUSINESS_DATA",
+      "applied": false,
+      "reason": "Historical carrier CRM delete/insert import. Local business fixtures must be synthetic.",
+      "evidence": "tools/audit-local-import-exclusion.mjs verifies exact bytes and two top-level vendor DML statements; this is not semantic SQL certification.",
+      "next_requirement": "Incremental runners crossing this file must verify this hash-bound exclusion separately from applied migration ledger entries."
+    }
+  ]
+}
