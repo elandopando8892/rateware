@@ -308,6 +308,24 @@ const brandedDomainAuthorizationOverrides = Object.fromEntries(
   })
 );
 
+// Reviewed fb371b1: preserve string permissions from Auth-verified app_metadata.
+// Substituting only the previous auth.ts reproduces all six prior envelopes
+// exactly (270 actions). These remain static pins, never calculated at validation.
+const verifiedSupabasePermissionEnvelopes = {
+  'edge.create-raw-upload.': 'c4b4f710309e0f7e7a86506656b819937cf63af6622242534c46b7e493849af6',
+  'edge.interpret-upload.': 'bf7755662f3a3858c00e399a5a26b6a70d52633d078eda1aeaf326cdcf7e534e',
+  'edge.sync-rateware-catalog.': '23599844605c161adb8bc8fa0a3b9771cc6f8a152977cd21dfa204ed770c87f7',
+  'edge.provider-gmail-intake-api.': '3e0a70cb989fa0a2dd14a1d97f4ad47c475bd1c28f44f2550c3eef28228bbeff',
+  'edge.shipper-directory-api.': 'f0e12cfcf91b7365af43fffc21c151fb4e67b3c8b6fe3c934be8c1f33fc8e2cd',
+  'edge.rateware-api.': 'f33f4f2aa01ed02aa48583074c0c982709da142f211912674adfd66950cb305f',
+};
+const verifiedSupabasePermissionOverrides = Object.fromEntries(
+  Object.keys(brandedDomainAuthorizationOverrides).flatMap((id) => {
+    const match = Object.entries(verifiedSupabasePermissionEnvelopes).find(([prefix]) => id.startsWith(prefix));
+    return match ? [[id, match[1]]] : [];
+  })
+);
+
 export const ACTION_CONTRACT = {
   ...BASE_ACTION_CONTRACT,
   contractVersion,
@@ -341,6 +359,7 @@ export const ACTION_CONTRACT = {
     ...supabaseAuthAuthorizationOverrides,
     ...ratewareApiAuthorizationOverrides,
     ...brandedDomainAuthorizationOverrides,
+    ...verifiedSupabasePermissionOverrides,
   },
   surfaces: [
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({
