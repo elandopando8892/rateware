@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +10,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MATRIX_PATH = resolve(ROOT, "docs/platform55-visual-parity/p3v-route-matrix.csv");
 const PLAN_PATH = resolve(ROOT, "docs/superpowers/plans/2026-09-07-rateware-platform55-p3v6-aggregate.md");
+const EVIDENCE_ROOT = resolve(ROOT, "docs/platform55-visual-parity/evidence/p3v6");
 
 const EXPECTED_ROUTES = Object.freeze([
   "app.html", "upload-center.html", "upload-history.html", "staging-review.html", "rateware.html",
@@ -95,4 +98,22 @@ test("P3-V6 plan preserves governed non-mutation scope", () => {
   assert.match(planText, /No insertar, actualizar, archivar ni eliminar datos de negocio/);
   assert.match(planText, /No cambiar la migración Kinde → Supabase/);
   assert.match(planText, /revisión independiente/i);
+});
+
+test("P3-V6 evidence is immutable and SHA-bound", async () => {
+  const candidates = (await readdir(EVIDENCE_ROOT, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory() && /^[0-9a-f]{40}$/.test(entry.name))
+    .map((entry) => entry.name);
+  assert.ok(candidates.length, "P3-V6 must publish a SHA-named evidence package");
+  const candidateSha = candidates.sort().at(-1);
+  const manifestPath = resolve(EVIDENCE_ROOT, candidateSha, "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  assert.equal(manifest.candidate_sha, candidateSha);
+  assert.equal(manifest.route_count, 29);
+  assert.equal(manifest.capture_count, 261);
+  assert.deepEqual(manifest.browser.failures, []);
+  assert.equal(execFileSync("git", ["-C", ROOT, "rev-parse", `${candidateSha}^{tree}`], { encoding: "utf8" }).trim(), manifest.candidate_tree);
+  for (const [path, expectedBlob] of Object.entries(manifest.source_blobs)) {
+    assert.equal(execFileSync("git", ["-C", ROOT, "rev-parse", `${candidateSha}:${path}`], { encoding: "utf8" }).trim(), expectedBlob, `${path} must remain bound to candidate SHA`);
+  }
 });
