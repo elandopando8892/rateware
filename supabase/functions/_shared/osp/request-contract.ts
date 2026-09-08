@@ -176,6 +176,7 @@ function text(value: unknown, maximum = 10_000): string {
   if (
     typeof value !== "string" || value.trim() !== value || value.length < 1 ||
     value.length > maximum ||
+    // deno-lint-ignore no-control-regex -- reject control bytes in carrier text
     /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value)
   ) {
     throw new Error("REQUEST_CONTRACT_INVALID");
@@ -286,28 +287,106 @@ function relatedText(
 function relatedFormText(
   label: string,
   requirementText: readonly string[],
-  formCount: number,
-): string {
-  if (formCount === 1) return [label, ...requirementText].join(" \n");
-  const normalizedLabel = normalized(label);
-  const meaningfulTokens = normalizedLabel.split(/[^a-z0-9]+/).filter((token) =>
-    token.length >= 4
-  );
+  formLabels: readonly string[],
+): Readonly<{ value: string; unresolvedScope: boolean }> {
+  const words = (value: string) =>
+    normalized(value)
+      .replace(/\.(?:pdf|docx|xlsx|xlsm)\b/g, "")
+      .replace(/[^a-z0-9]+/g, " ").trim();
+  const labels = formLabels.map(words);
+  const current = words(label);
+  const generic = new Set([
+    "carrier",
+    "supplier",
+    "form",
+    "formato",
+    "template",
+    "pdf",
+    "docx",
+    "xlsx",
+    "xlsm",
+  ]);
+  const hasWords = (value: string, term: string) =>
+    term.length > 0 && ` ${value} `.includes(` ${term} `);
+  const ownDocumentConcepts = documentConceptKeys(label);
+  let unresolvedScope = false;
   const matches = requirementText.filter((item) => {
-    const candidate = normalized(item);
-    return candidate.includes(normalizedLabel) ||
-      meaningfulTokens.some((token) => candidate.includes(token));
+    const candidate = words(item);
+    const otherDocument = documentConceptKeys(item).some((key) =>
+      !ownDocumentConcepts.includes(key)
+    );
+    // Full names win over shared words such as "Carrier". Partial names are
+    // usable only when the distinguishing token belongs to one form.
+    const exact = labels.filter((name) => hasWords(candidate, name));
+    if (exact.length > 0) {
+      if ((exact.length > 1 || otherDocument) && exact.includes(current)) {
+        unresolvedScope = true;
+      }
+      return exact.includes(current);
+    }
+    const partial = labels.filter((name) =>
+      name.split(" ").some((token) =>
+        token.length >= 4 && !generic.has(token) &&
+        hasWords(candidate, token) &&
+        labels.filter((other) => hasWords(other, token)).length === 1
+      )
+    );
+    if (partial.length > 0) {
+      if ((partial.length > 1 || otherDocument) && partial.includes(current)) {
+        unresolvedScope = true;
+      }
+      return partial.includes(current);
+    }
+    if (
+      /\b(?:all|each)\s+(?:the\s+)?forms?\b|\b(?:todos?\s+los|cada)\s+formularios?\b/i
+        .test(item)
+    ) {
+      if (otherDocument) unresolvedScope = true;
+      return true;
+    }
+    // A W-9's PDF instruction is not an output instruction for the only DOCX.
+    if (documentConceptKeys(item).length > 0) {
+      // Mixed prose needs an explicit scope decision; neither discard the
+      // form's completeness requirement nor copy the document's output format.
+      if (/\b(?:forms?|formularios?)\b/.test(candidate)) {
+        unresolvedScope = true;
+      }
+      return false;
+    }
+    if (formLabels.length === 1) return true;
+    if (
+      /\b(?:form|formulario|formato|pages?|paginas?|signature|firma)\b|\b(?:pdf|docx|xlsx|xlsm)\b|\d\s*%/i
+        .test(normalized(item))
+    ) {
+      unresolvedScope = true;
+    }
+    return false;
   });
-  return [label, ...matches].join(" \n");
+  return Object.freeze({
+    value: [label, ...matches].join(" \n"),
+    unresolvedScope,
+  });
 }
 
 function sourceFormat(value: string): SourceFormat | null {
-  const candidate = normalized(value).trim().toLowerCase();
-  if (candidate === "pdf" || candidate === ".pdf" || candidate.endsWith(".pdf") || candidate === CONTENT_TYPES.pdf) return "pdf";
-  if (candidate === "xlsx" || candidate === ".xlsx" || candidate.endsWith(".xlsx") || candidate === CONTENT_TYPES.xlsx) return "xlsx";
-  if (candidate === "xlsm" || candidate === ".xlsm" || candidate.endsWith(".xlsm") || candidate === CONTENT_TYPES.xlsm) return "xlsm";
-  if (candidate === "docx" || candidate === ".docx" || candidate.endsWith(".docx") || candidate === CONTENT_TYPES.docx) return "docx";
+  const candidate = normalized(value).trim();
+  for (const format of Object.keys(CONTENT_TYPES) as SourceFormat[]) {
+    if (
+      candidate === format || candidate.endsWith(`.${format}`) ||
+      candidate === CONTENT_TYPES[format].toLowerCase()
+    ) return format;
+  }
   return null;
+}
+
+function explicitOutputFormats(value: string): readonly SourceFormat[] {
+  const formats = new Set<SourceFormat>();
+  const pattern =
+    /\b(?:formato\s+|in\s+)(pdf|docx|xlsx|xlsm)\b|\b(pdf|docx|xlsx|xlsm)\s+format\b/gi;
+  for (const match of value.matchAll(pattern)) {
+    formats.add((match[1] ?? match[2]).toLowerCase() as SourceFormat);
+  }
+  return [...formats];
 }
 
 function maximumAgeDays(value: string): number | null {
@@ -337,7 +416,11 @@ function acceptedContentTypes(
   value: string,
   declaredFormat?: string,
 ): readonly string[] {
-  if (/formato\s+pdf|in\s+pdf\s+format|\.pdf\b/i.test(value)) {
+  const requested = explicitOutputFormats(value);
+  if (requested.length === 1) {
+    return Object.freeze([CONTENT_TYPES[requested[0]]]);
+  }
+  if (!declaredFormat && /\.pdf\b/i.test(value)) {
     return Object.freeze([CONTENT_TYPES.pdf]);
   }
   const format = declaredFormat ? sourceFormat(declaredFormat) : null;
@@ -398,6 +481,12 @@ export function buildRequestContract(
     ? input.manifest.requestedDocuments
     : [];
   const requirements: RequestContractRequirement[] = [];
+  const formLabels = forms.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error("REQUEST_CONTRACT_INVALID");
+    }
+    return text((item as Record<string, unknown>).name, 256);
+  });
   forms.forEach((item, index) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
       throw new Error("REQUEST_CONTRACT_INVALID");
@@ -409,7 +498,8 @@ export function buildRequestContract(
     if (typeof row.required !== "boolean") {
       throw new Error("REQUEST_CONTRACT_INVALID");
     }
-    const combined = relatedFormText(label, requirementText, forms.length);
+    const related = relatedFormText(label, requirementText, formLabels);
+    const combined = related.value;
     const canonicalKey = `form.${safeKey(label)}`;
     const requiresSignature = row.action === "sign" ||
       /firma|signature/i.test(combined);
@@ -419,7 +509,10 @@ export function buildRequestContract(
       canonicalKey,
       label,
       required: row.required,
-      condition: condition(combined),
+      condition: related.unresolvedScope || sourceFormat(format) === null ||
+          explicitOutputFormats(combined).length > 1
+        ? "unknown"
+        : condition(combined),
       acceptedContentTypes: acceptedContentTypes(combined, format),
       maximumAgeDays: null,
       minimumPageCount: pageCount(combined),
@@ -446,7 +539,9 @@ export function buildRequestContract(
       canonicalKey,
       label,
       required: row.required,
-      condition: condition(combined),
+      condition: explicitOutputFormats(combined).length > 1
+        ? "unknown"
+        : condition(combined),
       acceptedContentTypes: acceptedContentTypes(combined),
       maximumAgeDays: maximumAgeDays(combined),
       minimumPageCount: null,
@@ -481,7 +576,9 @@ export function buildRequestContract(
       canonicalKey: packageRequirement.canonicalKey,
       label,
       required: true,
-      condition: condition(packageRequirement.text),
+      condition: explicitOutputFormats(packageRequirement.text).length > 1
+        ? "unknown"
+        : condition(packageRequirement.text),
       acceptedContentTypes: acceptedContentTypes(packageRequirement.text),
       maximumAgeDays: maximumAgeDays(packageRequirement.text),
       minimumPageCount: null,
@@ -626,7 +723,8 @@ function evaluateRequirement(
       label: requirement.label,
       status: "review_required",
       blocking: requirement.required,
-      reason: "A human must resolve the applicability condition.",
+      reason:
+        "A human must resolve applicability, format or instruction scope.",
       evidenceIds: Object.freeze([]),
     });
   }
@@ -721,7 +819,9 @@ function preSignatureReady(
   const applicable = applies(requirement, entity);
   if (applicable === false || !requirement.required) return true;
   if (applicable === null) return false;
-  if (requirement.kind === "document") {
+  if (
+    requirement.kind === "document" || requirement.signatureMethod === "none"
+  ) {
     return evidence.some((candidate) =>
       candidate.canonicalKey === requirement.canonicalKey &&
       candidate.status === "approved" &&
