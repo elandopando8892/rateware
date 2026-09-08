@@ -4302,7 +4302,7 @@ const DEFINITIONS = [
       "canonicalId": "rpc.osp_private.decide_profile_evidence_field_command(uuid,uuid,uuid,integer,text,text,jsonb,text,text)",
       "actionName": "osp_private.decide_profile_evidence_field_command",
       "sourceKind": "postgres-function",
-      "sourceFile": "supabase/migrations/20260828202820_osp_profile_evidence_human_review.sql",
+      "sourceFile": "supabase/migrations/20260908233000_osp_profile_correction_amendment.sql",
       "handler": "osp_private.decide_profile_evidence_field_command(uuid,uuid,uuid,integer,text,text,jsonb,text,text)",
       "endpoint": "PostgreSQL function / PostgREST RPC surface osp_private.decide_profile_evidence_field_command(uuid,uuid,uuid,integer,text,text,jsonb,text,text)",
       "businessModule": "OSP Customer Setup",
@@ -4317,19 +4317,19 @@ const DEFINITIONS = [
       "decisionStatus": "internal_only",
       "lifecycle": "active",
       "replacementAction": null,
-      "sourceFingerprint": "94b2fd637a633d05952d2f2c8441723e10c2ac1b865071580aa1d942d4d9d048",
+      "sourceFingerprint": "9b6e2165fcce2d35d600318d77d01e547108270179a06be241a3e22ac1a8b5e7",
       "analysisCoverage": "direct",
       "coverageSignals": [
         "direct"
       ],
       "rpcSignature": "uuid,uuid,uuid,integer,text,text,jsonb,text,text",
       "dependencyFiles": [
-        "supabase/migrations/20260828202820_osp_profile_evidence_human_review.sql"
+        "supabase/migrations/20260908233000_osp_profile_correction_amendment.sql"
       ],
       "notes": "Internal OSP runtime or database surface; no direct browser authority."
     },
-    "metadataFingerprint": "768e3b9893e01aa7c1269f24943f9594339d2be25b4605fbc63bc17be43dc960",
-    "authorizationFingerprint": "94b2fd637a633d05952d2f2c8441723e10c2ac1b865071580aa1d942d4d9d048"
+    "metadataFingerprint": "b8535692d627bc261134be0ece9049a65c6cf4e123cfca42c4518904879e947c",
+    "authorizationFingerprint": "9b6e2165fcce2d35d600318d77d01e547108270179a06be241a3e22ac1a8b5e7"
   },
   {
     "surface": {

@@ -30,16 +30,21 @@ const client: OspCorporateProfileClient = {
 
 describe('CorporateProfileWorkspace', () => {
   afterEach(cleanup);
-  it('blocks placeholder acceptance and records an explicitly verified correction without promotion', async () => {
+  it.each(['pending', 'corrected'] as const)('records a verified correction for %s without accepting placeholders or promoting', async (fieldStatus) => {
     const base = await client.getCorporateProfile();
-    const candidate = { review_id: '92000000-0000-4000-8000-000000000001', review_field_id: '93000000-0000-4000-8000-000000000001', review_revision: 2, review_status: 'in_review' as const, ownership: 'owned' as const, field_status: 'pending' as const, document_type: 'articles_of_organization', evidence_label: 'Articles', proposed_display_value: 'On file', pending_field_count: '1', total_field_count: '1' };
+    const candidate = { review_id: '92000000-0000-4000-8000-000000000001', review_field_id: '93000000-0000-4000-8000-000000000001', review_revision: 2, review_status: 'in_review' as const, ownership: 'owned' as const, field_status: fieldStatus, document_type: 'articles_of_organization', evidence_label: 'Articles', proposed_display_value: 'On file', pending_field_count: '1', total_field_count: '1' };
     const decide = vi.fn(async () => ({ reviewId: candidate.review_id, fieldId: candidate.review_field_id, fieldStatus: 'corrected' as const, revision: 3 }));
     const promote = vi.fn();
     const reviewClient: OspCorporateProfileClient = { ...client, decideProfileReviewField: decide, promoteProfileReviewFacts: promote, getCorporateProfile: async () => ({ ...base, entities: [{ ...base.entities[0], fields: [{ ...base.entities[0].fields[1], review_candidates: [candidate] }] }] }) };
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CorporateProfileWorkspace client={reviewClient} /></QueryClientProvider>);
     await userEvent.click(await screen.findByRole('button', { name: 'Review evidence' }));
     await userEvent.type(screen.getByLabelText('Decision note'), 'Original source inspected.');
-    expect(screen.getByRole('button', { name: 'Accept evidence' })).toBeDisabled();
+    if (fieldStatus === 'pending') expect(screen.getByRole('button', { name: 'Accept evidence' })).toBeDisabled();
+    else {
+      expect(screen.queryByRole('button', { name: 'Accept evidence' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Reject evidence' })).not.toBeInTheDocument();
+      expect(screen.getByText(/previous value, reviewer and note remain/i)).toBeInTheDocument();
+    }
     await userEvent.type(screen.getByLabelText('Value verified against original'), 'Verified address');
     expect(screen.getByRole('button', { name: 'Save verified correction' })).toBeDisabled();
     await userEvent.click(screen.getByRole('checkbox', { name: /inspected the original evidence/i }));
