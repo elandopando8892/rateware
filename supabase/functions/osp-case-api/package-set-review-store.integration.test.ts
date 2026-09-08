@@ -13,6 +13,7 @@ import {
   type PackageSetReviewCommand,
 } from "./package-set-review-store.ts";
 import { loadLockedPackageSetReview } from "./package-set-review-source.ts";
+import { createPackageMemberReviewStore } from "./package-member-review-store.ts";
 
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -328,23 +329,85 @@ Deno.test("set review receipt and existing Operations transition commit atomical
           Error,
           "PACKAGE_SET_REVIEW_BLOCKED",
         ); // Mapping/source approval alone is insufficient.
-        await sql.begin!(async (tx) => {
-          await tx`set local role osp_workflow_api`;
-          await tx`select set_config('osp.organization_id',${org},true)`;
-          for (const n of [5, 6]) {
-            await tx`insert into osp_private.package_set_member_reviews
-          (id,organization_id,case_id,package_set_id,source_version_id,review_version,set_manifest_sha256,request_manifest_sha256,output_sha256,status,full_output_inspected,completion_percent,page_count,signature_requirement,signature_policy_version,actor_json)
-          values (${id(n + 10)}::uuid,${org}::uuid,${caseId}::uuid,${
-              id(3)
-            }::uuid,${
-              id(n)
-            }::uuid,1,${manifestSha256},${context.requestManifestSha256},${
-              "d".repeat(64)
-            },'approved',true,100,2,'none',null,${
-              JSON.stringify(command.actor)
-            }::jsonb)`;
-          }
+        await db.exec(
+          await Deno.readTextFile(
+            new URL(
+              "../../migrations/20260908200000_osp_member_review_command_identity.sql",
+              import.meta.url,
+            ),
+          ),
+        );
+        const memberStore = createPackageMemberReviewStore({
+          sql,
+          now: () => new Date("2026-09-08T12:01:00Z"),
         });
+        for (const n of [5, 6]) {
+          const inspection = {
+            reviewId: id(n + 10),
+            organizationId: org,
+            caseId,
+            setId: id(3),
+            sourceVersionId: id(n),
+            expectedCaseVersion: 7,
+            inputSnapshotSha256: sha,
+            setManifestSha256: manifestSha256,
+            requestManifestSha256: context.requestManifestSha256,
+            outputSha256: "d".repeat(64),
+            status: "approved" as const,
+            fullOutputInspected: true,
+            completionPercent: 100,
+            pageCount: 2,
+            signatureRequirement: "none" as const,
+            signaturePolicyVersion: null,
+            actor: command.actor,
+          };
+          await assertRejects(
+            () =>
+              memberStore.save({ ...inspection, fullOutputInspected: false }),
+            Error,
+            "INVALID_MEMBER_REVIEW",
+          );
+          await assertRejects(
+            () => memberStore.save({ ...inspection, expectedCaseVersion: 8 }),
+            Error,
+            "PACKAGE_SET_REVIEW_STALE",
+          );
+          await assertRejects(
+            () =>
+              memberStore.save({ ...inspection, outputSha256: "f".repeat(64) }),
+            Error,
+            "PACKAGE_SET_REVIEW_STALE",
+          );
+          await assertRejects(
+            () =>
+              memberStore.save({
+                ...inspection,
+                actor: { ...command.actor, permissions: ["osp:read"] },
+              }),
+            Error,
+            "APPROVAL_FORBIDDEN",
+          );
+          assertEquals(await memberStore.save(inspection), {
+            reviewId: inspection.reviewId,
+            reviewVersion: 1,
+            replayed: false,
+          });
+          assertEquals(await memberStore.save(inspection), {
+            reviewId: inspection.reviewId,
+            reviewVersion: 1,
+            replayed: true,
+          });
+          await assertRejects(
+            () => memberStore.save({ ...inspection, completionPercent: 50 }),
+            Error,
+            "IDEMPOTENCY_CONFLICT",
+          );
+        }
+        assertEquals((await counts()).state, {
+          state: "operations_review",
+          aggregate_version: 7,
+        });
+        assertEquals((await counts()).events, { n: 0 });
         failReceipt = true;
         await assertRejects(
           () => store.complete(command),

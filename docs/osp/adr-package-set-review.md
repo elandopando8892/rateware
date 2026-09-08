@@ -138,3 +138,34 @@ No browser-provided path/name is accepted. This fixes inspection prerequisites;
 it does not implement the pending review-capture UI or activate any approval.
 Focused validation: 27 tests (name/format, workflow projection and composition)
 plus lint. No new route, permission, migration or deployment in this correction.
+
+## Internal inspection command (not yet exposed)
+
+Decision: separate saving a member inspection from completing Operations. Reuse
+the existing tenant transaction, fresh actor policy and database insert guard;
+do not introduce a second approval workflow or allow browser table writes.
+`createPackageMemberReviewStore.save` records the inspected output hash, set,
+request, completion/page attestations and signature requirement. It checks the
+current case version and exact latest input snapshot before writing. Approval of
+an inspection does not mean that the whole request is fulfilled: the existing
+set-wide semantic evaluator remains responsible for that later decision.
+
+The additive `20260908200000_osp_member_review_command_identity.sql` stores a
+command digest. Existing evidence remains immutable with a null digest, so it
+cannot accidentally be claimed as an idempotent application replay. The caller
+retains a UUID for a retry; identical authenticated commands replay the receipt,
+while a changed decision or actor/session conflicts. A fresh authentication after
+an uncertain response therefore requires read reconciliation, not silent retry
+with another UUID. Review versions are assigned under the existing case lock.
+
+Rejected alternatives: writing directly from the UI (untrusted authority),
+reusing mapping approvals (not final-output inspection), and advancing the case
+on every member save (would skip package-wide completeness checks).
+
+Integration uses the real writer instead of seeding the two human reviews with
+raw inserts. It verifies invalid attestations, stale case/output, unauthorized
+actors, exact replay, changed-command conflict and no case transition/events.
+The earlier reduced-schema and SQL-authority-stub limitations still apply.
+No HTTP route, UI control or runtime import activates this writer yet. Next:
+authenticated route, persisted review projection, per-file UI and browser proof;
+then deployed-schema validation. No remote migration or business action performed.
