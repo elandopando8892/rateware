@@ -21,8 +21,15 @@ restricted field, changed original reviewer, and no extra revision/event after
 rejected attempts. These do not prove native PostgreSQL migration compatibility
 or recovered production data.
 
-Next release gates: native PostgreSQL rehearsal including existing grants and
-event constraints, deployment compatibility, exact migration publication,
+Native PostgreSQL 17.11 rehearsal passed in synthetic database
+`osp_correction_rehearsal_run_2`: exact values/history, event constraints and
+unchanged function ACL after replacement. The first native run exposed the old
+JSON binding in the test adapter; that failed run remains preserved in run_1.
+The adapter now uses the deployed `::text::jsonb` binding. PGlite rerun passed.
+The local server was stopped afterward. Remote read-only preflight confirms
+the old command body and ACL `{postgres=X/postgres,osp_workflow_api=X/postgres}`.
+
+Next release gates: deployment compatibility, exact migration publication,
 authenticated preview amendment and read-back of value/history. Do not execute
 the production amendment before those gates pass. The real review remains
 revision 3 with the original failure preserved. No historical Salzillo changes.
