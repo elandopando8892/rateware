@@ -72,7 +72,7 @@ const DEFINITIONS = [
       "notes": "Authenticated final-output inspection only; verified Operations actor, exact tenant/case/set/output and immutable idempotent receipt. No transition, signature, Sales approval or outbound effect."
     },
     "metadataFingerprint": "fcacf1a03b8d59147db5015027be0da18b56038cd02982c62a505faa7102ccf9",
-    "authorizationFingerprint": "c32f3bdb680076003552cec5c5c73e27bee6754a8c771315768df7f1864114b1"
+    "authorizationFingerprint": "beee37159962f47b193897ea484110aef8c2a517692958810dd20cb5d7f50439"
   },
   {
     "surface": {
@@ -137,7 +137,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "7b6a8b69d6f04255353acdb450fd50c38d937ab1225f20a272a9ee817a1c0d47",
-    "authorizationFingerprint": "c32f3bdb680076003552cec5c5c73e27bee6754a8c771315768df7f1864114b1"
+    "authorizationFingerprint": "beee37159962f47b193897ea484110aef8c2a517692958810dd20cb5d7f50439"
   },
   {
     "surface": {
@@ -202,7 +202,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "880f12e402f8067961aff071110a2dcc9bbc3dc406e9f08aa323de0302b82ff1",
-    "authorizationFingerprint": "c32f3bdb680076003552cec5c5c73e27bee6754a8c771315768df7f1864114b1"
+    "authorizationFingerprint": "beee37159962f47b193897ea484110aef8c2a517692958810dd20cb5d7f50439"
   },
   {
     "surface": {
@@ -267,7 +267,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "164fb1dd586a7d3e1ee388e8401deb560e8d706650d27fa7b7818194b57b574c",
-    "authorizationFingerprint": "c32f3bdb680076003552cec5c5c73e27bee6754a8c771315768df7f1864114b1"
+    "authorizationFingerprint": "beee37159962f47b193897ea484110aef8c2a517692958810dd20cb5d7f50439"
   },
   {
     "surface": {
@@ -332,7 +332,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "0faf1ec477a2830a53edfc6b31d38f39ada77058ed91e891205888606f3bd53f",
-    "authorizationFingerprint": "c32f3bdb680076003552cec5c5c73e27bee6754a8c771315768df7f1864114b1"
+    "authorizationFingerprint": "beee37159962f47b193897ea484110aef8c2a517692958810dd20cb5d7f50439"
   },
   {
     "surface": {
@@ -397,7 +397,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "36e95978ec60aebd89dfc592c3c3d9edd6c8275b3b95a3177c80742d9b66b589",
-    "authorizationFingerprint": "c32f3bdb680076003552cec5c5c73e27bee6754a8c771315768df7f1864114b1"
+    "authorizationFingerprint": "beee37159962f47b193897ea484110aef8c2a517692958810dd20cb5d7f50439"
   },
   {
     "surface": {
@@ -462,7 +462,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "e80dda65e6ddc26c190a70409d38ea28ec7cf99505b6951a05fb7093e35d9543",
-    "authorizationFingerprint": "c32f3bdb680076003552cec5c5c73e27bee6754a8c771315768df7f1864114b1"
+    "authorizationFingerprint": "beee37159962f47b193897ea484110aef8c2a517692958810dd20cb5d7f50439"
   },
   {
     "surface": {
@@ -527,7 +527,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "b42c5f920e234a8da4dec39c908f540cbedc2c9b4318d835bc953e01c9c34f9b",
-    "authorizationFingerprint": "c32f3bdb680076003552cec5c5c73e27bee6754a8c771315768df7f1864114b1"
+    "authorizationFingerprint": "beee37159962f47b193897ea484110aef8c2a517692958810dd20cb5d7f50439"
   },
   {
     "surface": {
@@ -592,7 +592,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "1972d83b13046482abe2fe55c65796845ce8adba1910949a98c6be8c512cd43a",
-    "authorizationFingerprint": "c32f3bdb680076003552cec5c5c73e27bee6754a8c771315768df7f1864114b1"
+    "authorizationFingerprint": "beee37159962f47b193897ea484110aef8c2a517692958810dd20cb5d7f50439"
   },
   {
     "surface": {
@@ -657,7 +657,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "89b5e8ad5a7c621b45ab6554889dc35b00132de0086547f5899446931908023b",
-    "authorizationFingerprint": "c32f3bdb680076003552cec5c5c73e27bee6754a8c771315768df7f1864114b1"
+    "authorizationFingerprint": "beee37159962f47b193897ea484110aef8c2a517692958810dd20cb5d7f50439"
   },
   {
     "surface": {
@@ -722,7 +722,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "af7647287038bba1b87192e603a8253b06901eb1aef76dd8cf3666ab5013f6c7",
-    "authorizationFingerprint": "c32f3bdb680076003552cec5c5c73e27bee6754a8c771315768df7f1864114b1"
+    "authorizationFingerprint": "beee37159962f47b193897ea484110aef8c2a517692958810dd20cb5d7f50439"
   },
   {
     "surface": {
@@ -787,7 +787,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "021fad4c0cd923d5a2747b53fab86965265bbb5e331741fbebeb35e38dc5f27a",
-    "authorizationFingerprint": "c32f3bdb680076003552cec5c5c73e27bee6754a8c771315768df7f1864114b1"
+    "authorizationFingerprint": "beee37159962f47b193897ea484110aef8c2a517692958810dd20cb5d7f50439"
   },
   {
     "surface": {
@@ -852,7 +852,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "37b59e18c631cf79d63c46d35ad4e60162e112dcbef36c40a5e5a5565ab560bb",
-    "authorizationFingerprint": "c32f3bdb680076003552cec5c5c73e27bee6754a8c771315768df7f1864114b1"
+    "authorizationFingerprint": "beee37159962f47b193897ea484110aef8c2a517692958810dd20cb5d7f50439"
   },
   {
     "surface": {
@@ -900,7 +900,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "c0f35a6b4750c25015df7fde05c7a5d9f9d73eeac58b8b1d277e44e4a5b92ab0",
-    "authorizationFingerprint": "2b75ba8cc6651f794a6cb2a5492363f4cf37cbd4198fb70043ea9f2cc9a1dd96"
+    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
   },
   {
     "surface": {
@@ -948,7 +948,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "cd2492946c9ec017deab9dcc647cea02b130b912d10012c2673d7e7340c281af",
-    "authorizationFingerprint": "2b75ba8cc6651f794a6cb2a5492363f4cf37cbd4198fb70043ea9f2cc9a1dd96"
+    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
   },
   {
     "surface": {
@@ -996,7 +996,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "8c050d46a6ced5ace29843e1e5a94c253e87a6216b860d5b148210d980137b18",
-    "authorizationFingerprint": "2b75ba8cc6651f794a6cb2a5492363f4cf37cbd4198fb70043ea9f2cc9a1dd96"
+    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
   },
   {
     "surface": {
@@ -1044,7 +1044,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "062acc91396753005c331c4149b5d71bef7704701451ba79dfe3fef1da7c003f",
-    "authorizationFingerprint": "2b75ba8cc6651f794a6cb2a5492363f4cf37cbd4198fb70043ea9f2cc9a1dd96"
+    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
   },
   {
     "surface": {
@@ -1092,7 +1092,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "70fa30e04fc257f1254cafce74a5f7de879ec99a99d96614c97eee78e56a9c01",
-    "authorizationFingerprint": "2b75ba8cc6651f794a6cb2a5492363f4cf37cbd4198fb70043ea9f2cc9a1dd96"
+    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
   },
   {
     "surface": {
@@ -1140,7 +1140,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "5a4be35a20bb0066602dc1e220aab198ef3390067661857245c0e92bd298fd33",
-    "authorizationFingerprint": "2b75ba8cc6651f794a6cb2a5492363f4cf37cbd4198fb70043ea9f2cc9a1dd96"
+    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
   },
   {
     "surface": {
@@ -1188,7 +1188,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "701dbccfc2e51e87ce3484c5a7d70d02d373957053a39bb12ddeb0da8d09b9b1",
-    "authorizationFingerprint": "2b75ba8cc6651f794a6cb2a5492363f4cf37cbd4198fb70043ea9f2cc9a1dd96"
+    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
   },
   {
     "surface": {
@@ -1236,7 +1236,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "8c9015f1c81dea5dff13526aa63cf8023d9ba82e16b6ef4aca555b35fef7c774",
-    "authorizationFingerprint": "2b75ba8cc6651f794a6cb2a5492363f4cf37cbd4198fb70043ea9f2cc9a1dd96"
+    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
   },
   {
     "surface": {
@@ -1284,7 +1284,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "7c971e3716ec4e5453fd36b369ea608841cc28236a03cb4077188abb4479c76f",
-    "authorizationFingerprint": "2b75ba8cc6651f794a6cb2a5492363f4cf37cbd4198fb70043ea9f2cc9a1dd96"
+    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
   },
   {
     "surface": {
@@ -1337,7 +1337,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "90ec08938959c7a1f2e5fd855240d0e8bd6903e5a69d4c9d7b18e25c9ab2cc2d",
-    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
+    "authorizationFingerprint": "8ec9554d9b1a96929dbd5377d127474f8f6f2e0aa2ac6678c00e9429c30758e2"
   },
   {
     "surface": {
@@ -1390,7 +1390,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "1b07949b275dad11e71ae1b77e4539e80dd465b4c578754adf9a9c2b502530bd",
-    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
+    "authorizationFingerprint": "8ec9554d9b1a96929dbd5377d127474f8f6f2e0aa2ac6678c00e9429c30758e2"
   },
   {
     "surface": {
@@ -1443,7 +1443,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "26ae6790d24cc807fb9694687f6ded013114c5ddabab3e00194a16f3fa585b9d",
-    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
+    "authorizationFingerprint": "8ec9554d9b1a96929dbd5377d127474f8f6f2e0aa2ac6678c00e9429c30758e2"
   },
   {
     "surface": {
@@ -1496,7 +1496,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "5a31c1a77f496088a175ef1f543477b4afa2058931f093060d4bad5f60e4c420",
-    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
+    "authorizationFingerprint": "8ec9554d9b1a96929dbd5377d127474f8f6f2e0aa2ac6678c00e9429c30758e2"
   },
   {
     "surface": {
@@ -1549,7 +1549,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "8db12b7f7745b246fb66a05ebb4d94c4a3735bab7750636dce5376ee9864828e",
-    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
+    "authorizationFingerprint": "8ec9554d9b1a96929dbd5377d127474f8f6f2e0aa2ac6678c00e9429c30758e2"
   },
   {
     "surface": {
@@ -1602,7 +1602,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "93e3e82102c8d874a87d4ed09dd275bfe11387db29ff6ae3128c73bd603a78e3",
-    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
+    "authorizationFingerprint": "8ec9554d9b1a96929dbd5377d127474f8f6f2e0aa2ac6678c00e9429c30758e2"
   },
   {
     "surface": {
@@ -1655,7 +1655,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "00bb1a802d9066535037d8131bc9ba8c5ad19b11db5706118aa47b9c0d775ec4",
-    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
+    "authorizationFingerprint": "8ec9554d9b1a96929dbd5377d127474f8f6f2e0aa2ac6678c00e9429c30758e2"
   },
   {
     "surface": {
@@ -1708,7 +1708,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "ed647bdc05d0756764748af8c8954d6ad7732b7f82788332f71a00c305f6183f",
-    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
+    "authorizationFingerprint": "8ec9554d9b1a96929dbd5377d127474f8f6f2e0aa2ac6678c00e9429c30758e2"
   },
   {
     "surface": {
@@ -1761,7 +1761,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "48cdb3519c5cc0c84ac5c4cc06e90ff39690328e78495e9888646a6cea8fce9b",
-    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
+    "authorizationFingerprint": "8ec9554d9b1a96929dbd5377d127474f8f6f2e0aa2ac6678c00e9429c30758e2"
   },
   {
     "surface": {
@@ -1814,7 +1814,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "9f5967c5c4d87420a0fc4e931223e4ee3fc547862bbfcb879cb4df0712f666eb",
-    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
+    "authorizationFingerprint": "8ec9554d9b1a96929dbd5377d127474f8f6f2e0aa2ac6678c00e9429c30758e2"
   },
   {
     "surface": {
@@ -1867,7 +1867,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "f10c50a12a3a0e8197370177af25b985cd3862a5e7883530942231f64a831e5e",
-    "authorizationFingerprint": "b4d13f1f9470ac43404204bad66f9111bc083ab58dd998de52b88c427c493794"
+    "authorizationFingerprint": "8ec9554d9b1a96929dbd5377d127474f8f6f2e0aa2ac6678c00e9429c30758e2"
   },
   {
     "surface": {
@@ -2202,7 +2202,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "9dea1b316ead7cdbe47f6ffc4ad10ae8b1922100d006b453a26c9b070e9464e6",
-    "authorizationFingerprint": "1fba025e25c31971487a68ad579ce0c8318ce7bb58c9cdc9b826d8f59924e6f4"
+    "authorizationFingerprint": "a9c4eab092cdf5006b1ebdd0fa2c6c8bd7a01d171fb008758ab5d51d794493b1"
   },
   {
     "surface": {
@@ -2251,7 +2251,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "e2465115326f0421890cbc5b66d5f2e4d74f5d37bdbf81d2452cf4752e79ff0a",
-    "authorizationFingerprint": "1fba025e25c31971487a68ad579ce0c8318ce7bb58c9cdc9b826d8f59924e6f4"
+    "authorizationFingerprint": "a9c4eab092cdf5006b1ebdd0fa2c6c8bd7a01d171fb008758ab5d51d794493b1"
   },
   {
     "surface": {
@@ -2300,7 +2300,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "0de791469a377b61e438f3c6b99b9f2797c1c169e74995e431c1673d1c0b5892",
-    "authorizationFingerprint": "1fba025e25c31971487a68ad579ce0c8318ce7bb58c9cdc9b826d8f59924e6f4"
+    "authorizationFingerprint": "a9c4eab092cdf5006b1ebdd0fa2c6c8bd7a01d171fb008758ab5d51d794493b1"
   },
   {
     "surface": {
@@ -2349,7 +2349,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "d638086063eab9f8b3fccf02fe90db5a168b9592582a62c99f8a7acfe58b27c8",
-    "authorizationFingerprint": "1fba025e25c31971487a68ad579ce0c8318ce7bb58c9cdc9b826d8f59924e6f4"
+    "authorizationFingerprint": "a9c4eab092cdf5006b1ebdd0fa2c6c8bd7a01d171fb008758ab5d51d794493b1"
   },
   {
     "surface": {
@@ -2398,7 +2398,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "e882ddaed26b2d026e2952b2f0d94a8d72dc12f35a090e54a2ace5ca0d7575b6",
-    "authorizationFingerprint": "1fba025e25c31971487a68ad579ce0c8318ce7bb58c9cdc9b826d8f59924e6f4"
+    "authorizationFingerprint": "a9c4eab092cdf5006b1ebdd0fa2c6c8bd7a01d171fb008758ab5d51d794493b1"
   },
   {
     "surface": {

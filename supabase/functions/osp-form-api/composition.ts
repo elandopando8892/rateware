@@ -22,6 +22,7 @@ export function createFormApiRuntime(options: { env: Environment; fetch: typeof 
     operatorEntitlements: OSP_PRODUCTION_OPERATOR_ENTITLEMENTS,
   });
   return createFormApiHandler({
+    approvedPreviewOrigin: options.env.get('OSP_APPROVED_PREVIEW_ORIGIN'),
     verifyToken: (token, signal) => verifier.verifyWorkflow(token, signal),
     store: createPostgresFormStore({ databaseUrl: options.env.get('OSP_CASE_DATABASE_URL')?.trim() || required(options.env, 'SUPABASE_DB_URL'), ...(options.postgresFactory ? { postgresFactory: options.postgresFactory } : {}) }),
     canonicalFieldIds: ['supplier.legalName', 'supplier.address', 'fiscal.taxIdentifier', 'banking.accountNumber'],

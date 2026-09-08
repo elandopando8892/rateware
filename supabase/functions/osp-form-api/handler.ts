@@ -3,13 +3,14 @@ import { jsonResponse, NO_CACHE_HEADERS, OspApiError, postCorsHeaders, safeError
 import { surveyJsonToCanonical } from '../../../apps/osp/src/features/forms/surveyjs-canonical-adapter.ts';
 import type { FormStore } from './store.ts';
 import { AnswerMemoryEvidenceLinkInputSchema } from '../../../apps/osp/src/features/forms/answer-memory-evidence-contract.ts';
+import { ospBrowserOrigins } from '../_shared/osp/browser-origins.ts';
 
-const ORIGINS = new Set(['http://localhost:8791', 'https://osp.heymarksman.com']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const OPAQUE = /^[A-Za-z0-9:_-]{1,256}$/;
 const BODY_LIMIT = 1_048_576;
 
 export type FormApiHandlerOptions = {
+  approvedPreviewOrigin?: string;
   verifyToken(token: string, signal?: AbortSignal): Promise<VerifiedWorkflowIdentity>;
   store: FormStore;
   canonicalFieldIds: readonly string[];
@@ -51,9 +52,9 @@ function formValues(value: unknown): Record<string, unknown> {
   return values;
 }
 
-function origin(request: Request): string {
+function origin(request: Request, origins: ReadonlySet<string>): string {
   const value = request.headers.get('origin');
-  if (!value || !ORIGINS.has(value)) throw new OspApiError('INVALID_REQUEST');
+  if (!value || !origins.has(value)) throw new OspApiError('INVALID_REQUEST');
   return value;
 }
 
@@ -90,19 +91,20 @@ function serviceError(error: unknown): OspApiError {
 
 export function createFormApiHandler(options: FormApiHandlerOptions): (request: Request) => Promise<Response> {
   const incident = options.incidentId ?? crypto.randomUUID;
+  const ORIGINS = ospBrowserOrigins(options.approvedPreviewOrigin);
   return async (request) => {
     const requestOrigin = request.headers.get('origin');
     const allowedOrigin = requestOrigin && ORIGINS.has(requestOrigin) ? requestOrigin : undefined;
     try {
       if (request.method === 'OPTIONS') {
-        const allowed = origin(request);
+        const allowed = origin(request, ORIGINS);
         const url = new URL(request.url);
         const headers = (request.headers.get('access-control-request-headers') ?? '').split(',').map((name) => name.trim().toLowerCase()).sort();
         if (!url.pathname.endsWith('/osp-form-api') || url.search || url.hash || request.headers.get('access-control-request-method') !== 'POST' || headers.join(',') !== 'authorization,content-type') throw new OspApiError('INVALID_REQUEST');
         return new Response(null, { status: 204, headers: { ...NO_CACHE_HEADERS, 'access-control-allow-origin': allowed, 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'authorization, content-type', 'access-control-max-age': '600', vary: 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers' } });
       }
       if (request.method !== 'POST') throw new OspApiError('METHOD_NOT_ALLOWED');
-      const allowed = origin(request);
+      const allowed = origin(request, ORIGINS);
       const url = new URL(request.url);
       if (!url.pathname.endsWith('/osp-form-api') || url.search || url.hash) throw new OspApiError('INVALID_REQUEST');
       const payload = await body(request);

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+const previewDeploymentOrigin = /^https:\/\/osp-customer-setup(?:-[a-z0-9-]+)?-elandopando8892s-projects\.vercel\.app$/;
+
 const runtimeConfigSchema = z.object({
   VITE_OSP_AUTH_PROVIDER: z.enum(['kinde', 'supabase']),
   VITE_KINDE_DOMAIN: z.literal('https://auth.heymarksman.com'),
@@ -8,6 +10,7 @@ const runtimeConfigSchema = z.object({
   VITE_SUPABASE_URL: z.url(),
   VITE_SUPABASE_PUBLISHABLE_KEY: z.string().min(20).optional(),
   VITE_OSP_BUILD_PROFILE: z.enum(['local-e2e', 'preview-synthetic', 'production-readonly']),
+  VITE_OSP_PREVIEW_ORIGIN: z.string().regex(previewDeploymentOrigin).optional(),
 }).strict().superRefine((value, context) => {
   const synthetic = value.VITE_OSP_BUILD_PROFILE !== 'production-readonly';
   if (synthetic && value.VITE_KINDE_CLIENT_ID !== 'synthetic-public-client') {
@@ -22,12 +25,13 @@ const runtimeConfigSchema = z.object({
   if (value.VITE_OSP_AUTH_PROVIDER === 'supabase' && !value.VITE_SUPABASE_PUBLISHABLE_KEY) {
     context.addIssue({ code: 'custom', path: ['VITE_SUPABASE_PUBLISHABLE_KEY'], message: 'Supabase Auth requires its public browser key.' });
   }
+  if (value.VITE_OSP_PREVIEW_ORIGIN && (synthetic || value.VITE_OSP_AUTH_PROVIDER !== 'supabase')) {
+    context.addIssue({ code: 'custom', path: ['VITE_OSP_PREVIEW_ORIGIN'], message: 'An authenticated preview requires the live Supabase profile.' });
+  }
 });
 
 export type OspBuildProfile = 'local-e2e' | 'preview-synthetic' | 'production-readonly';
 export type OspAuthProvider = 'kinde' | 'supabase';
-
-const previewDeploymentOrigin = /^https:\/\/osp-customer-setup(?:-[a-z0-9-]+)?-elandopando8892s-projects\.vercel\.app$/;
 
 export type RuntimeConfig = z.infer<typeof runtimeConfigSchema>;
 
@@ -43,12 +47,19 @@ export function loadRuntimeConfig(env: Record<string, unknown>): RuntimeConfig {
     VITE_SUPABASE_URL: env.VITE_SUPABASE_URL,
     VITE_SUPABASE_PUBLISHABLE_KEY: env.VITE_SUPABASE_PUBLISHABLE_KEY,
     VITE_OSP_BUILD_PROFILE: env.VITE_OSP_BUILD_PROFILE,
+    VITE_OSP_PREVIEW_ORIGIN: env.VITE_OSP_PREVIEW_ORIGIN,
   };
 
   return runtimeConfigSchema.parse(runtimeEntries);
 }
 
-export function assertAllowedAppOrigin(origin: string, profile: OspBuildProfile): void {
+export function assertAllowedAppOrigin(origin: string, profile: OspBuildProfile, approvedPreviewOrigin?: string): void {
+  if (approvedPreviewOrigin !== undefined) {
+    if (profile !== 'production-readonly' || !previewDeploymentOrigin.test(approvedPreviewOrigin) || origin !== approvedPreviewOrigin) {
+      throw new Error('Unapproved OSP application origin');
+    }
+    return;
+  }
   const allowed = profile === 'local-e2e'
     ? origin === 'http://localhost:8791'
     : profile === 'preview-synthetic'
@@ -59,7 +70,7 @@ export function assertAllowedAppOrigin(origin: string, profile: OspBuildProfile)
   }
 }
 
-export function authRedirectUri(origin: string, profile: OspBuildProfile): string {
-  assertAllowedAppOrigin(origin, profile);
+export function authRedirectUri(origin: string, profile: OspBuildProfile, approvedPreviewOrigin?: string): string {
+  assertAllowedAppOrigin(origin, profile, approvedPreviewOrigin);
   return `${origin}/app`;
 }

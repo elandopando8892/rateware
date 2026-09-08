@@ -65,6 +65,7 @@ export function createDocumentApiRuntime(options: DocumentApiRuntimeOptions): (r
     approveVersion: store.approveVersion,
   });
   return createDocumentApiHandler({
+    approvedPreviewOrigin: options.env.get('OSP_APPROVED_PREVIEW_ORIGIN'),
     verifyToken: (token, signal) => verifier.verifyWorkflow(token, signal),
     listVersions: store.listVersions,
     documentService,

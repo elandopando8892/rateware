@@ -1,10 +1,10 @@
 import type { VerifiedWorkflowIdentity } from '../_shared/osp/workflow-authority.ts';
+import { ospBrowserOrigins } from '../_shared/osp/browser-origins.ts';
 import { jsonResponse, NO_CACHE_HEADERS, OspApiError, postCorsHeaders, safeErrorResponse } from '../osp-read-api/http.ts';
 import type { DocumentApprovalInput, DocumentAuthority, DocumentUploadInput } from './document-service.ts';
 import type { CaseProfileBindingInput, CaseProfileDraftInput, DocumentVersionSummary, ProfileFactPromotionInput, ProfileReviewClaimInput, ProfileReviewFieldDecisionInput, ProfileReviewFinalizationInput } from './postgres-document-store.ts';
 
 const BODY_LIMIT_BYTES = 26_214_400;
-const ORIGINS = new Set(['http://localhost:8791', 'https://osp.heymarksman.com']);
 const DOCUMENT_TYPES = new Set(['proof_of_address', 'sat_compliance_opinion', 'tax_status_certificate', 'bank_statement']);
 const CONTENT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -26,6 +26,7 @@ type ProfileReviewStorePort = {
 };
 
 export type DocumentApiHandlerOptions = {
+  approvedPreviewOrigin?: string;
   verifyToken(token: string, signal?: AbortSignal): Promise<VerifiedWorkflowIdentity>;
   listVersions(organizationId: string): Promise<readonly DocumentVersionSummary[]>;
   documentService: DocumentServicePort;
@@ -38,9 +39,9 @@ function incident(factory: () => string): string {
   return crypto.randomUUID();
 }
 
-function origin(request: Request): string {
+function origin(request: Request, origins: ReadonlySet<string>): string {
   const value = request.headers.get('origin');
-  if (!value || !ORIGINS.has(value)) throw new OspApiError('INVALID_REQUEST');
+  if (!value || !origins.has(value)) throw new OspApiError('INVALID_REQUEST');
   return value;
 }
 
@@ -190,10 +191,11 @@ function errorResponse(error: unknown, incidentId: string, allowedOrigin?: strin
 
 export function createDocumentApiHandler(options: DocumentApiHandlerOptions): (request: Request) => Promise<Response> {
   const nextIncident = options.incidentId ?? crypto.randomUUID;
+  const ORIGINS = ospBrowserOrigins(options.approvedPreviewOrigin);
   return async (request: Request): Promise<Response> => {
     if (request.method === 'OPTIONS') {
       try {
-        const allowedOrigin = origin(request);
+        const allowedOrigin = origin(request, ORIGINS);
         const url = new URL(request.url);
         if (!url.pathname.endsWith('/osp-document-api') || url.hash) throw new OspApiError('INVALID_REQUEST');
         const requiredHeaders = preflightHeaders(url);
@@ -205,7 +207,7 @@ export function createDocumentApiHandler(options: DocumentApiHandlerOptions): (r
     const allowedOrigin = requestOrigin && ORIGINS.has(requestOrigin) ? requestOrigin : undefined;
     try {
       if (request.method !== 'POST') throw new OspApiError('METHOD_NOT_ALLOWED');
-      const allowed = origin(request);
+      const allowed = origin(request, ORIGINS);
       const url = new URL(request.url);
       if (!url.pathname.endsWith('/osp-document-api') || url.hash) throw new OspApiError('INVALID_REQUEST');
       const token = bearer(request);

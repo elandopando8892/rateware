@@ -34,7 +34,7 @@ const OUTBOUND_DRAFT_COMPOSER_PATH = 'apps/osp/src/features/approval/FinalRespon
 const REQUEST_REVIEW_WORKBENCH_PATH = 'apps/osp/src/features/cases/AdaptiveReviewWorkbench.tsx';
 const REQUEST_KNOWLEDGE_PANEL_PATH = 'apps/osp/src/features/cases/RequestKnowledgePanel.tsx';
 const OUTBOUND_DRAFT_ALLOWED_IMPORTS = new Set(['../../api/contracts', 'react']);
-const REQUEST_REVIEW_ALLOWED_IMPORTS = new Set(['../../api/contracts', '@tanstack/react-router', 'react']);
+const REQUEST_REVIEW_ALLOWED_IMPORTS = new Set(['../../api/contracts', '@tanstack/react-router', 'react', './manifest-blockers']);
 const REQUEST_KNOWLEDGE_ALLOWED_IMPORTS = new Set(['../../api/osp-client', '@tanstack/react-query', 'react']);
 const OUTBOUND_DRAFT_FORBIDDEN_CALLS = new Set([
   'approveandapplysignature',

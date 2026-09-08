@@ -66,6 +66,7 @@ export function createOspReadRuntime({
     pubsubConfigured,
   });
   return createOspReadHandler({
+    approvedPreviewOrigin: env.get('OSP_APPROVED_PREVIEW_ORIGIN'),
     verifyToken: (token, signal) => verifier.verify(token, signal),
     store,
   });

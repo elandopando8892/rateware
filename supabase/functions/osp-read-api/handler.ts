@@ -1,4 +1,5 @@
 import { parseOspReadRequest } from './actions.ts';
+import { ospBrowserOrigins } from '../_shared/osp/browser-origins.ts';
 import type { OspAuthorizationIdentity } from './auth-policy.ts';
 import {
   jsonResponse,
@@ -12,13 +13,10 @@ import type { OspReadStore } from './store.ts';
 import { resolveWorkspace } from './workspace.ts';
 
 const BODY_LIMIT_BYTES = 1_024;
-const ALLOWED_ORIGINS = new Set([
-  'http://localhost:8791',
-  'https://osp.heymarksman.com',
-]);
 const PREFLIGHT_ALLOW_HEADERS = ['authorization', 'content-type'] as const;
 
 export type OspReadHandlerOptions = {
+  approvedPreviewOrigin?: string;
   verifyToken(token: string, signal?: AbortSignal): Promise<OspAuthorizationIdentity>;
   store: OspReadStore;
   incidentId?: () => string;
@@ -34,9 +32,9 @@ function nextIncidentId(factory: () => string): string {
   return crypto.randomUUID();
 }
 
-function requireAllowedOrigin(request: Request): string {
+function requireAllowedOrigin(request: Request, origins: ReadonlySet<string>): string {
   const origin = request.headers.get('origin');
-  if (!origin || !ALLOWED_ORIGINS.has(origin)) throw new OspApiError('INVALID_REQUEST');
+  if (!origin || !origins.has(origin)) throw new OspApiError('INVALID_REQUEST');
   return origin;
 }
 
@@ -200,9 +198,9 @@ function requestedHeaderNames(request: Request): string[] {
   return names;
 }
 
-function handlePreflight(request: Request, incidentFactory: () => string): Response {
+function handlePreflight(request: Request, incidentFactory: () => string, origins: ReadonlySet<string>): Response {
   try {
-    const origin = requireAllowedOrigin(request);
+    const origin = requireAllowedOrigin(request, origins);
     if (request.headers.get('access-control-request-method') !== 'POST') {
       throw new OspApiError('INVALID_REQUEST');
     }
@@ -227,9 +225,11 @@ export function createOspReadHandler({
   verifyToken,
   store,
   incidentId = () => crypto.randomUUID(),
+  approvedPreviewOrigin,
 }: OspReadHandlerOptions): (request: Request) => Promise<Response> {
+  const ALLOWED_ORIGINS = ospBrowserOrigins(approvedPreviewOrigin);
   return async (request: Request): Promise<Response> => {
-    if (request.method === 'OPTIONS') return handlePreflight(request, incidentId);
+    if (request.method === 'OPTIONS') return handlePreflight(request, incidentId, ALLOWED_ORIGINS);
 
     const requestOrigin = request.headers.get('origin');
     const allowedOrigin = request.method === 'POST' && requestOrigin && ALLOWED_ORIGINS.has(requestOrigin)
@@ -241,7 +241,7 @@ export function createOspReadHandler({
       validateContentEncoding(request);
       validateTransferEncoding(request);
       const declaredLength = validateDeclaredLength(request);
-      const origin = requireAllowedOrigin(request);
+      const origin = requireAllowedOrigin(request, ALLOWED_ORIGINS);
       const identity = await verifyToken(requireBearer(request), request.signal);
       const parsed = parseOspReadRequest(await readStrictJson(request, declaredLength));
       const organizationId = await resolveWorkspace(store, identity, request.signal);

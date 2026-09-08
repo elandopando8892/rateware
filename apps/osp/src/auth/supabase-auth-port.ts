@@ -125,7 +125,7 @@ export function createSupabaseAuthPort(
     throw new Error('Supabase Auth is not configured');
   }
   const origin = dependencies.origin ?? window.location.origin;
-  const callbackUri = authRedirectUri(origin, config.VITE_OSP_BUILD_PROFILE);
+  const callbackUri = authRedirectUri(origin, config.VITE_OSP_BUILD_PROFILE, config.VITE_OSP_PREVIEW_ORIGIN);
   const replaceUrl = dependencies.replaceUrl
     ?? ((returnTo: string) => window.history.replaceState(window.history.state, '', returnTo));
   const client = (dependencies.createClient ?? ((url, publishableKey) => createClient(url, publishableKey, {

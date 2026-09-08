@@ -131,6 +131,7 @@ export function createCaseApiRuntime(options: {
       : undefined,
   });
   return createCaseApiHandler({
+    approvedPreviewOrigin: options.env.get("OSP_APPROVED_PREVIEW_ORIGIN"),
     verifyToken: (token, signal) => verifier.verifyWorkflow(token, signal),
     verifyApprovalToken: (accessToken, idToken, signal) =>
       verifier.verifyApproval(accessToken, idToken, signal),

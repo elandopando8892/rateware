@@ -13,7 +13,7 @@ import './styles/forms.css';
 import './styles/profile.css';
 
 const config = loadRuntimeConfig(import.meta.env);
-assertAllowedAppOrigin(window.location.origin, config.VITE_OSP_BUILD_PROFILE);
+assertAllowedAppOrigin(window.location.origin, config.VITE_OSP_BUILD_PROFILE, config.VITE_OSP_PREVIEW_ORIGIN);
 const createAuthenticatedRuntime = async () => {
   if (config.VITE_OSP_AUTH_PROVIDER === 'supabase') {
     const { createSupabaseAuthPort } = await import('./auth/supabase-auth-port');
@@ -45,4 +45,7 @@ const runtime = config.VITE_OSP_BUILD_PROFILE === 'preview-synthetic'
   : await createAuthenticatedRuntime();
 const root = document.getElementById('root');
 if (!root) throw new Error('OSP root element is missing');
-createRoot(root).render(<StrictMode><App authPort={runtime.authPort} apiClient={runtime.apiClient} buildProfile={config.VITE_OSP_BUILD_PROFILE} authProvider={config.VITE_OSP_AUTH_PROVIDER} /></StrictMode>);
+createRoot(root).render(<StrictMode>
+  {config.VITE_OSP_PREVIEW_ORIGIN ? <aside className="synthetic-preview-banner" role="status">Preview autenticada — conectada a Rateware/OSP real. Las acciones permitidas pueden guardar cambios; no es una simulación.</aside> : null}
+  <App authPort={runtime.authPort} apiClient={runtime.apiClient} buildProfile={config.VITE_OSP_BUILD_PROFILE} authProvider={config.VITE_OSP_AUTH_PROVIDER} />
+</StrictMode>);

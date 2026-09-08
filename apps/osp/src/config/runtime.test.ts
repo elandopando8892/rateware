@@ -73,6 +73,22 @@ describe('loadRuntimeConfig', () => {
 });
 
 describe('application origins', () => {
+  const approved = 'https://osp-customer-setup-approved-elandopando8892s-projects.vercel.app';
+  it('requires exact live Supabase preview configuration and pins the OAuth callback', () => {
+    const live = { ...valid, VITE_OSP_AUTH_PROVIDER: 'supabase', VITE_OSP_BUILD_PROFILE: 'production-readonly',
+      VITE_SUPABASE_URL: 'https://alqjqzqagdmcywpjtnnr.supabase.co',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_synthetic_test_key', VITE_OSP_PREVIEW_ORIGIN: approved };
+    expect(loadRuntimeConfig(live).VITE_OSP_PREVIEW_ORIGIN).toBe(approved);
+    expect(authRedirectUri(approved, 'production-readonly', approved)).toBe(`${approved}/app`);
+    expect(() => loadRuntimeConfig({ ...live, VITE_OSP_AUTH_PROVIDER: 'kinde' })).toThrow();
+    expect(() => loadRuntimeConfig({ ...preview, VITE_OSP_PREVIEW_ORIGIN: approved })).toThrow();
+    for (const origin of ['https://osp.heymarksman.com', approved.replace('approved-', 'other-'), `${approved}/`, `${approved}.evil.test`]) {
+      expect(() => assertAllowedAppOrigin(origin, 'production-readonly', approved)).toThrow();
+    }
+    expect(() => assertAllowedAppOrigin(approved, 'production-readonly')).toThrow();
+    expect(() => assertAllowedAppOrigin(approved, 'preview-synthetic', approved)).toThrow();
+    expect(() => loadRuntimeConfig({ ...live, VITE_OSP_PREVIEW_ORIGIN: 'https://*.vercel.app' })).toThrow();
+  });
   it('allows only the local origin for local-e2e', () => {
     expect(authRedirectUri('http://localhost:8791', 'local-e2e')).toBe('http://localhost:8791/app');
   });

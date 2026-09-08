@@ -50,6 +50,24 @@ function fixture(email = 'jgonzalez@xbfreight.com') {
 }
 
 describe('createSupabaseAuthPort', () => {
+  it('keeps real identity restrictions and approval proof on an exact authenticated preview', async () => {
+    const origin = 'https://osp-customer-setup-approved-elandopando8892s-projects.vercel.app';
+    const config = { ...runtime, VITE_OSP_PREVIEW_ORIGIN: origin };
+    const { auth, accessToken } = fixture('sales@heymarksman.com');
+    const port = createSupabaseAuthPort(config, { origin, createClient: () => ({ auth: auth as never }) });
+    const session = await port.initialize();
+    expect(session?.identity.email).toBe('sales@heymarksman.com');
+    expect(session?.approvalSessionIssuedAt).toBeDefined();
+    expect(await port.getApprovalProof(session!)).toBe(accessToken);
+    await port.login('/app/pipeline', 'sales@heymarksman.com');
+    expect(auth.signInWithOAuth).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({
+      redirectTo: `${origin}/app?returnTo=%2Fapp%2Fpipeline`,
+    }) }));
+    const foreign = fixture('unknown@example.test');
+    const denied = createSupabaseAuthPort(config, { origin, createClient: () => ({ auth: foreign.auth as never }) });
+    await expect(denied.initialize()).rejects.toThrow();
+    expect(() => createSupabaseAuthPort(config, { origin: 'https://osp.heymarksman.com', createClient: () => ({ auth: auth as never }) })).toThrow();
+  });
   it('binds the verified Supabase user and starts Google OAuth with an approved login hint', async () => {
     const { accessToken, auth } = fixture();
     const port = createSupabaseAuthPort(runtime, {

@@ -19,6 +19,7 @@ import type {
 import type { RequestManifestDecisionInput } from "./request-manifest-review.ts";
 import type { CaseApprovalActions } from "./actions.ts";
 import { readMemberReviewInput } from "./package-member-review-http.ts";
+import { ospBrowserOrigins } from "../_shared/osp/browser-origins.ts";
 import type { createPackageMemberReviewStore } from "./package-member-review-store.ts";
 import type { createPackageSetOperationsReviewStore } from "./package-set-review-store.ts";
 import type { CaseOutboundActions } from "./actions.ts";
@@ -31,10 +32,6 @@ import {
   type WorkflowViewSource,
 } from "./workflow-view.ts";
 
-const ORIGINS = new Set([
-  "http://localhost:8791",
-  "https://osp.heymarksman.com",
-]);
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
@@ -81,6 +78,7 @@ type ClarificationStorePort = {
 };
 
 export type CaseApiHandlerOptions = {
+  approvedPreviewOrigin?: string;
   verifyToken(
     token: string,
     signal?: AbortSignal,
@@ -107,9 +105,9 @@ function incident(factory: () => string): string {
   return crypto.randomUUID();
 }
 
-function origin(request: Request): string {
+function origin(request: Request, origins: ReadonlySet<string>): string {
   const value = request.headers.get("origin");
-  if (!value || !ORIGINS.has(value)) throw new OspApiError("INVALID_REQUEST");
+  if (!value || !origins.has(value)) throw new OspApiError("INVALID_REQUEST");
   return value;
 }
 
@@ -681,10 +679,11 @@ export function createCaseApiHandler(
   options: CaseApiHandlerOptions,
 ): (request: Request) => Promise<Response> {
   const nextIncident = options.incidentId ?? crypto.randomUUID;
+  const ORIGINS = ospBrowserOrigins(options.approvedPreviewOrigin);
   return async (request) => {
     if (request.method === "OPTIONS") {
       try {
-        const allowed = origin(request);
+        const allowed = origin(request, ORIGINS);
         const url = new URL(request.url);
         if (
           !url.pathname.endsWith("/osp-case-api") || url.hash ||
@@ -721,7 +720,7 @@ export function createCaseApiHandler(
       if (request.method !== "POST") {
         throw new OspApiError("METHOD_NOT_ALLOWED");
       }
-      const allowed = origin(request);
+      const allowed = origin(request, ORIGINS);
       const url = new URL(request.url);
       if (!url.pathname.endsWith("/osp-case-api") || url.hash) {
         throw new OspApiError("INVALID_REQUEST");
