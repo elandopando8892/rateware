@@ -133,7 +133,7 @@ export function createPackageMemberReviewStore(
           (id,organization_id,case_id,package_set_id,source_version_id,review_version,set_manifest_sha256,request_manifest_sha256,output_sha256,status,full_output_inspected,completion_percent,page_count,signature_requirement,signature_policy_version,actor_json,command_sha256)
           select ${command.reviewId}::uuid,${command.organizationId}::uuid,${command.caseId}::uuid,${command.setId}::uuid,${command.sourceVersionId}::uuid,coalesce(max(review_version),0)+1,${command.setManifestSha256},${command.requestManifestSha256},${command.outputSha256},${command.status},${command.fullOutputInspected},${command.completionPercent}::integer,${command.pageCount}::integer,${command.signatureRequirement},${command.signaturePolicyVersion}::integer,${
               JSON.stringify(command.actor)
-            }::jsonb,${digest}
+            }::text::jsonb,${digest}
           from osp_private.package_set_member_reviews where organization_id=${command.organizationId}::uuid and package_set_id=${command.setId}::uuid and source_version_id=${command.sourceVersionId}::uuid
           returning review_version`;
           if (rows.length !== 1) throw new Error("MEMBER_REVIEW_WRITE_FAILED");

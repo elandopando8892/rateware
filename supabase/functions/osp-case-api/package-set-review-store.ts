@@ -151,9 +151,9 @@ export function createPackageSetOperationsReviewStore(deps: {
           );
           await tx`insert into osp_private.package_set_operations_reviews (id, organization_id, case_id, package_set_id, idempotency_key, command_sha256, review_sha256, basis_json, actor_json, result_json) values (${crypto.randomUUID()}::uuid, ${command.organizationId}::uuid, ${command.caseId}::uuid, ${basis.setId}::uuid, ${command.idempotencyKey}, ${hash}, ${basis.reviewSha256}, ${
             JSON.stringify(basis)
-          }::jsonb, ${JSON.stringify(command.actor)}::jsonb, ${
+          }::text::jsonb, ${JSON.stringify(command.actor)}::text::jsonb, ${
             JSON.stringify(completed)
-          }::jsonb)`;
+          }::text::jsonb)`;
           return completed;
         },
       );

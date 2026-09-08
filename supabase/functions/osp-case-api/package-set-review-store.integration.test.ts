@@ -1,6 +1,9 @@
 // deno-lint-ignore-file no-import-prefix
-import { PGlite } from "npm:@electric-sql/pglite@0.5.8";
-import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
+import {
+  createReviewTestDatabase,
+  type TestConnection,
+} from "./package-review-test-db.ts";
+import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import type { SqlPort, SqlRow } from "../_shared/osp/database-context.ts";
 import { canonicalPackageSetJson } from "../_shared/osp/package-set-json.ts";
 import { sha256Hex } from "../_shared/osp/source-hash.ts";
@@ -25,41 +28,80 @@ const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const org = id(1), caseId = id(2), snapshotId = id(4), sha = "a".repeat(64);
 Deno.test("set review receipt and existing Operations transition commit atomically in PostgreSQL", async (t) => {
-  const db = new PGlite();
+  const db = await createReviewTestDatabase();
   try {
     await db.exec(`
-      create role anon; create role authenticated; create role service_role;
-      create role osp_worker; create role osp_workflow_api;
+      do $$ declare fixture_role text; begin
+        foreach fixture_role in array array['anon','authenticated','service_role','osp_worker','osp_workflow_api'] loop
+          if not exists(select 1 from pg_roles where rolname=fixture_role) then
+            execute format('create role %I',fixture_role);
+          end if;
+          if exists(select 1 from pg_roles where rolname=fixture_role and (rolsuper or rolbypassrls or rolcanlogin)) then
+            raise exception 'UNSAFE_REHEARSAL_ROLE';
+          end if;
+        end loop;
+      end $$;
       create schema osp_private; create schema extensions;
       grant usage on schema osp_private, extensions to osp_workflow_api;
       create function extensions.gen_random_uuid() returns uuid language sql as 'select gen_random_uuid()';
       create table osp_private.customer_registration_cases (
         organization_id uuid, id uuid, state text, aggregate_version bigint,
         updated_at timestamptz, primary key (organization_id,id));
-      create table osp_private.supplier_package_sets (
-        organization_id uuid, id uuid, case_id uuid, primary key (organization_id,id));
+      create table osp_private.background_jobs (organization_id uuid,id uuid,kind text,
+        lease_token uuid,completed_at timestamptz,leased_until timestamptz,opaque_payload jsonb,
+        primary key(organization_id,id));
       create table osp_private.case_package_input_snapshots (
         organization_id uuid, case_id uuid, id uuid, case_version bigint,
-        canonical_sha256 text, created_at timestamptz default now());
+        canonical_sha256 text, created_at timestamptz default now(),
+        document_version_ids uuid[] not null default '{}', extraction_ids uuid[] not null default '{}',
+        mapping_refs jsonb not null default '[]', form_instance_id uuid,
+        form_instance_version integer, template_version_id uuid, unique(organization_id,case_id,id));
+      create table osp_private.documents (organization_id uuid,id uuid,case_id uuid);
+      create table osp_private.document_versions (organization_id uuid,id uuid,document_id uuid,
+        document_type text,status text,source_sha256 text,content_type text,bucket_id text,
+        valid_from date,expires_at date,version integer,
+        retention_disposition text not null default 'retained',primary key(organization_id,id));
+      create table osp_private.document_extractions (organization_id uuid,case_id uuid,id uuid,status text);
+      create table osp_private.case_form_instances (organization_id uuid,case_id uuid,id uuid,
+        version integer,template_version_id uuid);
+      create table osp_private.supplier_form_mappings (organization_id uuid,case_id uuid,id uuid,
+        version integer,after_sha256 text,review_decision_id uuid,status text);
       create table osp_private.approval_events (
         id uuid, organization_id uuid, case_id uuid, case_version bigint,
         event_type text, actor_subject text, actor_role text,
         authorization_session_id text, command_sha256 text, evidence_refs jsonb);
       create table osp_private.command_receipts (id uuid, organization_id uuid, operation text, idempotency_key text, request_hash text, response_json jsonb);
       grant select, insert on osp_private.command_receipts to osp_workflow_api;
-      -- Reduced-schema dependency stubs only; authority is also checked by the real TS policy.
-      create function osp_private.assert_approval_actor(uuid,text,text,text,text[],text,text,timestamptz)
-      returns void language plpgsql as $$ begin
-        if $1::text is distinct from current_setting('osp.organization_id',true)
-          or $2 <> 'complete_operations_review' or $6 <> 'operations_reviewer'
-          then raise exception 'ACTOR_REJECTED'; end if;
-      end $$;
-      create function osp_private.assert_package_snapshot_hash_current(uuid,uuid,text)
-      returns void language sql as 'select';
       grant select, update on osp_private.customer_registration_cases to osp_workflow_api;
-      grant select on osp_private.case_package_input_snapshots to osp_workflow_api;
+      grant select on osp_private.case_package_input_snapshots,osp_private.documents,
+        osp_private.document_versions,osp_private.document_extractions,
+        osp_private.case_form_instances,osp_private.supplier_form_mappings to osp_workflow_api;
       grant insert on osp_private.approval_events to osp_workflow_api;
     `);
+    const migration = (file: string) =>
+      Deno.readTextFile(new URL(`../../migrations/${file}`, import.meta.url));
+    // Execute the actual production validators, not permissive test stubs.
+    // Tables remain a scoped fixture; this is not a full-schema/native rehearsal.
+    await db.exec(
+      await migration("20260831133838_osp_sales_superuser_approval_policy.sql"),
+    );
+    const signatureSql = await migration(
+      "20260824111323_osp_signature_application.sql",
+    );
+    const snapshotStart = signatureSql.indexOf(
+      "create or replace function osp_private.package_snapshot_hash_is_current(",
+    );
+    const snapshotEnd = signatureSql.indexOf("$$;", snapshotStart);
+    assert(snapshotStart >= 0 && snapshotEnd > snapshotStart);
+    await db.exec(signatureSql.slice(snapshotStart, snapshotEnd + 3));
+    await db.exec(
+      "revoke all on function osp_private.package_snapshot_hash_is_current(uuid,uuid,text) from public,anon,authenticated; grant execute on function osp_private.package_snapshot_hash_is_current(uuid,uuid,text) to osp_workflow_api",
+    );
+    await db.exec(
+      await migration(
+        "20260830034601_osp_approval_snapshot_read_only_lock_fix.sql",
+      ),
+    );
     const legacy = await Deno.readTextFile(
       new URL(
         "../../migrations/20260824101605_osp_approval_communications.sql",
@@ -76,6 +118,9 @@ Deno.test("set review receipt and existing Operations transition commit atomical
     if (start < 0 || end <= start) throw new Error("LEGACY_FUNCTION_NOT_FOUND");
     await db.exec(legacy.slice(start, end));
     await db.exec(
+      await migration("20260908160000_osp_supplier_package_sets.sql"),
+    );
+    await db.exec(
       await Deno.readTextFile(
         new URL(
           "../../migrations/20260908180000_osp_package_set_operations_reviews.sql",
@@ -88,12 +133,12 @@ Deno.test("set review receipt and existing Operations transition commit atomical
       [org, caseId],
     );
     await db.query(
-      "insert into osp_private.supplier_package_sets values ($1,$2,$3)",
-      [org, id(3), caseId],
+      "insert into osp_private.case_package_input_snapshots (organization_id,case_id,id,case_version,canonical_sha256,created_at,form_instance_id,form_instance_version,template_version_id) values ($1,$2,$3,7,$4,now(),$2,1,$3)",
+      [org, caseId, snapshotId, sha],
     );
     await db.query(
-      "insert into osp_private.case_package_input_snapshots values ($1,$2,$3,7,$4,now())",
-      [org, caseId, snapshotId, sha],
+      "insert into osp_private.case_form_instances values ($1,$2,$2,1,$3)",
+      [org, caseId, snapshotId],
     );
     const manifest = {
       schemaVersion: 1,
@@ -120,6 +165,30 @@ Deno.test("set review receipt and existing Operations transition commit atomical
     };
     const manifestSha256 = await sha256Hex(
       new TextEncoder().encode(canonicalPackageSetJson(manifest)),
+    );
+    await db.query(
+      "insert into osp_private.background_jobs (organization_id,id,kind) values ($1,$2,'generate_supplier_package')",
+      [org, id(70)],
+    );
+    await db.query(
+      `insert into osp_private.supplier_package_sets
+      (organization_id,id,case_id,input_snapshot_id,input_snapshot_sha256,job_id,version,plan_sha256,source_plan_json,status)
+      values ($1,$2,$3,$4,$5,$6,1,$7,$8::text::jsonb,'prepared')`,
+      [
+        org,
+        id(3),
+        caseId,
+        snapshotId,
+        sha,
+        id(70),
+        manifest.planSha256,
+        JSON.stringify(
+          manifest.members.map((member) => ({
+            requirementId: member.requirementId,
+            sourceVersionId: member.artifact.sourceVersionId,
+          })),
+        ),
+      ],
     );
     const context = {
       receipt: { ...manifest, manifestSha256 },
@@ -155,38 +224,42 @@ Deno.test("set review receipt and existing Operations transition commit atomical
         permissions: ["osp:operate"],
         role: "operations_reviewer",
         authorizationSessionId: "session-1",
-        authorizationSessionIssuedAt: "2026-09-08T12:00:00.000Z",
+        authorizationSessionIssuedAt: new Date().toISOString(),
         active: true,
       },
     };
     let failReceipt = false, loads = 0;
-    const sql = ((strings: TemplateStringsArray, ...values: unknown[]) => {
-      const query = strings.reduce(
-        (s, part, index) =>
-          s + part + (index < values.length ? `$${index + 1}` : ""),
-        "",
-      );
-      if (
-        failReceipt &&
-        query.includes("insert into osp_private.package_set_operations_reviews")
-      ) throw new Error("INJECTED_RECEIPT_FAILURE");
-      return db.query(query, values).then((r) => r.rows as SqlRow[]);
-    }) as SqlPort;
+    const port = (connection: TestConnection) =>
+      ((strings: TemplateStringsArray, ...values: unknown[]) => {
+        const query = strings.reduce(
+          (s, part, index) =>
+            s + part + (index < values.length ? `$${index + 1}` : ""),
+          "",
+        );
+        if (
+          failReceipt &&
+          query.includes(
+            "insert into osp_private.package_set_operations_reviews",
+          )
+        ) throw new Error("INJECTED_RECEIPT_FAILURE");
+        return connection.query(query, values).then((r) => r.rows as SqlRow[]);
+      }) as SqlPort;
+    const sql = port(db);
+    const transactionBackends = new Set<number>();
     sql.begin = async <T>(operation: (tx: SqlPort) => Promise<T>) => {
-      await db.exec("begin");
-      try {
-        const value = await operation(sql);
-        await db.exec("commit");
-        return value;
-      } catch (error) {
-        await db.exec("rollback");
-        throw error;
-      }
+      return await db.transaction(async (tx) => {
+        if (db.native) {
+          transactionBackends.add(
+            Number((await tx.query("select pg_backend_pid() pid")).rows[0].pid),
+          );
+        }
+        return await operation(port(tx));
+      });
     };
     // Explicit synthetic trusted-source seam. Not a production decision loader.
     let store = createPackageSetOperationsReviewStore({
       sql,
-      now: () => new Date("2026-09-08T12:01:00Z"),
+      now: () => new Date(),
       loadLocked: async (tx) => {
         loads++;
         await tx`select id from osp_private.customer_registration_cases where organization_id = ${org}::uuid and id = ${caseId}::uuid for update`;
@@ -195,7 +268,7 @@ Deno.test("set review receipt and existing Operations transition commit atomical
     });
     const counts = async () => ({
       state: (await db.query(
-        "select state, aggregate_version from osp_private.customer_registration_cases",
+        "select state, aggregate_version::integer as aggregate_version from osp_private.customer_registration_cases",
       )).rows[0],
       receipts: (await db.query(
         "select count(*)::integer as n from osp_private.package_set_operations_reviews",
@@ -261,14 +334,6 @@ Deno.test("set review receipt and existing Operations transition commit atomical
       "default source reads persisted final reviews, not mappings",
       async () => {
         await db.exec(`
-        alter table osp_private.supplier_package_sets add column status text,
-          add column manifest_sha256 text, add column receipt_json jsonb,
-          add column input_snapshot_id uuid, add column input_snapshot_sha256 text;
-        alter table osp_private.case_package_input_snapshots add column document_version_ids uuid[];
-        create table osp_private.documents (organization_id uuid,id uuid,case_id uuid);
-        create table osp_private.document_versions (organization_id uuid,id uuid,document_id uuid,
-          document_type text,status text,source_sha256 text,content_type text,bucket_id text,
-          valid_from date,expires_at date,version integer,primary key(organization_id,id));
         create table osp_private.request_manifest_drafts (organization_id uuid,case_id uuid,id uuid,
           version integer,manifest_sha256 text,manifest_json jsonb);
         create table osp_private.request_manifest_decision_reviews (organization_id uuid,case_id uuid,id uuid,
@@ -285,7 +350,7 @@ Deno.test("set review receipt and existing Operations transition commit atomical
           ),
         );
         await db.query(
-          "update osp_private.supplier_package_sets set status='current',manifest_sha256=$1,receipt_json=$2,input_snapshot_id=$3,input_snapshot_sha256=$4",
+          "update osp_private.supplier_package_sets set status='current',manifest_sha256=$1,receipt_json=$2::text::jsonb,input_snapshot_id=$3,input_snapshot_sha256=$4",
           [manifestSha256, JSON.stringify(context.receipt), snapshotId, sha],
         );
         await db.query(
@@ -298,12 +363,12 @@ Deno.test("set review receipt and existing Operations transition commit atomical
             [org, id(100 + n), caseId],
           );
           await db.query(
-            "insert into osp_private.document_versions values ($1,$2,$3,'supplier_requirement','approved',$4,'application/pdf','osp-derived-documents',null,null,1)",
+            "insert into osp_private.document_versions (organization_id,id,document_id,document_type,status,source_sha256,content_type,bucket_id,valid_from,expires_at,version) values ($1,$2,$3,'supplier_requirement','approved',$4,'application/pdf','osp-derived-documents',null,null,1)",
             [org, id(n), id(100 + n), "c".repeat(64)],
           );
         }
         await db.query(
-          "insert into osp_private.request_manifest_drafts values ($1,$2,$3,1,$4,$5)",
+          "insert into osp_private.request_manifest_drafts values ($1,$2,$3,1,$4,$5::text::jsonb)",
           [
             org,
             caseId,
@@ -330,7 +395,7 @@ Deno.test("set review receipt and existing Operations transition commit atomical
         );
         store = createPackageSetOperationsReviewStore({
           sql,
-          now: () => new Date("2026-09-08T12:01:00Z"),
+          now: () => new Date(),
         });
         await assertRejects(
           () => store.complete(command),
@@ -347,7 +412,7 @@ Deno.test("set review receipt and existing Operations transition commit atomical
         );
         const memberStore = createPackageMemberReviewStore({
           sql,
-          now: () => new Date("2026-09-08T12:01:00Z"),
+          now: () => new Date(),
         });
         for (const n of [5, 6]) {
           const inspection = {
@@ -411,7 +476,7 @@ Deno.test("set review receipt and existing Operations transition commit atomical
               actor: {
                 ...inspection.actor,
                 authorizationSessionId: "fresh-session",
-                authorizationSessionIssuedAt: "2026-09-08T12:00:30.000Z",
+                authorizationSessionIssuedAt: new Date().toISOString(),
               },
             }),
             {
@@ -470,7 +535,7 @@ Deno.test("set review receipt and existing Operations transition commit atomical
         const legacy = createPostgresApprovalStore({
           databaseUrl: "postgresql://synthetic.example.test/osp",
           postgresFactory: () => sql,
-          now: () => new Date("2026-09-08T12:01:00Z"),
+          now: () => new Date(),
         });
         await assertRejects(
           () =>
@@ -571,15 +636,166 @@ Deno.test("set review receipt and existing Operations transition commit atomical
               acceptableAlternatives: [],
               evidenceIds: ["email:canary"],
             }])
-          }::jsonb)`
+          }::text::jsonb)`
         );
+        assertEquals((await counts()).events, { n: 0 });
+      },
+    );
+    await t.step(
+      "production actor SQL rejects expired, mixed and impersonated authority",
+      async () => {
+        const probe = (
+          email: string,
+          permissions: string[],
+          issuedAt: string,
+        ) =>
+          withOrganizationTransaction(
+            sql,
+            org,
+            (tx) =>
+              tx`select osp_private.assert_approval_actor(
+          ${org}::uuid,'complete_operations_review','fixture-actor',${email},
+          ${permissions}::text[],'operations_reviewer','fixture-session',${issuedAt}::timestamptz)`,
+          );
+        await probe(
+          "sales@heymarksman.com",
+          ["osp:read", "osp:superuser"],
+          new Date().toISOString(),
+        );
+        await assertRejects(
+          () =>
+            probe(
+              "ops@xbfreight.com",
+              ["osp:superuser"],
+              new Date().toISOString(),
+            ),
+          Error,
+          "OSP_APPROVAL_FORBIDDEN",
+        );
+        await assertRejects(
+          () =>
+            probe(
+              "sales@heymarksman.com",
+              ["osp:superuser", "osp:operate"],
+              new Date().toISOString(),
+            ),
+          Error,
+          "OSP_APPROVAL_FORBIDDEN",
+        );
+        await assertRejects(
+          () =>
+            probe(
+              "ops@xbfreight.com",
+              ["osp:operate"],
+              new Date(Date.now() - 6 * 60_000).toISOString(),
+            ),
+          Error,
+          "OSP_APPROVAL_FORBIDDEN",
+        );
+        await assertRejects(
+          () =>
+            probe(
+              "sales@heymarksman.com",
+              ["osp:superuser"],
+              new Date(Date.now() - 31 * 60_000).toISOString(),
+            ),
+          Error,
+          "OSP_APPROVAL_FORBIDDEN",
+        );
+        assertEquals((await counts()).events, { n: 0 });
+      },
+    );
+    await t.step(
+      "production snapshot SQL rejects stale forms, disposed or superseded documents and missing evidence",
+      async () => {
+        const probe = async (mutation: string) => {
+          await assertRejects(
+            () =>
+              db.transaction(async (tx) => {
+                await tx.exec(mutation);
+                await tx.query(
+                  "select set_config('osp.organization_id',$1,true)",
+                  [
+                    org,
+                  ],
+                );
+                await tx.exec("set local role osp_workflow_api");
+                await assertRejects(
+                  () =>
+                    tx.query(
+                      "select osp_private.assert_package_snapshot_hash_current($1::uuid,$2::uuid,$3)",
+                      [org, caseId, sha],
+                    ),
+                  Error,
+                  "OSP_SNAPSHOT_MISMATCH",
+                );
+                throw new Error("PROBE_ROLLBACK");
+              }),
+            Error,
+            "PROBE_ROLLBACK",
+          );
+        };
+        await probe(
+          "update osp_private.case_form_instances set version=version+1",
+        );
+        await probe(
+          "update osp_private.document_versions set retention_disposition='disposed'",
+        );
+        await probe(
+          "update osp_private.document_versions set document_type='bank_statement',valid_from=current_date-31,expires_at=current_date-1",
+        );
+        await probe(
+          `update osp_private.case_package_input_snapshots set extraction_ids=array['${
+            id(80)
+          }'::uuid]`,
+        );
+        await probe(
+          `update osp_private.case_package_input_snapshots set mapping_refs='[{"mappingId":"${
+            id(80)
+          }","mappingVersion":1,"mappingSha256":"${sha}","reviewDecisionId":"${
+            id(81)
+          }"}]'::jsonb`,
+        );
+        await probe(
+          `insert into osp_private.document_versions (organization_id,id,document_id,document_type,status,source_sha256,content_type,bucket_id,version)
+        select organization_id,'${
+            id(80)
+          }'::uuid,document_id,document_type,'approved',source_sha256,content_type,bucket_id,version+1 from osp_private.document_versions where id='${
+            id(5)
+          }'`,
+        );
+        await probe(
+          `insert into osp_private.case_package_input_snapshots (organization_id,case_id,id,case_version,canonical_sha256,created_at)
+        values ('${org}','${caseId}','${id(80)}',7,'${
+            "f".repeat(64)
+          }',now()+interval '1 second')`,
+        );
+        assertEquals((await counts()).state, {
+          state: "operations_review",
+          aggregate_version: 7,
+        });
         assertEquals((await counts()).events, { n: 0 });
       },
     );
     await t.step(
       "success with default SQL source stores all members and actor with one transition",
       async () => {
-        assertEquals(await store.complete(command), {
+        transactionBackends.clear();
+        const results = db.native
+          ? await Promise.all([
+            store.complete(command),
+            store.complete(command),
+          ])
+          : [await store.complete(command)];
+        assertEquals(results.filter((result) => !result.replayed).length, 1);
+        if (db.native) {
+          assertEquals(results.filter((result) => result.replayed).length, 1);
+          assertEquals(transactionBackends.size, 2);
+          console.log(
+            "Concurrent completion used two distinct PostgreSQL sessions and produced one receipt.",
+          );
+        }
+        assertEquals(results.find((result) => !result.replayed), {
           caseId,
           caseVersion: 8,
           state: "signature_approval",
@@ -603,7 +819,17 @@ Deno.test("set review receipt and existing Operations transition commit atomical
         const before = loads;
         context.reviews[1].status = "rejected";
         assertEquals((await store.complete(command)).replayed, true);
-        assertEquals((await store.complete({ ...command, actor: { ...command.actor, authorizationSessionId: 'fresh-completion-session', authorizationSessionIssuedAt: '2026-09-08T12:00:30.000Z' } })).replayed, true);
+        assertEquals(
+          (await store.complete({
+            ...command,
+            actor: {
+              ...command.actor,
+              authorizationSessionId: "fresh-completion-session",
+              authorizationSessionIssuedAt: new Date().toISOString(),
+            },
+          })).replayed,
+          true,
+        );
         assertEquals(loads, before);
         assertEquals((await counts()).events, { n: 1 });
         await assertRejects(
@@ -635,52 +861,65 @@ Deno.test("set review receipt and existing Operations transition commit atomical
     await t.step(
       "tenant role cannot read or insert another tenant receipt",
       async () => {
-        await db.exec("begin; set local role osp_workflow_api");
-        try {
-          await db.query("select set_config('osp.organization_id',$1,true)", [
-            id(99),
-          ]);
-          assertEquals(
-            (await db.query(
-              "select * from osp_private.package_set_operations_reviews",
-            )).rows,
-            [],
-          );
-          await assertRejects(
-            () =>
-              db.query(
-                "insert into osp_private.package_set_operations_reviews (id, organization_id, case_id, package_set_id, idempotency_key, command_sha256, review_sha256, basis_json, actor_json, result_json) values ($1,$2,$3,$4,'foreign-tenant',$5,$6,$7,$8,$9)",
+        await assertRejects(
+          () =>
+            db.transaction(async (tx) => {
+              await tx.exec("set local role osp_workflow_api");
+              await tx.query(
+                "select set_config('osp.organization_id',$1,true)",
                 [
-                  id(88),
-                  org,
-                  caseId,
-                  id(3),
-                  sha,
-                  basis.reviewSha256,
-                  JSON.stringify(basis),
-                  JSON.stringify(command.actor),
-                  JSON.stringify({
-                    caseId,
-                    state: "signature_approval",
-                    caseVersion: 8,
-                    replayed: false,
-                  }),
+                  id(99),
                 ],
-              ),
-            Error,
-            "row-level security",
-          );
-        } finally {
-          await db.exec("rollback");
-        }
-        await db.exec("begin; set local role osp_worker");
-        try {
-          await assertRejects(() =>
-            db.query("select * from osp_private.package_set_operations_reviews")
-          );
-        } finally {
-          await db.exec("rollback");
-        }
+              );
+              assertEquals(
+                (await tx.query(
+                  "select * from osp_private.package_set_operations_reviews",
+                )).rows,
+                [],
+              );
+              await assertRejects(
+                () =>
+                  tx.query(
+                    "insert into osp_private.package_set_operations_reviews (id, organization_id, case_id, package_set_id, idempotency_key, command_sha256, review_sha256, basis_json, actor_json, result_json) values ($1,$2,$3,$4,'foreign-tenant',$5,$6,$7::text::jsonb,$8::text::jsonb,$9::text::jsonb)",
+                    [
+                      id(88),
+                      org,
+                      caseId,
+                      id(3),
+                      sha,
+                      basis.reviewSha256,
+                      JSON.stringify(basis),
+                      JSON.stringify(command.actor),
+                      JSON.stringify({
+                        caseId,
+                        state: "signature_approval",
+                        caseVersion: 8,
+                        replayed: false,
+                      }),
+                    ],
+                  ),
+                Error,
+                "row-level security",
+              );
+              throw new Error("PROBE_ROLLBACK");
+            }),
+          Error,
+          "PROBE_ROLLBACK",
+        );
+        await assertRejects(
+          () =>
+            db.transaction(async (tx) => {
+              await tx.exec("set local role osp_worker");
+              await assertRejects(() =>
+                tx.query(
+                  "select * from osp_private.package_set_operations_reviews",
+                )
+              );
+              throw new Error("PROBE_ROLLBACK");
+            }),
+          Error,
+          "PROBE_ROLLBACK",
+        );
       },
     );
   } finally {

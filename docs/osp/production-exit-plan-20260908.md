@@ -94,6 +94,14 @@ timeouts; intentos posteriores también encontraron timeouts de arranque/carga.
 Existe una prueba previa de persistencia y recarga desktop/mobile, pero no
 certifica los cambios posteriores ni producción. El hito 1 sigue abierto.
 
+Actualización posterior: el ensayo PostgreSQL 17.11 aplicó las cuatro migraciones
+de conjuntos con validadores reales de actor/snapshot y pasó diez pasos,
+incluyendo finalización concurrente desde dos sesiones sin duplicar recibos.
+Detectó y corrigió un fallo real de transporte JSON que PGlite no mostraba.
+Pasaron además 20 pruebas y diez pasos de HTTP/proyección/integración. Sigue siendo
+un esquema de prueba acotado; faltan compatibilidad completa y UI autenticada.
+Evidencia: [ensayo nativo](package-review-native-rehearsal-20260908.md).
+
 ## Control de avance y regla de parada
 
 La próxima entrega debe incluir la demostración del hito 1, no sólo otro helper.

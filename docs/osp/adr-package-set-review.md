@@ -240,6 +240,13 @@ Signature-policy selection still exposes a technical version field; replace it
 with verified per-file policy selection before claiming a pragmatic production UX.
 # Reconciliación de lectura y recuperación — 8 de septiembre de 2026
 
+Actualización posterior: [el ensayo nativo](package-review-native-rehearsal-20260908.md)
+reemplazó los sustitutos de actor/snapshot por validadores reales, aplicó las
+cuatro migraciones de conjuntos y descubrió/corrigió la codificación JSON de los
+dos stores nuevos. PostgreSQL 17.11 pasó diez pasos y dos sesiones concurrentes
+produjeron un único recibo. Esto supera la evidencia anterior reducida, pero no
+certifica todo el esquema productivo ni el recorrido de UI.
+
 La consulta de sólo lectura del catálogo
 `public.provider_legal_entity_document_assets` del tenant OSP encontró dos actas
 constitutivas y un INE activos, con `verification_status = verified` y referencia
