@@ -46,3 +46,22 @@ existing canary or claim completeness from its seven decision items.
 
 This closes source discovery, not OSP production acceptance. No legal document
 was signed or accepted and no package was sent.
+
+## Verified implementation gap
+
+`osp-worker/postgres-request-manifest-source.ts` loads case email evidence with
+`order by received_at desc, id desc limit 1`; the source contract has a singular
+`message`. Thus a later amendment can hide earlier independent requirements.
+The historical importer imports one selected message per action, not a reviewed
+thread bundle. This is not yet a supported full-thread reconciliation path.
+
+Required next implementation: bounded ordered message sources retaining each
+message ID/hash, original and amendment attachment identities, explicit reviewed
+supersession, and invalidation of downstream review when evidence changes.
+Regression must prove the five unaffected forms and fiscal requirements survive
+the QF-168 -> QF-167 amendment. A newest-message-only test or text concatenation
+without source identities is insufficient. Existing single-message compatibility
+and protected historical cases must remain unchanged.
+
+Entity clarification requested from XBF: XBFUS, XBFMX or both. No automatic
+answer or fiscal document substitution has been made.
