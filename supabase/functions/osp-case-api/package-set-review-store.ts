@@ -10,6 +10,7 @@ import { requireApprovalAuthority } from "../_shared/osp/approval-policy.ts";
 import { canonicalPackageSetJson } from "../_shared/osp/package-set-json.ts";
 import { sha256Hex } from "../_shared/osp/source-hash.ts";
 import { preparePackageSetReview } from "./package-set-review.ts";
+import { loadLockedPackageSetReview } from "./package-set-review-source.ts";
 
 type ReviewContext = Parameters<typeof preparePackageSetReview>[0];
 export type PackageSetReviewCommand = {
@@ -25,7 +26,7 @@ export type PackageSetReviewCommand = {
 /** A production loader MUST lock case/current set and relevant source/review
  * rows, verify the latest resolved request contract and semantic completeness,
  * and return persisted decisions. It must use this transaction, not another pool.
- * No default loader or HTTP wiring exists until that boundary is implemented.
+ * HTTP wiring remains disabled. The default loader reads persisted final-output reviews.
  */
 export type LockedPackageSetReviewSource = (
   tx: SqlPort,
@@ -59,7 +60,7 @@ function result(
 
 export function createPackageSetOperationsReviewStore(deps: {
   sql: SqlPort;
-  loadLocked: LockedPackageSetReviewSource;
+  loadLocked?: LockedPackageSetReviewSource;
   now?: () => Date;
 }) {
   return {
@@ -108,7 +109,10 @@ export function createPackageSetOperationsReviewStore(deps: {
             ) fail("IDEMPOTENCY_CONFLICT");
             return result(prior[0].result_json, command, true);
           }
-          const context = await deps.loadLocked(tx, command);
+          const context = await (deps.loadLocked ?? loadLockedPackageSetReview)(
+            tx,
+            command,
+          );
           if (
             context.organizationId !== command.organizationId ||
             context.caseId !== command.caseId ||

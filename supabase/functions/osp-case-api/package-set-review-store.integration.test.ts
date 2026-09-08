@@ -12,6 +12,7 @@ import {
   createPackageSetOperationsReviewStore,
   type PackageSetReviewCommand,
 } from "./package-set-review-store.ts";
+import { loadLockedPackageSetReview } from "./package-set-review-source.ts";
 
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -174,7 +175,7 @@ Deno.test("set review receipt and existing Operations transition commit atomical
       }
     };
     // Explicit synthetic trusted-source seam. Not a production decision loader.
-    const store = createPackageSetOperationsReviewStore({
+    let store = createPackageSetOperationsReviewStore({
       sql,
       now: () => new Date("2026-09-08T12:01:00Z"),
       loadLocked: async (tx) => {
@@ -248,7 +249,190 @@ Deno.test("set review receipt and existing Operations transition commit atomical
       },
     );
     await t.step(
-      "success stores all members and actor with one transition",
+      "default source reads persisted final reviews, not mappings",
+      async () => {
+        await db.exec(`
+        alter table osp_private.supplier_package_sets add column status text,
+          add column manifest_sha256 text, add column receipt_json jsonb,
+          add column input_snapshot_id uuid, add column input_snapshot_sha256 text;
+        alter table osp_private.case_package_input_snapshots add column document_version_ids uuid[];
+        create table osp_private.documents (organization_id uuid,id uuid,case_id uuid);
+        create table osp_private.document_versions (organization_id uuid,id uuid,document_id uuid,
+          document_type text,status text,source_sha256 text,content_type text,bucket_id text,
+          valid_from date,expires_at date,version integer,primary key(organization_id,id));
+        create table osp_private.request_manifest_drafts (organization_id uuid,case_id uuid,id uuid,
+          version integer,manifest_sha256 text,manifest_json jsonb);
+        create table osp_private.request_manifest_decision_reviews (organization_id uuid,case_id uuid,id uuid,
+          manifest_draft_id uuid,review_version integer,manifest_version integer,manifest_sha256 text,status text);
+        grant select on osp_private.supplier_package_sets,osp_private.documents,osp_private.document_versions,
+          osp_private.request_manifest_drafts,osp_private.request_manifest_decision_reviews to osp_workflow_api;
+      `);
+        await db.exec(
+          await Deno.readTextFile(
+            new URL(
+              "../../migrations/20260908190000_osp_package_set_member_reviews.sql",
+              import.meta.url,
+            ),
+          ),
+        );
+        await db.query(
+          "update osp_private.supplier_package_sets set status='current',manifest_sha256=$1,receipt_json=$2,input_snapshot_id=$3,input_snapshot_sha256=$4",
+          [manifestSha256, JSON.stringify(context.receipt), snapshotId, sha],
+        );
+        await db.query(
+          "update osp_private.case_package_input_snapshots set document_version_ids=$1",
+          [[id(5), id(6)]],
+        );
+        for (const n of [5, 6]) {
+          await db.query(
+            "insert into osp_private.documents values ($1,$2,$3)",
+            [org, id(100 + n), caseId],
+          );
+          await db.query(
+            "insert into osp_private.document_versions values ($1,$2,$3,'supplier_requirement','approved',$4,'application/pdf','osp-derived-documents',null,null,1)",
+            [org, id(n), id(100 + n), "c".repeat(64)],
+          );
+        }
+        await db.query(
+          "insert into osp_private.request_manifest_drafts values ($1,$2,$3,1,$4,$5)",
+          [
+            org,
+            caseId,
+            id(90),
+            context.requestManifestSha256,
+            JSON.stringify({
+              requestType: "customer_setup",
+              targetXbfEntity: "XBFUS",
+              forms: [5, 6].map((n) => ({
+                name: `Form ${n}`,
+                format: "pdf",
+                action: "complete",
+                required: true,
+                evidenceIds: [`file:${id(n)}`],
+              })),
+              requestedDocuments: [],
+              requirements: [{ text: "Complete all forms at 100%." }],
+            }),
+          ],
+        );
+        await db.query(
+          "insert into osp_private.request_manifest_decision_reviews values ($1,$2,$3,$4,1,1,$5,'resolved')",
+          [org, caseId, id(91), id(90), context.requestManifestSha256],
+        );
+        store = createPackageSetOperationsReviewStore({
+          sql,
+          now: () => new Date("2026-09-08T12:01:00Z"),
+        });
+        await assertRejects(
+          () => store.complete(command),
+          Error,
+          "PACKAGE_SET_REVIEW_BLOCKED",
+        ); // Mapping/source approval alone is insufficient.
+        await sql.begin!(async (tx) => {
+          await tx`set local role osp_workflow_api`;
+          await tx`select set_config('osp.organization_id',${org},true)`;
+          for (const n of [5, 6]) {
+            await tx`insert into osp_private.package_set_member_reviews
+          (id,organization_id,case_id,package_set_id,source_version_id,review_version,set_manifest_sha256,request_manifest_sha256,output_sha256,status,full_output_inspected,completion_percent,page_count,signature_requirement,signature_policy_version,actor_json)
+          values (${id(n + 10)}::uuid,${org}::uuid,${caseId}::uuid,${
+              id(3)
+            }::uuid,${
+              id(n)
+            }::uuid,1,${manifestSha256},${context.requestManifestSha256},${
+              "d".repeat(64)
+            },'approved',true,100,2,'none',null,${
+              JSON.stringify(command.actor)
+            }::jsonb)`;
+          }
+        });
+        failReceipt = true;
+        await assertRejects(
+          () => store.complete(command),
+          Error,
+          "INJECTED_RECEIPT_FAILURE",
+        );
+        failReceipt = false;
+        assertEquals((await counts()).events, { n: 0 });
+        await db.exec(
+          "update osp_private.document_versions set status='rejected'",
+        );
+        await assertRejects(
+          () => store.complete(command),
+          Error,
+          "PACKAGE_SET_REVIEW_BLOCKED",
+        );
+        await db.exec(
+          "update osp_private.document_versions set status='approved'; update osp_private.request_manifest_decision_reviews set status='pending'",
+        );
+        await assertRejects(
+          () => store.complete(command),
+          Error,
+          "PACKAGE_SET_REVIEW_BLOCKED",
+        );
+        await db.exec(
+          "update osp_private.request_manifest_decision_reviews set status='resolved'",
+        );
+        await assertRejects(
+          () => store.complete({ ...command, expectedCaseVersion: 8 }),
+          Error,
+          "PACKAGE_SET_REVIEW_STALE",
+        );
+        await assertRejects(
+          () =>
+            db.exec(
+              "update osp_private.package_set_member_reviews set status='rejected'",
+            ),
+          Error,
+          "PACKAGE_SET_MEMBER_REVIEW_IMMUTABLE",
+        );
+      },
+    );
+    await t.step(
+      "incomplete final output and missing corporate documents cannot advance Operations",
+      async () => {
+        const probe = async (mutation: (tx: SqlPort) => Promise<unknown>) => {
+          await assertRejects(
+            () =>
+              sql.begin!(async (tx) => {
+                await tx`select set_config('osp.organization_id',${org},true)`;
+                await mutation(tx);
+                await tx`set local role osp_workflow_api`;
+                await assertRejects(
+                  () => loadLockedPackageSetReview(tx, command),
+                  Error,
+                  "PACKAGE_SET_REVIEW_BLOCKED",
+                );
+                throw new Error("PROBE_ROLLBACK");
+              }),
+            Error,
+            "PROBE_ROLLBACK",
+          );
+        };
+        await probe((tx) =>
+          tx`insert into osp_private.package_set_member_reviews
+        (id,organization_id,case_id,package_set_id,source_version_id,review_version,set_manifest_sha256,request_manifest_sha256,output_sha256,status,full_output_inspected,completion_percent,page_count,signature_requirement,signature_policy_version,actor_json)
+        select ${
+            id(200)
+          }::uuid,organization_id,case_id,package_set_id,source_version_id,2,set_manifest_sha256,request_manifest_sha256,output_sha256,'approved',true,50,page_count,signature_requirement,signature_policy_version,actor_json
+        from osp_private.package_set_member_reviews where source_version_id=${
+            id(5)
+          }::uuid`
+        );
+        await probe((tx) =>
+          tx`update osp_private.request_manifest_drafts set manifest_json = jsonb_set(manifest_json,'{requestedDocuments}',${
+            JSON.stringify([{
+              documentType: "Constancia de situación fiscal",
+              required: true,
+              acceptableAlternatives: [],
+              evidenceIds: ["email:canary"],
+            }])
+          }::jsonb)`
+        );
+        assertEquals((await counts()).events, { n: 0 });
+      },
+    );
+    await t.step(
+      "success with default SQL source stores all members and actor with one transition",
       async () => {
         assertEquals(await store.complete(command), {
           caseId,

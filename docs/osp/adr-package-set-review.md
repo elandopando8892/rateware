@@ -1,6 +1,6 @@
 # ADR: exact multi-form review basis
 
-Status: policy and transactional persistence adapter tested locally; production source loader and activation pending.
+Status: policy, persistence and authoritative SQL source connected and tested locally; human-review UI/API activation pending.
 Date: 2026-09-08
 Decider: product owner requested continuation of the multi-form package workflow.
 
@@ -50,7 +50,8 @@ helper; an explicit never-returning function fixed it, without disabling checks.
 - [x] Exact review-basis policy and adversarial unit tests.
 - [x] Prevent legacy signed-file capabilities for a current multi-form set.
 - [x] Implement and locally test atomic review-basis/actor persistence with the existing transition.
-- [ ] Implement authoritative per-output review loading and production command wiring.
+- [x] Implement authoritative per-output review loading as the persistence adapter default.
+- [ ] Connect authenticated human-review capture and the UI command boundary.
 - [ ] Recheck the same basis in signature, Sales and outbound execution.
 - [ ] Real-schema integration, preview and controlled production verification.
 
@@ -73,11 +74,9 @@ It grants only select/insert to the existing workflow role; neither workers nor
 browser roles receive access. It creates no job and does not activate a route.
 The role remains a trusted server boundary, not a permission exposed to a user.
 
-The source loader is intentionally required and has no production implementation
-yet: existing mapping decisions do not prove final-output completeness. The caller
-must obtain persisted per-output decisions and semantic assessment under the same
-transaction locks. Supplying browser booleans or simply relabeling mapping approval
-as final-file approval is prohibited. No UI capability is enabled by this adapter.
+At that checkpoint the source loader was an explicit test seam: existing mapping
+decisions do not prove final-output completeness. The following increment supplies
+the SQL implementation. No UI capability is enabled by the adapter itself.
 
 Validation: 21 typed tests including six PostgreSQL integration steps. PGlite
 executes the actual new migration and the existing Operations command definition
@@ -92,3 +91,39 @@ Initial failed probes are retained in task output: two unknown-row TypeScript
 errors, a noncanonical synthetic session timestamp, then PostgreSQL rejecting a
 `{1,256}` regex quantifier. Explicit row typing, a canonical timestamp and separate
 length/character validation fixed them without disabling checks or weakening policy.
+
+## Authoritative final-output review source
+
+`20260908190000_osp_package_set_member_reviews.sql` adds append-only human decisions
+over exact output hashes, scoped to the current set and request manifest. Approval
+records full-output inspection, reviewed completion percentage and page count;
+these are explicit human attestations, not LLM self-certification or occupied-cell
+heuristics. A SQL trigger checks actor authority, locks the case, verifies the
+current member/output identity and enforces sequential review versions. No browser
+or worker role receives access. There is no backfill from mapping decisions.
+
+`loadLockedPackageSetReview` is now the default source of the transactional adapter.
+It locks the case/current set, relevant sources and review records in the same
+transaction; verifies the latest resolved contract, approved original/hash/snapshot
+membership and newest per-output decisions; and binds each form through its unique
+source citation. It reuses the existing corporate-document evidence evaluator for
+formats and validity, and the existing pre-signature semantic gate for completeness.
+Autograph and image policies remain distinct; no signature is inferred or applied.
+
+The PostgreSQL integration now exercises the actual new migrations, locking helper,
+review trigger, default SQL loader, semantic evaluation and atomic store together.
+The parent schema is still reduced and the pre-existing actor/snapshot SQL helper
+dependencies are test stubs; this is not a deployed-schema or multi-session test.
+Eight steps cover rollback, missing reviews, rejected source, unresolved contract,
+stale case version, incomplete output, missing corporate evidence, successful
+two-file review, replay, immutable receipts and tenant isolation. Negative probes
+that insert newer incomplete reviews are rolled back rather than deleting evidence.
+The combined typed regression run passes 70 tests and eight integration steps;
+lint and all 168 action-contract checks pass. Only the 12 case-API dependency
+fingerprints changed; no new HTTP action or permission is exposed.
+
+Pending: authenticated per-output review capture in the API/UI, deployed-schema
+and concurrency verification, then explicit set-wide signature/Sales/send consumers.
+The new adapter is not wired to an HTTP action and all set-wide UI capabilities
+remain disabled. No migration has been applied remotely and no historical case
+has been modified. Production readiness remains an estimate, not a test percentage.

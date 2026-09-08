@@ -176,7 +176,7 @@ function attachment(
   });
 }
 
-function documentEvidence(
+export function documentEvidence(
   rows: SqlRow[],
   included: ReadonlySet<string>,
 ): EvidenceRecord[] {
