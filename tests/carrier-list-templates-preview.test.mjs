@@ -7,6 +7,7 @@ const previewJsUrl = new URL("../src/carrier-list-templates-preview.js", import.
 const previewStylesUrl = new URL("../src/styles.css", import.meta.url);
 const vercelIgnoreUrl = new URL("../.vercelignore", import.meta.url);
 const bidRoomE2eUrl = new URL("../tools/bid-room-e2e.mjs", import.meta.url);
+const previewE2eUrl = new URL("../tools/carrier-list-templates-preview-e2e.mjs", import.meta.url);
 
 test("preview deployment allowlists only the approved public HTML artifact", async () => {
   const vercelIgnore = await readFile(vercelIgnoreUrl, "utf8");
@@ -25,6 +26,23 @@ test("Bid Room E2E exposes a fail-closed, no-write carrier-template preview mode
   assert.match(source, /noindex,\\s\*noarchive/i);
   assert.match(source, /Preview con datos simulados · sin acciones externas/);
   assert.match(source, /No API, persistence, invitation, draft, Delivery, or provider call was issued/);
+});
+
+test("browser preview certification is multi-viewport, local-only, and evidence-producing", async () => {
+  const source = await readFile(previewE2eUrl, "utf8");
+
+  assert.match(source, /CARRIER_TEMPLATE_PREVIEW_VIEWPORTS/);
+  assert.match(source, /1440, 900/);
+  assert.match(source, /1024, 768/);
+  assert.match(source, /390, 844/);
+  assert.match(source, /carrier-list-templates-evidence/);
+  assert.match(source, /preview-safety-banner/);
+  assert.match(source, /Add 4 carriers to this RFx and open Message/);
+  assert.match(source, /No draft was prepared, nothing was sent, and Delivery queue was not touched/);
+  assert.match(source, /route\(\"\*\*\/\*\"/);
+  assert.match(source, /route\.abort\(\)/);
+  assert.match(source, /external_effects: \"none\"/);
+  assert.doesNotMatch(source, /--send-gmail|send_outreach_messages|invite_rfx_lane_vendors/);
 });
 
 test("preview source is public, noindex, local-only, and uses the approved domain and icon systems", async () => {

@@ -623,7 +623,11 @@ function startCarrierTemplatePreview() {
       dispatch({ type: "library_select", templateId: row.dataset.cltSelectTemplate });
     }
   });
-  document.querySelectorAll("[data-preview-route]").forEach((button) => button.addEventListener("click", () => dispatch({ type: "navigate", screen: button.dataset.previewRoute })));
+  document.querySelectorAll("[data-preview-route]").forEach((button) => button.addEventListener("click", () => {
+    const app = document.querySelector("[data-platform55-app]");
+    if (app) app.dataset.mobileNavOpen = "false";
+    dispatch({ type: "navigate", screen: button.dataset.previewRoute });
+  }));
   document.querySelector("[data-preview-nav-collapse]")?.addEventListener("click", (event) => {
     const app = document.querySelector("[data-platform55-app]");
     const collapseState = previewNavigationCollapseState(app.dataset.navCollapsed === "true");
