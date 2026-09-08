@@ -54,6 +54,21 @@ function validJob(input: SupplierPackageJobInput): void {
   ) throw new Error("INVALID_INPUT");
 }
 
+function assertReplacementSource(
+  prior: readonly Record<string, unknown>[],
+  sourceVersionId: string,
+  sourceSha256: string,
+): void {
+  if (prior.length > 1) throw new Error("SUPPLIER_PACKAGE_STATE_CONFLICT");
+  if (
+    !UUID.test(sourceVersionId) || !SHA.test(sourceSha256) ||
+    (prior.length === 1 && (prior[0].source_version_id !== sourceVersionId ||
+      prior[0].source_sha256 !== sourceSha256))
+  ) {
+    throw new Error("SUPPLIER_PACKAGE_SOURCE_SCOPE_CONFLICT");
+  }
+}
+
 function receipt(value: unknown): GeneratedSupplierPackageReceipt {
   const row = value as Record<string, unknown>;
   const artifact = row?.artifact as SupplierArtifactReceipt;
@@ -164,14 +179,34 @@ export function createPostgresSupplierPackageRecordStore(options: {
           throw new Error("SUPPLIER_PACKAGE_INPUT_INVALID");
         }
         const source = sources[0];
+        // The schema currently permits one live completed package per case.
+        // Until a package-set model exists, never retire a different source.
+        const current =
+          await tx`select id, artifact_receipt_json->>'sourceVersionId' as source_version_id, artifact_receipt_json->>'sourceSha256' as source_sha256 from osp_private.generated_packages where organization_id = ${input.organizationId} and case_id = ${input.caseId} and package_kind = 'supplier_completed' and status = 'current' for update`;
+        assertReplacementSource(
+          current,
+          source.source_version_id,
+          source.source_sha256,
+        );
         if (source.content_type === XLSX || source.content_type === XLSM) {
-          const requiredTables = await tx`select field.field_key from osp_private.case_package_input_snapshots snapshot join osp_private.form_fields field on field.organization_id = snapshot.organization_id and field.template_version_id = snapshot.template_version_id where snapshot.organization_id = ${input.organizationId} and snapshot.case_id = ${input.caseId} and snapshot.id = ${input.snapshotId} and field.definition_json->>'required' = 'true' and field.definition_json->'definition'->>'kind' = 'repeating_table'`;
-          const requiredKeys = requiredTables.map((field) => String(field.field_key));
-          if (Array.isArray(source.mappings) && source.mappings.some((item) => item && typeof item === 'object' && 'reviewedTarget' in item)) {
-            source.mappings = resolveReviewedSpreadsheetTargets(source.mappings, requiredKeys);
+          const requiredTables =
+            await tx`select field.field_key from osp_private.case_package_input_snapshots snapshot join osp_private.form_fields field on field.organization_id = snapshot.organization_id and field.template_version_id = snapshot.template_version_id where snapshot.organization_id = ${input.organizationId} and snapshot.case_id = ${input.caseId} and snapshot.id = ${input.snapshotId} and field.definition_json->>'required' = 'true' and field.definition_json->'definition'->>'kind' = 'repeating_table'`;
+          const requiredKeys = requiredTables.map((field) =>
+            String(field.field_key)
+          );
+          if (
+            Array.isArray(source.mappings) &&
+            source.mappings.some((item) =>
+              item && typeof item === "object" && "reviewedTarget" in item
+            )
+          ) {
+            source.mappings = resolveReviewedSpreadsheetTargets(
+              source.mappings,
+              requiredKeys,
+            );
           } else if (requiredKeys.length > 0) {
             // Legacy scalar extraction must not silently omit a required table.
-            throw new Error('ARTIFACT_TABLE_TARGETS_INCOMPLETE');
+            throw new Error("ARTIFACT_TABLE_TARGETS_INCOMPLETE");
           }
         }
         const packageId = existing[0]?.package_id ?? crypto.randomUUID();
@@ -262,10 +297,14 @@ export function createPostgresSupplierPackageRecordStore(options: {
           runs[0].object_id !== input.receipt.objectId
         ) throw new Error("SUPPLIER_PACKAGE_STATE_CONFLICT");
         const prior =
-          await tx`select id from osp_private.generated_packages where organization_id = ${input.organizationId} and case_id = ${input.caseId} and package_kind = 'supplier_completed' and status = 'current' for update`;
-        if (prior.length > 1) {
-          throw new Error("SUPPLIER_PACKAGE_STATE_CONFLICT");
-        }
+          await tx`select id, artifact_receipt_json->>'sourceVersionId' as source_version_id, artifact_receipt_json->>'sourceSha256' as source_sha256 from osp_private.generated_packages where organization_id = ${input.organizationId} and case_id = ${input.caseId} and package_kind = 'supplier_completed' and status = 'current' for update`;
+        // Recheck after generation: another transaction may have published a
+        // package since prepare. A conflict must leave the old file current.
+        assertReplacementSource(
+          prior,
+          input.receipt.artifact.sourceVersionId,
+          input.receipt.artifact.sourceSha256,
+        );
         if (prior.length === 1) {
           await tx`update osp_private.generated_packages set status = 'superseded' where organization_id = ${input.organizationId} and id = ${
             prior[0].id
