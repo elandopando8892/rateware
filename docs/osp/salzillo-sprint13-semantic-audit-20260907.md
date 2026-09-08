@@ -404,3 +404,23 @@ La evidencia sigue siendo local y automatizada; no se ejecutó NVDA/VoiceOver ni
 se hizo una aceptación manual en navegador. No se crearon registros, no se
 aplicaron migraciones, no se tocó Supabase, no se enviaron correos/webhooks, no
 se firmó y no se promovió a producción.
+
+## Incremento ejecutado — scorecard adaptativo sin inventario silencioso
+
+El scorecard de `AdaptiveReviewWorkbench` comparte ahora la misma política del
+panel de manifiesto: enumera los formatos reconocidos en mayúsculas y, cuando
+el inventario queda vacío, muestra explícitamente `No recognized source
+formats`. Así una solicitud con archivos no soportados o todavía no
+interpretados queda visible como una condición que requiere revisión, en lugar
+de parecer una ausencia normal de fuentes.
+
+Regresión ejecutada:
+
+- `AdaptiveReviewWorkbench.test.ts` + `RequestManifestPanel.test.tsx`:
+  15/15.
+- ESLint enfocado y TypeScript (`tsc --noEmit`): correctos.
+- Build OSP: 430 módulos transformados; `git diff --check`: correcto.
+
+El cambio sólo normaliza la presentación de lectura; no infiere formatos, no
+modifica el manifiesto, no crea registros, no aplica migraciones y no habilita
+firmas, autorización de Sales, correos, webhooks ni despliegue.

@@ -15,6 +15,13 @@ type DecisionSeed = {
 };
 export type RequestDecisionSubmission = { decisionId: string; outcome: DecisionOutcome; resolution: string };
 
+export function sourceCoverageSummary(sourceCoverage: RequestManifestReadModel['sourceCoverage']): string {
+  const recognized = Object.entries(sourceCoverage)
+    .filter(([, count]) => count > 0)
+    .map(([format]) => format.toUpperCase());
+  return recognized.length > 0 ? recognized.join(' · ') : 'No recognized source formats';
+}
+
 const stageCopy = [
   ['01', 'Understand', 'Read every preserved request source.'],
   ['02', 'Decide', 'Resolve only the material ambiguities.'],
@@ -107,7 +114,7 @@ export function AdaptiveReviewWorkbench({ caseId, manifest, profile, review, sav
       </ol>
 
       <dl className="adaptive-scorecard" aria-label="Request readiness scorecard">
-        <div><dt>Sources understood</dt><dd>{manifest.sourceCount}</dd><small>{Object.entries(manifest.sourceCoverage).filter(([, count]) => count > 0).map(([format]) => format.toUpperCase()).join(' · ')}</small></div>
+        <div><dt>Sources understood</dt><dd>{manifest.sourceCount}</dd><small aria-label="Recognized source formats">{sourceCoverageSummary(manifest.sourceCoverage)}</small></div>
         <div><dt>Fields matched</dt><dd>{canonicalMatchCount}/{manifest.requestedFields.length}</dd><small>to the XBF Entity Vault</small></div>
         <div><dt>Required documents</dt><dd>{requiredDocumentCount}</dd><small>{manifest.requestedDocuments.length - requiredDocumentCount} optional</small></div>
         <div><dt>Package draft</dt><dd>{profile.draft ? 'Ready' : 'Pending'}</dd><small>{profile.binding?.entity_code ?? (unresolvedEntity ? 'entity decision needed' : manifest.targetXbfEntity)}</small></div>

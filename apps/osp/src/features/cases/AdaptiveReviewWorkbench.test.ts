@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { RequestManifestReadModel } from '../../api/contracts';
-import { decisionSeeds } from './AdaptiveReviewWorkbench';
+import { decisionSeeds, sourceCoverageSummary } from './AdaptiveReviewWorkbench';
 
 const manifest = {
   schemaVersion: 1,
@@ -31,6 +31,11 @@ const manifest = {
 } satisfies RequestManifestReadModel;
 
 describe('AdaptiveReviewWorkbench decision identity', () => {
+  it('names recognized source formats and explains an empty inventory', () => {
+    expect(sourceCoverageSummary(manifest.sourceCoverage)).toBe('EMAIL');
+    expect(sourceCoverageSummary({ email: 0, xlsx: 0, xlsm: 0, pdf: 0, docx: 0, image: 0 })).toBe('No recognized source formats');
+  });
+
   it('removes exact duplicates while retaining first persisted ids', () => {
     expect(decisionSeeds(manifest).map((seed) => seed.decisionId)).toEqual(['clarification:0', 'contradiction:0', 'missing:0']);
   });
