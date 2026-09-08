@@ -52,15 +52,26 @@ export function openLogin({ redirectTo = window.location.href } = {}) {
   if (loginPromise) return loginPromise;
   const dialog = ensureLoginDialog();
   dialog.showModal();
-  loginPromise = new Promise((resolve, reject) => {
+  loginPromise = new Promise((resolve) => {
     const form = dialog.querySelector("form");
+    const closeButton = dialog.querySelector("[data-close]");
+    let finished = false;
     const finish = (value) => {
+      if (finished) return;
+      finished = true;
       form.removeEventListener("submit", submit);
+      closeButton.removeEventListener("click", close);
+      dialog.removeEventListener("cancel", cancel);
+      dialog.removeEventListener("close", close);
       dialog.close();
       resolve(value);
     };
-    const close = () => finish(null);
-    dialog.querySelector("[data-close]").addEventListener("click", close, { once: true });
+    // A queued close event from a previous opening must not close a reopened dialog.
+    const close = (event) => {
+      if (event?.type === "close" && dialog.open) return;
+      finish(null);
+    };
+    const cancel = (event) => { event.preventDefault(); close(); };
     const submit = async (event) => {
       event.preventDefault();
       const errorNode = dialog.querySelector("[data-auth-error]");
@@ -73,10 +84,13 @@ export function openLogin({ redirectTo = window.location.href } = {}) {
         if (error) throw error;
         finish(data);
       } catch (error) {
-        errorNode.textContent = humanizeError(error);
+        if (!finished) errorNode.textContent = humanizeError(error);
       }
     };
     form.addEventListener("submit", submit);
+    closeButton.addEventListener("click", close);
+    dialog.addEventListener("cancel", cancel);
+    dialog.addEventListener("close", close);
   }).finally(() => { loginPromise = null; });
   return loginPromise;
 }
