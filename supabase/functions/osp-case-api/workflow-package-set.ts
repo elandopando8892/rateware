@@ -11,6 +11,23 @@ const TYPES = [
   "application/vnd.ms-excel.sheet.macroEnabled.12",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ] as const;
+/** Names are derived from verified source identity/MIME, never provider paths. */
+export function packageSetDownloadName(
+  file: { sourceVersionId: string; contentType: string },
+): string {
+  const extensions: Record<string, string> = {
+    "application/pdf": "pdf",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.ms-excel.sheet.macroEnabled.12": "xlsm",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+      "docx",
+  };
+  const extension = extensions[file.contentType];
+  if (!UUID.test(file.sourceVersionId) || !TYPES.includes(file.contentType as typeof TYPES[number]) || !extension) {
+    throw new Error("WORKFLOW_PACKAGE_SET_INVALID");
+  }
+  return `XBF-OSP-Form-${file.sourceVersionId}.${extension}`;
+}
 export type WorkflowPackageSet = {
   setId: string;
   version: number;

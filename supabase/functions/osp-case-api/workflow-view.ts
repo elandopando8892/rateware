@@ -1,6 +1,7 @@
 import postgres from "postgres";
 import {
   loadWorkflowPackageSet,
+  packageSetDownloadName,
   type WorkflowPackageSet,
 } from "./workflow-package-set.ts";
 
@@ -583,7 +584,10 @@ export function createPostgresWorkflowViewSource(
   options: {
     databaseUrl: string;
     postgresFactory?: PostgresFactory;
-    signSupplierPackage?: (objectId: string) => Promise<string>;
+    signSupplierPackage?: (
+      objectId: string,
+      downloadName?: string,
+    ) => Promise<string>;
     semanticGate?: RequestSemanticGate;
   },
 ): WorkflowViewSource {
@@ -779,7 +783,10 @@ export function createPostgresWorkflowViewSource(
               record.supplierPackageSet.files.map(async (file) => ({
                 ...file,
                 downloadUrl: optionalHttpsUrl(
-                  await options.signSupplierPackage!(file.objectId),
+                  await options.signSupplierPackage!(
+                    file.objectId,
+                    packageSetDownloadName(file),
+                  ),
                 ),
               })),
             ),

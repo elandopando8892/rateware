@@ -127,3 +127,14 @@ and concurrency verification, then explicit set-wide signature/Sales/send consum
 The new adapter is not wired to an HTTP action and all set-wide UI capabilities
 remain disabled. No migration has been applied remotely and no historical case
 has been modified. Production readiness remains an estimate, not a test percentage.
+
+## Download identity correction before review capture
+
+Runtime composition previously forced `XBF-OSP-Supplier-Package.xlsx` for every
+signed Storage download, including PDF/DOCX set members. The view now supplies a
+source-UUID-based name with the verified MIME extension for each member, and
+composition forwards it to Storage. The legacy single-XLSX name stays unchanged.
+No browser-provided path/name is accepted. This fixes inspection prerequisites;
+it does not implement the pending review-capture UI or activate any approval.
+Focused validation: 27 tests (name/format, workflow projection and composition)
+plus lint. No new route, permission, migration or deployment in this correction.

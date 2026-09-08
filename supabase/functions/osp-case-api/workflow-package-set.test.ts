@@ -4,12 +4,48 @@ import { sha256Hex } from "../_shared/osp/source-hash.ts";
 import { canonicalPackageSetJson } from "../_shared/osp/package-set-json.ts";
 import {
   loadWorkflowPackageSet,
+  packageSetDownloadName,
   parseWorkflowPackageSet,
 } from "./workflow-package-set.ts";
 import type { SqlPort } from "../_shared/osp/database-context.ts";
 
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+Deno.test("each supported form keeps its real extension and distinct stable download name", () => {
+  const types = [
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel.sheet.macroEnabled.12",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ];
+  const extensions = ["pdf", "xlsx", "xlsm", "docx"];
+  assertEquals(
+    types.map((contentType, index) =>
+      packageSetDownloadName({ sourceVersionId: id(index + 5), contentType })
+    ),
+    extensions.map((extension, index) =>
+      `XBF-OSP-Form-${id(index + 5)}.${extension}`
+    ),
+  );
+});
+Deno.test("download names reject unsupported formats and untrusted path identities", async () => {
+  for (
+    const file of [{
+      sourceVersionId: "../../private",
+      contentType: "application/pdf",
+    }, { sourceVersionId: id(5), contentType: "text/html" }]
+  ) {
+    await assertRejects(
+      async () => {
+        await Promise.resolve();
+        packageSetDownloadName(file);
+      },
+      Error,
+      "WORKFLOW_PACKAGE_SET_INVALID",
+    );
+  }
+});
 const scope = {
   organizationId: id(1),
   caseId: id(2),

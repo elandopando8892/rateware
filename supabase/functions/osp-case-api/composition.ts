@@ -114,11 +114,11 @@ export function createCaseApiRuntime(options: {
     postgresFactory: sharedFactory,
     semanticGate,
     signSupplierPackage: workflowStorage
-      ? async (objectId) => {
+      ? async (objectId, downloadName) => {
         const result = await workflowStorage.storage
           .from("osp-derived-documents")
           .createSignedUrl(objectId, 60, {
-            download: "XBF-OSP-Supplier-Package.xlsx",
+            download: downloadName ?? "XBF-OSP-Supplier-Package.xlsx",
           });
         if (result.error || !result.data?.signedUrl) {
           throw new Error("WORKFLOW_VIEW_INVALID");
