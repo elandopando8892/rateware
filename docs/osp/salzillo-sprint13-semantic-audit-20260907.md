@@ -331,3 +331,27 @@ Regresión ejecutada:
 El corpus es sintético y no crea manifiestos reales, no ejecuta macros, no
 envía archivos a proveedores externos y no cambia migraciones, casos,
 Supabase, firmas, correos o webhooks.
+
+## Incremento ejecutado — razones de freno visibles para Operaciones
+
+La pantalla del manifiesto ahora expone los `reasonCodes` del modelo como una
+lista de motivos legibles y deduplicados. Los códigos conocidos se traducen a
+lenguaje operativo (entidad XBF no resuelta, referencia comercial faltante,
+instrucciones ambiguas, autoridad de firma ausente, etc.); los códigos nuevos
+se muestran con un fallback seguro sin romper la UI. La sección sólo aparece
+cuando el estado no está listo, para no llamar “detenido” a un caso ya
+preparado.
+
+La narrativa operativa queda completa: cobertura de fuentes, aislamiento XLSM,
+contador de bloqueos, texto original del carrier y ahora la causa exacta del
+freno se observan antes del ensamblado. No se agrega ningún botón de acción
+externa.
+
+Regresión ejecutada:
+
+- `RequestManifestPanel.test.tsx`: 11/11.
+- ESLint enfocado y TypeScript (`tsc --noEmit`): correctos.
+- Build OSP: 430 módulos transformados; `git diff --check` correcto.
+
+El cambio es sólo de lectura/presentación: no resuelve requisitos, no modifica
+datos y no habilita firma, autorización de Sales, correo, webhook o despliegue.

@@ -51,6 +51,8 @@ describe('RequestManifestPanel', () => {
     expect(within(fields).getByText('Needs mapping')).toBeInTheDocument();
     expect(screen.getByText('Third reference missing')).toBeInTheDocument();
     expect(screen.getByText('Provide a third trade reference.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /why this request is stopped/i })).toBeInTheDocument();
+    expect(screen.getByText('A required trade reference is missing')).toBeInTheDocument();
     expect(screen.getByText(/ai proposes\. operations confirms\. no external effects/i)).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
@@ -166,5 +168,19 @@ describe('RequestManifestPanel', () => {
     expect(screen.getByText(/source preserved unchanged/i)).toBeInTheDocument();
     expect(screen.getByText(/macro execution remained blocked/i)).toBeInTheDocument();
     expect(screen.getByText('sanitized copy')).toBeInTheDocument();
+  });
+
+  it('deduplicates readiness reason codes and keeps unknown codes readable', () => {
+    render(<RequestManifestPanel manifest={{
+      ...manifest,
+      readiness: {
+        status: 'needs_clarification',
+        reasonCodes: ['date_contradiction', 'date_contradiction', 'carrier_policy_missing'],
+      },
+    }} />);
+
+    const reasons = screen.getByRole('region', { name: /why this request is stopped/i });
+    expect(within(reasons).getAllByText('Effective dates conflict across sources')).toHaveLength(1);
+    expect(within(reasons).getByText('carrier policy missing')).toBeInTheDocument();
   });
 });

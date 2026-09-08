@@ -14,11 +14,25 @@ const READINESS_LABELS: Record<RequestManifestReadModel['readiness']['status'], 
   unsupported: 'Manual handling required',
 };
 
+const READINESS_REASON_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  target_entity_unresolved: 'XBF legal entity is not resolved',
+  requester_name_missing: 'Carrier legal name is missing',
+  third_trade_reference_missing: 'A required trade reference is missing',
+  submission_instructions_unclear: 'Return instructions are ambiguous',
+  signature_authority_unclear: 'Signer authority is not stated',
+  date_contradiction: 'Effective dates conflict across sources',
+  submission_instructions_missing: 'Return instructions are missing',
+});
+
 const HUMAN_DATE = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' });
 const SOURCE_LABELS = { email: 'Email', xlsx: 'XLSX', xlsm: 'XLSM', pdf: 'PDF', docx: 'DOCX', image: 'Image' } as const;
 
 function EvidenceCount({ ids }: { ids: readonly string[] }) {
   return <span className="manifest-evidence">{ids.length} {ids.length === 1 ? 'source' : 'sources'}</span>;
+}
+
+function readinessReasonLabel(code: string): string {
+  return READINESS_REASON_LABELS[code] ?? code.replaceAll('_', ' ');
 }
 
 export function RequestManifestPanel({
@@ -48,6 +62,7 @@ export function RequestManifestPanel({
   const unresolved = blockers.length;
   const readinessStatus = unresolved > 0 && manifest.readiness.status === 'ready_for_prefill' ? 'needs_clarification' : manifest.readiness.status;
   const readinessTone = readinessStatus === 'ready_for_prefill' ? 'ready' : readinessStatus === 'needs_clarification' ? 'warning' : 'blocked';
+  const readinessReasons = readinessStatus === 'ready_for_prefill' ? [] : [...new Set(manifest.readiness.reasonCodes)].slice(0, 20);
   return (
     <section className="panel request-manifest" aria-labelledby="request-manifest-title">
       <div className="panel-heading request-manifest-heading">
@@ -93,6 +108,11 @@ export function RequestManifestPanel({
         <div><span className="manifest-readiness-dot" aria-hidden="true" /><strong>{READINESS_LABELS[readinessStatus]}</strong></div>
         <p>{unresolved === 0 ? 'No blockers were detected in the preserved evidence.' : `${unresolved} evidence issue${unresolved === 1 ? '' : 's'} must be resolved before signature or delivery.`}</p>
       </div>
+
+      {readinessReasons.length > 0 ? <section className="manifest-readiness-reasons" aria-labelledby="manifest-readiness-reasons-title">
+        <div><p className="eyebrow">Semantic stop reasons</p><h3 id="manifest-readiness-reasons-title">Why this request is stopped</h3></div>
+        <ul>{readinessReasons.map((reason) => <li key={reason}>{readinessReasonLabel(reason)}</li>)}</ul>
+      </section> : null}
 
       <div className="manifest-columns">
         <div className="manifest-stack">
