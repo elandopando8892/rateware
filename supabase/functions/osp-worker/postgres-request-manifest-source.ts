@@ -47,6 +47,7 @@ export type RequestManifestSourceReference = Readonly<{
     contentType: SupportedContentType;
   }>[];
   knowledgeCatalog?: readonly RequestKnowledgeCatalogEntry[];
+  previousMessages?: readonly RequestManifestSourceReference["message"][];
 }>;
 
 function databaseUrl(value: string): string {
@@ -93,7 +94,7 @@ function manifestSource(
   knowledgeRows: SqlRow[],
 ): RequestManifestSourceReference {
   if (
-    messages.length !== 1 || documents.length > 20 ||
+    messages.length < 1 || messages.length > 20 || documents.length > 20 ||
     knowledgeRows.length > 1_000
   ) {
     throw new Error("REQUEST_MANIFEST_SOURCE_MISMATCH");
@@ -220,6 +221,21 @@ function manifestSource(
   return Object.freeze({
     organizationId,
     caseId,
+    previousMessages: Object.freeze(
+      messages.slice(1).reverse().map((row) => {
+        if (
+          !UUID.test(String(row.id)) || !SHA256.test(String(row.source_sha256))
+        ) {
+          throw new Error("REQUEST_MANIFEST_SOURCE_MISMATCH");
+        }
+        return Object.freeze({
+          id: String(row.id),
+          sourceSha256: String(row.source_sha256),
+          subject: bounded(row.subject, 998),
+          safeBody: bounded(row.safe_body, 40_000, true),
+        });
+      }),
+    ),
     message: Object.freeze({
       id: String(message.id),
       sourceSha256: String(message.source_sha256),
@@ -272,7 +288,7 @@ export function createPostgresRequestManifestSource(options: {
             cases.length !== 1 || cases[0].id !== input.caseId
           ) throw new Error("REQUEST_MANIFEST_SOURCE_MISMATCH");
           const messages =
-            await tx`select id, source_sha256, subject, safe_body from osp_private.gmail_messages where organization_id = ${input.organizationId} and case_id = ${input.caseId} order by received_at desc, id desc limit 1`;
+            await tx`select id, source_sha256, subject, safe_body from osp_private.gmail_messages where organization_id = ${input.organizationId} and case_id = ${input.caseId} order by received_at desc, id desc limit 21`;
           const documents =
             await tx`select version.id, version.source_sha256, version.bucket_id, version.opaque_object_key, version.content_type, safety.status as source_safety from osp_private.document_versions version join osp_private.documents document on document.organization_id = version.organization_id and document.id = version.document_id join lateral (select assessment.status from osp_private.source_safety_assessments assessment where assessment.organization_id = version.organization_id and assessment.document_version_id = version.id order by assessment.version desc limit 1) safety on true where version.organization_id = ${input.organizationId} and document.case_id = ${input.caseId} and version.document_type = 'supplier_requirement' and version.status in ('review_required', 'approved') and not exists (select 1 from osp_private.document_versions later where later.organization_id = version.organization_id and later.document_id = version.document_id and later.version > version.version) order by version.id limit 21`;
           const knowledgeRows = await tx`

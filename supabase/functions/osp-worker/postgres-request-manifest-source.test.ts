@@ -7,7 +7,11 @@ const caseId = "22222222-2222-4222-8222-222222222222";
 const messageId = "33333333-3333-4333-8333-333333333333";
 const documentId = "44444444-4444-4444-8444-444444444444";
 
-function factory(contentType = "application/pdf", includeKnowledge = true) {
+function factory(
+  contentType = "application/pdf",
+  includeKnowledge = true,
+  count = 1,
+) {
   const sql = Object.assign(async (parts: TemplateStringsArray) => {
     const query = parts.join("?");
     if (
@@ -15,12 +19,15 @@ function factory(contentType = "application/pdf", includeKnowledge = true) {
     ) return [];
     if (query.includes("customer_registration_cases")) return [{ id: caseId }];
     if (query.includes("gmail_messages")) {
-      return [{
-        id: messageId,
+      assertEquals(query.includes("limit 21"), true);
+      return Array.from({ length: count }, (_, index) => ({
+        id: index === 0
+          ? messageId
+          : `55555555-5555-4555-8555-${String(index).padStart(12, "0")}`,
         source_sha256: "a".repeat(64),
         subject: "Supplier setup",
         safe_body: "Please complete the attached forms.",
-      }];
+      }));
     }
     if (query.includes("document_versions")) {
       return [{
@@ -72,6 +79,31 @@ Deno.test("request manifest source loads the latest safe supported evidence", as
     valueType: "table",
     constraints: [],
   }]);
+});
+
+Deno.test("manifest source retains earlier messages in chronological order", async () => {
+  const source = createPostgresRequestManifestSource({
+    databaseUrl: "postgresql://synthetic.example.test/db",
+    postgresFactory: factory("application/pdf", true, 3),
+  });
+  const loaded = await source.load({ organizationId, caseId });
+  assertEquals(loaded.message.id, messageId);
+  assertEquals(loaded.previousMessages?.map((m) => m.id), [
+    "55555555-5555-4555-8555-000000000002",
+    "55555555-5555-4555-8555-000000000001",
+  ]);
+});
+
+Deno.test("manifest source rejects overflow instead of silently truncating a thread", async () => {
+  const source = createPostgresRequestManifestSource({
+    databaseUrl: "postgresql://synthetic.example.test/db",
+    postgresFactory: factory("application/pdf", true, 21),
+  });
+  await assertRejects(
+    () => source.load({ organizationId, caseId }),
+    Error,
+    "REQUEST_MANIFEST_SOURCE_MISMATCH",
+  );
 });
 
 Deno.test("request manifest source fails closed for unsupported evidence", async () => {

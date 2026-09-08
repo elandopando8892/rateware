@@ -549,3 +549,57 @@ Deno.test("multimodal request manifest preserves a complete PDF DOCX XLSX XLSM a
     true,
   );
 });
+Deno.test("email bundle rejects duplicate identities and excessive body before interpretation", async () => {
+  let calls = 0;
+  const service = createRequestManifestDraftService({
+    interpreter: {
+      interpretWithTelemetry: async () => {
+        calls++;
+        throw new Error("UNEXPECTED");
+      },
+    },
+    store: {
+      findByEvidence: async () => {
+        calls++;
+        throw new Error("UNEXPECTED");
+      },
+      record: async () => {
+        calls++;
+        throw new Error("UNEXPECTED");
+      },
+    },
+  });
+  const message = {
+    id: "33333333-3333-4333-8333-333333333333",
+    sourceSha256: "a".repeat(64),
+    subject: "Amendment",
+    safeBody: "Replace QF-168 with QF-167",
+  };
+  for (
+    const previousMessages of [
+      [message],
+      Array.from(
+        { length: 3 },
+        (_, i) => ({
+          ...message,
+          id: `55555555-5555-4555-8555-${String(i).padStart(12, "0")}`,
+          safeBody: "x".repeat(30000),
+        }),
+      ),
+    ]
+  ) {
+    await assertRejects(
+      () =>
+        service.run({
+          organizationId: "11111111-1111-4111-8111-111111111111",
+          caseId: "22222222-2222-4222-8222-222222222222",
+          message,
+          previousMessages,
+          documents: [],
+        }),
+      Error,
+      "REQUEST_MANIFEST_SOURCE_INVALID",
+    );
+  }
+  assertEquals(calls, 0);
+});

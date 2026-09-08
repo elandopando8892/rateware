@@ -62,6 +62,7 @@ export function createRequestManifestJobService(options: {
         organizationId: reference.organizationId,
         caseId: reference.caseId,
         message: reference.message,
+        previousMessages: reference.previousMessages,
         documents: Object.freeze(documents),
         knowledgeCatalog: reference.knowledgeCatalog,
       }));

@@ -45,6 +45,7 @@ export type RequestManifestSource = Readonly<{
     safeBody: string;
   }>;
   documents: readonly RequestManifestDocument[];
+  previousMessages?: readonly RequestManifestSource["message"][];
   knowledgeCatalog?: readonly RequestKnowledgeCatalogEntry[];
 }>;
 
@@ -288,6 +289,26 @@ function assertSource(source: RequestManifestSource): void {
   }
   boundedLine(source.message.subject, 998);
   boundedBody(source.message.safeBody, 40_000);
+  const messages = [...(source.previousMessages ?? []), source.message];
+  if (
+    messages.length > 20 ||
+    new Set(messages.map((m) => m.id)).size !== messages.length
+  ) {
+    throw new Error("REQUEST_MANIFEST_SOURCE_INVALID");
+  }
+  for (const message of messages) {
+    if (!UUID.test(message.id) || !SHA256.test(message.sourceSha256)) {
+      throw new Error("REQUEST_MANIFEST_SOURCE_INVALID");
+    }
+    boundedLine(message.subject, 998);
+    boundedBody(message.safeBody, 40_000);
+  }
+  if (
+    messages.reduce((n, m) => n + m.safeBody.length + m.subject.length, 0) >
+      80_000
+  ) {
+    throw new Error("REQUEST_MANIFEST_SOURCE_INVALID");
+  }
   const ids = new Set<string>();
   for (const document of source.documents) {
     if (
@@ -348,16 +369,18 @@ export function createRequestManifestDraftService(options: {
   return Object.freeze({
     async run(source: RequestManifestSource) {
       assertSource(source);
-      const evidence: RequestManifestEvidence[] = [Object.freeze({
-        id: `email:${source.message.id}`,
-        kind: "email_text",
-        sourceName: "carrier-request.eml",
-        content:
-          `Subject: ${source.message.subject}\n\n${source.message.safeBody}`,
-      })];
+      const messages = [...(source.previousMessages ?? []), source.message];
+      const evidence: RequestManifestEvidence[] = messages.map((message) =>
+        Object.freeze({
+          id: `email:${message.id}`,
+          kind: "email_text" as const,
+          sourceName: `carrier-request-${message.id}.eml`,
+          content: `Subject: ${message.subject}\n\n${message.safeBody}`,
+        })
+      );
       const attachments: RequestManifestAttachment[] = [];
       const coverage = {
-        email: 1,
+        email: messages.length,
         xlsx: 0,
         xlsm: 0,
         pdf: 0,
@@ -402,6 +425,14 @@ export function createRequestManifestDraftService(options: {
       }
       const evidenceInventory = {
         message: source.message.sourceSha256,
+        ...(messages.length > 1
+          ? {
+            previousMessages: messages.slice(0, -1).map((m) => ({
+              id: m.id,
+              sourceSha256: m.sourceSha256,
+            })),
+          }
+          : {}),
         documents: documents.map((document) => ({
           versionId: document.versionId,
           sourceSha256: document.sourceSha256,
@@ -435,7 +466,7 @@ export function createRequestManifestDraftService(options: {
       const manifest = readDraft(
         interpreted.manifest,
         interpreted.telemetry,
-        1 + documents.length,
+        messages.length + documents.length,
         coverage,
         Object.freeze({
           macroEnabledFiles,
