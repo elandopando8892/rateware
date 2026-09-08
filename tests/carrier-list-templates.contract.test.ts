@@ -3128,6 +3128,208 @@ Deno.test("explicit template actions fail closed while capability is disabled", 
   assertEquals(db.traces, []);
 });
 
+Deno.test("Task 10 tenant and permission probes", async () => {
+  const report: Array<Record<string, unknown>> = [];
+  const probe = async (name: string, run: () => Promise<void> | void) => {
+    await run();
+    report.push({ name, status: "pass" });
+  };
+
+  await probe("org_b_cannot_list_or_get_org_a_template", async () => {
+    const orgBUser = {
+      owner_user_id: "kp-b",
+      owner_email: "org:org-b",
+      organization_id: "org-b",
+    };
+    const orgBClaims = {
+      sub: "kp-b",
+      email: "buyer-b@example.com",
+      permissions: ["vendors:read"],
+    };
+    const db = new ScriptedSupabase([
+      {
+        table: "vendor_segments",
+        operation: "select",
+        data: [],
+        count: 0,
+        filters: [
+          ["eq", "organization_id", "org-b"],
+          ["eq", "segment_type", "participant_template"],
+          ["order", "updated_at", { ascending: false }],
+          ["range", "0", 49],
+        ],
+      },
+      {
+        table: "vendor_segments",
+        operation: "select",
+        data: null,
+        filters: [
+          ["eq", "id", materializationTemplateId],
+          ["eq", "organization_id", "org-b"],
+          ["eq", "segment_type", "participant_template"],
+        ],
+      },
+    ]);
+    const handler = createTestRatewareApiHandler(db, {
+      user: orgBUser,
+      claims: orgBClaims,
+    });
+    assert(handler);
+    const listResponse = await handler(jsonActionRequest({
+      action: "list_carrier_list_templates",
+      organization_id: "org-a",
+    }));
+    assertEquals(listResponse.status, 200);
+    assertEquals((await listResponse.json()).rows, []);
+    const getResponse = await handler(jsonActionRequest({
+      action: "get_carrier_list_template",
+      id: materializationTemplateId,
+      organization_id: "org-a",
+    }));
+    assertEquals(getResponse.status, 404);
+    assertEquals((await getResponse.json()).error, "Carrier list template was not found.");
+    assertEquals(db.traces.map((trace) => trace.filters), [
+      [
+        ["eq", "organization_id", "org-b"],
+        ["eq", "segment_type", "participant_template"],
+        ["order", "updated_at", { ascending: false }],
+        ["range", "0", 49],
+      ],
+      [
+        ["eq", "id", materializationTemplateId],
+        ["eq", "organization_id", "org-b"],
+        ["eq", "segment_type", "participant_template"],
+      ],
+    ]);
+  });
+
+  await probe("read_only_user_can_read_active_templates_but_not_write", async () => {
+    const activeTemplate = materializationTemplate([vendorA.id]);
+    const readDb = new ScriptedSupabase([
+      {
+        table: "vendor_segments",
+        operation: "select",
+        data: [activeTemplate],
+        count: 1,
+        filters: [
+          ["eq", "organization_id", "org-a"],
+          ["eq", "segment_type", "participant_template"],
+          ["eq", "lifecycle_status", "active"],
+          ["order", "updated_at", { ascending: false }],
+          ["range", "0", 49],
+        ],
+      },
+    ]);
+    const readClaims = {
+      sub: "kp-read",
+      email: "reader@example.com",
+      permissions: ["vendors:read"],
+    };
+    const listResult = await callCarrierTemplateAction(readDb, {
+      action: "list_carrier_list_templates",
+      lifecycle_status: "active",
+    }, { enabled: true }, readClaims);
+    assertEquals(listResult?.status, 200);
+    assertEquals((listResult?.body.rows as Array<Record<string, unknown>>)[0].lifecycle_status, "active");
+
+    for (const action of carrierTemplateActions.slice(3)) {
+      const db = new ScriptedSupabase();
+      const result = await callCarrierTemplateAction(
+        db,
+        { action },
+        { enabled: true },
+        readClaims,
+      );
+      assertEquals(result?.status, 403, action);
+      assertEquals(db.traces, [], action);
+    }
+  });
+
+  await probe("foreign_uuid_rejects_the_whole_save", async () => {
+    const db = new ScriptedSupabase([
+      {
+        table: "vendors",
+        operation: "select",
+        data: [],
+        filters: [
+          ["eq", "organization_id", "org-a"],
+          ["in", "id", [foreign.id]],
+        ],
+      },
+    ]);
+    const result = await callCarrierTemplateAction(db, {
+      action: "create_carrier_list_template",
+      template: {
+        segment_name: "Cross workspace attempt",
+        lifecycle_status: "active",
+        vendor_ids: [foreign.id],
+      },
+    });
+    assertEquals(result?.status, 400);
+    assertEquals(result?.body.error, "One or more selected carriers are unavailable in this organization.");
+    assertEquals(db.traces.some((trace) => trace.operation === "insert"), false);
+  });
+
+  await probe("stale_expected_version_returns_409_without_overwrite", async () => {
+    const current = {
+      ...materializationTemplate([vendorA.id]),
+      segment_name: "Current version",
+      template_version: 3,
+      updated_at: "2026-09-08T00:00:00.000Z",
+    };
+    const db = new ScriptedSupabase([
+      {
+        table: "vendor_segments",
+        operation: "select",
+        data: current,
+        filters: [
+          ["eq", "id", materializationTemplateId],
+          ["eq", "organization_id", "org-a"],
+          ["eq", "segment_type", "participant_template"],
+        ],
+      },
+    ]);
+    const result = await callCarrierTemplateAction(db, {
+      action: "update_carrier_list_template",
+      id: materializationTemplateId,
+      expected_version: 2,
+      template: {
+        segment_name: "Stale overwrite",
+        lifecycle_status: "active",
+        vendor_ids: [vendorA.id],
+      },
+    });
+    assertEquals(result?.status, 409);
+    assertEquals(result?.body.code, "template_version_conflict");
+    assertEquals(result?.body.current_version, 3);
+    assertEquals(current.template_version, 3);
+    assertEquals(db.traces.some((trace) => trace.operation === "update"), false);
+  });
+
+  await probe("archived_template_is_not_materializable_from_a_stale_page", async () => {
+    const db = new ScriptedSupabase([
+      templateRead([vendorA.id], {
+        lifecycle_status: "archived",
+        status: "archived",
+      }),
+    ]);
+    const handler = createTestRatewareApiHandler(db);
+    assert(handler);
+    const response = await handler(jsonActionRequest(materializationAction()));
+    assertEquals(response.status, 409);
+    assertEquals((await response.json()).code, "carrier_template_inactive");
+    assertEquals(db.traces.some((trace) => trace.operation === "upsert"), false);
+    assertEquals(db.traces.some((trace) => trace.table === "saas_audit_log"), false);
+  });
+
+  console.log(`CARRIER_TEMPLATE_TENANT_PROBE_REPORT:${JSON.stringify({
+    schema_version: 1,
+    environment: "local-fake-authenticated-calls",
+    external_effects: "none",
+    probes: report,
+  })}`);
+});
+
 Deno.test("list is organization scoped and pagination is bounded", async () => {
   const db = new ScriptedSupabase([
     {
