@@ -4,6 +4,7 @@ import {
   buildRequestContract,
   evaluateRequestFulfillment,
   type FulfillmentEvidence,
+  type RequestContractRequirement,
   type RequestFulfillmentMatrix,
   type RequestOutboundAttachment,
   type RequestSemanticGate,
@@ -215,13 +216,10 @@ function documentEvidence(
 
 function formEvidence(
   rows: SqlRow[],
-  formKeys: readonly string[],
+  forms: readonly RequestContractRequirement[],
   included: ReadonlySet<string>,
 ): EvidenceRecord[] {
-  // The current package model binds one generated artifact to one requested form.
-  // Multiple requested forms must remain fail-closed until each package carries
-  // an explicit form requirement id; positional guessing could satisfy the wrong form.
-  if (formKeys.length !== 1) return [];
+  if (forms.length === 0) return [];
   return rows.flatMap((row) => {
     if (
       typeof row.id !== "string" || typeof row.content_type !== "string" ||
@@ -231,6 +229,27 @@ function formEvidence(
     const receipt = row.artifact_receipt_json === null
       ? null
       : parsedJson(row.artifact_receipt_json);
+    // Legacy single-form behavior is preserved. Multiple forms require a
+    // database-verified source/snapshot chain and exactly one source citation.
+    // This establishes identity only, never semantic completion or signature.
+    let canonicalKey = forms.length === 1 ? forms[0].canonicalKey : null;
+    if (forms.length > 1) {
+      if (
+        row.source_binding_verified !== true || !receipt ||
+        typeof receipt.sourceVersionId !== "string" ||
+        !UUID.test(receipt.sourceVersionId) ||
+        receipt.outputSha256 !== row.output_sha256 ||
+        receipt.contentType !== row.content_type
+      ) return [];
+      const sourceId = receipt.sourceVersionId;
+      const candidates = forms.filter((form) =>
+        form.evidenceIds.some((id) =>
+          id === `file:${sourceId}` || id.startsWith(`xlsx:${sourceId}:`)
+        )
+      );
+      if (candidates.length !== 1) return [];
+      canonicalKey = candidates[0].canonicalKey;
+    }
     // XLSX occupancy is neither rendered PDF pagination nor semantic completion.
     // Never inherit structure from the unsigned/source package after bytes change.
     const structure = receipt && receipt.outputSha256 === row.output_sha256 &&
@@ -264,7 +283,7 @@ function formEvidence(
     return [Object.freeze({
       evidence: Object.freeze({
         evidenceId: `package:${row.id}`,
-        canonicalKey: formKeys[0],
+        canonicalKey: canonicalKey!,
         label: String(row.package_kind),
         contentType: row.content_type,
         status: "approved" as const,
@@ -375,6 +394,22 @@ export function createPostgresRequestSemanticGate(options: {
         select value.id::text, value.package_kind, value.content_type,
                value.output_sha256,
                value.artifact_receipt_json,
+               exists (
+                 select 1 from osp_private.document_versions original
+                 join osp_private.case_package_input_snapshots snapshot
+                   on snapshot.organization_id = original.organization_id
+                  and snapshot.case_id = value.case_id
+                  and snapshot.id = value.input_snapshot_id
+                  and snapshot.canonical_sha256 = value.input_snapshot_sha256
+                  and original.id = any(snapshot.document_version_ids)
+                 where original.organization_id = value.organization_id
+                   and original.id::text = value.artifact_receipt_json->>'sourceVersionId'
+                   and original.source_sha256 = value.artifact_receipt_json->>'sourceSha256'
+                   and original.document_type = 'supplier_requirement'
+                   and original.status = 'approved'
+                   and snapshot.id::text = value.artifact_receipt_json->>'packageSnapshotId'
+                   and snapshot.canonical_sha256 = value.artifact_receipt_json->>'packageSnapshotSha256'
+               ) as source_binding_verified,
                case when value.package_kind = 'signed' then exists (
                  select 1 from osp_private.signature_application_receipts receipt
                  where receipt.organization_id = value.organization_id
@@ -391,12 +426,12 @@ export function createPostgresRequestSemanticGate(options: {
           and value.status = 'current'
         order by case when value.package_kind = 'supplier_completed' then 0 else 1 end,
                  value.version desc`;
-        const formKeys = contract.requirements.filter((item) =>
+        const forms = contract.requirements.filter((item) =>
           item.kind === "form"
-        ).map((item) => item.canonicalKey);
+        );
         const records = Object.freeze([
           ...documentEvidence(documents, included),
-          ...formEvidence(packages, formKeys, included),
+          ...formEvidence(packages, forms, included),
         ]);
         const matrix = evaluateRequestFulfillment({
           contract,
