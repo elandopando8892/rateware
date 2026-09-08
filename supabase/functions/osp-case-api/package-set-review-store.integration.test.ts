@@ -14,6 +14,12 @@ import {
 } from "./package-set-review-store.ts";
 import { loadLockedPackageSetReview } from "./package-set-review-source.ts";
 import { createPackageMemberReviewStore } from "./package-member-review-store.ts";
+import {
+  loadPackageMemberInspections,
+  parseWorkflowPackageSet,
+} from "./workflow-package-set.ts";
+import { withOrganizationTransaction } from "../_shared/osp/database-context.ts";
+import { createPostgresApprovalStore } from "../_shared/osp/approval-store.ts";
 
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -39,6 +45,8 @@ Deno.test("set review receipt and existing Operations transition commit atomical
         id uuid, organization_id uuid, case_id uuid, case_version bigint,
         event_type text, actor_subject text, actor_role text,
         authorization_session_id text, command_sha256 text, evidence_refs jsonb);
+      create table osp_private.command_receipts (id uuid, organization_id uuid, operation text, idempotency_key text, request_hash text, response_json jsonb);
+      grant select, insert on osp_private.command_receipts to osp_workflow_api;
       -- Reduced-schema dependency stubs only; authority is also checked by the real TS policy.
       create function osp_private.assert_approval_actor(uuid,text,text,text,text[],text,text,timestamptz)
       returns void language plpgsql as $$ begin
@@ -397,6 +405,30 @@ Deno.test("set review receipt and existing Operations transition commit atomical
             reviewVersion: 1,
             replayed: true,
           });
+          assertEquals(
+            await memberStore.save({
+              ...inspection,
+              actor: {
+                ...inspection.actor,
+                authorizationSessionId: "fresh-session",
+                authorizationSessionIssuedAt: "2026-09-08T12:00:30.000Z",
+              },
+            }),
+            {
+              reviewId: inspection.reviewId,
+              reviewVersion: 1,
+              replayed: true,
+            },
+          );
+          await assertRejects(
+            () =>
+              memberStore.save({
+                ...inspection,
+                actor: { ...inspection.actor, subject: "other-operator" },
+              }),
+            Error,
+            "IDEMPOTENCY_CONFLICT",
+          );
           await assertRejects(
             () => memberStore.save({ ...inspection, completionPercent: 50 }),
             Error,
@@ -408,6 +440,56 @@ Deno.test("set review receipt and existing Operations transition commit atomical
           aggregate_version: 7,
         });
         assertEquals((await counts()).events, { n: 0 });
+        const projected = await withOrganizationTransaction(
+          sql,
+          org,
+          async (tx) =>
+            await loadPackageMemberInspections(
+              tx,
+              org,
+              caseId,
+              await parseWorkflowPackageSet(context.receipt, {
+                organizationId: org,
+                caseId,
+                snapshotSha256: sha,
+              }),
+            ),
+        );
+        assertEquals(
+          projected.files.map((file) => ({
+            source: file.sourceVersionId,
+            decision: file.latestReview?.reviewId,
+            completion: file.latestReview?.completionPercent,
+          })),
+          [5, 6].map((n) => ({
+            source: id(n),
+            decision: id(n + 10),
+            completion: 100,
+          })),
+        );
+        const legacy = createPostgresApprovalStore({
+          databaseUrl: "postgresql://synthetic.example.test/osp",
+          postgresFactory: () => sql,
+          now: () => new Date("2026-09-08T12:01:00Z"),
+        });
+        await assertRejects(
+          () =>
+            legacy.transact({
+              type: "complete_operations_review",
+              organizationId: org,
+              caseId,
+              expectedCaseVersion: 7,
+              inputSnapshotSha256: sha,
+              idempotencyKey: "legacy-cannot-approve-set",
+              actor: command.actor,
+            }),
+          Error,
+          "REQUEST_FULFILLMENT_BLOCKED",
+        );
+        assertEquals((await counts()).state, {
+          state: "operations_review",
+          aggregate_version: 7,
+        });
         failReceipt = true;
         await assertRejects(
           () => store.complete(command),
@@ -521,6 +603,7 @@ Deno.test("set review receipt and existing Operations transition commit atomical
         const before = loads;
         context.reviews[1].status = "rejected";
         assertEquals((await store.complete(command)).replayed, true);
+        assertEquals((await store.complete({ ...command, actor: { ...command.actor, authorizationSessionId: 'fresh-completion-session', authorizationSessionIssuedAt: '2026-09-08T12:00:30.000Z' } })).replayed, true);
         assertEquals(loads, before);
         assertEquals((await counts()).events, { n: 1 });
         await assertRejects(

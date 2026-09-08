@@ -1,5 +1,8 @@
 import postgres from "postgres";
+import { loadLockedPackageSetReview } from "./package-set-review-source.ts";
+import { preparePackageSetReview } from "./package-set-review.ts";
 import {
+  loadPackageMemberInspections,
   loadWorkflowPackageSet,
   packageSetDownloadName,
   type WorkflowPackageSet,
@@ -123,6 +126,7 @@ export type WorkflowViewRecord = {
   inputSnapshot: InputSnapshot | null;
   supplierPackage?: SupplierPackageView | null;
   supplierPackageSet?: WorkflowPackageSet | null;
+  packageSetReviewSha256?: string | null;
   signedPackage?: SignedPackageView | null;
   replyContext: ReplyContextView | null;
   signature: SignatureView | null;
@@ -477,6 +481,8 @@ export function approvalCommunicationsWorkspace(
       ? {
         supplierPackageSet: {
           setId: record.supplierPackageSet.setId,
+          operationsReviewSha256: record.packageSetReviewSha256 ?? null,
+          canRecordInspection: operations && record.caseState === "operations_review",
           version: record.supplierPackageSet.version,
           manifestSha256: record.supplierPackageSet.manifestSha256,
           files: record.supplierPackageSet.files.map((
@@ -515,11 +521,9 @@ export function approvalCommunicationsWorkspace(
           (outboundWritableCurrent &&
             record.outbound.kind === "final_response" &&
             record.outbound.status === "draft")),
-      completeOperationsReview: !record.supplierPackageSet && operations &&
-        record.fulfillment?.gates.operationsReview !== false &&
-        record.caseState === "operations_review" &&
-        record.inputSnapshot !== null && record.supplierPackage !== null &&
-        record.supplierPackage !== undefined,
+      completeOperationsReview: operations && record.caseState === "operations_review" && record.inputSnapshot !== null &&
+        (record.supplierPackageSet ? /^[0-9a-f]{64}$/.test(record.packageSetReviewSha256 ?? '') :
+          record.fulfillment?.gates.operationsReview !== false && record.supplierPackage !== null && record.supplierPackage !== undefined),
       approveAndApplySignature: !record.supplierPackageSet && jose &&
         record.fulfillment?.gates.signatureApproval !== false &&
         record.caseState === "signature_approval" &&
@@ -769,12 +773,25 @@ export function createPostgresWorkflowViewSource(
               snapshotSha256: parsed.inputSnapshot.sha256,
             })
             : null;
-          return { ...parsed, supplierPackageSet };
+          const inspectedSet = supplierPackageSet ? await loadPackageMemberInspections(tx, organizationId, caseId, supplierPackageSet) : null;
+          let packageSetReviewSha256: string | null = null;
+          let packageSetFulfillment: RequestFulfillmentMatrix | undefined;
+          if (inspectedSet && parsed.caseState === 'operations_review' && parsed.inputSnapshot &&
+            inspectedSet.files.every(file => file.latestReview?.status === 'approved' && file.latestReview.fullOutputInspected)) {
+            try {
+              const context = await loadLockedPackageSetReview(tx, { organizationId, caseId, expectedCaseVersion: parsed.caseVersion, expectedSnapshotSha256: parsed.inputSnapshot.sha256 });
+              packageSetReviewSha256 = (await preparePackageSetReview(context)).reviewSha256;
+              packageSetFulfillment = context.fulfillment;
+            } catch (error) {
+              if (!(error instanceof Error) || !['PACKAGE_SET_REVIEW_BLOCKED', 'PACKAGE_SET_REVIEW_STALE'].includes(error.message)) throw error;
+            }
+          }
+          return { ...parsed, supplierPackageSet: inspectedSet, packageSetReviewSha256, ...(packageSetFulfillment ? { fulfillment: packageSetFulfillment } : {}) };
         },
       );
-      const fulfillment = options.semanticGate
+      const fulfillment = record.fulfillment ?? (options.semanticGate
         ? await options.semanticGate.load({ organizationId, caseId })
-        : undefined;
+        : undefined);
       const supplierPackageSet =
         record.supplierPackageSet && options.signSupplierPackage
           ? {

@@ -44,6 +44,67 @@ test('multi-form package lists every download on desktop and mobile without appr
 });
 test.beforeAll(async () => { ({ privateKey, publicKey } = await generateKeyPair('RS256')); });
 
+test('member inspection survives authenticated UI reload on desktop and mobile', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const state: State = { version: 1, payloadVersion: 1, stage: 'operations_review', kind: 'final_response', payload: 'none', reservations: 0, seen: new Set() };
+  let saved: Record<string, unknown> | null = null;
+  let writes = 0;
+  let completions = 0;
+  await page.route('**/functions/v1/osp-case-api?**', async route => {
+    const request = route.request();
+    const claims = (await jwtVerify((request.headers().authorization ?? '').replace(/^Bearer /, ''), publicKey, { issuer: 'https://auth.heymarksman.com', audience: 'https://osp.heymarksman.com/api' })).payload;
+    expect(claims.org_code).toBe(organizationId);
+    const action = new URL(request.url()).searchParams.get('action');
+    if (action === 'complete_operations_review') {
+      expect(saved).not.toBeNull();
+      expect(new URL(request.url()).searchParams.get('review_sha256')).toBe('e'.repeat(64));
+      expect(request.headers()['x-osp-approval-proof']).toBeTruthy();
+      completions++; state.stage = 'signature_approval'; state.version++;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { caseId, caseVersion: state.version, state: 'signature_approval', replayed: false } }) });
+      return;
+    }
+    if (action === 'save_package_member_review') {
+      expect(request.headers()['x-osp-approval-proof']).toBeTruthy();
+      const input = request.postDataJSON();
+      expect(input).toMatchObject({ caseId, sourceVersionId: caseId, outputSha256: sha, fullOutputInspected: true, completionPercent: 100, pageCount: 2 });
+      expect(input.actor).toBeUndefined();
+      saved = { reviewId: input.reviewId, reviewVersion: 1, requestManifestSha256: sha, status: input.status, fullOutputInspected: true, completionPercent: 100, pageCount: 2, signatureRequirement: 'none', signaturePolicyVersion: null };
+      writes++;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { reviewId: input.reviewId, reviewVersion: 1, replayed: false } }) });
+      return;
+    }
+    expect(action).toBe('get_approval_communications_workspace');
+    const view = workspace(state, claims);
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: {
+      ...view, supplierPackage: null,
+      supplierPackageSet: { setId: payloadId, version: 1, manifestSha256: sha, canRecordInspection: state.stage === 'operations_review', operationsReviewSha256: saved && state.stage === 'operations_review' ? 'e'.repeat(64) : null, files: [{ requirementId: 'form.a', sourceVersionId: caseId, outputSha256: sha, contentType: 'application/pdf', downloadUrl: 'https://example.test/a', latestReview: saved }] },
+      fulfillment: { schemaVersion: 1, manifestSha256: sha, assessedAt: new Date().toISOString(), totalRequired: 1, satisfiedRequired: saved ? 1 : 0, blockingCount: saved ? 0 : 1, items: [], gates: { operationsReview: Boolean(saved), signatureApproval: false, outboundDraft: false, outboundFreeze: false, salesAuthorization: false, send: false } },
+      capabilities: { ...view.capabilities, completeOperationsReview: Boolean(saved) && state.stage === 'operations_review', approveAndApplySignature: false },
+    } }) });
+  });
+  await open(page, { subject: 'ops-inspection', email: 'ops@xbfreight.com', permissions: ['osp:read', 'osp:operate'] }, 'review');
+  await page.getByLabel('I inspected the complete downloaded file').check();
+  await page.getByLabel('Verified completion (%)').fill('100');
+  await page.getByLabel('Inspected pages').fill('2');
+  await page.getByLabel('Inspection decision').selectOption('approved');
+  await page.getByLabel('Required signature method').selectOption('none');
+  await page.getByRole('button', { name: 'Save file inspection' }).click();
+  await expect(page.getByText(/Saved inspection v1: approved/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/Saved inspection v1: approved/)).toBeVisible();
+  expect(writes).toBe(1);
+  for (const viewport of [{ width: 1440, height: 1000, name: 'desktop' }, { width: 390, height: 844, name: 'mobile' }]) {
+    await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`member-inspection-${viewport.name}.png`), fullPage: true });
+  }
+  await page.getByRole('checkbox', { name: /All pre-signature requirements/ }).check();
+  await page.getByRole('button', { name: 'Complete Operations review' }).click();
+  await expect(page.getByText('Operations review complete.', { exact: true })).toBeVisible();
+  expect(completions).toBe(1);
+  expect(writes).toBe(1);
+});
+
 async function token(actor: Actor) {
   const now = Math.floor(Date.now() / 1000);
   return await new SignJWT({

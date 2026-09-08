@@ -79,12 +79,19 @@ export function createPackageMemberReviewStore(
         "complete_operations_review",
         deps.now?.(),
       );
-      // Bind the evidence to its authenticated actor/session as well as exact bytes.
+      // Reauthorize every request, but bind retries to the principal rather than
+      // a short-lived login session. The original session remains in actor_json.
+      const {
+        authorizationSessionId: _session,
+        authorizationSessionIssuedAt: _issued,
+        ...principal
+      } = command.actor;
       const digest = await sha256Hex(
         new TextEncoder().encode(
           canonicalPackageSetJson({
             type: "save_package_member_review",
             ...command,
+            actor: principal,
           }),
         ),
       );

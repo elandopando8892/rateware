@@ -39,8 +39,33 @@ export type WorkflowPackageSet = {
     contentType: typeof TYPES[number];
     objectId: string;
     downloadUrl: string | null;
+    latestReview?: {
+      reviewId: string; reviewVersion: number; requestManifestSha256: string;
+      status: "approved" | "rejected"; fullOutputInspected: boolean;
+      completionPercent: number | null; pageCount: number | null;
+      signatureRequirement: "none" | "image" | "autograph";
+      signaturePolicyVersion: number | null;
+    } | null;
   }[];
 };
+
+export async function loadPackageMemberInspections(tx: SqlPort, organizationId: string, caseId: string, set: WorkflowPackageSet): Promise<WorkflowPackageSet> {
+  const available = await tx`select to_regclass('osp_private.package_set_member_reviews') is not null as available`;
+  if (available[0]?.available !== true) return set;
+  const rows = await tx`select distinct on (source_version_id) id,source_version_id,review_version,set_manifest_sha256,output_sha256,request_manifest_sha256,status,full_output_inspected,completion_percent,page_count,signature_requirement,signature_policy_version
+    from osp_private.package_set_member_reviews where organization_id=${organizationId}::uuid and case_id=${caseId}::uuid and package_set_id=${set.setId}::uuid order by source_version_id,review_version desc`;
+  return { ...set, files: set.files.map(file => {
+    const row = rows.find(row => row.source_version_id === file.sourceVersionId);
+    if (!row || row.set_manifest_sha256 !== set.manifestSha256 || row.output_sha256 !== file.outputSha256) return { ...file, latestReview: null };
+    if (!UUID.test(String(row.id)) || !SHA.test(String(row.request_manifest_sha256)) || !["approved", "rejected"].includes(String(row.status)) || !["none", "image", "autograph"].includes(String(row.signature_requirement))) fail();
+    return { ...file, latestReview: {
+      reviewId: String(row.id), reviewVersion: Number(row.review_version), requestManifestSha256: String(row.request_manifest_sha256),
+      status: row.status as "approved" | "rejected", fullOutputInspected: row.full_output_inspected === true,
+      completionPercent: row.completion_percent === null ? null : Number(row.completion_percent), pageCount: row.page_count === null ? null : Number(row.page_count),
+      signatureRequirement: row.signature_requirement as "none" | "image" | "autograph", signaturePolicyVersion: row.signature_policy_version === null ? null : Number(row.signature_policy_version),
+    } };
+  }) };
+}
 const fail = (): never => {
   throw new Error("WORKFLOW_PACKAGE_SET_INVALID");
 };

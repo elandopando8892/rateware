@@ -7,8 +7,74 @@ import { SignatureApprovalPage } from '../approval/SignatureApprovalPage';
 import { SalesAuthorizationPage } from '../approval/SalesAuthorizationPage';
 import { OutboundPayloadPage } from '../communications/OutboundPayloadPage';
 import { OperationsReviewPage } from './OperationsReviewPage';
+import { MemberInspectionPanel } from './MemberInspectionPanel';
 
 const caseId = '33333333-3333-4333-8333-333333333333';
+it('allows Operations only when the exact set review digest is supplied by the server', async () => {
+  const complete = vi.fn().mockResolvedValue(undefined);
+  const file = { requirementId: 'form:1', sourceVersionId: caseId, outputSha256: 'b'.repeat(64), contentType: 'application/pdf' as const, downloadUrl: null };
+  const set = { setId: caseId, version: 1, manifestSha256: 'e'.repeat(64), files: [file], operationsReviewSha256: 'a'.repeat(64) };
+  render(<OperationsReviewPage workspace={{ ...workspace, caseState: 'operations_review', supplierPackage: null, supplierPackageSet: set }} onComplete={complete} />);
+  await userEvent.click(screen.getByRole('checkbox', {name:/All pre-signature requirements/}));
+  await userEvent.click(screen.getByRole('button', {name:'Complete Operations review'}));
+  expect(complete).toHaveBeenCalledTimes(1);
+});
+it('saves an exact file inspection and displays persisted evidence after remount', async () => {
+  sessionStorage.clear();
+  const file = { requirementId: 'form:1', sourceVersionId: caseId, outputSha256: 'b'.repeat(64), contentType: 'application/pdf' as const, downloadUrl: null };
+  const scope = { ...workspace, caseState: 'operations_review' as const, supplierPackageSet: { setId: caseId, version: 1, manifestSha256: 'e'.repeat(64), files: [file] } };
+  const save = vi.fn().mockResolvedValue(undefined);
+  const first = render(<MemberInspectionPanel workspace={scope} file={file} onSave={save} />);
+  expect(screen.getByRole('button', { name: 'Save file inspection' })).toBeDisabled();
+  fireEvent.click(screen.getByLabelText('I inspected the complete downloaded file'));
+  fireEvent.change(screen.getByLabelText('Verified completion (%)'), { target: { value: '100' } });
+  fireEvent.change(screen.getByLabelText('Inspected pages'), { target: { value: '2' } });
+  fireEvent.change(screen.getByLabelText('Inspection decision'), { target: { value: 'approved' } });
+  fireEvent.change(screen.getByLabelText('Required signature method'), { target: { value: 'none' } });
+  await userEvent.click(screen.getByRole('button', { name: 'Save file inspection' }));
+  expect(save).toHaveBeenCalledTimes(1);
+  const command = save.mock.calls[0][0];
+  expect(command).toMatchObject({ sourceVersionId: caseId, outputSha256: file.outputSha256, completionPercent: 100, pageCount: 2, status: 'approved' });
+  first.unmount();
+  render(<MemberInspectionPanel workspace={scope} file={{ ...file, latestReview: { ...command, reviewVersion: 1 } }} onSave={save} />);
+  expect(screen.getByRole('status')).toHaveTextContent('Saved inspection v1: approved');
+  expect(save).toHaveBeenCalledTimes(1);
+});
+
+it('settles an uncertain inspection only when refreshed evidence confirms the same command', () => {
+  sessionStorage.clear();
+  const file = { requirementId: 'form:1', sourceVersionId: caseId, outputSha256: 'b'.repeat(64), contentType: 'application/pdf' as const, downloadUrl: null };
+  const scope = { ...workspace, caseState: 'operations_review' as const, supplierPackageSet: { setId: caseId, version: 1, manifestSha256: 'e'.repeat(64), files: [file] } };
+  const command = { reviewId: caseId, caseId, setId: caseId, sourceVersionId: caseId, outputSha256: file.outputSha256, setManifestSha256: 'e'.repeat(64), requestManifestSha256: 'f'.repeat(64) };
+  const key = `osp:member-inspection:${caseId}:${caseId}:${file.outputSha256}`;
+  sessionStorage.setItem(key, JSON.stringify(command));
+  const save = vi.fn();
+  const view = render(<MemberInspectionPanel workspace={scope} file={file} onSave={save} />);
+  expect(screen.getByLabelText('Verified completion (%)')).toBeDisabled();
+  const latestReview = { reviewId: payloadId, reviewVersion: 1, requestManifestSha256: command.requestManifestSha256, status: 'approved' as const, fullOutputInspected: true, completionPercent: 100, pageCount: 2, signatureRequirement: 'none' as const, signaturePolicyVersion: null };
+  view.rerender(<MemberInspectionPanel workspace={scope} file={{ ...file, latestReview }} onSave={save} />);
+  expect(screen.getByLabelText('Verified completion (%)')).toBeDisabled();
+  expect(sessionStorage.getItem(key)).not.toBeNull();
+  view.rerender(<MemberInspectionPanel workspace={scope} file={{ ...file, latestReview: { ...latestReview, reviewId: command.reviewId } }} onSave={save} />);
+  expect(screen.getByLabelText('Verified completion (%)')).toBeEnabled();
+  expect(sessionStorage.getItem(key)).toBeNull();
+  expect(save).not.toHaveBeenCalled();
+});
+
+it('retains the original inspection identity after an uncertain save and reload', async () => {
+  sessionStorage.clear();
+  const file = { requirementId: 'form:1', sourceVersionId: caseId, outputSha256: 'b'.repeat(64), contentType: 'application/pdf' as const, downloadUrl: null };
+  const scope = { ...workspace, caseState: 'operations_review' as const, supplierPackageSet: { setId: caseId, version: 1, manifestSha256: 'e'.repeat(64), files: [file] } };
+  const command = { reviewId: caseId, caseId, sourceVersionId: caseId, outputSha256: file.outputSha256 };
+  sessionStorage.setItem(`osp:member-inspection:${caseId}:${caseId}:${file.outputSha256}`, JSON.stringify(command));
+  const save = vi.fn().mockRejectedValue(new Error('NETWORK_UNAVAILABLE'));
+  render(<MemberInspectionPanel workspace={scope} file={file} onSave={save} />);
+  expect(screen.getByLabelText('Verified completion (%)')).toBeDisabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Reconcile original inspection' }));
+  expect(save.mock.calls[0][0].reviewId).toBe(caseId);
+  expect(sessionStorage.length).toBe(1);
+  sessionStorage.clear();
+});
 const payloadId = '44444444-4444-4444-8444-444444444444';
 const workspace: ApprovalCommunicationsWorkspace = {
   caseId,

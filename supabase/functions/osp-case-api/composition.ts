@@ -5,6 +5,9 @@ import {
   OSP_PRODUCTION_SIGNATURE_ENTITLEMENTS,
 } from "../osp-read-api/auth-policy.ts";
 import { createCaseApiHandler } from "./handler.ts";
+import { createPackageMemberReviewStore } from "./package-member-review-store.ts";
+import { createPackageSetOperationsReviewStore } from "./package-set-review-store.ts";
+import type { SqlPort } from "../_shared/osp/database-context.ts";
 import { createPostgresClarificationStore } from "./postgres-store.ts";
 import {
   createPostgresCaseApprovalActions,
@@ -132,6 +135,11 @@ export function createCaseApiRuntime(options: {
     verifyApprovalToken: (accessToken, idToken, signal) =>
       verifier.verifyApproval(accessToken, idToken, signal),
     clarificationStore,
+    memberReviews: createPackageMemberReviewStore({
+      sql: sharedDatabase as SqlPort,
+      now: () => new Date(options.clock?.() ?? Date.now()),
+    }),
+    packageSetReviews: createPackageSetOperationsReviewStore({ sql: sharedDatabase as SqlPort, now: () => new Date(options.clock?.() ?? Date.now()) }),
     approvalActions,
     outboundActions,
     workflowView,

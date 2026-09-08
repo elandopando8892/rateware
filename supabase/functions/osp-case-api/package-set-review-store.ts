@@ -81,11 +81,17 @@ export function createPackageSetOperationsReviewStore(deps: {
         "complete_operations_review",
         deps.now?.(),
       );
+      const {
+        authorizationSessionId: _session,
+        authorizationSessionIssuedAt: _issued,
+        ...principal
+      } = command.actor;
       const hash = await sha256Hex(
         new TextEncoder().encode(
           canonicalPackageSetJson({
             type: "complete_package_set_operations_review",
             ...command,
+            actor: principal,
           }),
         ),
       );

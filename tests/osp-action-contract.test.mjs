@@ -24,8 +24,8 @@ assert.equal(
   0,
   'OSP Edge entrypoints must not remain unresolved',
 );
-assert.equal(extensionIds.size, 168, 'the OSP contract must contain the reviewed 168 surfaces');
-assert.equal(discovered.length, 168, 'every reviewed OSP surface must still be discoverable');
+assert.equal(extensionIds.size, 169, 'the OSP contract must contain the reviewed 169 surfaces');
+assert.equal(discovered.length, 169, 'every reviewed OSP surface must still be discoverable');
 
 for (const actual of discovered) {
   const surface = ACTION_CONTRACT.surfaces.find((entry) => entry.canonicalId === actual.canonicalId);
@@ -43,4 +43,4 @@ for (const actual of discovered) {
   );
 }
 
-console.log('OSP action contract test passed: 168/168 surfaces are registered and fingerprinted.');
+console.log('OSP action contract test passed: 169/169 surfaces are registered and fingerprinted.');

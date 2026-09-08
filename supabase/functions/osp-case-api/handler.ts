@@ -18,6 +18,9 @@ import type {
 } from "./postgres-store.ts";
 import type { RequestManifestDecisionInput } from "./request-manifest-review.ts";
 import type { CaseApprovalActions } from "./actions.ts";
+import { readMemberReviewInput } from "./package-member-review-http.ts";
+import type { createPackageMemberReviewStore } from "./package-member-review-store.ts";
+import type { createPackageSetOperationsReviewStore } from "./package-set-review-store.ts";
 import type { CaseOutboundActions } from "./actions.ts";
 import {
   assertOutboundDraft,
@@ -88,6 +91,8 @@ export type CaseApiHandlerOptions = {
     signal?: AbortSignal,
   ): Promise<VerifiedApprovalIdentity>;
   clarificationStore: ClarificationStorePort;
+  memberReviews?: ReturnType<typeof createPackageMemberReviewStore>;
+  packageSetReviews?: ReturnType<typeof createPackageSetOperationsReviewStore>;
   approvalActions?: CaseApprovalActions;
   outboundActions?: CaseOutboundActions;
   workflowView?: WorkflowViewSource;
@@ -168,6 +173,10 @@ function exactQuery(
 
 function preflightHeaders(url: URL): readonly string[] {
   const action = url.searchParams.get("action");
+  if (action === "save_package_member_review") {
+    exactQuery(url, ["action"]);
+    return ["authorization", "content-type", "x-osp-approval-proof"];
+  }
   if (action === "list_clarification_reviews") {
     exactQuery(url, ["action"]);
     return ["authorization"];
@@ -215,6 +224,7 @@ function preflightHeaders(url: URL): readonly string[] {
       "expected_case_version",
       "input_snapshot_sha256",
       "idempotency_key",
+      ...(url.searchParams.has("review_sha256") ? ["review_sha256"] : []),
     ]);
     return ["authorization", "x-osp-approval-proof"];
   }
@@ -602,7 +612,9 @@ function attachmentHashes(value: string): readonly string[] {
 
 function serviceError(error: unknown): OspApiError {
   const code = error instanceof Error ? error.message : "";
-  if (code === "REQUEST_FULFILLMENT_BLOCKED") {
+  if (code === "INVALID_MEMBER_REVIEW") return new OspApiError("INVALID_REQUEST");
+  if (code === "MEMBER_REVIEW_WRITE_FAILED") return new OspApiError("DEPENDENCY_UNAVAILABLE");
+  if (code === "REQUEST_FULFILLMENT_BLOCKED" || code === "PACKAGE_SET_REVIEW_BLOCKED") {
     return new OspApiError("FULFILLMENT_BLOCKED");
   }
   if (/^REQUEST_FULFILLMENT_(?:SOURCE_INVALID|INVALID)$/.test(code)) {
@@ -715,6 +727,32 @@ export function createCaseApiHandler(
         throw new OspApiError("INVALID_REQUEST");
       }
       const action = url.searchParams.get("action");
+      if (action === "save_package_member_review") {
+        exactQuery(url, ["action"]);
+        if (!options.memberReviews || !options.verifyApprovalToken) throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+        const verified = await options.verifyApprovalToken(bearer(request), approvalProof(request), request.signal);
+        const input = await readMemberReviewInput(request);
+        try {
+          const result = await options.memberReviews.save({
+            ...input,
+            organizationId: verified.identity.organization,
+            actor: {
+              organizationId: verified.identity.organization,
+              subject: verified.identity.subject,
+              verifiedEmail: verified.identity.email,
+              permissions: verified.permissions,
+              role: "operations_reviewer",
+              active: verified.identity.emailVerified,
+              authorizationSessionId: verified.authorizationSessionId,
+              authorizationSessionIssuedAt: verified.authorizationSessionIssuedAt,
+            },
+          });
+          return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+        } catch (error) {
+          if (error instanceof Error && ["PACKAGE_SET_REVIEW_STALE", "IDEMPOTENCY_CONFLICT"].includes(error.message)) return versionConflictResponse(incident(nextIncident), allowed);
+          throw error;
+        }
+      }
       if (action === "get_approval_communications_workspace") {
         if (!options.workflowView) throw new OspApiError("INVALID_REQUEST");
         const query = exactQuery(url, ["action", "case_id", "payload_id"]);
@@ -896,6 +934,7 @@ export function createCaseApiHandler(
             "expected_case_version",
             "input_snapshot_sha256",
             "idempotency_key",
+            ...(url.searchParams.has("review_sha256") ? ["review_sha256"] : []),
           ]
           : [
             "action",
@@ -927,6 +966,25 @@ export function createCaseApiHandler(
           idempotencyKey: query.idempotency_key,
         };
         if (action === "complete_operations_review") {
+          if (query.review_sha256 !== undefined) {
+            if (!SHA.test(query.review_sha256)) throw new OspApiError("INVALID_REQUEST");
+            if (!options.packageSetReviews) throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+            try {
+              const result = await options.packageSetReviews.complete({
+                organizationId: verified.identity.organization, caseId: query.case_id,
+                expectedCaseVersion, expectedSnapshotSha256: query.input_snapshot_sha256,
+                expectedReviewSha256: query.review_sha256, idempotencyKey: query.idempotency_key,
+                actor: { organizationId: verified.identity.organization, subject: verified.identity.subject,
+                  verifiedEmail: verified.identity.email, permissions: verified.permissions,
+                  role: 'operations_reviewer', active: verified.identity.emailVerified,
+                  authorizationSessionId: verified.authorizationSessionId, authorizationSessionIssuedAt: verified.authorizationSessionIssuedAt },
+              });
+              return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+            } catch (error) {
+              if (error instanceof Error && ['PACKAGE_SET_REVIEW_STALE', 'IDEMPOTENCY_CONFLICT'].includes(error.message)) return versionConflictResponse(incident(nextIncident), allowed);
+              throw error;
+            }
+          }
           const result = await options.approvalActions.completeOperations(
             common,
             verified,

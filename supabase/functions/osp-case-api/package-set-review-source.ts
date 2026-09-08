@@ -17,7 +17,7 @@ function fail(): never {
  */
 export async function loadLockedPackageSetReview(
   tx: SqlPort,
-  command: PackageSetReviewCommand,
+  command: Pick<PackageSetReviewCommand, "organizationId" | "caseId" | "expectedCaseVersion" | "expectedSnapshotSha256">,
 ) {
   await tx`select osp_private.lock_package_set_operations_context(${command.organizationId}::uuid, ${command.caseId}::uuid, ${command.expectedCaseVersion}::bigint, ${command.expectedSnapshotSha256})`;
   const sets =
@@ -168,5 +168,6 @@ export async function loadLockedPackageSetReview(
     requestManifestSha256: contract.manifestSha256,
     expectedSetManifestSha256: set.manifestSha256,
     reviews,
+    fulfillment: matrix,
   };
 }

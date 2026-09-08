@@ -220,14 +220,28 @@ function WorkflowFailure({ title }: { title: string }) {
 }
 
 function OperationsReviewWorkspace() {
+  const context = operationsReviewRoute.useRouteContext();
   const { apiClient, params, query, run, conflict } = useWorkflowWorkspace(operationsReviewRoute);
   const navigate = operationsReviewRoute.useNavigate();
   if (query.isPending || query.fetchStatus !== 'idle') return <WorkflowLoading title="Operations review" message="Loading current evidence package…" />;
   if (query.isError || !query.data) return <WorkflowFailure title="Operations review" />;
-  return <OperationsReviewPage workspace={query.data} conflict={conflict} onComplete={async () => {
+  return <OperationsReviewPage workspace={query.data} conflict={conflict} onSaveInspection={apiClient.savePackageMemberReview ? async input => {
+    if (!context.approvalSessionFresh()) {
+      await context.reauthenticateForApproval(`/app/cases/${params.caseId}/review`);
+      throw new OspWorkflowError('NO_SESSION');
+    }
+    await apiClient.savePackageMemberReview!(input);
+    const refreshed = await query.refetch();
+    if (refreshed.error) throw refreshed.error;
+  } : undefined} onComplete={async () => {
+    if (!context.approvalSessionFresh()) {
+      await context.reauthenticateForApproval(`/app/cases/${params.caseId}/review`);
+      throw new OspWorkflowError('NO_SESSION');
+    }
     await run('operations', (idempotencyKey) => apiClient.completeOperationsReview({
       caseId: params.caseId, expectedVersion: query.data.caseVersion, idempotencyKey,
       inputSnapshotSha256: query.data.inputSnapshot?.sha256 ?? '',
+      ...(query.data.supplierPackageSet?.operationsReviewSha256 ? { reviewSha256: query.data.supplierPackageSet.operationsReviewSha256 } : {}),
     }));
     await navigate({ to: '/app/cases/$caseId/signature', params: { caseId: params.caseId } });
   }} />;

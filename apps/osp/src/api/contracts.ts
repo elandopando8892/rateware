@@ -643,12 +643,20 @@ export const RequestFulfillmentMatrixSchema = z.strictObject({
 
 export const ApprovalCommunicationsWorkspaceSchema = z.strictObject({
   supplierPackageSet: z.strictObject({
+    canRecordInspection: z.boolean().optional(),
+    operationsReviewSha256: workflowSha.nullable().optional(),
     setId: z.uuid(),
     version: z.number().int().min(1).max(2_147_483_647),
     manifestSha256: workflowSha,
     files: z.array(z.strictObject({
       requirementId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9:_.-]{0,255}$/),
       sourceVersionId: z.uuid(),
+      latestReview: z.strictObject({
+        reviewId: z.uuid(), reviewVersion: z.number().int().min(1), requestManifestSha256: workflowSha,
+        status: z.enum(['approved', 'rejected']), fullOutputInspected: z.boolean(),
+        completionPercent: z.number().int().min(0).max(100).nullable(), pageCount: z.number().int().min(1).max(1000).nullable(),
+        signatureRequirement: z.enum(['none', 'image', 'autograph']), signaturePolicyVersion: z.number().int().min(1).nullable(),
+      }).nullable().optional(),
       outputSha256: workflowSha,
       contentType: z.enum(['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel.sheet.macroEnabled.12', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']),
       downloadUrl: z.url().refine((value) => new URL(value).protocol === 'https:').nullable(),

@@ -146,6 +146,18 @@ Deno.test("workflow view derives mutually exclusive server capabilities and expo
   );
 });
 
+Deno.test("validated set digest enables only Operations for an authorized actor", () => {
+  const current: WorkflowViewRecord = { ...record, caseState: 'operations_review', supplierPackage: null, packageSetReviewSha256: sha,
+    supplierPackageSet: {setId: signedPackageId, version: 1, manifestSha256: sha, files: [{requirementId:'form.a',sourceVersionId:payloadId,outputSha256:sha,contentType:'application/pdf',objectId:'private:1',downloadUrl:null}]} };
+  const result = approvalCommunicationsWorkspace(current, baseIdentity);
+  assertEquals(result.capabilities.completeOperationsReview, true);
+  assertEquals(result.supplierPackageSet?.operationsReviewSha256, sha);
+  assertEquals(result.capabilities.approveAndApplySignature, false);
+  assertEquals(result.capabilities.requestAuthorizedSend, false);
+  assertEquals(approvalCommunicationsWorkspace(current, {...baseIdentity,permissions:['osp:read']}).capabilities.completeOperationsReview,false);
+  assertEquals(approvalCommunicationsWorkspace({...current,packageSetReviewSha256:null},baseIdentity).capabilities.completeOperationsReview,false);
+});
+
 Deno.test("a current set cannot reuse legacy signed-file authority at any downstream stage", () => {
   const identity = {
     ...baseIdentity,

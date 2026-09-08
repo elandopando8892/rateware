@@ -154,9 +154,11 @@ The additive `20260908200000_osp_member_review_command_identity.sql` stores a
 command digest. Existing evidence remains immutable with a null digest, so it
 cannot accidentally be claimed as an idempotent application replay. The caller
 retains a UUID for a retry; identical authenticated commands replay the receipt,
-while a changed decision or actor/session conflicts. A fresh authentication after
-an uncertain response therefore requires read reconciliation, not silent retry
-with another UUID. Review versions are assigned under the existing case lock.
+while a changed decision or principal conflicts. Every request checks current
+authority and session freshness. A fresh login by the same still-authorized
+principal can reconcile the original UUID without creating another inspection;
+the original actor/session evidence is never overwritten. Review versions are
+assigned under the existing case lock.
 
 Rejected alternatives: writing directly from the UI (untrusted authority),
 reusing mapping approvals (not final-output inspection), and advancing the case
@@ -169,3 +171,98 @@ The earlier reduced-schema and SQL-authority-stub limitations still apply.
 No HTTP route, UI control or runtime import activates this writer yet. Next:
 authenticated route, persisted review projection, per-file UI and browser proof;
 then deployed-schema validation. No remote migration or business action performed.
+
+## Authenticated inspection capture and read projection — candidate
+
+The candidate runtime now wires `save_package_member_review` to the existing
+verified-approval token verifier and internal member store. Its JSON boundary
+limits streamed bodies to 8 KiB and rejects extra keys, tenant and actor claims.
+Only verified identity supplies the actor. Conflicting/stale reviews return a
+typed 409; no command is retried by the server. CORS requires the exact approval
+proof and JSON headers. The new action is inspection-only, not case completion.
+
+The workflow projection reads the latest persisted decision for each exact
+set/output and returns its request hash. Operations renders this saved evidence
+and displays when the request has changed. The UI sends a persistent retry UUID;
+an uncertain response locks the original answers for reconciliation. Session
+storage contains inspection command metadata only, never authentication tokens.
+The server remains authoritative over permissions, versions and evidence.
+
+Local evidence: 35 API/projection/composition tests; 28 UI/client tests; the real
+PostgreSQL member writer and reload projection within the existing eight-step
+integration; one Chrome harness test verifies signed synthetic identity, save,
+reload, and one request across desktop/mobile. The browser harness uses controlled
+responses, not Supabase. Initial browser run failed because the harness lacked
+the new callback; wiring it produced a passing repeat. Visual inspection then
+found crowded mobile labels; grid spacing was added and needs a refreshed capture.
+An initial fixture type error was fixed without skipping TypeScript checks.
+
+Still required: final release checks, actual routed-app/preview verification,
+fresh-session reconciliation UX and set-wide Operations completion. No production
+activation or claim that Hito 1 is complete. The plan's remaining signature,
+Sales, fidelity and deployment gates are unchanged.
+
+## Set-wide Operations command — candidate connected
+
+The workflow read now evaluates all persisted inspections and corporate evidence
+under the existing context lock. Only a valid complete basis yields
+`operationsReviewSha256`; the UI submits this exact digest on the existing
+Operations command. The command reloads/revalidates the basis inside its atomic
+transaction before advancing to signature review. It never applies a signature.
+The legacy single-package approval adapter locks the case and rejects a current
+set, preventing direct callers from omitting the new digest to bypass set review.
+The read projection uses the set's evaluated matrix when complete rather than a
+contradictory legacy single-file matrix.
+
+Both inspection and set-review retries reauthorize the current session but bind
+idempotency to the principal. A fresh session of the same authorized principal
+can recover the immutable original receipt; a changed principal or decision
+cannot. Operations routes request fresh authentication when required.
+
+The worker envelope changes because `reviewed-spreadsheet-targets.ts` imports
+`FormComponentSchema` from the UI contracts file; adding inspection fields to
+that file changes its dependency fingerprint without changing the worker's
+spreadsheet mapping behavior. Focused spreadsheet regressions pass. Fingerprints
+must still be reconciled against the final frozen candidate before release.
+
+Latest live read-only check: 2026-09-08 19:06:14 UTC, shared project
+`alqjqzqagdmcywpjtnnr`, PostgreSQL 17.6. `supplier_package_sets`,
+`package_set_member_reviews` and `package_set_operations_reviews` are absent.
+Vercel still serves `dpl_Ggf4PYD79X66rfFLipw3kNuj5Fhe` / `ed12d1658fce` at
+`osp.heymarksman.com`. These checks do not activate anything.
+
+Remaining verification: final typed regressions and fingerprints, refreshed
+browser capture, actual routed-app authenticated preview and full-schema rehearsal.
+The latest browser retry timed out while still loading, and the UI runner failed
+to start workers before running tests; neither is a PASS. Avoid simultaneous
+validation edits, retain failed outputs, and rerun only terminal attempts.
+Signature-policy selection still exposes a technical version field; replace it
+with verified per-file policy selection before claiming a pragmatic production UX.
+# Reconciliación de lectura y recuperación — 8 de septiembre de 2026
+
+La consulta de sólo lectura del catálogo
+`public.provider_legal_entity_document_assets` del tenant OSP encontró dos actas
+constitutivas y un INE activos, con `verification_status = verified` y referencia
+de almacenamiento. No se deben pedir otra vez como si nunca se hubieran cargado.
+Esto no verifica los bytes, la vigencia del documento de identidad, la entidad
+exacta ni su inclusión/divulgación en un paquete. No apareció un poder notarial
+como documento separado; tampoco se presume que el acta lo sustituya.
+
+El evaluador nuevo de conjuntos todavía consume `osp_private.document_versions`;
+la conciliación de estos soportes corporativos con la selección y el manifiesto
+exacto de entrega continúa pendiente. No añadirlos automáticamente saltándose
+la revisión o la política de divulgación.
+
+La UI ahora libera un reintento incierto cuando una lectura posterior confirma
+el mismo reviewId, contrato, conjunto y hash de salida. Otra revisión no libera
+el bloqueo y no se genera una segunda escritura. Se agregó la regresión de
+refetch posterior al error. La prueba focalizada pasó con el timeout normal:
+una aprobada y 16 omitidas por el filtro, 3,84 segundos de ejecución de prueba
+y 112,18 segundos totales de arranque/carga/ejecución. No es una prueba del router
+real ni del backend desplegado. El contrato completo pasó: 169/169 superficies,
+una prueba, cero fallos (650,56 segundos totales). La suite posterior de UI y
+cliente no ejecutó ninguna prueba: dos timeouts al iniciar workers después de
+120,53 segundos. Sigue pendiente, no es una validación aprobada ni un fallo
+funcional demostrado del recorrido. No se promueve este checkpoint por esos
+resultados locales.
+La comprobación TypeScript anterior a esta corrección terminó con código cero.

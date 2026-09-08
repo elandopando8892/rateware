@@ -1,4 +1,4 @@
-import type { ZodType } from 'zod';
+import { z, type ZodType } from 'zod';
 
 import type { AuthPort, BoundSession } from '../auth/auth-port';
 import {
@@ -37,14 +37,23 @@ export type SaveOutboundDraftInput = VersionedCaseBase & {
 };
 
 export type WorkflowClient = {
+  savePackageMemberReview?(input: MemberInspectionInput): Promise<{ reviewId: string; reviewVersion: number; replayed: boolean }>;
   getApprovalCommunicationsWorkspace(input: { caseId: string; payloadId?: string }): Promise<ApprovalCommunicationsWorkspace>;
-  completeOperationsReview(input: CommandBase & { inputSnapshotSha256: string }): Promise<ApprovalCommandReceipt>;
+  completeOperationsReview(input: CommandBase & { inputSnapshotSha256: string; reviewSha256?: string }): Promise<ApprovalCommandReceipt>;
   approveAndApplySignature(input: CommandBase & { inputSnapshotSha256: string; signaturePositionVersion: number }): Promise<ApprovalCommandReceipt>;
   saveOutboundDraft(input: SaveOutboundDraftInput): Promise<SaveOutboundDraftReceipt>;
   freezeOutboundPayload(input: CommandBase & { payloadId: string }): Promise<FreezeCommandReceipt>;
   authorizeOutboundPayload(input: CommandBase & { payloadId: string; payloadSha256: string; attachmentSha256: readonly string[] }): Promise<ApprovalCommandReceipt>;
   requestAuthorizedSend(input: CommandBase & { salesAuthorizationId: string; payloadSha256: string }): Promise<SendCommandReceipt>;
 };
+
+export type MemberInspectionInput = {
+  reviewId: string; caseId: string; setId: string; sourceVersionId: string;
+  expectedCaseVersion: number; inputSnapshotSha256: string; setManifestSha256: string; requestManifestSha256: string; outputSha256: string;
+  status: 'approved' | 'rejected'; fullOutputInspected: boolean; completionPercent: number | null; pageCount: number | null;
+  signatureRequirement: 'none' | 'image' | 'autograph'; signaturePolicyVersion: number | null;
+};
+const MemberInspectionReceiptSchema = z.strictObject({ data: z.strictObject({ reviewId: z.uuid(), reviewVersion: z.number().int().min(1), replayed: z.boolean() }) });
 
 export type OspWorkflowErrorCode = 'NO_SESSION' | 'NETWORK_UNAVAILABLE' | 'INVALID_RESPONSE' | 'STALE_SESSION' | 'INVALID_REQUEST' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'VERSION_CONFLICT' | 'DEPENDENCY_UNAVAILABLE' | 'FULFILLMENT_BLOCKED' | 'INTERNAL_ERROR';
 
@@ -158,6 +167,9 @@ export function createWorkflowClient(options: WorkflowAuth & { supabaseUrl: stri
   }
 
   return Object.freeze({
+    savePackageMemberReview: async (input: MemberInspectionInput) => (await request([
+      ['action', 'save_package_member_review'],
+    ], 200, MemberInspectionReceiptSchema, true, JSON.stringify(input))).data,
     getApprovalCommunicationsWorkspace: async ({ caseId, payloadId }) => {
       if (!UUID.test(caseId) || (payloadId !== undefined && !UUID.test(payloadId))) throw new OspWorkflowError('INVALID_REQUEST');
       const response = await request([
@@ -167,10 +179,11 @@ export function createWorkflowClient(options: WorkflowAuth & { supabaseUrl: stri
     },
     completeOperationsReview: async (input) => {
       validateBase(input);
-      if (!SHA.test(input.inputSnapshotSha256)) throw new OspWorkflowError('INVALID_REQUEST');
+      if (!SHA.test(input.inputSnapshotSha256) || (input.reviewSha256 !== undefined && !SHA.test(input.reviewSha256))) throw new OspWorkflowError('INVALID_REQUEST');
       return (await request([
         ['action', 'complete_operations_review'], ['case_id', input.caseId], ['expected_case_version', String(input.expectedVersion)],
         ['input_snapshot_sha256', input.inputSnapshotSha256], ['idempotency_key', input.idempotencyKey],
+        ...(input.reviewSha256 ? [['review_sha256', input.reviewSha256] as const] : []),
       ], 200, ApprovalCommandReceiptSchema, true)).data;
     },
     approveAndApplySignature: async (input) => {

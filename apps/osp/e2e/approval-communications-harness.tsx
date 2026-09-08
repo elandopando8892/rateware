@@ -52,7 +52,7 @@ function Harness() {
   };
   if (failed) return <p role="alert">Workspace unavailable.</p>;
   if (!workspace) return <p role="status">Loading current state…</p>;
-  if (stage === 'review') return <OperationsReviewPage workspace={workspace} conflict={conflict} onComplete={() => run('operations', (idempotencyKey) => client.completeOperationsReview({ caseId, expectedVersion: workspace.caseVersion, idempotencyKey, inputSnapshotSha256: workspace.inputSnapshot?.sha256 ?? '' }))} />;
+  if (stage === 'review') return <OperationsReviewPage workspace={workspace} conflict={conflict} onSaveInspection={async input => { await client.savePackageMemberReview!(input); await load(); }} onComplete={() => run('operations', (idempotencyKey) => client.completeOperationsReview({ caseId, expectedVersion: workspace.caseVersion, idempotencyKey, inputSnapshotSha256: workspace.inputSnapshot?.sha256 ?? '', ...(workspace.supplierPackageSet?.operationsReviewSha256 ? { reviewSha256: workspace.supplierPackageSet.operationsReviewSha256 } : {}) }))} />;
   if (stage === 'signature') return <SignatureApprovalPage workspace={workspace} conflict={conflict} onApprove={() => run('signature', (idempotencyKey) => client.approveAndApplySignature({ caseId, expectedVersion: workspace.caseVersion, idempotencyKey, inputSnapshotSha256: workspace.inputSnapshot?.sha256 ?? '', signaturePositionVersion: workspace.signature?.positionVersion ?? 0 }))} />;
   if (stage === 'authorization') return <SalesAuthorizationPage
     workspace={workspace}

@@ -59,6 +59,7 @@ function canonical(value: unknown): string {
 }
 
 const SAFE_ERRORS = new Set([
+  "REQUEST_FULFILLMENT_BLOCKED",
   "APPROVAL_COMMAND_INVALID",
   "APPROVAL_FORBIDDEN",
   "APPROVAL_PERSISTENCE_FAILED",
@@ -380,6 +381,14 @@ export function createPostgresApprovalStore(options: {
             let rows: SqlRow[];
             const permissions = [...command.actor.permissions];
             if (command.type === "complete_operations_review") {
+              const packageSets = await tx`select to_regclass('osp_private.supplier_package_sets') is not null as available`;
+              if (packageSets[0]?.available === true) {
+                // Lock the same case as set publication before checking. Legacy
+                // commands may never approve an independently generated set.
+                await tx`select osp_private.lock_package_set_operations_context(${command.organizationId}::uuid,${command.caseId}::uuid,${command.expectedCaseVersion}::bigint,${command.inputSnapshotSha256})`;
+                const currentSet = await tx`select id from osp_private.supplier_package_sets where organization_id=${command.organizationId}::uuid and case_id=${command.caseId}::uuid and status='current'`;
+                if (currentSet.length) fail("REQUEST_FULFILLMENT_BLOCKED");
+              }
               const permissionArray = textArray(permissions);
               rows =
                 await tx`select * from osp_private.complete_operations_review_command(${command.organizationId}, ${command.caseId}, ${command.inputSnapshotSha256}, ${command.expectedCaseVersion}, ${command.actor.subject}, ${command.actor.verifiedEmail}, ${permissionArray}::text[], ${command.actor.role}, ${command.actor.authorizationSessionId}, ${command.actor.authorizationSessionIssuedAt}, ${hash})`;
