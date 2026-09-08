@@ -160,7 +160,7 @@ export function createPostgresDocumentStore(options: { databaseUrl: string; post
     },
     async decideProfileReviewField(input: ProfileReviewFieldDecisionInput) {
       return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
-        const row = one(await tx`select review_id, field_id, field_status, revision from osp_private.decide_profile_evidence_field_command(${input.organizationId}, ${input.reviewId}, ${input.fieldId}, ${input.expectedRevision}, ${input.decision}, ${input.decisionNote}, ${input.reviewerValue === null ? null : JSON.stringify(input.reviewerValue)}::jsonb, ${input.actorSubject}, ${input.actorPermission})`, 'PROFILE_FIELD_VERSION_CONFLICT');
+        const row = one(await tx`select review_id, field_id, field_status, revision from osp_private.decide_profile_evidence_field_command(${input.organizationId}, ${input.reviewId}, ${input.fieldId}, ${input.expectedRevision}, ${input.decision}, ${input.decisionNote}, ${input.reviewerValue === null ? null : JSON.stringify(input.reviewerValue)}::text::jsonb, ${input.actorSubject}, ${input.actorPermission})`, 'PROFILE_FIELD_VERSION_CONFLICT');
         if (row.review_id !== input.reviewId || row.field_id !== input.fieldId || row.field_status !== input.decision) throw new Error('PROFILE_FIELD_DECISION_REJECTED');
         return Object.freeze({ reviewId: input.reviewId, fieldId: input.fieldId, fieldStatus: input.decision, revision: integer(row.revision, 'PROFILE_FIELD_DECISION_REJECTED') });
       });

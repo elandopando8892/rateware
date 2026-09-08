@@ -900,7 +900,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "c0f35a6b4750c25015df7fde05c7a5d9f9d73eeac58b8b1d277e44e4a5b92ab0",
-    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
+    "authorizationFingerprint": "973108ed667bf8cee910e5702df92849784251e4fbd1f6a47c066eadc058ebf6"
   },
   {
     "surface": {
@@ -948,7 +948,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "cd2492946c9ec017deab9dcc647cea02b130b912d10012c2673d7e7340c281af",
-    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
+    "authorizationFingerprint": "973108ed667bf8cee910e5702df92849784251e4fbd1f6a47c066eadc058ebf6"
   },
   {
     "surface": {
@@ -996,7 +996,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "8c050d46a6ced5ace29843e1e5a94c253e87a6216b860d5b148210d980137b18",
-    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
+    "authorizationFingerprint": "973108ed667bf8cee910e5702df92849784251e4fbd1f6a47c066eadc058ebf6"
   },
   {
     "surface": {
@@ -1044,7 +1044,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "062acc91396753005c331c4149b5d71bef7704701451ba79dfe3fef1da7c003f",
-    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
+    "authorizationFingerprint": "973108ed667bf8cee910e5702df92849784251e4fbd1f6a47c066eadc058ebf6"
   },
   {
     "surface": {
@@ -1092,7 +1092,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "70fa30e04fc257f1254cafce74a5f7de879ec99a99d96614c97eee78e56a9c01",
-    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
+    "authorizationFingerprint": "973108ed667bf8cee910e5702df92849784251e4fbd1f6a47c066eadc058ebf6"
   },
   {
     "surface": {
@@ -1140,7 +1140,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "5a4be35a20bb0066602dc1e220aab198ef3390067661857245c0e92bd298fd33",
-    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
+    "authorizationFingerprint": "973108ed667bf8cee910e5702df92849784251e4fbd1f6a47c066eadc058ebf6"
   },
   {
     "surface": {
@@ -1188,7 +1188,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "701dbccfc2e51e87ce3484c5a7d70d02d373957053a39bb12ddeb0da8d09b9b1",
-    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
+    "authorizationFingerprint": "973108ed667bf8cee910e5702df92849784251e4fbd1f6a47c066eadc058ebf6"
   },
   {
     "surface": {
@@ -1236,7 +1236,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "8c9015f1c81dea5dff13526aa63cf8023d9ba82e16b6ef4aca555b35fef7c774",
-    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
+    "authorizationFingerprint": "973108ed667bf8cee910e5702df92849784251e4fbd1f6a47c066eadc058ebf6"
   },
   {
     "surface": {
@@ -1284,7 +1284,7 @@ const DEFINITIONS = [
       "notes": "Authenticated OSP human workflow; consequential effects remain separately gated."
     },
     "metadataFingerprint": "7c971e3716ec4e5453fd36b369ea608841cc28236a03cb4077188abb4479c76f",
-    "authorizationFingerprint": "c8e6303f77926af2ab110a4d6f253df2f8b50dbea6703ed42f26a89a0c9d5115"
+    "authorizationFingerprint": "973108ed667bf8cee910e5702df92849784251e4fbd1f6a47c066eadc058ebf6"
   },
   {
     "surface": {

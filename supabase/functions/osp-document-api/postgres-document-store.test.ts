@@ -5,6 +5,24 @@ import { createPostgresDocumentStore } from './postgres-document-store.ts';
 const organizationId = '11111111-1111-4111-8111-111111111111';
 const sourceSha256 = 'a'.repeat(64);
 
+Deno.test('profile corrections bind serialized JSON as text before PostgreSQL parses it', async () => {
+  const samples = ['XBFREIGHT SYSTEMS LLC', 'A "quoted" name', 'José González', 1771165, false, { verified: true }, ['one', 'two']];
+  for (const reviewerValue of samples) {
+    let recorded = false;
+    const sql = Object.assign(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const text = strings.join('?');
+      if (!text.includes('decide_profile_evidence_field_command')) return [];
+      assertEquals(text.includes('::text::jsonb'), true);
+      assertEquals(values[6], JSON.stringify(reviewerValue));
+      recorded = true;
+      return [{ review_id: '44444444-4444-4444-8444-444444444444', field_id: '55555555-5555-4555-8555-555555555555', field_status: 'corrected', revision: 3 }];
+    }, { begin: async <T>(operation: (tx: typeof sql) => Promise<T>) => await operation(sql) });
+    const store = createPostgresDocumentStore({ databaseUrl: 'postgres://localhost:55322/osp', postgresFactory: () => sql });
+    await store.decideProfileReviewField({ organizationId, reviewId: '44444444-4444-4444-8444-444444444444', fieldId: '55555555-5555-4555-8555-555555555555', expectedRevision: 2, decision: 'corrected', decisionNote: 'Verified against source.', reviewerValue, actorSubject: 'fixture:operator', actorPermission: 'osp:operate' });
+    assertEquals(recorded, true);
+  }
+});
+
 function input() {
   return {
     organizationId,
