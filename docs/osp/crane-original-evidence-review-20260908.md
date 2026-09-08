@@ -42,3 +42,19 @@ this case and have not been imported or processed.
 
 Package remains unassembled and blocked. This is evidence review, not product
 closure or a completed Crane package.
+
+## Cross-source scope correction
+
+Live `gmail_messages` row `7eb33378-650a-41bb-a4a3-6e287efc1c89` is a
+controlled internal canary message, not the original carrier email. Its safe
+body describes an internal adaptable customer-setup canary and prohibits
+reply/external action. It contains no applicant signing instruction. This
+proves processing of real source files in a controlled case, NOT coverage of
+the complete original carrier request. Obtain the preserved original request
+before treating this as full business end-to-end evidence.
+
+The adjacent original DOCX SHA256
+`c334c907572bf009f6193e0c43f8eb41b9baa55ac9e5311538730e65ca3745ee`
+matches case document version `7cd7a96f-2f0a-4695-9460-75187fc750e6`.
+Bundled `render_docx.py` failed before conversion because `soffice.exe` was not
+found on PATH. No DOCX visual PASS, edit or signature inference is asserted.
