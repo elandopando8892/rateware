@@ -14,7 +14,7 @@
     "release:progress": "node tools/production-readiness-report.mjs",
     "release:preflight": "node tools/release-preflight.mjs",
     "test:action-contract": "node tests/action-contract.test.mjs",
-    "test:carrier-list-templates": "node tests/carrier-list-template-domain.test.mjs && node --test tests/carrier-list-templates-remote-probes.test.mjs && deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/carrier-list-templates.contract.test.ts",
+    "test:carrier-list-templates": "node tests/carrier-list-template-domain.test.mjs && node --test tests/carrier-list-templates-remote-probes.test.mjs tests/supabase-auth-migration.test.mjs && deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/supabase-auth-permissions.contract.test.ts tests/carrier-list-templates.contract.test.ts",
     "test:rfx-launch-e2e": "node tests/rfx-launch-e2e-certification.test.mjs",
     "test:fcm-gmail": "node tests/fcm-customer-quote-email.test.mjs && deno test --allow-env --node-modules-dir=none --no-lock tests/fcm-customer-quote-email.contract.test.ts",
     "test:identity-contract": "node --test tests/phase0-identity.test.mjs",
