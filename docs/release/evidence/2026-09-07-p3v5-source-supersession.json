@@ -3,9 +3,9 @@
   "sprint": "P3-V5",
   "verdict": "LOCAL-GO",
   "release_credit": "withheld",
-  "product_candidate_sha": "fdff5b52ff5549d93c7b4522c8e3c93b3af2d4cb",
-  "product_candidate_tree": "1f4f030171b67681794ee0e692e8904e4673b3f9",
-  "product_base_sha": "4e435456cb0061b630d117b4499c6d5a134a011d",
+  "product_candidate_sha": "79b5bc158e657f7a4c46fb63922291e920dec51e",
+  "product_candidate_tree": "a41e87f435153545126d41a9466711c341bd936e",
+  "product_base_sha": "1f5193c6820b2c0901a748b437f96bf3d633be09",
   "source_paths": [
     "business-intelligence.html",
     "growth-hacking.html",
@@ -36,9 +36,9 @@
     "ratebook-carrier.html": "9b1b4b7a999eb290ca33e8bac8a4a75283882e77",
     "rfx-bid.html": "b0826ebe546f8ad3366c4efd8f8e985768795da2",
     "shipper-profile.html": "5e28ecd133933987aa07f69da93d8e0744d3818e",
-    "src/platform55-visual-parity.css": "ab2738f3873d77567a7fddc5babb9c9dc225f31e",
+    "src/platform55-visual-parity.css": "cfb6c1f04015d8656e6f09b8be0ee6407717f795",
     "src/platform55-intelligence-admin.css": "8c49183915998f0ee7101f163d2fc842e8691a36",
     "src/platform55-public.css": "769e3b5f5c1dd983989085cd4abefc0f8fa90745"
   },
-  "record_sha256": "43d293524ec53d95608555e0c1d5d9e7cc3cf9775760d2823c487600d4b5e771"
+  "record_sha256": "3cb0ca5b34ced030b7e3cc0ebd30db41ad080c859f56d114299567ae1f3468a0"
 }

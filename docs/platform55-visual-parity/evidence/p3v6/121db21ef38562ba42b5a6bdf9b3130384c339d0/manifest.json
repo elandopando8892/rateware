@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "sprint": "P3-V6",
+  "candidate_sha": "121db21ef38562ba42b5a6bdf9b3130384c339d0",
+  "candidate_tree": "2bfa3fca7fdba25365d38ba3c5399612e1914b4d",
+  "base_sha": "1f5193c6820b2c0901a748b437f96bf3d633be09",
+  "route_count": 29,
+  "viewport_count": 3,
+  "states_per_route": 3,
+  "capture_count": 261,
+  "browser": {
+    "mode": "static-local",
+    "javascript_enabled": false,
+    "external_network": false,
+    "fresh_context_per_route_state": true,
+    "failures": []
+  },
+  "contract": {
+    "test": "tests/platform55-p3v-aggregate.test.mjs",
+    "subtests": 4,
+    "passed": 4
+  },
+  "source_blobs": {
+    "app.html": "bc70a749dcfab7e6239b8e7d9bea08d348d63ecb",
+    "rfx-process.html": "46f95e48059463c9c7cc72515ccfbab129799ab9",
+    "package.json": "117136f39a8fd5b80a136d805732d9e55c4e3518",
+    "src/platform55-visual-parity.css": "cfb6c1f04015d8656e6f09b8be0ee6407717f795",
+    "tests/platform55-p3v-aggregate.test.mjs": "e52dbd71fced30fc25b46bdd60971cc3972ef973",
+    "tools/platform55-p3v-aggregate-certification.mjs": "d4d8b545e3ecb8d0b3ec2faf5e7cf4d2100f8c7e",
+    "docs/superpowers/plans/2026-09-07-rateware-platform55-p3v6-aggregate.md": "84bff2603ee51e46af39b9305b9e348adf6710fa"
+  },
+  "review": {
+    "verdict": "PENDING_INDEPENDENT_REVIEW",
+    "release_credit": "withheld",
+    "reviewer_worktree_required": true,
+    "production_visual_smoke": "not_run_by_this_sprint"
+  }
+}

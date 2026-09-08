@@ -459,6 +459,23 @@
   }
 }
 
+@media (max-width: 760px) {
+  /* The legacy shared stylesheet switches page headers back to a row at 760px.
+     Keep the P3-V3 ratebook header stacked so a full-width action cannot widen
+     the document on a phone viewport. */
+  .p55-v3-page > [data-platform55-page-header] {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .p55-v3-page .page-header-actions,
+  .p55-v3-page > [data-platform55-page-header] > .page-header-actions {
+    box-sizing: border-box;
+    width: 100%;
+  }
+}
+
 @media (max-width: 520px) {
   .p55-v3-context-banner {
     grid-template-columns: 1fr;
