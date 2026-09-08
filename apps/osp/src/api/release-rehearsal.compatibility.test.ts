@@ -22,7 +22,10 @@ describe.skipIf(!run)('native PG17 responses and old/new UI contracts', () => {
     if (!run || !/^osp_release_rehearsal_run_[0-9]+$/.test(run)) throw new Error('Invalid synthetic run');
     syntheticSource ??= readFileSync(`${root}/tmp/osp-s13-pg17-rehearsal/${run}.json`, 'utf8');
     const value = JSON.parse(syntheticSource);
-    if (value.syntheticOnly !== true || value.appliedMigrations?.length !== 9) throw new Error('Incomplete native evidence');
+    const manifest = JSON.parse(readFileSync(`${root}/docs/osp/releases/2026-09-08-closeout-migrations.json`, 'utf8'));
+    const expected = manifest.pendingMigrations.map((item: { file: string }) => item.file);
+    if (value.syntheticOnly !== true || expected.length !== 13 ||
+      JSON.stringify(value.appliedMigrations) !== JSON.stringify(expected)) throw new Error('Incomplete native evidence');
     return value;
   };
   const oldSchemas = () => {

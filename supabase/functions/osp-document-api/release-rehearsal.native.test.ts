@@ -1,4 +1,5 @@
-import postgres from "npm:postgres@3.4.7";
+import postgres from "postgres";
+// deno-lint-ignore no-import-prefix -- pinned test-only assertions
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import type { SqlPort } from "../_shared/osp/database-context.ts";
 import { createPostgresOspReadStore } from "../osp-read-api/postgres-store.ts";
@@ -26,7 +27,7 @@ const actor = "fixture:operator";
 
 Deno.test({
   name:
-    "PG17 nine-migration upgrade, real store reads, guarded writes and rollback compatibility",
+    "PG17 thirteen-migration upgrade, real store reads, guarded writes and rollback compatibility",
   ignore: Deno.env.get("OSP_LOCAL_PG_REHEARSAL") !== "1",
   fn: async (t) => {
     const directory = Deno.env.get("OSP_LOCAL_PG_DIRECTORY") ?? "";
@@ -95,6 +96,7 @@ Deno.test({
         const file of [
           "20260814110000_provider_legal_entity_fact_promotion.sql",
           "20260828213328_osp_profile_fact_promotion.sql",
+          "20260831133838_osp_sales_superuser_approval_policy.sql",
         ]
       ) {
         await admin.unsafe(await read(`supabase/migrations/${file}`));
@@ -151,11 +153,11 @@ Deno.test({
         grant select on all tables in schema public,osp_private to osp_workflow_api;
       `);
       const manifest = JSON.parse(
-        await read("docs/osp/releases/2026-09-05-activation-preflight.json"),
+        await read("docs/osp/releases/2026-09-08-closeout-migrations.json"),
       );
       const applied: string[] = [];
       await step(
-        "applies all nine exact files together without backfilling or changing a case",
+        "applies all thirteen exact files together without backfilling or changing a case",
         async () => {
           for (const item of manifest.pendingMigrations) {
             const sql = await read(`supabase/migrations/${item.file}`);
@@ -172,7 +174,24 @@ Deno.test({
             await admin.begin((tx) => tx.unsafe(sql));
             applied.push(item.file);
           }
-          assertEquals(applied.length, 9);
+          assertEquals(applied.length, 13);
+          assertEquals(new Set(applied).size, 13);
+          assertEquals(applied, [...applied].sort());
+          for (
+            const table of [
+              "supplier_package_sets",
+              "package_set_operations_reviews",
+              "package_set_member_reviews",
+              "background_jobs",
+            ]
+          ) {
+            assertEquals(
+              (await admin.unsafe(
+                `select count(*)::int n from osp_private.${table}`,
+              ))[0].n,
+              0,
+            );
+          }
           assertEquals(
             (await admin`select count(*)::int n from osp_private.case_answer_memory_candidates`)[
               0

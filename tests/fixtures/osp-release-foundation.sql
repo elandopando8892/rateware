@@ -1,4 +1,4 @@
--- Synthetic CONTRACT foundation for the nine-migration rehearsal, not a full
+-- Synthetic CONTRACT foundation for the thirteen-migration rehearsal, not a full
 -- production schema dump. No real XBF/carrier values or outgoing integrations.
 create schema osp_private;
 create schema extensions;
@@ -37,7 +37,12 @@ create table osp_private.form_fields(id uuid,organization_id uuid,template_versi
 create table osp_private.form_rules(organization_id uuid,template_version_id uuid,target_field_id uuid,rule_json jsonb);
 create table osp_private.case_form_instances(organization_id uuid,id uuid,case_id uuid,template_version_id uuid,
   version integer,values_json jsonb,updated_at timestamptz default now(),unique(organization_id,id));
-create table osp_private.case_package_input_snapshots(organization_id uuid,form_instance_id uuid);
+create table osp_private.case_package_input_snapshots(organization_id uuid,form_instance_id uuid,
+  id uuid,case_id uuid,case_version bigint,canonical_sha256 text,created_at timestamptz default now(),
+  document_version_ids uuid[] not null default '{}',unique(organization_id,case_id,id));
+create table osp_private.background_jobs(organization_id uuid,id uuid,kind text,
+  lease_token uuid,completed_at timestamptz,leased_until timestamptz,opaque_payload jsonb,
+  unique(organization_id,id));
 create table osp_private.request_manifest_decision_reviews(organization_id uuid,id uuid,case_id uuid,
   manifest_draft_id uuid,manifest_version integer,review_version integer,status text,manifest_sha256 text,
   reviewed_at timestamptz default now(),unique(organization_id,id));
@@ -46,7 +51,8 @@ create table osp_private.request_manifest_drafts(organization_id uuid,id uuid,ca
 create table osp_private.request_knowledge_promotions(organization_id uuid,id uuid,case_id uuid,
   review_id uuid,manifest_draft_id uuid,promoted_by_subject text,selected_keys_json jsonb,unique(organization_id,id));
 create table osp_private.document_versions(id uuid,organization_id uuid,document_id uuid,version integer,
-  document_type text,valid_from date,expires_at date,status text,review_after_sha256 text);
+  document_type text,valid_from date,expires_at date,status text,review_after_sha256 text,
+  unique(organization_id,id));
 create table osp_private.documents(organization_id uuid,id uuid,case_id uuid);
 create table osp_private.generated_packages(content_type text);
 create table osp_private.document_extractions(organization_id uuid,id uuid,case_id uuid,source_version_id uuid,status text);
@@ -61,7 +67,7 @@ create table storage.buckets(id text primary key,public boolean,file_size_limit 
 insert into storage.buckets values('osp-derived-documents',false,26214400,array[
   'application/pdf','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
--- Deterministic upstream catalog seams. Nine pending migrations, their SQL
+-- Deterministic upstream catalog seams. Pending migrations, their SQL
 -- guards and actual API stores are exercised; catalog inference is not mocked as proven.
 create function osp_private.reject_request_knowledge_ledger_mutation() returns trigger
   language plpgsql as $$ begin raise exception 'APPEND_ONLY'; end $$;

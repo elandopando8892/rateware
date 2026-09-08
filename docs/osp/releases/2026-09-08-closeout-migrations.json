@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "scope": "Ordered local rehearsal manifest; not a deployment receipt",
+  "pendingMigrations": [
+    {
+      "file": "20260902120000_osp_request_contract_semantic_stop.sql",
+      "sha256": "43368e0bcb6e7c5d0b0a4dd317266df11cb00feaa203b3bbbb7e59441e6bd9a1"
+    },
+    {
+      "file": "20260902130000_osp_operations_review_contract_gate.sql",
+      "sha256": "38c0fb420c3b9c2fbc8899641ec4f3e6c508f41093aefc85909f141c6c054d54"
+    },
+    {
+      "file": "20260905050000_osp_approved_profile_memory_reuse.sql",
+      "sha256": "d4745dedc3bda6fe5b3b49c2a3da61d24188ff00686bd3ef247237414ca52598"
+    },
+    {
+      "file": "20260905053000_osp_case_answer_memory_candidates.sql",
+      "sha256": "5ee7a3f93bcc4674e5e9b55016c7da0d87c82d6ecb74abb9dd0cf1e062eace29"
+    },
+    {
+      "file": "20260905060000_osp_answer_memory_human_review.sql",
+      "sha256": "409d36bee02aef85dd8e7d5eeaf7879ab027a70e2fe7ac01a361181c2771ab3d"
+    },
+    {
+      "file": "20260905083000_osp_answer_memory_evidence_preflight.sql",
+      "sha256": "271b8fefdfb777a3a28922e546adc951d1d90b544edca5147179d5c315e0f2a4"
+    },
+    {
+      "file": "20260905110000_osp_answer_memory_evidence_links.sql",
+      "sha256": "895e7e945980d9f89e43c318ffdea56ef9562d7490298cf8bb698998375fcfb9"
+    },
+    {
+      "file": "20260905143000_osp_profile_complete_batch_confirmation.sql",
+      "sha256": "f74d9cdd28e203a92e85b75fb0ef18a142b085008c7392bab76f73b914c795e7"
+    },
+    {
+      "file": "20260905173000_osp_request_constraint_actor_regex_hotfix.sql",
+      "sha256": "45ecd034b6038f85460f74bdbc184c263c40b8b664855c4e65db86cc3771e324"
+    },
+    {
+      "file": "20260908160000_osp_supplier_package_sets.sql",
+      "sha256": "efb1825e7395fe42a734713e74f0bd1758a92cc3b7ef61f5d8bf97fa27f3ab82"
+    },
+    {
+      "file": "20260908180000_osp_package_set_operations_reviews.sql",
+      "sha256": "e3012ad1c8340a32f8195a30ac02c9dd9bf8d1c947439f7bde79bfc1a434f621"
+    },
+    {
+      "file": "20260908190000_osp_package_set_member_reviews.sql",
+      "sha256": "43d8c340426f24135afa62514258058f59ed66173a83be55b6d1fa4be6259557"
+    },
+    {
+      "file": "20260908200000_osp_member_review_command_identity.sql",
+      "sha256": "7189b1141084abac31a27735bcccdc635ee9ccf856b103d27404d5a1e63f19db"
+    }
+  ]
+}

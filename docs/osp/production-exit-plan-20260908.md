@@ -110,6 +110,13 @@ pasó sin cambiar límites. Falta el ensayo conjunto de las trece migraciones y
 la preview autenticada; el hito 1 no se declara cerrado por estas pruebas.
 Evidencia: [conciliación y cobertura](releases/2026-09-08-package-review-preflight.md).
 
+Ensayo conjunto posterior: las trece migraciones aplicaron en una base PostgreSQL
+17.11 sintética vacía con hashes exactos; ocho pasos de integración y cuatro
+pruebas de compatibilidad UI pasaron. La UI anterior sigue siendo incompatible
+con los campos nuevos, por lo que la liberación debe ser coordinada. Falta la
+preview autenticada y conciliación final del esquema vivo; esto no certifica
+todavía el hito 1. [Evidencia conjunta](closeout-thirteen-migration-rehearsal-20260908.md).
+
 ## Control de avance y regla de parada
 
 La próxima entrega debe incluir la demostración del hito 1, no sólo otro helper.
