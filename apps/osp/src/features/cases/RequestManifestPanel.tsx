@@ -63,6 +63,7 @@ export function RequestManifestPanel({
   const readinessStatus = unresolved > 0 && manifest.readiness.status === 'ready_for_prefill' ? 'needs_clarification' : manifest.readiness.status;
   const readinessTone = readinessStatus === 'ready_for_prefill' ? 'ready' : readinessStatus === 'needs_clarification' ? 'warning' : 'blocked';
   const readinessReasons = readinessStatus === 'ready_for_prefill' ? [] : [...new Set(manifest.readiness.reasonCodes)].slice(0, 20);
+  const sourceFormats = Object.entries(manifest.sourceCoverage).filter(([, count]) => count > 0);
   return (
     <section className="panel request-manifest" aria-labelledby="request-manifest-title">
       <div className="panel-heading request-manifest-heading">
@@ -84,9 +85,9 @@ export function RequestManifestPanel({
       <div className="manifest-source-coverage" aria-label="Analyzed source formats">
         <strong>Analyzed directly</strong>
         <ul>
-          {Object.entries(manifest.sourceCoverage).filter(([, count]) => count > 0).map(([kind, count]) => (
+          {sourceFormats.length > 0 ? sourceFormats.map(([kind, count]) => (
             <li key={kind} aria-label={`${count} ${SOURCE_LABELS[kind as keyof typeof SOURCE_LABELS]}`}><span>{count}</span>{SOURCE_LABELS[kind as keyof typeof SOURCE_LABELS]}</li>
-          ))}
+          )) : <li className="manifest-source-coverage-empty" aria-label="No recognized source formats">No recognized source formats</li>}
         </ul>
         <small>Every conclusion remains linked to preserved evidence.</small>
       </div>

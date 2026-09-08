@@ -355,3 +355,25 @@ Regresión ejecutada:
 
 El cambio es sólo de lectura/presentación: no resuelve requisitos, no modifica
 datos y no habilita firma, autorización de Sales, correo, webhook o despliegue.
+
+## Incremento ejecutado — auditoría WCAG de motivos de freno y estado de fuentes
+
+Se revisó `RequestManifestPanel` con foco en la legibilidad operativa del
+freno semántico. Los motivos ahora se presentan con encabezado y lista
+semánticos, se deduplican antes de renderizarse y los códigos no reconocidos
+conservan un fallback legible. Cuando no existe ningún formato reconocido, la
+interfaz ya no deja una lista vacía: muestra explícitamente que la cobertura
+de fuentes está pendiente. El layout mantiene una sola columna en móvil y
+conserva el foco visible y los landmarks existentes, sin introducir acciones
+externas ni cambios de flujo.
+
+Regresión ejecutada:
+
+- `RequestManifestPanel.test.tsx`: 12/12.
+- ESLint enfocado y TypeScript (`tsc --noEmit`): correctos.
+- Build OSP: 430 módulos transformados; `git diff --check`: correcto.
+
+La evidencia es automatizada y de componente; no se ejecutó un lector de
+pantalla real (NVDA/VoiceOver) ni una auditoría manual en navegador. No se
+crearon registros, no se aplicaron migraciones, no se tocó Supabase, no se
+enviaron correos/webhooks, no se firmó ni se promovió a producción.

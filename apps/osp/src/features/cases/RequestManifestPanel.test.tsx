@@ -170,6 +170,16 @@ describe('RequestManifestPanel', () => {
     expect(screen.getByText('sanitized copy')).toBeInTheDocument();
   });
 
+  it('explains an empty recognized-format inventory instead of rendering a blank list', () => {
+    render(<RequestManifestPanel manifest={{
+      ...manifest,
+      sourceCoverage: { email: 0, xlsx: 0, xlsm: 0, pdf: 0, docx: 0, image: 0 },
+    }} />);
+
+    expect(screen.getByLabelText('No recognized source formats')).toBeInTheDocument();
+    expect(screen.getByText('No recognized source formats')).toBeInTheDocument();
+  });
+
   it('deduplicates readiness reason codes and keeps unknown codes readable', () => {
     render(<RequestManifestPanel manifest={{
       ...manifest,
