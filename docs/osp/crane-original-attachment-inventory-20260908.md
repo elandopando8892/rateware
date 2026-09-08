@@ -23,3 +23,18 @@ preservation, not approval to include it in the final package. Local Drive fille
 copies are separate artifacts and must not replace this original inventory.
 Full visual inspection, governed source binding and completed outputs remain
 pending. No production case was changed.
+
+## Read-only OOXML inspection
+
+The six original DOCX ZIP containers were inspected without launching Office or
+extracting/executing embedded objects. QF-050 contains
+`word/embeddings/oleObject1.bin` and `word/embeddings/oleObject2.bin`.
+QF-154 contains two external relationships of type hyperlink. The remaining
+four DOCX containers have no matching VBA/embedding/ActiveX entries or external
+relationships in this structural check. No links were followed.
+
+This is not an antivirus verdict or a safe-source approval. The embedded objects
+were not classified. Conversion must disable active content and preserve the
+originals; determine whether these objects carry required document content before
+sanitizing, rather than silently dropping a requirement. Legacy QF-167 DOC was
+not covered by this OOXML check. No safety status was changed in Supabase.
