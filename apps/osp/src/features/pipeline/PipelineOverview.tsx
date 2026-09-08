@@ -67,6 +67,8 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
   const health = gmail.data ? deriveMailboxHealth(gmail.data) : 'unknown';
   const automaticWatch = health === 'watching';
   const automaticPoll = health === 'polling';
+  const scheduledPollConfigured = gmail.data?.scheduled_poll_configured === true;
+  const scheduledPollDegraded = scheduledPollConfigured && !automaticPoll;
   const automaticIntake = automaticWatch || automaticPoll;
   const gmailConnected = gmail.data?.connection_exists === true;
   const pubsubReady = gmailConnected && gmail.data?.pubsub_configured === true;
@@ -173,7 +175,7 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
         <div className="panel-heading">
           <div><p className="eyebrow">Automatic intake</p><h2 id="gmail-title">Email to Operations review</h2></div>
           <span className={automaticIntake ? 'automatic-mode-badge' : 'manual-mode-badge'}>
-            {automaticPoll ? 'Automatic · scheduled sync' : automaticWatch ? 'Automatic · Gmail watch' : pubsubReady ? 'Ready · watch inactive' : gmailConnected ? 'Manual · no cloud trigger' : 'Manual · Gmail disconnected'}
+            {scheduledPollDegraded ? 'Scheduled sync · needs attention' : automaticPoll ? 'Automatic · scheduled sync' : automaticWatch ? 'Automatic · Gmail watch' : pubsubReady ? 'Ready · watch inactive' : gmailConnected ? 'Manual · no cloud trigger' : 'Manual · Gmail disconnected'}
           </span>
         </div>
         {!gmail.data && !gmail.isError ? <p role="status" aria-label={gmailActivity[0]}>{gmailActivity[1]}</p> : null}
@@ -181,7 +183,9 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
         {gmail.data ? (
           <div className={`health health-${health}`} role="status" aria-label={`Gmail status: ${healthLabels[health]}`}>
             <span className="health-dot" aria-hidden="true" />
-            <div><strong>{healthLabels[health]}</strong><p>{automaticPoll
+            <div><strong>{healthLabels[health]}</strong><p>{scheduledPollDegraded
+              ? 'Scheduled intake is configured, but its health check is failing. Review the mailbox connection and polling status; no Pub/Sub setup is needed.'
+              : automaticPoll
               ? `The connected inbox is checked automatically every ${Math.round((gmail.data?.poll_interval_seconds ?? 300) / 60)} minutes using the existing Supabase project.`
               : automaticWatch
               ? 'New inbox notifications enter the preparation path without a manual sync.'
@@ -196,7 +200,9 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
         <ol className="automation-path" aria-label="Automatic onboarding path">
           <li className={automaticIntake ? 'automation-step-complete' : 'automation-step-pending'}>
             <span className="automation-step-marker" aria-hidden="true">1</span>
-            <div><strong>Inbox monitored</strong><p>{automaticPoll
+            <div><strong>Inbox monitored</strong><p>{scheduledPollDegraded
+              ? 'Scheduled intake needs recovery before new requests can be processed reliably.'
+              : automaticPoll
               ? `Scheduled sync runs every ${Math.round((gmail.data?.poll_interval_seconds ?? 300) / 60)} minutes; manual sync remains available as fallback.`
               : automaticWatch ? 'Gmail push is ready to capture new requests.' : 'An automatic cloud trigger still needs activation.'}</p></div>
           </li>
@@ -225,8 +231,10 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
 
         <div className={`sync-card watch-card${automaticIntake ? ' sync-card-fallback' : ''}`}>
           <div>
-            <strong>{automaticPoll ? 'No-cost scheduled intake' : automaticWatch ? 'Automatic Gmail watch' : pubsubReady ? 'Enable automatic intake' : gmailConnected ? 'Cloud trigger not configured' : 'Gmail connection required'}</strong>
-            <p>{automaticPoll
+            <strong>{scheduledPollDegraded ? 'Recover scheduled intake' : automaticPoll ? 'No-cost scheduled intake' : automaticWatch ? 'Automatic Gmail watch' : pubsubReady ? 'Enable automatic intake' : gmailConnected ? 'Cloud trigger not configured' : 'Gmail connection required'}</strong>
+            <p>{scheduledPollDegraded
+              ? 'Check the existing scheduled job and Google connection before retrying. A connected mailbox flag alone does not prove successful intake.'
+              : automaticPoll
               ? `Active on the shared Supabase project. Last completed ${formatCaseDate(gmail.data?.poll_last_completed_at ?? '')}. No Pub/Sub provider is required.`
               : automaticWatch
               ? `Active until ${formatCaseDate(gmail.data?.watch_expires_at ?? '')}. Renew it before expiration to avoid falling back to manual sync.`
@@ -239,11 +247,11 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
           <button
             className="sync-button"
             type="button"
-            title={automaticPoll ? 'Scheduled polling is managed by the production release control.' : !gmailConnected ? 'Connect the approved Gmail mailbox first.' : !pubsubReady ? 'Configure the approved Google Pub/Sub trigger first.' : undefined}
-            disabled={automaticPoll || !client.renewGmailWatch || !pubsubReady || watch.isPending}
+            title={scheduledPollConfigured ? 'Scheduled polling is managed by the production release control.' : !gmailConnected ? 'Connect the approved Gmail mailbox first.' : !pubsubReady ? 'Configure the approved Google Pub/Sub trigger first.' : undefined}
+            disabled={scheduledPollConfigured || !client.renewGmailWatch || !pubsubReady || watch.isPending}
             onClick={() => watch.mutate()}
           >
-            {watch.isPending ? 'Activating…' : automaticPoll ? 'Scheduled sync active' : !gmailConnected ? 'Connect Gmail first' : !pubsubReady ? 'Pub/Sub required' : automaticWatch ? 'Renew watch' : 'Enable automatic intake'}
+            {watch.isPending ? 'Activating…' : scheduledPollDegraded ? 'Scheduled sync needs attention' : automaticPoll ? 'Scheduled sync active' : !gmailConnected ? 'Connect Gmail first' : !pubsubReady ? 'Pub/Sub required' : automaticWatch ? 'Renew watch' : 'Enable automatic intake'}
           </button>
         </div>
         <div className="sync-result" aria-live="polite">
