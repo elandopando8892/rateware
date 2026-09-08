@@ -146,6 +146,44 @@ Deno.test("workflow view derives mutually exclusive server capabilities and expo
   );
 });
 
+Deno.test("a current set cannot reuse legacy signed-file authority at any downstream stage", () => {
+  const identity = {
+    ...baseIdentity,
+    identity: { ...baseIdentity.identity, email: "sales@heymarksman.com" },
+    permissions: ["osp:read", "osp:superuser"],
+  };
+  for (const status of ["draft", "frozen", "authorized", "failed"] as const) {
+    const result = approvalCommunicationsWorkspace({
+      ...record,
+      caseState: status === "authorized" || status === "failed"
+        ? "ready_to_send"
+        : "sales_authorization",
+      caseVersion: status === "authorized" ? 8 : 7,
+      outbound: {
+        ...record.outbound!,
+        status,
+        salesAuthorizationId: payloadId,
+        sendOutcome: status === "failed" ? "failed" : null,
+      },
+      supplierPackageSet: {
+        setId: signedPackageId,
+        version: 2,
+        manifestSha256: sha,
+        files: [payloadId, signedPackageId].map((sourceVersionId) => ({
+          requirementId: `file:${sourceVersionId}`,
+          sourceVersionId,
+          outputSha256: sha,
+          contentType: "application/pdf",
+          objectId: `private:${sourceVersionId}`,
+          downloadUrl: null,
+        })),
+      },
+    }, identity);
+    assertEquals(Object.values(result.capabilities).some(Boolean), false);
+    assertEquals(result.supplierPackageSet?.files.length, 2);
+  }
+});
+
 Deno.test("the Sales superuser receives only the action for the current workflow stage", () => {
   const superuser: VerifiedWorkflowIdentity = {
     ...baseIdentity,

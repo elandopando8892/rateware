@@ -460,9 +460,10 @@ export function approvalCommunicationsWorkspace(
   );
   // Undefined is retained only for isolated legacy fixtures. The production
   // source always loads a matrix and fails closed if it cannot be evaluated.
-  const semanticReady = record.fulfillment === undefined
-    ? true
-    : record.fulfillment.blockingCount === 0;
+  const semanticReady = !record.supplierPackageSet &&
+    (record.fulfillment === undefined
+      ? true
+      : record.fulfillment.blockingCount === 0);
   const exactFinalPackage = record.outbound === null ||
     record.outbound.kind !== "final_response" ||
     record.outbound.attachments.length > 0;
@@ -504,7 +505,7 @@ export function approvalCommunicationsWorkspace(
     outbound: record.outbound,
     fulfillment: record.fulfillment ?? null,
     capabilities: Object.freeze({
-      saveOutboundDraft: operations &&
+      saveOutboundDraft: !record.supplierPackageSet && operations &&
         record.fulfillment?.gates.outboundDraft !== false &&
         record.caseState === "sales_authorization" &&
         record.inputSnapshot !== null && record.signedPackage !== null &&
