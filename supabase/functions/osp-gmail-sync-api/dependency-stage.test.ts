@@ -16,6 +16,14 @@ Deno.test("historical claim diagnostic exposes only exact safe codes", () => {
     safeHistoricalClaimFailureReason(new Error("secret database details")),
     "unclassified",
   );
+  assertEquals(
+    safeHistoricalClaimFailureReason({ code: "42501", detail: "private" }),
+    "insufficient_privilege",
+  );
+  assertEquals(
+    safeHistoricalClaimFailureReason({ code: "private", message: "private" }),
+    "unclassified",
+  );
 });
 
 Deno.test("dependency stage passes through success without logging", async () => {

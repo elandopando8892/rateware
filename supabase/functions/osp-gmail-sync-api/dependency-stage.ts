@@ -27,6 +27,16 @@ export function safeTokenFailureReason(error: unknown): string {
 }
 
 export function safeHistoricalClaimFailureReason(error: unknown): string {
+  if (!error || typeof error !== "object") return "unclassified";
+  const code = String((error as { code?: unknown }).code ?? "");
+  const codeReasons: Record<string, string> = {
+    "22023": "invalid_claim_input",
+    "23505": "claim_conflict",
+    "42501": "insufficient_privilege",
+    "57014": "database_timeout",
+    "P0001": "source_mismatch",
+  };
+  if (Object.hasOwn(codeReasons, code)) return codeReasons[code];
   if (!(error instanceof Error)) return "unclassified";
   const reasons: Record<string, string> = {
     "HISTORICAL_GMAIL_SOURCE_MISMATCH": "source_mismatch",
