@@ -5,8 +5,8 @@ declare
   old_fragment constant text := $old$and exists (
       select 1
       from pg_catalog.unnest(
-        pg_catalog.coalesce(message.to_emails, array[]::text[])
-        || pg_catalog.coalesce(message.cc_emails, array[]::text[])
+        coalesce(message.to_emails, array[]::text[])
+        || coalesce(message.cc_emails, array[]::text[])
       ) address
       where pg_catalog.split_part(pg_catalog.lower(address), '@', 2)
         not in ('', 'xbfreight.com', 'heymarksman.com')
