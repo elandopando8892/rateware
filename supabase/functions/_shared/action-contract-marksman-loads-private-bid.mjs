@@ -6,7 +6,9 @@
 
 const CONTRACT_VERSION = "1.3.0";
 const SOURCE_FILE = "supabase/functions/rfx-internal-bid-api/index.ts";
-const AUTHORIZATION_FINGERPRINT = "fe622453a3b00ba77d35ee8014e1a8180726418aae7489ace3bf30c57754c2d1";
+const READBACK_SOURCE_FILE = "supabase/functions/rfx-internal-bid-read-api/index.ts";
+const FIT_SOURCE_FILE = "supabase/functions/rfx-internal-fit-api/index.ts";
+const AUTHORIZATION_FINGERPRINT = "4b3957ce020b7392d3d5d8ee04fc74159a40170229388a3e9771d6deebe20e17";
 const DEPENDENCY_FILES = [
   "supabase/functions/_shared/marksman-loads-bid-contract.ts",
   "supabase/functions/_shared/rfx-invitation-token.ts",
@@ -68,17 +70,88 @@ const surfaces = [
     rpcSignature: null,
     coverageSignals: ["shared_dependency_observed", "external_dependency"],
   },
+  {
+    contractVersion: CONTRACT_VERSION,
+    canonicalId: "edge.rfx-internal-bid-read-api.read_operation_observation",
+    actionName: "read_operation_observation",
+    sourceKind: "edge-method",
+    sourceFile: READBACK_SOURCE_FILE,
+    handler: "Deno.serve",
+    endpoint: "POST /functions/v1/rfx-internal-bid-read-api",
+    businessModule: "Procurement",
+    operation: "read",
+    resource: "rfx-bid-operation-evidence",
+    access: "read",
+    exposure: "external-tokenized",
+    sensitivity: "high",
+    tenantRelevance: "tenant-scoped",
+    proposedPermissionKey: "internal.rfx.marksman_loads_bid.readback",
+    functionalOwner: "Procurement",
+    decisionStatus: "pending_human_approval",
+    lifecycle: "active",
+    replacementAction: null,
+    sourceFingerprint: "8e289da89f4701570fbe840faa771f34d23a24ad18eb09b567dab9defca787f9",
+    notes: "HMAC-authenticated, read-only observation of operation receipts. Absence never authorizes a retry; runtime readback flag defaults disabled.",
+    analysisCoverage: "shared-observed",
+    dependencyFiles: [
+      "supabase/functions/_shared/marksman-loads-bid-contract.ts",
+      "supabase/functions/_shared/marksman-loads-fit-contract.ts",
+      "supabase/functions/_shared/marksman-loads-readback-contract.ts",
+      READBACK_SOURCE_FILE,
+    ],
+    rpcSignature: null,
+    coverageSignals: ["shared_dependency_observed", "external_dependency"],
+  },
+  {
+    contractVersion: CONTRACT_VERSION,
+    canonicalId: "edge.rfx-internal-fit-api.resolve_and_save_fit",
+    actionName: "resolve_and_save_fit",
+    sourceKind: "edge-method",
+    sourceFile: FIT_SOURCE_FILE,
+    handler: "Deno.serve",
+    endpoint: "POST /functions/v1/rfx-internal-fit-api",
+    businessModule: "Procurement",
+    operation: "execute",
+    resource: "rfx-operational-fit",
+    access: "write",
+    exposure: "external-tokenized",
+    sensitivity: "critical",
+    tenantRelevance: "tenant-scoped",
+    proposedPermissionKey: "internal.rfx.marksman_loads_fit.submit",
+    functionalOwner: "Procurement",
+    decisionStatus: "pending_human_approval",
+    lifecycle: "active",
+    replacementAction: null,
+    sourceFingerprint: "0383995df09445d5d5b4087a01357707ac209defab3951e1e01b7317ab07c041",
+    notes: "HMAC-authenticated delegation to canonical save_segment_confirmations with deterministic operation identity and independent readback. Runtime Fit flag defaults disabled.",
+    analysisCoverage: "shared-observed",
+    dependencyFiles: [
+      "supabase/functions/_shared/marksman-loads-bid-contract.ts",
+      "supabase/functions/_shared/marksman-loads-fit-contract.ts",
+      "supabase/functions/_shared/rfx-invitation-token.ts",
+      FIT_SOURCE_FILE,
+    ],
+    rpcSignature: null,
+    coverageSignals: ["shared_dependency_observed", "external_dependency"],
+  },
 ];
 
 export const MARKSMAN_LOADS_PRIVATE_BID_ACTION_CONTRACT_EXTENSION = {
   contractVersion: CONTRACT_VERSION,
-  expectedCountsDelta: { governable: 2, edge: 2, postgres: 0, ratewareApi: 0 },
+  expectedCountsDelta: { governable: 4, edge: 4, postgres: 0, ratewareApi: 0 },
   reviewedMetadataFingerprints: {
     "edge.rfx-internal-bid-api.resolve_and_submit_bid_canary": "183380df1eeeba0e801bf726b0915f36483f10c612a824f616d47d2ad4b8dd21",
     "edge.rfx-internal-bid-api.resolve_and_submit_bid": "d02e88e27370e26055dd0c7f366e3ac0a660b9c546dcb6fd75a2da1fd9cf4694",
+    "edge.rfx-internal-bid-read-api.read_operation_observation": "f47f84fa9533f0526c77efddfcd089461df77c7705530c04ed0ad1f69162befa",
+    "edge.rfx-internal-fit-api.resolve_and_save_fit": "49184cdb9854521f3698291adb67b903ef1932997e0b46dffd6fb6c8bb67daa2",
   },
   reviewedAuthorizationFingerprints: Object.fromEntries(
-    surfaces.map((entry) => [entry.canonicalId, AUTHORIZATION_FINGERPRINT]),
+    surfaces.map((entry) => [entry.canonicalId,
+      entry.canonicalId === "edge.rfx-internal-bid-read-api.read_operation_observation"
+        ? "fbf7a8fc21cd987a1b57e24d73b0b157c317b777e613ea69f203dc9d15424620"
+        : entry.canonicalId === "edge.rfx-internal-fit-api.resolve_and_save_fit"
+          ? "4ea1a5c4cd2ed05af7ff2a358bff7b6f4d4a26d1d3ebe915f159d7c217d90517"
+          : AUTHORIZATION_FINGERPRINT]),
   ),
   surfaces,
 };

@@ -20,6 +20,8 @@ const FIXED_EDGE_OPERATIONS = new Map([
   ["provider-gmail-push", [["receive_provider_gmail_push", "POST /functions/v1/provider-gmail-push", "external-tokenized"]]],
   ["google-chat-app", [["health", "GET /functions/v1/google-chat-app", "public"], ["handle_chat_event", "POST /functions/v1/google-chat-app provider event", "public"]]],
   ["interpret-upload", [["interpret_upload", "POST /functions/v1/interpret-upload", "human"]]],
+  ["rfx-internal-bid-read-api", [["read_operation_observation", "POST /functions/v1/rfx-internal-bid-read-api", "external-tokenized"]]],
+  ["rfx-internal-fit-api", [["resolve_and_save_fit", "POST /functions/v1/rfx-internal-fit-api", "external-tokenized"]]],
   ["sync-banxico-fx", [["sync_banxico_fx", "POST /functions/v1/sync-banxico-fx x-cron-secret", "internal/service-role"]]],
   ["sync-rateware-catalog", [["sync_rateware_catalog", "POST /functions/v1/sync-rateware-catalog", "human"]]],
   ["whatsapp-webhook", [["verify_webhook", "GET /functions/v1/whatsapp-webhook hub challenge", "external-tokenized"], ["ingest_webhook", "POST /functions/v1/whatsapp-webhook signed event", "external-tokenized"]]]

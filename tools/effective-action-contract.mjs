@@ -89,7 +89,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '69ec235aa42433e8cb965824a8957aff79d73fa6fce07949c70b553865b04230',
   'edge.rateware-api.': '5aabd3ac9b5217b539bce429b366d2b472884bbc0a9bf5defa34d796a6d0025a',
-  'edge.rfx-bid-api.': '4d6aab31957e1d8fb3fa539280a6a6e1c02d0cb1af74ce42aa09505f73c32ea2',
+  'edge.rfx-bid-api.': '4922c413587bdf95486beadcf85df8470df6e0767366f8eaa52fbc8ea535c1b4',
   'edge.shipper-directory-api.': '2ed2be9625112a914b7be5b5bc14df77f417257d2644dcdd089e0dc3a22d7d7b',
   'edge.shipper-profile-api.': '83cb7dff313890a43cbd6b0e12faa58c7beaf720d8288c186536f9e44676b12a',
   'edge.sync-banxico-fx.': 'de62b5eeaa6c81959e63048e1d15730c3f8831834305dcbf81b9d71a54817d62',
@@ -126,6 +126,7 @@ const portableRfxBidSourceFingerprintOverrides = {
   'edge.rfx-bid-api.get_invitation': 'ee9eaae5b385393fbe889a2a6a374aea3b8ae1a48c29b18848e116427cdaacbf',
   'edge.rfx-bid-api.public_bid_room_find_invitations': '789fd150c4ca512fa07374cc0eab1d9b53081861a3c2425691fc5c63300237b8',
   'edge.rfx-bid-api.public_bid_room_request_invite': '1d6b135fde12db3a88cc64efd2e5c5c39ce1dafbc3c79eb94cb0216425f40907',
+  'edge.rfx-bid-api.save_segment_confirmations': '6185d686b27ae45a2417849370b06b67f18d06ff75dc5aeacb35609ddb27d72e',
   'edge.rfx-bid-api.submit_bid': 'd60402a1c008a8b884b84c6436010d55e3fcac0457fff6cf0c592b51547b4934',
   'edge.rfx-bid-api.withdraw_bid': '6ec9d89d98ca2bbcceed7b697fa1acd22929d29d4519c4f31e5ffc7d72fd28c0',
 };
