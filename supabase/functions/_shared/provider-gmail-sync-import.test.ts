@@ -97,3 +97,40 @@ Deno.test("exact historical Gmail replay accepts an archived inbound message onl
     globalThis.fetch = originalFetch;
   }
 });
+
+Deno.test("exact Gmail import returns immutable internalDate when the forwarded Date header differs", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(new Response(JSON.stringify({
+    id: "message_forwarded",
+    threadId: "thread_forwarded",
+    internalDate: String(Date.parse("2026-09-09T05:30:55.000Z")),
+    labelIds: ["INBOX"],
+    payload: {
+      headers: [
+        { name: "From", value: "Sales <sales@heymarksman.com>" },
+        { name: "To", value: "carriers@xbfreight.com" },
+        { name: "Subject", value: "Fwd: Documentacion de alta para proveedores" },
+        { name: "Date", value: "Tue, 08 Sep 2026 22:30:51 -0700" },
+      ],
+    },
+  }), { status: 200, headers: { "content-type": "application/json" } }));
+  try {
+    const chain: Record<string, unknown> = {};
+    chain.select = () => chain;
+    chain.eq = () => chain;
+    chain.maybeSingle = () => Promise.resolve({ data: { id: "existing" }, error: null });
+    const result = await importProviderGmailMessageById(
+      { from: () => chain },
+      "ca0a8f30-1382-4316-9bd5-cb76d9ab4920",
+      {
+        legal_entity_id: "11111111-1111-4111-8111-111111111111",
+        mailbox_email: "carriers@xbfreight.com",
+      },
+      "message_forwarded",
+      "access-token",
+    );
+    assertEquals(result.receivedAt, "2026-09-09T05:30:55.000Z");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

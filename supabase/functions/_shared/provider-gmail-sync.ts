@@ -298,6 +298,11 @@ export async function importProviderGmailMessageById(
   }
   const accessToken = accessTokenValue || await getProviderGmailAccessToken(supabase, connection);
   const raw = await gmailJson(accessToken, `/messages/${encodeURIComponent(messageId)}?format=FULL`);
+  const gmailInternalDate = Number(raw.internalDate);
+  if (!Number.isFinite(gmailInternalDate) || gmailInternalDate < 0) {
+    throw new Error('Provider Gmail message has an invalid internal date.');
+  }
+  const gmailReceivedAt = new Date(gmailInternalDate).toISOString();
   if (
     !Array.isArray(raw.labelIds) ||
     (!raw.labelIds.includes('INBOX') && !options.allowHistoricalArchive)
@@ -336,7 +341,11 @@ export async function importProviderGmailMessageById(
     gmailThreadId: message.threadId,
     subject: message.subject,
     senderDomain: senderDomain(message.senderEmail),
-    receivedAt: message.messageAt,
+    // Historical preflight is bound to Gmail's immutable internalDate. Keep the
+    // parsed Date header for the persisted communication, but return the same
+    // provider timestamp here so the anti-TOCTOU comparison is stable for
+    // forwarded messages whose Date header can differ by a few seconds.
+    receivedAt: gmailReceivedAt,
     inserted,
     attachmentCount,
   });
