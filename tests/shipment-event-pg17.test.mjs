@@ -22,8 +22,12 @@ function sql(value) {
 try {
   docker(["run", "--detach", "--rm", "--name", container, "-e", "POSTGRES_PASSWORD=synthetic-only", "postgres:17-alpine"]);
   let ready = false;
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const probe = spawnSync("docker", ["exec", container, "pg_isready", "-U", "postgres"], { encoding: "utf8" });
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const logs = spawnSync("docker", ["logs", container], { encoding: "utf8" });
+    const initialized = `${logs.stdout || ""}\n${logs.stderr || ""}`.includes("PostgreSQL init process complete; ready for start up.");
+    const probe = initialized
+      ? spawnSync("docker", ["exec", container, "psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres", "-c", "select 1"], { encoding: "utf8" })
+      : { status: 1 };
     if (probe.status === 0) { ready = true; break; }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
   }
