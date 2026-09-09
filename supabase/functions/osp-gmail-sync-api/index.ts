@@ -174,20 +174,25 @@ try {
         item.gmailMessageId === input.candidateId
       );
       if (!candidate) throw new OspApiError("INVALID_REQUEST");
-      const imported = await importProviderGmailMessageById(
-        supabase,
-        organizationId,
-        connection,
-        input.candidateId,
-        accessToken,
-        { allowHistoricalArchive: true },
+      const imported = await withGmailDependencyStage(
+        "historical_import",
+        () => importProviderGmailMessageById(
+          supabase,
+          organizationId,
+          connection,
+          input.candidateId,
+          accessToken,
+          { allowHistoricalArchive: true },
+        ),
       );
       if (
+        typeof imported.subject !== "string" ||
         imported.gmailThreadId !== candidate.gmailThreadId ||
         imported.subject !== candidate.subject ||
         imported.senderDomain !== candidate.senderDomain ||
         imported.receivedAt !== candidate.receivedAt
       ) throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+      const importedSubject = imported.subject;
       const requestSha256 = await sha256(JSON.stringify({
         version: 1,
         action: "import_historical_provider_gmail",
@@ -196,20 +201,23 @@ try {
         candidateId: input.candidateId,
         criteria: input.criteria,
       }));
-      const claim = await historicalImportStore.record({
-        organizationId,
-        mailboxEmail: "carriers@xbfreight.com",
-        gmailMessageId: imported.gmailMessageId,
-        gmailThreadId: imported.gmailThreadId,
-        subjectSha256: await sha256(imported.subject),
-        senderDomain: imported.senderDomain,
-        receivedAt: imported.receivedAt,
-        actorSubject: identity.subject,
-        idempotencyKey: input.idempotencyKey,
-        requestSha256,
-        providerMessageInserted: imported.inserted,
-        attachmentMetadataRows: imported.attachmentCount,
-      });
+      const claim = await withGmailDependencyStage(
+        "historical_claim",
+        async () => historicalImportStore.record({
+          organizationId,
+          mailboxEmail: "carriers@xbfreight.com",
+          gmailMessageId: imported.gmailMessageId,
+          gmailThreadId: imported.gmailThreadId,
+          subjectSha256: await sha256(importedSubject),
+          senderDomain: imported.senderDomain,
+          receivedAt: imported.receivedAt,
+          actorSubject: identity.subject,
+          idempotencyKey: input.idempotencyKey,
+          requestSha256,
+          providerMessageInserted: imported.inserted,
+          attachmentMetadataRows: imported.attachmentCount,
+        }),
+      );
       return {
         candidateId: imported.gmailMessageId,
         claimId: claim.claimId,

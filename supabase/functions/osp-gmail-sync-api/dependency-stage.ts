@@ -1,4 +1,9 @@
-export type GmailDependencyStage = "connection" | "access_token" | "historical_search";
+export type GmailDependencyStage =
+  | "connection"
+  | "access_token"
+  | "historical_search"
+  | "historical_import"
+  | "historical_claim";
 
 export function safeTokenFailureReason(error: unknown): string {
   if (!(error instanceof Error)) return "unclassified";
