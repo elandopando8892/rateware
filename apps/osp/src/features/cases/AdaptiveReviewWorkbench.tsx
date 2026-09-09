@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
+import { MvpPendingNotice } from './MvpPendingNotice';
 
 import type { CaseDetail, RequestManifestReadModel, RequestManifestReviewReadModel } from '../../api/contracts';
 import { manifestDecisionKey } from './manifest-blockers';
@@ -95,6 +96,7 @@ export function AdaptiveReviewWorkbench({ caseId, manifest, profile, review, sav
 
   return (
     <section className="panel adaptive-workbench" aria-labelledby="adaptive-workbench-title">
+      <MvpPendingNotice caseId={caseId} />
       <div className="adaptive-workbench-heading">
         <div>
           <p className="eyebrow">Adaptive review workbench</p>
