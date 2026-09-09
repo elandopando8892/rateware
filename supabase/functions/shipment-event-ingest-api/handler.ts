@@ -84,7 +84,12 @@ export function createShipmentEventIngestHandler<T extends RpcClient>(dependenci
         p_request_payload_hash: fleetRocket.requestPayloadHash,
         p_instruction_terms_hash: receipt.instructionTermsHash,
       });
-      if (result.error || !Array.isArray(result.data) || result.data.length !== 1) throw new IngestError(503, "SHIPMENT_EVENT_UNAVAILABLE");
+      if (result.error) {
+        const rpcError = result.error as Row;
+        if (text(rpcError?.code) === "23505") throw new IngestError(409, "SHIPMENT_EVENT_CORRELATION_CONFLICT");
+        throw new IngestError(503, "SHIPMENT_EVENT_UNAVAILABLE");
+      }
+      if (!Array.isArray(result.data) || result.data.length !== 1) throw new IngestError(503, "SHIPMENT_EVENT_UNAVAILABLE");
       const row = result.data[0] as Row;
       if (!UUID.test(text(row.event_id)) || typeof row.replayed !== "boolean") throw new IngestError(503, "SHIPMENT_EVENT_UNAVAILABLE");
       return reply({ eventId: text(row.event_id).toLowerCase(), replayed: row.replayed, executionReceiptId: receipt.receiptId, idempotencyKey: receipt.idempotencyKey });

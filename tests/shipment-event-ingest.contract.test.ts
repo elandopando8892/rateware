@@ -38,7 +38,8 @@ async function envelope(overrides: Record<string, unknown> = {}) {
   return sign(unsigned);
 }
 
-function handler(rpc = async (_name: string, _args: Record<string, unknown>) => ({ data: [{ event_id: eventId, replayed: false }], error: null })) {
+function handler(rpc: (_name: string, _args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>
+  = async () => ({ data: [{ event_id: eventId, replayed: false }], error: null })) {
   return createShipmentEventIngestHandler({
     getClient: () => ({ rpc }),
     verify: (value) => verifyShipmentEventEnvelope(value, { sharedSecret: secret, expectedKeyId: keyId, now: () => new Date("2026-09-07T12:00:30.000Z") }),
@@ -86,4 +87,15 @@ Deno.test("rejects tampering, expiry and rehearsal without calling the RPC", asy
   response = await invoke(new Request("https://rateware.example", { method: "POST", body: JSON.stringify(invalidHash) }));
   assertEquals(response.status, 400);
   assertEquals(calls, 0);
+});
+
+Deno.test("returns a deterministic conflict for changed receipt correlation", async () => {
+  const response = await handler(async () => ({ data: null, error: { code: "23505", message: "not exposed" } }))(
+    new Request("https://rateware.example", { method: "POST", body: JSON.stringify(await envelope()) }),
+  );
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), {
+    error: "SHIPMENT_EVENT_CORRELATION_CONFLICT",
+    code: "SHIPMENT_EVENT_CORRELATION_CONFLICT",
+  });
 });

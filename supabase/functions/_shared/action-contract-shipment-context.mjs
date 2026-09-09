@@ -153,7 +153,7 @@ export const SHIPMENT_CONTEXT_ACTION_CONTRACT_EXTENSION = {
   },
   reviewedAuthorizationFingerprints: Object.fromEntries(surfaces.map(entry => [entry.canonicalId,
     entry.canonicalId === "edge.shipment-event-ingest-api.register_shipment_created"
-      ? "d45d9cc099b15d113ddd7a3bd8db4630b227db5c079b619c9dfe116aacdcb979"
+      ? "f7e0f1a1ea22e9a2ce9d28929b12b177f7f1d00bf00211af7cfc788016a487ff"
       : entry.sourceKind === "edge-selector" ? EDGE_AUTHORIZATION_FINGERPRINT : entry.sourceFingerprint])),
   surfaces
 };
