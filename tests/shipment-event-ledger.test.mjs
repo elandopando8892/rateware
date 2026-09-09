@@ -23,8 +23,9 @@ assert.match(handler, /search_shipment_creation_events/);
 assert.match(handler, /get_shipment_creation_event/);
 assert.doesNotMatch(handler, /register_shipment_creation_event|rateware_register_shipment_created/);
 assert.doesNotMatch(handler, /commercialHandoff|agreedFreight|carrierOrganizationId/);
-assert.doesNotMatch(ingestIndex, /request\.clone\(\)\.json|JSON\.parse/);
-assert.match(ingestHandler, /raw\.length > 16_384/);
+assert.doesNotMatch(ingestIndex, /request\.clone\(\)/);
+assert.ok(ingestIndex.indexOf("raw.length <= SHIPMENT_EVENT_MAX_BODY_CHARS") < ingestIndex.indexOf("JSON.parse(raw)"));
+assert.match(ingestHandler, /raw\.length > SHIPMENT_EVENT_MAX_BODY_CHARS/);
 assert.match(ingestHandler, /JSON\.parse\(raw\)/);
 
 console.log("Shipment event ledger contract tests passed.");

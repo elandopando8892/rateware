@@ -66,7 +66,7 @@ const ingestEdgeSurface = {
   decisionStatus: "pending_human_approval",
   lifecycle: "active",
   replacementAction: null,
-  sourceFingerprint: "01b73a5189e5f3df3779f682aed6af47a3f4cb8dd583783ddd7780b8bfa231de",
+  sourceFingerprint: "239a44bcb460780623a920ec22abff336eb94cbed668b20cbb8d44c3c09df622",
   notes: "Expiring HMAC envelope from MARKSMAN Loads; confirmed receipt only; delegates to the idempotent service-role RPC.",
   analysisCoverage: "shared-observed",
   dependencyFiles: [
@@ -153,7 +153,7 @@ export const SHIPMENT_CONTEXT_ACTION_CONTRACT_EXTENSION = {
   },
   reviewedAuthorizationFingerprints: Object.fromEntries(surfaces.map(entry => [entry.canonicalId,
     entry.canonicalId === "edge.shipment-event-ingest-api.register_shipment_created"
-      ? "f7e0f1a1ea22e9a2ce9d28929b12b177f7f1d00bf00211af7cfc788016a487ff"
+      ? "73c716d620b8da6ece281eee55e9d55bcf1f29de1db43b5739c9bd7817cdfda0"
       : entry.sourceKind === "edge-selector" ? EDGE_AUTHORIZATION_FINGERPRINT : entry.sourceFingerprint])),
   surfaces
 };

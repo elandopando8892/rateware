@@ -6,6 +6,8 @@ type Dependencies<T extends RpcClient> = {
   getClient: () => T;
   verify: (envelope: Row) => Promise<Row>;
 };
+export type PreparedShipmentEventInput = { raw: string; envelope: Row; parseError: boolean };
+export const SHIPMENT_EVENT_MAX_BODY_CHARS = 16_384;
 
 class IngestError extends Error {
   constructor(public status: number, public code: string) { super(code); }
@@ -47,7 +49,7 @@ function parseBody(value: unknown) {
 }
 
 export function createShipmentEventIngestHandler<T extends RpcClient>(dependencies: Dependencies<T>) {
-  return async (request: Request) => {
+  return async (request: Request, preparedInput?: PreparedShipmentEventInput) => {
     const requestId = text(request.headers.get("x-request-id"));
     const reply = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
       status,
@@ -55,10 +57,15 @@ export function createShipmentEventIngestHandler<T extends RpcClient>(dependenci
     });
     try {
       if (request.method !== "POST") throw new IngestError(405, "METHOD_NOT_ALLOWED");
-      const raw = await request.text();
-      if (!raw || raw.length > 16_384) invalid();
+      const raw = preparedInput?.raw ?? await request.text();
+      if (!raw || raw.length > SHIPMENT_EVENT_MAX_BODY_CHARS) invalid();
       let envelope: Row = {};
-      try { envelope = JSON.parse(raw); } catch { invalid(); }
+      if (preparedInput) {
+        if (preparedInput.parseError) invalid();
+        envelope = preparedInput.envelope;
+      } else {
+        try { envelope = JSON.parse(raw); } catch { invalid(); }
+      }
       let verified: Row;
       try { verified = await dependencies.verify(envelope); }
       catch (error) {
