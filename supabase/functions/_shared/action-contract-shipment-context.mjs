@@ -5,6 +5,7 @@
 
 const CONTRACT_VERSION = "1.3.0";
 const EDGE_SOURCE = "supabase/functions/shipment-context-api/index.ts";
+const INGEST_EDGE_SOURCE = "supabase/functions/shipment-event-ingest-api/index.ts";
 const MIGRATION_SOURCE = "supabase/migrations/20260907030000_shipment_creation_event_ledger.sql";
 const EDGE_SOURCE_FINGERPRINT = "977ab19f4bad620df7dad83d4034756a38a51544fa4c0fd7d8ded71358613b74";
 const EDGE_AUTHORIZATION_FINGERPRINT = "7ffe19ac91028748899c2f0302db474831d934901ff96851a55059ec8ead8377";
@@ -44,6 +45,38 @@ const edgeSurfaces = ["get_shipment_creation_event", "search_shipment_creation_e
   rpcSignature: null,
   coverageSignals: ["shared_dependency_observed", "external_dependency"]
 }));
+
+const ingestEdgeSurface = {
+  contractVersion: CONTRACT_VERSION,
+  canonicalId: "edge.shipment-event-ingest-api.register_shipment_created",
+  actionName: "register_shipment_created",
+  sourceKind: "edge-selector",
+  sourceFile: INGEST_EDGE_SOURCE,
+  handler: "delegate",
+  endpoint: "POST /functions/v1/shipment-event-ingest-api body.action",
+  businessModule: "Operations handoff",
+  operation: "execute",
+  resource: "shipment-creation-events",
+  access: "write",
+  exposure: "external-tokenized",
+  sensitivity: "high",
+  tenantRelevance: "tenant-scoped",
+  proposedPermissionKey: "shipment.event.ingest",
+  functionalOwner: "Operations",
+  decisionStatus: "pending_human_approval",
+  lifecycle: "active",
+  replacementAction: null,
+  sourceFingerprint: "01b73a5189e5f3df3779f682aed6af47a3f4cb8dd583783ddd7780b8bfa231de",
+  notes: "Expiring HMAC envelope from MARKSMAN Loads; confirmed receipt only; delegates to the idempotent service-role RPC.",
+  analysisCoverage: "shared-observed",
+  dependencyFiles: [
+    "supabase/functions/shipment-event-ingest-api/authorization.ts",
+    "supabase/functions/shipment-event-ingest-api/handler.ts",
+    INGEST_EDGE_SOURCE
+  ],
+  rpcSignature: null,
+  coverageSignals: ["shared_dependency_observed", "external_dependency"]
+};
 
 const rpcDefinitions = [
   {
@@ -105,19 +138,22 @@ const rpcSurfaces = rpcDefinitions.map(definition => ({
   coverageSignals: ["direct"]
 }));
 
-const surfaces = [...edgeSurfaces, ...rpcSurfaces];
+const surfaces = [...edgeSurfaces, ingestEdgeSurface, ...rpcSurfaces];
 
 export const SHIPMENT_CONTEXT_ACTION_CONTRACT_EXTENSION = {
   contractVersion: CONTRACT_VERSION,
-  expectedCountsDelta: { governable: 5, edge: 2, postgres: 3, ratewareApi: 0 },
+  expectedCountsDelta: { governable: 6, edge: 3, postgres: 3, ratewareApi: 0 },
   reviewedMetadataFingerprints: {
     "edge.shipment-context-api.get_shipment_creation_event": "948bc5f912eb64098201dca5c18cfd2f3cbff3b8edb9518803ea57f64fa95480",
     "edge.shipment-context-api.search_shipment_creation_events": "736d9ad3a05e13bb9e333ef53201fab81ea7bc4e8fc3923cbbc22d1741eae6b8",
+    "edge.shipment-event-ingest-api.register_shipment_created": "b50d7179c7926821ba3fb3daf521d069b18fb408f9793ef8a561aca34c7c444b",
     "rpc.public.rateware_get_shipment_creation_event(text,uuid)": "b4ea9299d4a2be091493867783615cad89b059fd771f2d419e970693df7b9dae",
     "rpc.public.rateware_register_shipment_created(text,text,text,text,uuid,uuid,text,integer,text,boolean,timestamptz,text,text,text,text)": "3ae83f73c0060bff64457d2346fff099e3ac8fad6abecd57126c55cf1802825f",
     "rpc.public.rateware_search_shipment_creation_events(text,text,timestamptz,uuid,integer)": "8137e0fac0699eaa1c531376603dbf2facbc865464a62abcb69f749a737ee434"
   },
   reviewedAuthorizationFingerprints: Object.fromEntries(surfaces.map(entry => [entry.canonicalId,
-    entry.sourceKind === "edge-selector" ? EDGE_AUTHORIZATION_FINGERPRINT : entry.sourceFingerprint])),
+    entry.canonicalId === "edge.shipment-event-ingest-api.register_shipment_created"
+      ? "d45d9cc099b15d113ddd7a3bd8db4630b227db5c079b619c9dfe116aacdcb979"
+      : entry.sourceKind === "edge-selector" ? EDGE_AUTHORIZATION_FINGERPRINT : entry.sourceFingerprint])),
   surfaces
 };

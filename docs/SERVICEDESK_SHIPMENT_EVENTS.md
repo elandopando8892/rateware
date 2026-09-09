@@ -1,6 +1,7 @@
 # Service Desk shipment events — development candidate
 
-**Status:** implemented locally; migration and Edge Function not deployed.
+**Status:** ledger/read path deployed; ingest Edge Function implemented locally
+and not deployed.
 **Branch:** `codex/servicedesk-shipment-events`.
 
 ## Product result
@@ -24,6 +25,16 @@ writing to either source.
 - The ledger is append-only to runtime roles. Its registration RPC is
   service-role only and is not exposed by the browser context function.
 
+`shipment-event-ingest-api` is the proposed server-only writer boundary. It
+accepts only an expiring HMAC envelope from MARKSMAN Loads and projects a
+confirmed receipt to the registration RPC. Its source and contract tests are
+present, but the function and shared secret are not deployed or activated.
+
+The applied ledger migration and ACTIVE `shipment-context-api` were confirmed
+through read-only project/schema inspection on 2026-09-08. Exact deployed bundle
+parity for the read function remains a separate release check. The additive
+request-hash constraint in `20260908010000` is local and unapplied.
+
 ## Read projection
 
 `shipment-context-api` exposes exactly two authenticated operations:
@@ -42,13 +53,13 @@ the source.
 Before any cloud change:
 
 1. Reconcile this candidate against the exact deployed Rateware function source.
-2. Run migration-ledger and isolated PostgreSQL tests against an empty temporary
+2. Run the additive migration and isolated PostgreSQL tests against an empty temporary
    database; do not use production data.
-3. Approve the migration and `shipment-context-api` deployment separately.
-4. Add a server-only MARKSMAN Loads writer using the registration RPC; keep the
-   Fleet Rocket production gate off until its own approval.
-5. Deploy the Service Desk read adapter and validate Google session, revocation,
-   reload and tab change without creating a ticket or shipment.
+3. Approve the hash migration and `shipment-event-ingest-api` deployment separately.
+4. Provision a rotated named HMAC secret only after approval; keep the Fleet
+   Rocket production gate off until its own approval.
+5. Validate one authorized synthetic event, idempotent replay and Service Desk
+   readback without creating a Fleet Rocket shipment.
 
 ## Rollback
 

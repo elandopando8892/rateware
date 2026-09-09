@@ -21,7 +21,7 @@
     "test:migration-ledger": "node --test tests/supabase-migration-ledger.test.mjs",
     "test:release-preflight": "node --test tests/release-preflight.test.mjs",
     "test:rateware-correlation": "deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/rateware-correlation.contract.test.ts",
-    "test:shipment-context": "node tests/shipment-event-ledger.test.mjs && deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/shipment-context.contract.test.ts",
+    "test:shipment-context": "node tests/shipment-event-ledger.test.mjs && deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/shipment-context.contract.test.ts tests/shipment-event-ingest.contract.test.ts",
     "test:shipment-context:pg": "node tests/shipment-event-pg17.test.mjs",
     "audit:p3:mutations": "node tools/p3-mutation-risk-register.mjs",
     "test:p3:mutations": "node --test tests/p3-mutation-risk-register.test.mjs",

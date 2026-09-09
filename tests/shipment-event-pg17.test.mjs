@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 const container = `rateware-shipment-events-pg17-${randomUUID().slice(0, 8)}`;
 assert.match(container, /^rateware-shipment-events-pg17-[a-f0-9]{8}$/);
 const migration = readFileSync(new URL("../supabase/migrations/20260907030000_shipment_creation_event_ledger.sql", import.meta.url), "utf8");
+const hashConstraint = readFileSync(new URL("../supabase/migrations/20260908010000_shipment_event_request_hash_constraint.sql", import.meta.url), "utf8");
 const hash = `sha256:${"a".repeat(64)}`;
 
 function docker(args, options = {}) {
@@ -123,7 +124,7 @@ end;
 $$;
 `;
 
-  const output = sql(`${base}\n${migration}\n${checks}`);
+  const output = sql(`${base}\n${migration}\n${hashConstraint}\n${checks}`);
   assert.match(output, /DO/);
   console.log("Shipment event PostgreSQL 17 tests passed.");
 } finally {
