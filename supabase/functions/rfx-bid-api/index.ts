@@ -1264,7 +1264,7 @@ async function saveSegmentConfirmations(
     source: "carrier_portal",
     metadata: {
       source: "rfx_lane_fit",
-      invitation_token: cleanText(invitation.invitation_token),
+      invitation_id: cleanText(invitation.id),
       lane_id: cleanText(invitation.rfx_lane_id)
     },
     updated_at: now

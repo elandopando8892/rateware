@@ -28,6 +28,8 @@ Add `rfx-internal-bid-api` as a private Edge Function with these boundaries:
 - `MARKSMAN_LOADS_BID_CONNECTOR_KEY_ID`: active rotation identifier.
 - `MARKSMAN_LOADS_BID_CONNECTOR_CANARY_ENABLED`: exact `true` enables reviewed read-only resolution.
 - `MARKSMAN_LOADS_BID_CONNECTOR_ENABLED`: exact `true` enables canonical bid execution.
+- `MARKSMAN_LOADS_BID_READ_ENABLED`: exact `true` enables the separate operation-receipt lookup endpoint.
+- `MARKSMAN_LOADS_FIT_CONNECTOR_ENABLED`: exact `true` enables the private six-rubric fit writer.
 - `RFX_INVITATION_TOKEN_ENCRYPTION_KEY`: existing Rateware invitation encryption secret.
 
 Canary and live flags are independent. Enabling the canary does not enable bids.
@@ -55,4 +57,12 @@ Rejected. A timeout can occur after Rateware mutated the bid. Blind retry could 
 
 ## Current implementation state
 
-Code and migration are present only in the isolated development worktree. No migration was applied, no Edge Function was deployed, no secret was provisioned, no organization link was created, and no carrier bid was submitted.
+Code and migrations are present only in the isolated development worktree. No migration was applied, no Edge Function was deployed, no secret was provisioned, no organization link was created, and no carrier bid or fit response was submitted.
+
+The candidate now includes a distinct `rfx-internal-bid-read-api`. It accepts a short-lived HMAC request for exactly one `fit` or `quote` operation and performs only scoped reads. A missing receipt returns `not_observed`; it is not converted into rejection or permission to retry. The response never exposes the invitation credential or source payload.
+
+`marksman_loads_operation_receipts` is the minimal evidence ledger. Quote receipts can be created only after the canonical submit returned, the command recorded that return, and `rate_staging` linkage was observed. Fit receipts can be created only after the canonical fit returned, the fit command recorded that return, and the six current confirmation rows reconcile. A stale `executing` or `reconcile_required` command cannot mint a receipt merely because current values happen to match.
+
+The candidate also includes `rfx-internal-fit-api`, kept separate from quote execution. It accepts exactly one canonical segment and the six Rateware rubrics (`logistics_model`, `operation_criteria`, `business_rules`, `service_specifications`, `carrier_requirements`, and `other_notes`). Every `exception` or `disagree` answer requires its own rubric-level explanation; pending answers, duplicate rubrics, mixed segments, unsupported fields, and bearer credentials are rejected. The service delegates the write to canonical `save_segment_confirmations`, rereads the six persisted rows, and mints a fit receipt only when the returned command and current rows reconcile. A replay returns the existing reconciled result without calling canonical Rateware again. Its clock is injectable in tests so receipt chronology is evaluated deterministically.
+
+The migration `20260907084000_remove_segment_confirmation_invitation_tokens.sql` removes the invitation bearer from legacy confirmation metadata and replaces it with a non-secret invitation reference. The fit command ledger stores hashes, scope, actor confirmation, status, and canonical-result evidence only; it does not store the six-answer payload, invitation token, or request signature. Neither the token-cleanup migration nor the fit-command/receipt migrations have been applied in any environment.

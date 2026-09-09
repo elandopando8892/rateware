@@ -11,6 +11,7 @@ const SECRET = "0123456789abcdef0123456789abcdef";
 
 async function signedRequest(action: "resolve_and_submit_bid_canary" | "resolve_and_submit_bid") {
   const payload = { action: "submit_bid", bid_rate: 2111, currency: "USD" };
+  const payloadHash = await payloadFingerprint(payload);
   const issuedAt = new Date();
   const unsigned = {
     contractVersion: "rateware-internal-request.v1",
@@ -28,9 +29,20 @@ async function signedRequest(action: "resolve_and_submit_bid_canary" | "resolve_
       eventId: "44444444-4444-4444-8444-444444444444",
       preparedReceiptId: "prepared-runtime",
       quoteWorkspaceRevision: 7,
-      payloadFingerprint: await payloadFingerprint(payload),
+      payloadFingerprint: payloadHash,
       payload,
       humanConfirmation: { actorId: "operator-01", role: "OPERATOR", confirmedAt: issuedAt.toISOString() },
+      ...(action === "resolve_and_submit_bid" ? {
+        invitationId: "99999999-9999-4999-8999-999999999999",
+        operationId: await payloadFingerprint({
+          effect: "quote", organizationId: "carrier-org",
+          vendorId: "22222222-2222-4222-8222-222222222222",
+          eventId: "44444444-4444-4444-8444-444444444444",
+          laneId: "33333333-3333-4333-8333-333333333333",
+          invitationId: "99999999-9999-4999-8999-999999999999",
+          preparedReceiptId: "prepared-runtime", payloadFingerprint: payloadHash,
+        }),
+      } : {}),
     },
   };
   const key = await crypto.subtle.importKey(

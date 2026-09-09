@@ -119,6 +119,8 @@ export type MarksmanLoadsBidBody = {
   vendorId: string;
   laneId: string;
   eventId: string;
+  invitationId?: string;
+  operationId?: string;
   preparedReceiptId: string;
   quoteWorkspaceRevision: number;
   payloadFingerprint: string;
@@ -218,13 +220,43 @@ export async function verifyMarksmanLoadsBidRequest(
     throw new MarksmanLoadsBidContractError("Human confirmation timestamp is invalid.", "HUMAN_CONFIRMATION_REQUIRED", 403);
   }
 
+  const vendorId = requiredUuid(bodyValue.vendorId, "vendorId");
+  const laneId = requiredUuid(bodyValue.laneId, "laneId");
+  const eventId = requiredUuid(bodyValue.eventId, "eventId");
+  const preparedReceiptId = requiredText(bodyValue.preparedReceiptId, "preparedReceiptId");
+  const live = action === "resolve_and_submit_bid";
+  const invitationId = live ? requiredUuid(bodyValue.invitationId, "invitationId") : undefined;
+  const suppliedOperationId = live ? text(bodyValue.operationId).toLowerCase() : "";
+  if (live && !SHA256_PATTERN.test(suppliedOperationId)) {
+    throw new MarksmanLoadsBidContractError("operationId must be SHA-256 for a live quote.", "INVALID_INTERNAL_OPERATION");
+  }
+  if (!live && (bodyValue.invitationId != null || bodyValue.operationId != null)) {
+    throw new MarksmanLoadsBidContractError("Canary requests cannot carry live invitation or operation authority.", "INVALID_INTERNAL_OPERATION");
+  }
+  const expectedLiveOperationId = live
+    ? await sha256Hex(stableStringify({
+      effect: "quote",
+      organizationId,
+      vendorId,
+      eventId,
+      laneId,
+      invitationId,
+      preparedReceiptId,
+      payloadFingerprint: fingerprint,
+    }))
+    : "";
+  if (live && suppliedOperationId !== expectedLiveOperationId) {
+    throw new MarksmanLoadsBidContractError("operationId does not match the signed quote scope and content.", "OPERATION_ID_MISMATCH");
+  }
+
   const body: MarksmanLoadsBidBody = {
     action: action as MarksmanLoadsBidBody["action"],
     organizationId,
-    vendorId: requiredUuid(bodyValue.vendorId, "vendorId"),
-    laneId: requiredUuid(bodyValue.laneId, "laneId"),
-    eventId: requiredUuid(bodyValue.eventId, "eventId"),
-    preparedReceiptId: requiredText(bodyValue.preparedReceiptId, "preparedReceiptId"),
+    vendorId,
+    laneId,
+    eventId,
+    ...(live ? { invitationId, operationId: suppliedOperationId } : {}),
+    preparedReceiptId,
     quoteWorkspaceRevision: revision,
     payloadFingerprint: fingerprint,
     payload,
@@ -235,7 +267,7 @@ export async function verifyMarksmanLoadsBidRequest(
     },
   };
   const requestId = requiredUuid(envelope.requestId, "requestId");
-  const operationKey = await sha256Hex(stableStringify({
+  const operationKey = live ? suppliedOperationId : await sha256Hex(stableStringify({
     provider: MARKSMAN_LOADS_PROVIDER,
     action: body.action,
     organizationId: body.organizationId,
@@ -306,6 +338,49 @@ export type BidCommandReplayDisposition =
   | "in_progress"
   | "resume_before_mutation"
   | "reconcile_only";
+
+export function canBindBidCommandReadback(command: Record<string, unknown>) {
+  const result = command.result && typeof command.result === "object" && !Array.isArray(command.result)
+    ? command.result as Record<string, unknown>
+    : {};
+  return command.status === "submitted" && command.external_execution === true && command.rateware_submission === true &&
+    Object.prototype.hasOwnProperty.call(result, "canonicalResult");
+}
+
+export function buildQuoteOperationReceiptRow(input: {
+  verified: VerifiedMarksmanLoadsBidRequest;
+  context: Record<string, unknown>;
+  command: Record<string, unknown>;
+  reconciliation: Record<string, unknown>;
+  committedAt: string;
+}) {
+  const { verified, context, command, reconciliation, committedAt } = input;
+  const row = object(reconciliation.row);
+  const stagingId = text(row.bid_rate_staging_id);
+  if (!canBindBidCommandReadback(command) || reconciliation.status !== "reconciled" || reconciliation.payloadMatches !== true || reconciliation.rateStagingObserved !== true || !stagingId) {
+    throw new MarksmanLoadsBidContractError("Quote operation evidence is incomplete.", "OPERATION_RECEIPT_INCOMPLETE", 409);
+  }
+  if (!Number.isFinite(Date.parse(committedAt))) throw new MarksmanLoadsBidContractError("Quote operation evidence timestamp is invalid.", "OPERATION_RECEIPT_INCOMPLETE", 409);
+  return {
+    provider: MARKSMAN_LOADS_PROVIDER,
+    external_organization_id: verified.body.organizationId,
+    organization_id: text(context.canonicalOrganizationId),
+    workspace_organization_id: text(context.workspaceOrganizationId),
+    vendor_id: verified.body.vendorId,
+    rfx_event_id: verified.body.eventId,
+    rfx_lane_id: verified.body.laneId,
+    rfx_lane_vendor_id: text(object(context.invitation).id),
+    effect: "quote",
+    operation_id: verified.operationKey,
+    payload_fingerprint: verified.body.payloadFingerprint,
+    segment_key: null,
+    record_id: text(object(context.invitation).id),
+    staging_record_id: stagingId,
+    source_command_id: text(command.id),
+    outcome: "committed",
+    committed_at: new Date(committedAt).toISOString(),
+  };
+}
 
 export function classifyBidCommandReplay(
   command: Record<string, unknown>,

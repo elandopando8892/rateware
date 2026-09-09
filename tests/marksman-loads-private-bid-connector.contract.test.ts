@@ -1,5 +1,7 @@
 import {
   MarksmanLoadsBidContractError,
+  canBindBidCommandReadback,
+  buildQuoteOperationReceiptRow,
   classifyBidCommandReplay,
   payloadFingerprint,
   reconcileBidPayload,
@@ -66,6 +68,30 @@ async function fixture(overrides: Record<string, unknown> = {}) {
   return { ...unsigned, signature: await sign(unsigned) };
 }
 
+async function liveFixture(overrides: Record<string, unknown> = {}) {
+  const payload = { action: "submit_bid", bid_rate: 2111, currency: "USD" };
+  const payloadHash = await payloadFingerprint(payload);
+  const body = {
+    action: "resolve_and_submit_bid",
+    organizationId: "carrier-org",
+    vendorId: "22222222-2222-4222-8222-222222222222",
+    laneId: "33333333-3333-4333-8333-333333333333",
+    eventId: "44444444-4444-4444-8444-444444444444",
+    invitationId: "99999999-9999-4999-8999-999999999999",
+    preparedReceiptId: "prepared-01",
+    quoteWorkspaceRevision: 7,
+    payloadFingerprint: payloadHash,
+    payload,
+    humanConfirmation: { actorId: "user-01", role: "ADMIN", confirmedAt: "2026-08-31T12:00:00.000Z" },
+  };
+  const operationId = await payloadFingerprint({
+    effect: "quote", organizationId: body.organizationId, vendorId: body.vendorId,
+    eventId: body.eventId, laneId: body.laneId, invitationId: body.invitationId,
+    preparedReceiptId: body.preparedReceiptId, payloadFingerprint: body.payloadFingerprint,
+  });
+  return fixture({ body: { ...body, operationId }, ...overrides });
+}
+
 Deno.test("private connector accepts the cross-runtime HMAC contract vector", async () => {
   const envelope = await fixture();
   assert(envelope.signature === "59957da6eb9ad6daa48cf982d19156ba999052b7d18ba6f5d66fc27ced552fbb", "signature must match the MARKSMAN Loads Node.js vector");
@@ -80,16 +106,29 @@ Deno.test("private connector accepts the cross-runtime HMAC contract vector", as
 });
 
 Deno.test("operation key is stable across request UUID and envelope timestamp retries", async () => {
-  const first = await fixture();
-  const second = await fixture({
+  const first = await liveFixture();
+  const second = await liveFixture({
     requestId: "66666666-6666-4666-8666-666666666666",
     issuedAt: "2026-08-31T12:00:10.000Z",
     expiresAt: "2026-08-31T12:01:10.000Z",
   });
   const verifiedFirst = await verifyMarksmanLoadsBidRequest(first, { sharedSecret: SECRET, expectedKeyId: "key-2026-08", now: NOW });
   const verifiedSecond = await verifyMarksmanLoadsBidRequest(second, { sharedSecret: SECRET, expectedKeyId: "key-2026-08", now: NOW });
+  assert(first.signature === "9a4afa292c6c68933e1a0bc751b07f16cfdaea012e213709a6e4225012521878", "live signature must match the MARKSMAN Loads Node.js vector");
+  assert(verifiedFirst.operationKey === "09827e5b3150849d4a74f357d1d1dc099e7f06b6c53b4251c63c1ba976c1dc48", "operation id must match the MARKSMAN Loads Node.js vector");
   assert(verifiedFirst.requestFingerprint !== verifiedSecond.requestFingerprint, "different envelopes should retain different request fingerprints");
   assert(verifiedFirst.operationKey === verifiedSecond.operationKey, "same prepared quote must retain one operation identity across transport retries");
+  assert(verifiedFirst.operationKey === verifiedFirst.body.operationId, "Rateware must retain the operation identity signed by MARKSMAN Loads");
+  assert(verifiedFirst.body.invitationId === "99999999-9999-4999-8999-999999999999", "live execution must remain bound to the canary invitation");
+});
+
+Deno.test("live quote rejects missing or mismatched MARKSMAN Loads operation authority", async () => {
+  const missing = await fixture({body:{...(await liveFixture()).body,operationId:undefined}});
+  await assertRejects(missing,"INVALID_INTERNAL_OPERATION");
+  const mismatched = await fixture({body:{...(await liveFixture()).body,operationId:"a".repeat(64)}});
+  await assertRejects(mismatched,"OPERATION_ID_MISMATCH");
+  const noInvitation = await fixture({body:{...(await liveFixture()).body,invitationId:undefined}});
+  await assertRejects(noInvitation,"INVALID_INTERNAL_REQUEST");
 });
 
 Deno.test("private connector rejects tampering, expiry, wrong key and payload credentials", async () => {
@@ -172,6 +211,35 @@ Deno.test("idempotency state machine resumes only a stale pre-mutation receipt",
   assert(classifyBidCommandReplay({ request_fingerprint: "b".repeat(64), status: "reconciled", updated_at: recent }, fingerprint, now, 120_000, true) === "replay", "same logical quote under a new request id must replay instead of submit again");
 });
 
+Deno.test("only a command with a persisted returned canonical result may mint readback evidence", () => {
+  const returned = { status:"submitted", external_execution:true, rateware_submission:true, result:{canonicalResult:{row:{id:"bid-1"}}} };
+  assert(canBindBidCommandReadback(returned), "persisted canonical return should be eligible for operation evidence");
+  for (const command of [
+    { ...returned, status:"executing" },
+    { ...returned, status:"reconcile_required" },
+    { ...returned, result:{} },
+    { ...returned, external_execution:false },
+    { ...returned, rateware_submission:false },
+  ]) assert(!canBindBidCommandReadback(command), "state coincidence without a returned canonical result cannot establish causation");
+});
+
+Deno.test("quote operation receipt binds the returned command, invitation, payload and staging row", async () => {
+  const valid=await liveFixture();
+  const verified=await verifyMarksmanLoadsBidRequest(valid,{sharedSecret:SECRET,expectedKeyId:"key-2026-08",now:NOW});
+  const command={id:"77777777-7777-4777-8777-777777777777",status:"submitted",external_execution:true,rateware_submission:true,result:{canonicalResult:{row:{id:"bid-1"}}}};
+  const context={canonicalOrganizationId:"88888888-8888-4888-8888-888888888888",workspaceOrganizationId:"sales@heymarksman.com",invitation:{id:"99999999-9999-4999-8999-999999999999"}};
+  const reconciliation={status:"reconciled",payloadMatches:true,rateStagingObserved:true,row:{bid_rate_staging_id:"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}};
+  const row=buildQuoteOperationReceiptRow({verified,context,command,reconciliation,committedAt:"2026-08-31T12:00:31.000Z"});
+  assert(row.operation_id===verified.operationKey&&row.payload_fingerprint===verified.body.payloadFingerprint,"receipt must bind operation and payload");
+  assert(row.record_id===context.invitation.id&&row.staging_record_id==="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","receipt must bind invitation and staging row");
+  for(const invalid of [
+    {...reconciliation,status:"reconcile_required"},
+    {...reconciliation,payloadMatches:false},
+    {...reconciliation,rateStagingObserved:false},
+    {...reconciliation,row:{}},
+  ]){let code="";try{buildQuoteOperationReceiptRow({verified,context,command,reconciliation:invalid,committedAt:"2026-08-31T12:00:31.000Z"});}catch(error){code=(error as {code?:string}).code||"";}assert(code==="OPERATION_RECEIPT_INCOMPLETE","incomplete reconciliation must not mint evidence");}
+});
+
 Deno.test("invitation credential crypto remains backward-compatible and keyed", async () => {
   const token = "private-invitation-token";
   const encrypted = await encryptRfxInvitationToken(token, SECRET);
@@ -197,6 +265,7 @@ async function assertRejects(envelope: Record<string, unknown>, expectedCode: st
 Deno.test("endpoint source keeps execution private, disabled and delegated to canonical submit_bid", async () => {
   const source = await Deno.readTextFile(new URL("../supabase/functions/rfx-internal-bid-api/index.ts", import.meta.url));
   const migration = await Deno.readTextFile(new URL("../supabase/migrations/20260831213000_marksman_loads_private_bid_commands.sql", import.meta.url));
+  const receiptMigration = await Deno.readTextFile(new URL("../supabase/migrations/20260907090000_marksman_loads_operation_receipts.sql", import.meta.url));
   assert(source.includes('=== "true"'), "feature flags must require exact true opt-in");
   assert(source.includes('canaryRequest ? CANARY_ENABLED : LIVE_ENABLED'), "both execution modes must fail closed behind independent flags");
   assert(source.includes('/functions/v1/rfx-bid-api'), "connector must delegate to canonical Bid Room API");
@@ -209,4 +278,8 @@ Deno.test("endpoint source keeps execution private, disabled and delegated to ca
   assert(migration.includes("unique (provider, operation_key)"), "prepared quote identity must remain idempotent even if request UUID changes");
   assert(migration.includes("unique (provider, external_organization_id, prepared_receipt_id)"), "one preparation receipt must never authorize two different payloads");
   assert(!/request_signature|invitation_token/.test(migration), "command ledger must not persist request signatures or invitation tokens");
+  assert(source.includes('persistQuoteOperationReceipt') && source.includes('canBindBidCommandReadback'), "quote completion must create operation evidence only after a returned canonical result");
+  assert(receiptMigration.includes("enable row level security") && receiptMigration.includes("revoke all"), "operation evidence must remain service-role only");
+  assert(receiptMigration.includes("unique (provider, effect, operation_id)"), "each effect operation must have one durable receipt");
+  assert(!/request_signature|invitation_token|quote_payload/.test(receiptMigration), "receipt table must remain credential and payload minimized");
 });

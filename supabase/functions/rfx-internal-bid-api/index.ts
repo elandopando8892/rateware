@@ -2,6 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   MARKSMAN_LOADS_PROVIDER,
   MarksmanLoadsBidContractError,
+  buildQuoteOperationReceiptRow,
+  canBindBidCommandReadback,
   classifyBidCommandReplay,
   reconcileBidPayload,
   sanitizePrivateConnectorValue,
@@ -134,7 +136,7 @@ async function resolvePrivateContext(client: ConnectorClient, verified: Verified
   if (lane.error) throw lane.error;
   if (!lane.data) throw new ConnectorError("Lane does not belong to the signed RFx event.", "LANE_LINK_MISMATCH", 403);
 
-  const invitation = await client
+  let invitationQuery = client
     .from("rfx_lane_vendors")
     .select(`
       id,rfx_event_id,rfx_lane_id,vendor_id,invitation_status,award_role,
@@ -148,14 +150,16 @@ async function resolvePrivateContext(client: ConnectorClient, verified: Verified
     `)
     .eq("vendor_id", body.vendorId)
     .eq("rfx_lane_id", body.laneId)
-    .eq("rfx_event_id", body.eventId)
-    .maybeSingle();
+    .eq("rfx_event_id", body.eventId);
+  if (body.invitationId) invitationQuery = invitationQuery.eq("id", body.invitationId);
+  const invitation = await invitationQuery.maybeSingle();
   if (invitation.error) throw invitation.error;
   if (!invitation.data) {
     throw new ConnectorError("No private invitation matches the signed carrier, lane and event.", "PRIVATE_INVITATION_NOT_FOUND", 404);
   }
 
   return {
+    externalOrganizationId: body.organizationId,
     canonicalOrganizationId: text(link.data.organization_id),
     workspaceOrganizationId,
     vendor: vendor.data as RecordValue,
@@ -169,6 +173,7 @@ function safeResolution(context: Awaited<ReturnType<typeof resolvePrivateContext
   return {
     status: "matched",
     resolverRef: context.invitation.id,
+    externalOrganizationId: context.externalOrganizationId,
     organizationId: context.canonicalOrganizationId,
     workspaceOrganizationId: context.workspaceOrganizationId,
     vendor: {
@@ -226,6 +231,43 @@ async function reconcileCurrentBid(client: ConnectorClient, verified: VerifiedMa
     row: sanitizePrivateConnectorValue(row),
     checkedAt: new Date().toISOString(),
   };
+}
+
+const RECEIPT_COLUMNS = "id,effect,operation_id,payload_fingerprint,record_id,staging_record_id,committed_at";
+
+function safeOperationReceipt(row: RecordValue) {
+  return {
+    contractVersion: "marksman-loads.private-operation-receipt.v1",
+    receiptId: row.id,
+    effect: row.effect,
+    operationId: row.operation_id,
+    payloadFingerprint: row.payload_fingerprint,
+    recordId: row.record_id,
+    stagingRecordId: row.staging_record_id,
+    committedAt: row.committed_at,
+  };
+}
+
+async function persistQuoteOperationReceipt(
+  client: ConnectorClient,
+  verified: VerifiedMarksmanLoadsBidRequest,
+  context: Awaited<ReturnType<typeof resolvePrivateContext>>,
+  command: RecordValue,
+  reconciliation: RecordValue,
+) {
+  const values = buildQuoteOperationReceiptRow({verified,context,command,reconciliation,committedAt:new Date().toISOString()});
+  const stagingId = values.staging_record_id;
+  const inserted = await client.from("marksman_loads_operation_receipts").insert(values).select(RECEIPT_COLUMNS).single();
+  if (!inserted.error) return safeOperationReceipt(inserted.data as RecordValue);
+  if (text(inserted.error.code) !== "23505") throw inserted.error;
+  const existing = await client.from("marksman_loads_operation_receipts").select(RECEIPT_COLUMNS)
+    .eq("provider",MARKSMAN_LOADS_PROVIDER).eq("effect","quote").eq("operation_id",verified.operationKey).maybeSingle();
+  if (existing.error) throw existing.error;
+  const row = object(existing.data);
+  if (row.payload_fingerprint !== verified.body.payloadFingerprint || row.record_id !== context.invitation.id || row.staging_record_id !== stagingId) {
+    throw new ConnectorError("Existing operation evidence conflicts with this quote.", "OPERATION_RECEIPT_CONFLICT", 409);
+  }
+  return safeOperationReceipt(row);
 }
 
 async function commandByRequest(client: ConnectorClient, requestId: string) {
@@ -365,7 +407,9 @@ async function handleExistingCommand(
   }
 
   const reconciliation = await reconcileCurrentBid(client, verified, context.invitation.id);
-  if (reconciliation.status === "reconciled") {
+  const hasReturnedCanonicalResult = canBindBidCommandReadback(command);
+  if (reconciliation.status === "reconciled" && hasReturnedCanonicalResult) {
+    const operationReceipt = await persistQuoteOperationReceipt(client, verified, context, command, reconciliation);
     const result = {
       commandId: command.id,
       requestId: verified.requestId,
@@ -373,6 +417,7 @@ async function handleExistingCommand(
       effect: "rateware_submit_bid",
       privateResolution: safeResolution(context),
       reconciliation,
+      operationReceipt,
       credentialExposure: false,
       externalExecution: true,
       ratewareSubmission: true,
@@ -492,6 +537,9 @@ async function executeLive(
   });
   const reconciliation = await reconcileCurrentBid(client, verified, context.invitation.id);
   const reconciled = reconciliation.status === "reconciled";
+  const operationReceipt = reconciled
+    ? await persistQuoteOperationReceipt(client, verified, context, command, reconciliation)
+    : null;
   const result = {
     commandId: command.id,
     requestId: verified.requestId,
@@ -500,6 +548,7 @@ async function executeLive(
     privateResolution: safeResolution(context),
     canonicalResult,
     reconciliation,
+    operationReceipt,
     authorizationEvidence: {
       algorithm: "HMAC-SHA256",
       keyId: verified.keyId,
