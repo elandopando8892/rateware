@@ -121,7 +121,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/cases/AdaptiveReviewWorkbench.tsx",
-      "sha256": "b4ffd47a751fc508ed75d1a687b433b3f894b605a2ed75923900b8bce72c4880"
+      "sha256": "bca1e3c1b380e0885d7661cace2a018de2a474b76a6b3c146a65fe21729d643b"
     },
     {
       "kind": "production-ui",
@@ -142,6 +142,11 @@
       "kind": "production-ui",
       "path": "apps/osp/src/features/cases/manifest-blockers.ts",
       "sha256": "ee96d5d9499c8ea65ad8449fd64335757cf0b9a96d57287e0b753348a590d98f"
+    },
+    {
+      "kind": "production-ui",
+      "path": "apps/osp/src/features/cases/MvpPendingNotice.tsx",
+      "sha256": "8a7937d046b76b701ae62413ebb28b714e61bc2687b428134015332c4dfb68b4"
     },
     {
       "kind": "production-ui",
@@ -241,7 +246,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/pipeline/PipelineOverview.tsx",
-      "sha256": "6a7e3cd896aae02abc759d78f4e58430b09f41a0606a4d6f06c3968ac076c6d1"
+      "sha256": "6f60114e958c7e9061ab98624f76d36717f004f5a57eec857ebf67a43f3044f0"
     },
     {
       "kind": "production-ui",
@@ -251,7 +256,7 @@
     {
       "kind": "production-ui",
       "path": "apps/osp/src/features/profile/CorporateProfileWorkspace.tsx",
-      "sha256": "fcf4cfab7024c9043e29288ec060e341909acbd3bd8119aacecd10c9b33ebe4d"
+      "sha256": "cb62da0cde44fecbf0412de21dc6841fe71e76eca709939e54c5aabbbe6af3d7"
     },
     {
       "kind": "production-ui",

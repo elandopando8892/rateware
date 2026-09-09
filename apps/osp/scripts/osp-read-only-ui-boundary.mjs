@@ -34,7 +34,7 @@ const OUTBOUND_DRAFT_COMPOSER_PATH = 'apps/osp/src/features/approval/FinalRespon
 const REQUEST_REVIEW_WORKBENCH_PATH = 'apps/osp/src/features/cases/AdaptiveReviewWorkbench.tsx';
 const REQUEST_KNOWLEDGE_PANEL_PATH = 'apps/osp/src/features/cases/RequestKnowledgePanel.tsx';
 const OUTBOUND_DRAFT_ALLOWED_IMPORTS = new Set(['../../api/contracts', 'react']);
-const REQUEST_REVIEW_ALLOWED_IMPORTS = new Set(['../../api/contracts', '@tanstack/react-router', 'react', './manifest-blockers']);
+const REQUEST_REVIEW_ALLOWED_IMPORTS = new Set(['../../api/contracts', '@tanstack/react-router', 'react', './manifest-blockers', './MvpPendingNotice']);
 const REQUEST_KNOWLEDGE_ALLOWED_IMPORTS = new Set(['../../api/osp-client', '@tanstack/react-query', 'react']);
 const OUTBOUND_DRAFT_FORBIDDEN_CALLS = new Set([
   'approveandapplysignature',
@@ -352,6 +352,19 @@ function assertGovernedOutboundDraftSurface(file, sourcePath) {
 }
 
 function assertGovernedRequestReviewSurface(file, sourcePath) {
+  if (sourcePath.replace(/\\/g, '/') === 'apps/osp/src/features/cases/MvpPendingNotice.tsx') {
+    // This historical acknowledgement has no dependencies or executable actions.
+    visit(file, (node) => {
+      if (ts.isImportDeclaration(node) || ts.isCallExpression(node) || ts.isNewExpression(node)) fail('UI_MUTATION_CONTROL');
+      if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+        if (!['aside', 'strong', 'p'].includes(jsxName(node.tagName))) fail('UI_MUTATION_CONTROL');
+        for (const attribute of node.attributes.properties) {
+          if (ts.isJsxSpreadAttribute(attribute) || (ts.isJsxAttribute(attribute) && /^on/i.test(attribute.name.getText(file)))) fail('UI_MUTATION_CONTROL');
+        }
+      }
+    });
+    return;
+  }
   if (sourcePath.replace(/\\/g, '/') !== REQUEST_REVIEW_WORKBENCH_PATH) return;
   const imports = [];
   let declarations = 0;

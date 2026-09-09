@@ -28,6 +28,14 @@ test('local PDF review permits only its exact file picker, without persistence o
   ]) assert.throws(() => assertNoUnsafeUiSyntax(picker + addition, sourcePath), /UI_MUTATION_CONTROL/);
 });
 const repositoryRoot = path.resolve(appRoot, '..', '..');
+test('MVP acknowledgement remains read-only under semantic boundary checks', async () => {
+  const sourcePath = 'apps/osp/src/features/cases/MvpPendingNotice.tsx';
+  const source = await readFile(path.join(repositoryRoot, sourcePath), 'utf8');
+  assert.doesNotThrow(() => assertNoUnsafeUiSyntax(source, sourcePath));
+  for (const addition of ['fetch("https://example.test");', 'const action = <button onClick={() => approve()}>Approve</button>;']) {
+    assert.throws(() => assertNoUnsafeUiSyntax(source + addition, sourcePath), /UI_MUTATION_CONTROL/);
+  }
+});
 const sourceRoot = path.join(appRoot, 'src');
 const manifestPath = path.join(appRoot, 'config', 'osp-read-only-ui-boundary.json');
 const productionExtensions = new Set(['.css', '.ts', '.tsx']);
@@ -61,6 +69,7 @@ const expectedProductionSourcePaths = [
   'apps/osp/src/features/approval/SalesAuthorizationPage.tsx',
   'apps/osp/src/features/approval/SignatureApprovalPage.tsx',
   'apps/osp/src/features/cases/AdaptiveReviewWorkbench.tsx',
+  'apps/osp/src/features/cases/MvpPendingNotice.tsx',
   'apps/osp/src/features/cases/manifest-blockers.ts',
   'apps/osp/src/features/cases/case-presenter.ts',
   'apps/osp/src/features/cases/CaseWorkspace.tsx',
