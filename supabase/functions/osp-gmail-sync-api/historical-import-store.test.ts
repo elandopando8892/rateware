@@ -14,11 +14,16 @@ Deno.test("historical import store scopes one exact idempotent claim through the
           import_status: "imported",
           osp_enqueued: 1,
           attachment_metadata_rows: 1,
+          job_id: "98000000-0000-4000-8000-000000000001",
+          job_completed: false,
         }];
       }
       return [];
     },
-    { begin: async <T>(operation: (tx: typeof sql) => Promise<T>) => await operation(sql) },
+    {
+      begin: async <T>(operation: (tx: typeof sql) => Promise<T>) =>
+        await operation(sql),
+    },
   );
   const store = createPostgresHistoricalImportStore({
     databaseUrl: "postgresql://synthetic.example.test/db",
@@ -43,9 +48,15 @@ Deno.test("historical import store scopes one exact idempotent claim through the
     status: "imported",
     ospEnqueued: 1,
     attachmentMetadataRows: 1,
+    jobId: "98000000-0000-4000-8000-000000000001",
+    jobCompleted: false,
   });
-  assertEquals(calls[0], { text: "set local role osp_workflow_api", values: [] });
+  assertEquals(calls[0], {
+    text: "set local role osp_workflow_api",
+    values: [],
+  });
   assertMatch(calls[2].text, /osp_private\.record_historical_gmail_import/);
+  assertMatch(calls[2].text, /join osp_private\.background_jobs/);
   assertEquals(calls[2].values[0], "ca0a8f30-1382-4316-9bd5-cb76d9ab4920");
   assertEquals(calls[2].values[8], "historical_gmail:one");
 });

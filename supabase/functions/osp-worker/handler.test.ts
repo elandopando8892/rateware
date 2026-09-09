@@ -38,6 +38,12 @@ const exactSend = {
   jobId: "44444444-4444-4444-8444-444444444444",
   leaseToken: "55555555-5555-4555-8555-555555555555",
 };
+const exactGmailIngest = {
+  action: "run_exact_gmail_ingest",
+  organizationId: "11111111-1111-4111-8111-111111111111",
+  jobId: "22222222-2222-4222-8222-222222222222",
+  gmailMessageId: "gmail_message_1",
+};
 const manifestCanary = {
   action: "run_request_manifest_shadow",
   organizationId: "11111111-1111-4111-8111-111111111111",
@@ -174,6 +180,31 @@ Deno.test("OSP worker executes only the exact leased authorized send", async () 
   });
   assertEquals(
     (await handler(request({ ...exactSend, extra: true }))).status,
+    400,
+  );
+});
+
+Deno.test("OSP worker executes only one exact Gmail intake job", async () => {
+  let received: Record<string, string> | undefined;
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    runExactGmailIngest: async (input) => {
+      received = input;
+      return 1;
+    },
+  });
+  const response = await handler(request(exactGmailIngest));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { processed: 1 });
+  assertEquals(received, {
+    organizationId: exactGmailIngest.organizationId,
+    jobId: exactGmailIngest.jobId,
+    gmailMessageId: exactGmailIngest.gmailMessageId,
+  });
+  assertEquals(
+    (await handler(request({ ...exactGmailIngest, extra: true }))).status,
     400,
   );
 });

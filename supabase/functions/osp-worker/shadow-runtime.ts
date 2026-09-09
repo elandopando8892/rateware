@@ -100,6 +100,12 @@ type AuthorizedSendExact = {
   leaseToken: string;
 };
 
+type ExactGmailIngest = {
+  organizationId: string;
+  jobId: string;
+  gmailMessageId: string;
+};
+
 function governedStorage(
   client: Parameters<typeof createSupabaseOriginalObjectStore>[0]["client"],
 ): Pick<SupabaseClient, "storage"> {
@@ -129,6 +135,7 @@ export function createShadowWorkerRuntime(input: {
 }): {
   enqueue(limit: number): Promise<number>;
   run(limit: number): Promise<number>;
+  runExactGmailIngest(request: ExactGmailIngest): Promise<number>;
   runXlsxDocumentExtractCanary?: (
     request: XlsxDocumentExtractCanary,
   ) => Promise<number>;
@@ -613,6 +620,24 @@ export function createShadowWorkerRuntime(input: {
         signatures,
         outboundSends,
         limit,
+      }),
+    runExactGmailIngest: (request: ExactGmailIngest) =>
+      runWorker({
+        workerId: input.workerId,
+        now: () => new Date(),
+        jobs: {
+          claim: ({ leaseMs }) =>
+            jobs.claimExactGmailIngest({ ...request, leaseMs }),
+          complete: jobs.complete,
+          fail: jobs.fail,
+          enqueue: jobs.enqueue,
+        },
+        intake,
+        attachmentPromotions,
+        requestManifests: requestManifestJobs,
+        extraction,
+        formMappings,
+        limit: 1,
       }),
     runAuthorizedSendExact: async (job: AuthorizedSendExact) => {
       const result = await outboundSends.execute(job);

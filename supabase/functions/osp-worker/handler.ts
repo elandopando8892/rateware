@@ -73,6 +73,12 @@ type AuthorizedSendExact = {
   leaseToken: string;
 };
 
+type ExactGmailIngest = {
+  organizationId: string;
+  jobId: string;
+  gmailMessageId: string;
+};
+
 type RequestManifestShadow = {
   organizationId: string;
   caseId: string;
@@ -118,6 +124,7 @@ export function createOspWorkerHandler(deps: {
   manualCanaryToken?: string;
   enqueue(limit: number): Promise<number>;
   run(limit: number): Promise<number>;
+  runExactGmailIngest?: (input: ExactGmailIngest) => Promise<number>;
   runXlsxDocumentExtractCanary?: (
     input: XlsxDocumentExtractCanary,
   ) => Promise<number>;
@@ -201,6 +208,38 @@ export function createOspWorkerHandler(deps: {
     }
     if (!serviceAuthorized) return json(401, { error: "UNAUTHORIZED" });
     const keys = Object.keys(body).sort();
+    const exactGmailKeys = [
+      "action",
+      "gmailMessageId",
+      "jobId",
+      "organizationId",
+    ];
+    if (body.action === "run_exact_gmail_ingest") {
+      if (
+        keys.length !== exactGmailKeys.length ||
+        keys.some((key, index) => key !== exactGmailKeys[index]) ||
+        typeof body.organizationId !== "string" ||
+        typeof body.jobId !== "string" ||
+        typeof body.gmailMessageId !== "string" ||
+        !UUID.test(body.organizationId) || !UUID.test(body.jobId) ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(body.gmailMessageId)
+      ) return json(400, { error: "INVALID_REQUEST" });
+      if (!deps.runExactGmailIngest) {
+        return json(409, { error: "EXACT_GMAIL_INGEST_DISABLED" });
+      }
+      try {
+        const processed = await deps.runExactGmailIngest({
+          organizationId: body.organizationId,
+          jobId: body.jobId,
+          gmailMessageId: body.gmailMessageId,
+        });
+        return processed === 1
+          ? json(200, { processed: 1 })
+          : json(409, { error: "EXACT_GMAIL_INGEST_NOT_READY" });
+      } catch {
+        return json(503, { error: "EXACT_GMAIL_INGEST_UNAVAILABLE" });
+      }
+    }
     const exactSendKeys = [
       "action",
       "attemptId",

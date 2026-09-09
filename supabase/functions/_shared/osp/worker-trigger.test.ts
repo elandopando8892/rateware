@@ -1,9 +1,35 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 
 import {
+  triggerExactOspGmailIngest,
   triggerOspGmailWorker,
   triggerOspSupplierPackageCanary,
 } from "./worker-trigger.ts";
+
+Deno.test("internal OSP gateway runs one exact Gmail intake job", async () => {
+  let seen: Request | undefined;
+  const result = await triggerExactOspGmailIngest({
+    supabaseUrl: "https://project.supabase.co",
+    serviceRoleKey: "k".repeat(64),
+    organizationId: "11111111-1111-4111-8111-111111111111",
+    jobId: "22222222-2222-4222-8222-222222222222",
+    gmailMessageId: "gmail_message_1",
+    fetch: async (input, init) => {
+      seen = new Request(input, init);
+      return new Response(JSON.stringify({ processed: 1 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+  assertEquals(result, { processed: 1 });
+  assertEquals(await seen?.json(), {
+    action: "run_exact_gmail_ingest",
+    organizationId: "11111111-1111-4111-8111-111111111111",
+    jobId: "22222222-2222-4222-8222-222222222222",
+    gmailMessageId: "gmail_message_1",
+  });
+});
 
 Deno.test("Rateware invokes the exact authenticated OSP worker endpoint", async () => {
   let seen: Request | undefined;

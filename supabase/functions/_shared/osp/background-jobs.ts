@@ -90,6 +90,13 @@ export type SignatureApplicationCanaryClaim = {
   leaseMs: number;
 };
 
+export type ExactGmailIngestClaim = {
+  organizationId: string;
+  jobId: string;
+  gmailMessageId: string;
+  leaseMs: number;
+};
+
 export interface BackgroundJobStore {
   enqueue(
     input: {
@@ -116,6 +123,7 @@ export interface BackgroundJobStore {
 }
 
 export interface CanaryBackgroundJobStore extends BackgroundJobStore {
+  claimExactGmailIngest(input: ExactGmailIngestClaim): Promise<LeasedJob[]>;
   claimShadowDocumentExtract(
     input: ShadowDocumentExtractClaim,
   ): Promise<LeasedJob[]>;
@@ -396,6 +404,21 @@ export function createPostgresBackgroundJobStore(
       return await withWorkerTransaction(sql, async (tx) => {
         const rows =
           await tx`select * from osp_private.claim_next_background_jobs(${input.leaseMs}, ${input.limit})`;
+        return rows.map(leasedJob);
+      });
+    },
+    async claimExactGmailIngest(input: ExactGmailIngestClaim) {
+      if (
+        !UUID_PATTERN.test(input.organizationId) ||
+        !UUID_PATTERN.test(input.jobId) ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(input.gmailMessageId) ||
+        !Number.isSafeInteger(input.leaseMs) || input.leaseMs < 1 ||
+        input.leaseMs > 900_000
+      ) throw new Error("INVALID_CLAIM");
+      return await withWorkerTransaction(sql, async (tx) => {
+        const rows =
+          await tx`select * from osp_private.claim_exact_gmail_ingest(${input.organizationId}, ${input.jobId}, ${input.gmailMessageId}, ${input.leaseMs})`;
+        if (rows.length > 1) throw new Error("LEASE_CONFLICT");
         return rows.map(leasedJob);
       });
     },

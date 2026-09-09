@@ -46,6 +46,43 @@ export async function triggerOspGmailWorker(input: {
   return { enqueued, processed };
 }
 
+export async function triggerExactOspGmailIngest(input: {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  organizationId: string;
+  jobId: string;
+  gmailMessageId: string;
+  fetch?: typeof globalThis.fetch;
+}): Promise<{ processed: 1 }> {
+  if (
+    input.serviceRoleKey.length < 32 ||
+    !/^[0-9a-f-]{36}$/i.test(input.organizationId) ||
+    !/^[0-9a-f-]{36}$/i.test(input.jobId) ||
+    !/^[A-Za-z0-9_-]{1,128}$/.test(input.gmailMessageId)
+  ) throw new Error("OSP_WORKER_CONFIGURATION");
+  const response = await (input.fetch ?? globalThis.fetch)(
+    `${origin(input.supabaseUrl)}/functions/v1/osp-worker`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.serviceRoleKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "run_exact_gmail_ingest",
+        organizationId: input.organizationId,
+        jobId: input.jobId,
+        gmailMessageId: input.gmailMessageId,
+      }),
+      signal: AbortSignal.timeout(90_000),
+    },
+  );
+  if (!response.ok) throw new Error("OSP_WORKER_UNAVAILABLE");
+  const payload = await response.json() as Record<string, unknown>;
+  if (payload.processed !== 1) throw new Error("OSP_WORKER_UNAVAILABLE");
+  return { processed: 1 };
+}
+
 export async function triggerOspSupplierPackageCanary(input: {
   supabaseUrl: string;
   serviceRoleKey: string;

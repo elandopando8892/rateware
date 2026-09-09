@@ -9,7 +9,10 @@ import {
 import { searchProviderGmailHistoricalInbox } from "../_shared/provider-gmail-historical.ts";
 import { getProviderGmailAccessToken } from "../_shared/provider-gmail.ts";
 import { renewProviderGmailWatch } from "../_shared/provider-gmail-watch.ts";
-import { triggerOspGmailWorker } from "../_shared/osp/worker-trigger.ts";
+import {
+  triggerExactOspGmailIngest,
+  triggerOspGmailWorker,
+} from "../_shared/osp/worker-trigger.ts";
 import { OSP_PRODUCTION_ORGANIZATION_BINDING } from "../osp-read-api/auth-policy.ts";
 import { createOspRuntimeJwtVerifier } from "../osp-read-api/auth-runtime.ts";
 import { OspApiError } from "../osp-read-api/http.ts";
@@ -25,9 +28,11 @@ function required(name: string): string {
 }
 
 async function sha256(value: string): Promise<string> {
-  return [...new Uint8Array(
-    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
-  )].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return [
+    ...new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
+    ),
+  ].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 let runtime: (request: Request) => Promise<Response>;
@@ -119,15 +124,26 @@ try {
       return { watchExpiresAt: receipt.watchExpirationAt };
     },
     previewHistoricalInbox: async (organizationId, criteria) => {
-      const connection = await withGmailDependencyStage("connection", () => providerConnection(organizationId));
-      const accessToken = await withGmailDependencyStage("access_token", () => getProviderGmailAccessToken(
-        supabase,
-        connection,
-      ));
-      const result = await withGmailDependencyStage("historical_search", () => searchProviderGmailHistoricalInbox(
-        accessToken,
-        criteria,
-      ));
+      const connection = await withGmailDependencyStage(
+        "connection",
+        () => providerConnection(organizationId),
+      );
+      const accessToken = await withGmailDependencyStage(
+        "access_token",
+        () =>
+          getProviderGmailAccessToken(
+            supabase,
+            connection,
+          ),
+      );
+      const result = await withGmailDependencyStage(
+        "historical_search",
+        () =>
+          searchProviderGmailHistoricalInbox(
+            accessToken,
+            criteria,
+          ),
+      );
       const ids = result.candidates.map((candidate) =>
         candidate.gmailMessageId
       );
@@ -176,14 +192,15 @@ try {
       if (!candidate) throw new OspApiError("INVALID_REQUEST");
       const imported = await withGmailDependencyStage(
         "historical_import",
-        () => importProviderGmailMessageById(
-          supabase,
-          organizationId,
-          connection,
-          input.candidateId,
-          accessToken,
-          { allowHistoricalArchive: true },
-        ),
+        () =>
+          importProviderGmailMessageById(
+            supabase,
+            organizationId,
+            connection,
+            input.candidateId,
+            accessToken,
+            { allowHistoricalArchive: true },
+          ),
       );
       if (
         typeof imported.subject !== "string" ||
@@ -203,28 +220,38 @@ try {
       }));
       const claim = await withGmailDependencyStage(
         "historical_claim",
-        async () => historicalImportStore.record({
-          organizationId,
-          mailboxEmail: "carriers@xbfreight.com",
-          gmailMessageId: imported.gmailMessageId,
-          gmailThreadId: imported.gmailThreadId,
-          subjectSha256: await sha256(importedSubject),
-          senderDomain: imported.senderDomain,
-          receivedAt: imported.receivedAt,
-          actorSubject: identity.subject,
-          idempotencyKey: input.idempotencyKey,
-          requestSha256,
-          providerMessageInserted: imported.inserted,
-          attachmentMetadataRows: imported.attachmentCount,
-        }),
+        async () =>
+          historicalImportStore.record({
+            organizationId,
+            mailboxEmail: "carriers@xbfreight.com",
+            gmailMessageId: imported.gmailMessageId,
+            gmailThreadId: imported.gmailThreadId,
+            subjectSha256: await sha256(importedSubject),
+            senderDomain: imported.senderDomain,
+            receivedAt: imported.receivedAt,
+            actorSubject: identity.subject,
+            idempotencyKey: input.idempotencyKey,
+            requestSha256,
+            providerMessageInserted: imported.inserted,
+            attachmentMetadataRows: imported.attachmentCount,
+          }),
       );
+      const processed = claim.jobCompleted
+        ? 0
+        : (await triggerExactOspGmailIngest({
+          supabaseUrl,
+          serviceRoleKey,
+          organizationId,
+          jobId: claim.jobId,
+          gmailMessageId: imported.gmailMessageId,
+        })).processed;
       return {
         candidateId: imported.gmailMessageId,
         claimId: claim.claimId,
         importStatus: claim.status,
         attachmentMetadataRows: claim.attachmentMetadataRows,
         ospEnqueued: claim.ospEnqueued,
-        ospProcessed: 0,
+        ospProcessed: processed,
       };
     },
   });
