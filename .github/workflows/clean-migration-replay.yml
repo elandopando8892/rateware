@@ -76,6 +76,12 @@ jobs:
       - name: Run Rateware product regression suite
         run: npm run test:product
 
+      - name: Verify shipment event contracts and correlation
+        run: npm run test:shipment-context && npm run test:rateware-correlation
+
+      - name: Verify shipment event ledger on disposable PostgreSQL 17
+        run: npm run test:shipment-context:pg
+
       - name: Start clean local Supabase database
         run: supabase db start
 
