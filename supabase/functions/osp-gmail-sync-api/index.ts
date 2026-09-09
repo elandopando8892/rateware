@@ -16,6 +16,7 @@ import { OspApiError } from "../osp-read-api/http.ts";
 import { createPostgresOspReadStore } from "../osp-read-api/postgres-store.ts";
 import { createOspGmailSyncHandler } from "./handler.ts";
 import { createPostgresHistoricalImportStore } from "./historical-import-store.ts";
+import { withGmailDependencyStage } from "./dependency-stage.ts";
 
 function required(name: string): string {
   const value = Deno.env.get(name)?.trim();
@@ -118,15 +119,15 @@ try {
       return { watchExpiresAt: receipt.watchExpirationAt };
     },
     previewHistoricalInbox: async (organizationId, criteria) => {
-      const connection = await providerConnection(organizationId);
-      const accessToken = await getProviderGmailAccessToken(
+      const connection = await withGmailDependencyStage("connection", () => providerConnection(organizationId));
+      const accessToken = await withGmailDependencyStage("access_token", () => getProviderGmailAccessToken(
         supabase,
         connection,
-      );
-      const result = await searchProviderGmailHistoricalInbox(
+      ));
+      const result = await withGmailDependencyStage("historical_search", () => searchProviderGmailHistoricalInbox(
         accessToken,
         criteria,
-      );
+      ));
       const ids = result.candidates.map((candidate) =>
         candidate.gmailMessageId
       );

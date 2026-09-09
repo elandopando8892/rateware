@@ -16,3 +16,9 @@ Next: reconcile the current shared inbound-only contract with OSP's separately a
 - Existing refresh token is present; last_error is null. Do not describe the refresh token as revoked without evidence.
 - One authenticated UI preflight was attempted for subject `Documentacion de alta para proveedores`, after 2026-03-12, before 2026-03-13. UI returned `The exact candidate changed or could not be verified. Nothing was imported.` No import, sync, watch, reconnection or outbound action clicked.
 - After that attempt, connection updated_at and token_expires_at remained unchanged. Exact API failure code still needs observation; generic UI text cannot distinguish authentication, token refresh, or provider failure.
+
+## HTTP diagnosis
+
+- Browser observation of the same bounded read-only preflight from authenticated preview: HTTP 403 and failed browser request. Live handler uses an exact origin allowlist; do not infer Google refresh failure from this result.
+- From authenticated production origin osp.heymarksman.com: OPTIONS 204, POST 503; response `DEPENDENCY_UNAVAILABLE`, incident `0b5dbd34-4104-49ca-9bea-2b8a7818f748`. This is a distinct server-side dependency failure, not the preview-origin rejection. No import/sync clicked.
+- Next diagnostic target is this incident's server-side failure. Do not reconnect or replace shared OAuth functions solely on the generic 503.
