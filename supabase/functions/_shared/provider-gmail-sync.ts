@@ -341,10 +341,9 @@ export async function importProviderGmailMessageById(
     gmailThreadId: message.threadId,
     subject: message.subject,
     senderDomain: senderDomain(message.senderEmail),
-    // Historical preflight is bound to Gmail's immutable internalDate. Keep the
-    // parsed Date header for the persisted communication, but return the same
-    // provider timestamp here so the anti-TOCTOU comparison is stable for
-    // forwarded messages whose Date header can differ by a few seconds.
+    // Historical preflight is bound to Gmail's immutable internalDate. Return
+    // that provider timestamp explicitly so the anti-TOCTOU comparison does
+    // not depend on another parser's timestamp contract.
     receivedAt: gmailReceivedAt,
     inserted,
     attachmentCount,

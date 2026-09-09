@@ -98,7 +98,7 @@ Deno.test("exact historical Gmail replay accepts an archived inbound message onl
   }
 });
 
-Deno.test("exact Gmail import returns immutable internalDate when the forwarded Date header differs", async () => {
+Deno.test("exact Gmail import remains bound to immutable internalDate when a forwarded Date header differs", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = () => Promise.resolve(new Response(JSON.stringify({
     id: "message_forwarded",
