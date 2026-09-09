@@ -60,6 +60,9 @@ Before any cloud change:
    Rocket production gate off until its own approval.
 5. Validate one authorized synthetic event, idempotent replay and Service Desk
    readback without creating a Fleet Rocket shipment.
+6. Execute the single-key rotation and emergency-disable rehearsal in
+   `docs/runbooks/loads-shipment-event-hmac.md` while both business-effect gates
+   remain off.
 
 ## Rollback
 

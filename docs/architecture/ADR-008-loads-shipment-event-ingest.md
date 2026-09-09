@@ -20,6 +20,10 @@ valida un recibo ejecutado con campos exactos —incluidos hashes SHA-256— y l
 La respuesta devuelve sólo el UUID del evento, replay e identificadores de
 correlación.
 
+El entrypoint no preprocesa ni clona la solicitud. El handler lee el cuerpo una
+sola vez, rechaza más de 16 KiB y sólo entonces ejecuta `JSON.parse`; así una
+solicitud sobredimensionada no evita el límite por un parse previo.
+
 Como la autenticación ocurre dentro del handler mediante HMAC y no mediante una
 sesión de usuario, la función declara `verify_jwt=false` de forma explícita. Esto
 no vuelve pública la operación: una solicitud sin la firma nombrada no llega al
@@ -38,3 +42,5 @@ RPC de registro.
 - Una respuesta incierta permite repetir sólo la publicación; el RPC devuelve
   el evento original si el payload coincide.
 - Despliegue, secreto y activación en Loads necesitan autorización separada.
+- La primera activación requiere seguir el runbook de rotación y desactivación;
+  la versión MVP acepta una sola llave activa y no promete solapamiento.

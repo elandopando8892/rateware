@@ -17,15 +17,7 @@ function verify(envelope: Record<string, unknown>) {
 }
 
 export function createShipmentEventIngestApiHandler(dependencies = { getClient, verify }) {
-  const delegate = createShipmentEventIngestHandler(dependencies);
-  return async (request: Request) => {
-    if (request.method === "POST") {
-      const envelope = await request.clone().json().catch(() => ({}));
-      const body = envelope?.body || {};
-      if (body.action === "register_shipment_created") return delegate(request);
-    }
-    return delegate(request);
-  };
+  return createShipmentEventIngestHandler(dependencies);
 }
 
 Deno.serve(createShipmentEventIngestApiHandler());
