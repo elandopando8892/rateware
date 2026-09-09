@@ -1,5 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
+import {
+  decryptRfxInvitationToken,
+  encryptRfxInvitationToken,
+  hashRfxInvitationToken,
+} from "../_shared/rfx-invitation-token.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -383,40 +388,6 @@ function bytesToBase64Url(bytes: Uint8Array) {
   return bytesToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-async function rfxInvitationCryptoKey(usages: KeyUsage[]) {
-  if (!RFX_INVITATION_TOKEN_ENCRYPTION_KEY) {
-    throw new Error("Bid Room invitation token encryption is not configured.");
-  }
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(RFX_INVITATION_TOKEN_ENCRYPTION_KEY));
-  return crypto.subtle.importKey("raw", digest, "AES-GCM", false, usages);
-}
-
-async function hashRfxInvitationToken(value: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return bytesToBase64(new Uint8Array(digest));
-}
-
-async function encryptRfxInvitationToken(value: string) {
-  const key = await rfxInvitationCryptoKey(["encrypt"]);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value));
-  return `v1:${bytesToBase64(iv)}:${bytesToBase64(new Uint8Array(ciphertext))}`;
-}
-
-async function decryptRfxInvitationToken(value: unknown) {
-  const text = cleanText(value);
-  if (!text) return null;
-  const [version, ivText, ciphertextText] = text.split(":");
-  if (version !== "v1" || !ivText || !ciphertextText) throw new Error("Bid Room invitation token format is invalid.");
-  const key = await rfxInvitationCryptoKey(["decrypt"]);
-  const plain = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: base64ToBytes(ivText) },
-    key,
-    base64ToBytes(ciphertextText)
-  );
-  return new TextDecoder().decode(plain);
-}
-
 function invitationWithToken(row: Record<string, unknown>, token: string): Record<string, unknown> {
   const { invitation_token_hash: _hash, invitation_token_encrypted: _encrypted, ...publicRow } = row;
   return { ...publicRow, invitation_token: token };
@@ -433,7 +404,7 @@ async function migrateLegacyInvitationToken(
       .from("rfx_lane_vendors")
       .update({
         invitation_token_hash: await hashRfxInvitationToken(token),
-        invitation_token_encrypted: await encryptRfxInvitationToken(token),
+        invitation_token_encrypted: await encryptRfxInvitationToken(token, RFX_INVITATION_TOKEN_ENCRYPTION_KEY),
         invitation_token: null,
         updated_at: new Date().toISOString()
       })
@@ -480,7 +451,10 @@ async function hydrateInvitationTokens(
   const hydrated: Record<string, unknown>[] = [];
   for (const row of rows) {
     const legacyToken = cleanText(row.invitation_token);
-    const token = legacyToken || await decryptRfxInvitationToken(row.invitation_token_encrypted);
+    const token = legacyToken || await decryptRfxInvitationToken(
+      row.invitation_token_encrypted,
+      RFX_INVITATION_TOKEN_ENCRYPTION_KEY,
+    );
     if (!token) continue;
     if (legacyToken) await migrateLegacyInvitationToken(supabase, row, token);
     hydrated.push(invitationWithToken(row, token));
@@ -1290,7 +1264,7 @@ async function saveSegmentConfirmations(
     source: "carrier_portal",
     metadata: {
       source: "rfx_lane_fit",
-      invitation_token: cleanText(invitation.invitation_token),
+      invitation_id: cleanText(invitation.id),
       lane_id: cleanText(invitation.rfx_lane_id)
     },
     updated_at: now

@@ -40,6 +40,11 @@ jobs:
         with:
           version: 2.114.0
 
+      - name: Install Deno
+        uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
+        with:
+          deno-version: v2.0.3
+
       - name: Verify replay toolchain
         run: |
           test "$(supabase --version)" = "2.114.0"
@@ -76,6 +81,9 @@ jobs:
       - name: Run Rateware product regression suite
         run: npm run test:product
 
+      - name: Run MARKSMAN Loads private connector suite
+        run: npm run test:marksman-loads-private-connector
+
       - name: Start clean local Supabase database
         run: supabase db start
 
@@ -96,7 +104,7 @@ jobs:
           container='supabase_db_alqjqzqagdmcywpjtnnr'
           ledger="$(docker exec "$container" psql -U postgres -d postgres -Atc \
             "select count(*)::text || '|' || max(version)::text from supabase_migrations.schema_migrations")"
-          test "$ledger" = '374|20260907120000'
+          test "$ledger" = '378|20260907120000'
 
           grants="$(docker exec "$container" psql -U postgres -d postgres -Atc \
             "select has_table_privilege('service_role','public.provider_legal_entity_fact_promotions','SELECT'),
