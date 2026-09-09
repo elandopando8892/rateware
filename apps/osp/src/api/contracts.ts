@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { AnswerMemoryCandidateSchema } from '../features/forms/answer-memory-contract';
-import { ProfilePromotionBatchSchema } from '../features/profile/profile-promotion-batch-contract';
+import { AnswerMemoryCandidateSchema } from '../features/forms/answer-memory-contract.ts';
+import { ProfilePromotionBatchSchema } from '../features/profile/profile-promotion-batch-contract.ts';
 
 export const OSP_READ_ACTIONS = [
   'list_provider_onboarding_workspace',
