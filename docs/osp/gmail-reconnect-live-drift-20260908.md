@@ -22,3 +22,10 @@ Next: reconcile the current shared inbound-only contract with OSP's separately a
 - Browser observation of the same bounded read-only preflight from authenticated preview: HTTP 403 and failed browser request. Live handler uses an exact origin allowlist; do not infer Google refresh failure from this result.
 - From authenticated production origin osp.heymarksman.com: OPTIONS 204, POST 503; response `DEPENDENCY_UNAVAILABLE`, incident `0b5dbd34-4104-49ca-9bea-2b8a7818f748`. This is a distinct server-side dependency failure, not the preview-origin rejection. No import/sync clicked.
 - Next diagnostic target is this incident's server-side failure. Do not reconnect or replace shared OAuth functions solely on the generic 503.
+
+## Deployed stage diagnosis
+
+- Deployed osp-gmail-sync-api v151, bundle ea258ae44a00803a6f351c2ddd98153656ecc71eaa5545e0308599fedebeb410. Built from downloaded live v150 with only the preflight stage wrapper and its import; all other live dependencies preserved. Backup: tmp/osp-sync-v150-backup. Private Git diagnostic source 417ddbf.
+- Nine local handler/wrapper tests passed. One production authenticated Crane preflight on v151 returned no import; Supabase logs show `OSP_GMAIL_DEPENDENCY_FAILED` stage `access_token`.
+- Connection selection completed; search was not reached. Failure is within token decryption, refresh exchange, scope validation, or token persistence. This does not yet prove Google revocation or identify which substep failed.
+- Cron remains intentionally paused; no import, broad sync, signature or email action performed.
