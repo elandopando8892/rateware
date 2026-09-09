@@ -29,3 +29,11 @@ Next: reconcile the current shared inbound-only contract with OSP's separately a
 - Nine local handler/wrapper tests passed. One production authenticated Crane preflight on v151 returned no import; Supabase logs show `OSP_GMAIL_DEPENDENCY_FAILED` stage `access_token`.
 - Connection selection completed; search was not reached. Failure is within token decryption, refresh exchange, scope validation, or token persistence. This does not yet prove Google revocation or identify which substep failed.
 - Cron remains intentionally paused; no import, broad sync, signature or email action performed.
+
+## Exact token diagnosis and bounded reconnect rollback
+
+- Deployed `osp-gmail-sync-api` v152 with redacted reason classification only. A single authenticated production preflight returned stage `access_token` and reason `google_grant_expired_or_revoked`; search and import were not reached.
+- A bounded reconnect bridge was deployed temporarily to the shared provider functions so the exact OSP mailbox could request only `gmail.readonly` plus `gmail.send`. No OAuth callback completed because `carriers@xbfreight.com` was not present in the connected Chrome profile and requires an interactive Google sign-in.
+- The bridge was withdrawn before leaving the flow waiting on credentials. `provider-gmail-intake-api` v181 now contains the original v179 inbound-only source, and `provider-gmail-oauth-callback` v172 contains the original v170 callback source. The different bundle hashes are new deployment bundles; source inspection confirms the restored contracts.
+- SQL readback after restoration confirms cron job 3, `osp-gmail-poll-every-5-minutes`, remains `active = false`.
+- No Gmail connection row was changed, no message was searched or imported, and no signature, email, webhook or other outgoing action occurred.
