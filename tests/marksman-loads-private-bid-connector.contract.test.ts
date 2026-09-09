@@ -267,7 +267,7 @@ Deno.test("endpoint source keeps execution private, disabled and delegated to ca
   const migration = await Deno.readTextFile(new URL("../supabase/migrations/20260831213000_marksman_loads_private_bid_commands.sql", import.meta.url));
   const receiptMigration = await Deno.readTextFile(new URL("../supabase/migrations/20260907090000_marksman_loads_operation_receipts.sql", import.meta.url));
   assert(source.includes('=== "true"'), "feature flags must require exact true opt-in");
-  assert(source.includes('canaryRequest ? CANARY_ENABLED : LIVE_ENABLED'), "both execution modes must fail closed behind independent flags");
+  assert(source.includes('dependencies.canaryEnabled ?? CANARY_ENABLED') && source.includes('dependencies.liveEnabled ?? LIVE_ENABLED') && source.includes('canaryRequest ? canaryEnabled : liveEnabled'), "both execution modes must fail closed behind independent flags");
   assert(source.includes('/functions/v1/rfx-bid-api'), "connector must delegate to canonical Bid Room API");
   assert(source.includes('action: "submit_bid", token'), "invitation credential should be attached only inside Rateware canonical invocation");
   assert(source.includes('external_organization_links') && source.includes('workspace_registry') && source.includes('vendors'), "resolution must traverse reviewed tenant and vendor links");

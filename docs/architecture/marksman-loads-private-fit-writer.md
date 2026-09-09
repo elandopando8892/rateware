@@ -25,4 +25,4 @@ The candidate is gated by `MARKSMAN_LOADS_FIT_CONNECTOR_ENABLED=false` unless ex
 
 ## QA completed
 
-The focused Deno suite passed 36 tests, including a fixed Node.js-to-Deno HMAC/operation vector, disabled-route behavior, exact rubric validation, authorization/tamper rejection, prepared-receipt conflict handling, uncertain-result handling, six-rubric end-to-end reconciliation, independent readback, replay idempotency, quote readback regressions, and no-CORS/credential exposure checks. The migration-ledger suite passed 3/3.
+The focused Deno suite passed 38 tests, including a fixed Node.js-to-Deno HMAC/operation vector, disabled-route behavior, exact rubric validation, authorization/tamper rejection, prepared-receipt conflict handling, uncertain-result handling, a viewed-invitation Fit write, payload-minimized Fit evidence, the sequential Fit -> readback -> quote -> receipt -> readback journey, replay idempotency, quote readback regressions, and no-CORS/credential exposure checks. The migration-ledger suite passed 3/3.

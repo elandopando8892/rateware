@@ -8,7 +8,7 @@ const CONTRACT_VERSION = "1.3.0";
 const SOURCE_FILE = "supabase/functions/rfx-internal-bid-api/index.ts";
 const READBACK_SOURCE_FILE = "supabase/functions/rfx-internal-bid-read-api/index.ts";
 const FIT_SOURCE_FILE = "supabase/functions/rfx-internal-fit-api/index.ts";
-const AUTHORIZATION_FINGERPRINT = "4b3957ce020b7392d3d5d8ee04fc74159a40170229388a3e9771d6deebe20e17";
+const AUTHORIZATION_FINGERPRINT = "524bb383d47d18285a5ebfeb66f98edaa5e8777d0fb586ff6a60e8b30914622c";
 const DEPENDENCY_FILES = [
   "supabase/functions/_shared/marksman-loads-bid-contract.ts",
   "supabase/functions/_shared/rfx-invitation-token.ts",
@@ -63,7 +63,7 @@ const surfaces = [
     decisionStatus: "pending_human_approval",
     lifecycle: "active",
     replacementAction: null,
-    sourceFingerprint: "7291b807185b5655915eaf9a0275702fdce8b2b441902238f63964f25a15c84c",
+    sourceFingerprint: "07c954ca773642b8c837694b79efe478372034b5250e2d795bd178d815c5a50d",
     notes: "HMAC-authenticated delegation to canonical submit_bid with durable idempotency. Runtime live flag defaults disabled and a signed human confirmation is required.",
     analysisCoverage: "shared-observed",
     dependencyFiles: DEPENDENCY_FILES,
@@ -122,7 +122,7 @@ const surfaces = [
     decisionStatus: "pending_human_approval",
     lifecycle: "active",
     replacementAction: null,
-    sourceFingerprint: "0383995df09445d5d5b4087a01357707ac209defab3951e1e01b7317ab07c041",
+    sourceFingerprint: "592b76cd33917619e0c7effcad9432357c4fef25af79e62d3a7027ed074a8672",
     notes: "HMAC-authenticated delegation to canonical save_segment_confirmations with deterministic operation identity and independent readback. Runtime Fit flag defaults disabled.",
     analysisCoverage: "shared-observed",
     dependencyFiles: [
@@ -150,7 +150,7 @@ export const MARKSMAN_LOADS_PRIVATE_BID_ACTION_CONTRACT_EXTENSION = {
       entry.canonicalId === "edge.rfx-internal-bid-read-api.read_operation_observation"
         ? "fbf7a8fc21cd987a1b57e24d73b0b157c317b777e613ea69f203dc9d15424620"
         : entry.canonicalId === "edge.rfx-internal-fit-api.resolve_and_save_fit"
-          ? "4ea1a5c4cd2ed05af7ff2a358bff7b6f4d4a26d1d3ebe915f159d7c217d90517"
+          ? "5baaeb011098fb49b766eac614eedca962cad6d12b551bcf5f3b0c2ba220025e"
           : AUTHORIZATION_FINGERPRINT]),
   ),
   surfaces,

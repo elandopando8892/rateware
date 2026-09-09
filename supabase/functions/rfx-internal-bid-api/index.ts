@@ -254,8 +254,9 @@ async function persistQuoteOperationReceipt(
   context: Awaited<ReturnType<typeof resolvePrivateContext>>,
   command: RecordValue,
   reconciliation: RecordValue,
+  clock: () => Date = () => new Date(),
 ) {
-  const values = buildQuoteOperationReceiptRow({verified,context,command,reconciliation,committedAt:new Date().toISOString()});
+  const values = buildQuoteOperationReceiptRow({verified,context,command,reconciliation,committedAt:clock().toISOString()});
   const stagingId = values.staging_record_id;
   const inserted = await client.from("marksman_loads_operation_receipts").insert(values).select(RECEIPT_COLUMNS).single();
   if (!inserted.error) return safeOperationReceipt(inserted.data as RecordValue);
@@ -459,9 +460,13 @@ async function invitationCredential(invitation: RecordValue) {
   return decrypted;
 }
 
-async function invokeCanonicalSubmit(verified: VerifiedMarksmanLoadsBidRequest, invitation: RecordValue) {
+async function invokeCanonicalSubmit(
+  verified: VerifiedMarksmanLoadsBidRequest,
+  invitation: RecordValue,
+  fetchImpl: typeof fetch = fetch,
+) {
   const token = await invitationCredential(invitation);
-  const canonicalResponse = await fetch(`${SUPABASE_URL}/functions/v1/rfx-bid-api`, {
+  const canonicalResponse = await fetchImpl(`${SUPABASE_URL}/functions/v1/rfx-bid-api`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -494,6 +499,8 @@ async function executeLive(
   client: ConnectorClient,
   verified: VerifiedMarksmanLoadsBidRequest,
   context: Awaited<ReturnType<typeof resolvePrivateContext>>,
+  fetchImpl: typeof fetch = fetch,
+  clock: () => Date = () => new Date(),
 ) {
   const claimed = await createOrReadCommand(client, verified, context);
   let command = claimed.command;
@@ -510,7 +517,7 @@ async function executeLive(
 
   let canonicalResult: RecordValue;
   try {
-    canonicalResult = await invokeCanonicalSubmit(verified, context.invitation);
+    canonicalResult = await invokeCanonicalSubmit(verified, context.invitation, fetchImpl);
   } catch (error) {
     const reconciliation = await reconcileCurrentBid(client, verified, context.invitation.id).catch(() => null);
     await updateCommand(client, command.id, {
@@ -529,7 +536,7 @@ async function executeLive(
     );
   }
 
-  await updateCommand(client, command.id, {
+  command = await updateCommand(client, command.id, {
     status: "submitted",
     result: { canonicalResult },
     external_execution: true,
@@ -538,7 +545,7 @@ async function executeLive(
   const reconciliation = await reconcileCurrentBid(client, verified, context.invitation.id);
   const reconciled = reconciliation.status === "reconciled";
   const operationReceipt = reconciled
-    ? await persistQuoteOperationReceipt(client, verified, context, command, reconciliation)
+    ? await persistQuoteOperationReceipt(client, verified, context, command, reconciliation, clock)
     : null;
   const result = {
     commandId: command.id,
@@ -610,11 +617,25 @@ async function handleLiveRequest(
   client: ConnectorClient,
   verified: VerifiedMarksmanLoadsBidRequest,
   context: Awaited<ReturnType<typeof resolvePrivateContext>>,
+  fetchImpl: typeof fetch,
+  clock: () => Date,
 ) {
-  return response(await executeLive(client, verified, context), 200, verified.requestId);
+  return response(await executeLive(client, verified, context, fetchImpl, clock), 200, verified.requestId);
 }
 
-export async function createRfxInternalBidHandler(request: Request) {
+type BidHandlerDependencies = {
+  getClient?: () => ConnectorClient;
+  fetchImpl?: typeof fetch;
+  canaryEnabled?: boolean;
+  liveEnabled?: boolean;
+  sharedSecret?: string;
+  keyId?: string;
+  now?: () => Date;
+};
+
+export function createRfxInternalBidHandler(request: Request): Promise<Response>;
+export function createRfxInternalBidHandler(request: Request, dependencies: BidHandlerDependencies): Promise<Response>;
+export async function createRfxInternalBidHandler(request: Request, dependencies: BidHandlerDependencies = {}) {
   let requestId = "";
   try {
     if (request.method !== "POST") {
@@ -624,13 +645,16 @@ export async function createRfxInternalBidHandler(request: Request) {
     if (contentLength > 100_000) return response({ error: "Request body is too large.", code: "REQUEST_TOO_LARGE" }, 413);
     const envelope = await request.json();
     const verified = await verifyMarksmanLoadsBidRequest(envelope, {
-      sharedSecret: CONNECTOR_SECRET,
-      expectedKeyId: CONNECTOR_KEY_ID,
+      sharedSecret: dependencies.sharedSecret ?? CONNECTOR_SECRET,
+      expectedKeyId: dependencies.keyId ?? CONNECTOR_KEY_ID,
+      now: (dependencies.now || (() => new Date()))(),
     });
     requestId = verified.requestId;
 
     const canaryRequest = verified.body.action.endsWith("_canary");
-    if (!(canaryRequest ? CANARY_ENABLED : LIVE_ENABLED)) {
+    const canaryEnabled = dependencies.canaryEnabled ?? CANARY_ENABLED;
+    const liveEnabled = dependencies.liveEnabled ?? LIVE_ENABLED;
+    if (!(canaryRequest ? canaryEnabled : liveEnabled)) {
       throw new ConnectorError(
         canaryRequest ? "Private resolution canary is disabled." : "Live private bid execution is disabled.",
         canaryRequest ? "CANARY_EXECUTION_DISABLED" : "LIVE_EXECUTION_DISABLED",
@@ -638,13 +662,13 @@ export async function createRfxInternalBidHandler(request: Request) {
       );
     }
 
-    const client = getClient();
+    const client = (dependencies.getClient || getClient)();
     const context = await resolvePrivateContext(client, verified);
     switch (verified.body.action) {
       case "resolve_and_submit_bid_canary":
-        return handleCanaryRequest(client, verified, context);
+        return await handleCanaryRequest(client, verified, context);
       case "resolve_and_submit_bid":
-        return handleLiveRequest(client, verified, context);
+        return await handleLiveRequest(client, verified, context, dependencies.fetchImpl || fetch, dependencies.now || (() => new Date()));
     }
   } catch (error) {
     if (error instanceof MarksmanLoadsBidContractError || error instanceof ConnectorError) {

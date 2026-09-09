@@ -76,6 +76,9 @@ jobs:
       - name: Run Rateware product regression suite
         run: npm run test:product
 
+      - name: Run MARKSMAN Loads private connector suite
+        run: npm run test:marksman-loads-private-connector
+
       - name: Start clean local Supabase database
         run: supabase db start
 
