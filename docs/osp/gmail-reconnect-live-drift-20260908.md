@@ -37,3 +37,10 @@ Next: reconcile the current shared inbound-only contract with OSP's separately a
 - The bridge was withdrawn before leaving the flow waiting on credentials. `provider-gmail-intake-api` v181 now contains the original v179 inbound-only source, and `provider-gmail-oauth-callback` v172 contains the original v170 callback source. The different bundle hashes are new deployment bundles; source inspection confirms the restored contracts.
 - SQL readback after restoration confirms cron job 3, `osp-gmail-poll-every-5-minutes`, remains `active = false`.
 - No Gmail connection row was changed, no message was searched or imported, and no signature, email, webhook or other outgoing action occurred.
+
+## Entity selection and second safe rollback
+
+- Database readback shows exactly one historical Provider Gmail connection: `carriers@xbfreight.com` is bound to legal entity `XBFMX`. OSP sync and poll require exactly one eligible mailbox connection; creating a second XBFUS connection would make that selector ambiguous and break intake. Crane remains an XBFUS business case, but the shared mailbox credential must be renewed on the existing XBFMX connection.
+- Authenticated Rateware UI was opened as `sales@heymarksman.com`, XBFMX was selected, and the reconnect button was invoked. The UI remained at `Preparing ...` and no new OAuth state row appeared, proving the request stopped before consent-state persistence. No Google consent page opened.
+- A direct SQL fallback was not used: the available connector executed in a read-only transaction. The temporary bridge was restored again. Current deployed restore bundles are `provider-gmail-intake-api` v183 hash `9867c4e70377cdc5eef1cf9b593fd96a198a6630161ebe21fa44251fa5a03e75` and callback v174 hash `938f558beb64f6e93a0059c337aeca52ed9aa5adc05ac58361b6c691206a8005`.
+- Next action: authenticate `carriers@xbfreight.com` interactively in a connected Chrome profile, then repeat the bounded bridge and inspect consent/callback before any preflight or import.
