@@ -230,13 +230,13 @@ async function shipperRelationshipPipeline(
   const search = safeSearch(body.search);
   const status = cleanText(body.status)?.toLowerCase();
   let query = supabase.from("shippers")
-    .select("id,shipper_name,domain,logo_url,industry,status,relationship_stage,primary_contact_name,primary_contact_email,headquarters_city,headquarters_state,headquarters_country,updated_at", { count: "exact" })
+    .select("id,shipper_name,domain,tms_system_id,logo_url,industry,status,relationship_stage,primary_contact_name,primary_contact_email,headquarters_city,headquarters_state,headquarters_country,updated_at", { count: "exact" })
     .eq("owner_email", ownerEmail).neq("status", "archived")
     .order("updated_at", { ascending: false }).range(0, limit - 1);
   if (status && status !== "all") query = query.eq("status", status);
   if (search) {
     query = query.or([
-      `shipper_name.ilike.%${search}%`, `domain.ilike.%${search}%`, `industry.ilike.%${search}%`,
+      `shipper_name.ilike.%${search}%`, `domain.ilike.%${search}%`, `tms_system_id.ilike.%${search}%`, `industry.ilike.%${search}%`,
       `primary_contact_name.ilike.%${search}%`, `primary_contact_email.ilike.%${search}%`,
       `headquarters_city.ilike.%${search}%`, `headquarters_state.ilike.%${search}%`
     ].join(","));
@@ -489,7 +489,7 @@ async function shipperIntelligence(
   const limit = Math.min(Math.max(Number(body.limit) || 1000, 1), 1000);
   const search = safeSearch(body.search).toLowerCase();
   const shipperResult = await supabase.from("shippers")
-    .select("id,shipper_name,legal_name,domain,industry,status,relationship_stage,primary_contact_name,primary_contact_email,headquarters_city,headquarters_state,headquarters_country,updated_at", { count: "exact" })
+    .select("id,shipper_name,legal_name,domain,tms_system_id,industry,status,relationship_stage,primary_contact_name,primary_contact_email,headquarters_city,headquarters_state,headquarters_country,updated_at", { count: "exact" })
     .eq("owner_email", ownerEmail).neq("status", "archived")
     .order("updated_at", { ascending: false }).range(0, limit - 1);
   if (shipperResult.error) throw shipperResult.error;
@@ -696,7 +696,7 @@ async function listShippers(
   const search = safeSearch(body.search);
   let query = supabase
     .from("shippers")
-    .select("id,shipper_name,legal_name,domain,website,logo_url,industry,status,relationship_stage,segment,revenue_tier,account_owner_email,primary_contact_name,primary_contact_email,primary_contact_phone,headquarters_city,headquarters_state,headquarters_country,tags,notes,source,created_at,updated_at,shipper_account_actions(title,status,priority,due_date,created_at)", { count: "exact" })
+    .select("id,shipper_name,legal_name,domain,website,logo_url,industry,status,relationship_stage,segment,revenue_tier,account_owner_email,primary_contact_name,primary_contact_email,primary_contact_phone,headquarters_city,headquarters_state,headquarters_country,tags,notes,source,created_at,updated_at,tms_system_id,shipper_account_actions(title,status,priority,due_date,created_at)", { count: "exact" })
     .eq("owner_email", ownerEmail)
     .order(cleanText(body.sort_by) === "shipper_name" ? "shipper_name" : "updated_at", {
       ascending: cleanText(body.sort_direction)?.toLowerCase() === "asc"
@@ -715,6 +715,7 @@ async function listShippers(
       `shipper_name.ilike.%${search}%`,
       `legal_name.ilike.%${search}%`,
       `domain.ilike.%${search}%`,
+      `tms_system_id.ilike.%${search}%`,
       `industry.ilike.%${search}%`,
       `primary_contact_name.ilike.%${search}%`,
       `primary_contact_email.ilike.%${search}%`,

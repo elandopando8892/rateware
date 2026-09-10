@@ -345,13 +345,13 @@ function updateShipperShell(status, busy = false) {
 }
 
 const SHIPPER_IMPORT_HEADERS = [
-  "shipper_name", "legal_name", "domain", "website", "industry", "status", "relationship_stage",
+  "shipper_name", "legal_name", "domain", "tms_system_id", "website", "industry", "status", "relationship_stage",
   "segment", "revenue_tier", "account_owner_email", "primary_contact_name", "primary_contact_email",
   "primary_contact_phone", "headquarters_city", "headquarters_state", "headquarters_country", "tags", "notes"
 ];
 
 const SHIPPER_IMPORT_EXAMPLE = [
-  "Example Shipper", "Example Shipper LLC", "example-shipper.com", "https://example-shipper.com", "Manufacturing",
+  "Example Shipper", "Example Shipper LLC", "example-shipper.com", "", "https://example-shipper.com", "Manufacturing",
   "prospect", "target", "automotive", "mid_market", "owner@company.com", "Jane Doe", "jane@example-shipper.com",
   "+52 81 0000 0000", "Monterrey", "NL", "MX", "automotive; crossborder", "Imported from the Shipper Base"
 ];
@@ -359,12 +359,12 @@ const SHIPPER_IMPORT_EXAMPLE = [
 const SHIPPER_CRM_WORKBOOK_TEMPLATE = {
   Accounts: {
     headers: [
-      "external_account_id", "account_name", "legal_name", "domain", "website", "linkedin_url", "industry", "account_owner",
+      "external_account_id", "account_name", "legal_name", "domain", "tms_system_id", "website", "linkedin_url", "industry", "account_owner",
       "status", "relationship_stage", "labels", "headquarters_city", "headquarters_state", "headquarters_region", "headquarters_country",
       "headquarters_postal_code", "annual_revenue", "employee_count", "tax_id", "scope_of_service", "source_created_at", "source_updated_at"
     ],
     example: [
-      "org_001", "Example Manufacturing", "Example Manufacturing LLC", "example.com", "https://example.com", "", "Manufacturing", "owner@example.com",
+      "org_001", "Example Manufacturing", "Example Manufacturing LLC", "example.com", "", "https://example.com", "", "Manufacturing", "owner@example.com",
       "prospect", "target", "automotive, strategic", "Monterrey", "NL", "Northeast Mexico", "MX", "64000", "", "", "", "Crossborder, domestic MX", "", ""
     ]
   },
@@ -423,6 +423,7 @@ function normalizeShipperImportRow(source, index) {
     shipper_name: importValue(values, ["shipper_name", "shipper", "customer", "company", "company_name", "account_name", "name"]),
     legal_name: importValue(values, ["legal_name", "legal_entity"]),
     domain: normalizeImportedDomain(importValue(values, ["domain", "company_domain"])),
+    tms_system_id: importValue(values, ["tms_system_id", "tms_id", "tms_system", "fleet_rocket_id"]),
     website: importValue(values, ["website", "web_site", "url"]),
     industry: importValue(values, ["industry", "vertical"]),
     status: importValue(values, ["status"]).toLowerCase(),
@@ -1570,6 +1571,7 @@ function renderOverview() {
       ${overviewField("shipper_name", "Shipper name", row.shipper_name, { required: true, wide: true })}
       ${overviewField("legal_name", "Legal name", row.legal_name)}
       ${overviewField("domain", "Domain", row.domain)}
+      ${overviewField("tms_system_id", "TMS System ID", row.tms_system_id)}
       ${overviewField("website", "Website", row.website, { type: "url" })}
       ${overviewField("logo_url", "Logo URL", row.logo_url, { type: "url" })}
       ${overviewField("industry", "Industry", row.industry)}

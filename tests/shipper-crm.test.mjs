@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const migration = read("../supabase/migrations/20260712160000_shipper_crm.sql");
+const tmsMigration = read("../supabase/migrations/20260909110000_shipper_tms_system_id.sql");
 const commercialMigration = read("../supabase/migrations/20260713173000_shipper_commercial_workflow.sql");
 const rfxLinkMigration = read("../supabase/migrations/20260713180000_shipper_opportunity_rfx_link.sql");
 const duplicateMigration = read("../supabase/migrations/20260713190000_shipper_duplicate_review.sql");
@@ -27,6 +28,8 @@ assert.match(migration, /lower\(owner_email\) = lower\(coalesce\(auth\.jwt\(\) -
 assert.match(migration, /auth\.jwt\(\) ->> 'organization_id'/);
 assert.doesNotMatch(migration, /using \(true\)/i);
 assert.match(migration, /shippers_owner_domain_unique_idx/);
+assert.match(tmsMigration, /add column if not exists tms_system_id text/);
+assert.match(tmsMigration, /not the Rateware UUID/);
 
 for (const action of ["shipper_crm_summary", "list_shippers", "list_shipper_duplicates", "merge_shipper_accounts", "shipper_relationship_pipeline", "shipper_commercial_work", "shipper_action_queue", "update_shipper_account_action_status", "shipper_intelligence", "promote_shipper_rfi_to_opportunity", "move_shipper_opportunity_stage", "launch_shipper_opportunity_rfx", "get_shipper", "shipper_account_activity", "create_shipper", "import_shippers", "update_shipper", "move_shipper_relationship_stage", "archive_shippers", "save_shipper_record", "delete_shipper_record"]) {
   assert.match(api, new RegExp(`body\\.action === "${action}"`));
@@ -95,6 +98,11 @@ assert.match(api, /\.neq\("status", "archived"\)/);
 assert.match(api, /\.eq\("shipper_id", duplicateId\)/);
 assert.match(api, /\.update\(\{ shipper_id: primaryId, updated_at: now \}\)/);
 assert.match(api, /normalizeShipper\(input, true\)/);
+assert.match(api, /"tms_system_id"/);
+assert.match(api, /tms_system_id: \["tms_system_id", "tms_id", "tms_system", "fleet_rocket_id"\]/);
+assert.match(directoryApi, /tms_system_id/);
+assert.match(client, /overviewField\("tms_system_id", "TMS System ID"/);
+assert.match(page, /name="tms_system_id"/);
 assert.match(api, /\.eq\("owner_email", user\.owner_email\)\.in\("domain", domainChunk\)/);
 assert.match(service, /export async function importShippers/);
 assert.match(service, /"import_shippers"/);

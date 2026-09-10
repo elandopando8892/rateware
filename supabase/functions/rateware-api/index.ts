@@ -2217,7 +2217,7 @@ function shipperChildEntity(value: unknown): ShipperChildEntity {
 function normalizeShipper(input: Record<string, unknown>, partial = false) {
   const row: Record<string, unknown> = {};
   const textFields = [
-    "shipper_name", "legal_name", "domain", "website", "logo_url", "industry", "status",
+    "shipper_name", "legal_name", "domain", "tms_system_id", "website", "logo_url", "industry", "status",
     "relationship_stage", "segment", "revenue_tier", "account_owner_email", "primary_contact_name",
     "primary_contact_email", "primary_contact_phone", "headquarters_city", "headquarters_state",
     "headquarters_country", "notes", "source"
@@ -2269,6 +2269,7 @@ const SHIPPER_IMPORT_COLUMNS: Record<string, string[]> = {
   shipper_name: ["shipper_name", "shipper", "customer", "company", "company_name", "account_name", "name"],
   legal_name: ["legal_name", "legal_entity", "registered_name"],
   domain: ["domain", "company_domain"],
+  tms_system_id: ["tms_system_id", "tms_id", "tms_system", "fleet_rocket_id"],
   website: ["website", "web_site", "url"],
   industry: ["industry", "vertical"],
   status: ["status"],
