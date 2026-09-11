@@ -12,6 +12,15 @@ export const P3V3_PRODUCT_CANDIDATE = "08ef68a63b5a16c9aa4a4e5c61816ec78fc2d52d"
 export const P3V3_PRODUCT_TREE = "e737711b2859e0947dfbd0591c3e2d65311ffa47";
 export const P3V3_PRODUCT_BASE = "59580828dc8bf8c26d6af82b8d5675f18806cb84";
 
+// The P3-V6 accessibility pass added explicit names to the RFx Process
+// search/status controls. Keep the historical P3-V3 candidate immutable while
+// allowing this one reviewed, content-addressed markup supersession.
+export const P3V3_ACCESSIBILITY_SUPERSESSION = Object.freeze({
+  commit: "79b5bc158e657f7a4c46fb63922291e920dec51e",
+  path: "rfx-process.html",
+  blob: "46f95e48059463c9c7cc72515ccfbab129799ab9",
+});
+
 export const P3V3_SOURCE_PATHS = Object.freeze([
   "vendors.html",
   "rfx-events.html",
@@ -71,6 +80,9 @@ export function validateP3V3SourceGitState(rootDir, record = loadP3V3SourceSuper
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
+  const supersession = P3V3_ACCESSIBILITY_SUPERSESSION;
+  if (git(["cat-file", "-e", `${supersession.commit}^{commit}`]) !== "") throw new Error("P3-V3 accessibility supersession commit missing");
+  if (git(["rev-parse", `${supersession.commit}:${supersession.path}`]) !== supersession.blob) throw new Error("P3-V3 accessibility supersession blob mismatch");
   let newerVisualSupersession = null;
   for (const loader of [loadP3V5SourceSupersession, loadP3V4SourceSupersession]) {
     try { newerVisualSupersession = loader(root); break; } catch { /* newer sprint may not exist in historical fixtures. */ }
@@ -79,7 +91,8 @@ export function validateP3V3SourceGitState(rootDir, record = loadP3V3SourceSuper
     const expected = record.source_blobs[path];
     const current = git(["hash-object", "--", path]);
     const allowedNewerVisualBlob = path === "src/platform55-visual-parity.css" && newerVisualSupersession?.source_blobs[path] === current;
-    if (current !== expected && !allowedNewerVisualBlob) throw new Error(`P3-V3 current source blob mismatch: ${path}`);
+    const allowedAccessibilityBlob = path === supersession.path && current === supersession.blob;
+    if (current !== expected && !allowedNewerVisualBlob && !allowedAccessibilityBlob) throw new Error(`P3-V3 current source blob mismatch: ${path}`);
   }
   return record;
 }
