@@ -663,12 +663,6 @@ let deliveryParticipationLoadVersion = 0;
 let deliveryParticipationStatus = "all";
 let deliveryParticipationPage = 0;
 let focusedLaneId = null;
-// Large RFx books can contain dozens of lanes. Keep the operational view
-// responsive by rendering a first page, while selection and bulk actions
-// continue to work against the complete filtered lane set.
-const RFX_LANE_RENDER_PAGE_SIZE = 25;
-let laneRenderLimit = RFX_LANE_RENDER_PAGE_SIZE;
-let rfxCarrierFitEvidenceSchedule = null;
 let activeLaneFilter = RFX_LANE_FILTER_KEYS.has(requestedRfxLaneFilter)
   ? requestedRfxLaneFilter
   : RFX_LANE_FILTER_KEYS.has(storedRfxWorkspaceContext.laneFilter)
@@ -877,7 +871,6 @@ function activateRfxLaunchWorkspace(workspace, options = {}) {
   rfxLaunchWorkspacePanels.forEach((panel) => {
     panel.hidden = panel.dataset.rfxLaunchWorkspacePanel !== rfxLaunchWorkspace;
   });
-  if (rfxLaunchWorkspace === "carrier") scheduleRfxCarrierFitEvidence();
   if (rfxLaunchWorkspace === "message") renderOutreachPreview();
   if (rfxLaunchWorkspace === "delivery") {
     renderDeliveryParticipation();
@@ -5261,10 +5254,6 @@ function renderRfxOpsStrip() {
 
 function focusLane(laneId) {
   focusedLaneId = laneId || currentLanes[0]?.id || null;
-  const focusedIndex = visibleLanes().findIndex((lane) => String(lane.id) === String(focusedLaneId));
-  if (focusedIndex >= laneRenderLimit) {
-    laneRenderLimit = Math.ceil((focusedIndex + 1) / RFX_LANE_RENDER_PAGE_SIZE) * RFX_LANE_RENDER_PAGE_SIZE;
-  }
   renderLanes();
 }
 
@@ -9246,16 +9235,6 @@ async function loadRfxCarrierFitEvidence({ force = false } = {}) {
   }
 }
 
-function scheduleRfxCarrierFitEvidence() {
-  if (rfxCarrierFitEvidenceSchedule || !selectedEventId || !currentLanes.length) return;
-  const eventId = selectedEventId;
-  rfxCarrierFitEvidenceSchedule = window.setTimeout(() => {
-    rfxCarrierFitEvidenceSchedule = null;
-    if (eventId !== selectedEventId || rfxLaunchWorkspace !== "carrier") return;
-    void loadRfxCarrierFitEvidence();
-  }, 250);
-}
-
 function carrierFitEvidence(vendor) {
   const recommendation = rfxCarrierFitEvidenceByVendorId.get(String(vendor.id || "")) || {};
   const metrics = recommendation.metrics && typeof recommendation.metrics === "object" ? recommendation.metrics : {};
@@ -10051,8 +10030,8 @@ function renderLanes() {
     });
     return;
   }
-  const filteredLanes = visibleLanes();
-  if (!filteredLanes.length) {
+  const lanes = visibleLanes();
+  if (!lanes.length) {
     lanesBody.innerHTML = tableState(22, {
       tone: "neutral",
       eyebrow: "Filtered lanes",
@@ -10061,8 +10040,6 @@ function renderLanes() {
     });
     return;
   }
-  const lanes = filteredLanes.slice(0, laneRenderLimit);
-  const remainingLaneCount = Math.max(0, filteredLanes.length - lanes.length);
   lanesBody.innerHTML = lanes.map((lane) => {
     const benchmark = lane.benchmark;
     const invitations = lane.invitations || [];
@@ -10111,15 +10088,7 @@ function renderLanes() {
         </td>
       </tr>
     `;
-  }).join("") + (remainingLaneCount ? `
-    <tr class="rfx-lane-load-more-row">
-      <td colspan="22">
-        <button class="secondary small-button" type="button" data-rfx-lane-load-more>
-          Show ${formatNumber(Math.min(RFX_LANE_RENDER_PAGE_SIZE, remainingLaneCount))} more lanes (${formatNumber(remainingLaneCount)} remaining)
-        </button>
-      </td>
-    </tr>
-  ` : "");
+  }).join("");
 }
 
 async function loadEvents({ force = false } = {}) {
@@ -10389,7 +10358,6 @@ async function loadDetail(eventId, options = {}) {
     ? (selectedManualVendorIds().length ? selectedManualVendorIds() : readStoredManualParticipantIds())
     : [];
   if (eventChanged) {
-    laneRenderLimit = RFX_LANE_RENDER_PAGE_SIZE;
     resetDraftQueue({ clearSelection: true });
     selectedChatRecipient = null;
     pendingLaneEdits.clear();
@@ -10441,7 +10409,7 @@ async function loadDetail(eventId, options = {}) {
     renderLaneCoverage();
     renderBidRoomChat();
     renderOutreachLaunchpad();
-    if (rfxLaunchWorkspace === "carrier") scheduleRfxCarrierFitEvidence();
+    void loadRfxCarrierFitEvidence({ force: eventChanged || options?.force === true });
     void loadOutreachAudience({ reloadSegments: eventChanged });
     setStatus(actionStatus, "Bid Room core loaded. Loading outreach and chat context...");
 
@@ -11577,6 +11545,7 @@ document.querySelector("[data-workbench-view-button='outreach']")?.addEventListe
   loadOutreachAssets();
   loadWhatsappConnectionReadiness();
   loadCarrierWorkspaceData();
+  void loadRfxCarrierFitEvidence();
   activateRfxLaunchWorkspace(rfxLaunchWorkspace, { persist: false });
 });
 document.querySelector("[data-workbench-view-button='responses']")?.addEventListener("click", () => {
@@ -12263,7 +12232,6 @@ laneCoverage?.addEventListener("click", (event) => {
 document.querySelectorAll("[data-rfx-lane-filter]").forEach((button) => {
   button.addEventListener("click", () => {
     activeLaneFilter = button.dataset.rfxLaneFilter || "all";
-    laneRenderLimit = RFX_LANE_RENDER_PAGE_SIZE;
     persistRfxWorkspaceContext();
     document.querySelectorAll("[data-rfx-lane-filter]").forEach((item) => item.classList.toggle("is-active", item === button));
     if (!visibleLanes().some((lane) => lane.id === focusedLaneId)) focusedLaneId = visibleLanes()[0]?.id || null;
@@ -12272,7 +12240,6 @@ document.querySelectorAll("[data-rfx-lane-filter]").forEach((button) => {
 });
 
 laneSearch?.addEventListener("input", () => {
-  laneRenderLimit = RFX_LANE_RENDER_PAGE_SIZE;
   persistRfxWorkspaceContext();
   if (!visibleLanes().some((lane) => lane.id === focusedLaneId)) focusedLaneId = visibleLanes()[0]?.id || null;
   renderLanes();
@@ -12586,12 +12553,6 @@ lanesBody?.addEventListener("input", (event) => {
 });
 
 lanesBody?.addEventListener("click", async (event) => {
-  const loadMoreButton = event.target.closest("[data-rfx-lane-load-more]");
-  if (loadMoreButton) {
-    laneRenderLimit += RFX_LANE_RENDER_PAGE_SIZE;
-    renderLanes();
-    return;
-  }
   const inlineEditButton = event.target.closest("[data-rfx-inline-edit]");
   if (inlineEditButton) {
     const nextLaneId = inlineEditButton.dataset.rfxInlineEdit || focusedLaneId;
