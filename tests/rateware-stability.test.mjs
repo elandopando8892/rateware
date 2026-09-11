@@ -4196,6 +4196,11 @@ assert.match(apiSource, /fetchBiVendorMetricsSafe/, "Carrier recommendations sho
 assert.match(rfxEventsSource, /rfx_carrier_fit: true/, "Carrier fit should use the bounded RFx evidence path instead of the full recommendation workload");
 assert.match(apiSource, /fetchBiVendorMetricsForRfxCarrierFit/, "Carrier fit should enforce a bounded Rateware evidence lookup");
 assert.match(apiSource, /rfxCarrierFitMode[\s\S]*Promise\.resolve\(\{ summary: \{\}/, "Carrier fit should skip the unused BI summary workload");
+assert.match(rfxEventsSource, /const RFX_LANE_RENDER_PAGE_SIZE = 25;/, "Large Bid Room lane books should have a bounded initial render page");
+assert.match(rfxEventsSource, /filteredLanes\.slice\(0, laneRenderLimit\)/, "Bid Room should render only the visible lane page before expanding the book");
+assert.match(rfxEventsSource, /data-rfx-lane-load-more/, "Large lane books should expose an explicit incremental render control");
+assert.match(rfxEventsSource, /function scheduleRfxCarrierFitEvidence\(\)/, "Carrier Fit evidence should be scheduled separately from the initial RFx detail render");
+assert.match(rfxEventsSource, /if \(rfxLaunchWorkspace === "carrier"\) scheduleRfxCarrierFitEvidence\(\);/, "Carrier Fit evidence should wait until its workspace is active");
 assert.match(vendorsSource, /data-copy-profile-link/, "Vendor drawer should expose profile link creation");
 assert.match(carrierProfileHtml, /carrier-profile\.js/, "Carrier profile page should load the public profile script");
 assert.match(carrierProfileHtml, /carrier-profile-eyebrow/, "Carrier profile page header should be translatable");
