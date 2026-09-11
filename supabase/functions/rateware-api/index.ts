@@ -96,6 +96,11 @@ const CORRELATED_HIGH_RISK_ACTIONS = new Set([
 ]);
 const BULK_SELECTED_ID_LIMIT = 1000;
 const BULK_SEND_LIMIT = 100;
+// A carrier wave is represented by one lane-participant row per carrier/lane
+// combination. Large RFxs can therefore exceed 5,000 invitation ids even when
+// the operator selected only a few dozen carriers. Keep the request bounded,
+// but large enough for the existing 50,000-row RFx safety envelope.
+const RFX_OUTREACH_INVITATION_ID_LIMIT = 50000;
 const EXACT_VENDOR_CONSOLIDATION_BATCH_LIMIT = 1;
 const OUTREACH_MANUAL_STATUSES = new Set([
   "drafted",
@@ -29939,7 +29944,10 @@ export function createRatewareApiHandler(
     if (body.action === "generate_outreach_drafts") {
       const campaign = await requireOwnedOutreachCampaign(supabase, user, body.campaign_id);
       const template = await fetchOutreachTemplate(supabase, user, body.template_id || campaign.template_id);
-      const invitationIds = normalizeBulkIds(body.invitation_ids, { label: "RFx invitation ids", limit: 5000 });
+      const invitationIds = normalizeBulkIds(body.invitation_ids, {
+        label: "RFx invitation ids",
+        limit: RFX_OUTREACH_INVITATION_ID_LIMIT
+      });
       const audiencePolicy = normalizeOutreachAudiencePolicy(body.audience_policy || campaign.audience_policy);
       const contactPolicy = normalizeOutreachContactPolicy(body.contact_policy || campaign.contact_policy);
       const sequencePolicy = normalizeOutreachSequencePolicy(body.sequence_policy || campaign.sequence_policy);
