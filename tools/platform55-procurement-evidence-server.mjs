@@ -30,6 +30,8 @@ const session = Object.freeze({
 });
 export async function requirePrivatePage() { return session; }
 export async function ensureSignedIn() { return session; }
+export async function getAccessContext() { return session.access; }
+export async function openLogin() { return session; }
 export async function canUse() { return true; }
 export async function applyPermissionState(selector) {
   document.querySelectorAll(selector).forEach((element) => {
@@ -49,20 +51,27 @@ export async function authenticatedFetch() { throw new Error("QA boundary blocks
 
 const vendorBoundary = `${sharedFixture}
 const vendor = Object.freeze({ id: "00000000-0000-4000-8000-000000000301", vendor_name: "Northstar Carrier", legal_name: "Northstar Carrier LLC", status: "active", base_stage: "sourcing", funnel_stage: "qualified", primary_email: "qa@local.invalid", preferred_channel: "email", tags: ["cross-border"], country: "MX" });
+const carrierTemplate = Object.freeze({ id: "00000000-0000-4000-8000-000000000311", name: "QA Cross-border carriers", description: "Read-only carrier template fixture", lifecycle_status: "active", template_version: 1, member_count: 1 });
 export async function fetchVendors() { fail("vendor"); return qaState() === "empty" ? { rows: [], total: 0 } : { rows: [vendor], total: 1 }; }
 export async function fetchVendorSegments() { fail("vendor segment"); return []; }
+export async function fetchCarrierListTemplates() { fail("carrier list templates"); return qaState() === "empty" ? { enabled: true, rows: [], total: 0, has_more: false } : { enabled: true, rows: [carrierTemplate], total: 1, has_more: false }; }
+export async function getCarrierListTemplate() { fail("carrier list template detail"); return { enabled: true, template: carrierTemplate, members: [vendor] }; }
+export async function resolveCarrierListTemplateRows() { fail("carrier list template rows"); return { enabled: true, rows: [vendor], total: 1 }; }
 export async function fetchVendorFunnel() { fail("vendor funnel"); return { rows: [], stages: [] }; }
 export async function fetchVendorIntelligence() { fail("vendor intelligence"); return { rows: [], total: 0 }; }
 export async function fetchVendorOnboardingGaps() { fail("vendor onboarding"); return []; }
 export async function fetchVendorRelationshipActivity() { fail("vendor relationship"); return []; }
 export async function fetchVendorSupportTickets() { fail("vendor support"); return []; }
 export const applyVendorTemplateUpdates = blocked;
+export const archiveCarrierListTemplate = blocked;
 export const applyVendorIntelligenceTags = blocked;
 export const bulkUpdateVendors = blocked;
 export const createVendor = blocked;
+export const createCarrierListTemplate = blocked;
 export const createVendorSegment = blocked;
 export const createVendorProfileRequest = blocked;
 export const deleteVendorSegment = blocked;
+export const duplicateCarrierListTemplate = blocked;
 export const consolidateExactVendorDuplicates = blocked;
 export const importVendorOnboardingCorrections = blocked;
 export const importVendorsFromGoogleSheet = blocked;
@@ -71,9 +80,11 @@ export const matchVendorRateRowsByScope = blocked;
 export const removeVendors = blocked;
 export const replaceBouncedVendorEmail = blocked;
 export const updateVendor = blocked;
+export const updateCarrierListTemplate = blocked;
 export const updateVendorSegment = blocked;
 export const updateVendorSupportTicket = blocked;
 export const uploadVendorLogo = blocked;
+export const restoreCarrierListTemplate = blocked;
 `;
 
 const rfxBoundary = `${sharedFixture}
@@ -109,6 +120,7 @@ export const rejectRfxBid = blocked;
 
 const outreachBoundary = `${sharedFixture}
 export async function fetchOutreachTemplates() { fail("outreach template"); return []; }
+export async function fetchInvitationWaveReviews() { fail("invitation wave reviews"); return []; }
 export async function fetchOutreachCampaigns() { fail("outreach campaign"); return []; }
 export async function fetchContactHistory() { fail("contact history"); return []; }
 export async function fetchOutreachMessages() { fail("outreach message"); return []; }
@@ -128,6 +140,7 @@ export const deleteOutreachTemplate = blocked;
 export const duplicateOutreachCampaign = blocked;
 export const duplicateOutreachTemplate = blocked;
 export const generateOutreachDrafts = blocked;
+export const recordInvitationWaveReview = blocked;
 export const markWhatsappGroupMessageManuallySent = blocked;
 export const markOutreachMessages = blocked;
 export const publishOutreachTemplateToWhatsapp = blocked;

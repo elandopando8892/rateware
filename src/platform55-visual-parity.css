@@ -288,7 +288,9 @@
 .p55-v3-page .page-primary-action,
 .p55-v3-page .button-primary {
   border-color: var(--rw-brand-600);
-  color: #fff;
+  /* MARKSMAN orange is below AA for normal-size white text; charcoal keeps the
+     orange action while preserving readable, keyboard-visible controls. */
+  color: var(--rw-slate-900);
   background: var(--rw-brand-500);
   box-shadow: 0 8px 18px rgba(234, 94, 39, 0.18);
 }
@@ -535,7 +537,7 @@
 .p55-v4-page .page-primary-action,
 .p55-v4-page .button-primary {
   border-color: var(--rw-brand-600);
-  color: #fff;
+  color: var(--rw-slate-900);
   background: var(--rw-brand-500);
   box-shadow: 0 8px 18px rgba(234, 94, 39, 0.18);
 }
@@ -543,6 +545,32 @@
 .p55-v4-page .page-primary-action:hover:not(:disabled),
 .p55-v4-page .button-primary:hover:not(:disabled) {
   background: var(--rw-brand-600);
+}
+
+/* Queue filters inherit the legacy cobalt button treatment unless the
+   network-service layer gives them an explicit MARKSMAN surface. */
+.p55-v4-page .communications-queue {
+  border: 1px solid var(--rw-slate-200);
+  color: var(--rw-slate-900);
+  background: var(--rw-slate-50);
+}
+
+.p55-v4-page .communications-queue.is-active {
+  color: var(--rw-slate-900);
+  background: var(--rw-brand-50);
+  box-shadow: inset 0 0 0 2px var(--rw-brand-700);
+}
+
+.p55-v4-page .onboarding-queues button {
+  border: 1px solid var(--rw-slate-200);
+  color: var(--rw-slate-900);
+  background: var(--rw-slate-50);
+}
+
+.p55-v4-page .onboarding-queues button.is-active {
+  color: var(--rw-slate-900);
+  background: var(--rw-brand-50);
+  box-shadow: inset 0 0 0 2px var(--rw-brand-700);
 }
 
 .p55-v4-context-banner {

@@ -24,6 +24,8 @@ import { mountPlatform55Shell } from "./platform55-shell.js";
 const session = Object.freeze({ token: "qa-read-only-token", user: Object.freeze({ given_name: "QA", family_name: "Reviewer", email: "qa@local.invalid" }), access: Object.freeze({ roles: Object.freeze(["qa-reviewer"]), permissions: Object.freeze([]), claims: Object.freeze({}) }) });
 export async function requirePrivatePage() { return session; }
 export async function ensureSignedIn() { return session; }
+export async function getAccessContext() { return session.access; }
+export async function openLogin() { return session; }
 export async function canUse() { return true; }
 export async function applyPermissionState(selector) { if (selector) document.querySelectorAll(selector).forEach((element) => { element.disabled = false; element.classList.remove("permission-disabled"); }); return true; }
 export function initAuthControls() {
