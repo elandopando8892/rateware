@@ -3156,7 +3156,8 @@ assert.match(vendorImprovementServiceSource, /process_vendor_ci_reminders/, "Ven
 assert.match(vendorImprovementServiceSource, /refresh_vendor_value_curve/, "Vendor CI service should call the Value Curve refresh action");
 assert.match(platform55ShellModelSource, /path: "\.\/vendor-improvement\.html"/, "Dashboard navigation should include Vendor CI");
 assert.match(apiSource, /const invitationIdChunks = invitationIds\.length \? chunkValues\(invitationIds, 100\) : \[\[\]\]/, "Outreach draft generation should read selected invitations in small id batches");
-assert.match(apiSource, /label: "RFx invitation ids", limit: 5000/, "Outreach draft generation should support large carrier waves without unbounded requests");
+assert.match(apiSource, /const RFX_OUTREACH_INVITATION_ID_LIMIT = 50000/, "Outreach draft generation should allow lane-expanded waves within the RFx safety envelope");
+assert.match(apiSource, /label: "RFx invitation ids",[\s\S]*limit: RFX_OUTREACH_INVITATION_ID_LIMIT/, "Outreach draft generation should use the bounded large-wave invitation limit");
 assert.match(apiSource, /mapWithConcurrency\(invitationIdChunks, 4/, "Outreach draft generation should load invitation batches with bounded concurrency");
 assert.match(apiSource, /mapWithConcurrency\(chunkValues\(dailyLimitedRows, 100\), 4/, "Outreach draft generation should upsert daily-capped draft messages in bounded batches");
 assert.match(apiSource, /generated: generatedMessages\.length,[\s\S]+rows: \[\]/, "Outreach draft generation should avoid returning large HTML draft payloads");
