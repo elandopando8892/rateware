@@ -334,6 +334,42 @@ const verifiedSupabasePermissionOverrides = Object.fromEntries(
   })
 );
 
+// The scoped Vercel-preview CORS matcher changes only the shared response
+// helper envelope. Preserve the previously reviewed fingerprints while adding
+// the new preview-safe envelope for every affected Edge Function family.
+const previewCorsAuthorizationEnvelopes = {
+  'edge.carrier-profile-api.': ['4cb649f3f4b7ed640aa27d80369fc6bcdecd2ace5594a6d69933e88746725d31', '5ae8e12a2dba5b827844890271701a334882fc2638545f0aec7b0675d9b85b8e'],
+  'edge.create-raw-upload.': ['c4b4f710309e0f7e7a86506656b819937cf63af6622242534c46b7e493849af6', '28f6ef9822132c607dcab9db3000c731a9e59dc056d8241b1eb8df6fd0746bd7'],
+  'edge.gmail-oauth-callback.': ['863dea44aab4d003c11db01f1420b6e908104c54029fcaeba4809c972a151dc9', '9cd3a3329bdb82d139b988dc7503fc3676b744157bd9a1063ce579fa4c8b178c'],
+  'edge.google-chat-app.': ['0b99e0d4b7d301006c0de6fa49419dfec47823b4cf60749bf2b8aca5350fd3d3', '0d81b2db1ca1d0442814d2e07264c967b1a1999a70be60bd1ed641fbe675475b'],
+  'edge.interpret-upload.': ['bf7755662f3a3858c00e399a5a26b6a70d52633d078eda1aeaf326cdcf7e534e', 'e285f5daba6be477cdc20dd5cda1540bfadc5a290cb914e846d1eff4d790aa60'],
+  'edge.provider-gmail-intake-api.': ['3e0a70cb989fa0a2dd14a1d97f4ad47c475bd1c28f44f2550c3eef28228bbeff', '6e77c28679bde62b1ad0ceb42e3da91bd1e4ceef494686aa94b6373867e884ce'],
+  'edge.provider-gmail-oauth-callback.': ['42e3f4a12c47a5a625a170ddea2114af427443b47fe549b26cf9669044e0a922', 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a'],
+  'edge.ratebook-carrier-api.': ['69ec235aa42433e8cb965824a8957aff79d73fa6fce07949c70b553865b04230', '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84'],
+  'edge.rateware-api.': ['f33f4f2aa01ed02aa48583074c0c982709da142f211912674adfd66950cb305f', 'f24fb7cf56194b80654fbd04d970190b3910d6f816d07866d9aa12ed05bd9469', '7e271f8bf370078131ddd915437f13d9569d24c89cee5611a90933ef94b5a9a9'],
+  'edge.rfx-bid-api.': ['4d6aab31957e1d8fb3fa539280a6a6e1c02d0cb1af74ce42aa09505f73c32ea2', 'f370ea535a7ee417082e93870328a8dec18c08c43ab3f7fb6f97263f07b331c0'],
+  'edge.shipper-directory-api.': ['f0e12cfcf91b7365af43fffc21c151fb4e67b3c8b6fe3c934be8c1f33fc8e2cd', '01b2971e3f0acf74fbcabec89988e2e0181864c5ced09fcd17113b58587e7549'],
+  'edge.shipper-profile-api.': ['83cb7dff313890a43cbd6b0e12faa58c7beaf720d8288c186536f9e44676b12a', '501f2bec390dab9ecce5b9e6aac016683fb51d2c9f8afc0217b097912fe36949'],
+  'edge.sync-banxico-fx.': ['de62b5eeaa6c81959e63048e1d15730c3f8831834305dcbf81b9d71a54817d62', '0bb53f48177955f59c0fbb2747094883d6680455900dab99c4f87d92490934fc'],
+  'edge.sync-rateware-catalog.': ['23599844605c161adb8bc8fa0a3b9771cc6f8a152977cd21dfa204ed770c87f7', '5591ad8ff9b19ab6e81736f010fd887f741f00f9eb4bfd3cbe96255ca7042ee9'],
+  'edge.whatsapp-webhook.': ['cb8c77e28fabf73c9bed99141295193725416c5a476528281597ec402603e58a', '0380943f3937045a78a2173e60b7dbd8867fa7ad3cca4845301e506c82975052'],
+};
+const previewCorsAuthorizationOverrides = Object.fromEntries(
+  [
+    ...BASE_ACTION_CONTRACT.surfaces,
+    ...extension.surfaces,
+    ...providerSurfaces,
+    ...gmailSurfaces,
+    ...carrierTemplateExtension.surfaces,
+    ...rfxInvitationReviewExtension.surfaces,
+    ...rfxAtomicAwardExtension.surfaces,
+  ].flatMap((entry) => {
+    const match = Object.entries(previewCorsAuthorizationEnvelopes)
+      .find(([prefix]) => entry.canonicalId.startsWith(prefix));
+    return match ? [[entry.canonicalId, match[1]]] : [];
+  })
+);
+
 export const ACTION_CONTRACT = {
   ...BASE_ACTION_CONTRACT,
   contractVersion,
@@ -368,6 +404,7 @@ export const ACTION_CONTRACT = {
     ...ratewareApiAuthorizationOverrides,
     ...brandedDomainAuthorizationOverrides,
     ...verifiedSupabasePermissionOverrides,
+    ...previewCorsAuthorizationOverrides,
   },
   surfaces: [
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({

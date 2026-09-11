@@ -5056,6 +5056,8 @@ assert.match(whatsappTemplateMappingForeignKeyIndexMigration, /index_is_valid is
 assert.match(kindeSharedSource, /RATEWARE_CORS_ORIGIN/, "CORS origin should be configurable per deployment");
 assert.match(kindeSharedSource, /DEFAULT_CORS_ORIGINS = \[[\s\S]+https:\/\/rateware\.vercel\.app[\s\S]+127\.0\.0\.1:3000/, "Production and local CORS should have stable safe defaults");
 assert.match(kindeSharedSource, /https:\/\/rates\.heymarksman\.com/, "The canonical MARKSMAN Rates domain should be an allowed API origin");
+assert.match(kindeSharedSource, /RATEWARE_VERCEL_PREVIEW_ORIGIN = \/\^https:\\\/\\\/rateware-/, "Rateware Vercel previews should use a scoped CORS allowlist");
+assert.match(kindeSharedSource, /isAllowedCorsOrigin\(requestOrigin\)/, "CORS should validate the request origin through the scoped matcher");
 assert.doesNotMatch(kindeSharedSource, /Access-Control-Allow-Origin": "\*"/, "Shared API responses should not allow every browser origin");
 assert.match(kindeSharedSource, /"Vary": "Origin"/, "CORS responses should be cache-safe by origin");
 assert.match(kindeSharedSource, /"Access-Control-Max-Age": "86400"/, "Browser clients should reuse the trusted Edge Function preflight result");
