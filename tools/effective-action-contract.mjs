@@ -100,7 +100,9 @@ const ratewareApiSourceFingerprintOverrides = {
   'edge.rateware-api.create_rfx_award_package': '378f73423f4726da85dfc4c453be98f50d3f86c7da6a9f3af9a68267441fe4d6',
   'edge.rateware-api.create_vendor_segment': '8e6a444366bfa108430e02fdf8dffbbf11a0ab0e4e102d4687f6e589f809aa69',
   'edge.rateware-api.delete_vendor_segment': '792ce2b10566c1be41064ef07f5e818088fb1f16596433d88fdb7c0fbec972d2',
-  'edge.rateware-api.generate_outreach_drafts': '05f5940c29b19b93b95466b0571fc160146d32e89e253e186e58eec647d270c5',
+  // 7f8df29 only raises the bounded lane-expanded invitation-id limit from
+  // 5,000 to 50,000; preserve the reviewed identity of that handler segment.
+  'edge.rateware-api.generate_outreach_drafts': 'be536036f5151ae4b4280bd63f45fdb807480748e81cf1eb09b3146c0f473828',
   'edge.rateware-api.list_vendor_segments': '79d6ff15b7b7a0bcbf8e580baaed1b11575d56c38cc4034fb9b80a8891814128',
   'edge.rateware-api.list_vendors': '6aaccab686ecae9b04492be99175863f452cd0633bbe426a651ed310968faeef',
   'edge.rateware-api.send_bid_room_carrier_message': '3a8bc0f06e4f577effffd6e35350e73925fd9153db71a25266b35f40b81b7fe0',
@@ -317,7 +319,13 @@ const verifiedSupabasePermissionEnvelopes = {
   'edge.sync-rateware-catalog.': '23599844605c161adb8bc8fa0a3b9771cc6f8a152977cd21dfa204ed770c87f7',
   'edge.provider-gmail-intake-api.': '3e0a70cb989fa0a2dd14a1d97f4ad47c475bd1c28f44f2550c3eef28228bbeff',
   'edge.shipper-directory-api.': 'f0e12cfcf91b7365af43fffc21c151fb4e67b3c8b6fe3c934be8c1f33fc8e2cd',
-  'edge.rateware-api.': 'f33f4f2aa01ed02aa48583074c0c982709da142f211912674adfd66950cb305f',
+  // 7f8df29 changes only the bounded invitation-id normalization in the
+  // rateware-api handler; both reviewed envelopes remain valid for their
+  // respective release SHAs.
+  'edge.rateware-api.': [
+    'f33f4f2aa01ed02aa48583074c0c982709da142f211912674adfd66950cb305f',
+    'f24fb7cf56194b80654fbd04d970190b3910d6f816d07866d9aa12ed05bd9469',
+  ],
 };
 const verifiedSupabasePermissionOverrides = Object.fromEntries(
   Object.keys(brandedDomainAuthorizationOverrides).flatMap((id) => {
