@@ -39453,6 +39453,48 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   padding: 8px 2px 7px;
 }
 
+/* Launch is one workspace: keep the event context, remove duplicate command panels. */
+.bid-room-page:has(.bid-room-stage-panel[data-workbench-view-panel="outreach"]:not([hidden])) .bid-room-next-action,
+.bid-room-page:has(.bid-room-stage-panel[data-workbench-view-panel="outreach"]:not([hidden])) .bid-room-compact-summary {
+  display: none;
+}
+
+.bid-room-page:has(.bid-room-stage-panel[data-workbench-view-panel="outreach"]:not([hidden])) .bid-room-flow-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.bid-room-page .rfx-launch-workspace-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  border: 1px solid var(--rw-slate-200, #d3d3cf);
+  border-radius: 6px;
+  background: var(--rw-slate-25, #f7f7f5);
+  padding: 4px;
+}
+
+.bid-room-page .rfx-launch-workspace-tabs button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  padding: 6px 9px;
+  text-align: left;
+}
+
+.bid-room-page .rfx-launch-workspace-tabs button.is-active {
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(30, 30, 30, 0.12);
+}
+
+.bid-room-page .rfx-launch-workspace-tabs small {
+  display: none;
+}
+
+.bid-room-page:has(#rfx-launch-delivery-workspace:not([hidden]) .rfx-delivery-view-panel[data-rfx-delivery-view-panel="queue"]:not([hidden])) .rfx-delivery-control-header {
+  display: none;
+}
+
 .bid-room-page .rfx-message-secondary-settings,
 .bid-room-page .rfx-wave-advanced-filters {
   border: 1px solid var(--rw-slate-200, #d3d3cf);
