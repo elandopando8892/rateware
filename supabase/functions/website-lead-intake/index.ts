@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { deliverClaimedNotification, NotificationRejected, type NotificationClaim } from "./notification-workflow.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -177,7 +178,8 @@ function normalizeLead(input: Lead) {
     source,
     language: ["es", "en"].includes(text(input.language, 8)) ? text(input.language, 8) : "es",
     name: text(input.name, 120), company: text(input.company, 160), email: cleanEmail(input.email),
-    origin_city: text(input.origin_city, 120), destination_city: text(input.destination_city, 120),
+    origin_city: text(input.origin_city, 120), origin_postal_code: text(input.origin_postal_code, 24), origin_facility: text(input.origin_facility, 160),
+    destination_city: text(input.destination_city, 120), destination_postal_code: text(input.destination_postal_code, 24), destination_facility: text(input.destination_facility, 160),
     operation: text(input.operation, 80), service_type: text(input.service_type, 80),
     truck_type: text(input.truck_type, 80), trailer_type: text(input.trailer_type, 80),
     configuration: text(input.configuration, 80), border: text(input.border, 80), product: text(input.product, 200),
@@ -195,7 +197,10 @@ function normalizeLead(input: Lead) {
 function leadEmail(lead: ReturnType<typeof normalizeLead>["lead"], receiptId: string) {
   const entries = [
     ["Folio", receiptId], ["Marca", lead.site.toUpperCase()], ["Contacto", lead.name], ["Empresa", lead.company], ["Email", lead.email],
-    ["Corredor", `${lead.origin_city} → ${lead.destination_city}`], ["Operación", lead.operation], ["Servicio", lead.service_type],
+    ["Corredor", `${lead.origin_city} → ${lead.destination_city}`],
+    ["Origen", [lead.origin_facility, lead.origin_postal_code].filter(Boolean).join(" · ")],
+    ["Destino", [lead.destination_facility, lead.destination_postal_code].filter(Boolean).join(" · ")],
+    ["Operación", lead.operation], ["Servicio", lead.service_type],
     ["Equipo", [lead.truck_type, lead.trailer_type, lead.configuration].filter(Boolean).join(" · ")], ["Frontera", lead.border],
     ["Producto", lead.product], ["Cargas/semana", lead.loads_per_week], ["Ventana", lead.schedule], ["Lead time", lead.lead_time],
     ["Atribución", Object.entries(lead.attribution).map(([key, value]) => `${key}=${text(value, 200)}`).join(" · ")]
@@ -214,7 +219,8 @@ async function sendNotification(supabase: IntakeSupabase, recipient: string, lea
     body: JSON.stringify({ raw: rawEmail({ recipient, ...content }) })
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok || !body.id) throw new Error("Commercial Gmail did not accept the lead notification.");
+  if (!response.ok) throw new NotificationRejected("Commercial Gmail did not accept the lead notification.");
+  if (!body.id) throw new Error("Commercial Gmail accepted an incomplete delivery receipt.");
   return { messageId: text(body.id, 200), threadId: text(body.threadId, 200) };
 }
 
@@ -237,31 +243,40 @@ Deno.serve(async (request) => {
     const inserted = await supabase.from("website_lead_intakes").insert({
       source_site: lead.site, source_channel: lead.source, idempotency_key: lead.idempotency_key, payload_hash: payloadHash,
       notification_recipient: recipient, lead: { ...lead, attribution: undefined }, attribution: lead.attribution
-    }).select("id,notification_status,payload_hash,notification_message_id").single();
+    }).select("id,notification_status,payload_hash").single();
     let row = inserted.data;
     if (inserted.error?.code === "23505") {
-      const existing = await supabase.from("website_lead_intakes").select("id,notification_status,payload_hash,notification_message_id")
+      const existing = await supabase.from("website_lead_intakes").select("id,notification_status,payload_hash")
         .eq("source_site", lead.site).eq("idempotency_key", lead.idempotency_key).maybeSingle();
       if (existing.error || !existing.data) throw existing.error || new Error("Could not reconcile duplicate intake.");
       if (existing.data.payload_hash !== payloadHash) return json({ error: "Idempotency conflict." }, 409);
-      if (existing.data.notification_status === "sent") return json({ receipt_id: existing.data.id, duplicate: true }, 202);
-      if (existing.data.notification_status === "uncertain") return json({ error: "Notification state requires commercial review." }, 409);
       row = existing.data;
     } else if (inserted.error) throw inserted.error;
     if (!row) throw new Error("Could not persist web lead.");
-    try {
-      const delivery = await sendNotification(supabase, recipient, lead, row.id);
-      const updated = await supabase.from("website_lead_intakes").update({
-        notification_status: "sent", notification_message_id: delivery.messageId, notification_thread_id: delivery.threadId,
-        last_error: null, updated_at: new Date().toISOString()
-      }).eq("id", row.id);
-      if (updated.error) throw updated.error;
-      return json({ receipt_id: row.id }, 202);
-    } catch (error) {
-      const message = text(error instanceof Error ? error.message : "Notification failed.", 500);
-      await supabase.from("website_lead_intakes").update({ notification_status: "failed", last_error: message, updated_at: new Date().toISOString() }).eq("id", row.id);
-      return json({ error: "Commercial notification unavailable." }, 502);
-    }
+    const claimToken = crypto.randomUUID();
+    const record = async (status: "sent" | "failed" | "uncertain", message?: string, delivery?: { messageId: string; threadId: string }) => {
+      const result = await supabase.rpc("website_lead_intake_record_notification", {
+        p_intake_id: row.id, p_claim_token: claimToken, p_status: status,
+        p_message_id: delivery?.messageId || null, p_thread_id: delivery?.threadId || null, p_last_error: message || null
+      });
+      if (result.error || result.data !== true) throw result.error || new Error("Notification claim was lost before it could be reconciled.");
+    };
+    const outcome = await deliverClaimedNotification({
+      claim: async () => {
+        const result = await supabase.rpc("website_lead_intake_claim_notification", { p_intake_id: row.id, p_claim_token: claimToken });
+        if (result.error || !result.data?.[0]?.notification_status) throw result.error || new Error("Could not claim lead notification.");
+        return result.data[0].notification_status as NotificationClaim;
+      },
+      send: () => sendNotification(supabase, recipient, lead, row.id),
+      markSent: (delivery) => record("sent", undefined, delivery),
+      markFailed: (message) => record("failed", message),
+      markUncertain: (message) => record("uncertain", message)
+    });
+    if (outcome === "accepted") return json({ receipt_id: row.id }, 202);
+    if (outcome === "duplicate") return json({ receipt_id: row.id, duplicate: true }, 202);
+    if (outcome === "review_required") return json({ error: "Notification state requires commercial review." }, 409);
+    if (outcome === "in_progress") return json({ receipt_id: row.id, notification_pending: true }, 202);
+    return json({ error: "Commercial notification unavailable." }, 502);
   } catch (error) {
     console.error("Website lead intake failed", error instanceof Error ? error.message : "unknown_error");
     return json({ error: "Lead intake unavailable." }, 502);

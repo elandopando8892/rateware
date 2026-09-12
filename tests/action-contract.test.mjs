@@ -98,9 +98,9 @@ if (!process.argv.includes("--unit-only")) {
   const discovered = discoverGovernableSurfaces(process.cwd());
   const baseline = validateActionContract(ACTION_CONTRACT, discovered, { repoRoot: process.cwd() });
   assert.equal(baseline.ok, true, formatValidationResult(baseline));
-  assert.equal(discovered.length, 349, "baseline must reproduce 349 governable surfaces");
+  assert.equal(discovered.length, 351, "baseline must reproduce 351 governable surfaces");
   assert.equal(discovered.filter((entry) => entry.canonicalId.startsWith("edge.")).length, 284);
-  assert.equal(discovered.filter((entry) => entry.canonicalId.startsWith("rpc.")).length, 65);
+  assert.equal(discovered.filter((entry) => entry.canonicalId.startsWith("rpc.")).length, 67);
 }
 
 console.log("Action contract tests passed.");
