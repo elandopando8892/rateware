@@ -65,6 +65,9 @@ export type IntakeSource = {
     objectKey: string;
     sha256: string;
     contentType: string;
+    filename: string | null;
+    sourceRole: "direct_attachment" | "original_eml" | "original_attachment";
+    parentSourceSha256: string | null;
   }[];
   attachmentHashes: readonly string[];
   receivedAt: string;
@@ -161,6 +164,7 @@ export function createIntakeService(
     persistence: IntakePersistence;
     jobs: Pick<BackgroundJobStore, "enqueue">;
     receipts?: OutboundReceiptIngestService;
+    internalRelay?: "single_attached_rfc822";
   },
 ): IntakeService {
   return Object.freeze({
@@ -204,7 +208,10 @@ export function createIntakeService(
       }
       const parsed = await atStage(
         "mime_parse",
-        () => parseCopiedRequest(message.rawMime),
+        () =>
+          parseCopiedRequest(message.rawMime, {
+            allowInternalRelay: deps.internalRelay === "single_attached_rfc822",
+          }),
       );
       const raw = await atStage(
         "raw_store",
@@ -219,6 +226,12 @@ export function createIntakeService(
         objectKey: string;
         sha256: string;
         contentType: string;
+        filename: string | null;
+        sourceRole:
+          | "direct_attachment"
+          | "original_eml"
+          | "original_attachment";
+        parentSourceSha256: string | null;
       }[] = [];
       for (const attachment of parsed.attachments) {
         const stored = await atStage(
@@ -230,11 +243,20 @@ export function createIntakeService(
               contentType: attachment.contentType,
             }, signal),
         );
+        if (stored.sha256 !== attachment.sha256) {
+          throw new IntakeStageError(
+            "attachment_store",
+            new Error("SOURCE_HASH_MISMATCH"),
+          );
+        }
         attachmentObjects.push(
           Object.freeze({
             objectKey: stored.key,
             sha256: stored.sha256,
             contentType: attachment.contentType,
+            filename: attachment.filename,
+            sourceRole: attachment.sourceRole,
+            parentSourceSha256: attachment.parentSourceSha256,
           }),
         );
       }
@@ -251,6 +273,14 @@ export function createIntakeService(
         attachmentHashes,
         receivedAt: message.receivedAt,
       });
+      if (
+        source.rawMimeHash !== parsed.provenance.parentEnvelope.sourceSha256
+      ) {
+        throw new IntakeStageError(
+          "raw_store",
+          new Error("SOURCE_HASH_MISMATCH"),
+        );
+      }
       const candidate: DuplicateCandidate = {
         caseId: `incoming:${message.gmailMessageId}`,
         gmailMessageId: source.gmailMessageId,

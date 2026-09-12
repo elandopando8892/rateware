@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 
 import { createIntakeService, parseCopiedRequest } from "./intake-service.ts";
+import { sha256Hex } from "../_shared/osp/source-hash.ts";
 
 const raw = (headers: string) =>
   new TextEncoder().encode(
@@ -103,7 +104,6 @@ Deno.test("intake forwards duplicate evidence to exact and probable persistence 
   );
   const evidence: Array<{ kind: string; score: number }> = [];
   const calls: string[] = [];
-  let objectWrites = 0;
   const service = createIntakeService({
     gmail: {
       getMessage: async (id: string) => ({
@@ -116,7 +116,7 @@ Deno.test("intake forwards duplicate evidence to exact and probable persistence 
     objects: {
       put: async (input) => ({
         key: `${input.organizationId}/11111111-1111-4111-8111-111111111111`,
-        sha256: objectWrites++ === 0 ? "a".repeat(64) : "b".repeat(64),
+        sha256: await sha256Hex(input.bytes),
       }),
     },
     persistence: {
@@ -215,13 +215,13 @@ Deno.test("intake persists opaque attachment object references with their hashes
         if (input.contentType === "message/rfc822") {
           return {
             key: "22222222-2222-4222-8222-222222222222/raw",
-            sha256: "a".repeat(64),
+            sha256: await sha256Hex(input.bytes),
           };
         }
         savedAttachmentByteLength = input.bytes.byteLength;
         return {
           key: "22222222-2222-4222-8222-222222222222/attachment",
-          sha256: "b".repeat(64),
+          sha256: await sha256Hex(input.bytes),
         };
       },
     },
@@ -246,8 +246,11 @@ Deno.test("intake persists opaque attachment object references with their hashes
     (savedSource as { attachments: readonly unknown[] }).attachments,
     [{
       objectKey: "22222222-2222-4222-8222-222222222222/attachment",
-      sha256: "b".repeat(64),
+      sha256: await sha256Hex(new TextEncoder().encode("PDF fixture")),
       contentType: "application/pdf",
+      filename: "unsafe.pdf",
+      sourceRole: "direct_attachment",
+      parentSourceSha256: await sha256Hex(new TextEncoder().encode(multipart)),
     }],
   );
   assertEquals(savedAttachmentByteLength, 11);
@@ -267,10 +270,10 @@ Deno.test("intake creates, attaches exact replay, and holds probable duplicates 
       }),
     },
     objects: {
-      put: async () => ({
+      put: async (input) => ({
         key:
           "22222222-2222-4222-8222-222222222222/11111111-1111-4111-8111-111111111111",
-        sha256: "a".repeat(64),
+        sha256: await sha256Hex(input.bytes),
       }),
     },
     persistence: {

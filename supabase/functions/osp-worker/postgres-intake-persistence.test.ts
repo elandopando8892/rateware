@@ -1,11 +1,11 @@
-import { assertEquals, assertRejects } from 'jsr:@std/assert@1.0.14';
+import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 
-import { createPostgresIntakePersistence } from './postgres-intake-persistence.ts';
+import { createPostgresIntakePersistence } from "./postgres-intake-persistence.ts";
 
-const supplierMailbox = ['ops', 'supplier.example.test'].join('@');
+const supplierMailbox = ["ops", "supplier.example.test"].join("@");
 
-Deno.test('Postgres intake persistence replays a delivery receipt without creating a second case', async () => {
-  const organizationId = '22222222-2222-4222-8222-222222222222';
+Deno.test("Postgres intake persistence replays a delivery receipt without creating a second case", async () => {
+  const organizationId = "22222222-2222-4222-8222-222222222222";
   const receipts = new Map<
     string,
     { request_hash: string; response_json: string }
@@ -14,7 +14,7 @@ Deno.test('Postgres intake persistence replays a delivery receipt without creati
   const messageInsertValues: unknown[][] = [];
   const sql = Object.assign(
     async (strings: TemplateStringsArray, ...values: unknown[]) => {
-      const query = strings.raw.join(' ').toLowerCase();
+      const query = strings.raw.join(" ").toLowerCase();
       if (/set local role|set_config|pg_advisory_xact_lock/.test(query)) {
         return [];
       }
@@ -22,14 +22,16 @@ Deno.test('Postgres intake persistence replays a delivery receipt without creati
         /select request_hash, response_json from osp_private\.command_receipts/
           .test(query)
       ) {
-        return receipts.get(`${values[1]}:${values[2]}`) ? [receipts.get(`${values[1]}:${values[2]}`)!] : [];
+        return receipts.get(`${values[1]}:${values[2]}`)
+          ? [receipts.get(`${values[1]}:${values[2]}`)!]
+          : [];
       }
       if (
         /select id, case_id, source_sha256, gmail_thread_id from osp_private\.gmail_messages/
           .test(query)
       ) return [];
       if (/insert into osp_private\.supplier_counterparties/.test(query)) {
-        return [{ id: '33333333-3333-4333-8333-333333333333' }];
+        return [{ id: "33333333-3333-4333-8333-333333333333" }];
       }
       if (/insert into osp_private\.customer_registration_cases/.test(query)) {
         cases += 1;
@@ -64,37 +66,53 @@ Deno.test('Postgres intake persistence replays a delivery receipt without creati
       throw new Error(`UNEXPECTED_QUERY:${query}`);
     },
     {
-      begin: async <T>(operation: (transaction: typeof sql) => Promise<T>) => await operation(sql),
+      begin: async <T>(operation: (transaction: typeof sql) => Promise<T>) =>
+        await operation(sql),
     },
   );
   const persistence = createPostgresIntakePersistence({
-    databaseUrl: 'postgresql://synthetic.example.test/db',
+    databaseUrl: "postgresql://synthetic.example.test/db",
     postgresFactory: () => sql,
   });
   const input = {
     organizationId,
-    deliveryIdempotencyKey: 'delivery-1',
+    deliveryIdempotencyKey: "delivery-1",
     source: {
-      gmailMessageId: 'message-1',
-      gmailThreadId: 'thread-1',
+      gmailMessageId: "message-1",
+      gmailThreadId: "thread-1",
       rawMimeKey: `${organizationId}/11111111-1111-4111-8111-111111111111`,
-      rawMimeHash: 'a'.repeat(64),
+      rawMimeHash: "a".repeat(64),
       attachments: [],
       attachmentHashes: [],
-      receivedAt: '2026-08-22T00:00:00.000Z',
+      receivedAt: "2026-08-22T00:00:00.000Z",
     },
     parsed: {
-      senderEmail: 'requester@xbfreight.com',
-      senderDomain: 'xbfreight.com',
-      internetMessageId: '<message-1@xbfreight.com>',
-      supplierDomain: 'supplier.example.test',
+      senderEmail: "requester@xbfreight.com",
+      senderDomain: "xbfreight.com",
+      internetMessageId: "<message-1@xbfreight.com>",
+      supplierDomain: "supplier.example.test",
       to: [supplierMailbox],
-      cc: ['carriers@xbfreight.com'],
-      subject: 'Supplier registration',
-      safeBody: 'Please complete the application.',
-      applicationReference: 'APP-7',
-      requirementTokens: ['application', 'w9'],
+      cc: ["carriers@xbfreight.com"],
+      subject: "Supplier registration",
+      safeBody: "Please complete the application.",
+      applicationReference: "APP-7",
+      requirementTokens: ["application", "w9"],
       attachments: [],
+      provenance: {
+        relationship: "direct_copy",
+        parentEnvelope: {
+          senderEmail: "requester@xbfreight.com",
+          senderDomain: "xbfreight.com",
+          internetMessageId: "<message-1@xbfreight.com>",
+          to: [supplierMailbox],
+          cc: ["carriers@xbfreight.com"],
+          subject: "Supplier registration",
+          sourceSha256: "a".repeat(64),
+        },
+        originalEnvelope: null,
+        externalReplyTo: [supplierMailbox],
+        externalReplyCc: [],
+      },
     },
     blockedByDuplicateReview: false as const,
   };
@@ -114,38 +132,44 @@ Deno.test('Postgres intake persistence replays a delivery receipt without creati
       persistence.createCase(
         {
           ...input,
-          source: { ...input.source, rawMimeHash: 'b'.repeat(64) },
+          source: { ...input.source, rawMimeHash: "b".repeat(64) },
         } as never,
       ),
     Error,
-    'IDEMPOTENCY_CONFLICT',
+    "IDEMPOTENCY_CONFLICT",
   );
   assertEquals(cases, 1);
   assertEquals(messageInsertValues.length, 1);
-  assertEquals(messageInsertValues[0].includes('Supplier registration'), true);
-  assertEquals(messageInsertValues[0].includes('requester@xbfreight.com'), true);
-  assertEquals(messageInsertValues[0].includes('<message-1@xbfreight.com>'), true);
+  assertEquals(messageInsertValues[0].includes("Supplier registration"), true);
   assertEquals(
-    messageInsertValues[0].includes('Please complete the application.'),
+    messageInsertValues[0].includes("requester@xbfreight.com"),
     true,
   );
-  assertEquals(messageInsertValues[0].includes('APP-7'), true);
+  assertEquals(
+    messageInsertValues[0].includes("<message-1@xbfreight.com>"),
+    true,
+  );
+  assertEquals(
+    messageInsertValues[0].includes("Please complete the application."),
+    true,
+  );
+  assertEquals(messageInsertValues[0].includes("APP-7"), true);
   assertEquals(
     messageInsertValues[0].includes(JSON.stringify([supplierMailbox])),
     true,
   );
   assertEquals(
-    messageInsertValues[0].includes(JSON.stringify(['carriers@xbfreight.com'])),
+    messageInsertValues[0].includes(JSON.stringify(["carriers@xbfreight.com"])),
     true,
   );
   assertEquals(
-    messageInsertValues[0].includes(JSON.stringify(['application', 'w9'])),
+    messageInsertValues[0].includes(JSON.stringify(["application", "w9"])),
     true,
   );
 });
 
-Deno.test('Postgres exact attachment does not insert a second gmail row for the same source', async () => {
-  const organizationId = '22222222-2222-4222-8222-222222222222';
+Deno.test("Postgres exact attachment does not insert a second gmail row for the same source", async () => {
+  const organizationId = "22222222-2222-4222-8222-222222222222";
   const receipts = new Map<
     string,
     { request_hash: string; response_json: string }
@@ -154,7 +178,7 @@ Deno.test('Postgres exact attachment does not insert a second gmail row for the 
   let messageLookupCount = 0;
   const sql = Object.assign(
     async (strings: TemplateStringsArray, ...values: unknown[]) => {
-      const query = strings.raw.join(' ').toLowerCase();
+      const query = strings.raw.join(" ").toLowerCase();
       if (/set local role|set_config|pg_advisory_xact_lock/.test(query)) {
         return [];
       }
@@ -162,7 +186,9 @@ Deno.test('Postgres exact attachment does not insert a second gmail row for the 
         /select request_hash, response_json from osp_private\.command_receipts/
           .test(query)
       ) {
-        return receipts.get(`${values[1]}:${values[2]}`) ? [receipts.get(`${values[1]}:${values[2]}`)!] : [];
+        return receipts.get(`${values[1]}:${values[2]}`)
+          ? [receipts.get(`${values[1]}:${values[2]}`)!]
+          : [];
       }
       if (
         /select id, case_id, source_sha256, gmail_thread_id from osp_private\.gmail_messages/
@@ -170,10 +196,10 @@ Deno.test('Postgres exact attachment does not insert a second gmail row for the 
       ) {
         messageLookupCount += 1;
         return messageLookupCount === 1 ? [] : [{
-          id: 'message-row',
-          case_id: '44444444-4444-4444-8444-444444444444',
-          source_sha256: 'a'.repeat(64),
-          gmail_thread_id: 'thread-1',
+          id: "message-row",
+          case_id: "44444444-4444-4444-8444-444444444444",
+          source_sha256: "a".repeat(64),
+          gmail_thread_id: "thread-1",
         }];
       }
       if (/insert into osp_private\.gmail_messages/.test(query)) {
@@ -190,7 +216,7 @@ Deno.test('Postgres exact attachment does not insert a second gmail row for the 
           .test(query)
       ) {
         return [{
-          id: '44444444-4444-4444-8444-444444444444',
+          id: "44444444-4444-4444-8444-444444444444",
           aggregate_version: 0,
         }];
       }
@@ -212,49 +238,65 @@ Deno.test('Postgres exact attachment does not insert a second gmail row for the 
       throw new Error(`UNEXPECTED_QUERY:${query}`);
     },
     {
-      begin: async <T>(operation: (transaction: typeof sql) => Promise<T>) => await operation(sql),
+      begin: async <T>(operation: (transaction: typeof sql) => Promise<T>) =>
+        await operation(sql),
     },
   );
   const persistence = createPostgresIntakePersistence({
-    databaseUrl: 'postgresql://synthetic.example.test/db',
+    databaseUrl: "postgresql://synthetic.example.test/db",
     postgresFactory: () => sql,
   });
   const source = {
-    gmailMessageId: 'message-1',
-    gmailThreadId: 'thread-1',
+    gmailMessageId: "message-1",
+    gmailThreadId: "thread-1",
     rawMimeKey: `${organizationId}/11111111-1111-4111-8111-111111111111`,
-    rawMimeHash: 'a'.repeat(64),
+    rawMimeHash: "a".repeat(64),
     attachments: [],
     attachmentHashes: [],
-    receivedAt: '2026-08-22T00:00:00.000Z',
+    receivedAt: "2026-08-22T00:00:00.000Z",
   };
   const parsed = {
-    senderEmail: 'requester@xbfreight.com',
-    senderDomain: 'xbfreight.com',
-    internetMessageId: '<message-1@xbfreight.com>',
-    supplierDomain: 'supplier.example.test',
+    senderEmail: "requester@xbfreight.com",
+    senderDomain: "xbfreight.com",
+    internetMessageId: "<message-1@xbfreight.com>",
+    supplierDomain: "supplier.example.test",
     to: [supplierMailbox],
-    cc: ['carriers@xbfreight.com'],
-    subject: 'Supplier registration',
-    safeBody: 'Body',
+    cc: ["carriers@xbfreight.com"],
+    subject: "Supplier registration",
+    safeBody: "Body",
     applicationReference: null,
     requirementTokens: [],
     attachments: [],
+    provenance: {
+      relationship: "direct_copy",
+      parentEnvelope: {
+        senderEmail: "requester@xbfreight.com",
+        senderDomain: "xbfreight.com",
+        internetMessageId: "<message-1@xbfreight.com>",
+        to: [supplierMailbox],
+        cc: ["carriers@xbfreight.com"],
+        subject: "Supplier registration",
+        sourceSha256: "a".repeat(64),
+      },
+      originalEnvelope: null,
+      externalReplyTo: [supplierMailbox],
+      externalReplyCc: [],
+    },
   };
   const base = {
     organizationId,
-    existingCaseId: '44444444-4444-4444-8444-444444444444',
+    existingCaseId: "44444444-4444-4444-8444-444444444444",
     source,
     parsed,
     evidence: [],
   };
   await persistence.attachExact(
-    { ...base, deliveryIdempotencyKey: 'delivery-1' } as never,
+    { ...base, deliveryIdempotencyKey: "delivery-1" } as never,
   );
   await persistence.attachExact(
     {
       ...base,
-      deliveryIdempotencyKey: 'delivery-2',
+      deliveryIdempotencyKey: "delivery-2",
       source: {
         ...source,
         rawMimeKey: `${organizationId}/22222222-2222-4222-8222-222222222222`,
@@ -264,9 +306,9 @@ Deno.test('Postgres exact attachment does not insert a second gmail row for the 
   assertEquals(messageInserts, 1);
 });
 
-Deno.test('Postgres exact replay persists duplicate evidence once and replays the same event', async () => {
-  const organizationId = '22222222-2222-4222-8222-222222222222';
-  const caseId = '44444444-4444-4444-8444-444444444444';
+Deno.test("Postgres exact replay persists duplicate evidence once and replays the same event", async () => {
+  const organizationId = "22222222-2222-4222-8222-222222222222";
+  const caseId = "44444444-4444-4444-8444-444444444444";
   const receipts = new Map<
     string,
     { request_hash: string; response_json: string }
@@ -278,7 +320,7 @@ Deno.test('Postgres exact replay persists duplicate evidence once and replays th
   const evidenceUpdateValues: unknown[][] = [];
   const sql = Object.assign(
     async (strings: TemplateStringsArray, ...values: unknown[]) => {
-      const query = strings.raw.join(' ').toLowerCase();
+      const query = strings.raw.join(" ").toLowerCase();
       if (/set local role|set_config|pg_advisory_xact_lock/.test(query)) {
         return [];
       }
@@ -286,7 +328,9 @@ Deno.test('Postgres exact replay persists duplicate evidence once and replays th
         /select request_hash, response_json from osp_private\.command_receipts/
           .test(query)
       ) {
-        return receipts.get(`${values[1]}:${values[2]}`) ? [receipts.get(`${values[1]}:${values[2]}`)!] : [];
+        return receipts.get(`${values[1]}:${values[2]}`)
+          ? [receipts.get(`${values[1]}:${values[2]}`)!]
+          : [];
       }
       if (
         /select id, case_id, source_sha256, gmail_thread_id from osp_private\.gmail_messages/
@@ -294,10 +338,10 @@ Deno.test('Postgres exact replay persists duplicate evidence once and replays th
       ) {
         messageLookups += 1;
         return messageLookups === 1 ? [] : [{
-          id: 'message-row',
+          id: "message-row",
           case_id: caseId,
-          source_sha256: 'a'.repeat(64),
-          gmail_thread_id: 'thread-1',
+          source_sha256: "a".repeat(64),
+          gmail_thread_id: "thread-1",
         }];
       }
       if (/insert into osp_private\.gmail_messages/.test(query)) {
@@ -339,45 +383,61 @@ Deno.test('Postgres exact replay persists duplicate evidence once and replays th
       throw new Error(`UNEXPECTED_QUERY:${query}`);
     },
     {
-      begin: async <T>(operation: (transaction: typeof sql) => Promise<T>) => await operation(sql),
+      begin: async <T>(operation: (transaction: typeof sql) => Promise<T>) =>
+        await operation(sql),
     },
   );
   const persistence = createPostgresIntakePersistence({
-    databaseUrl: 'postgresql://synthetic.example.test/db',
+    databaseUrl: "postgresql://synthetic.example.test/db",
     postgresFactory: () => sql,
   });
   const source = {
-    gmailMessageId: 'message-1',
-    gmailThreadId: 'thread-1',
+    gmailMessageId: "message-1",
+    gmailThreadId: "thread-1",
     rawMimeKey: `${organizationId}/11111111-1111-4111-8111-111111111111`,
-    rawMimeHash: 'a'.repeat(64),
+    rawMimeHash: "a".repeat(64),
     attachments: [],
     attachmentHashes: [],
-    receivedAt: '2026-08-22T00:00:00.000Z',
+    receivedAt: "2026-08-22T00:00:00.000Z",
   };
   const parsed = {
-    senderEmail: 'requester@xbfreight.com',
-    senderDomain: 'xbfreight.com',
-    internetMessageId: '<message-1@xbfreight.com>',
-    supplierDomain: 'supplier.example.test',
+    senderEmail: "requester@xbfreight.com",
+    senderDomain: "xbfreight.com",
+    internetMessageId: "<message-1@xbfreight.com>",
+    supplierDomain: "supplier.example.test",
     to: [supplierMailbox],
-    cc: ['carriers@xbfreight.com'],
-    subject: 'Supplier registration',
-    safeBody: 'Body',
+    cc: ["carriers@xbfreight.com"],
+    subject: "Supplier registration",
+    safeBody: "Body",
     applicationReference: null,
     requirementTokens: [],
     attachments: [],
+    provenance: {
+      relationship: "direct_copy",
+      parentEnvelope: {
+        senderEmail: "requester@xbfreight.com",
+        senderDomain: "xbfreight.com",
+        internetMessageId: "<message-1@xbfreight.com>",
+        to: [supplierMailbox],
+        cc: ["carriers@xbfreight.com"],
+        subject: "Supplier registration",
+        sourceSha256: "a".repeat(64),
+      },
+      originalEnvelope: null,
+      externalReplyTo: [supplierMailbox],
+      externalReplyCc: [],
+    },
   };
   const evidence = [{
-    kind: 'raw_mime_hash' as const,
+    kind: "raw_mime_hash" as const,
     score: 1,
-    sourceIds: ['message-1', 'message-existing'],
+    sourceIds: ["message-1", "message-existing"],
   }];
   const first = await persistence.attachExact(
     {
       organizationId,
       existingCaseId: caseId,
-      deliveryIdempotencyKey: 'delivery-exact-1',
+      deliveryIdempotencyKey: "delivery-exact-1",
       source,
       parsed,
       evidence,
@@ -386,7 +446,7 @@ Deno.test('Postgres exact replay persists duplicate evidence once and replays th
   const second = await persistence.attachExact({
     organizationId,
     existingCaseId: caseId,
-    deliveryIdempotencyKey: 'delivery-exact-2',
+    deliveryIdempotencyKey: "delivery-exact-2",
     source: {
       ...source,
       rawMimeKey: `${organizationId}/22222222-2222-4222-8222-222222222222`,
@@ -397,7 +457,7 @@ Deno.test('Postgres exact replay persists duplicate evidence once and replays th
   const replay = await persistence.attachExact({
     organizationId,
     existingCaseId: caseId,
-    deliveryIdempotencyKey: 'delivery-exact-2',
+    deliveryIdempotencyKey: "delivery-exact-2",
     source: {
       ...source,
       rawMimeKey: `${organizationId}/33333333-3333-4333-8333-333333333333`,
@@ -412,19 +472,25 @@ Deno.test('Postgres exact replay persists duplicate evidence once and replays th
   assertEquals(messageInserts, 1);
   assertEquals(evidenceUpdates, 1);
   assertEquals(
-    evidenceUpdateValues[0].some((value) => typeof value === 'string' && value.includes('raw_mime_hash')),
+    evidenceUpdateValues[0].some((value) =>
+      typeof value === "string" && value.includes("raw_mime_hash")
+    ),
     true,
   );
   assertEquals(eventValues.length, 2);
   assertEquals(
-    eventValues.every((values) => values.some((value) => typeof value === 'string' && value.includes('raw_mime_hash'))),
+    eventValues.every((values) =>
+      values.some((value) =>
+        typeof value === "string" && value.includes("raw_mime_hash")
+      )
+    ),
     true,
   );
 });
 
-Deno.test('Postgres probable hold appends evidence and advances the case aggregate', async () => {
-  const organizationId = '22222222-2222-4222-8222-222222222222';
-  const candidateCaseId = '55555555-5555-4555-8555-555555555555';
+Deno.test("Postgres probable hold appends evidence and advances the case aggregate", async () => {
+  const organizationId = "22222222-2222-4222-8222-222222222222";
+  const candidateCaseId = "55555555-5555-4555-8555-555555555555";
   const receipts = new Map<
     string,
     { request_hash: string; response_json: string }
@@ -433,7 +499,7 @@ Deno.test('Postgres probable hold appends evidence and advances the case aggrega
   let aggregateUpdates = 0;
   const sql = Object.assign(
     async (strings: TemplateStringsArray, ...values: unknown[]) => {
-      const query = strings.raw.join(' ').toLowerCase();
+      const query = strings.raw.join(" ").toLowerCase();
       if (/set local role|set_config|pg_advisory_xact_lock/.test(query)) {
         return [];
       }
@@ -441,10 +507,12 @@ Deno.test('Postgres probable hold appends evidence and advances the case aggrega
         /select request_hash, response_json from osp_private\.command_receipts/
           .test(query)
       ) {
-        return receipts.get(`${values[1]}:${values[2]}`) ? [receipts.get(`${values[1]}:${values[2]}`)!] : [];
+        return receipts.get(`${values[1]}:${values[2]}`)
+          ? [receipts.get(`${values[1]}:${values[2]}`)!]
+          : [];
       }
       if (/insert into osp_private\.supplier_counterparties/.test(query)) {
-        return [{ id: '33333333-3333-4333-8333-333333333333' }];
+        return [{ id: "33333333-3333-4333-8333-333333333333" }];
       }
       if (/insert into osp_private\.customer_registration_cases/.test(query)) {
         return [];
@@ -460,7 +528,7 @@ Deno.test('Postgres probable hold appends evidence and advances the case aggrega
       if (
         /select id(?:, aggregate_version)? from osp_private\.customer_registration_cases/
           .test(query)
-      ) return [{ id: 'held-case', aggregate_version: 0 }];
+      ) return [{ id: "held-case", aggregate_version: 0 }];
       if (/select coalesce\(max\(sequence\)/.test(query)) {
         return [{ sequence: 1 }];
       }
@@ -485,94 +553,113 @@ Deno.test('Postgres probable hold appends evidence and advances the case aggrega
       throw new Error(`UNEXPECTED_QUERY:${query}`);
     },
     {
-      begin: async <T>(operation: (transaction: typeof sql) => Promise<T>) => await operation(sql),
+      begin: async <T>(operation: (transaction: typeof sql) => Promise<T>) =>
+        await operation(sql),
     },
   );
   const persistence = createPostgresIntakePersistence({
-    databaseUrl: 'postgresql://synthetic.example.test/db',
+    databaseUrl: "postgresql://synthetic.example.test/db",
     postgresFactory: () => sql,
   });
   const source = {
-    gmailMessageId: 'message-held',
-    gmailThreadId: 'thread-held',
+    gmailMessageId: "message-held",
+    gmailThreadId: "thread-held",
     rawMimeKey: `${organizationId}/66666666-6666-4666-8666-666666666666`,
-    rawMimeHash: 'c'.repeat(64),
+    rawMimeHash: "c".repeat(64),
     attachments: [],
     attachmentHashes: [],
-    receivedAt: '2026-08-22T00:00:00.000Z',
+    receivedAt: "2026-08-22T00:00:00.000Z",
   };
   const parsed = {
-    senderEmail: 'requester@xbfreight.com',
-    senderDomain: 'xbfreight.com',
-    internetMessageId: '<message-1@xbfreight.com>',
-    supplierDomain: 'supplier.example.test',
+    senderEmail: "requester@xbfreight.com",
+    senderDomain: "xbfreight.com",
+    internetMessageId: "<message-1@xbfreight.com>",
+    supplierDomain: "supplier.example.test",
     to: [supplierMailbox],
     cc: [],
-    subject: 'Supplier registration',
-    safeBody: 'Body',
+    subject: "Supplier registration",
+    safeBody: "Body",
     applicationReference: null,
     requirementTokens: [],
     attachments: [],
+    provenance: {
+      relationship: "direct_copy",
+      parentEnvelope: {
+        senderEmail: "requester@xbfreight.com",
+        senderDomain: "xbfreight.com",
+        internetMessageId: "<message-1@xbfreight.com>",
+        to: [supplierMailbox],
+        cc: [],
+        subject: "Supplier registration",
+        sourceSha256: "c".repeat(64),
+      },
+      originalEnvelope: null,
+      externalReplyTo: [supplierMailbox],
+      externalReplyCc: [],
+    },
   };
   const evidence = [{
-    kind: 'thread_ancestry' as const,
+    kind: "thread_ancestry" as const,
     score: 0.8,
-    sourceIds: ['held-case', candidateCaseId],
+    sourceIds: ["held-case", candidateCaseId],
   }];
   const result = await persistence.holdForReview(
     {
       organizationId,
-      deliveryIdempotencyKey: 'delivery-hold-1',
+      deliveryIdempotencyKey: "delivery-hold-1",
       candidateIds: [candidateCaseId],
       source,
       parsed,
       evidence,
     } as never,
   );
-  assertEquals(typeof result.caseId, 'string');
+  assertEquals(typeof result.caseId, "string");
   assertEquals(aggregateUpdates, 1);
   assertEquals(eventValues.length, 1);
   assertEquals(eventValues[0][4], 0);
   assertEquals(
-    eventValues[0].some((value) => typeof value === 'string' && value.includes('thread_ancestry')),
+    eventValues[0].some((value) =>
+      typeof value === "string" && value.includes("thread_ancestry")
+    ),
     true,
   );
 });
 
-Deno.test('Postgres duplicate query preserves application reference and requirement tokens', async () => {
-  const organizationId = '22222222-2222-4222-8222-222222222222';
+Deno.test("Postgres duplicate query preserves application reference and requirement tokens", async () => {
+  const organizationId = "22222222-2222-4222-8222-222222222222";
   const sql = Object.assign(async (strings: TemplateStringsArray) => {
-    const query = strings.raw.join(' ').toLowerCase();
+    const query = strings.raw.join(" ").toLowerCase();
     if (/set local role|set_config/.test(query)) return [];
     if (/select c\.id as case_id/.test(query)) {
       return [{
-        case_id: '44444444-4444-4444-8444-444444444444',
-        gmail_message_id: 'message-1',
-        raw_mime_hash: 'a'.repeat(64),
-        gmail_thread_id: 'thread-1',
-        supplier_domain: 'supplier.example.test',
-        received_at: new Date('2026-08-22T00:00:00.000Z'),
+        case_id: "44444444-4444-4444-8444-444444444444",
+        gmail_message_id: "message-1",
+        raw_mime_hash: "a".repeat(64),
+        gmail_thread_id: "thread-1",
+        supplier_domain: "supplier.example.test",
+        received_at: new Date("2026-08-22T00:00:00.000Z"),
         attachment_hashes: [],
-        application_reference: 'APP-7',
-        requirement_tokens: ['application', 'w9'],
+        application_reference: "APP-7",
+        requirement_tokens: ["application", "w9"],
       }];
     }
     throw new Error(`UNEXPECTED_QUERY:${query}`);
   }, {
-    begin: async <T>(operation: (transaction: typeof sql) => Promise<T>) => await operation(sql),
+    begin: async <T>(operation: (transaction: typeof sql) => Promise<T>) =>
+      await operation(sql),
   });
   const persistence = createPostgresIntakePersistence({
-    databaseUrl: 'postgresql://synthetic.example.test/db',
+    databaseUrl: "postgresql://synthetic.example.test/db",
     postgresFactory: () => sql,
   });
   const result = await persistence.findDuplicates(organizationId, {} as never);
-  assertEquals(result[0].applicationReference, 'APP-7');
-  assertEquals(result[0].requirementTokens, ['application', 'w9']);
+  assertEquals(result[0].applicationReference, "APP-7");
+  assertEquals(result[0].requirementTokens, ["application", "w9"]);
 });
 
-Deno.test('Postgres duplicate review refresh appends evidence once and advances the aggregate on replay', async () => {
-  const organizationId = '22222222-2222-4222-8222-222222222222';
-  const caseId = '44444444-4444-4444-8444-444444444444';
+Deno.test("Postgres duplicate review refresh appends evidence once and advances the aggregate on replay", async () => {
+  const organizationId = "22222222-2222-4222-8222-222222222222";
+  const caseId = "44444444-4444-4444-8444-444444444444";
   const receipts = new Map<
     string,
     { request_hash: string; response_json: string }
@@ -583,7 +670,7 @@ Deno.test('Postgres duplicate review refresh appends evidence once and advances 
   let duplicateQueries = 0;
   const sql = Object.assign(
     async (strings: TemplateStringsArray, ...values: unknown[]) => {
-      const query = strings.raw.join(' ').toLowerCase();
+      const query = strings.raw.join(" ").toLowerCase();
       if (/set local role|set_config|pg_advisory_xact_lock/.test(query)) {
         return [];
       }
@@ -591,31 +678,33 @@ Deno.test('Postgres duplicate review refresh appends evidence once and advances 
         /select request_hash, response_json from osp_private\.command_receipts/
           .test(query)
       ) {
-        return receipts.get(`${values[1]}:${values[2]}`) ? [receipts.get(`${values[1]}:${values[2]}`)!] : [];
+        return receipts.get(`${values[1]}:${values[2]}`)
+          ? [receipts.get(`${values[1]}:${values[2]}`)!]
+          : [];
       }
       if (/select c\.id as case_id/.test(query)) {
         duplicateQueries += 1;
         return [
           {
             case_id: caseId,
-            gmail_message_id: 'message-current',
-            raw_mime_hash: 'a'.repeat(64),
-            gmail_thread_id: 'thread-1',
-            supplier_domain: 'supplier.example.test',
-            received_at: '2026-08-22T00:00:00.000Z',
+            gmail_message_id: "message-current",
+            raw_mime_hash: "a".repeat(64),
+            gmail_thread_id: "thread-1",
+            supplier_domain: "supplier.example.test",
+            received_at: "2026-08-22T00:00:00.000Z",
             application_reference: null,
-            requirement_tokens: ['w9'],
+            requirement_tokens: ["w9"],
             attachment_hashes: [],
           },
           {
-            case_id: '55555555-5555-4555-8555-555555555555',
-            gmail_message_id: 'message-candidate',
-            raw_mime_hash: 'b'.repeat(64),
-            gmail_thread_id: 'thread-1',
-            supplier_domain: 'supplier.example.test',
-            received_at: '2026-08-22T00:00:00.000Z',
+            case_id: "55555555-5555-4555-8555-555555555555",
+            gmail_message_id: "message-candidate",
+            raw_mime_hash: "b".repeat(64),
+            gmail_thread_id: "thread-1",
+            supplier_domain: "supplier.example.test",
+            received_at: "2026-08-22T00:00:00.000Z",
             application_reference: null,
-            requirement_tokens: ['carrier'],
+            requirement_tokens: ["carrier"],
             attachment_hashes: [],
           },
         ];
@@ -654,34 +743,37 @@ Deno.test('Postgres duplicate review refresh appends evidence once and advances 
       throw new Error(`UNEXPECTED_QUERY:${query}`);
     },
     {
-      begin: async <T>(operation: (transaction: typeof sql) => Promise<T>) => await operation(sql),
+      begin: async <T>(operation: (transaction: typeof sql) => Promise<T>) =>
+        await operation(sql),
     },
   );
   const persistence = createPostgresIntakePersistence({
-    databaseUrl: 'postgresql://synthetic.example.test/db',
+    databaseUrl: "postgresql://synthetic.example.test/db",
     postgresFactory: () => sql,
   });
   await persistence.refreshDuplicateReview({
     organizationId,
     caseId,
-    correlationId: 'refresh-job-1',
+    correlationId: "refresh-job-1",
   });
   await persistence.refreshDuplicateReview({
     organizationId,
     caseId,
-    correlationId: 'refresh-job-1',
+    correlationId: "refresh-job-1",
   });
   assertEquals(duplicateQueries, 1);
   assertEquals(aggregateUpdates, 1);
   assertEquals(eventValues.length, 1);
-  assertEquals(eventQueries[0].includes('duplicate_review_refresh'), true);
-  assertEquals(eventValues[0].includes('refresh-job-1'), true);
+  assertEquals(eventQueries[0].includes("duplicate_review_refresh"), true);
+  assertEquals(eventValues[0].includes("refresh-job-1"), true);
   assertEquals(
-    eventValues[0].some((value) => typeof value === 'string' && value.includes('thread_ancestry')),
+    eventValues[0].some((value) =>
+      typeof value === "string" && value.includes("thread_ancestry")
+    ),
     true,
   );
-  const receipt = receipts.get('duplicate_review_refresh:refresh-job-1');
-  assertEquals(typeof receipt, 'object');
+  const receipt = receipts.get("duplicate_review_refresh:refresh-job-1");
+  assertEquals(typeof receipt, "object");
   assertEquals(JSON.parse(receipt!.response_json).caseId, caseId);
   assertEquals(JSON.parse(receipt!.response_json).eventId, eventValues[0][0]);
 });

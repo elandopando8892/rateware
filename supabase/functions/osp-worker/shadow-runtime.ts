@@ -182,6 +182,13 @@ export function createShadowWorkerRuntime(input: {
     persistence,
     jobs,
   });
+  const exactGmailIntake = createIntakeService({
+    gmail: createGmailApiInboundPort({ accessToken: input.gmailAccessToken }),
+    objects: originalObjects,
+    persistence,
+    jobs,
+    internalRelay: "single_attached_rfc822",
+  });
   const bridge = createRatewareGmailBridge({
     databaseUrl: input.databaseUrl,
     postgresFactory: input.postgresFactory,
@@ -633,7 +640,7 @@ export function createShadowWorkerRuntime(input: {
           fail: jobs.fail,
           enqueue: jobs.enqueue,
         },
-        intake,
+        intake: exactGmailIntake,
         attachmentPromotions,
         requestManifests: requestManifestJobs,
         extraction,
