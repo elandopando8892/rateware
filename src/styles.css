@@ -39303,6 +39303,192 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   backdrop-filter: blur(2px);
 }
 
+/* Bid Room UX slice: compact RFx context, progressive filters, and one clear CTA. */
+.bid-room-page .bid-room-compact-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  border: 1px solid var(--rw-slate-200, #d3d3cf);
+  border-left: 3px solid var(--rw-brand-500, #ea5e27);
+  border-radius: 5px;
+  background: var(--rw-slate-25, #f7f7f5);
+  padding: 7px 8px;
+  color: var(--rw-slate-600, #484848);
+  font-size: 0.68rem;
+}
+
+.bid-room-page .bid-room-compact-summary .eyebrow {
+  margin: 0;
+  color: var(--rw-slate-900, #1e1e1e);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.bid-room-page .bid-room-compact-summary .status-pill {
+  white-space: nowrap;
+}
+
+.bid-room-page .rfx-outreach-carrier-filter-row {
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: center;
+}
+
+.bid-room-page .rfx-outreach-advanced-filters {
+  min-width: 0;
+  border: 1px solid var(--rw-slate-200, #d3d3cf);
+  border-radius: 5px;
+  background: var(--rw-slate-25, #f7f7f5);
+}
+
+.bid-room-page .rfx-outreach-advanced-filters > summary {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  list-style: none;
+  padding: 5px 9px;
+  color: var(--rw-slate-600, #484848);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.bid-room-page .rfx-outreach-advanced-filters > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bid-room-page .rfx-outreach-advanced-filters > summary::after {
+  color: var(--rw-brand-600, #c94b1f);
+  content: "+";
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.bid-room-page .rfx-outreach-advanced-filters[open] > summary::after {
+  content: "−";
+}
+
+.bid-room-page .rfx-outreach-advanced-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 8px;
+  border-top: 1px solid var(--rw-slate-200, #d3d3cf);
+  padding: 8px;
+}
+
+.bid-room-page .rfx-outreach-carrier-wave-actions .action-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bid-room-page .rfx-outreach-selection-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.bid-room-page .rfx-outreach-selection-tools .secondary {
+  min-height: 30px;
+  padding-inline: 8px;
+}
+
+.bid-room-page #rfx-add-outreach-carriers {
+  min-height: 34px;
+  border-color: var(--rw-brand-600, #c94b1f);
+  background: var(--rw-brand-500, #ea5e27);
+  color: var(--rw-slate-900, #1e1e1e);
+  box-shadow: 0 5px 12px rgba(234, 94, 39, 0.16);
+}
+
+.bid-room-page #rfx-add-outreach-carriers:hover:not(:disabled) {
+  background: var(--rw-brand-600, #c94b1f);
+}
+
+.bid-room-page .rfx-message-workspace-header,
+.bid-room-page .rfx-delivery-control-header {
+  border-left: 3px solid var(--rw-brand-500, #ea5e27);
+  background: var(--rw-slate-25, #f7f7f5);
+}
+
+.bid-room-page .rfx-message-workspace-header {
+  gap: 10px;
+  padding: 8px 10px;
+}
+
+.bid-room-page .rfx-message-workspace-header h4 {
+  color: var(--rw-slate-900, #1e1e1e);
+  font-size: 0.86rem;
+}
+
+.bid-room-page .rfx-message-workspace-header > div > span,
+.bid-room-page .rfx-message-workspace-footer > span,
+.bid-room-page .rfx-delivery-control-header > small {
+  color: var(--rw-slate-600, #484848);
+}
+
+.bid-room-page .rfx-delivery-control-header {
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 2px 10px;
+  padding: 7px 10px;
+}
+
+.bid-room-page .rfx-delivery-control-header > .status-pill {
+  border-color: var(--rw-slate-300, #b8b8b2);
+  background: var(--rw-mark-cloud, #efefef);
+  color: var(--rw-slate-600, #484848);
+  font-size: 0.64rem;
+}
+
+.bid-room-page .rfx-wave-workspace-heading {
+  gap: 10px;
+  padding: 8px 2px 7px;
+}
+
+@media (max-width: 900px) {
+  .bid-room-page .bid-room-compact-summary {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .bid-room-page .rfx-outreach-carrier-filter-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bid-room-page .rfx-outreach-advanced-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bid-room-page .rfx-outreach-carrier-wave-actions .action-row {
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .bid-room-page .rfx-outreach-selection-tools {
+    width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  .bid-room-page .rfx-outreach-advanced-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bid-room-page .rfx-outreach-selection-tools > button,
+  .bid-room-page #rfx-add-outreach-carriers {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+}
+
 .rateware-login-card {
   display: grid;
   gap: 16px;

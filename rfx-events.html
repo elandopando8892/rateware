@@ -143,6 +143,11 @@
                   <article><span>Targets</span><strong>0</strong><small>No carriers shortlisted.</small></article>
                   <article><span>Bids</span><strong>0</strong><small>No live offers yet.</small></article>
                 </div>
+                <div class="bid-room-compact-summary" aria-label="RFx progress summary">
+                  <span class="eyebrow">Guided progress</span>
+                  <span>Follow the next action below. Carrier Fit, Message, and Delivery Queue remain human-gated.</span>
+                  <span class="status-pill neutral">Confirmation required</span>
+                </div>
               </div>
               <p id="rfx-action-status" class="row-save-status bid-room-action-status" role="status"></p>
 
@@ -566,44 +571,49 @@
                 </div>
                 <div class="rfx-outreach-carrier-adder-body">
                   <div class="rfx-outreach-carrier-filter-row">
-                    <label>
-                      Starting set
-                      <select id="rfx-outreach-carrier-scope">
-                        <option value="recommended">Recommended for this RFx</option>
-                        <option value="procurement">Procurement &amp; pipeline</option>
-                        <option value="all_active">All active CRM carriers</option>
-                        <option value="saved_segment">Saved carrier list</option>
-                      </select>
-                    </label>
-                    <label id="rfx-outreach-carrier-segment-field" hidden title="Active templates are exact reusable Carrier CRM memberships. Loading one never selects or adds carriers.">
-                      Active template
-                      <span class="rfx-outreach-list-control">
-                        <select id="rfx-outreach-carrier-segment">
-                          <option value="">Choose an active template</option>
-                        </select>
-                        <a class="secondary small-button" href="./vendors.html?tab=list-templates" title="Create, edit, duplicate, archive, or restore templates in Carrier CRM">Manage in Carrier CRM</a>
-                      </span>
-                    </label>
-                    <label>
-                      Fit signal
-                      <select id="rfx-outreach-carrier-fit">
-                        <option value="any">Any lane fit</option>
-                        <option value="equipment">Equipment match</option>
-                        <option value="operation">Operation match</option>
-                        <option value="service">Service match</option>
-                        <option value="contactable">Has a delivery contact</option>
-                      </select>
-                    </label>
-                    <label>
-                      Route
-                      <select id="rfx-outreach-carrier-lane">
-                        <option value="all">All event lanes</option>
-                      </select>
-                    </label>
                     <label class="rfx-outreach-carrier-search-field">
                       Search CRM
                       <input id="rfx-outreach-carrier-search" type="search" placeholder="Carrier, domain, contact, tag..." autocomplete="off" />
                     </label>
+                    <details class="rfx-outreach-advanced-filters">
+                      <summary>Advanced filters</summary>
+                      <div class="rfx-outreach-advanced-filter-grid">
+                        <label>
+                          Starting set
+                          <select id="rfx-outreach-carrier-scope">
+                            <option value="recommended">Recommended for this RFx</option>
+                            <option value="procurement">Procurement &amp; pipeline</option>
+                            <option value="all_active">All active CRM carriers</option>
+                            <option value="saved_segment">Saved carrier list</option>
+                          </select>
+                        </label>
+                        <label id="rfx-outreach-carrier-segment-field" hidden title="Active templates are exact reusable Carrier CRM memberships. Loading one never selects or adds carriers.">
+                          Active template
+                          <span class="rfx-outreach-list-control">
+                            <select id="rfx-outreach-carrier-segment">
+                              <option value="">Choose an active template</option>
+                            </select>
+                            <a class="secondary small-button" href="./vendors.html?tab=list-templates" title="Create, edit, duplicate, archive, or restore templates in Carrier CRM">Manage in Carrier CRM</a>
+                          </span>
+                        </label>
+                        <label>
+                          Fit signal
+                          <select id="rfx-outreach-carrier-fit">
+                            <option value="any">Any lane fit</option>
+                            <option value="equipment">Equipment match</option>
+                            <option value="operation">Operation match</option>
+                            <option value="service">Service match</option>
+                            <option value="contactable">Has a delivery contact</option>
+                          </select>
+                        </label>
+                        <label>
+                          Route
+                          <select id="rfx-outreach-carrier-lane">
+                            <option value="all">All event lanes</option>
+                          </select>
+                        </label>
+                      </div>
+                    </details>
                   </div>
                   <div id="rfx-outreach-carrier-template-counts" class="rfx-outreach-carrier-template-counts" aria-live="polite" hidden></div>
                   <section id="rfx-outreach-launch-readiness" class="rfx-outreach-launch-readiness" aria-labelledby="rfx-outreach-launch-readiness-title" hidden>
@@ -641,10 +651,12 @@
                       <small>1. Select carriers. 2. Add them to this RFx. 3. Prepare their delivery queue from Message.</small>
                     </div>
                     <div class="action-row">
-                      <button id="rfx-select-visible-outreach-carriers" class="secondary" type="button" title="Selects the compatible carriers currently visible in this list. Carriers already handled in this RFx are excluded." disabled>Select visible</button>
-                      <button id="rfx-select-all-outreach-carriers" class="secondary" type="button" title="Selects every carrier matching the current Carrier fit filters. Carriers already handled in this RFx are excluded." disabled>Select all matching</button>
-                      <button id="rfx-add-outreach-carriers" type="button" title="Adds the selected carriers to this RFx and opens Message. Invitation drafts are created from Message, not by this button." disabled>Add {N} carriers to this RFx and open Message</button>
-                      <button id="rfx-clear-outreach-carrier-selection" class="secondary" type="button" disabled>Clear selection</button>
+                      <div class="rfx-outreach-selection-tools" role="group" aria-label="Carrier selection tools">
+                        <button id="rfx-select-visible-outreach-carriers" class="secondary" type="button" title="Selects the compatible carriers currently visible in this list. Carriers already handled in this RFx are excluded." disabled>Select visible</button>
+                        <button id="rfx-select-all-outreach-carriers" class="secondary" type="button" title="Selects every carrier matching the current Carrier fit filters. Carriers already handled in this RFx are excluded." disabled>Select all matching</button>
+                        <button id="rfx-clear-outreach-carrier-selection" class="secondary" type="button" disabled>Clear</button>
+                      </div>
+                      <button id="rfx-add-outreach-carriers" class="page-primary-action" type="button" title="Adds the selected carriers to this RFx and opens Message. Invitation drafts are created from Message, not by this button." disabled>Add {N} carriers to this RFx and open Message</button>
                     </div>
                   </div>
                   <div class="rfx-carrier-fit-table-shell">
