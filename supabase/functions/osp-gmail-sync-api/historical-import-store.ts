@@ -65,6 +65,9 @@ function exactRow(rows: Record<string, unknown>[]): HistoricalImportClaim {
     !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(row.job_id) ||
     typeof row?.job_completed !== "boolean"
   ) throw new Error("DATABASE_TEMPORARY");
+  if (row.job_completed && row.job_error !== null) {
+    throw new Error("HISTORICAL_GMAIL_INTAKE_FAILED");
+  }
   return Object.freeze({
     claimId: row.claim_id,
     status: row.import_status as HistoricalImportClaim["status"],
@@ -120,7 +123,7 @@ export function createPostgresHistoricalImportStore(options: {
             ${input.requestSha256},
             ${input.providerMessageInserted},
             ${input.attachmentMetadataRows}
-          )) select receipt.*, job.id as job_id, (job.completed_at is not null) as job_completed from receipt join osp_private.background_jobs job on job.organization_id = ${input.organizationId} and job.kind = 'gmail_ingest' and job.idempotency_key = ${`rateware-gmail:${input.gmailMessageId}`}`,
+          )) select receipt.*, job.id as job_id, (job.completed_at is not null) as job_completed, job.last_error_code as job_error from receipt join osp_private.background_jobs job on job.organization_id = ${input.organizationId} and job.kind = 'gmail_ingest' and job.idempotency_key = ${`rateware-gmail:${input.gmailMessageId}`}`,
           ),
       );
     },

@@ -1,8 +1,25 @@
-import { assertEquals } from "jsr:@std/assert@1.0.14";
+import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 
 import { deterministicRetryAt, runWorker } from "./worker.ts";
 import { createInMemoryBackgroundJobStore } from "../_shared/osp/background-jobs.ts";
 import { IntakeStageError } from "./intake-service.ts";
+
+Deno.test("exact execution preserves failure before rejecting its success response", async () => {
+  const jobs = createInMemoryBackgroundJobStore();
+  await jobs.enqueue({ organizationId: "org-1", kind: "gmail_ingest",
+    opaquePayload: { gmailMessageId: "message_1", deliveryIdempotencyKey: "delivery_1" },
+    idempotencyKey: "delivery_1" });
+  let persisted = false;
+  await assertRejects(() => runWorker({
+    workerId: "exact-worker", now: () => new Date(),
+    jobs: { ...jobs, fail: async (input) => { await jobs.fail(input); persisted = true; } },
+    intake: { ingest: async () => { throw new Error("UNQUALIFIED_GMAIL_MESSAGE"); },
+      refreshDuplicateReview: async () => undefined },
+    reportFailure: () => undefined, throwOnFailure: true, limit: 1,
+  }), Error, "UNQUALIFIED_GMAIL_MESSAGE");
+  assertEquals(persisted, true);
+  assertEquals(await jobs.claim({workerId: "retry", now: new Date(), leaseMs: 1000, limit: 1}), []);
+});
 
 Deno.test("worker reports a safe intake stage while preserving retry classification", async () => {
   const reports: unknown[] = [];

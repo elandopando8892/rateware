@@ -317,6 +317,7 @@ export async function runWorker(
       diagnosticCode: string | null;
     }) => void;
     limit?: number;
+    throwOnFailure?: boolean;
   },
 ): Promise<number> {
   const now = deps.now();
@@ -375,6 +376,7 @@ export async function runWorker(
           ? deterministicRetryAt(now, job.attempt)
           : null,
       });
+      if (deps.throwOnFailure) throw error;
     }
   }
   return jobs.length;

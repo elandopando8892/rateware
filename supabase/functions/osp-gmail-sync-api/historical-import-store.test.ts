@@ -1,9 +1,11 @@
-import { assertEquals, assertMatch } from "jsr:@std/assert@1.0.14";
+import { assertEquals, assertMatch, assertRejects } from "jsr:@std/assert@1.0.14";
 
 import { createPostgresHistoricalImportStore } from "./historical-import-store.ts";
 
 Deno.test("historical import store scopes one exact idempotent claim through the workflow role", async () => {
   const calls: { text: string; values: unknown[] }[] = [];
+  let completed = false;
+  let error: string | null = null;
   const sql = Object.assign(
     async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const text = strings.join("?").replaceAll(/\s+/g, " ").trim();
@@ -15,7 +17,8 @@ Deno.test("historical import store scopes one exact idempotent claim through the
           osp_enqueued: 1,
           attachment_metadata_rows: 1,
           job_id: "98000000-0000-4000-8000-000000000001",
-          job_completed: false,
+          job_completed: completed,
+          job_error: error,
         }];
       }
       return [];
@@ -29,7 +32,7 @@ Deno.test("historical import store scopes one exact idempotent claim through the
     databaseUrl: "postgresql://synthetic.example.test/db",
     postgresFactory: () => sql,
   });
-  const result = await store.record({
+  const input = {
     organizationId: "ca0a8f30-1382-4316-9bd5-cb76d9ab4920",
     mailboxEmail: "carriers@xbfreight.com",
     gmailMessageId: "message_1",
@@ -42,7 +45,8 @@ Deno.test("historical import store scopes one exact idempotent claim through the
     requestSha256: "b".repeat(64),
     providerMessageInserted: true,
     attachmentMetadataRows: 1,
-  });
+  };
+  const result = await store.record(input);
   assertEquals(result, {
     claimId: "97000000-0000-4000-8000-000000000001",
     status: "imported",
@@ -59,4 +63,8 @@ Deno.test("historical import store scopes one exact idempotent claim through the
   assertMatch(calls[2].text, /join osp_private\.background_jobs/);
   assertEquals(calls[2].values[0], "ca0a8f30-1382-4316-9bd5-cb76d9ab4920");
   assertEquals(calls[2].values[8], "historical_gmail:one");
+  completed = true;
+  assertEquals((await store.record(input)).jobCompleted, true);
+  error = "INVALID_INPUT";
+  await assertRejects(() => store.record(input), Error, "HISTORICAL_GMAIL_INTAKE_FAILED");
 });

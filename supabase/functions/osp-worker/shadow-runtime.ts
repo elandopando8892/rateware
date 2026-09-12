@@ -623,6 +623,7 @@ export function createShadowWorkerRuntime(input: {
       }),
     runExactGmailIngest: (request: ExactGmailIngest) =>
       runWorker({
+        throwOnFailure: true,
         workerId: input.workerId,
         now: () => new Date(),
         jobs: {
