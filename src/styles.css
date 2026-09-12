@@ -39640,7 +39640,45 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
 }
 
 .bid-room-page.has-selected-rfx .bid-room-event-rail {
-  padding: 5px 7px;
+  display: none;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-product {
+  display: block;
+  padding: 12px 18px 28px;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-workspace {
+  width: 100%;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-control-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-title-row {
+  align-items: center;
+  min-height: 44px;
+  padding: 0 2px;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-title-row .eyebrow,
+.bid-room-page.has-selected-rfx .bid-room-metrics {
+  display: none;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-title-row h2 {
+  overflow: hidden;
+  font-size: 1.05rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-action-menu summary {
+  min-height: 36px;
 }
 
 .bid-room-page.has-selected-rfx .bid-room-flow-shell {
@@ -39657,6 +39695,7 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   border: 1px solid var(--rw-slate-200, #d3d3cf);
   border-radius: 6px;
   background: var(--rw-slate-25, #f7f7f5);
+  width: 100%;
 }
 
 .bid-room-page.has-selected-rfx .bid-room-stage-rail button {
@@ -39665,6 +39704,19 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   border: 0;
   border-radius: 4px;
   background: transparent;
+}
+
+.bid-room-page.has-selected-rfx .rfx-event-delivery-overview {
+  display: none;
+}
+
+.bid-room-page.has-selected-rfx .rfx-delivery-wave-state {
+  margin: 6px 0 12px;
+  border: 1px solid var(--rw-slate-200, #d3d3cf);
+  border-left: 3px solid var(--rw-brand-500, #ea5e27);
+  border-radius: 6px;
+  background: var(--rw-slate-25, #f7f7f5);
+  padding: 10px 12px;
 }
 
 .bid-room-page.has-selected-rfx .bid-room-stage-rail button[aria-selected="true"] {

@@ -557,7 +557,9 @@ let selectedRfxEventViewId = "";
 let selectedEventId = requestedRfxEventId || String(storedRfxWorkspaceContext.eventId || "") || null;
 let selectedEvent = null;
 let selectedEventDetailReady = false;
-let rfxLaunchWorkspace = RFX_LAUNCH_WORKSPACE_KEYS.has(storedRfxWorkspaceContext.launchWorkspace)
+let rfxLaunchWorkspace = requestedRfxEventId
+  ? "carrier"
+  : RFX_LAUNCH_WORKSPACE_KEYS.has(storedRfxWorkspaceContext.launchWorkspace)
   ? storedRfxWorkspaceContext.launchWorkspace
   : "carrier";
 let rfxOperateWorkspace = RFX_OPERATE_WORKSPACE_KEYS.has(storedRfxWorkspaceContext.operateWorkspace)
