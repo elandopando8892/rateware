@@ -6,8 +6,10 @@ import { ArtifactReviewPanel } from './ArtifactReviewPanel';
 import { syntheticArtifactInventory } from '../../preview/artifact-review-inventory';
 import { MemberInspectionPanel } from './MemberInspectionPanel';
 import type { MemberInspectionInput } from '../../api/workflow-client';
+import type { NativeArtifactTargetsInput } from '../../api/workflow-client';
+import { NativeArtifactTargetPanel } from './NativeArtifactTargetPanel';
 
-export function OperationsReviewPage({ workspace, conflict = false, onComplete, onSaveInspection }: { workspace: ApprovalCommunicationsWorkspace; conflict?: boolean; onComplete(): Promise<void>; onSaveInspection?(input: MemberInspectionInput): Promise<void> }) {
+export function OperationsReviewPage({ workspace, conflict = false, onComplete, onSaveInspection, onSaveNativeTargets }: { workspace: ApprovalCommunicationsWorkspace; conflict?: boolean; onComplete(): Promise<void>; onSaveInspection?(input: MemberInspectionInput): Promise<void>; onSaveNativeTargets?(input: NativeArtifactTargetsInput): Promise<void> }) {
   const [confirmed, setConfirmed] = useState(false);
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -36,6 +38,11 @@ export function OperationsReviewPage({ workspace, conflict = false, onComplete, 
       <div><dt>Evidence fingerprint</dt><dd><code>{snapshot.sha256.slice(0, 12)}</code></dd></div>
     </dl>
     <FulfillmentMatrixPanel workspace={workspace} />
+    {onSaveNativeTargets && (workspace.nativeArtifactTargets?.length ?? 0) > 0 ? <section className="review-package" aria-labelledby="native-targets-title">
+      <p className="eyebrow">SOURCE FIDELITY</p><h2 id="native-targets-title">Place answers in the original forms</h2>
+      <p>Operations confirms native destinations before a new package is generated. Missing or conflicting placement remains blocked.</p>
+      {workspace.nativeArtifactTargets?.map(review => <NativeArtifactTargetPanel key={`${review.mappingId}:${review.mappingVersion}`} caseId={workspace.caseId} caseState={workspace.caseState} review={review} onSave={onSaveNativeTargets} />)}
+    </section> : null}
     {import.meta.env.VITE_OSP_BUILD_PROFILE === 'preview-synthetic' ? <ArtifactReviewPanel key={workspace.caseId} caseId={workspace.caseId} manifestSha256={workspace.fulfillment?.manifestSha256 ?? ''} inventory={syntheticArtifactInventory} /> : null}
     <section className="review-package" aria-labelledby="supplier-package-title">
       <p className="eyebrow">GENERATED OUTPUT</p>

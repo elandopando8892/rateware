@@ -1,0 +1,18 @@
+.native-target-review { margin-block: 1.25rem; padding: 1rem; border: 1px solid var(--color-border, #484848); border-radius: .5rem; background: var(--color-surface, #fff); }
+.native-target-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.native-target-heading h3 { margin-block: 0; }
+.native-target-state { padding: .35rem .6rem; border-radius: 999px; background: #efefef; color: #1e1e1e; font-size: .875rem; font-weight: 700; }
+.native-target-state-ready { border: 1px solid #ea5e27; }
+.native-target-state-ambiguous, .native-target-state-stale { background: #1e1e1e; color: #fff; }
+.native-target-identity { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+.native-target-identity div { min-width: 0; }
+.native-target-identity dt { color: #484848; font-size: .8rem; text-transform: uppercase; }
+.native-target-identity dd { margin: .2rem 0 0; overflow-wrap: anywhere; }
+.native-target-fields { display: grid; gap: 1rem; margin-block: 1rem; padding: 1rem; }
+.native-target-field { display: grid; grid-template-columns: minmax(10rem, 1fr) minmax(12rem, 1fr); gap: .75rem 1rem; padding-block-end: 1rem; border-block-end: 1px solid #efefef; }
+.native-target-field small { display: block; margin-block-start: .25rem; color: #484848; overflow-wrap: anywhere; }
+.native-target-field label { display: grid; gap: .35rem; }
+.native-target-field input, .native-target-field select { box-sizing: border-box; min-width: 0; width: 100%; min-height: 2.75rem; padding: .5rem; font: inherit; }
+.native-target-field :is(input, select):focus-visible { outline: 2px solid #ea5e27; outline-offset: 2px; }
+.native-target-placement { grid-column: 2; margin: 0; color: #484848; }
+@media (max-width: 42rem) { .native-target-heading { display: grid; } .native-target-identity, .native-target-field { grid-template-columns: 1fr; } .native-target-placement { grid-column: 1; } }

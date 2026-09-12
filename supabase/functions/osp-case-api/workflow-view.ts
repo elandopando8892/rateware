@@ -7,6 +7,10 @@ import {
   packageSetDownloadName,
   type WorkflowPackageSet,
 } from "./workflow-package-set.ts";
+import {
+  loadNativeArtifactTargetReviews,
+  type NativeArtifactTargetReview,
+} from "./native-artifact-targets.ts";
 
 import {
   type SqlPort,
@@ -127,6 +131,7 @@ export type WorkflowViewRecord = {
   supplierPackage?: SupplierPackageView | null;
   supplierPackageSet?: WorkflowPackageSet | null;
   packageSetReviewSha256?: string | null;
+  nativeArtifactTargets?: readonly NativeArtifactTargetReview[];
   signedPackage?: SignedPackageView | null;
   replyContext: ReplyContextView | null;
   signature: SignatureView | null;
@@ -482,7 +487,8 @@ export function approvalCommunicationsWorkspace(
         supplierPackageSet: {
           setId: record.supplierPackageSet.setId,
           operationsReviewSha256: record.packageSetReviewSha256 ?? null,
-          canRecordInspection: operations && record.caseState === "operations_review",
+          canRecordInspection: operations &&
+            record.caseState === "operations_review",
           version: record.supplierPackageSet.version,
           manifestSha256: record.supplierPackageSet.manifestSha256,
           files: record.supplierPackageSet.files.map((
@@ -491,6 +497,19 @@ export function approvalCommunicationsWorkspace(
         },
       }
       : {}),
+    nativeArtifactTargets: (record.nativeArtifactTargets ?? []).map(
+      (review) => {
+        const {
+          sourceBucketId: _bucket,
+          sourceObjectKey: _object,
+          ...visible
+        } = review;
+        return Object.freeze({
+          ...visible,
+          sourceDownloadUrl: operations ? review.sourceDownloadUrl : null,
+        });
+      },
+    ),
     supplierPackage: record.supplierPackage
       ? Object.freeze({
         packageId: record.supplierPackage.packageId,
@@ -521,9 +540,14 @@ export function approvalCommunicationsWorkspace(
           (outboundWritableCurrent &&
             record.outbound.kind === "final_response" &&
             record.outbound.status === "draft")),
-      completeOperationsReview: operations && record.caseState === "operations_review" && record.inputSnapshot !== null &&
-        (record.supplierPackageSet ? /^[0-9a-f]{64}$/.test(record.packageSetReviewSha256 ?? '') :
-          record.fulfillment?.gates.operationsReview !== false && record.supplierPackage !== null && record.supplierPackage !== undefined),
+      completeOperationsReview: operations &&
+        record.caseState === "operations_review" &&
+        record.inputSnapshot !== null &&
+        (record.supplierPackageSet
+          ? /^[0-9a-f]{64}$/.test(record.packageSetReviewSha256 ?? "")
+          : record.fulfillment?.gates.operationsReview !== false &&
+            record.supplierPackage !== null &&
+            record.supplierPackage !== undefined),
       approveAndApplySignature: !record.supplierPackageSet && jose &&
         record.fulfillment?.gates.signatureApproval !== false &&
         record.caseState === "signature_approval" &&
@@ -591,6 +615,13 @@ export function createPostgresWorkflowViewSource(
     signSupplierPackage?: (
       objectId: string,
       downloadName?: string,
+    ) => Promise<string>;
+    signOriginalSource?: (
+      bucketId: string,
+      objectKey: string,
+      contentType:
+        | "application/pdf"
+        | "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ) => Promise<string>;
     semanticGate?: RequestSemanticGate;
   },
@@ -773,25 +804,64 @@ export function createPostgresWorkflowViewSource(
               snapshotSha256: parsed.inputSnapshot.sha256,
             })
             : null;
-          const inspectedSet = supplierPackageSet ? await loadPackageMemberInspections(tx, organizationId, caseId, supplierPackageSet) : null;
+          const inspectedSet = supplierPackageSet
+            ? await loadPackageMemberInspections(
+              tx,
+              organizationId,
+              caseId,
+              supplierPackageSet,
+            )
+            : null;
+          const nativeArtifactTargets = await loadNativeArtifactTargetReviews(
+            tx,
+            {
+              organizationId,
+              caseId,
+            },
+          );
           let packageSetReviewSha256: string | null = null;
           let packageSetFulfillment: RequestFulfillmentMatrix | undefined;
-          if (inspectedSet && parsed.caseState === 'operations_review' && parsed.inputSnapshot &&
-            inspectedSet.files.every(file => file.latestReview?.status === 'approved' && file.latestReview.fullOutputInspected)) {
+          if (
+            inspectedSet && parsed.caseState === "operations_review" &&
+            parsed.inputSnapshot &&
+            inspectedSet.files.every((file) =>
+              file.latestReview?.status === "approved" &&
+              file.latestReview.fullOutputInspected
+            )
+          ) {
             try {
-              const context = await loadLockedPackageSetReview(tx, { organizationId, caseId, expectedCaseVersion: parsed.caseVersion, expectedSnapshotSha256: parsed.inputSnapshot.sha256 });
-              packageSetReviewSha256 = (await preparePackageSetReview(context)).reviewSha256;
+              const context = await loadLockedPackageSetReview(tx, {
+                organizationId,
+                caseId,
+                expectedCaseVersion: parsed.caseVersion,
+                expectedSnapshotSha256: parsed.inputSnapshot.sha256,
+              });
+              packageSetReviewSha256 =
+                (await preparePackageSetReview(context)).reviewSha256;
               packageSetFulfillment = context.fulfillment;
             } catch (error) {
-              if (!(error instanceof Error) || !['PACKAGE_SET_REVIEW_BLOCKED', 'PACKAGE_SET_REVIEW_STALE'].includes(error.message)) throw error;
+              if (
+                !(error instanceof Error) ||
+                !["PACKAGE_SET_REVIEW_BLOCKED", "PACKAGE_SET_REVIEW_STALE"]
+                  .includes(error.message)
+              ) throw error;
             }
           }
-          return { ...parsed, supplierPackageSet: inspectedSet, packageSetReviewSha256, ...(packageSetFulfillment ? { fulfillment: packageSetFulfillment } : {}) };
+          return {
+            ...parsed,
+            supplierPackageSet: inspectedSet,
+            packageSetReviewSha256,
+            nativeArtifactTargets,
+            ...(packageSetFulfillment
+              ? { fulfillment: packageSetFulfillment }
+              : {}),
+          };
         },
       );
-      const fulfillment = record.fulfillment ?? (options.semanticGate
-        ? await options.semanticGate.load({ organizationId, caseId })
-        : undefined);
+      const fulfillment = record.fulfillment ??
+        (options.semanticGate
+          ? await options.semanticGate.load({ organizationId, caseId })
+          : undefined);
       const supplierPackageSet =
         record.supplierPackageSet && options.signSupplierPackage
           ? {
@@ -809,10 +879,25 @@ export function createPostgresWorkflowViewSource(
             ),
           }
           : record.supplierPackageSet;
+      const nativeArtifactTargets = options.signOriginalSource
+        ? await Promise.all(
+          (record.nativeArtifactTargets ?? []).map(async (review) => ({
+            ...review,
+            sourceDownloadUrl: optionalHttpsUrl(
+              await options.signOriginalSource!(
+                review.sourceBucketId,
+                review.sourceObjectKey,
+                review.contentType,
+              ),
+            ),
+          })),
+        )
+        : record.nativeArtifactTargets;
       if (!record.supplierPackage || !options.signSupplierPackage) {
         return Object.freeze({
           ...record,
           supplierPackageSet,
+          nativeArtifactTargets,
           ...(fulfillment ? { fulfillment } : {}),
         });
       }
@@ -822,6 +907,7 @@ export function createPostgresWorkflowViewSource(
       return Object.freeze({
         ...record,
         supplierPackageSet,
+        nativeArtifactTargets,
         ...(fulfillment ? { fulfillment } : {}),
         supplierPackage: Object.freeze({
           ...record.supplierPackage,

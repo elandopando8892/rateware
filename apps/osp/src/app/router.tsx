@@ -225,7 +225,15 @@ function OperationsReviewWorkspace() {
   const navigate = operationsReviewRoute.useNavigate();
   if (query.isPending || query.fetchStatus !== 'idle') return <WorkflowLoading title="Operations review" message="Loading current evidence package…" />;
   if (query.isError || !query.data) return <WorkflowFailure title="Operations review" />;
-  return <OperationsReviewPage workspace={query.data} conflict={conflict} onSaveInspection={apiClient.savePackageMemberReview ? async input => {
+  return <OperationsReviewPage workspace={query.data} conflict={conflict} onSaveNativeTargets={apiClient.recordNativeArtifactTargets ? async input => {
+    if (!context.approvalSessionFresh()) {
+      await context.reauthenticateForApproval(`/app/cases/${params.caseId}/review`);
+      throw new OspWorkflowError('NO_SESSION');
+    }
+    await apiClient.recordNativeArtifactTargets!(input);
+    const refreshed = await query.refetch();
+    if (refreshed.error) throw refreshed.error;
+  } : undefined} onSaveInspection={apiClient.savePackageMemberReview ? async input => {
     if (!context.approvalSessionFresh()) {
       await context.reauthenticateForApproval(`/app/cases/${params.caseId}/review`);
       throw new OspWorkflowError('NO_SESSION');

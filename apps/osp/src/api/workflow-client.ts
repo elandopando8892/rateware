@@ -8,6 +8,9 @@ import {
   SaveOutboundDraftReceiptSchema,
   SendCommandReceiptSchema,
   type ApprovalCommunicationsWorkspace,
+  NativeArtifactTargetReceiptSchema,
+  type NativeArtifactTarget,
+  type NativeArtifactTargetReceipt,
 } from './contracts';
 
 type WorkflowAuth = Pick<AuthPort, 'getCurrentSession' | 'getAccessToken'> & {
@@ -38,6 +41,7 @@ export type SaveOutboundDraftInput = VersionedCaseBase & {
 
 export type WorkflowClient = {
   savePackageMemberReview?(input: MemberInspectionInput): Promise<{ reviewId: string; reviewVersion: number; replayed: boolean }>;
+  recordNativeArtifactTargets?(input: NativeArtifactTargetsInput): Promise<NativeArtifactTargetReceipt>;
   getApprovalCommunicationsWorkspace(input: { caseId: string; payloadId?: string }): Promise<ApprovalCommunicationsWorkspace>;
   completeOperationsReview(input: CommandBase & { inputSnapshotSha256: string; reviewSha256?: string }): Promise<ApprovalCommandReceipt>;
   approveAndApplySignature(input: CommandBase & { inputSnapshotSha256: string; signaturePositionVersion: number }): Promise<ApprovalCommandReceipt>;
@@ -52,6 +56,11 @@ export type MemberInspectionInput = {
   expectedCaseVersion: number; inputSnapshotSha256: string; setManifestSha256: string; requestManifestSha256: string; outputSha256: string;
   status: 'approved' | 'rejected'; fullOutputInspected: boolean; completionPercent: number | null; pageCount: number | null;
   signatureRequirement: 'none' | 'image' | 'autograph'; signaturePolicyVersion: number | null;
+};
+export type NativeArtifactTargetsInput = {
+  caseId: string; mappingId: string; expectedMappingVersion: number; expectedMappingSha256: string;
+  expectedSourceVersionId: string; expectedSourceSha256: string; idempotencyKey: string;
+  targets: readonly NativeArtifactTarget[];
 };
 const MemberInspectionReceiptSchema = z.strictObject({ data: z.strictObject({ reviewId: z.uuid(), reviewVersion: z.number().int().min(1), replayed: z.boolean() }) });
 
@@ -167,6 +176,15 @@ export function createWorkflowClient(options: WorkflowAuth & { supabaseUrl: stri
   }
 
   return Object.freeze({
+    recordNativeArtifactTargets: async (input: NativeArtifactTargetsInput) => {
+      validateBase({ caseId: input.caseId, expectedVersion: input.expectedMappingVersion, idempotencyKey: input.idempotencyKey });
+      if (!UUID.test(input.mappingId) || !UUID.test(input.expectedSourceVersionId) || !SHA.test(input.expectedMappingSha256) || !SHA.test(input.expectedSourceSha256)) {
+        throw new OspWorkflowError('INVALID_REQUEST');
+      }
+      return (await request([
+        ['action', 'record_native_artifact_targets'],
+      ], 200, NativeArtifactTargetReceiptSchema, true, JSON.stringify(input))).data;
+    },
     savePackageMemberReview: async (input: MemberInspectionInput) => (await request([
       ['action', 'save_package_member_review'],
     ], 200, MemberInspectionReceiptSchema, true, JSON.stringify(input))).data,

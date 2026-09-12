@@ -31,6 +31,11 @@ import {
   approvalCommunicationsWorkspace,
   type WorkflowViewSource,
 } from "./workflow-view.ts";
+import {
+  type NativeArtifactTargetsStore,
+  parseNativeTarget,
+  type RecordNativeArtifactTargetsInput,
+} from "./native-artifact-targets.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -40,6 +45,7 @@ const OPAQUE = /^[A-Za-z0-9:_-]{1,256}$/;
 const REVIEW_BODY_LIMIT = 65_536;
 const OUTBOUND_DRAFT_BODY_LIMIT = 1_048_576;
 const KNOWLEDGE_PROMOTION_BODY_LIMIT = 131_072;
+const NATIVE_TARGET_BODY_LIMIT = 131_072;
 
 type ClarificationStorePort = {
   listForReview(
@@ -91,6 +97,7 @@ export type CaseApiHandlerOptions = {
   clarificationStore: ClarificationStorePort;
   memberReviews?: ReturnType<typeof createPackageMemberReviewStore>;
   packageSetReviews?: ReturnType<typeof createPackageSetOperationsReviewStore>;
+  nativeArtifactTargets?: NativeArtifactTargetsStore;
   approvalActions?: CaseApprovalActions;
   outboundActions?: CaseOutboundActions;
   workflowView?: WorkflowViewSource;
@@ -172,6 +179,10 @@ function exactQuery(
 function preflightHeaders(url: URL): readonly string[] {
   const action = url.searchParams.get("action");
   if (action === "save_package_member_review") {
+    exactQuery(url, ["action"]);
+    return ["authorization", "content-type", "x-osp-approval-proof"];
+  }
+  if (action === "record_native_artifact_targets") {
     exactQuery(url, ["action"]);
     return ["authorization", "content-type", "x-osp-approval-proof"];
   }
@@ -313,6 +324,58 @@ async function requireEmptyBody(request: Request): Promise<void> {
   }
 }
 
+async function nativeTargetBody(
+  request: Request,
+): Promise<RecordNativeArtifactTargetsInput> {
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (
+    request.headers.get("content-type")?.toLowerCase() !== "application/json" ||
+    !Number.isSafeInteger(declared) || declared < 0 ||
+    declared > NATIVE_TARGET_BODY_LIMIT
+  ) throw new OspApiError("INVALID_REQUEST");
+  const text = await request.text();
+  if (text.length < 2 || text.length > NATIVE_TARGET_BODY_LIMIT) {
+    throw new OspApiError("INVALID_REQUEST");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new OspApiError("INVALID_REQUEST");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new OspApiError("INVALID_REQUEST");
+  }
+  const row = parsed as Record<string, unknown>;
+  if (
+    Object.keys(row).sort().join(",") !==
+      "caseId,expectedMappingSha256,expectedMappingVersion,expectedSourceSha256,expectedSourceVersionId,idempotencyKey,mappingId,targets" ||
+    !UUID.test(String(row.caseId)) || !UUID.test(String(row.mappingId)) ||
+    !UUID.test(String(row.expectedSourceVersionId)) ||
+    !SHA.test(String(row.expectedMappingSha256)) ||
+    !SHA.test(String(row.expectedSourceSha256)) ||
+    !OPAQUE.test(String(row.idempotencyKey)) ||
+    !Number.isSafeInteger(row.expectedMappingVersion) ||
+    Number(row.expectedMappingVersion) < 1 || !Array.isArray(row.targets)
+  ) throw new OspApiError("INVALID_REQUEST");
+  let targets;
+  try {
+    targets = row.targets.map((target) => parseNativeTarget(target));
+  } catch {
+    throw new OspApiError("INVALID_REQUEST");
+  }
+  return Object.freeze({
+    caseId: String(row.caseId),
+    mappingId: String(row.mappingId),
+    expectedMappingVersion: Number(row.expectedMappingVersion),
+    expectedMappingSha256: String(row.expectedMappingSha256),
+    expectedSourceVersionId: String(row.expectedSourceVersionId),
+    expectedSourceSha256: String(row.expectedSourceSha256),
+    idempotencyKey: String(row.idempotencyKey),
+    targets: Object.freeze(targets),
+  });
+}
+
 function safeQuestion(value: unknown): ClarificationQuestion {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new OspApiError("INVALID_REQUEST");
@@ -341,7 +404,9 @@ function safeQuestion(value: unknown): ClarificationQuestion {
 }
 
 function clarificationQuestionKey(question: ClarificationQuestion) {
-  return `${question.kind}:${question.fieldId}:${question.question.replace(/\s+/g, " ").toLowerCase()}`;
+  return `${question.kind}:${question.fieldId}:${
+    question.question.replace(/\s+/g, " ").toLowerCase()
+  }`;
 }
 
 async function reviewBody(
@@ -383,12 +448,18 @@ async function reviewBody(
   for (const question of questions.map(safeQuestion)) {
     const key = clarificationQuestionKey(question);
     const previous = grouped.get(key);
-    grouped.set(key, previous
-      ? Object.freeze({
-        ...previous,
-        evidenceIds: Object.freeze([...new Set([...previous.evidenceIds, ...question.evidenceIds])].sort()),
-      })
-      : question);
+    grouped.set(
+      key,
+      previous
+        ? Object.freeze({
+          ...previous,
+          evidenceIds: Object.freeze(
+            [...new Set([...previous.evidenceIds, ...question.evidenceIds])]
+              .sort(),
+          ),
+        })
+        : question,
+    );
   }
   return Object.freeze([...grouped.values()]);
 }
@@ -610,9 +681,16 @@ function attachmentHashes(value: string): readonly string[] {
 
 function serviceError(error: unknown): OspApiError {
   const code = error instanceof Error ? error.message : "";
-  if (code === "INVALID_MEMBER_REVIEW") return new OspApiError("INVALID_REQUEST");
-  if (code === "MEMBER_REVIEW_WRITE_FAILED") return new OspApiError("DEPENDENCY_UNAVAILABLE");
-  if (code === "REQUEST_FULFILLMENT_BLOCKED" || code === "PACKAGE_SET_REVIEW_BLOCKED") {
+  if (code === "INVALID_MEMBER_REVIEW") {
+    return new OspApiError("INVALID_REQUEST");
+  }
+  if (code === "MEMBER_REVIEW_WRITE_FAILED") {
+    return new OspApiError("DEPENDENCY_UNAVAILABLE");
+  }
+  if (
+    code === "REQUEST_FULFILLMENT_BLOCKED" ||
+    code === "PACKAGE_SET_REVIEW_BLOCKED"
+  ) {
     return new OspApiError("FULFILLMENT_BLOCKED");
   }
   if (/^REQUEST_FULFILLMENT_(?:SOURCE_INVALID|INVALID)$/.test(code)) {
@@ -726,10 +804,52 @@ export function createCaseApiHandler(
         throw new OspApiError("INVALID_REQUEST");
       }
       const action = url.searchParams.get("action");
+      if (action === "record_native_artifact_targets") {
+        exactQuery(url, ["action"]);
+        if (!options.nativeArtifactTargets || !options.verifyApprovalToken) {
+          throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+        }
+        const verified = await options.verifyApprovalToken(
+          bearer(request),
+          approvalProof(request),
+          request.signal,
+        );
+        const input = await nativeTargetBody(request);
+        try {
+          const result = await options.nativeArtifactTargets.record(
+            input,
+            verified,
+          );
+          return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+        } catch (error) {
+          if (
+            error instanceof Error && [
+              "VERSION_CONFLICT",
+              "IDEMPOTENCY_CONFLICT",
+              "CASE_FORM_LOCKED",
+              "PACKAGE_SNAPSHOT_NOT_CURRENT",
+            ].includes(error.message)
+          ) return versionConflictResponse(incident(nextIncident), allowed);
+          if (
+            error instanceof Error && [
+              "ARTIFACT_TARGET_INVALID",
+              "ARTIFACT_TARGET_COVERAGE_INVALID",
+              "INVALID_INPUT",
+            ].includes(error.message)
+          ) throw new OspApiError("INVALID_REQUEST");
+          throw error;
+        }
+      }
       if (action === "save_package_member_review") {
         exactQuery(url, ["action"]);
-        if (!options.memberReviews || !options.verifyApprovalToken) throw new OspApiError("DEPENDENCY_UNAVAILABLE");
-        const verified = await options.verifyApprovalToken(bearer(request), approvalProof(request), request.signal);
+        if (!options.memberReviews || !options.verifyApprovalToken) {
+          throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+        }
+        const verified = await options.verifyApprovalToken(
+          bearer(request),
+          approvalProof(request),
+          request.signal,
+        );
         const input = await readMemberReviewInput(request);
         try {
           const result = await options.memberReviews.save({
@@ -743,12 +863,18 @@ export function createCaseApiHandler(
               role: "operations_reviewer",
               active: verified.identity.emailVerified,
               authorizationSessionId: verified.authorizationSessionId,
-              authorizationSessionIssuedAt: verified.authorizationSessionIssuedAt,
+              authorizationSessionIssuedAt:
+                verified.authorizationSessionIssuedAt,
             },
           });
           return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
         } catch (error) {
-          if (error instanceof Error && ["PACKAGE_SET_REVIEW_STALE", "IDEMPOTENCY_CONFLICT"].includes(error.message)) return versionConflictResponse(incident(nextIncident), allowed);
+          if (
+            error instanceof Error &&
+            ["PACKAGE_SET_REVIEW_STALE", "IDEMPOTENCY_CONFLICT"].includes(
+              error.message,
+            )
+          ) return versionConflictResponse(incident(nextIncident), allowed);
           throw error;
         }
       }
@@ -966,21 +1092,44 @@ export function createCaseApiHandler(
         };
         if (action === "complete_operations_review") {
           if (query.review_sha256 !== undefined) {
-            if (!SHA.test(query.review_sha256)) throw new OspApiError("INVALID_REQUEST");
-            if (!options.packageSetReviews) throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+            if (!SHA.test(query.review_sha256)) {
+              throw new OspApiError("INVALID_REQUEST");
+            }
+            if (!options.packageSetReviews) {
+              throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+            }
             try {
               const result = await options.packageSetReviews.complete({
-                organizationId: verified.identity.organization, caseId: query.case_id,
-                expectedCaseVersion, expectedSnapshotSha256: query.input_snapshot_sha256,
-                expectedReviewSha256: query.review_sha256, idempotencyKey: query.idempotency_key,
-                actor: { organizationId: verified.identity.organization, subject: verified.identity.subject,
-                  verifiedEmail: verified.identity.email, permissions: verified.permissions,
-                  role: 'operations_reviewer', active: verified.identity.emailVerified,
-                  authorizationSessionId: verified.authorizationSessionId, authorizationSessionIssuedAt: verified.authorizationSessionIssuedAt },
+                organizationId: verified.identity.organization,
+                caseId: query.case_id,
+                expectedCaseVersion,
+                expectedSnapshotSha256: query.input_snapshot_sha256,
+                expectedReviewSha256: query.review_sha256,
+                idempotencyKey: query.idempotency_key,
+                actor: {
+                  organizationId: verified.identity.organization,
+                  subject: verified.identity.subject,
+                  verifiedEmail: verified.identity.email,
+                  permissions: verified.permissions,
+                  role: "operations_reviewer",
+                  active: verified.identity.emailVerified,
+                  authorizationSessionId: verified.authorizationSessionId,
+                  authorizationSessionIssuedAt:
+                    verified.authorizationSessionIssuedAt,
+                },
               });
-              return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+              return jsonResponse(
+                { data: result },
+                200,
+                postCorsHeaders(allowed),
+              );
             } catch (error) {
-              if (error instanceof Error && ['PACKAGE_SET_REVIEW_STALE', 'IDEMPOTENCY_CONFLICT'].includes(error.message)) return versionConflictResponse(incident(nextIncident), allowed);
+              if (
+                error instanceof Error &&
+                ["PACKAGE_SET_REVIEW_STALE", "IDEMPOTENCY_CONFLICT"].includes(
+                  error.message,
+                )
+              ) return versionConflictResponse(incident(nextIncident), allowed);
               throw error;
             }
           }

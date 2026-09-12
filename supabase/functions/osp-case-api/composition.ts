@@ -16,6 +16,7 @@ import {
 import type { OutboundStorageClient } from "./outbound-draft.ts";
 import { createPostgresWorkflowViewSource } from "./workflow-view.ts";
 import { createPostgresRequestSemanticGate } from "./request-semantic-gate.ts";
+import { createNativeArtifactTargetsStore } from "./native-artifact-targets.ts";
 
 type PostgresFactory = (
   databaseUrl: string,
@@ -129,6 +130,19 @@ export function createCaseApiRuntime(options: {
         return result.data.signedUrl;
       }
       : undefined,
+    signOriginalSource: workflowStorage
+      ? async (bucketId, objectKey, contentType) => {
+        const extension = contentType === "application/pdf" ? "pdf" : "docx";
+        const result = await workflowStorage.storage.from(bucketId)
+          .createSignedUrl(objectKey, 60, {
+            download: `carrier-original.${extension}`,
+          });
+        if (result.error || !result.data?.signedUrl) {
+          throw new Error("WORKFLOW_VIEW_INVALID");
+        }
+        return result.data.signedUrl;
+      }
+      : undefined,
   });
   return createCaseApiHandler({
     approvedPreviewOrigin: options.env.get("OSP_APPROVED_PREVIEW_ORIGIN"),
@@ -140,7 +154,13 @@ export function createCaseApiRuntime(options: {
       sql: sharedDatabase as SqlPort,
       now: () => new Date(options.clock?.() ?? Date.now()),
     }),
-    packageSetReviews: createPackageSetOperationsReviewStore({ sql: sharedDatabase as SqlPort, now: () => new Date(options.clock?.() ?? Date.now()) }),
+    packageSetReviews: createPackageSetOperationsReviewStore({
+      sql: sharedDatabase as SqlPort,
+      now: () => new Date(options.clock?.() ?? Date.now()),
+    }),
+    nativeArtifactTargets: createNativeArtifactTargetsStore({
+      sql: sharedDatabase as SqlPort,
+    }),
     approvalActions,
     outboundActions,
     workflowView,

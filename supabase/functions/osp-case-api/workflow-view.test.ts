@@ -104,6 +104,44 @@ Deno.test("package-set projection exposes every file but no object locators or i
   assertEquals(result.capabilities.approveAndApplySignature, false);
 });
 
+Deno.test("native original URL is limited to Operations and never exposes its storage locator", () => {
+  const native = {
+    state: "ready" as const,
+    mappingId: "66666666-6666-4666-8666-666666666666",
+    mappingVersion: 2,
+    mappingSha256: sha,
+    mappingDecisionId: "77777777-7777-4777-8777-777777777777",
+    sourceVersionId: "88888888-8888-4888-8888-888888888888",
+    sourceSha256: "b".repeat(64),
+    contentType: "application/pdf" as const,
+    sourceBucketId: "supplier-originals",
+    sourceObjectKey: "private-source-key",
+    sourceDownloadUrl: "https://storage.example.test/signed-original",
+    requiredFieldCount: 1,
+    mappedFieldCount: 1,
+    completionPercent: 100,
+    fields: [{
+      canonicalFieldId: "company.name",
+      label: "Legal name",
+      target: { kind: "acroform" as const, canonicalFieldId: "company.name", fieldName: "legal_name" },
+    }],
+  };
+  const operations = approvalCommunicationsWorkspace({
+    ...record,
+    caseState: "operations_review",
+    nativeArtifactTargets: [native],
+  }, baseIdentity);
+  assertEquals(operations.nativeArtifactTargets?.[0]?.sourceDownloadUrl, native.sourceDownloadUrl);
+  assertEquals(JSON.stringify(operations).includes("supplier-originals"), false);
+  assertEquals(JSON.stringify(operations).includes("private-source-key"), false);
+  const reader = approvalCommunicationsWorkspace({
+    ...record,
+    caseState: "operations_review",
+    nativeArtifactTargets: [native],
+  }, { ...baseIdentity, permissions: ["osp:read"] });
+  assertEquals(reader.nativeArtifactTargets?.[0]?.sourceDownloadUrl, null);
+});
+
 Deno.test("workflow view derives mutually exclusive server capabilities and exposes no secret locators", () => {
   const operations = approvalCommunicationsWorkspace(record, baseIdentity);
   assertEquals(operations.capabilities, {
@@ -408,6 +446,7 @@ Deno.test("workflow view exposes the active signature policy before the first ap
   const sql = Object.assign(async (strings: TemplateStringsArray) => {
     const text = strings.join("?");
     if (text.includes("set local")) return [];
+    if (text.includes("candidate.candidate_count")) return [];
     return [{
       organization_id: organizationId,
       case_id: caseId,
@@ -480,6 +519,7 @@ Deno.test("Postgres workflow view is tenant-scoped and rejects malformed rows", 
       const text = strings.join("?");
       calls.push({ text, values });
       if (text.includes("set local statement_timeout")) return [];
+      if (text.includes("candidate.candidate_count")) return [];
       return [{
         organization_id: organizationId,
         case_id: caseId,

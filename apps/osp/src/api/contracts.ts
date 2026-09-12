@@ -641,6 +641,41 @@ export const RequestFulfillmentMatrixSchema = z.strictObject({
   }),
 });
 
+export const NativeArtifactTargetSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('acroform'), canonicalFieldId: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/),
+    fieldName: z.string().min(1).max(256),
+  }),
+  z.strictObject({
+    kind: z.literal('overlay'), canonicalFieldId: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/),
+    page: z.number().int().min(1).max(10_000), x: z.number().min(0).max(100_000), y: z.number().min(0).max(100_000),
+    width: z.number().positive().max(100_000), height: z.number().positive().max(100_000), fontSize: z.number().positive().max(100_000),
+  }),
+  z.strictObject({
+    kind: z.literal('content_control'), canonicalFieldId: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/),
+    targetTag: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/),
+  }),
+]);
+
+export const NativeArtifactTargetReceiptSchema = z.strictObject({ data: z.strictObject({
+  mappingId: z.uuid(), mappingVersion: z.number().int().min(1), mappingSha256: workflowSha,
+  mappingReviewDecisionId: z.uuid(), caseState: z.literal('preparing'), caseVersion: workflowVersion, replayed: z.boolean(),
+}) });
+
+const NativeArtifactTargetReviewSchema = z.strictObject({
+  state: z.enum(['ready', 'missing', 'ambiguous', 'stale', 'persisted']), mappingId: z.uuid(),
+  mappingVersion: z.number().int().min(1), mappingSha256: workflowSha, mappingDecisionId: z.uuid(),
+  sourceVersionId: z.uuid(), sourceSha256: workflowSha,
+  contentType: z.enum(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']),
+  sourceDownloadUrl: z.url().refine(value => new URL(value).protocol === 'https:').nullable(),
+  requiredFieldCount: z.number().int().min(1).max(500), mappedFieldCount: z.number().int().min(0).max(500),
+  completionPercent: z.number().int().min(0).max(100),
+  fields: z.array(z.strictObject({
+    canonicalFieldId: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/), label: z.string().min(1).max(256),
+    target: NativeArtifactTargetSchema.nullable(),
+  })).min(1).max(500),
+});
+
 export const ApprovalCommunicationsWorkspaceSchema = z.strictObject({
   supplierPackageSet: z.strictObject({
     canRecordInspection: z.boolean().optional(),
@@ -662,6 +697,7 @@ export const ApprovalCommunicationsWorkspaceSchema = z.strictObject({
       downloadUrl: z.url().refine((value) => new URL(value).protocol === 'https:').nullable(),
     })).min(1).max(20),
   }).nullable().optional(),
+  nativeArtifactTargets: z.array(NativeArtifactTargetReviewSchema).max(20).optional(),
   caseId: z.uuid(),
   caseVersion: workflowVersion,
   caseState: z.enum([
@@ -958,6 +994,8 @@ export type DocumentVersion = z.infer<typeof DocumentVersionSchema>;
 export type ClarificationQuestion = z.infer<typeof ClarificationQuestionSchema>;
 export type ClarificationReview = z.infer<typeof ClarificationReviewSchema>;
 export type ApprovalCommunicationsWorkspace = z.infer<typeof ApprovalCommunicationsWorkspaceSchema>;
+export type NativeArtifactTarget = z.infer<typeof NativeArtifactTargetSchema>;
+export type NativeArtifactTargetReceipt = z.infer<typeof NativeArtifactTargetReceiptSchema>['data'];
 export type FormTemplateCatalog = z.infer<typeof FormTemplateCatalogResponseSchema>['data'];
 export type FormTemplateCatalogItem = z.infer<typeof FormTemplateCatalogItemSchema>;
 export type FormTemplateMutationReceipt = z.infer<typeof FormTemplateMutationResponseSchema>['data'];

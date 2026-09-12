@@ -148,6 +148,56 @@ describe('WorkflowClient', () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
+  it('records reviewed native targets with exact immutable source and mapping identity', async () => {
+    const mappingId = '55555555-5555-4555-8555-555555555555';
+    const sourceVersionId = '66666666-6666-4666-8666-666666666666';
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect([...new URL(String(input)).searchParams.entries()]).toEqual([
+        ['action', 'record_native_artifact_targets'],
+      ]);
+      expect(init).toMatchObject({
+        method: 'POST',
+        redirect: 'error',
+        headers: {
+          authorization: 'Bearer synthetic-token',
+          'content-type': 'application/json',
+          'x-osp-approval-proof': 'synthetic-id-token',
+        },
+      });
+      expect(JSON.parse(String(init?.body))).toEqual({
+        caseId,
+        mappingId,
+        expectedMappingVersion: 2,
+        expectedMappingSha256: sha,
+        expectedSourceVersionId: sourceVersionId,
+        expectedSourceSha256: 'b'.repeat(64),
+        idempotencyKey: 'native-targets:review-1',
+        targets: [{ kind: 'content_control', canonicalFieldId: 'company.name', targetTag: 'company.name' }],
+      });
+      return new Response(JSON.stringify({ data: {
+        caseState: 'preparing',
+        caseVersion: 8,
+        mappingId: '77777777-7777-4777-8777-777777777777',
+        mappingVersion: 3,
+        mappingSha256: 'c'.repeat(64),
+        mappingReviewDecisionId: '88888888-8888-4888-8888-888888888888',
+        replayed: false,
+      } }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+
+    await expect(client(fetch).recordNativeArtifactTargets?.({
+      caseId,
+      mappingId,
+      expectedMappingVersion: 2,
+      expectedMappingSha256: sha,
+      expectedSourceVersionId: sourceVersionId,
+      expectedSourceSha256: 'b'.repeat(64),
+      idempotencyKey: 'native-targets:review-1',
+      targets: [{ kind: 'content_control', canonicalFieldId: 'company.name', targetTag: 'company.name' }],
+    })).resolves.toMatchObject({ caseState: 'preparing', mappingVersion: 3, replayed: false });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it('fails closed before fetch when the bound approval proof is unavailable', async () => {
     const fetch = vi.fn();
     const workflow = createWorkflowClient({
