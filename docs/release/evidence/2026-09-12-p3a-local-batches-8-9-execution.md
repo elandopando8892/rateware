@@ -1,7 +1,7 @@
 # P3-A local migration execution — batches 8 and 9
 
 **Candidate branch:** `codex/carrier-list-templates`  
-**Candidate SHA before this local-only execution:** `3e087dc12386c68ce70cc38abca79aed06197e0c`  
+**Committed candidate SHA before this local-only execution:** `3e087dc12386c68ce70cc38abca79aed06197e0c`  
 **Environment:** `rateware-carrier-local-v1`, loopback-only Docker containers
 
 ## Scope and safety boundary
@@ -10,6 +10,12 @@ This execution used the existing isolated PostgreSQL container only. It did not
 contact a hosted Supabase project, Vercel, Google, Gmail, Meta/WhatsApp, or any
 production endpoint. The runner only permits its exact local container and
 requires the local business tables to be empty before every application.
+
+The batch-8/9 runner definitions and their focused tests were already local,
+uncommitted worktree changes when this run began. They were intentionally not
+staged, altered, or represented as part of the committed candidate SHA above.
+This report records local execution evidence only; promotion requires those
+changes to be independently reviewed and committed in their owning change.
 
 The pre-existing historical vendor import remains explicitly excluded from this
 local environment. It was not executed and is still represented by one
