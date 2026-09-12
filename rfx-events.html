@@ -815,10 +815,6 @@
                   </section>
                   <form id="rfx-outreach-form" class="rfx-outreach-form" data-unsaved-guard>
                     <label>
-                      Wave name
-                      <input id="rfx-outreach-campaign-name" placeholder="RFx invitation wave" />
-                    </label>
-                    <label>
                       Message language
                       <select id="rfx-outreach-template"></select>
                     </label>
@@ -831,23 +827,32 @@
                       </select>
                       <small>Generate one channel at a time. Gmail, WhatsApp Business, and WhatsApp groups use separate queues.</small>
                     </label>
-                    <label id="rfx-whatsapp-target-mode-field">
-                      WhatsApp contact
-                      <select id="rfx-whatsapp-target-mode">
-                        <option value="direct_vendor">Direct vendor contact</option>
-                        <option value="vendor_group">Vendor group only</option>
-                        <option value="direct_and_group">Direct + vendor group</option>
-                      </select>
-                    </label>
-                    <label id="rfx-outreach-sender-field">
-                      Sender
-                      <select id="rfx-outreach-sender">
-                        <option value="sales@heymarksman.com">sales@heymarksman.com</option>
-                      </select>
-                    </label>
+                    <details class="rfx-message-secondary-settings">
+                      <summary>More message settings</summary>
+                      <div class="rfx-message-secondary-settings-grid">
+                        <label>
+                          Wave name
+                          <input id="rfx-outreach-campaign-name" placeholder="RFx invitation wave" />
+                        </label>
+                        <label id="rfx-whatsapp-target-mode-field">
+                          WhatsApp contact
+                          <select id="rfx-whatsapp-target-mode">
+                            <option value="direct_vendor">Direct vendor contact</option>
+                            <option value="vendor_group">Vendor group only</option>
+                            <option value="direct_and_group">Direct + vendor group</option>
+                          </select>
+                        </label>
+                        <label id="rfx-outreach-sender-field">
+                          Sender
+                          <select id="rfx-outreach-sender">
+                            <option value="sales@heymarksman.com">sales@heymarksman.com</option>
+                          </select>
+                        </label>
+                      </div>
+                    </details>
                     <div class="action-row rfx-message-queue-actions">
                       <button id="create-rfx-outreach-campaign" type="submit" disabled>Prepare delivery queue</button>
-                      <button id="rfx-open-delivery-queue" class="secondary" type="button" disabled>Open delivery queue</button>
+                      <button id="rfx-open-delivery-queue" class="secondary small-button rfx-open-delivery-queue-secondary" type="button" disabled>Review delivery queue</button>
                     </div>
                     <p id="rfx-outreach-status" class="status-message" role="status"></p>
                   </form>
@@ -921,8 +926,8 @@
                   <div id="rfx-event-delivery-overview" class="rfx-event-delivery-overview" aria-live="polite"></div>
                   <section id="rfx-delivery-wave-state" class="rfx-delivery-wave-state" aria-live="polite"></section>
                   <div class="rfx-delivery-view-tabs" role="tablist" aria-label="Delivery queue views">
-                    <button type="button" class="is-active" role="tab" aria-selected="true" data-rfx-delivery-view="participation">Carrier status <span>Who needs action</span></button>
-                    <button type="button" role="tab" aria-selected="false" data-rfx-delivery-view="queue">Message queue <span>Review and release drafts</span></button>
+                    <button type="button" role="tab" aria-selected="false" data-rfx-delivery-view="participation">Carrier status <span>Who needs action</span></button>
+                    <button type="button" class="is-active" role="tab" aria-selected="true" data-rfx-delivery-view="queue">Message queue <span>Needs review and release</span></button>
                   </div>
                   <section class="rfx-delivery-view-panel" data-rfx-delivery-view-panel="participation" role="tabpanel">
                   <section class="rfx-delivery-participation-panel" aria-label="RFx carrier participation">
@@ -960,7 +965,7 @@
                     </div>
                   </section>
                   </section>
-                  <section class="rfx-delivery-view-panel" data-rfx-delivery-view-panel="queue" role="tabpanel" hidden>
+                  <section class="rfx-delivery-view-panel" data-rfx-delivery-view-panel="queue" role="tabpanel">
                   <div class="rfx-wave-workspace-heading">
                     <div>
                       <p class="rfx-wave-breadcrumb">Launch <span>/</span> Bid Room <span>/</span> <b id="rfx-wave-breadcrumb-event">RFx</b></p>
@@ -1012,15 +1017,17 @@
                   <div class="rfx-draft-actions">
                     <span id="rfx-draft-selection-label" class="status-pill muted">0 selected</span>
                     <button id="rfx-select-all-email-drafts" type="button" class="secondary small-button">Select sendable page</button>
-                    <button id="rfx-clear-draft-selection" type="button" class="secondary small-button">Clear</button>
-                    <button id="rfx-refresh-selected-drafts" type="button" class="secondary small-button" disabled>Refresh selected</button>
                     <button id="rfx-send-selected-email-drafts" type="button" class="small-button" data-rfx-draft-action-channel="email" disabled>Send selected emails</button>
-                    <button id="rfx-send-selected-whatsapp-drafts" type="button" class="secondary small-button" data-rfx-draft-action-channel="whatsapp" disabled>Send WhatsApp direct</button>
-                    <button id="rfx-mark-selected-whatsapp-groups" type="button" class="secondary small-button" data-rfx-draft-action-channel="whatsapp_group" disabled>Mark groups sent</button>
-                    <button id="rfx-archive-selected-drafts" type="button" class="secondary small-button" title="Hides delivery messages from the active queue. It does not remove carriers, bids, replies, or RFx history." disabled>Archive messages</button>
                     <details class="rfx-draft-more-actions">
-                      <summary>More</summary>
-                      <button id="rfx-delete-selected-drafts" type="button" class="danger small-button" disabled>Delete selected</button>
+                      <summary>More actions</summary>
+                      <div class="rfx-draft-more-actions-panel">
+                        <button id="rfx-clear-draft-selection" type="button" class="secondary small-button">Clear</button>
+                        <button id="rfx-refresh-selected-drafts" type="button" class="secondary small-button" disabled>Refresh selected</button>
+                        <button id="rfx-send-selected-whatsapp-drafts" type="button" class="secondary small-button" data-rfx-draft-action-channel="whatsapp" disabled>Send WhatsApp direct</button>
+                        <button id="rfx-mark-selected-whatsapp-groups" type="button" class="secondary small-button" data-rfx-draft-action-channel="whatsapp_group" disabled>Mark groups sent</button>
+                        <button id="rfx-archive-selected-drafts" type="button" class="secondary small-button" title="Hides delivery messages from the active queue. It does not remove carriers, bids, replies, or RFx history." disabled>Archive messages</button>
+                        <button id="rfx-delete-selected-drafts" type="button" class="danger small-button" disabled>Delete selected</button>
+                      </div>
                     </details>
                   </div>
                   <div class="table-wrap rfx-draft-table-wrap">

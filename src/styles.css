@@ -39453,6 +39453,91 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   padding: 8px 2px 7px;
 }
 
+.bid-room-page .rfx-message-secondary-settings,
+.bid-room-page .rfx-wave-advanced-filters {
+  border: 1px solid var(--rw-slate-200, #d3d3cf);
+  border-radius: 5px;
+  background: var(--rw-slate-25, #f7f7f5);
+}
+
+.bid-room-page .rfx-message-secondary-settings > summary,
+.bid-room-page .rfx-wave-advanced-filters > summary {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  list-style: none;
+  padding: 5px 9px;
+  color: var(--rw-slate-600, #484848);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.bid-room-page .rfx-message-secondary-settings > summary::-webkit-details-marker,
+.bid-room-page .rfx-wave-advanced-filters > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bid-room-page .rfx-message-secondary-settings > summary::after,
+.bid-room-page .rfx-wave-advanced-filters > summary::after {
+  color: var(--rw-brand-600, #c94b1f);
+  content: "+";
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.bid-room-page .rfx-message-secondary-settings[open] > summary,
+.bid-room-page .rfx-wave-advanced-filters[open] > summary {
+  border-bottom: 1px solid var(--rw-slate-200, #d3d3cf);
+}
+
+.bid-room-page .rfx-message-secondary-settings[open] > summary::after,
+.bid-room-page .rfx-wave-advanced-filters[open] > summary::after {
+  content: "−";
+}
+
+.bid-room-page .rfx-message-secondary-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 8px;
+  padding: 8px;
+}
+
+.bid-room-page .rfx-open-delivery-queue-secondary {
+  min-height: 30px;
+}
+
+.bid-room-page .rfx-draft-more-actions-panel {
+  position: absolute;
+  z-index: 12;
+  right: 0;
+  top: calc(100% + 4px);
+  display: grid;
+  min-width: 190px;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--rw-slate-200, #d3d3cf);
+  border-radius: 5px;
+  background: #fff;
+  box-shadow: 0 12px 24px rgba(30, 30, 30, 0.14);
+}
+
+.bid-room-page .rfx-draft-more-actions-panel button {
+  width: 100%;
+  text-align: left;
+}
+
+.bid-room-page .rfx-draft-more-actions[open] {
+  position: relative;
+}
+
+@media (max-width: 900px) {
+  .bid-room-page .rfx-message-secondary-settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 900px) {
   .bid-room-page .bid-room-compact-summary {
     grid-template-columns: 1fr;
@@ -39478,6 +39563,10 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
 }
 
 @media (max-width: 600px) {
+  .bid-room-page .rfx-message-secondary-settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .bid-room-page .rfx-outreach-advanced-filter-grid {
     grid-template-columns: minmax(0, 1fr);
   }
