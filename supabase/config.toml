@@ -423,3 +423,6 @@ verify_jwt = false
 
 [functions.shipper-directory-api]
 verify_jwt = false
+
+[functions.website-lead-intake]
+verify_jwt = false
