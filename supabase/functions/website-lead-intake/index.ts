@@ -2,12 +2,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
-const INTAKE_HMAC_SECRET = (Deno.env.get("WEBSITE_LEAD_INTAKE_HMAC_SECRET") || "").trim();
 const GMAIL_ALLOWED_SENDER = (Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@heymarksman.com").trim().toLowerCase();
 const GMAIL_TOKEN_ENCRYPTION_KEY = (Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY") || "").trim();
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
 const MAX_BODY_BYTES = 16 * 1024;
+const WEBSITE_INTAKE_PUBLIC_KEY = "MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAw7toUjkst+hWHoUsJJSc1rPgOdoh/9aIaZP9/6RVzse0ev8wcvEEZ6JaRDvZI07R0JaSf9L5Esc15kG9tfiYV8zqbGS8sbJ4lAvDKHw3xFHx0H8qm31EGmz8nBzBed/9cqM1BFf9mGPm3NKLFp6ZyMA3WtCHYmIXubXacaECxgLqICo5lJg2uTAnP2R+344jg13bJUnx/9zWiVnlqlk+39cPB4/kHSGztJ2he7cZHfkonVyzPwKNYcEHIcRDq6OKnMmmD0VCHLthhbll9XtXUmJnIyuAMKZWX7YfL3616uG0pu/vXa1X3GjxKTV+yQ0MutqWMyOjlPWi0bWDSC3rQwsbokYpFB0ic0O4yDetkENE9chnzeIDH55w54SxbmTSo3mKflni5+HogqNpU1fv9Vgw3ZerJ2+GlfIFQJTinrDHSRSdIHzI8H+ngfzfmKAv0t46JMerGNUqZeLkCK87JARcTP2JPf1HxAeyG2qJm7Ycs0W8Bd072OHHRC0XSq5xAgMBAAE=";
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error("Rateware service role is not configured.");
@@ -41,24 +41,22 @@ function hex(buffer: ArrayBuffer) {
   return [...new Uint8Array(buffer)].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
-function constantTimeEquals(left: string, right: string) {
-  if (!left || left.length !== right.length) return false;
-  let difference = 0;
-  for (let index = 0; index < left.length; index += 1) difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  return difference === 0;
+function base64UrlToBytes(value: string) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  return base64ToBytes(normalized);
 }
 
 async function signed(raw: string, signature: string) {
-  if (!INTAKE_HMAC_SECRET || !signature) return false;
+  const encoded = signature.replace(/^rsa-sha256=/i, "");
+  if (!encoded || encoded === signature) return false;
   const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(INTAKE_HMAC_SECRET),
-    { name: "HMAC", hash: "SHA-256" },
+    "spki",
+    base64ToBytes(WEBSITE_INTAKE_PUBLIC_KEY),
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
-    ["sign"]
+    ["verify"]
   );
-  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(raw));
-  return constantTimeEquals(hex(digest), signature.replace(/^sha256=/i, ""));
+  return crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, base64UrlToBytes(encoded), new TextEncoder().encode(raw));
 }
 
 async function sha256(raw: string) {
