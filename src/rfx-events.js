@@ -5194,6 +5194,7 @@ function renderEventFlow() {
 
 function renderRfxOpsStrip() {
   if (!rfxOpsSubtitle || !rfxOpsHealth) return;
+  document.body.classList.toggle("has-selected-rfx", Boolean(selectedEvent));
   renderOpsStageRail();
   renderOpsNextAction();
   renderBidRoomLaunchReadiness();
@@ -6928,9 +6929,9 @@ function eventInvitationNextAction(row = {}, status = eventInvitationStatus(row)
   })[status] || "Review";
 }
 
-let activeRfxDeliveryView = "participation";
+let activeRfxDeliveryView = "queue";
 
-function activateRfxDeliveryView(view = "participation") {
+function activateRfxDeliveryView(view = "queue") {
   const nextView = view === "queue" ? "queue" : "participation";
   activeRfxDeliveryView = nextView;
   document.body.classList.toggle("rfx-wave-review-active", nextView === "queue");

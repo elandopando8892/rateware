@@ -39620,6 +39620,128 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   }
 }
 
+/* Bid Room execution mode: one event, one path, one primary action. */
+.bid-room-page .rfx-safety-boundary {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+}
+
+.bid-room-page.has-selected-rfx .rw-operate-heading,
+.bid-room-page.has-selected-rfx .p55-v3-context-banner,
+.bid-room-page.has-selected-rfx .bid-room-event-filter-strip,
+.bid-room-page.has-selected-rfx .bid-room-event-rail .split-heading,
+.bid-room-page.has-selected-rfx .bid-room-next-action,
+.bid-room-page.has-selected-rfx .bid-room-stage-panel:not([hidden]) > .bid-room-stage-header {
+  display: none;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-event-rail {
+  padding: 5px 7px;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-flow-shell {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-stage-rail {
+  position: static;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--rw-slate-200, #d3d3cf);
+  border-radius: 6px;
+  background: var(--rw-slate-25, #f7f7f5);
+}
+
+.bid-room-page.has-selected-rfx .bid-room-stage-rail button {
+  min-height: 44px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-stage-rail button[aria-selected="true"] {
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(30, 30, 30, 0.14);
+}
+
+.bid-room-page.has-selected-rfx .bid-room-stage-rail .stage-index,
+.bid-room-page.has-selected-rfx .bid-room-stage-rail small,
+.bid-room-page.has-selected-rfx #rfx-ops-subtitle,
+.bid-room-page.has-selected-rfx .bid-room-metrics small,
+.bid-room-page .rfx-outreach-section-heading > div > span,
+.bid-room-page .rfx-message-readiness-copy small,
+.bid-room-page .rfx-message-workspace-footer > span,
+.bid-room-page .rfx-delivery-participation-heading > span,
+.bid-room-page .rfx-wave-workspace-context {
+  display: none;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-event-overview {
+  padding-block: 7px;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-metrics {
+  gap: 4px;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-metrics article {
+  min-height: auto;
+  padding: 5px 8px;
+}
+
+.bid-room-page .rfx-channel-readiness-details {
+  border: 1px solid var(--rw-slate-200, #d3d3cf);
+  border-radius: 5px;
+  background: var(--rw-slate-25, #f7f7f5);
+}
+
+.bid-room-page .rfx-channel-readiness-details > summary {
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 10px;
+  color: var(--rw-slate-600, #484848);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.bid-room-page .rfx-channel-readiness-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bid-room-page .rfx-channel-readiness-details > summary::after {
+  float: right;
+  color: var(--rw-brand-500, #ea5e27);
+  content: "+";
+}
+
+.bid-room-page .rfx-channel-readiness-details[open] > summary::after {
+  content: "−";
+}
+
+.bid-room-page .rfx-channel-readiness-details .gmail-sender-note {
+  margin: 0 8px 8px;
+}
+
+@media (max-width: 700px) {
+  .bid-room-page.has-selected-rfx .bid-room-stage-rail {
+    grid-template-columns: repeat(4, minmax(68px, 1fr));
+    overflow-x: auto;
+  }
+
+  .bid-room-page.has-selected-rfx .bid-room-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .rateware-login-card {
   display: grid;
   gap: 16px;

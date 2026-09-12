@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rateware Bid Room</title>
-    <link rel="stylesheet" href="./src/styles.css?v=20260912-rfx-ux-luna-s2" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260912-rfx-simple-flow" />
     <link rel="stylesheet" href="./src/platform55-tokens.css" />
     <link rel="stylesheet" href="./src/platform55-shell.css" />
     <link rel="stylesheet" href="./src/platform55-procurement.css" />
@@ -142,11 +142,6 @@
                   <article><span>Lanes</span><strong>0</strong><small>Paste or import the book.</small></article>
                   <article><span>Targets</span><strong>0</strong><small>No carriers shortlisted.</small></article>
                   <article><span>Bids</span><strong>0</strong><small>No live offers yet.</small></article>
-                </div>
-                <div class="bid-room-compact-summary" aria-label="RFx progress summary">
-                  <span class="eyebrow">Guided progress</span>
-                  <span>Follow the next action below. Carrier Fit, Message, and Delivery Queue remain human-gated.</span>
-                  <span class="status-pill neutral">Confirmation required</span>
                 </div>
               </div>
               <p id="rfx-action-status" class="row-save-status bid-room-action-status" role="status"></p>
@@ -774,14 +769,7 @@
               </div>
               </section>
               <section id="rfx-launch-message-workspace" class="rfx-launch-workspace-panel" data-rfx-launch-workspace-panel="message" role="tabpanel" hidden>
-              <header class="rfx-message-workspace-header">
-                <div>
-                  <p class="eyebrow">Guided wave review</p>
-                  <h4>Review the invitation wave</h4>
-                  <span>Check every selected carrier, preview the personalized message, then prepare drafts for Delivery queue.</span>
-                </div>
-                <span class="status-pill neutral">No invitations are sent here</span>
-              </header>
+              <p class="rfx-safety-boundary">No invitations are sent here</p>
               <div class="rfx-outreach-grid bid-room-invite-grid">
                 <aside class="rfx-message-recipient-panel" aria-labelledby="rfx-message-recipient-title">
                   <div class="rfx-message-recipient-heading">
@@ -856,16 +844,19 @@
                     </div>
                     <p id="rfx-outreach-status" class="status-message" role="status"></p>
                   </form>
-                  <section id="rfx-whatsapp-readiness" class="gmail-sender-note whatsapp-template-readiness">
-                    <div>
-                      <strong>WhatsApp Business readiness</strong>
-                      <span id="rfx-whatsapp-template-readiness-copy">Only applies when the WhatsApp Business channel is selected. Gmail queues do not depend on WhatsApp status. Generate draft queue creates or reuses the Meta notifier automatically.</span>
-                    </div>
-                  </section>
-                  <section id="rfx-gmail-sender-note" class="gmail-sender-note">
-                    <strong>Gmail sending model</strong>
-                    <span>Launch uses sales@heymarksman.com as the only approved sender. Connect it in Settings before direct Gmail sending.</span>
-                  </section>
+                  <details class="rfx-channel-readiness-details">
+                    <summary>Channel readiness</summary>
+                    <section id="rfx-whatsapp-readiness" class="gmail-sender-note whatsapp-template-readiness">
+                      <div>
+                        <strong>WhatsApp Business readiness</strong>
+                        <span id="rfx-whatsapp-template-readiness-copy">Only applies when the WhatsApp Business channel is selected. Gmail queues do not depend on WhatsApp status. Generate draft queue creates or reuses the Meta notifier automatically.</span>
+                      </div>
+                    </section>
+                    <section id="rfx-gmail-sender-note" class="gmail-sender-note">
+                      <strong>Gmail</strong>
+                      <span>Launch uses sales@heymarksman.com as the approved sender. Connect it in Settings before direct Gmail sending.</span>
+                    </section>
+                  </details>
                   <details id="rfx-template-editor" class="rfx-template-editor is-source-admin">
                     <summary>Advanced HTML override</summary>
                     <div class="rfx-template-editor-body">
@@ -913,7 +904,7 @@
               </section>
               <section id="rfx-launch-delivery-workspace" class="rfx-launch-workspace-panel" data-rfx-launch-workspace-panel="delivery" role="tabpanel" hidden>
               <div class="rfx-touchpoint-panel rfx-draft-queue-panel">
-                <div class="rfx-draft-queue-intro rfx-delivery-control-header">
+                <div class="rfx-draft-queue-intro rfx-delivery-control-header rfx-safety-boundary" aria-live="polite">
                   <div>
                     <p class="eyebrow">Delivery control</p>
                     <strong>Review every carrier before release</strong>
@@ -929,7 +920,7 @@
                     <button type="button" role="tab" aria-selected="false" data-rfx-delivery-view="participation">Carrier status <span>Who needs action</span></button>
                     <button type="button" class="is-active" role="tab" aria-selected="true" data-rfx-delivery-view="queue">Message queue <span>Needs review and release</span></button>
                   </div>
-                  <section class="rfx-delivery-view-panel" data-rfx-delivery-view-panel="participation" role="tabpanel">
+                  <section class="rfx-delivery-view-panel" data-rfx-delivery-view-panel="participation" role="tabpanel" hidden>
                   <section class="rfx-delivery-participation-panel" aria-label="RFx carrier participation">
                     <div class="rfx-delivery-participation-heading">
                       <div>
