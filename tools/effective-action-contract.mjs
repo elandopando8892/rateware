@@ -36,7 +36,7 @@ const legacyAuthorizationOverrides = Object.fromEntries([
 // P3 implementation-ready concurrency guard adds a reviewed local dependency
 // to the shared rateware-api authorization envelope without changing tenant or
 // permission semantics.
-const ratewareApiEnvelope = '5aabd3ac9b5217b539bce429b366d2b472884bbc0a9bf5defa34d796a6d0025a';
+const ratewareApiEnvelope = '29371be6c690450a1887fca1bfc10139cb92885969a8fa5793469fdf58d149fa';
 const ratewareApiAuthorizationOverrides = Object.fromEntries([
   ...BASE_ACTION_CONTRACT.surfaces,
   ...carrierTemplateExtension.surfaces,
@@ -84,7 +84,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-oauth-callback.': '42e3f4a12c47a5a625a170ddea2114af427443b47fe549b26cf9669044e0a922',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '69ec235aa42433e8cb965824a8957aff79d73fa6fce07949c70b553865b04230',
-  'edge.rateware-api.': '5aabd3ac9b5217b539bce429b366d2b472884bbc0a9bf5defa34d796a6d0025a',
+  'edge.rateware-api.': '29371be6c690450a1887fca1bfc10139cb92885969a8fa5793469fdf58d149fa',
   'edge.rfx-bid-api.': '4d6aab31957e1d8fb3fa539280a6a6e1c02d0cb1af74ce42aa09505f73c32ea2',
   'edge.shipper-directory-api.': '2ed2be9625112a914b7be5b5bc14df77f417257d2644dcdd089e0dc3a22d7d7b',
   'edge.shipper-profile-api.': '83cb7dff313890a43cbd6b0e12faa58c7beaf720d8288c186536f9e44676b12a',
@@ -100,9 +100,9 @@ const ratewareApiSourceFingerprintOverrides = {
   'edge.rateware-api.create_rfx_award_package': '378f73423f4726da85dfc4c453be98f50d3f86c7da6a9f3af9a68267441fe4d6',
   'edge.rateware-api.create_vendor_segment': '8e6a444366bfa108430e02fdf8dffbbf11a0ab0e4e102d4687f6e589f809aa69',
   'edge.rateware-api.delete_vendor_segment': '792ce2b10566c1be41064ef07f5e818088fb1f16596433d88fdb7c0fbec972d2',
-  // 7f8df29 only raises the bounded lane-expanded invitation-id limit from
-  // 5,000 to 50,000; preserve the reviewed identity of that handler segment.
-  'edge.rateware-api.generate_outreach_drafts': 'be536036f5151ae4b4280bd63f45fdb807480748e81cf1eb09b3146c0f473828',
+  // The reviewed stability packets separate Meta publication from draft
+  // preparation and add bounded, deterministic carrier-lane hydration.
+  'edge.rateware-api.generate_outreach_drafts': 'a94ce49aabdbfa2a891518d7972a3001b4f74e7aaeb0bfbd0eac85a3043592c4',
   'edge.rateware-api.list_vendor_segments': '79d6ff15b7b7a0bcbf8e580baaed1b11575d56c38cc4034fb9b80a8891814128',
   'edge.rateware-api.list_vendors': '6aaccab686ecae9b04492be99175863f452cd0633bbe426a651ed310968faeef',
   'edge.rateware-api.send_bid_room_carrier_message': '3a8bc0f06e4f577effffd6e35350e73925fd9153db71a25266b35f40b81b7fe0',
@@ -325,6 +325,9 @@ const verifiedSupabasePermissionEnvelopes = {
   'edge.rateware-api.': [
     'f33f4f2aa01ed02aa48583074c0c982709da142f211912674adfd66950cb305f',
     'f24fb7cf56194b80654fbd04d970190b3910d6f816d07866d9aa12ed05bd9469',
+    // 79d6e464 keeps the same Supabase authorization boundary while adding
+    // deterministic, bounded outreach hydration as a reviewed dependency.
+    '29371be6c690450a1887fca1bfc10139cb92885969a8fa5793469fdf58d149fa',
   ],
 };
 const verifiedSupabasePermissionOverrides = Object.fromEntries(
@@ -346,7 +349,7 @@ const previewCorsAuthorizationEnvelopes = {
   'edge.provider-gmail-intake-api.': ['3e0a70cb989fa0a2dd14a1d97f4ad47c475bd1c28f44f2550c3eef28228bbeff', '6e77c28679bde62b1ad0ceb42e3da91bd1e4ceef494686aa94b6373867e884ce'],
   'edge.provider-gmail-oauth-callback.': ['42e3f4a12c47a5a625a170ddea2114af427443b47fe549b26cf9669044e0a922', 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a'],
   'edge.ratebook-carrier-api.': ['69ec235aa42433e8cb965824a8957aff79d73fa6fce07949c70b553865b04230', '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84'],
-  'edge.rateware-api.': ['f33f4f2aa01ed02aa48583074c0c982709da142f211912674adfd66950cb305f', 'f24fb7cf56194b80654fbd04d970190b3910d6f816d07866d9aa12ed05bd9469', '7e271f8bf370078131ddd915437f13d9569d24c89cee5611a90933ef94b5a9a9'],
+  'edge.rateware-api.': ['f33f4f2aa01ed02aa48583074c0c982709da142f211912674adfd66950cb305f', 'f24fb7cf56194b80654fbd04d970190b3910d6f816d07866d9aa12ed05bd9469', '7e271f8bf370078131ddd915437f13d9569d24c89cee5611a90933ef94b5a9a9', '29371be6c690450a1887fca1bfc10139cb92885969a8fa5793469fdf58d149fa'],
   'edge.rfx-bid-api.': ['4d6aab31957e1d8fb3fa539280a6a6e1c02d0cb1af74ce42aa09505f73c32ea2', 'f370ea535a7ee417082e93870328a8dec18c08c43ab3f7fb6f97263f07b331c0'],
   'edge.shipper-directory-api.': ['f0e12cfcf91b7365af43fffc21c151fb4e67b3c8b6fe3c934be8c1f33fc8e2cd', '01b2971e3f0acf74fbcabec89988e2e0181864c5ced09fcd17113b58587e7549'],
   'edge.shipper-profile-api.': ['83cb7dff313890a43cbd6b0e12faa58c7beaf720d8288c186536f9e44676b12a', '501f2bec390dab9ecce5b9e6aac016683fb51d2c9f8afc0217b097912fe36949'],
