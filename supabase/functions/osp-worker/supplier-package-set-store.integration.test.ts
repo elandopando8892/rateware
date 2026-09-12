@@ -392,11 +392,12 @@ Deno.test("package-set persistence uses real SQL, tenant role and atomic publica
           add column mapping_refs jsonb, add column field_evidence_refs jsonb default '[]';
         create table osp_private.supplier_package_generation_runs (id uuid, organization_id uuid, input_snapshot_id uuid);
         create table osp_private.case_form_instances (id uuid,organization_id uuid,case_id uuid,version integer,values_json jsonb);
-        create table osp_private.supplier_form_mappings (id uuid,organization_id uuid,case_id uuid,template_version_id uuid,extraction_id uuid,status text,review_decision_id uuid,version integer,after_sha256 text,mapping_json jsonb);
+        create table osp_private.supplier_form_mappings (id uuid,organization_id uuid,case_id uuid,template_version_id uuid,extraction_id uuid,status text,review_decision_id uuid,version integer,before_sha256 text,after_sha256 text,mapping_json jsonb);
+        create table osp_private.review_decisions (id uuid,organization_id uuid,case_id uuid,subject_kind text,subject_id uuid,decision text,before_sha256 text,after_sha256 text);
         create table osp_private.document_extractions (id uuid,organization_id uuid,case_id uuid,source_version_id uuid,status text);
         create table osp_private.form_fields (id uuid,organization_id uuid,template_version_id uuid,field_key text,definition_json jsonb,position integer);
         create table osp_private.extraction_fields (id uuid,organization_id uuid,extraction_id uuid,field_key text,evidence_json jsonb);
-        grant select on osp_private.supplier_package_generation_runs,osp_private.case_form_instances,osp_private.supplier_form_mappings,osp_private.document_extractions,osp_private.form_fields,osp_private.extraction_fields,osp_private.customer_registration_cases to osp_worker;
+        grant select on osp_private.supplier_package_generation_runs,osp_private.case_form_instances,osp_private.supplier_form_mappings,osp_private.review_decisions,osp_private.document_extractions,osp_private.form_fields,osp_private.extraction_fields,osp_private.customer_registration_cases to osp_worker;
         grant select on osp_private.case_package_input_snapshots,osp_private.document_versions to osp_workflow_api;
       `);
         const four = await createInput(4);
@@ -405,15 +406,16 @@ Deno.test("package-set persistence uses real SQL, tenant role and atomic publica
           mappingVersion: "1",
           mappingSha256: "e".repeat(64),
           extractionId: id(50 + n),
-          reviewDecisionId: id(7),
+          reviewDecisionId: id(70 + n),
         }));
         await db.query(
-          "update osp_private.case_package_input_snapshots set template_version_id=$1,form_instance_id=$2,extraction_ids=$3,mapping_refs=$4 where id=$5",
+          "update osp_private.case_package_input_snapshots set template_version_id=$1,form_instance_id=$2,extraction_ids=$3,mapping_refs=$4,review_decision_ids=$5 where id=$6",
           [
             id(30),
             id(31),
             [id(55), id(56)],
             JSON.stringify(refs),
+            [id(75), id(76)],
             four.input.snapshotId,
           ],
         );
@@ -436,14 +438,51 @@ Deno.test("package-set persistence uses real SQL, tenant role and atomic publica
             [id(50 + n), org, caseId, id(n)],
           );
           await db.query(
-            "insert into osp_private.supplier_form_mappings values ($1,$2,$3,$4,$5,'accepted',$6,1,$7,'{}')",
+            "insert into osp_private.supplier_form_mappings values ($1,$2,$3,$4,$5,'accepted',$6,1,$7,$8,$9)",
             [
               id(40 + n),
               org,
               caseId,
               id(30),
               id(50 + n),
-              id(7),
+              id(70 + n),
+              "d".repeat(64),
+              "e".repeat(64),
+              JSON.stringify({
+                artifactTargetSchemaVersion: 1,
+                artifactTargetSource: {
+                  sourceVersionId: id(n),
+                  sourceSha256: sourceSha,
+                },
+                artifactTargets: [
+                  n === 5
+                    ? {
+                      kind: "acroform",
+                      canonicalFieldId: "company.name",
+                      fieldName: "name",
+                    }
+                    : {
+                      kind: "overlay",
+                      canonicalFieldId: "company.name",
+                      page: 1,
+                      x: 20,
+                      y: 20,
+                      width: 200,
+                      height: 14,
+                      fontSize: 10,
+                    },
+                ],
+              }),
+            ],
+          );
+          await db.query(
+            "insert into osp_private.review_decisions values ($1,$2,$3,'form_mapping',$4,'accepted',$5,$6)",
+            [
+              id(70 + n),
+              org,
+              caseId,
+              id(40 + n),
+              "d".repeat(64),
               "e".repeat(64),
             ],
           );

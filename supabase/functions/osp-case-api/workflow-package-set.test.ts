@@ -70,6 +70,12 @@ async function fixture() {
         version: 1,
         outputSha256: "d".repeat(64),
         contentType: "application/pdf",
+        mappings: [{
+          kind: "pdf_overlay",
+          mappingDecisionId: id(n + 20),
+          canonicalFieldId: `field_${n}`,
+          target: `page:1:${n}`,
+        }],
       },
     })),
   };
@@ -90,6 +96,50 @@ Deno.test("package-set view retains every independently identified file", async 
     id(7),
   ]);
   assertEquals(result.files.every((f) => f.downloadUrl === null), true);
+});
+
+Deno.test("one through twenty originals share one contract; twenty-one is rejected", async () => {
+  const receipt = await fixture();
+  receipt.members = Array.from({ length: 20 }, (_value, index) => {
+    const n = index + 5;
+    return {
+      requirementId: `form.${n}`,
+      objectId: `${id(1)}:${id(2)}:${id(3)}:${id(n)}`,
+      artifact: {
+        sourceVersionId: id(n),
+        sourceSha256: "c".repeat(64),
+        packageSnapshotId: id(4),
+        packageSnapshotSha256: scope.snapshotSha256,
+        version: 1,
+        outputSha256: "d".repeat(64),
+        contentType: "application/pdf",
+        mappings: [{
+          kind: "pdf_overlay",
+          mappingDecisionId: id(n + 20),
+          canonicalFieldId: `field_${n}`,
+          target: `page:1:${n}`,
+        }],
+      },
+    };
+  });
+  const { manifestSha256: _sha, ...manifest } = receipt;
+  receipt.manifestSha256 = await sha256Hex(
+    new TextEncoder().encode(canonicalPackageSetJson(manifest)),
+  );
+  assertEquals(
+    (await parseWorkflowPackageSet(receipt, scope)).files.length,
+    20,
+  );
+  receipt.members.push(structuredClone(receipt.members[0]));
+  const { manifestSha256: _nextSha, ...overLimit } = receipt;
+  receipt.manifestSha256 = await sha256Hex(
+    new TextEncoder().encode(canonicalPackageSetJson(overLimit)),
+  );
+  await assertRejects(
+    () => parseWorkflowPackageSet(receipt, scope),
+    Error,
+    "WORKFLOW_PACKAGE_SET_INVALID",
+  );
 });
 
 for (

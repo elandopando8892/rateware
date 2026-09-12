@@ -17,7 +17,13 @@ function fail(): never {
  */
 export async function loadLockedPackageSetReview(
   tx: SqlPort,
-  command: Pick<PackageSetReviewCommand, "organizationId" | "caseId" | "expectedCaseVersion" | "expectedSnapshotSha256">,
+  command: Pick<
+    PackageSetReviewCommand,
+    | "organizationId"
+    | "caseId"
+    | "expectedCaseVersion"
+    | "expectedSnapshotSha256"
+  >,
 ) {
   await tx`select osp_private.lock_package_set_operations_context(${command.organizationId}::uuid, ${command.caseId}::uuid, ${command.expectedCaseVersion}::bigint, ${command.expectedSnapshotSha256})`;
   const sets =
@@ -127,11 +133,14 @@ export async function loadLockedPackageSetReview(
     });
     reviews.push({
       sourceVersionId: file.sourceVersionId,
+      sourceSha256: source.artifact.sourceSha256,
       requirementId: file.requirementId,
       outputSha256: file.outputSha256,
       reviewDecisionId: String(row.id),
       status: "approved",
       completenessVerified: true,
+      completionPercent: row.completion_percent,
+      pageCount: row.page_count === null ? null : Number(row.page_count),
       signatureRequirement:
         signature as PackageMemberReview["signatureRequirement"],
       signaturePolicyVersion: row.signature_policy_version === null

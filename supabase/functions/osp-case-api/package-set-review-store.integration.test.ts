@@ -213,6 +213,12 @@ Deno.test("set review receipt and existing Operations transition commit atomical
           version: 1,
           outputSha256: "d".repeat(64),
           contentType: "application/pdf",
+          mappings: [{
+            kind: "pdf_overlay",
+            mappingDecisionId: id(n + 20),
+            canonicalFieldId: `field_${n}`,
+            target: `page:1:${n}`,
+          }],
         },
       })),
     };
@@ -253,11 +259,14 @@ Deno.test("set review receipt and existing Operations transition commit atomical
       expectedSetManifestSha256: manifestSha256,
       reviews: [5, 6].map((n): PackageMemberReview => ({
         sourceVersionId: id(n),
+        sourceSha256: "c".repeat(64),
         outputSha256: "d".repeat(64),
         requirementId: `file:${id(n)}`,
         reviewDecisionId: id(n + 10),
         status: "approved",
         completenessVerified: true,
+        completionPercent: 100,
+        pageCount: 2,
         signatureRequirement: "none",
         signaturePolicyVersion: null,
       })),

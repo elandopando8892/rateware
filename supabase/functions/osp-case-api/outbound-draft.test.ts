@@ -796,6 +796,12 @@ Deno.test("service-role attachment downloads resolve a tenant-owned entity befor
             "11111111-1111-4111-8111-111111111111/44444444-4444-4444-8444-444444444444",
         }];
       }
+      if (text.includes("supplier_package_sets")) {
+        return [{
+          object_key:
+            `${organizationId}:${caseId}:55555555-5555-4555-8555-555555555555:${versionId}`,
+        }];
+      }
       return [];
     },
     {
@@ -826,6 +832,19 @@ Deno.test("service-role attachment downloads resolve a tenant-owned entity befor
   assertEquals(downloads, [
     "11111111-1111-4111-8111-111111111111/44444444-4444-4444-8444-444444444444",
   ]);
+  assertEquals(
+    await port.read({
+      organizationId,
+      caseId,
+      bucketId: "osp-derived-documents",
+      objectId: versionId,
+    }),
+    bytes,
+  );
+  assertEquals(
+    downloads[1],
+    `${organizationId}:${caseId}:55555555-5555-4555-8555-555555555555:${versionId}`,
+  );
   assertEquals(
     calls.some((call) =>
       call.values.includes(organizationId) && call.values.includes(caseId) &&

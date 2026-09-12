@@ -20,11 +20,27 @@ const source = (
   source_version_id: id(n),
   mappings: [{ value: n }],
 } as unknown as SourceRow);
+const nativeSource = (n: number, kind: "acroform" | "content_control") => ({
+  source_version_id: id(n),
+  content_type: kind === "acroform"
+    ? "application/pdf"
+    : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  mapping_decision_id: id(50 + n),
+  mappings: [{
+    kind,
+    canonicalFieldId: "company.name",
+    mappingDecisionId: id(50 + n),
+    value: "Synthetic XBF",
+    ...(kind === "acroform"
+      ? { fieldName: "legal_name" }
+      : { targetTag: "company.name" }),
+  }],
+} as unknown as SourceRow);
 function port(
   expected: number[],
   primary: SourceRow[],
   fallback: SourceRow[],
-  generic: SourceRow[],
+  native: SourceRow[],
 ) {
   return ((strings: TemplateStringsArray) => {
     const query = strings.join("?");
@@ -35,16 +51,19 @@ function port(
         ? primary
         : query.includes("'xlsx_cell'")
         ? fallback
-        : generic,
+        : native,
     );
   }) as SqlPort;
 }
-Deno.test("mixed originals retain reviewed XLSX, legacy XLSX, PDF and DOCX independently", async () => {
+Deno.test("mixed originals retain reviewed XLSX and native reviewed PDF/DOCX independently", async () => {
   const result = await loadReviewedPackageSetSources(
     port([6, 7, 8, 9], [source(6)], [{
       ...source(6),
       mappings: [{ value: "must not override" }],
-    }, source(7)], [source(8), source(9)]),
+    }, source(7)], [
+      nativeSource(8, "acroform"),
+      nativeSource(9, "content_control"),
+    ]),
     input,
   );
   assertEquals(result.map((row) => row.source_version_id), [

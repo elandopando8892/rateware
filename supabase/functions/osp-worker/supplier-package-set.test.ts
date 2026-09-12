@@ -135,6 +135,19 @@ function harness() {
   };
 }
 
+Deno.test("a single original uses the same package-set contract", async () => {
+  const input = await fixture();
+  const one = { ...input, members: [input.members[0]] };
+  const target = harness();
+  const receipt = await generateSupplierPackageSet(one, target.deps);
+  assertEquals(receipt.members.length, 1);
+  assertEquals(
+    receipt.members[0].requirementId,
+    input.members[0].requirementId,
+  );
+  assertEquals(target.publishes, 1);
+});
+
 Deno.test("set generates three real formats and publishes once after all writes", async () => {
   const input = await fixture();
   const originalHashes = await Promise.all(

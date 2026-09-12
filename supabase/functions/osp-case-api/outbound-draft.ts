@@ -866,7 +866,31 @@ export function createTenantAttachmentObjectPort(options: {
         async (tx) => {
           const rows = input.bucketId === "osp-corporate-documents"
             ? await tx`select version.opaque_object_key as object_key from osp_private.document_versions version join osp_private.documents document on document.organization_id = version.organization_id and document.id = version.document_id where version.organization_id = ${input.organizationId} and version.id = ${input.objectId} and (document.case_id is null or document.case_id = ${input.caseId}) and version.bucket_id = 'osp-corporate-documents' and version.status = 'approved' and version.retention_disposition <> 'disposed'`
-            : await tx`select object_id as object_key from osp_private.generated_packages where organization_id = ${input.organizationId} and case_id = ${input.caseId} and id = ${input.objectId} and status = 'current'`;
+            : await tx`select candidate.object_key from (
+                select package.object_id as object_key
+                from osp_private.generated_packages package
+                where package.organization_id = ${input.organizationId}
+                  and package.case_id = ${input.caseId}
+                  and package.id = ${input.objectId} and package.status = 'current'
+                union all
+                select member.value->>'objectId' as object_key
+                from osp_private.supplier_package_sets package
+                join osp_private.case_package_input_snapshots snapshot
+                  on snapshot.organization_id = package.organization_id
+                 and snapshot.case_id = package.case_id
+                 and snapshot.id = package.input_snapshot_id
+                 and snapshot.canonical_sha256 = package.input_snapshot_sha256
+                cross join lateral jsonb_array_elements(package.receipt_json->'members') member(value)
+                where package.organization_id = ${input.organizationId}
+                  and package.case_id = ${input.caseId}
+                  and package.status = 'current'
+                  and member.value->'artifact'->>'sourceVersionId' = ${input.objectId}
+                  and snapshot.id = (select latest.id
+                    from osp_private.case_package_input_snapshots latest
+                    where latest.organization_id = package.organization_id
+                      and latest.case_id = package.case_id
+                    order by latest.created_at desc, latest.id desc limit 1)
+              ) candidate where candidate.object_key is not null`;
           if (
             rows.length !== 1 || typeof rows[0].object_key !== "string"
           ) throw new Error("OUTBOUND_ATTACHMENT_UNAVAILABLE");

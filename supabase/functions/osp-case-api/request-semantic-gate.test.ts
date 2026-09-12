@@ -1,6 +1,9 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.14";
 
 import type { SqlPort } from "../_shared/osp/database-context.ts";
+import { canonicalPackageSetJson } from "../_shared/osp/package-set-json.ts";
+import { sha256Hex } from "../_shared/osp/source-hash.ts";
+import { preparePackageSetReview } from "./package-set-review.ts";
 import { createPostgresRequestSemanticGate } from "./request-semantic-gate.ts";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
@@ -91,6 +94,11 @@ for (const method of ["electrónica", "autógrafa"] as const) {
               expires_at: null,
               page_count: null,
             }];
+          }
+          if (
+            statement.includes("from osp_private.supplier_package_sets package")
+          ) {
+            return [];
           }
           if (statement.includes("from osp_private.generated_packages value")) {
             return [{
@@ -191,4 +199,244 @@ for (const method of ["electrónica", "autógrafa"] as const) {
       });
     }
   }
+}
+
+for (
+  const mutation of [
+    "exact",
+    "completion",
+    "request",
+    "operation",
+    "source",
+    "appendix",
+    "policy",
+  ] as const
+) {
+  Deno.test(`persisted package-set identity gates downstream: ${mutation}`, async () => {
+    const sourceVersionId = "33333333-3333-4333-8333-333333333333";
+    const setId = "44444444-4444-4444-8444-444444444444";
+    const snapshotId = "55555555-5555-4555-8555-555555555555";
+    const reviewId = "66666666-6666-4666-8666-666666666666";
+    const snapshotSha256 = "b".repeat(64);
+    const sourceSha256 = "c".repeat(64);
+    const outputSha256 = "d".repeat(64);
+    const requestSha256 = "e".repeat(64);
+    const manifest = {
+      schemaVersion: 1,
+      organizationId,
+      caseId,
+      setId,
+      snapshotId,
+      snapshotSha256,
+      version: 1,
+      planSha256: "9".repeat(64),
+      members: [{
+        requirementId: `file:${sourceVersionId}`,
+        objectId: `${organizationId}:${caseId}:${setId}:${sourceVersionId}`,
+        artifact: {
+          sourceVersionId,
+          sourceSha256,
+          packageSnapshotId: snapshotId,
+          packageSnapshotSha256: snapshotSha256,
+          outputSha256,
+          version: 1,
+          contentType:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          mappings: [{
+            kind: "xlsx_cell",
+            mappingDecisionId: "77777777-7777-4777-8777-777777777777",
+            canonicalFieldId: "legal_name",
+            target: "Company!B2",
+          }],
+        },
+      }],
+    };
+    if (mutation === "appendix") {
+      manifest.members[0].artifact.mappings[0].kind = "pdf_appendix";
+    }
+    const setManifestSha256 = await sha256Hex(
+      new TextEncoder().encode(canonicalPackageSetJson(manifest)),
+    );
+    const receipt = { ...manifest, manifestSha256: setManifestSha256 };
+    const persistedReview = {
+      id: reviewId,
+      source_version_id: sourceVersionId,
+      set_manifest_sha256: setManifestSha256,
+      request_manifest_sha256: mutation === "request"
+        ? "f".repeat(64)
+        : requestSha256,
+      output_sha256: outputSha256,
+      status: "approved",
+      full_output_inspected: true,
+      completion_percent: mutation === "completion" ? 99 : 100,
+      page_count: null,
+      signature_requirement: mutation === "policy" ? "image" : "none",
+      signature_policy_version: mutation === "policy" ? 2 : null,
+      source_status: "approved",
+      source_sha256: mutation === "source" ? "f".repeat(64) : sourceSha256,
+    };
+    const cleanBasis = await preparePackageSetReview({
+      receipt: mutation === "appendix"
+        ? {
+          ...receipt,
+          members: [{
+            ...receipt.members[0],
+            artifact: {
+              ...receipt.members[0].artifact,
+              mappings: [{
+                ...receipt.members[0].artifact.mappings[0],
+                kind: "xlsx_cell",
+              }],
+            },
+          }],
+          manifestSha256: await sha256Hex(new TextEncoder().encode(
+            canonicalPackageSetJson({
+              ...manifest,
+              members: [{
+                ...manifest.members[0],
+                artifact: {
+                  ...manifest.members[0].artifact,
+                  mappings: [{
+                    ...manifest.members[0].artifact.mappings[0],
+                    kind: "xlsx_cell",
+                  }],
+                },
+              }],
+            }),
+          )),
+        }
+        : receipt,
+      organizationId,
+      caseId,
+      caseVersion: 7,
+      snapshotSha256,
+      requestManifestSha256: requestSha256,
+      expectedSetManifestSha256: mutation === "appendix"
+        ? await sha256Hex(new TextEncoder().encode(canonicalPackageSetJson({
+          ...manifest,
+          members: [{
+            ...manifest.members[0],
+            artifact: {
+              ...manifest.members[0].artifact,
+              mappings: [{
+                ...manifest.members[0].artifact.mappings[0],
+                kind: "xlsx_cell",
+              }],
+            },
+          }],
+        })))
+        : setManifestSha256,
+      reviews: [{
+        sourceVersionId,
+        sourceSha256,
+        outputSha256,
+        requirementId: `file:${sourceVersionId}`,
+        reviewDecisionId: reviewId,
+        status: "approved",
+        completenessVerified: true,
+        completionPercent: 100,
+        pageCount: null,
+        signatureRequirement: "none",
+        signaturePolicyVersion: null,
+      }],
+    });
+    const sql = ((strings: TemplateStringsArray) => {
+      const statement = strings.join("?");
+      if (
+        statement.trim().startsWith("set local") ||
+        statement.includes("set_config('osp.organization_id'")
+      ) return Promise.resolve([]);
+      if (statement.includes("request_manifest_decision_reviews")) {
+        return Promise.resolve([{
+          current_review_resolved: true,
+          manifest_sha256: requestSha256,
+          manifest_json: {
+            requestType: "customer_setup",
+            targetXbfEntity: "XBFMX",
+            forms: [{
+              name: "Supplier original",
+              format: "xlsx",
+              action: "fill",
+              required: true,
+              evidenceIds: [`file:${sourceVersionId}`],
+            }],
+            requirements: [{ text: "Complete the supplier original 100%" }],
+          },
+        }]);
+      }
+      if (statement.includes("from osp_private.outbound_drafts draft")) {
+        return Promise.resolve([{
+          attachments_json: [{
+            bucketId: "osp-derived-documents",
+            objectId: sourceVersionId,
+            contentType:
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            sha256: outputSha256,
+          }],
+        }]);
+      }
+      if (statement.includes("from osp_private.document_versions version")) {
+        return Promise.resolve([]);
+      }
+      if (
+        statement.includes("from osp_private.supplier_package_sets package")
+      ) {
+        return Promise.resolve([{
+          id: setId,
+          receipt_json: receipt,
+          manifest_sha256: setManifestSha256,
+          input_snapshot_sha256: snapshotSha256,
+          snapshot_case_version: 7,
+        }]);
+      }
+      if (
+        statement.includes("from osp_private.package_set_member_reviews review")
+      ) {
+        return Promise.resolve([persistedReview]);
+      }
+      if (
+        statement.includes(
+          "from osp_private.package_set_operations_reviews review",
+        )
+      ) {
+        return Promise.resolve([{
+          package_set_id: setId,
+          review_sha256: mutation === "operation"
+            ? "f".repeat(64)
+            : cleanBasis.reviewSha256,
+          basis_json: cleanBasis,
+        }]);
+      }
+      throw new Error(`Unexpected SQL: ${statement}`);
+    }) as SqlPort;
+    sql.begin = async <T>(fn: (tx: SqlPort) => Promise<T>) => await fn(sql);
+    const gate = createPostgresRequestSemanticGate({
+      databaseUrl: "postgresql://example.invalid/test",
+      postgresFactory: () => sql,
+      now: () => new Date("2026-09-12T12:00:00.000Z"),
+    });
+    const matrix = await gate.load({ organizationId, caseId });
+    assertEquals(matrix.gates.salesAuthorization, mutation === "exact");
+    assertEquals(matrix.gates.send, mutation === "exact");
+    assertEquals(
+      matrix.gates.operationsReview,
+      mutation === "exact" || mutation === "operation",
+    );
+    if (mutation === "exact") {
+      assertEquals(matrix.satisfiedRequired, 1);
+      assertEquals(matrix.packageReviewIdentity?.setId, setId);
+      assertEquals(
+        matrix.packageReviewIdentity?.members[0].completionMethod,
+        "xlsx_cells",
+      );
+      assertEquals(
+        matrix.packageReviewIdentity?.members[0].sourceSha256,
+        sourceSha256,
+      );
+      assertEquals(
+        matrix.packageReviewIdentity?.members[0].outputSha256,
+        outputSha256,
+      );
+    }
+  });
 }

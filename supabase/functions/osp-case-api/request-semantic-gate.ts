@@ -14,6 +14,12 @@ import {
   type SqlRow,
   withOrganizationTransaction,
 } from "../_shared/osp/database-context.ts";
+import { canonicalPackageSetJson } from "../_shared/osp/package-set-json.ts";
+import {
+  type PackageMemberReview,
+  preparePackageSetReview,
+} from "./package-set-review.ts";
+import { parseWorkflowPackageSet } from "./workflow-package-set.ts";
 
 type PostgresFactory = (
   databaseUrl: string,
@@ -32,6 +38,12 @@ type EvidenceRecord = Readonly<{
 type AssessmentBundle = Readonly<{
   matrix: RequestFulfillmentMatrix;
   requiredAttachments: readonly RequestOutboundAttachment[];
+}>;
+
+type ReviewedSetBundle = Readonly<{
+  records: readonly EvidenceRecord[];
+  identity: RequestFulfillmentMatrix["packageReviewIdentity"] | null;
+  operationsReviewCurrent: boolean;
 }>;
 
 const DOCUMENT_KEYS: Readonly<Record<string, string>> = Object.freeze({
@@ -301,6 +313,220 @@ function formEvidence(
   });
 }
 
+function nativeCompletion(
+  contentType: string,
+  mappingKinds: readonly string[],
+): boolean {
+  if (mappingKinds.length < 1) return false;
+  if (
+    contentType ===
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    contentType === "application/vnd.ms-excel.sheet.macroEnabled.12"
+  ) return mappingKinds.every((kind) => kind === "xlsx_cell");
+  if (contentType === "application/pdf") {
+    return mappingKinds.every((kind) =>
+      kind === "acroform" || kind === "pdf_overlay"
+    );
+  }
+  if (
+    contentType ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) return mappingKinds.every((kind) => kind === "docx_content_control");
+  return false;
+}
+
+async function reviewedSetEvidence(input: {
+  organizationId: string;
+  caseId: string;
+  requestManifestSha256: string;
+  forms: readonly RequestContractRequirement[];
+  included: ReadonlySet<string>;
+  sets: SqlRow[];
+  reviews: SqlRow[];
+  operationsReviews: SqlRow[];
+}): Promise<ReviewedSetBundle | null> {
+  if (input.sets.length === 0) return null;
+  if (input.sets.length !== 1) {
+    throw new Error("REQUEST_FULFILLMENT_SOURCE_INVALID");
+  }
+  const row = input.sets[0];
+  if (
+    typeof row.id !== "string" || !UUID.test(row.id) ||
+    typeof row.input_snapshot_sha256 !== "string" ||
+    !SHA.test(row.input_snapshot_sha256) ||
+    typeof row.manifest_sha256 !== "string" || !SHA.test(row.manifest_sha256)
+  ) throw new Error("REQUEST_FULFILLMENT_SOURCE_INVALID");
+  const caseVersion = Number(row.snapshot_case_version);
+  if (!Number.isSafeInteger(caseVersion) || caseVersion < 0) {
+    throw new Error("REQUEST_FULFILLMENT_SOURCE_INVALID");
+  }
+  const set = await parseWorkflowPackageSet(row.receipt_json, {
+    organizationId: input.organizationId,
+    caseId: input.caseId,
+    snapshotSha256: row.input_snapshot_sha256,
+  });
+  if (set.setId !== row.id || set.manifestSha256 !== row.manifest_sha256) {
+    throw new Error("REQUEST_FULFILLMENT_SOURCE_INVALID");
+  }
+  const records: EvidenceRecord[] = [];
+  const basisReviews: PackageMemberReview[] = [];
+  const usedRequirements = new Set<string>();
+  for (const file of set.files) {
+    const review = input.reviews.find((candidate) =>
+      candidate.source_version_id === file.sourceVersionId
+    );
+    const matching = input.forms.filter((form) =>
+      form.evidenceIds.some((id) =>
+        id === `file:${file.sourceVersionId}` ||
+        id.startsWith(`xlsx:${file.sourceVersionId}:`)
+      )
+    );
+    if (
+      !review || matching.length !== 1 ||
+      usedRequirements.has(matching[0].id) ||
+      review.source_status !== "approved" ||
+      review.source_sha256 !== file.sourceSha256 ||
+      review.set_manifest_sha256 !== set.manifestSha256 ||
+      review.request_manifest_sha256 !== input.requestManifestSha256 ||
+      review.output_sha256 !== file.outputSha256 ||
+      typeof review.id !== "string" || !UUID.test(review.id) ||
+      !nativeCompletion(file.contentType, file.mappingKinds)
+    ) continue;
+    if (
+      (review.status !== "approved" && review.status !== "rejected") ||
+      typeof review.completion_percent !== "number" ||
+      !Number.isSafeInteger(review.completion_percent) ||
+      review.completion_percent < 0 || review.completion_percent > 100 ||
+      (review.page_count !== null &&
+        (!Number.isSafeInteger(Number(review.page_count)) ||
+          Number(review.page_count) < 1 || Number(review.page_count) > 1000)) ||
+      !["none", "image", "autograph"].includes(
+        String(review.signature_requirement),
+      ) ||
+      (review.signature_requirement === "none"
+        ? review.signature_policy_version !== null
+        : !Number.isSafeInteger(Number(review.signature_policy_version)) ||
+          Number(review.signature_policy_version) < 1)
+    ) throw new Error("REQUEST_FULFILLMENT_SOURCE_INVALID");
+    const requirement = matching[0];
+    const signatureRequirement = String(review.signature_requirement);
+    if (
+      (requirement.signatureMethod === "wet" &&
+        signatureRequirement !== "autograph") ||
+      (requirement.signatureMethod === "digital" &&
+        signatureRequirement !== "image") ||
+      (requirement.signatureMethod === "none" &&
+        signatureRequirement !== "none") ||
+      (requirement.signatureMethod === "either" &&
+        signatureRequirement !== "image" &&
+        signatureRequirement !== "autograph")
+    ) continue;
+    usedRequirements.add(requirement.id);
+    const outboundAttachment = attachment({
+      bucketId: "osp-derived-documents",
+      // Source version IDs are immutable UUID handles. The object reader
+      // resolves the exact member object through the current set receipt.
+      objectId: file.sourceVersionId,
+      contentType: file.contentType,
+      sha256: file.outputSha256,
+      baseName: `XBF-completed-original-${file.sourceVersionId}`,
+    });
+    records.push(Object.freeze({
+      evidence: Object.freeze({
+        evidenceId: `review:${review.id}`,
+        canonicalKey: requirement.canonicalKey,
+        label: requirement.label,
+        contentType: file.contentType,
+        status: review.status as "approved" | "rejected",
+        validFrom: null,
+        expiresAt: null,
+        pageCount: review.page_count === null
+          ? null
+          : Number(review.page_count),
+        completionPercent: Number(review.completion_percent),
+        // The persisted requirement/policy is part of the immutable review
+        // identity; it is not evidence that a signature has been applied.
+        signatureMethod: "none",
+        includedForOutbound: input.included.has(
+          attachmentKey(outboundAttachment)!,
+        ),
+      }),
+      attachment: outboundAttachment,
+    }));
+    if (review.status === "approved" && review.full_output_inspected === true) {
+      basisReviews.push({
+        sourceVersionId: file.sourceVersionId,
+        sourceSha256: file.sourceSha256,
+        outputSha256: file.outputSha256,
+        requirementId: file.requirementId,
+        reviewDecisionId: review.id,
+        status: "approved",
+        completenessVerified: true,
+        completionPercent: Number(review.completion_percent),
+        pageCount: review.page_count === null
+          ? null
+          : Number(review.page_count),
+        signatureRequirement: review
+          .signature_requirement as PackageMemberReview["signatureRequirement"],
+        signaturePolicyVersion: review.signature_policy_version === null
+          ? null
+          : Number(review.signature_policy_version),
+      });
+    }
+  }
+  let identity: RequestFulfillmentMatrix["packageReviewIdentity"] | null = null;
+  let operationsReviewCurrent = false;
+  if (basisReviews.length === set.files.length) {
+    try {
+      const basis = await preparePackageSetReview({
+        receipt: row.receipt_json,
+        organizationId: input.organizationId,
+        caseId: input.caseId,
+        caseVersion,
+        snapshotSha256: row.input_snapshot_sha256,
+        requestManifestSha256: input.requestManifestSha256,
+        expectedSetManifestSha256: set.manifestSha256,
+        reviews: basisReviews,
+      });
+      identity = Object.freeze({
+        setId: basis.setId,
+        setManifestSha256: basis.setManifestSha256,
+        reviewSha256: basis.reviewSha256,
+        requestManifestSha256: basis.requestManifestSha256,
+        snapshotSha256: basis.snapshotSha256,
+        members: Object.freeze(basis.members.map((member) =>
+          Object.freeze({
+            requirementId: member.requirementId,
+            sourceVersionId: member.sourceVersionId,
+            sourceSha256: member.sourceSha256,
+            outputSha256: member.outputSha256,
+            artifactRole: member.artifactRole,
+            completionMethod: member.completionMethod,
+            signatureRequirement: member.signatureRequirement,
+            signaturePolicyVersion: member.signaturePolicyVersion,
+          })
+        )),
+      });
+      const operation = input.operationsReviews[0];
+      operationsReviewCurrent = input.operationsReviews.length === 1 &&
+        operation.package_set_id === basis.setId &&
+        operation.review_sha256 === basis.reviewSha256 &&
+        canonicalPackageSetJson(parsedJson(operation.basis_json)) ===
+          canonicalPackageSetJson(basis);
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        error.message !== "PACKAGE_SET_REVIEW_BLOCKED"
+      ) throw error;
+    }
+  }
+  return Object.freeze({
+    records: Object.freeze(records),
+    identity,
+    operationsReviewCurrent,
+  });
+}
+
 export function createPostgresRequestSemanticGate(options: {
   databaseUrl: string;
   postgresFactory?: PostgresFactory;
@@ -390,7 +616,68 @@ export function createPostgresRequestSemanticGate(options: {
               and later.version > version.version
           )
         order by version.document_type, version.version desc`;
-        const packages = await tx`
+        const forms = contract.requirements.filter((item) =>
+          item.kind === "form"
+        );
+        const sets = await tx`
+        select package.id::text, package.receipt_json, package.manifest_sha256,
+               package.input_snapshot_sha256,
+               snapshot.case_version as snapshot_case_version
+        from osp_private.supplier_package_sets package
+        join osp_private.case_package_input_snapshots snapshot
+          on snapshot.organization_id = package.organization_id
+         and snapshot.case_id = package.case_id
+         and snapshot.id = package.input_snapshot_id
+         and snapshot.canonical_sha256 = package.input_snapshot_sha256
+        where package.organization_id = ${input.organizationId}
+          and package.case_id = ${input.caseId}
+          and package.status = 'current'
+          and snapshot.id = (select latest.id
+            from osp_private.case_package_input_snapshots latest
+            where latest.organization_id = package.organization_id
+              and latest.case_id = package.case_id
+            order by latest.created_at desc, latest.id desc limit 1)`;
+        let reviewedSet: ReviewedSetBundle | null = null;
+        if (sets.length > 0) {
+          const reviews = await tx`
+          select distinct on (review.source_version_id)
+                 review.id::text, review.source_version_id::text,
+                 review.set_manifest_sha256, review.request_manifest_sha256,
+                 review.output_sha256, review.status,
+                 review.full_output_inspected, review.completion_percent,
+                 review.page_count, review.signature_requirement,
+                 review.signature_policy_version,
+                 source.status as source_status, source.source_sha256
+          from osp_private.package_set_member_reviews review
+          join osp_private.document_versions source
+            on source.organization_id = review.organization_id
+           and source.id = review.source_version_id
+           and source.document_type = 'supplier_requirement'
+          where review.organization_id = ${input.organizationId}
+            and review.case_id = ${input.caseId}
+            and review.package_set_id = ${String(sets[0]?.id)}::uuid
+          order by review.source_version_id, review.review_version desc`;
+          const operationsReviews = await tx`
+          select review.package_set_id::text, review.review_sha256,
+                 review.basis_json
+          from osp_private.package_set_operations_reviews review
+          where review.organization_id = ${input.organizationId}
+            and review.case_id = ${input.caseId}
+            and review.package_set_id = ${String(sets[0]?.id)}::uuid
+          order by review.created_at desc, review.id desc
+          limit 1`;
+          reviewedSet = await reviewedSetEvidence({
+            organizationId: input.organizationId,
+            caseId: input.caseId,
+            requestManifestSha256: contract.manifestSha256,
+            forms,
+            included,
+            sets,
+            reviews,
+            operationsReviews,
+          });
+        }
+        const packages = reviewedSet ? [] : await tx`
         select value.id::text, value.package_kind, value.content_type,
                value.output_sha256,
                value.artifact_receipt_json,
@@ -426,14 +713,11 @@ export function createPostgresRequestSemanticGate(options: {
           and value.status = 'current'
         order by case when value.package_kind = 'supplier_completed' then 0 else 1 end,
                  value.version desc`;
-        const forms = contract.requirements.filter((item) =>
-          item.kind === "form"
-        );
         const records = Object.freeze([
           ...documentEvidence(documents, included),
-          ...formEvidence(packages, forms, included),
+          ...(reviewedSet?.records ?? formEvidence(packages, forms, included)),
         ]);
-        const matrix = evaluateRequestFulfillment({
+        const assessed = evaluateRequestFulfillment({
           contract,
           evidence: records.map((record) => record.evidence),
           entity: {
@@ -443,6 +727,29 @@ export function createPostgresRequestSemanticGate(options: {
           },
           now: options.now?.() ?? new Date(),
         });
+        const matrix: RequestFulfillmentMatrix = reviewedSet
+          ? Object.freeze({
+            ...assessed,
+            ...(reviewedSet.identity
+              ? { packageReviewIdentity: reviewedSet.identity }
+              : {}),
+            gates: Object.freeze({
+              ...assessed.gates,
+              operationsReview: assessed.gates.operationsReview &&
+                reviewedSet.identity !== null,
+              signatureApproval: assessed.gates.signatureApproval &&
+                reviewedSet.operationsReviewCurrent,
+              outboundDraft: assessed.gates.outboundDraft &&
+                reviewedSet.operationsReviewCurrent,
+              outboundFreeze: assessed.gates.outboundFreeze &&
+                reviewedSet.operationsReviewCurrent,
+              salesAuthorization: assessed.gates.salesAuthorization &&
+                reviewedSet.operationsReviewCurrent,
+              send: assessed.gates.send &&
+                reviewedSet.operationsReviewCurrent,
+            }),
+          })
+          : assessed;
         const evidenceById = new Map(records.map((record) => [
           record.evidence.evidenceId,
           record.attachment,

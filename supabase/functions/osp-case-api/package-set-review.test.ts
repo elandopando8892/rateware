@@ -37,6 +37,12 @@ async function fixture() {
         version: 1,
         outputSha256: "d".repeat(64),
         contentType: "application/pdf",
+        mappings: [{
+          kind: "pdf_overlay",
+          mappingDecisionId: id(n + 20),
+          canonicalFieldId: `field_${n}`,
+          target: `page:1:${n}`,
+        }],
       },
     })),
   };
@@ -51,11 +57,14 @@ async function fixture() {
     expectedSetManifestSha256: manifestSha256,
     reviews: [5, 6].map((n): PackageMemberReview => ({
       sourceVersionId: id(n),
+      sourceSha256: "c".repeat(64),
       requirementId: `file:${id(n)}`,
       outputSha256: "d".repeat(64),
       reviewDecisionId: id(n + 10),
       status: "approved",
       completenessVerified: true,
+      completionPercent: 100,
+      pageCount: 1,
       signatureRequirement: "none",
       signaturePolicyVersion: null,
     })),
@@ -140,6 +149,13 @@ Deno.test("case, request, review and signature policy changes invalidate the rev
       },
       {
         ...input,
+        reviews: input.reviews.map((r) => ({
+          ...r,
+          completionPercent: 99,
+        })),
+      },
+      {
+        ...input,
         reviews: input.reviews.map((r): PackageMemberReview => ({
           ...r,
           signatureRequirement: "autograph",
@@ -166,4 +182,21 @@ Deno.test("case, request, review and signature policy changes invalidate the rev
     true,
   );
   assertEquals("approved" in autograph, false); // Preparation is never an executed approval/signature.
+});
+
+Deno.test("PDF appendices cannot be reviewed as completed originals", async () => {
+  const input = await fixture();
+  for (const member of input.receipt.members) {
+    member.artifact.mappings[0].kind = "pdf_appendix";
+  }
+  const { manifestSha256: _old, ...manifest } = input.receipt;
+  input.receipt.manifestSha256 = await sha256Hex(
+    new TextEncoder().encode(canonicalPackageSetJson(manifest)),
+  );
+  input.expectedSetManifestSha256 = input.receipt.manifestSha256;
+  await assertRejects(
+    () => preparePackageSetReview(input),
+    Error,
+    "PACKAGE_SET_REVIEW_BLOCKED",
+  );
 });

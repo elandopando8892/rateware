@@ -64,6 +64,9 @@ Deno.test("legacy packages cannot satisfy multiple forms by position or format",
       }];
     }
     if (statement.includes("from osp_private.document_versions")) return [];
+    if (statement.includes("from osp_private.supplier_package_sets package")) {
+      return [];
+    }
     if (statement.includes("from osp_private.generated_packages")) {
       return packages;
     }
@@ -180,6 +183,7 @@ for (
       }
       if (
         statement.includes("from osp_private.document_versions version") ||
+        statement.includes("from osp_private.supplier_package_sets package") ||
         statement.trim().startsWith("set local") ||
         statement.includes("set_config")
       ) return Promise.resolve([]);

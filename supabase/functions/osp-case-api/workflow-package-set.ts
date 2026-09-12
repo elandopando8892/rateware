@@ -11,6 +11,15 @@ const TYPES = [
   "application/vnd.ms-excel.sheet.macroEnabled.12",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ] as const;
+const MAPPING_KINDS = [
+  "acroform",
+  "pdf_overlay",
+  "pdf_appendix",
+  "xlsx_cell",
+  "docx_content_control",
+  "docx_appendix",
+] as const;
+export type PackageSetMappingKind = typeof MAPPING_KINDS[number];
 /** Names are derived from verified source identity/MIME, never provider paths. */
 export function packageSetDownloadName(
   file: { sourceVersionId: string; contentType: string },
@@ -23,7 +32,10 @@ export function packageSetDownloadName(
       "docx",
   };
   const extension = extensions[file.contentType];
-  if (!UUID.test(file.sourceVersionId) || !TYPES.includes(file.contentType as typeof TYPES[number]) || !extension) {
+  if (
+    !UUID.test(file.sourceVersionId) ||
+    !TYPES.includes(file.contentType as typeof TYPES[number]) || !extension
+  ) {
     throw new Error("WORKFLOW_PACKAGE_SET_INVALID");
   }
   return `XBF-OSP-Form-${file.sourceVersionId}.${extension}`;
@@ -35,36 +47,79 @@ export type WorkflowPackageSet = {
   files: {
     requirementId: string;
     sourceVersionId: string;
+    sourceSha256: string;
     outputSha256: string;
     contentType: typeof TYPES[number];
+    mappingKinds: readonly PackageSetMappingKind[];
     objectId: string;
     downloadUrl: string | null;
     latestReview?: {
-      reviewId: string; reviewVersion: number; requestManifestSha256: string;
-      status: "approved" | "rejected"; fullOutputInspected: boolean;
-      completionPercent: number | null; pageCount: number | null;
+      reviewId: string;
+      reviewVersion: number;
+      requestManifestSha256: string;
+      status: "approved" | "rejected";
+      fullOutputInspected: boolean;
+      completionPercent: number | null;
+      pageCount: number | null;
       signatureRequirement: "none" | "image" | "autograph";
       signaturePolicyVersion: number | null;
     } | null;
   }[];
 };
 
-export async function loadPackageMemberInspections(tx: SqlPort, organizationId: string, caseId: string, set: WorkflowPackageSet): Promise<WorkflowPackageSet> {
-  const available = await tx`select to_regclass('osp_private.package_set_member_reviews') is not null as available`;
+export async function loadPackageMemberInspections(
+  tx: SqlPort,
+  organizationId: string,
+  caseId: string,
+  set: WorkflowPackageSet,
+): Promise<WorkflowPackageSet> {
+  const available =
+    await tx`select to_regclass('osp_private.package_set_member_reviews') is not null as available`;
   if (available[0]?.available !== true) return set;
-  const rows = await tx`select distinct on (source_version_id) id,source_version_id,review_version,set_manifest_sha256,output_sha256,request_manifest_sha256,status,full_output_inspected,completion_percent,page_count,signature_requirement,signature_policy_version
+  const rows =
+    await tx`select distinct on (source_version_id) id,source_version_id,review_version,set_manifest_sha256,output_sha256,request_manifest_sha256,status,full_output_inspected,completion_percent,page_count,signature_requirement,signature_policy_version
     from osp_private.package_set_member_reviews where organization_id=${organizationId}::uuid and case_id=${caseId}::uuid and package_set_id=${set.setId}::uuid order by source_version_id,review_version desc`;
-  return { ...set, files: set.files.map(file => {
-    const row = rows.find(row => row.source_version_id === file.sourceVersionId);
-    if (!row || row.set_manifest_sha256 !== set.manifestSha256 || row.output_sha256 !== file.outputSha256) return { ...file, latestReview: null };
-    if (!UUID.test(String(row.id)) || !SHA.test(String(row.request_manifest_sha256)) || !["approved", "rejected"].includes(String(row.status)) || !["none", "image", "autograph"].includes(String(row.signature_requirement))) fail();
-    return { ...file, latestReview: {
-      reviewId: String(row.id), reviewVersion: Number(row.review_version), requestManifestSha256: String(row.request_manifest_sha256),
-      status: row.status as "approved" | "rejected", fullOutputInspected: row.full_output_inspected === true,
-      completionPercent: row.completion_percent === null ? null : Number(row.completion_percent), pageCount: row.page_count === null ? null : Number(row.page_count),
-      signatureRequirement: row.signature_requirement as "none" | "image" | "autograph", signaturePolicyVersion: row.signature_policy_version === null ? null : Number(row.signature_policy_version),
-    } };
-  }) };
+  return {
+    ...set,
+    files: set.files.map((file) => {
+      const row = rows.find((row) =>
+        row.source_version_id === file.sourceVersionId
+      );
+      if (
+        !row || row.set_manifest_sha256 !== set.manifestSha256 ||
+        row.output_sha256 !== file.outputSha256
+      ) return { ...file, latestReview: null };
+      if (
+        !UUID.test(String(row.id)) ||
+        !SHA.test(String(row.request_manifest_sha256)) ||
+        !["approved", "rejected"].includes(String(row.status)) ||
+        !["none", "image", "autograph"].includes(
+          String(row.signature_requirement),
+        )
+      ) fail();
+      return {
+        ...file,
+        latestReview: {
+          reviewId: String(row.id),
+          reviewVersion: Number(row.review_version),
+          requestManifestSha256: String(row.request_manifest_sha256),
+          status: row.status as "approved" | "rejected",
+          fullOutputInspected: row.full_output_inspected === true,
+          completionPercent: row.completion_percent === null
+            ? null
+            : Number(row.completion_percent),
+          pageCount: row.page_count === null ? null : Number(row.page_count),
+          signatureRequirement: row.signature_requirement as
+            | "none"
+            | "image"
+            | "autograph",
+          signaturePolicyVersion: row.signature_policy_version === null
+            ? null
+            : Number(row.signature_policy_version),
+        },
+      };
+    }),
+  };
 }
 const fail = (): never => {
   throw new Error("WORKFLOW_PACKAGE_SET_INVALID");
@@ -110,7 +165,20 @@ export async function parseWorkflowPackageSet(
       member.requirementId,
       /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,255}$/,
     );
-    text(artifact.sourceSha256, SHA);
+    const sourceSha256 = text(artifact.sourceSha256, SHA);
+    if (
+      !Array.isArray(artifact.mappings) || artifact.mappings.length < 1 ||
+      artifact.mappings.length > 500
+    ) fail();
+    const mappingKinds = [
+      ...new Set(
+        (artifact.mappings as unknown[]).map((mapping) => {
+          const kind = record(mapping).kind;
+          if (!MAPPING_KINDS.includes(kind as PackageSetMappingKind)) fail();
+          return kind as PackageSetMappingKind;
+        }),
+      ),
+    ].sort();
     if (
       sources.has(sourceVersionId) || requirements.has(requirementId) ||
       artifact.packageSnapshotId !== snapshotId ||
@@ -125,8 +193,10 @@ export async function parseWorkflowPackageSet(
     return {
       requirementId,
       sourceVersionId,
+      sourceSha256,
       outputSha256: text(artifact.outputSha256, SHA),
       contentType: artifact.contentType as typeof TYPES[number],
+      mappingKinds: Object.freeze(mappingKinds),
       objectId: member.objectId as string,
       downloadUrl: null,
     };

@@ -81,6 +81,29 @@ export type RequestFulfillmentMatrix = Readonly<{
   satisfiedRequired: number;
   blockingCount: number;
   items: readonly RequestFulfillmentItem[];
+  /** Exact reviewed set basis. Present only when current persisted member
+   * reviews can be reconstructed byte-for-byte; downstream gates additionally
+   * require the matching immutable Operations receipt. */
+  packageReviewIdentity?: Readonly<{
+    setId: string;
+    setManifestSha256: string;
+    reviewSha256: string;
+    requestManifestSha256: string;
+    snapshotSha256: string;
+    members: readonly Readonly<{
+      requirementId: string;
+      sourceVersionId: string;
+      sourceSha256: string;
+      outputSha256: string;
+      artifactRole: "completed_original";
+      completionMethod:
+        | "xlsx_cells"
+        | "pdf_native"
+        | "docx_content_controls";
+      signatureRequirement: "none" | "image" | "autograph";
+      signaturePolicyVersion: number | null;
+    }>[];
+  }>;
   gates: Readonly<{
     operationsReview: boolean;
     signatureApproval: boolean;

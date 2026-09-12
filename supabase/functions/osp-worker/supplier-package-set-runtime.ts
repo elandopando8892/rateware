@@ -26,8 +26,8 @@ const XLSX =
 const XLSM = "application/vnd.ms-excel.sheet.macroEnabled.12";
 
 /** Uses the existing claimed job and immutable Storage writer. Migration absence
- * and single-form requests retain the existing runtime; a multi-form failure
- * never falls back to publishing only the first original.
+ * retains the legacy runtime. One or many reviewed originals use this same set
+ * contract; a set failure never falls back to publishing only one original.
  */
 export async function tryGenerateSupplierPackageSet(
   input: SupplierPackageJobInput,
@@ -63,7 +63,7 @@ export async function tryGenerateSupplierPackageSet(
     }
     await tx`select osp_private.lock_supplier_package_set_context(${input.organizationId}::uuid, ${input.caseId}::uuid, ${input.snapshotId}::uuid, ${sha}::text, ${input.jobId}::uuid, ${input.leaseToken}::uuid)`;
     const sources = await loadReviewedPackageSetSources(tx, input);
-    if (sources.length < 2) return null;
+    if (sources.length < 1) return null;
     if (
       sources.length > 20 ||
       sources.some((source) => source.snapshot_sha256 !== sha)
@@ -142,11 +142,15 @@ export async function tryGenerateSupplierPackageSet(
         },
       });
     } else {
-      const mappings = source.mappings.map((mapping) => ({
-        ...mapping,
-        kind: "appendix" as const,
-      }));
       if (source.content_type === "application/pdf") {
+        const mappings = source.mappings as Record<string, unknown>[];
+        if (
+          mappings.some((mapping) =>
+            mapping.kind !== "acroform" && mapping.kind !== "overlay"
+          )
+        ) {
+          throw new Error("ARTIFACT_ORIGINAL_COMPLETION_UNSUPPORTED");
+        }
         members.push({
           requirementId: `file:${source.source_version_id}`,
           artifact: {
@@ -160,6 +164,10 @@ export async function tryGenerateSupplierPackageSet(
         source.content_type ===
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       ) {
+        const mappings = source.mappings as Record<string, unknown>[];
+        if (mappings.some((mapping) => mapping.kind !== "content_control")) {
+          throw new Error("ARTIFACT_ORIGINAL_COMPLETION_UNSUPPORTED");
+        }
         members.push({
           requirementId: `file:${source.source_version_id}`,
           artifact: {

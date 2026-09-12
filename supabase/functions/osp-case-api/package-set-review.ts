@@ -11,15 +11,46 @@ function fail(): never {
 
 export type PackageMemberReview = {
   sourceVersionId: string;
+  sourceSha256: string;
   outputSha256: string;
   requirementId: string;
   reviewDecisionId: string;
   // These are verified persisted decisions, never browser/LLM assertions.
   status: "approved" | "pending" | "rejected";
   completenessVerified: boolean;
+  completionPercent: number;
+  pageCount: number | null;
   signatureRequirement: "none" | "image" | "autograph";
   signaturePolicyVersion: number | null;
 };
+
+function completionMethod(
+  file: Awaited<ReturnType<typeof parseWorkflowPackageSet>>["files"][number],
+): "xlsx_cells" | "pdf_native" | "docx_content_controls" {
+  const kinds = new Set(file.mappingKinds);
+  if (
+    file.contentType ===
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    file.contentType === "application/vnd.ms-excel.sheet.macroEnabled.12"
+  ) {
+    if ([...kinds].some((kind) => kind !== "xlsx_cell")) fail();
+    return "xlsx_cells";
+  }
+  if (file.contentType === "application/pdf") {
+    // An appended answer sheet is supplemental evidence, never proof that the
+    // supplier's original PDF was completed.
+    if (
+      kinds.has("pdf_appendix") ||
+      [...kinds].some((kind) => kind !== "acroform" && kind !== "pdf_overlay")
+    ) fail();
+    return "pdf_native";
+  }
+  if (
+    kinds.has("docx_appendix") ||
+    [...kinds].some((kind) => kind !== "docx_content_control")
+  ) fail();
+  return "docx_content_controls";
+}
 
 /** Prepare an exact review basis, not an approval or signature. The caller must
  * load receipt and decisions in the same locked transaction and persist this
@@ -59,9 +90,15 @@ export async function preparePackageSetReview(input: {
     if (
       !review || !UUID.test(review.sourceVersionId) ||
       !UUID.test(review.reviewDecisionId) ||
-      !SHA.test(review.outputSha256) || bySource.has(review.sourceVersionId) ||
+      !SHA.test(review.sourceSha256) || !SHA.test(review.outputSha256) ||
+      bySource.has(review.sourceVersionId) ||
       decisions.has(review.reviewDecisionId) || review.status !== "approved" ||
       review.completenessVerified !== true ||
+      !Number.isSafeInteger(review.completionPercent) ||
+      review.completionPercent < 0 || review.completionPercent > 100 ||
+      (review.pageCount !== null &&
+        (!Number.isSafeInteger(review.pageCount) || review.pageCount < 1 ||
+          review.pageCount > 1000)) ||
       !["none", "image", "autograph"].includes(review.signatureRequirement) ||
       (review.signatureRequirement === "none"
         ? review.signaturePolicyVersion !== null
@@ -76,14 +113,20 @@ export async function preparePackageSetReview(input: {
     const review = bySource.get(file.sourceVersionId);
     if (
       !review || review.outputSha256 !== file.outputSha256 ||
+      review.sourceSha256 !== file.sourceSha256 ||
       review.requirementId !== file.requirementId
     ) fail();
     return {
       sourceVersionId: file.sourceVersionId,
+      sourceSha256: file.sourceSha256,
       requirementId: file.requirementId,
       outputSha256: file.outputSha256,
       contentType: file.contentType,
+      artifactRole: "completed_original" as const,
+      completionMethod: completionMethod(file),
       reviewDecisionId: review.reviewDecisionId,
+      completionPercent: review.completionPercent,
+      pageCount: review.pageCount,
       signatureRequirement: review.signatureRequirement,
       signaturePolicyVersion: review.signaturePolicyVersion,
     };
