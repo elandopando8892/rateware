@@ -689,9 +689,10 @@ assert.doesNotMatch(
   /listWhatsappConnections/,
   "Gmail-only draft generation must not resolve WhatsApp connections before the WhatsApp gate"
 );
-assert.match(generateOutreachDraftsSource, /if \(wantsDirectWhatsapp\) \{[\s\S]+publishOutreachTemplateToWhatsapp\(supabase, user, \{ template_id: template\.id \}\)/, "Generating a WhatsApp queue should automatically create or refresh the Meta notifier");
+assert.doesNotMatch(generateOutreachDraftsSource, /publishOutreachTemplateToWhatsapp\(/, "Generating a WhatsApp queue must not publish or refresh a Meta notifier");
+assert.match(generateOutreachDraftsSource, /if \(wantsDirectWhatsapp\) \{[\s\S]+whatsappTemplateMapping\(/, "Generating a WhatsApp queue should read the existing Meta notifier mapping");
 assert.match(generateOutreachDraftsSource, /if \(wantsDirectWhatsapp\) \{[\s\S]+listWhatsappConnections/, "WhatsApp connection lookup should only run for direct WhatsApp queues");
-assert.match(apiSource, /whatsapp_notifier: whatsappNotifier/, "Draft generation should return the automatic Meta notifier state");
+assert.match(apiSource, /whatsapp_notifier: whatsappNotifier/, "Draft generation should return the read-only Meta notifier state");
 assert.match(apiSource, /whatsapp_template_parameters: whatsappParameters/, "Generated WhatsApp drafts should persist rendered Meta parameter values");
 assert.match(apiSource, /parameters: parameterRows\.map/, "WhatsApp sends should submit the rendered body parameters to Meta");
 assert.match(apiSource, /notifierByTemplate[\s\S]+publishOutreachTemplateToWhatsapp\(supabase, user, \{ template_id: outreachTemplateId \}\)/, "WhatsApp send should refresh Meta notifier status automatically");
@@ -2843,7 +2844,12 @@ assert.match(apiSource, /sync_bid_room_event_thread/, "Bid Room should create an
 assert.match(rfxEventsHtml, /rfx-chat-start-event-thread/, "Bid Room chat should expose a start event thread action");
 assert.match(rfxEventsSource, /syncBidRoomEventThread/, "Bid Room UI should call the event thread sync action");
 assert.match(rfxEventsSource, /function bidRoomHasEventGroupThread[\s\S]+thread_type === "event_group"/, "Bid Room should detect an existing event thread from its loaded snapshot");
-assert.match(rfxEventsSource, /if \(!bidRoomHasEventGroupThread\(bidRoomChatThreads\)\)[\s\S]+ensureSelectedEventChatThread\(eventId, \{ silent: true \}\)/, "Bid Room should create an event thread only when the loaded snapshot does not already contain one");
+assert.doesNotMatch(
+  rfxEventsSource.slice(rfxEventsSource.indexOf("async function loadDetail"), rfxEventsSource.indexOf("function activateWorkbenchView")),
+  /ensureSelectedEventChatThread\(/,
+  "Loading Bid Room detail should not create an event thread"
+);
+assert.match(rfxEventsSource, /rfxChatStartEventThread\?\.addEventListener\("click"[\s\S]+ensureSelectedEventChatThread\(selectedEventId, \{ force: true, silent: true \}\)/, "Bid Room should create an event thread only from the explicit operator action");
 assert.match(apiSource, /const \[eventLanes, loadedInvitationRows, benchmarkLoad, comparisonFx\] = await Promise\.all\(\[[\s\S]+fetchAllRfxLaneRows[\s\S]+fetchAllRfxLaneVendorRows[\s\S]+fetchRfxDetailBenchmarkRates[\s\S]+loadBidComparisonFxRate/, "Bid Room detail should load lanes, invitations, Rateware benchmarks, and the comparison FX rate concurrently");
 
 // The Google Sheet import used to delete every vendor from the sheet tab before
@@ -4197,11 +4203,9 @@ assert.match(apiSource, /fetchBiVendorMetricsSafe/, "Carrier recommendations sho
 assert.match(rfxEventsSource, /rfx_carrier_fit: true/, "Carrier fit should use the bounded RFx evidence path instead of the full recommendation workload");
 assert.match(apiSource, /fetchBiVendorMetricsForRfxCarrierFit/, "Carrier fit should enforce a bounded Rateware evidence lookup");
 assert.match(apiSource, /rfxCarrierFitMode[\s\S]*Promise\.resolve\(\{ summary: \{\}/, "Carrier fit should skip the unused BI summary workload");
-assert.match(rfxEventsSource, /const RFX_LANE_RENDER_PAGE_SIZE = 25;/, "Large Bid Room lane books should have a bounded initial render page");
-assert.match(rfxEventsSource, /filteredLanes\.slice\(0, laneRenderLimit\)/, "Bid Room should render only the visible lane page before expanding the book");
-assert.match(rfxEventsSource, /data-rfx-lane-load-more/, "Large lane books should expose an explicit incremental render control");
-assert.match(rfxEventsSource, /function scheduleRfxCarrierFitEvidence\(\)/, "Carrier Fit evidence should be scheduled separately from the initial RFx detail render");
-assert.match(rfxEventsSource, /if \(rfxLaunchWorkspace === "carrier"\) scheduleRfxCarrierFitEvidence\(\);/, "Carrier Fit evidence should wait until its workspace is active");
+assert.doesNotMatch(rfxEventsSource, /laneRenderLimit|RFX_LANE_RENDER_PAGE_SIZE|data-rfx-lane-load-more/, "Bid Room should retain the production-stable full-lane rendering behavior");
+assert.match(rfxEventsSource, /const lanes = visibleLanes\(\);[\s\S]+lanesBody\.innerHTML = lanes\.map/, "Bid Room should render the complete filtered lane book");
+assert.match(rfxEventsSource, /void loadRfxCarrierFitEvidence\(\{ force: eventChanged \|\| options\?\.force === true \}\)/, "Carrier Fit evidence should load with the RFx detail instead of using a delayed timer");
 assert.match(vendorsSource, /data-copy-profile-link/, "Vendor drawer should expose profile link creation");
 assert.match(carrierProfileHtml, /carrier-profile\.js/, "Carrier profile page should load the public profile script");
 assert.match(carrierProfileHtml, /carrier-profile-eyebrow/, "Carrier profile page header should be translatable");

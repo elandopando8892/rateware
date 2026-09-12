@@ -30001,33 +30001,25 @@ export function createRatewareApiHandler(
       let whatsappConnectionRow: Record<string, unknown> = {};
       if (wantsDirectWhatsapp) {
         try {
-          const notifier = await publishOutreachTemplateToWhatsapp(supabase, user, { template_id: template.id });
-          whatsappMapping = notifier.row as Record<string, unknown> | null;
-          whatsappNotifier = {
-            attempted: true,
-            status: cleanText(whatsappMapping?.meta_template_status)?.toLowerCase() || "pending",
-            ready: notifier.ready,
-            template_name: cleanText(whatsappMapping?.meta_template_name),
-            language: cleanText(whatsappMapping?.meta_template_language),
-            message: notifier.message
-          };
-        } catch (error) {
-          whatsappNotifier = {
-            attempted: true,
-            status: "error",
-            ready: false,
-            error: safeOperationalError(error)
-          };
-        }
-        try {
           const whatsappConnection = await listWhatsappConnections(supabase, user);
           whatsappConnectionRow = whatsappConnection.rows?.[0] || {};
-          if (!whatsappMapping && whatsappConnectionRow.id) {
+          if (whatsappConnectionRow.id) {
             whatsappMapping = await whatsappTemplateMapping(supabase, whatsappConnectionRow.id, template.id);
           }
+          const mappingStatus = cleanText(whatsappMapping?.meta_template_status)?.toLowerCase() || "not_published";
+          whatsappNotifier = {
+            attempted: false,
+            status: mappingStatus,
+            ready: mappingStatus === "approved",
+            template_name: cleanText(whatsappMapping?.meta_template_name),
+            language: cleanText(whatsappMapping?.meta_template_language),
+            message: whatsappMapping
+              ? "Existing Meta template status loaded."
+              : "No Meta template is published. Publish it explicitly before delivery."
+          };
         } catch (error) {
           whatsappNotifier = {
-            attempted: true,
+            attempted: false,
             status: "error",
             ready: false,
             error: safeOperationalError(error)
