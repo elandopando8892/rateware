@@ -424,6 +424,12 @@ verify_jwt = false
 [functions.shipper-directory-api]
 verify_jwt = false
 
+# MARKSMAN Loads supplies a server-to-server HMAC envelope. The function does
+# not accept a browser JWT and remains disabled until the Rateware-side secret,
+# key id and explicit enable flag are configured in the target environment.
+[functions.marksman-shipper-context]
+verify_jwt = false
+
 # Provider Gmail uses Supabase Auth for the operator API and a one-time OAuth
 # state for the Google callback. Both functions authenticate inside the runtime.
 [functions.provider-gmail-intake-api]
