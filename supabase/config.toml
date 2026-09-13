@@ -430,6 +430,12 @@ verify_jwt = false
 [functions.marksman-shipper-context]
 verify_jwt = false
 
+# MARKSMAN Loads agreement binding is a separate server-to-server HMAC command.
+# It remains disabled until its dedicated secret, key id and enable flag are
+# configured. It is never called by the browser and never calls Fleet Rocket.
+[functions.marksman-loads-bind-agreement]
+verify_jwt = false
+
 # Provider Gmail uses Supabase Auth for the operator API and a one-time OAuth
 # state for the Google callback. Both functions authenticate inside the runtime.
 [functions.provider-gmail-intake-api]

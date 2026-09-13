@@ -19,6 +19,7 @@
     "test:release-preflight": "node --test tests/release-preflight.test.mjs",
     "test:rateware-correlation": "deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/rateware-correlation.contract.test.ts",
     "test:marksman-loads-context": "node --test tests/marksman-shipper-context.test.mjs",
+    "test:marksman-loads-binding": "node --test tests/marksman-loads-agreement-binding.test.mjs",
     "audit:p3:mutations": "node tools/p3-mutation-risk-register.mjs",
     "test:p3:mutations": "node --test tests/p3-mutation-risk-register.test.mjs",
     "test:p3:atomic-award": "node --test tests/rfx-atomic-award.test.mjs",
