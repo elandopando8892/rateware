@@ -17,10 +17,16 @@ the Rateware function and returns no credential material.
 
 ## Binding rules
 
-The first implementation supports a direct, observable binding only:
+The resolver supports two explicitly observable bindings:
 
-- `offerId` must be the Rateware `rfx_lane_vendors.id`;
-- `postId` must be the related Rateware event or lane id;
+- direct rehearsal: `offerId` is the Rateware `rfx_lane_vendors.id` and
+  `postId` is the related event or lane id;
+- production-ready bridge shape: `postId/offerId` are local Loads ids found in
+  `marksman_loads_rateware_agreement_bindings`, which must point to the exact
+  Rateware vendor invitation and event.
+
+In both cases:
+
 - `ratewareVendorId` must equal the offer's `vendor_id`;
 - the event must have a canonical `customer_id` pointing to Shipper CRM;
 - the Shipper record must contain `tms_system_id` and an explicit
@@ -29,9 +35,9 @@ The first implementation supports a direct, observable binding only:
 - a structured TONU/cancellation policy must be available in the linked RFI
   business rules. Human-readable policy text is not parsed into numbers.
 
-Loads-local `postId` and `offerId` values are not guessed as Rateware ids. A
-future explicit agreement-binding table or command may bridge those ids, but
-this endpoint does not write that bridge.
+The migration creates the bridge table with RLS enabled and no browser policy.
+It is intentionally read-only to this resolver. A future reviewed server-side
+command must populate it; the resolver does not create or repair bindings.
 
 ## Contract
 

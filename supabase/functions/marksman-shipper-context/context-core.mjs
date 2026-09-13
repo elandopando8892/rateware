@@ -156,11 +156,19 @@ function agreementIsBound(agreement, body) {
   const offer = relation(agreement.offer || agreement);
   const event = relation(agreement.event || agreement.rfx_events);
   const lane = relation(agreement.lane || agreement.rfx_lanes);
+  const binding = relation(agreement.binding || agreement.marksmanLoadsBinding);
   const offerId = text(offer.id || agreement.rfx_lane_vendor_id);
   const vendorId = text(offer.vendor_id || agreement.vendor_id);
   const eventId = text(event.id || agreement.rfx_event_id);
   const laneId = text(lane.id || agreement.rfx_lane_id);
-  if (offerId !== body.offerId || vendorId !== body.ratewareVendorId || (![eventId, laneId].includes(body.postId))) {
+  const directBinding = offerId === body.offerId && [eventId, laneId].includes(body.postId);
+  const bridgedBinding = text(binding.carrier_organization_id || binding.carrierOrganizationId) === body.carrierOrganizationId
+    && text(binding.marksman_post_id || binding.marksmanPostId) === body.postId
+    && text(binding.marksman_offer_id || binding.marksmanOfferId) === body.offerId
+    && text(binding.rfx_event_id || binding.rfxEventId) === eventId
+    && text(binding.status || "active").toLowerCase() === "active"
+    && text(binding.rfx_lane_vendor_id || binding.rfxLaneVendorId || offerId) === offerId;
+  if (vendorId !== body.ratewareVendorId || (!directBinding && !bridgedBinding)) {
     throw new ShipperContextError("post, offer and Rateware vendor are not bound to the same agreement", "SHIPPER_CRM_CONTEXT_BINDING_MISMATCH", 409);
   }
   if (!["open", "closed", "awarded"].includes(text(event.status).toLowerCase())) throw new ShipperContextError("Rateware event is not eligible for context resolution", "SHIPPER_CRM_CONTEXT_UNAVAILABLE", 409, { eventStatus: text(event.status) || "unknown" });
@@ -174,7 +182,7 @@ function agreementIsBound(agreement, body) {
  *   sharedSecret?: string,
  *   keyId?: string,
  *   enabled?: boolean,
- *   findAgreement: (input: {ratewareVendorId: string, postId: string, offerId: string}) => Promise<object>,
+ *   findAgreement: (input: {carrierOrganizationId: string, ratewareVendorId: string, postId: string, offerId: string}) => Promise<object>,
  *   findShipper: (shipperId: string) => Promise<object|null>,
  *   findPolicy: (input: {event: object, projectId: string|null}) => Promise<object|null>,
  *   now?: () => Date,

@@ -67,16 +67,41 @@ const resolver = createShipperContextResolver({
   sharedSecret: SHARED_SECRET,
   keyId: KEY_ID,
   enabled: ENABLED,
-  async findAgreement(input: { ratewareVendorId: string; offerId: string }) {
-    const result = await client()
-      .from("rfx_lane_vendors")
-      .select(`id,rfx_event_id,rfx_lane_id,vendor_id,invitation_status,
+  async findAgreement(input: { carrierOrganizationId: string; ratewareVendorId: string; postId: string; offerId: string }) {
+    const db = client();
+    const selectOffer = (offerId: string) => db.from("rfx_lane_vendors").select(`id,rfx_event_id,rfx_lane_id,vendor_id,invitation_status,
         rfx_events!inner(id,customer_id,status,source_rfx_process_project_id),
         rfx_lanes!inner(id)`)
-      .eq("id", input.offerId)
+      .eq("id", offerId)
       .eq("vendor_id", input.ratewareVendorId)
       .limit(1)
       .maybeSingle();
+
+    // Loads ids are not presumed to be Rateware ids. If an explicit bridge
+    // exists, resolve through it and then re-check the canonical invitation.
+    const bindingResult = await db
+      .from("marksman_loads_rateware_agreement_bindings")
+      .select("id,carrier_organization_id,rateware_vendor_id,rfx_event_id,rfx_lane_vendor_id,marksman_post_id,marksman_offer_id,status")
+      .eq("carrier_organization_id", input.carrierOrganizationId)
+      .eq("marksman_post_id", input.postId)
+      .eq("marksman_offer_id", input.offerId)
+      .eq("rateware_vendor_id", input.ratewareVendorId)
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle();
+    if (bindingResult.error && String(bindingResult.error.code || "") !== "42P01") {
+      throw new ShipperContextError("MARKSMAN Loads agreement bridge lookup failed", "SHIPPER_CRM_CONTEXT_SOURCE_ERROR", 502);
+    }
+    if (bindingResult.data) {
+      const result = await selectOffer(bindingResult.data.rfx_lane_vendor_id);
+      if (result.error) throw new ShipperContextError("Rateware agreement lookup failed", "SHIPPER_CRM_CONTEXT_SOURCE_ERROR", 502);
+      if (!result.data) throw new ShipperContextError("Rateware invitation behind the Loads bridge was not found", "SHIPPER_CRM_CONTEXT_UNAVAILABLE", 404);
+      return { ...(result.data as Record<string, unknown>), binding: bindingResult.data as Record<string, unknown> };
+    }
+
+    // Direct resolution is retained for a controlled rehearsal where Loads
+    // deliberately sends the canonical Rateware event/lane and invitation ids.
+    const result = await selectOffer(input.offerId);
     if (result.error) throw new ShipperContextError("Rateware agreement lookup failed", "SHIPPER_CRM_CONTEXT_SOURCE_ERROR", 502);
     if (!result.data) throw new ShipperContextError("Rateware offer was not found for this carrier", "SHIPPER_CRM_CONTEXT_UNAVAILABLE", 404);
     return result.data as Record<string, unknown>;

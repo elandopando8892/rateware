@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -9,6 +10,8 @@ import {
   createShipperContextResolver,
   stableStringify,
 } from "../supabase/functions/marksman-shipper-context/context-core.mjs";
+
+const bridgeMigration = readFileSync(new URL("../supabase/migrations/20260913130000_marksman_loads_agreement_binding.sql", import.meta.url), "utf8");
 
 const secret = "s".repeat(32);
 const keyId = "marksman-loads-context-1";
@@ -120,6 +123,25 @@ test("does not infer a local Loads post or offer from unrelated Rateware identif
   await assert.rejects(() => target.resolve(envelope({ body: { ...envelope().body, postId: "loads-post-1", offerId: "loads-offer-1" } })), (error) => error.code === "SHIPPER_CRM_CONTEXT_BINDING_MISMATCH");
 });
 
+test("accepts local Loads identifiers only when an explicit Rateware bridge binds both ids", async () => {
+  const target = resolver({
+    findAgreement: async () => ({
+      ...agreement(),
+      binding: {
+        carrier_organization_id: "carrier:acme",
+        rfx_event_id: eventId,
+        rfx_lane_vendor_id: offerId,
+        marksman_post_id: "loads-post-1",
+        marksman_offer_id: "loads-offer-1",
+        status: "active",
+      },
+    }),
+  });
+  const body = { ...envelope().body, postId: "loads-post-1", offerId: "loads-offer-1" };
+  const result = await target.resolve(envelope({ body }));
+  assert.equal(result.context.shipperCrmLink.shipperName, "Vifaa");
+});
+
 test("fails closed when environment account mapping or structured policy is absent", async () => {
   const missingAccount = resolver({ findShipper: async () => ({ ...shipper(), metadata: {} }) });
   await assert.rejects(() => missingAccount.resolve(envelope()), (error) => error instanceof ShipperContextError && error.code === "SHIPPER_CRM_CONTEXT_INCOMPLETE");
@@ -130,4 +152,14 @@ test("fails closed when environment account mapping or structured policy is abse
 test("does not interpret human-readable cancellation policy text as structured evidence", async () => {
   const textPolicy = resolver({ findPolicy: async () => ({ cancellation_policy: "TONU within 24 hours" }) });
   await assert.rejects(() => textPolicy.resolve(envelope()), (error) => error.code === "SHIPPER_CRM_CONTEXT_INCOMPLETE");
+});
+
+test("keeps the local Loads agreement bridge server-owned and auditable", () => {
+  assert.match(bridgeMigration, /create table if not exists public\.marksman_loads_rateware_agreement_bindings/);
+  assert.match(bridgeMigration, /carrier_organization_id text not null/);
+  assert.match(bridgeMigration, /marksman_post_id text not null/);
+  assert.match(bridgeMigration, /marksman_offer_id text not null/);
+  assert.match(bridgeMigration, /rfx_lane_vendor_id uuid not null references public\.rfx_lane_vendors/);
+  assert.match(bridgeMigration, /alter table public\.marksman_loads_rateware_agreement_bindings enable row level security/);
+  assert.doesNotMatch(bridgeMigration, /create policy/i);
 });
