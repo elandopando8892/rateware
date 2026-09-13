@@ -424,6 +424,12 @@ verify_jwt = false
 [functions.shipper-directory-api]
 verify_jwt = false
 
+# Private server-to-server entry point. The Supabase gateway JWT is disabled so
+# MARKSMAN Loads can authenticate with the short-lived HMAC envelope instead;
+# the function has no browser CORS path and fails closed behind feature flags.
+[functions.rfx-internal-bid-api]
+verify_jwt = false
+
 # Provider Gmail uses Supabase Auth for the operator API and a one-time OAuth
 # state for the Google callback. Both functions authenticate inside the runtime.
 [functions.provider-gmail-intake-api]

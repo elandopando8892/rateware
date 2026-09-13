@@ -3,11 +3,13 @@ import { CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION } from '../supabase/fun
 import { PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-provider-service.mjs';
 import { RFX_INVITATION_REVIEW_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-rfx-invitation-reviews.mjs';
 import { RFX_ATOMIC_AWARD_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-rfx-award-atomic.mjs';
+import { MARKSMAN_LOADS_PRIVATE_BID_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-marksman-loads-private-bid.mjs';
 
 const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
 const carrierTemplateExtension = CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION;
 const rfxInvitationReviewExtension = RFX_INVITATION_REVIEW_ACTION_CONTRACT_EXTENSION;
 const rfxAtomicAwardExtension = RFX_ATOMIC_AWARD_ACTION_CONTRACT_EXTENSION;
+const marksmanLoadsBidExtension = MARKSMAN_LOADS_PRIVATE_BID_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 const carrierTemplateDelta = carrierTemplateExtension.expectedCountsDelta;
@@ -57,7 +59,9 @@ const corsOnlyAuthorizationEnvelopes = {
   'edge.gmail-oauth-callback.': '3584f61979a5ad5605e49b243e33fc9769f314808a5ae6b1f866154088b59b29',
   'edge.google-chat-app.': 'cac11d8a48e151559ddd4145dd9a7f8a933caaa6305667083544f35175515a05',
   'edge.ratebook-carrier-api.': 'ce08ec32d9d78aeef3f0f745240d84c5f2da51e14e2862e8bcc8096aeba37907',
-  'edge.rfx-bid-api.': 'e0dfcdf045b4043bc40a95eaae8e786539a3f7c15d348471445929a64ee5d0e8',
+  // rfx-bid-api now observes the shared invitation-token crypto module also
+  // used by the private connector; handler behavior and token format are unchanged.
+  'edge.rfx-bid-api.': '3297712b15cecee77ae316a68ddff0c70ccc7b541c3099d0e6df1f3f55369b5a',
   'edge.shipper-profile-api.': 'a6920f9f1d0daf40018b3f4390578b051b504fdab9d377e4a52bab3e98f9b0dd',
   'edge.sync-banxico-fx.': '0cd59df491252504b52db16b3d6a2aff738bfcc6cd9f3a07ec87b43c87fc85a4',
   'edge.whatsapp-webhook.': 'd0e3629ff9357c3035cd753c19ed4e8bbb04c954ab642d5539a6cbc161c7c403',
@@ -85,7 +89,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '69ec235aa42433e8cb965824a8957aff79d73fa6fce07949c70b553865b04230',
   'edge.rateware-api.': '5aabd3ac9b5217b539bce429b366d2b472884bbc0a9bf5defa34d796a6d0025a',
-  'edge.rfx-bid-api.': '4d6aab31957e1d8fb3fa539280a6a6e1c02d0cb1af74ce42aa09505f73c32ea2',
+  'edge.rfx-bid-api.': '4922c413587bdf95486beadcf85df8470df6e0767366f8eaa52fbc8ea535c1b4',
   'edge.shipper-directory-api.': '2ed2be9625112a914b7be5b5bc14df77f417257d2644dcdd089e0dc3a22d7d7b',
   'edge.shipper-profile-api.': '83cb7dff313890a43cbd6b0e12faa58c7beaf720d8288c186536f9e44676b12a',
   'edge.sync-banxico-fx.': 'de62b5eeaa6c81959e63048e1d15730c3f8831834305dcbf81b9d71a54817d62',
@@ -122,6 +126,7 @@ const portableRfxBidSourceFingerprintOverrides = {
   'edge.rfx-bid-api.get_invitation': 'ee9eaae5b385393fbe889a2a6a374aea3b8ae1a48c29b18848e116427cdaacbf',
   'edge.rfx-bid-api.public_bid_room_find_invitations': '789fd150c4ca512fa07374cc0eab1d9b53081861a3c2425691fc5c63300237b8',
   'edge.rfx-bid-api.public_bid_room_request_invite': '1d6b135fde12db3a88cc64efd2e5c5c39ce1dafbc3c79eb94cb0216425f40907',
+  'edge.rfx-bid-api.save_segment_confirmations': '6185d686b27ae45a2417849370b06b67f18d06ff75dc5aeacb35609ddb27d72e',
   'edge.rfx-bid-api.submit_bid': 'd60402a1c008a8b884b84c6436010d55e3fcac0457fff6cf0c592b51547b4934',
   'edge.rfx-bid-api.withdraw_bid': '6ec9d89d98ca2bbcceed7b697fa1acd22929d29d4519c4f31e5ffc7d72fd28c0',
 };
@@ -311,10 +316,10 @@ const brandedDomainAuthorizationOverrides = Object.fromEntries(
 export const ACTION_CONTRACT = {
   ...BASE_ACTION_CONTRACT,
   contractVersion,
-  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award`,
+  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award+marksman-loads-private-bid`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + marksmanLoadsBidExtension.expectedCountsDelta.governable,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + marksmanLoadsBidExtension.expectedCountsDelta.edge,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres + rfxAtomicAwardExtension.expectedCountsDelta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi,
   },
@@ -326,6 +331,7 @@ export const ACTION_CONTRACT = {
     ...carrierTemplateExtension.reviewedMetadataFingerprints,
     ...rfxInvitationReviewExtension.reviewedMetadataFingerprints,
     ...rfxAtomicAwardExtension.reviewedMetadataFingerprints,
+    ...marksmanLoadsBidExtension.reviewedMetadataFingerprints,
     ...supabaseAuthMetadataOverrides,
   },
   reviewedAuthorizationFingerprints: {
@@ -337,6 +343,7 @@ export const ACTION_CONTRACT = {
     ...carrierTemplateExtension.reviewedAuthorizationFingerprints,
     ...rfxInvitationReviewExtension.reviewedAuthorizationFingerprints,
     ...rfxAtomicAwardExtension.reviewedAuthorizationFingerprints,
+    ...marksmanLoadsBidExtension.reviewedAuthorizationFingerprints,
     ...corsOnlyAuthorizationOverrides,
     ...supabaseAuthAuthorizationOverrides,
     ...ratewareApiAuthorizationOverrides,
@@ -358,5 +365,6 @@ export const ACTION_CONTRACT = {
     ...carrierTemplateExtension.surfaces,
     ...rfxInvitationReviewExtension.surfaces,
     ...rfxAtomicAwardExtension.surfaces,
+    ...marksmanLoadsBidExtension.surfaces,
   ],
 };
