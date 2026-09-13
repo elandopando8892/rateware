@@ -40,5 +40,8 @@ assert.match(html, /id="rfx-wave-release-review"[\s\S]+id="rfx-wave-release-revi
 assert.match(source, /function renderWaveReleaseReview\([\s\S]+Nothing sends from this confirmation\./, "Final review must preserve the no-send safety fence");
 assert.match(source, /data-rfx-wave-open-release-controls[\s\S]+activateRfxLaunchWorkspace\("message"/, "A reviewed carrier audience without drafts should continue to message preparation instead of sending");
 assert.match(styles, /rfx-carrier-review-active \.rfx-draft-table th:nth-child\(4\)[\s\S]+display: none/, "Carrier inspector mode should remove secondary table columns instead of crowding contact and status");
+assert.match(source, /if \(eventChanged\) \{[\s\S]+rfxLaunchWorkspace = "carrier"[\s\S]+selectedEventId = eventId;[\s\S]+activateRfxLaunchWorkspace\("carrier", \{ persist: false \}\)/, "Changing RFx events should reopen Carrier Fit instead of retaining a stale Launch workspace");
+assert.match(styles, /has-selected-rfx \.bid-room-workspace[\s\S]+grid-template-columns: minmax\(0, 1fr\) 238px/, "Selected RFx should preserve the Build two-column shell");
+assert.match(styles, /has-selected-rfx \.bid-room-flow-shell \.bid-room-stage-rail[\s\S]+grid-template-columns: 1fr/, "Selected RFx should keep the operating rail vertical");
 
 console.log("RFx Launch E2E certification contracts passed.");

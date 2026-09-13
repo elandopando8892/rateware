@@ -10354,6 +10354,7 @@ async function loadDetail(eventId, options = {}) {
     : [];
   if (eventChanged) {
     resetDraftQueue({ clearSelection: true });
+    rfxLaunchWorkspace = "carrier";
     selectedChatRecipient = null;
     pendingLaneEdits.clear();
     laneEditMode = false;
@@ -10368,6 +10369,7 @@ async function loadDetail(eventId, options = {}) {
     rfxCarrierFitEvidenceLoading = false;
   }
   selectedEventId = eventId;
+  if (eventChanged) activateRfxLaunchWorkspace("carrier", { persist: false });
   clearBidRoomDetailState();
   persistRfxWorkspaceContext();
   if (unassignedSelection.length) {

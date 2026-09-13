@@ -39644,19 +39644,61 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
 }
 
 .bid-room-page.has-selected-rfx .bid-room-product {
-  display: block;
-  padding: 12px 18px 28px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 0 12px 22px;
 }
 
 .bid-room-page.has-selected-rfx .bid-room-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 238px;
+  grid-template-rows: auto;
+  align-items: start;
+  column-gap: 9px;
+  row-gap: 0;
   width: 100%;
 }
 
 .bid-room-page.has-selected-rfx .bid-room-control-panel {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   padding: 0;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-control-panel > .bid-room-event-overview,
+.bid-room-page.has-selected-rfx .bid-room-control-panel > .bid-room-action-status,
+.bid-room-page.has-selected-rfx .bid-room-control-panel > .bid-room-flow-shell {
+  grid-column: 1;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-control-panel > .bid-room-event-overview {
+  grid-row: 1;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-control-panel > .bid-room-action-status {
+  grid-row: 2;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-control-panel > .bid-room-flow-shell {
+  grid-row: 3;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-build-column {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  align-content: start;
+  gap: 0;
+  min-width: 0;
 }
 
 .bid-room-page.has-selected-rfx .bid-room-title-row {
@@ -39682,28 +39724,99 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
 }
 
 .bid-room-page.has-selected-rfx .bid-room-flow-shell {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 7px;
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  position: static;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid #dce5ea;
+  border-radius: 7px;
+  background: #f8fafb;
+  box-shadow: 0 5px 15px rgba(24, 40, 49, 0.08);
+  padding: 7px;
 }
 
-.bid-room-page.has-selected-rfx .bid-room-stage-rail {
+.bid-room-page.has-selected-rfx .bid-room-flow-shell .bid-room-stage-rail {
   position: static;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--rw-slate-200, #d3d3cf);
-  border-radius: 6px;
-  background: var(--rw-slate-25, #f7f7f5);
-  width: 100%;
+  grid-template-columns: 1fr;
+  gap: 5px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
 }
 
-.bid-room-page.has-selected-rfx .bid-room-stage-rail button {
-  min-height: 44px;
-  padding: 6px 9px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
+.bid-room-page.has-selected-rfx .bid-room-flow-shell .bid-room-stage-rail button {
+  position: relative;
+  display: grid;
+  grid-template-columns: 27px minmax(0, 1fr);
+  min-height: 55px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #d7e1e6;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #31434d;
+  padding: 7px 8px;
+  text-align: left;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-flow-shell .bid-room-stage-rail button::after {
+  content: none;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-flow-shell .bid-room-stage-rail button[aria-selected="true"] {
+  border-color: #20333f;
+  background: #20333f;
+  color: #ffffff;
+  box-shadow: 0 5px 12px rgba(32, 51, 63, 0.18);
+}
+
+.bid-room-page.has-selected-rfx .bid-room-flow-shell .bid-room-stage-rail .stage-index {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border: 1px solid #cbd8df;
+  border-radius: 50%;
+  background: #f8fafb;
+  color: #647783;
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-flow-shell .bid-room-stage-rail button[aria-selected="true"] .stage-index {
+  border-color: #a7e0cf;
+  background: #a7e0cf;
+  color: #20333f;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-flow-shell .bid-room-stage-rail .stage-copy {
+  min-width: 0;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-flow-shell .bid-room-stage-rail strong,
+.bid-room-page.has-selected-rfx .bid-room-flow-shell .bid-room-stage-rail small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-flow-shell .bid-room-stage-rail strong {
+  font-size: 0.77rem;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-flow-shell .bid-room-stage-rail small {
+  margin-top: 2px;
+  color: #70818b;
+  font-size: 0.62rem;
+}
+
+.bid-room-page.has-selected-rfx .bid-room-flow-shell .bid-room-stage-rail button[aria-selected="true"] small {
+  color: #c9e7dd;
 }
 
 .bid-room-page.has-selected-rfx .rfx-event-delivery-overview {
@@ -39719,15 +39832,7 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
   padding: 10px 12px;
 }
 
-.bid-room-page.has-selected-rfx .bid-room-stage-rail button[aria-selected="true"] {
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(30, 30, 30, 0.14);
-}
-
-.bid-room-page.has-selected-rfx .bid-room-stage-rail .stage-index,
-.bid-room-page.has-selected-rfx .bid-room-stage-rail small,
 .bid-room-page.has-selected-rfx #rfx-ops-subtitle,
-.bid-room-page.has-selected-rfx .bid-room-metrics small,
 .bid-room-page .rfx-outreach-section-heading > div > span,
 .bid-room-page .rfx-message-readiness-copy small,
 .bid-room-page .rfx-message-workspace-footer > span,
@@ -39784,9 +39889,30 @@ body:has(#rfx-launch-message-workspace:not([hidden])) .bid-room-control-panel {
 }
 
 @media (max-width: 700px) {
-  .bid-room-page.has-selected-rfx .bid-room-stage-rail {
-    grid-template-columns: repeat(4, minmax(68px, 1fr));
-    overflow-x: auto;
+  .bid-room-page.has-selected-rfx .bid-room-product {
+    padding: 0 8px 18px;
+  }
+
+  .bid-room-page.has-selected-rfx .bid-room-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bid-room-page.has-selected-rfx .bid-room-control-panel,
+  .bid-room-page.has-selected-rfx .bid-room-build-column {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .bid-room-page.has-selected-rfx .bid-room-control-panel {
+    order: 1;
+  }
+
+  .bid-room-page.has-selected-rfx .bid-room-build-column {
+    order: 2;
+  }
+
+  .bid-room-page.has-selected-rfx .bid-room-flow-shell .bid-room-stage-rail {
+    grid-template-columns: 1fr;
   }
 
   .bid-room-page.has-selected-rfx .bid-room-metrics {
