@@ -856,6 +856,20 @@ function normalizeRfxLaunchWorkspace(value) {
   return RFX_LAUNCH_WORKSPACE_KEYS.has(value) ? value : "carrier";
 }
 
+function loadRfxLaunchDataForWorkspace({ force = false, reloadAudience = false } = {}) {
+  if (!selectedEventId || rfxWorkbench?.current() !== "outreach") return;
+  loadCarrierWorkspaceData({ force });
+  if (rfxLaunchWorkspace === "carrier") {
+    void loadRfxCarrierFitEvidence({ force });
+    return;
+  }
+  if (force || !outreachTemplates.length) loadOutreachAssets();
+  if (force || !whatsappConnectionReadiness.loaded) void loadWhatsappConnectionReadiness();
+  if (reloadAudience || (!outreachAudienceRows.length && !outreachAudienceLoading)) {
+    void loadOutreachAudience({ reloadSegments: reloadAudience });
+  }
+}
+
 function activateRfxLaunchWorkspace(workspace, options = {}) {
   const { persist = true, refresh = false } = options;
   const requestedWorkspace = normalizeRfxLaunchWorkspace(workspace);
@@ -874,6 +888,7 @@ function activateRfxLaunchWorkspace(workspace, options = {}) {
   rfxLaunchWorkspacePanels.forEach((panel) => {
     panel.hidden = panel.dataset.rfxLaunchWorkspacePanel !== rfxLaunchWorkspace;
   });
+  loadRfxLaunchDataForWorkspace({ force: refresh, reloadAudience: refresh });
   if (rfxLaunchWorkspace === "message") renderOutreachPreview();
   if (rfxLaunchWorkspace === "delivery") {
     renderDeliveryParticipation();
@@ -1092,12 +1107,12 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-function setStatus(element, message, tone = "neutral") {
+function setStatus(element, message, tone = "neutral", options = {}) {
   if (!element) return;
   const normalized = tone === "error" ? humanizeError(message) : message;
   element.textContent = normalized;
   element.dataset.tone = tone;
-  if (["success", "error", "danger"].includes(tone)) {
+  if (options.notify !== false && ["success", "error", "danger"].includes(tone)) {
     window.ratewareNotify?.({ tone: tone === "error" ? "danger" : tone, message: normalized });
   }
 }
@@ -7419,7 +7434,7 @@ async function loadOutreachAudience({ reloadSegments = false } = {}) {
     outreachAudienceCounts = audience?.counts && typeof audience.counts === "object" ? audience.counts : {};
     outreachAudienceTotal = Number(audience?.total || outreachAudienceRows.length);
     outreachAudienceSegments = Array.isArray(segments) ? segments : [];
-    setStatus(rfxOutreachAudienceStatus, `This RFx is loaded: ${formatNumber(outreachAudienceRows.length)} carrier(s). Select only carriers that are ready for the next queue; sent, bounced, and quoted history stays event-specific.`, "success");
+    setStatus(rfxOutreachAudienceStatus, `This RFx is loaded: ${formatNumber(outreachAudienceRows.length)} carrier(s). Select only carriers that are ready for the next queue; sent, bounced, and quoted history stays event-specific.`, "success", { notify: false });
   } catch (error) {
     if (loadVersion !== outreachAudienceLoadVersion || eventId !== selectedEventId) return;
     outreachAudienceRows = [];
@@ -10406,8 +10421,10 @@ async function loadDetail(eventId, options = {}) {
     renderLaneCoverage();
     renderBidRoomChat();
     renderOutreachLaunchpad();
-    void loadRfxCarrierFitEvidence({ force: eventChanged || options?.force === true });
-    void loadOutreachAudience({ reloadSegments: eventChanged });
+    loadRfxLaunchDataForWorkspace({
+      force: eventChanged || options?.force === true,
+      reloadAudience: eventChanged
+    });
     setStatus(actionStatus, "Bid Room core loaded. Loading outreach and chat context...");
 
     const context = await requestRfxEventResource(
@@ -10441,7 +10458,8 @@ async function loadDetail(eventId, options = {}) {
       warnings.length
         ? `Bid Room loaded. ${warnings.join(" ")} Core event, lanes and participants are still available.`
         : "Bid Room loaded.",
-      warnings.length ? "warning" : "success"
+      warnings.length ? "warning" : "success",
+      { notify: false }
     );
   } catch (error) {
     if (loadVersion !== rfxDetailLoadVersion || selectedEventId !== eventId) return;
@@ -11536,10 +11554,11 @@ document.querySelector("[data-workbench-view-button='carriers']")?.addEventListe
   loadCarrierWorkspaceData();
 });
 document.querySelector("[data-workbench-view-button='outreach']")?.addEventListener("click", () => {
-  loadOutreachAssets();
-  loadWhatsappConnectionReadiness();
-  loadCarrierWorkspaceData();
-  void loadRfxCarrierFitEvidence();
+  if (!selectedEventId) {
+    loadOutreachAssets();
+    void loadWhatsappConnectionReadiness();
+    loadCarrierWorkspaceData();
+  }
   activateRfxLaunchWorkspace(rfxLaunchWorkspace, { persist: false });
 });
 document.querySelector("[data-workbench-view-button='responses']")?.addEventListener("click", () => {

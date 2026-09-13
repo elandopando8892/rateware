@@ -4205,7 +4205,10 @@ assert.match(apiSource, /fetchBiVendorMetricsForRfxCarrierFit/, "Carrier fit sho
 assert.match(apiSource, /rfxCarrierFitMode[\s\S]*Promise\.resolve\(\{ summary: \{\}/, "Carrier fit should skip the unused BI summary workload");
 assert.doesNotMatch(rfxEventsSource, /laneRenderLimit|RFX_LANE_RENDER_PAGE_SIZE|data-rfx-lane-load-more/, "Bid Room should retain the production-stable full-lane rendering behavior");
 assert.match(rfxEventsSource, /const lanes = visibleLanes\(\);[\s\S]+lanesBody\.innerHTML = lanes\.map/, "Bid Room should render the complete filtered lane book");
-assert.match(rfxEventsSource, /void loadRfxCarrierFitEvidence\(\{ force: eventChanged \|\| options\?\.force === true \}\)/, "Carrier Fit evidence should load with the RFx detail instead of using a delayed timer");
+assert.match(rfxEventsSource, /function loadRfxLaunchDataForWorkspace[\s\S]+void loadRfxCarrierFitEvidence\(\{ force \}\)/, "Carrier Fit evidence should load through the active Launch workspace instead of using a delayed timer");
+const loadDetailSource = rfxEventsSource.slice(rfxEventsSource.indexOf("async function loadDetail"), rfxEventsSource.indexOf("function activateWorkbenchView"));
+assert.match(loadDetailSource, /loadRfxLaunchDataForWorkspace\(/, "RFx detail loading should hand off outreach resources to the workspace loader");
+assert.doesNotMatch(loadDetailSource, /void loadOutreachAudience\(/, "Build should not fetch the full outreach audience while the RFx detail is loading");
 assert.match(vendorsSource, /data-copy-profile-link/, "Vendor drawer should expose profile link creation");
 assert.match(carrierProfileHtml, /carrier-profile\.js/, "Carrier profile page should load the public profile script");
 assert.match(carrierProfileHtml, /carrier-profile-eyebrow/, "Carrier profile page header should be translatable");

@@ -43,5 +43,8 @@ assert.match(styles, /rfx-carrier-review-active \.rfx-draft-table th:nth-child\(
 assert.match(source, /if \(eventChanged\) \{[\s\S]+rfxLaunchWorkspace = "carrier"[\s\S]+selectedEventId = eventId;[\s\S]+activateRfxLaunchWorkspace\("carrier", \{ persist: false \}\)/, "Changing RFx events should reopen Carrier Fit instead of retaining a stale Launch workspace");
 assert.match(styles, /has-selected-rfx \.bid-room-workspace[\s\S]+grid-template-columns: minmax\(0, 1fr\) 238px/, "Selected RFx should preserve the Build two-column shell");
 assert.match(styles, /has-selected-rfx \.bid-room-flow-shell \.bid-room-stage-rail[\s\S]+grid-template-columns: 1fr/, "Selected RFx should keep the operating rail vertical");
+assert.match(source, /function setStatus\(element, message, tone = "neutral", options = \{\}\)[\s\S]+options\.notify !== false/, "Background Bid Room statuses should be able to stay inline without duplicate global notifications");
+assert.match(source, /This RFx is loaded:[\s\S]+"success", \{ notify: false \}\)/, "Audience hydration should not raise a duplicate success toast");
+assert.match(source, /function loadRfxLaunchDataForWorkspace[\s\S]+rfxWorkbench\?\.current\(\) !== "outreach"[\s\S]+loadRfxCarrierFitEvidence/, "Carrier Fit recommendations should load only when Launch is active");
 
 console.log("RFx Launch E2E certification contracts passed.");
