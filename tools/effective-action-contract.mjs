@@ -3,11 +3,13 @@ import { CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION } from '../supabase/fun
 import { PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-provider-service.mjs';
 import { RFX_INVITATION_REVIEW_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-rfx-invitation-reviews.mjs';
 import { RFX_ATOMIC_AWARD_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-rfx-award-atomic.mjs';
+import { SHIPMENT_CONTEXT_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-shipment-context.mjs';
 
 const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
 const carrierTemplateExtension = CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION;
 const rfxInvitationReviewExtension = RFX_INVITATION_REVIEW_ACTION_CONTRACT_EXTENSION;
 const rfxAtomicAwardExtension = RFX_ATOMIC_AWARD_ACTION_CONTRACT_EXTENSION;
+const shipmentContextExtension = SHIPMENT_CONTEXT_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 const carrierTemplateDelta = carrierTemplateExtension.expectedCountsDelta;
@@ -311,11 +313,11 @@ const brandedDomainAuthorizationOverrides = Object.fromEntries(
 export const ACTION_CONTRACT = {
   ...BASE_ACTION_CONTRACT,
   contractVersion,
-  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award`,
+  methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award+shipment-context`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge,
-    postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres + rfxAtomicAwardExtension.expectedCountsDelta.postgres,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + shipmentContextExtension.expectedCountsDelta.governable,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + shipmentContextExtension.expectedCountsDelta.edge,
+    postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres + rfxAtomicAwardExtension.expectedCountsDelta.postgres + shipmentContextExtension.expectedCountsDelta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi,
   },
   reviewedMetadataFingerprints: {
@@ -326,6 +328,7 @@ export const ACTION_CONTRACT = {
     ...carrierTemplateExtension.reviewedMetadataFingerprints,
     ...rfxInvitationReviewExtension.reviewedMetadataFingerprints,
     ...rfxAtomicAwardExtension.reviewedMetadataFingerprints,
+    ...shipmentContextExtension.reviewedMetadataFingerprints,
     ...supabaseAuthMetadataOverrides,
   },
   reviewedAuthorizationFingerprints: {
@@ -337,6 +340,7 @@ export const ACTION_CONTRACT = {
     ...carrierTemplateExtension.reviewedAuthorizationFingerprints,
     ...rfxInvitationReviewExtension.reviewedAuthorizationFingerprints,
     ...rfxAtomicAwardExtension.reviewedAuthorizationFingerprints,
+    ...shipmentContextExtension.reviewedAuthorizationFingerprints,
     ...corsOnlyAuthorizationOverrides,
     ...supabaseAuthAuthorizationOverrides,
     ...ratewareApiAuthorizationOverrides,
@@ -358,5 +362,6 @@ export const ACTION_CONTRACT = {
     ...carrierTemplateExtension.surfaces,
     ...rfxInvitationReviewExtension.surfaces,
     ...rfxAtomicAwardExtension.surfaces,
+    ...shipmentContextExtension.surfaces,
   ],
 };
