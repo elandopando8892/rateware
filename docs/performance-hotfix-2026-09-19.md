@@ -141,3 +141,22 @@ No new application console error was observed after authentication; the reused
 tab retained an earlier expected unauthenticated diagnostic-page redirect error.
 Server latency remains variable, and these samples do not establish p95 or a
 guaranteed overall speedup.
+
+## Final production promotion
+
+Vercel inspection confirmed production deployment
+`dpl_5YLSuXEjEmPopzjRKGL7Y7EhYB2K` is Ready at
+https://rateware-f1lbahbep-elandopando8892s-projects.vercel.app with both
+`rates.heymarksman.com` and `rateware.vercel.app` aliases. The promoted source
+contains the normalized-profile follow-up. Backend version 632 source matches
+the approved hotfix.
+
+After recovering the browser automation connection, the production accessibility
+tree confirmed Bid Room loaded with 69 lanes, 6348 participation rows, 592
+recommendations, 584 contact-ready candidates, the 332-member saved list and 92
+RFx carriers (4 needs message, 87 contacted, 0 response, 1 attention). Selection
+remained zero and continuation/add controls were disabled. The final reload's
+timing capture was interrupted and is not usable as performance evidence.
+This is an immediate authenticated smoke, not a completed 15-minute monitoring
+window after the final promotion. No invitations, messages or drafts were
+created. Initial detail latency remains unresolved.
