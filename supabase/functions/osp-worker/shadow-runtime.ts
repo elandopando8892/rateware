@@ -6,6 +6,11 @@ import {
   runExactThreadAssociation,
 } from "./exact-thread-runtime.ts";
 import {
+  type ExactThreadPreflightRequest,
+  type ExactThreadPreflightResult,
+  preflightExactThreadAssociation,
+} from "./exact-thread-preflight.ts";
+import {
   createPostgresIntakePersistence,
   type PostgresIntakePersistenceOptions,
 } from "./postgres-intake-persistence.ts";
@@ -143,6 +148,9 @@ export function createShadowWorkerRuntime(input: {
   runExactThreadAssociation(
     request: ExactThreadAssociationRun,
   ): Promise<number>;
+  preflightExactThreadAssociation(
+    request: ExactThreadPreflightRequest,
+  ): Promise<ExactThreadPreflightResult>;
   runXlsxDocumentExtractCanary?: (
     request: XlsxDocumentExtractCanary,
   ) => Promise<number>;
@@ -664,6 +672,8 @@ export function createShadowWorkerRuntime(input: {
         objects: originalObjects,
         persistence,
       }, request),
+    preflightExactThreadAssociation: (request: ExactThreadPreflightRequest) =>
+      preflightExactThreadAssociation({ gmail }, request),
     runAuthorizedSendExact: async (job: AuthorizedSendExact) => {
       const result = await outboundSends.execute(job);
       await jobs.complete({

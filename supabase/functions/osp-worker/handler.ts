@@ -91,6 +91,12 @@ type ExactThreadAssociationRun = {
   amendmentEmlSha256: string;
 };
 
+type ExactThreadPreflight = {
+  organizationId: string;
+  originalGmailMessageId: string;
+  amendmentGmailMessageId: string;
+};
+
 type RequestManifestShadow = {
   organizationId: string;
   caseId: string;
@@ -140,6 +146,9 @@ export function createOspWorkerHandler(deps: {
   runExactThreadAssociation?: (
     input: ExactThreadAssociationRun,
   ) => Promise<number>;
+  preflightExactThreadAssociation?: (
+    input: ExactThreadPreflight,
+  ) => Promise<unknown>;
   runXlsxDocumentExtractCanary?: (
     input: XlsxDocumentExtractCanary,
   ) => Promise<number>;
@@ -223,6 +232,39 @@ export function createOspWorkerHandler(deps: {
     }
     if (!serviceAuthorized) return json(401, { error: "UNAUTHORIZED" });
     const keys = Object.keys(body).sort();
+    const exactThreadPreflightKeys = [
+      "action",
+      "amendmentGmailMessageId",
+      "organizationId",
+      "originalGmailMessageId",
+    ];
+    if (body.action === "preflight_exact_thread_association") {
+      if (
+        keys.length !== exactThreadPreflightKeys.length ||
+        keys.some((key, index) => key !== exactThreadPreflightKeys[index]) ||
+        typeof body.organizationId !== "string" ||
+        !UUID.test(body.organizationId) ||
+        ![body.originalGmailMessageId, body.amendmentGmailMessageId].every(
+          (value) =>
+            typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value),
+        ) || body.originalGmailMessageId === body.amendmentGmailMessageId
+      ) return json(400, { error: "INVALID_REQUEST" });
+      if (!deps.preflightExactThreadAssociation) {
+        return json(409, { error: "EXACT_THREAD_PREFLIGHT_DISABLED" });
+      }
+      try {
+        return json(
+          200,
+          await deps.preflightExactThreadAssociation({
+            organizationId: body.organizationId,
+            originalGmailMessageId: body.originalGmailMessageId as string,
+            amendmentGmailMessageId: body.amendmentGmailMessageId as string,
+          }),
+        );
+      } catch {
+        return json(503, { error: "EXACT_THREAD_PREFLIGHT_UNAVAILABLE" });
+      }
+    }
     const exactThreadKeys = [
       "action",
       "amendmentEmlSha256",

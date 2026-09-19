@@ -18,7 +18,7 @@ import { resolveRequestManifestCanary } from "./request-manifest-canary-config.t
 import { resolveAdaptiveManifest } from "./adaptive-manifest-config.ts";
 import { resolveManualRequestCanary } from "./manual-request-canary-config.ts";
 
-const WORKER_BUILD_REVISION = "20260902-p8-salzillo-package-canary";
+const WORKER_BUILD_REVISION = "20260919-exact-thread-preflight";
 
 function required(name: string): string {
   const value = Deno.env.get(name)?.trim();
@@ -124,6 +124,7 @@ Deno.serve(createOspWorkerHandler({
   run: runtime.run,
   runExactGmailIngest: runtime.runExactGmailIngest,
   runExactThreadAssociation: runtime.runExactThreadAssociation,
+  preflightExactThreadAssociation: runtime.preflightExactThreadAssociation,
   runAuthorizedSendExact: runtime.runAuthorizedSendExact,
   runXlsxDocumentExtractCanary: runtime.runXlsxDocumentExtractCanary,
   runSupplierPackageCanary: runtime.runSupplierPackageCanary,

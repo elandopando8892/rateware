@@ -192,8 +192,13 @@ Deno.test("exact thread association rejects a different thread or external sende
     ...source,
     parsed: {
       ...source.parsed,
-      senderEmail: "other@example.test",
-      senderDomain: "example.test",
+      provenance: {
+        ...source.parsed.provenance,
+        originalEnvelope: {
+          ...source.parsed.provenance.originalEnvelope!,
+          senderEmail: "other@example.test",
+        },
+      },
     },
   };
   const sender = harness({ amendment: otherSender });

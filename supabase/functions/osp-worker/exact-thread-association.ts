@@ -101,6 +101,7 @@ function validateResolved(
   actual: ResolvedExactThreadMessage,
   label: "ORIGINAL" | "AMENDMENT",
 ): void {
+  const originalEnvelope = actual.parsed.provenance.originalEnvelope;
   if (actual.source.gmailMessageId !== expected.gmailMessageId) {
     throw new Error(`EXACT_THREAD_${label}_GMAIL_ID_MISMATCH`);
   }
@@ -113,12 +114,14 @@ function validateResolved(
   }
   if (
     actual.parsed.provenance.relationship !== "internal_relay" ||
-    !actual.parsed.provenance.originalEnvelope
+    !originalEnvelope || !originalEnvelope.senderEmail ||
+    !originalEnvelope.senderDomain ||
+    originalEnvelope.senderDomain !== actual.parsed.supplierDomain
   ) throw new Error(`EXACT_THREAD_${label}_RELAY_PROVENANCE_REQUIRED`);
   if (
     actual.parsed.provenance.parentEnvelope.sourceSha256 !==
       expected.outerRawMimeSha256 ||
-    actual.parsed.provenance.originalEnvelope.sourceSha256 !==
+    originalEnvelope.sourceSha256 !==
       expected.originalEmlSha256
   ) throw new Error(`EXACT_THREAD_${label}_PROVENANCE_HASH_MISMATCH`);
   if (!actual.parsed.senderEmail || !actual.parsed.senderDomain) {
@@ -130,6 +133,8 @@ function validatePair(
   original: ResolvedExactThreadMessage,
   amendment: ResolvedExactThreadMessage,
 ): void {
+  const originalSender = original.parsed.provenance.originalEnvelope!;
+  const amendmentSender = amendment.parsed.provenance.originalEnvelope!;
   if (original.source.gmailMessageId === amendment.source.gmailMessageId) {
     throw new Error("EXACT_THREAD_MESSAGES_MUST_DIFFER");
   }
@@ -141,10 +146,10 @@ function validatePair(
     original.originalEmlSha256 === amendment.originalEmlSha256
   ) throw new Error("EXACT_THREAD_SOURCES_MUST_DIFFER");
   if (
-    original.parsed.senderEmail.toLowerCase() !==
-      amendment.parsed.senderEmail.toLowerCase() ||
-    original.parsed.senderDomain.toLowerCase() !==
-      amendment.parsed.senderDomain.toLowerCase()
+    originalSender.senderEmail.toLowerCase() !==
+      amendmentSender.senderEmail.toLowerCase() ||
+    originalSender.senderDomain.toLowerCase() !==
+      amendmentSender.senderDomain.toLowerCase()
   ) throw new Error("EXACT_THREAD_EXTERNAL_SENDER_MISMATCH");
 }
 

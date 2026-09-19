@@ -56,6 +56,12 @@ const exactThreadAssociation = {
   amendmentOuterRawMimeSha256: "c".repeat(64),
   amendmentEmlSha256: "d".repeat(64),
 };
+const exactThreadPreflight = {
+  action: "preflight_exact_thread_association",
+  organizationId: "11111111-1111-4111-8111-111111111111",
+  originalGmailMessageId: "original_1",
+  amendmentGmailMessageId: "amendment_2",
+};
 const manifestCanary = {
   action: "run_request_manifest_shadow",
   organizationId: "11111111-1111-4111-8111-111111111111",
@@ -250,6 +256,53 @@ Deno.test("OSP worker executes only one fully specified exact thread association
     )).status,
     400,
   );
+});
+
+Deno.test("OSP worker exposes a service-only read-only exact thread preflight", async () => {
+  let received: Record<string, string> | undefined;
+  const result = {
+    original: {
+      gmailMessageId: "original_1",
+      outerRawMimeSha256: "a".repeat(64),
+      originalEmlSha256: "b".repeat(64),
+    },
+    amendment: {
+      gmailMessageId: "amendment_2",
+      outerRawMimeSha256: "c".repeat(64),
+      originalEmlSha256: "d".repeat(64),
+    },
+  };
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    manualCanaryToken: manualToken,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    preflightExactThreadAssociation: async (input) => {
+      received = input;
+      return result;
+    },
+  });
+  const response = await handler(request(exactThreadPreflight));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), result);
+  const { action: _action, ...expected } = exactThreadPreflight;
+  assertEquals(received, expected);
+  assertEquals(
+    (await handler(request({ ...exactThreadPreflight, extra: true }))).status,
+    400,
+  );
+  assertEquals(
+    (await handler(
+      request(exactThreadPreflight, `Bearer ${manualToken}`),
+    )).status,
+    401,
+  );
+  const disabled = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: async () => 0,
+    run: async () => 0,
+  });
+  assertEquals((await disabled(request(exactThreadPreflight))).status, 409);
 });
 
 Deno.test("OSP worker fails closed when exact send is disabled", async () => {
