@@ -11,14 +11,23 @@ function functionSource(name, nextName) {
   return source.slice(start, end >= 0 ? end : undefined);
 }
 
-test("ensureSignedIn reuses one Kinde token for session and access context", () => {
-  const ensureSource = functionSource("ensureSignedIn", "function accessContextFromToken");
-  assert.equal((ensureSource.match(/getKindeToken\(/g) || []).length, 1);
-  assert.match(ensureSource, /access: accessContextFromToken\(token\)/);
+test("ensureSignedIn reuses one Supabase session for token, user, and access context", () => {
+  const ensureSource = functionSource("ensureSignedIn", "export async function getAccessContext");
+  assert.equal((ensureSource.match(/getSession\(/g) || []).length, 1);
+  assert.match(ensureSource, /token: active\.access_token/);
+  assert.match(ensureSource, /user: active\.user/);
+  assert.match(ensureSource, /access: accessContext\(active\.user\)/);
   assert.doesNotMatch(ensureSource, /getAccessContext\(\)/);
 });
 
-test("getAccessContext keeps the public token-derived access contract", () => {
-  assert.match(source, /function accessContextFromToken\(token\)[\s\S]*roles:[\s\S]*permissions:/);
-  assert.match(source, /export async function getAccessContext\(\) \{\s*return accessContextFromToken\(await getKindeToken\(\)\);\s*\}/);
+test("getAccessContext uses server-managed Supabase app metadata", () => {
+  const start = source.indexOf("function accessContext(user)");
+  const end = source.indexOf("export async function ensureSignedIn", start);
+  assert.ok(start >= 0 && end > start);
+  const accessSource = source.slice(start, end);
+  assert.match(accessSource, /user\?\.app_metadata/);
+  assert.match(accessSource, /roles: metadata\.roles/);
+  assert.match(accessSource, /permissions: metadata\.permissions/);
+  assert.doesNotMatch(accessSource, /user_metadata/);
+  assert.match(source, /export async function getAccessContext\(\) \{ return \(await ensureSignedIn\(\)\)\.access; \}/);
 });

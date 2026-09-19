@@ -101,6 +101,18 @@ Status: candidate in development; sprint 1 remains open.
   locally (21 total). This verifies frontend behavior with fakes; authenticated
   preview execution is still required and must use non-sending preparation only.
 
+## Focused release suite
+
+- Migrated the two obsolete authentication-performance assertions from Kinde
+  token parsing to the current Supabase session and `app_metadata` contract.
+- The focused release suite now passes 45/45 across Google login lifecycle,
+  Supabase session reuse, server-managed permission metadata, template domain,
+  template controller/navigation, stale-response guards, large draft preparation,
+  RFx refresh ordering and multilane behavior.
+- This is an intentionally scoped recovery suite. The historical monolithic
+  static suite still describes other repository eras and is not claimed as a
+  green certification of the complete application.
+
 ## Preview and browser verification
 
 - Candidate commit: `f1eef707`.
