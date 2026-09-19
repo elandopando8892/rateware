@@ -64,3 +64,19 @@ inputSnapshot is null. This contradicts S4's complete UI exit criterion.
 A local follow-up now renders the matrix and request link in that branch;
 regression reproduces awaiting_clarification with null snapshot. Pending check
 and release. No case mutations or outbound actions occurred.
+
+Follow-up `f491b025` pushed privately: empty snapshot renders the compliance
+matrix and remediation links; entity initialization uses a unique request
+entity match or existing binding rather than the first candidate. UI regression
+18/18 passed; build 435 modules passed. Preview
+`dpl_57qNuZwcpoJApkssoog2272w8dBg` READY, protected Crane review HTTP 200.
+Promotion `dpl_bhUqyjEZaSC7LzzJ7ZN8Gr1SiMp8` started; authenticated result
+not yet certified. Rollback UI `dpl_BmheKHUYgWvPqESQxDWovfLfWMcX`.
+
+Post-promotion: READY and osp.heymarksman.com alias confirmed. Authenticated
+`ops@xbfreight.com` live review displays the current request-review blocker and
+the Review request link. Clicking it opens the same Crane case; XBFUS is now
+selected, XBFMX unselected, confirmation unchecked and profile still unbound.
+No save/bind/review-finalization action occurred. This certifies read/remediation
+navigation and the initial entity choice only; package generation, persistent
+review and full real-request coverage remain open.
