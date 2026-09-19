@@ -11218,11 +11218,15 @@ rfxOutreachCarrierLane?.addEventListener("change", () => {
 });
 rfxOutreachCarrierSegment?.addEventListener("change", async () => {
   const segmentId = String(rfxOutreachCarrierSegment.value || "");
+  const eventId = selectedEventId;
+  const isCurrent = () => selectedEventId === eventId && String(rfxOutreachCarrierSegment.value || "") === segmentId;
   if (segmentId) {
     try {
       const rows = await loadSegmentCandidateRows(segmentId);
+      if (!isCurrent()) return;
       rememberSelectedVendorRows(rows);
     } catch {
+      if (!isCurrent()) return;
       // Keep the existing CRM cache usable; the status below tells the user to retry if needed.
       setStatus(rfxOutreachCarrierStatus, "Saved carrier list could not load. Try Refresh in Carrier CRM, then choose it again.", "error");
     }
@@ -11277,17 +11281,21 @@ selectVisibleCarriersButton?.addEventListener("click", () => {
 });
 selectSegmentCarriersButton?.addEventListener("click", () => {
   const segmentId = selectedSegmentId();
+  const eventId = selectedEventId;
+  const isCurrent = () => selectedEventId === eventId && selectedSegmentId() === segmentId;
   if (participantTemplateMutationRunning) return;
   participantTemplateMutationRunning = true;
   renderManualShortlistControls();
   setStatus(manualShortlistStatus, "Loading matching carriers from Carrier CRM...");
   loadSegmentCandidateRows(segmentId)
     .then((rows) => {
+      if (!isCurrent()) return;
       rememberSelectedVendorRows(rows);
       selectManualVendorIds(rows.map((vendor) => vendor.id));
       setStatus(manualShortlistStatus, rows.length ? `${formatNumber(rows.length)} carrier(s) selected from Carrier CRM.` : "No carriers match this list.", rows.length ? "success" : "neutral");
     })
     .catch((error) => {
+      if (!isCurrent()) return;
       setStatus(manualShortlistStatus, `Carrier CRM selection failed: ${humanizeError(error)}`, "error");
     })
     .finally(() => {
@@ -11303,6 +11311,8 @@ clearCarrierSelectionButton?.addEventListener("click", () => {
 });
 loadManualShortlistTemplateButton?.addEventListener("click", async () => {
   const segmentId = selectedSegmentId();
+  const eventId = selectedEventId;
+  const isCurrent = () => selectedEventId === eventId && selectedSegmentId() === segmentId;
   if (segmentId === "all") {
     setStatus(manualShortlistStatus, "Choose a saved list or procurement segment before loading participants.", "error");
     return;
@@ -11314,7 +11324,7 @@ loadManualShortlistTemplateButton?.addEventListener("click", async () => {
   setStatus(manualShortlistStatus, savedIds.length ? `Loading ${formatNumber(savedIds.length)} saved carrier(s) from Carrier CRM...` : "Loading carriers from Carrier CRM...");
   try {
     const rows = await loadSegmentCandidateRows(segmentId);
-    if (selectedSegmentId() !== segmentId) return;
+    if (!isCurrent()) return;
     if (!rows.length) {
       setStatus(manualShortlistStatus, "No active carriers were found for the selected saved list.", "error");
       return;
@@ -11331,6 +11341,7 @@ loadManualShortlistTemplateButton?.addEventListener("click", async () => {
       missingCount ? "warning" : "success"
     );
   } catch (error) {
+    if (!isCurrent()) return;
     setStatus(manualShortlistStatus, `Saved list could not load from Carrier CRM. ${humanizeError(error)}`, "error");
   } finally {
     renderManualShortlistControls();

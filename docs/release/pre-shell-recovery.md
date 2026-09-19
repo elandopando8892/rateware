@@ -41,6 +41,20 @@ backend deployment, business-record creation or message delivery was performed.
 
 Status: candidate in development; sprint 1 remains open.
 
+## Local follow-up: template response context
+
+- Added event/list identity checks to all three asynchronous template-selection
+  handlers. Responses and errors from a different currently selected event/list
+  no longer change selection or show an unrelated error.
+- 15 behavioral tests exercise actual handler source with deferred responses;
+  together with the loader suite, 18 tests pass. Syntax and diff checks pass.
+- Scope: event/list identity changes, not a complete cancellation or request-version
+  audit (including navigating away and back to the same IDs).
+- Permission inspection: template controls explicitly require `vendors:manage`
+  from app_metadata. Shared `canUse` currently checks sign-in only. Server-side
+  authorization and denied-role tests remain required; UI is not a security boundary.
+- These changes are local, not yet part of the published preview or production.
+
 ## Preview and browser verification
 
 - Candidate commit: `f1eef707`.
