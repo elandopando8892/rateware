@@ -53,7 +53,7 @@ export function HistoricalIntakePanel({ intake, subject, client }: {
     finally { setPending(null); }
   };
   const importCandidate = async () => {
-    if (!candidate || !confirmed || !validCriteria || !client?.importHistoricalGmailMessage) return;
+    if (!candidate || candidate.duplicate_state === 'already_imported' || !confirmed || !validCriteria || !client?.importHistoricalGmailMessage) return;
     setPending('import'); setFailed(false);
     try {
       setReceipt(await client.importHistoricalGmailMessage({
@@ -103,13 +103,19 @@ export function HistoricalIntakePanel({ intake, subject, client }: {
               <div className="historical-candidate" aria-label="Verified historical candidate">
                 <span>Verified candidate</span>
                 <strong>{candidate.subject}</strong>
-                <small>{candidate.sender_domain} · {candidate.attachment_count} attachment(s) · {candidate.duplicate_state === 'already_imported' ? 'replay path' : 'new import'}</small>
+                <small>{candidate.sender_domain} · {candidate.attachment_count} attachment(s) · {candidate.duplicate_state === 'already_imported' ? 'already linked to an OSP case' : 'new import'}</small>
               </div>
               {!receipt ? (
-                <div className="historical-import-confirmation">
-                  <label><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> Import only this verified customer-setup request into the existing OSP intake.</label>
-                  <button type="button" disabled={!confirmed || pending !== null} onClick={() => void importCandidate()}>{pending === 'import' ? 'Importing…' : candidate.duplicate_state === 'already_imported' ? 'Verify idempotent replay' : 'Import selected request'}</button>
-                </div>
+                candidate.duplicate_state === 'already_imported' ? (
+                  <p className="case-warning" role="status">
+                    Already captured in an existing OSP case. Replaying this Gmail message cannot create the separate corrected case. Select a different exact Gmail message or use the governed correction-case workflow.
+                  </p>
+                ) : (
+                  <div className="historical-import-confirmation">
+                    <label><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> Import only this verified customer-setup request into the existing OSP intake.</label>
+                    <button type="button" disabled={!confirmed || pending !== null} onClick={() => void importCandidate()}>{pending === 'import' ? 'Importing…' : 'Import selected request'}</button>
+                  </div>
+                )
               ) : (
                 <div className="historical-import-receipt" role="status">
                   <strong>{receipt.import_status === 'replayed' ? 'Replay verified — already captured' : 'Imported into OSP intake'}</strong>

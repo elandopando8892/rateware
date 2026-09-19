@@ -29,7 +29,7 @@ describe('HistoricalIntakePanel', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('verifies one exact candidate and shows an idempotent import receipt', async () => {
+  it('refuses to present an idempotent replay as a separate corrected case', async () => {
     const previewHistoricalGmailSearch = vi.fn(async () => ({
       query: 'in:inbox subject:"Salzillo" after:2026/08/09 before:2026/08/12',
       candidates: [{ candidate_id: 'salzillo_message_1', subject: 'PROCESO DE ALTA GRUPO SALZILLO', sender_domain: 'example.test', received_at: '2026-08-10T15:00:00.000Z', attachment_count: 1, duplicate_state: 'already_imported' as const }],
@@ -46,10 +46,10 @@ describe('HistoricalIntakePanel', () => {
     }} />);
     await userEvent.click(screen.getByRole('button', { name: 'Verify exact candidate' }));
     expect(await screen.findByText('PROCESO DE ALTA GRUPO SALZILLO')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('checkbox', { name: /import only this verified/i }));
-    await userEvent.click(screen.getByRole('button', { name: 'Verify idempotent replay' }));
-    expect(await screen.findByText('Replay verified — already captured')).toBeInTheDocument();
-    expect(importHistoricalGmailMessage).toHaveBeenCalledOnce();
+    expect(screen.getByText(/Replaying this Gmail message cannot create the separate corrected case/i)).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /import only this verified/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Verify idempotent replay' })).not.toBeInTheDocument();
+    expect(importHistoricalGmailMessage).not.toHaveBeenCalled();
   });
 
   it('lets Sales replace the one-off Salzillo criteria with another bounded exact request', async () => {
