@@ -1008,17 +1008,19 @@ assert.match(spreadsheetGridSource, /control\.dataset\.gridInvalidOption = text/
 assert.match(stylesSource, /sheet-issue-nav/, "Spreadsheet issue navigator should have compact styling");
 assert.match(apiSource, /vendor_ids: vendorIds/, "Vendor segments should support exact participant template vendor ids");
 assert.match(apiSource, /update_vendor_segment/, "API should support updating reusable vendor participant templates");
-assert.match(rfxEventsSource, /createVendorSegment/, "Bid Room should save selected participants as reusable vendor templates");
-assert.match(rfxEventsSource, /updateVendorSegment/, "Bid Room should update saved participant templates after carrier changes");
-assert.match(rfxEventsSource, /deleteVendorSegment/, "Bid Room should delete saved participant templates without touching CRM carriers");
+// Templates are now maintained in Carrier CRM; Bid Room consumes active lists.
+// Do not require the retired duplicate template editor inside Bid Room.
+const carrierTemplateLibrarySource = readFileSync(new URL("../src/carrier-list-templates.js", import.meta.url), "utf8");
+assert.match(carrierTemplateLibrarySource, /createCarrierListTemplate\(payload\)/, "Carrier CRM must retain template creation");
+assert.match(carrierTemplateLibrarySource, /updateCarrierListTemplate/, "Carrier CRM must retain template editing");
+assert.match(carrierTemplateLibrarySource, /archiveCarrierListTemplate\(id, displayedVersion\)/, "Carrier CRM must archive templates with version protection");
 assert.match(rfxEventsSource, /segmentVendorIds/, "Bid Room should preload exact vendor id templates");
-assert.match(rfxEventsSource, /fetchVendorSegments\(\{ segmentType: "participant_template" \}\)/, "Bid Room should load only reusable participant templates, not unrelated CRM segments");
-assert.match(rfxEventsSource, /participantTemplateNameKey/, "Bid Room should normalize participant template names before creating duplicates");
-assert.match(rfxEventsSource, /participantTemplateMutationRunning/, "Bid Room should serialize participant template save, update, and delete actions");
-assert.match(rfxEventsHtml, /manual-shortlist-template-name/, "Bid Room should render a named participant template input");
+assert.match(rfxEventsSource, /fetchCarrierListTemplates\(\{ lifecycle_status: "active", limit: 200, offset \}\)/, "Bid Room must paginate only active reusable carrier lists");
+assert.match(rfxEventsSource, /getCarrierListTemplate\(segmentId, \{ usageContext: "carrier_fit" \}\)/, "Bid Room must revalidate selected list membership before use");
+assert.match(carrierTemplateLibrarySource, /if \(mutationRunning\) return;/, "Carrier CRM must serialize template mutations");
+assert.match(rfxEventsHtml, /vendors\.html\?tab=segments/, "Bid Room must link to the canonical CRM list workspace");
 assert.match(rfxEventsHtml, /load-manual-shortlist-template/, "Bid Room should render a saved participant template loader");
-assert.match(rfxEventsHtml, /update-manual-shortlist-template/, "Bid Room should render an update button for selected participant templates");
-assert.match(rfxEventsHtml, /delete-manual-shortlist-template/, "Bid Room should render a delete button for selected participant templates");
+assert.doesNotMatch(rfxEventsHtml, /id="(?:update|delete)-manual-shortlist-template"/, "Bid Room must not recreate the retired duplicate template editor");
 assert.match(apiSource, /findParticipantTemplateNameConflict/, "Rateware API should reject duplicate participant template names server-side");
 assert.match(apiSource, /vendor\.segment\.create/, "Rateware API should audit participant template creation");
 assert.match(apiSource, /vendor\.segment\.update/, "Rateware API should audit participant template updates");

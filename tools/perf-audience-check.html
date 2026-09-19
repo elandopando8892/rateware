@@ -1,0 +1,39 @@
+<!doctype html>
+<!-- Diagnostic harness: tools/ is excluded from production by .vercelignore. -->
+<html lang="en"><meta charset="utf-8"><title>Rateware read-only audience check</title>
+<body><h1>Read-only audience comparison</h1><p>No messages or drafts are created.</p>
+<button id="compare">Compare audience reads</button><pre id="result">Ready</pre>
+<script type="module">
+import { requirePrivatePage } from './src/auth.js';
+import { callRatewareFunction } from './src/rateware-api.js';
+await requirePrivatePage();
+const button = document.querySelector('#compare');
+const result = document.querySelector('#result');
+const canonical = (value) => Array.isArray(value)
+  ? value.map(canonical)
+  : value && typeof value === 'object'
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]))
+    : value;
+const fingerprint = async (data) => {
+  const bytes = new TextEncoder().encode(JSON.stringify(canonical(data)));
+  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(v => v.toString(16).padStart(2,'0')).join('');
+};
+button.onclick = async () => {
+  button.disabled = true;
+  const samples = [];
+  try {
+    // Sequential reads avoid adding competing database load. Reverse order on
+    // the second pair to expose warm-cache/order effects.
+    for (const name of ['rateware-api', 'rateware-api-perf-check', 'rateware-api-perf-check', 'rateware-api']) {
+      result.textContent = JSON.stringify({ state: 'running', samples }, null, 2);
+      const start = performance.now();
+      const data = await callRatewareFunction(name, 'preview_outreach_audience', {
+        rfx_event_id: '625cd649-f97a-4da0-865e-ec3bf8a058d1', channel: 'email'
+      });
+      samples.push({ name, milliseconds: Math.round(performance.now()-start), total: data.total, counts: data.counts, fingerprint: await fingerprint(data) });
+    }
+    result.textContent = JSON.stringify({ state: 'complete', identical: samples.every(row => row.fingerprint === samples[0].fingerprint), samples }, null, 2);
+  } catch (error) { result.textContent = JSON.stringify({ state: 'failed', error: error.message, samples }, null, 2); }
+  finally { button.disabled = false; }
+};
+</script></body></html>
