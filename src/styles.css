@@ -35737,6 +35737,14 @@ form[data-unsaved-guard][data-unsaved="true"] {
   }
 }
 
+@media (max-width: 860px) {
+  .bid-room-page .rfx-touchpoint-panel > .rfx-draft-queue-intro {
+    position: static;
+    top: auto;
+    z-index: auto;
+  }
+}
+
 /* RFx Process internal RFI editor and marketplace preview. */
 .rfx-process-rfi-legacy-layout {
   display: grid;

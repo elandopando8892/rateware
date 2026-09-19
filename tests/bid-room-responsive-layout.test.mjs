@@ -33,4 +33,10 @@ assert.match(
   "compact desktop carrier actions should wrap below the guidance instead of collapsing its copy",
 );
 
+assert.match(
+  styles,
+  /@media \(max-width: 860px\) \{[\s\S]*?\.bid-room-page \.rfx-touchpoint-panel > \.rfx-draft-queue-intro \{[\s\S]*?position: static;[\s\S]*?top: auto;/,
+  "mobile delivery guidance must scroll normally instead of covering participation rows",
+);
+
 console.log("Bid Room responsive layout checks passed.");
