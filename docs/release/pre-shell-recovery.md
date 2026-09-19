@@ -67,6 +67,27 @@ Status: candidate in development; sprint 1 remains open.
   additional source-only checks. User sign-in is required for the next gate.
 - No production promotion, migration, invitation or message was performed.
 
+## Live Supabase verification (read-only, 2026-09-19)
+
+- Project `rateware-prod` (`alqjqzqagdmcywpjtnnr`) reports `ACTIVE_HEALTHY`
+  on Postgres 17.6.1.
+- Deployed `rateware-api` is active at version 626. Its current source sets
+  `RFX_OUTREACH_INVITATION_ID_LIMIT = 50000` and checks the computed outreach
+  matrix against that limit. The 89 x 69 case (6,141 rows) is within the
+  deployed bound; this verifies the server contract, not the end-to-end draft run.
+- The deployed auth adapter resolves the Supabase bearer through `/auth/v1/user`
+  and copies only server-managed `app_metadata.permissions` into action claims.
+  Template write actions return 403 unless `vendors:manage` is present.
+- A read-only aggregate query confirms exactly one `sales@heymarksman.com` Auth
+  user, with `vendors:manage` and an organization binding. No user identifiers,
+  tokens or secret keys were recorded in this evidence.
+- Supabase changelog review found no hosted-Auth breaking change affecting this
+  flow. Relevant 2026 changes concern self-hosted `API_EXTERNAL_URL` and OAuth
+  token response status; the application uses hosted Auth and accepts Supabase
+  client responses rather than hard-coding OAuth HTTP 201.
+- No database, Auth metadata, Edge Function, migration or application record was
+  changed by these checks.
+
 ## Preview and browser verification
 
 - Candidate commit: `f1eef707`.
