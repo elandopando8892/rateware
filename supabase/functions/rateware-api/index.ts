@@ -13374,10 +13374,12 @@ async function fetchAllRfxLaneRows(
 async function fetchAllRfxLaneVendorRows(
   supabase: RatewareSupabaseClient,
   eventId: string,
-  columns: string
+  columns: string,
+  parallelPages = 1
 ) {
   const rows: Record<string, unknown>[] = [];
-  for (let offset = 0; offset < RFX_LANE_VENDOR_MAX_ROWS; offset += RFX_LANE_VENDOR_PAGE_SIZE) {
+  const width = Math.min(3, Math.max(1, Math.floor(parallelPages) || 1));
+  const readPage = async (offset: number) => {
     const result = await supabase
       .from("rfx_lane_vendors")
       .select(columns)
@@ -13387,9 +13389,20 @@ async function fetchAllRfxLaneVendorRows(
       .range(offset, offset + RFX_LANE_VENDOR_PAGE_SIZE - 1);
     if (result.error) throw new Error(`RFx participant load failed: ${result.error.message}`);
 
-    const page = (result.data || []) as unknown as Record<string, unknown>[];
-    rows.push(...page);
-    if (page.length < RFX_LANE_VENDOR_PAGE_SIZE) return rows;
+    return (result.data || []) as unknown as Record<string, unknown>[];
+  };
+  // Probe one page first: small events do not incur speculative queries.
+  // Promise.all preserves page order even when requests complete out of order.
+  for (let offset = 0; offset < RFX_LANE_VENDOR_MAX_ROWS;) {
+    const pageCount = offset === 0 ? 1 : width;
+    const offsets = Array.from({ length: pageCount }, (_, i) => offset + i * RFX_LANE_VENDOR_PAGE_SIZE)
+      .filter((start) => start < RFX_LANE_VENDOR_MAX_ROWS);
+    const pages = await Promise.all(offsets.map(readPage));
+    for (const page of pages) {
+      rows.push(...page);
+      if (page.length < RFX_LANE_VENDOR_PAGE_SIZE) return rows;
+    }
+    offset += offsets.length * RFX_LANE_VENDOR_PAGE_SIZE;
   }
   throw new Error(`RFx participant load exceeded ${RFX_LANE_VENDOR_MAX_ROWS} rows for one event.`);
 }
@@ -28803,7 +28816,7 @@ export function createRatewareApiHandler(
       // three concurrently so opening a Bid Room pays one database round trip.
       const [eventLanes, loadedInvitationRows, benchmarkLoad, comparisonFx] = await Promise.all([
         fetchAllRfxLaneRows(supabase, event.id, "*"),
-        fetchAllRfxLaneVendorRows(supabase, event.id, invitationColumns),
+        fetchAllRfxLaneVendorRows(supabase, event.id, invitationColumns, 3),
         fetchRfxDetailBenchmarkRates(supabase, user, event.id)
           .then((value) => ({ value, error: null as unknown }))
           .catch((error) => ({ value: null, error })),
