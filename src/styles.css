@@ -35660,6 +35660,60 @@ form[data-unsaved-guard][data-unsaved="true"] {
   }
 }
 
+/*
+ * Bid Room responsive shell: preserve the working desktop composition without
+ * forcing the Launch workspaces into the narrow remainder beside the ops rail.
+ * At compact desktop widths the operating context follows the active workspace;
+ * the task itself keeps the full reading width.
+ */
+@media (max-width: 1320px) and (min-width: 861px) {
+  .bid-room-page .bid-room-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+
+  .bid-room-page .bid-room-build-column {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .bid-room-page .bid-room-control-panel {
+    grid-column: 1;
+    grid-row: 2;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bid-room-page .bid-room-control-panel > .bid-room-event-overview,
+  .bid-room-page .bid-room-control-panel > .bid-room-action-status,
+  .bid-room-page .bid-room-control-panel > .bid-room-flow-shell {
+    grid-column: 1;
+  }
+
+  .bid-room-page .bid-room-control-panel > .bid-room-event-overview {
+    grid-row: 1;
+  }
+
+  .bid-room-page .bid-room-control-panel > .bid-room-action-status {
+    grid-row: 2;
+  }
+
+  .bid-room-page .bid-room-control-panel > .bid-room-flow-shell {
+    grid-row: 3;
+    position: static;
+  }
+
+  .bid-room-page .bid-room-flow-shell .bid-room-stage-rail {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1120px) and (min-width: 861px) {
+  .bid-room-page .rfx-outreach-launch-grid,
+  .bid-room-page .rfx-outreach-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* RFx Process internal RFI editor and marketplace preview. */
 .rfx-process-rfi-legacy-layout {
   display: grid;
