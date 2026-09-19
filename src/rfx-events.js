@@ -699,7 +699,15 @@ function activateRfxLaunchWorkspace(workspace, options = {}) {
   rfxLaunchWorkspacePanels.forEach((panel) => {
     panel.hidden = panel.dataset.rfxLaunchWorkspacePanel !== rfxLaunchWorkspace;
   });
-  if (rfxLaunchWorkspace === "message") renderOutreachPreview();
+  if (rfxLaunchWorkspace === "carrier") {
+    renderOutreachCarrierAdder();
+    renderOutreachAudience();
+  }
+  if (rfxLaunchWorkspace === "message") {
+    renderOutreachTemplateSelect();
+    renderOutreachPreview();
+    renderTouchpoints();
+  }
   if (rfxLaunchWorkspace === "delivery") {
     renderDeliveryParticipation();
     renderDraftQueue();
@@ -7319,12 +7327,21 @@ function renderOutreachLaunchpad() {
       rfxOutreachCampaignName.dataset.autoName = "true";
     }
   }
-  renderOutreachTemplateSelect();
-  renderOutreachCarrierAdder();
-  renderOutreachAudience();
-  renderOutreachPreview();
-  renderTouchpoints();
-  renderDraftQueue();
+  // Bid Rooms can contain thousands of lane/carrier invitation rows. Rendering
+  // every hidden Launch panel multiplies that work and can freeze the browser.
+  // Keep each workspace current only when the operator actually opens it.
+  if (rfxLaunchWorkspace === "carrier") {
+    renderOutreachCarrierAdder();
+    renderOutreachAudience();
+    return;
+  }
+  if (rfxLaunchWorkspace === "message") {
+    renderOutreachTemplateSelect();
+    renderOutreachPreview();
+    renderTouchpoints();
+    return;
+  }
+  if (rfxLaunchWorkspace === "delivery") renderDraftQueue();
 }
 
 function updateMetrics() {
