@@ -8229,7 +8229,14 @@ function carrierFitEvidence(vendor) {
   };
 }
 
+// Lane terms are shared by every CRM carrier. Cache by value (not lane
+// identity) so edited routes cannot reuse stale matching terms.
+const rfxCarrierFitTermsCache = new Map();
+
 function rfxCarrierFitTerms(value, type) {
+  const cacheKey = JSON.stringify([value, type]);
+  const cachedTerms = rfxCarrierFitTermsCache.get(cacheKey);
+  if (cachedTerms) return cachedTerms;
   const normalized = normalizeLookupText(value);
   if (!normalized) return [];
   const terms = [normalized];
@@ -8249,7 +8256,11 @@ function rfxCarrierFitTerms(value, type) {
   if (type === "service" && /one way|roundtrip|round trip/.test(normalized)) {
     terms.push("one way", "roundtrip", "round trip", "dedicated", "spot");
   }
-  return [...new Set(terms.map(normalizeLookupText).filter(Boolean))];
+  const result = [...new Set(terms.map(normalizeLookupText).filter(Boolean))];
+  // Bound memory when operators browse many events in one session.
+  if (rfxCarrierFitTermsCache.size >= 2048) rfxCarrierFitTermsCache.clear();
+  rfxCarrierFitTermsCache.set(cacheKey, result);
+  return result;
 }
 
 function rfxCarrierFieldMatches(haystack, value, type) {
