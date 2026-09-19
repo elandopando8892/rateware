@@ -197,6 +197,59 @@ describe('controlled approval and communications pages', () => {
     expect(screen.queryByRole('button', { name: /complete operations review/i })).not.toBeInTheDocument();
   });
 
+  it('keeps an incomplete PDF/DOCX workspace visible while every action stays disabled', () => {
+    const saveNativeTargets = vi.fn();
+    const notReady: ApprovalCommunicationsWorkspace = {
+      ...workspace,
+      caseState: 'operations_review',
+      supplierPackage: null,
+      fulfillment: {
+        assessmentStatus: 'not_ready', schemaVersion: 1, manifestSha256: null,
+        assessedAt: '2026-09-12T18:00:00.000Z', totalRequired: 1,
+        satisfiedRequired: 0, blockingCount: 1,
+        items: [{
+          requirementId: 'request-manifest-review', kind: 'form',
+          canonicalKey: 'request.manifest_review', label: 'Request requirements review',
+          status: 'review_required', blocking: true,
+          reason: 'A current reviewed request is required before fulfillment can be assessed.', evidenceIds: [],
+        }],
+        gates: { operationsReview: false, signatureApproval: false, outboundDraft: false, outboundFreeze: false, salesAuthorization: false, send: false },
+      },
+      nativeArtifactTargets: [
+        {
+          state: 'ready', mappingId: caseId, mappingVersion: 1, mappingSha256: 'a'.repeat(64),
+          mappingDecisionId: payloadId, sourceVersionId: caseId, sourceSha256: 'b'.repeat(64),
+          contentType: 'application/pdf', sourceDownloadUrl: 'https://example.test/original.pdf',
+          requiredFieldCount: 1, mappedFieldCount: 1, completionPercent: 100,
+          fields: [{ canonicalFieldId: 'company.name', label: 'Legal name', target: { kind: 'acroform', canonicalFieldId: 'company.name', fieldName: 'legal_name' } }],
+        },
+        {
+          state: 'stale', mappingId: payloadId, mappingVersion: 2, mappingSha256: 'c'.repeat(64),
+          mappingDecisionId: caseId, sourceVersionId: payloadId, sourceSha256: 'd'.repeat(64),
+          contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sourceDownloadUrl: 'https://example.test/original.docx',
+          requiredFieldCount: 1, mappedFieldCount: 0, completionPercent: 0,
+          fields: [{ canonicalFieldId: 'company.tax_id', label: 'Tax ID', target: null }],
+        },
+      ],
+      capabilities: {
+        completeOperationsReview: false, approveAndApplySignature: false,
+        saveOutboundDraft: false, freezeOutboundPayload: false,
+        authorizeOutboundPayload: false, requestAuthorizedSend: false,
+      },
+    };
+    render(<OperationsReviewPage workspace={notReady} onComplete={vi.fn()} onSaveNativeTargets={saveNativeTargets} />);
+    expect(screen.getByRole('heading', { name: 'Operations evidence review' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Carrier requirement coverage' })).toBeVisible();
+    expect(screen.getByText('Request requirements review')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Review request' })).toHaveAttribute('href', `/app/cases/${caseId}`);
+    expect(screen.getAllByRole('link', { name: 'Open preserved original' })).toHaveLength(2);
+    expect(screen.getByLabelText('Field name in PDF')).toBeDisabled();
+    expect(screen.getByLabelText('Content control tag')).toBeDisabled();
+    for (const action of screen.getAllByRole('button', { name: 'Save reviewed destinations' })) expect(action).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Complete Operations review' })).not.toBeInTheDocument();
+    expect(saveNativeTargets).not.toHaveBeenCalled();
+  });
+
   it('labels a missing bank cover as package-level evidence and routes to documents', () => {
     const blocked = {
       ...workspace.fulfillment!,

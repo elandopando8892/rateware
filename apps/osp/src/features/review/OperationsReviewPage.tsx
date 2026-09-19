@@ -16,6 +16,7 @@ export function OperationsReviewPage({ workspace, conflict = false, onComplete, 
   const snapshot = workspace.inputSnapshot;
   const supplierPackage = workspace.supplierPackage;
   const packageSet = workspace.supplierPackageSet;
+  const fulfillmentNotReady = workspace.fulfillment?.assessmentStatus === 'not_ready';
   const evidenceReady = packageSet ? Boolean(packageSet.operationsReviewSha256) : Boolean(supplierPackage) && workspace.fulfillment?.gates.operationsReview === true;
   const formatLabel = (contentType: string) => contentType === 'application/pdf' ? 'PDF'
     : contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? 'DOCX'
@@ -41,7 +42,7 @@ export function OperationsReviewPage({ workspace, conflict = false, onComplete, 
     {onSaveNativeTargets && (workspace.nativeArtifactTargets?.length ?? 0) > 0 ? <section className="review-package" aria-labelledby="native-targets-title">
       <p className="eyebrow">SOURCE FIDELITY</p><h2 id="native-targets-title">Place answers in the original forms</h2>
       <p>Operations confirms native destinations before a new package is generated. Missing or conflicting placement remains blocked.</p>
-      {workspace.nativeArtifactTargets?.map(review => <NativeArtifactTargetPanel key={`${review.mappingId}:${review.mappingVersion}`} caseId={workspace.caseId} caseState={workspace.caseState} review={review} onSave={onSaveNativeTargets} />)}
+      {workspace.nativeArtifactTargets?.map(review => <NativeArtifactTargetPanel key={`${review.mappingId}:${review.mappingVersion}`} caseId={workspace.caseId} caseState={workspace.caseState} review={review} onSave={onSaveNativeTargets} blocked={fulfillmentNotReady} />)}
     </section> : null}
     {import.meta.env.VITE_OSP_BUILD_PROFILE === 'preview-synthetic' ? <ArtifactReviewPanel key={workspace.caseId} caseId={workspace.caseId} manifestSha256={workspace.fulfillment?.manifestSha256 ?? ''} inventory={syntheticArtifactInventory} /> : null}
     <section className="review-package" aria-labelledby="supplier-package-title">

@@ -11,6 +11,7 @@ type FulfillmentItem = NonNullable<ApprovalCommunicationsWorkspace['fulfillment'
 
 function correctionRoute(caseId: string, item: FulfillmentItem) {
   if (!item.blocking) return null;
+  if (item.canonicalKey === 'request.manifest_review') return { href: `/app/cases/${caseId}`, label: 'Review request' };
   if (item.status === 'signature_missing') return { href: `/app/cases/${caseId}/signature`, label: 'Review signature' };
   if (item.kind === 'form') return { href: `/app/cases/${caseId}/form`, label: 'Complete form' };
   return { href: '/app/documents', label: item.status === 'stale' ? 'Renew document' : 'Review documents' };

@@ -23,11 +23,12 @@ function targetIsComplete(target: NativeArtifactTarget | null): target is Native
   return true;
 }
 
-export function NativeArtifactTargetPanel({ caseId, caseState, review, onSave }: {
+export function NativeArtifactTargetPanel({ caseId, caseState, review, onSave, blocked = false }: {
   caseId: string;
   caseState: ApprovalCommunicationsWorkspace['caseState'];
   review: Review;
   onSave(input: NativeArtifactTargetsInput): Promise<void>;
+  blocked?: boolean;
 }) {
   const [draft, setDraft] = useState<Draft>(() => initialDraft(review));
   const [confirmed, setConfirmed] = useState(false);
@@ -36,7 +37,7 @@ export function NativeArtifactTargetPanel({ caseId, caseState, review, onSave }:
   const idempotencyKey = useRef(`native-targets:${crypto.randomUUID()}`);
   const targets = useMemo(() => review.fields.map(field => draft[field.canonicalFieldId]).filter(targetIsComplete), [draft, review.fields]);
   const complete = targets.length === review.requiredFieldCount;
-  const editable = caseState === 'operations_review' && !['ambiguous', 'stale', 'persisted'].includes(review.state);
+  const editable = !blocked && caseState === 'operations_review' && !['ambiguous', 'stale', 'persisted'].includes(review.state);
   const setTarget = (canonicalFieldId: string, target: NativeArtifactTarget | null) => {
     setDraft(current => ({ ...current, [canonicalFieldId]: target }));
     setConfirmed(false);
@@ -66,6 +67,7 @@ export function NativeArtifactTargetPanel({ caseId, caseState, review, onSave }:
     {review.sourceDownloadUrl ? <a className="button-link" href={review.sourceDownloadUrl} target="_blank" rel="noreferrer">Open preserved original</a> : <p role="status">The original preview is unavailable. Refresh before confirming placement.</p>}
     {review.state === 'ambiguous' ? <p className="case-warning" role="alert">More than one reviewed mapping matches this original. Resolve the conflict before editing.</p> : null}
     {review.state === 'stale' ? <p className="case-warning" role="alert">The source, review, or mapping changed. Reload the current Operations package.</p> : null}
+    {blocked ? <p className="case-warning" role="alert">Review the current request requirements before recording native destinations.</p> : null}
     <fieldset disabled={!editable || busy} className="native-target-fields">
       <legend>Native destinations</legend>
       {review.fields.map(field => {

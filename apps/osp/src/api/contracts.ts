@@ -615,8 +615,9 @@ const capabilitySchema = z.strictObject({
 });
 
 export const RequestFulfillmentMatrixSchema = z.strictObject({
+  assessmentStatus: z.literal('not_ready').optional(),
   schemaVersion: z.literal(1),
-  manifestSha256: workflowSha,
+  manifestSha256: workflowSha.nullable(),
   assessedAt: utcDate,
   totalRequired: z.number().int().min(0).max(600),
   satisfiedRequired: z.number().int().min(0).max(600),
@@ -639,6 +640,18 @@ export const RequestFulfillmentMatrixSchema = z.strictObject({
     salesAuthorization: z.boolean(),
     send: z.boolean(),
   }),
+}).superRefine((value, context) => {
+  if (value.assessmentStatus !== 'not_ready') {
+    if (value.manifestSha256 === null) context.addIssue({ code: 'custom', message: 'Evaluated fulfillment requires a manifest hash' });
+    return;
+  }
+  const blocker = value.items[0];
+  if (value.manifestSha256 !== null || value.totalRequired !== 1 || value.satisfiedRequired !== 0 || value.blockingCount !== 1 || value.items.length !== 1
+      || blocker?.requirementId !== 'request-manifest-review' || blocker.canonicalKey !== 'request.manifest_review'
+      || blocker.status !== 'review_required' || blocker.blocking !== true || blocker.evidenceIds.length !== 0
+      || Object.values(value.gates).some(Boolean)) {
+    context.addIssue({ code: 'custom', message: 'Not-ready fulfillment must be the exact fail-closed read model' });
+  }
 });
 
 export const NativeArtifactTargetSchema = z.discriminatedUnion('kind', [

@@ -824,6 +824,89 @@ Deno.test("case API returns a tenant-safe approval workspace and a typed version
   });
 });
 
+Deno.test("workspace read returns expected fulfillment blockers while Operations mutation remains blocked", async () => {
+  const handler = createCaseApiHandler({
+    verifyToken: async () => identity,
+    verifyApprovalToken: async () => ({
+      ...identity,
+      authorizationSessionId: "session-operations",
+      authorizationSessionIssuedAt: "2026-09-12T18:00:00.000Z",
+    }),
+    clarificationStore: {
+      listForReview: async () => [],
+      saveOperationsReview: async () => row,
+    },
+    workflowView: {
+      load: async () => ({
+        organizationId,
+        caseId: row.caseId,
+        caseVersion: 4,
+        caseState: "operations_review",
+        inputSnapshot: {
+          sha256: sourceHash,
+          documentCount: 2,
+          extractionCount: 2,
+          reviewDecisionCount: 2,
+          formInstanceVersion: 1,
+        },
+        replyContext: null,
+        signature: null,
+        outbound: null,
+        fulfillment: {
+          assessmentStatus: "not_ready",
+          schemaVersion: 1,
+          manifestSha256: null,
+          assessedAt: "2026-09-12T18:00:00.000Z",
+          totalRequired: 1,
+          satisfiedRequired: 0,
+          blockingCount: 1,
+          items: [{
+            requirementId: "request-manifest-review",
+            kind: "form",
+            canonicalKey: "request.manifest_review",
+            label: "Request requirements review",
+            status: "review_required",
+            blocking: true,
+            reason: "A current reviewed request is required before fulfillment can be assessed.",
+            evidenceIds: [],
+          }],
+          gates: {
+            operationsReview: false,
+            signatureApproval: false,
+            outboundDraft: false,
+            outboundFreeze: false,
+            salesAuthorization: false,
+            send: false,
+          },
+        },
+      }),
+    },
+    approvalActions: {
+      completeOperations: async () => {
+        throw new Error("REQUEST_FULFILLMENT_BLOCKED");
+      },
+      approveSignature: async () => {
+        throw new Error("REQUEST_FULFILLMENT_BLOCKED");
+      },
+    },
+    incidentId: () => "incident-fulfillment-read",
+  });
+  const view = await handler(request(
+    `action=get_approval_communications_workspace&case_id=${row.caseId}&payload_id=none`,
+  ));
+  assertEquals(view.status, 200);
+  const body = await view.json();
+  assertEquals(body.data.fulfillment.assessmentStatus, "not_ready");
+  assertEquals(body.data.fulfillment.blockingCount, 1);
+  assertEquals(Object.values(body.data.capabilities), [false, false, false, false, false, false]);
+
+  const blocked = await handler(request(
+    `action=complete_operations_review&case_id=${row.caseId}&expected_case_version=4&input_snapshot_sha256=${sourceHash}&idempotency_key=blocked-fulfillment`,
+  ));
+  assertEquals(blocked.status, 409);
+  assertEquals((await blocked.json()).error.code, "FULFILLMENT_BLOCKED");
+});
+
 Deno.test("case API normalizes every stale outbound command to a typed version conflict", async () => {
   const handler = createCaseApiHandler({
     verifyToken: async () => salesIdentity,

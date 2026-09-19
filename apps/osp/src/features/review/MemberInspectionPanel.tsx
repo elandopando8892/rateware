@@ -38,18 +38,19 @@ export function MemberInspectionPanel({ workspace, file, onSave }: {
       setError(false);
     }
   }, [retry, review, file.outputSha256, workspace.supplierPackageSet, key]);
-  const current = review?.requestManifestSha256 === workspace.fulfillment?.manifestSha256;
+  const requestManifestSha256 = workspace.fulfillment?.manifestSha256;
+  const current = typeof requestManifestSha256 === 'string' && review?.requestManifestSha256 === requestManifestSha256;
   const valid = signature !== '' && (signature === 'none' || /^[1-9][0-9]*$/.test(policy))
     && (percent === '' ? decision === 'rejected' : /^[0-9]{1,3}$/.test(percent) && Number(percent) <= 100)
     && (file.contentType !== 'application/pdf' || /^[1-9][0-9]{0,2}$/.test(pages))
     && (decision !== 'approved' || inspected);
   const submit = async () => {
-    if (!workspace.supplierPackageSet || !workspace.inputSnapshot || !workspace.fulfillment) return;
+    if (!workspace.supplierPackageSet || !workspace.inputSnapshot || typeof requestManifestSha256 !== 'string') return;
     const input: MemberInspectionInput = retry ?? {
       reviewId: crypto.randomUUID(), caseId: workspace.caseId, setId: workspace.supplierPackageSet.setId,
       sourceVersionId: file.sourceVersionId, outputSha256: file.outputSha256,
       expectedCaseVersion: workspace.caseVersion, inputSnapshotSha256: workspace.inputSnapshot.sha256,
-      setManifestSha256: workspace.supplierPackageSet.manifestSha256, requestManifestSha256: workspace.fulfillment.manifestSha256,
+      setManifestSha256: workspace.supplierPackageSet.manifestSha256, requestManifestSha256,
       status: decision, fullOutputInspected: inspected, completionPercent: percent === '' ? null : Number(percent),
       pageCount: pages === '' ? null : Number(pages), signatureRequirement: signature as MemberInspectionInput['signatureRequirement'],
       signaturePolicyVersion: signature === 'none' ? null : Number(policy),

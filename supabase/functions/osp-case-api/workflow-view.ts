@@ -34,6 +34,90 @@ type PostgresFactory = (
   databaseUrl: string,
   options: Record<string, unknown>,
 ) => unknown;
+
+export type WorkspaceFulfillmentNotReady = Readonly<{
+  assessmentStatus: "not_ready";
+  schemaVersion: 1;
+  manifestSha256: null;
+  assessedAt: string;
+  totalRequired: 1;
+  satisfiedRequired: 0;
+  blockingCount: 1;
+  items: readonly Readonly<{
+    requirementId: "request-manifest-review";
+    kind: "form";
+    canonicalKey: "request.manifest_review";
+    label: "Request requirements review";
+    status: "review_required";
+    blocking: true;
+    reason: "A current reviewed request is required before fulfillment can be assessed.";
+    evidenceIds: readonly string[];
+  }>[];
+  gates: Readonly<{
+    operationsReview: false;
+    signatureApproval: false;
+    outboundDraft: false;
+    outboundFreeze: false;
+    salesAuthorization: false;
+    send: false;
+  }>;
+}>;
+
+function fulfillmentNotReady(now: Date): WorkspaceFulfillmentNotReady {
+  return Object.freeze({
+    assessmentStatus: "not_ready",
+    schemaVersion: 1,
+    manifestSha256: null,
+    assessedAt: now.toISOString(),
+    totalRequired: 1,
+    satisfiedRequired: 0,
+    blockingCount: 1,
+    items: Object.freeze([Object.freeze({
+      requirementId: "request-manifest-review",
+      kind: "form",
+      canonicalKey: "request.manifest_review",
+      label: "Request requirements review",
+      status: "review_required",
+      blocking: true,
+      reason:
+        "A current reviewed request is required before fulfillment can be assessed.",
+      evidenceIds: Object.freeze([]),
+    })]),
+    gates: Object.freeze({
+      operationsReview: false,
+      signatureApproval: false,
+      outboundDraft: false,
+      outboundFreeze: false,
+      salesAuthorization: false,
+      send: false,
+    }),
+  });
+}
+
+export async function loadWorkspaceFulfillment(
+  gate: RequestSemanticGate,
+  input: { organizationId: string; caseId: string },
+  now: () => Date = () => new Date(),
+): Promise<RequestFulfillmentMatrix | WorkspaceFulfillmentNotReady> {
+  try {
+    return await gate.load(input);
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      error.message !== "REQUEST_FULFILLMENT_BLOCKED"
+    ) throw error;
+    return fulfillmentNotReady(now());
+  }
+}
+
+function fulfillmentBlocksPackageInspection(
+  fulfillment: WorkflowViewRecord["fulfillment"],
+): boolean {
+  return fulfillment !== undefined &&
+    "assessmentStatus" in fulfillment &&
+    fulfillment.assessmentStatus === "not_ready";
+}
+
 type CaseState =
   | "received"
   | "analyzing_requirements"
@@ -137,7 +221,7 @@ export type WorkflowViewRecord = {
   signature: SignatureView | null;
   outbound: OutboundView | null;
   outboundIsLatest?: boolean;
-  fulfillment?: RequestFulfillmentMatrix;
+  fulfillment?: RequestFulfillmentMatrix | WorkspaceFulfillmentNotReady;
 };
 
 export type WorkflowViewSource = {
@@ -488,7 +572,8 @@ export function approvalCommunicationsWorkspace(
           setId: record.supplierPackageSet.setId,
           operationsReviewSha256: record.packageSetReviewSha256 ?? null,
           canRecordInspection: operations &&
-            record.caseState === "operations_review",
+            record.caseState === "operations_review" &&
+            !fulfillmentBlocksPackageInspection(record.fulfillment),
           version: record.supplierPackageSet.version,
           manifestSha256: record.supplierPackageSet.manifestSha256,
           files: record.supplierPackageSet.files.map((
@@ -624,6 +709,7 @@ export function createPostgresWorkflowViewSource(
         | "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ) => Promise<string>;
     semanticGate?: RequestSemanticGate;
+    now?: () => Date;
   },
 ): WorkflowViewSource {
   const sql = sqlClient(options.databaseUrl, options.postgresFactory);
@@ -858,10 +944,17 @@ export function createPostgresWorkflowViewSource(
           };
         },
       );
-      const fulfillment = record.fulfillment ??
-        (options.semanticGate
-          ? await options.semanticGate.load({ organizationId, caseId })
-          : undefined);
+      let fulfillment = record.fulfillment;
+      if (!fulfillment && options.semanticGate) {
+        fulfillment = await loadWorkspaceFulfillment(
+          options.semanticGate,
+          {
+            organizationId,
+            caseId,
+          },
+          options.now,
+        );
+      }
       const supplierPackageSet =
         record.supplierPackageSet && options.signSupplierPackage
           ? {

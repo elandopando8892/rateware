@@ -4,6 +4,7 @@ import type { VerifiedWorkflowIdentity } from "../_shared/osp/workflow-authority
 import {
   approvalCommunicationsWorkspace,
   createPostgresWorkflowViewSource,
+  loadWorkspaceFulfillment,
   type WorkflowViewRecord,
 } from "./workflow-view.ts";
 
@@ -79,6 +80,59 @@ const record: WorkflowViewRecord = {
   },
 };
 
+Deno.test("workspace read converts only expected fulfillment-not-ready into a typed blocker", async () => {
+  const notReady = await loadWorkspaceFulfillment({
+    load: () => Promise.reject(new Error("REQUEST_FULFILLMENT_BLOCKED")),
+  }, { organizationId, caseId }, () => new Date("2026-09-12T18:00:00.000Z"));
+  assertEquals(notReady, {
+    assessmentStatus: "not_ready",
+    schemaVersion: 1,
+    manifestSha256: null,
+    assessedAt: "2026-09-12T18:00:00.000Z",
+    totalRequired: 1,
+    satisfiedRequired: 0,
+    blockingCount: 1,
+    items: [{
+      requirementId: "request-manifest-review",
+      kind: "form",
+      canonicalKey: "request.manifest_review",
+      label: "Request requirements review",
+      status: "review_required",
+      blocking: true,
+      reason: "A current reviewed request is required before fulfillment can be assessed.",
+      evidenceIds: [],
+    }],
+    gates: {
+      operationsReview: false,
+      signatureApproval: false,
+      outboundDraft: false,
+      outboundFreeze: false,
+      salesAuthorization: false,
+      send: false,
+    },
+  });
+  const projected = approvalCommunicationsWorkspace({
+    ...record,
+    caseState: "operations_review",
+    fulfillment: notReady,
+  }, baseIdentity);
+  assertEquals(Object.values(projected.capabilities), [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+  ]);
+  await assertRejects(
+    () => loadWorkspaceFulfillment({
+      load: () => Promise.reject(new Error("DATABASE_TEMPORARY")),
+    }, { organizationId, caseId }),
+    Error,
+    "DATABASE_TEMPORARY",
+  );
+});
+
 Deno.test("package-set projection exposes every file but no object locators or implicit signature authority", () => {
   const result = approvalCommunicationsWorkspace({
     ...record,
@@ -90,8 +144,10 @@ Deno.test("package-set projection exposes every file but no object locators or i
       files: [payloadId, signedPackageId].map((sourceVersionId) => ({
         requirementId: `form.${sourceVersionId}`,
         sourceVersionId,
+        sourceSha256: sha,
         outputSha256: sha,
         contentType: "application/pdf",
+        mappingKinds: ["acroform" as const],
         objectId: `private:${sourceVersionId}`,
         downloadUrl: null,
       })),
@@ -186,7 +242,7 @@ Deno.test("workflow view derives mutually exclusive server capabilities and expo
 
 Deno.test("validated set digest enables only Operations for an authorized actor", () => {
   const current: WorkflowViewRecord = { ...record, caseState: 'operations_review', supplierPackage: null, packageSetReviewSha256: sha,
-    supplierPackageSet: {setId: signedPackageId, version: 1, manifestSha256: sha, files: [{requirementId:'form.a',sourceVersionId:payloadId,outputSha256:sha,contentType:'application/pdf',objectId:'private:1',downloadUrl:null}]} };
+    supplierPackageSet: {setId: signedPackageId, version: 1, manifestSha256: sha, files: [{requirementId:'form.a',sourceVersionId:payloadId,sourceSha256:sha,outputSha256:sha,contentType:'application/pdf',mappingKinds:['acroform'],objectId:'private:1',downloadUrl:null}]} };
   const result = approvalCommunicationsWorkspace(current, baseIdentity);
   assertEquals(result.capabilities.completeOperationsReview, true);
   assertEquals(result.supplierPackageSet?.operationsReviewSha256, sha);
@@ -194,6 +250,59 @@ Deno.test("validated set digest enables only Operations for an authorized actor"
   assertEquals(result.capabilities.requestAuthorizedSend, false);
   assertEquals(approvalCommunicationsWorkspace(current, {...baseIdentity,permissions:['osp:read']}).capabilities.completeOperationsReview,false);
   assertEquals(approvalCommunicationsWorkspace({...current,packageSetReviewSha256:null},baseIdentity).capabilities.completeOperationsReview,false);
+});
+
+Deno.test("a pending package inspection remains recordable when its evaluated fulfillment gate is false", () => {
+  const current: WorkflowViewRecord = {
+    ...record,
+    caseState: "operations_review",
+    supplierPackage: null,
+    packageSetReviewSha256: null,
+    supplierPackageSet: {
+      setId: signedPackageId,
+      version: 1,
+      manifestSha256: sha,
+      files: [{
+        requirementId: "form.a",
+        sourceVersionId: payloadId,
+        sourceSha256: sha,
+        outputSha256: sha,
+        contentType: "application/pdf",
+        mappingKinds: ["acroform"],
+        objectId: "private:1",
+        downloadUrl: null,
+      }],
+    },
+    fulfillment: {
+      schemaVersion: 1,
+      manifestSha256: sha,
+      assessedAt: "2026-09-12T18:00:00.000Z",
+      totalRequired: 1,
+      satisfiedRequired: 0,
+      blockingCount: 1,
+      items: [{
+        requirementId: "form.a",
+        kind: "form",
+        canonicalKey: "form.a",
+        label: "Supplier form",
+        status: "review_required",
+        blocking: true,
+        reason: "The package member must be inspected before Operations can advance.",
+        evidenceIds: [],
+      }],
+      gates: {
+        operationsReview: false,
+        signatureApproval: false,
+        outboundDraft: false,
+        outboundFreeze: false,
+        salesAuthorization: false,
+        send: false,
+      },
+    },
+  };
+  const result = approvalCommunicationsWorkspace(current, baseIdentity);
+  assertEquals(result.supplierPackageSet?.canRecordInspection, true);
+  assertEquals(result.capabilities.completeOperationsReview, false);
 });
 
 Deno.test("a current set cannot reuse legacy signed-file authority at any downstream stage", () => {
@@ -222,8 +331,10 @@ Deno.test("a current set cannot reuse legacy signed-file authority at any downst
         files: [payloadId, signedPackageId].map((sourceVersionId) => ({
           requirementId: `file:${sourceVersionId}`,
           sourceVersionId,
+          sourceSha256: sha,
           outputSha256: sha,
           contentType: "application/pdf",
+          mappingKinds: ["acroform" as const],
           objectId: `private:${sourceVersionId}`,
           downloadUrl: null,
         })),

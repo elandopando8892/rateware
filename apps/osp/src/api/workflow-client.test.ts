@@ -131,6 +131,42 @@ describe('WorkflowClient', () => {
     expect(result.capabilities.saveOutboundDraft).toBe(false);
   });
 
+  it('accepts an observable not-ready workspace without promoting any capability', async () => {
+    const blocked = {
+      ...workspace,
+      nativeArtifactTargets: [{
+        state: 'missing' as const,
+        mappingId: '55555555-5555-4555-8555-555555555555', mappingVersion: 1,
+        mappingSha256: 'b'.repeat(64), mappingDecisionId: '66666666-6666-4666-8666-666666666666',
+        sourceVersionId: '77777777-7777-4777-8777-777777777777', sourceSha256: 'c'.repeat(64),
+        contentType: 'application/pdf' as const, sourceDownloadUrl: 'https://example.test/original.pdf',
+        requiredFieldCount: 1, mappedFieldCount: 0, completionPercent: 0,
+        fields: [{ canonicalFieldId: 'company.name', label: 'Legal name', target: null }],
+      }],
+      fulfillment: {
+        assessmentStatus: 'not_ready' as const, schemaVersion: 1 as const, manifestSha256: null,
+        assessedAt: '2026-09-12T18:00:00.000Z', totalRequired: 1 as const,
+        satisfiedRequired: 0 as const, blockingCount: 1 as const,
+        items: [{
+          requirementId: 'request-manifest-review' as const, kind: 'form' as const,
+          canonicalKey: 'request.manifest_review' as const, label: 'Request requirements review' as const,
+          status: 'review_required' as const, blocking: true as const,
+          reason: 'A current reviewed request is required before fulfillment can be assessed.' as const,
+          evidenceIds: [] as const,
+        }] as const,
+        gates: { operationsReview: false as const, signatureApproval: false as const, outboundDraft: false as const, outboundFreeze: false as const, salesAuthorization: false as const, send: false as const },
+      },
+      capabilities: { completeOperationsReview: false, approveAndApplySignature: false, saveOutboundDraft: false, freezeOutboundPayload: false, authorizeOutboundPayload: false, requestAuthorizedSend: false },
+    };
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ data: blocked }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    const result = await client(fetch).getApprovalCommunicationsWorkspace({ caseId });
+    expect(result.fulfillment).toMatchObject({ assessmentStatus: 'not_ready', blockingCount: 1 });
+    expect(result.nativeArtifactTargets).toHaveLength(1);
+    expect(Object.values(result.capabilities).some(Boolean)).toBe(false);
+  });
+
   it('sends each mutation exactly once and never refreshes or retries automatically', async () => {
     const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(init?.headers).toEqual({
