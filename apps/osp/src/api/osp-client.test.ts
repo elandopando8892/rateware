@@ -235,6 +235,23 @@ it('runs one bounded Gmail sync through the dedicated OSP endpoint without autom
   expect(ambiguous.fetch).toHaveBeenCalledOnce();
 });
 
+it('starts one Sales-owned Gmail reconnect through OSP and accepts only the exact Google consent origin', async () => {
+  const data = {
+    auth_url: 'https://accounts.google.com/o/oauth2/v2/auth?client_id=exact&state=opaque',
+    expires_at: '2030-01-01T00:10:00.000Z',
+    mailbox_email: 'carriers@xbfreight.com',
+    outbound_enabled: false,
+  } as const;
+  const h = harness([json({ version: 1, data })]);
+  await expect(h.client.startGmailOauth?.()).resolves.toEqual(data);
+  const [url, init] = h.fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(url).toBe('https://synthetic.supabase.co/functions/v1/osp-gmail-sync-api');
+  expect(JSON.parse(String(init.body))).toEqual({ version: 1, action: 'start_provider_gmail_oauth' });
+
+  const invalid = harness([json({ version: 1, data: { ...data, auth_url: 'https://evil.example/oauth' } })]);
+  await expect(invalid.client.startGmailOauth?.()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+});
+
 it('renews the Gmail watch through the same dedicated endpoint without exposing provider details', async () => {
   const data = {
     watch_configured: true,

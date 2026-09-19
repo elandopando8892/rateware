@@ -102,6 +102,8 @@ const expectedProductionSourcePaths = [
   'apps/osp/src/features/review/ArtifactReviewPanel.tsx',
   'apps/osp/src/features/review/CarrierPackageInventory.tsx',
   'apps/osp/src/features/review/FulfillmentMatrixPanel.tsx',
+  'apps/osp/src/features/review/native-artifact-targets.css',
+  'apps/osp/src/features/review/NativeArtifactTargetPanel.tsx',
   'apps/osp/src/features/review/OperationsReviewPage.tsx',
   'apps/osp/src/features/review/MemberInspectionPanel.tsx',
   'apps/osp/src/features/review/member-inspection.css',

@@ -48,6 +48,8 @@ import {
   type FormTemplateMutationReceipt,
   GmailSyncSuccessResponseSchema,
   type GmailSyncResult,
+  GmailOauthStartSuccessResponseSchema,
+  type GmailOauthStartResult,
   GmailSuccessResponseSchema,
   GmailWatchSuccessResponseSchema,
   type GmailWatchResult,
@@ -128,6 +130,7 @@ export type HistoricalGmailPreviewInput = { subjectPhrase: string; afterDate: st
 export type HistoricalGmailImportInput = HistoricalGmailPreviewInput & { candidateId: string; idempotencyKey: string };
 
 export interface OspClient extends OspReadClient, OspCorporateProfileClient, OspCaseReadClient, WorkflowClient {
+  startGmailOauth?(): Promise<GmailOauthStartResult>;
   syncGmailInbox?(): Promise<GmailSyncResult>;
   renewGmailWatch?(): Promise<GmailWatchResult>;
   previewHistoricalGmailSearch?(input: HistoricalGmailPreviewInput): Promise<HistoricalGmailPreviewResult>;
@@ -385,7 +388,7 @@ export function createOspClient(options: ClientOptions): OspClient {
   }
 
   async function gmailMutation<T>(
-    action: 'sync_provider_gmail_inbox' | 'renew_provider_gmail_watch' | 'preview_historical_provider_gmail' | 'import_historical_provider_gmail',
+    action: 'start_provider_gmail_oauth' | 'sync_provider_gmail_inbox' | 'renew_provider_gmail_watch' | 'preview_historical_provider_gmail' | 'import_historical_provider_gmail',
     schema: ZodType<{ version: 1; data: T }>,
     input: Record<string, unknown> = {},
   ): Promise<T> {
@@ -425,6 +428,10 @@ export function createOspClient(options: ClientOptions): OspClient {
       if (!parsed.success) throw new OspClientError('INVALID_RESPONSE');
       return parsed.data.data;
     }
+  }
+
+  function startGmailOauth(): Promise<GmailOauthStartResult> {
+    return gmailMutation('start_provider_gmail_oauth', GmailOauthStartSuccessResponseSchema);
   }
 
   function syncGmailInbox(): Promise<GmailSyncResult> {
@@ -612,6 +619,7 @@ export function createOspClient(options: ClientOptions): OspClient {
         body,
       })).data;
     },
+    startGmailOauth,
     syncGmailInbox,
     renewGmailWatch,
     previewHistoricalGmailSearch,

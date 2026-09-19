@@ -25,6 +25,12 @@ export type GmailWatchReceipt = Readonly<{
   watchExpiresAt: string;
 }>;
 
+export type GmailOauthStartReceipt = Readonly<{
+  authUrl: string;
+  expiresAt: string;
+  mailboxEmail: "carriers@xbfreight.com";
+}>;
+
 export type HistoricalGmailPreviewReceipt = Readonly<{
   query: string;
   candidates: readonly Readonly<{
@@ -47,6 +53,7 @@ export type HistoricalGmailImportReceipt = Readonly<{
 }>;
 
 type GmailAction =
+  | "start_provider_gmail_oauth"
   | "sync_provider_gmail_inbox"
   | "renew_provider_gmail_watch"
   | "preview_historical_provider_gmail"
@@ -80,6 +87,11 @@ export type OspGmailSyncHandlerOptions = {
     organizationId: string,
     signal?: AbortSignal,
   ): Promise<GmailWatchReceipt>;
+  startOauth?(
+    organizationId: string,
+    identity: OspAuthorizationIdentity,
+    signal?: AbortSignal,
+  ): Promise<GmailOauthStartReceipt>;
   previewHistoricalInbox(
     organizationId: string,
     criteria: NonNullable<GmailRequestBody["historicalCriteria"]>,
@@ -142,6 +154,7 @@ async function strictRequestBody(request: Request): Promise<GmailRequestBody> {
   if (
     body.version !== 1 || ![
       "sync_provider_gmail_inbox",
+      "start_provider_gmail_oauth",
       "renew_provider_gmail_watch",
       "preview_historical_provider_gmail",
       "import_historical_provider_gmail",
@@ -246,6 +259,30 @@ function safeWatchReceipt(receipt: GmailWatchReceipt): GmailWatchReceipt {
   return receipt;
 }
 
+function safeOauthStartReceipt(
+  receipt: GmailOauthStartReceipt,
+): GmailOauthStartReceipt {
+  if (!receipt || typeof receipt !== "object") {
+    throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+  }
+  let authUrl: URL;
+  try {
+    authUrl = new URL(receipt.authUrl);
+  } catch {
+    throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+  }
+  const expiresAt = new Date(receipt.expiresAt);
+  if (
+    authUrl.origin !== "https://accounts.google.com" ||
+    authUrl.pathname !== "/o/oauth2/v2/auth" ||
+    receipt.mailboxEmail !== "carriers@xbfreight.com" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(receipt.expiresAt) ||
+    !Number.isFinite(expiresAt.getTime()) ||
+    expiresAt.toISOString() !== receipt.expiresAt
+  ) throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+  return receipt;
+}
+
 function safeHistoricalReceipt(
   receipt: HistoricalGmailPreviewReceipt,
 ): HistoricalGmailPreviewReceipt {
@@ -296,6 +333,7 @@ export function createOspGmailSyncHandler({
   resolveWorkspace,
   syncInbox,
   renewWatch,
+  startOauth,
   previewHistoricalInbox,
   importHistoricalInbox,
   incidentId = () => crypto.randomUUID(),
@@ -314,6 +352,34 @@ export function createOspGmailSyncHandler({
       const identity = await verifyToken(bearer(request), request.signal);
       const body = await strictRequestBody(request);
       const organizationId = await resolveWorkspace(identity, request.signal);
+      if (body.action === "start_provider_gmail_oauth") {
+        if (identity.email !== "sales@heymarksman.com") {
+          throw new OspApiError("FORBIDDEN");
+        }
+        if (!startOauth) throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+        let receipt: GmailOauthStartReceipt;
+        try {
+          receipt = safeOauthStartReceipt(
+            await startOauth(organizationId, identity, request.signal),
+          );
+        } catch (error) {
+          if (error instanceof OspApiError) throw error;
+          throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+        }
+        return jsonResponse(
+          {
+            version: 1,
+            data: {
+              auth_url: receipt.authUrl,
+              expires_at: receipt.expiresAt,
+              mailbox_email: receipt.mailboxEmail,
+              outbound_enabled: false,
+            },
+          },
+          200,
+          postCorsHeaders(origin),
+        );
+      }
       if (body.action === "import_historical_provider_gmail") {
         if (identity.email !== "sales@heymarksman.com") {
           throw new OspApiError("FORBIDDEN");

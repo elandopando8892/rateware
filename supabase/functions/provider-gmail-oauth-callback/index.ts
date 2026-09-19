@@ -13,6 +13,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('RATEWARE_SUPABASE_SERVICE_ROLE_K
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID');
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
 const RATEWARE_APP_ORIGIN = (Deno.env.get('RATEWARE_APP_ORIGIN') || 'https://rateware.vercel.app').replace(/\/$/, '');
+const OSP_APP_ORIGIN = 'https://osp.heymarksman.com';
 
 function getClient() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -26,8 +27,10 @@ function redirectUri() {
     || `${String(SUPABASE_URL || '').replace(/\/$/, '')}/functions/v1/provider-gmail-oauth-callback`;
 }
 
-function redirectTo(params: Record<string, string>) {
-  const target = new URL('provider-gmail.html', `${RATEWARE_APP_ORIGIN}/`);
+function redirectTo(params: Record<string, string>, redirectAfter = 'provider-gmail.html') {
+  const target = redirectAfter === 'osp_pipeline'
+    ? new URL('/app/pipeline', OSP_APP_ORIGIN)
+    : new URL('provider-gmail.html', `${RATEWARE_APP_ORIGIN}/`);
   for (const [key, value] of Object.entries(params)) target.searchParams.set(key, value);
   return new Response(null, {
     status: 302,
@@ -56,11 +59,11 @@ Deno.serve(async (request) => {
     if (stateResult.error) throw stateResult.error;
     stateRow = stateResult.data || null;
     if (!stateRow) return redirectTo({ gmail: 'error', reason: 'invalid_state' });
-    if (oauthError) return redirectTo({ gmail: 'error', reason: oauthError.slice(0, 100) });
-    if (!code) return redirectTo({ gmail: 'error', reason: 'missing_code' });
-    if (stateRow.used_at) return redirectTo({ gmail: 'error', reason: 'state_already_used' });
+    if (oauthError) return redirectTo({ gmail: 'error', reason: oauthError.slice(0, 100) }, String(stateRow.redirect_after || ''));
+    if (!code) return redirectTo({ gmail: 'error', reason: 'missing_code' }, String(stateRow.redirect_after || ''));
+    if (stateRow.used_at) return redirectTo({ gmail: 'error', reason: 'state_already_used' }, String(stateRow.redirect_after || ''));
     if (new Date(String(stateRow.expires_at)).getTime() < Date.now()) {
-      return redirectTo({ gmail: 'error', reason: 'state_expired' });
+      return redirectTo({ gmail: 'error', reason: 'state_expired' }, String(stateRow.redirect_after || ''));
     }
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) throw new Error('Google OAuth client is not configured.');
 
@@ -135,7 +138,7 @@ Deno.serve(async (request) => {
       .is('used_at', null);
     if (used.error) throw used.error;
 
-    return redirectTo({ gmail: 'connected' });
+    return redirectTo({ gmail: 'connected' }, String(stateRow.redirect_after || ''));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (stateRow?.organization_id && stateRow?.legal_entity_id && stateRow?.mailbox_email) {
@@ -150,6 +153,6 @@ Deno.serve(async (request) => {
         updated_at: new Date().toISOString(),
       }, { onConflict: 'organization_id,legal_entity_id,mailbox_email' });
     }
-    return redirectTo({ gmail: 'error', reason: message.slice(0, 100) });
+    return redirectTo({ gmail: 'error', reason: message.slice(0, 100) }, String(stateRow?.redirect_after || ''));
   }
 });

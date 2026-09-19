@@ -492,6 +492,19 @@ export const GmailSyncSuccessResponseSchema = z.strictObject({
   }),
 });
 
+export const GmailOauthStartSuccessResponseSchema = z.strictObject({
+  version: z.literal(1),
+  data: z.strictObject({
+    auth_url: z.url().refine((value) => {
+      const url = new URL(value);
+      return url.origin === 'https://accounts.google.com' && url.pathname === '/o/oauth2/v2/auth';
+    }, 'Expected the exact Google OAuth endpoint'),
+    expires_at: utcDate,
+    mailbox_email: z.literal('carriers@xbfreight.com'),
+    outbound_enabled: z.literal(false),
+  }),
+});
+
 export const GmailWatchSuccessResponseSchema = z.strictObject({
   version: z.literal(1),
   data: z.strictObject({
@@ -995,6 +1008,7 @@ export type CorporateProfileEntity = z.infer<typeof CorporateProfileEntitySchema
 export type ProfileFactPromotionReceipt = z.infer<typeof ProfileFactPromotionResponseSchema>['data'];
 export type ProfileReviewMutationReceipt = z.infer<typeof ProfileReviewMutationResponseSchema>['data'];
 export type GmailReadModel = z.infer<typeof GmailReadModelSchema>;
+export type GmailOauthStartResult = z.infer<typeof GmailOauthStartSuccessResponseSchema>['data'];
 export type GmailSyncResult = z.infer<typeof GmailSyncSuccessResponseSchema>['data'];
 export type GmailWatchResult = z.infer<typeof GmailWatchSuccessResponseSchema>['data'];
 export type HistoricalGmailPreviewResult = z.infer<typeof HistoricalGmailPreviewSuccessResponseSchema>['data'];

@@ -211,6 +211,61 @@ Deno.test("Gmail watch renewal uses the same exact authorization seam and return
   );
 });
 
+Deno.test("Gmail reconnect is Sales-only, creates one bounded consent handoff and never enables outbound", async () => {
+  let starts = 0;
+  const salesIdentity = { ...identity, email: "sales@heymarksman.com" };
+  const handler = createOspGmailSyncHandler({
+    verifyToken: async () => salesIdentity,
+    resolveWorkspace: async () => identity.organization,
+    startOauth: async (organizationId, actor) => {
+      starts += 1;
+      assert(organizationId === identity.organization);
+      assert(actor.email === "sales@heymarksman.com");
+      return {
+        authUrl: "https://accounts.google.com/o/oauth2/v2/auth?client_id=exact&state=opaque",
+        expiresAt: "2030-01-01T00:10:00.000Z",
+        mailboxEmail: "carriers@xbfreight.com" as const,
+      };
+    },
+    syncInbox: async () => { throw new Error("must not sync"); },
+    renewWatch: async () => { throw new Error("must not watch"); },
+    previewHistoricalInbox: async () => ({ query: "in:inbox", candidates: [] }),
+    importHistoricalInbox: async () => { throw new Error("must not import"); },
+    incidentId: () => "incident-oauth",
+  });
+  const response = await handler(request(JSON.stringify({
+    version: 1,
+    action: "start_provider_gmail_oauth",
+  })));
+  assert(response.status === 200);
+  assert(JSON.stringify(await response.json()) === JSON.stringify({
+    version: 1,
+    data: {
+      auth_url: "https://accounts.google.com/o/oauth2/v2/auth?client_id=exact&state=opaque",
+      expires_at: "2030-01-01T00:10:00.000Z",
+      mailbox_email: "carriers@xbfreight.com",
+      outbound_enabled: false,
+    },
+  }));
+  assert(starts === 1);
+
+  const forbidden = await createOspGmailSyncHandler({
+    verifyToken: async () => identity,
+    resolveWorkspace: async () => identity.organization,
+    startOauth: async () => {
+      starts += 1;
+      throw new Error("must not start");
+    },
+    syncInbox: async () => { throw new Error("must not sync"); },
+    renewWatch: async () => { throw new Error("must not watch"); },
+    previewHistoricalInbox: async () => ({ query: "in:inbox", candidates: [] }),
+    importHistoricalInbox: async () => { throw new Error("must not import"); },
+    incidentId: () => "incident-oauth-forbidden",
+  })(request(JSON.stringify({ version: 1, action: "start_provider_gmail_oauth" })));
+  assert(forbidden.status === 403);
+  assert(starts === 1);
+});
+
 Deno.test("historical Gmail preflight is bounded, read-only and returns safe candidate metadata", async () => {
   const calls: string[] = [];
   const handler = createOspGmailSyncHandler({

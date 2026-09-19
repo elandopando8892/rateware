@@ -9,10 +9,10 @@ import { PipelineOverview } from './PipelineOverview';
 afterEach(() => { cleanup(); onlineManager.setOnline(true); });
 
 function renderOverview(client: OspReadClient & Partial<OspCaseReadClient> &
-  Partial<Pick<OspClient, 'syncGmailInbox' | 'renewGmailWatch' | 'previewHistoricalGmailSearch' | 'importHistoricalGmailMessage'>>,
-email = '') {
+  Partial<Pick<OspClient, 'startGmailOauth' | 'syncGmailInbox' | 'renewGmailWatch' | 'previewHistoricalGmailSearch' | 'importHistoricalGmailMessage'>>,
+email = '', navigateExternal?: (url: string) => void) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={queryClient}><PipelineOverview client={client} email={email} /></QueryClientProvider>);
+  return render(<QueryClientProvider client={queryClient}><PipelineOverview client={client} email={email} navigateExternal={navigateExternal} /></QueryClientProvider>);
 }
 
 const disconnected = {
@@ -194,7 +194,7 @@ describe('PipelineOverview', () => {
     expect(screen.getByRole('note')).toHaveTextContent(/no reply, signature, authorization or provider write/i);
   });
 
-  it('keeps a failing configured cron distinct from missing Pub/Sub without invoking recovery', async () => {
+  it('keeps reconnect restricted to Sales when a configured cron loses its credential', async () => {
     const renewGmailWatch = vi.fn();
     const syncGmailInbox = vi.fn();
     renderOverview({
@@ -211,12 +211,39 @@ describe('PipelineOverview', () => {
       renewGmailWatch, syncGmailInbox,
     });
     expect(await screen.findByText('Scheduled sync · needs attention')).toBeInTheDocument();
-    expect(screen.getByRole('status', { name: /gmail status: degraded/i })).toHaveTextContent(/no Pub\/Sub setup is needed/i);
-    expect(screen.getByRole('button', { name: 'Scheduled sync needs attention' })).toBeDisabled();
+    expect(screen.getByRole('status', { name: /gmail status: degraded/i })).toHaveTextContent(/credential must be renewed/i);
+    expect(screen.getByRole('button', { name: 'Reconnect carriers Gmail' })).toBeDisabled();
     expect(screen.queryByText('Cloud trigger not configured')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pub/Sub required' })).not.toBeInTheDocument();
     expect(renewGmailWatch).not.toHaveBeenCalled();
     expect(syncGmailInbox).not.toHaveBeenCalled();
+  });
+
+  it('starts exact Google reconnect only for Sales and navigates to the validated consent URL', async () => {
+    const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=exact&state=opaque';
+    const startGmailOauth = vi.fn(async () => ({
+      auth_url: authUrl,
+      expires_at: '2030-01-01T00:10:00.000Z',
+      mailbox_email: 'carriers@xbfreight.com' as const,
+      outbound_enabled: false as const,
+    }));
+    const navigateExternal = vi.fn();
+    renderOverview({
+      listOnboardingWorkspace: vi.fn(async () => ({
+        requests_total: '0', documents_pending: '0', under_review: '0', ready_for_approval: '0',
+      })),
+      getGmailStatus: vi.fn(async () => ({
+        connection_exists: true as const, pubsub_configured: false, watch_configured: false,
+        scheduled_poll_configured: true, poll_interval_seconds: 300,
+        poll_last_completed_at: '2026-09-08T22:25:01.000Z', poll_status: 'failed' as const,
+        token_expires_at: '2026-09-08T00:15:48.000Z', watch_expires_at: null,
+        error_present: true, error_code: 'TOKEN_EXPIRED' as const, outbound_enabled: false as const,
+      })),
+      startGmailOauth,
+    }, 'sales@heymarksman.com', navigateExternal);
+    await userEvent.click(await screen.findByRole('button', { name: 'Reconnect carriers Gmail' }));
+    expect(startGmailOauth).toHaveBeenCalledOnce();
+    expect(navigateExternal).toHaveBeenCalledWith(authUrl);
   });
 
   it('activates automatic intake only when the full cloud trigger is configured', async () => {

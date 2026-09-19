@@ -39,7 +39,7 @@ const reviewStates = new Set<CaseState>([
 ]);
 
 type PipelineClient = OspReadClient & Partial<OspCaseReadClient> &
-  Partial<Pick<OspClient, 'syncGmailInbox' | 'renewGmailWatch' | 'previewHistoricalGmailSearch' | 'importHistoricalGmailMessage'>>;
+  Partial<Pick<OspClient, 'startGmailOauth' | 'syncGmailInbox' | 'renewGmailWatch' | 'previewHistoricalGmailSearch' | 'importHistoricalGmailMessage'>>;
 
 const salzilloHistoricalIntake = {
   status: 'preview_only' as const,
@@ -55,7 +55,15 @@ const salzilloHistoricalIntake = {
 
 const salzilloSubject = 'PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN';
 
-export function PipelineOverview({ client, email = '' }: { client: PipelineClient; email?: string }) {
+export function PipelineOverview({
+  client,
+  email = '',
+  navigateExternal = (url: string) => window.location.assign(url),
+}: {
+  client: PipelineClient;
+  email?: string;
+  navigateExternal?: (url: string) => void;
+}) {
   const queryClient = useQueryClient();
   const { pipeline, gmail } = usePipelineOverview(client);
   const cases = useQuery({
@@ -71,6 +79,8 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
   const scheduledPollDegraded = scheduledPollConfigured && !automaticPoll;
   const automaticIntake = automaticWatch || automaticPoll;
   const gmailConnected = gmail.data?.connection_exists === true;
+  const reconnectRequired = !gmailConnected || health === 'degraded';
+  const salesCanReconnect = email.trim().toLowerCase() === 'sales@heymarksman.com' && Boolean(client.startGmailOauth);
   const pubsubReady = gmailConnected && gmail.data?.pubsub_configured === true;
   const visibleCases = cases.data ?? [];
   const preparedCases = visibleCases.filter((caseRecord) => preparedStates.has(caseRecord.state)).length;
@@ -97,6 +107,13 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: pipelineOverviewQueryKey.gmail });
     },
+  });
+  const reconnect = useMutation({
+    mutationFn: async () => {
+      if (!client.startGmailOauth) throw new Error('Gmail reconnect unavailable');
+      return await client.startGmailOauth();
+    },
+    onSuccess: (receipt) => navigateExternal(receipt.auth_url),
   });
   const pipelineActivity = pipeline.fetchStatus === 'paused'
     ? ['Pipeline loading paused', 'Pipeline loading paused.']
@@ -184,7 +201,7 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
           <div className={`health health-${health}`} role="status" aria-label={`Gmail status: ${healthLabels[health]}`}>
             <span className="health-dot" aria-hidden="true" />
             <div><strong>{healthLabels[health]}</strong><p>{scheduledPollDegraded
-              ? 'Scheduled intake is configured, but its health check is failing. Review the mailbox connection and polling status; no Pub/Sub setup is needed.'
+              ? 'Scheduled intake is configured, but its Google credential must be renewed. Reconnect carriers@xbfreight.com; no Pub/Sub setup or outgoing message is needed.'
               : automaticPoll
               ? `The connected inbox is checked automatically every ${Math.round((gmail.data?.poll_interval_seconds ?? 300) / 60)} minutes using the existing Supabase project.`
               : automaticWatch
@@ -233,7 +250,7 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
           <div>
             <strong>{scheduledPollDegraded ? 'Recover scheduled intake' : automaticPoll ? 'No-cost scheduled intake' : automaticWatch ? 'Automatic Gmail watch' : pubsubReady ? 'Enable automatic intake' : gmailConnected ? 'Cloud trigger not configured' : 'Gmail connection required'}</strong>
             <p>{scheduledPollDegraded
-              ? 'Check the existing scheduled job and Google connection before retrying. A connected mailbox flag alone does not prove successful intake.'
+              ? 'Renew the existing Google grant for carriers@xbfreight.com. Google will request only the current Gmail read/send permissions; this action does not send a message.'
               : automaticPoll
               ? `Active on the shared Supabase project. Last completed ${formatCaseDate(gmail.data?.poll_last_completed_at ?? '')}. No Pub/Sub provider is required.`
               : automaticWatch
@@ -247,14 +264,25 @@ export function PipelineOverview({ client, email = '' }: { client: PipelineClien
           <button
             className="sync-button"
             type="button"
-            title={scheduledPollConfigured ? 'Scheduled polling is managed by the production release control.' : !gmailConnected ? 'Connect the approved Gmail mailbox first.' : !pubsubReady ? 'Configure the approved Google Pub/Sub trigger first.' : undefined}
-            disabled={scheduledPollConfigured || !client.renewGmailWatch || !pubsubReady || watch.isPending}
-            onClick={() => watch.mutate()}
+            title={reconnectRequired && !salesCanReconnect
+              ? 'Sign in as the Sales administrator to reconnect the approved Gmail mailbox.'
+              : scheduledPollConfigured && !scheduledPollDegraded
+                ? 'Scheduled polling is managed by the production release control.'
+                : !gmailConnected
+                  ? 'Connect the approved Gmail mailbox first.'
+                  : !pubsubReady
+                    ? 'Configure the approved Google Pub/Sub trigger first.'
+                    : undefined}
+            disabled={reconnectRequired
+              ? !salesCanReconnect || reconnect.isPending
+              : scheduledPollConfigured || !client.renewGmailWatch || !pubsubReady || watch.isPending}
+            onClick={() => reconnectRequired ? reconnect.mutate() : watch.mutate()}
           >
-            {watch.isPending ? 'Activating…' : scheduledPollDegraded ? 'Scheduled sync needs attention' : automaticPoll ? 'Scheduled sync active' : !gmailConnected ? 'Connect Gmail first' : !pubsubReady ? 'Pub/Sub required' : automaticWatch ? 'Renew watch' : 'Enable automatic intake'}
+            {reconnect.isPending ? 'Preparing Google consent…' : watch.isPending ? 'Activating…' : reconnectRequired ? 'Reconnect carriers Gmail' : automaticPoll ? 'Scheduled sync active' : !pubsubReady ? 'Pub/Sub required' : automaticWatch ? 'Renew watch' : 'Enable automatic intake'}
           </button>
         </div>
         <div className="sync-result" aria-live="polite">
+          {reconnect.isError ? <p role="alert">Gmail reconnect could not start. No outgoing email was sent.</p> : null}
           {watch.isSuccess ? <p>Automatic intake active until {formatCaseDate(watch.data.watch_expires_at)}.</p> : null}
           {watch.isError ? <p role="alert">Automatic intake could not be activated. No outgoing email was sent.</p> : null}
         </div>

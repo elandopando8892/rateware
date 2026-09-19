@@ -7,7 +7,12 @@ import {
   syncProviderGmailConnection,
 } from "../_shared/provider-gmail-sync.ts";
 import { searchProviderGmailHistoricalInbox } from "../_shared/provider-gmail-historical.ts";
-import { getProviderGmailAccessToken } from "../_shared/provider-gmail.ts";
+import {
+  getProviderGmailAccessToken,
+  PROVIDER_GMAIL_READONLY_SCOPE,
+  PROVIDER_GMAIL_SEND_SCOPE,
+  providerGmailAllowedAccount,
+} from "../_shared/provider-gmail.ts";
 import { renewProviderGmailWatch } from "../_shared/provider-gmail-watch.ts";
 import {
   triggerExactOspGmailIngest,
@@ -35,6 +40,13 @@ async function sha256(value: string): Promise<string> {
   ].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function randomOauthState(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
 let runtime: (request: Request) => Promise<Response>;
 try {
   const supabaseUrl = required("SUPABASE_URL");
@@ -57,6 +69,9 @@ try {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
   const pubsubTopic = Deno.env.get("PROVIDER_GMAIL_PUBSUB_TOPIC")?.trim() ||
     null;
+  const googleClientId = Deno.env.get("GOOGLE_CLIENT_ID")?.trim() || "";
+  const oauthRedirectUri = Deno.env.get("PROVIDER_GMAIL_OAUTH_REDIRECT_URI")?.trim() ||
+    `${supabaseUrl.replace(/\/$/, "")}/functions/v1/provider-gmail-oauth-callback`;
   const pubsubReady = Boolean(
     pubsubTopic &&
       Deno.env.get("PROVIDER_GMAIL_PUBSUB_AUDIENCE")?.trim() &&
@@ -85,6 +100,61 @@ try {
     verifyToken: (token, signal) => verifier.verify(token, signal),
     resolveWorkspace: (identity, signal) =>
       store.resolveWorkspace(identity, signal),
+    startOauth: async (organizationId, identity) => {
+      if (!googleClientId) throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+      const mailboxEmail = providerGmailAllowedAccount();
+      if (mailboxEmail !== "carriers@xbfreight.com") {
+        throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+      }
+      const selected = await supabase.from("provider_gmail_connections")
+        .select("legal_entity_id")
+        .eq("organization_id", organizationId)
+        .eq("purpose", "provider_onboarding")
+        .eq("mailbox_email", mailboxEmail)
+        .limit(2);
+      if (selected.error || selected.data?.length !== 1) {
+        throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+      }
+      const legalEntityId = selected.data[0].legal_entity_id;
+      const entity = await supabase.from("legal_entities")
+        .select("id,status")
+        .eq("organization_id", organizationId)
+        .eq("id", legalEntityId)
+        .eq("status", "active")
+        .maybeSingle();
+      if (entity.error || !entity.data) {
+        throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+      }
+      const state = randomOauthState();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      const inserted = await supabase.from("provider_gmail_oauth_states").insert({
+        state,
+        organization_id: organizationId,
+        legal_entity_id: legalEntityId,
+        mailbox_email: mailboxEmail,
+        requested_by_user_id: identity.subject,
+        requested_by_email: identity.email,
+        redirect_after: "osp_pipeline",
+        expires_at: expiresAt,
+        metadata: { purpose: "provider_onboarding", initiated_from: "osp" },
+      });
+      if (inserted.error) throw new OspApiError("DEPENDENCY_UNAVAILABLE");
+
+      const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+      authUrl.searchParams.set("client_id", googleClientId);
+      authUrl.searchParams.set("redirect_uri", oauthRedirectUri);
+      authUrl.searchParams.set("response_type", "code");
+      authUrl.searchParams.set("access_type", "offline");
+      authUrl.searchParams.set("prompt", "consent");
+      authUrl.searchParams.set("include_granted_scopes", "false");
+      authUrl.searchParams.set("login_hint", mailboxEmail);
+      authUrl.searchParams.set(
+        "scope",
+        `openid email ${PROVIDER_GMAIL_READONLY_SCOPE} ${PROVIDER_GMAIL_SEND_SCOPE}`,
+      );
+      authUrl.searchParams.set("state", state);
+      return { authUrl: authUrl.toString(), expiresAt, mailboxEmail };
+    },
     syncInbox: async (organizationId) => {
       const connection = await providerConnection(organizationId);
       const synced = await syncProviderGmailConnection(

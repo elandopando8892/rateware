@@ -43,6 +43,8 @@ test('OAuth callback enforces the dedicated provider mailbox and least-privilege
   assert.match(callback, /provider_gmail_connections/);
   assert.match(callback, /purpose: 'provider_onboarding'/);
   assert.match(callback, /provider-gmail\.html/);
+  assert.match(callback, /redirectAfter === 'osp_pipeline'/);
+  assert.match(callback, /https:\/\/osp\.heymarksman\.com/);
 });
 
 test('intake API exposes status, OAuth, sync, and watch without a browser send operation', () => {
