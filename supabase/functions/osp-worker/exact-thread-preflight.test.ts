@@ -4,7 +4,11 @@ import { preflightExactThreadAssociation } from "./exact-thread-preflight.ts";
 
 const organizationId = "ca0a8f30-1382-4316-9bd5-cb76d9ab4920";
 
-function relay(label: string, sender = "supplier@provider.test"): Uint8Array {
+function relay(
+  label: string,
+  sender = "supplier@provider.test",
+  relaySender = "sales@heymarksman.com",
+): Uint8Array {
   const original = [
     `From: ${sender}`,
     "To: sales@heymarksman.com",
@@ -27,7 +31,7 @@ function relay(label: string, sender = "supplier@provider.test"): Uint8Array {
     "",
   ].join("\r\n");
   return new TextEncoder().encode([
-    "From: sales@heymarksman.com",
+    `From: ${relaySender}`,
     "To: carriers@xbfreight.com",
     `Subject: Fwd: registration ${label}`,
     `Message-ID: <relay-${label}@heymarksman.com>`,
@@ -52,13 +56,18 @@ function relay(label: string, sender = "supplier@provider.test"): Uint8Array {
 function harness(options: {
   amendmentThread?: string;
   amendmentSender?: string;
+  relaySender?: string;
 } = {}) {
   let reads = 0;
   const messages = new Map([
-    ["original_1", relay("original")],
+    ["original_1", relay("original", undefined, options.relaySender)],
     [
       "amendment_2",
-      relay("amendment", options.amendmentSender ?? "supplier@provider.test"),
+      relay(
+        "amendment",
+        options.amendmentSender ?? "supplier@provider.test",
+        options.relaySender,
+      ),
     ],
   ]);
   return {
@@ -107,6 +116,17 @@ Deno.test("exact thread preflight returns only immutable source hashes without p
       result.amendment.outerRawMimeSha256,
     false,
   );
+});
+
+Deno.test("exact thread preflight accepts relays forwarded by a trusted XBF operator", async () => {
+  const test = harness({ relaySender: "jgonzalez@xbfreight.com" });
+  const result = await preflightExactThreadAssociation(
+    { gmail: test.gmail },
+    request,
+  );
+  assertEquals(test.reads(), 2);
+  assertEquals(result.original.gmailMessageId, "original_1");
+  assertEquals(result.amendment.gmailMessageId, "amendment_2");
 });
 
 Deno.test("exact thread preflight rejects duplicate IDs before Gmail access", async () => {

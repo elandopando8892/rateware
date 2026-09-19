@@ -10,6 +10,7 @@ const MAX_RELAY_EML_BYTES = 7 * 1024 * 1024;
 const MAX_RELAY_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_RELAY_ATTACHMENT_COUNT = 20;
 const MAX_RELAY_ATTACHMENT_TOTAL_BYTES = 8 * 1024 * 1024;
+const MAX_IGNORED_INLINE_IMAGE_BYTES = 512 * 1024;
 
 const SUPPORTED_RELAY_ATTACHMENTS = new Map<
   string,
@@ -175,6 +176,36 @@ function hasExpectedSignature(bytes: Uint8Array, contentType: string): boolean {
       (bytes[2] === 0x07 && bytes[3] === 0x08));
 }
 
+function isIgnorableInlineImage(attachment: {
+  content?: unknown;
+  disposition?: unknown;
+  filename?: unknown;
+  mimeType?: unknown;
+}): boolean {
+  if (attachment.disposition !== "inline") return false;
+  const contentType = typeof attachment.mimeType === "string"
+    ? attachment.mimeType.trim().toLowerCase()
+    : "";
+  const filename = safeFilename(attachment.filename)?.toLowerCase() ?? "";
+  const bytes = attachmentBytes(attachment.content);
+  if (
+    bytes.byteLength < 1 || bytes.byteLength > MAX_IGNORED_INLINE_IMAGE_BYTES
+  ) return false;
+  if (contentType === "image/png" && filename.endsWith(".png")) {
+    const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    return bytes.byteLength >= signature.length &&
+      signature.every((byte, index) => bytes[index] === byte);
+  }
+  if (
+    (contentType === "image/jpeg" || contentType === "image/jpg") &&
+    (filename.endsWith(".jpg") || filename.endsWith(".jpeg"))
+  ) {
+    return bytes.byteLength >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 &&
+      bytes[2] === 0xff;
+  }
+  return false;
+}
+
 async function envelope(
   parsed: Awaited<ReturnType<PostalMime["parse"]>>,
   bytes: Uint8Array,
@@ -240,9 +271,18 @@ async function parseRelayAttachments(
     parentSourceSha256: parentSha256,
     processingDisposition: "automatic_eligible",
   })];
-  const attachments = Array.isArray(parsedOriginal.attachments)
+  const allAttachments = Array.isArray(parsedOriginal.attachments)
     ? parsedOriginal.attachments
     : [];
+  if (
+    allAttachments.some((attachment) =>
+      attachment.disposition !== "attachment" &&
+      !isIgnorableInlineImage(attachment)
+    )
+  ) throw new Error("GMAIL_RELAY_UNSAFE_ATTACHMENT");
+  const attachments = allAttachments.filter((attachment) =>
+    attachment.disposition === "attachment"
+  );
   if (
     attachments.length < 1 ||
     attachments.length > MAX_RELAY_ATTACHMENT_COUNT
@@ -330,8 +370,7 @@ export async function parseCopiedRequest(
   let relationship: ParsedRequestProvenance["relationship"] = "direct_copy";
   let attachments: readonly ParsedCopiedRequestAttachment[];
 
-  const isRelayCandidate = !supplierDomain &&
-    parentEnvelope.senderEmail === RELAY_SENDER &&
+  const isRelayCandidate = !supplierDomain && approvedSender &&
     /^fwd\s*:/i.test(parentEnvelope.subject) && recipients.length === 1 &&
     recipients[0] === CAPTURE_MAILBOX;
   if (isRelayCandidate && options.allowInternalRelay) {
@@ -392,15 +431,14 @@ export async function parseCopiedRequest(
               sha256: await sha256Hex(bytes),
               sourceRole: "direct_attachment",
               parentSourceSha256: parentEnvelope.sourceSha256,
-              processingDisposition:
-                typeof attachment.mimeType === "string" &&
+              processingDisposition: typeof attachment.mimeType === "string" &&
                   attachment.mimeType.trim().toLowerCase() ===
                     "application/msword" &&
                   safeFilename(attachment.filename)?.toLowerCase().endsWith(
                     ".doc",
                   )
-                  ? "manual_conversion_required"
-                  : "automatic_eligible",
+                ? "manual_conversion_required"
+                : "automatic_eligible",
             });
           },
         ),

@@ -23,6 +23,7 @@ const fixtures = {
   xlsx: "PK\x03\x04synthetic-xlsx",
   xlsm: "PK\x03\x04synthetic-xlsm",
   doc: "\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1synthetic-legacy-doc",
+  png: "\x89PNG\r\n\x1a\nsynthetic-inline-logo",
 } as const;
 
 function originalAttachment(
@@ -34,6 +35,22 @@ function originalAttachment(
     "--original",
     `Content-Type: ${contentType}`,
     `Content-Disposition: attachment; filename="${filename}"`,
+    "Content-Transfer-Encoding: base64",
+    "",
+    btoa(content),
+  ].join("\r\n");
+}
+
+function originalInlineImage(
+  filename: string,
+  contentType: string,
+  content: string,
+): string {
+  return [
+    "--original",
+    `Content-Type: ${contentType}`,
+    `Content-Disposition: inline; filename="${filename}"`,
+    `Content-ID: <${filename}>`,
     "Content-Transfer-Encoding: base64",
     "",
     btoa(content),
@@ -70,9 +87,13 @@ function original(options: {
   ].join("\r\n");
 }
 
-function relay(originals: readonly string[], extraOuterPart = ""): Uint8Array {
+function relay(
+  originals: readonly string[],
+  extraOuterPart = "",
+  relaySender = "Sales <sales@heymarksman.com>",
+): Uint8Array {
   return new TextEncoder().encode([
-    "From: Sales <sales@heymarksman.com>",
+    `From: ${relaySender}`,
     "To: carriers@xbfreight.com",
     "Subject: Fwd: Registration documents",
     "Message-ID: <relay-parent@heymarksman.com>",
@@ -159,6 +180,87 @@ Deno.test("exact relay preserves parent and original provenance and extracts sup
       inReplyTo: "<supplier-request@provider.test>",
       references: ["<supplier-request@provider.test>"],
     },
+  );
+});
+
+Deno.test("exact relay accepts a trusted XBF operator as the internal forwarder", async () => {
+  const result = await parseCopiedRequest(
+    relay(
+      [original({ recipients: "jgonzalez@xbfreight.com" })],
+      "",
+      "Jose Andres <jgonzalez@xbfreight.com>",
+    ),
+    { allowInternalRelay: true },
+  );
+  assertEquals(result.senderEmail, "jgonzalez@xbfreight.com");
+  assertEquals(result.supplierDomain, "provider.test");
+  assertEquals(result.provenance.relationship, "internal_relay");
+  assertEquals(
+    result.provenance.originalEnvelope?.senderEmail,
+    "supplier@provider.test",
+  );
+});
+
+Deno.test("exact relay still rejects an external forwarder", async () => {
+  await assertRejects(
+    () =>
+      parseCopiedRequest(
+        relay([original()], "", "Outsider <outsider@external.test>"),
+        { allowInternalRelay: true },
+      ),
+    Error,
+    "UNQUALIFIED_GMAIL_MESSAGE",
+  );
+});
+
+Deno.test("exact relay ignores a bounded valid inline signature image", async () => {
+  const result = await parseCopiedRequest(
+    relay([original({
+      attachments: [
+        originalInlineImage("signature.png", "image/png", fixtures.png),
+        originalAttachment("form.pdf", contentTypes.pdf, fixtures.pdf),
+      ],
+    })]),
+    { allowInternalRelay: true },
+  );
+  assertEquals(result.attachments.map((item) => item.filename), [
+    "original.eml",
+    "form.pdf",
+  ]);
+});
+
+Deno.test("exact relay rejects a spoofed or executable inline part", async () => {
+  await assertRejects(
+    () =>
+      parseCopiedRequest(
+        relay([original({
+          attachments: [
+            originalInlineImage("signature.png", "image/png", "not-a-png"),
+            originalAttachment("form.pdf", contentTypes.pdf, fixtures.pdf),
+          ],
+        })]),
+        { allowInternalRelay: true },
+      ),
+    Error,
+    "GMAIL_RELAY_UNSAFE_ATTACHMENT",
+  );
+  await assertRejects(
+    () =>
+      parseCopiedRequest(
+        relay([original({
+          attachments: [
+            originalInlineImage(
+              "payload.exe",
+              "application/octet-stream",
+              "MZ",
+            ),
+            originalAttachment("form.pdf", contentTypes.pdf, fixtures.pdf),
+          ],
+        })]),
+        { allowInternalRelay: true },
+      ),
+    Error,
+    "GMAIL_RELAY_UNSAFE_ATTACHMENT",
   );
 });
 
