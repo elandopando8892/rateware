@@ -552,6 +552,7 @@ let rfxCarrierFitEvidenceByVendorId = new Map();
 let rfxCarrierFitEvidenceLoading = false;
 let rfxCarrierFitEvidenceError = "";
 let rfxCarrierFitEvidenceLoadVersion = 0;
+const outreachCarrierFitCache = new WeakMap();
 let whatsappConnectionReadiness = {
   loaded: false,
   ready: false,
@@ -8283,6 +8284,12 @@ function rfxCarrierProfileFitSignals(vendor, lanes) {
 function fitCarrierToOutreachLanes(vendor) {
   const haystack = vendorSearchText(vendor);
   const lanes = activeOutreachCarrierLanes();
+  const laneSource = String(rfxOutreachCarrierLane?.value || "all") === "all"
+    ? currentLanes
+    : lanes[0] || currentLanes;
+  const evidenceSource = rfxCarrierFitEvidenceByVendorId.get(String(vendor.id || "")) || null;
+  const cached = outreachCarrierFitCache.get(vendor);
+  if (cached?.laneSource === laneSource && cached?.evidenceSource === evidenceSource) return cached.result;
   const evidence = carrierFitEvidence(vendor);
   const profileFitSignals = rfxCarrierProfileFitSignals(vendor, lanes);
   const stageBonus = isProcurementCarrier(vendor) ? 12 : vendorStageRank(vendor) < 9 ? 4 : 0;
@@ -8321,7 +8328,7 @@ function fitCarrierToOutreachLanes(vendor) {
     ...evidence.rateSignals.slice(0, 2),
     ...evidence.historicBidSignals.slice(0, 1)
   ].filter(Boolean);
-  return {
+  const result = {
     score,
     hasAnyLaneFit: coverageCount > 0,
     hasRecommendedFit: hasOperationalFit || hasCoverageFit || ((evidence.hasRatewareEvidence || evidence.hasHistoricBidEvidence) && contactable),
@@ -8339,6 +8346,8 @@ function fitCarrierToOutreachLanes(vendor) {
         ? "Rateware or prior bid evidence found"
         : "No declared lane fit"
   };
+  outreachCarrierFitCache.set(vendor, { laneSource, evidenceSource, result });
+  return result;
 }
 
 function renderOutreachCarrierFitControls() {
@@ -8668,20 +8677,29 @@ function renderManualShortlistControls() {
 }
 
 function renderLanes() {
+  const activeView = rfxWorkbench?.current() || "setup";
   selectedLaneIds = new Set([...selectedLaneIds].filter((id) => currentLanes.some((lane) => lane.id === id)));
   selectedInvitationIds = new Set([...selectedInvitationIds].filter((id) => currentLanes.some((lane) => (lane.invitations || []).some((invite) => invite.id === id))));
   updateSelectionControls();
   updateLaneEditControls();
-  renderManualShortlistControls();
-  if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
+  if (activeView === "setup") {
+    renderManualShortlistControls();
+    if (pendingCarrierTemplateRows.length) renderCarrierTemplatePreview();
+  }
   renderEventDashboard();
-  renderLaneCoverage();
-  renderLaneDecision();
+  if (activeView === "setup") {
+    renderLaneCoverage();
+    renderLaneDecision();
+  }
   if (rfxWorkbench?.current() === "responses") renderResponseBoard();
-  renderOutreachLaunchpad();
+  if (activeView === "outreach") renderOutreachLaunchpad();
   if (rfxWorkbench?.current() === "responses") renderLiveOfferManager();
   if (rfxWorkbench?.current() === "award") renderAwardBoard();
   renderWizard();
+
+  // The business-book table is part of Build. Rebuilding its wide 22-column
+  // DOM while Launch, Operate, or Close is active blocks large RFx events.
+  if (activeView !== "setup") return;
 
   if (!selectedEventId) {
     updateLaneEditControls();
@@ -10130,6 +10148,9 @@ requirePrivatePage().then((session) => {
 
 document.querySelector("[data-workbench-view-button='carriers']")?.addEventListener("click", () => {
   loadCarrierWorkspaceData();
+});
+document.querySelector("[data-workbench-view-button='setup']")?.addEventListener("click", () => {
+  renderLanes();
 });
 document.querySelector("[data-workbench-view-button='outreach']")?.addEventListener("click", () => {
   loadOutreachAssets();
