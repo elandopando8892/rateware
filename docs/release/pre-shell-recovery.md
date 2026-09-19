@@ -53,7 +53,19 @@ Status: candidate in development; sprint 1 remains open.
 - Permission inspection: template controls explicitly require `vendors:manage`
   from app_metadata. Shared `canUse` currently checks sign-in only. Server-side
   authorization and denied-role tests remain required; UI is not a security boundary.
-- These changes are local, not yet part of the published preview or production.
+- Published with candidate `0942bd50` in the updated preview below; not production.
+
+## Updated preview: authentication handoff
+
+- Commit: `0942bd50`.
+- URL: https://rateware-34rcsqmu2-elandopando8892s-projects.vercel.app
+- Deployment: `dpl_FpvJXb5HoKu69p3YRWkziUmVWz4g`, READY, preview target.
+- Browser navigation to `/vendors?tab=list-templates` still redirects to Vercel login.
+- The same authentication blocker persists across successive goal turns. Local
+  compatibility fixes and the preview update are complete for this increment;
+  authenticated workflow evidence and visual approval cannot be substituted with
+  additional source-only checks. User sign-in is required for the next gate.
+- No production promotion, migration, invitation or message was performed.
 
 ## Preview and browser verification
 
