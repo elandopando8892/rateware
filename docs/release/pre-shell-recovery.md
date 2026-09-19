@@ -127,6 +127,11 @@ Status: candidate in development; sprint 1 remains open.
 - Historical Edge Function sources in this recovery checkout are not a safe
   deployment source and remain explicitly out of the frontend recovery artifact.
   The live `rateware-api` Supabase adapter was verified separately above.
+- Candidate `bbe8437a` is published at
+  https://rateware-ci6wmaoef-elandopando8892s-projects.vercel.app as deployment
+  `dpl_9er3zEw82uXz1vSEbChwGdK2nCzn` (`READY`, preview target). Opening the RFx
+  route redirects to the Supabase login landing page as expected; authenticated
+  smoke remains a user handoff gate.
 
 ## Preview and browser verification
 
