@@ -39,7 +39,7 @@ Reusable frontend contracts: `300d396e0063aa0f91d3f5500a8664a248e0a20a`.
 The template SQL file is copied for contract/reference parity only. No remote migration,
 backend deployment, business-record creation or message delivery was performed.
 
-Status: candidate in development; sprint 1 remains open.
+Status: authenticated recovery preview verified; production certification remains open.
 
 ## Local follow-up: template response context
 
@@ -147,3 +147,32 @@ Status: candidate in development; sprint 1 remains open.
   50,000. The historical backend in this checkout predates that fix. An 89 x 69
   wave contains 6,141 lane/carrier pairs. Frontend tests cannot establish whether
   the currently deployed backend includes that fix; remote verification remains required.
+
+## Authenticated responsive preview - 2026-09-19
+
+- Candidate commit: `d7e7b339`.
+- Preview: https://rateware-3o8yyklo8-elandopando8892s-projects.vercel.app
+- Deployment: `dpl_BMsxxUunDuHWz6WRKTEGuDpcn9oF`, Vercel `READY`, preview target.
+- Supabase Google Sign-In completed as `sales@heymarksman.com`; the authenticated
+  workspace exposed the server-managed carrier-management permission.
+- Carrier Fit, Message, and Delivery Queue were inspected against RFx
+  `ab666cee-a052-4bbb-bc77-5f509435c051` at the default 1280 px viewport. The
+  compact-desktop layout gives the active task the full row, stacks Launch
+  workspaces before copy collapses, and places operating context after the active
+  panel. Rendered box measurements showed the 757.56 px active Launch panel ending
+  exactly where the operating context begins; no overlap remained.
+- Mobile verification used a temporary 390 x 844 viewport. The document client and
+  scroll widths were both 380 px, the Delivery Queue guidance resolved to static
+  positioning, and the participation, lifecycle, action, and table sections scrolled
+  in sequence without overlap. The viewport override was reset after inspection.
+- Browser console capture contained no warnings or errors during the responsive
+  verification.
+- Carrier CRM List Templates loaded the active `D2D Crossborder MX-US` template with
+  332 members. `New template` opened the Details -> Add carriers -> Review -> Save
+  builder and confirmed that membership is restricted to carriers already in the
+  workspace. The builder was inspected without saving or changing a template.
+- The focused release checks remained green: responsive layout assertions plus six
+  Supabase-auth and 89-carrier-by-69-lane preparation cases. The harness verifies
+  preparation and idempotent retry behavior and rejects Gmail/WhatsApp send calls.
+- No carrier was added to an RFx, no draft queue was created, no invitation or
+  message was sent, and production was not promoted in this verification.
