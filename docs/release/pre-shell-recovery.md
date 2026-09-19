@@ -88,6 +88,19 @@ Status: candidate in development; sprint 1 remains open.
 - No database, Auth metadata, Edge Function, migration or application record was
   changed by these checks.
 
+## Bulk draft preparation regression coverage
+
+- Added an executable harness around the actual `createCurrentOutreachDrafts`
+  implementation. A fixture with 89 carriers and 69 lane invitations per carrier
+  passes all 6,141 distinct invitation IDs in one bounded preparation request.
+- The preparation source is asserted not to call Gmail or WhatsApp send methods.
+- A transient failure retains the idempotency key and a successful retry reuses
+  that same key before clearing it. A response from a previously selected event
+  cannot refresh or redirect the newly selected event.
+- The three bulk preparation cases plus 18 template load/context cases pass
+  locally (21 total). This verifies frontend behavior with fakes; authenticated
+  preview execution is still required and must use non-sending preparation only.
+
 ## Preview and browser verification
 
 - Candidate commit: `f1eef707`.
