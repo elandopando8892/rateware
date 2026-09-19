@@ -53,7 +53,7 @@ import {
   updateOutreachTemplate
 } from "./outreach-service.js?v=20260801-outreach-read-v1";
 import { fetchCarrierRecommendations } from "./business-intelligence-service.js";
-import { createVendorSegment, deleteVendorSegment, fetchVendorSegments, fetchVendors, updateVendorSegment } from "./vendor-service.js";
+import { fetchCarrierListTemplates, getCarrierListTemplate, fetchVendors } from "./vendor-service.js";
 import { fetchShippers } from "./shipper-service.js";
 import { fetchWhatsappConnections } from "./settings-service.js";
 import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
@@ -7811,6 +7811,15 @@ function segmentCandidateRows(segmentId = selectedSegmentId()) {
 }
 
 async function loadSegmentCandidateRows(segmentId = selectedSegmentId()) {
+  if (segmentId !== "all" && segmentId !== "procurement") {
+    const fresh = await getCarrierListTemplate(segmentId, { usageContext: "carrier_fit" });
+    if (!fresh.row || fresh.row.lifecycle_status !== "active") {
+      savedVendorSegments = savedVendorSegments.filter((row) => row.id !== segmentId);
+      throw new Error("This list is no longer active. Choose another list.");
+    }
+    savedVendorSegments = savedVendorSegments.filter((row) => row.id !== segmentId).concat(fresh.row);
+    return await hydrateVendorOptionIds(segmentVendorIds(fresh.row));
+  }
   const segment = participantTemplates().find((item) => item.id === segmentId);
   const savedIds = segmentVendorIds(segment);
   if (savedIds.length) return await hydrateVendorOptionIds(savedIds);
@@ -8860,7 +8869,15 @@ async function loadVendorSegments() {
   vendorSegmentsLoading = true;
   renderManualShortlistControls();
   try {
-    const rows = await fetchVendorSegments({ segmentType: "participant_template" });
+    const rows = [];
+    for (let offset = 0; ; offset += 200) {
+      const page = await fetchCarrierListTemplates({ lifecycle_status: "active", limit: 200, offset });
+      if (loadVersion !== vendorSegmentsLoadVersion) return;
+      if (page.enabled === false) throw new Error("Carrier list templates are unavailable in this workspace.");
+      rows.push(...(page.rows || []).filter((row) => row.lifecycle_status === "active"));
+      if (!page.has_more) break;
+      if (offset >= 4800) throw new Error("Too many carrier templates to load. Refine the lists in Carrier CRM.");
+    }
     if (loadVersion !== vendorSegmentsLoadVersion) return;
     savedVendorSegments = rows;
     if (manualShortlistSegment && previousSelection !== "all" && previousSelection !== "procurement") {
@@ -8870,6 +8887,7 @@ async function loadVendorSegments() {
     }
   } catch (error) {
     if (loadVersion !== vendorSegmentsLoadVersion) return;
+    savedVendorSegments = [];
     setStatus(manualShortlistStatus, `Carrier segments could not load: ${humanizeError(error)}`, "error");
   } finally {
     if (loadVersion !== vendorSegmentsLoadVersion) return;
@@ -11283,40 +11301,6 @@ clearCarrierSelectionButton?.addEventListener("click", () => {
   renderManualShortlistControls();
   setStatus(manualShortlistStatus, "Carrier selection cleared.", "neutral");
 });
-saveManualShortlistTemplateButton?.addEventListener("click", async () => {
-  const vendorIds = selectedManualVendorIds();
-  const name = String(manualShortlistTemplateName?.value || "").trim();
-  if (!vendorIds.length) {
-    setStatus(manualShortlistStatus, "Select at least one carrier before saving a participant template.", "error");
-    return;
-  }
-  if (!name) {
-    setStatus(manualShortlistStatus, "Add a template name before saving this participant list.", "error");
-    manualShortlistTemplateName?.focus();
-    return;
-  }
-  if (participantTemplateMutationRunning) return;
-  const existingTemplate = participantTemplateByName(name);
-  participantTemplateMutationRunning = true;
-  saveManualShortlistTemplateButton.disabled = true;
-  setStatus(manualShortlistStatus, `${existingTemplate ? "Updating" : "Saving"} participant template "${name}"...`);
-  try {
-    const row = existingTemplate
-      ? await updateVendorSegment(existingTemplate.id, participantTemplatePayload(existingTemplate, vendorIds, name))
-      : await createVendorSegment(participantTemplatePayload(null, vendorIds, name));
-    if (manualShortlistSegment) manualShortlistSegment.value = row.id;
-    await loadVendorSegments();
-    if (manualShortlistSegment) manualShortlistSegment.value = row.id;
-    if (manualShortlistTemplateName) manualShortlistTemplateName.value = "";
-    renderManualShortlistControls();
-    setStatus(manualShortlistStatus, `Template "${row.segment_name || name}" ${existingTemplate ? "updated" : "saved"} with ${formatNumber(vendorIds.length)} carrier(s).`, "success");
-  } catch (error) {
-    setStatus(manualShortlistStatus, humanizeError(error), "error");
-  } finally {
-    participantTemplateMutationRunning = false;
-    renderManualShortlistControls();
-  }
-});
 loadManualShortlistTemplateButton?.addEventListener("click", async () => {
   const segmentId = selectedSegmentId();
   if (segmentId === "all") {
@@ -11330,6 +11314,7 @@ loadManualShortlistTemplateButton?.addEventListener("click", async () => {
   setStatus(manualShortlistStatus, savedIds.length ? `Loading ${formatNumber(savedIds.length)} saved carrier(s) from Carrier CRM...` : "Loading carriers from Carrier CRM...");
   try {
     const rows = await loadSegmentCandidateRows(segmentId);
+    if (selectedSegmentId() !== segmentId) return;
     if (!rows.length) {
       setStatus(manualShortlistStatus, "No active carriers were found for the selected saved list.", "error");
       return;
@@ -11348,73 +11333,6 @@ loadManualShortlistTemplateButton?.addEventListener("click", async () => {
   } catch (error) {
     setStatus(manualShortlistStatus, `Saved list could not load from Carrier CRM. ${humanizeError(error)}`, "error");
   } finally {
-    renderManualShortlistControls();
-  }
-});
-updateManualShortlistTemplateButton?.addEventListener("click", async () => {
-  const segment = selectedSavedVendorSegment();
-  const vendorIds = selectedManualVendorIds();
-  if (!segment) {
-    setStatus(manualShortlistStatus, "Choose a saved participant template before updating.", "error");
-    return;
-  }
-  if (!vendorIds.length) {
-    setStatus(manualShortlistStatus, "Keep at least one carrier selected before updating this template.", "error");
-    return;
-  }
-  const name = String(manualShortlistTemplateName?.value || segment.segment_name || "").trim();
-  if (!name) {
-    setStatus(manualShortlistStatus, "Template name is required before updating.", "error");
-    manualShortlistTemplateName?.focus();
-    return;
-  }
-  if (participantTemplateMutationRunning) return;
-  const duplicateTemplate = participantTemplateByName(name, segment.id);
-  if (duplicateTemplate) {
-    setStatus(manualShortlistStatus, `A participant template named "${duplicateTemplate.segment_name}" already exists. Select it or choose a different name.`, "error");
-    return;
-  }
-  participantTemplateMutationRunning = true;
-  updateManualShortlistTemplateButton.disabled = true;
-  setStatus(manualShortlistStatus, `Updating participant template "${name}"...`);
-  try {
-    const row = await updateVendorSegment(segment.id, participantTemplatePayload(segment, vendorIds, name));
-    if (manualShortlistSegment) manualShortlistSegment.value = row.id;
-    await loadVendorSegments();
-    if (manualShortlistSegment) manualShortlistSegment.value = row.id;
-    renderManualShortlistControls();
-    setStatus(manualShortlistStatus, `Template "${row.segment_name || name}" updated with ${formatNumber(vendorIds.length)} carrier(s).`, "success");
-  } catch (error) {
-    setStatus(manualShortlistStatus, humanizeError(error), "error");
-  } finally {
-    participantTemplateMutationRunning = false;
-    renderManualShortlistControls();
-  }
-});
-deleteManualShortlistTemplateButton?.addEventListener("click", async () => {
-  const segment = selectedSavedVendorSegment();
-  if (!segment) {
-    setStatus(manualShortlistStatus, "Choose a saved participant template before deleting.", "error");
-    return;
-  }
-  const label = segment.segment_name || "this participant template";
-  if (!window.confirm(`Delete "${label}"? This will not remove carriers from CRM or existing bid invitations.`)) return;
-  if (participantTemplateMutationRunning) return;
-  participantTemplateMutationRunning = true;
-  deleteManualShortlistTemplateButton.disabled = true;
-  setStatus(manualShortlistStatus, `Deleting participant template "${label}"...`);
-  try {
-    await deleteVendorSegment(segment.id, { segmentType: "participant_template" });
-    if (manualShortlistSegment) manualShortlistSegment.value = "all";
-    await loadVendorSegments();
-    if (manualShortlistSegment) manualShortlistSegment.value = "all";
-    if (manualShortlistTemplateName) manualShortlistTemplateName.value = "";
-    renderManualShortlistControls();
-    setStatus(manualShortlistStatus, `Template "${label}" deleted. Carriers and bid history were not changed.`, "success");
-  } catch (error) {
-    setStatus(manualShortlistStatus, humanizeError(error), "error");
-  } finally {
-    participantTemplateMutationRunning = false;
     renderManualShortlistControls();
   }
 });

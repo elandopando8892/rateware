@@ -23,8 +23,10 @@ Reusable frontend contracts: `300d396e0063aa0f91d3f5500a8664a248e0a20a`.
 
 ## Required before preview acceptance
 
-- Adapt old Carrier Fit to the current template API and lifecycle/version contracts.
-  The legacy participant editor must not use old mutations or hard deletion.
+- Carrier Fit now lists active templates through the current API and refreshes membership
+  before loading. Legacy template mutations and hard-delete controls were removed.
+  Three behavioral tests pass: fresh membership, unavailable/archived lists, empty lists.
+  Authenticated integration and bulk selection still require browser verification.
 - Verify current Supabase project, API capabilities, authorization and callbacks.
   Do not deploy the historical backend or apply migrations as a rollback shortcut.
 - Verify frontend import closure and exercise actual pages in browser.
