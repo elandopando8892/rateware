@@ -129,3 +129,15 @@ normalize each profile-note source once per fit calculation, and check the fit
 cache before rebuilding the vendor search string. Tests cover unchanged match
 labels, empty lane lists, and one normalization of a long note across 69 lanes.
 All 13 focused frontend checks passed after the follow-up.
+
+Follow-up commit: `1a0e77b9`. Authenticated preview
+`dpl_5D7xqHFm4ehnExtRmAegnmMPj93H` at
+https://rateware-ivcsgtwq7-elandopando8892s-projects.vercel.app loaded the same
+592 recommendations, 50 visible candidates, 92 RFx carriers and the saved
+332-member list. Measured detail 16258 ms; subsequent request group began
+approximately 3.54 seconds after detail completion (versus 12.7 seconds in the
+preceding production sample). Audience 7828 ms; context 6100 ms; all HTTP 200.
+No new application console error was observed after authentication; the reused
+tab retained an earlier expected unauthenticated diagnostic-page redirect error.
+Server latency remains variable, and these samples do not establish p95 or a
+guaranteed overall speedup.
