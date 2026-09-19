@@ -40,3 +40,18 @@ The template SQL file is copied for contract/reference parity only. No remote mi
 backend deployment, business-record creation or message delivery was performed.
 
 Status: candidate in development; sprint 1 remains open.
+
+## Preview and browser verification
+
+- Candidate commit: `f1eef707`.
+- Preview: https://rateware-81sy2u3jt-elandopando8892s-projects.vercel.app
+- Deployment: `dpl_GXVJzEYrjFD7waZtC9xtfjdyR1Pj`, Vercel READY, preview target.
+- Opening `/vendors?tab=list-templates` in the in-app browser reaches Vercel login.
+  No authenticated application or visual acceptance has been established in this preview.
+- User sign-in was requested; protection has not been disabled.
+- Static local import traversal from landing, CRM and Bid Room resolved 28 modules
+  with no missing local files (URL version query strings stripped during resolution).
+- Bulk-wave fix `831a9f37` raises the server invitation-id bound from 5,000 to
+  50,000. The historical backend in this checkout predates that fix. An 89 x 69
+  wave contains 6,141 lane/carrier pairs. Frontend tests cannot establish whether
+  the currently deployed backend includes that fix; remote verification remains required.
