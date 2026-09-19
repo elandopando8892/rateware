@@ -81,6 +81,15 @@ export type RequestFulfillmentMatrix = Readonly<{
   satisfiedRequired: number;
   blockingCount: number;
   items: readonly RequestFulfillmentItem[];
+  /** Human-approved MVP deferrals unlock internal Operations work only. They
+   * never satisfy carrier evidence and keep signature and outbound effects
+   * fail-closed until superseded by a review without deferrals. */
+  scopeExceptions?: readonly Readonly<{
+    decisionId: string;
+    fieldId: string | null;
+    reason: string;
+    evidenceIds: readonly string[];
+  }>[];
   /** Exact reviewed set basis. Present only when current persisted member
    * reviews can be reconstructed byte-for-byte; downstream gates additionally
    * require the matching immutable Operations receipt. */

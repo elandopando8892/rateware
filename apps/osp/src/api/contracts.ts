@@ -177,7 +177,7 @@ export const RequestManifestSchema = z.strictObject({
     action: z.enum(['complete', 'sign', 'review', 'attach']),
     required: z.boolean(),
     evidenceIds: ManifestEvidenceIdsSchema.min(1),
-  })).max(100),
+    })).max(100),
   requestedFields: z.array(z.strictObject({
     id: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/),
     sourceLabel: z.string().min(1).max(256),
@@ -264,7 +264,7 @@ export const CaseDetailSchema = CaseSummarySchema.extend({
         fieldId: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/).nullable(),
         prompt: z.string().min(1).max(10_000),
         evidenceIds: ManifestEvidenceIdsSchema,
-        outcome: z.enum(['answered', 'external', 'not_applicable']),
+        outcome: z.enum(['answered', 'external', 'not_applicable', 'deferred_mvp']),
         resolution: z.string().min(3).max(2_000),
       })).max(200),
       canonicalSha256: z.string().regex(/^[0-9a-f]{64}$/),
@@ -315,7 +315,7 @@ export const RequestManifestReviewResponseSchema = z.strictObject({ data: z.stri
     decisionId: z.string().regex(/^(?:clarification|contradiction|missing):(?:0|[1-9][0-9]{0,2})$/),
     kind: z.enum(['clarification', 'contradiction', 'missing']), fieldId: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/).nullable(),
     prompt: z.string().min(1).max(10_000), evidenceIds: ManifestEvidenceIdsSchema,
-    outcome: z.enum(['answered', 'external', 'not_applicable']), resolution: z.string().min(3).max(2_000),
+    outcome: z.enum(['answered', 'external', 'not_applicable', 'deferred_mvp']), resolution: z.string().min(3).max(2_000),
   })).max(200), canonicalSha256: z.string().regex(/^[0-9a-f]{64}$/), replayed: z.boolean(),
 }) });
 
@@ -652,6 +652,12 @@ export const RequestFulfillmentMatrixSchema = z.strictObject({
     reason: z.string().min(1).max(2_000),
     evidenceIds: z.array(z.string().min(1).max(256)).max(100),
   })).max(600),
+  scopeExceptions: z.array(z.strictObject({
+    decisionId: z.string().regex(/^(?:clarification|contradiction|missing):(?:0|[1-9][0-9]{0,2})$/),
+    fieldId: z.string().regex(/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/).nullable(),
+    reason: z.string().min(3).max(2_000),
+    evidenceIds: z.array(z.string().min(1).max(256)).min(1).max(20),
+  })).max(100).optional(),
   gates: z.strictObject({
     operationsReview: z.boolean(),
     signatureApproval: z.boolean(),
@@ -793,7 +799,7 @@ export const ApprovalCommunicationsWorkspaceSchema = z.strictObject({
         'image/jpeg', 'image/png', 'image/tiff',
       ]),
       sha256: workflowSha,
-    })).max(100),
+  })).max(100),
     attachmentSha256: z.array(workflowSha).max(100),
     mimeSha256: workflowSha.nullable(),
     salesAuthorizationId: z.uuid().nullable(),

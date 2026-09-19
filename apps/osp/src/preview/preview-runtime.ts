@@ -877,7 +877,7 @@ function createPreviewClient(): OspClient {
       const submitted = new Map(input.decisions.map((decision) => [decision.decisionId, decision]));
       if (submitted.size !== seeds.length || seeds.some((seed) => {
         const decision = submitted.get(seed.decisionId);
-        return !decision || decision.resolution.trim().length < 3 || !['answered', 'external', 'not_applicable'].includes(decision.outcome);
+        return !decision || decision.resolution.trim().length < 3 || !['answered', 'external', 'not_applicable', 'deferred_mvp'].includes(decision.outcome);
       })) throw new Error('REQUEST_MANIFEST_REVIEW_SCOPE_MISMATCH');
       const decisions = seeds.map((seed) => ({ ...seed, ...submitted.get(seed.decisionId)!, resolution: submitted.get(seed.decisionId)!.resolution.trim() }));
       const status = decisions.some((decision) => decision.outcome === 'external') ? 'needs_external_clarification' as const : 'resolved' as const;

@@ -136,7 +136,7 @@ function approvalProof(request: Request): string {
 
 function authority(
   verified: VerifiedWorkflowIdentity,
-  required: "read" | "operate",
+  required: "read" | "operate" | "superuser",
 ) {
   const authorityPermissions = verified.permissions.filter((permission) =>
     permission === "osp:operate" ||
@@ -145,7 +145,10 @@ function authority(
     permission === "osp:send-authorized" ||
     permission === "osp:superuser"
   );
-  const allowed = required === "operate"
+  const allowed = required === "superuser"
+    ? authorityPermissions.length === 1 &&
+      authorityPermissions[0] === "osp:superuser"
+    : required === "operate"
     ? authorityPermissions.length === 1 &&
       (authorityPermissions[0] === "osp:operate" ||
         authorityPermissions[0] === "osp:superuser")
@@ -475,7 +478,9 @@ function safeManifestDecision(value: unknown): RequestManifestDecisionInput {
     !/^(?:clarification|contradiction|missing):(?:0|[1-9][0-9]{0,2})$/.test(
       row.decisionId,
     ) ||
-    !["answered", "external", "not_applicable"].includes(String(row.outcome)) ||
+    !["answered", "external", "not_applicable", "deferred_mvp"].includes(
+      String(row.outcome),
+    ) ||
     typeof row.resolution !== "string" ||
     row.resolution.trim() !== row.resolution || row.resolution.length < 3 ||
     row.resolution.length > 2_000 ||
@@ -964,7 +969,6 @@ export function createCaseApiHandler(
           "expected_case_version",
           "expected_manifest_sha256",
         ]);
-        const scope = authority(verified, "operate");
         const expectedCaseVersion = Number(query.expected_case_version);
         if (
           !UUID.test(query.case_id) ||
@@ -974,13 +978,20 @@ export function createCaseApiHandler(
         ) {
           throw new OspApiError("INVALID_REQUEST");
         }
+        const decisions = await manifestReviewBody(request);
+        const scope = authority(
+          verified,
+          decisions.some((decision) => decision.outcome === "deferred_mvp")
+            ? "superuser"
+            : "operate",
+        );
         const result = await options.clarificationStore
           .saveRequestManifestReview({
             ...scope,
             caseId: query.case_id,
             expectedCaseVersion,
             expectedManifestSha256: query.expected_manifest_sha256,
-            decisions: await manifestReviewBody(request),
+            decisions,
           });
         return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
       }

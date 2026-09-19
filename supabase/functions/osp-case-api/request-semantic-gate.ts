@@ -29,6 +29,10 @@ type PostgresFactory = (
 const SHA = /^[0-9a-f]{64}$/;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const DECISION_ID =
+  /^(?:clarification|contradiction|missing):(?:0|[1-9][0-9]{0,2})$/;
+const FIELD_ID = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/;
+const EVIDENCE_ID = /^[A-Za-z0-9:_-]{1,256}$/;
 
 type EvidenceRecord = Readonly<{
   evidence: FulfillmentEvidence;
@@ -105,6 +109,58 @@ function parsedArray(value: unknown): readonly Record<string, unknown>[] {
     )
   ) throw new Error("REQUEST_FULFILLMENT_SOURCE_INVALID");
   return value as Record<string, unknown>[];
+}
+
+export function manifestScopeExceptions(
+  value: unknown,
+): NonNullable<RequestFulfillmentMatrix["scopeExceptions"]> {
+  const deferred = parsedArray(value).filter((item) =>
+    item.outcome === "deferred_mvp"
+  );
+  const seen = new Set<string>();
+  return Object.freeze(deferred.map((item) => {
+    if (
+      typeof item.decisionId !== "string" ||
+      !DECISION_ID.test(item.decisionId) || seen.has(item.decisionId) ||
+      (item.fieldId !== null &&
+        (typeof item.fieldId !== "string" || !FIELD_ID.test(item.fieldId))) ||
+      typeof item.resolution !== "string" ||
+      item.resolution.trim() !== item.resolution ||
+      item.resolution.length < 3 || item.resolution.length > 2_000 ||
+      !Array.isArray(item.evidenceIds) || item.evidenceIds.length < 1 ||
+      item.evidenceIds.length > 20 ||
+      item.evidenceIds.some((id) =>
+        typeof id !== "string" || !EVIDENCE_ID.test(id)
+      ) || new Set(item.evidenceIds).size !== item.evidenceIds.length
+    ) throw new Error("REQUEST_FULFILLMENT_SOURCE_INVALID");
+    seen.add(item.decisionId);
+    return Object.freeze({
+      decisionId: item.decisionId,
+      fieldId: item.fieldId as string | null,
+      reason: item.resolution,
+      evidenceIds: Object.freeze([...(item.evidenceIds as string[])]),
+    });
+  }));
+}
+
+export function lockConsequentialGatesForScopeExceptions(
+  matrix: RequestFulfillmentMatrix,
+  scopeExceptions: NonNullable<RequestFulfillmentMatrix["scopeExceptions"]>,
+): RequestFulfillmentMatrix {
+  if (scopeExceptions.length === 0) return matrix;
+  return Object.freeze({
+    ...matrix,
+    scopeExceptions,
+    gates: Object.freeze({
+      ...matrix.gates,
+      operationsReview: true,
+      signatureApproval: false,
+      outboundDraft: false,
+      outboundFreeze: false,
+      salesAuthorization: false,
+      send: false,
+    }),
+  });
 }
 
 function attachmentKey(input: {
@@ -561,13 +617,15 @@ export function createPostgresRequestSemanticGate(options: {
         await tx`set local statement_timeout = '3000ms'`;
         const sources = await tx`
         select manifest.manifest_json, manifest.manifest_sha256,
+               review.decisions_json,
                (review.status = 'resolved'
                 and review.manifest_version = manifest.version
                 and review.manifest_sha256 = manifest.manifest_sha256)
                  as current_review_resolved
         from osp_private.request_manifest_drafts manifest
         left join lateral (
-          select candidate.status, candidate.manifest_version, candidate.manifest_sha256
+          select candidate.status, candidate.manifest_version, candidate.manifest_sha256,
+                 candidate.decisions_json
           from osp_private.request_manifest_decision_reviews candidate
           where candidate.organization_id = manifest.organization_id
             and candidate.case_id = manifest.case_id
@@ -588,6 +646,9 @@ export function createPostgresRequestSemanticGate(options: {
           manifestSha256: sources[0].manifest_sha256,
           manifest: parsedJson(sources[0].manifest_json),
         });
+        const scopeExceptions = manifestScopeExceptions(
+          sources[0].decisions_json,
+        );
         const outboundDrafts = await tx`
         select draft.attachments_json
         from osp_private.outbound_drafts draft
@@ -717,16 +778,19 @@ export function createPostgresRequestSemanticGate(options: {
           ...documentEvidence(documents, included),
           ...(reviewedSet?.records ?? formEvidence(packages, forms, included)),
         ]);
-        const assessed = evaluateRequestFulfillment({
-          contract,
-          evidence: records.map((record) => record.evidence),
-          entity: {
-            legalEntityKind: contract.targetXbfEntity === "unknown"
-              ? "unknown"
-              : "company",
-          },
-          now: options.now?.() ?? new Date(),
-        });
+        const assessed = lockConsequentialGatesForScopeExceptions(
+          evaluateRequestFulfillment({
+            contract,
+            evidence: records.map((record) => record.evidence),
+            entity: {
+              legalEntityKind: contract.targetXbfEntity === "unknown"
+                ? "unknown"
+                : "company",
+            },
+            now: options.now?.() ?? new Date(),
+          }),
+          scopeExceptions,
+        );
         const matrix: RequestFulfillmentMatrix = reviewedSet
           ? Object.freeze({
             ...assessed,

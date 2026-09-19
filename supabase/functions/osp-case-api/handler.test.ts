@@ -40,6 +40,15 @@ const carriersIdentity = {
   authorizationSessionId: "session-carriers",
   authorizationSessionIssuedAt: "2026-08-24T11:58:00.000Z",
 } as const;
+const superuserIdentity = {
+  ...identity,
+  identity: {
+    ...identity.identity,
+    subject: "sales-subject",
+    email: "sales@heymarksman.com",
+  },
+  permissions: ["osp:read", "osp:superuser"],
+} as const;
 
 function request(query: string, init: RequestInit = {}) {
   return new Request(
@@ -193,18 +202,38 @@ Deno.test("case API keeps distinct clarification scopes and consolidates exact r
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         questions: [
-          { kind: "missing", fieldId: "supplier.address", question: "Please provide the registered address.", evidenceIds: ["ev-1"] },
-          { kind: "missing", fieldId: "supplier.address", question: "Please provide the registered address.", evidenceIds: ["ev-2"] },
-          { kind: "missing", fieldId: "supplier.address", question: "Confirm the address effective date.", evidenceIds: ["ev-1"] },
+          {
+            kind: "missing",
+            fieldId: "supplier.address",
+            question: "Please provide the registered address.",
+            evidenceIds: ["ev-1"],
+          },
+          {
+            kind: "missing",
+            fieldId: "supplier.address",
+            question: "Please provide the registered address.",
+            evidenceIds: ["ev-2"],
+          },
+          {
+            kind: "missing",
+            fieldId: "supplier.address",
+            question: "Confirm the address effective date.",
+            evidenceIds: ["ev-1"],
+          },
         ],
       }),
     },
   ));
   assertEquals(response.status, 200);
-  const input = saved[0] as { questions: readonly { question: string; evidenceIds: readonly string[] }[] };
+  const input = saved[0] as {
+    questions: readonly { question: string; evidenceIds: readonly string[] }[];
+  };
   assertEquals(input.questions.length, 2);
   assertEquals(input.questions[0]?.evidenceIds, ["ev-1", "ev-2"]);
-  assertEquals(input.questions[1]?.question, "Confirm the address effective date.");
+  assertEquals(
+    input.questions[1]?.question,
+    "Confirm the address effective date.",
+  );
 });
 
 Deno.test("case API saves one exact evidence-bound request manifest review without outbound effects", async () => {
@@ -270,6 +299,68 @@ Deno.test("case API saves one exact evidence-bound request manifest review witho
       resolution: "Use XBFUS.",
     }],
   }]);
+});
+
+Deno.test("case API reserves release-blocking MVP deferrals for the Sales superuser", async () => {
+  const caseId = "33333333-3333-4333-8333-333333333333";
+  const query =
+    `action=save_request_manifest_review&case_id=${caseId}&expected_case_version=4&expected_manifest_sha256=${sourceHash}`;
+  const body = JSON.stringify({
+    decisions: [{
+      decisionId: "missing:1",
+      outcome: "deferred_mvp",
+      resolution:
+        "Certificate remains pending; internal MVP review only and release stays locked.",
+    }],
+  });
+  let saves = 0;
+  const store = {
+    listForReview: async () => [],
+    saveOperationsReview: async () => row,
+    saveRequestManifestReview: async () => {
+      saves += 1;
+      return {
+        reviewId: "66666666-6666-4666-8666-666666666666",
+        caseId,
+        caseVersion: 5,
+        manifestId: "55555555-5555-4555-8555-555555555555",
+        manifestVersion: 1,
+        manifestSha256: sourceHash,
+        reviewVersion: 2,
+        status: "resolved" as const,
+        decisions: [],
+        canonicalSha256: "b".repeat(64),
+        replayed: false,
+      };
+    },
+  };
+  const operatorHandler = createCaseApiHandler({
+    verifyToken: async () => identity,
+    clarificationStore: store,
+    incidentId: () => "incident-mvp-operator",
+  });
+  assertEquals(
+    (await operatorHandler(request(query, {
+      headers: { "content-type": "application/json" },
+      body,
+    }))).status,
+    403,
+  );
+  assertEquals(saves, 0);
+
+  const superuserHandler = createCaseApiHandler({
+    verifyToken: async () => superuserIdentity,
+    clarificationStore: store,
+    incidentId: () => "incident-mvp-sales",
+  });
+  assertEquals(
+    (await superuserHandler(request(query, {
+      headers: { "content-type": "application/json" },
+      body,
+    }))).status,
+    200,
+  );
+  assertEquals(saves, 1);
 });
 
 Deno.test("case API reads and promotes only an exact reviewed knowledge selection", async () => {
@@ -867,7 +958,8 @@ Deno.test("workspace read returns expected fulfillment blockers while Operations
             label: "Request requirements review",
             status: "review_required",
             blocking: true,
-            reason: "A current reviewed request is required before fulfillment can be assessed.",
+            reason:
+              "A current reviewed request is required before fulfillment can be assessed.",
             evidenceIds: [],
           }],
           gates: {
@@ -898,7 +990,14 @@ Deno.test("workspace read returns expected fulfillment blockers while Operations
   const body = await view.json();
   assertEquals(body.data.fulfillment.assessmentStatus, "not_ready");
   assertEquals(body.data.fulfillment.blockingCount, 1);
-  assertEquals(Object.values(body.data.capabilities), [false, false, false, false, false, false]);
+  assertEquals(Object.values(body.data.capabilities), [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+  ]);
 
   const blocked = await handler(request(
     `action=complete_operations_review&case_id=${row.caseId}&expected_case_version=4&input_snapshot_sha256=${sourceHash}&idempotency_key=blocked-fulfillment`,

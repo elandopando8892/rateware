@@ -4,11 +4,61 @@ import type { SqlPort } from "../_shared/osp/database-context.ts";
 import { canonicalPackageSetJson } from "../_shared/osp/package-set-json.ts";
 import { sha256Hex } from "../_shared/osp/source-hash.ts";
 import { preparePackageSetReview } from "./package-set-review.ts";
-import { createPostgresRequestSemanticGate } from "./request-semantic-gate.ts";
+import {
+  createPostgresRequestSemanticGate,
+  lockConsequentialGatesForScopeExceptions,
+  manifestScopeExceptions,
+} from "./request-semantic-gate.ts";
 
 const organizationId = "11111111-1111-4111-8111-111111111111";
 const caseId = "22222222-2222-4222-8222-222222222222";
 const manifestSha256 = "a".repeat(64);
+
+Deno.test("MVP deferrals keep only the internal Operations gate available", () => {
+  const scopeExceptions = manifestScopeExceptions([{
+    decisionId: "missing:1",
+    fieldId: "insurance_indicator",
+    outcome: "deferred_mvp",
+    resolution:
+      "Certificate of Insurance remains pending; internal MVP review only and release stays locked.",
+    evidenceIds: ["file:85955a14-5622-4257-943b-6b23826e0552"],
+  }]);
+  const matrix = lockConsequentialGatesForScopeExceptions({
+    schemaVersion: 1,
+    manifestSha256,
+    assessedAt: "2026-09-19T18:00:00.000Z",
+    totalRequired: 1,
+    satisfiedRequired: 1,
+    blockingCount: 0,
+    items: [{
+      requirementId: "form:vendor-application",
+      kind: "form",
+      canonicalKey: "form.vendor_application",
+      label: "Vendor application",
+      status: "satisfied",
+      blocking: false,
+      reason: "Reviewed evidence satisfies the request contract.",
+      evidenceIds: ["review:11111111-1111-4111-8111-111111111111"],
+    }],
+    gates: {
+      operationsReview: false,
+      signatureApproval: true,
+      outboundDraft: true,
+      outboundFreeze: true,
+      salesAuthorization: true,
+      send: true,
+    },
+  }, scopeExceptions);
+  assertEquals(matrix.scopeExceptions, scopeExceptions);
+  assertEquals(matrix.gates, {
+    operationsReview: true,
+    signatureApproval: false,
+    outboundDraft: false,
+    outboundFreeze: false,
+    salesAuthorization: false,
+    send: false,
+  });
+});
 
 for (const method of ["electrónica", "autógrafa"] as const) {
   for (const fullCompletion of [false, true]) {
@@ -34,6 +84,7 @@ for (const method of ["electrónica", "autógrafa"] as const) {
           if (statement.includes("request_manifest_decision_reviews")) {
             return [{
               current_review_resolved: true,
+              decisions_json: [],
               manifest_sha256: manifestSha256,
               manifest_json: {
                 requestType: "customer_setup",
@@ -349,6 +400,7 @@ for (
       if (statement.includes("request_manifest_decision_reviews")) {
         return Promise.resolve([{
           current_review_resolved: true,
+          decisions_json: [],
           manifest_sha256: requestSha256,
           manifest_json: {
             requestType: "customer_setup",

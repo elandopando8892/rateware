@@ -1,7 +1,8 @@
 export type RequestManifestDecisionOutcome =
   | "answered"
   | "external"
-  | "not_applicable";
+  | "not_applicable"
+  | "deferred_mvp";
 
 export type RequestManifestDecisionInput = Readonly<{
   decisionId: string;
@@ -82,8 +83,14 @@ async function sha256(value: unknown): Promise<string> {
   ).join("");
 }
 
-function decisionKey(kind: "clarification" | "contradiction" | "missing", fieldId: string | null, prompt: string) {
-  const scope = kind === "contradiction" ? "contradiction" : `field:${fieldId ?? ""}`;
+function decisionKey(
+  kind: "clarification" | "contradiction" | "missing",
+  fieldId: string | null,
+  prompt: string,
+) {
+  const scope = kind === "contradiction"
+    ? "contradiction"
+    : `field:${fieldId ?? ""}`;
   return `${scope}:${prompt.replace(/\s+/g, " ").toLowerCase()}`;
 }
 
@@ -99,7 +106,9 @@ export function requestManifestDecisionSeeds(
   }
   const seeds: Omit<RequestManifestDecision, "outcome" | "resolution">[] = [];
   const seen = new Map<string, number>();
-  const append = (seed: Omit<RequestManifestDecision, "outcome" | "resolution">) => {
+  const append = (
+    seed: Omit<RequestManifestDecision, "outcome" | "resolution">,
+  ) => {
     const key = decisionKey(seed.kind, seed.fieldId, seed.prompt);
     const existingIndex = seen.get(key);
     if (existingIndex === undefined) {
@@ -110,7 +119,8 @@ export function requestManifestDecisionSeeds(
     const existing = seeds[existingIndex];
     seeds[existingIndex] = Object.freeze({
       ...existing,
-      evidenceIds: [...new Set([...existing.evidenceIds, ...seed.evidenceIds])].sort(),
+      evidenceIds: [...new Set([...existing.evidenceIds, ...seed.evidenceIds])]
+        .sort(),
     });
   };
   row.clarificationQuestions.forEach((value, index) => {
@@ -173,7 +183,9 @@ export async function buildRequestManifestDecisionReview(input: {
     if (
       !item || typeof item !== "object" || !DECISION_ID.test(item.decisionId) ||
       submitted.has(item.decisionId) ||
-      !["answered", "external", "not_applicable"].includes(item.outcome)
+      !["answered", "external", "not_applicable", "deferred_mvp"].includes(
+        item.outcome,
+      )
     ) {
       throw new Error("REQUEST_MANIFEST_REVIEW_INVALID");
     }

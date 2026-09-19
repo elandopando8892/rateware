@@ -25,10 +25,12 @@ export function FulfillmentMatrixPanel({ workspace }: { workspace: ApprovalCommu
       <p role="alert">The semantic assessment is unavailable. Consequential actions remain blocked.</p>
     </section>;
   }
-  return <section className={`fulfillment-matrix ${matrix.blockingCount === 0 ? 'ready' : 'blocked'}`} aria-labelledby="fulfillment-title">
+  const scopeExceptions = matrix.scopeExceptions ?? [];
+  const releaseReady = matrix.blockingCount === 0 && scopeExceptions.length === 0;
+  return <section className={`fulfillment-matrix ${releaseReady ? 'ready' : 'blocked'}`} aria-labelledby="fulfillment-title">
     <header>
       <div><p className="eyebrow">REQUEST CONTRACT</p><h2 id="fulfillment-title">Carrier requirement coverage</h2></div>
-      <p><strong>{matrix.satisfiedRequired} / {matrix.totalRequired}</strong> required items complete · <strong>{matrix.blockingCount}</strong> blockers</p>
+      <p><strong>{matrix.satisfiedRequired} / {matrix.totalRequired}</strong> required items complete · <strong>{matrix.blockingCount}</strong> blockers · <strong>{scopeExceptions.length}</strong> MVP deferrals</p>
     </header>
     <ul>
       {matrix.items.map((item) => {
@@ -39,7 +41,14 @@ export function FulfillmentMatrixPanel({ workspace }: { workspace: ApprovalCommu
         <span aria-label={`${item.label}: ${STATUS_LABEL[item.status] ?? item.status}`}>{STATUS_LABEL[item.status] ?? item.status}</span>
       </li>})}
     </ul>
-    {matrix.blockingCount > 0
+    {scopeExceptions.length > 0 ? <div className="semantic-stop" role="alert">
+      <strong>Internal MVP exception active</strong>
+      <p>Operations may continue the internal package review. Signature, outbound draft, Sales authorization and send remain locked until these items are replaced by reviewed evidence.</p>
+      <ul>{scopeExceptions.map((item) => <li key={item.decisionId}><strong>{item.fieldId ?? item.decisionId}</strong><small>{item.reason}</small></li>)}</ul>
+    </div> : null}
+    {scopeExceptions.length > 0
+      ? null
+      : matrix.blockingCount > 0
       ? matrix.gates.signatureApproval
         ? <p className="semantic-stop">Ready for controlled signing; freezing, Sales authorization and send remain stopped until the final format and signature match the request.</p>
         : <p className="semantic-stop" role="alert">Semantic stop active: complete or explicitly discard every requested item before Operations, signature, Sales authorization or send.</p>

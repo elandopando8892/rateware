@@ -197,6 +197,30 @@ describe('controlled approval and communications pages', () => {
     expect(screen.queryByRole('button', { name: /complete operations review/i })).not.toBeInTheDocument();
   });
 
+  it('allows internal Operations review while an MVP deferral keeps every release gate locked', () => {
+    const deferred = {
+      ...workspace.fulfillment!,
+      scopeExceptions: [{
+        decisionId: 'missing:1', fieldId: 'insurance_indicator',
+        reason: 'Certificate of Insurance remains pending; internal MVP review only.',
+        evidenceIds: ['file:85955a14-5622-4257-943b-6b23826e0552'],
+      }],
+      gates: { operationsReview: true, signatureApproval: false, outboundDraft: false, outboundFreeze: false, salesAuthorization: false, send: false },
+    };
+    render(<OperationsReviewPage
+      workspace={{
+        ...workspace,
+        caseState: 'operations_review',
+        supplierPackage: { packageId: '66666666-6666-4666-8666-666666666666', version: 1, outputSha256: 'e'.repeat(64), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', downloadUrl: null },
+        fulfillment: deferred,
+      }}
+      onComplete={vi.fn()}
+    />);
+    expect(screen.getByRole('alert')).toHaveTextContent(/internal mvp exception active/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/signature, outbound draft, sales authorization and send remain locked/i);
+    expect(screen.getByRole('checkbox', { name: /pre-signature requirements are satisfied/i })).toBeEnabled();
+  });
+
   it('keeps an incomplete PDF/DOCX workspace visible while every action stays disabled', () => {
     const saveNativeTargets = vi.fn();
     const notReady: ApprovalCommunicationsWorkspace = {

@@ -116,7 +116,7 @@ export type SaveRequestManifestReviewInput = {
   caseId: string;
   expectedCaseVersion: number;
   expectedManifestSha256: string;
-  decisions: readonly { decisionId: string; outcome: 'answered' | 'external' | 'not_applicable'; resolution: string }[];
+  decisions: readonly { decisionId: string; outcome: 'answered' | 'external' | 'not_applicable' | 'deferred_mvp'; resolution: string }[];
 };
 export type PromoteRequestKnowledgeInput = {
   caseId: string;
@@ -572,7 +572,7 @@ export function createOspClient(options: ClientOptions): OspClient {
       if (!UUID.test(input.caseId) || !Number.isSafeInteger(input.expectedCaseVersion) || input.expectedCaseVersion < 0 || input.expectedCaseVersion > 2_147_483_647 ||
           !SHA.test(input.expectedManifestSha256) || !Array.isArray(input.decisions) || input.decisions.length > 200 ||
           input.decisions.some((decision) => !decision || !/^(?:clarification|contradiction|missing):(?:0|[1-9][0-9]{0,2})$/.test(decision.decisionId) ||
-            !['answered', 'external', 'not_applicable'].includes(decision.outcome) || typeof decision.resolution !== 'string' || decision.resolution.trim() !== decision.resolution ||
+            !['answered', 'external', 'not_applicable', 'deferred_mvp'].includes(decision.outcome) || typeof decision.resolution !== 'string' || decision.resolution.trim() !== decision.resolution ||
             decision.resolution.length < 3 || decision.resolution.length > 2_000 || hasUnsafeControlCharacter(decision.resolution)) ||
           new Set(input.decisions.map((decision) => decision.decisionId)).size !== input.decisions.length) {
         throw new OspClientError('INVALID_REQUEST');

@@ -37,6 +37,7 @@ Deno.test("legacy packages cannot satisfy multiple forms by position or format",
       return [{
         manifest_sha256: "a".repeat(64),
         current_review_resolved: true,
+        decisions_json: [],
         manifest_json: {
           requestType: "customer_setup",
           targetXbfEntity: "XBFUS",
@@ -147,6 +148,7 @@ for (
         return Promise.resolve([{
           manifest_sha256: "d".repeat(64),
           current_review_resolved: true,
+          decisions_json: [],
           manifest_json: {
             requestType: "customer_setup",
             targetXbfEntity: "XBFUS",

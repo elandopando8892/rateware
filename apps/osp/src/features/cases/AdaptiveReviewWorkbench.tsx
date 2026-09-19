@@ -6,7 +6,7 @@ import type { CaseDetail, RequestManifestReadModel, RequestManifestReviewReadMod
 import { manifestDecisionKey } from './manifest-blockers';
 
 type ProfileWorkspace = CaseDetail['profile_workspace'];
-type DecisionOutcome = 'answered' | 'external' | 'not_applicable';
+type DecisionOutcome = 'answered' | 'external' | 'not_applicable' | 'deferred_mvp';
 type DecisionSeed = {
   decisionId: string;
   kind: 'clarification' | 'contradiction' | 'missing';
@@ -55,6 +55,7 @@ function stageState(index: number, reviewResolved: boolean, profile: ProfileWork
 function outcomeLabel(outcome: DecisionOutcome) {
   if (outcome === 'answered') return 'Use XBF answer';
   if (outcome === 'external') return 'Ask carrier';
+  if (outcome === 'deferred_mvp') return 'MVP deferred · release locked';
   return 'Not applicable';
 }
 
@@ -139,12 +140,12 @@ export function AdaptiveReviewWorkbench({ caseId, manifest, profile, review, sav
               <ol>
                 {seeds.map((decision) => <li key={decision.decisionId}>
                   <div className="adaptive-decision-prompt"><span className={`adaptive-decision-kind adaptive-decision-${decision.kind}`}>{decision.kind}</span><p>{decision.prompt}</p><small>{decision.evidenceIds.length} {decision.evidenceIds.length === 1 ? 'source' : 'sources'}</small></div>
-                  <label>Decision<select value={drafts[decision.decisionId]?.outcome ?? 'answered'} onChange={(event) => update(decision.decisionId, { outcome: event.target.value as DecisionOutcome })}><option value="answered">Use XBF answer</option><option value="external">Ask the carrier</option><option value="not_applicable">Not applicable</option></select></label>
-                  <label>{drafts[decision.decisionId]?.outcome === 'external' ? 'Question or reason' : 'Reviewed answer or rationale'}<textarea value={drafts[decision.decisionId]?.resolution ?? ''} maxLength={2_000} onChange={(event) => update(decision.decisionId, { resolution: event.target.value })} placeholder="Record the exact reviewed decision and its rationale." /></label>
+                  <label>Decision<select value={drafts[decision.decisionId]?.outcome ?? 'answered'} onChange={(event) => update(decision.decisionId, { outcome: event.target.value as DecisionOutcome })}><option value="answered">Use XBF answer</option><option value="external">Ask the carrier</option><option value="not_applicable">Not applicable</option><option value="deferred_mvp">Defer for MVP · block release</option></select></label>
+                  <label>{drafts[decision.decisionId]?.outcome === 'external' ? 'Question or reason' : drafts[decision.decisionId]?.outcome === 'deferred_mvp' ? 'Pending item, rationale and exit evidence' : 'Reviewed answer or rationale'}<textarea value={drafts[decision.decisionId]?.resolution ?? ''} maxLength={2_000} onChange={(event) => update(decision.decisionId, { resolution: event.target.value })} placeholder="Record the exact reviewed decision and its rationale." /></label>
                 </li>)}
               </ol>
               {saveError ? <p className="case-warning" role="alert">The decision review was not saved. Refresh and retry with the current case version.</p> : null}
-              <label className="adaptive-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> I confirm these decisions are supported by the preserved evidence or reviewed XBF information.</label>
+              <label className="adaptive-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> I confirm these decisions are supported by preserved evidence, reviewed XBF information, or an explicit MVP deferral that remains release-blocking.</label>
               <button className="adaptive-action adaptive-action-primary" type="submit" disabled={!confirmed || !complete || saving}>{saving ? 'Saving review…' : externallyBlocked ? 'Save revised review' : 'Save decision review'}</button>
             </form>
           ) : (
