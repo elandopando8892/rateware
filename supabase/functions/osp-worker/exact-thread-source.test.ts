@@ -56,6 +56,7 @@ async function harness(badStore = false) {
     allowInternalRelay: true,
   });
   let writes = 0;
+  const preverified: string[] = [];
   const source = createExactThreadSource({
     organizationId: org,
     gmail: {
@@ -67,15 +68,23 @@ async function harness(badStore = false) {
       }),
     },
     objects: {
-      put: async ({ bytes }) => ({
-        key: `${org}/${++writes}`,
-        sha256: badStore ? "f".repeat(64) : await sha256Hex(bytes),
-      }),
+      put: async ({ bytes, preverifiedSha256 }) => {
+        preverified.push(preverifiedSha256 ?? "");
+        return {
+          key: `${org}/${++writes}`,
+          sha256: badStore ? "f".repeat(64) : await sha256Hex(bytes),
+        };
+      },
     },
   });
   return {
     source,
     writes: () => writes,
+    preverified: () => preverified,
+    expectedStoredHashes: [
+      parsed.provenance.parentEnvelope.sourceSha256,
+      ...parsed.attachments.map((attachment) => attachment.sha256),
+    ],
     expected: {
       gmailMessageId: "m1",
       outerRawMimeSha256: parsed.provenance.parentEnvelope.sourceSha256,
@@ -96,6 +105,7 @@ Deno.test("exact source preserves legacy DOC as manual and retains original EML"
     ],
   );
   assertEquals(test.writes(), 3);
+  assertEquals(test.preverified(), test.expectedStoredHashes);
 });
 Deno.test("exact source rejects unexpected source before object writes", async () => {
   const test = await harness();

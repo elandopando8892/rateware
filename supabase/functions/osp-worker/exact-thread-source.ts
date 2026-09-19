@@ -44,6 +44,7 @@ export function createExactThreadSource(deps: {
         organizationId: deps.organizationId,
         bytes: message.rawMime,
         contentType: "message/rfc822",
+        preverifiedSha256: outerRawMimeSha256,
       }, signal);
       if (raw.sha256 !== outerRawMimeSha256) {
         throw new Error("SOURCE_HASH_MISMATCH");
@@ -54,6 +55,7 @@ export function createExactThreadSource(deps: {
           organizationId: deps.organizationId,
           bytes: attachment.bytes,
           contentType: attachment.contentType,
+          preverifiedSha256: attachment.sha256,
         }, signal);
         if (stored.sha256 !== attachment.sha256) {
           throw new Error("SOURCE_HASH_MISMATCH");

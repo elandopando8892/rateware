@@ -1,9 +1,13 @@
-import type { SupabaseClient } from 'supabase';
+import type { SupabaseClient } from "supabase";
 
-import { type OriginalObject, type OriginalObjectInput, type OriginalObjectStore } from '../_shared/osp/original-object-store.ts';
-import { requireUuid, sha256Hex } from '../_shared/osp/source-hash.ts';
+import {
+  type OriginalObject,
+  type OriginalObjectInput,
+  type OriginalObjectStore,
+} from "../_shared/osp/original-object-store.ts";
+import { requireUuid, sha256Hex } from "../_shared/osp/source-hash.ts";
 
-export type PrivateObjectClient = Pick<SupabaseClient, 'storage'> | {
+export type PrivateObjectClient = Pick<SupabaseClient, "storage"> | {
   upload(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
   download(key: string): Promise<Uint8Array | null>;
 };
@@ -14,7 +18,7 @@ function isSimpleClient(
   upload(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
   download(key: string): Promise<Uint8Array | null>;
 } {
-  return 'upload' in client && 'download' in client;
+  return "upload" in client && "download" in client;
 }
 
 export function createSupabaseOriginalObjectStore(
@@ -25,59 +29,68 @@ export function createSupabaseOriginalObjectStore(
   },
 ): OriginalObjectStore {
   const uuid = options.uuid ?? (() => crypto.randomUUID());
-  const bucket = options.bucket ?? 'osp-originals';
+  const bucket = options.bucket ?? "osp-originals";
   if (!/^[a-z0-9-]{3,63}$/.test(bucket)) {
-    throw new Error('INVALID_STORAGE_CONFIGURATION');
+    throw new Error("INVALID_STORAGE_CONFIGURATION");
   }
   return Object.freeze({
     async put(input: OriginalObjectInput): Promise<OriginalObject> {
       const organizationId = requireUuid(input.organizationId);
+      const preverifiedSha256 = input.preverifiedSha256;
       if (
         !(input.bytes instanceof Uint8Array) || input.bytes.byteLength === 0 ||
         input.bytes.byteLength > 25 * 1024 * 1024 ||
-        !/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(input.contentType)
-      ) throw new Error('INVALID_SOURCE_OBJECT');
+        !/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(input.contentType) ||
+        (preverifiedSha256 !== undefined &&
+          !/^[0-9a-f]{64}$/.test(preverifiedSha256))
+      ) throw new Error("INVALID_SOURCE_OBJECT");
       const key = `${organizationId}/${requireUuid(uuid())}`;
       try {
         if (isSimpleClient(options.client)) {
           await options.client.upload(key, input.bytes, input.contentType);
         } else {
-          const client = options.client as Pick<SupabaseClient, 'storage'>;
+          const client = options.client as Pick<SupabaseClient, "storage">;
           const result = await client.storage.from(bucket).upload(
             key,
             input.bytes,
             { contentType: input.contentType, upsert: false },
           );
-          if (result.error) throw new Error('STORAGE_UPLOAD_TEMPORARY');
+          if (result.error) throw new Error("STORAGE_UPLOAD_TEMPORARY");
         }
       } catch (error) {
         if (
-          error instanceof Error && error.message === 'STORAGE_UPLOAD_TEMPORARY'
+          error instanceof Error && error.message === "STORAGE_UPLOAD_TEMPORARY"
         ) throw error;
-        throw new Error('STORAGE_UPLOAD_TEMPORARY');
+        throw new Error("STORAGE_UPLOAD_TEMPORARY");
+      }
+      if (preverifiedSha256 !== undefined) {
+        return Object.freeze({ key, sha256: preverifiedSha256 });
       }
       let downloaded: Uint8Array | null;
       try {
-        downloaded = isSimpleClient(options.client) ? await options.client.download(key) : await (async () => {
-          const result = await (options.client as Pick<SupabaseClient, 'storage'>).storage
-            .from(bucket).download(key);
-          if (result.error || !result.data) {
-            throw new Error('STORAGE_DOWNLOAD_TEMPORARY');
-          }
-          return new Uint8Array(await result.data.arrayBuffer());
-        })();
+        downloaded = isSimpleClient(options.client)
+          ? await options.client.download(key)
+          : await (async () => {
+            const result =
+              await (options.client as Pick<SupabaseClient, "storage">).storage
+                .from(bucket).download(key);
+            if (result.error || !result.data) {
+              throw new Error("STORAGE_DOWNLOAD_TEMPORARY");
+            }
+            return new Uint8Array(await result.data.arrayBuffer());
+          })();
       } catch (error) {
         if (
           error instanceof Error &&
-          error.message === 'STORAGE_DOWNLOAD_TEMPORARY'
+          error.message === "STORAGE_DOWNLOAD_TEMPORARY"
         ) throw error;
-        throw new Error('STORAGE_DOWNLOAD_TEMPORARY');
+        throw new Error("STORAGE_DOWNLOAD_TEMPORARY");
       }
-      if (
-        !downloaded ||
-        await sha256Hex(downloaded) !== await sha256Hex(input.bytes)
-      ) throw new Error('SOURCE_HASH_MISMATCH');
-      return Object.freeze({ key, sha256: await sha256Hex(input.bytes) });
+      const inputSha256 = await sha256Hex(input.bytes);
+      if (!downloaded || await sha256Hex(downloaded) !== inputSha256) {
+        throw new Error("SOURCE_HASH_MISMATCH");
+      }
+      return Object.freeze({ key, sha256: inputSha256 });
     },
   });
 }
