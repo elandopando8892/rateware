@@ -8267,8 +8267,7 @@ function rfxCarrierFieldMatches(haystack, value, type) {
   return rfxCarrierFitTerms(value, type).some((term) => haystack.includes(term));
 }
 
-function rfxCarrierLaneMatchesText(value, lane) {
-  const haystack = normalizeLookupText(value);
+function rfxCarrierLaneMatchesNormalizedText(haystack, lane) {
   if (!haystack) return false;
   return [
     [lane.origin, "location"],
@@ -8288,12 +8287,16 @@ function rfxCarrierProfileFitSignals(vendor, lanes) {
     { label: "CRM note", value: vendor.notes || "" }
   ];
   return sources
-    .filter((source) => source.value && lanes.some((lane) => rfxCarrierLaneMatchesText(source.value, lane)))
+    .filter((source) => {
+      if (!source.value) return false;
+      // A long CRM note is the same for every route in this event.
+      const haystack = normalizeLookupText(source.value);
+      return lanes.some((lane) => rfxCarrierLaneMatchesNormalizedText(haystack, lane));
+    })
     .map((source) => `${source.label} matches selected lane`);
 }
 
 function fitCarrierToOutreachLanes(vendor) {
-  const haystack = vendorSearchText(vendor);
   const lanes = activeOutreachCarrierLanes();
   const laneSource = String(rfxOutreachCarrierLane?.value || "all") === "all"
     ? currentLanes
@@ -8301,6 +8304,7 @@ function fitCarrierToOutreachLanes(vendor) {
   const evidenceSource = rfxCarrierFitEvidenceByVendorId.get(String(vendor.id || "")) || null;
   const cached = outreachCarrierFitCache.get(vendor);
   if (cached?.laneSource === laneSource && cached?.evidenceSource === evidenceSource) return cached.result;
+  const haystack = vendorSearchText(vendor);
   const evidence = carrierFitEvidence(vendor);
   const profileFitSignals = rfxCarrierProfileFitSignals(vendor, lanes);
   const stageBonus = isProcurementCarrier(vendor) ? 12 : vendorStageRank(vendor) < 9 ? 4 : 0;

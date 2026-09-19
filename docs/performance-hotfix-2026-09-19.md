@@ -116,3 +116,16 @@ and redeploy backend baseline `e60b14ae` (live version 631 source was verified
 before changes). Roll back on changed audience contents, authentication
 regression, missing queue data, or repeated new 5xx responses. No schema or
 business-data rollback is necessary for this increment.
+
+## Remaining client pause: successful CPU profile
+
+A later low-overhead CPU capture (100 ms samples, stopped only after load
+completed) succeeded. Its hottest application stack attributed 4688 ms to
+`normalizeLookupText -> rfxCarrierLaneMatchesText -> rfxCarrierProfileFitSignals`.
+Another stack attributed 823 ms to rebuilding vendor search text inside
+`fitCarrierToOutreachLanes`, even before checking its existing cache.
+This supports a targeted follow-up, not a claim that every delay is CPU work:
+normalize each profile-note source once per fit calculation, and check the fit
+cache before rebuilding the vendor search string. Tests cover unchanged match
+labels, empty lane lists, and one normalization of a long note across 69 lanes.
+All 13 focused frontend checks passed after the follow-up.

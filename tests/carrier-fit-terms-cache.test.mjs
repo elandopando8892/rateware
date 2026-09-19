@@ -11,7 +11,9 @@ const originalNormalize = normalizeLookupText;
 normalizeLookupText = (value) => { normalizationCount++; return originalNormalize(value); };
 const rfxCarrierFitTermsCache = new Map();
 ${extract("rfxCarrierFitTerms")}
-${extract("rfxCarrierFieldMatches")}`, context);
+${extract("rfxCarrierFieldMatches")}
+${extract("rfxCarrierLaneMatchesNormalizedText")}
+${extract("rfxCarrierProfileFitSignals")}`, context);
 const run = (expression) => vm.runInContext(expression, context);
 
 assert.equal(run('rfxCarrierFieldMatches("reefer", "Truck Trailer", "equipment")'), true);
@@ -37,4 +39,20 @@ assert.equal(run('rfxCarrierFieldMatches("tanker", "Tanker", "equipment")'), tru
 run('for (let n = 0; n < 2200; n++) rfxCarrierFitTerms(`route-${n}`, "location");');
 assert.ok(run("rfxCarrierFitTermsCache.size") <= 2048);
 assert.equal(run('rfxCarrierFieldMatches("reefer", "Truck Trailer", "equipment")'), true, "eviction must preserve results");
+run(`var testLanes = Array.from({length:69}, () => ({origin:'Monterrey',destination:'Dallas',equipment:'Truck Trailer',operation:'D2D Export',service:'One Way'}));
+var testVendor = {tags:['ZZZ'], coverage_notes:'ZZZ coverage unknown', notes:'ZZZ '.repeat(10000)};
+rfxCarrierProfileFitSignals(testVendor,testLanes);
+normalizationCount = 0;`);
+assert.equal(run('rfxCarrierProfileFitSignals(testVendor,testLanes).length'), 0);
+// Empty lane values still normalize in term matching; count only normalization
+// of long source notes, which must happen once rather than once per lane.
+run(`var noteNormalizations=0;
+var previousNormalize=normalizeLookupText;
+normalizeLookupText=(value)=>{if(value===testVendor.notes)noteNormalizations++;return previousNormalize(value);};
+rfxCarrierProfileFitSignals(testVendor,testLanes);`);
+assert.equal(run('noteNormalizations'), 1);
+assert.equal(run(`JSON.stringify(rfxCarrierProfileFitSignals({tags:['Reefer'],coverage_notes:'Mónterrey',notes:'northbound'},testLanes))`), JSON.stringify(['tag matches selected lane','declared coverage matches selected lane','CRM note matches selected lane']));
+assert.equal(run(`rfxCarrierProfileFitSignals(testVendor,[]).length`), 0);
+const fitFunction = extract('fitCarrierToOutreachLanes');
+assert.ok(fitFunction.indexOf('return cached.result') < fitFunction.indexOf('vendorSearchText(vendor)'), 'cache hits must not rebuild long CRM search text');
 console.log(`Carrier Fit cache passed: 289800 comparisons in ${Math.round(performance.now() - started)} ms (synthetic local benchmark).`);
