@@ -237,7 +237,7 @@ describe('controlled approval and communications pages', () => {
         authorizeOutboundPayload: false, requestAuthorizedSend: false,
       },
     };
-    render(<OperationsReviewPage workspace={notReady} onComplete={vi.fn()} onSaveNativeTargets={saveNativeTargets} />);
+    const { rerender } = render(<OperationsReviewPage workspace={notReady} onComplete={vi.fn()} onSaveNativeTargets={saveNativeTargets} />);
     expect(screen.getByRole('heading', { name: 'Operations evidence review' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Carrier requirement coverage' })).toBeVisible();
     expect(screen.getByText('Request requirements review')).toBeVisible();
@@ -248,6 +248,11 @@ describe('controlled approval and communications pages', () => {
     for (const action of screen.getAllByRole('button', { name: 'Save reviewed destinations' })) expect(action).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Complete Operations review' })).not.toBeInTheDocument();
     expect(saveNativeTargets).not.toHaveBeenCalled();
+    rerender(<OperationsReviewPage workspace={{ ...notReady, caseState: 'awaiting_clarification', inputSnapshot: null, nativeArtifactTargets: [] }} onComplete={vi.fn()} />);
+    expect(screen.getByText('No evidence package is ready for review.')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Review request' })).toHaveAttribute('href', `/app/cases/${caseId}`);
+    expect(screen.getByRole('heading', { name: 'Carrier requirement coverage' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Complete Operations review' })).not.toBeInTheDocument();
   });
 
   it('labels a missing bank cover as package-level evidence and routes to documents', () => {

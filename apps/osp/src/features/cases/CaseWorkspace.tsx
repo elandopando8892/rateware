@@ -44,7 +44,9 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
 
   useEffect(() => {
     const workspace = query.data?.profile_workspace;
-    if (workspace && !selectedEntityId) setSelectedEntityId(workspace.binding?.legal_entity_id ?? workspace.candidates[0]?.entity_id ?? '');
+    const requestedEntity = query.data?.request_manifest?.targetXbfEntity;
+    const matches = workspace?.candidates.filter(candidate => candidate.entity_code === requestedEntity) ?? [];
+    if (workspace && !selectedEntityId) setSelectedEntityId(workspace.binding?.legal_entity_id ?? (matches.length === 1 ? matches[0].entity_id : ''));
   }, [query.data, selectedEntityId]);
 
   if (query.isPending || query.fetchStatus !== 'idle') {

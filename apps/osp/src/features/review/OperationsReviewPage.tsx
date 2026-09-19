@@ -23,7 +23,7 @@ export function OperationsReviewPage({ workspace, conflict = false, onComplete, 
     : contentType === 'application/vnd.ms-excel.sheet.macroEnabled.12' ? 'XLSM' : 'XLSX';
   const reviewComplete = ['signature_approval', 'sales_authorization', 'ready_to_send', 'sent', 'manual_reconciliation_required'].includes(workspace.caseState);
   useEffect(() => { setConfirmed(false); setFailed(false); }, [workspace.caseVersion, snapshot?.sha256, packageSet?.manifestSha256, packageSet?.operationsReviewSha256]);
-  if (!snapshot) return <section className="workflow-page"><h1>Operations review</h1><p role="status">No evidence package is ready for review.</p></section>;
+  if (!snapshot) return <section className="workflow-page"><h1>Operations review</h1><p role="status">No evidence package is ready for review.</p><FulfillmentMatrixPanel workspace={workspace} /><a href={`/app/cases/${workspace.caseId}`}>Open request workspace</a></section>;
   const submit = async () => {
     setPending(true); setFailed(false);
     try { await onComplete(); } catch { setFailed(true); } finally { setPending(false); }
