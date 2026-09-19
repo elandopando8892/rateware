@@ -35677,10 +35677,16 @@ form[data-unsaved-guard][data-unsaved="true"] {
     grid-row: 1;
   }
 
+  .bid-room-page .bid-room-build-column > .bid-room-stage-panel {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
   .bid-room-page .bid-room-control-panel {
     grid-column: 1;
     grid-row: 2;
     grid-template-columns: minmax(0, 1fr);
+    position: static;
   }
 
   .bid-room-page .bid-room-control-panel > .bid-room-event-overview,

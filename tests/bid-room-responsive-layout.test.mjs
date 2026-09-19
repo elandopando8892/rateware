@@ -11,6 +11,12 @@ assert.match(
 
 assert.match(
   styles,
+  /@media \(max-width: 1320px\) and \(min-width: 861px\) \{[\s\S]*?\.bid-room-page \.bid-room-build-column > \.bid-room-stage-panel \{[\s\S]*?grid-row: auto;[\s\S]*?\.bid-room-page \.bid-room-control-panel \{[\s\S]*?position: static;/,
+  "compact desktop stage content must contribute its height before the operating context is placed",
+);
+
+assert.match(
+  styles,
   /@media \(max-width: 1320px\) and \(min-width: 861px\) \{[\s\S]*?\.bid-room-page \.bid-room-flow-shell \.bid-room-stage-rail \{[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\);/,
   "compact desktop stage navigation should use a readable horizontal progression",
 );
