@@ -35707,10 +35707,22 @@ form[data-unsaved-guard][data-unsaved="true"] {
   }
 }
 
-@media (max-width: 1120px) and (min-width: 861px) {
+@media (max-width: 1320px) and (min-width: 861px) {
   .bid-room-page .rfx-outreach-launch-grid,
   .bid-room-page .rfx-outreach-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bid-room-page .rfx-outreach-carrier-wave-actions {
+    position: static;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bid-room-page .rfx-outreach-carrier-wave-actions .action-row {
+    width: 100%;
+    flex-wrap: wrap;
+    white-space: normal;
   }
 }
 

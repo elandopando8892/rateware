@@ -17,8 +17,14 @@ assert.match(
 
 assert.match(
   styles,
-  /@media \(max-width: 1120px\) and \(min-width: 861px\) \{[\s\S]*?\.bid-room-page \.rfx-outreach-launch-grid,[\s\S]*?\.bid-room-page \.rfx-outreach-grid \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\);/,
+  /@media \(max-width: 1320px\) and \(min-width: 861px\) \{[\s\S]*?\.bid-room-page \.rfx-outreach-launch-grid,[\s\S]*?\.bid-room-page \.rfx-outreach-grid \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\);/,
   "narrow desktop Launch workspaces should stack instead of compressing carrier and message content",
+);
+
+assert.match(
+  styles,
+  /@media \(max-width: 1320px\) and \(min-width: 861px\) \{[\s\S]*?\.bid-room-page \.rfx-outreach-carrier-wave-actions \{[\s\S]*?flex-direction: column;[\s\S]*?\.bid-room-page \.rfx-outreach-carrier-wave-actions \.action-row \{[\s\S]*?flex-wrap: wrap;/,
+  "compact desktop carrier actions should wrap below the guidance instead of collapsing its copy",
 );
 
 console.log("Bid Room responsive layout checks passed.");
