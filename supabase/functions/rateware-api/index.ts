@@ -4674,7 +4674,11 @@ function scopedOutreachMessagesQuery(
     ? body.channels.map((value: unknown) => cleanText(value)?.toLowerCase()).filter(Boolean)
     : [];
   const requestedTrackingStatus = cleanText(body.tracking_status)?.toLowerCase();
-  const outreachSelect = body.view === "event_context"
+  // Audience eligibility needs delivery history, not message bodies, portal
+  // tokens, or the five unrelated joins used by the delivery workspace.
+  const outreachSelect = body.view === "audience_history"
+    ? "id,created_at,updated_at,rfx_event_id,vendor_id,channel,recipient_email,recipient_phone,normalized_recipient_phone,status,provider_response_status,delivery_error,metadata,next_action,outcome_reason,rfx_lane_vendors(invitation_status,bid_rate,responded_at)"
+    : body.view === "event_context"
     ? OUTREACH_MESSAGE_EVENT_SELECT
     : body.compact === true
       ? OUTREACH_MESSAGE_COMPACT_SELECT
@@ -4708,7 +4712,9 @@ async function allScopedOutreachMessages(
     if (result.error) throw result.error;
     const pageRows = (result.data || []) as Record<string, unknown>[];
     rows.push(...pageRows);
-    if (pageRows.length < pageSize) return hydrateOutreachInvitationTokens(supabase, rows);
+    if (pageRows.length < pageSize) {
+      return body.view === "audience_history" ? rows : hydrateOutreachInvitationTokens(supabase, rows);
+    }
   }
 }
 
@@ -29600,7 +29606,7 @@ export function createRatewareApiHandler(
       const eventLaneCount = eventLaneRows.length;
       const vendorIds = [...new Set(invitations.map((row) => cleanText(row.vendor_id)).filter(Boolean))] as string[];
       const [historyRows, suppressions] = await Promise.all([
-        allScopedOutreachMessages(supabase, user, { rfx_event_id: eventId, channel, include_archived: false }),
+        allScopedOutreachMessages(supabase, user, { rfx_event_id: eventId, channel, include_archived: false, view: "audience_history" }),
         outreachSuppressionsForVendors(supabase, user, vendorIds)
       ]);
       const historyByContact = outreachHistoryByContact(historyRows);
