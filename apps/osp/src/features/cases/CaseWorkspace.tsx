@@ -62,6 +62,7 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
   const selectedEntity = profile.candidates.find((candidate) => candidate.entity_id === selectedEntityId);
   const bindingMatchesSelection = profile.binding?.legal_entity_id === selectedEntityId;
   const requestReview = caseRecord.request_review ?? null;
+  const manualConversionBlocked = caseRecord.manual_conversion_attachments.length > 0;
   const requestReviewResolved = caseRecord.request_manifest === null || caseRecord.request_manifest === undefined || requestReview?.review?.status === 'resolved';
   const saveRequestReview = async (decisions: readonly RequestDecisionSubmission[]) => {
     if (!requestReview) return;
@@ -113,6 +114,17 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
       </header>
 
       {caseRecord.blocked_by_duplicate_review ? <p className="case-warning" role="alert">Duplicate review is blocking this case.</p> : null}
+      {manualConversionBlocked ? (
+        <section className="case-warning" role="alert" aria-labelledby="manual-conversion-title">
+          <strong id="manual-conversion-title">Manual conversion required</strong>
+          <p>Legacy Word evidence was preserved unchanged. Convert it to DOCX outside OSP, review the result, and attach it before automatic analysis or signing can continue.</p>
+          <ul>
+            {caseRecord.manual_conversion_attachments.map((attachment) => (
+              <li key={attachment.attachment_id}>{attachment.filename} · source {attachment.source_sha256.slice(0, 12)}…</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="next-gate" aria-labelledby="next-gate-title">
         <p className="eyebrow">Next gate</p>
@@ -169,7 +181,7 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
         {selectedEntity ? (
           <div className="case-profile-control">
             <label><input type="checkbox" checked={bindingConfirmed} onChange={(event) => setBindingConfirmed(event.target.checked)} /> Confirm this supplier request must use {selectedEntity.entity_code}.</label>
-            <button type="button" disabled={!requestReviewResolved || !bindingConfirmed || bindingMatchesSelection || pendingAction !== null || caseRecord.blocked_by_duplicate_review} onClick={() => void runProfileAction('binding')}>{pendingAction === 'binding' ? 'Binding…' : bindingMatchesSelection ? 'Entity bound' : 'Bind entity to case'}</button>
+            <button type="button" disabled={manualConversionBlocked || !requestReviewResolved || !bindingConfirmed || bindingMatchesSelection || pendingAction !== null || caseRecord.blocked_by_duplicate_review} onClick={() => void runProfileAction('binding')}>{pendingAction === 'binding' ? 'Binding…' : bindingMatchesSelection ? 'Entity bound' : 'Bind entity to case'}</button>
           </div>
         ) : <p>No active XBF entity with canonical facts is available.</p>}
         <div className="case-profile-summary">
@@ -180,7 +192,7 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
         {profile.binding ? (
           <div className="case-profile-control">
             <label><input type="checkbox" checked={draftConfirmed} onChange={(event) => setDraftConfirmed(event.target.checked)} /> Assemble a reference-only internal draft from the currently bound facts.</label>
-            <button type="button" disabled={!requestReviewResolved || !draftConfirmed || pendingAction !== null || caseRecord.blocked_by_duplicate_review} onClick={() => void runProfileAction('draft')}>{pendingAction === 'draft' ? 'Assembling…' : profile.draft ? 'Refresh internal draft' : 'Assemble internal draft'}</button>
+            <button type="button" disabled={manualConversionBlocked || !requestReviewResolved || !draftConfirmed || pendingAction !== null || caseRecord.blocked_by_duplicate_review} onClick={() => void runProfileAction('draft')}>{pendingAction === 'draft' ? 'Assembling…' : profile.draft ? 'Refresh internal draft' : 'Assemble internal draft'}</button>
           </div>
         ) : null}
         {!requestReviewResolved ? <p className="case-warning" role="status">Resolve the request decision queue before binding XBF facts or assembling a draft.</p> : null}

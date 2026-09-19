@@ -2,6 +2,10 @@ import { createPostgresBackgroundJobStore } from "../_shared/osp/background-jobs
 import { createGmailApiInboundPort } from "./gmail-api-inbound-port.ts";
 import { createIntakeService } from "./intake-service.ts";
 import {
+  type ExactThreadAssociationRun,
+  runExactThreadAssociation,
+} from "./exact-thread-runtime.ts";
+import {
   createPostgresIntakePersistence,
   type PostgresIntakePersistenceOptions,
 } from "./postgres-intake-persistence.ts";
@@ -136,6 +140,9 @@ export function createShadowWorkerRuntime(input: {
   enqueue(limit: number): Promise<number>;
   run(limit: number): Promise<number>;
   runExactGmailIngest(request: ExactGmailIngest): Promise<number>;
+  runExactThreadAssociation(
+    request: ExactThreadAssociationRun,
+  ): Promise<number>;
   runXlsxDocumentExtractCanary?: (
     request: XlsxDocumentExtractCanary,
   ) => Promise<number>;
@@ -176,14 +183,17 @@ export function createShadowWorkerRuntime(input: {
   const originalObjects = createSupabaseOriginalObjectStore({
     client: input.storageClient,
   });
+  const gmail = createGmailApiInboundPort({
+    accessToken: input.gmailAccessToken,
+  });
   const intake = createIntakeService({
-    gmail: createGmailApiInboundPort({ accessToken: input.gmailAccessToken }),
+    gmail,
     objects: originalObjects,
     persistence,
     jobs,
   });
   const exactGmailIntake = createIntakeService({
-    gmail: createGmailApiInboundPort({ accessToken: input.gmailAccessToken }),
+    gmail,
     objects: originalObjects,
     persistence,
     jobs,
@@ -647,6 +657,13 @@ export function createShadowWorkerRuntime(input: {
         formMappings,
         limit: 1,
       }),
+    runExactThreadAssociation: (request: ExactThreadAssociationRun) =>
+      runExactThreadAssociation({
+        jobs,
+        gmail,
+        objects: originalObjects,
+        persistence,
+      }, request),
     runAuthorizedSendExact: async (job: AuthorizedSendExact) => {
       const result = await outboundSends.execute(job);
       await jobs.complete({

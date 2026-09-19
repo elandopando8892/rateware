@@ -233,6 +233,13 @@ export const RequestManifestSchema = z.strictObject({
 });
 
 export const CaseDetailSchema = CaseSummarySchema.extend({
+  manual_conversion_attachments: z.array(z.strictObject({
+    attachment_id: z.uuid(),
+    filename: z.string().min(1).max(255),
+    source_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    content_type: z.literal('application/msword'),
+    processing_disposition: z.literal('manual_conversion_required'),
+  })).max(100),
   latest_request: z.strictObject({
     subject: z.string().min(1).max(998).nullable(),
     sender_domain: z.string().min(1).max(253).nullable(),

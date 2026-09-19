@@ -68,6 +68,7 @@ export type IntakeSource = {
     filename: string | null;
     sourceRole: "direct_attachment" | "original_eml" | "original_attachment";
     parentSourceSha256: string | null;
+    processingDisposition: "automatic_eligible" | "manual_conversion_required";
   }[];
   attachmentHashes: readonly string[];
   receivedAt: string;
@@ -232,6 +233,9 @@ export function createIntakeService(
           | "original_eml"
           | "original_attachment";
         parentSourceSha256: string | null;
+        processingDisposition:
+          | "automatic_eligible"
+          | "manual_conversion_required";
       }[] = [];
       for (const attachment of parsed.attachments) {
         const stored = await atStage(
@@ -257,6 +261,7 @@ export function createIntakeService(
             filename: attachment.filename,
             sourceRole: attachment.sourceRole,
             parentSourceSha256: attachment.parentSourceSha256,
+            processingDisposition: attachment.processingDisposition,
           }),
         );
       }

@@ -88,6 +88,13 @@ export type CaseEventReadModel = {
 };
 
 export type CaseDetailReadModel = CaseSummaryReadModel & {
+  manual_conversion_attachments: readonly {
+    attachment_id: string;
+    filename: string;
+    source_sha256: string;
+    content_type: 'application/msword';
+    processing_disposition: 'manual_conversion_required';
+  }[];
   latest_request: {
     subject: string | null;
     sender_domain: string | null;
@@ -193,8 +200,30 @@ const CASE_SUMMARY_FIELDS = [
 const CASE_DETAIL_FIELDS = [
   'aggregate_version', 'attachment_count', 'blocked_by_duplicate_review', 'case_id',
   'created_at', 'document_count', 'latest_received_at', 'latest_sender_domain',
-  'latest_subject', 'message_count', 'profile_workspace', 'recent_events', 'request_manifest', 'request_review', 'state', 'supplier_name', 'updated_at',
+  'latest_subject', 'manual_conversion_attachments', 'message_count', 'profile_workspace', 'recent_events', 'request_manifest', 'request_review', 'state', 'supplier_name', 'updated_at',
 ] as const;
+
+function normalizeManualConversionAttachments(value: unknown): CaseDetailReadModel['manual_conversion_attachments'] {
+  if (!Array.isArray(value) || value.length > 100) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+  return value.map((candidate) => {
+    const row = recordWithExactKeys(candidate, [
+      'attachment_id', 'content_type', 'filename', 'processing_disposition', 'source_sha256',
+    ]);
+    if (typeof row.attachment_id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(row.attachment_id) ||
+        typeof row.source_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(row.source_sha256) ||
+        row.content_type !== 'application/msword' ||
+        row.processing_disposition !== 'manual_conversion_required') {
+      throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+    }
+    return {
+      attachment_id: row.attachment_id,
+      filename: normalizeBoundedText(row.filename, 255) as string,
+      source_sha256: row.source_sha256,
+      content_type: row.content_type,
+      processing_disposition: row.processing_disposition,
+    };
+  });
+}
 
 function normalizeRequestManifest(value: unknown): unknown | null {
   if (value === null) return null;
@@ -466,6 +495,7 @@ export function normalizeCaseDetail(value: unknown): CaseDetailReadModel {
   if ((requestManifest === null) !== (requestReview === null)) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
   return {
     ...summary,
+    manual_conversion_attachments: normalizeManualConversionAttachments(row.manual_conversion_attachments),
     latest_request: { subject, sender_domain: senderDomain, received_at: receivedAt },
     recent_events: normalizeRecentEvents(row.recent_events),
     request_manifest: requestManifest,

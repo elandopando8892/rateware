@@ -251,6 +251,7 @@ Deno.test("intake persists opaque attachment object references with their hashes
       filename: "unsafe.pdf",
       sourceRole: "direct_attachment",
       parentSourceSha256: await sha256Hex(new TextEncoder().encode(multipart)),
+      processingDisposition: "automatic_eligible",
     }],
   );
   assertEquals(savedAttachmentByteLength, 11);

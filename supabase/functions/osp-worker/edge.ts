@@ -123,6 +123,7 @@ Deno.serve(createOspWorkerHandler({
   enqueue: runtime.enqueue,
   run: runtime.run,
   runExactGmailIngest: runtime.runExactGmailIngest,
+  runExactThreadAssociation: runtime.runExactThreadAssociation,
   runAuthorizedSendExact: runtime.runAuthorizedSendExact,
   runXlsxDocumentExtractCanary: runtime.runXlsxDocumentExtractCanary,
   runSupplierPackageCanary: runtime.runSupplierPackageCanary,

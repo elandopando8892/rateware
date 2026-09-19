@@ -44,6 +44,18 @@ const exactGmailIngest = {
   jobId: "22222222-2222-4222-8222-222222222222",
   gmailMessageId: "gmail_message_1",
 };
+const exactThreadAssociation = {
+  action: "run_exact_thread_association",
+  organizationId: "11111111-1111-4111-8111-111111111111",
+  priorJobId: "33333333-3333-4333-8333-333333333333",
+  targetCaseId: "44444444-4444-4444-8444-444444444444",
+  originalGmailMessageId: "original_1",
+  originalOuterRawMimeSha256: "a".repeat(64),
+  originalEmlSha256: "b".repeat(64),
+  amendmentGmailMessageId: "amendment_2",
+  amendmentOuterRawMimeSha256: "c".repeat(64),
+  amendmentEmlSha256: "d".repeat(64),
+};
 const manifestCanary = {
   action: "run_request_manifest_shadow",
   organizationId: "11111111-1111-4111-8111-111111111111",
@@ -205,6 +217,37 @@ Deno.test("OSP worker executes only one exact Gmail intake job", async () => {
   });
   assertEquals(
     (await handler(request({ ...exactGmailIngest, extra: true }))).status,
+    400,
+  );
+});
+
+Deno.test("OSP worker executes only one fully specified exact thread association", async () => {
+  let received: Record<string, string> | undefined;
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    runExactThreadAssociation: async (input) => {
+      received = input;
+      return 1;
+    },
+  });
+  const response = await handler(request(exactThreadAssociation));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { processed: 1 });
+  const { action: _action, ...expected } = exactThreadAssociation;
+  assertEquals(received, expected);
+  assertEquals(
+    (await handler(request({ ...exactThreadAssociation, extra: true }))).status,
+    400,
+  );
+  assertEquals(
+    (await handler(
+      request({
+        ...exactThreadAssociation,
+        originalOuterRawMimeSha256: "f".repeat(63),
+      }),
+    )).status,
     400,
   );
 });

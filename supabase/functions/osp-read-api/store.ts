@@ -35,6 +35,7 @@ export type CaseSummarySeamRow = {
 };
 
 export type CaseDetailSeamRow = CaseSummarySeamRow & {
+  manual_conversion_attachments: unknown;
   latest_subject: unknown;
   latest_sender_domain: unknown;
   latest_received_at: unknown;

@@ -324,6 +324,7 @@ const previewCases: readonly CaseSummary[] = Object.freeze([
 
 const salzilloCaseDetail: CaseDetail = Object.freeze<CaseDetail>({
   ...previewCases[0],
+  manual_conversion_attachments: [],
   latest_request: {
     subject: 'PROCESO DE ALTA GRUPO SALZILLO - HEYMARKSMAN',
     sender_domain: 'example.test',
@@ -351,6 +352,7 @@ const salzilloCaseDetail: CaseDetail = Object.freeze<CaseDetail>({
 
 const previewCaseDetail: CaseDetail = Object.freeze<CaseDetail>({
   ...previewCases[1],
+  manual_conversion_attachments: [],
   latest_request: {
     subject: 'Customer setup package and compliance questionnaire',
     sender_domain: 'northstar.example',
@@ -369,6 +371,7 @@ const previewCaseDetail: CaseDetail = Object.freeze<CaseDetail>({
 
 const craneCaseDetail: CaseDetail = Object.freeze<CaseDetail>({
   ...previewCases[7]!,
+  manual_conversion_attachments: [],
   latest_request: {
     subject: 'Supplier registration package CWW-QF-147 — synthetic canary',
     sender_domain: 'example.test',
@@ -853,6 +856,7 @@ function createPreviewClient(): OspClient {
       const caseRecord = previewCaseRows.find((candidate) => candidate.case_id === requestedCaseId) ?? previewCaseRows[4];
       const base = requestedCaseId === caseId ? previewCaseDetail : requestedCaseId === salzilloCaseId ? salzilloCaseDetail : requestedCaseId === craneCaseId ? craneCaseDetail : {
           ...caseRecord,
+          manual_conversion_attachments: [],
           latest_request: {
             subject: 'Supplier onboarding request — synthetic preview',
             sender_domain: 'example.test',

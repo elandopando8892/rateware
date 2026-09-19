@@ -16,7 +16,8 @@ export type JobKind =
   | "form_ai_mapping"
   | "generate_supplier_package"
   | "apply_signature"
-  | "send_authorized_payload";
+  | "send_authorized_payload"
+  | "exact_thread_association";
 export type JobErrorCode =
   | "GMAIL_TEMPORARY"
   | "STORAGE_TEMPORARY"
@@ -49,6 +50,7 @@ export type JobErrorCode =
   | "DUPLICATE_REFRESH_FAILURE"
   | "SOURCE_HASH_MISMATCH"
   | "MALWARE_SCAN_REJECTED"
+  | "MANUAL_CONVERSION_REQUIRED"
   | "PERMANENT_FAILURE";
 export type LeasedJob = {
   id: string;
@@ -97,6 +99,20 @@ export type ExactGmailIngestClaim = {
   leaseMs: number;
 };
 
+export type ExactThreadAssociationClaim = {
+  organizationId: string;
+  jobId: string;
+  priorJobId: string;
+  targetCaseId: string;
+  originalGmailMessageId: string;
+  originalOuterRawMimeSha256: string;
+  originalEmlSha256: string;
+  amendmentGmailMessageId: string;
+  amendmentOuterRawMimeSha256: string;
+  amendmentEmlSha256: string;
+  leaseMs: number;
+};
+
 export interface BackgroundJobStore {
   enqueue(
     input: {
@@ -124,6 +140,9 @@ export interface BackgroundJobStore {
 
 export interface CanaryBackgroundJobStore extends BackgroundJobStore {
   claimExactGmailIngest(input: ExactGmailIngestClaim): Promise<LeasedJob[]>;
+  claimExactThreadAssociation(
+    input: ExactThreadAssociationClaim,
+  ): Promise<LeasedJob[]>;
   claimShadowDocumentExtract(
     input: ShadowDocumentExtractClaim,
   ): Promise<LeasedJob[]>;
@@ -161,6 +180,7 @@ const JOB_KINDS: readonly JobKind[] = [
   "generate_supplier_package",
   "apply_signature",
   "send_authorized_payload",
+  "exact_thread_association",
 ];
 
 function requireLeaseToken(value: string): string {
@@ -176,7 +196,13 @@ function canonicalPayload(payload: Record<string, string>): string {
     pairs.length === 0 ||
     pairs.some(([key, value]) =>
       (!/^[A-Za-z][A-Za-z0-9]*Id$/.test(key) &&
-        key !== "deliveryIdempotencyKey") ||
+        key !== "deliveryIdempotencyKey" &&
+        ![
+          "originalOuterRawMimeSha256",
+          "originalEmlSha256",
+          "amendmentOuterRawMimeSha256",
+          "amendmentOriginalEmlSha256",
+        ].includes(key)) ||
       typeof value !== "string" ||
       !/^[A-Za-z0-9:_-]{1,256}$/.test(value)
     )
@@ -418,6 +444,28 @@ export function createPostgresBackgroundJobStore(
       return await withWorkerTransaction(sql, async (tx) => {
         const rows =
           await tx`select * from osp_private.claim_exact_gmail_ingest(${input.organizationId}, ${input.jobId}, ${input.gmailMessageId}, ${input.leaseMs})`;
+        if (rows.length > 1) throw new Error("LEASE_CONFLICT");
+        return rows.map(leasedJob);
+      });
+    },
+    async claimExactThreadAssociation(input: ExactThreadAssociationClaim) {
+      if (
+        !UUID_PATTERN.test(input.organizationId) ||
+        !UUID_PATTERN.test(input.jobId) ||
+        !UUID_PATTERN.test(input.priorJobId) ||
+        !UUID_PATTERN.test(input.targetCaseId) ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(input.originalGmailMessageId) ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(input.amendmentGmailMessageId) ||
+        !SHA256_PATTERN.test(input.originalOuterRawMimeSha256) ||
+        !SHA256_PATTERN.test(input.originalEmlSha256) ||
+        !SHA256_PATTERN.test(input.amendmentOuterRawMimeSha256) ||
+        !SHA256_PATTERN.test(input.amendmentEmlSha256) ||
+        !Number.isSafeInteger(input.leaseMs) || input.leaseMs < 1 ||
+        input.leaseMs > 900_000
+      ) throw new Error("INVALID_CLAIM");
+      return await withWorkerTransaction(sql, async (tx) => {
+        const rows =
+          await tx`select * from osp_private.claim_exact_thread_association(${input.organizationId}, ${input.jobId}, ${input.priorJobId}, ${input.targetCaseId}, ${input.originalGmailMessageId}, ${input.originalOuterRawMimeSha256}, ${input.originalEmlSha256}, ${input.amendmentGmailMessageId}, ${input.amendmentOuterRawMimeSha256}, ${input.amendmentEmlSha256}, ${input.leaseMs})`;
         if (rows.length > 1) throw new Error("LEASE_CONFLICT");
         return rows.map(leasedJob);
       });

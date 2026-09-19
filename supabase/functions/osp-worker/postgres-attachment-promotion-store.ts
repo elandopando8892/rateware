@@ -42,7 +42,9 @@ function attachment(row: SqlRow): GmailAttachmentSource {
     typeof row.case_id !== "string" || !UUID.test(row.case_id) ||
     typeof row.opaque_object_key !== "string" ||
     typeof row.source_sha256 !== "string" || !SHA.test(row.source_sha256) ||
-    typeof row.content_type !== "string"
+    typeof row.content_type !== "string" ||
+    (row.processing_disposition !== "automatic_eligible" &&
+      row.processing_disposition !== "manual_conversion_required")
   ) throw new Error("DATABASE_TEMPORARY");
   return Object.freeze({
     id: row.id,
@@ -51,6 +53,7 @@ function attachment(row: SqlRow): GmailAttachmentSource {
     sourceObjectKey: row.opaque_object_key,
     sourceSha256: row.source_sha256,
     contentType: row.content_type,
+    processingDisposition: row.processing_disposition,
   });
 }
 
@@ -98,7 +101,7 @@ export function createPostgresAttachmentPromotionStore(options: {
         input.organizationId,
         async (tx) => {
           const rows =
-            await tx`select attachment.id, attachment.organization_id, message.case_id, attachment.opaque_object_key, attachment.source_sha256, attachment.content_type from osp_private.gmail_attachments attachment join osp_private.gmail_messages message on message.organization_id = attachment.organization_id and message.id = attachment.gmail_message_id join osp_private.customer_registration_cases case_record on case_record.organization_id = message.organization_id and case_record.id = message.case_id where attachment.organization_id = ${input.organizationId} and message.case_id = ${input.caseId} and case_record.blocked_by_duplicate_review = false and attachment.content_type in ('application/pdf', 'image/jpeg', 'image/png', 'image/tiff', 'image/webp', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel.sheet.macroEnabled.12', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') and not exists (select 1 from osp_private.document_versions version where version.organization_id = attachment.organization_id and version.id = attachment.id) order by attachment.id`;
+            await tx`select attachment.id, attachment.organization_id, message.case_id, attachment.opaque_object_key, attachment.source_sha256, attachment.content_type, attachment.processing_disposition from osp_private.gmail_attachments attachment join osp_private.gmail_messages message on message.organization_id = attachment.organization_id and message.id = attachment.gmail_message_id join osp_private.customer_registration_cases case_record on case_record.organization_id = message.organization_id and case_record.id = message.case_id where attachment.organization_id = ${input.organizationId} and message.case_id = ${input.caseId} and case_record.blocked_by_duplicate_review = false and attachment.content_type in ('application/pdf', 'image/jpeg', 'image/png', 'image/tiff', 'image/webp', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel.sheet.macroEnabled.12', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword') and not exists (select 1 from osp_private.document_versions version where version.organization_id = attachment.organization_id and version.id = attachment.id) order by attachment.id`;
           return Object.freeze(rows.map(attachment));
         },
       );
@@ -109,15 +112,18 @@ export function createPostgresAttachmentPromotionStore(options: {
         input.organizationId,
         async (tx) => {
           const sourceRows =
-            await tx`select attachment.id, attachment.organization_id, message.case_id, attachment.opaque_object_key, attachment.source_sha256, attachment.content_type from osp_private.gmail_attachments attachment join osp_private.gmail_messages message on message.organization_id = attachment.organization_id and message.id = attachment.gmail_message_id join osp_private.customer_registration_cases case_record on case_record.organization_id = message.organization_id and case_record.id = message.case_id where attachment.organization_id = ${input.organizationId} and attachment.id = ${input.id} and message.case_id = ${input.caseId} and case_record.blocked_by_duplicate_review = false for share of attachment, message, case_record`;
+            await tx`select attachment.id, attachment.organization_id, message.case_id, attachment.opaque_object_key, attachment.source_sha256, attachment.content_type, attachment.processing_disposition from osp_private.gmail_attachments attachment join osp_private.gmail_messages message on message.organization_id = attachment.organization_id and message.id = attachment.gmail_message_id join osp_private.customer_registration_cases case_record on case_record.organization_id = message.organization_id and case_record.id = message.case_id where attachment.organization_id = ${input.organizationId} and attachment.id = ${input.id} and message.case_id = ${input.caseId} and case_record.blocked_by_duplicate_review = false for share of attachment, message, case_record`;
           if (sourceRows.length !== 1) {
             throw new Error("INVALID_ATTACHMENT_SOURCE");
           }
           const persistedSource = attachment(sourceRows[0]);
           if (
+            persistedSource.processingDisposition !== "automatic_eligible" ||
             persistedSource.sourceObjectKey !== input.sourceObjectKey ||
             persistedSource.sourceSha256 !== input.sourceSha256 ||
             persistedSource.contentType !== input.contentType ||
+            persistedSource.processingDisposition !==
+              input.processingDisposition ||
             input.corporateObjectKey !== `${input.organizationId}/${input.id}`
           ) throw new Error("SOURCE_HASH_MISMATCH");
 

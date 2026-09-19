@@ -31,6 +31,7 @@ Deno.test("attachment registration serializes without a row lock that requires u
           source_sha256: sourceSha256,
           content_type:
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          processing_disposition: "automatic_eligible",
         }];
       }
       if (
@@ -79,6 +80,7 @@ Deno.test("attachment registration serializes without a row lock that requires u
     sourceSha256,
     contentType:
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    processingDisposition: "automatic_eligible",
     corporateObjectKey: `${organizationId}/${attachmentId}`,
     sourceSafetyReason: "strict_xlsx_package_policy",
   });

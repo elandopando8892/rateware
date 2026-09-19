@@ -190,7 +190,7 @@ it('lists cases and loads one case through strict read-only action bodies', asyn
     blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T01:00:00.000Z',
     message_count: '1', attachment_count: '2', document_count: '0',
   } as const;
-  const detail = { ...summary, latest_request: { subject: null, sender_domain: null, received_at: null }, recent_events: [], profile_workspace: { candidates: [], binding: null, draft: null, disclosure_locked: true } };
+  const detail = { ...summary, manual_conversion_attachments: [], latest_request: { subject: null, sender_domain: null, received_at: null }, recent_events: [], profile_workspace: { candidates: [], binding: null, draft: null, disclosure_locked: true } };
   const h = harness([json({ version: 1, data: { cases: [summary] } }), json({ version: 1, data: detail })]);
   await expect(h.client.listCustomerRegistrationCases()).resolves.toEqual([summary]);
   await expect(h.client.getCustomerRegistrationCase(summary.case_id)).resolves.toEqual(detail);

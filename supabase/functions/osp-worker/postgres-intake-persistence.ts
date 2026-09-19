@@ -23,6 +23,20 @@ export type PostgresIntakePersistenceOptions = {
   postgresFactory?: PostgresFactory;
 };
 
+export type ReviewedThreadInput = {
+  organizationId: string;
+  targetCaseId: string;
+  priorJobId: string;
+  deliveryIdempotencyKey: string;
+  original: { source: IntakeSource; parsed: ParsedCopiedRequest };
+  amendment: { source: IntakeSource; parsed: ParsedCopiedRequest };
+};
+export type ReviewedThreadPersistence = {
+  createReviewedThread(
+    input: ReviewedThreadInput,
+  ): Promise<{ caseId: string; eventId: string; replayed: boolean }>;
+};
+
 function requireDatabaseUrl(value: string): string {
   try {
     const url = new URL(value);
@@ -113,12 +127,14 @@ function stableSource(source: IntakeSource): Record<string, unknown> {
       filename,
       sourceRole,
       parentSourceSha256,
+      processingDisposition,
     }) => ({
       sha256,
       contentType,
       filename,
       sourceRole,
       parentSourceSha256,
+      processingDisposition,
     })).sort((left, right) => canonical(left).localeCompare(canonical(right))),
     receivedAt: source.receivedAt,
   };
@@ -176,7 +192,8 @@ function validateSourceProvenance(
       stored.contentType !== captured.contentType ||
       stored.filename !== captured.filename ||
       stored.sourceRole !== captured.sourceRole ||
-      stored.parentSourceSha256 !== captured.parentSourceSha256
+      stored.parentSourceSha256 !== captured.parentSourceSha256 ||
+      stored.processingDisposition !== captured.processingDisposition
     ) throw new Error("SOURCE_HASH_MISMATCH");
     if (
       seen.has(stored.sha256) &&
@@ -352,7 +369,7 @@ async function persistSource(
     original?.sourceSha256 ?? null
   }, (select coalesce(array_agg(item.value order by item.ordinality), '{}'::text[]) from jsonb_array_elements_text(${externalReplyToJson}::text::jsonb) with ordinality as item(value, ordinality)), (select coalesce(array_agg(item.value order by item.ordinality), '{}'::text[]) from jsonb_array_elements_text(${externalReplyCcJson}::text::jsonb) with ordinality as item(value, ordinality)))`;
   for (const attachment of source.attachments) {
-    await tx`insert into osp_private.gmail_attachments (id, organization_id, gmail_message_id, opaque_object_key, source_sha256, content_type, filename, source_role, parent_source_sha256) values (${crypto.randomUUID()}, ${organizationId}, ${messageId}, ${
+    await tx`insert into osp_private.gmail_attachments (id, organization_id, gmail_message_id, opaque_object_key, source_sha256, content_type, filename, source_role, parent_source_sha256, processing_disposition) values (${crypto.randomUUID()}, ${organizationId}, ${messageId}, ${
       requireObjectKey(attachment.objectKey)
     }, ${
       requireHash(attachment.sha256)
@@ -360,7 +377,7 @@ async function persistSource(
       attachment.parentSourceSha256 === null
         ? null
         : requireHash(attachment.parentSourceSha256)
-    })`;
+    }, ${attachment.processingDisposition})`;
   }
 }
 
@@ -465,7 +482,7 @@ async function queryDuplicates(
 
 export function createPostgresIntakePersistence(
   options: PostgresIntakePersistenceOptions,
-): IntakePersistence {
+): IntakePersistence & ReviewedThreadPersistence {
   const created =
     (options.postgresFactory ?? postgres as unknown as PostgresFactory)(
       requireDatabaseUrl(options.databaseUrl),
@@ -496,6 +513,108 @@ export function createPostgresIntakePersistence(
     );
   return Object.freeze({
     findDuplicates,
+    async createReviewedThread(input: ReviewedThreadInput) {
+      requireUuid(input.organizationId);
+      requireUuid(input.targetCaseId);
+      requireUuid(input.priorJobId);
+      const { original, amendment } = input;
+      const first = original.parsed.provenance.originalEnvelope;
+      const second = amendment.parsed.provenance.originalEnvelope;
+      if (
+        !first || !second ||
+        original.parsed.provenance.relationship !== "internal_relay" ||
+        amendment.parsed.provenance.relationship !== "internal_relay" ||
+        first.senderEmail !== second.senderEmail ||
+        first.senderDomain !== second.senderDomain ||
+        original.parsed.supplierDomain !== amendment.parsed.supplierDomain ||
+        original.source.gmailThreadId !== amendment.source.gmailThreadId ||
+        original.source.gmailMessageId === amendment.source.gmailMessageId ||
+        original.source.rawMimeHash === amendment.source.rawMimeHash ||
+        first.sourceSha256 === second.sourceSha256
+      ) {
+        throw new Error("REVIEWED_THREAD_SOURCE_MISMATCH");
+      }
+      const request = {
+        targetCaseId: input.targetCaseId,
+        priorJobId: input.priorJobId,
+        original: {
+          source: stableSource(original.source),
+          parsed: stableParsed(original.parsed),
+        },
+        amendment: {
+          source: stableSource(amendment.source),
+          parsed: stableParsed(amendment.parsed),
+        },
+      };
+      return await withOrganizationTransaction(
+        sql,
+        input.organizationId,
+        async (tx) =>
+          await withReceipt(
+            tx,
+            input.organizationId,
+            "gmail_thread_association_create",
+            input.deliveryIdempotencyKey,
+            request,
+            (value) => ({ ...createdResponse(value), replayed: true }),
+            async () => {
+              const targetLock =
+                `reviewed-thread:${input.organizationId}:${input.targetCaseId}`;
+              await tx`select pg_advisory_xact_lock(hashtextextended(${targetLock}, 0))`;
+              const existing =
+                await tx`select id from osp_private.customer_registration_cases where id = ${input.targetCaseId}`;
+              if (existing.length !== 0) {
+                throw new Error("REVIEWED_THREAD_TARGET_CONFLICT");
+              }
+              const prior =
+                await tx`select id, opaque_payload, completed_at, last_error_code from osp_private.background_jobs where organization_id = ${input.organizationId} and id = ${input.priorJobId} and kind = 'gmail_ingest' for update`;
+              if (
+                prior.length !== 1 || !prior[0].completed_at ||
+                prior[0].last_error_code !== "INVALID_INPUT"
+              ) throw new Error("REVIEWED_THREAD_PRIOR_MISMATCH");
+              const payload = receiptResponse(prior[0].opaque_payload);
+              if (
+                payload.gmailMessageId !== original.source.gmailMessageId
+              ) throw new Error("REVIEWED_THREAD_PRIOR_MISMATCH");
+              const captured =
+                await tx`select id from osp_private.gmail_messages where organization_id = ${input.organizationId} and gmail_message_id in (${original.source.gmailMessageId}, ${amendment.source.gmailMessageId})`;
+              if (captured.length !== 0) {
+                throw new Error("REVIEWED_THREAD_SOURCE_CONFLICT");
+              }
+              const suppliers =
+                await tx`insert into osp_private.supplier_counterparties (id, organization_id, legal_name) values (${crypto.randomUUID()}, ${input.organizationId}, ${original.parsed.supplierDomain}) on conflict (organization_id, legal_name) do update set legal_name = excluded.legal_name returning id`;
+              if (
+                suppliers.length !== 1 || typeof suppliers[0].id !== "string"
+              ) throw new Error("DATABASE_TEMPORARY");
+              await tx`insert into osp_private.customer_registration_cases (id, organization_id, supplier_id, state, gmail_message_id, blocked_by_duplicate_review) values (${input.targetCaseId}, ${input.organizationId}, ${
+                suppliers[0].id
+              }, 'received', ${original.source.gmailMessageId}, false)`;
+              await persistSource(
+                tx,
+                input.organizationId,
+                input.targetCaseId,
+                original.source,
+                original.parsed,
+              );
+              await persistSource(
+                tx,
+                input.organizationId,
+                input.targetCaseId,
+                amendment.source,
+                amendment.parsed,
+              );
+              const eventId = await appendEvent(
+                tx,
+                input.organizationId,
+                input.targetCaseId,
+                "historical_gmail_thread_associated",
+                input.deliveryIdempotencyKey,
+              );
+              return { caseId: input.targetCaseId, eventId, replayed: false };
+            },
+          ),
+      );
+    },
     async createCase(input) {
       return await withOrganizationTransaction(
         sql,

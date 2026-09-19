@@ -7,6 +7,7 @@ export type GmailAttachmentSource = Readonly<{
   sourceObjectKey: string;
   sourceSha256: string;
   contentType: string;
+  processingDisposition: "automatic_eligible" | "manual_conversion_required";
 }>;
 
 export type RegisteredRequirementDocument = Readonly<{
@@ -72,6 +73,7 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
 const XLSM = "application/vnd.ms-excel.sheet.macroEnabled.12";
+const LEGACY_DOC = "application/msword";
 const CONTENT_TYPES = new Set([
   "application/pdf",
   "image/jpeg",
@@ -81,6 +83,7 @@ const CONTENT_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   XLSM,
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  LEGACY_DOC,
 ]);
 const LEGACY_EXTRACTION_CONTENT_TYPES = new Set([
   "application/pdf",
@@ -112,7 +115,10 @@ function validateSource(
     !UUID.test(source.id) || !UUID.test(source.organizationId) ||
     !UUID.test(source.caseId) ||
     !objectKey.test(source.sourceObjectKey) ||
-    !SHA.test(source.sourceSha256) || !CONTENT_TYPES.has(source.contentType)
+    !SHA.test(source.sourceSha256) || !CONTENT_TYPES.has(source.contentType) ||
+    (source.contentType === LEGACY_DOC
+      ? source.processingDisposition !== "manual_conversion_required"
+      : source.processingDisposition !== "automatic_eligible")
   ) throw new Error("INVALID_ATTACHMENT_SOURCE");
 }
 
@@ -148,8 +154,13 @@ export function createAttachmentPromotionService(deps: {
       }
       const sources = await deps.store.listCaseAttachments(input);
       const promoted: RegisteredRequirementDocument[] = [];
+      let manualConversionRequired = false;
       for (const source of sources) {
         validateSource(source, input.organizationId, input.caseId);
+        if (source.processingDisposition === "manual_conversion_required") {
+          manualConversionRequired = true;
+          continue;
+        }
         if (contentTypes && !contentTypes.has(source.contentType)) continue;
         const bytes = await deps.storage.downloadOriginal({
           objectKey: source.sourceObjectKey,
@@ -197,6 +208,9 @@ export function createAttachmentPromotionService(deps: {
           });
         }
         promoted.push(registered);
+      }
+      if (manualConversionRequired) {
+        throw new Error("MANUAL_CONVERSION_REQUIRED");
       }
       await deps.jobs.enqueue({
         organizationId: input.organizationId,

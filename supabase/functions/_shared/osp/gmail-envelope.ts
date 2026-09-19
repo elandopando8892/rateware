@@ -13,7 +13,11 @@ const MAX_RELAY_ATTACHMENT_TOTAL_BYTES = 8 * 1024 * 1024;
 
 const SUPPORTED_RELAY_ATTACHMENTS = new Map<
   string,
-  Readonly<{ contentType: string; extensions: readonly string[] }>
+  Readonly<{
+    contentType: string;
+    extensions: readonly string[];
+    processingDisposition?: "manual_conversion_required";
+  }>
 >([
   ["application/pdf", { contentType: "application/pdf", extensions: [".pdf"] }],
   [
@@ -37,6 +41,14 @@ const SUPPORTED_RELAY_ATTACHMENTS = new Map<
     {
       contentType: "application/vnd.ms-excel.sheet.macroEnabled.12",
       extensions: [".xlsm"],
+    },
+  ],
+  [
+    "application/msword",
+    {
+      contentType: "application/msword",
+      extensions: [".doc"],
+      processingDisposition: "manual_conversion_required",
     },
   ],
 ]);
@@ -66,6 +78,7 @@ export type ParsedCopiedRequestAttachment = Readonly<{
   sha256: string;
   sourceRole: "direct_attachment" | "original_eml" | "original_attachment";
   parentSourceSha256: string | null;
+  processingDisposition: "automatic_eligible" | "manual_conversion_required";
 }>;
 
 export type ParsedCopiedRequest = Readonly<{
@@ -151,6 +164,11 @@ function hasExpectedSignature(bytes: Uint8Array, contentType: string): boolean {
     return bytes.byteLength >= 5 &&
       new TextDecoder().decode(bytes.slice(0, 5)) === "%PDF-";
   }
+  if (contentType === "application/msword") {
+    const oleHeader = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+    return bytes.byteLength >= oleHeader.length &&
+      oleHeader.every((byte, index) => bytes[index] === byte);
+  }
   return bytes.byteLength >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b &&
     ((bytes[2] === 0x03 && bytes[3] === 0x04) ||
       (bytes[2] === 0x05 && bytes[3] === 0x06) ||
@@ -220,6 +238,7 @@ async function parseRelayAttachments(
     sha256: originalSha256,
     sourceRole: "original_eml",
     parentSourceSha256: parentSha256,
+    processingDisposition: "automatic_eligible",
   })];
   const attachments = Array.isArray(parsedOriginal.attachments)
     ? parsedOriginal.attachments
@@ -265,6 +284,8 @@ async function parseRelayAttachments(
       sha256: hash,
       sourceRole: "original_attachment",
       parentSourceSha256: originalSha256,
+      processingDisposition: supported.processingDisposition ??
+        "automatic_eligible",
     }));
   }
   return Object.freeze(result);
@@ -371,6 +392,15 @@ export async function parseCopiedRequest(
               sha256: await sha256Hex(bytes),
               sourceRole: "direct_attachment",
               parentSourceSha256: parentEnvelope.sourceSha256,
+              processingDisposition:
+                typeof attachment.mimeType === "string" &&
+                  attachment.mimeType.trim().toLowerCase() ===
+                    "application/msword" &&
+                  safeFilename(attachment.filename)?.toLowerCase().endsWith(
+                    ".doc",
+                  )
+                  ? "manual_conversion_required"
+                  : "automatic_eligible",
             });
           },
         ),

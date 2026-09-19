@@ -45,6 +45,7 @@ Deno.test("copied Gmail request reaches a grounded no-effects Operations draft t
           `${organizationId}/55555555-5555-4555-8555-555555555555`,
         sourceSha256,
         contentType: "application/pdf",
+        processingDisposition: "automatic_eligible",
       }],
       register: async () => ({
         documentVersionId: attachmentId,

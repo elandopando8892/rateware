@@ -253,6 +253,22 @@ export function createPostgresOspReadStore({
             WHERE message.organization_id = case_record.organization_id AND message.case_id = case_record.id) AS attachment_count,
           (SELECT count(*)::bigint FROM osp_private.documents document
             WHERE document.organization_id = case_record.organization_id AND document.case_id = case_record.id) AS document_count,
+          COALESCE((
+            SELECT jsonb_agg(jsonb_build_object(
+              'attachment_id', attachment.id,
+              'filename', attachment.filename,
+              'source_sha256', attachment.source_sha256,
+              'content_type', attachment.content_type,
+              'processing_disposition', attachment.processing_disposition
+            ) ORDER BY attachment.filename, attachment.id)
+            FROM osp_private.gmail_attachments attachment
+            JOIN osp_private.gmail_messages message
+              ON message.organization_id = attachment.organization_id
+             AND message.id = attachment.gmail_message_id
+            WHERE message.organization_id = case_record.organization_id
+              AND message.case_id = case_record.id
+              AND attachment.processing_disposition = 'manual_conversion_required'
+          ), '[]'::jsonb) AS manual_conversion_attachments,
           latest_message.subject AS latest_subject,
           latest_message.sender_domain AS latest_sender_domain,
           latest_message.received_at AS latest_received_at,

@@ -79,6 +79,18 @@ type ExactGmailIngest = {
   gmailMessageId: string;
 };
 
+type ExactThreadAssociationRun = {
+  organizationId: string;
+  priorJobId: string;
+  targetCaseId: string;
+  originalGmailMessageId: string;
+  originalOuterRawMimeSha256: string;
+  originalEmlSha256: string;
+  amendmentGmailMessageId: string;
+  amendmentOuterRawMimeSha256: string;
+  amendmentEmlSha256: string;
+};
+
 type RequestManifestShadow = {
   organizationId: string;
   caseId: string;
@@ -125,6 +137,9 @@ export function createOspWorkerHandler(deps: {
   enqueue(limit: number): Promise<number>;
   run(limit: number): Promise<number>;
   runExactGmailIngest?: (input: ExactGmailIngest) => Promise<number>;
+  runExactThreadAssociation?: (
+    input: ExactThreadAssociationRun,
+  ) => Promise<number>;
   runXlsxDocumentExtractCanary?: (
     input: XlsxDocumentExtractCanary,
   ) => Promise<number>;
@@ -208,6 +223,65 @@ export function createOspWorkerHandler(deps: {
     }
     if (!serviceAuthorized) return json(401, { error: "UNAUTHORIZED" });
     const keys = Object.keys(body).sort();
+    const exactThreadKeys = [
+      "action",
+      "amendmentEmlSha256",
+      "amendmentGmailMessageId",
+      "amendmentOuterRawMimeSha256",
+      "organizationId",
+      "originalEmlSha256",
+      "originalGmailMessageId",
+      "originalOuterRawMimeSha256",
+      "priorJobId",
+      "targetCaseId",
+    ];
+    if (body.action === "run_exact_thread_association") {
+      if (
+        keys.length !== exactThreadKeys.length || keys.some((key, index) =>
+          key !== exactThreadKeys[index]
+        ) ||
+        ![body.organizationId, body.priorJobId, body.targetCaseId]
+          .every(
+            (value) => typeof value === "string" && UUID.test(value),
+          ) ||
+        ![body.originalGmailMessageId, body.amendmentGmailMessageId].every(
+          (value) =>
+            typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value),
+        ) ||
+        ![
+          body.originalOuterRawMimeSha256,
+          body.originalEmlSha256,
+          body.amendmentOuterRawMimeSha256,
+          body.amendmentEmlSha256,
+        ].every(
+          (value) => typeof value === "string" && SHA256.test(value),
+        )
+      ) {
+        return json(400, { error: "INVALID_REQUEST" });
+      }
+      if (!deps.runExactThreadAssociation) {
+        return json(409, { error: "EXACT_THREAD_ASSOCIATION_DISABLED" });
+      }
+      try {
+        const processed = await deps.runExactThreadAssociation({
+          organizationId: body.organizationId as string,
+          priorJobId: body.priorJobId as string,
+          targetCaseId: body.targetCaseId as string,
+          originalGmailMessageId: body.originalGmailMessageId as string,
+          originalOuterRawMimeSha256: body.originalOuterRawMimeSha256 as string,
+          originalEmlSha256: body.originalEmlSha256 as string,
+          amendmentGmailMessageId: body.amendmentGmailMessageId as string,
+          amendmentOuterRawMimeSha256: body
+            .amendmentOuterRawMimeSha256 as string,
+          amendmentEmlSha256: body.amendmentEmlSha256 as string,
+        });
+        return processed === 1
+          ? json(200, { processed: 1 })
+          : json(409, { error: "EXACT_THREAD_ASSOCIATION_NOT_READY" });
+      } catch {
+        return json(503, { error: "EXACT_THREAD_ASSOCIATION_UNAVAILABLE" });
+      }
+    }
     const exactGmailKeys = [
       "action",
       "gmailMessageId",

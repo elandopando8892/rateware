@@ -144,6 +144,7 @@ describe('App authentication and routing', () => {
       case_id: '22222222-2222-4222-8222-222222222222', supplier_name: 'Synthetic Supplier', state: 'received', aggregate_version: 1,
       blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T01:00:00.000Z',
       message_count: '1', attachment_count: '2', document_count: '0',
+      manual_conversion_attachments: [],
       latest_request: { subject: 'Customer setup request', sender_domain: 'supplier.example', received_at: '2030-01-01T00:00:00.000Z' },
       recent_events: [{ sequence: 1, state: 'received', occurred_at: '2030-01-01T00:00:00.000Z', reason_code: 'case_received' }],
       profile_workspace: {
@@ -177,6 +178,7 @@ describe('App authentication and routing', () => {
       case_id: '22222222-2222-4222-8222-222222222222', supplier_name: 'Synthetic Supplier', state: 'operations_review', aggregate_version: 5,
       blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T01:00:00.000Z',
       message_count: '1', attachment_count: '2', document_count: '2',
+      manual_conversion_attachments: [],
       latest_request: { subject: 'Customer setup request', sender_domain: 'supplier.example', received_at: '2030-01-01T00:00:00.000Z' },
       recent_events: [{ sequence: 5, state: 'operations_review', occurred_at: '2030-01-01T01:00:00.000Z', reason_code: 'form_submitted_for_review' }],
       profile_workspace: { candidates: [], binding: null, draft: null, disclosure_locked: true },
@@ -187,6 +189,30 @@ describe('App authentication and routing', () => {
     const action = await screen.findByRole('link', { name: /open operations review/i });
     expect(action).toHaveAttribute('href', '/app/cases/22222222-2222-4222-8222-222222222222/review');
     expect(screen.queryByRole('link', { name: /open xbf case form/i })).not.toBeInTheDocument();
+  });
+
+  it('shows preserved legacy Word evidence and blocks profile automation', async () => {
+    const api = client();
+    vi.mocked(api.getCustomerRegistrationCase).mockResolvedValue({
+      case_id: '22222222-2222-4222-8222-222222222222', supplier_name: 'Crane request', state: 'received', aggregate_version: 1,
+      blocked_by_duplicate_review: false, created_at: '2030-01-01T00:00:00.000Z', updated_at: '2030-01-01T01:00:00.000Z',
+      message_count: '2', attachment_count: '7', document_count: '0',
+      manual_conversion_attachments: [{ attachment_id: '55555555-5555-4555-8555-555555555555',
+        filename: 'QF-167.doc', source_sha256: 'c'.repeat(64), content_type: 'application/msword',
+        processing_disposition: 'manual_conversion_required' }],
+      latest_request: { subject: 'Supplier registration amendment', sender_domain: 'craneww.com', received_at: '2030-01-01T00:00:00.000Z' },
+      recent_events: [], profile_workspace: { candidates: [{ entity_id: '44444444-4444-4444-8444-444444444444',
+        entity_code: 'XBFUS', legal_name: 'XBF Freight Systems LLC', country_code: 'US', fact_count: '21',
+        facts_sha256: 'b'.repeat(64) }], binding: null, draft: null, disclosure_locked: true },
+    });
+    const history = createMemoryHistory({ initialEntries: ['/app/cases/22222222-2222-4222-8222-222222222222'] });
+    render(<App authPort={authPort(session)} apiClient={api} routerHistory={history} />);
+    expect(await screen.findByRole('alert', undefined, { timeout: 5_000 })).toHaveTextContent(/manual conversion required/i);
+    expect(screen.getByText(/QF-167\.doc/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('radio', { name: /XBFUS/i }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /confirm this supplier request must use XBFUS/i }));
+    expect(screen.getByRole('button', { name: /bind entity to case/i })).toBeDisabled();
+    expect(api.bindCaseProfile).not.toHaveBeenCalled();
   });
 
   it('hides workspace data while authentication is checking', () => {
@@ -358,7 +384,11 @@ describe('App authentication and routing', () => {
     const history = createMemoryHistory({ initialEntries: [`/app/cases/${caseId}/review`] });
     render(<App authPort={authPort(session)} apiClient={api} routerHistory={history} />);
 
-    await userEvent.click(await screen.findByRole('checkbox', { name: /pre-signature requirements are satisfied/i }));
+    await userEvent.click(await screen.findByRole(
+      'checkbox',
+      { name: /pre-signature requirements are satisfied/i },
+      { timeout: 5_000 },
+    ));
     await userEvent.click(screen.getByRole('button', { name: /complete operations review/i }));
 
     expect(await screen.findByRole('heading', { name: /signature approval/i })).toBeInTheDocument();

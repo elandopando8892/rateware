@@ -14,6 +14,7 @@ const contentTypes = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   xlsm: "application/vnd.ms-excel.sheet.macroEnabled.12",
+  doc: "application/msword",
 } as const;
 
 const fixtures = {
@@ -21,6 +22,7 @@ const fixtures = {
   docx: "PK\x03\x04synthetic-docx",
   xlsx: "PK\x03\x04synthetic-xlsx",
   xlsm: "PK\x03\x04synthetic-xlsm",
+  doc: "\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1synthetic-legacy-doc",
 } as const;
 
 function originalAttachment(
@@ -186,6 +188,60 @@ Deno.test("exact relay deduplicates identical original attachment hashes", async
   );
   assertEquals(result.attachments.length, 2);
   assertEquals(result.attachments[1].filename, "form.pdf");
+});
+
+Deno.test("exact relay preserves legacy DOC as manual-conversion evidence without declaring it safe", async () => {
+  const result = await parseCopiedRequest(
+    relay([original({
+      attachments: [
+        originalAttachment("CWW-QF-167.doc", contentTypes.doc, fixtures.doc),
+      ],
+    })]),
+    { allowInternalRelay: true },
+  );
+  assertEquals(result.attachments[1].filename, "CWW-QF-167.doc");
+  assertEquals(result.attachments[1].contentType, "application/msword");
+  assertEquals(
+    result.attachments[1].processingDisposition,
+    "manual_conversion_required",
+  );
+  assertEquals(
+    result.attachments[1].parentSourceSha256,
+    result.attachments[0].sha256,
+  );
+});
+
+Deno.test("OLE bytes cannot enter the relay as an automatically eligible non-DOC attachment", async () => {
+  await assertRejects(
+    () =>
+      parseCopiedRequest(
+        relay([original({
+          attachments: [
+            originalAttachment("renamed.docx", contentTypes.doc, fixtures.doc),
+          ],
+        })]),
+        { allowInternalRelay: true },
+      ),
+    Error,
+    "GMAIL_RELAY_UNSAFE_ATTACHMENT",
+  );
+  await assertRejects(
+    () =>
+      parseCopiedRequest(
+        relay([original({
+          attachments: [
+            originalAttachment(
+              "legacy.doc",
+              "application/octet-stream",
+              fixtures.doc,
+            ),
+          ],
+        })]),
+        { allowInternalRelay: true },
+      ),
+    Error,
+    "GMAIL_RELAY_UNSAFE_ATTACHMENT",
+  );
 });
 
 Deno.test("exact relay rejects ambiguous parent/original cardinality", async () => {

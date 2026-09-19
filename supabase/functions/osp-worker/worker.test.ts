@@ -146,6 +146,51 @@ Deno.test("worker preserves a deterministic attachment policy rejection", async 
   );
 });
 
+Deno.test("worker records legacy DOC as terminal manual conversion without completing promotion", async () => {
+  const failures: unknown[] = [];
+  let completed = false;
+  await runWorker({
+    workerId: "local-worker",
+    now: () => new Date("2026-09-19T00:00:00.000Z"),
+    jobs: {
+      claim: async () => [{
+        id: "job-legacy-doc",
+        organizationId: "org-1",
+        kind: "attachment_promote",
+        opaquePayload: { caseId: "case-1" },
+        attempt: 1,
+        leaseToken: "11111111-1111-4111-8111-111111111111",
+        leasedUntil: "2026-09-19T00:05:00.000Z",
+      }],
+      complete: async () => {
+        completed = true;
+      },
+      fail: async (input) => {
+        failures.push(input);
+      },
+    },
+    intake: {
+      ingest: async () => {
+        throw new Error("attachment promotion must not enter Gmail intake");
+      },
+      refreshDuplicateReview: async () => undefined,
+    },
+    attachmentPromotions: {
+      promoteCase: async () => {
+        throw new Error("MANUAL_CONVERSION_REQUIRED");
+      },
+    },
+    reportFailure: () => undefined,
+  });
+  assertEquals(completed, false);
+  assertEquals(failures, [{
+    jobId: "job-legacy-doc",
+    leaseToken: "11111111-1111-4111-8111-111111111111",
+    errorCode: "MANUAL_CONVERSION_REQUIRED",
+    retryAt: null,
+  }]);
+});
+
 Deno.test("worker retries only bounded temporary errors with deterministic capped backoff", async () => {
   assertEquals(
     deterministicRetryAt(new Date("2026-08-22T00:00:00.000Z"), 1).toISOString(),

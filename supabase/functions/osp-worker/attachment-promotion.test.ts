@@ -24,6 +24,7 @@ Deno.test("attachment promotion verifies, scans, registers and queues one determ
           `${organizationId}/44444444-4444-4444-8444-444444444444`,
         sourceSha256,
         contentType: "application/pdf",
+        processingDisposition: "automatic_eligible",
       }],
       register: async (input) => {
         stored.push(input);
@@ -88,6 +89,7 @@ Deno.test("attachment promotion fails closed before persistence on hash or malwa
     sourceObjectKey: `${organizationId}/44444444-4444-4444-8444-444444444444`,
     sourceSha256: "0".repeat(64),
     contentType: "application/pdf",
+    processingDisposition: "automatic_eligible",
   } as const;
   let registered = 0;
   const dependencies = (scan: () => Promise<"clean" | "infected">) => ({
@@ -143,6 +145,7 @@ Deno.test("attachment promotion can limit a free deterministic route to XLSX", a
           `${organizationId}/44444444-4444-4444-8444-444444444444`,
         sourceSha256: await sha256Hex(bytes),
         contentType: "application/pdf",
+        processingDisposition: "automatic_eligible",
       }],
       register: async () => {
         throw new Error("must not register excluded content");
@@ -188,6 +191,7 @@ Deno.test("DOCX promotion preserves safe evidence and queues only adaptive manif
         sourceSha256,
         contentType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        processingDisposition: "automatic_eligible",
       }],
       register: async () => ({
         documentVersionId: attachmentId,
@@ -259,4 +263,75 @@ Deno.test("attachment promotion resumes manifest analysis after every source was
   });
   assertEquals(job.kind, "request_manifest");
   assertEquals(job.opaquePayload, { caseId });
+});
+
+Deno.test("legacy DOC stays raw and blocks manifest while supported evidence is promoted", async () => {
+  const sourceSha256 = await sha256Hex(bytes);
+  const registered: string[] = [];
+  const scanned: string[] = [];
+  const jobs = createInMemoryBackgroundJobStore();
+  const service = createAttachmentPromotionService({
+    store: {
+      listCaseAttachments: async () => [{
+        id: attachmentId,
+        organizationId,
+        caseId,
+        sourceObjectKey:
+          `${organizationId}/44444444-4444-4444-8444-444444444444`,
+        sourceSha256,
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        processingDisposition: "automatic_eligible",
+      }, {
+        id: "55555555-5555-4555-8555-555555555555",
+        organizationId,
+        caseId,
+        sourceObjectKey:
+          `${organizationId}/66666666-6666-4666-8666-666666666666`,
+        sourceSha256,
+        contentType: "application/msword",
+        processingDisposition: "manual_conversion_required",
+      }],
+      register: async (input) => {
+        registered.push(input.id);
+        return { documentVersionId: input.id, templateVersionId: null };
+      },
+    },
+    storage: {
+      downloadOriginal: async ({ objectKey }) => {
+        if (objectKey.endsWith("66666666-6666-4666-8666-666666666666")) {
+          throw new Error("legacy DOC must not be downloaded for promotion");
+        }
+        return bytes;
+      },
+      createOriginalReadUrl: async () => "https://storage.example.test/source",
+      putCorporate: async () => undefined,
+    },
+    scan: async ({ contentType }) => {
+      scanned.push(contentType);
+      return "clean";
+    },
+    jobs,
+  });
+
+  await assertRejects(
+    () =>
+      service.promoteCase({
+        organizationId,
+        caseId,
+        correlationId: "legacy-doc",
+      }),
+    Error,
+    "MANUAL_CONVERSION_REQUIRED",
+  );
+  assertEquals(registered, [attachmentId]);
+  assertEquals(scanned, [
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ]);
+  assertEquals((await jobs.claim({
+    workerId: "test",
+    now: new Date(),
+    leaseMs: 60_000,
+    limit: 10,
+  })).length, 0);
 });
