@@ -121,7 +121,16 @@ export async function fetchProviderGoogleUserEmail(accessToken: string, idToken?
   };
 }
 
-export async function getProviderGmailAccessToken(supabase: any, connection: Record<string, unknown>) {
+export type ProviderGmailAccessTokenOptions = Readonly<{
+  persistRefreshedToken?: boolean;
+  request?: typeof globalThis.fetch;
+}>;
+
+export async function getProviderGmailAccessToken(
+  supabase: any,
+  connection: Record<string, unknown>,
+  options: ProviderGmailAccessTokenOptions = {},
+) {
   const encryptedAccessToken = cleanProviderGmailText(connection.access_token_encrypted);
   const expiresAt = connection.token_expires_at ? new Date(String(connection.token_expires_at)).getTime() : 0;
   if (encryptedAccessToken && expiresAt > Date.now() + 60_000) {
@@ -133,16 +142,19 @@ export async function getProviderGmailAccessToken(supabase: any, connection: Rec
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) throw new Error('Google OAuth client is not configured.');
 
   const refreshToken = await decryptProviderGmailToken(encryptedRefreshToken);
-  const response = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
-      refresh_token: refreshToken,
-      grant_type: 'refresh_token',
-    }),
-  });
+  const response = await (options.request ?? globalThis.fetch)(
+    'https://oauth2.googleapis.com/token',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+    },
+  );
   const payload = await response.json() as Record<string, unknown>;
   if (!response.ok) {
     throw new Error(cleanProviderGmailText(payload.error_description) || cleanProviderGmailText(payload.error) || 'Google token refresh failed.');
@@ -152,6 +164,7 @@ export async function getProviderGmailAccessToken(supabase: any, connection: Rec
   if (!accessToken) throw new Error('Google token refresh did not return an access token.');
   const scopes = payload.scope ? validateProviderGmailScopes(payload.scope) : validateProviderGmailScopes(connection.scopes || []);
   const expiresIn = Number(payload.expires_in) || 3600;
+  if (options.persistRefreshedToken === false) return accessToken;
   const update = await supabase
     .from('provider_gmail_connections')
     .update({

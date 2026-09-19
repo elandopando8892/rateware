@@ -261,8 +261,22 @@ export function createOspWorkerHandler(deps: {
             amendmentGmailMessageId: body.amendmentGmailMessageId as string,
           }),
         );
-      } catch {
-        return json(503, { error: "EXACT_THREAD_PREFLIGHT_UNAVAILABLE" });
+      } catch (error) {
+        const safeReasons = new Set([
+          "GMAIL_RECONNECT_REQUIRED",
+          "GMAIL_RUNTIME_CONFIGURATION",
+          "GMAIL_TEMPORARY",
+        ]);
+        const reason = error instanceof Error && safeReasons.has(error.message)
+          ? error.message
+          : "SOURCE_NOT_QUALIFIED";
+        return json(
+          reason === "GMAIL_RECONNECT_REQUIRED" ||
+            reason === "SOURCE_NOT_QUALIFIED"
+            ? 409
+            : 503,
+          { error: "EXACT_THREAD_PREFLIGHT_UNAVAILABLE", reason },
+        );
       }
     }
     const exactThreadKeys = [

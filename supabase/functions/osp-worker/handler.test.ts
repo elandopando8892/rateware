@@ -303,6 +303,20 @@ Deno.test("OSP worker exposes a service-only read-only exact thread preflight", 
     run: async () => 0,
   });
   assertEquals((await disabled(request(exactThreadPreflight))).status, 409);
+
+  const reconnect = createOspWorkerHandler({
+    expectedToken: token,
+    enqueue: async () => 0,
+    run: async () => 0,
+    preflightExactThreadAssociation: () =>
+      Promise.reject(new Error("GMAIL_RECONNECT_REQUIRED")),
+  });
+  const reconnectResponse = await reconnect(request(exactThreadPreflight));
+  assertEquals(reconnectResponse.status, 409);
+  assertEquals(await reconnectResponse.json(), {
+    error: "EXACT_THREAD_PREFLIGHT_UNAVAILABLE",
+    reason: "GMAIL_RECONNECT_REQUIRED",
+  });
 });
 
 Deno.test("OSP worker fails closed when exact send is disabled", async () => {

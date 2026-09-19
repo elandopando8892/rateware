@@ -125,6 +125,7 @@ function governedStorage(
 export function createShadowWorkerRuntime(input: {
   databaseUrl: string;
   gmailAccessToken: () => Promise<string>;
+  gmailPreflightAccessToken?: () => Promise<string>;
   postgresFactory?: PostgresIntakePersistenceOptions["postgresFactory"];
   storageClient: Parameters<
     typeof createSupabaseOriginalObjectStore
@@ -193,6 +194,9 @@ export function createShadowWorkerRuntime(input: {
   });
   const gmail = createGmailApiInboundPort({
     accessToken: input.gmailAccessToken,
+  });
+  const preflightGmail = createGmailApiInboundPort({
+    accessToken: input.gmailPreflightAccessToken ?? input.gmailAccessToken,
   });
   const intake = createIntakeService({
     gmail,
@@ -673,7 +677,7 @@ export function createShadowWorkerRuntime(input: {
         persistence,
       }, request),
     preflightExactThreadAssociation: (request: ExactThreadPreflightRequest) =>
-      preflightExactThreadAssociation({ gmail }, request),
+      preflightExactThreadAssociation({ gmail: preflightGmail }, request),
     runAuthorizedSendExact: async (job: AuthorizedSendExact) => {
       const result = await outboundSends.execute(job);
       await jobs.complete({

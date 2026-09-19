@@ -4,6 +4,7 @@ import {
   getProviderGmailAccessToken,
   providerGmailAllowedAccount,
   validateProviderGmailOutboundScopes,
+  validateProviderGmailScopes,
 } from "../_shared/provider-gmail.ts";
 import { createOspWorkerHandler } from "./handler.ts";
 import { createShadowWorkerRuntime } from "./shadow-runtime.ts";
@@ -69,7 +70,7 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   },
 });
 
-const gmailAccessToken = async (): Promise<string> => {
+async function providerGmailConnection(): Promise<Record<string, unknown>> {
   const mailbox = providerGmailAllowedAccount();
   const result = await supabase.from("provider_gmail_connections")
     .select("*")
@@ -79,14 +80,45 @@ const gmailAccessToken = async (): Promise<string> => {
   if (result.error || result.data?.length !== 1) {
     throw new Error("GMAIL_TEMPORARY");
   }
+  return result.data[0] as Record<string, unknown>;
+}
+
+function classifyPreflightGmailError(error: unknown): Error {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (
+    /invalid_grant|expired|revoked|reconnect|unsupported gmail token envelope|operation-specific/
+      .test(
+        message,
+      )
+  ) return new Error("GMAIL_RECONNECT_REQUIRED");
+  if (/not configured/.test(message)) {
+    return new Error("GMAIL_RUNTIME_CONFIGURATION");
+  }
+  return new Error("GMAIL_TEMPORARY");
+}
+
+const gmailAccessToken = async (): Promise<string> => {
+  const connection = await providerGmailConnection();
   try {
-    validateProviderGmailOutboundScopes(result.data[0].scopes);
+    validateProviderGmailOutboundScopes(connection.scopes);
     return await getProviderGmailAccessToken(
       supabase,
-      result.data[0] as Record<string, unknown>,
+      connection,
     );
   } catch {
     throw new Error("GMAIL_TEMPORARY");
+  }
+};
+
+const gmailPreflightAccessToken = async (): Promise<string> => {
+  const connection = await providerGmailConnection();
+  try {
+    validateProviderGmailScopes(connection.scopes);
+    return await getProviderGmailAccessToken(supabase, connection, {
+      persistRefreshedToken: false,
+    });
+  } catch (error) {
+    throw classifyPreflightGmailError(error);
   }
 };
 
@@ -103,6 +135,7 @@ const signatureVault = createPostgresSignatureVaultReader({ databaseUrl });
 const runtime = createShadowWorkerRuntime({
   databaseUrl,
   gmailAccessToken,
+  gmailPreflightAccessToken,
   storageClient: supabase,
   workerId: `osp-edge:${WORKER_BUILD_REVISION}:${crypto.randomUUID()}`,
   automation,
