@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("../src/rfx-events.js", import.meta.url), "utf8");
+const serviceSource = readFileSync(new URL("../src/rfx-service.js", import.meta.url), "utf8");
+const apiSource = readFileSync(new URL("../supabase/functions/rateware-api/index.ts", import.meta.url), "utf8");
 
 const renderLanes = source.match(/function renderLanes\(\) \{[\s\S]*?\n\}/)?.[0] || "";
 assert.match(
@@ -40,6 +42,23 @@ assert.match(
   source,
   /\[data-workbench-view-button='responses'\][\s\S]*renderResponseBoard\(\);[\s\S]*renderLiveOfferManager\(\);/,
   "opening Operate should render its deferred response surfaces"
+);
+
+assert.match(serviceSource, /compact_vendors: true/, "Bid Room detail should request one copy of each carrier profile");
+assert.match(
+  serviceSource,
+  /vendorsById[\s\S]*vendors: invitation\?\.vendors \|\| vendorsById\.get/,
+  "the browser should restore the existing invitation vendor shape from compact profiles"
+);
+assert.match(
+  apiSource,
+  /hydrateRfxBoardInvitationTokens[\s\S]*mapWithConcurrency\(rows, 24/,
+  "large RFx token hydration should use bounded concurrency"
+);
+assert.match(
+  apiSource,
+  /const compactVendors = body\.compact_vendors === true;[\s\S]*compactVendorRows[\s\S]*vendors: \[\.\.\.compactVendorRows\.values\(\)\]/,
+  "compact detail responses should return each CRM profile once"
 );
 
 console.log("Bid Room large-event performance contract passed.");

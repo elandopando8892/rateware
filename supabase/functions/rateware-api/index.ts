@@ -15983,8 +15983,7 @@ async function hydrateRfxBoardInvitationTokens(
   supabase: RatewareSupabaseClient,
   rows: Record<string, unknown>[]
 ) {
-  const hydrated: Record<string, unknown>[] = [];
-  for (const row of rows) {
+  return await mapWithConcurrency(rows, 24, async (row) => {
     const legacyToken = cleanText(row.invitation_token);
     let token = legacyToken;
     if (legacyToken) {
@@ -16001,9 +16000,8 @@ async function hydrateRfxBoardInvitationTokens(
       }
     }
     const { invitation_token_encrypted: _encrypted, invitation_token_hash: _hash, ...safeRow } = row;
-    hydrated.push({ ...safeRow, invitation_token: token || "" });
-  }
-  return hydrated;
+    return { ...safeRow, invitation_token: token || "" };
+  });
 }
 
 async function requireHydratedRfxInvitationTokens(
@@ -26838,6 +26836,7 @@ Deno.serve(async (request) => {
 
     if (body.action === "list_rfx_detail") {
       const event = await requireOwnedRfxEvent(supabase, user, body.event_id || body.id);
+      const compactVendors = body.compact_vendors === true;
       const invitationColumns = "*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)";
       // Benchmarks are independent of the event lanes and invitations. Load all
       // three concurrently so opening a Bid Room pays one database round trip.
@@ -26899,6 +26898,18 @@ Deno.serve(async (request) => {
       // Without this the board renders every "Open room" action disabled.
       invitationRows = await hydrateRfxBoardInvitationTokens(supabase, invitationRows);
 
+      // A carrier can participate in dozens of lanes. Compact responses return
+      // each CRM profile once instead of repeating it in every carrier-lane row;
+      // the browser restores the existing invitation.vendors shape.
+      const compactVendorRows = new Map<string, Record<string, unknown>>();
+      if (compactVendors) {
+        for (const invitation of invitationRows) {
+          const vendor = relationRecord(invitation.vendors);
+          const vendorId = cleanText(vendor.id) || cleanText(invitation.vendor_id);
+          if (vendorId && !compactVendorRows.has(vendorId)) compactVendorRows.set(vendorId, vendor);
+        }
+      }
+
       const invitationsByLane = new Map<string, Record<string, unknown>[]>();
       for (const invitation of invitationRows) {
         const laneId = cleanText(invitation.rfx_lane_id);
@@ -26911,7 +26922,11 @@ Deno.serve(async (request) => {
       const lanes = eventLanes.map((lane) => {
         const benchmark = bestRatewareBenchmark(lane, rates);
         const supplyDepth = supplyDepthForLane(lane, rates);
-        const invitations = (invitationsByLane.get(cleanText(lane.id) || "") || []).map((invitation) => invitationWithComparison(invitation, benchmark));
+        const invitations = (invitationsByLane.get(cleanText(lane.id) || "") || []).map((invitation) => {
+          if (!compactVendors) return invitationWithComparison(invitation, benchmark);
+          const { vendors: _vendors, ...compactInvitation } = invitation;
+          return invitationWithComparison(compactInvitation, benchmark);
+        });
         return {
           ...lane,
           benchmark,
@@ -26928,7 +26943,8 @@ Deno.serve(async (request) => {
         coverage_sync: { inserted: coverageInserted },
         coverage_warning: coverageWarning,
         rateware_benchmark: ratewareBenchmark,
-        comparison_fx: comparisonFx
+        comparison_fx: comparisonFx,
+        ...(compactVendors ? { vendors: [...compactVendorRows.values()] } : {})
       });
     }
 

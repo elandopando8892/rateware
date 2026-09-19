@@ -57,7 +57,25 @@ export async function updateRfxLane(id, patch) {
 }
 
 export async function fetchRfxDetail(eventId) {
-  return await retryRfxRead(() => callRatewareApi("list_rfx_detail", { event_id: eventId }));
+  const result = await retryRfxRead(() => callRatewareApi("list_rfx_detail", {
+    event_id: eventId,
+    compact_vendors: true
+  }));
+  const vendorsById = new Map(
+    (Array.isArray(result?.vendors) ? result.vendors : [])
+      .map((vendor) => [String(vendor?.id || ""), vendor])
+      .filter(([id]) => Boolean(id))
+  );
+  return {
+    ...result,
+    lanes: (Array.isArray(result?.lanes) ? result.lanes : []).map((lane) => ({
+      ...lane,
+      invitations: (Array.isArray(lane?.invitations) ? lane.invitations : []).map((invitation) => ({
+        ...invitation,
+        vendors: invitation?.vendors || vendorsById.get(String(invitation?.vendor_id || "")) || {}
+      }))
+    }))
+  };
 }
 
 export async function fetchRfxResponseVendorIds(eventId) {
