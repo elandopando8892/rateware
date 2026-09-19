@@ -24,42 +24,38 @@ Static Upload Center module for preserving carrier quotation source files before
 1. Run `supabase/raw_uploads.sql` in Supabase SQL Editor.
 2. Copy `src/config.example.js` values into `src/config.js`.
 3. Replace the project URL and anon key in `src/config.js`.
-4. Configure Kinde as a front-end/mobile application.
+4. Enable Google in Supabase Auth and configure its Google OAuth client.
 5. Deploy Supabase functions: `create-raw-upload`, `rateware-api`, and `interpret-upload`.
 6. Set Supabase function secrets:
    - `OPENAI_API_KEY`
    - `OPENAI_MODEL`
-   - `KINDE_DOMAIN`
-   - optional `KINDE_AUDIENCE`
    - `RATEWARE_SUPABASE_ANON_KEY`
    - `RATEWARE_SUPABASE_SERVICE_ROLE_KEY`
-7. Configure `KINDE_DOMAIN` and `KINDE_CLIENT_ID` in `src/config.js`.
+7. Configure the production and preview redirect URLs in Supabase Auth. Store
+   Rateware permissions and organization bindings only in server-managed
+   `app_metadata`.
 8. Open `index.html`, or run `npm run dev` and use the served URL.
 
-## Kinde
+## Supabase Auth
 
-Create a Kinde application with type `Front-end and mobile`.
+Rateware signs users in through Supabase Auth with Google. Google must use the
+Supabase callback endpoint for this project, and Supabase URL Configuration must
+include the application destinations that may receive the OAuth session.
 
-Allowed callback URLs:
+Application redirect destinations include:
 
 ```text
 http://127.0.0.1:3000/app.html
 https://your-vercel-app.vercel.app/app
 https://your-vercel-app.vercel.app/app.html
+https://rates.heymarksman.com/app
+https://rates.heymarksman.com/app.html
 ```
 
-Allowed logout redirect URLs:
-
-```text
-http://127.0.0.1:3000
-https://your-vercel-app.vercel.app
-```
-
-Copy the Kinde application `Domain` and `Client ID` into `src/config.js`. JavaScript SPA apps do not use a client secret.
-
-For the current MVP, Kinde is used only for sign-in/session. All authenticated users have full access to every Rateware module; role and permission enforcement is intentionally deferred.
-
-This static multipage app enables Kinde refresh-token persistence with local storage so users remain signed in while navigating between modules. For a later enterprise hardening sprint, replace this with Kinde custom-domain/httpOnly refresh cookies or a backend-for-frontend session.
+The browser config contains only the Supabase project URL and publishable key.
+Service-role keys and Google client secrets must never be included in static files.
+Authorization is not implied by authentication: write permissions are read from
+`app_metadata` and enforced again by the server.
 
 ## GitHub and Vercel
 
@@ -72,7 +68,8 @@ Recommended Vercel settings:
 - Output directory: `.`
 - Install command: leave empty or `npm install`
 
-After the Vercel URL is created, add it in Kinde callback and logout redirect URLs:
+After a Vercel URL is created, add the exact authorized destination in Supabase
+Auth redirect URLs:
 
 ```text
 https://your-vercel-app.vercel.app
@@ -103,7 +100,7 @@ Use this when the XLSX is already a template/database, not an unstructured carri
 
 Rateware supports two isolated Meta Cloud API connection modes:
 
-- `internal_managed`: the HeyMarksman sender is read from Supabase Edge Function secrets and is available only to owner emails or Kinde organization ids explicitly allowlisted server-side.
+- `internal_managed`: the HeyMarksman sender is read from Supabase Edge Function secrets and is available only to owner emails or Supabase organization ids explicitly allowlisted server-side.
 - `tenant_connected`: each external workspace stores its own Meta identifiers and encrypted credentials in `whatsapp_business_connections`. External tenants never fall back to the HeyMarksman sender.
 
 Do not paste access tokens, app secrets, verify tokens, WABA ids, phone number ids, or encryption keys into source code, static config, README examples, screenshots, or Git commits.
@@ -131,7 +128,7 @@ Recommended production values:
 - `WHATSAPP_CONNECTION_MODE=internal_managed`
 - `WHATSAPP_GRAPH_API_VERSION=v23.0`
 - `WHATSAPP_INTERNAL_OWNER_EMAILS=<comma-separated internal owner emails>`
-- `WHATSAPP_INTERNAL_USER_IDS=<comma-separated internal Kinde user ids>`
+- `WHATSAPP_INTERNAL_USER_IDS=<comma-separated internal Supabase Auth user ids>`
 - `WHATSAPP_GROUPS_ENABLED=false`
 
 Set secrets from a local shell without committing them:
@@ -155,11 +152,13 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN=<private verify token generated for this webhook>
 WHATSAPP_APP_SECRET=<Meta app secret>
 WHATSAPP_TOKEN_ENCRYPTION_KEY=<independent random encryption secret>
 WHATSAPP_INTERNAL_OWNER_EMAILS=<internal owner allowlist>
-WHATSAPP_INTERNAL_USER_IDS=<internal Kinde user id allowlist>
-WHATSAPP_INTERNAL_ORGANIZATION_IDS=<optional Kinde organization id allowlist>
+WHATSAPP_INTERNAL_USER_IDS=<internal Supabase Auth user id allowlist>
+WHATSAPP_INTERNAL_ORGANIZATION_IDS=<optional Rateware organization id allowlist>
 ```
 
-`WHATSAPP_INTERNAL_USER_IDS` is required when the Kinde access token omits the email claim. It grants access only to the listed stable Kinde subjects and does not replace tenant isolation. Keep the list in Supabase secrets; do not put real user ids in source code.
+`WHATSAPP_INTERNAL_USER_IDS` is an optional allowlist of stable Supabase Auth
+subjects and does not replace tenant isolation. Keep the list in Supabase secrets;
+do not put real user ids in source code.
 
 The global Meta identifiers and credentials above belong only to the internal HeyMarksman workspace. An external workspace connects from `Settings > Integrations > WhatsApp Business > Connect your own WhatsApp Business` and enters its own App ID, App Secret, Meta Business ID, WABA ID, Phone Number ID, Access Token, and Webhook Verify Token. The API encrypts App Secret, Access Token, and Webhook Verify Token before storage and never returns them to the browser. Replacing a credential does not reveal its previous value.
 
@@ -237,7 +236,7 @@ Mappings are stored per `whatsapp_connection_id` and `outreach_template_id`. A g
 Optional CLI check:
 
 ```powershell
-$env:RATEWARE_API_BEARER="<current Kinde access token>"
+$env:RATEWARE_API_BEARER="<current Supabase access token>"
 node tools/whatsapp-env-check.mjs
 ```
 

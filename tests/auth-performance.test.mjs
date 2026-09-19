@@ -31,3 +31,15 @@ test("getAccessContext uses server-managed Supabase app metadata", () => {
   assert.doesNotMatch(accessSource, /user_metadata/);
   assert.match(source, /export async function getAccessContext\(\) \{ return \(await ensureSignedIn\(\)\)\.access; \}/);
 });
+
+test("frontend configuration and deployment smoke expose no Kinde contract", () => {
+  const surfaces = [
+    "../src/config.js",
+    "../src/config.example.js",
+    "../src/error-copy.js",
+    "../tools/integration-smoke.mjs",
+  ].map(path => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
+  assert.doesNotMatch(surfaces, /kinde|getKindeToken|kindeClient/i);
+  assert.match(surfaces, /SUPABASE_URL/);
+  assert.match(surfaces, /RATEWARE_E2E_AUTH_TOKEN/);
+});

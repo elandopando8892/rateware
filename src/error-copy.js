@@ -62,7 +62,6 @@ export function humanizeError(errorOrMessage) {
     || lower.includes("jwt expired")
     || lower.includes("invalid jwt")
     || lower.includes("token has expired")
-    || lower.includes("sign in with kinde")
     || lower.includes("authentication required")
   ) {
     return "Your session needs to be refreshed. Sign in again and retry the action.";

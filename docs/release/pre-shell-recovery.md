@@ -113,6 +113,21 @@ Status: candidate in development; sprint 1 remains open.
   static suite still describes other repository eras and is not claimed as a
   green certification of the complete application.
 
+## Frontend Kinde retirement
+
+- Removed unused Kinde domain/client constants from real and example browser
+  configuration, the inherited Kinde-only error-copy branch, and Kinde setup
+  instructions from the README.
+- Migrated the integration smoke interface from `RATEWARE_E2E_KINDE_TOKEN` /
+  `--kinde-token` to `RATEWARE_E2E_AUTH_TOKEN` / `--auth-token`, with Supabase
+  token expiry and email claims. The smoke was syntax-checked and its help path
+  was executed only; no authenticated smoke writes or sends were performed.
+- A regression test now rejects Kinde references in frontend configuration,
+  error handling and the deployment smoke contract.
+- Historical Edge Function sources in this recovery checkout are not a safe
+  deployment source and remain explicitly out of the frontend recovery artifact.
+  The live `rateware-api` Supabase adapter was verified separately above.
+
 ## Preview and browser verification
 
 - Candidate commit: `f1eef707`.
