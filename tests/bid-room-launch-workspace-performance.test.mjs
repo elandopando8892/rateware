@@ -14,4 +14,11 @@ const activation = source.match(/function activateRfxLaunchWorkspace\(workspace,
 assert.match(activation, /if \(rfxLaunchWorkspace === "carrier"\)[\s\S]*renderOutreachAudience\(\)/, "Opening Carrier Fit should refresh its audience");
 assert.match(activation, /if \(rfxLaunchWorkspace === "message"\)[\s\S]*renderOutreachPreview\(\)/, "Opening Message should build its preview");
 
+const loadDetail = source.match(/async function loadDetail\(eventId, options = \{\}\) \{([\s\S]*?)\n\}/)?.[1] || "";
+const beforeContext = loadDetail.split("const context = await requestRfxEventResource")[0] || "";
+assert.equal((beforeContext.match(/renderLanes\(\);/g) || []).length, 1, "Initial RFx detail should render the main surface once");
+assert.doesNotMatch(beforeContext, /renderLanes\(\);\s*renderEventDashboard\(\);/, "Initial RFx detail should not immediately repeat dashboard work");
+const afterContext = loadDetail.split("const context = await requestRfxEventResource")[1] || "";
+assert.doesNotMatch(afterContext, /renderLanes\(\);/, "Supplementary event context should update context panels without rebuilding the full lane surface");
+
 console.log("Bid Room Launch workspace performance checks passed.");

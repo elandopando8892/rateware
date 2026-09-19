@@ -9046,10 +9046,7 @@ async function loadDetail(eventId, options = {}) {
     updateEventActionState();
     renderEvents();
     renderLanes();
-    renderEventDashboard();
-    renderLaneCoverage();
     renderBidRoomChat();
-    renderOutreachLaunchpad();
     void loadRfxCarrierFitEvidence({ force: eventChanged || options?.force === true });
     void loadOutreachAudience({ reloadSegments: eventChanged });
     setStatus(actionStatus, "Bid Room core loaded. Loading outreach and chat context...");
@@ -9065,7 +9062,6 @@ async function loadDetail(eventId, options = {}) {
     outreachMessages = context?.outreach_messages || [];
     bidRoomChatThreads = context?.chat || emptyBidRoomChatThreads();
     renderEventDashboard();
-    renderLanes();
     renderBidRoomChat();
     renderOutreachLaunchpad();
     if (rfxLaunchWorkspace === "delivery") {
