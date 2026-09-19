@@ -577,6 +577,7 @@ const DRAFT_TRACKING_STATES = [
 ];
 if (!DRAFT_TRACKING_STATES.some(([status]) => status === draftQueueTrackingStatus)) draftQueueTrackingStatus = "all";
 const BID_ROOM_PARTICIPANT_BATCH_SIZE = 1000;
+const RESPONSE_BOARD_RENDER_LIMIT = 250;
 const BID_ROOM_PARTICIPANT_SELECTION_STORAGE_PREFIX = "rateware:bid-room:participant-selection:";
 const DRAFT_QUEUE_SEARCH_DEBOUNCE_MS = 120;
 const DELIVERY_PARTICIPATION_PAGE_SIZE = 50;
@@ -5979,6 +5980,7 @@ function renderResponseBoard() {
   const allRows = responseBoardRows();
   responseBoardRowsCache = allRows;
   const rows = responseColumnFilters?.apply(allRows) || allRows;
+  const visibleRows = rows.slice(0, RESPONSE_BOARD_RENDER_LIMIT);
   const bidRows = rows.filter(({ invitation }) => hasBid(invitation));
   const bidCarrierCount = new Set(bidRows.map(({ invitation }) => invitationVendorKey(invitation)).filter(Boolean)).size;
   const countsLine = rows.length === allRows.length
@@ -5986,12 +5988,15 @@ function renderResponseBoard() {
     : `${formatNumber(bidRows.length)} lane bids / ${formatNumber(bidCarrierCount)} carriers / ${formatNumber(rows.length)} shown of ${formatNumber(allRows.length)} active lane rows`;
   // Awarding on a converted amount is a commercial decision, so say which rate
   // did the converting. Only shown when a lane actually mixes currencies.
-  responseSummary.textContent = [countsLine, mixedCurrencyNote(allRows)].filter(Boolean).join(" | ");
+  const renderLimitLine = rows.length > visibleRows.length
+    ? `Showing the first ${formatNumber(visibleRows.length)} rows. Use the column filters to narrow ${formatNumber(rows.length)} matches.`
+    : "";
+  responseSummary.textContent = [countsLine, renderLimitLine, mixedCurrencyNote(allRows)].filter(Boolean).join(" | ");
   if (!rows.length) {
     responseBody.innerHTML = `<tr><td colspan="13">No carrier responses match these column filters.</td></tr>`;
     return;
   }
-  responseBody.innerHTML = rows.map(({ lane, invitation, currentRow, decision, badges, eta, availability, bidSource, actionLabel }) => {
+  responseBody.innerHTML = visibleRows.map(({ lane, invitation, currentRow, decision, badges, eta, availability, bidSource, actionLabel }) => {
     const privateBidUrl = invitation.invitation_token
       ? portalUrl(invitation.invitation_token, carrierPrivateBidLaneCount(invitation))
       : "";
@@ -8655,10 +8660,10 @@ function renderLanes() {
   renderEventDashboard();
   renderLaneCoverage();
   renderLaneDecision();
-  renderResponseBoard();
+  if (rfxWorkbench?.current() === "responses") renderResponseBoard();
   renderOutreachLaunchpad();
-  renderLiveOfferManager();
-  renderAwardBoard();
+  if (rfxWorkbench?.current() === "responses") renderLiveOfferManager();
+  if (rfxWorkbench?.current() === "award") renderAwardBoard();
   renderWizard();
 
   if (!selectedEventId) {
@@ -10122,7 +10127,10 @@ document.querySelector("[data-workbench-view-button='outreach']")?.addEventListe
 });
 document.querySelector("[data-workbench-view-button='responses']")?.addEventListener("click", () => {
   activateRfxOperateWorkspace(rfxOperateWorkspace, { persist: false });
+  renderResponseBoard();
+  renderLiveOfferManager();
 });
+document.querySelector("[data-workbench-view-button='award']")?.addEventListener("click", renderAwardBoard);
 rfxLaunchWorkspaceTabs?.addEventListener("click", (event) => {
   const button = event.target instanceof Element
     ? event.target.closest("[data-rfx-launch-workspace]")
