@@ -35682,6 +35682,11 @@ form[data-unsaved-guard][data-unsaved="true"] {
     grid-row: auto;
   }
 
+  .bid-room-page .bid-room-workspace > .bid-room-stage-panel {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
   .bid-room-page .bid-room-control-panel {
     grid-column: 1;
     grid-row: 2;

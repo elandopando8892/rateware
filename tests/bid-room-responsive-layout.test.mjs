@@ -11,7 +11,7 @@ assert.match(
 
 assert.match(
   styles,
-  /@media \(max-width: 1320px\) and \(min-width: 861px\) \{[\s\S]*?\.bid-room-page \.bid-room-build-column > \.bid-room-stage-panel \{[\s\S]*?grid-row: auto;[\s\S]*?\.bid-room-page \.bid-room-control-panel \{[\s\S]*?position: static;/,
+  /@media \(max-width: 1320px\) and \(min-width: 861px\) \{[\s\S]*?\.bid-room-page \.bid-room-build-column > \.bid-room-stage-panel \{[\s\S]*?grid-row: auto;[\s\S]*?\.bid-room-page \.bid-room-workspace > \.bid-room-stage-panel \{[\s\S]*?grid-row: 1;[\s\S]*?\.bid-room-page \.bid-room-control-panel \{[\s\S]*?position: static;/,
   "compact desktop stage content must contribute its height before the operating context is placed",
 );
 
