@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { deliverClaimedNotification, NotificationRejected, type NotificationClaim } from "./notification-workflow.ts";
+import { createFollowUpToken, verifyFollowUpToken } from "./follow-up-token.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -205,23 +206,76 @@ function leadEmail(lead: ReturnType<typeof normalizeLead>["lead"], receiptId: st
     ["Producto", lead.product], ["Cargas/semana", lead.loads_per_week], ["Ventana", lead.schedule], ["Lead time", lead.lead_time],
     ["Atribución", Object.entries(lead.attribution).map(([key, value]) => `${key}=${text(value, 200)}`).join(" · ")]
   ].filter(([, value]) => Boolean(value));
-  const plain = ["Nuevo lead web", ...entries.map(([label, value]) => `${label}: ${value}`)].join("\n");
-  const html = `<h2>Nuevo lead web</h2><table>${entries.map(([label, value]) => `<tr><th align=\"left\">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join("")}</table>`;
-  return { subject: `[Web lead] ${lead.site.toUpperCase()} · ${lead.company} · ${receiptId}`, plain, html };
+  return { entries, subject: `[Web lead] ${lead.site.toUpperCase()} · ${lead.company} · ${receiptId}` };
 }
 
 async function sendNotification(supabase: IntakeSupabase, recipient: string, lead: ReturnType<typeof normalizeLead>["lead"], receiptId: string) {
-  const { accessToken } = await gmailAccessToken(supabase);
   const content = leadEmail(lead, receiptId);
+  let followUpToken = "";
+  try {
+    followUpToken = await createFollowUpToken(GMAIL_TOKEN_ENCRYPTION_KEY, receiptId);
+  } catch {
+    throw new NotificationRejected("Follow-up link could not be prepared.");
+  }
+  const { accessToken } = await gmailAccessToken(supabase);
+  const followUpUrl = `https://group.heymarksman.com/seguimiento#${followUpToken}`;
+  const plain = ["Nuevo lead web", ...content.entries.map(([label, value]) => `${label}: ${value}`), "", "Registrar cotización enviada:", followUpUrl].join("\n");
+  const html = `<h2>Nuevo lead web</h2><table>${content.entries.map(([label, value]) => `<tr><th align=\"left\">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join("")}</table><p><a href=\"${escapeHtml(followUpUrl)}\">Registrar cotización enviada</a></p><p>Usa este enlace únicamente después de enviar la cotización desde ${escapeHtml(GMAIL_ALLOWED_SENDER)}.</p>`;
   const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ raw: rawEmail({ recipient, ...content }) })
+    body: JSON.stringify({ raw: rawEmail({ recipient, subject: content.subject, plain, html }) })
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new NotificationRejected("Commercial Gmail did not accept the lead notification.");
   if (!body.id) throw new Error("Commercial Gmail accepted an incomplete delivery receipt.");
   return { messageId: text(body.id, 200), threadId: text(body.threadId, 200) };
+}
+
+class FollowUpError extends Error {
+  constructor(readonly code: string, readonly status: number) { super(code); }
+}
+
+async function followUp(request: Record<string, unknown>, supabase: IntakeSupabase) {
+  const verified = await verifyFollowUpToken(GMAIL_TOKEN_ENCRYPTION_KEY, text(request.token, 4096));
+  if (!verified.ok) throw new FollowUpError(verified.code, 401);
+  const intake = await supabase.from("website_lead_intakes")
+    .select("id,lead").eq("id", verified.receiptId).maybeSingle();
+  if (intake.error) throw intake.error;
+  if (!intake.data) throw new FollowUpError("lead_not_found", 404);
+  const lead = object(intake.data.lead);
+  const existing = await supabase.from("website_lead_follow_up_events")
+    .select("id,quote_reference,occurred_at").eq("intake_id", intake.data.id)
+    .eq("event_type", "quote_sent").order("occurred_at", { ascending: false }).limit(1).maybeSingle();
+  if (existing.error) throw existing.error;
+  if (text(request.action, 40) === "view_follow_up") return json({
+    receipt_id: intake.data.id,
+    company: text(lead.company, 160), contact_name: text(lead.name, 120),
+    recipient_email: cleanEmail(lead.email), origin_city: text(lead.origin_city, 120),
+    destination_city: text(lead.destination_city, 120), quote_sent: Boolean(existing.data),
+    quote_reference: text(existing.data?.quote_reference, 120), occurred_at: text(existing.data?.occurred_at, 80),
+  });
+  if (text(request.action, 40) !== "record_quote_sent") throw new FollowUpError("follow_up_invalid", 422);
+  const quoteReference = text(request.quote_reference, 120);
+  const idempotencyKey = text(request.idempotency_key, 128);
+  if (!quoteReference || !/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(idempotencyKey)) throw new FollowUpError("follow_up_invalid", 422);
+  const inserted = await supabase.from("website_lead_follow_up_events").insert({
+    intake_id: intake.data.id, event_type: "quote_sent", quote_reference: quoteReference,
+    recipient_email: cleanEmail(lead.email), actor_email: GMAIL_ALLOWED_SENDER,
+    idempotency_key: idempotencyKey, source: "holding-follow-up",
+  }).select("id,quote_reference,occurred_at").single();
+  if (inserted.error?.code === "23505") {
+    const duplicate = await supabase.from("website_lead_follow_up_events")
+      .select("id,quote_reference,occurred_at").eq("intake_id", intake.data.id)
+      .eq("event_type", "quote_sent").eq("quote_reference", quoteReference).maybeSingle();
+    if (duplicate.error) throw duplicate.error;
+    if (!duplicate.data) throw new FollowUpError("quote_reference_conflict", 409);
+    return json({ event: "quote_sent", event_id: duplicate.data.id, receipt_id: intake.data.id,
+      quote_reference: duplicate.data.quote_reference, occurred_at: duplicate.data.occurred_at, duplicate: true }, 202);
+  }
+  if (inserted.error || !inserted.data) throw inserted.error || new Error("Could not record quote_sent.");
+  return json({ event: "quote_sent", event_id: inserted.data.id, receipt_id: intake.data.id,
+    quote_reference: inserted.data.quote_reference, occurred_at: inserted.data.occurred_at, duplicate: false }, 202);
 }
 
 Deno.serve(async (request) => {
@@ -233,10 +287,18 @@ Deno.serve(async (request) => {
   if (!(await signed(raw, request.headers.get("x-marksman-intake-signature") || ""))) return json({ error: "Invalid intake signature." }, 403);
   let input: Lead;
   try { input = object(JSON.parse(raw)); } catch { return json({ error: "Invalid JSON." }, 400); }
+  const supabase = getClient();
+  if (["view_follow_up", "record_quote_sent"].includes(text(input.action, 40))) {
+    try { return await followUp(input, supabase); }
+    catch (error) {
+      if (error instanceof FollowUpError) return json({ error: "Follow-up rejected.", code: error.code }, error.status);
+      console.error("Website lead follow-up failed", error instanceof Error ? error.message : "unknown_error");
+      return json({ error: "Follow-up unavailable." }, 502);
+    }
+  }
   const normalized = normalizeLead(input);
   if (!normalized.valid) return json({ error: "Invalid intake payload." }, 422);
   const { lead } = normalized;
-  const supabase = getClient();
   const payloadHash = await sha256(raw);
   const recipient = recipientFor(lead.site);
   try {
