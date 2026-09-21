@@ -350,7 +350,7 @@ as $function$
     and nullif(pg_catalog.current_setting('osp.organization_id', true), '')::uuid
       = p_organization_id
     and memory.sensitivity in ('public', 'internal', 'confidential')
-    and (memory.review_after is null or memory.review_after >= pg_catalog.current_date)
+    and (memory.review_after is null or memory.review_after >= current_date)
     and pg_catalog.jsonb_typeof(memory.value_json) in ('string', 'number', 'boolean')
   order by memory.canonical_key,
     case when memory.scope_kind = 'counterparty' then 0 else 1 end,
@@ -419,12 +419,12 @@ as $function$
     and asset.id = review.document_asset_id
     and asset.lifecycle_status = 'active'
     and asset.verification_status = 'verified'
-    and (asset.effective_date is null or asset.effective_date <= pg_catalog.current_date)
+    and (asset.effective_date is null or asset.effective_date <= current_date)
     and (
       asset.expiration_date is null
-      or asset.expiration_date >= pg_catalog.current_date
+      or asset.expiration_date >= current_date
       or (
-        asset.expiration_date < pg_catalog.current_date
+        asset.expiration_date < current_date
         and fact.field_code in (
           'legal_name','fiscal_address','phone','email','website',
           'legal_representative','tax_regime'
@@ -461,9 +461,9 @@ as $function$
             and backup_asset.effective_date is not distinct from link.evidence_effective_on
             and backup_asset.expiration_date is not distinct from link.evidence_expires_on
             and (backup_asset.effective_date is null
-              or backup_asset.effective_date <= pg_catalog.current_date)
+              or backup_asset.effective_date <= current_date)
             and (backup_asset.expiration_date is null
-              or backup_asset.expiration_date >= pg_catalog.current_date)
+              or backup_asset.expiration_date >= current_date)
           join public.provider_legal_entity_fact_promotions backup_promotion
             on backup_promotion.organization_id = link.organization_id
             and backup_promotion.review_id = backup_review.id
