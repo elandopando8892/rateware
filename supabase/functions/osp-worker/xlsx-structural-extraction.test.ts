@@ -80,7 +80,7 @@ Deno.test("XLSX structural extraction maps exact adjacent XBF labels with closed
         ranges: ["A3", "B3"],
       },
       {
-        fieldKey: "banking.accountNumber",
+        fieldKey: "banking.clabe",
         value: "012345678901234567",
         provider: "xlsx_structural",
         validation: "valid",
@@ -169,6 +169,56 @@ Deno.test("XLSX structural extraction preserves blank provider fields for Ratewa
         confidence: 1,
         validation: "valid",
         ranges: ["A4"],
+      },
+    ],
+  );
+});
+
+Deno.test("XLSX structural extraction reads merged onboarding labels and keeps CLABE separate from account number", async () => {
+  const bytes = await workbookBytes((workbook) => {
+    const sheet = workbook.addWorksheet("Formato 3.3");
+    sheet.mergeCells("A1:C1");
+    sheet.getCell("A1").value = "PRINCIPALES CLIENTES:";
+    sheet.getCell("D1").value = "Cliente A; Cliente B";
+    sheet.mergeCells("A2:C2");
+    sheet.getCell("A2").value = "PLAZO DE CRÉDITO:";
+    sheet.getCell("D2").value = "30 días neto";
+    sheet.mergeCells("A3:C3");
+    sheet.getCell("A3").value = "CLABE INTERBANCARIA:";
+    sheet.getCell("D3").value = "012580001279904994";
+    sheet.mergeCells("A4:C4");
+    sheet.getCell("A4").value = "CUENTA BANCARIA:";
+    sheet.getCell("D4").value = "0127870221";
+  });
+  const created = await snapshot(bytes);
+  assertEquals(
+    created.fields.map((field) => ({
+      fieldKey: field.fieldKey,
+      value: field.value,
+      ranges: field.evidence.map((item) =>
+        item.kind === "xlsx_cell" ? item.cellRange : ""
+      ),
+    })),
+    [
+      {
+        fieldKey: "business.principalCustomers",
+        value: "Cliente A; Cliente B",
+        ranges: ["A1", "D1"],
+      },
+      {
+        fieldKey: "credit.requestedTerms",
+        value: "30 días neto",
+        ranges: ["A2", "D2"],
+      },
+      {
+        fieldKey: "banking.accountNumber",
+        value: "0127870221",
+        ranges: ["A4", "D4"],
+      },
+      {
+        fieldKey: "banking.clabe",
+        value: "012580001279904994",
+        ranges: ["A3", "D3"],
       },
     ],
   );
