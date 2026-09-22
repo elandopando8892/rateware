@@ -547,18 +547,30 @@ export function carrierTemplateVendorHasUsableContact(vendor: Record<string, unk
   );
 }
 
+/**
+ * Statuses that keep a carrier out of an RFx.
+ *
+ * `inactive` is deliberately NOT here: in this operation it only means the
+ * carrier has not been activated in the TMS, which says nothing about whether
+ * they may bid. Every carrier is invitable; only a deliberate block or a
+ * retired record is not. The rest of the system already agreed — the plain
+ * shortlist path has 3,265 lane participations from `inactive` carriers, while
+ * template materialisation was silently excluding them.
+ */
+const CARRIER_RFX_BLOCKING_STATUSES = ["blocked", "archived", "deleted"];
+
 export function carrierTemplateVendorIsAvailable(vendor: Record<string, unknown> = {}) {
   const status = cleanText(vendor.status)?.toLowerCase() || "";
   const baseStage = cleanText(vendor.base_stage)?.toLowerCase() || "";
   return Boolean(cleanText(vendor.id)) &&
-    !["blocked", "inactive", "archived", "deleted"].includes(status) &&
+    !CARRIER_RFX_BLOCKING_STATUSES.includes(status) &&
     baseStage !== "archived";
 }
 
 function carrierTemplateVendorIneligibleReason(vendor: Record<string, unknown> | null) {
   if (!vendor || !cleanText(vendor.id)) return "unavailable";
   const status = cleanText(vendor.status)?.toLowerCase() || "";
-  if (["blocked", "inactive", "archived", "deleted"].includes(status)) return `status_${status}`;
+  if (CARRIER_RFX_BLOCKING_STATUSES.includes(status)) return `status_${status}`;
   if ((cleanText(vendor.base_stage)?.toLowerCase() || "") === "archived") return "base_stage_archived";
   if (!carrierTemplateVendorHasUsableContact(vendor)) return "missing_contact";
   return "";
