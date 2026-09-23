@@ -88,6 +88,26 @@ Deno.test('manual conversion candidates are read back with durable review status
     }]);
 });
 
+Deno.test('candidate download lookup requires exact tenant, case, source and immutable version', async () => {
+  const caseId = '22222222-2222-4222-8222-222222222222';
+  const sourceAttachmentId = '33333333-3333-4333-8333-333333333333';
+  const versionId = '44444444-4444-4444-8444-444444444444';
+  const sql = Object.assign(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const statement = strings.join('?');
+    if (statement.includes('from osp_private.manual_attachment_conversion_candidates candidate')) {
+      assertEquals(values, [organizationId, caseId, sourceAttachmentId, sourceSha256, versionId, caseId]);
+      assertEquals(statement.includes("version.status in ('review_required', 'approved')"), true);
+      return [{ opaque_object_key: `${organizationId}/${versionId}`, source_sha256: 'b'.repeat(64) }];
+    }
+    return [];
+  }, { begin: async <T>(fn: (tx: typeof sql) => Promise<T>) => await fn(sql) });
+  const store = createPostgresDocumentStore({ databaseUrl: 'postgres://localhost:55322/osp', postgresFactory: () => sql });
+  assertEquals(await store.getManualConversionCandidate({ organizationId, caseId, sourceAttachmentId,
+    sourceSha256, convertedDocumentVersionId: versionId }), {
+      opaqueObjectKey: `${organizationId}/${versionId}`, convertedSha256: 'b'.repeat(64),
+    });
+});
+
 Deno.test('manual conversion source read requires exact tenant case attachment and hash', async () => {
   const sql = Object.assign(async (strings: TemplateStringsArray) => {
     const statement = strings.join('?');

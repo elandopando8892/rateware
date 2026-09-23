@@ -92,10 +92,25 @@ export function createDocumentService(deps: {
   createCaseConversionVersion?(input: PersistedCaseConversionUpload): Promise<{ id: string; version: number }>;
   assertSafeDocx?(bytes: Uint8Array): Promise<void>;
   getManualConversionSource?(input: { organizationId: string; caseId: string; sourceAttachmentId: string; sourceSha256: string }): Promise<{ opaqueObjectKey: string; filename: string }>;
+  getManualConversionCandidate?(input: { organizationId: string; caseId: string; sourceAttachmentId: string; sourceSha256: string; convertedDocumentVersionId: string }): Promise<{ opaqueObjectKey: string; convertedSha256: string }>;
   createOriginalReadUrl?(input: { opaqueObjectKey: string; expiresInSeconds: number }): Promise<string>;
   approveVersion?(input: DocumentApprovalInput & { organizationId: string; approvedBySubject: string; approvedByPermission: 'osp:operate' }): Promise<{ id: string; status: 'approved' }>;
 }) {
   return Object.freeze({
+    async manualConversionCandidate(authority: DocumentAuthority, input: {
+      caseId: string; sourceAttachmentId: string; sourceSha256: string; convertedDocumentVersionId: string;
+    }) {
+      assertAuthority(authority, 'operate');
+      if (!deps.getManualConversionCandidate || !UUID.test(authority.organizationId) ||
+          !UUID.test(input.caseId) || !UUID.test(input.sourceAttachmentId) ||
+          !SHA.test(input.sourceSha256) || !UUID.test(input.convertedDocumentVersionId)) {
+        throw new Error('OSP_CONVERSION_REVIEW_INVALID');
+      }
+      const candidate = await deps.getManualConversionCandidate({ organizationId: authority.organizationId, ...input });
+      const downloadUrl = await deps.createPrivateReadUrl({ bucketId: 'osp-corporate-documents',
+        opaqueObjectKey: candidate.opaqueObjectKey, expiresInSeconds: 60 });
+      return Object.freeze({ downloadUrl, convertedSha256: candidate.convertedSha256, expiresInSeconds: 60 });
+    },
     async manualConversionSource(authority: DocumentAuthority, input: {
       caseId: string; sourceAttachmentId: string; sourceSha256: string;
     }) {

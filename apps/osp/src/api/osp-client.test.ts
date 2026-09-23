@@ -329,6 +329,7 @@ it('keeps legacy conversion source, upload and review scoped to one case without
   const convertedSha256 = 'b'.repeat(64);
   const h = harness([
     json({ data: { downloadUrl: 'https://storage.example.test/temporary', filename: 'source.doc', sourceSha256, expiresInSeconds: 60 } }),
+    json({ data: { downloadUrl: 'https://storage.example.test/converted', convertedSha256, expiresInSeconds: 60 } }),
     json({ data: { id: convertedDocumentVersionId, version: 1, convertedSha256 } }, 201),
     json({ data: { conversionId: '55555555-5555-4555-8555-555555555555', replayed: false } }),
     json({ data: { candidates: [{ id: convertedDocumentVersionId, convertedSha256, version: 1,
@@ -337,6 +338,8 @@ it('keeps legacy conversion source, upload and review scoped to one case without
   ]);
   const source = { caseId, sourceAttachmentId, sourceSha256 };
   await expect(h.client.getManualConversionSource(source)).resolves.toMatchObject({ sourceSha256 });
+  await expect(h.client.getManualConversionCandidate({ ...source, convertedDocumentVersionId }))
+    .resolves.toMatchObject({ convertedSha256 });
   await expect(h.client.uploadCaseConversion({ ...source, bytes: new Uint8Array([1, 2, 3]) }))
     .resolves.toMatchObject({ id: convertedDocumentVersionId });
   await expect(h.client.recordManualConversionReview({ ...source, convertedDocumentVersionId,
@@ -345,12 +348,13 @@ it('keeps legacy conversion source, upload and review scoped to one case without
   await expect(h.client.listManualConversionCandidates(source)).resolves.toMatchObject([
     { id: convertedDocumentVersionId, status: 'approved', conversionId: '55555555-5555-4555-8555-555555555555' },
   ]);
-  expect(h.fetch).toHaveBeenCalledTimes(4);
+  expect(h.fetch).toHaveBeenCalledTimes(5);
   expect(String(h.fetch.mock.calls[0][0])).toContain('action=get_manual_conversion_source');
-  expect(String(h.fetch.mock.calls[1][0])).toContain('action=upload_case_conversion');
-  expect(String(h.fetch.mock.calls[2][0])).toContain('action=record_manual_conversion_review');
-  expect(String(h.fetch.mock.calls[3][0])).toContain('action=list_manual_conversion_candidates');
-  const reviewBody = h.fetch.mock.calls[2][1]?.body as ArrayBuffer;
+  expect(String(h.fetch.mock.calls[1][0])).toContain('action=get_manual_conversion_candidate');
+  expect(String(h.fetch.mock.calls[2][0])).toContain('action=upload_case_conversion');
+  expect(String(h.fetch.mock.calls[3][0])).toContain('action=record_manual_conversion_review');
+  expect(String(h.fetch.mock.calls[4][0])).toContain('action=list_manual_conversion_candidates');
+  const reviewBody = h.fetch.mock.calls[3][1]?.body as ArrayBuffer;
   expect(JSON.parse(new TextDecoder().decode(reviewBody))).toMatchObject({ caseId, sourceAttachmentId,
     sourceSha256, convertedDocumentVersionId, convertedSha256, fidelityConfirmed: true });
   const offline = harness([new TypeError('response lost')]);

@@ -13,6 +13,7 @@ const SHA = /^[0-9a-f]{64}$/;
 const DATE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 
 type DocumentServicePort = {
+  manualConversionCandidate?(authority: DocumentAuthority, input: { caseId: string; sourceAttachmentId: string; sourceSha256: string; convertedDocumentVersionId: string }): Promise<{ downloadUrl: string; convertedSha256: string; expiresInSeconds: number }>;
   manualConversionSource?(authority: DocumentAuthority, input: { caseId: string; sourceAttachmentId: string; sourceSha256: string }): Promise<{ downloadUrl: string; filename: string; sourceSha256: string; expiresInSeconds: number }>;
   upload(authority: DocumentAuthority, input: DocumentUploadInput): Promise<{ id: string; version: number; expiresAt: string }>;
   uploadCaseConversion?(authority: DocumentAuthority, input: CaseConversionUploadInput): Promise<{ id: string; version: number; convertedSha256: string }>;
@@ -85,6 +86,10 @@ function preflightHeaders(url: URL): readonly string[] {
   }
   if (action === 'get_manual_conversion_source') {
     exactQuery(url, ['action', 'case_id', 'source_attachment_id', 'source_sha256']);
+    return ['authorization'];
+  }
+  if (action === 'get_manual_conversion_candidate') {
+    exactQuery(url, ['action', 'case_id', 'source_attachment_id', 'source_sha256', 'converted_document_version_id']);
     return ['authorization'];
   }
   if (action === 'list_manual_conversion_candidates') {
@@ -285,6 +290,21 @@ export function createDocumentApiHandler(options: DocumentApiHandlerOptions): (r
         const result = await options.documentService.manualConversionSource(authority, {
           caseId: query.case_id, sourceAttachmentId: query.source_attachment_id,
           sourceSha256: query.source_sha256,
+        });
+        return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+      }
+      if (action === 'get_manual_conversion_candidate') {
+        const query = exactQuery(url, ['action', 'case_id', 'source_attachment_id', 'source_sha256', 'converted_document_version_id']);
+        await requireEmptyBody(request);
+        const authority = permission(verified, 'operate');
+        if (!options.documentService.manualConversionCandidate) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+        if (!UUID.test(query.case_id) || !UUID.test(query.source_attachment_id) ||
+            !SHA.test(query.source_sha256) || !UUID.test(query.converted_document_version_id)) {
+          throw new OspApiError('INVALID_REQUEST');
+        }
+        const result = await options.documentService.manualConversionCandidate(authority, {
+          caseId: query.case_id, sourceAttachmentId: query.source_attachment_id,
+          sourceSha256: query.source_sha256, convertedDocumentVersionId: query.converted_document_version_id,
         });
         return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
       }

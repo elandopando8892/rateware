@@ -782,6 +782,7 @@ function createPreviewClient(): OspClient {
   let answerEvidenceRenewed = false;
   const client: OspClient = {
     getManualConversionSource: async () => { throw new Error('Preview conversion download unavailable'); },
+    getManualConversionCandidate: async () => { throw new Error('Preview conversion download unavailable'); },
     uploadCaseConversion: async () => { throw new Error('Preview conversion upload unavailable'); },
     recordManualConversionReview: async () => { throw new Error('Preview conversion review unavailable'); },
     listManualConversionCandidates: async () => [],

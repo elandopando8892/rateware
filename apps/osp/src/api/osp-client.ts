@@ -25,6 +25,7 @@ import {
   type CaseSummary,
   DocumentApprovalResponseSchema,
   ManualConversionSourceResponseSchema,
+  ManualConversionCandidateDownloadResponseSchema,
   CaseConversionUploadResponseSchema,
   ManualConversionReviewResponseSchema,
   ManualConversionCandidatesResponseSchema,
@@ -154,6 +155,7 @@ export interface OspClient extends OspReadClient, OspCorporateProfileClient, Osp
   uploadDocumentVersion(input: DocumentUploadInput): Promise<{ id: string; version: number; expiresAt: string }>;
   approveDocumentVersion(input: DocumentApprovalInput): Promise<{ id: string; status: 'approved' }>;
   getManualConversionSource(input: ManualConversionSourceInput): Promise<{ downloadUrl: string; filename: string; sourceSha256: string; expiresInSeconds: 60 }>;
+  getManualConversionCandidate(input: ManualConversionSourceInput & { convertedDocumentVersionId: string }): Promise<{ downloadUrl: string; convertedSha256: string; expiresInSeconds: 60 }>;
   uploadCaseConversion(input: CaseConversionUploadInput): Promise<{ id: string; version: number; convertedSha256: string }>;
   recordManualConversionReview(input: ManualConversionReviewInput): Promise<{ conversionId: string; replayed: boolean }>;
   listManualConversionCandidates(input: ManualConversionSourceInput): Promise<readonly ManualConversionCandidate[]>;
@@ -678,6 +680,16 @@ export function createOspClient(options: ClientOptions): OspClient {
         query: [['action', 'get_manual_conversion_source'], ['case_id', input.caseId],
           ['source_attachment_id', input.sourceAttachmentId], ['source_sha256', input.sourceSha256]],
         expectedStatus: 200, schema: ManualConversionSourceResponseSchema,
+      })).data;
+    },
+    getManualConversionCandidate: async (input: ManualConversionSourceInput & { convertedDocumentVersionId: string }) => {
+      if (!UUID.test(input.caseId) || !UUID.test(input.sourceAttachmentId) || !SHA.test(input.sourceSha256) ||
+          !UUID.test(input.convertedDocumentVersionId)) throw new OspClientError('INVALID_REQUEST');
+      return (await documentRequest({
+        query: [['action', 'get_manual_conversion_candidate'], ['case_id', input.caseId],
+          ['source_attachment_id', input.sourceAttachmentId], ['source_sha256', input.sourceSha256],
+          ['converted_document_version_id', input.convertedDocumentVersionId]],
+        expectedStatus: 200, schema: ManualConversionCandidateDownloadResponseSchema,
       })).data;
     },
     uploadCaseConversion: async (input: CaseConversionUploadInput) => {

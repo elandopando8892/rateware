@@ -604,6 +604,13 @@ export const ManualConversionSourceResponseSchema = z.strictObject({
     expiresInSeconds: z.literal(60),
   }),
 });
+export const ManualConversionCandidateDownloadResponseSchema = z.strictObject({
+  data: z.strictObject({
+    downloadUrl: z.url().refine((value) => value.startsWith('https://')),
+    convertedSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    expiresInSeconds: z.literal(60),
+  }),
+});
 export const CaseConversionUploadResponseSchema = z.strictObject({
   data: z.strictObject({
     id: z.uuid(), version: z.number().int().min(1).max(2_147_483_647),

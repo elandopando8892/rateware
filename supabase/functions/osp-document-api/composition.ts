@@ -66,6 +66,7 @@ export function createDocumentApiRuntime(options: DocumentApiRuntimeOptions): (r
     createCaseConversionVersion: store.createCaseConversionVersion,
     assertSafeDocx: assertStrictDocxPackage,
     getManualConversionSource: store.getManualConversionSource,
+    getManualConversionCandidate: store.getManualConversionCandidate,
     createOriginalReadUrl: storage.createOriginalReadUrl,
     approveVersion: store.approveVersion,
   });

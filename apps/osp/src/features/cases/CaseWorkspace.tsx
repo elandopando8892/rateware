@@ -8,6 +8,7 @@ import { RequestManifestPanel } from './RequestManifestPanel';
 import { HistoricalIntakePanel } from './HistoricalIntakePanel';
 import { AdaptiveReviewWorkbench, type RequestDecisionSubmission } from './AdaptiveReviewWorkbench';
 import { RequestKnowledgePanel } from './RequestKnowledgePanel';
+import { LegacyConversionPanel, type ConversionClient } from './LegacyConversionPanel';
 
 const emptyProfileWorkspace = { candidates: [], binding: null, draft: null, disclosure_locked: true as const };
 
@@ -26,7 +27,16 @@ function PrimaryAction({ action, caseId }: { action: CasePrimaryAction; caseId: 
   }
 }
 
-type CaseWorkspaceClient = OspCaseReadClient & Partial<Pick<OspClient, 'previewHistoricalGmailSearch' | 'importHistoricalGmailMessage'>>;
+type CaseWorkspaceClient = OspCaseReadClient & Partial<Pick<OspClient, 'previewHistoricalGmailSearch' | 'importHistoricalGmailMessage'>> & Partial<ConversionClient>;
+
+function hasConversionClient(client: CaseWorkspaceClient): client is CaseWorkspaceClient & ConversionClient {
+  return typeof client.getManualConversionSource === 'function' &&
+    typeof client.getManualConversionCandidate === 'function' &&
+    typeof client.listManualConversionCandidates === 'function' &&
+    typeof client.uploadCaseConversion === 'function' &&
+    typeof client.approveDocumentVersion === 'function' &&
+    typeof client.recordManualConversionReview === 'function';
+}
 
 export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient; caseId: string }) {
   const [selectedEntityId, setSelectedEntityId] = useState('');
@@ -125,6 +135,10 @@ export function CaseWorkspace({ client, caseId }: { client: CaseWorkspaceClient;
           </ul>
         </section>
       ) : null}
+      {manualConversionBlocked && hasConversionClient(client) ? caseRecord.manual_conversion_attachments.map((attachment) => (
+        <LegacyConversionPanel key={attachment.attachment_id} client={client} caseId={caseId}
+          attachment={attachment} onResolved={() => query.refetch()} />
+      )) : null}
 
       <section className="next-gate" aria-labelledby="next-gate-title">
         <p className="eyebrow">Next gate</p>

@@ -147,6 +147,29 @@ Deno.test('manual source link requires an authenticated operator and exact sourc
   assertEquals(calls.length, 1);
 });
 
+Deno.test('converted DOCX link is bound to the exact candidate and denied to readers', async () => {
+  const calls: unknown[] = [];
+  const documentService = {
+    upload: async () => ({ id: 'unused', version: 1, expiresAt: '2026-11-24' }),
+    approve: async () => ({ id: 'unused', status: 'approved' as const }),
+    manualConversionCandidate: async (authority: unknown, input: unknown) => {
+      calls.push({ authority, input });
+      return { downloadUrl: 'https://storage.example.test/review', convertedSha256: conversionReview.convertedSha256, expiresInSeconds: 60 };
+    },
+  };
+  const query = `action=get_manual_conversion_candidate&case_id=${conversionReview.caseId}&source_attachment_id=${conversionReview.sourceAttachmentId}&source_sha256=${conversionReview.sourceSha256}&converted_document_version_id=${conversionReview.convertedDocumentVersionId}`;
+  const handler = createDocumentApiHandler({ verifyToken: async () => identity,
+    listVersions: async () => [], documentService });
+  assertEquals((await handler(request(query))).status, 200);
+  assertEquals((calls[0] as { input: { convertedDocumentVersionId: string } }).input.convertedDocumentVersionId,
+    conversionReview.convertedDocumentVersionId);
+  const reader = createDocumentApiHandler({ verifyToken: async () => readOnlyIdentity,
+    listVersions: async () => [], documentService });
+  assertEquals((await reader(request(query))).status, 403);
+  assertEquals((await handler(request(`${query}&extra=1`))).status, 400);
+  assertEquals(calls.length, 1);
+});
+
 Deno.test('document API lists safe metadata and uploads reviewed bytes under verified workflow authority', async () => {
   const uploads: unknown[] = [];
   const handler = createDocumentApiHandler({

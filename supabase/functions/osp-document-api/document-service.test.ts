@@ -149,3 +149,25 @@ Deno.test('legacy source download is signed only after tenant and source lookup'
   await assertRejects(() => service.manualConversionSource({ ...actor, permissions: ['osp:read'] }, input), Error, 'FORBIDDEN');
   assertEquals(calls, ['lookup', 'sign']);
 });
+
+Deno.test('converted candidate download is signed only after exact tenant lookup', async () => {
+  const calls: string[] = [];
+  const service = createDocumentService(dependencies({
+    getManualConversionCandidate: async () => {
+      calls.push('lookup');
+      return { opaqueObjectKey: '11111111-1111-4111-8111-111111111111/44444444-4444-4444-8444-444444444444', convertedSha256: 'b'.repeat(64) };
+    },
+    createPrivateReadUrl: async () => {
+      calls.push('sign');
+      return 'https://storage.example.test/candidate?token=synthetic';
+    },
+  }));
+  const actor = { organizationId: '11111111-1111-4111-8111-111111111111', subject: 'fixture:operator', permissions: ['osp:operate'] };
+  const input = { caseId: '22222222-2222-4222-8222-222222222222',
+    sourceAttachmentId: '33333333-3333-4333-8333-333333333333', sourceSha256: 'a'.repeat(64),
+    convertedDocumentVersionId: '44444444-4444-4444-8444-444444444444' };
+  assertEquals((await service.manualConversionCandidate(actor, input)).convertedSha256, 'b'.repeat(64));
+  assertEquals(calls, ['lookup', 'sign']);
+  await assertRejects(() => service.manualConversionCandidate({ ...actor, permissions: ['osp:read'] }, input), Error, 'FORBIDDEN');
+  assertEquals(calls, ['lookup', 'sign']);
+});

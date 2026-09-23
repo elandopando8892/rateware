@@ -86,6 +86,39 @@ export function createPostgresDocumentStore(options: { databaseUrl: string; post
   const sql = created as SqlPort;
 
   return Object.freeze({
+    async getManualConversionCandidate(input: {
+      organizationId: string; caseId: string; sourceAttachmentId: string;
+      sourceSha256: string; convertedDocumentVersionId: string;
+    }) {
+      if (!UUID.test(input.organizationId) || !UUID.test(input.caseId) ||
+          !UUID.test(input.sourceAttachmentId) || !SHA.test(input.sourceSha256) ||
+          !UUID.test(input.convertedDocumentVersionId)) throw new Error('OSP_CONVERSION_REVIEW_INVALID');
+      return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        const row = one(await tx`select version.opaque_object_key, version.source_sha256
+          from osp_private.manual_attachment_conversion_candidates candidate
+          join osp_private.document_versions version
+            on version.organization_id = candidate.organization_id and version.id = candidate.id
+          join osp_private.documents document
+            on document.organization_id = version.organization_id and document.id = version.document_id
+          where candidate.organization_id = ${input.organizationId}
+            and candidate.case_id = ${input.caseId}
+            and candidate.source_attachment_id = ${input.sourceAttachmentId}
+            and candidate.source_sha256 = ${input.sourceSha256}
+            and candidate.id = ${input.convertedDocumentVersionId}
+            and candidate.converted_sha256 = version.source_sha256
+            and version.bucket_id = 'osp-corporate-documents'
+            and version.content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            and version.retention_disposition = 'retain'
+            and version.status in ('review_required', 'approved')
+            and document.case_id = ${input.caseId}`, 'OSP_CONVERSION_REVIEW_INVALID');
+        if (typeof row.opaque_object_key !== 'string' ||
+            row.opaque_object_key !== `${input.organizationId}/${input.convertedDocumentVersionId}` ||
+            typeof row.source_sha256 !== 'string' || !SHA.test(row.source_sha256)) {
+          throw new Error('OSP_CONVERSION_REVIEW_INVALID');
+        }
+        return Object.freeze({ opaqueObjectKey: row.opaque_object_key, convertedSha256: row.source_sha256 });
+      });
+    },
     async listManualConversionCandidates(input: {
       organizationId: string; caseId: string; sourceAttachmentId: string; sourceSha256: string;
     }) {
