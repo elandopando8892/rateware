@@ -117,28 +117,17 @@ describe('createSupabaseAuthPort', () => {
     });
   });
 
-  it('accepts the dedicated Operations identity without widening the production allowlist', async () => {
+  it('rejects the automation-only Operations mailbox as an interactive identity', async () => {
     const { auth } = fixture('ops@xbfreight.com');
     const port = createSupabaseAuthPort(runtime, {
       origin: 'https://osp.heymarksman.com',
       createClient: () => ({ auth: auth as never }),
     });
 
-    const session = await port.initialize();
-    expect(session?.identity).toMatchObject({
-      email: 'ops@xbfreight.com',
-      organization: 'ca0a8f30-1382-4316-9bd5-cb76d9ab4920',
-    });
-
-    await port.login('/app/pipeline', ' OPS@XBFREIGHT.COM ');
-    expect(auth.signInWithOAuth).toHaveBeenCalledWith(expect.objectContaining({
-      options: expect.objectContaining({
-        queryParams: {
-          login_hint: 'ops@xbfreight.com',
-          prompt: 'select_account',
-        },
-      }),
-    }));
+    await expect(port.initialize()).rejects.toThrow('reserved for automation');
+    expect(port.getCurrentSession()).toBeNull();
+    await expect(port.login('/app/pipeline', ' OPS@XBFREIGHT.COM ')).rejects.toThrow('reserved for automation');
+    expect(auth.signInWithOAuth).not.toHaveBeenCalled();
   });
 
   it('rejects a verified Google session whose email is outside the OSP allowlist', async () => {

@@ -213,7 +213,7 @@ describe('App authentication and routing', () => {
     const history = createMemoryHistory({ initialEntries: ['/app/cases/22222222-2222-4222-8222-222222222222'] });
     render(<App authPort={authPort(session)} apiClient={api} routerHistory={history} />);
     expect(await screen.findByRole('alert', undefined, { timeout: 5_000 })).toHaveTextContent(/manual conversion required/i);
-    expect(screen.getByText(/QF-167\.doc/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /conversión supervisada: QF-167\.doc/i })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('radio', { name: /XBFUS/i }));
     await userEvent.click(screen.getByRole('checkbox', { name: /confirm this supplier request must use XBFUS/i }));
     expect(screen.getByRole('button', { name: /bind entity to case/i })).toBeDisabled();
@@ -276,6 +276,16 @@ describe('App authentication and routing', () => {
     await userEvent.click(await screen.findByRole('button', { name: /start new session/i }));
     expect(port.logout).toHaveBeenCalledOnce();
     expect(await screen.findByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
+  });
+
+  it('explains that the Operations mailbox cannot enter the human workspace', async () => {
+    const port = authPort(null, Promise.reject(new Error('The Operations mailbox is reserved for automation. Sign in with your Sales account.')));
+    render(<App authPort={port} apiClient={client()} authProvider="supabase" buildProfile="production-readonly" />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/reserved for automation/i);
+    expect(screen.queryByRole('button', { name: /retry access/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /start new session/i }));
+    expect(port.logout).toHaveBeenCalledOnce();
+    expect(await screen.findByRole('button', { name: /continue with google/i })).toBeInTheDocument();
   });
 
   it('redirects authenticated /app to pipeline and controls unknown /app routes', async () => {

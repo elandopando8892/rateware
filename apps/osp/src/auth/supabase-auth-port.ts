@@ -14,7 +14,6 @@ const PRODUCTION_RATEWARE_ORGANIZATION = 'ca0a8f30-1382-4316-9bd5-cb76d9ab4920';
 const PRODUCTION_EMAILS = new Set([
   'carriers@xbfreight.com',
   'jgonzalez@xbfreight.com',
-  'ops@xbfreight.com',
   'sales@heymarksman.com',
 ]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -43,6 +42,13 @@ function normalizedEmail(value: unknown): string {
   const email = value.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Verified email is invalid');
   return email;
+}
+
+function assertApprovedEmail(email: string): void {
+  if (email === 'ops@xbfreight.com') {
+    throw new Error('The Operations mailbox is reserved for automation. Sign in with your Sales account.');
+  }
+  if (!PRODUCTION_EMAILS.has(email)) throw new Error('Email is not approved for OSP');
 }
 
 function audienceContains(value: unknown, expected: string): boolean {
@@ -101,7 +107,7 @@ function bindSession(
     throw new Error('Supabase session identity is invalid');
   }
   if (config.VITE_OSP_BUILD_PROFILE === 'production-readonly' && !PRODUCTION_EMAILS.has(email)) {
-    throw new Error('Email is not approved for OSP');
+    assertApprovedEmail(email);
   }
   return {
     identity: {
@@ -219,9 +225,7 @@ export function createSupabaseAuthPort(
     async login(returnTo, candidateEmail) {
       if (!active) throw new Error('Auth port is inactive');
       const email = candidateEmail === undefined ? undefined : normalizedEmail(candidateEmail);
-      if (config.VITE_OSP_BUILD_PROFILE === 'production-readonly' && email && !PRODUCTION_EMAILS.has(email)) {
-        throw new Error('Email is not approved for OSP');
-      }
+      if (config.VITE_OSP_BUILD_PROFILE === 'production-readonly' && email) assertApprovedEmail(email);
       const approvedReturnTo = safeReturnTo(returnTo, origin);
       const redirect = new URL(callbackUri);
       redirect.searchParams.set('returnTo', approvedReturnTo);
