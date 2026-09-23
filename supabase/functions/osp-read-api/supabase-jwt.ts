@@ -16,8 +16,6 @@ import type {
 const CANONICAL_ORGANIZATION = 'ca0a8f30-1382-4316-9bd5-cb76d9ab4920';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EXPECTED_PERMISSIONS = Object.freeze({
-  'carriers@xbfreight.com': Object.freeze(['osp:read']),
-  'jgonzalez@xbfreight.com': Object.freeze(['osp:read', 'osp:signature-approve']),
   'sales@heymarksman.com': Object.freeze(['osp:read', 'osp:superuser']),
 } satisfies Record<string, readonly string[]>);
 

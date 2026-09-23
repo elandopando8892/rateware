@@ -29,11 +29,11 @@ function AuthenticatedApp({ apiClient, authProvider, buildProfile, routerHistory
     return <main className="auth-page"><p role="status" aria-label="Checking access">Checking access…</p></main>;
   }
   if (auth.state.status === 'error') {
-    const automationMailbox = auth.state.error.message === 'The Operations mailbox is reserved for automation. Sign in with your Sales account.';
+    const automationMailbox = auth.state.error.message === 'This mailbox is reserved for automation. Sign in with your Sales account.';
     return (
       <main className="auth-page">
         <p role="alert">{automationMailbox
-          ? 'The Operations mailbox is reserved for automation. Start a new session with your Sales account.'
+          ? 'This mailbox is reserved for automation. Start a new session with your Sales account.'
           : 'We could not verify access. Please try again.'}</p>
         {automationMailbox ? null : <button type="button" onClick={() => void auth.refresh()}>Retry access</button>}
         {authProvider === 'kinde'

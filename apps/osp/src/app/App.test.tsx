@@ -278,8 +278,8 @@ describe('App authentication and routing', () => {
     expect(await screen.findByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
   });
 
-  it('explains that the Operations mailbox cannot enter the human workspace', async () => {
-    const port = authPort(null, Promise.reject(new Error('The Operations mailbox is reserved for automation. Sign in with your Sales account.')));
+  it('explains that automation mailboxes cannot enter the human workspace', async () => {
+    const port = authPort(null, Promise.reject(new Error('This mailbox is reserved for automation. Sign in with your Sales account.')));
     render(<App authPort={port} apiClient={client()} authProvider="supabase" buildProfile="production-readonly" />);
     expect(await screen.findByRole('alert')).toHaveTextContent(/reserved for automation/i);
     expect(screen.queryByRole('button', { name: /retry access/i })).not.toBeInTheDocument();

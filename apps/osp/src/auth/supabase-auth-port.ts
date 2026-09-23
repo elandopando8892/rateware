@@ -12,8 +12,6 @@ import type { BoundSession, ManagedAuthPort, OspAuthorizationIdentity } from './
 
 const PRODUCTION_RATEWARE_ORGANIZATION = 'ca0a8f30-1382-4316-9bd5-cb76d9ab4920';
 const PRODUCTION_EMAILS = new Set([
-  'carriers@xbfreight.com',
-  'jgonzalez@xbfreight.com',
   'sales@heymarksman.com',
 ]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -45,8 +43,8 @@ function normalizedEmail(value: unknown): string {
 }
 
 function assertApprovedEmail(email: string): void {
-  if (email === 'ops@xbfreight.com') {
-    throw new Error('The Operations mailbox is reserved for automation. Sign in with your Sales account.');
+  if (email === 'ops@xbfreight.com' || email === 'carriers@xbfreight.com') {
+    throw new Error('This mailbox is reserved for automation. Sign in with your Sales account.');
   }
   if (!PRODUCTION_EMAILS.has(email)) throw new Error('Email is not approved for OSP');
 }

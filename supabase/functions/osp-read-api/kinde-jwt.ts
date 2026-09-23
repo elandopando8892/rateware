@@ -27,8 +27,6 @@ const JWKS_REFRESH_COOLDOWN_MS = 30_000;
 const JWKS_MAX_AGE_MS = 600_000;
 const OSP_PRODUCTION_READONLY_EMAILS = Object.freeze([
   'sales@heymarksman.com',
-  'carriers@xbfreight.com',
-  'jgonzalez@xbfreight.com',
 ]);
 
 export type KindeJwtVerifier = {

@@ -194,8 +194,6 @@ describe('production read-only identity allowlist', () => {
 
   it.each([
     'sales@heymarksman.com',
-    'carriers@xbfreight.com',
-    'jgonzalez@xbfreight.com',
   ])('accepts approved identity %s without paid Kinde permissions', (email) => {
     expect(bindVerifiedTokenPair({
       accessClaims: { ...baseAccessClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, org_code: undefined, email },
@@ -206,6 +204,16 @@ describe('production read-only identity allowlist', () => {
       organization: 'ca0a8f30-1382-4316-9bd5-cb76d9ab4920',
     });
   });
+
+  it.each(['carriers@xbfreight.com', 'jgonzalez@xbfreight.com', 'ops@xbfreight.com'])(
+    'rejects former interactive identity %s', (email) => {
+      expect(() => bindVerifiedTokenPair({
+        accessClaims: { ...baseAccessClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, org_code: undefined, email },
+        idClaims: { ...baseIdClaims, azp: productionRuntime.VITE_KINDE_CLIENT_ID, aud: productionRuntime.VITE_KINDE_CLIENT_ID, org_code: undefined, org_codes: ['org_dbc2fd12c76'], email },
+        config: productionRuntime,
+      })).toThrow();
+    },
+  );
 
   it('accepts the exact production org_code when Kinde includes it in both tokens', () => {
     const bound = bindVerifiedTokenPair({

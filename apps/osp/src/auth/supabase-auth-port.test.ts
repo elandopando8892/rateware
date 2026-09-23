@@ -22,13 +22,13 @@ function token(overrides: Record<string, unknown> = {}): string {
     role: 'authenticated',
     sub: '11111111-1111-4111-8111-111111111111',
     session_id: '22222222-2222-4222-8222-222222222222',
-    email: 'jgonzalez@xbfreight.com',
+    email: 'sales@heymarksman.com',
     amr: [{ method: 'oauth', timestamp: 1_800_000_000 }],
     ...overrides,
   })}.fixture`;
 }
 
-function fixture(email = 'jgonzalez@xbfreight.com') {
+function fixture(email = 'sales@heymarksman.com') {
   const accessToken = token({ email });
   const user = {
     id: '11111111-1111-4111-8111-111111111111',
@@ -81,20 +81,20 @@ describe('createSupabaseAuthPort', () => {
       approvalSessionIssuedAt: new Date(1_800_000_000 * 1_000).toISOString(),
       identity: {
         subject: '11111111-1111-4111-8111-111111111111',
-        email: 'jgonzalez@xbfreight.com',
+        email: 'sales@heymarksman.com',
         organization: 'ca0a8f30-1382-4316-9bd5-cb76d9ab4920',
       },
     });
     expect(await port.getAccessToken(session!)).toBe(accessToken);
     expect(await port.getApprovalProof(session!)).toBe(accessToken);
 
-    await port.login('/app/pipeline', ' JGONZALEZ@XBFREIGHT.COM ');
+    await port.login('/app/pipeline', ' SALES@HEYMARKSMAN.COM ');
     expect(auth.signInWithOAuth).toHaveBeenCalledWith({
       provider: 'google',
       options: {
         redirectTo: 'https://osp.heymarksman.com/app?returnTo=%2Fapp%2Fpipeline',
         queryParams: {
-          login_hint: 'jgonzalez@xbfreight.com',
+          login_hint: 'sales@heymarksman.com',
           prompt: 'select_account',
         },
       },
@@ -117,8 +117,8 @@ describe('createSupabaseAuthPort', () => {
     });
   });
 
-  it('rejects the automation-only Operations mailbox as an interactive identity', async () => {
-    const { auth } = fixture('ops@xbfreight.com');
+  it.each(['ops@xbfreight.com', 'carriers@xbfreight.com'])('rejects the automation-only %s mailbox as an interactive identity', async (email) => {
+    const { auth } = fixture(email);
     const port = createSupabaseAuthPort(runtime, {
       origin: 'https://osp.heymarksman.com',
       createClient: () => ({ auth: auth as never }),
@@ -126,7 +126,18 @@ describe('createSupabaseAuthPort', () => {
 
     await expect(port.initialize()).rejects.toThrow('reserved for automation');
     expect(port.getCurrentSession()).toBeNull();
-    await expect(port.login('/app/pipeline', ' OPS@XBFREIGHT.COM ')).rejects.toThrow('reserved for automation');
+    await expect(port.login('/app/pipeline', email.toUpperCase())).rejects.toThrow('reserved for automation');
+    expect(auth.signInWithOAuth).not.toHaveBeenCalled();
+  });
+
+  it('rejects the former signature account because Sales is the only interactive principal', async () => {
+    const { auth } = fixture('jgonzalez@xbfreight.com');
+    const port = createSupabaseAuthPort(runtime, {
+      origin: 'https://osp.heymarksman.com',
+      createClient: () => ({ auth: auth as never }),
+    });
+    await expect(port.initialize()).rejects.toThrow('Email is not approved for OSP');
+    await expect(port.login('/app/pipeline', 'jgonzalez@xbfreight.com')).rejects.toThrow('Email is not approved for OSP');
     expect(auth.signInWithOAuth).not.toHaveBeenCalled();
   });
 

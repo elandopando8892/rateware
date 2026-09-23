@@ -25,8 +25,6 @@ type BoundTokenPair = {
 
 const PRODUCTION_READONLY_EMAILS = new Set([
   'sales@heymarksman.com',
-  'carriers@xbfreight.com',
-  'jgonzalez@xbfreight.com',
 ]);
 const PRODUCTION_KINDE_ORGANIZATION = 'org_dbc2fd12c76';
 const PRODUCTION_RATEWARE_ORGANIZATION = 'ca0a8f30-1382-4316-9bd5-cb76d9ab4920';

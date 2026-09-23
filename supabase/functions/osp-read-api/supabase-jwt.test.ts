@@ -30,11 +30,11 @@ async function fixture() {
     role: 'authenticated',
     sub: USER_ID,
     session_id: SESSION_ID,
-    email: 'jgonzalez@xbfreight.com',
+    email: 'sales@heymarksman.com',
     is_anonymous: false,
     amr: [{ method: 'otp', timestamp: NOW - 60 }],
     osp_organization_id: ORGANIZATION_ID,
-    osp_permissions: ['osp:read', 'osp:signature-approve'],
+    osp_permissions: ['osp:read', 'osp:superuser'],
     nbf: NOW - 10,
     exp: NOW + 60,
     ...overrides,
@@ -51,7 +51,7 @@ async function expectCode(operation: Promise<unknown>, code: 'UNAUTHORIZED' | 'F
   });
 }
 
-Deno.test('Supabase JWT verifier binds the reviewed XBF role and fresh session proof', async () => {
+Deno.test('Supabase JWT verifier binds the reviewed Sales role and fresh session proof', async () => {
   const { verifier, sign } = await fixture();
   const token = await sign();
 
@@ -62,10 +62,10 @@ Deno.test('Supabase JWT verifier binds the reviewed XBF role and fresh session p
       authorizedParty: 'authenticated',
       subject: USER_ID,
       organization: ORGANIZATION_ID,
-      email: 'jgonzalez@xbfreight.com',
+      email: 'sales@heymarksman.com',
       emailVerified: true,
     },
-    permissions: ['osp:read', 'osp:signature-approve'],
+    permissions: ['osp:read', 'osp:superuser'],
   });
 
   const approval = await verifier.verifyApproval(token, token);
@@ -73,7 +73,7 @@ Deno.test('Supabase JWT verifier binds the reviewed XBF role and fresh session p
   assert.equal(approval.authorizationSessionIssuedAt, new Date((NOW - 60) * 1_000).toISOString());
 });
 
-Deno.test('Supabase JWT verifier rejects the automation-only Operations mailbox', async () => {
+Deno.test('Supabase JWT verifier rejects automation mailboxes and former signature principal', async () => {
   const { verifier, sign } = await fixture();
   const token = await sign({
     email: 'ops@xbfreight.com',
@@ -85,6 +85,14 @@ Deno.test('Supabase JWT verifier rejects the automation-only Operations mailbox'
   await expectCode(verifier.verifyWorkflow(await sign({
     email: 'ops@xbfreight.com',
     osp_permissions: ['osp:read', 'osp:operate', 'osp:sales-authorize'],
+  })), 'FORBIDDEN');
+  await expectCode(verifier.verifyWorkflow(await sign({
+    email: 'carriers@xbfreight.com',
+    osp_permissions: ['osp:read'],
+  })), 'FORBIDDEN');
+  await expectCode(verifier.verifyWorkflow(await sign({
+    email: 'jgonzalez@xbfreight.com',
+    osp_permissions: ['osp:read', 'osp:signature-approve'],
   })), 'FORBIDDEN');
 });
 
@@ -112,7 +120,7 @@ Deno.test('Supabase JWT verifier grants the permanent Sales superuser permission
 Deno.test('Supabase JWT verifier rejects claim smuggling and cross-proof composition', async () => {
   const { verifier, sign } = await fixture();
   await expectCode(verifier.verifyWorkflow(await sign({
-    osp_permissions: ['osp:read', 'osp:signature-approve', 'osp:sales-authorize'],
+    osp_permissions: ['osp:read', 'osp:superuser', 'osp:sales-authorize'],
   })), 'FORBIDDEN');
   await expectCode(verifier.verifyWorkflow(await sign({
     osp_organization_id: '33333333-3333-4333-8333-333333333333',
