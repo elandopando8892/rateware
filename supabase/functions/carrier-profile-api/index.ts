@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
+import { syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -245,6 +246,72 @@ async function loadRequest(supabase: CarrierProfileSupabaseClient, token: string
   return { request, vendor: objectRecord(request.vendors), status: 200 };
 }
 
+// A follow-up only helps if the team sees it. Post it to the Bid Room thread
+// the ticket was mirrored to (the carrier's private thread): that flags the
+// thread for a reply and relays the message to the same Google Chat thread,
+// exactly like a carrier message from the portal. Tickets without a
+// google_chat_thread_id were never mirrored, so there is nothing to reply to.
+async function notifyTeamOfFollowup(
+  supabase: CarrierProfileSupabaseClient,
+  request: Record<string, unknown>,
+  vendor: Record<string, unknown>,
+  ticket: Record<string, unknown>,
+  message: string
+) {
+  const threadId = cleanText(objectRecord(ticket.metadata).google_chat_thread_id);
+  if (!threadId) return { status: "skipped" };
+  const threadResult = await supabase
+    .from("bid_room_chat_threads")
+    .select("*")
+    .eq("id", threadId)
+    .eq("owner_email", request.owner_email)
+    .eq("vendor_id", vendor.id)
+    .neq("status", "archived")
+    .maybeSingle();
+  if (threadResult.error) throw threadResult.error;
+  const thread = threadResult.data as Record<string, unknown> | null;
+  if (!thread) return { status: "skipped" };
+
+  const messageResult = await supabase
+    .from("bid_room_chat_messages")
+    .insert({
+      owner_user_id: thread.owner_user_id,
+      owner_email: thread.owner_email,
+      thread_id: thread.id,
+      rfx_event_id: thread.rfx_event_id,
+      rfx_lane_id: thread.rfx_lane_id,
+      vendor_id: vendor.id,
+      sender_role: "carrier",
+      sender_name: cleanText(vendor.vendor_name || vendor.domain, 240) || "Carrier",
+      sender_email: cleanText(vendor.primary_email, 254),
+      body: `Follow-up on support ticket ${ticket.id}:\n${message}`,
+      google_chat_sync_status: "pending",
+      metadata: { source: "carrier_profile_followup", contact_history_id: ticket.id }
+    })
+    .select("*")
+    .single();
+  if (messageResult.error) throw messageResult.error;
+
+  await supabase.from("bid_room_chat_threads").update({
+    updated_at: new Date().toISOString(),
+    communication_status: "needs_reply",
+    needs_reply: true,
+    read_status: "unread",
+    last_action_at: new Date().toISOString()
+  }).eq("id", thread.id);
+
+  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, messageResult.data as Record<string, unknown>);
+  if (sync.status === "error") console.error("carrier-profile-api follow-up notice failed:", sync.error || "Google Chat rejected the message.");
+  return sync;
+}
+
+// The follow-up is already saved when the notice runs, so a failed notice is
+// logged instead of turning the carrier's save into an error.
+function logFollowupNoticeError(error: unknown) {
+  console.error("carrier-profile-api follow-up notice failed:", publicErrorMessage(error));
+  return { status: "error" };
+}
+
 Deno.serve(async (request) => {
   const jsonResponse = (body: unknown, status = 200) => baseJsonResponse(body, status, request);
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(request) });
@@ -366,6 +433,7 @@ Deno.serve(async (request) => {
         })
         .eq("id", ticketId);
       if (update.error) throw update.error;
+      await notifyTeamOfFollowup(supabase, requestRow, vendor, ticketResult.data, message).catch(logFollowupNoticeError);
       const supportTickets = await loadSupportTickets(supabase, requestRow, vendor).catch(logSupportTicketError);
       return jsonResponse({ support_tickets: supportTickets, saved: true });
     }
