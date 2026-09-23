@@ -73,16 +73,19 @@ jobs:
       - name: Gate authorization no-regression against main
         run: node tools/validate-action-contract-no-regression.mjs --baseline-root /tmp/rateware-main
 
-      - name: Run Rateware product regression suite
-        run: npm run test:product
-
       - name: Start clean local Supabase database
+        env:
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
         run: supabase db start
 
       - name: Replay every migration from scratch
+        env:
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
         run: supabase db reset --local
 
       - name: Dump resulting public schema
+        env:
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
         run: supabase db dump --local --schema public --file /tmp/rateware-public-schema.sql
 
       - name: Verify canonical tenant objects survived replay
@@ -96,7 +99,7 @@ jobs:
           container='supabase_db_alqjqzqagdmcywpjtnnr'
           ledger="$(docker exec "$container" psql -U postgres -d postgres -Atc \
             "select count(*)::text || '|' || max(version)::text from supabase_migrations.schema_migrations")"
-          test "$ledger" = '374|20260907120000'
+          test "$ledger" = '381|20260923170746'
 
           grants="$(docker exec "$container" psql -U postgres -d postgres -Atc \
             "select has_table_privilege('service_role','public.provider_legal_entity_fact_promotions','SELECT'),
@@ -106,6 +109,9 @@ jobs:
                     has_table_privilege('service_role','public.provider_onboarding_release_package_approvals','INSERT')")"
           test "$grants" = 't|t|t|t|t'
           echo 'Final migration ledger and Provider Service grants PASS.'
+
+      - name: Run Rateware product regression suite
+        run: npm run test:product
 
       - name: Stop local Supabase
         if: always()
