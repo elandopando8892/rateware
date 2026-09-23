@@ -566,8 +566,10 @@ export function createPostgresIntakePersistence(
               if (existing.length !== 0) {
                 throw new Error("REVIEWED_THREAD_TARGET_CONFLICT");
               }
+              // The prior job is already terminal. A row lock requires UPDATE
+              // privilege, which the tenant-scoped workflow role must not have.
               const prior =
-                await tx`select id, opaque_payload, completed_at, last_error_code from osp_private.background_jobs where organization_id = ${input.organizationId} and id = ${input.priorJobId} and kind = 'gmail_ingest' for update`;
+                await tx`select id, opaque_payload, completed_at, last_error_code from osp_private.background_jobs where organization_id = ${input.organizationId} and id = ${input.priorJobId} and kind = 'gmail_ingest'`;
               if (
                 prior.length !== 1 || !prior[0].completed_at ||
                 prior[0].last_error_code !== "INVALID_INPUT"

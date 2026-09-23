@@ -160,6 +160,9 @@ function createHarness(
       /select id, opaque_payload, completed_at, last_error_code from osp_private\.background_jobs/
         .test(text)
     ) {
+      if (/for update/.test(text)) {
+        throw new Error("WORKFLOW_ROLE_CANNOT_LOCK_BACKGROUND_JOBS");
+      }
       return options.prior === "wrong"
         ? [{
           id: priorJobId,
