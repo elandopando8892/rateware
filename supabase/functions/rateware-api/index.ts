@@ -27459,7 +27459,10 @@ export function createRatewareApiHandler(
       const maxLimit = lightweight ? 1000 : 250;
       const limit = Math.min(Math.max(Number(body.limit) || 75, 1), maxLimit);
       const vendorSelect = lightweight
-        ? "id,vendor_name,name,legal_name,contact_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,whatsapp_permission_basis,whatsapp_do_not_contact,whatsapp_opt_in_status,whatsapp_group_url,whatsapp_group_name,whatsapp_meta_group_id,whatsapp_group_status,whatsapp_notes,base_stage,funnel_stage,status,tags,coverage_notes,notes,logo_url,created_at,updated_at"
+        ? "id,vendor_name,name,legal_name,contact_name,domain,primary_email,secondary_emails,whatsapp_phone,preferred_channel,whatsapp_permission_basis,whatsapp_do_not_contact,whatsapp_opt_in_status,whatsapp_group_url,whatsapp_group_name,whatsapp_meta_group_id,whatsapp_group_status,whatsapp_notes,base_stage,funnel_stage,status,tags,coverage_notes,notes,logo_url,created_at,updated_at," +
+          // The legal name a carrier typed in its profile, for lists that show
+          // "razón social" when the legal_name column is still empty.
+          "profile_legal_name:profile_data->identity->>legal_name"
         : "*";
       let searchTotal = 0;
       let filteredTotal = 0;
