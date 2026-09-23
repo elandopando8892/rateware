@@ -11,6 +11,16 @@ const identity = {
 } as const;
 const readOnlyIdentity = { ...identity, permissions: ['osp:read'] } as const;
 const origin = 'https://osp.heymarksman.com';
+const conversionReview = {
+  caseId: '22222222-2222-4222-8222-222222222222',
+  sourceAttachmentId: '33333333-3333-4333-8333-333333333333',
+  sourceSha256: 'a'.repeat(64),
+  convertedDocumentVersionId: '44444444-4444-4444-8444-444444444444',
+  convertedSha256: 'b'.repeat(64),
+  sourcePageCount: 3,
+  convertedPageCount: 3,
+  fidelityConfirmed: true,
+};
 
 function request(query: string, init: RequestInit = {}) {
   const { headers, ...rest } = init;
@@ -18,6 +28,124 @@ function request(query: string, init: RequestInit = {}) {
     method: 'POST', ...rest, headers: { origin, authorization: 'Bearer synthetic-token', ...headers },
   });
 }
+
+Deno.test('manual conversion review binds the authenticated operator and exact source hashes', async () => {
+  const recorded: unknown[] = [];
+  const base = {
+    listVersions: async () => [],
+    documentService: {
+      upload: async () => ({ id: 'unused', version: 1, expiresAt: '2026-11-24' }),
+      approve: async () => ({ id: 'unused', status: 'approved' as const }),
+    },
+    manualConversionStore: {
+      recordManualConversionReview: async (input: unknown) => {
+        recorded.push(input);
+        return { conversionId: '55555555-5555-4555-8555-555555555555', replayed: false };
+      },
+      listManualConversionCandidates: async () => [],
+    },
+  };
+  const handler = createDocumentApiHandler({ ...base, verifyToken: async () => identity });
+  const body = JSON.stringify(conversionReview);
+  const accepted = await handler(request('action=record_manual_conversion_review', {
+    headers: { 'content-type': 'application/json' }, body,
+  }));
+  assertEquals(accepted.status, 200);
+  assertEquals(recorded, [{
+    organizationId: identity.identity.organization,
+    reviewerSubject: identity.identity.subject,
+    ...conversionReview,
+  }]);
+
+  const reader = createDocumentApiHandler({ ...base, verifyToken: async () => readOnlyIdentity });
+  const denied = await reader(request('action=record_manual_conversion_review', {
+    headers: { 'content-type': 'application/json' }, body,
+  }));
+  assertEquals(denied.status, 403);
+  const wrongPages = await handler(request('action=record_manual_conversion_review', {
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...conversionReview, convertedPageCount: 2 }),
+  }));
+  assertEquals(wrongPages.status, 400);
+  assertEquals(recorded.length, 1);
+});
+
+Deno.test('manual conversion candidates require exact source identity and an operator', async () => {
+  const calls: unknown[] = [];
+  const base = {
+    listVersions: async () => [],
+    documentService: { upload: async () => ({ id: 'unused', version: 1, expiresAt: '2026-11-24' }),
+      approve: async () => ({ id: 'unused', status: 'approved' as const }) },
+    manualConversionStore: {
+      recordManualConversionReview: async () => { throw new Error('not used'); },
+      listManualConversionCandidates: async (input: unknown) => {
+        calls.push(input);
+        return [{ id: conversionReview.convertedDocumentVersionId,
+          convertedSha256: conversionReview.convertedSha256, version: 1,
+          status: 'review_required' as const, createdAt: '2026-09-22T00:00:00.000Z', conversionId: null }];
+      },
+    },
+  };
+  const query = `action=list_manual_conversion_candidates&case_id=${conversionReview.caseId}&source_attachment_id=${conversionReview.sourceAttachmentId}&source_sha256=${conversionReview.sourceSha256}`;
+  const handler = createDocumentApiHandler({ ...base, verifyToken: async () => identity });
+  const response = await handler(request(query));
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).data.candidates[0].status, 'review_required');
+  assertEquals(calls, [{ organizationId: identity.identity.organization, caseId: conversionReview.caseId,
+    sourceAttachmentId: conversionReview.sourceAttachmentId, sourceSha256: conversionReview.sourceSha256 }]);
+  const reader = createDocumentApiHandler({ ...base, verifyToken: async () => readOnlyIdentity });
+  assertEquals((await reader(request(query))).status, 403);
+  assertEquals((await handler(request(`${query}&extra=1`))).status, 400);
+  assertEquals(calls.length, 1);
+});
+
+Deno.test('case conversion upload binds exact case and source to an Operations identity', async () => {
+  const uploads: unknown[] = [];
+  const documentService = {
+    upload: async () => ({ id: 'unused', version: 1, expiresAt: '2026-11-24' }),
+    approve: async () => ({ id: 'unused', status: 'approved' as const }),
+    uploadCaseConversion: async (authority: unknown, input: unknown) => {
+      uploads.push({ authority, input });
+      return { id: '55555555-5555-4555-8555-555555555555', version: 1, convertedSha256: 'b'.repeat(64) };
+    },
+  };
+  const query = `action=upload_case_conversion&case_id=${conversionReview.caseId}&source_attachment_id=${conversionReview.sourceAttachmentId}&source_sha256=${conversionReview.sourceSha256}`;
+  const body = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+  const handler = createDocumentApiHandler({ verifyToken: async () => identity,
+    listVersions: async () => [], documentService });
+  const accepted = await handler(request(query, { headers: { 'content-type':
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }, body }));
+  assertEquals(accepted.status, 201);
+  assertEquals((uploads[0] as { authority: { subject: string } }).authority.subject, identity.identity.subject);
+  assertEquals((uploads[0] as { input: { sourceSha256: string } }).input.sourceSha256, conversionReview.sourceSha256);
+  const reader = createDocumentApiHandler({ verifyToken: async () => readOnlyIdentity,
+    listVersions: async () => [], documentService });
+  assertEquals((await reader(request(query, { headers: { 'content-type':
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }, body }))).status, 403);
+  assertEquals(uploads.length, 1);
+});
+
+Deno.test('manual source link requires an authenticated operator and exact source identity', async () => {
+  const calls: unknown[] = [];
+  const documentService = {
+    upload: async () => ({ id: 'unused', version: 1, expiresAt: '2026-11-24' }),
+    approve: async () => ({ id: 'unused', status: 'approved' as const }),
+    manualConversionSource: async (authority: unknown, input: unknown) => {
+      calls.push({ authority, input });
+      return { downloadUrl: 'https://storage.example.test/private', filename: 'source.doc',
+        sourceSha256: conversionReview.sourceSha256, expiresInSeconds: 60 };
+    },
+  };
+  const query = `action=get_manual_conversion_source&case_id=${conversionReview.caseId}&source_attachment_id=${conversionReview.sourceAttachmentId}&source_sha256=${conversionReview.sourceSha256}`;
+  const handler = createDocumentApiHandler({ verifyToken: async () => identity,
+    listVersions: async () => [], documentService });
+  assertEquals((await handler(request(query))).status, 200);
+  assertEquals(calls.length, 1);
+  const reader = createDocumentApiHandler({ verifyToken: async () => readOnlyIdentity,
+    listVersions: async () => [], documentService });
+  assertEquals((await reader(request(query))).status, 403);
+  assertEquals(calls.length, 1);
+});
 
 Deno.test('document API lists safe metadata and uploads reviewed bytes under verified workflow authority', async () => {
   const uploads: unknown[] = [];

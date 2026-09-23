@@ -42,6 +42,13 @@ Deno.test("semantic gate excludes a manifest while a legacy DOC conversion is pe
   assertMatch(manifestQuery, /not exists \([\s\S]*?from osp_private\.gmail_attachments pending_attachment/);
   assertMatch(manifestQuery, /source_message\.case_id = manifest\.case_id/);
   assertMatch(manifestQuery, /pending_attachment\.processing_disposition = 'manual_conversion_required'/);
+  assertMatch(manifestQuery, /not exists \([\s\S]*?from osp_private\.manual_attachment_conversions conversion/);
+  assertMatch(manifestQuery, /conversion\.source_sha256 = pending_attachment\.source_sha256/);
+  assertMatch(manifestQuery, /converted\.source_sha256 = conversion\.converted_sha256/);
+  assertMatch(manifestQuery, /converted_document\.case_id = manifest\.case_id/);
+  assertMatch(manifestQuery, /converted\.status = 'approved'/);
+  assertMatch(manifestQuery, /converted\.retention_disposition = 'retain'/);
+  assertMatch(manifestQuery, /order by safety\.version desc[\s\S]*?limit 1[\s\S]*?= 'safe'/);
 });
 
 Deno.test("MVP deferrals keep only the internal Operations gate available", () => {

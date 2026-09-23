@@ -321,6 +321,45 @@ it('lists quarterly document versions through the authenticated document endpoin
   expect(init).toEqual({ method: 'POST', headers: { authorization: 'Bearer bound-token' } });
 });
 
+it('keeps legacy conversion source, upload and review scoped to one case without automatic retries', async () => {
+  const caseId = '22222222-2222-4222-8222-222222222222';
+  const sourceAttachmentId = '33333333-3333-4333-8333-333333333333';
+  const sourceSha256 = 'a'.repeat(64);
+  const convertedDocumentVersionId = '44444444-4444-4444-8444-444444444444';
+  const convertedSha256 = 'b'.repeat(64);
+  const h = harness([
+    json({ data: { downloadUrl: 'https://storage.example.test/temporary', filename: 'source.doc', sourceSha256, expiresInSeconds: 60 } }),
+    json({ data: { id: convertedDocumentVersionId, version: 1, convertedSha256 } }, 201),
+    json({ data: { conversionId: '55555555-5555-4555-8555-555555555555', replayed: false } }),
+    json({ data: { candidates: [{ id: convertedDocumentVersionId, convertedSha256, version: 1,
+      status: 'approved', createdAt: '2026-09-22T00:00:00.000Z',
+      conversionId: '55555555-5555-4555-8555-555555555555' }] } }),
+  ]);
+  const source = { caseId, sourceAttachmentId, sourceSha256 };
+  await expect(h.client.getManualConversionSource(source)).resolves.toMatchObject({ sourceSha256 });
+  await expect(h.client.uploadCaseConversion({ ...source, bytes: new Uint8Array([1, 2, 3]) }))
+    .resolves.toMatchObject({ id: convertedDocumentVersionId });
+  await expect(h.client.recordManualConversionReview({ ...source, convertedDocumentVersionId,
+    convertedSha256, sourcePageCount: 3, convertedPageCount: 3, fidelityConfirmed: true }))
+    .resolves.toMatchObject({ replayed: false });
+  await expect(h.client.listManualConversionCandidates(source)).resolves.toMatchObject([
+    { id: convertedDocumentVersionId, status: 'approved', conversionId: '55555555-5555-4555-8555-555555555555' },
+  ]);
+  expect(h.fetch).toHaveBeenCalledTimes(4);
+  expect(String(h.fetch.mock.calls[0][0])).toContain('action=get_manual_conversion_source');
+  expect(String(h.fetch.mock.calls[1][0])).toContain('action=upload_case_conversion');
+  expect(String(h.fetch.mock.calls[2][0])).toContain('action=record_manual_conversion_review');
+  expect(String(h.fetch.mock.calls[3][0])).toContain('action=list_manual_conversion_candidates');
+  const reviewBody = h.fetch.mock.calls[2][1]?.body as ArrayBuffer;
+  expect(JSON.parse(new TextDecoder().decode(reviewBody))).toMatchObject({ caseId, sourceAttachmentId,
+    sourceSha256, convertedDocumentVersionId, convertedSha256, fidelityConfirmed: true });
+  const offline = harness([new TypeError('response lost')]);
+  await expect(offline.client.recordManualConversionReview({ ...source, convertedDocumentVersionId,
+    convertedSha256, sourcePageCount: 3, convertedPageCount: 3, fidelityConfirmed: true }))
+    .rejects.toMatchObject({ code: 'NETWORK_UNAVAILABLE' });
+  expect(offline.fetch).toHaveBeenCalledOnce();
+});
+
 it('uploads an immutable quarterly document without automatic network retry', async () => {
   const h = harness([new TypeError('ambiguous network failure'), json({ data: { id: '22222222-2222-4222-8222-222222222222', version: 1, expiresAt: '2026-11-24' } }, 201)]);
   await expect(h.client.uploadDocumentVersion({

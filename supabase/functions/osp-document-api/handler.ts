@@ -1,18 +1,21 @@
 import type { VerifiedWorkflowIdentity } from '../_shared/osp/workflow-authority.ts';
 import { ospBrowserOrigins } from '../_shared/osp/browser-origins.ts';
 import { jsonResponse, NO_CACHE_HEADERS, OspApiError, postCorsHeaders, safeErrorResponse } from '../osp-read-api/http.ts';
-import type { DocumentApprovalInput, DocumentAuthority, DocumentUploadInput } from './document-service.ts';
-import type { CaseProfileBindingInput, CaseProfileDraftInput, DocumentVersionSummary, ProfileFactPromotionInput, ProfileReviewClaimInput, ProfileReviewFieldDecisionInput, ProfileReviewFinalizationInput } from './postgres-document-store.ts';
+import type { CaseConversionUploadInput, DocumentApprovalInput, DocumentAuthority, DocumentUploadInput } from './document-service.ts';
+import type { CaseProfileBindingInput, CaseProfileDraftInput, DocumentVersionSummary, ManualConversionReviewInput, ProfileFactPromotionInput, ProfileReviewClaimInput, ProfileReviewFieldDecisionInput, ProfileReviewFinalizationInput } from './postgres-document-store.ts';
 
 const BODY_LIMIT_BYTES = 26_214_400;
 const DOCUMENT_TYPES = new Set(['proof_of_address', 'sat_compliance_opinion', 'tax_status_certificate', 'bank_statement']);
 const CONTENT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']);
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
 const DATE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 
 type DocumentServicePort = {
+  manualConversionSource?(authority: DocumentAuthority, input: { caseId: string; sourceAttachmentId: string; sourceSha256: string }): Promise<{ downloadUrl: string; filename: string; sourceSha256: string; expiresInSeconds: number }>;
   upload(authority: DocumentAuthority, input: DocumentUploadInput): Promise<{ id: string; version: number; expiresAt: string }>;
+  uploadCaseConversion?(authority: DocumentAuthority, input: CaseConversionUploadInput): Promise<{ id: string; version: number; convertedSha256: string }>;
   approve(authority: DocumentAuthority, input: DocumentApprovalInput): Promise<{ id: string; status: 'approved' }>;
 };
 
@@ -31,6 +34,14 @@ export type DocumentApiHandlerOptions = {
   listVersions(organizationId: string): Promise<readonly DocumentVersionSummary[]>;
   documentService: DocumentServicePort;
   profileReviewStore?: ProfileReviewStorePort;
+  manualConversionStore?: {
+    recordManualConversionReview(input: ManualConversionReviewInput): Promise<{ conversionId: string; replayed: boolean }>;
+    listManualConversionCandidates(input: { organizationId: string; caseId: string; sourceAttachmentId: string; sourceSha256: string }): Promise<readonly {
+      id: string; convertedSha256: string; version: number;
+      status: 'review_required' | 'approved' | 'rejected' | 'superseded';
+      createdAt: string; conversionId: string | null;
+    }[]>;
+  };
   incidentId?: () => string;
 };
 
@@ -68,9 +79,25 @@ function preflightHeaders(url: URL): readonly string[] {
     exactQuery(url, ['action', 'document_type', 'valid_from']);
     return ['authorization', 'content-type'];
   }
+  if (action === 'upload_case_conversion') {
+    exactQuery(url, ['action', 'case_id', 'source_attachment_id', 'source_sha256']);
+    return ['authorization', 'content-type'];
+  }
+  if (action === 'get_manual_conversion_source') {
+    exactQuery(url, ['action', 'case_id', 'source_attachment_id', 'source_sha256']);
+    return ['authorization'];
+  }
+  if (action === 'list_manual_conversion_candidates') {
+    exactQuery(url, ['action', 'case_id', 'source_attachment_id', 'source_sha256']);
+    return ['authorization'];
+  }
   if (action === 'approve_document_version') {
     exactQuery(url, ['action', 'version_id', 'expected_version', 'review_before_sha256', 'review_after_sha256']);
     return ['authorization'];
+  }
+  if (action === 'record_manual_conversion_review') {
+    exactQuery(url, ['action']);
+    return ['authorization', 'content-type'];
   }
   if (['claim_profile_review', 'decide_profile_review_field', 'finalize_profile_review', 'promote_profile_review_facts', 'bind_case_profile', 'assemble_case_profile_draft'].includes(action ?? '')) {
     exactQuery(url, ['action']);
@@ -178,7 +205,7 @@ function note(value: unknown): string {
 function serviceError(error: unknown): OspApiError {
   const code = error instanceof Error ? error.message : '';
   if (code === 'FORBIDDEN') return new OspApiError('FORBIDDEN');
-  if (/^(DOCUMENT_UPLOAD_REJECTED|DOCUMENT_APPROVAL_REJECTED|DOCUMENT_REVIEW_HASH_MISMATCH|DOCUMENT_VERSION_CONFLICT|DOCUMENT_NOT_FOUND|DOCUMENT_STORAGE_REJECTED|PROFILE_(?:REVIEW|FIELD|FACT|CORRECTION|WITHHOLD|RESTRICTED|EVIDENCE).*|CASE_PROFILE_.*)$/.test(code)) return new OspApiError('INVALID_REQUEST');
+  if (/^(DOCUMENT_UPLOAD_REJECTED|DOCUMENT_APPROVAL_REJECTED|DOCUMENT_REVIEW_HASH_MISMATCH|DOCUMENT_VERSION_CONFLICT|DOCUMENT_NOT_FOUND|DOCUMENT_STORAGE_REJECTED|OSP_CONVERSION_REVIEW_(?:INVALID|SOURCE_INVALID|CONFLICT)|PROFILE_(?:REVIEW|FIELD|FACT|CORRECTION|WITHHOLD|RESTRICTED|EVIDENCE).*|CASE_PROFILE_.*)$/.test(code)) return new OspApiError('INVALID_REQUEST');
   if (/^(DOCUMENT_PERSISTENCE_FAILED|DOCUMENT_STORAGE_(?:TEMPORARY|INTEGRITY)|MALWARE_SCAN_UNAVAILABLE)$/.test(code)) return new OspApiError('DEPENDENCY_UNAVAILABLE');
   return new OspApiError('INTERNAL_ERROR');
 }
@@ -229,6 +256,52 @@ export function createDocumentApiHandler(options: DocumentApiHandlerOptions): (r
         const result = await options.documentService.upload(authority, { documentType: query.document_type as DocumentUploadInput['documentType'], contentType, validFrom: query.valid_from, bytes: await bytes(request) });
         return jsonResponse({ data: result }, 201, postCorsHeaders(allowed));
       }
+      if (action === 'upload_case_conversion') {
+        const query = exactQuery(url, ['action', 'case_id', 'source_attachment_id', 'source_sha256']);
+        const authority = permission(verified, 'operate');
+        if (!options.documentService.uploadCaseConversion) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+        const encoding = request.headers.get('content-encoding');
+        if (!UUID.test(query.case_id) || !UUID.test(query.source_attachment_id) ||
+            !SHA.test(query.source_sha256) || request.headers.get('content-type') !== DOCX ||
+            (encoding && encoding.toLowerCase() !== 'identity') || request.headers.has('transfer-encoding')) {
+          throw new OspApiError('INVALID_REQUEST');
+        }
+        const result = await options.documentService.uploadCaseConversion(authority, {
+          caseId: query.case_id,
+          sourceAttachmentId: query.source_attachment_id,
+          sourceSha256: query.source_sha256,
+          bytes: await bytes(request),
+        });
+        return jsonResponse({ data: result }, 201, postCorsHeaders(allowed));
+      }
+      if (action === 'get_manual_conversion_source') {
+        const query = exactQuery(url, ['action', 'case_id', 'source_attachment_id', 'source_sha256']);
+        await requireEmptyBody(request);
+        const authority = permission(verified, 'operate');
+        if (!options.documentService.manualConversionSource) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+        if (!UUID.test(query.case_id) || !UUID.test(query.source_attachment_id) || !SHA.test(query.source_sha256)) {
+          throw new OspApiError('INVALID_REQUEST');
+        }
+        const result = await options.documentService.manualConversionSource(authority, {
+          caseId: query.case_id, sourceAttachmentId: query.source_attachment_id,
+          sourceSha256: query.source_sha256,
+        });
+        return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+      }
+      if (action === 'list_manual_conversion_candidates') {
+        const query = exactQuery(url, ['action', 'case_id', 'source_attachment_id', 'source_sha256']);
+        await requireEmptyBody(request);
+        const authority = permission(verified, 'operate');
+        if (!options.manualConversionStore) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+        if (!UUID.test(query.case_id) || !UUID.test(query.source_attachment_id) || !SHA.test(query.source_sha256)) {
+          throw new OspApiError('INVALID_REQUEST');
+        }
+        const candidates = await options.manualConversionStore.listManualConversionCandidates({
+          organizationId: authority.organizationId, caseId: query.case_id,
+          sourceAttachmentId: query.source_attachment_id, sourceSha256: query.source_sha256,
+        });
+        return jsonResponse({ data: { candidates } }, 200, postCorsHeaders(allowed));
+      }
       if (action === 'approve_document_version') {
         const query = exactQuery(url, ['action', 'version_id', 'expected_version', 'review_before_sha256', 'review_after_sha256']);
         await requireEmptyBody(request);
@@ -236,6 +309,38 @@ export function createDocumentApiHandler(options: DocumentApiHandlerOptions): (r
         const expectedVersion = Number(query.expected_version);
         if (!UUID.test(query.version_id) || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1 || !SHA.test(query.review_before_sha256) || !SHA.test(query.review_after_sha256)) throw new OspApiError('INVALID_REQUEST');
         const result = await options.documentService.approve(authority, { versionId: query.version_id, expectedVersion, reviewBeforeSha256: query.review_before_sha256, reviewAfterSha256: query.review_after_sha256 });
+        return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
+      }
+      if (action === 'record_manual_conversion_review') {
+        exactQuery(url, ['action']);
+        const authority = permission(verified, 'operate');
+        const body = await strictJsonObject(request, [
+          'caseId', 'sourceAttachmentId', 'sourceSha256', 'convertedDocumentVersionId',
+          'convertedSha256', 'sourcePageCount', 'convertedPageCount', 'fidelityConfirmed',
+        ]);
+        if (!options.manualConversionStore) throw new OspApiError('DEPENDENCY_UNAVAILABLE');
+        if (typeof body.caseId !== 'string' || !UUID.test(body.caseId) ||
+            typeof body.sourceAttachmentId !== 'string' || !UUID.test(body.sourceAttachmentId) ||
+            typeof body.sourceSha256 !== 'string' || !SHA.test(body.sourceSha256) ||
+            typeof body.convertedDocumentVersionId !== 'string' || !UUID.test(body.convertedDocumentVersionId) ||
+            typeof body.convertedSha256 !== 'string' || !SHA.test(body.convertedSha256) ||
+            typeof body.sourcePageCount !== 'number' || !Number.isSafeInteger(body.sourcePageCount) ||
+            body.sourcePageCount < 1 || body.sourcePageCount > 1000 ||
+            body.convertedPageCount !== body.sourcePageCount || body.fidelityConfirmed !== true) {
+          throw new OspApiError('INVALID_REQUEST');
+        }
+        const result = await options.manualConversionStore.recordManualConversionReview({
+          organizationId: authority.organizationId,
+          caseId: body.caseId,
+          sourceAttachmentId: body.sourceAttachmentId,
+          sourceSha256: body.sourceSha256,
+          convertedDocumentVersionId: body.convertedDocumentVersionId,
+          convertedSha256: body.convertedSha256,
+          sourcePageCount: body.sourcePageCount,
+          convertedPageCount: body.convertedPageCount as number,
+          reviewerSubject: authority.subject,
+          fidelityConfirmed: true,
+        });
         return jsonResponse({ data: result }, 200, postCorsHeaders(allowed));
       }
       if (action === 'claim_profile_review') {

@@ -5,6 +5,107 @@ import { createPostgresDocumentStore } from './postgres-document-store.ts';
 const organizationId = '11111111-1111-4111-8111-111111111111';
 const sourceSha256 = 'a'.repeat(64);
 
+Deno.test('manual conversion review calls only the tenant-scoped reviewed lineage command', async () => {
+  const queries: Array<{ text: string; values: unknown[] }> = [];
+  const sql = Object.assign(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const text = strings.join('?');
+    queries.push({ text, values });
+    if (text.includes('record_manual_attachment_conversion_review')) {
+      return [{ conversion_id: '55555555-5555-4555-8555-555555555555', replayed: false }];
+    }
+    return [];
+  }, { begin: async <T>(fn: (tx: typeof sql) => Promise<T>) => await fn(sql) });
+  const store = createPostgresDocumentStore({ databaseUrl: 'postgres://localhost:55322/osp', postgresFactory: () => sql });
+  const input = {
+    organizationId,
+    caseId: '22222222-2222-4222-8222-222222222222',
+    sourceAttachmentId: '33333333-3333-4333-8333-333333333333',
+    sourceSha256,
+    convertedDocumentVersionId: '44444444-4444-4444-8444-444444444444',
+    convertedSha256: 'b'.repeat(64),
+    sourcePageCount: 3,
+    convertedPageCount: 3,
+    reviewerSubject: 'fixture:operator',
+    fidelityConfirmed: true as const,
+  };
+  assertEquals(await store.recordManualConversionReview(input), {
+    conversionId: '55555555-5555-4555-8555-555555555555', replayed: false,
+  });
+  const command = queries.find((query) => query.text.includes('record_manual_attachment_conversion_review'));
+  assertEquals(command?.values, [organizationId, input.caseId, input.sourceAttachmentId, sourceSha256,
+    input.convertedDocumentVersionId, input.convertedSha256, 3, 3, 'fixture:operator', true]);
+  await assertRejects(() => store.recordManualConversionReview({ ...input, convertedPageCount: 2 }), Error, 'OSP_CONVERSION_REVIEW_INVALID');
+  assertEquals(queries.filter((query) => query.text.includes('record_manual_attachment_conversion_review')).length, 1);
+});
+
+Deno.test('case conversion version is case-bound, passive-policy checked and remains review-required', async () => {
+  const statements: string[] = [];
+  const versionId = '44444444-4444-4444-8444-444444444444';
+  const sql = Object.assign(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const statement = strings.join('?');
+    statements.push(statement);
+    if (statement.includes('from osp_private.gmail_attachments attachment')) return [{ id: '33333333-3333-4333-8333-333333333333' }];
+    if (statement.includes('insert into osp_private.document_versions')) return [{ id: versionId, version: 1 }];
+    if (statement.includes('mark_document_review_required_command')) return [{ id: versionId, status: 'review_required' }];
+    if (statement.includes('update osp_private.documents')) return [{ version: 1 }];
+    return [];
+  }, { begin: async <T>(fn: (tx: typeof sql) => Promise<T>) => await fn(sql) });
+  const store = createPostgresDocumentStore({ databaseUrl: 'postgres://localhost:55322/osp', postgresFactory: () => sql });
+  const created = await store.createCaseConversionVersion({
+    organizationId, caseId: '22222222-2222-4222-8222-222222222222',
+    sourceAttachmentId: '33333333-3333-4333-8333-333333333333',
+    sourceSha256, convertedVersionId: versionId, convertedSha256: 'b'.repeat(64),
+    opaqueObjectKey: `${organizationId}/${versionId}`, sizeBytes: 4,
+    uploadedBySubject: 'fixture:operator',
+  });
+  assertEquals(created, { id: versionId, version: 1 });
+  assertEquals(statements.some((value) => value.includes("attachment.processing_disposition = 'manual_conversion_required'")), true);
+  assertEquals(statements.some((value) => value.includes('source_safety_assessments')), true);
+  assertEquals(statements.some((value) => value.includes('mark_document_review_required_command')), true);
+  assertEquals(statements.some((value) => value.includes('insert into osp_private.manual_attachment_conversions')), false);
+});
+
+Deno.test('manual conversion candidates are read back with durable review status', async () => {
+  const versionId = '44444444-4444-4444-8444-444444444444';
+  const sql = Object.assign(async (strings: TemplateStringsArray) => {
+    const statement = strings.join('?');
+    if (statement.includes('from osp_private.manual_attachment_conversion_candidates candidate')) {
+      assertEquals(statement.includes('candidate.organization_id = ?'), true);
+      assertEquals(statement.includes('candidate.case_id = ?'), true);
+      assertEquals(statement.includes('candidate.source_attachment_id = ?'), true);
+      assertEquals(statement.includes('candidate.source_sha256 = ?'), true);
+      return [{ id: versionId, converted_sha256: 'b'.repeat(64), version: 1, status: 'approved',
+        created_at: new Date('2026-09-22T00:00:00.000Z'), conversion_id: '55555555-5555-4555-8555-555555555555' }];
+    }
+    return [];
+  }, { begin: async <T>(fn: (tx: typeof sql) => Promise<T>) => await fn(sql) });
+  const store = createPostgresDocumentStore({ databaseUrl: 'postgres://localhost:55322/osp', postgresFactory: () => sql });
+  assertEquals(await store.listManualConversionCandidates({ organizationId,
+    caseId: '22222222-2222-4222-8222-222222222222',
+    sourceAttachmentId: '33333333-3333-4333-8333-333333333333', sourceSha256 }), [{
+      id: versionId, convertedSha256: 'b'.repeat(64), version: 1, status: 'approved',
+      createdAt: '2026-09-22T00:00:00.000Z', conversionId: '55555555-5555-4555-8555-555555555555',
+    }]);
+});
+
+Deno.test('manual conversion source read requires exact tenant case attachment and hash', async () => {
+  const sql = Object.assign(async (strings: TemplateStringsArray) => {
+    const statement = strings.join('?');
+    if (statement.includes('from osp_private.gmail_attachments attachment')) {
+      assertEquals(statement.includes("attachment.processing_disposition = 'manual_conversion_required'"), true);
+      assertEquals(statement.includes('message.case_id = ?'), true);
+      return [{ opaque_object_key: `${organizationId}/33333333-3333-4333-8333-333333333333`, filename: 'source.doc' }];
+    }
+    return [];
+  }, { begin: async <T>(fn: (tx: typeof sql) => Promise<T>) => await fn(sql) });
+  const store = createPostgresDocumentStore({ databaseUrl: 'postgres://localhost:55322/osp', postgresFactory: () => sql });
+  assertEquals(await store.getManualConversionSource({ organizationId,
+    caseId: '22222222-2222-4222-8222-222222222222',
+    sourceAttachmentId: '33333333-3333-4333-8333-333333333333', sourceSha256 }), {
+    opaqueObjectKey: `${organizationId}/33333333-3333-4333-8333-333333333333`, filename: 'source.doc',
+  });
+});
+
 Deno.test('profile corrections bind serialized JSON as text before PostgreSQL parses it', async () => {
   const samples = ['XBFREIGHT SYSTEMS LLC', 'A "quoted" name', 'José González', 1771165, false, { verified: true }, ['one', 'two']];
   for (const reviewerValue of samples) {

@@ -781,6 +781,10 @@ function createPreviewClient(): OspClient {
   const answerEvidenceReceipts = new Map<string, { intent: string; receipt: AnswerMemoryEvidenceLinkReceipt }>();
   let answerEvidenceRenewed = false;
   const client: OspClient = {
+    getManualConversionSource: async () => { throw new Error('Preview conversion download unavailable'); },
+    uploadCaseConversion: async () => { throw new Error('Preview conversion upload unavailable'); },
+    recordManualConversionReview: async () => { throw new Error('Preview conversion review unavailable'); },
+    listManualConversionCandidates: async () => [],
     listOnboardingWorkspace: async () => ({ requests_total: '26', documents_pending: '7', under_review: '5', ready_for_approval: '3' }),
     getGmailStatus: async () => ({
       connection_exists: true,

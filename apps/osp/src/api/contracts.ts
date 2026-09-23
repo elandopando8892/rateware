@@ -596,6 +596,32 @@ export const DocumentApprovalResponseSchema = z.strictObject({
   data: z.strictObject({ id: z.uuid(), status: z.literal('approved') }),
 });
 
+export const ManualConversionSourceResponseSchema = z.strictObject({
+  data: z.strictObject({
+    downloadUrl: z.url().refine((value) => value.startsWith('https://')),
+    filename: z.string().min(1).max(255),
+    sourceSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    expiresInSeconds: z.literal(60),
+  }),
+});
+export const CaseConversionUploadResponseSchema = z.strictObject({
+  data: z.strictObject({
+    id: z.uuid(), version: z.number().int().min(1).max(2_147_483_647),
+    convertedSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  }),
+});
+export const ManualConversionReviewResponseSchema = z.strictObject({
+  data: z.strictObject({ conversionId: z.uuid(), replayed: z.boolean() }),
+});
+export const ManualConversionCandidatesResponseSchema = z.strictObject({
+  data: z.strictObject({ candidates: z.array(z.strictObject({
+    id: z.uuid(), convertedSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    version: z.number().int().min(1).max(2_147_483_647),
+    status: z.enum(['review_required', 'approved', 'rejected', 'superseded']),
+    createdAt: utcDate, conversionId: z.uuid().nullable(),
+  })).max(20) }),
+});
+
 const clarificationEvidenceId = z.string().regex(/^[A-Za-z0-9:_-]{1,256}$/);
 export const ClarificationQuestionSchema = z.strictObject({
   kind: z.enum(['missing', 'contradiction']),

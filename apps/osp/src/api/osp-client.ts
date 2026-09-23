@@ -24,6 +24,10 @@ import {
   type CaseDetail,
   type CaseSummary,
   DocumentApprovalResponseSchema,
+  ManualConversionSourceResponseSchema,
+  CaseConversionUploadResponseSchema,
+  ManualConversionReviewResponseSchema,
+  ManualConversionCandidatesResponseSchema,
   DocumentUploadResponseSchema,
   DocumentVersionsResponseSchema,
   ClarificationReviewResponseSchema,
@@ -94,6 +98,17 @@ export interface OspCaseReadClient {
 
 export type DocumentUploadInput = { documentType: QuarterlyDocumentType; validFrom: string; contentType: string; bytes: Uint8Array };
 export type DocumentApprovalInput = { versionId: string; expectedVersion: number; reviewBeforeSha256: string; reviewAfterSha256: string };
+export type ManualConversionSourceInput = { caseId: string; sourceAttachmentId: string; sourceSha256: string };
+export type CaseConversionUploadInput = ManualConversionSourceInput & { bytes: Uint8Array };
+export type ManualConversionReviewInput = ManualConversionSourceInput & {
+  convertedDocumentVersionId: string; convertedSha256: string;
+  sourcePageCount: number; convertedPageCount: number; fidelityConfirmed: true;
+};
+export type ManualConversionCandidate = {
+  id: string; convertedSha256: string; version: number;
+  status: 'review_required' | 'approved' | 'rejected' | 'superseded';
+  createdAt: string; conversionId: string | null;
+};
 export type ClarificationReviewInput = { draftId: string; expectedCaseVersion: number; expectedCanonicalSha256: string; questions: readonly ClarificationQuestion[] };
 export type SaveFormTemplateDraftInput = { idempotencyKey: string; templateId: string | null; expectedVersion: number; name: string; surveyJson: unknown };
 export type PublishFormTemplateInput = { idempotencyKey: string; templateId: string; templateVersionId: string; expectedVersion: number };
@@ -138,6 +153,10 @@ export interface OspClient extends OspReadClient, OspCorporateProfileClient, Osp
   listDocumentVersions(): Promise<readonly DocumentVersion[]>;
   uploadDocumentVersion(input: DocumentUploadInput): Promise<{ id: string; version: number; expiresAt: string }>;
   approveDocumentVersion(input: DocumentApprovalInput): Promise<{ id: string; status: 'approved' }>;
+  getManualConversionSource(input: ManualConversionSourceInput): Promise<{ downloadUrl: string; filename: string; sourceSha256: string; expiresInSeconds: 60 }>;
+  uploadCaseConversion(input: CaseConversionUploadInput): Promise<{ id: string; version: number; convertedSha256: string }>;
+  recordManualConversionReview(input: ManualConversionReviewInput): Promise<{ conversionId: string; replayed: boolean }>;
+  listManualConversionCandidates(input: ManualConversionSourceInput): Promise<readonly ManualConversionCandidate[]>;
   listClarificationReviews(): Promise<readonly ClarificationReview[]>;
   saveClarificationReview(input: ClarificationReviewInput): Promise<ClarificationReview>;
   listFormTemplates(): Promise<FormTemplateCatalog>;
@@ -652,6 +671,45 @@ export function createOspClient(options: ClientOptions): OspClient {
         schema: DocumentApprovalResponseSchema,
       });
       return response.data;
+    },
+    getManualConversionSource: async (input: ManualConversionSourceInput) => {
+      if (!UUID.test(input.caseId) || !UUID.test(input.sourceAttachmentId) || !SHA.test(input.sourceSha256)) throw new OspClientError('INVALID_REQUEST');
+      return (await documentRequest({
+        query: [['action', 'get_manual_conversion_source'], ['case_id', input.caseId],
+          ['source_attachment_id', input.sourceAttachmentId], ['source_sha256', input.sourceSha256]],
+        expectedStatus: 200, schema: ManualConversionSourceResponseSchema,
+      })).data;
+    },
+    uploadCaseConversion: async (input: CaseConversionUploadInput) => {
+      if (!UUID.test(input.caseId) || !UUID.test(input.sourceAttachmentId) || !SHA.test(input.sourceSha256) ||
+          !(input.bytes instanceof Uint8Array) || input.bytes.byteLength < 1 || input.bytes.byteLength > 26_214_400) throw new OspClientError('INVALID_REQUEST');
+      return (await documentRequest({
+        query: [['action', 'upload_case_conversion'], ['case_id', input.caseId],
+          ['source_attachment_id', input.sourceAttachmentId], ['source_sha256', input.sourceSha256]],
+        expectedStatus: 201, schema: CaseConversionUploadResponseSchema,
+        contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        body: input.bytes.slice().buffer,
+      })).data;
+    },
+    recordManualConversionReview: async (input: ManualConversionReviewInput) => {
+      if (!UUID.test(input.caseId) || !UUID.test(input.sourceAttachmentId) || !SHA.test(input.sourceSha256) ||
+          !UUID.test(input.convertedDocumentVersionId) || !SHA.test(input.convertedSha256) ||
+          !Number.isSafeInteger(input.sourcePageCount) || input.sourcePageCount < 1 || input.sourcePageCount > 1000 ||
+          input.convertedPageCount !== input.sourcePageCount || input.fidelityConfirmed !== true) throw new OspClientError('INVALID_REQUEST');
+      const body = new TextEncoder().encode(JSON.stringify(input));
+      return (await documentRequest({
+        query: [['action', 'record_manual_conversion_review']], expectedStatus: 200,
+        schema: ManualConversionReviewResponseSchema, contentType: 'application/json',
+        body: body.buffer,
+      })).data;
+    },
+    listManualConversionCandidates: async (input: ManualConversionSourceInput) => {
+      if (!UUID.test(input.caseId) || !UUID.test(input.sourceAttachmentId) || !SHA.test(input.sourceSha256)) throw new OspClientError('INVALID_REQUEST');
+      return (await documentRequest({
+        query: [['action', 'list_manual_conversion_candidates'], ['case_id', input.caseId],
+          ['source_attachment_id', input.sourceAttachmentId], ['source_sha256', input.sourceSha256]],
+        expectedStatus: 200, schema: ManualConversionCandidatesResponseSchema,
+      })).data.candidates;
     },
     listClarificationReviews: async () => (await caseRequest({
       query: [['action', 'list_clarification_reviews']], schema: ClarificationReviewsResponseSchema,

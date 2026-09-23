@@ -8,6 +8,7 @@ import { createDocumentApiHandler } from './handler.ts';
 import { createManagedMalwareScanner } from './managed-malware-scanner.ts';
 import { createPostgresDocumentStore, type PostgresFactory } from './postgres-document-store.ts';
 import { createSupabaseDocumentStoragePort, type DocumentStorageClient } from './supabase-storage-port.ts';
+import { assertStrictDocxPackage } from '../osp-worker/strict-document-package-scanner.ts';
 
 export type DocumentApiEnvironment = { get(name: string): string | undefined };
 export type DocumentApiRuntimeOptions = {
@@ -62,6 +63,10 @@ export function createDocumentApiRuntime(options: DocumentApiRuntimeOptions): (r
     createPrivateReadUrl: storage.createPrivateReadUrl,
     deletePrivateObject: storage.deletePrivateObject,
     createVersion: store.createVersion,
+    createCaseConversionVersion: store.createCaseConversionVersion,
+    assertSafeDocx: assertStrictDocxPackage,
+    getManualConversionSource: store.getManualConversionSource,
+    createOriginalReadUrl: storage.createOriginalReadUrl,
     approveVersion: store.approveVersion,
   });
   return createDocumentApiHandler({
@@ -70,5 +75,6 @@ export function createDocumentApiRuntime(options: DocumentApiRuntimeOptions): (r
     listVersions: store.listVersions,
     documentService,
     profileReviewStore: store,
+    manualConversionStore: store,
   });
 }

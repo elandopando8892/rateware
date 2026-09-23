@@ -268,6 +268,41 @@ export function createPostgresOspReadStore({
             WHERE message.organization_id = case_record.organization_id
               AND message.case_id = case_record.id
               AND attachment.processing_disposition = 'manual_conversion_required'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM osp_private.manual_attachment_conversions conversion
+                JOIN osp_private.document_versions converted
+                  ON converted.organization_id = conversion.organization_id
+                 AND converted.id = conversion.converted_document_version_id
+                JOIN osp_private.documents converted_document
+                  ON converted_document.organization_id = converted.organization_id
+                 AND converted_document.id = converted.document_id
+                WHERE conversion.organization_id = attachment.organization_id
+                  AND conversion.case_id = case_record.id
+                  AND conversion.source_attachment_id = attachment.id
+                  AND conversion.source_sha256 = attachment.source_sha256
+                  AND converted.source_sha256 = conversion.converted_sha256
+                  AND converted_document.case_id = case_record.id
+                  AND converted.content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                  AND converted.bucket_id = 'osp-corporate-documents'
+                  AND converted.status = 'approved'
+                  AND converted.retention_disposition = 'retain'
+                  AND (
+                    SELECT safety.status
+                    FROM osp_private.source_safety_assessments safety
+                    WHERE safety.organization_id = converted.organization_id
+                      AND safety.document_version_id = converted.id
+                      AND safety.content_sha256 = converted.source_sha256
+                    ORDER BY safety.version DESC
+                    LIMIT 1
+                  ) = 'safe'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM osp_private.document_versions later
+                    WHERE later.organization_id = converted.organization_id
+                      AND later.document_id = converted.document_id
+                      AND later.version > converted.version
+                  )
+              )
           ), '[]'::jsonb) AS manual_conversion_attachments,
           latest_message.subject AS latest_subject,
           latest_message.sender_domain AS latest_sender_domain,

@@ -643,6 +643,42 @@ export function createPostgresRequestSemanticGate(options: {
             where source_message.organization_id = manifest.organization_id
               and source_message.case_id = manifest.case_id
               and pending_attachment.processing_disposition = 'manual_conversion_required'
+              and not exists (
+                select 1
+                from osp_private.manual_attachment_conversions conversion
+                join osp_private.document_versions converted
+                  on converted.organization_id = conversion.organization_id
+                 and converted.id = conversion.converted_document_version_id
+                join osp_private.documents converted_document
+                  on converted_document.organization_id = converted.organization_id
+                 and converted_document.id = converted.document_id
+                where conversion.organization_id = pending_attachment.organization_id
+                  and conversion.case_id = manifest.case_id
+                  and conversion.source_attachment_id = pending_attachment.id
+                  and conversion.source_sha256 = pending_attachment.source_sha256
+                  and converted.source_sha256 = conversion.converted_sha256
+                  and converted_document.case_id = manifest.case_id
+                  and converted.content_type =
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                  and converted.bucket_id = 'osp-corporate-documents'
+                  and converted.status = 'approved'
+                  and converted.retention_disposition = 'retain'
+                  and (
+                    select safety.status
+                    from osp_private.source_safety_assessments safety
+                    where safety.organization_id = converted.organization_id
+                      and safety.document_version_id = converted.id
+                      and safety.content_sha256 = converted.source_sha256
+                    order by safety.version desc
+                    limit 1
+                  ) = 'safe'
+                  and not exists (
+                    select 1 from osp_private.document_versions later
+                    where later.organization_id = converted.organization_id
+                      and later.document_id = converted.document_id
+                      and later.version > converted.version
+                  )
+              )
           )
         order by manifest.version desc
         limit 1`;

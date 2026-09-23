@@ -1,7 +1,7 @@
 import postgres from 'npm:postgres@3.4.7';
 
 import { withOrganizationTransaction, type SqlPort, type SqlRow } from '../_shared/osp/database-context.ts';
-import type { DocumentApprovalInput, PersistedDocumentUpload } from './document-service.ts';
+import type { DocumentApprovalInput, PersistedCaseConversionUpload, PersistedDocumentUpload } from './document-service.ts';
 
 export type PostgresFactory = (databaseUrl: string, options: Record<string, unknown>) => unknown;
 type Approval = DocumentApprovalInput & {
@@ -23,6 +23,18 @@ export type ProfileReviewFinalizationInput = ProfileReviewClaimInput & { decisio
 export type ProfileFactPromotionInput = ProfileReviewClaimInput & { candidateSha256: string; comparisonSha256: string; expectedCurrentFactIds: Readonly<Record<string, string | null>> };
 export type CaseProfileBindingInput = { organizationId: string; caseId: string; legalEntityId: string; expectedCaseVersion: number; expectedBindingRevision: number; actorSubject: string; actorPermission: 'osp:operate' };
 export type CaseProfileDraftInput = Omit<CaseProfileBindingInput, 'legalEntityId'> & { expectedFactsSha256: string };
+export type ManualConversionReviewInput = {
+  organizationId: string;
+  caseId: string;
+  sourceAttachmentId: string;
+  sourceSha256: string;
+  convertedDocumentVersionId: string;
+  convertedSha256: string;
+  sourcePageCount: number;
+  convertedPageCount: number;
+  reviewerSubject: string;
+  fidelityConfirmed: true;
+};
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
@@ -74,6 +86,158 @@ export function createPostgresDocumentStore(options: { databaseUrl: string; post
   const sql = created as SqlPort;
 
   return Object.freeze({
+    async listManualConversionCandidates(input: {
+      organizationId: string; caseId: string; sourceAttachmentId: string; sourceSha256: string;
+    }) {
+      if (!UUID.test(input.organizationId) || !UUID.test(input.caseId) ||
+          !UUID.test(input.sourceAttachmentId) || !SHA.test(input.sourceSha256)) {
+        throw new Error('OSP_CONVERSION_REVIEW_INVALID');
+      }
+      return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        const rows = await tx`select candidate.id, candidate.converted_sha256,
+          version.version, version.status, candidate.created_at,
+          reviewed.id as conversion_id
+          from osp_private.manual_attachment_conversion_candidates candidate
+          join osp_private.document_versions version
+            on version.organization_id = candidate.organization_id and version.id = candidate.id
+          left join osp_private.manual_attachment_conversions reviewed
+            on reviewed.organization_id = candidate.organization_id
+           and reviewed.converted_document_version_id = candidate.id
+          where candidate.organization_id = ${input.organizationId}
+            and candidate.case_id = ${input.caseId}
+            and candidate.source_attachment_id = ${input.sourceAttachmentId}
+            and candidate.source_sha256 = ${input.sourceSha256}
+          order by candidate.created_at desc, candidate.id desc limit 20`;
+        return Object.freeze(rows.map((row) => {
+          if (typeof row.id !== 'string' || !UUID.test(row.id) ||
+              typeof row.converted_sha256 !== 'string' || !SHA.test(row.converted_sha256) ||
+              !['review_required', 'approved', 'rejected', 'superseded'].includes(String(row.status)) ||
+              !(row.conversion_id === null || typeof row.conversion_id === 'string' && UUID.test(row.conversion_id)) ||
+              !(row.created_at instanceof Date || typeof row.created_at === 'string')) {
+            throw new Error('DOCUMENT_PERSISTENCE_FAILED');
+          }
+          const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at;
+          if (Number.isNaN(Date.parse(createdAt))) throw new Error('DOCUMENT_PERSISTENCE_FAILED');
+          return Object.freeze({ id: row.id, convertedSha256: row.converted_sha256,
+            version: integer(row.version, 'DOCUMENT_PERSISTENCE_FAILED'),
+            status: row.status as 'review_required' | 'approved' | 'rejected' | 'superseded',
+            createdAt, conversionId: row.conversion_id as string | null });
+        }));
+      });
+    },
+    async getManualConversionSource(input: {
+      organizationId: string; caseId: string; sourceAttachmentId: string; sourceSha256: string;
+    }) {
+      if (!UUID.test(input.organizationId) || !UUID.test(input.caseId) ||
+          !UUID.test(input.sourceAttachmentId) || !SHA.test(input.sourceSha256)) {
+        throw new Error('OSP_CONVERSION_REVIEW_INVALID');
+      }
+      return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        const row = one(await tx`select attachment.opaque_object_key, attachment.filename
+          from osp_private.gmail_attachments attachment
+          join osp_private.gmail_messages message
+            on message.organization_id = attachment.organization_id
+           and message.id = attachment.gmail_message_id
+          where attachment.organization_id = ${input.organizationId}
+            and attachment.id = ${input.sourceAttachmentId}
+            and attachment.source_sha256 = ${input.sourceSha256}
+            and attachment.content_type = 'application/msword'
+            and attachment.processing_disposition = 'manual_conversion_required'
+            and message.case_id = ${input.caseId}`, 'DOCUMENT_NOT_FOUND');
+        if (typeof row.opaque_object_key !== 'string' ||
+            row.opaque_object_key.split('/')[0] !== input.organizationId ||
+            typeof row.filename !== 'string' || row.filename.length < 1 || row.filename.length > 255) {
+          throw new Error('DOCUMENT_PERSISTENCE_FAILED');
+        }
+        return Object.freeze({ opaqueObjectKey: row.opaque_object_key, filename: row.filename });
+      });
+    },
+    async createCaseConversionVersion(input: PersistedCaseConversionUpload) {
+      if (!UUID.test(input.organizationId) || !UUID.test(input.caseId) ||
+          !UUID.test(input.sourceAttachmentId) || !UUID.test(input.convertedVersionId) ||
+          !SHA.test(input.sourceSha256) || !SHA.test(input.convertedSha256) ||
+          input.opaqueObjectKey !== `${input.organizationId}/${input.convertedVersionId}` ||
+          !Number.isSafeInteger(input.sizeBytes) || input.sizeBytes < 1 || input.sizeBytes > 26_214_400 ||
+          !/^[A-Za-z0-9:_@.-]{1,256}$/.test(input.uploadedBySubject)) {
+        throw new Error('DOCUMENT_UPLOAD_REJECTED');
+      }
+      return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        const source = await tx`select attachment.id
+          from osp_private.gmail_attachments attachment
+          join osp_private.gmail_messages message
+            on message.organization_id = attachment.organization_id
+           and message.id = attachment.gmail_message_id
+          join osp_private.customer_registration_cases case_record
+            on case_record.organization_id = message.organization_id
+           and case_record.id = message.case_id
+          where attachment.organization_id = ${input.organizationId}
+            and attachment.id = ${input.sourceAttachmentId}
+            and attachment.source_sha256 = ${input.sourceSha256}
+            and attachment.content_type = 'application/msword'
+            and attachment.processing_disposition = 'manual_conversion_required'
+            and message.case_id = ${input.caseId}
+            and case_record.blocked_by_duplicate_review = false`;
+        if (source.length !== 1) throw new Error('DOCUMENT_UPLOAD_REJECTED');
+        const documentId = crypto.randomUUID();
+        await tx`insert into osp_private.documents (id, organization_id, case_id, version)
+          values (${documentId}, ${input.organizationId}, ${input.caseId}, 0)`;
+        const created = one(await tx`insert into osp_private.document_versions
+          (id, organization_id, document_id, version, document_type, status,
+           source_sha256, bucket_id, opaque_object_key, content_type, valid_from,
+           expires_at, uploaded_by_subject, review_before_sha256, review_after_sha256)
+          values (${input.convertedVersionId}, ${input.organizationId}, ${documentId},
+            1, 'supplier_requirement', 'uploaded', ${input.convertedSha256},
+            'osp-corporate-documents', ${input.opaqueObjectKey},
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            null, null, ${input.uploadedBySubject}, ${input.convertedSha256},
+            ${input.convertedSha256}) returning id, version`, 'DOCUMENT_PERSISTENCE_FAILED');
+        await tx`insert into osp_private.source_safety_assessments
+          (id, organization_id, document_version_id, version, status,
+           content_sha256, reason_code, assessed_at)
+          values (${crypto.randomUUID()}, ${input.organizationId}, ${input.convertedVersionId},
+            1, 'safe', ${input.convertedSha256}, 'strict_passive_document_policy', statement_timestamp())`;
+        const review = one(await tx`select id, status from osp_private.mark_document_review_required_command(
+          ${input.organizationId}, ${input.convertedVersionId})`, 'DOCUMENT_PERSISTENCE_FAILED');
+        if (review.id !== input.convertedVersionId || review.status !== 'review_required') {
+          throw new Error('DOCUMENT_PERSISTENCE_FAILED');
+        }
+        one(await tx`update osp_private.documents
+          set version = 1, updated_at = statement_timestamp()
+          where organization_id = ${input.organizationId} and id = ${documentId}
+            and version = 0 returning version`, 'DOCUMENT_PERSISTENCE_FAILED');
+        await tx`insert into osp_private.manual_attachment_conversion_candidates
+          (id, organization_id, case_id, source_attachment_id, source_sha256,
+           converted_sha256, uploaded_by_subject)
+          values (${input.convertedVersionId}, ${input.organizationId}, ${input.caseId},
+            ${input.sourceAttachmentId}, ${input.sourceSha256}, ${input.convertedSha256},
+            ${input.uploadedBySubject})`;
+        if (created.id !== input.convertedVersionId || integer(created.version, 'DOCUMENT_PERSISTENCE_FAILED') !== 1) {
+          throw new Error('DOCUMENT_PERSISTENCE_FAILED');
+        }
+        return Object.freeze({ id: input.convertedVersionId, version: 1 });
+      });
+    },
+    async recordManualConversionReview(input: ManualConversionReviewInput) {
+      if (!UUID.test(input.organizationId) || !UUID.test(input.caseId) ||
+          !UUID.test(input.sourceAttachmentId) || !UUID.test(input.convertedDocumentVersionId) ||
+          !SHA.test(input.sourceSha256) || !SHA.test(input.convertedSha256) ||
+          !Number.isSafeInteger(input.sourcePageCount) || input.sourcePageCount < 1 || input.sourcePageCount > 1000 ||
+          input.convertedPageCount !== input.sourcePageCount ||
+          !/^[A-Za-z0-9:_@.-]{1,256}$/.test(input.reviewerSubject) || input.fidelityConfirmed !== true) {
+        throw new Error('OSP_CONVERSION_REVIEW_INVALID');
+      }
+      return await withOrganizationTransaction(sql, input.organizationId, async (tx) => {
+        const row = one(await tx`select conversion_id, replayed from osp_private.record_manual_attachment_conversion_review(
+          ${input.organizationId}, ${input.caseId}, ${input.sourceAttachmentId}, ${input.sourceSha256},
+          ${input.convertedDocumentVersionId}, ${input.convertedSha256}, ${input.sourcePageCount},
+          ${input.convertedPageCount}, ${input.reviewerSubject}, ${input.fidelityConfirmed}
+        )`, 'OSP_CONVERSION_REVIEW_CONFLICT');
+        if (typeof row.conversion_id !== 'string' || !UUID.test(row.conversion_id) || typeof row.replayed !== 'boolean') {
+          throw new Error('DOCUMENT_PERSISTENCE_FAILED');
+        }
+        return Object.freeze({ conversionId: row.conversion_id, replayed: row.replayed });
+      });
+    },
     async listVersions(organizationId: string): Promise<readonly DocumentVersionSummary[]> {
       return await withOrganizationTransaction(sql, organizationId, async (tx) => {
         const rows = await tx`select version.id, version.document_type, version.version, version.status, version.valid_from::text as valid_from, version.expires_at::text as expires_at from osp_private.document_versions version join osp_private.documents document on document.organization_id = version.organization_id and document.id = version.document_id where version.organization_id = ${organizationId} and document.case_id is null and version.document_type in ('proof_of_address', 'sat_compliance_opinion', 'tax_status_certificate', 'bank_statement') order by version.document_type asc, version.version desc`;

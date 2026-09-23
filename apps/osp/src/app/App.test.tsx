@@ -88,6 +88,10 @@ function client(): OspClient {
     listDocumentVersions: vi.fn(async () => []),
     uploadDocumentVersion: vi.fn(async () => ({ id: '22222222-2222-4222-8222-222222222222', version: 1, expiresAt: '2026-11-24' })),
     approveDocumentVersion: vi.fn(async (input) => ({ id: input.versionId, status: 'approved' as const })),
+    getManualConversionSource: vi.fn(async () => { throw new Error('not used'); }),
+    uploadCaseConversion: vi.fn(async () => { throw new Error('not used'); }),
+    recordManualConversionReview: vi.fn(async () => { throw new Error('not used'); }),
+    listManualConversionCandidates: vi.fn(async () => []),
     listClarificationReviews: vi.fn(async () => []),
     saveClarificationReview: vi.fn(async (input) => ({
       id: input.draftId, caseId: '33333333-3333-4333-8333-333333333333', caseVersion: input.expectedCaseVersion + 1,
@@ -504,6 +508,7 @@ describe('App authentication and routing', () => {
       getRequestKnowledgeWorkspace: vi.fn(() => pending), promoteRequestKnowledge: vi.fn(() => pending),
       listDocumentVersions: vi.fn(() => pending),
       uploadDocumentVersion: vi.fn(() => pending), approveDocumentVersion: vi.fn(() => pending), listClarificationReviews: vi.fn(() => pending),
+      getManualConversionSource: vi.fn(() => pending), uploadCaseConversion: vi.fn(() => pending), recordManualConversionReview: vi.fn(() => pending), listManualConversionCandidates: vi.fn(() => pending),
       saveClarificationReview: vi.fn(() => pending),
       listFormTemplates: vi.fn(() => pending), saveFormTemplateDraft: vi.fn(() => pending), publishFormTemplate: vi.fn(() => pending),
       getCaseFormWorkspace: vi.fn(() => pending), saveCaseFormDraft: vi.fn(() => pending), acceptCaseFormMapping: vi.fn(() => pending), correctCaseFormMapping: vi.fn(() => pending), submitCaseFormForReview: vi.fn(() => pending),

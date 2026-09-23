@@ -130,6 +130,9 @@ Deno.test('createPostgresOspReadStore emits only exact static scoped SELECT quer
   assert.match(fake.calls[4].text, /case_record\.organization_id\s*=\s*\$/i);
   assert.match(fake.calls[4].text, /case_record\.id\s*=\s*\$/i);
   assert.match(fake.calls[4].text, /FROM\s+osp_private\.request_manifest_drafts\s+manifest/i);
+  assert.match(fake.calls[4].text, /FROM\s+osp_private\.manual_attachment_conversions\s+conversion/i);
+  assert.match(fake.calls[4].text, /conversion\.source_sha256\s*=\s*attachment\.source_sha256/i);
+  assert.match(fake.calls[4].text, /converted\.status\s*=\s*'approved'/i);
   assert.match(fake.calls[5].text, /FROM\s+public\.legal_entities\s+entity/i);
   assert.match(fake.calls[5].text, /provider_legal_entity_profile_fields/i);
   assert.match(fake.calls[5].text, /provider_legal_entity_document_assets/i);

@@ -10,7 +10,8 @@ export type DocumentStorageClient = Pick<SupabaseClient, 'storage'> | SimpleStor
 
 const KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{64}$/;
-const CONTENT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']);
+const CONTENT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/tiff',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
 
 function isSimple(client: DocumentStorageClient): client is SimpleStorageClient {
   return 'upload' in client && 'download' in client && 'remove' in client;
@@ -38,6 +39,29 @@ export function createSupabaseDocumentStoragePort(options: { client: DocumentSto
     } catch { throw new Error('DOCUMENT_STORAGE_TEMPORARY'); }
   };
   return Object.freeze({
+    async createOriginalReadUrl(input: { opaqueObjectKey: string; expiresInSeconds: number }): Promise<string> {
+      if (!KEY.test(input.opaqueObjectKey) || !Number.isSafeInteger(input.expiresInSeconds) ||
+          input.expiresInSeconds < 15 || input.expiresInSeconds > 120) {
+        throw new Error('DOCUMENT_STORAGE_REJECTED');
+      }
+      try {
+        const value = isSimple(options.client)
+          ? await options.client.createSignedUrl?.(input.opaqueObjectKey, input.expiresInSeconds)
+          : await (async () => {
+            const client = options.client as Pick<SupabaseClient, 'storage'>;
+            const result = await client.storage.from('osp-originals').createSignedUrl(
+              input.opaqueObjectKey, input.expiresInSeconds, { download: 'carrier-original.doc' });
+            if (result.error) throw result.error;
+            return result.data?.signedUrl;
+          })();
+        if (typeof value !== 'string') throw new Error('DOCUMENT_STORAGE_TEMPORARY');
+        const parsed = new URL(value);
+        if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash) {
+          throw new Error('DOCUMENT_STORAGE_TEMPORARY');
+        }
+        return value;
+      } catch { throw new Error('DOCUMENT_STORAGE_TEMPORARY'); }
+    },
     async putPrivateObject(input: { bucketId: 'osp-corporate-documents'; opaqueObjectKey: string; bytes: Uint8Array; contentType: string; sourceSha256: string }): Promise<void> {
       const { bucketId, opaqueObjectKey, contentType, sourceSha256 } = input;
       validate(bucketId, opaqueObjectKey);

@@ -93,3 +93,59 @@ Deno.test('document service snapshots bytes and removes an orphan if metadata pe
   assertEquals(stored[0]?.[0], 'i'.charCodeAt(0));
   assertEquals(removed.length, 1);
 });
+
+Deno.test('case conversion upload requires Operations, passive DOCX policy and private hash-checked bytes', async () => {
+  const organizationId = '11111111-1111-4111-8111-111111111111';
+  const caseId = '22222222-2222-4222-8222-222222222222';
+  const sourceAttachmentId = '33333333-3333-4333-8333-333333333333';
+  const converted = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+  const stored: unknown[] = [];
+  const persisted: unknown[] = [];
+  let externalScanCalls = 0;
+  const service = createDocumentService(dependencies({
+    assertSafeDocx: async () => undefined,
+    scan: async () => { externalScanCalls += 1; throw new Error('unexpected external scanner'); },
+    putPrivateObject: async (input: unknown) => { stored.push(input); },
+    createCaseConversionVersion: async (input: unknown) => {
+      persisted.push(input);
+      return { id: (input as { convertedVersionId: string }).convertedVersionId, version: 1 };
+    },
+  }));
+  const actor = { organizationId, subject: 'fixture:operator', permissions: ['osp:operate'] };
+  const input = { caseId, sourceAttachmentId, sourceSha256: 'a'.repeat(64), bytes: converted };
+  const result = await service.uploadCaseConversion(actor, input);
+  assertEquals(result.version, 1);
+  assertEquals(result.convertedSha256.length, 64);
+  assertEquals((persisted[0] as { sourceAttachmentId: string }).sourceAttachmentId, sourceAttachmentId);
+  assertEquals((stored[0] as { contentType: string }).contentType,
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  assertEquals(externalScanCalls, 0);
+  await assertRejects(() => service.uploadCaseConversion({ ...actor, permissions: ['osp:read'] }, input), Error, 'FORBIDDEN');
+  await assertRejects(() => service.uploadCaseConversion(actor, { ...input, sourceSha256: 'invalid' }), Error, 'DOCUMENT_UPLOAD_REJECTED');
+  const unsafe = createDocumentService(dependencies({
+    assertSafeDocx: async () => { throw new Error('DOCX_PACKAGE_POLICY_REJECTED'); },
+    createCaseConversionVersion: async () => { throw new Error('must not persist'); },
+  }));
+  await assertRejects(() => unsafe.uploadCaseConversion(actor, input), Error, 'DOCUMENT_UPLOAD_REJECTED');
+});
+
+Deno.test('legacy source download is signed only after tenant and source lookup', async () => {
+  const calls: string[] = [];
+  const service = createDocumentService(dependencies({
+    getManualConversionSource: async () => {
+      calls.push('lookup');
+      return { opaqueObjectKey: '11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333', filename: 'source.doc' };
+    },
+    createOriginalReadUrl: async () => {
+      calls.push('sign');
+      return 'https://storage.example.test/source?token=synthetic';
+    },
+  }));
+  const actor = { organizationId: '11111111-1111-4111-8111-111111111111', subject: 'fixture:operator', permissions: ['osp:operate'] };
+  const input = { caseId: '22222222-2222-4222-8222-222222222222',
+    sourceAttachmentId: '33333333-3333-4333-8333-333333333333', sourceSha256: 'a'.repeat(64) };
+  assertEquals((await service.manualConversionSource(actor, input)).expiresInSeconds, 60);
+  assertEquals(calls, ['lookup', 'sign']);
+  await assertRejects(() => service.manualConversionSource({ ...actor, permissions: ['osp:read'] }, input), Error, 'FORBIDDEN');
+  assertEquals(calls, ['lookup', 'sign']);
+});

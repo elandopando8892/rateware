@@ -25,9 +25,28 @@ export type PersistedDocumentUpload = Omit<DocumentUploadInput, 'bytes'> & {
   status: 'uploaded';
 };
 export type DocumentApprovalInput = { versionId: string; expectedVersion: number; reviewBeforeSha256: string; reviewAfterSha256: string };
+export type CaseConversionUploadInput = {
+  caseId: string;
+  sourceAttachmentId: string;
+  sourceSha256: string;
+  bytes: Uint8Array;
+};
+export type PersistedCaseConversionUpload = {
+  organizationId: string;
+  caseId: string;
+  sourceAttachmentId: string;
+  sourceSha256: string;
+  convertedVersionId: string;
+  convertedSha256: string;
+  opaqueObjectKey: string;
+  sizeBytes: number;
+  uploadedBySubject: string;
+};
 
 const DATE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 const SHA = /^[0-9a-f]{64}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const SAFE = /^[A-Za-z0-9:_@.-]{1,256}$/;
 const CONTENT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/tiff']);
 
@@ -70,9 +89,63 @@ export function createDocumentService(deps: {
   createPrivateReadUrl(input: { bucketId: 'osp-corporate-documents'; opaqueObjectKey: string; expiresInSeconds: number }): Promise<string>;
   deletePrivateObject(input: { bucketId: 'osp-corporate-documents'; opaqueObjectKey: string }): Promise<void>;
   createVersion(input: PersistedDocumentUpload): Promise<{ id: string; version: number }>;
+  createCaseConversionVersion?(input: PersistedCaseConversionUpload): Promise<{ id: string; version: number }>;
+  assertSafeDocx?(bytes: Uint8Array): Promise<void>;
+  getManualConversionSource?(input: { organizationId: string; caseId: string; sourceAttachmentId: string; sourceSha256: string }): Promise<{ opaqueObjectKey: string; filename: string }>;
+  createOriginalReadUrl?(input: { opaqueObjectKey: string; expiresInSeconds: number }): Promise<string>;
   approveVersion?(input: DocumentApprovalInput & { organizationId: string; approvedBySubject: string; approvedByPermission: 'osp:operate' }): Promise<{ id: string; status: 'approved' }>;
 }) {
   return Object.freeze({
+    async manualConversionSource(authority: DocumentAuthority, input: {
+      caseId: string; sourceAttachmentId: string; sourceSha256: string;
+    }) {
+      assertAuthority(authority, 'operate');
+      if (!deps.getManualConversionSource || !deps.createOriginalReadUrl ||
+          !UUID.test(authority.organizationId) || !UUID.test(input.caseId) ||
+          !UUID.test(input.sourceAttachmentId) || !SHA.test(input.sourceSha256)) {
+        throw new Error('OSP_CONVERSION_REVIEW_INVALID');
+      }
+      const source = await deps.getManualConversionSource({ organizationId: authority.organizationId, ...input });
+      const downloadUrl = await deps.createOriginalReadUrl({ opaqueObjectKey: source.opaqueObjectKey,
+        expiresInSeconds: 60 });
+      return Object.freeze({ downloadUrl, filename: source.filename,
+        sourceSha256: input.sourceSha256, expiresInSeconds: 60 });
+    },
+    async uploadCaseConversion(authority: DocumentAuthority, input: CaseConversionUploadInput) {
+      assertAuthority(authority, 'operate');
+      if (!deps.createCaseConversionVersion || !deps.assertSafeDocx ||
+          !UUID.test(authority.organizationId) || !UUID.test(input.caseId) ||
+          !UUID.test(input.sourceAttachmentId) || !SHA.test(input.sourceSha256) ||
+          !(input.bytes instanceof Uint8Array) || input.bytes.byteLength < 1 ||
+          input.bytes.byteLength > 26_214_400) throw new Error('DOCUMENT_UPLOAD_REJECTED');
+      const sourceBytes = input.bytes.slice();
+      try { await deps.assertSafeDocx(sourceBytes.slice()); }
+      catch { throw new Error('DOCUMENT_UPLOAD_REJECTED'); }
+      const convertedSha256 = await sha256(sourceBytes);
+      const convertedVersionId = crypto.randomUUID();
+      const opaqueObjectKey = `${authority.organizationId}/${convertedVersionId}`;
+      await deps.putPrivateObject({ bucketId: 'osp-corporate-documents', opaqueObjectKey,
+        bytes: sourceBytes.slice(), contentType: DOCX, sourceSha256: convertedSha256 });
+      try {
+        const result = await deps.createCaseConversionVersion({
+          organizationId: authority.organizationId,
+          caseId: input.caseId,
+          sourceAttachmentId: input.sourceAttachmentId,
+          sourceSha256: input.sourceSha256,
+          convertedVersionId,
+          convertedSha256,
+          opaqueObjectKey,
+          sizeBytes: sourceBytes.byteLength,
+          uploadedBySubject: authority.subject,
+        });
+        return Object.freeze({ ...result, convertedSha256 });
+      } catch (error) {
+        try { await deps.deletePrivateObject({ bucketId: 'osp-corporate-documents', opaqueObjectKey }); }
+        catch { /* exact orphan cleanup is an operational reconciliation */ }
+        if (error instanceof Error && error.message === 'DOCUMENT_UPLOAD_REJECTED') throw error;
+        throw new Error('DOCUMENT_PERSISTENCE_FAILED');
+      }
+    },
     async upload(authority: DocumentAuthority, input: DocumentUploadInput) {
       assertAuthority(authority, 'read');
       const validated = upload(input);
