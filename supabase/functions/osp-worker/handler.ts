@@ -81,6 +81,7 @@ type ExactGmailIngest = {
 
 type ExactThreadAssociationRun = {
   organizationId: string;
+  recoveryId: string;
   priorJobId: string;
   targetCaseId: string;
   originalGmailMessageId: string;
@@ -289,6 +290,7 @@ export function createOspWorkerHandler(deps: {
       "originalGmailMessageId",
       "originalOuterRawMimeSha256",
       "priorJobId",
+      "recoveryId",
       "targetCaseId",
     ];
     if (body.action === "run_exact_thread_association") {
@@ -296,7 +298,12 @@ export function createOspWorkerHandler(deps: {
         keys.length !== exactThreadKeys.length || keys.some((key, index) =>
           key !== exactThreadKeys[index]
         ) ||
-        ![body.organizationId, body.priorJobId, body.targetCaseId]
+        ![
+          body.organizationId,
+          body.priorJobId,
+          body.recoveryId,
+          body.targetCaseId,
+        ]
           .every(
             (value) => typeof value === "string" && UUID.test(value),
           ) ||
@@ -321,6 +328,7 @@ export function createOspWorkerHandler(deps: {
       try {
         const processed = await deps.runExactThreadAssociation({
           organizationId: body.organizationId as string,
+          recoveryId: body.recoveryId as string,
           priorJobId: body.priorJobId as string,
           targetCaseId: body.targetCaseId as string,
           originalGmailMessageId: body.originalGmailMessageId as string,

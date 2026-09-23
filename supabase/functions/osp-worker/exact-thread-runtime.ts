@@ -9,6 +9,7 @@ import { createExactThreadSource } from "./exact-thread-source.ts";
 
 export type ExactThreadAssociationRun = {
   organizationId: string;
+  recoveryId: string;
   priorJobId: string;
   targetCaseId: string;
   originalGmailMessageId: string;
@@ -29,6 +30,12 @@ export async function runExactThreadAssociation(deps: {
   persistence: ExactThreadAssociationPersistence;
   now?: () => Date;
 }, request: ExactThreadAssociationRun): Promise<number> {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(request.recoveryId)
+  ) {
+    throw new Error("INVALID_EXACT_THREAD_RECOVERY_ID");
+  }
   const deliveryIdempotencyKey =
     `exact-thread:${request.targetCaseId}:${request.originalOuterRawMimeSha256}:${request.amendmentOuterRawMimeSha256}`;
   const jobId = await deps.jobs.enqueue({
@@ -45,7 +52,8 @@ export async function runExactThreadAssociation(deps: {
       amendmentOuterRawMimeSha256: request.amendmentOuterRawMimeSha256,
       amendmentOriginalEmlSha256: request.amendmentEmlSha256,
     },
-    idempotencyKey: `exact-thread-association:${request.targetCaseId}`,
+    idempotencyKey:
+      `exact-thread-association:${request.targetCaseId}:${request.recoveryId}`,
   });
   const leased = await deps.jobs.claimExactThreadAssociation({
     ...request,

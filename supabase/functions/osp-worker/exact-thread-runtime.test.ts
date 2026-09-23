@@ -65,6 +65,7 @@ async function setup() {
   });
   const request: ExactThreadAssociationRun = {
     organizationId,
+    recoveryId: "66666666-6666-4666-8666-666666666666",
     priorJobId: "33333333-3333-4333-8333-333333333333",
     targetCaseId: "44444444-4444-4444-8444-444444444444",
     originalGmailMessageId: "original_1",
@@ -94,6 +95,10 @@ Deno.test("exact thread runtime claims, persists and completes precisely one lea
     jobs: {
       enqueue: async (input) => {
         assertEquals(input.kind, "exact_thread_association");
+        assertEquals(
+          input.idempotencyKey,
+          `exact-thread-association:${request.targetCaseId}:${request.recoveryId}`,
+        );
         assertEquals(input.opaquePayload, {
           priorJobId: request.priorJobId,
           targetCaseId: request.targetCaseId,

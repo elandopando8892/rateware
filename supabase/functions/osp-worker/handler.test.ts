@@ -47,6 +47,7 @@ const exactGmailIngest = {
 const exactThreadAssociation = {
   action: "run_exact_thread_association",
   organizationId: "11111111-1111-4111-8111-111111111111",
+  recoveryId: "22222222-2222-4222-8222-222222222222",
   priorJobId: "33333333-3333-4333-8333-333333333333",
   targetCaseId: "44444444-4444-4444-8444-444444444444",
   originalGmailMessageId: "original_1",
@@ -243,6 +244,16 @@ Deno.test("OSP worker executes only one fully specified exact thread association
   assertEquals(await response.json(), { processed: 1 });
   const { action: _action, ...expected } = exactThreadAssociation;
   assertEquals(received, expected);
+  const { recoveryId: _recoveryId, ...missingRecoveryId } =
+    exactThreadAssociation;
+  assertEquals((await handler(request(missingRecoveryId))).status, 400);
+  assertEquals(
+    (await handler(request({
+      ...exactThreadAssociation,
+      recoveryId: "invalid",
+    }))).status,
+    400,
+  );
   assertEquals(
     (await handler(request({ ...exactThreadAssociation, extra: true }))).status,
     400,
