@@ -178,9 +178,17 @@ function publicSupportTicket(row: Record<string, unknown>) {
     followups: Array.isArray(metadata.followups) ? metadata.followups.slice(-5) : [],
     rfx_event_id: row.rfx_event_id,
     occurred_at: row.occurred_at,
-    updated_at: row.updated_at,
+    // contact_history has no updated_at column; the latest follow-up is the last change.
+    updated_at: metadata.latest_followup_at || row.occurred_at,
     google_chat_sync_status: metadata.google_chat_sync_status
   };
+}
+
+// The profile must still open if the support log cannot be read, but the
+// failure has to be visible: a swallowed error hid a broken query for months.
+function logSupportTicketError(error: unknown) {
+  console.error("carrier-profile-api support tickets failed:", publicErrorMessage(error));
+  return [];
 }
 
 async function loadSupportTickets(supabase: CarrierProfileSupabaseClient, request: Record<string, unknown>, vendor: Record<string, unknown>) {
@@ -188,7 +196,7 @@ async function loadSupportTickets(supabase: CarrierProfileSupabaseClient, reques
   if (!vendorId) return [];
   const result = await supabase
     .from("contact_history")
-    .select("id,subject,body_preview,status,metadata,rfx_event_id,occurred_at,updated_at")
+    .select("id,subject,body_preview,status,metadata,rfx_event_id,occurred_at")
     .eq("owner_email", request.owner_email)
     .eq("vendor_id", vendorId)
     .eq("status", "support_ticket")
@@ -258,7 +266,7 @@ Deno.serve(async (request) => {
         .from("vendor_profile_requests")
         .update({ status: String(requestRow.status) === "active" ? "viewed" : requestRow.status, viewed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq("id", requestRow.id);
-      const supportTickets = await loadSupportTickets(supabase, requestRow, vendor).catch(() => []);
+      const supportTickets = await loadSupportTickets(supabase, requestRow, vendor).catch(logSupportTicketError);
       return jsonResponse({
         request: {
           id: requestRow.id,
@@ -317,7 +325,7 @@ Deno.serve(async (request) => {
         })
         .eq("id", requestRow.id);
 
-      const supportTickets = await loadSupportTickets(supabase, requestRow, update.data as Record<string, unknown>).catch(() => []);
+      const supportTickets = await loadSupportTickets(supabase, requestRow, update.data as Record<string, unknown>).catch(logSupportTicketError);
       return jsonResponse({ vendor: publicVendor(update.data), support_tickets: supportTickets, submitted: true });
     }
 
@@ -354,12 +362,11 @@ Deno.serve(async (request) => {
                 created_at: new Date().toISOString()
               }
             ]
-          },
-          updated_at: new Date().toISOString()
+          }
         })
         .eq("id", ticketId);
       if (update.error) throw update.error;
-      const supportTickets = await loadSupportTickets(supabase, requestRow, vendor).catch(() => []);
+      const supportTickets = await loadSupportTickets(supabase, requestRow, vendor).catch(logSupportTicketError);
       return jsonResponse({ support_tickets: supportTickets, saved: true });
     }
 
