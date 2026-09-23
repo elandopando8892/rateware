@@ -12,6 +12,12 @@ import {
   resolveCarrierTemplateImportRows
 } from "./carrier-list-templates.ts";
 import { handleGrowthAction, isGrowthAction } from "./growth.ts";
+import {
+  assertOutreachMatrixWithinLimit,
+  fetchBoundedKeysetRows,
+  OUTREACH_RELATED_ROW_BATCH_LIMIT,
+  OUTREACH_RELATED_ROW_PAGE_SIZE
+} from "./outreach-pagination.js";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -101,6 +107,7 @@ const BULK_SEND_LIMIT = 100;
 // the operator selected only a few dozen carriers. Keep the request bounded,
 // but large enough for the existing 50,000-row RFx safety envelope.
 const RFX_OUTREACH_INVITATION_ID_LIMIT = 50000;
+const RFX_OUTREACH_ALL_ELIGIBLE_LIMIT = 5000;
 const EXACT_VENDOR_CONSOLIDATION_BATCH_LIMIT = 1;
 const OUTREACH_MANUAL_STATUSES = new Set([
   "drafted",
@@ -540,18 +547,30 @@ export function carrierTemplateVendorHasUsableContact(vendor: Record<string, unk
   );
 }
 
+/**
+ * Statuses that keep a carrier out of an RFx.
+ *
+ * `inactive` is deliberately NOT here: in this operation it only means the
+ * carrier has not been activated in the TMS, which says nothing about whether
+ * they may bid. Every carrier is invitable; only a deliberate block or a
+ * retired record is not. The rest of the system already agreed — the plain
+ * shortlist path has 3,265 lane participations from `inactive` carriers, while
+ * template materialisation was silently excluding them.
+ */
+const CARRIER_RFX_BLOCKING_STATUSES = ["blocked", "archived", "deleted"];
+
 export function carrierTemplateVendorIsAvailable(vendor: Record<string, unknown> = {}) {
   const status = cleanText(vendor.status)?.toLowerCase() || "";
   const baseStage = cleanText(vendor.base_stage)?.toLowerCase() || "";
   return Boolean(cleanText(vendor.id)) &&
-    !["blocked", "inactive", "archived", "deleted"].includes(status) &&
+    !CARRIER_RFX_BLOCKING_STATUSES.includes(status) &&
     baseStage !== "archived";
 }
 
 function carrierTemplateVendorIneligibleReason(vendor: Record<string, unknown> | null) {
   if (!vendor || !cleanText(vendor.id)) return "unavailable";
   const status = cleanText(vendor.status)?.toLowerCase() || "";
-  if (["blocked", "inactive", "archived", "deleted"].includes(status)) return `status_${status}`;
+  if (CARRIER_RFX_BLOCKING_STATUSES.includes(status)) return `status_${status}`;
   if ((cleanText(vendor.base_stage)?.toLowerCase() || "") === "archived") return "base_stage_archived";
   if (!carrierTemplateVendorHasUsableContact(vendor)) return "missing_contact";
   return "";
@@ -4667,7 +4686,11 @@ function scopedOutreachMessagesQuery(
     ? body.channels.map((value: unknown) => cleanText(value)?.toLowerCase()).filter(Boolean)
     : [];
   const requestedTrackingStatus = cleanText(body.tracking_status)?.toLowerCase();
-  const outreachSelect = body.view === "event_context"
+  // Audience eligibility needs delivery history, not message bodies, portal
+  // tokens, or the five unrelated joins used by the delivery workspace.
+  const outreachSelect = body.view === "audience_history"
+    ? "id,created_at,updated_at,rfx_event_id,vendor_id,channel,recipient_email,recipient_phone,normalized_recipient_phone,status,provider_response_status,delivery_error,metadata,next_action,outcome_reason,rfx_lane_vendors(invitation_status,bid_rate,responded_at)"
+    : body.view === "event_context"
     ? OUTREACH_MESSAGE_EVENT_SELECT
     : body.compact === true
       ? OUTREACH_MESSAGE_COMPACT_SELECT
@@ -4701,7 +4724,9 @@ async function allScopedOutreachMessages(
     if (result.error) throw result.error;
     const pageRows = (result.data || []) as Record<string, unknown>[];
     rows.push(...pageRows);
-    if (pageRows.length < pageSize) return hydrateOutreachInvitationTokens(supabase, rows);
+    if (pageRows.length < pageSize) {
+      return body.view === "audience_history" ? rows : hydrateOutreachInvitationTokens(supabase, rows);
+    }
   }
 }
 
@@ -13361,10 +13386,12 @@ async function fetchAllRfxLaneRows(
 async function fetchAllRfxLaneVendorRows(
   supabase: RatewareSupabaseClient,
   eventId: string,
-  columns: string
+  columns: string,
+  parallelPages = 1
 ) {
   const rows: Record<string, unknown>[] = [];
-  for (let offset = 0; offset < RFX_LANE_VENDOR_MAX_ROWS; offset += RFX_LANE_VENDOR_PAGE_SIZE) {
+  const width = Math.min(3, Math.max(1, Math.floor(parallelPages) || 1));
+  const readPage = async (offset: number) => {
     const result = await supabase
       .from("rfx_lane_vendors")
       .select(columns)
@@ -13374,9 +13401,20 @@ async function fetchAllRfxLaneVendorRows(
       .range(offset, offset + RFX_LANE_VENDOR_PAGE_SIZE - 1);
     if (result.error) throw new Error(`RFx participant load failed: ${result.error.message}`);
 
-    const page = (result.data || []) as unknown as Record<string, unknown>[];
-    rows.push(...page);
-    if (page.length < RFX_LANE_VENDOR_PAGE_SIZE) return rows;
+    return (result.data || []) as unknown as Record<string, unknown>[];
+  };
+  // Probe one page first: small events do not incur speculative queries.
+  // Promise.all preserves page order even when requests complete out of order.
+  for (let offset = 0; offset < RFX_LANE_VENDOR_MAX_ROWS;) {
+    const pageCount = offset === 0 ? 1 : width;
+    const offsets = Array.from({ length: pageCount }, (_, i) => offset + i * RFX_LANE_VENDOR_PAGE_SIZE)
+      .filter((start) => start < RFX_LANE_VENDOR_MAX_ROWS);
+    const pages = await Promise.all(offsets.map(readPage));
+    for (const page of pages) {
+      rows.push(...page);
+      if (page.length < RFX_LANE_VENDOR_PAGE_SIZE) return rows;
+    }
+    offset += offsets.length * RFX_LANE_VENDOR_PAGE_SIZE;
   }
   throw new Error(`RFx participant load exceeded ${RFX_LANE_VENDOR_MAX_ROWS} rows for one event.`);
 }
@@ -17701,8 +17739,7 @@ async function hydrateRfxBoardInvitationTokens(
   supabase: RatewareSupabaseClient,
   rows: Record<string, unknown>[]
 ) {
-  const hydrated: Record<string, unknown>[] = [];
-  for (const row of rows) {
+  return await mapWithConcurrency(rows, 24, async (row) => {
     const legacyToken = cleanText(row.invitation_token);
     let token = legacyToken;
     if (legacyToken) {
@@ -17718,9 +17755,8 @@ async function hydrateRfxBoardInvitationTokens(
         token = null;
       }
     }
-    hydrated.push({ ...publicRfxParticipantRow(row), invitation_token: token || "" });
-  }
-  return hydrated;
+    return { ...publicRfxParticipantRow(row), invitation_token: token || "" };
+  });
 }
 
 async function requireHydratedRfxInvitationTokens(
@@ -28786,12 +28822,13 @@ export function createRatewareApiHandler(
 
     if (body.action === "list_rfx_detail") {
       const event = await requireOwnedRfxEvent(supabase, user, body.event_id || body.id);
+      const compactVendors = body.compact_vendors === true;
       const invitationColumns = "*, vendors(id,vendor_name,domain,primary_email,whatsapp_phone,preferred_channel,base_stage,status,tags,coverage_notes)";
       // Benchmarks are independent of the event lanes and invitations. Load all
       // three concurrently so opening a Bid Room pays one database round trip.
       const [eventLanes, loadedInvitationRows, benchmarkLoad, comparisonFx] = await Promise.all([
         fetchAllRfxLaneRows(supabase, event.id, "*"),
-        fetchAllRfxLaneVendorRows(supabase, event.id, invitationColumns),
+        fetchAllRfxLaneVendorRows(supabase, event.id, invitationColumns, 3),
         fetchRfxDetailBenchmarkRates(supabase, user, event.id)
           .then((value) => ({ value, error: null as unknown }))
           .catch((error) => ({ value: null, error })),
@@ -28847,6 +28884,18 @@ export function createRatewareApiHandler(
       // Without this the board renders every "Open room" action disabled.
       invitationRows = await hydrateRfxBoardInvitationTokens(supabase, invitationRows);
 
+      // One carrier can participate in dozens of lanes. Compact responses keep
+      // one CRM profile per carrier instead of repeating it in every lane row.
+      // Older clients retain the original response shape unless they opt in.
+      const compactVendorRows = new Map<string, Record<string, unknown>>();
+      if (compactVendors) {
+        for (const invitation of invitationRows) {
+          const vendor = relationRecord(invitation.vendors);
+          const vendorId = cleanText(vendor.id) || cleanText(invitation.vendor_id);
+          if (vendorId && !compactVendorRows.has(vendorId)) compactVendorRows.set(vendorId, vendor);
+        }
+      }
+
       const invitationsByLane = new Map<string, Record<string, unknown>[]>();
       for (const invitation of invitationRows) {
         const laneId = cleanText(invitation.rfx_lane_id);
@@ -28859,7 +28908,11 @@ export function createRatewareApiHandler(
       const lanes = eventLanes.map((lane) => {
         const benchmark = bestRatewareBenchmark(lane, rates);
         const supplyDepth = supplyDepthForLane(lane, rates);
-        const invitations = (invitationsByLane.get(cleanText(lane.id) || "") || []).map((invitation) => invitationWithComparison(invitation, benchmark));
+        const invitations = (invitationsByLane.get(cleanText(lane.id) || "") || []).map((invitation) => {
+          if (!compactVendors) return invitationWithComparison(invitation, benchmark);
+          const { vendors: _vendors, ...compactInvitation } = invitation;
+          return invitationWithComparison(compactInvitation, benchmark);
+        });
         return {
           ...lane,
           benchmark,
@@ -28876,7 +28929,8 @@ export function createRatewareApiHandler(
         coverage_sync: { inserted: coverageInserted },
         coverage_warning: coverageWarning,
         rateware_benchmark: ratewareBenchmark,
-        comparison_fx: comparisonFx
+        comparison_fx: comparisonFx,
+        ...(compactVendors ? { vendors: [...compactVendorRows.values()] } : {})
       });
     }
 
@@ -29577,7 +29631,7 @@ export function createRatewareApiHandler(
       const eventLaneCount = eventLaneRows.length;
       const vendorIds = [...new Set(invitations.map((row) => cleanText(row.vendor_id)).filter(Boolean))] as string[];
       const [historyRows, suppressions] = await Promise.all([
-        allScopedOutreachMessages(supabase, user, { rfx_event_id: eventId, channel, include_archived: false }),
+        allScopedOutreachMessages(supabase, user, { rfx_event_id: eventId, channel, include_archived: false, view: "audience_history" }),
         outreachSuppressionsForVendors(supabase, user, vendorIds)
       ]);
       const historyByContact = outreachHistoryByContact(historyRows);
@@ -30001,33 +30055,25 @@ export function createRatewareApiHandler(
       let whatsappConnectionRow: Record<string, unknown> = {};
       if (wantsDirectWhatsapp) {
         try {
-          const notifier = await publishOutreachTemplateToWhatsapp(supabase, user, { template_id: template.id });
-          whatsappMapping = notifier.row as Record<string, unknown> | null;
-          whatsappNotifier = {
-            attempted: true,
-            status: cleanText(whatsappMapping?.meta_template_status)?.toLowerCase() || "pending",
-            ready: notifier.ready,
-            template_name: cleanText(whatsappMapping?.meta_template_name),
-            language: cleanText(whatsappMapping?.meta_template_language),
-            message: notifier.message
-          };
-        } catch (error) {
-          whatsappNotifier = {
-            attempted: true,
-            status: "error",
-            ready: false,
-            error: safeOperationalError(error)
-          };
-        }
-        try {
           const whatsappConnection = await listWhatsappConnections(supabase, user);
           whatsappConnectionRow = whatsappConnection.rows?.[0] || {};
-          if (!whatsappMapping && whatsappConnectionRow.id) {
+          if (whatsappConnectionRow.id) {
             whatsappMapping = await whatsappTemplateMapping(supabase, whatsappConnectionRow.id, template.id);
           }
+          const mappingStatus = cleanText(whatsappMapping?.meta_template_status)?.toLowerCase() || "not_published";
+          whatsappNotifier = {
+            attempted: false,
+            status: mappingStatus,
+            ready: mappingStatus === "approved",
+            template_name: cleanText(whatsappMapping?.meta_template_name),
+            language: cleanText(whatsappMapping?.meta_template_language),
+            message: whatsappMapping
+              ? "Existing Meta template status loaded."
+              : "No Meta template is published. Publish it explicitly before delivery."
+          };
         } catch (error) {
           whatsappNotifier = {
-            attempted: true,
+            attempted: false,
             status: "error",
             ready: false,
             error: safeOperationalError(error)
@@ -30066,7 +30112,9 @@ export function createRatewareApiHandler(
           batch.push(...page);
           if (chunk.length || page.length < 1000) break;
           offset += 1000;
-          if (offset >= 5000) throw new Error("Outreach invitation load exceeded 5000 active rows. Generate a narrower wave.");
+          if (offset >= RFX_OUTREACH_ALL_ELIGIBLE_LIMIT) {
+            throw new Error(`Outreach invitation load exceeded ${RFX_OUTREACH_ALL_ELIGIBLE_LIMIT} active rows. Generate a narrower wave.`);
+          }
         }
         return batch;
       });
@@ -30102,6 +30150,12 @@ export function createRatewareApiHandler(
         bucket.push(invitation);
         invitationGroups.set(key, bucket);
       }
+      const outreachMatrix = assertOutreachMatrixWithinLimit({
+        carrierCount: invitationGroups.size,
+        laneCount: eventLaneRows.length,
+        loadedRows: invitations.length,
+        limit: RFX_OUTREACH_INVITATION_ID_LIMIT
+      });
 
       // A carrier selected from the event audience is quoting the RFx business
       // book, not only the first lane on which it was originally shortlisted.
@@ -30121,25 +30175,26 @@ export function createRatewareApiHandler(
         const requestedGroupKeys = new Set(invitationGroups.keys());
         const requestedVendorIds = [...new Set(invitations.map((invitation) => cleanText(invitation.vendor_id)).filter(Boolean))] as string[];
         const completeBatches = await mapWithConcurrency(chunkValues(requestedVendorIds, 100), 4, async (vendorChunk) => {
-          const batch: Record<string, unknown>[] = [];
-          let offset = 0;
-          while (true) {
-            const completeResult = await supabase
-              .from("rfx_lane_vendors")
-              .select(invitationSelect)
-              .eq("rfx_event_id", campaign.rfx_event_id)
-              .eq("rfx_events.owner_email", user.owner_email)
-              .in("vendor_id", vendorChunk)
-              .neq("invitation_status", "archived")
-              .range(offset, offset + 999);
-            if (completeResult.error) throw new Error(`Outreach lane hydration failed: ${completeResult.error.message}`);
-            const page = (completeResult.data || []) as Record<string, unknown>[];
-            batch.push(...page);
-            if (page.length < 1000) break;
-            offset += 1000;
-            if (offset >= 25000) throw new Error("Outreach lane hydration exceeded the safe per-batch limit.");
-          }
-          return batch;
+          return await fetchBoundedKeysetRows({
+            label: "Outreach lane hydration",
+            limit: OUTREACH_RELATED_ROW_BATCH_LIMIT,
+            pageSize: OUTREACH_RELATED_ROW_PAGE_SIZE,
+            fetchPage: async ({ afterId, limit }: { afterId: string; limit: number }) => {
+              let completeQuery = supabase
+                .from("rfx_lane_vendors")
+                .select(invitationSelect)
+                .eq("rfx_event_id", campaign.rfx_event_id)
+                .eq("rfx_events.owner_email", user.owner_email)
+                .in("vendor_id", vendorChunk)
+                .neq("invitation_status", "archived")
+                .order("id", { ascending: true })
+                .limit(limit);
+              if (afterId) completeQuery = completeQuery.gt("id", afterId);
+              const pageResult = await completeQuery;
+              if (pageResult.error) throw new Error(`Outreach lane hydration failed: ${pageResult.error.message}`);
+              return (pageResult.data || []) as Record<string, unknown>[];
+            }
+          });
         });
         const completeInvitations = await requireHydratedRfxInvitationTokens(
           supabase,
@@ -30559,6 +30614,9 @@ export function createRatewareApiHandler(
           requested_invitation_ids: invitationIds.length,
           loaded_invitations: invitations.length,
           carrier_groups: invitationGroups.size,
+          lane_count: outreachMatrix.lane_count,
+          matrix_rows: outreachMatrix.matrix_rows,
+          matrix_limit: outreachMatrix.limit,
           candidate_drafts: 0,
           created: 0,
           refreshed: 0,
@@ -30573,27 +30631,31 @@ export function createRatewareApiHandler(
         const historicalMessagesByKey = new Map<string, Record<string, unknown>>();
         if (candidateChannels.length && candidateVendorIds.length) {
           const historicalBatches = await mapWithConcurrency(chunkValues(candidateVendorIds, 100), 4, async (vendorChunk) => {
-            const batch: Record<string, unknown>[] = [];
-            let offset = 0;
-            while (true) {
-              const historicalResult = await supabase
-                .from("outreach_messages")
-                .select("id,campaign_id,rfx_event_id,rfx_lane_vendor_id,vendor_id,channel,status,recipient_email,recipient_phone,normalized_recipient_phone,sent_at,bounce_detected_at,delivery_status,provider_response_status,updated_at,metadata")
-                .eq("owner_email", user.owner_email)
-                .eq("rfx_event_id", campaign.rfx_event_id)
-                .in("vendor_id", vendorChunk)
-                .in("channel", candidateChannels)
-                .neq("status", "archived")
-                .order("updated_at", { ascending: false })
-                .range(offset, offset + 999);
-              if (historicalResult.error) throw new Error(`Outreach history load failed: ${historicalResult.error.message}`);
-              const page = (historicalResult.data || []) as Record<string, unknown>[];
-              batch.push(...page);
-              if (page.length < 1000) break;
-              offset += 1000;
-              if (offset >= 25000) throw new Error("Outreach history load exceeded the safe per-batch limit.");
-            }
-            return batch;
+            const batch = await fetchBoundedKeysetRows({
+              label: "Outreach history load",
+              limit: OUTREACH_RELATED_ROW_BATCH_LIMIT,
+              pageSize: OUTREACH_RELATED_ROW_PAGE_SIZE,
+              fetchPage: async ({ afterId, limit }: { afterId: string; limit: number }) => {
+                let historyQuery = supabase
+                  .from("outreach_messages")
+                  .select("id,campaign_id,rfx_event_id,rfx_lane_vendor_id,vendor_id,channel,status,recipient_email,recipient_phone,normalized_recipient_phone,sent_at,bounce_detected_at,delivery_status,provider_response_status,updated_at,metadata")
+                  .eq("owner_email", user.owner_email)
+                  .eq("rfx_event_id", campaign.rfx_event_id)
+                  .in("vendor_id", vendorChunk)
+                  .in("channel", candidateChannels)
+                  .neq("status", "archived")
+                  .order("id", { ascending: true })
+                  .limit(limit);
+                if (afterId) historyQuery = historyQuery.gt("id", afterId);
+                const historicalResult = await historyQuery;
+                if (historicalResult.error) throw new Error(`Outreach history load failed: ${historicalResult.error.message}`);
+                return (historicalResult.data || []) as Record<string, unknown>[];
+              }
+            });
+            return batch.sort((left, right) => {
+              const updatedComparison = String(right.updated_at || "").localeCompare(String(left.updated_at || ""));
+              return updatedComparison || String(right.id || "").localeCompare(String(left.id || ""));
+            });
           });
           for (const historicalMessage of historicalBatches.flat()) {
             if (!outreachBlocksAutoDraft(historicalMessage)) continue;
@@ -30636,6 +30698,9 @@ export function createRatewareApiHandler(
           requested_invitation_ids: invitationIds.length,
           loaded_invitations: invitations.length,
           carrier_groups: invitationGroups.size,
+          lane_count: outreachMatrix.lane_count,
+          matrix_rows: outreachMatrix.matrix_rows,
+          matrix_limit: outreachMatrix.limit,
           candidate_drafts: 0,
           created: 0,
           refreshed: 0,
@@ -30813,6 +30878,9 @@ export function createRatewareApiHandler(
           requested_invitation_ids: invitationIds.length,
           loaded_invitations: invitations.length,
           carrier_groups: invitationGroups.size,
+          lane_count: outreachMatrix.lane_count,
+          matrix_rows: outreachMatrix.matrix_rows,
+          matrix_limit: outreachMatrix.limit,
           candidate_drafts: dailyLimitedRows.length,
           created: createdMessages.length,
           refreshed: generatedMessages.length - createdMessages.length,
