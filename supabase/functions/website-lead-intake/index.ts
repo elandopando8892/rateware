@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { deliverClaimedNotification, NotificationRejected, type NotificationClaim } from "./notification-workflow.ts";
 import { createFollowUpToken, verifyFollowUpToken } from "./follow-up-token.ts";
+import { normalizeCarrierRateSheet } from "./carrier-rate-sheet.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -9,6 +10,7 @@ const GMAIL_TOKEN_ENCRYPTION_KEY = (Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY") |
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET");
 const MAX_BODY_BYTES = 16 * 1024;
+const MAX_RATE_SHEET_BODY_BYTES = 2_100_000;
 const WEBSITE_INTAKE_PUBLIC_KEY = "MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAw7toUjkst+hWHoUsJJSc1rPgOdoh/9aIaZP9/6RVzse0ev8wcvEEZ6JaRDvZI07R0JaSf9L5Esc15kG9tfiYV8zqbGS8sbJ4lAvDKHw3xFHx0H8qm31EGmz8nBzBed/9cqM1BFf9mGPm3NKLFp6ZyMA3WtCHYmIXubXacaECxgLqICo5lJg2uTAnP2R+344jg13bJUnx/9zWiVnlqlk+39cPB4/kHSGztJ2he7cZHfkonVyzPwKNYcEHIcRDq6OKnMmmD0VCHLthhbll9XtXUmJnIyuAMKZWX7YfL3616uG0pu/vXa1X3GjxKTV+yQ0MutqWMyOjlPWi0bWDSC3rQwsbokYpFB0ic0O4yDetkENE9chnzeIDH55w54SxbmTSo3mKflni5+HogqNpU1fv9Vgw3ZerJ2+GlfIFQJTinrDHSRSdIHzI8H+ngfzfmKAv0t46JMerGNUqZeLkCK87JARcTP2JPf1HxAeyG2qJm7Ycs0W8Bd072OHHRC0XSq5xAgMBAAE=";
 
 function getClient() {
@@ -236,6 +238,80 @@ class FollowUpError extends Error {
   constructor(readonly code: string, readonly status: number) { super(code); }
 }
 
+async function receiveCarrierRateSheet(input: Lead, raw: string, supabase: IntakeSupabase) {
+  const normalized = normalizeCarrierRateSheet(input);
+  if (!normalized.ok) return json({ error: "Invalid carrier rate sheet.", code: normalized.code }, 422);
+  const { lead, bytes, extension, contentType } = normalized;
+  const payloadHash = await sha256(raw);
+  const recipient = recipientFor("holding");
+  try {
+    const inserted = await supabase.from("website_lead_intakes").insert({
+      source_site: "holding", source_channel: "holding-web", idempotency_key: lead.idempotency_key,
+      payload_hash: payloadHash, notification_recipient: recipient, lead, attribution: {},
+    }).select("id,notification_status,payload_hash").single();
+    let row = inserted.data;
+    if (inserted.error?.code === "23505") {
+      const existing = await supabase.from("website_lead_intakes").select("id,notification_status,payload_hash")
+        .eq("source_site", "holding").eq("idempotency_key", lead.idempotency_key).maybeSingle();
+      if (existing.error || !existing.data) throw existing.error || new Error("Could not reconcile duplicate intake.");
+      if (existing.data.payload_hash !== payloadHash) return json({ error: "Idempotency conflict." }, 409);
+      row = existing.data;
+    } else if (inserted.error) throw inserted.error;
+    if (!row) throw new Error("Could not persist carrier intake.");
+    const bucket = supabase.storage.from("website-carrier-rate-sheets");
+    const path = `${row.id}/rate-sheet.${extension}`;
+    const upload = await bucket.upload(path, bytes, { contentType, upsert: true });
+    if (upload.error) throw upload.error;
+    const signedUrl = await bucket.createSignedUrl(path, 7 * 24 * 60 * 60);
+    if (signedUrl.error || !signedUrl.data?.signedUrl) throw signedUrl.error || new Error("Could not prepare private rate sheet link.");
+    const claimToken = crypto.randomUUID();
+    const record = async (status: "sent" | "failed" | "uncertain", message?: string, delivery?: { messageId: string; threadId: string }) => {
+      const result = await supabase.rpc("website_lead_intake_record_notification", {
+        p_intake_id: row.id, p_claim_token: claimToken, p_status: status,
+        p_message_id: delivery?.messageId || null, p_thread_id: delivery?.threadId || null, p_last_error: message || null,
+      });
+      if (result.error || result.data !== true) throw result.error || new Error("Notification claim was lost.");
+    };
+    const outcome = await deliverClaimedNotification({
+      claim: async () => {
+        const result = await supabase.rpc("website_lead_intake_claim_notification", { p_intake_id: row.id, p_claim_token: claimToken });
+        if (result.error || !result.data?.[0]?.notification_status) throw result.error || new Error("Could not claim notification.");
+        return result.data[0].notification_status as NotificationClaim;
+      },
+      send: async () => {
+        const { accessToken } = await gmailAccessToken(supabase);
+        const entries = [
+          ["Folio", row.id], ["Empresa", lead.company], ["Contacto", lead.name], ["Email", lead.email],
+          ["MC/DOT", lead.mc_dot], ["Flota", lead.fleet], ["Equipo", lead.equipment],
+          ["Configuración", lead.configuration], ["Corredores", lead.coverage],
+          ["Servicio", lead.service_level], ["Archivo original", lead.file_name],
+        ].filter(([, value]) => Boolean(value));
+        const subject = `[Tarifario web] ${lead.company} · ${row.id}`;
+        const plain = ["Nuevo tarifario de transportista", ...entries.map(([label, value]) => `${label}: ${value}`), "", "Descarga privada (7 días):", signedUrl.data.signedUrl].join("\n");
+        const html = `<h2>Nuevo tarifario de transportista</h2><table>${entries.map(([label, value]) => `<tr><th align="left">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join("")}</table><p><a href="${escapeHtml(signedUrl.data.signedUrl)}">Descargar archivo original (7 días)</a></p>`;
+        const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+          method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ raw: rawEmail({ recipient, subject, plain, html }) }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new NotificationRejected("Commercial Gmail rejected the carrier notification.");
+        if (!body.id) throw new Error("Commercial Gmail accepted an incomplete delivery receipt.");
+        return { messageId: text(body.id, 200), threadId: text(body.threadId, 200) };
+      },
+      markSent: delivery => record("sent", undefined, delivery),
+      markFailed: message => record("failed", message),
+      markUncertain: message => record("uncertain", message),
+    });
+    if (outcome === "accepted" || outcome === "duplicate") return json({ receipt_id: row.id, duplicate: outcome === "duplicate" }, 202);
+    if (outcome === "in_progress") return json({ receipt_id: row.id, notification_pending: true }, 202);
+    if (outcome === "review_required") return json({ error: "Notification requires commercial review." }, 409);
+    return json({ error: "Commercial notification unavailable." }, 502);
+  } catch (error) {
+    console.error("Carrier rate sheet intake failed", error instanceof Error ? error.message : JSON.stringify(error));
+    return json({ error: "Carrier rate sheet intake unavailable." }, 502);
+  }
+}
+
 async function followUp(request: Record<string, unknown>, supabase: IntakeSupabase) {
   const verified = await verifyFollowUpToken(GMAIL_TOKEN_ENCRYPTION_KEY, text(request.token, 4096));
   if (!verified.ok) throw new FollowUpError(verified.code, 401);
@@ -281,13 +357,16 @@ async function followUp(request: Record<string, unknown>, supabase: IntakeSupaba
 Deno.serve(async (request) => {
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
   const contentLength = Number(request.headers.get("content-length") || 0);
-  if (contentLength > MAX_BODY_BYTES) return json({ error: "Body too large." }, 413);
+  if (contentLength > MAX_RATE_SHEET_BODY_BYTES) return json({ error: "Body too large." }, 413);
   const raw = await request.text();
-  if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) return json({ error: "Body too large." }, 413);
+  const bodyBytes = new TextEncoder().encode(raw).byteLength;
+  if (bodyBytes > MAX_RATE_SHEET_BODY_BYTES) return json({ error: "Body too large." }, 413);
   if (!(await signed(raw, request.headers.get("x-marksman-intake-signature") || ""))) return json({ error: "Invalid intake signature." }, 403);
   let input: Lead;
   try { input = object(JSON.parse(raw)); } catch { return json({ error: "Invalid JSON." }, 400); }
+  if (input.action !== "submit_carrier_rate_sheet" && bodyBytes > MAX_BODY_BYTES) return json({ error: "Body too large." }, 413);
   const supabase = getClient();
+  if (input.action === "submit_carrier_rate_sheet") return receiveCarrierRateSheet(input, raw, supabase);
   if (["view_follow_up", "record_quote_sent"].includes(text(input.action, 40))) {
     try { return await followUp(input, supabase); }
     catch (error) {
