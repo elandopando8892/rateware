@@ -219,6 +219,7 @@ assert.match(vendorsSource, /Keep: Apollo Source ID/, "Carrier CRM duplicate rev
 assert.match(vendorsSource, /data-duplicate-archive="\$\{escapeHtml\(vendor\.id\)\}">Archive duplicate<\/button>/, "Carrier CRM duplicate review should offer to archive a duplicate");
 assert.match(vendorsSource, /window\.confirm\(`Archive \$\{vendorName\} as a duplicate\?[\s\S]{0,200}updateVendor\(vendorId, \{ base_stage: "archived" \}\)/, "Archiving a duplicate should be confirmed and keep it out of RFx audiences through base_stage");
 assert.doesNotMatch(vendorsSource, /data-duplicate-inactive|Mark inactive/, "Duplicate review must not park duplicates as inactive: inactive carriers stay invitable");
+assert.doesNotMatch(vendorsSource, /base_stage: "(sourcing|procurement)", status: "active"/, "Pipeline moves (restore from archive, send to Procurement) must not mark a carrier as activated in the TMS");
 assert.match(vendorsSource, /function uniqueVendorFunnelRows/, "Procurement Pipeline should de-duplicate vendor cards before rendering counts");
 assert.match(vendorsSource, /numberValue\(bidMetrics\.quoted\)/, "Procurement Pipeline should count Bid Room quotes with Rateware-linked quotes");
 assert.match(vendorsSource, /const stageNumber = funnelStages\(\)\.findIndex/, "Pipeline stage numbering should remain stable when empty stages are hidden");

@@ -2511,7 +2511,9 @@ async function promoteSelectedIntelligenceVendors() {
 
   try {
     await requirePrivatePage();
-    const result = await bulkUpdateVendors(ids, { base_stage: "procurement", status: "active" });
+    // Moving to Procurement is a pipeline step; it does not activate anyone in
+    // the TMS, so `status` is left untouched.
+    const result = await bulkUpdateVendors(ids, { base_stage: "procurement" });
     (result.rows || []).forEach((row) => {
       replaceVendorInState(row);
       applyVendorUpdateToFunnel(row, { render: false });
@@ -5940,7 +5942,9 @@ drawerArchiveButton.addEventListener("click", async () => {
   const contextVersion = vendorDrawerContextVersion;
   const vendor = findVendorById(vendorId);
   const restoring = vendor?.base_stage === "archived";
-  const patch = restoring ? { base_stage: "sourcing", status: "active" } : { base_stage: "archived" };
+  // Restoring only moves the pipeline stage. `status` mirrors TMS activation,
+  // which archiving never changed, so it is left as it was.
+  const patch = restoring ? { base_stage: "sourcing" } : { base_stage: "archived" };
   drawerArchiveButton.disabled = true;
   setStatus(drawerEditStatus, restoring ? "Restoring vendor..." : "Archiving vendor...");
 
