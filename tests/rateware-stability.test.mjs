@@ -2805,11 +2805,15 @@ assert.match(apiSource, /start_google_chat_oauth/, "API should start Google Chat
 assert.match(apiSource, /list_google_chat_spaces/, "API should list Google Chat spaces for the connected user");
 assert.match(apiSource, /chat\.messages\.create/, "Google Chat OAuth should request message creation scope");
 assert.match(apiSource, /chat\.messages\.readonly/, "Google Chat OAuth should request message read scope for inbound sync");
-assert.match(apiSource, /syncBidRoomMessageToGoogleChatApi/, "Bid Room chat should prefer Google Chat API sync over webhook-only mirroring");
-assert.match(apiSource, /function googleChatThreadTarget/, "Google Chat sync should target the persisted Chat thread name before creating a new thread");
-assert.match(apiSource, /REPLY_MESSAGE_OR_FAIL/, "Google Chat sync should fail instead of creating stray messages when a real thread already exists");
-assert.match(apiSource, /url\.searchParams\.set\("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"\)/, "Google Chat webhook fallback should include explicit thread reply behavior");
-assert.match(rfxBidApiSource, /function googleChatThreadTarget/, "Carrier portal Google Chat sync should use the same thread targeting rules");
+const bidRoomGoogleChatSource = readFileSync(new URL("../supabase/functions/_shared/bid-room-google-chat.ts", import.meta.url), "utf8");
+assert.match(bidRoomGoogleChatSource, /syncBidRoomMessageToGoogleChatApi/, "Bid Room chat should prefer Google Chat API sync over webhook-only mirroring");
+assert.match(bidRoomGoogleChatSource, /function googleChatThreadTarget/, "Google Chat sync should target the persisted Chat thread name before creating a new thread");
+assert.match(bidRoomGoogleChatSource, /REPLY_MESSAGE_OR_FAIL/, "Google Chat sync should fail instead of creating stray messages when a real thread already exists");
+assert.match(bidRoomGoogleChatSource, /url\.searchParams\.set\("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"\)/, "Google Chat webhook fallback should include explicit thread reply behavior");
+for (const [name, source] of [["rateware-api", apiSource], ["rfx-bid-api", rfxBidApiSource]]) {
+  assert.match(source, /import \{[^}]*\bsyncBidRoomMessageToGoogleChat\b[^}]*\} from "\.\.\/_shared\/bid-room-google-chat\.ts"/, `${name} should relay Bid Room messages through the shared Google Chat module so every sender follows the same thread rules`);
+  assert.doesNotMatch(source, /function (syncBidRoomMessageToGoogleChat|googleChatThreadTarget|googleChatAccessToken)\(/, `${name} should not keep its own copy of the Google Chat relay`);
+}
 assert.match(apiSource, /syncGoogleChatInboundMessagesForThreads/, "Internal Bid Room chat should import Google Chat replies back into Rateware");
 assert.match(rfxBidApiSource, /syncGoogleChatInboundMessagesForThreads/, "Carrier Bid Room portal should import Google Chat replies before rendering chat");
 assert.match(googleChatInboundMigration, /google_chat_thread_name text/, "Bid Room chat should persist the real Google Chat thread name for inbound matching");
