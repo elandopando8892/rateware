@@ -86,6 +86,21 @@ function normalizeProfileData(value: unknown) {
   return output;
 }
 
+// An answer the carrier explicitly emptied ("" / [] / null) must be cleared.
+// normalizeProfileData drops empties, so without this a saved answer could
+// never be removed. Answers the carrier did not send are left untouched.
+function clearedProfileFields(patchValue: unknown) {
+  const cleared: [string, string][] = [];
+  for (const [sectionKey, sectionValue] of Object.entries(objectRecord(patchValue))) {
+    for (const [fieldKey, fieldValue] of Object.entries(objectRecord(sectionValue))) {
+      const empty = fieldValue === null ||
+        (Array.isArray(fieldValue) ? normalizeArray(fieldValue).length === 0 : !cleanText(fieldValue));
+      if (empty) cleared.push([sectionKey, fieldKey]);
+    }
+  }
+  return cleared;
+}
+
 function mergeProfileData(baseValue: unknown, patchValue: unknown) {
   const base = objectRecord(baseValue);
   const patch = normalizeProfileData(patchValue);
@@ -96,7 +111,38 @@ function mergeProfileData(baseValue: unknown, patchValue: unknown) {
       ...fields
     };
   }
+  for (const [sectionKey, fieldKey] of clearedProfileFields(patchValue)) {
+    const section = { ...objectRecord(merged[sectionKey]) };
+    if (!(fieldKey in section)) continue;
+    delete section[fieldKey];
+    if (Object.keys(section).length) merged[sectionKey] = section;
+    else delete merged[sectionKey];
+  }
   return merged;
+}
+
+// vendors.notes is MARKSMAN's internal CRM field (it also carries system
+// markers such as the Apollo "Source ID"), so the carrier never reads or
+// writes it. The profile page's "notes" box is the carrier's own notes, kept
+// inside the profile.
+const CARRIER_NOTES_SECTION = "general";
+const CARRIER_NOTES_FIELD = "carrier_notes";
+
+function carrierNotes(profileData: unknown) {
+  const value = objectRecord(objectRecord(profileData)[CARRIER_NOTES_SECTION])[CARRIER_NOTES_FIELD];
+  return typeof value === "string" ? value : null;
+}
+
+function withCarrierNotes(profileInput: unknown, notes: unknown) {
+  const input = objectRecord(profileInput);
+  if (notes === undefined) return input;
+  return {
+    ...input,
+    [CARRIER_NOTES_SECTION]: {
+      ...objectRecord(input[CARRIER_NOTES_SECTION]),
+      [CARRIER_NOTES_FIELD]: notes ?? ""
+    }
+  };
 }
 
 function publicVendor(row: Record<string, unknown>) {
@@ -110,7 +156,8 @@ function publicVendor(row: Record<string, unknown>) {
     whatsapp_phone: row.whatsapp_phone,
     preferred_channel: row.preferred_channel,
     coverage_notes: row.coverage_notes,
-    notes: row.notes,
+    // The carrier's own notes, never the internal vendors.notes column.
+    notes: carrierNotes(row.profile_data),
     logo_url: row.logo_url,
     profile_data: objectRecord(row.profile_data)
   };
@@ -225,20 +272,26 @@ Deno.serve(async (request) => {
 
     if (action === "submit_profile") {
       const vendorPatchInput = objectRecord(body.vendor);
-      const profileData = mergeProfileData(vendor.profile_data, body.profile_data);
+      const profileData = mergeProfileData(
+        vendor.profile_data,
+        withCarrierNotes(body.profile_data, vendorPatchInput.notes)
+      );
       const patch: Record<string, unknown> = {
         profile_data: profileData,
         updated_at: new Date().toISOString()
       };
-      if (vendorPatchInput.vendor_name !== undefined) patch.vendor_name = cleanText(vendorPatchInput.vendor_name, 240);
+      // Name and email identify the carrier in the CRM: a blank box keeps the
+      // current value instead of erasing it.
+      const vendorName = cleanText(vendorPatchInput.vendor_name, 240);
+      if (vendorName) patch.vendor_name = vendorName;
       if (vendorPatchInput.legal_name !== undefined) patch.legal_name = cleanText(vendorPatchInput.legal_name, 240);
       if (vendorPatchInput.domain !== undefined) patch.domain = normalizeDomain(vendorPatchInput.domain);
       if (vendorPatchInput.contact_name !== undefined) patch.contact_name = cleanText(vendorPatchInput.contact_name, 180);
-      if (vendorPatchInput.primary_email !== undefined) patch.primary_email = normalizeEmail(vendorPatchInput.primary_email);
+      const primaryEmail = normalizeEmail(vendorPatchInput.primary_email);
+      if (primaryEmail) patch.primary_email = primaryEmail;
       if (vendorPatchInput.whatsapp_phone !== undefined) patch.whatsapp_phone = cleanText(vendorPatchInput.whatsapp_phone, 80);
       if (vendorPatchInput.preferred_channel !== undefined) patch.preferred_channel = normalizeChannel(vendorPatchInput.preferred_channel) || vendor.preferred_channel || "email";
       if (vendorPatchInput.coverage_notes !== undefined) patch.coverage_notes = cleanText(vendorPatchInput.coverage_notes);
-      if (vendorPatchInput.notes !== undefined) patch.notes = cleanText(vendorPatchInput.notes);
       if (!patch.vendor_name && !vendor.vendor_name) patch.vendor_name = patch.domain || patch.primary_email || "Carrier profile";
 
       const update = await supabase
