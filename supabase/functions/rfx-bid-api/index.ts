@@ -3964,7 +3964,9 @@ function bidRateStagingInput(
     ].filter(Boolean).join(" | "),
     carrier_cost_rate: economics.carrier_rate,
     customer_board_rate: economics.board_rate,
-    commercial_model: economics.commercial_model,
+    // rate_staging only accepts the canonical vocabulary (fee_plus, cost_plus,
+    // sell_share, brokerage); economics carries the legacy names for scoring.
+    commercial_model: normalizeCommercialModel(updatedBid.commercial_model),
     commission_fee: economics.commission_fee,
     commission_pct: economics.commission_pct,
     markup_fee: economics.markup_fee,
