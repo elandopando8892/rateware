@@ -783,8 +783,9 @@ function deferred() {
 }
 
 // Carrier Fit and the server must share one primary eligibility boundary. User
-// filters never make a blocked, inactive, archived, deleted, archived-base, or
-// contactless carrier eligible.
+// filters never make a blocked, archived, deleted, archived-base, or
+// contactless carrier eligible. `inactive` is not on that list: it only means
+// the carrier has not been activated in the TMS.
 {
   assert.equal(carrierTemplateVendorHasUsableContact(activeVendor(ids.eligible)), true);
   assert.equal(carrierTemplateVendorHasUsableContact(activeVendor(ids.eligible, {
@@ -801,9 +802,13 @@ function deferred() {
     secondary_emails: [" "],
     whatsapp_phone: " "
   })), false);
-  for (const status of ["blocked", "inactive", "archived", "deleted"]) {
+  for (const status of ["blocked", "archived", "deleted"]) {
     assert.equal(carrierTemplateVendorIsAvailable(activeVendor(ids.eligible, { status })), false, status);
   }
+  // `inactive` means "not activated in the TMS", which does not stop a carrier
+  // from bidding once invited. It must stay eligible.
+  assert.equal(carrierTemplateVendorIsAvailable(activeVendor(ids.eligible, { status: "inactive" })), true);
+  assert.equal(carrierTemplateVendorIsAvailable(activeVendor(ids.eligible, { status: " INACTIVE " })), true);
   assert.equal(carrierTemplateVendorIsAvailable(activeVendor(ids.eligible, { base_stage: " archived " })), false);
   assert.equal(carrierTemplateVendorIsAvailable(activeVendor(ids.eligible, { status: "active", base_stage: "procurement" })), true);
 
@@ -821,11 +826,11 @@ function deferred() {
     ],
     passesFilters: () => true
   });
-  assert.deepEqual(primary.rows.eligible.map((row) => row.vendor_id), [ids.eligible]);
+  // ids.participant is `inactive`: eligible, and in template order.
+  assert.deepEqual(primary.rows.eligible.map((row) => row.vendor_id), [ids.eligible, ids.participant]);
   assert.deepEqual(primary.rows.missing_contact.map((row) => row.vendor_id), [ids.missingContact]);
   assert.deepEqual(primary.rows.unavailable.map((row) => row.vendor_id), [
     ids.filtered,
-    ids.participant,
     ids.archived,
     ids.deleted
   ]);
