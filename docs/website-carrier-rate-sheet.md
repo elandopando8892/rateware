@@ -12,7 +12,7 @@ review the source file before any Rateware staging or operational use.
 
 Activation order:
 
-1. Apply `20260923010000_website_carrier_rate_sheets.sql` and verify the bucket
+1. Apply `20260923120000_website_carrier_rate_sheets.sql` and verify the bucket
    is private with a 1.5 MB object limit.
 2. Deploy this revision of `website-lead-intake` without changing the existing
    website lead signing key or Gmail connection.
