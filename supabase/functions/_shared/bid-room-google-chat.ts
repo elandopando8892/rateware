@@ -1,9 +1,9 @@
-// Mirrors a Bid Room chat message into the team's Google Chat thread.
+// Mirrors Bid Room chat messages into the team's Google Chat threads.
 //
-// This is rfx-bid-api's syncBidRoomMessageToGoogleChat (and the token helpers
-// it depends on), moved here so other functions can post to the same threads.
-// rfx-bid-api and rateware-api still carry their own inline copies; keep the
-// behavior identical until they import this module instead.
+// The single copy of the Google Chat relay: rateware-api (team messages),
+// rfx-bid-api (carrier portal messages and support tickets) and
+// carrier-profile-api (ticket follow-ups) all post through here, so every
+// message lands in the same thread under the same rules.
 
 type ChatSupabaseClient = {
   from: (table: string) => any;
@@ -15,6 +15,11 @@ const GMAIL_TOKEN_ENCRYPTION_KEY = Deno.env.get("GMAIL_TOKEN_ENCRYPTION_KEY");
 const GMAIL_ALLOWED_SENDER = (Deno.env.get("GMAIL_ALLOWED_SENDER") || "sales@heymarksman.com").trim().toLowerCase();
 const GOOGLE_CHAT_ALLOWED_ACCOUNT = (Deno.env.get("GOOGLE_CHAT_ALLOWED_ACCOUNT") || GMAIL_ALLOWED_SENDER).trim().toLowerCase();
 const GOOGLE_CHAT_WEBHOOK_URL = Deno.env.get("GOOGLE_CHAT_WEBHOOK_URL");
+
+export type GoogleChatSyncOptions = {
+  // Label used when a message has neither sender_name nor sender_email.
+  defaultSender?: string;
+};
 
 export type GoogleChatSyncResult = {
   status: string;
@@ -29,9 +34,22 @@ function cleanText(value: unknown) {
   return text ? text : null;
 }
 
-function errorMessage(value: unknown) {
-  if (value instanceof Error) return cleanText(value.message) || "Google Chat sync failed.";
-  return cleanText(value) || "Google Chat sync failed.";
+// Sync errors are stored and shown to the team, and Google's error text can
+// echo credentials, so they are redacted before leaving this module.
+function safeErrorMessage(value: unknown) {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const raw = (value instanceof Error ? cleanText(value.message) : null)
+    || (typeof value === "string" ? cleanText(value) : null)
+    || cleanText(record.message)
+    || cleanText(record.error)
+    || "Google Chat sync failed.";
+  return raw
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/([?&](?:token|access_token|refresh_token|api_key|key|secret)=)[^&\s]+/gi, "$1[redacted]")
+    .replace(/\b(?:sk|sb_secret|GOCSPX)-[A-Za-z0-9._~-]+\b/gi, "[redacted-secret]")
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[redacted-jwt]")
+    .replace(/((?:access|refresh|client|app|api|verify)[_-]?(?:token|secret|key)|authorization)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .slice(0, 500);
 }
 
 function base64ToBytes(value: string) {
@@ -74,7 +92,7 @@ async function decryptGoogleToken(value: unknown) {
   return new TextDecoder().decode(plain);
 }
 
-function bidRoomGoogleThreadKey(eventId: unknown, threadType: string, laneId: unknown, vendorId: unknown) {
+export function bidRoomGoogleThreadKey(eventId: unknown, threadType: string, laneId: unknown, vendorId: unknown) {
   return [
     "rateware",
     "bid-room",
@@ -93,7 +111,7 @@ function googleChatThreadTarget(thread: Record<string, unknown>, threadKey: stri
   };
 }
 
-async function googleChatAccessToken(supabase: ChatSupabaseClient, ownerEmail: string) {
+export async function googleChatAccessToken(supabase: ChatSupabaseClient, ownerEmail: string | null) {
   const result = await supabase
     .from("google_chat_connections")
     .select("*")
@@ -153,7 +171,8 @@ async function syncBidRoomMessageToGoogleChatApi(
   supabase: ChatSupabaseClient,
   thread: Record<string, unknown>,
   message: Record<string, unknown>,
-  event: Record<string, unknown>
+  event: Record<string, unknown>,
+  defaultSender: string
 ): Promise<GoogleChatSyncResult> {
   const ownerEmail = cleanText(message.owner_email || thread.owner_email || event.owner_email);
   if (!ownerEmail) return { status: "not_configured", name: null };
@@ -169,7 +188,7 @@ async function syncBidRoomMessageToGoogleChatApi(
   if (!spaceName) return { status: "not_configured", name: null };
 
   const threadKey = cleanText(thread.google_chat_thread_key) || bidRoomGoogleThreadKey(thread.rfx_event_id, String(thread.thread_type || "event_group"), thread.rfx_lane_id, thread.vendor_id);
-  const sender = cleanText(message.sender_name || message.sender_email) || "Carrier";
+  const sender = cleanText(message.sender_name || message.sender_email) || defaultSender;
   const title = cleanText(thread.title) || cleanText(event.rfx_id || event.name) || "Bid Room";
   const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;
   try {
@@ -210,7 +229,7 @@ async function syncBidRoomMessageToGoogleChatApi(
   } catch (error) {
     await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
     await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
-    return { status: "error", name: null, error: errorMessage(error) };
+    return { status: "error", name: null, error: safeErrorMessage(error) };
   }
 }
 
@@ -218,16 +237,18 @@ export async function syncBidRoomMessageToGoogleChat(
   supabase: ChatSupabaseClient,
   thread: Record<string, unknown>,
   message: Record<string, unknown>,
-  event: Record<string, unknown> = {}
+  event: Record<string, unknown> = {},
+  options: GoogleChatSyncOptions = {}
 ): Promise<GoogleChatSyncResult> {
-  const apiSync = await syncBidRoomMessageToGoogleChatApi(supabase, thread, message, event);
+  const defaultSender = options.defaultSender || "Carrier";
+  const apiSync = await syncBidRoomMessageToGoogleChatApi(supabase, thread, message, event, defaultSender);
   if (apiSync.status !== "not_configured") return apiSync;
   if (!GOOGLE_CHAT_WEBHOOK_URL) return { status: "not_configured", name: null };
   const threadKey = cleanText(thread.google_chat_thread_key) || bidRoomGoogleThreadKey(thread.rfx_event_id, String(thread.thread_type || "event_group"), thread.rfx_lane_id, thread.vendor_id);
   const url = new URL(GOOGLE_CHAT_WEBHOOK_URL);
   url.searchParams.set("threadKey", threadKey);
   url.searchParams.set("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD");
-  const sender = cleanText(message.sender_name || message.sender_email) || "Carrier";
+  const sender = cleanText(message.sender_name || message.sender_email) || defaultSender;
   const title = cleanText(thread.title) || cleanText(event.rfx_id || event.name) || "Bid Room";
   const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;
   try {
@@ -252,6 +273,6 @@ export async function syncBidRoomMessageToGoogleChat(
   } catch (error) {
     await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
     await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
-    return { status: "error", name: null, error: errorMessage(error) };
+    return { status: "error", name: null, error: safeErrorMessage(error) };
   }
 }

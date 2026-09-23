@@ -8,7 +8,7 @@ Deno.env.set("GOOGLE_CLIENT_SECRET", "client-secret");
 Deno.env.set("GMAIL_TOKEN_ENCRYPTION_KEY", "test-encryption-key");
 Deno.env.set("GOOGLE_CHAT_ALLOWED_ACCOUNT", "sales@example.com");
 Deno.env.delete("GOOGLE_CHAT_WEBHOOK_URL");
-const { syncBidRoomMessageToGoogleChat } = await import("../supabase/functions/_shared/bid-room-google-chat.ts");
+const { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } = await import("../supabase/functions/_shared/bid-room-google-chat.ts");
 
 async function tokenKey(usages: KeyUsage[]) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("test-encryption-key"));
@@ -177,4 +177,57 @@ Deno.test("without a connected account or webhook nothing is sent", async () => 
   } finally {
     fetchStub.restore();
   }
+});
+
+Deno.test("a message without a sender uses the caller's label: Carrier by default, Rateware for the team", async () => {
+  const unnamed = () => ({ id: "message-1", owner_email: "org:test", body: "Hola" });
+  for (const [options, label] of [[undefined, "Carrier"], [{ defaultSender: "Rateware" }, "Rateware"]] as const) {
+    const supabase = fakeSupabase({
+      google_chat_connections: [await connection()],
+      bid_room_chat_messages: [unnamed()],
+      bid_room_chat_threads: [thread()]
+    });
+    const fetchStub = stubFetch(() => Response.json({ name: "spaces/S/messages/M3" }));
+    try {
+      await syncBidRoomMessageToGoogleChat(supabase, thread(), unnamed(), {}, options);
+      const sent = JSON.parse(String(fetchStub.calls[0].init.body));
+      assert(sent.text === `*RFx-1 | Private: ZZ Carrier*\n${label}: Hola`, `expected the ${label} label, got ${sent.text}`);
+    } finally {
+      fetchStub.restore();
+    }
+  }
+});
+
+Deno.test("sync errors never carry credentials back to the caller", async () => {
+  const supabase = fakeSupabase({
+    google_chat_connections: [await connection()],
+    bid_room_chat_messages: [message()],
+    bid_room_chat_threads: [thread()]
+  });
+  const original = globalThis.fetch;
+  globalThis.fetch = (() => Promise.reject(new Error("upstream rejected Authorization: Bearer ya29.secret-token for ?access_token=abc123"))) as typeof fetch;
+  try {
+    const result = await syncBidRoomMessageToGoogleChat(supabase, thread(), message());
+    assert(result.status === "error", `expected error, got ${result.status}`);
+    assert(!/ya29\.secret-token|abc123/.test(String(result.error)), `credentials leaked: ${result.error}`);
+    assert(/\[redacted\]/.test(String(result.error)), `expected a redaction marker, got ${result.error}`);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("thread keys stay stable, because they decide which Chat thread a message joins", () => {
+  assert(bidRoomGoogleThreadKey("e1", "carrier_private", "l1", "v1") === "rateware-bid-room-e1-carrier_private-l1-v1", "carrier thread key changed");
+  assert(bidRoomGoogleThreadKey("e1", "event_group", null, null) === "rateware-bid-room-e1-event_group-event-group", "event thread key changed");
+});
+
+Deno.test("without a connected Google account the token lookup explains what to connect", async () => {
+  const supabase = fakeSupabase({ google_chat_connections: [] });
+  let message = "";
+  try {
+    await googleChatAccessToken(supabase, "org:test");
+  } catch (error) {
+    message = (error as Error).message;
+  }
+  assert(message === "Connect sales@example.com in Settings before using Google Chat.", `unexpected: ${message}`);
 });

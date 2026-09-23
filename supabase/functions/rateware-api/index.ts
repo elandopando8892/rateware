@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
+import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import type { WorkspaceUser } from "../_shared/workspace.ts";
@@ -11640,140 +11641,11 @@ function normalizeBidRoomThreadType(value: unknown) {
   return BID_ROOM_CHAT_THREAD_TYPES.has(threadType) ? threadType : "event_group";
 }
 
-function bidRoomGoogleThreadKey(eventId: unknown, threadType: string, laneId: unknown, vendorId: unknown) {
-  return [
-    "rateware",
-    "bid-room",
-    cleanText(eventId) || "event",
-    threadType,
-    cleanText(laneId) || "event",
-    cleanText(vendorId) || "group"
-  ].join("-").replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 190);
-}
-
 function bidRoomThreadTitle(threadType: string, event: Record<string, unknown>, lane?: Record<string, unknown> | null, vendor?: Record<string, unknown> | null) {
   const eventRef = [cleanText(event.rfx_id), cleanText(event.name)].filter(Boolean).join(" | ") || "Bid Room";
   if (threadType === "carrier_private") return `${eventRef} | Private: ${cleanText(vendor?.vendor_name || vendor?.domain) || "Carrier"}`;
   if (threadType === "lane_group") return `${eventRef} | Lane: ${[lane?.origin, lane?.destination].filter(Boolean).join(" -> ") || lane?.lane_number || "Selected lane"}`;
   return `${eventRef} | Event group`;
-}
-
-function googleChatThreadTarget(thread: Record<string, unknown>, threadKey: string) {
-  const threadName = cleanText(thread.google_chat_thread_name);
-  return {
-    replyOption: threadName ? "REPLY_MESSAGE_OR_FAIL" : "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD",
-    thread: threadName ? { name: threadName } : { threadKey }
-  };
-}
-
-async function syncBidRoomMessageToGoogleChatApi(
-  supabase: RatewareSupabaseClient,
-  thread: Record<string, unknown>,
-  message: Record<string, unknown>,
-  event: Record<string, unknown>
-) {
-  const ownerEmail = cleanText(message.owner_email || thread.owner_email || event.owner_email);
-  if (!ownerEmail) return { status: "not_configured", name: null };
-  const connectionResult = await supabase
-    .from("google_chat_connections")
-    .select("default_space_name,default_space_display_name,status")
-    .eq("owner_email", ownerEmail)
-    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
-    .eq("status", "connected")
-    .maybeSingle();
-  if (connectionResult.error) throw connectionResult.error;
-  const connection = connectionResult.data;
-  const spaceName = cleanText(connection?.default_space_name);
-  if (!connection || !spaceName) return { status: "not_configured", name: null };
-
-  const threadKey = cleanText(thread.google_chat_thread_key) || bidRoomGoogleThreadKey(thread.rfx_event_id, String(thread.thread_type || "event_group"), thread.rfx_lane_id, thread.vendor_id);
-  const sender = cleanText(message.sender_name || message.sender_email) || "Rateware";
-  const title = cleanText(thread.title) || cleanText(event.rfx_id || event.name) || "Bid Room";
-  const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;
-  try {
-    const accessToken = await googleChatAccessToken(supabase, { owner_email: ownerEmail });
-    const target = googleChatThreadTarget(thread, threadKey);
-    const params = new URLSearchParams({ messageReplyOption: target.replyOption });
-    const response = await fetch(`https://chat.googleapis.com/v1/${spaceName}/messages?${params.toString()}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        text,
-        thread: target.thread
-      })
-    });
-    const payload = await response.json().catch(() => ({}));
-    const status = response.ok ? "synced" : "error";
-    await supabase.from("bid_room_chat_messages").update({
-      google_chat_message_name: cleanText(payload.name),
-      google_chat_sync_status: status
-    }).eq("id", message.id);
-    await supabase.from("bid_room_chat_threads").update({
-      google_chat_space: spaceName,
-      google_chat_thread_key: threadKey,
-      google_chat_thread_name: cleanText(payload?.thread?.name) || cleanText(thread.google_chat_thread_name),
-      google_chat_sync_status: status,
-      updated_at: new Date().toISOString()
-    }).eq("id", thread.id);
-    if (!response.ok) {
-      await supabase.from("google_chat_connections").update({
-        last_error: cleanText(payload?.error?.message) || `Google Chat send failed (${response.status}).`,
-        updated_at: new Date().toISOString()
-      }).eq("owner_email", ownerEmail).eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT);
-    }
-    return { status, name: cleanText(payload.name), space_name: spaceName };
-  } catch (error) {
-    await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
-    await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
-    const errorMessage = safeOperationalError(error);
-    return { status: "error", name: null, error: errorMessage };
-  }
-}
-
-async function syncBidRoomMessageToGoogleChat(
-  supabase: RatewareSupabaseClient,
-  thread: Record<string, unknown>,
-  message: Record<string, unknown>,
-  event: Record<string, unknown>
-) {
-  const apiSync = await syncBidRoomMessageToGoogleChatApi(supabase, thread, message, event);
-  if (apiSync.status !== "not_configured") return apiSync;
-  if (!GOOGLE_CHAT_WEBHOOK_URL) return { status: "not_configured", name: null };
-  const threadKey = cleanText(thread.google_chat_thread_key) || bidRoomGoogleThreadKey(thread.rfx_event_id, String(thread.thread_type || "event_group"), thread.rfx_lane_id, thread.vendor_id);
-  const url = new URL(GOOGLE_CHAT_WEBHOOK_URL);
-  url.searchParams.set("threadKey", threadKey);
-  url.searchParams.set("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD");
-  const sender = cleanText(message.sender_name || message.sender_email) || "Rateware";
-  const title = cleanText(thread.title) || cleanText(event.rfx_id || event.name) || "Bid Room";
-  const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;
-  try {
-    const response = await fetch(url.toString(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text })
-    });
-    const payload = await response.json().catch(() => ({}));
-    const status = response.ok ? "synced" : "error";
-    await supabase.from("bid_room_chat_messages").update({
-      google_chat_message_name: cleanText(payload.name),
-      google_chat_sync_status: status
-    }).eq("id", message.id);
-    await supabase.from("bid_room_chat_threads").update({
-      google_chat_thread_key: threadKey,
-      google_chat_thread_name: cleanText(payload?.thread?.name),
-      google_chat_sync_status: status,
-      updated_at: new Date().toISOString()
-    }).eq("id", thread.id);
-    return { status, name: cleanText(payload.name) };
-  } catch (error) {
-    await supabase.from("bid_room_chat_messages").update({ google_chat_sync_status: "error" }).eq("id", message.id);
-    await supabase.from("bid_room_chat_threads").update({ google_chat_sync_status: "error" }).eq("id", thread.id);
-    const errorMessage = safeOperationalError(error);
-    return { status: "error", name: null, error: errorMessage };
-  }
 }
 
 function googleChatConnectionCanReadMessages(connection: Record<string, unknown> | null | undefined) {
@@ -11820,7 +11692,7 @@ async function syncGoogleChatInboundMessagesForThreads(
     };
   }
 
-  const accessToken = await googleChatAccessToken(supabase, { owner_email: owner });
+  const accessToken = await googleChatAccessToken(supabase, owner);
   const url = new URL(`https://chat.googleapis.com/v1/${spaceName}/messages`);
   url.searchParams.set("pageSize", String(Math.min(Math.max(Number(input.limit) || 100, 10), 100)));
   const response = await fetch(url.toString(), {
@@ -11997,7 +11869,7 @@ async function retryGoogleChatSync(
       rows.push({ id: message.id, status: "skipped", reason: "Missing Bid Room thread or event." });
       continue;
     }
-    const result = await syncBidRoomMessageToGoogleChat(supabase, thread, message, event);
+    const result = await syncBidRoomMessageToGoogleChat(supabase, thread, message, event, { defaultSender: "Rateware" });
     if (result.status === "synced") synced += 1;
     else if (result.status === "not_configured") skipped += 1;
     else failed += 1;
@@ -12539,7 +12411,7 @@ async function postBidRoomChatMessage(
     resolved_at: null,
     resolved_by: null
   }).eq("id", thread.id);
-  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, messageResult.data, event);
+  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, messageResult.data, event, { defaultSender: "Rateware" });
   return { thread, message: { ...messageResult.data, google_chat_sync_status: sync.status }, google_chat_configured: sync.status !== "not_configured" || Boolean(GOOGLE_CHAT_WEBHOOK_URL) };
 }
 
@@ -12609,7 +12481,7 @@ async function syncBidRoomEventThread(
     title: bidRoomThreadTitle("event_group", event),
     updated_at: new Date().toISOString()
   }).eq("id", thread.id);
-  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, message, event);
+  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, message, event, { defaultSender: "Rateware" });
   return {
     thread: { ...thread, title: bidRoomThreadTitle("event_group", event), google_chat_sync_status: sync.status },
     message: { ...message, google_chat_sync_status: sync.status },
@@ -18309,64 +18181,6 @@ async function syncGmailBounces(
   };
 }
 
-async function googleChatAccessToken(supabase: RatewareSupabaseClient, user: { owner_email: string | null }) {
-  const result = await supabase
-    .from("google_chat_connections")
-    .select("*")
-    .eq("owner_email", user.owner_email)
-    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT)
-    .eq("status", "connected")
-    .maybeSingle();
-  if (result.error) throw result.error;
-  const connection = result.data;
-  if (!connection) throw new Error(`Connect ${GOOGLE_CHAT_ALLOWED_ACCOUNT} in Settings before using Google Chat.`);
-
-  const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at).getTime() : 0;
-  if (connection.access_token_encrypted && expiresAt > Date.now() + 120_000) {
-    return await decryptGmailToken(connection.access_token_encrypted);
-  }
-
-  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
-  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
-  if (!clientId || !clientSecret) throw new Error("Google OAuth client is not configured.");
-  const refreshToken = await decryptGmailToken(connection.refresh_token_encrypted);
-  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token"
-    })
-  });
-  const tokenData = await tokenResponse.json();
-  if (!tokenResponse.ok || !tokenData.access_token) {
-    const message = cleanText(tokenData.error_description) || cleanText(tokenData.error) || "Google Chat token refresh failed.";
-    await supabase
-      .from("google_chat_connections")
-      .update({ status: "error", last_error: message, updated_at: new Date().toISOString() })
-      .eq("owner_email", user.owner_email)
-      .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT);
-    throw new Error(message);
-  }
-
-  const accessToken = String(tokenData.access_token);
-  const expiresIn = Number(tokenData.expires_in) || 3600;
-  const update = await supabase
-    .from("google_chat_connections")
-    .update({
-      access_token_encrypted: await encryptGmailToken(accessToken),
-      token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
-      last_error: null,
-      updated_at: new Date().toISOString()
-    })
-    .eq("owner_email", user.owner_email)
-    .eq("account_email", GOOGLE_CHAT_ALLOWED_ACCOUNT);
-  if (update.error) throw update.error;
-  return accessToken;
-}
-
 function normalizeGoogleChatSpaceName(value: unknown) {
   const text = cleanText(value);
   if (!text) return null;
@@ -18407,7 +18221,7 @@ async function getGoogleChatSpaceDetails(
   if (!spaceName) {
     throw new Error("Paste a valid Google Chat Space link or resource name like spaces/AAA...");
   }
-  const accessToken = await googleChatAccessToken(supabase, user);
+  const accessToken = await googleChatAccessToken(supabase, user.owner_email);
   const response = await fetch(`https://chat.googleapis.com/v1/${spaceName}`, {
     headers: { Authorization: `Bearer ${accessToken}` }
   });
@@ -18430,7 +18244,7 @@ async function listGoogleChatSpaces(supabase: RatewareSupabaseClient, user: { ow
   if (connectionResult.error) throw connectionResult.error;
   if (!connectionResult.data) return { connected: false, rows: [], default_space_name: null };
 
-  const accessToken = await googleChatAccessToken(supabase, user);
+  const accessToken = await googleChatAccessToken(supabase, user.owner_email);
   const rows: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   let pageToken = "";
@@ -20028,7 +19842,7 @@ async function mirrorBidRoomCarrierDelivery(
     resolved_at: null,
     resolved_by: null
   }).eq("id", thread.id);
-  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, inserted.data, event);
+  const sync = await syncBidRoomMessageToGoogleChat(supabase, thread, inserted.data, event, { defaultSender: "Rateware" });
   return {
     thread,
     message: { ...inserted.data, google_chat_sync_status: sync.status },
