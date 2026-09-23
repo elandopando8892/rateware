@@ -1,4 +1,9 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.14";
+import {
+  assertEquals,
+  assertMatch,
+  assertRejects,
+  assertStringIncludes,
+} from "jsr:@std/assert@1.0.14";
 
 import type { SqlPort } from "../_shared/osp/database-context.ts";
 import { canonicalPackageSetJson } from "../_shared/osp/package-set-json.ts";
@@ -13,6 +18,31 @@ import {
 const organizationId = "11111111-1111-4111-8111-111111111111";
 const caseId = "22222222-2222-4222-8222-222222222222";
 const manifestSha256 = "a".repeat(64);
+
+Deno.test("semantic gate excludes a manifest while a legacy DOC conversion is pending", async () => {
+  let manifestQuery = "";
+  const sql = ((strings: TemplateStringsArray) => {
+    const statement = strings.join("?");
+    if (statement.includes("from osp_private.request_manifest_drafts manifest")) {
+      manifestQuery = statement;
+      return Promise.resolve([]);
+    }
+    return Promise.resolve([]);
+  }) as SqlPort;
+  sql.begin = async <T>(fn: (tx: SqlPort) => Promise<T>) => await fn(sql);
+  const gate = createPostgresRequestSemanticGate({
+    databaseUrl: "postgresql://example.invalid/test",
+    postgresFactory: () => sql,
+  });
+  await assertRejects(
+    () => gate.load({ organizationId, caseId }),
+    Error,
+    "REQUEST_FULFILLMENT_BLOCKED",
+  );
+  assertMatch(manifestQuery, /not exists \([\s\S]*?from osp_private\.gmail_attachments pending_attachment/);
+  assertMatch(manifestQuery, /source_message\.case_id = manifest\.case_id/);
+  assertMatch(manifestQuery, /pending_attachment\.processing_disposition = 'manual_conversion_required'/);
+});
 
 Deno.test("MVP deferrals keep only the internal Operations gate available", () => {
   const scopeExceptions = manifestScopeExceptions([{

@@ -635,6 +635,15 @@ export function createPostgresRequestSemanticGate(options: {
         ) review on true
         where manifest.organization_id = ${input.organizationId}
           and manifest.case_id = ${input.caseId}
+          and not exists (
+            select 1 from osp_private.gmail_attachments pending_attachment
+            join osp_private.gmail_messages source_message
+              on source_message.organization_id = pending_attachment.organization_id
+             and source_message.id = pending_attachment.gmail_message_id
+            where source_message.organization_id = manifest.organization_id
+              and source_message.case_id = manifest.case_id
+              and pending_attachment.processing_disposition = 'manual_conversion_required'
+          )
         order by manifest.version desc
         limit 1`;
         if (
