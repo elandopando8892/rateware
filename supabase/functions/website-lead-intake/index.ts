@@ -307,7 +307,7 @@ async function receiveCarrierRateSheet(input: Lead, raw: string, supabase: Intak
     if (outcome === "review_required") return json({ error: "Notification requires commercial review." }, 409);
     return json({ error: "Commercial notification unavailable." }, 502);
   } catch (error) {
-    console.error("Carrier rate sheet intake failed", error instanceof Error ? error.message : "unknown_error");
+    console.error("Carrier rate sheet intake failed", error instanceof Error ? error.message : JSON.stringify(error));
     return json({ error: "Carrier rate sheet intake unavailable." }, 502);
   }
 }
