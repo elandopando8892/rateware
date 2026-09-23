@@ -19,7 +19,13 @@ async function requireSupabaseUser(token: string) {
     sub: user.id,
     email: user.email,
     auth_provider: "supabase",
-    organization_id: appMetadata.rateware_organization_id || appMetadata.organization_id
+    organization_id: appMetadata.rateware_organization_id || appMetadata.organization_id,
+    // Only server-managed metadata returned by Auth can grant capabilities.
+    permissions: Array.isArray(appMetadata.permissions)
+      ? appMetadata.permissions.filter((permission): permission is string =>
+        typeof permission === "string" && permission.trim().length > 0
+      ).map((permission) => permission.trim())
+      : []
   };
 }
 

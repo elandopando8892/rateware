@@ -15,10 +15,18 @@ const configuredCorsOrigins = [
   .filter((origin) => /^https?:\/\/[^\s,]+$/i.test(origin));
 const CORS_ORIGINS = new Set(configuredCorsOrigins);
 const FALLBACK_CORS_ORIGIN = DEFAULT_CORS_ORIGINS[0];
+// Vercel preview deployments are immutable, non-production Rateware builds.
+// Keep their CORS allowance scoped to this project namespace; never fall back
+// to a wildcard origin or reflect an arbitrary request origin.
+const RATEWARE_VERCEL_PREVIEW_ORIGIN = /^https:\/\/rateware-[a-z0-9]+(?:-[a-z0-9]+)*-elandopando8892s-projects\.vercel\.app$/i;
+
+function isAllowedCorsOrigin(origin: string) {
+  return CORS_ORIGINS.has(origin) || RATEWARE_VERCEL_PREVIEW_ORIGIN.test(origin);
+}
 
 export function corsHeaders(request?: Request) {
   const requestOrigin = request?.headers.get("Origin")?.trim() || "";
-  const responseOrigin = requestOrigin && CORS_ORIGINS.has(requestOrigin)
+  const responseOrigin = requestOrigin && isAllowedCorsOrigin(requestOrigin)
     ? requestOrigin
     : FALLBACK_CORS_ORIGIN;
 
