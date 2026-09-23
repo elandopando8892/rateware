@@ -74,12 +74,18 @@ jobs:
         run: node tools/validate-action-contract-no-regression.mjs --baseline-root /tmp/rateware-main
 
       - name: Start clean local Supabase database
+        env:
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
         run: supabase db start
 
       - name: Replay every migration from scratch
+        env:
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
         run: supabase db reset --local
 
       - name: Dump resulting public schema
+        env:
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
         run: supabase db dump --local --schema public --file /tmp/rateware-public-schema.sql
 
       - name: Verify canonical tenant objects survived replay
