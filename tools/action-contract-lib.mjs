@@ -1377,8 +1377,12 @@ function dependencyEnvelope(repoRoot, initialFiles, overrides = new Map()) {
   };
 }
 
+// Functions whose selector actions authenticate a person's Supabase session and
+// resolve it to a workspace (human exposure), rather than a token in the request.
+const HUMAN_SELECTOR_FUNCTIONS = new Set(["shipper-directory-api", "rateware-api", "quotedesk-api"]);
+
 function selectorExposure(functionName, actionName) {
-  if (functionName === "shipper-directory-api" || functionName === "rateware-api") return "human";
+  if (HUMAN_SELECTOR_FUNCTIONS.has(functionName)) return "human";
   if (functionName === "rfx-bid-api" && actionName.startsWith("public_")) return "public";
   return "external-tokenized";
 }

@@ -424,6 +424,11 @@ verify_jwt = false
 [functions.shipper-directory-api]
 verify_jwt = false
 
+# Bidware QuoteDesk authenticates the Supabase session inside the function, like
+# rateware-api; gateway verification stays off so CORS preflight can pass.
+[functions.quotedesk-api]
+verify_jwt = false
+
 [functions.website-lead-intake]
 verify_jwt = false
 
