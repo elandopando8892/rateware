@@ -287,8 +287,13 @@ async function receiveCarrierRateSheet(input: Lead, raw: string, supabase: Intak
           ["Servicio", lead.service_level], ["Archivo original", lead.file_name],
         ].filter(([, value]) => Boolean(value));
         const subject = `[Tarifario web] ${lead.company} · ${row.id}`;
-        const plain = ["Nuevo tarifario de transportista", ...entries.map(([label, value]) => `${label}: ${value}`), "", "Descarga privada (7 días):", signedUrl.data.signedUrl].join("\n");
-        const html = `<h2>Nuevo tarifario de transportista</h2><table>${entries.map(([label, value]) => `<tr><th align="left">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join("")}</table><p><a href="${escapeHtml(signedUrl.data.signedUrl)}">Descargar archivo original (7 días)</a></p>`;
+        const nextSteps = [
+          "Descarga y revisa el original antes de que venza el enlace de 7 días.",
+          "Responde al contacto desde sales@heymarksman.com en menos de 24 horas hábiles con el siguiente paso de validación.",
+          "El folio confirma recepción; no importa tarifas ni da de alta al transportista automáticamente.",
+        ];
+        const plain = ["Nuevo tarifario de transportista", ...entries.map(([label, value]) => `${label}: ${value}`), "", "Acción comercial:", ...nextSteps.map((step, index) => `${index + 1}. ${step}`), "", "Descarga privada (7 días):", signedUrl.data.signedUrl].join("\n");
+        const html = `<h2>Nuevo tarifario de transportista</h2><table>${entries.map(([label, value]) => `<tr><th align="left">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join("")}</table><h3>Acción comercial</h3><ol>${nextSteps.map(step => `<li>${escapeHtml(step)}</li>`).join("")}</ol><p><a href="${escapeHtml(signedUrl.data.signedUrl)}">Descargar archivo original (7 días)</a></p>`;
         const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
           method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
           body: JSON.stringify({ raw: rawEmail({ recipient, subject, plain, html }) }),
