@@ -630,6 +630,73 @@ export function crossingCarriesBorder(model) {
   return { carries: true, known: false };
 }
 
+// ---------------------------------------------------------------- which base prices a route (cost-bases.service.ts)
+
+export function scopeForOperation(operation) {
+  switch (operation) {
+    case "D2D Export":
+    case "D2D Import":
+      return "CROSS_BORDER";
+    case "Drayage":
+      return "DRAYAGE";
+    case "Local":
+      return "LOCAL";
+    case "Intra-Mex":
+    case "MX Northbound":
+    case "MX Southbound":
+      return "INTRA_MEX";
+    case "Intra-US":
+    case "US Northbound":
+    case "US Southbound":
+      return "INTRA_US";
+    default:
+      return null;
+  }
+}
+
+export const SCOPE_LABEL = {
+  CROSS_BORDER: "crossborder (D2D)",
+  INTRA_MEX: "Intra-México",
+  INTRA_US: "Intra-EE. UU.",
+  DRAYAGE: "drayage",
+  LOCAL: "local"
+};
+
+/**
+ * Why a base cannot price this route, as the FCM would refuse it
+ * (assertScopeCompatible + assertCalculationSupportedByProfile); null when it
+ * can. Legacy sets carry no scope or profile and price any operation.
+ */
+export function baseRefusal(base, { operation, service, equipment }) {
+  const name = base?.name || "La base";
+  const expected = scopeForOperation(operation);
+  if (base?.scope && expected && base.scope !== expected) {
+    return `"${name}" es para rutas ${SCOPE_LABEL[base.scope] || base.scope}; esta ruta es ${operation}.`;
+  }
+  const profile = base?.profile;
+  if (!profile || typeof profile !== "object") return null;
+  const checks = [
+    ["operations", operation, "la operación"],
+    ["services", service, "el servicio"],
+    ["truckTypes", equipment?.truckType, "el equipo"],
+    ["trailerTypes", equipment?.trailer, "el remolque"],
+    ["configurations", equipment?.config, "la configuración"],
+    ["driverTypes", equipment?.driver, "el tipo de operador"]
+  ];
+  for (const [key, value, label] of checks) {
+    const allowed = Array.isArray(profile[key]) ? profile[key] : null;
+    if (allowed && !allowed.includes(value)) return `"${name}" no cubre ${label} ${value}; permite ${allowed.join(", ")}.`;
+  }
+  return null;
+}
+
+/** The base for a route: one of the route's scope that covers it, else the default, else any that covers it. */
+export function pickCostBase(bases, input) {
+  const fits = bases.filter((base) => !baseRefusal(base, input));
+  const expected = scopeForOperation(input.operation);
+  return fits.find((base) => expected && base.scope === expected) || fits.find((base) => base.is_default) || fits[0] || null;
+}
+
 /**
  * A QuoteDesk lane priced with an FCM base. Money is USD. Returns the lane
  * components (MX all-in, US linehaul at RPM, US fuel at FSC, cruce), the

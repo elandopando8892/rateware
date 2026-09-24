@@ -53,7 +53,8 @@ async function readFcm(): Promise<Record<string, Row[]>> {
       const organizations = await tx`select id, name from "Organization"`;
       const sets = await tx`
         select s.id, s."orgId" as org_id, s.name as set_name, s.version, s.status::text as version_status,
-               s."isActive" as is_active, s."applicabilityContext" is not null as has_profile, s."updatedAt" as updated_at,
+               s."isActive" as is_active, s."applicabilityContext" is not null as has_profile, s."applicabilityContext" as profile,
+               s."updatedAt" as updated_at,
                b.id as base_id, b.code, b.name as base_name, b.scope::text as scope, b.status::text as base_status,
                b."defaultPolicy"::text as policy, b.currency, b."isDefault" as base_default
         from "AssumptionSet" s left join "CostBase" b on b.id = s."costBaseId"`;

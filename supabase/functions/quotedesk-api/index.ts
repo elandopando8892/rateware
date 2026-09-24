@@ -14,13 +14,16 @@ import { GMAIL_ALLOWED_SENDER, GmailSendError, gmailAccessToken, gmailRawMessage
 import { isEmail, renderQuoteEmail } from "./email.mjs";
 import { metersToMiles, placeQuery, queryKey } from "./routes.mjs";
 import {
+  SCOPE_LABEL,
   TIERS,
+  baseRefusal,
   customerService,
   estimateQuoteLane,
   fcmEquipment,
   fcmOperation,
   fcmService,
   legsFor,
+  pickCostBase,
   round2,
   tierMargins
 } from "./fcm.mjs";
@@ -884,7 +887,7 @@ const KM_PER_MILE = 1.60934;
 
 async function fcmCostBases(supabase: Db, workspace: Workspace) {
   const result = await supabase.from("fcm_cost_bases")
-    .select("id,name,code,scope,version,version_status,is_default,policy,params,param_count,synced_at")
+    .select("id,name,code,scope,profile,version,version_status,is_default,policy,params,param_count,synced_at")
     .eq("owner_email", workspace.owner_email).eq("usable", true)
     .order("is_default", { ascending: false }).order("name", { ascending: true });
   if (result.error) throw result.error;
@@ -899,6 +902,8 @@ async function listFcmCostBases(supabase: Db, workspace: Workspace) {
       name: base.name,
       code: base.code,
       scope: base.scope,
+      scope_label: SCOPE_LABEL[String(base.scope) as keyof typeof SCOPE_LABEL] ?? null,
+      operations: Array.isArray(record(base.profile).operations) ? record(base.profile).operations : null,
       version: base.version,
       version_status: base.version_status,
       is_default: base.is_default,
@@ -949,9 +954,6 @@ async function estimateLaneFcm(supabase: Db, workspace: Workspace, body: Row) {
   const quote = await requireQuote(supabase, workspace, body.quote_id);
   const bases = await fcmCostBases(supabase, workspace);
   if (!bases.length) throw new HttpError(409, "No hay bases de costos del FCM disponibles para esta organización.");
-  const baseId = text(body.cost_base_id, 80);
-  const base = baseId ? bases.find((row) => row.id === baseId) : bases.find((row) => row.is_default) || bases[0];
-  if (!base) throw new HttpError(404, "Esa base de costos del FCM no está disponible; elige otra.");
   const tierInput = text(body.tier, 20) || "target";
   const tier = Object.prototype.hasOwnProperty.call(TIERS, tierInput) ? tierInput : "target";
 
@@ -965,6 +967,23 @@ async function estimateLaneFcm(supabase: Db, workspace: Workspace, body: Row) {
   const equipment = fcmEquipment({ equipment: text(body.equipment, 80), trailer: text(body.trailer, 80), config: text(body.config, 80) });
   const crossingModel = text(body.crossing_model, 40);
   const warnings: string[] = [];
+
+  // The base: the one chosen, if it covers the route; else the base of the route's scope (as the FCM enforces).
+  const baseId = text(body.cost_base_id, 80);
+  const coverage = { operation, service, equipment };
+  let base: Row | null | undefined;
+  if (baseId) {
+    base = bases.find((row) => row.id === baseId);
+    if (!base) throw new HttpError(404, "Esa base de costos del FCM no está disponible; elige otra.");
+    const refusal = baseRefusal(base, coverage);
+    if (refusal) throw new HttpError(400, refusal);
+  } else {
+    base = pickCostBase(bases, coverage) as Row | null;
+    if (!base) {
+      const reasons = bases.map((row) => baseRefusal(row, coverage)).filter(Boolean);
+      throw new HttpError(409, `Ninguna base del FCM cubre esta ruta. ${reasons.join(" ")}`.trim());
+    }
+  }
 
   // Legs, split at the crossing the same way suggest_lane_miles does.
   const legs = legsFor(operation);
@@ -1077,7 +1096,7 @@ async function estimateLaneFcm(supabase: Db, workspace: Workspace, body: Row) {
   const inQuote = (usd: number | null) => usd === null ? null : quote.currency === "MXN" ? round2(usd * (fx as number)) : usd;
   const components = estimate.components as Record<string, number | null>;
   return {
-    cost_base: { id: base.id, name: base.name, code: base.code, version: base.version },
+    cost_base: { id: base.id, name: base.name, code: base.code, version: base.version, scope: base.scope ?? null, auto: !baseId },
     tier: estimate.tier,
     margin: estimate.margin,
     margins: estimate.margins,
