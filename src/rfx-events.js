@@ -60,7 +60,7 @@ import { initSpreadsheetColumnFilters } from "./spreadsheet-column-filters.js";
 import { humanizeError } from "./error-copy.js";
 import { errorState, stateBlock, tableErrorState, tableState } from "./ui-state.js";
 import { initWorkbenchTabs } from "./workbench-tabs.js";
-import * as XLSX from "https://esm.sh/xlsx@0.18.5";
+import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const DEFAULT_COMMERCIAL_SHARE_PCT = 3;
 const XBF_BUY_SELL_DEFAULT_MARKUP_PCT = 12;

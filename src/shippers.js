@@ -88,7 +88,7 @@ const state = {
   duplicatesLoading: false
 };
 
-const SHIPPER_XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
+const SHIPPER_XLSX_MODULE_URL = "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 let shipperXlsxModulePromise = null;
 let directoryLoadVersion = 0;
 let pipelineLoadVersion = 0;
