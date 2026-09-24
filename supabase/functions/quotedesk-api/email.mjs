@@ -2,6 +2,8 @@
 // the preview and again at send time, and sends only when both renderings
 // hash to the same checksum (so a price edited in between is never sent).
 
+import { customerService } from "./fcm.mjs";
+
 const UNIT_WORDS = {
   hour: ["hora", "horas"],
   event: ["evento", "eventos"],
@@ -74,7 +76,7 @@ export function renderQuoteEmail({ quote, lanes, contactName, note, senderName =
 
   const textLines = [greeting, "", intro, ""];
   for (const lane of lanes) {
-    const details = [lane.equipment, lane.service].filter(Boolean).join(" · ");
+    const details = [lane.equipment, customerService(lane.service)].filter(Boolean).join(" · ");
     textLines.push(
       `${lane.lane_number}. ${placeName(lane.origin_city, lane.origin_state, lane.origin)} → ${placeName(lane.destination_city, lane.destination_state, lane.destination)}${details ? ` · ${details}` : ""}`
     );
@@ -88,7 +90,7 @@ export function renderQuoteEmail({ quote, lanes, contactName, note, senderName =
   const text = textLines.join("\n");
 
   const rows = lanes.map((lane) => {
-    const details = [lane.equipment, lane.service].filter(Boolean).join(" · ");
+    const details = [lane.equipment, customerService(lane.service)].filter(Boolean).join(" · ");
     const accessorials = (lane.accessorials || [])
       .map((accessorial) => `<div style="color:#73746d;font-size:12px">Incluye ${escapeHtml(accessorialLine(accessorial, currency))}</div>`)
       .join("");

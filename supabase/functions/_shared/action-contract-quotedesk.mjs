@@ -36,6 +36,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -77,6 +78,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -118,6 +120,49 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
+    ],
+    "rpcSignature": null,
+    "coverageSignals": [
+      "shared_dependency_observed",
+      "external_dependency"
+    ]
+  },
+  {
+    "contractVersion": "1.3.0",
+    "canonicalId": "edge.quotedesk-api.estimate_lane_fcm",
+    "actionName": "estimate_lane_fcm",
+    "sourceKind": "edge-selector",
+    "sourceFile": "supabase/functions/quotedesk-api/index.ts",
+    "handler": "jsonResponse",
+    "endpoint": "POST /functions/v1/quotedesk-api body.action",
+    "businessModule": "Commercial",
+    "operation": "read",
+    "resource": "quotedesk",
+    "access": "read",
+    "exposure": "human",
+    "sensitivity": "medium",
+    "tenantRelevance": "tenant-scoped",
+    "proposedPermissionKey": "quotedesk.read",
+    "functionalOwner": "Commercial",
+    "decisionStatus": "pending_human_approval",
+    "lifecycle": "active",
+    "replacementAction": null,
+    "sourceFingerprint": "73a585b5f3d1a3d03a2bbf7cc498db095433bd38426397ec7c7f98f689a3fb98",
+    "notes": "Bidware QuoteDesk. Prices a draft route with the ported FCM engine (fcm.mjs): MX all-in with FCM casetas, US RPM plus weekly FSC, cruce by crossing model, chosen tier margin; may measure missing legs with Google Routes (cached). Writes nothing else. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
+    "analysisCoverage": "shared-observed",
+    "dependencyFiles": [
+      "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
+      "supabase/functions/_shared/identity-contract.mjs",
+      "supabase/functions/_shared/kinde.ts",
+      "supabase/functions/_shared/runtime-identity.ts",
+      "supabase/functions/_shared/workspace.ts",
+      "supabase/functions/quotedesk-api/calc.mjs",
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -159,6 +204,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -200,6 +246,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -241,6 +288,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -282,6 +330,49 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
+    ],
+    "rpcSignature": null,
+    "coverageSignals": [
+      "shared_dependency_observed",
+      "external_dependency"
+    ]
+  },
+  {
+    "contractVersion": "1.3.0",
+    "canonicalId": "edge.quotedesk-api.list_fcm_cost_bases",
+    "actionName": "list_fcm_cost_bases",
+    "sourceKind": "edge-selector",
+    "sourceFile": "supabase/functions/quotedesk-api/index.ts",
+    "handler": "jsonResponse",
+    "endpoint": "POST /functions/v1/quotedesk-api body.action",
+    "businessModule": "Commercial",
+    "operation": "read",
+    "resource": "quotedesk",
+    "access": "read",
+    "exposure": "human",
+    "sensitivity": "medium",
+    "tenantRelevance": "tenant-scoped",
+    "proposedPermissionKey": "quotedesk.read",
+    "functionalOwner": "Commercial",
+    "decisionStatus": "pending_human_approval",
+    "lifecycle": "active",
+    "replacementAction": null,
+    "sourceFingerprint": "73a585b5f3d1a3d03a2bbf7cc498db095433bd38426397ec7c7f98f689a3fb98",
+    "notes": "Bidware QuoteDesk. Lists the workspace's usable FCM cost bases (copied from the FCM database into fcm_cost_bases) with their tier margins. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
+    "analysisCoverage": "shared-observed",
+    "dependencyFiles": [
+      "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
+      "supabase/functions/_shared/identity-contract.mjs",
+      "supabase/functions/_shared/kinde.ts",
+      "supabase/functions/_shared/runtime-identity.ts",
+      "supabase/functions/_shared/workspace.ts",
+      "supabase/functions/quotedesk-api/calc.mjs",
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -323,6 +414,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -364,6 +456,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -405,6 +498,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -446,6 +540,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -476,7 +571,7 @@ const surfaces = [
     "lifecycle": "active",
     "replacementAction": null,
     "sourceFingerprint": "73a585b5f3d1a3d03a2bbf7cc498db095433bd38426397ec7c7f98f689a3fb98",
-    "notes": "Bidware QuoteDesk. Creates or edits a route; base cost, all-in and margin are computed server-side. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
+    "notes": "Bidware QuoteDesk. Creates or edits a route; base cost, all-in and margin are computed server-side; an FCM estimate snapshot may be kept in its metadata. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
@@ -487,6 +582,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -528,6 +624,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -569,6 +666,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -610,6 +708,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -651,6 +750,7 @@ const surfaces = [
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
       "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/fcm.mjs",
       "supabase/functions/quotedesk-api/index.ts",
       "supabase/functions/quotedesk-api/routes.mjs"
     ],
@@ -694,15 +794,17 @@ const surfaces = [
 ];
 
 export const QUOTEDESK_ACTION_CONTRACT_EXTENSION = {
-  expectedCountsDelta: { governable: 17, edge: 16, postgres: 1, ratewareApi: 0 },
+  expectedCountsDelta: { governable: 19, edge: 18, postgres: 1, ratewareApi: 0 },
   reviewedMetadataFingerprints: {
     "edge.quotedesk-api.apply_bid_room_awards": "520cbc675125c9fc766a73d30249860b359dacf3026ea40b36a7298b8c4275a2",
     "edge.quotedesk-api.create_quote": "5ebce40775d7d6894b38112bbf72a9ac7a5608b1c1780d926a02393648baad96",
     "edge.quotedesk-api.delete_quote_lane": "55c2fd2e9242c2b5e3492b95073f59e4ad17a5b485a6b65421568103ba8fe2c9",
+    "edge.quotedesk-api.estimate_lane_fcm": "7b399e17cb52bbe375c6558e53cf2d887580072e49e5ffcabeab8a94fb11c947",
     "edge.quotedesk-api.event_origins": "c4889f3c65b5474b8c3d182093feb85ab8483669f3902dffb3fd09824e6c9ee9",
     "edge.quotedesk-api.get_context": "2239a9ecc38e7de4238cc47c4c6e5f76d35965be26850bf040049ffc7a150066",
     "edge.quotedesk-api.get_quote": "a46c2e6077c7523bad36752563613ad43380fe267cc00670f086d25086c43592",
     "edge.quotedesk-api.link_bid_room_event": "14a1c9032f1cd9768044163b3d63f1cc835142c399a10154532126c76ee43abc",
+    "edge.quotedesk-api.list_fcm_cost_bases": "f5942dc00aaf7d874db0cb4fbff1249192cba8411fef200d0749ab21d34a68a6",
     "edge.quotedesk-api.list_quote_emails": "ea3abe594a6f79a3ee58230dbe54886de8532daa4b4d621d08e4bc1b9f399370",
     "edge.quotedesk-api.list_quotes": "e76b98258d159e6d7008363dc15bb99936bb755a1c388c0a8b1b93e4dd386f3d",
     "edge.quotedesk-api.preview_quote_email": "9d04432e9f00570022762f3f530f82a10f211de537d8582e0ba95c6ca0709dcb",
@@ -715,22 +817,24 @@ export const QUOTEDESK_ACTION_CONTRACT_EXTENSION = {
     "rpc.public.quotedesk_google_maps_api_key()": "b897b39ec259f6f161869c156adcd844ee25ef5fb4146c273823ccce0168c781"
   },
   reviewedAuthorizationFingerprints: {
-    "edge.quotedesk-api.apply_bid_room_awards": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.create_quote": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.delete_quote_lane": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.event_origins": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.get_context": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.get_quote": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.link_bid_room_event": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.list_quote_emails": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.list_quotes": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.preview_quote_email": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.save_accessorial": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.save_quote_lane": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.send_quote_email": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.set_quote_status": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.suggest_lane_miles": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
-    "edge.quotedesk-api.update_quote": "4122245ec011de993f7ef735b3606d6f1af14679c3b5e8f09ebc88a54dfd0dcd",
+    "edge.quotedesk-api.apply_bid_room_awards": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.create_quote": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.delete_quote_lane": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.estimate_lane_fcm": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.event_origins": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.get_context": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.get_quote": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.link_bid_room_event": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.list_fcm_cost_bases": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.list_quote_emails": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.list_quotes": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.preview_quote_email": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.save_accessorial": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.save_quote_lane": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.send_quote_email": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.set_quote_status": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.suggest_lane_miles": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
+    "edge.quotedesk-api.update_quote": "16a70be5ead6c6a44ba78d55e7064244c24afec588c5712b84283882f138fbbd",
     "rpc.public.quotedesk_google_maps_api_key()": "1936fece2e18e3af9a68d8ce760587155c54e9afa8e7d1de664c60de4253c3e7"
   },
   surfaces
