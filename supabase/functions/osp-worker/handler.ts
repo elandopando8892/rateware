@@ -79,6 +79,13 @@ type ExactGmailIngest = {
   gmailMessageId: string;
 };
 
+type ExactShadowAnalysis = {
+  organizationId: string;
+  caseId: string;
+  jobId: string;
+  kind: "attachment_promote" | "request_manifest";
+};
+
 type ExactThreadAssociationRun = {
   organizationId: string;
   recoveryId: string;
@@ -144,6 +151,7 @@ export function createOspWorkerHandler(deps: {
   enqueue(limit: number): Promise<number>;
   run(limit: number): Promise<number>;
   runExactGmailIngest?: (input: ExactGmailIngest) => Promise<number>;
+  runExactShadowAnalysis?: (input: ExactShadowAnalysis) => Promise<number>;
   runExactThreadAssociation?: (
     input: ExactThreadAssociationRun,
   ) => Promise<number>;
@@ -376,6 +384,44 @@ export function createOspWorkerHandler(deps: {
           : json(409, { error: "EXACT_GMAIL_INGEST_NOT_READY" });
       } catch {
         return json(503, { error: "EXACT_GMAIL_INGEST_UNAVAILABLE" });
+      }
+    }
+    const exactShadowKeys = [
+      "action",
+      "caseId",
+      "jobId",
+      "kind",
+      "organizationId",
+    ];
+    if (body.action === "run_exact_shadow_analysis") {
+      if (!serviceAuthorized) return json(401, { error: "UNAUTHORIZED" });
+      if (
+        keys.length !== exactShadowKeys.length ||
+        keys.some((key, index) => key !== exactShadowKeys[index]) ||
+        typeof body.organizationId !== "string" ||
+        typeof body.caseId !== "string" ||
+        typeof body.jobId !== "string" ||
+        !UUID.test(body.organizationId) ||
+        !UUID.test(body.caseId) || !UUID.test(body.jobId) ||
+        !["attachment_promote", "request_manifest"].includes(
+          body.kind as string,
+        )
+      ) return json(400, { error: "INVALID_REQUEST" });
+      if (!deps.runExactShadowAnalysis) {
+        return json(409, { error: "EXACT_SHADOW_ANALYSIS_DISABLED" });
+      }
+      try {
+        const processed = await deps.runExactShadowAnalysis({
+          organizationId: body.organizationId,
+          caseId: body.caseId,
+          jobId: body.jobId,
+          kind: body.kind as ExactShadowAnalysis["kind"],
+        });
+        return processed === 1
+          ? json(200, { processed: 1 })
+          : json(409, { error: "EXACT_SHADOW_ANALYSIS_NOT_READY" });
+      } catch {
+        return json(503, { error: "EXACT_SHADOW_ANALYSIS_UNAVAILABLE" });
       }
     }
     const exactSendKeys = [

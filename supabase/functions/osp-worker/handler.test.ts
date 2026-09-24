@@ -44,6 +44,13 @@ const exactGmailIngest = {
   jobId: "22222222-2222-4222-8222-222222222222",
   gmailMessageId: "gmail_message_1",
 };
+const exactShadowAnalysis = {
+  action: "run_exact_shadow_analysis",
+  organizationId: "11111111-1111-4111-8111-111111111111",
+  caseId: "22222222-2222-4222-8222-222222222222",
+  jobId: "33333333-3333-4333-8333-333333333333",
+  kind: "attachment_promote",
+};
 const exactThreadAssociation = {
   action: "run_exact_thread_association",
   organizationId: "11111111-1111-4111-8111-111111111111",
@@ -225,6 +232,44 @@ Deno.test("OSP worker executes only one exact Gmail intake job", async () => {
   assertEquals(
     (await handler(request({ ...exactGmailIngest, extra: true }))).status,
     400,
+  );
+});
+
+Deno.test("OSP worker restricts exact shadow analysis to service and safe kinds", async () => {
+  let received: Record<string, string> | undefined;
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    manualCanaryToken: manualToken,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    runExactShadowAnalysis: async (input) => {
+      received = input;
+      return 1;
+    },
+  });
+  const response = await handler(request(exactShadowAnalysis));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { processed: 1 });
+  assertEquals(received, {
+    organizationId: exactShadowAnalysis.organizationId,
+    caseId: exactShadowAnalysis.caseId,
+    jobId: exactShadowAnalysis.jobId,
+    kind: exactShadowAnalysis.kind,
+  });
+  assertEquals(
+    (await handler(
+      request({ ...exactShadowAnalysis, kind: "send_authorized_payload" }),
+    )).status,
+    400,
+  );
+  assertEquals(
+    (await handler(request({ ...exactShadowAnalysis, extra: true }))).status,
+    400,
+  );
+  assertEquals(
+    (await handler(request(exactShadowAnalysis, `Bearer ${manualToken}`)))
+      .status,
+    401,
   );
 });
 

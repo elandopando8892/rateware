@@ -115,6 +115,13 @@ type ExactGmailIngest = {
   gmailMessageId: string;
 };
 
+type ExactShadowAnalysis = {
+  organizationId: string;
+  caseId: string;
+  jobId: string;
+  kind: "attachment_promote" | "request_manifest";
+};
+
 function governedStorage(
   client: Parameters<typeof createSupabaseOriginalObjectStore>[0]["client"],
 ): Pick<SupabaseClient, "storage"> {
@@ -146,6 +153,7 @@ export function createShadowWorkerRuntime(input: {
   enqueue(limit: number): Promise<number>;
   run(limit: number): Promise<number>;
   runExactGmailIngest(request: ExactGmailIngest): Promise<number>;
+  runExactShadowAnalysis(request: ExactShadowAnalysis): Promise<number>;
   runExactThreadAssociation(
     request: ExactThreadAssociationRun,
   ): Promise<number>;
@@ -667,6 +675,23 @@ export function createShadowWorkerRuntime(input: {
         requestManifests: requestManifestJobs,
         extraction,
         formMappings,
+        limit: 1,
+      }),
+    runExactShadowAnalysis: (request: ExactShadowAnalysis) =>
+      runWorker({
+        throwOnFailure: true,
+        workerId: input.workerId,
+        now: () => new Date(),
+        jobs: {
+          claim: ({ leaseMs }) =>
+            jobs.claimExactShadowAnalysis({ ...request, leaseMs }),
+          complete: jobs.complete,
+          fail: jobs.fail,
+          enqueue: jobs.enqueue,
+        },
+        intake,
+        attachmentPromotions,
+        requestManifests: requestManifestJobs,
         limit: 1,
       }),
     runExactThreadAssociation: (request: ExactThreadAssociationRun) =>

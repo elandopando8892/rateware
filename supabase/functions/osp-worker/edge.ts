@@ -156,6 +156,7 @@ Deno.serve(createOspWorkerHandler({
   enqueue: runtime.enqueue,
   run: runtime.run,
   runExactGmailIngest: runtime.runExactGmailIngest,
+  runExactShadowAnalysis: runtime.runExactShadowAnalysis,
   runExactThreadAssociation: runtime.runExactThreadAssociation,
   preflightExactThreadAssociation: runtime.preflightExactThreadAssociation,
   runAuthorizedSendExact: runtime.runAuthorizedSendExact,

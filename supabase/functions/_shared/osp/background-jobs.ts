@@ -99,6 +99,14 @@ export type ExactGmailIngestClaim = {
   leaseMs: number;
 };
 
+export type ExactShadowAnalysisClaim = {
+  organizationId: string;
+  caseId: string;
+  jobId: string;
+  kind: "attachment_promote" | "request_manifest";
+  leaseMs: number;
+};
+
 export type ExactThreadAssociationClaim = {
   organizationId: string;
   jobId: string;
@@ -140,6 +148,9 @@ export interface BackgroundJobStore {
 
 export interface CanaryBackgroundJobStore extends BackgroundJobStore {
   claimExactGmailIngest(input: ExactGmailIngestClaim): Promise<LeasedJob[]>;
+  claimExactShadowAnalysis(
+    input: ExactShadowAnalysisClaim,
+  ): Promise<LeasedJob[]>;
   claimExactThreadAssociation(
     input: ExactThreadAssociationClaim,
   ): Promise<LeasedJob[]>;
@@ -444,6 +455,22 @@ export function createPostgresBackgroundJobStore(
       return await withWorkerTransaction(sql, async (tx) => {
         const rows =
           await tx`select * from osp_private.claim_exact_gmail_ingest(${input.organizationId}, ${input.jobId}, ${input.gmailMessageId}, ${input.leaseMs})`;
+        if (rows.length > 1) throw new Error("LEASE_CONFLICT");
+        return rows.map(leasedJob);
+      });
+    },
+    async claimExactShadowAnalysis(input: ExactShadowAnalysisClaim) {
+      if (
+        !UUID_PATTERN.test(input.organizationId) ||
+        !UUID_PATTERN.test(input.caseId) ||
+        !UUID_PATTERN.test(input.jobId) ||
+        !["attachment_promote", "request_manifest"].includes(input.kind) ||
+        !Number.isSafeInteger(input.leaseMs) || input.leaseMs < 1 ||
+        input.leaseMs > 900_000
+      ) throw new Error("INVALID_CLAIM");
+      return await withWorkerTransaction(sql, async (tx) => {
+        const rows =
+          await tx`select * from osp_private.claim_exact_shadow_analysis(${input.organizationId}, ${input.caseId}, ${input.jobId}, ${input.kind}, ${input.leaseMs})`;
         if (rows.length > 1) throw new Error("LEASE_CONFLICT");
         return rows.map(leasedJob);
       });
