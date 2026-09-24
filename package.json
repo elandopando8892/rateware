@@ -20,6 +20,7 @@
     "test:identity-contract": "node --test tests/phase0-identity.test.mjs",
     "test:migration-ledger": "node --test tests/supabase-migration-ledger.test.mjs",
     "test:quotedesk": "node --test tests/quotedesk-calc.test.mjs",
+    "test:us-diesel": "node --test tests/us-diesel-sync.test.mjs",
     "test:release-preflight": "node --test tests/release-preflight.test.mjs",
     "test:rateware-correlation": "deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/rateware-correlation.contract.test.ts",
     "audit:p3:mutations": "node tools/p3-mutation-risk-register.mjs",
