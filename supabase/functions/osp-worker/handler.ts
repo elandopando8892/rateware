@@ -152,6 +152,12 @@ export function createOspWorkerHandler(deps: {
   run(limit: number): Promise<number>;
   runExactGmailIngest?: (input: ExactGmailIngest) => Promise<number>;
   runExactShadowAnalysis?: (input: ExactShadowAnalysis) => Promise<number>;
+  preflightOpenAiModel?: () => Promise<Readonly<{
+    configured: true;
+    model: string;
+    httpStatus: number;
+    reachable: boolean;
+  }>>;
   runExactThreadAssociation?: (
     input: ExactThreadAssociationRun,
   ) => Promise<number>;
@@ -422,6 +428,20 @@ export function createOspWorkerHandler(deps: {
           : json(409, { error: "EXACT_SHADOW_ANALYSIS_NOT_READY" });
       } catch {
         return json(503, { error: "EXACT_SHADOW_ANALYSIS_UNAVAILABLE" });
+      }
+    }
+    if (body.action === "preflight_openai_model") {
+      if (!serviceAuthorized) return json(401, { error: "UNAUTHORIZED" });
+      if (keys.length !== 1 || keys[0] !== "action") {
+        return json(400, { error: "INVALID_REQUEST" });
+      }
+      if (!deps.preflightOpenAiModel) {
+        return json(409, { error: "OPENAI_PREFLIGHT_DISABLED" });
+      }
+      try {
+        return json(200, await deps.preflightOpenAiModel());
+      } catch {
+        return json(503, { error: "OPENAI_PREFLIGHT_UNAVAILABLE" });
       }
     }
     const exactSendKeys = [

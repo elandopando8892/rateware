@@ -273,6 +273,40 @@ Deno.test("OSP worker restricts exact shadow analysis to service and safe kinds"
   );
 });
 
+Deno.test("OpenAI model preflight is service-only and never drains jobs", async () => {
+  let calls = 0;
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    manualCanaryToken: manualToken,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    preflightOpenAiModel: async () => {
+      calls += 1;
+      return {
+        configured: true,
+        model: "synthetic-model",
+        httpStatus: 200,
+        reachable: true,
+      };
+    },
+  });
+  const body = { action: "preflight_openai_model" };
+  assertEquals(
+    (await handler(request(body, `Bearer ${manualToken}`))).status,
+    401,
+  );
+  assertEquals((await handler(request({ ...body, extra: true }))).status, 400);
+  const response = await handler(request(body));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), {
+    configured: true,
+    model: "synthetic-model",
+    httpStatus: 200,
+    reachable: true,
+  });
+  assertEquals(calls, 1);
+});
+
 Deno.test("OSP worker executes only one fully specified exact thread association", async () => {
   let received: Record<string, string> | undefined;
   const handler = createOspWorkerHandler({

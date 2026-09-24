@@ -157,6 +157,30 @@ Deno.serve(createOspWorkerHandler({
   run: runtime.run,
   runExactGmailIngest: runtime.runExactGmailIngest,
   runExactShadowAnalysis: runtime.runExactShadowAnalysis,
+  preflightOpenAiModel: adaptiveManifest
+    ? async () => {
+      const response = await fetch(
+        new URL(
+          `/v1/models/${encodeURIComponent(adaptiveManifest.openAiModel)}`,
+          "https://api.openai.com",
+        ),
+        {
+          method: "GET",
+          redirect: "error",
+          signal: AbortSignal.timeout(10_000),
+          headers: {
+            Authorization: `Bearer ${adaptiveManifest.openAiApiKey}`,
+          },
+        },
+      );
+      return {
+        configured: true as const,
+        model: adaptiveManifest.openAiModel,
+        httpStatus: response.status,
+        reachable: response.ok,
+      };
+    }
+    : undefined,
   runExactThreadAssociation: runtime.runExactThreadAssociation,
   preflightExactThreadAssociation: runtime.preflightExactThreadAssociation,
   runAuthorizedSendExact: runtime.runAuthorizedSendExact,
