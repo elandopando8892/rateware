@@ -19,6 +19,7 @@ import { resolveRequestManifestCanary } from "./request-manifest-canary-config.t
 import { resolveAdaptiveManifest } from "./adaptive-manifest-config.ts";
 import { resolveManualRequestCanary } from "./manual-request-canary-config.ts";
 import { createOpenAiRequestManifest } from "./openai-request-manifest.ts";
+import { createPostgresRequestManifestSource } from "./postgres-request-manifest-source.ts";
 
 const WORKER_BUILD_REVISION = "20260919-exact-thread-preflight";
 
@@ -252,6 +253,72 @@ Deno.serve(createOspWorkerHandler({
         outputTypes,
         parseCode,
       };
+    }
+    : undefined,
+  preflightOpenAiExactCase: adaptiveManifest
+    ? async () => {
+      const source = await createPostgresRequestManifestSource({ databaseUrl })
+        .load({
+          organizationId: "ca0a8f30-1382-4316-9bd5-cb76d9ab4920",
+          caseId: "0689a1ce-a96c-4186-9d9b-457ff5809c17",
+        });
+      if (
+        !source.message.subject.startsWith(
+          "PRUEBA CONTROLADA OSP-CANARY-",
+        ) || source.message.safeBody.length > 1_000 ||
+        source.documents.length !== 0 ||
+        source.previousMessages?.length !== 0 ||
+        (source.knowledgeCatalog?.length ?? 0) > 20
+      ) throw new Error("EXACT_CASE_PREFLIGHT_NOT_ALLOWED");
+      let httpStatus: number | null = null;
+      let providerCode: string | null = null;
+      const adapter = createOpenAiRequestManifest({
+        baseUrl: "https://api.openai.com",
+        apiKey: adaptiveManifest.openAiApiKey,
+        model: adaptiveManifest.openAiModel,
+        request: async (input, init) => {
+          const response = await fetch(input, init);
+          httpStatus = response.status;
+          if (!response.ok) {
+            try {
+              const decoded = await response.clone().json() as Record<
+                string,
+                unknown
+              >;
+              const error = decoded.error && typeof decoded.error === "object"
+                ? decoded.error as Record<string, unknown>
+                : null;
+              const code = error?.code;
+              providerCode = typeof code === "string" &&
+                  /^[a-z0-9_]{1,64}$/i.test(code)
+                ? code
+                : null;
+            } catch {
+              // Never return provider text or case content.
+            }
+          }
+          return response;
+        },
+      });
+      let parseCode: string | null = null;
+      let requirementCount: number | null = null;
+      try {
+        const result = await adapter.interpretWithTelemetry({
+          evidence: [{
+            id: `email:${source.message.id}`,
+            kind: "email_text",
+            sourceName: `carrier-request-${source.message.id}.eml`,
+            content:
+              `Subject: ${source.message.subject}\n\n${source.message.safeBody}`,
+          }],
+          knowledgeCatalog: source.knowledgeCatalog ?? [],
+        });
+        requirementCount = result.manifest.requirements.length;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        parseCode = /^[A-Z_]{3,64}$/.test(message) ? message : "UNKNOWN";
+      }
+      return { httpStatus, providerCode, parseCode, requirementCount };
     }
     : undefined,
   runExactThreadAssociation: runtime.runExactThreadAssociation,

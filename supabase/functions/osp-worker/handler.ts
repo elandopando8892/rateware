@@ -169,6 +169,7 @@ export function createOspWorkerHandler(deps: {
       parseCode: string | null;
     }>
   >;
+  preflightOpenAiExactCase?: () => Promise<unknown>;
   runExactThreadAssociation?: (
     input: ExactThreadAssociationRun,
   ) => Promise<number>;
@@ -465,6 +466,20 @@ export function createOspWorkerHandler(deps: {
       }
       try {
         return json(200, await deps.preflightOpenAiResponse());
+      } catch {
+        return json(503, { error: "OPENAI_PREFLIGHT_UNAVAILABLE" });
+      }
+    }
+    if (body.action === "preflight_openai_exact_case") {
+      if (!serviceAuthorized) return json(401, { error: "UNAUTHORIZED" });
+      if (keys.length !== 1 || keys[0] !== "action") {
+        return json(400, { error: "INVALID_REQUEST" });
+      }
+      if (!deps.preflightOpenAiExactCase) {
+        return json(409, { error: "OPENAI_PREFLIGHT_DISABLED" });
+      }
+      try {
+        return json(200, await deps.preflightOpenAiExactCase());
       } catch {
         return json(503, { error: "OPENAI_PREFLIGHT_UNAVAILABLE" });
       }
