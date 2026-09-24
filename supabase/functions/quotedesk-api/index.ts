@@ -676,8 +676,8 @@ async function mileageFor(supabase: Db, scope: "mx" | "us", from: Place, to: Pla
   return ranked ? { miles: toNumber(ranked.miles), km: toNumber(ranked.km), route_key: ranked.route_key, source: ranked.source } : null;
 }
 
-// Distance for a leg the catalog doesn't have: cached answer first, then Google
-// Routes (DRIVE; Google has no truck profile in MX/US, highway distance is close).
+// Distance for a leg from Google Routes: cached answer first, then the API
+// (DRIVE; Google has no truck profile in MX/US, highway distance is close).
 async function googleLegMiles(supabase: Db, from: Place, to: Place): Promise<{ miles: number | null; error?: string } | null> {
   const originQuery = placeQuery(from);
   const destinationQuery = placeQuery(to);
@@ -779,19 +779,17 @@ async function suggestLaneMiles(supabase: Db, input: Row) {
 
   let mxMiles: number | null = null;
   let usMiles: number | null = null;
+  // Google Routes measures every leg, in MX and in the US; the rateware catalog
+  // only covers legs Google can't (no key configured, or Google failed).
   const addLeg = async (scope: "mx" | "us", from: Place, to: Place) => {
-    const found = await mileageFor(supabase, scope, from, to);
-    let miles = found?.miles ?? null;
-    let provider: string | null = found ? "catalog" : null;
-    let providerError: string | null = null;
+    const google = await googleLegMiles(supabase, from, to);
+    let miles = google?.miles ?? null;
+    let provider: string | null = miles !== null ? "google_routes" : null;
+    let found: Awaited<ReturnType<typeof mileageFor>> = null;
     if (miles === null) {
-      const google = await googleLegMiles(supabase, from, to);
-      if (google?.miles !== null && google?.miles !== undefined) {
-        miles = google.miles;
-        provider = "google_routes";
-      } else if (google?.error) {
-        providerError = google.error;
-      }
+      found = await mileageFor(supabase, scope, from, to);
+      miles = found?.miles ?? null;
+      if (found) provider = "catalog";
     }
     legs.push({
       scope,
@@ -801,7 +799,7 @@ async function suggestLaneMiles(supabase: Db, input: Row) {
       route_key: found?.route_key ?? null,
       found: miles !== null,
       provider,
-      provider_error: providerError
+      provider_error: miles === null ? google?.error ?? null : null
     });
     return miles;
   };
