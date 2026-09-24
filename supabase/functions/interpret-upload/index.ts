@@ -1,6 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-// @deno-types="https://cdn.sheetjs.com/xlsx-0.20.3/package/types/index.d.ts"
-import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
+// Official SheetJS 0.20.3 build (https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs),
+// vendored because the Supabase bundler only imports from allowlisted hosts.
+// @deno-types="./vendor/xlsx-0.20.3.d.ts"
+import * as XLSX from "./vendor/xlsx-0.20.3.mjs";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";

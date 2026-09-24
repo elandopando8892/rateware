@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 
 const apiSource = readFileSync(new URL("../supabase/functions/rateware-api/index.ts", import.meta.url), "utf8");
@@ -2453,6 +2454,14 @@ const bidSubmitSource = rfxBidApiSource.slice(
 );
 assert.doesNotMatch(bidSubmitSource, /assertLaneFitComplete/, "Carrier bid submissions should accept quotes with optional fit answers");
 assert.match(rfxBidSource, /import \* as XLSX from "https:\/\/cdn\.sheetjs\.com\/xlsx-0\.20\.3\/package\/xlsx\.mjs"/, "Carrier portal should load XLSX support for bid templates");
+// The Supabase bundler refuses cdn.sheetjs.com, so interpret-upload ships the
+// official build; its bytes must stay identical to the published file.
+assert.match(interpretUploadSource, /import \* as XLSX from "\.\/vendor\/xlsx-0\.20\.3\.mjs"/, "Upload interpretation should use the vendored SheetJS build");
+assert.equal(
+  createHash("sha256").update(readFileSync(new URL("../supabase/functions/interpret-upload/vendor/xlsx-0.20.3.mjs", import.meta.url))).digest("hex"),
+  "1a0fb062ee9781b13f6687371b202aaefc53b6ce55b530c027e01f9c087b77db",
+  "Vendored SheetJS must match the official 0.20.3 xlsx.mjs"
+);
 assert.match(rfxBidSource, /import\("https:\/\/esm\.sh\/exceljs@4\.4\.0\?bundle"\)/, "Carrier portal should use ExcelJS for XLSX dropdown data validations");
 assert.match(rfxBidSource, /const BID_TEMPLATE_COLUMNS = \[/, "Carrier portal should define a prefilled XLSX bid template schema");
 assert.match(rfxBidSource, /function downloadBidTemplate/, "Carrier portal should download a prefilled XLSX bid template");
