@@ -10,6 +10,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse } from "../_shared/kinde.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from "../_shared/runtime-identity.ts";
+import { GMAIL_ALLOWED_SENDER, GmailSendError, gmailAccessToken, gmailRawMessage, sendGmailRaw, suppressedEmails } from "../_shared/gmail-send.ts";
+import { isEmail, renderQuoteEmail } from "./email.mjs";
+import { metersToMiles, placeQuery, queryKey } from "./routes.mjs";
 import {
   ACCESSORIAL_UNITS,
   COST_SOURCES,
@@ -30,6 +33,10 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const FIRST_FOLIO = 1001;
+// Optional: legs missing from the mileage catalog are measured with Google Routes.
+const GOOGLE_MAPS_API_KEY = (Deno.env.get("GOOGLE_MAPS_API_KEY") || "").trim();
+const EMAIL_CONTRACT = "quotedesk.gmail-send.v1";
+const EMAIL_SENDER_NAME = "MARKSMAN";
 const LANE_LIMIT = 50;
 
 // Starting catalog for a workspace that has none yet (values from the approved
@@ -228,7 +235,21 @@ async function getContext(supabase: Db, workspace: Workspace) {
     fuelIndex(supabase),
     borderCrossings(supabase)
   ]);
-  return { accessorial_catalog: catalog, fx, fuel, border_crossings: crossings };
+  const mailbox = await supabase.from("gmail_mailbox_connections").select("status,scopes")
+    .eq("owner_email", workspace.owner_email).eq("mailbox_email", GMAIL_ALLOWED_SENDER).maybeSingle();
+  if (mailbox.error) throw mailbox.error;
+  const scopes = Array.isArray(mailbox.data?.scopes) ? mailbox.data.scopes.map(String) : [];
+  return {
+    accessorial_catalog: catalog,
+    fx,
+    fuel,
+    border_crossings: crossings,
+    google_routes_enabled: Boolean(GOOGLE_MAPS_API_KEY),
+    email: {
+      sender: GMAIL_ALLOWED_SENDER,
+      connected: mailbox.data?.status === "connected" && scopes.includes("https://www.googleapis.com/auth/gmail.send")
+    }
+  };
 }
 
 // ---------------------------------------------------------------- quotes
@@ -635,6 +656,67 @@ async function mileageFor(supabase: Db, scope: "mx" | "us", from: Place, to: Pla
   return ranked ? { miles: toNumber(ranked.miles), km: toNumber(ranked.km), route_key: ranked.route_key, source: ranked.source } : null;
 }
 
+// Distance for a leg the catalog doesn't have: cached answer first, then Google
+// Routes (DRIVE; Google has no truck profile in MX/US, highway distance is close).
+async function googleLegMiles(supabase: Db, from: Place, to: Place): Promise<{ miles: number | null; error?: string } | null> {
+  const originQuery = placeQuery(from);
+  const destinationQuery = placeQuery(to);
+  if (!originQuery || !destinationQuery) return null;
+  const originKey = queryKey(originQuery);
+  const destinationKey = queryKey(destinationQuery);
+  const cached = await supabase.from("quotedesk_route_distances").select("miles")
+    .eq("provider", "google_routes").eq("origin_key", originKey).eq("destination_key", destinationKey).maybeSingle();
+  if (cached.error) throw cached.error;
+  if (cached.data) return { miles: toNumber(cached.data.miles) };
+  if (!GOOGLE_MAPS_API_KEY) return null;
+  let response: Response;
+  try {
+    response = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+        "X-Goog-FieldMask": "routes.distanceMeters,routes.duration"
+      },
+      body: JSON.stringify({
+        origin: { address: originQuery },
+        destination: { address: destinationQuery },
+        travelMode: "DRIVE",
+        routingPreference: "TRAFFIC_UNAWARE",
+        languageCode: "es-MX",
+        units: "IMPERIAL"
+      })
+    });
+  } catch (error) {
+    return { miles: null, error: `Google Routes no respondió: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  const data = await response.json().catch(() => ({})) as Row;
+  if (!response.ok) {
+    const detail = text(record(data.error).message, 200) || `HTTP ${response.status}`;
+    return { miles: null, error: `Google Routes: ${detail}` };
+  }
+  const route = record(Array.isArray(data.routes) ? data.routes[0] : null);
+  const meters = toNumber(route.distanceMeters);
+  const miles = metersToMiles(meters);
+  if (meters === null || miles === null) return { miles: null, error: "Google Routes no encontró la ruta." };
+  const seconds = toNumber(String(route.duration || "").replace(/s$/, ""));
+  const now = nowIso();
+  const stored = await supabase.from("quotedesk_route_distances").upsert({
+    provider: "google_routes",
+    origin_key: originKey,
+    destination_key: destinationKey,
+    origin_query: originQuery,
+    destination_query: destinationQuery,
+    meters,
+    miles,
+    duration_seconds: seconds === null ? null : Math.round(seconds),
+    fetched_at: now,
+    updated_at: now
+  }, { onConflict: "provider,origin_key,destination_key" });
+  if (stored.error) console.warn("QUOTEDESK_ROUTE_CACHE_FAILED", stored.error.message);
+  return { miles };
+}
+
 // Saved routes keep only city + state code (MX) or market (US/CA); fill in what
 // the mileage keys also use (MX state name, US market) from rateware_locations.
 async function enrichPlace(supabase: Db, value: Place): Promise<Place> {
@@ -678,15 +760,29 @@ async function suggestLaneMiles(supabase: Db, input: Row) {
   let usMiles: number | null = null;
   const addLeg = async (scope: "mx" | "us", from: Place, to: Place) => {
     const found = await mileageFor(supabase, scope, from, to);
+    let miles = found?.miles ?? null;
+    let provider: string | null = found ? "catalog" : null;
+    let providerError: string | null = null;
+    if (miles === null) {
+      const google = await googleLegMiles(supabase, from, to);
+      if (google?.miles !== null && google?.miles !== undefined) {
+        miles = google.miles;
+        provider = "google_routes";
+      } else if (google?.error) {
+        providerError = google.error;
+      }
+    }
     legs.push({
       scope,
       from: from.market || [from.city, from.state_code].filter(Boolean).join(", "),
       to: to.market || [to.city, to.state_code].filter(Boolean).join(", "),
-      miles: found?.miles ?? null,
+      miles,
       route_key: found?.route_key ?? null,
-      found: Boolean(found)
+      found: miles !== null,
+      provider,
+      provider_error: providerError
     });
-    return found?.miles ?? null;
+    return miles;
   };
 
   if (originMx && destinationMx) {
@@ -713,11 +809,14 @@ async function suggestLaneMiles(supabase: Db, input: Row) {
   }
 
   const measured = legs.filter((leg) => leg.scope !== "border");
+  const providers = [...new Set(measured.map((leg) => leg.provider).filter(Boolean))] as string[];
   return {
     mx_miles: mxMiles,
     us_miles: usMiles,
     legs,
     fuel,
+    miles_source: providers.length ? providers.map((p) => (p === "catalog" ? "rateware_lane_mileage" : p)).join("+") : null,
+    google_routes_enabled: Boolean(GOOGLE_MAPS_API_KEY),
     complete: measured.length > 0 && measured.every((leg) => leg.found)
   };
 }
@@ -867,6 +966,167 @@ async function eventOrigins(supabase: Db, workspace: Workspace, input: Row) {
   return { origins, folios };
 }
 
+// ---------------------------------------------------------------- email
+
+async function sha256Hex(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function emailList(value: unknown): string[] {
+  const items = Array.isArray(value) ? value : String(value || "").split(/[,;\s]+/);
+  return [...new Set(items.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean))].slice(0, 5);
+}
+
+// The email as it would go out now. Rendered on the server from stored prices,
+// for the preview and again at send time; the checksum ties the two together.
+async function quoteEmailDraft(supabase: Db, workspace: Workspace, input: Row) {
+  const quote = await requireQuote(supabase, workspace, input.quote_id);
+  if (["won", "lost", "archived"].includes(String(quote.status))) {
+    throw new HttpError(400, "Esta cotización ya está cerrada; reábrela para enviarla.");
+  }
+  const lanes = await quoteLanes(supabase, workspace, [String(quote.id)]);
+  if (!lanes.length || lanes.some((lane) => toNumber(lane.all_in_rate) === null)) {
+    throw new HttpError(400, "Cada ruta necesita su tarifa all-in antes de enviar la cotización.");
+  }
+  let to = text(input.to, 320)?.toLowerCase() || null;
+  let contactName = text(input.contact_name, 120);
+  if ((!to || !contactName) && quote.shipper_id) {
+    const shipper = await supabase.from("shippers").select("primary_contact_name,primary_contact_email")
+      .eq("owner_email", workspace.owner_email).eq("id", quote.shipper_id).maybeSingle();
+    if (shipper.error) throw shipper.error;
+    to = to || text(shipper.data?.primary_contact_email, 320)?.toLowerCase() || null;
+    contactName = contactName || text(shipper.data?.primary_contact_name, 120);
+  }
+  const cc = emailList(input.cc).filter((email) => email !== to);
+  const note = text(input.note, 2000);
+  const rendered = renderQuoteEmail({ quote, lanes, contactName: contactName ?? undefined, note: note ?? undefined, senderName: EMAIL_SENDER_NAME });
+  const checksum = await sha256Hex(JSON.stringify({ to, cc, subject: rendered.subject, text: rendered.text, html: rendered.html }));
+  const suppressed = [...await suppressedEmails(supabase, workspace.owner_email, [to || "", ...cc])];
+  return { quote, to, cc, contact_name: contactName, note, from: GMAIL_ALLOWED_SENDER, ...rendered, checksum, suppressed };
+}
+
+async function quoteEmails(supabase: Db, workspace: Workspace, quoteId: string) {
+  const result = await supabase.from("quotedesk_quote_emails")
+    .select("id,recipient_email,cc_emails,subject,status,attempt,error,attempted_at,sent_at,provider_message_id")
+    .eq("owner_email", workspace.owner_email).eq("quote_id", quoteId)
+    .order("created_at", { ascending: false }).limit(20);
+  if (result.error) throw result.error;
+  return result.data || [];
+}
+
+async function previewQuoteEmail(supabase: Db, workspace: Workspace, input: Row) {
+  const draft = await quoteEmailDraft(supabase, workspace, input);
+  const { quote, ...email } = draft;
+  return { ...email, history: await quoteEmails(supabase, workspace, String(quote.id)) };
+}
+
+async function sendQuoteEmail(supabase: Db, workspace: Workspace, input: Row) {
+  if (input.confirmed !== true) throw new HttpError(400, "Confirma el envío de la cotización.");
+  const draft = await quoteEmailDraft(supabase, workspace, input);
+  const quote = draft.quote;
+  if (!draft.to || !isEmail(draft.to)) throw new HttpError(400, "El destinatario no es un correo válido.");
+  const badCc = draft.cc.filter((email) => !isEmail(email));
+  if (badCc.length) throw new HttpError(400, `Estos correos en copia no son válidos: ${badCc.join(", ")}.`);
+  if (text(input.checksum, 80) !== draft.checksum) {
+    throw new HttpError(409, "La cotización o el correo cambiaron desde la vista previa. Revísala otra vez antes de enviar.");
+  }
+  if (draft.suppressed.length) {
+    throw new HttpError(400, `No se envía a ${draft.suppressed.join(", ")}: está en la lista de rebotes o bajas.`);
+  }
+
+  const idempotencyKey = await sha256Hex(`${EMAIL_CONTRACT}:${workspace.owner_email}:${quote.id}:${draft.checksum}`);
+  const lookup = async () => {
+    const existing = await supabase.from("quotedesk_quote_emails").select("*")
+      .eq("owner_email", workspace.owner_email).eq("idempotency_key", idempotencyKey).maybeSingle();
+    if (existing.error) throw existing.error;
+    return existing.data as Row | null;
+  };
+  let receipt = await lookup();
+  if (receipt?.status === "sent") return { receipt, quote, duplicate: true };
+  if (receipt && receipt.status !== "failed") {
+    throw new HttpError(409, "Ese correo ya se está enviando o no está confirmado que haya salido. Revisa Enviados en Gmail antes de reintentar.");
+  }
+  const now = nowIso();
+  if (receipt) {
+    const reclaimed = await supabase.from("quotedesk_quote_emails").update({
+      status: "sending", attempt: Number(receipt.attempt || 1) + 1, error: null, attempted_at: now, updated_at: now,
+      requested_by_user_id: workspace.owner_user_id
+    }).eq("id", receipt.id).eq("status", "failed").select().maybeSingle();
+    if (reclaimed.error) throw reclaimed.error;
+    if (!reclaimed.data) throw new HttpError(409, "Otro intento de envío está en curso; espera un momento.");
+    receipt = reclaimed.data as Row;
+  } else {
+    const inserted = await supabase.from("quotedesk_quote_emails").insert(owned({
+      quote_id: quote.id,
+      idempotency_key: idempotencyKey,
+      payload_checksum: draft.checksum,
+      mailbox_email: GMAIL_ALLOWED_SENDER,
+      recipient_email: draft.to,
+      cc_emails: draft.cc,
+      subject: draft.subject,
+      status: "sending",
+      attempted_at: now,
+      requested_by_user_id: workspace.owner_user_id
+    }, workspace)).select().single();
+    if (inserted.error) {
+      if (inserted.error.code === "23505") throw new HttpError(409, "Ese correo ya se está enviando; espera un momento.");
+      throw inserted.error;
+    }
+    receipt = inserted.data as Row;
+  }
+
+  const finish = async (patch: Row) => {
+    const done = await supabase.from("quotedesk_quote_emails").update({ ...patch, updated_at: nowIso() })
+      .eq("id", receipt!.id).eq("status", "sending").select().maybeSingle();
+    if (done.error) console.error("QUOTEDESK_EMAIL_RECEIPT_UPDATE_FAILED", done.error.message);
+    return (done.data as Row | null) || { ...receipt, ...patch };
+  };
+
+  let accessToken: string;
+  try {
+    accessToken = await gmailAccessToken(supabase, workspace.owner_email);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await finish({ status: "failed", error: message });
+    throw new HttpError(502, message);
+  }
+  let sent: { id: string; threadId: string | null };
+  try {
+    sent = await sendGmailRaw(accessToken, gmailRawMessage({
+      to: draft.to,
+      cc: draft.cc,
+      from: GMAIL_ALLOWED_SENDER,
+      fromName: EMAIL_SENDER_NAME,
+      subject: draft.subject,
+      text: draft.text,
+      html: draft.html,
+      headers: { "X-QuoteDesk-Folio": String(quote.folio), "X-QuoteDesk-Receipt-Id": String(receipt.id) }
+    }));
+  } catch (error) {
+    const outcome = error instanceof GmailSendError ? error.outcome : "delivery_unknown";
+    const message = error instanceof Error ? error.message : String(error);
+    await finish({ status: outcome, error: message });
+    throw new HttpError(502, outcome === "failed"
+      ? message
+      : `${message} No sabemos si salió: revisa Enviados en Gmail antes de reintentar.`);
+  }
+  receipt = await finish({ status: "sent", provider_message_id: sent.id, provider_thread_id: sent.threadId, sent_at: nowIso(), error: null });
+
+  // Sending it is quoting it.
+  let current = quote;
+  if (["new", "estimating", "bid_room", "expired"].includes(String(quote.status))) {
+    const moved = await supabase.from("quotedesk_quotes").update({
+      status: "quoted", status_changed_at: nowIso(), quoted_at: quote.quoted_at || nowIso(), updated_at: nowIso()
+    }).eq("owner_email", workspace.owner_email).eq("id", quote.id).eq("status", quote.status).select().maybeSingle();
+    if (moved.error) console.error("QUOTEDESK_QUOTE_STATUS_AFTER_EMAIL_FAILED", moved.error.message);
+    if (moved.data) current = moved.data as Row;
+  }
+  await audit(supabase, workspace, "quotedesk_quote_emailed", "quotedesk_quote", String(quote.id),
+    `Emailed quote ${quote.folio} to ${draft.to}.`, { receipt_id: receipt.id, cc: draft.cc.length, provider_message_id: sent.id });
+  return { receipt, quote: current, duplicate: false };
+}
+
 // ---------------------------------------------------------------- catalog
 
 async function saveAccessorial(supabase: Db, workspace: Workspace, input: Row) {
@@ -932,6 +1192,14 @@ async function handle(request: Request) {
         return jsonResponse(await applyBidRoomAwards(supabase, workspace, body.quote_id), 200, request);
       case "event_origins":
         return jsonResponse(await eventOrigins(supabase, workspace, body), 200, request);
+      case "preview_quote_email":
+        return jsonResponse(await previewQuoteEmail(supabase, workspace, body), 200, request);
+      case "send_quote_email":
+        return jsonResponse(await sendQuoteEmail(supabase, workspace, body), 200, request);
+      case "list_quote_emails": {
+        const quote = await requireQuote(supabase, workspace, body.quote_id);
+        return jsonResponse({ rows: await quoteEmails(supabase, workspace, String(quote.id)) }, 200, request);
+      }
       case "save_accessorial":
         return jsonResponse(await saveAccessorial(supabase, workspace, record(body.item)), 200, request);
       default:

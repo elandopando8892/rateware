@@ -3,7 +3,7 @@
  * Human, tenant-scoped actions behind the shared Supabase Auth -> workspace resolver.
  * Fingerprints are static reviewed values; regenerate them only after reviewing a change.
  */
-const authorizationFingerprint = "77a8067d7340e8bc7609b2bbc2994e09079b9624180ffdae89a8d3dc511a68c3";
+const authorizationFingerprint = "ba131f832b209ca6e59ca8531099988902e4f6fb5952ab90b4a40b86612b7edf";
 const surfaces = [
   {
     "contractVersion": "1.3.0",
@@ -30,12 +30,15 @@ const surfaces = [
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
       "supabase/functions/_shared/identity-contract.mjs",
       "supabase/functions/_shared/kinde.ts",
       "supabase/functions/_shared/runtime-identity.ts",
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
-      "supabase/functions/quotedesk-api/index.ts"
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
     ],
     "rpcSignature": null,
     "coverageSignals": [
@@ -68,12 +71,15 @@ const surfaces = [
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
       "supabase/functions/_shared/identity-contract.mjs",
       "supabase/functions/_shared/kinde.ts",
       "supabase/functions/_shared/runtime-identity.ts",
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
-      "supabase/functions/quotedesk-api/index.ts"
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
     ],
     "rpcSignature": null,
     "coverageSignals": [
@@ -106,12 +112,15 @@ const surfaces = [
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
       "supabase/functions/_shared/identity-contract.mjs",
       "supabase/functions/_shared/kinde.ts",
       "supabase/functions/_shared/runtime-identity.ts",
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
-      "supabase/functions/quotedesk-api/index.ts"
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
     ],
     "rpcSignature": null,
     "coverageSignals": [
@@ -144,12 +153,15 @@ const surfaces = [
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
       "supabase/functions/_shared/identity-contract.mjs",
       "supabase/functions/_shared/kinde.ts",
       "supabase/functions/_shared/runtime-identity.ts",
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
-      "supabase/functions/quotedesk-api/index.ts"
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
     ],
     "rpcSignature": null,
     "coverageSignals": [
@@ -182,12 +194,15 @@ const surfaces = [
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
       "supabase/functions/_shared/identity-contract.mjs",
       "supabase/functions/_shared/kinde.ts",
       "supabase/functions/_shared/runtime-identity.ts",
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
-      "supabase/functions/quotedesk-api/index.ts"
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
     ],
     "rpcSignature": null,
     "coverageSignals": [
@@ -220,12 +235,15 @@ const surfaces = [
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
       "supabase/functions/_shared/identity-contract.mjs",
       "supabase/functions/_shared/kinde.ts",
       "supabase/functions/_shared/runtime-identity.ts",
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
-      "supabase/functions/quotedesk-api/index.ts"
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
     ],
     "rpcSignature": null,
     "coverageSignals": [
@@ -258,12 +276,56 @@ const surfaces = [
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
       "supabase/functions/_shared/identity-contract.mjs",
       "supabase/functions/_shared/kinde.ts",
       "supabase/functions/_shared/runtime-identity.ts",
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
-      "supabase/functions/quotedesk-api/index.ts"
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
+    ],
+    "rpcSignature": null,
+    "coverageSignals": [
+      "shared_dependency_observed",
+      "external_dependency"
+    ]
+  },
+  {
+    "contractVersion": "1.3.0",
+    "canonicalId": "edge.quotedesk-api.list_quote_emails",
+    "actionName": "list_quote_emails",
+    "sourceKind": "edge-selector",
+    "sourceFile": "supabase/functions/quotedesk-api/index.ts",
+    "handler": "requireQuote",
+    "endpoint": "POST /functions/v1/quotedesk-api body.action",
+    "businessModule": "Commercial",
+    "operation": "read",
+    "resource": "quotedesk",
+    "access": "read",
+    "exposure": "human",
+    "sensitivity": "medium",
+    "tenantRelevance": "tenant-scoped",
+    "proposedPermissionKey": "quotedesk.read",
+    "functionalOwner": "Commercial",
+    "decisionStatus": "pending_human_approval",
+    "lifecycle": "active",
+    "replacementAction": null,
+    "sourceFingerprint": "20739d074c8575801a2111b67a9ed0b3b3dcd75f5e5189ac5b8e8c31ce2d1537",
+    "notes": "Bidware QuoteDesk. Send receipts of a quote (no bodies). Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
+    "analysisCoverage": "shared-observed",
+    "dependencyFiles": [
+      "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
+      "supabase/functions/_shared/identity-contract.mjs",
+      "supabase/functions/_shared/kinde.ts",
+      "supabase/functions/_shared/runtime-identity.ts",
+      "supabase/functions/_shared/workspace.ts",
+      "supabase/functions/quotedesk-api/calc.mjs",
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
     ],
     "rpcSignature": null,
     "coverageSignals": [
@@ -296,12 +358,56 @@ const surfaces = [
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
       "supabase/functions/_shared/identity-contract.mjs",
       "supabase/functions/_shared/kinde.ts",
       "supabase/functions/_shared/runtime-identity.ts",
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
-      "supabase/functions/quotedesk-api/index.ts"
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
+    ],
+    "rpcSignature": null,
+    "coverageSignals": [
+      "shared_dependency_observed",
+      "external_dependency"
+    ]
+  },
+  {
+    "contractVersion": "1.3.0",
+    "canonicalId": "edge.quotedesk-api.preview_quote_email",
+    "actionName": "preview_quote_email",
+    "sourceKind": "edge-selector",
+    "sourceFile": "supabase/functions/quotedesk-api/index.ts",
+    "handler": "jsonResponse",
+    "endpoint": "POST /functions/v1/quotedesk-api body.action",
+    "businessModule": "Commercial",
+    "operation": "read",
+    "resource": "quotedesk",
+    "access": "read",
+    "exposure": "human",
+    "sensitivity": "medium",
+    "tenantRelevance": "tenant-scoped",
+    "proposedPermissionKey": "quotedesk.read",
+    "functionalOwner": "Commercial",
+    "decisionStatus": "pending_human_approval",
+    "lifecycle": "active",
+    "replacementAction": null,
+    "sourceFingerprint": "73a585b5f3d1a3d03a2bbf7cc498db095433bd38426397ec7c7f98f689a3fb98",
+    "notes": "Bidware QuoteDesk. Renders the quote email server-side with its checksum and suppression check; sends nothing. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
+    "analysisCoverage": "shared-observed",
+    "dependencyFiles": [
+      "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
+      "supabase/functions/_shared/identity-contract.mjs",
+      "supabase/functions/_shared/kinde.ts",
+      "supabase/functions/_shared/runtime-identity.ts",
+      "supabase/functions/_shared/workspace.ts",
+      "supabase/functions/quotedesk-api/calc.mjs",
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
     ],
     "rpcSignature": null,
     "coverageSignals": [
@@ -334,12 +440,15 @@ const surfaces = [
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
       "supabase/functions/_shared/identity-contract.mjs",
       "supabase/functions/_shared/kinde.ts",
       "supabase/functions/_shared/runtime-identity.ts",
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
-      "supabase/functions/quotedesk-api/index.ts"
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
     ],
     "rpcSignature": null,
     "coverageSignals": [
@@ -372,12 +481,56 @@ const surfaces = [
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
       "supabase/functions/_shared/identity-contract.mjs",
       "supabase/functions/_shared/kinde.ts",
       "supabase/functions/_shared/runtime-identity.ts",
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
-      "supabase/functions/quotedesk-api/index.ts"
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
+    ],
+    "rpcSignature": null,
+    "coverageSignals": [
+      "shared_dependency_observed",
+      "external_dependency"
+    ]
+  },
+  {
+    "contractVersion": "1.3.0",
+    "canonicalId": "edge.quotedesk-api.send_quote_email",
+    "actionName": "send_quote_email",
+    "sourceKind": "edge-selector",
+    "sourceFile": "supabase/functions/quotedesk-api/index.ts",
+    "handler": "jsonResponse",
+    "endpoint": "POST /functions/v1/quotedesk-api body.action",
+    "businessModule": "Commercial",
+    "operation": "communicate",
+    "resource": "quotedesk",
+    "access": "write",
+    "exposure": "human",
+    "sensitivity": "high",
+    "tenantRelevance": "tenant-scoped",
+    "proposedPermissionKey": "quotedesk.communicate",
+    "functionalOwner": "Commercial",
+    "decisionStatus": "pending_human_approval",
+    "lifecycle": "active",
+    "replacementAction": null,
+    "sourceFingerprint": "73a585b5f3d1a3d03a2bbf7cc498db095433bd38426397ec7c7f98f689a3fb98",
+    "notes": "Bidware QuoteDesk. Emails a priced quote to the shipper from the organization Gmail mailbox; requires confirmed=true and the preview checksum, idempotent per exact email, receipts in quotedesk_quote_emails. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
+    "analysisCoverage": "shared-observed",
+    "dependencyFiles": [
+      "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
+      "supabase/functions/_shared/identity-contract.mjs",
+      "supabase/functions/_shared/kinde.ts",
+      "supabase/functions/_shared/runtime-identity.ts",
+      "supabase/functions/_shared/workspace.ts",
+      "supabase/functions/quotedesk-api/calc.mjs",
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
     ],
     "rpcSignature": null,
     "coverageSignals": [
@@ -410,12 +563,15 @@ const surfaces = [
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
       "supabase/functions/_shared/identity-contract.mjs",
       "supabase/functions/_shared/kinde.ts",
       "supabase/functions/_shared/runtime-identity.ts",
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
-      "supabase/functions/quotedesk-api/index.ts"
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
     ],
     "rpcSignature": null,
     "coverageSignals": [
@@ -448,12 +604,15 @@ const surfaces = [
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
       "supabase/functions/_shared/identity-contract.mjs",
       "supabase/functions/_shared/kinde.ts",
       "supabase/functions/_shared/runtime-identity.ts",
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
-      "supabase/functions/quotedesk-api/index.ts"
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
     ],
     "rpcSignature": null,
     "coverageSignals": [
@@ -486,12 +645,15 @@ const surfaces = [
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
+      "supabase/functions/_shared/gmail-send.ts",
       "supabase/functions/_shared/identity-contract.mjs",
       "supabase/functions/_shared/kinde.ts",
       "supabase/functions/_shared/runtime-identity.ts",
       "supabase/functions/_shared/workspace.ts",
       "supabase/functions/quotedesk-api/calc.mjs",
-      "supabase/functions/quotedesk-api/index.ts"
+      "supabase/functions/quotedesk-api/email.mjs",
+      "supabase/functions/quotedesk-api/index.ts",
+      "supabase/functions/quotedesk-api/routes.mjs"
     ],
     "rpcSignature": null,
     "coverageSignals": [
@@ -502,7 +664,7 @@ const surfaces = [
 ];
 
 export const QUOTEDESK_ACTION_CONTRACT_EXTENSION = {
-  expectedCountsDelta: { governable: 13, edge: 13, postgres: 0, ratewareApi: 0 },
+  expectedCountsDelta: { governable: 16, edge: 16, postgres: 0, ratewareApi: 0 },
   reviewedMetadataFingerprints: {
     "edge.quotedesk-api.apply_bid_room_awards": "520cbc675125c9fc766a73d30249860b359dacf3026ea40b36a7298b8c4275a2",
     "edge.quotedesk-api.create_quote": "5ebce40775d7d6894b38112bbf72a9ac7a5608b1c1780d926a02393648baad96",
@@ -511,9 +673,12 @@ export const QUOTEDESK_ACTION_CONTRACT_EXTENSION = {
     "edge.quotedesk-api.get_context": "2239a9ecc38e7de4238cc47c4c6e5f76d35965be26850bf040049ffc7a150066",
     "edge.quotedesk-api.get_quote": "a46c2e6077c7523bad36752563613ad43380fe267cc00670f086d25086c43592",
     "edge.quotedesk-api.link_bid_room_event": "14a1c9032f1cd9768044163b3d63f1cc835142c399a10154532126c76ee43abc",
+    "edge.quotedesk-api.list_quote_emails": "ea3abe594a6f79a3ee58230dbe54886de8532daa4b4d621d08e4bc1b9f399370",
     "edge.quotedesk-api.list_quotes": "e76b98258d159e6d7008363dc15bb99936bb755a1c388c0a8b1b93e4dd386f3d",
+    "edge.quotedesk-api.preview_quote_email": "9d04432e9f00570022762f3f530f82a10f211de537d8582e0ba95c6ca0709dcb",
     "edge.quotedesk-api.save_accessorial": "58e8cb086d3fb95ef8315781f54c63a43ce7b8bb1b9acb16a811d092a07fd51c",
     "edge.quotedesk-api.save_quote_lane": "d494b00ef3db00c3df12ba94aedaecfcbeffe5f3345cc3728ac8c30d2f8c896f",
+    "edge.quotedesk-api.send_quote_email": "3c4bfd211c146f769236be213001ca54f756a0fb5eab9f299fe63a1c1e07a10d",
     "edge.quotedesk-api.set_quote_status": "0e93fbcbf6857a2624cb1c7137a3d50f88f8b2cfe48836e606556e97c68c4ed6",
     "edge.quotedesk-api.suggest_lane_miles": "75ce9023ebdb3fb5e821c7079a4f8d11c282f7697342a78317f957ca15ba78a4",
     "edge.quotedesk-api.update_quote": "7f4237f527baa91dee97b8ee290da22908f402746125f092b7297fead56c97da"
