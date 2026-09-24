@@ -1,9 +1,8 @@
 /**
- * Reviewed Bidware QuoteDesk surfaces (supabase/functions/quotedesk-api).
- * Human, tenant-scoped actions behind the shared Supabase Auth -> workspace resolver.
+ * Reviewed Bidware QuoteDesk surfaces: the quotedesk-api edge function (human,
+ * tenant-scoped, Supabase Auth -> workspace) and its service-role-only RPC.
  * Fingerprints are static reviewed values; regenerate them only after reviewing a change.
  */
-const authorizationFingerprint = "ba131f832b209ca6e59ca8531099988902e4f6fb5952ab90b4a40b86612b7edf";
 const surfaces = [
   {
     "contractVersion": "1.3.0",
@@ -190,7 +189,7 @@ const surfaces = [
     "lifecycle": "active",
     "replacementAction": null,
     "sourceFingerprint": "73a585b5f3d1a3d03a2bbf7cc498db095433bd38426397ec7c7f98f689a3fb98",
-    "notes": "Bidware QuoteDesk. Accessorial catalog (seeded on first use), latest Banxico FX, US fuel index and border crossings. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
+    "notes": "Bidware QuoteDesk. Accessorial catalog (seeded on first use), latest Banxico FX, US fuel index, border crossings, and whether Google Routes and the Gmail sender are available. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
@@ -600,7 +599,7 @@ const surfaces = [
     "lifecycle": "active",
     "replacementAction": null,
     "sourceFingerprint": "73a585b5f3d1a3d03a2bbf7cc498db095433bd38426397ec7c7f98f689a3fb98",
-    "notes": "Bidware QuoteDesk. Reads reference mileage, border crossings and fuel index; writes nothing. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
+    "notes": "Bidware QuoteDesk. Reads reference mileage, border crossings and fuel index; missing legs may be measured with Google Routes and cached in quotedesk_route_distances. Supabase session resolved to the rateware workspace; every query is scoped by owner_email. Workspace members may use it; the proposed permission key is not enforced yet.",
     "analysisCoverage": "shared-observed",
     "dependencyFiles": [
       "supabase/functions/_shared/auth.ts",
@@ -660,11 +659,42 @@ const surfaces = [
       "shared_dependency_observed",
       "external_dependency"
     ]
+  },
+  {
+    "contractVersion": "1.3.0",
+    "canonicalId": "rpc.public.quotedesk_google_maps_api_key()",
+    "actionName": "public.quotedesk_google_maps_api_key",
+    "sourceKind": "postgres-function",
+    "sourceFile": "supabase/migrations/20260924080318_quotedesk_google_maps_key_from_vault.sql",
+    "handler": "public.quotedesk_google_maps_api_key()",
+    "endpoint": "PostgreSQL function / PostgREST RPC surface public.quotedesk_google_maps_api_key()",
+    "businessModule": "Commercial",
+    "operation": "read",
+    "resource": "quotedesk-config",
+    "access": "read",
+    "exposure": "internal/service-role",
+    "sensitivity": "high",
+    "tenantRelevance": "platform-scoped",
+    "proposedPermissionKey": "internal.rpc.quotedesk_google_maps_api_key",
+    "functionalOwner": "Commercial",
+    "decisionStatus": "internal_only",
+    "lifecycle": "active",
+    "replacementAction": null,
+    "sourceFingerprint": "1936fece2e18e3af9a68d8ce760587155c54e9afa8e7d1de664c60de4253c3e7",
+    "notes": "Returns the Google Maps key stored in Vault (google_maps_api_key); EXECUTE revoked from public/anon/authenticated and granted only to service_role for the quotedesk-api edge function.",
+    "analysisCoverage": "direct",
+    "dependencyFiles": [
+      "supabase/migrations/20260924080318_quotedesk_google_maps_key_from_vault.sql"
+    ],
+    "rpcSignature": "",
+    "coverageSignals": [
+      "direct"
+    ]
   }
 ];
 
 export const QUOTEDESK_ACTION_CONTRACT_EXTENSION = {
-  expectedCountsDelta: { governable: 16, edge: 16, postgres: 0, ratewareApi: 0 },
+  expectedCountsDelta: { governable: 17, edge: 16, postgres: 1, ratewareApi: 0 },
   reviewedMetadataFingerprints: {
     "edge.quotedesk-api.apply_bid_room_awards": "520cbc675125c9fc766a73d30249860b359dacf3026ea40b36a7298b8c4275a2",
     "edge.quotedesk-api.create_quote": "5ebce40775d7d6894b38112bbf72a9ac7a5608b1c1780d926a02393648baad96",
@@ -681,8 +711,27 @@ export const QUOTEDESK_ACTION_CONTRACT_EXTENSION = {
     "edge.quotedesk-api.send_quote_email": "3c4bfd211c146f769236be213001ca54f756a0fb5eab9f299fe63a1c1e07a10d",
     "edge.quotedesk-api.set_quote_status": "0e93fbcbf6857a2624cb1c7137a3d50f88f8b2cfe48836e606556e97c68c4ed6",
     "edge.quotedesk-api.suggest_lane_miles": "75ce9023ebdb3fb5e821c7079a4f8d11c282f7697342a78317f957ca15ba78a4",
-    "edge.quotedesk-api.update_quote": "7f4237f527baa91dee97b8ee290da22908f402746125f092b7297fead56c97da"
+    "edge.quotedesk-api.update_quote": "7f4237f527baa91dee97b8ee290da22908f402746125f092b7297fead56c97da",
+    "rpc.public.quotedesk_google_maps_api_key()": "b897b39ec259f6f161869c156adcd844ee25ef5fb4146c273823ccce0168c781"
   },
-  reviewedAuthorizationFingerprints: Object.fromEntries(surfaces.map((entry) => [entry.canonicalId, authorizationFingerprint])),
+  reviewedAuthorizationFingerprints: {
+    "edge.quotedesk-api.apply_bid_room_awards": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.create_quote": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.delete_quote_lane": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.event_origins": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.get_context": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.get_quote": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.link_bid_room_event": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.list_quote_emails": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.list_quotes": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.preview_quote_email": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.save_accessorial": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.save_quote_lane": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.send_quote_email": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.set_quote_status": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.suggest_lane_miles": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "edge.quotedesk-api.update_quote": "0be8b7c28c65baa0c883694acdb28617c42281fccbe6e9d29143d0647691e68b",
+    "rpc.public.quotedesk_google_maps_api_key()": "1936fece2e18e3af9a68d8ce760587155c54e9afa8e7d1de664c60de4253c3e7"
+  },
   surfaces
 };

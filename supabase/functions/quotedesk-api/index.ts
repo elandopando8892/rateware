@@ -34,7 +34,9 @@ const SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY") || D
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const FIRST_FOLIO = 1001;
 // Optional: legs missing from the mileage catalog are measured with Google Routes.
-const GOOGLE_MAPS_API_KEY = (Deno.env.get("GOOGLE_MAPS_API_KEY") || "").trim();
+// The project is at Supabase's 100-secret limit for Edge Functions, so the key
+// normally lives in Vault (google_maps_api_key); an env var still wins if set.
+const GOOGLE_MAPS_API_KEY_ENV = (Deno.env.get("GOOGLE_MAPS_API_KEY") || "").trim();
 const EMAIL_CONTRACT = "quotedesk.gmail-send.v1";
 const EMAIL_SENDER_NAME = "MARKSMAN";
 const LANE_LIMIT = 50;
@@ -122,6 +124,24 @@ function owned(row: Row, workspace: Workspace) {
     owner_email: workspace.owner_email,
     organization_id: workspace.organization_id
   };
+}
+
+let googleKeyCache: { value: string; at: number } | null = null;
+
+/** Google Maps key from the env or Vault; "" when not configured. Cached briefly. */
+async function googleMapsKey(supabase: Db): Promise<string> {
+  if (GOOGLE_MAPS_API_KEY_ENV) return GOOGLE_MAPS_API_KEY_ENV;
+  // A missing key is re-checked sooner, so saving it in Vault takes effect fast.
+  const ttl = googleKeyCache?.value ? 5 * 60_000 : 30_000;
+  if (googleKeyCache && Date.now() - googleKeyCache.at < ttl) return googleKeyCache.value;
+  const result = await supabase.rpc("quotedesk_google_maps_api_key");
+  if (result.error) {
+    console.warn("QUOTEDESK_GOOGLE_KEY_LOOKUP_FAILED", result.error.message);
+    return googleKeyCache?.value || "";
+  }
+  const value = typeof result.data === "string" ? result.data.trim() : "";
+  googleKeyCache = { value, at: Date.now() };
+  return value;
 }
 
 async function audit(supabase: Db, workspace: Workspace, action: string, entityType: string, entityId: string, summary: string, metadata: Row = {}) {
@@ -244,7 +264,7 @@ async function getContext(supabase: Db, workspace: Workspace) {
     fx,
     fuel,
     border_crossings: crossings,
-    google_routes_enabled: Boolean(GOOGLE_MAPS_API_KEY),
+    google_routes_enabled: Boolean(await googleMapsKey(supabase)),
     email: {
       sender: GMAIL_ALLOWED_SENDER,
       connected: mailbox.data?.status === "connected" && scopes.includes("https://www.googleapis.com/auth/gmail.send")
@@ -668,14 +688,15 @@ async function googleLegMiles(supabase: Db, from: Place, to: Place): Promise<{ m
     .eq("provider", "google_routes").eq("origin_key", originKey).eq("destination_key", destinationKey).maybeSingle();
   if (cached.error) throw cached.error;
   if (cached.data) return { miles: toNumber(cached.data.miles) };
-  if (!GOOGLE_MAPS_API_KEY) return null;
+  const apiKey = await googleMapsKey(supabase);
+  if (!apiKey) return null;
   let response: Response;
   try {
     response = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+        "X-Goog-Api-Key": apiKey,
         "X-Goog-FieldMask": "routes.distanceMeters,routes.duration"
       },
       body: JSON.stringify({
@@ -816,7 +837,7 @@ async function suggestLaneMiles(supabase: Db, input: Row) {
     legs,
     fuel,
     miles_source: providers.length ? providers.map((p) => (p === "catalog" ? "rateware_lane_mileage" : p)).join("+") : null,
-    google_routes_enabled: Boolean(GOOGLE_MAPS_API_KEY),
+    google_routes_enabled: Boolean(await googleMapsKey(supabase)),
     complete: measured.length > 0 && measured.every((leg) => leg.found)
   };
 }
