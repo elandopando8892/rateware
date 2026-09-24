@@ -18,6 +18,7 @@ import { resolveRequestManifestShadow } from "./request-manifest-shadow-config.t
 import { resolveRequestManifestCanary } from "./request-manifest-canary-config.ts";
 import { resolveAdaptiveManifest } from "./adaptive-manifest-config.ts";
 import { resolveManualRequestCanary } from "./manual-request-canary-config.ts";
+import { createOpenAiRequestManifest } from "./openai-request-manifest.ts";
 
 const WORKER_BUILD_REVISION = "20260919-exact-thread-preflight";
 
@@ -178,6 +179,78 @@ Deno.serve(createOspWorkerHandler({
         model: adaptiveManifest.openAiModel,
         httpStatus: response.status,
         reachable: response.ok,
+      };
+    }
+    : undefined,
+  preflightOpenAiResponse: adaptiveManifest
+    ? async () => {
+      let httpStatus: number | null = null;
+      let providerCode: string | null = null;
+      let responseStatus: string | null = null;
+      let outputTypes: string[] = [];
+      let parseCode: string | null = null;
+      const adapter = createOpenAiRequestManifest({
+        baseUrl: "https://api.openai.com",
+        apiKey: adaptiveManifest.openAiApiKey,
+        model: adaptiveManifest.openAiModel,
+        request: async (input, init) => {
+          const response = await fetch(input, init);
+          httpStatus = response.status;
+          try {
+            const decoded = await response.clone().json() as Record<
+              string,
+              unknown
+            >;
+            const error = decoded.error && typeof decoded.error === "object"
+              ? decoded.error as Record<string, unknown>
+              : null;
+            const code = error?.code;
+            providerCode = typeof code === "string" &&
+                /^[a-z0-9_]{1,64}$/i.test(code)
+              ? code
+              : null;
+            responseStatus = typeof decoded.status === "string" &&
+                /^[a-z_]{1,32}$/.test(decoded.status)
+              ? decoded.status
+              : null;
+            outputTypes = Array.isArray(decoded.output)
+              ? decoded.output.slice(0, 10).map((item: unknown) => {
+                const type = item && typeof item === "object" &&
+                    !Array.isArray(item)
+                  ? (item as Record<string, unknown>).type
+                  : null;
+                return typeof type === "string" &&
+                    /^[a-z_]{1,32}$/.test(type)
+                  ? type
+                  : "unknown";
+              })
+              : [];
+          } catch {
+            // The diagnostic returns only a status and safe response shape.
+          }
+          return response;
+        },
+      });
+      try {
+        await adapter.interpret({
+          evidence: [{
+            id: "synthetic:email",
+            kind: "email_text",
+            sourceName: "synthetic-request.eml",
+            content:
+              "Synthetic carrier asks XBFREIGHT SYSTEMS LLC to complete its customer registration. No documents or signature requested.",
+          }],
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        parseCode = /^[A-Z_]{3,64}$/.test(message) ? message : "UNKNOWN";
+      }
+      return {
+        httpStatus,
+        providerCode,
+        responseStatus,
+        outputTypes,
+        parseCode,
       };
     }
     : undefined,

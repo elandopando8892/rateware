@@ -21,6 +21,24 @@ function completed(output = validOutput) {
   };
 }
 
+Deno.test('OpenAI extraction accepts reasoning before one message but not unexpected output', async () => {
+  const generated = completed();
+  const adapter = (item: Record<string, unknown>) => createOpenAiStructuredExtraction({
+    baseUrl,
+    apiKey: 'synthetic-key',
+    model: 'gpt-synthetic',
+    request: async () => Response.json({ ...generated, output: [item, ...generated.output] }),
+  });
+  assert.deepEqual(
+    await adapter({ type: 'reasoning', summary: [] }).extract({ evidence }),
+    validOutput,
+  );
+  await assert.rejects(
+    adapter({ type: 'function_call' }).extract({ evidence }),
+    /OPENAI_INVALID_RESPONSE/,
+  );
+});
+
 Deno.test('OpenAI adapter sends strict stored-off Responses input and closes every citation', async () => {
   let captured: { url: URL; init: RequestInit; body: Record<string, unknown> } | undefined;
   const adapter = createOpenAiStructuredExtraction({

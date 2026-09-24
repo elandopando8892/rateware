@@ -152,12 +152,23 @@ export function createOspWorkerHandler(deps: {
   run(limit: number): Promise<number>;
   runExactGmailIngest?: (input: ExactGmailIngest) => Promise<number>;
   runExactShadowAnalysis?: (input: ExactShadowAnalysis) => Promise<number>;
-  preflightOpenAiModel?: () => Promise<Readonly<{
-    configured: true;
-    model: string;
-    httpStatus: number;
-    reachable: boolean;
-  }>>;
+  preflightOpenAiModel?: () => Promise<
+    Readonly<{
+      configured: true;
+      model: string;
+      httpStatus: number;
+      reachable: boolean;
+    }>
+  >;
+  preflightOpenAiResponse?: () => Promise<
+    Readonly<{
+      httpStatus: number | null;
+      providerCode: string | null;
+      responseStatus: string | null;
+      outputTypes: readonly string[];
+      parseCode: string | null;
+    }>
+  >;
   runExactThreadAssociation?: (
     input: ExactThreadAssociationRun,
   ) => Promise<number>;
@@ -440,6 +451,20 @@ export function createOspWorkerHandler(deps: {
       }
       try {
         return json(200, await deps.preflightOpenAiModel());
+      } catch {
+        return json(503, { error: "OPENAI_PREFLIGHT_UNAVAILABLE" });
+      }
+    }
+    if (body.action === "preflight_openai_response") {
+      if (!serviceAuthorized) return json(401, { error: "UNAUTHORIZED" });
+      if (keys.length !== 1 || keys[0] !== "action") {
+        return json(400, { error: "INVALID_REQUEST" });
+      }
+      if (!deps.preflightOpenAiResponse) {
+        return json(409, { error: "OPENAI_PREFLIGHT_DISABLED" });
+      }
+      try {
+        return json(200, await deps.preflightOpenAiResponse());
       } catch {
         return json(503, { error: "OPENAI_PREFLIGHT_UNAVAILABLE" });
       }

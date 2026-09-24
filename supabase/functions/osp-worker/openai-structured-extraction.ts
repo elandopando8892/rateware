@@ -144,7 +144,9 @@ export function createOpenAiStructuredExtraction(options: { baseUrl: string; api
       const texts: string[] = [];
       for (const itemValue of envelope.output) {
         const item = itemValue as Record<string, unknown>;
-        if (!item || item.type !== 'message' || !Array.isArray(item.content)) throw new Error('OPENAI_INVALID_RESPONSE');
+        if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('OPENAI_INVALID_RESPONSE');
+        if (item.type === 'reasoning') continue;
+        if (item.type !== 'message' || !Array.isArray(item.content)) throw new Error('OPENAI_INVALID_RESPONSE');
         for (const contentValue of item.content) {
           const content = contentValue as Record<string, unknown>;
           if (content?.type === 'refusal') throw new Error('OPENAI_REFUSAL');

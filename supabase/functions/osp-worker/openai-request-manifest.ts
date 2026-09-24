@@ -1,5 +1,6 @@
 // Bump whenever interpretation rules change; old drafts remain immutable.
-export const REQUEST_MANIFEST_POLICY_VERSION = "2026-09-08-thread-reconciliation-v1";
+export const REQUEST_MANIFEST_POLICY_VERSION =
+  "2026-09-08-thread-reconciliation-v1";
 
 type RequestPort = (
   input: string | URL,
@@ -991,7 +992,8 @@ export function createOpenAiRequestManifest(
           },
           {
             role: "developer",
-            content: "Reconcile all supplied email evidence, not only the last message. An amendment changes only the requirements it explicitly replaces; retain every unaffected form and supporting-document requirement. Record an explicit replacement in requirements with citations to both the original and amendment evidence IDs, and identify the superseded form rather than silently erasing its history. Do not infer supersession from attachment names or arrival order alone. If the replacement target, chronology or entity applicability is ambiguous, require clarification. A Mexican fiscal-document request is not automatically satisfied by a US tax identifier. Template approver/reviewer metadata does not establish an applicant signature requirement. This interpretation proposes a review draft and does not authorize any signature or disclosure.",
+            content:
+              "Reconcile all supplied email evidence, not only the last message. An amendment changes only the requirements it explicitly replaces; retain every unaffected form and supporting-document requirement. Record an explicit replacement in requirements with citations to both the original and amendment evidence IDs, and identify the superseded form rather than silently erasing its history. Do not infer supersession from attachment names or arrival order alone. If the replacement target, chronology or entity applicability is ambiguous, require clarification. A Mexican fiscal-document request is not automatically satisfied by a US tax identifier. Template approver/reviewer metadata does not establish an applicant signature requirement. This interpretation proposes a review draft and does not authorize any signature or disclosure.",
           },
           { role: "user", content: userContent },
         ],
@@ -1029,7 +1031,13 @@ export function createOpenAiRequestManifest(
     const texts: string[] = [];
     for (const itemValue of envelope.output) {
       const item = itemValue as Record<string, unknown>;
-      if (!item || item.type !== "message" || !Array.isArray(item.content)) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        throw new Error("OPENAI_INVALID_RESPONSE");
+      }
+      // Reasoning models can emit a non-message item before the final message.
+      // It is not user-facing content and must not be parsed as the manifest.
+      if (item.type === "reasoning") continue;
+      if (item.type !== "message" || !Array.isArray(item.content)) {
         throw new Error("OPENAI_INVALID_RESPONSE");
       }
       for (const contentValue of item.content) {

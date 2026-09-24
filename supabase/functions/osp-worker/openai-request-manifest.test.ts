@@ -105,6 +105,42 @@ function completed(output: unknown = validManifest) {
   };
 }
 
+Deno.test("request manifest accepts reasoning output before exactly one assistant message", async () => {
+  const generated = completed();
+  const response = {
+    ...generated,
+    output: [{ type: "reasoning", summary: [] }, ...generated.output],
+  };
+  const adapter = createOpenAiRequestManifest({
+    baseUrl,
+    apiKey: "synthetic-key",
+    model: "gpt-synthetic",
+    request: async () => Response.json(response),
+  });
+
+  assertEquals(await adapter.interpret({ evidence }), validManifest);
+});
+
+Deno.test("request manifest still rejects unexpected output items", async () => {
+  const generated = completed();
+  const response = {
+    ...generated,
+    output: [{ type: "function_call" }, ...generated.output],
+  };
+  const adapter = createOpenAiRequestManifest({
+    baseUrl,
+    apiKey: "synthetic-key",
+    model: "gpt-synthetic",
+    request: async () => Response.json(response),
+  });
+
+  await assertRejects(
+    () => adapter.interpret({ evidence }),
+    Error,
+    "OPENAI_INVALID_RESPONSE",
+  );
+});
+
 Deno.test("request manifest uses strict stored-off Responses output for email, XLSX and DOCX evidence", async () => {
   let captured:
     | { url: URL; init: RequestInit; body: Record<string, unknown> }

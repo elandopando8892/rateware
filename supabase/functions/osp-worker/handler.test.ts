@@ -307,6 +307,36 @@ Deno.test("OpenAI model preflight is service-only and never drains jobs", async 
   assertEquals(calls, 1);
 });
 
+Deno.test("OpenAI response preflight is service-only and never drains jobs", async () => {
+  let calls = 0;
+  const handler = createOspWorkerHandler({
+    expectedToken: token,
+    manualCanaryToken: manualToken,
+    enqueue: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    run: () => Promise.reject(new Error("GLOBAL_QUEUE_CALLED")),
+    preflightOpenAiResponse: async () => {
+      calls += 1;
+      return {
+        httpStatus: 200,
+        providerCode: null,
+        responseStatus: "completed",
+        outputTypes: ["reasoning", "message"],
+        parseCode: null,
+      };
+    },
+  });
+  const body = { action: "preflight_openai_response" };
+  assertEquals(
+    (await handler(request(body, `Bearer ${manualToken}`))).status,
+    401,
+  );
+  assertEquals((await handler(request({ ...body, extra: true }))).status, 400);
+  const response = await handler(request(body));
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).outputTypes, ["reasoning", "message"]);
+  assertEquals(calls, 1);
+});
+
 Deno.test("OSP worker executes only one fully specified exact thread association", async () => {
   let received: Record<string, string> | undefined;
   const handler = createOspWorkerHandler({
