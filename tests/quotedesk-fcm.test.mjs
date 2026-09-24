@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  baseRefusal,
   calculate,
   crossingCarriesBorder,
   customerService,
@@ -10,7 +11,9 @@ import {
   fcmOperation,
   fcmService,
   getParam,
-  round2
+  pickCostBase,
+  round2,
+  scopeForOperation
 } from "../supabase/functions/quotedesk-api/fcm.mjs";
 
 const golden = JSON.parse(readFileSync(new URL("./fixtures/fcm-engine-golden.json", import.meta.url), "utf8"));
@@ -133,4 +136,34 @@ test("casetas, the FX and the trip type move the estimate the right way", () => 
   assert.equal(intraMex.components.linehaul_us, null);
   assert.equal(intraMex.components.border_amount, null, "no cruce on a domestic lane");
   assert.equal(getParam({}, "BORDER", "Border Transactional Cost", 200), 200);
+});
+
+
+const legacyD2D = { id: "legacy", name: "Default — D2D Base", scope: null, profile: null, is_default: true };
+const intraMex = {
+  id: "std-mx", name: "FTL Intra-México Estándar", scope: "INTRA_MEX", is_default: false,
+  profile: {
+    operations: ["Intra-Mex", "MX Northbound", "MX Southbound"], services: ["One Way", "Roundtrip", "Backhaul"],
+    truckTypes: ["Truck Trailer"], trailerTypes: ["Dry Van"], configurations: ["Single"], driverTypes: ["B1", "Licencia E"]
+  }
+};
+const dryVan = { truckType: "Truck Trailer", trailer: "Dry Van", config: "Single", driver: "B1" };
+
+test("each route gets a base of its scope, the way the FCM enforces it", () => {
+  assert.equal(scopeForOperation("D2D Export"), "CROSS_BORDER");
+  assert.equal(scopeForOperation("MX Southbound"), "INTRA_MEX");
+  assert.equal(scopeForOperation("Intra-US"), "INTRA_US");
+
+  const national = { operation: "Intra-Mex", service: "One Way", equipment: dryVan };
+  const crossing = { operation: "D2D Export", service: "One Way", equipment: dryVan };
+  assert.equal(pickCostBase([legacyD2D, intraMex], national).id, "std-mx", "national routes use the Intra-México base");
+  assert.equal(pickCostBase([legacyD2D, intraMex], crossing).id, "legacy", "crossings fall back to the org's D2D base");
+
+  assert.match(baseRefusal(intraMex, crossing), /Intra-México; esta ruta es D2D Export/);
+  assert.equal(baseRefusal(legacyD2D, national), null, "a legacy set prices any operation");
+  assert.match(baseRefusal(intraMex, { ...national, equipment: { ...dryVan, trailer: "Reefer" } }), /no cubre el remolque Reefer; permite Dry Van/);
+  assert.match(baseRefusal(intraMex, { ...national, service: "Expedited" }), /no cubre el servicio Expedited/);
+  // A reefer national lane: the Intra-México base refuses it, so the D2D default takes it.
+  assert.equal(pickCostBase([legacyD2D, intraMex], { ...national, equipment: { ...dryVan, trailer: "Reefer" } }).id, "legacy");
+  assert.equal(pickCostBase([intraMex], crossing), null, "no base covers it");
 });

@@ -1,5 +1,5 @@
 /** Reviewed hourly FCM bases sync surface (supabase/functions/sync-fcm-bases). Static reviewed fingerprints. */
-const authorizationFingerprint = "0fafd7487c9712c2bc232a9bd571443dcab1972f2b1ad0e19e1c0f8cdb94cfda";
+const authorizationFingerprint = "ac27bf4c3af6484960fd4e6a6a14209c59784eaf0ae140348be703e167b5e448";
 const surfaces = [{
   "contractVersion": "1.3.0",
   "canonicalId": "edge.sync-fcm-bases.sync_fcm_bases",
@@ -20,7 +20,7 @@ const surfaces = [{
   "decisionStatus": "internal_only",
   "lifecycle": "active",
   "replacementAction": null,
-  "sourceFingerprint": "c3f13fe38a7383b3875324eacf8faa62d75180bd1eba2f9dac931f642c326f16",
+  "sourceFingerprint": "93cadf80c95d4dbf07df2568f1dede8fd3ad7c9683e8cd0805dfc71b533ef880",
   "notes": "Hourly pg_cron job with the shared SYNC_CRON_SECRET; reads the FCM database through a read-only role (FCM_DATABASE_URL) and writes fcm_cost_bases (per workspace, mapped by the FCM users' emails through workspace_identity_aliases) plus the fcm_* reference tables; logs fcm_sync_runs.",
   "analysisCoverage": "shared-observed",
   "dependencyFiles": [

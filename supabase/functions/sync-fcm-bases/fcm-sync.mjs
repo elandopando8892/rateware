@@ -101,6 +101,7 @@ export function costBaseRows({ sets, params, organizations, workspaces, syncedAt
         currency: set.currency ?? null,
         params: map,
         param_count: Object.keys(map).length,
+        profile: set.profile && typeof set.profile === "object" ? set.profile : null,
         source_updated_at: set.updated_at ? new Date(set.updated_at).toISOString() : null,
         synced_at: syncedAt
       });
