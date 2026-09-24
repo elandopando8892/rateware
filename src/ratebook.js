@@ -19,7 +19,7 @@ import {
 } from "./ratebook-service.js";
 
 const query = new URLSearchParams(window.location.search);
-const RATEBOOK_XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
+const RATEBOOK_XLSX_MODULE_URL = "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 const RATEBOOK_FILTER_VIEW_STORAGE_KEY = "rateware.ratebook.filterViews.v1";
 const RATEBOOK_EXPORT_COLUMNS = [
   ["Ratebook", "ratebook_name"],

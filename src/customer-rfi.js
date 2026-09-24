@@ -1,7 +1,7 @@
 import { humanizeError } from "./error-copy.js";
 import { fetchCustomerRfi, saveCustomerRfi, submitCustomerRfi } from "./customer-rfi-service.js";
 
-const XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
+const XLSX_MODULE_URL = "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 const EXCELJS_MODULE_URL = "https://esm.sh/exceljs@4.4.0?bundle";
 let xlsxModulePromise = null;
 let excelJsModulePromise = null;

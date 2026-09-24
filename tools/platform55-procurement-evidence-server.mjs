@@ -220,7 +220,7 @@ const BOUNDARIES = new Map([
   ["/qa/xlsx.js", xlsxBoundary]
 ]);
 
-const importMap = `<script type="importmap">{"imports":{"https://esm.sh/xlsx@0.18.5":"/qa/xlsx.js"}}</script><!-- ${IMPORT_MARKER} -->`;
+const importMap = `<script type="importmap">{"imports":{"https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs":"/qa/xlsx.js"}}</script><!-- ${IMPORT_MARKER} -->`;
 
 const profileVendor = Object.freeze({
   id: "00000000-0000-4000-8000-000000000301",

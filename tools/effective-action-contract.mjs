@@ -116,7 +116,9 @@ const ratewareApiSourceFingerprintOverrides = {
 
 const supabaseAuthSourceFingerprintOverrides = {
   'edge.create-raw-upload.create_raw_upload': '162bfb646dea07477a3f6d27be7ee573db7efbafd6d089b0eeea5a06dafccc79',
-  'edge.interpret-upload.interpret_upload': '103d4f9050f9f7a7b78dc30049e5ae0bd3534f7caadf38b9bd27e25307bba3ed',
+  // Reviewed: only the XLSX import moved from esm.sh xlsx@0.18.5 to SheetJS 0.20.3
+  // (official CDN, with its type definitions); the handler is unchanged.
+  'edge.interpret-upload.interpret_upload': '0363a06319cb046c2e8d4c590e6463def83e7aa0ccfa60d08d62654df0237ede',
   'edge.sync-rateware-catalog.sync_rateware_catalog': '207fd12f17afbbd5e4dd58a0e914ad939aab033816bf8a5a64b461cf46aa8c83',
 };
 

@@ -40,7 +40,7 @@ let projectCreateRunning = false;
 let rfxProcessTemplateRunning = false;
 let rfxProcessXlsxModulePromise = null;
 
-const RFX_PROCESS_XLSX_MODULE_URL = "https://esm.sh/xlsx@0.18.5";
+const RFX_PROCESS_XLSX_MODULE_URL = "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 
 const els = {
   list: document.getElementById("rfx-process-project-list"),

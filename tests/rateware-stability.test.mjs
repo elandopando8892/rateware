@@ -2452,7 +2452,7 @@ const bidSubmitSource = rfxBidApiSource.slice(
   rfxBidApiSource.indexOf('if (body.action === "submit_bid")') + 7000
 );
 assert.doesNotMatch(bidSubmitSource, /assertLaneFitComplete/, "Carrier bid submissions should accept quotes with optional fit answers");
-assert.match(rfxBidSource, /import \* as XLSX from "https:\/\/esm\.sh\/xlsx@0\.18\.5"/, "Carrier portal should load XLSX support for bid templates");
+assert.match(rfxBidSource, /import \* as XLSX from "https:\/\/cdn\.sheetjs\.com\/xlsx-0\.20\.3\/package\/xlsx\.mjs"/, "Carrier portal should load XLSX support for bid templates");
 assert.match(rfxBidSource, /import\("https:\/\/esm\.sh\/exceljs@4\.4\.0\?bundle"\)/, "Carrier portal should use ExcelJS for XLSX dropdown data validations");
 assert.match(rfxBidSource, /const BID_TEMPLATE_COLUMNS = \[/, "Carrier portal should define a prefilled XLSX bid template schema");
 assert.match(rfxBidSource, /function downloadBidTemplate/, "Carrier portal should download a prefilled XLSX bid template");
