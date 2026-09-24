@@ -635,9 +635,27 @@ async function mileageFor(supabase: Db, scope: "mx" | "us", from: Place, to: Pla
   return ranked ? { miles: toNumber(ranked.miles), km: toNumber(ranked.km), route_key: ranked.route_key, source: ranked.source } : null;
 }
 
+// Saved routes keep only city + state code (MX) or market (US/CA); fill in what
+// the mileage keys also use (MX state name, US market) from rateware_locations.
+async function enrichPlace(supabase: Db, value: Place): Promise<Place> {
+  if (!value.city || !value.country) return value;
+  if (value.country === "MX" && value.state_name) return value;
+  if (value.country !== "MX" && value.market) return value;
+  const location = await locationFor(supabase, value.country, value.city, value.state_code || null);
+  if (!location) return value;
+  return {
+    ...value,
+    state_code: value.state_code || text(location.state_code) || undefined,
+    state_name: value.state_name || text(location.state_name) || undefined,
+    market: value.market || text(location.market) || undefined
+  };
+}
+
 async function suggestLaneMiles(supabase: Db, input: Row) {
-  const origin = place(input.origin);
-  const destination = place(input.destination);
+  const [origin, destination] = await Promise.all([
+    enrichPlace(supabase, place(input.origin)),
+    enrichPlace(supabase, place(input.destination))
+  ]);
   const originMx = origin.country === "MX";
   const destinationMx = destination.country === "MX";
   const crossingName = text(input.border_crossing, 200);

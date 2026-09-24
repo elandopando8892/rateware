@@ -3,7 +3,7 @@
  * Human, tenant-scoped actions behind the shared Supabase Auth -> workspace resolver.
  * Fingerprints are static reviewed values; regenerate them only after reviewing a change.
  */
-const authorizationFingerprint = "c0b991469ed3588f914fcc674ff56e7ae8f67635cfa86679407def2be48bd98a";
+const authorizationFingerprint = "77a8067d7340e8bc7609b2bbc2994e09079b9624180ffdae89a8d3dc511a68c3";
 const surfaces = [
   {
     "contractVersion": "1.3.0",
