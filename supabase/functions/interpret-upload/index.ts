@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import * as XLSX from "https://esm.sh/xlsx@0.18.5";
+// @deno-types="https://cdn.sheetjs.com/xlsx-0.20.3/package/types/index.d.ts"
+import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
