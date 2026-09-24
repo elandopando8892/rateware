@@ -14,6 +14,17 @@ import { GMAIL_ALLOWED_SENDER, GmailSendError, gmailAccessToken, gmailRawMessage
 import { isEmail, renderQuoteEmail } from "./email.mjs";
 import { metersToMiles, placeQuery, queryKey } from "./routes.mjs";
 import {
+  TIERS,
+  customerService,
+  estimateQuoteLane,
+  fcmEquipment,
+  fcmOperation,
+  fcmService,
+  legsFor,
+  round2,
+  tierMargins
+} from "./fcm.mjs";
+import {
   ACCESSORIAL_UNITS,
   COST_SOURCES,
   QUOTE_CHANNELS,
@@ -210,7 +221,7 @@ async function latestFx(supabase: Db) {
 async function fuelIndex(supabase: Db) {
   const [regions, trend] = await Promise.all([
     supabase.from("rateware_fuel_regions").select("state_code,fuel_region").eq("active", true),
-    supabase.from("rateware_fsc_trend").select("fuel_region,index_date,fsc_per_mile")
+    supabase.from("rateware_fsc_trend").select("fuel_region,index_date,fsc_per_mile,diesel_per_gallon")
       .eq("active", true)
       .order("index_date", { ascending: false })
       .limit(400)
@@ -233,6 +244,7 @@ async function fuelIndex(supabase: Db) {
     regions: [...latest.values()].map((row) => ({
       region: row.fuel_region,
       fsc_per_mile: toNumber(row.fsc_per_mile),
+      diesel_per_gallon: toNumber(row.diesel_per_gallon),
       index_date: row.index_date
     }))
   };
@@ -539,7 +551,10 @@ function laneInputs(input: Row) {
   for (const field of LANE_TEXT_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(input, field)) patch[field] = text(input[field], field === "notes" ? 2000 : 300);
   }
-  for (const [field, label] of [["weight_lb", "El peso"], ["weekly_volume", "El volumen"], ["mx_miles", "Las millas MX"], ["us_miles", "Las millas US"], ["fsc_per_mile", "El FSC por milla"]] as const) {
+  for (const [field, label] of [
+    ["weight_lb", "El peso"], ["weekly_volume", "El volumen"], ["mx_miles", "Las millas MX"], ["us_miles", "Las millas US"],
+    ["fsc_per_mile", "El FSC por milla"], ["fsc_diesel_per_gallon", "El diésel del FSC"]
+  ] as const) {
     if (!Object.prototype.hasOwnProperty.call(input, field)) continue;
     const value = toNumber(input[field]);
     if (value !== null && value < 0) throw new QuoteInputError(`${label} no puede ser negativo.`);
@@ -580,6 +595,18 @@ async function saveQuoteLane(supabase: Db, workspace: Workspace, quoteIdInput: u
     existing = result.data as Row;
   }
   const inputs = laneInputs(laneInput);
+  // The FCM estimate behind the components (base, tier, legs), kept for review.
+  if (Object.prototype.hasOwnProperty.call(laneInput, "fcm")) {
+    const metadata = { ...record(existing.metadata) };
+    if (laneInput.fcm === null) {
+      delete metadata.fcm;
+    } else {
+      const snapshot = record(laneInput.fcm);
+      if (JSON.stringify(snapshot).length > 20000) throw new QuoteInputError("El detalle del cálculo FCM es demasiado grande.");
+      metadata.fcm = snapshot;
+    }
+    inputs.metadata = metadata;
+  }
   const pricing = pricedLane(existing, laneInput);
   const now = nowIso();
   let saved: Row;
@@ -824,7 +851,15 @@ async function suggestLaneMiles(supabase: Db, input: Row) {
     const state = (usStart.state_code || (usStart.market?.match(/\(([A-Z]{2})\)/)?.[1]) || "").toUpperCase();
     const region = index.state_region[state] || "U.S.";
     const regionRow = index.regions.find((row) => row.region === region) || index.regions.find((row) => row.region === "U.S.");
-    if (regionRow) fuel = { region: regionRow.region, fsc_per_mile: regionRow.fsc_per_mile, index_date: regionRow.index_date, state };
+    if (regionRow) {
+      fuel = {
+        region: regionRow.region,
+        fsc_per_mile: regionRow.fsc_per_mile,
+        diesel_per_gallon: regionRow.diesel_per_gallon,
+        index_date: regionRow.index_date,
+        state
+      };
+    }
   }
 
   const measured = legs.filter((leg) => leg.scope !== "border");
@@ -837,6 +872,236 @@ async function suggestLaneMiles(supabase: Db, input: Row) {
     miles_source: providers.length ? providers.map((p) => (p === "catalog" ? "rateware_lane_mileage" : p)).join("+") : null,
     google_routes_enabled: Boolean(await googleMapsKey(supabase)),
     complete: measured.length > 0 && measured.every((leg) => leg.found)
+  };
+}
+
+// ---------------------------------------------------------------- FCM estimate
+
+// The FCM's calculation bases are copied into fcm_* tables; ./fcm.mjs is a port
+// of its engine. No FCM login or API call is involved.
+
+const KM_PER_MILE = 1.60934;
+
+async function fcmCostBases(supabase: Db, workspace: Workspace) {
+  const result = await supabase.from("fcm_cost_bases")
+    .select("id,name,code,scope,version,version_status,is_default,policy,params,param_count,synced_at")
+    .eq("owner_email", workspace.owner_email).eq("usable", true)
+    .order("is_default", { ascending: false }).order("name", { ascending: true });
+  if (result.error) throw result.error;
+  return (result.data || []) as Row[];
+}
+
+async function listFcmCostBases(supabase: Db, workspace: Workspace) {
+  const bases = await fcmCostBases(supabase, workspace);
+  return {
+    bases: bases.map((base) => ({
+      id: base.id,
+      name: base.name,
+      code: base.code,
+      scope: base.scope,
+      version: base.version,
+      version_status: base.version_status,
+      is_default: base.is_default,
+      param_count: base.param_count,
+      synced_at: base.synced_at,
+      margins: tierMargins(record(base.params))
+    })),
+    default_id: (bases.find((base) => base.is_default) || bases[0])?.id ?? null,
+    tiers: Object.entries(TIERS).map(([key, tier]) => ({ key, label: tier.label }))
+  };
+}
+
+/** FCM lane keys: "City, State Name" in MX, "City, ST" in the US, compared without accents or case. */
+function fcmKey(value: string) {
+  return value.normalize("NFD").replace(/\p{M}/gu, "").trim().replace(/\s+/g, " ").toUpperCase();
+}
+const mxLaneName = (value: Place) => [value.city, value.state_name || value.state_code].filter(Boolean).join(", ");
+const usMetroName = (value: Place) => [value.city, value.state_code].filter(Boolean).join(", ");
+
+/** Google's drive time for a leg (cached with its distance), in hours. */
+async function googleLegHours(supabase: Db, from: Place, to: Place): Promise<number | null> {
+  const origin = placeQuery(from);
+  const destination = placeQuery(to);
+  if (!origin || !destination) return null;
+  const read = async () => {
+    const result = await supabase.from("quotedesk_route_distances").select("duration_seconds")
+      .eq("provider", "google_routes").eq("origin_key", queryKey(origin)).eq("destination_key", queryKey(destination)).maybeSingle();
+    if (result.error) throw result.error;
+    return result.data ? toNumber(result.data.duration_seconds) : null;
+  };
+  let seconds = await read();
+  if (seconds === null) {
+    await googleLegMiles(supabase, from, to);
+    seconds = await read();
+  }
+  return seconds === null ? null : seconds / 3600;
+}
+
+async function fcmMarketConditions(supabase: Db, markets: (string | undefined)[]) {
+  const names = [...new Set(markets.filter((market): market is string => Boolean(market)))];
+  if (!names.length) return new Map<string, Row>();
+  const result = await supabase.from("fcm_usa_market_conditions").select("market,dry_van,flatbed,reefer").in("market", names);
+  if (result.error) throw result.error;
+  return new Map(((result.data || []) as Row[]).map((row) => [String(row.market), row]));
+}
+
+async function estimateLaneFcm(supabase: Db, workspace: Workspace, body: Row) {
+  const quote = await requireQuote(supabase, workspace, body.quote_id);
+  const bases = await fcmCostBases(supabase, workspace);
+  if (!bases.length) throw new HttpError(409, "No hay bases de costos del FCM disponibles para esta organización.");
+  const baseId = text(body.cost_base_id, 80);
+  const base = baseId ? bases.find((row) => row.id === baseId) : bases.find((row) => row.is_default) || bases[0];
+  if (!base) throw new HttpError(404, "Esa base de costos del FCM no está disponible; elige otra.");
+  const tierInput = text(body.tier, 20) || "target";
+  const tier = Object.prototype.hasOwnProperty.call(TIERS, tierInput) ? tierInput : "target";
+
+  const [origin, destination] = await Promise.all([
+    enrichPlace(supabase, place(body.origin)),
+    enrichPlace(supabase, place(body.destination))
+  ]);
+  if (!origin.country || !destination.country) throw new HttpError(400, "Captura el origen y el destino de la ruta.");
+  const operation = fcmOperation(text(body.operation, 80), origin.country, destination.country);
+  const service = fcmService(text(body.service, 80), operation);
+  const equipment = fcmEquipment({ equipment: text(body.equipment, 80), trailer: text(body.trailer, 80), config: text(body.config, 80) });
+  const crossingModel = text(body.crossing_model, 40);
+  const warnings: string[] = [];
+
+  // Legs, split at the crossing the same way suggest_lane_miles does.
+  const legs = legsFor(operation);
+  let mxFrom: Place | null = null, mxTo: Place | null = null, usFrom: Place | null = null, usTo: Place | null = null;
+  if (operation === "D2D Export" || operation === "D2D Import") {
+    const crossings = await borderCrossings(supabase) as Row[];
+    const pair = crossings.find((row) => text(row.crossing_name) === text(body.border_crossing, 200)) || crossings[0];
+    if (!pair) throw new HttpError(409, "No hay cruces fronterizos en el catálogo.");
+    const mxLocation = await locationFor(supabase, "MX", String(pair.mx_city), text(pair.mx_state));
+    const usLocation = await locationFor(supabase, "US", String(pair.us_city), text(pair.us_state));
+    const borderMx: Place = { country: "MX", city: String(pair.mx_city), state_code: text(pair.mx_state) || undefined, state_name: text(mxLocation?.state_name) || undefined };
+    const borderUs: Place = { country: "US", city: String(pair.us_city), state_code: text(pair.us_state) || undefined, market: text(usLocation?.market) || undefined };
+    if (operation === "D2D Export") {
+      mxFrom = origin; mxTo = borderMx; usFrom = borderUs; usTo = destination;
+    } else {
+      usFrom = origin; usTo = borderUs; mxFrom = borderMx; mxTo = destination;
+    }
+  } else if (legs.mex) {
+    mxFrom = origin; mxTo = destination;
+  } else {
+    usFrom = origin; usTo = destination;
+  }
+
+  // Miles: the lane's own (Google) miles; measured here when missing.
+  let mxMiles = toNumber(body.mx_miles);
+  let usMiles = toNumber(body.us_miles);
+  if (mxFrom && mxTo && !(mxMiles && mxMiles > 0)) mxMiles = (await googleLegMiles(supabase, mxFrom, mxTo))?.miles ?? null;
+  if (usFrom && usTo && !(usMiles && usMiles > 0)) usMiles = (await googleLegMiles(supabase, usFrom, usTo))?.miles ?? null;
+  if (mxFrom && !(mxMiles && mxMiles > 0)) throw new HttpError(400, "Faltan las millas del tramo MX; calcúlalas o escríbelas primero.");
+  if (usFrom && !(usMiles && usMiles > 0)) throw new HttpError(400, "Faltan las millas del tramo EE. UU.; calcúlalas o escríbelas primero.");
+
+  // MX leg: casetas and route hours from the FCM lane table; Google's drive time otherwise.
+  let mex: Row | null = null;
+  let mexInfo: Row | null = null;
+  if (mxFrom && mxTo) {
+    const laneKey = `${mxLaneName(mxFrom)} - ${mxLaneName(mxTo)} ${equipment.truckType}`;
+    const found = await supabase.from("fcm_mex_lanes").select("lane_key,tolls_mxn,route_hours")
+      .eq("lane_key_norm", fcmKey(laneKey)).maybeSingle();
+    if (found.error) throw found.error;
+    const row = found.data as Row | null;
+    const tollsInput = toNumber(body.tolls_mxn);
+    let tolls = tollsInput !== null && tollsInput >= 0 ? tollsInput : row ? toNumber(row.tolls_mxn) : null;
+    const tollsSource = tollsInput !== null && tollsInput >= 0 ? "manual" : row ? "fcm" : "none";
+    if (tolls === null) {
+      tolls = 0;
+      warnings.push(`Sin casetas en la tabla del FCM para ${mxLaneName(mxFrom)} → ${mxLaneName(mxTo)}; escríbelas si aplican.`);
+    }
+    let hours = row ? toNumber(row.route_hours) : null;
+    const hoursSource = hours !== null ? "fcm" : "google";
+    if (hours === null) hours = await googleLegHours(supabase, mxFrom, mxTo);
+    if (hours === null) {
+      hours = 0;
+      warnings.push("Sin horas de ruta para el tramo MX; se aplica el mínimo de días del FCM.");
+    }
+    mex = { km: (mxMiles as number) * KM_PER_MILE, tollsMxn: tolls, hours };
+    mexInfo = { from: mxLaneName(mxFrom), to: mxLaneName(mxTo), tolls_source: tollsSource, hours_source: hoursSource, fcm_lane: row?.lane_key ?? null };
+  }
+
+  // US leg: weekly EIA diesel/FSC where it starts; FCM transit days and market conditions.
+  let usa: Row | null = null;
+  let usaInfo: Row | null = null;
+  if (usFrom && usTo) {
+    const index = await fuelIndex(supabase);
+    const state = (usFrom.state_code || usFrom.market?.match(/\(([A-Z]{2})\)/)?.[1] || "").toUpperCase();
+    const region = index.state_region[state] || "U.S.";
+    const regionRow = (index.regions.find((row) => row.region === region) || index.regions.find((row) => row.region === "U.S.")) as Row | undefined;
+    if (!regionRow || toNumber(regionRow.fsc_per_mile) === null) throw new HttpError(409, "No hay índice semanal de diésel de EE. UU. cargado.");
+    const laneKey = fcmKey(`${usMetroName(usFrom)} - ${usMetroName(usTo)} ${equipment.truckType}`);
+    const found = await supabase.from("fcm_usa_lanes").select("lane_key,truck_days,route_expenses").eq("lane_key", laneKey).maybeSingle();
+    if (found.error) throw found.error;
+    const row = found.data as Row | null;
+    let transitDays = row ? toNumber(row.truck_days) : null;
+    if (transitDays === null) {
+      const hours = await googleLegHours(supabase, usFrom, usTo);
+      transitDays = round2(hours !== null ? hours / 11 : (usMiles as number) / 550);
+      warnings.push("El FCM no tiene esta ruta de EE. UU.; los días de tránsito se estimaron con el manejo (11 h por día).");
+    }
+    const conditions = await fcmMarketConditions(supabase, [usFrom.market, usTo.market]);
+    const condition = (market?: string) => {
+      const found = market ? conditions.get(market) : undefined;
+      if (!found) return "Neutral";
+      return String(equipment.trailer === "Flatbed" ? found.flatbed : equipment.trailer === "Reefer" ? found.reefer : found.dry_van || "Neutral");
+    };
+    usa = {
+      miles: usMiles,
+      transitDays,
+      driverExpenses: row ? toNumber(row.route_expenses) ?? 0 : 0,
+      outState: state,
+      dieselUsdGal: toNumber(regionRow.diesel_per_gallon) ?? 0,
+      fscPerMile: toNumber(regionRow.fsc_per_mile) ?? 0,
+      originCondition: condition(usFrom.market),
+      destCondition: condition(usTo.market)
+    };
+    usaInfo = {
+      from: usMetroName(usFrom), to: usMetroName(usTo), fcm_lane: row?.lane_key ?? null, transit_days: transitDays,
+      origin_condition: usa.originCondition, dest_condition: usa.destCondition,
+      fsc_region: regionRow.region, fsc_index_date: regionRow.index_date
+    };
+  }
+
+  const fx = toNumber(quote.fx_usd_mxn) || (await latestFx(supabase))?.usd_mxn || null;
+  if (quote.currency === "MXN" && !fx) throw new HttpError(409, "La cotización en MXN necesita un tipo de cambio.");
+  const estimate = estimateQuoteLane({
+    params: record(base.params), policy: base.policy, operation, service, equipment, crossingModel, fxUsdMxn: fx, tier, mex, usa
+  });
+  if ((operation === "D2D Export" || operation === "D2D Import") && !estimate.border.known) {
+    warnings.push("Sin modelo de cruce: se incluyó el cruce, como en el FCM. Elige intercambio o placas azules para confirmarlo.");
+  }
+  // Components in the quote's currency.
+  const inQuote = (usd: number | null) => usd === null ? null : quote.currency === "MXN" ? round2(usd * (fx as number)) : usd;
+  const components = estimate.components as Record<string, number | null>;
+  return {
+    cost_base: { id: base.id, name: base.name, code: base.code, version: base.version },
+    tier: estimate.tier,
+    margin: estimate.margin,
+    margins: estimate.margins,
+    operation,
+    service,
+    customer_service: customerService(service),
+    equipment,
+    crossing_model: crossingModel,
+    border: estimate.border,
+    currency: quote.currency,
+    fx_usd_mxn: fx,
+    components: {
+      linehaul_mx: inQuote(components.linehaul_mx),
+      linehaul_us: inQuote(components.linehaul_us),
+      fuel_amount: inQuote(components.fuel_amount),
+      border_amount: inQuote(components.border_amount)
+    },
+    carrier_price: inQuote(estimate.carrierPriceUsd),
+    carrier_price_usd: estimate.carrierPriceUsd,
+    mx: estimate.mx ? { ...estimate.mx, ...mexInfo } : null,
+    us: estimate.us ? { ...estimate.us, ...usaInfo } : null,
+    engine: estimate.engine,
+    warnings,
+    estimated_at: nowIso()
   };
 }
 
@@ -1205,6 +1470,10 @@ async function handle(request: Request) {
         return jsonResponse(await deleteQuoteLane(supabase, workspace, body.id), 200, request);
       case "suggest_lane_miles":
         return jsonResponse(await suggestLaneMiles(supabase, body), 200, request);
+      case "list_fcm_cost_bases":
+        return jsonResponse(await listFcmCostBases(supabase, workspace), 200, request);
+      case "estimate_lane_fcm":
+        return jsonResponse(await estimateLaneFcm(supabase, workspace, body), 200, request);
       case "link_bid_room_event":
         return jsonResponse(await linkBidRoomEvent(supabase, workspace, body), 200, request);
       case "apply_bid_room_awards":

@@ -47,6 +47,14 @@ test("text body shows city and state, exact prices, readable units and validity"
   assert.match(text, /Vigencia: hasta el 15 oct 2026\./);
 });
 
+test("a backhaul is our cost assumption: the shipper sees one-way", () => {
+  const backhaul = lanes.map((lane) => ({ ...lane, service: "Backhaul" }));
+  const { text, html } = renderQuoteEmail({ quote, lanes: backhaul, contactName: "Ana" });
+  assert.doesNotMatch(text, /Backhaul/);
+  assert.doesNotMatch(html, /Backhaul/);
+  assert.match(text, /One Way/);
+});
+
 test("html escapes what came from users", () => {
   const { html } = renderQuoteEmail({ quote: { ...quote, folio: "Q-<1>" }, lanes, note: "<script>x</script>" });
   assert.ok(!html.includes("<script>"));

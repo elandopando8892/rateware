@@ -19,7 +19,7 @@
     "test:fcm-gmail": "node tests/fcm-customer-quote-email.test.mjs && deno test --allow-env --node-modules-dir=none --no-lock tests/fcm-customer-quote-email.contract.test.ts",
     "test:identity-contract": "node --test tests/phase0-identity.test.mjs",
     "test:migration-ledger": "node --test tests/supabase-migration-ledger.test.mjs",
-    "test:quotedesk": "node --test tests/quotedesk-calc.test.mjs tests/quotedesk-email-routes.test.mjs",
+    "test:quotedesk": "node --test tests/quotedesk-calc.test.mjs tests/quotedesk-email-routes.test.mjs tests/quotedesk-fcm.test.mjs",
     "test:us-diesel": "node --test tests/us-diesel-sync.test.mjs",
     "test:release-preflight": "node --test tests/release-preflight.test.mjs",
     "test:rateware-correlation": "deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/rateware-correlation.contract.test.ts",
