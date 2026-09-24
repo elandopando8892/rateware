@@ -28,6 +28,7 @@ const FIXED_EDGE_OPERATIONS = new Map([
   ]],
   ["sync-banxico-fx", [["sync_banxico_fx", "POST /functions/v1/sync-banxico-fx x-cron-secret", "internal/service-role"]]],
   ["sync-us-diesel", [["sync_us_diesel", "POST /functions/v1/sync-us-diesel x-cron-secret", "internal/service-role"]]],
+  ["sync-fcm-bases", [["sync_fcm_bases", "POST /functions/v1/sync-fcm-bases x-cron-secret", "internal/service-role"]]],
   ["sync-rateware-catalog", [["sync_rateware_catalog", "POST /functions/v1/sync-rateware-catalog", "human"]]],
   ["whatsapp-webhook", [["verify_webhook", "GET /functions/v1/whatsapp-webhook hub challenge", "external-tokenized"], ["ingest_webhook", "POST /functions/v1/whatsapp-webhook signed event", "external-tokenized"]]]
 ]);

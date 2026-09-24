@@ -6,6 +6,7 @@ import { RFX_ATOMIC_AWARD_ACTION_CONTRACT_EXTENSION } from '../supabase/function
 import { WEBSITE_INTAKE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-website-intake.mjs';
 import { QUOTEDESK_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-quotedesk.mjs';
 import { US_DIESEL_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-us-diesel.mjs';
+import { FCM_SYNC_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-fcm-sync.mjs';
 
 const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
 const carrierTemplateExtension = CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION;
@@ -14,6 +15,7 @@ const rfxAtomicAwardExtension = RFX_ATOMIC_AWARD_ACTION_CONTRACT_EXTENSION;
 const websiteIntakeExtension = WEBSITE_INTAKE_ACTION_CONTRACT_EXTENSION;
 const quotedeskExtension = QUOTEDESK_ACTION_CONTRACT_EXTENSION;
 const usDieselExtension = US_DIESEL_ACTION_CONTRACT_EXTENSION;
+const fcmSyncExtension = FCM_SYNC_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 const carrierTemplateDelta = carrierTemplateExtension.expectedCountsDelta;
@@ -322,8 +324,8 @@ export const ACTION_CONTRACT = {
   contractVersion,
   methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award+website-intake+quotedesk+us-diesel`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres + rfxAtomicAwardExtension.expectedCountsDelta.postgres + websiteIntakeExtension.expectedCountsDelta.postgres + quotedeskExtension.expectedCountsDelta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi,
   },
@@ -338,6 +340,7 @@ export const ACTION_CONTRACT = {
     ...websiteIntakeExtension.reviewedMetadataFingerprints,
     ...quotedeskExtension.reviewedMetadataFingerprints,
     ...usDieselExtension.reviewedMetadataFingerprints,
+    ...fcmSyncExtension.reviewedMetadataFingerprints,
     ...supabaseAuthMetadataOverrides,
   },
   reviewedAuthorizationFingerprints: {
@@ -352,6 +355,7 @@ export const ACTION_CONTRACT = {
     ...websiteIntakeExtension.reviewedAuthorizationFingerprints,
     ...quotedeskExtension.reviewedAuthorizationFingerprints,
     ...usDieselExtension.reviewedAuthorizationFingerprints,
+    ...fcmSyncExtension.reviewedAuthorizationFingerprints,
     ...corsOnlyAuthorizationOverrides,
     ...supabaseAuthAuthorizationOverrides,
     ...ratewareApiAuthorizationOverrides,
@@ -376,5 +380,6 @@ export const ACTION_CONTRACT = {
     ...websiteIntakeExtension.surfaces,
     ...quotedeskExtension.surfaces,
     ...usDieselExtension.surfaces,
+    ...fcmSyncExtension.surfaces,
   ],
 };
