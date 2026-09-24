@@ -1430,6 +1430,47 @@ function liveBoardRowScore(row: Record<string, unknown>, context: Record<string,
   };
 }
 
+// What a carrier may learn about the others depends on the event's mode, and
+// every rank, score, badge and signal here is computed against competitors:
+// - open_leaderboard: everything, rates included.
+// - anonymous_rank: rank, score and the distance to the lowest offer as a
+//   range; never the exact distance, since own offer - distance = best price.
+// - private: only the carrier's own offer. No rank, score, badge, signal or
+//   activity, each of which says where the carrier stands.
+function applyLiveBoardVisibility(
+  board: Record<string, unknown>,
+  visibility: { mode: string; competitor_rates_visible: boolean; competitor_activity_visible: boolean }
+) {
+  const out: Record<string, unknown> = { ...board };
+  if (!visibility.competitor_rates_visible) out.delta_to_leader = null;
+  if (!visibility.competitor_activity_visible) out.latest_competitor_activity_at = null;
+  if (visibility.mode !== "private") return out;
+  const rows = Array.isArray(out.rows) ? out.rows as Record<string, unknown>[] : [];
+  return {
+    ...out,
+    best_rate: null,
+    best_rate_visible: false,
+    position_signal: "Private event",
+    marketplace_signal: "Private event",
+    current_score: null,
+    current_score_bucket: null,
+    current_badges: [],
+    leader_score: null,
+    score_gap_to_leader: null,
+    delta_bucket: null,
+    rows: rows.map((row) => ({
+      ...row,
+      marketplace_score: null,
+      score_bucket: null,
+      marketplace_badges: [],
+      risk_flags: [],
+      price_signal: null,
+      capacity_signal: null,
+      eta_signal: null
+    }))
+  };
+}
+
 function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows: Record<string, unknown>[]) {
   const event = relationRecord(currentInvitation.rfx_events);
   const visibility = bidRoomVisibility(event);
@@ -1534,7 +1575,7 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
   const latestCompetitorActivity = rows
     .filter((row) => !row.is_current && row.offer_revision_at)
     .sort((left, right) => new Date(right.offer_revision_at || 0).getTime() - new Date(left.offer_revision_at || 0).getTime())[0] || null;
-  return {
+  return applyLiveBoardVisibility({
     updated_at: new Date().toISOString(),
     current_invitation_id: cleanText(currentInvitation.id) || null,
     current_invitation_token: cleanText(currentInvitation.invitation_token) || null,
@@ -1622,7 +1663,7 @@ function liveBoardFromRows(currentInvitation: Record<string, unknown>, peerRows:
       responded_at: row.responded_at,
       is_current: row.is_current
     }))
-  };
+  }, visibility);
 }
 
 function carrierBusinessBook(currentInvitation: Record<string, unknown>, invitedRows: Record<string, unknown>[], openLaneRows: Record<string, unknown>[]) {
