@@ -433,6 +433,9 @@ verify_jwt = false
 [functions.sync-us-diesel]
 verify_jwt = false
 
+[functions.sync-fcm-bases]
+verify_jwt = false
+
 [functions.website-lead-intake]
 verify_jwt = false
 
