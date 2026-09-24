@@ -398,6 +398,79 @@ Deno.test("multimodal request manifest rejects a model format that has no matchi
   assertEquals(records, 0);
 });
 
+Deno.test("email-only requested form becomes an explicit missing source and blocks readiness", async () => {
+  const emailId = `email:${messageId}`;
+  const emailOnlyManifest: RequestManifest = {
+    ...manifest,
+    requesterLegalName: {
+      value: "Synthetic Carrier",
+      confidence: 0.9,
+      evidenceIds: [emailId],
+    },
+    forms: [{
+      name: "Customer registration form",
+      format: "pdf",
+      action: "complete",
+      required: true,
+      evidenceIds: [emailId],
+    }],
+    requestedFields: [],
+    requestedDocuments: [],
+    signature: { required: false, signerTitle: null, evidenceIds: [] },
+    readiness: { status: "ready_for_prefill", reasonCodes: [] },
+  };
+  let recorded = 0;
+  const service = createRequestManifestDraftService({
+    interpreter: {
+      interpretWithTelemetry: async () => ({
+        manifest: emailOnlyManifest,
+        telemetry: {
+          responseId: "resp_email_only",
+          model: "gpt-synthetic",
+          inputTokens: 10,
+          outputTokens: 20,
+          totalTokens: 30,
+          durationMs: 40,
+        },
+      }),
+    },
+    store: {
+      findByEvidence: async () => null,
+      record: async (input) => {
+        recorded += 1;
+        return {
+          id: "77777777-7777-4777-8777-777777777777",
+          version: 1,
+          manifestSha256: input.manifestSha256,
+          replayed: false,
+        };
+      },
+    },
+  });
+  const result = await service.run({
+    organizationId,
+    caseId,
+    message: {
+      id: messageId,
+      sourceSha256: "a".repeat(64),
+      subject: "Customer registration",
+      safeBody: "Please complete our PDF registration form.",
+    },
+    documents: [],
+  });
+  assertEquals(recorded, 1);
+  assertEquals(result.manifest.forms[0].format, "pdf");
+  assertEquals(result.manifest.readiness.status, "needs_clarification");
+  assertEquals(result.manifest.readiness.reasonCodes, [
+    "requested_form_source_missing",
+  ]);
+  assertEquals(
+    result.manifest.missingInformation.at(-1)?.fieldId,
+    "forms.0.source",
+  );
+  assertEquals(result.manifest.externalEffects, false);
+});
+
 Deno.test("multimodal request manifest preserves a complete PDF DOCX XLSX XLSM and image corpus", async () => {
   const pdf = encoder.encode("synthetic-pdf-corpus");
   const docx = encoder.encode("synthetic-docx-corpus");

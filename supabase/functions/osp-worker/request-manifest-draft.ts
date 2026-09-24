@@ -256,8 +256,21 @@ function sourceFormat(
 function assertFormSourceFormats(
   manifest: RequestManifest,
   documents: readonly RequestManifestDocument[],
-): void {
+): readonly Readonly<{
+  index: number;
+  name: string;
+  format: Exclude<ManifestFormFormat, "other">;
+  evidenceIds: readonly string[];
+}>[] {
   const byEvidencePrefix = new Map<string, SourceFormat | "image">();
+  const missing: Array<
+    Readonly<{
+      index: number;
+      name: string;
+      format: Exclude<ManifestFormFormat, "other">;
+      evidenceIds: readonly string[];
+    }>
+  > = [];
   for (const document of documents) {
     const format = sourceFormat(document);
     // Spreadsheet evidence is emitted as xlsx:<version>:<sheet>:<row>, while
@@ -267,7 +280,7 @@ function assertFormSourceFormats(
     byEvidencePrefix.set(`xlsx:${document.versionId}`, format);
     byEvidencePrefix.set(`file:${document.versionId}`, format);
   }
-  for (const form of manifest.forms) {
+  for (const [index, form] of manifest.forms.entries()) {
     if (form.format === "other") continue;
     const supported = form.evidenceIds.some((evidenceId) => {
       if (evidenceId.startsWith("xlsx:")) {
@@ -276,8 +289,23 @@ function assertFormSourceFormats(
       }
       return byEvidencePrefix.get(evidenceId) === form.format;
     });
-    if (!supported) throw new Error("REQUEST_MANIFEST_FORM_FORMAT_MISMATCH");
+    if (supported) continue;
+    // An email may request a form without attaching it. Preserve that request
+    // as a missing source; never pretend that a differently typed file matches.
+    if (
+      form.evidenceIds.length === 0 ||
+      form.evidenceIds.some((id) => !id.startsWith("email:"))
+    ) throw new Error("REQUEST_MANIFEST_FORM_FORMAT_MISMATCH");
+    if (form.required) {
+      missing.push({
+        index,
+        name: form.name,
+        format: form.format,
+        evidenceIds: form.evidenceIds,
+      });
+    }
   }
+  return missing;
 }
 
 function assertSource(source: RequestManifestSource): void {
@@ -331,8 +359,29 @@ function readDraft(
   sourceCount: number,
   sourceCoverage: RequestManifestReadDraft["sourceCoverage"],
   spreadsheetProtection: RequestManifestReadDraft["spreadsheetProtection"],
+  missingForms: ReturnType<typeof assertFormSourceFormats>,
   generatedAt: string,
 ): RequestManifestReadDraft {
+  const missingInformation = [
+    ...manifest.missingInformation,
+    ...missingForms.map((form) => ({
+      fieldId: `forms.${form.index}.source`,
+      description:
+        `The requested ${form.format.toUpperCase()} form "${form.name}" was not supplied.`,
+      evidenceIds: [...form.evidenceIds],
+    })),
+  ];
+  const readiness = missingForms.length > 0
+    ? {
+      status: "needs_clarification" as const,
+      reasonCodes: [
+        ...new Set([
+          ...manifest.readiness.reasonCodes,
+          "requested_form_source_missing",
+        ]),
+      ],
+    }
+    : manifest.readiness;
   return Object.freeze({
     schemaVersion: 1,
     status: "review_required",
@@ -353,9 +402,9 @@ function readDraft(
     submission: manifest.submission,
     requirements: manifest.requirements,
     contradictions: manifest.contradictions,
-    missingInformation: manifest.missingInformation,
+    missingInformation,
     clarificationQuestions: manifest.clarificationQuestions,
-    readiness: manifest.readiness,
+    readiness,
     aiGenerated: true,
     externalEffects: false,
   });
@@ -463,7 +512,10 @@ export function createRequestManifestDraftService(options: {
         attachments,
         knowledgeCatalog: source.knowledgeCatalog ?? [],
       });
-      assertFormSourceFormats(interpreted.manifest, documents);
+      const missingForms = assertFormSourceFormats(
+        interpreted.manifest,
+        documents,
+      );
       const generatedAt = clock().toISOString();
       const manifest = readDraft(
         interpreted.manifest,
@@ -477,6 +529,7 @@ export function createRequestManifestDraftService(options: {
             ? "sanitized_copy" as const
             : "not_required" as const,
         }),
+        missingForms,
         generatedAt,
       );
       const manifestSha256 = await sha256(

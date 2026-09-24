@@ -1,6 +1,6 @@
 // Bump whenever interpretation rules change; old drafts remain immutable.
 export const REQUEST_MANIFEST_POLICY_VERSION =
-  "2026-09-08-thread-reconciliation-v1";
+  "2026-09-24-missing-form-source-v2";
 
 type RequestPort = (
   input: string | URL,

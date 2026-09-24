@@ -20,6 +20,7 @@ import { resolveAdaptiveManifest } from "./adaptive-manifest-config.ts";
 import { resolveManualRequestCanary } from "./manual-request-canary-config.ts";
 import { createOpenAiRequestManifest } from "./openai-request-manifest.ts";
 import { createPostgresRequestManifestSource } from "./postgres-request-manifest-source.ts";
+import { createRequestManifestDraftService } from "./request-manifest-draft.ts";
 
 const WORKER_BUILD_REVISION = "20260919-exact-thread-preflight";
 
@@ -302,23 +303,43 @@ Deno.serve(createOspWorkerHandler({
       });
       let parseCode: string | null = null;
       let requirementCount: number | null = null;
+      let missingInformationCount: number | null = null;
+      let readiness: string | null = null;
       try {
-        const result = await adapter.interpretWithTelemetry({
-          evidence: [{
-            id: `email:${source.message.id}`,
-            kind: "email_text",
-            sourceName: `carrier-request-${source.message.id}.eml`,
-            content:
-              `Subject: ${source.message.subject}\n\n${source.message.safeBody}`,
-          }],
-          knowledgeCatalog: source.knowledgeCatalog ?? [],
+        const result = await createRequestManifestDraftService({
+          interpreter: adapter,
+          store: {
+            findByEvidence: async () => null,
+            record: async (input) => ({
+              id: "11111111-1111-4111-8111-111111111111",
+              version: 1,
+              manifestSha256: input.manifestSha256,
+              replayed: false as const,
+            }),
+          },
+        }).run({
+          organizationId: source.organizationId,
+          caseId: source.caseId,
+          message: source.message,
+          previousMessages: source.previousMessages,
+          documents: [],
+          knowledgeCatalog: source.knowledgeCatalog,
         });
         requirementCount = result.manifest.requirements.length;
+        missingInformationCount = result.manifest.missingInformation.length;
+        readiness = result.manifest.readiness.status;
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         parseCode = /^[A-Z_]{3,64}$/.test(message) ? message : "UNKNOWN";
       }
-      return { httpStatus, providerCode, parseCode, requirementCount };
+      return {
+        httpStatus,
+        providerCode,
+        parseCode,
+        requirementCount,
+        missingInformationCount,
+        readiness,
+      };
     }
     : undefined,
   runExactThreadAssociation: runtime.runExactThreadAssociation,
