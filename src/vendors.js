@@ -1848,7 +1848,7 @@ function renderDuplicateReview() {
                   </div>
                   <div class="action-row">
                     <button class="small-button" type="button" data-duplicate-open="${escapeHtml(vendor.id)}">Open</button>
-                    <button class="small-button secondary" type="button" data-duplicate-inactive="${escapeHtml(vendor.id)}">Mark inactive</button>
+                    <button class="small-button secondary" type="button" data-duplicate-archive="${escapeHtml(vendor.id)}">Archive duplicate</button>
                   </div>
                 </div>
               `;
@@ -2510,7 +2510,9 @@ async function promoteSelectedIntelligenceVendors() {
 
   try {
     await requirePrivatePage();
-    const result = await bulkUpdateVendors(ids, { base_stage: "procurement", status: "active" });
+    // Moving to Procurement is a pipeline step; it does not activate anyone in
+    // the TMS, so `status` is left untouched.
+    const result = await bulkUpdateVendors(ids, { base_stage: "procurement" });
     (result.rows || []).forEach((row) => {
       replaceVendorInState(row);
       applyVendorUpdateToFunnel(row, { render: false });
@@ -5354,22 +5356,28 @@ segmentsList.addEventListener("click", async (event) => {
 
 duplicateReviewList.addEventListener("click", async (event) => {
   const openButton = event.target.closest("[data-duplicate-open]");
-  const inactiveButton = event.target.closest("[data-duplicate-inactive]");
+  const archiveButton = event.target.closest("[data-duplicate-archive]");
 
   if (openButton) {
     openVendorDrawer(openButton.dataset.duplicateOpen);
     return;
   }
 
-  if (inactiveButton) {
-    inactiveButton.disabled = true;
+  if (archiveButton) {
+    // A duplicate is set aside by archiving it, which keeps it out of RFx
+    // audiences. `status` only mirrors TMS activation and inactive carriers are
+    // still invited, so marking a duplicate inactive would not stop it.
+    const vendorId = archiveButton.dataset.duplicateArchive;
+    const vendorName = findVendorById(vendorId)?.vendor_name || "this vendor";
+    if (!window.confirm(`Archive ${vendorName} as a duplicate? It will stop receiving RFx invitations. You can restore it from its profile.`)) return;
+    archiveButton.disabled = true;
     try {
       await requirePrivatePage();
-      await updateVendor(inactiveButton.dataset.duplicateInactive, { status: "inactive" });
+      await updateVendor(vendorId, { base_stage: "archived" });
       await loadVendors();
     } catch (error) {
-      inactiveButton.title = humanizeError(error);
-      inactiveButton.disabled = false;
+      archiveButton.title = humanizeError(error);
+      archiveButton.disabled = false;
     }
   }
 });
@@ -5873,7 +5881,9 @@ drawerArchiveButton.addEventListener("click", async () => {
   const contextVersion = vendorDrawerContextVersion;
   const vendor = findVendorById(vendorId);
   const restoring = vendor?.base_stage === "archived";
-  const patch = restoring ? { base_stage: "sourcing", status: "active" } : { base_stage: "archived" };
+  // Restoring only moves the pipeline stage. `status` mirrors TMS activation,
+  // which archiving never changed, so it is left as it was.
+  const patch = restoring ? { base_stage: "sourcing" } : { base_stage: "archived" };
   drawerArchiveButton.disabled = true;
   setStatus(drawerEditStatus, restoring ? "Restoring vendor..." : "Archiving vendor...");
 
@@ -5901,7 +5911,7 @@ initAuthControls();
 requirePrivatePage()
   .then(async () => {
     await applyPermissionState(
-      "#save-vendor-button, #wizard-save-button, #vendor-import, #vendor-gaps-import, #import-google-sheet-button, #download-onboarding-gaps-button, #import-onboarding-gaps-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-save-profile-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, #vendor-funnel-bulk-stage, #vendor-funnel-move-stage, #vendor-funnel-advance-stage, #vendor-funnel-regress-stage, #match-staging-vendors, #match-rateware-vendors, [data-duplicate-inactive], [data-funnel-stage-select]",
+      "#save-vendor-button, #wizard-save-button, #vendor-import, #vendor-gaps-import, #import-google-sheet-button, #download-onboarding-gaps-button, #import-onboarding-gaps-button, #select-visible-vendors-button, #clear-vendor-selection-button, #bulk-update-button, #bulk-procurement-button, #bulk-archive-vendors-button, #bulk-remove-vendors-button, #confirm-import-button, #save-segment-button, #drawer-save-button, #drawer-save-profile-button, #drawer-archive-button, #apply-intelligence-tags, #promote-intelligence-selected, #vendor-funnel-bulk-stage, #vendor-funnel-move-stage, #vendor-funnel-advance-stage, #vendor-funnel-regress-stage, #match-staging-vendors, #match-rateware-vendors, [data-duplicate-archive], [data-funnel-stage-select]",
       "vendors:manage"
     );
     carrierListTemplateLibraryController = await initCarrierListTemplateLibrary({
