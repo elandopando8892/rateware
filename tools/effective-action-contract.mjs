@@ -150,9 +150,10 @@ const oracleStorageSurfaceOverrides = {
   'edge.rateware-api.remove_upload': { sourceFingerprint: '9b772c50588df68658fa9b069cebd43113670425c9ea6cd22c72c0967b816510' },
 };
 // _shared/auth.ts now also returns email_confirmed and rateware_organization_id,
-// read only by the reviewed source-file access check. quotedesk-api's handlers,
-// tenant scoping and permissions are unchanged.
-const quotedeskAuthEnvelope = '6fad025e03fb99aa36c18c88176d5a5bc71f07795446e88317937520b8460d69';
+// read only by the reviewed source-file access check, and fcm.mjs reads free-text
+// equipment as the FCM's units. quotedesk-api's tenant scoping and permissions
+// are unchanged.
+const quotedeskAuthEnvelope = 'a095127835ee8c27f1b1b898b92577d3ca038d14f229df00c0b06cc11c1ae423';
 
 const supabaseAuthMetadataOverrides = {
   'edge.google-chat-app.handle_chat_event': 'fd759bead6f0bfed76d9f70c962399ba7d815ef30f7a85491d68c4d5b088accf',
