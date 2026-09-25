@@ -48,7 +48,7 @@ const legacyAuthorizationOverrides = Object.fromEntries([
 // P3 implementation-ready concurrency guard adds a reviewed local dependency
 // to the shared rateware-api authorization envelope without changing tenant or
 // permission semantics.
-const ratewareApiEnvelope = '5aabd3ac9b5217b539bce429b366d2b472884bbc0a9bf5defa34d796a6d0025a';
+const ratewareApiEnvelope = 'c7ca7c2f9c33ca0363ac1cbd4b571fb6f4c15208b54bc960f09e72d96017791f';
 const ratewareApiAuthorizationOverrides = Object.fromEntries([
   ...BASE_ACTION_CONTRACT.surfaces,
   ...carrierTemplateExtension.surfaces,
@@ -86,23 +86,29 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // dependency envelope for every Edge Function that imports that helper. These
 // fingerprints were reviewed from the complete discovered graph after the
 // allowlist-only change; handler permissions and tenant scopes are unchanged.
+// Re-signed 2026-09-25 after reviewing everything that drifted since: #113
+// (production's kinde.ts CORS previews and auth.ts app_metadata permissions),
+// #137 (stricter reviewed source-file access), the shared Google Chat relay
+// (#119/#120), carrier-profile #114/#117/#119, rfx-bid #112/#124, SheetJS
+// 0.20.3 and a constant Oracle config error. None weakens authentication,
+// tenant or owner scoping.
 const brandedDomainAuthorizationEnvelopes = {
-  'edge.carrier-profile-api.': '4cb649f3f4b7ed640aa27d80369fc6bcdecd2ace5594a6d69933e88746725d31',
-  'edge.create-raw-upload.': 'df4cea8fd1f0c048d532014136c9c0e977251e4f3ae77ddd6fdd280508ecbacc',
-  'edge.gmail-oauth-callback.': '863dea44aab4d003c11db01f1420b6e908104c54029fcaeba4809c972a151dc9',
-  'edge.google-chat-app.': '0b99e0d4b7d301006c0de6fa49419dfec47823b4cf60749bf2b8aca5350fd3d3',
-  'edge.interpret-upload.': 'fbf2c381722274f47620d56f99f39a6150546446a399493e553c9122acea0c05',
-  'edge.provider-gmail-intake-api.': '2c06a296b04565dc2f0e73438c7f0c7dc44eec0e29f42b93133f83bd6c6c3449',
-  'edge.provider-gmail-oauth-callback.': '42e3f4a12c47a5a625a170ddea2114af427443b47fe549b26cf9669044e0a922',
+  'edge.carrier-profile-api.': 'e9e185b8f5eb1635bad26bea09b476b88b932318a6b2dac3948cc3a4a76ab91f',
+  'edge.create-raw-upload.': 'a73818db2343742d058c7c758055e320d3f86b364e38a8f2335bb9bc95497784',
+  'edge.gmail-oauth-callback.': '9cd3a3329bdb82d139b988dc7503fc3676b744157bd9a1063ce579fa4c8b178c',
+  'edge.google-chat-app.': '0d81b2db1ca1d0442814d2e07264c967b1a1999a70be60bd1ed641fbe675475b',
+  'edge.interpret-upload.': 'e6397a0717a033499d5a20802a6b18a8eed8a728e592a023957e6f352b0ccc4b',
+  'edge.provider-gmail-intake-api.': '28bfe3826a64022d33a47a1442c5180f94f0d8306911a60cb250dd5ab49771e1',
+  'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
-  'edge.ratebook-carrier-api.': '69ec235aa42433e8cb965824a8957aff79d73fa6fce07949c70b553865b04230',
-  'edge.rateware-api.': '5aabd3ac9b5217b539bce429b366d2b472884bbc0a9bf5defa34d796a6d0025a',
-  'edge.rfx-bid-api.': '4d6aab31957e1d8fb3fa539280a6a6e1c02d0cb1af74ce42aa09505f73c32ea2',
-  'edge.shipper-directory-api.': '2ed2be9625112a914b7be5b5bc14df77f417257d2644dcdd089e0dc3a22d7d7b',
-  'edge.shipper-profile-api.': '83cb7dff313890a43cbd6b0e12faa58c7beaf720d8288c186536f9e44676b12a',
-  'edge.sync-banxico-fx.': 'de62b5eeaa6c81959e63048e1d15730c3f8831834305dcbf81b9d71a54817d62',
-  'edge.sync-rateware-catalog.': '4b086635aa27a054aa1efec9def697229c25044ab548e8968ca0f667bbb4d9cd',
-  'edge.whatsapp-webhook.': 'cb8c77e28fabf73c9bed99141295193725416c5a476528281597ec402603e58a',
+  'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
+  'edge.rateware-api.': 'c7ca7c2f9c33ca0363ac1cbd4b571fb6f4c15208b54bc960f09e72d96017791f',
+  'edge.rfx-bid-api.': '2c49bd23bb1f3169b53436f9267b35191096339897dc35432f69477c0c0d1a82',
+  'edge.shipper-directory-api.': '216a3724c8455875c18dc3bf8966f2e8f33e8bfef5dee2fd2a9503d0f3d7e53e',
+  'edge.shipper-profile-api.': '501f2bec390dab9ecce5b9e6aac016683fb51d2c9f8afc0217b097912fe36949',
+  'edge.sync-banxico-fx.': '0bb53f48177955f59c0fbb2747094883d6680455900dab99c4f87d92490934fc',
+  'edge.sync-rateware-catalog.': '227ee313ff58c30d3ddf907d2fa437c5d0e17d2d52d23d2d198e4a6de3608c98',
+  'edge.whatsapp-webhook.': '0380943f3937045a78a2173e60b7dbd8867fa7ad3cca4845301e506c82975052',
 };
 // These eight pre-existing actions share reviewed code segments with the newly
 // added template dispatch and handler factory. Their behavior is unchanged, but
@@ -112,9 +118,11 @@ const ratewareApiSourceFingerprintOverrides = {
   'edge.rateware-api.create_rfx_award_package': '378f73423f4726da85dfc4c453be98f50d3f86c7da6a9f3af9a68267441fe4d6',
   'edge.rateware-api.create_vendor_segment': '8e6a444366bfa108430e02fdf8dffbbf11a0ab0e4e102d4687f6e589f809aa69',
   'edge.rateware-api.delete_vendor_segment': '792ce2b10566c1be41064ef07f5e818088fb1f16596433d88fdb7c0fbec972d2',
-  'edge.rateware-api.generate_outreach_drafts': '05f5940c29b19b93b95466b0571fc160146d32e89e253e186e58eec647d270c5',
+  'edge.rateware-api.generate_outreach_drafts': 'a94ce49aabdbfa2a891518d7972a3001b4f74e7aaeb0bfbd0eac85a3043592c4',
   'edge.rateware-api.list_vendor_segments': '79d6ff15b7b7a0bcbf8e580baaed1b11575d56c38cc4034fb9b80a8891814128',
-  'edge.rateware-api.list_vendors': '6aaccab686ecae9b04492be99175863f452cd0633bbe426a651ed310968faeef',
+  'edge.rateware-api.list_rfx_detail': '804cb4b6bea17e29d056b16ce7528c35c93d2555ea8cfe0930843ad3a1134707',
+  'edge.rateware-api.list_vendors': 'd245449ecef4d230b05aa58a58014fe432538c98aa303c8f6d23235806ba3c38',
+  'edge.rateware-api.preview_outreach_audience': '3743b26bac151fc0e4985e7706decd95b79b7db291c56adaaf7f16bd356d60bd',
   'edge.rateware-api.send_bid_room_carrier_message': '3a8bc0f06e4f577effffd6e35350e73925fd9153db71a25266b35f40b81b7fe0',
   'edge.rateware-api.shortlist_rfx_lane_vendors': '054559e7a40ff4c2946a3a6981ad70e5cd69e49bdf3fd9016072a559dbab4030',
   'edge.rateware-api.update_vendor_segment': 'd73978185d8637b0b72028db2b30b7f5d3800a42f3d58949d25d2f4d2d978976',
@@ -129,6 +137,15 @@ const supabaseAuthSourceFingerprintOverrides = {
   'edge.create-raw-upload.create_raw_upload': 'aa374df97b0680a4df07507bdf5f7028fc1c37ac6cf72643e577001ff4d147fe',
   'edge.interpret-upload.interpret_upload': '60474ad4568881ebd470b63cdfeebdcb3ad3a534a2487363c6b74cde7322e6a2',
   'edge.sync-rateware-catalog.sync_rateware_catalog': '207fd12f17afbbd5e4dd58a0e914ad939aab033816bf8a5a64b461cf46aa8c83',
+};
+
+// Carrier profile fixes (#114 internal notes stay internal, #117 support log,
+// #119 follow-ups reach the team's Chat thread): the carrier's token still scopes
+// every read and write to its own vendor row and tickets.
+const carrierProfileSourceFingerprintOverrides = {
+  'edge.carrier-profile-api.add_ticket_followup': 'fbc3fcfad29bcde5dfe01ce678a73cff0f24a14e9fea14dc7f622d3988665710',
+  'edge.carrier-profile-api.get_profile': '8fc31edb80ccdcdc9dccd9990ffca37594ee93bf247344009a1002e942e47aea',
+  'edge.carrier-profile-api.submit_profile': 'e7019872565e1d24acc5764c6a6f7e3efd84d63063b51577ce51bb938445a204',
 };
 
 // These reviewed rfx-bid handlers contain multiline literals. Normalizing CRLF
@@ -392,8 +409,8 @@ export const ACTION_CONTRACT = {
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({
       ...entry,
       contractVersion,
-      ...((ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId])
-        ? { sourceFingerprint: ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] }
+      ...((ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId])
+        ? { sourceFingerprint: ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId] }
         : {}),
       ...(entry.canonicalId.startsWith('edge.google-chat-app.')
         ? { analysisCoverage: 'shared-observed', coverageSignals: ['shared_dependency_observed'] }

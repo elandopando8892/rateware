@@ -4,7 +4,8 @@ on:
   pull_request:
     paths:
       - "supabase/migrations/**"
-      - "supabase/functions/shipper-directory-api/**"
+      # Any Edge Function change can move its reviewed fingerprints.
+      - "supabase/functions/**"
       - "supabase/config.toml"
       - "supabase/functions/_shared/action-contract*.mjs"
       - "src/provider-service-*.js"
@@ -72,6 +73,11 @@ jobs:
 
       - name: Gate authorization no-regression against main
         run: node tools/validate-action-contract-no-regression.mjs --baseline-root /tmp/rateware-main
+
+      # Main was re-signed with zero errors on 2026-09-25; from here on any
+      # unreviewed drift fails, not only drift that is new against main.
+      - name: Gate the full authorization contract
+        run: node tools/validate-action-contract.mjs
 
       - name: Start clean local Supabase database
         env:

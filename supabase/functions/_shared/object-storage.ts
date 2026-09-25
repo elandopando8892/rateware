@@ -58,12 +58,10 @@ function oracleConfig(): Record<string, unknown> {
       throw new Error("configuration must be a JSON object");
     }
     return parsed as Record<string, unknown>;
-  } catch (error) {
-    throw new Error(
-      `RATEWARE_ORACLE_STORAGE_CONFIG is invalid: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+  } catch {
+    // Never pass on the parser's message: it quotes part of the secret, and this
+    // error reaches the caller and the uploads' error columns.
+    throw new Error("RATEWARE_ORACLE_STORAGE_CONFIG is invalid: it must be a JSON object.");
   }
 }
 
