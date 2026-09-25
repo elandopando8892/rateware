@@ -96,6 +96,8 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // tenant or owner scoping.
 // 2026-09-25 (later): the Chat relay shows people's text as text (no mentions
 // or links) and carriers can't write the platform's profile_data keys.
+// 2026-09-25 (evening): whatsapp-webhook links a reply to the "+52..." number it
+// was sent to; the verify token and signature checks are unchanged.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': 'a73818db2343742d058c7c758055e320d3f86b364e38a8f2335bb9bc95497784',
@@ -112,7 +114,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.shipper-profile-api.': '501f2bec390dab9ecce5b9e6aac016683fb51d2c9f8afc0217b097912fe36949',
   'edge.sync-banxico-fx.': '0bb53f48177955f59c0fbb2747094883d6680455900dab99c4f87d92490934fc',
   'edge.sync-rateware-catalog.': '227ee313ff58c30d3ddf907d2fa437c5d0e17d2d52d23d2d198e4a6de3608c98',
-  'edge.whatsapp-webhook.': '0380943f3937045a78a2173e60b7dbd8867fa7ad3cca4845301e506c82975052',
+  'edge.whatsapp-webhook.': '8b8236be223a75d8da2d109ed9a28b7ea6f4d6031f458051d0c5c49b203e5da1',
 };
 // These eight pre-existing actions share reviewed code segments with the newly
 // added template dispatch and handler factory. Their behavior is unchanged, but
@@ -150,6 +152,14 @@ const carrierProfileSourceFingerprintOverrides = {
   'edge.carrier-profile-api.add_ticket_followup': 'fbc3fcfad29bcde5dfe01ce678a73cff0f24a14e9fea14dc7f622d3988665710',
   'edge.carrier-profile-api.get_profile': '8fc31edb80ccdcdc9dccd9990ffca37594ee93bf247344009a1002e942e47aea',
   'edge.carrier-profile-api.submit_profile': 'e7019872565e1d24acc5764c6a6f7e3efd84d63063b51577ce51bb938445a204',
+};
+
+// Meta reports a reply's sender as bare digits while outreach stores "+52...";
+// the webhook now matches every spelling of that phone. Routing by phone id and
+// WABA, the verify token and the X-Hub-Signature-256 check are unchanged.
+const whatsappWebhookSourceFingerprintOverrides = {
+  'edge.whatsapp-webhook.ingest_webhook': '9a2a759be8690ead5e9caeddee053b44811e473ca337fd0a1689de5d1e0aa56e',
+  'edge.whatsapp-webhook.verify_webhook': '9a2a759be8690ead5e9caeddee053b44811e473ca337fd0a1689de5d1e0aa56e',
 };
 
 // These reviewed rfx-bid handlers contain multiline literals. Normalizing CRLF
@@ -415,8 +425,8 @@ export const ACTION_CONTRACT = {
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({
       ...entry,
       contractVersion,
-      ...((ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId])
-        ? { sourceFingerprint: ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId] }
+      ...((ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId] || whatsappWebhookSourceFingerprintOverrides[entry.canonicalId])
+        ? { sourceFingerprint: ratewareApiSourceFingerprintOverrides[entry.canonicalId] || supabaseAuthSourceFingerprintOverrides[entry.canonicalId] || portableRfxBidSourceFingerprintOverrides[entry.canonicalId] || carrierProfileSourceFingerprintOverrides[entry.canonicalId] || whatsappWebhookSourceFingerprintOverrides[entry.canonicalId] }
         : {}),
       ...(entry.canonicalId.startsWith('edge.google-chat-app.')
         ? { analysisCoverage: 'shared-observed', coverageSignals: ['shared_dependency_observed'] }

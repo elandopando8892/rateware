@@ -867,6 +867,19 @@ assert.doesNotMatch(whatsappWebhookSource, /whatsapp_connection_id\.eq\.\$\{conn
 assert.match(whatsappWebhookSource, /appSecrets\.size !== 1/, "WhatsApp webhook should reject a payload spanning different Meta apps");
 assert.match(whatsappWebhookSource, /webhook_phone_number_id:[\s\S]+webhook_waba_id:/, "WhatsApp webhook should persist the Meta routing identity with delivery results");
 assert.match(supabaseConfigSource, /\[functions\.whatsapp-webhook\]\s*verify_jwt\s*=\s*false/, "Meta calls the WhatsApp webhook without a Supabase JWT, so a deploy from the repo must keep gateway verification off");
+{
+  // Meta reports a reply's sender as bare digits (a Mexican mobile may carry the
+  // old "1" after 52) while outreach stores the number it sent to as "+52...".
+  const start = whatsappWebhookSource.indexOf("function inboundPhoneCandidates(");
+  assert.notEqual(start, -1, "WhatsApp webhook should expand the inbound sender into every stored phone spelling");
+  const helper = whatsappWebhookSource.slice(start, whatsappWebhookSource.indexOf("\n}\n", start) + 2).replace("fromPhone: string", "fromPhone");
+  const inboundPhoneCandidates = new Function(`${helper}\nreturn inboundPhoneCandidates;`)();
+  assert.ok(inboundPhoneCandidates("5215512345678").includes("+525512345678"), "A reply from a Mexican mobile reported as 521... must match the +52... number we sent to");
+  assert.ok(inboundPhoneCandidates("525512345678").includes("+525512345678"), "A reply reported as 52... must match the stored +52... number");
+  assert.ok(inboundPhoneCandidates("525512345678").includes("+5215512345678"), "A number saved with the old Mexican mobile 1 must still match");
+  assert.deepEqual(inboundPhoneCandidates("19565550123"), ["+19565550123", "19565550123"], "Non-Mexican numbers only differ by the plus sign");
+  assert.doesNotMatch(whatsappWebhookSource, /\.eq\("normalized_recipient_phone", fromPhone\)/, "WhatsApp replies must not be matched against the bare sender digits alone");
+}
 assert.match(whatsappWebhookRoutingMigration, /whatsapp_business_connections_webhook_route_idx/, "WhatsApp connection lookup should have a phone and WABA routing index");
 assert.match(whatsappWebhookRoutingMigration, /outreach_messages_whatsapp_webhook_route_idx/, "WhatsApp delivery callbacks should have a connection and provider message index");
 assert.match(rfxBidApiSource, /rfx_rfi_crossborder_details/, "Customer RFI API should persist structured crossborder details");
