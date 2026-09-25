@@ -19,8 +19,8 @@ const definitions = [
 ];
 
 const edgeSourceFile = 'supabase/functions/website-lead-intake/index.ts';
-const edgeSourceFingerprint = 'f523761d94053a45698ba10a68e5264118674944cda30801d67d831af09c4fce';
-const edgeAuthorizationFingerprint = 'ecf61ab4d7b95665bcad4a3f1d201a27879825da8412cd1467de4d64ce92a5cd';
+const edgeSourceFingerprint = '0d945965cf4802e07f5e9368454bf10d07c0648af9287091ea2989df9f5ad21f';
+const edgeAuthorizationFingerprint = '7cc84d94832f577263629386e20d7c6fa000d149ca0dafaa7ab8984bc4e43737';
 const edgeDependencies = [
   'supabase/functions/website-lead-intake/carrier-rate-sheet.ts',
   'supabase/functions/website-lead-intake/follow-up-token.ts',

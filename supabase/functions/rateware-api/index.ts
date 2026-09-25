@@ -10282,6 +10282,12 @@ function supplyDepthForLane(lane: Record<string, unknown>, rates: Record<string,
   };
 }
 
+/** A lane invitation without its joined vendor profile (list_rfx_detail's compact vendors). */
+function withoutVendorProfile(invitation: Record<string, unknown>) {
+  const { vendors: _vendors, ...rest } = invitation;
+  return rest;
+}
+
 function invitationWithComparison(invitation: Record<string, unknown>, benchmark: Record<string, unknown> | null) {
   const bidRate = cleanNumber(invitation.bid_rate);
   const benchmarkRate = cleanNumber(benchmark?.all_in_rate);
@@ -28726,11 +28732,11 @@ export function createRatewareApiHandler(
       const lanes = eventLanes.map((lane) => {
         const benchmark = bestRatewareBenchmark(lane, rates);
         const supplyDepth = supplyDepthForLane(lane, rates);
-        const invitations = (invitationsByLane.get(cleanText(lane.id) || "") || []).map((invitation) => {
-          if (!compactVendors) return invitationWithComparison(invitation, benchmark);
-          const { vendors: _vendors, ...compactInvitation } = invitation;
-          return invitationWithComparison(compactInvitation, benchmark);
-        });
+        // An expression body keeps the action contract's scanner on this action's own
+        // block (with its requireOwnedRfxEvent check), not on the helper it calls.
+        const invitations = (invitationsByLane.get(cleanText(lane.id) || "") || []).map((invitation) =>
+          invitationWithComparison(compactVendors ? withoutVendorProfile(invitation) : invitation, benchmark)
+        );
         return {
           ...lane,
           benchmark,
