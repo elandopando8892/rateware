@@ -119,6 +119,18 @@ const productionOnlyMigrations = new Map([
     "20260908104144_raw_uploads_server_only.sql",
     "365fd4ae0ebe804d1a38a5e34173e058d3519559cb68d2d3a83f7b65c9f26a0b",
   ],
+  [
+    "20260925061821_restore_bi_rate_fact_writers.sql",
+    "4f92df8edd0b87fec391faf637582a9b8a752f6dd565b0d6764ce21db045fec5",
+  ],
+  [
+    "20260925062424_restore_bi_readers.sql",
+    "50de64b20fce7170a9d6d16b8f45f7fc3ce02946c337ada630f29f4e0c967710",
+  ],
+  [
+    "20260925062556_stop_turso_bi_sync.sql",
+    "979e46cdc9e1eade06ecc02ca95fce44120901f9de690d95fd34a3c1621b5897",
+  ],
 ]);
 
 function migrationHash(contents) {
@@ -182,7 +194,7 @@ test("clean replay CI verifies pinned hashes, final ledger, and Provider Service
   assert.match(workflow, /run:\s+npm run test:migration-ledger/);
   assert.match(workflow, /tests\/supabase-migration-ledger\.test\.mjs/);
   assert.match(workflow, /count\(\*\).*max\(version\)/s);
-  assert.match(workflow, /390\|20260924215341/);
+  assert.match(workflow, /393\|20260925062556/);
   assert.match(workflow, /provider_legal_entity_fact_promotions/);
   assert.match(workflow, /provider_onboarding_readiness_evaluations/);
   assert.match(workflow, /provider_onboarding_readiness_results/);

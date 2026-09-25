@@ -1,0 +1,156 @@
+// RECORD ONLY: deployed as the Edge Function rateware-supabase-return on 2026-09-25,
+// run, and deleted the same day. Not part of the deployable functions.
+// One-off maintenance function (2026-09-25): bring the "Supabase-free"
+// contingency data back into Supabase now that the project is on the Pro plan.
+//   status         storage mode, raw upload providers, Turso archive scopes, staged rows
+//   payload_stage  copy archived rate_staging.extracted_payload rows from Turso into
+//                  rateware_restore.staged_payloads (verified and applied in SQL)
+//   files_copy     copy raw uploads kept only in Oracle back into Supabase Storage,
+//                  checking SHA-256 before and after, then point the row at Supabase
+// Called from SQL through pg_net with the cron secret. Deleted after use.
+import { createClient as createTurso } from "npm:@libsql/client@0.17.4/http";
+import postgres from "https://deno.land/x/postgresjs@v3.4.5/mod.js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { downloadStorageObject, putStorageObject, sha256Hex, storageWritePlan } from "../_shared/object-storage.ts";
+
+const SECRET = Deno.env.get("SYNC_CRON_SECRET") ?? "";
+const DB_URL = Deno.env.get("SUPABASE_DB_URL") ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const TURSO_URL = Deno.env.get("RATEWARE_BI_SYNC_URL") ?? "";
+const TURSO_TOKEN = Deno.env.get("RATEWARE_BI_SYNC_TOKEN") ?? "";
+
+type Row = Record<string, unknown>;
+// deno.land postgres.js ships no default-export types.
+// deno-lint-ignore no-explicit-any
+type Sql = any;
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const clamp = (value: unknown, min: number, max: number, fallback: number) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.trunc(n))) : fallback;
+};
+
+function authorized(request: Request) {
+  const given = request.headers.get("x-return-secret") ?? "";
+  if (!SECRET || given.length !== SECRET.length) return false;
+  let diff = 0;
+  for (let i = 0; i < given.length; i++) diff |= given.charCodeAt(i) ^ SECRET.charCodeAt(i);
+  return diff === 0;
+}
+
+const turso = () => createTurso({ url: TURSO_URL, authToken: TURSO_TOKEN });
+
+async function status(sql: Sql) {
+  let mode: unknown;
+  try {
+    mode = storageWritePlan("raw-uploads");
+  } catch (error) {
+    mode = { error: message(error) };
+  }
+  const providers = await sql`select storage_provider, count(*)::int as n from public.raw_uploads group by 1 order by 1`;
+  const scopes = await turso().execute(
+    "select archive_scope, count(*) as n from rateware_staging_payload_archive group by archive_scope",
+  );
+  const staged = await sql`select count(*)::int as n from rateware_restore.staged_payloads`.catch(() => [{ n: null }]);
+  return {
+    mode,
+    providers,
+    archive_scopes: scopes.rows.map((row: Row) => ({ scope: String(row.archive_scope), rows: Number(row.n) })),
+    staged: staged[0]?.n ?? null,
+  };
+}
+
+async function payloadStage(sql: Sql, body: Row) {
+  const scope = String(body.scope ?? "");
+  const after = String(body.after ?? "");
+  const limit = clamp(body.limit, 1, 5000, 2000);
+  if (!scope) throw new Error("scope is required");
+  const result = await turso().execute({
+    sql: "select rate_id, source_updated_at, extracted_payload from rateware_staging_payload_archive where archive_scope = ? and rate_id > ? order by rate_id limit ?",
+    args: [scope, after, limit],
+  });
+  const rows = result.rows.map((row: Row) => ({
+    rate_id: String(row.rate_id),
+    archive_scope: scope,
+    source_updated_at: String(row.source_updated_at),
+    extracted_payload: String(row.extracted_payload),
+  }));
+  for (let offset = 0; offset < rows.length; offset += 500) {
+    const part = rows.slice(offset, offset + 500);
+    await sql`insert into rateware_restore.staged_payloads ${sql(part, "rate_id", "archive_scope", "source_updated_at", "extracted_payload")} on conflict (rate_id) do nothing`;
+  }
+  return { read: rows.length, last: rows.at(-1)?.rate_id ?? null, done: rows.length < limit };
+}
+
+async function filesCopy(sql: Sql, body: Row) {
+  const limit = clamp(body.limit, 1, 100, 25);
+  const after = String(body.after ?? "00000000-0000-0000-0000-000000000000");
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+  const rows = await sql`
+    select id::text as id, storage_bucket, storage_path, storage_sha256, mime_type
+    from public.raw_uploads
+    where storage_provider = 'oracle_s3' and id > ${after}::uuid
+    order by id limit ${limit}`;
+  const results: Row[] = [];
+  for (const row of rows) {
+    try {
+      const source = new Uint8Array(await (await downloadStorageObject(supabase, "oracle_s3", row.storage_bucket, row.storage_path)).arrayBuffer());
+      const sha = await sha256Hex(source);
+      if (sha !== row.storage_sha256) throw new Error("Oracle copy does not match the recorded SHA-256.");
+      try {
+        await putStorageObject(supabase, "supabase", row.storage_bucket, row.storage_path, source, {
+          contentType: row.mime_type,
+          upsert: false,
+        });
+      } catch (error) {
+        // A previous run may have stored it already; the read-back below decides.
+        if (!/exist|duplicate|409/i.test(message(error))) throw error;
+      }
+      const back = new Uint8Array(await (await downloadStorageObject(supabase, "supabase", row.storage_bucket, row.storage_path)).arrayBuffer());
+      if (back.byteLength !== source.byteLength || (await sha256Hex(back)) !== sha) {
+        throw new Error("Supabase copy failed the SHA-256 read-back.");
+      }
+      const updated = await sql`
+        update public.raw_uploads set storage_provider = 'supabase'
+        where id = ${row.id}::uuid and storage_provider = 'oracle_s3' returning id`;
+      results.push({ id: row.id, bytes: source.byteLength, ok: updated.length === 1 });
+    } catch (error) {
+      results.push({ id: row.id, ok: false, error: message(error).slice(0, 200) });
+    }
+  }
+  const remaining = await sql`select count(*)::int as n from public.raw_uploads where storage_provider = 'oracle_s3'`;
+  return {
+    processed: results.length,
+    copied: results.filter((row) => row.ok).length,
+    bytes: results.reduce((sum, row) => sum + Number(row.bytes ?? 0), 0),
+    failed: results.filter((row) => !row.ok),
+    last: rows.at(-1)?.id ?? null,
+    remaining: remaining[0].n,
+  };
+}
+
+Deno.serve(async (request) => {
+  if (request.method !== "POST") return json({ error: "POST is required." }, 405);
+  if (!authorized(request)) return json({ error: "Forbidden." }, 403);
+  const body = (await request.json().catch(() => ({}))) as Row;
+  const sql = postgres(DB_URL, { max: 1, prepare: false, idle_timeout: 5 });
+  try {
+    switch (body.action) {
+      case "status":
+        return json(await status(sql));
+      case "payload_stage":
+        return json(await payloadStage(sql, body));
+      case "files_copy":
+        return json(await filesCopy(sql, body));
+      default:
+        return json({ error: "Unknown action." }, 400);
+    }
+  } catch (error) {
+    return json({ error: message(error).slice(0, 500) }, 500);
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+});
