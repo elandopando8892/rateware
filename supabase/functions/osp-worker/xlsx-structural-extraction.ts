@@ -17,48 +17,224 @@ const FIELD_ALIASES = Object.freeze(
     {
       fieldKey: "supplier.legalName",
       labels: [
-        "legal name",
-        "company legal name",
-        "legal company name",
-        "nombre legal",
-        "nombre o razon social",
-        "razon social",
+        "legal name", "company legal name", "legal company name",
+        "nombre legal", "nombre o razon social", "razon social",
       ],
+    },
+    {
+      fieldKey: "supplier.tradeName",
+      labels: ["trade name", "commercial name", "nombre comercial"],
     },
     {
       fieldKey: "fiscal.taxIdentifier",
       labels: [
-        "tax identifier",
-        "tax id",
-        "rfc",
+        "tax identifier", "tax id", "rfc",
         "registro federal de contribuyentes",
       ],
     },
     {
+      fieldKey: "fiscal.taxRegime",
+      labels: ["tax regime", "regimen fiscal"],
+    },
+    {
       fieldKey: "supplier.address",
       labels: [
-        "registered address",
-        "legal address",
-        "fiscal address",
-        "domicilio fiscal",
-        "direccion fiscal",
+        "registered address", "legal address", "fiscal address",
+        "domicilio fiscal", "direccion fiscal",
       ],
+    },
+    {
+      fieldKey: "supplier.website",
+      labels: ["website", "web site", "pagina web"],
+    },
+    {
+      fieldKey: "supplier.phone",
+      labels: ["telephone", "phone", "telefono"],
+    },
+    {
+      fieldKey: "business.primaryActivity",
+      labels: ["primary activity", "giro actividad principal", "actividad principal"],
+    },
+    {
+      fieldKey: "business.primaryServices",
+      labels: ["principal products services", "principales productos servicios"],
+    },
+    {
+      fieldKey: "business.principalCustomers",
+      labels: ["principal customers", "principales clientes"],
+    },
+    {
+      fieldKey: "business.employeeCount",
+      labels: ["number of employees", "numero de empleados"],
+    },
+    {
+      fieldKey: "credit.requestedAmount",
+      labels: [
+        "requested credit", "credit amount requested",
+        "solicita credito especifique monto", "monto de credito",
+      ],
+    },
+    {
+      fieldKey: "relationship.discoverySource",
+      labels: ["how did you hear about us", "como nos conocio"],
+    },
+    {
+      fieldKey: "finance.paymentChannel",
+      labels: ["payment type", "tipo de pago"],
+    },
+    {
+      fieldKey: "credit.requestedTerms",
+      labels: ["credit terms", "plazo de credito"],
+    },
+    {
+      fieldKey: "fiscal.cfdiUse",
+      labels: ["cfdi use", "uso de cfdi"],
+    },
+    {
+      fieldKey: "billing.paymentMethod",
+      labels: ["payment method", "metodo de pago"],
+    },
+    {
+      fieldKey: "procurement.purchaseOrderRequired",
+      labels: ["purchase order required", "requiere orden de compra"],
+    },
+    {
+      fieldKey: "commercial.serviceAgreementExists",
+      labels: [
+        "service agreement", "service contract",
+        "existe un convenio o contrato para prestar el servicio",
+      ],
+    },
+    {
+      fieldKey: "operations.podDelivery",
+      labels: [
+        "pod delivery", "pod digital", "pod fisico",
+        "el cliente acepta pod digital o requiere pod fisico",
+      ],
+    },
+    {
+      fieldKey: "billing.invoiceResponsibleName",
+      labels: ["invoice recipient responsible", "responsable de recepcion de facturas"],
+    },
+    {
+      fieldKey: "billing.invoiceResponsibleTitle",
+      labels: ["invoice recipient title", "puesto"],
+    },
+    {
+      fieldKey: "billing.invoiceEmail",
+      labels: ["invoice email", "correo oficial para el envio de facturas"],
+    },
+    {
+      fieldKey: "billing.paymentComplementEmail",
+      labels: [
+        "payment complement email",
+        "correo oficial para el envio de complemento de pago",
+      ],
+    },
+    {
+      fieldKey: "billing.invoiceHours",
+      labels: ["invoice receiving hours", "horario de recepcion de facturas"],
+    },
+    {
+      fieldKey: "billing.invoiceRequirements",
+      labels: ["billing requirements", "requerimientos de facturacion"],
+    },
+    {
+      fieldKey: "finance.paymentRequirements",
+      labels: ["payment requirements", "requerimientos para pago"],
+    },
+    {
+      fieldKey: "billing.portalName",
+      labels: ["billing portal", "cuenta con portal", "portal de facturacion"],
+    },
+    {
+      fieldKey: "billing.portalAccessInstructions",
+      labels: ["portal url", "url del portal"],
+    },
+    {
+      fieldKey: "billing.portalUserRequestEmail",
+      labels: ["portal user request email", "email para solicitud de usuario"],
+    },
+    {
+      fieldKey: "billing.portalEmail",
+      labels: ["portal email", "correo electronico"],
+    },
+    {
+      fieldKey: "billing.invoiceSubmissionChannel",
+      labels: ["authorized delivery type", "tipo de envio autorizado"],
+    },
+    {
+      fieldKey: "billing.invoiceUploadDeadline",
+      labels: ["invoice upload deadline", "fecha limite para cargar factura"],
+    },
+    {
+      fieldKey: "billing.hasSpecialRequirements",
+      labels: [
+        "special billing requirements",
+        "tiene requisitos especiales de facturacion",
+      ],
+    },
+    {
+      fieldKey: "billing.specialRequirements",
+      labels: ["special billing instructions", "en caso de que si especifique"],
+    },
+    {
+      fieldKey: "banking.bankName",
+      labels: ["bank name", "banco"],
+    },
+    {
+      fieldKey: "banking.accountHolder",
+      labels: ["account holder", "titular de cuenta"],
     },
     {
       fieldKey: "banking.accountNumber",
       labels: [
-        "bank account",
-        "bank account number",
-        "account number",
-        "clabe",
-        "clabe interbancaria",
-        "cuenta bancaria",
-        "numero de cuenta",
+        "bank account", "bank account number", "account number",
+        "cuenta bancaria", "numero de cuenta",
       ],
+    },
+    {
+      fieldKey: "banking.clabe",
+      labels: ["clabe", "clabe interbancaria"],
+    },
+    {
+      fieldKey: "banking.branch",
+      labels: ["bank branch", "sucursal"],
+    },
+    {
+      fieldKey: "banking.currency",
+      labels: ["currency", "moneda"],
+    },
+    {
+      fieldKey: "banking.paymentReference",
+      labels: ["payment reference", "referencia de pago"],
+    },
+    {
+      fieldKey: "banking.paymentConcept",
+      labels: ["payment concept", "concepto o referencia"],
+    },
+    {
+      fieldKey: "collections.responsibleName",
+      labels: ["collections responsible", "responsable de cobranza"],
+    },
+    {
+      fieldKey: "collections.email",
+      labels: ["collections email"],
+    },
+    {
+      fieldKey: "collections.fixedPhone",
+      labels: ["fixed phone", "telefono fijo"],
+    },
+    {
+      fieldKey: "collections.mobile",
+      labels: ["mobile phone", "telefono movil"],
+    },
+    {
+      fieldKey: "legal.signerTitle",
+      labels: ["signer title", "titular"],
     },
   ] as const,
 );
-
 type Candidate = Readonly<{
   value: string | number | boolean;
   evidence: readonly EvidenceItem[];
@@ -91,6 +267,45 @@ function address(column: number, row: number): string {
     column = Math.floor(column / 26);
   }
   return `${value}${row}`;
+}
+
+function mergedBounds(
+  ranges: readonly string[],
+  cellAddress: string,
+): readonly [number, number, number, number] | null {
+  const point = coordinates(cellAddress);
+  if (!point) return null;
+  const [column, row] = point;
+  for (const range of ranges) {
+    const [start, end = start] = range.split(":");
+    const first = coordinates(start);
+    const last = coordinates(end);
+    if (!first || !last) continue;
+    const left = Math.min(first[0], last[0]);
+    const right = Math.max(first[0], last[0]);
+    const top = Math.min(first[1], last[1]);
+    const bottom = Math.max(first[1], last[1]);
+    if (column >= left && column <= right && row >= top && row <= bottom) {
+      return [left, top, right, bottom];
+    }
+  }
+  return null;
+}
+
+function adjacentValueAddresses(
+  sheet: ParsedSheet,
+  cellAddress: string,
+  column: number,
+  row: number,
+): readonly string[] {
+  const merged = mergedBounds(sheet.mergedRanges, cellAddress);
+  const right = merged?.[2] ?? column;
+  const bottom = merged?.[3] ?? row;
+  return [...new Set([
+    address(right + 1, row),
+    address(column, bottom + 1),
+    address(right + 1, bottom + 1),
+  ])];
 }
 
 function scalar(
@@ -233,13 +448,20 @@ export async function createXlsxStructuralSnapshot(input: {
       const detected = detectedLabels.get(fieldKey) ?? [];
       detected.push(labelEvidence);
       detectedLabels.set(fieldKey, detected);
-      const valueCell = cells.get(address(column + 1, row)) ??
-        cells.get(address(column, row + 1));
+      const valueCell = adjacentValueAddresses(
+        sheet,
+        labelCell.address,
+        column,
+        row,
+      ).map((candidateAddress) => cells.get(candidateAddress)).find((candidate) => {
+        const candidateValue = scalar(candidate);
+        if (candidateValue === null) return false;
+        if (typeof candidateValue !== "string") return true;
+        const normalized = normalize(candidateValue);
+        return !aliases.has(normalized) && !/[:?]\s*$/.test(candidateValue);
+      });
       const value = scalar(valueCell);
-      if (
-        value === null || !valueCell ||
-        (typeof value === "string" && aliases.has(normalize(value)))
-      ) continue;
+      if (value === null || !valueCell) continue;
       const valueEvidence = evidenceById.get(
         `xlsx:${sheetIndex + 1}:${valueCell.address}`,
       );
