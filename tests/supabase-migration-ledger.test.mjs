@@ -111,6 +111,14 @@ const productionOnlyMigrations = new Map([
     "20260825160000_carrier_list_templates.sql",
     "7cc3bf0787e428c6ceaf18facb3319e5e8fdd737f46a26d60036149e28e0527c",
   ],
+  [
+    "20260907062502_oracle_object_storage_contingency.sql",
+    "3297f780ebbb25d623b16fc3c42e09ca14cd6d41458c3c1625d6c2bb93255625",
+  ],
+  [
+    "20260908104144_raw_uploads_server_only.sql",
+    "365fd4ae0ebe804d1a38a5e34173e058d3519559cb68d2d3a83f7b65c9f26a0b",
+  ],
 ]);
 
 function migrationHash(contents) {
@@ -174,7 +182,7 @@ test("clean replay CI verifies pinned hashes, final ledger, and Provider Service
   assert.match(workflow, /run:\s+npm run test:migration-ledger/);
   assert.match(workflow, /tests\/supabase-migration-ledger\.test\.mjs/);
   assert.match(workflow, /count\(\*\).*max\(version\)/s);
-  assert.match(workflow, /388\|20260924215341/);
+  assert.match(workflow, /390\|20260924215341/);
   assert.match(workflow, /provider_legal_entity_fact_promotions/);
   assert.match(workflow, /provider_onboarding_readiness_evaluations/);
   assert.match(workflow, /provider_onboarding_readiness_results/);

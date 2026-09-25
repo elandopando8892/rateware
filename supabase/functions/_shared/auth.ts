@@ -19,6 +19,9 @@ async function requireSupabaseUser(token: string) {
     sub: user.id,
     email: user.email,
     auth_provider: "supabase",
+    // Reviewed source-file access (_shared/source-file-access.ts) needs both.
+    email_confirmed: Boolean(user.email_confirmed_at),
+    rateware_organization_id: appMetadata.rateware_organization_id,
     organization_id: appMetadata.rateware_organization_id || appMetadata.organization_id,
     // Only server-managed metadata returned by Auth can grant capabilities.
     permissions: Array.isArray(appMetadata.permissions)
