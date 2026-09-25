@@ -458,3 +458,9 @@ verify_jwt = false
 # Pub/Sub authenticates with a Google-signed OIDC token verified inside the function.
 [functions.provider-gmail-push]
 verify_jwt = false
+
+# Meta calls the WhatsApp webhook without a Supabase JWT: the GET handshake checks
+# the verify token and every POST checks the X-Hub-Signature-256 HMAC inside the
+# function. Gateway verification would turn delivery receipts and replies into 401s.
+[functions.whatsapp-webhook]
+verify_jwt = false

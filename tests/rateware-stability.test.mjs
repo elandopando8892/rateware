@@ -866,6 +866,7 @@ assert.match(whatsappWebhookSource, /\.is\("whatsapp_connection_id", null\)[\s\S
 assert.doesNotMatch(whatsappWebhookSource, /whatsapp_connection_id\.eq\.\$\{connection\.id\},whatsapp_connection_id\.is\.null/, "WhatsApp webhook should not update exact and unscoped legacy messages in one query");
 assert.match(whatsappWebhookSource, /appSecrets\.size !== 1/, "WhatsApp webhook should reject a payload spanning different Meta apps");
 assert.match(whatsappWebhookSource, /webhook_phone_number_id:[\s\S]+webhook_waba_id:/, "WhatsApp webhook should persist the Meta routing identity with delivery results");
+assert.match(supabaseConfigSource, /\[functions\.whatsapp-webhook\]\s*verify_jwt\s*=\s*false/, "Meta calls the WhatsApp webhook without a Supabase JWT, so a deploy from the repo must keep gateway verification off");
 assert.match(whatsappWebhookRoutingMigration, /whatsapp_business_connections_webhook_route_idx/, "WhatsApp connection lookup should have a phone and WABA routing index");
 assert.match(whatsappWebhookRoutingMigration, /outreach_messages_whatsapp_webhook_route_idx/, "WhatsApp delivery callbacks should have a connection and provider message index");
 assert.match(rfxBidApiSource, /rfx_rfi_crossborder_details/, "Customer RFI API should persist structured crossborder details");
