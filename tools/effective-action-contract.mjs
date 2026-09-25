@@ -7,6 +7,7 @@ import { WEBSITE_INTAKE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/
 import { QUOTEDESK_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-quotedesk.mjs';
 import { US_DIESEL_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-us-diesel.mjs';
 import { FCM_SYNC_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-fcm-sync.mjs';
+import { OPS_WATCH_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-ops-watch.mjs';
 import { OBJECT_STORAGE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-object-storage.mjs';
 
 const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
@@ -17,6 +18,7 @@ const websiteIntakeExtension = WEBSITE_INTAKE_ACTION_CONTRACT_EXTENSION;
 const quotedeskExtension = QUOTEDESK_ACTION_CONTRACT_EXTENSION;
 const usDieselExtension = US_DIESEL_ACTION_CONTRACT_EXTENSION;
 const fcmSyncExtension = FCM_SYNC_ACTION_CONTRACT_EXTENSION;
+const opsWatchExtension = OPS_WATCH_ACTION_CONTRACT_EXTENSION;
 const objectStorageExtension = OBJECT_STORAGE_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
@@ -342,8 +344,8 @@ export const ACTION_CONTRACT = {
   contractVersion,
   methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award+website-intake+quotedesk+us-diesel`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable + objectStorageExtension.expectedCountsDelta.governable,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge + objectStorageExtension.expectedCountsDelta.edge,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable + opsWatchExtension.expectedCountsDelta.governable + objectStorageExtension.expectedCountsDelta.governable,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge + opsWatchExtension.expectedCountsDelta.edge + objectStorageExtension.expectedCountsDelta.edge,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres + rfxAtomicAwardExtension.expectedCountsDelta.postgres + websiteIntakeExtension.expectedCountsDelta.postgres + quotedeskExtension.expectedCountsDelta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi,
   },
@@ -359,6 +361,7 @@ export const ACTION_CONTRACT = {
     ...quotedeskExtension.reviewedMetadataFingerprints,
     ...usDieselExtension.reviewedMetadataFingerprints,
     ...fcmSyncExtension.reviewedMetadataFingerprints,
+    ...opsWatchExtension.reviewedMetadataFingerprints,
     ...objectStorageExtension.reviewedMetadataFingerprints,
     ...supabaseAuthMetadataOverrides,
   },
@@ -375,6 +378,7 @@ export const ACTION_CONTRACT = {
     ...quotedeskExtension.reviewedAuthorizationFingerprints,
     ...usDieselExtension.reviewedAuthorizationFingerprints,
     ...fcmSyncExtension.reviewedAuthorizationFingerprints,
+    ...opsWatchExtension.reviewedAuthorizationFingerprints,
     ...objectStorageExtension.reviewedAuthorizationFingerprints,
     ...corsOnlyAuthorizationOverrides,
     ...supabaseAuthAuthorizationOverrides,
@@ -405,6 +409,7 @@ export const ACTION_CONTRACT = {
     ...quotedeskExtension.surfaces,
     ...usDieselExtension.surfaces,
     ...fcmSyncExtension.surfaces,
+    ...opsWatchExtension.surfaces,
     ...objectStorageExtension.surfaces,
   ],
 };

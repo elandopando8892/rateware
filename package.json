@@ -21,6 +21,7 @@
     "test:migration-ledger": "node --test tests/supabase-migration-ledger.test.mjs",
     "test:object-storage": "node --test tests/object-storage-migration.test.mjs tests/source-download-routing.test.mjs && deno test --allow-env --node-modules-dir=none --no-lock tests/object-storage-contingency.test.ts tests/source-file-access.contract.test.ts",
     "test:quotedesk": "node --test tests/quotedesk-calc.test.mjs tests/quotedesk-email-routes.test.mjs tests/quotedesk-fcm.test.mjs tests/fcm-sync.test.mjs tests/fcm-engine-check.test.mjs",
+    "test:ops-watch": "node --test tests/ops-daily-watch.test.mjs",
     "test:us-diesel": "node --test tests/us-diesel-sync.test.mjs",
     "test:release-preflight": "node --test tests/release-preflight.test.mjs",
     "test:rateware-correlation": "deno test --allow-env --allow-read --node-modules-dir=none --no-lock tests/rateware-correlation.contract.test.ts",
