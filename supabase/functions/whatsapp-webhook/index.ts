@@ -224,17 +224,28 @@ async function outreachMessageByProviderId(
   return legacy.data?.[0] || null;
 }
 
+// Meta reports the sender as bare international digits, and a Mexican mobile
+// may still carry the old "1" after 52, while outreach stores the number it
+// sent to as "+52...". Match every spelling of the same phone.
+function inboundPhoneCandidates(fromPhone: string) {
+  const spellings = new Set([fromPhone]);
+  if (/^521\d{10}$/.test(fromPhone)) spellings.add(`52${fromPhone.slice(3)}`);
+  if (/^52\d{10}$/.test(fromPhone)) spellings.add(`521${fromPhone.slice(2)}`);
+  return [...spellings].flatMap((digits) => [`+${digits}`, digits]);
+}
+
 async function latestOutboundForInbound(
   supabase: WhatsappWebhookSupabaseClient,
   fromPhone: string,
   connection: Record<string, unknown>
 ) {
   const connectionId = cleanText(connection.id);
+  const phones = inboundPhoneCandidates(fromPhone);
   const exact = await supabase
     .from("outreach_messages")
     .select("*")
     .eq("channel", "whatsapp")
-    .eq("normalized_recipient_phone", fromPhone)
+    .in("normalized_recipient_phone", phones)
     .eq("whatsapp_connection_id", connectionId)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -246,7 +257,7 @@ async function latestOutboundForInbound(
     .from("outreach_messages")
     .select("*")
     .eq("channel", "whatsapp")
-    .eq("normalized_recipient_phone", fromPhone)
+    .in("normalized_recipient_phone", phones)
     .is("whatsapp_connection_id", null);
   const ownerUserId = cleanText(connection.owner_user_id);
   const ownerEmail = cleanText(connection.owner_email);
