@@ -1261,11 +1261,11 @@ function handlerAnalysis(dispatch, source, handlerHint = null, options = {}) {
   for (const match of allMatches(/\bawait\s+([A-Za-z_$][\w$]*)\s*\(/g, dispatch)) {
     const segment = functionSegment(source, match[1]);
     const imported = segment ? null : resolveImportedHandler(source, options.sourceFile, match[1], options.envelope);
-    if (segment || imported?.status === "resolved") plausible.push({ handler: match[1], sourceSegment: segment || imported.segment });
+    if (segment || imported?.status === "resolved") plausible.push({ handler: match[1], sourceSegment: segment || imported.segment, handlerResolution: segment ? "single-plausible-call" : "imported-static" });
     else if (imported?.status === "ambiguous") return { handler: "undetermined", handlerStatus: "undetermined", sourceSegment: dispatch, handlerResolution: imported.reason };
   }
   if (plausible.length === 1 && !/\.(?:from|insert|update|upsert|delete)\s*\(/.test(dispatch)) {
-    return { ...plausible[0], handlerStatus: "named-existing", handlerResolution: "single-plausible-call" };
+    return { ...plausible[0], handlerStatus: "named-existing" };
   }
   if (/\.(?:from|insert|update|upsert|delete)\s*\(|jsonResponse\s*\(|new\s+Response\s*\(/.test(dispatch)) {
     return { handler: "inline", handlerStatus: "inline-real", sourceSegment: dispatch };

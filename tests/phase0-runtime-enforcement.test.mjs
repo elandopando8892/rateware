@@ -30,12 +30,13 @@ test("all authenticated runtime entrypoints use the enforcement adapter", () => 
     "create-raw-upload/index.ts",
     "interpret-upload/index.ts",
     "rateware-api/index.ts",
+    "rateware-storage-api/index.ts",
     "shipper-directory-api/index.ts",
     "sync-rateware-catalog/index.ts"
   ];
   for (const entrypoint of entrypoints) {
     const source = readFileSync(new URL(`../supabase/functions/${entrypoint}`, import.meta.url), "utf8");
-    assert.match(source, /resolveRuntimeWorkspaceUser\(/, `${entrypoint} must resolve the canonical runtime identity`);
+    assert.match(source, /resolve(?:RuntimeWorkspace|SourceFile)User\(/, `${entrypoint} must resolve the canonical runtime identity`);
     assert.doesNotMatch(source, /resolveWorkspaceUser\(/, `${entrypoint} must not bypass runtime enforcement`);
     assert.match(source, /runtimeIdentityStatus/, `${entrypoint} must expose tenant rejection as an authorization failure`);
   }

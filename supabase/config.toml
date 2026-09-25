@@ -421,6 +421,11 @@ verify_jwt = false
 [functions.rateware-api]
 verify_jwt = false
 
+# Storage provider routing is authenticated inside the function so Oracle
+# credentials stay server-side and never reach the browser.
+[functions.rateware-storage-api]
+verify_jwt = false
+
 [functions.shipper-directory-api]
 verify_jwt = false
 

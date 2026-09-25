@@ -3,6 +3,7 @@ import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.
 import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
+import { forwardSourceDownload, forwardSourceRemoval } from "../_shared/source-download-routing.mjs";
 import type { WorkspaceUser } from "../_shared/workspace.ts";
 import {
   CARRIER_TEMPLATE_IMPORT_MAX_ROWS,
@@ -32206,29 +32207,10 @@ export function createRatewareApiHandler(
 
     if (body.action === "get_upload_source_url") {
       if (!body.id) return jsonResponse({ error: "Upload id is required." }, 400);
-      const upload = await supabase
-        .from("raw_uploads")
-        .select("id,original_filename,storage_bucket,storage_path,mime_type")
-        .eq("id", body.id)
-        .eq("owner_email", user.owner_email)
-        .single();
-      if (upload.error) throw upload.error;
-      if (!upload.data?.storage_bucket || !upload.data?.storage_path) {
-        return jsonResponse({ error: "Source file is missing from storage." }, 404);
-      }
-
-      const signed = await supabase.storage
-        .from(upload.data.storage_bucket)
-        .createSignedUrl(upload.data.storage_path, 60 * 10, {
-          download: upload.data.original_filename || undefined
-        });
-      if (signed.error) throw signed.error;
-      return jsonResponse({
-        url: signed.data.signedUrl,
-        expires_in_seconds: 600,
-        filename: upload.data.original_filename,
-        mime_type: upload.data.mime_type
-      });
+      // Source files can live in Supabase Storage or Oracle; rateware-storage-api
+      // signs the download for either after checking reviewed file access.
+      const forwarded = await forwardSourceDownload(request, body, SUPABASE_URL);
+      return jsonResponse(forwarded.payload, forwarded.status);
     }
 
     if (body.action === "remove_upload") {
@@ -32236,11 +32218,16 @@ export function createRatewareApiHandler(
       requireBulkConfirmation(body, { action: "remove_upload", label: "Upload removal", count: 1 });
       const upload = await supabase
         .from("raw_uploads")
-        .select("id,original_filename,storage_bucket,storage_path")
+        .select("id,original_filename,storage_provider,storage_bucket,storage_path")
         .eq("id", body.id)
         .eq("owner_email", user.owner_email)
         .single();
       if (upload.error) throw upload.error;
+
+      if (upload.data?.storage_provider && upload.data.storage_provider !== "supabase") {
+        const forwarded = await forwardSourceRemoval(request, body, SUPABASE_URL);
+        return jsonResponse(forwarded.payload, forwarded.status);
+      }
 
       if (upload.data?.storage_bucket && upload.data?.storage_path) {
         const storage = await supabase.storage.from(upload.data.storage_bucket).remove([upload.data.storage_path]);

@@ -7,6 +7,7 @@ import { WEBSITE_INTAKE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/
 import { QUOTEDESK_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-quotedesk.mjs';
 import { US_DIESEL_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-us-diesel.mjs';
 import { FCM_SYNC_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-fcm-sync.mjs';
+import { OBJECT_STORAGE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-object-storage.mjs';
 
 const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
 const carrierTemplateExtension = CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION;
@@ -16,6 +17,7 @@ const websiteIntakeExtension = WEBSITE_INTAKE_ACTION_CONTRACT_EXTENSION;
 const quotedeskExtension = QUOTEDESK_ACTION_CONTRACT_EXTENSION;
 const usDieselExtension = US_DIESEL_ACTION_CONTRACT_EXTENSION;
 const fcmSyncExtension = FCM_SYNC_ACTION_CONTRACT_EXTENSION;
+const objectStorageExtension = OBJECT_STORAGE_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 const carrierTemplateDelta = carrierTemplateExtension.expectedCountsDelta;
@@ -116,12 +118,14 @@ const ratewareApiSourceFingerprintOverrides = {
   'edge.rateware-api.update_vendor_segment': 'd73978185d8637b0b72028db2b30b7f5d3800a42f3d58949d25d2f4d2d978976',
 };
 
+// Oracle storage integration (2026-09-24): main now carries the create-raw-upload
+// and interpret-upload running in production since 2026-09-08 (plus SheetJS
+// 0.20.3): files are written and read through _shared/object-storage.ts
+// (Supabase Storage or Oracle Object Storage) behind reviewed source-file access
+// (_shared/source-file-access.ts). Ownership checks are unchanged.
 const supabaseAuthSourceFingerprintOverrides = {
-  'edge.create-raw-upload.create_raw_upload': '162bfb646dea07477a3f6d27be7ee573db7efbafd6d089b0eeea5a06dafccc79',
-  // Reviewed: only the XLSX import changed, to the official SheetJS 0.20.3 build
-  // vendored under interpret-upload/vendor (sha256 pinned by rateware-stability);
-  // the handler is unchanged.
-  'edge.interpret-upload.interpret_upload': '19e17d711613572c864d46fe07f4e0aa310b0ee80ec80c4592194b1673450506',
+  'edge.create-raw-upload.create_raw_upload': 'aa374df97b0680a4df07507bdf5f7028fc1c37ac6cf72643e577001ff4d147fe',
+  'edge.interpret-upload.interpret_upload': '60474ad4568881ebd470b63cdfeebdcb3ad3a534a2487363c6b74cde7322e6a2',
   'edge.sync-rateware-catalog.sync_rateware_catalog': '207fd12f17afbbd5e4dd58a0e914ad939aab033816bf8a5a64b461cf46aa8c83',
 };
 
@@ -136,6 +140,21 @@ const portableRfxBidSourceFingerprintOverrides = {
   'edge.rfx-bid-api.submit_bid': 'd60402a1c008a8b884b84c6436010d55e3fcac0457fff6cf0c592b51547b4934',
   'edge.rfx-bid-api.withdraw_bid': '6ec9d89d98ca2bbcceed7b697fa1acd22929d29d4519c4f31e5ffc7d72fd28c0',
 };
+
+// rateware-api forwards get_upload_source_url, and remove_upload for files kept
+// outside Supabase Storage, to rateware-storage-api with the caller's own bearer
+// (_shared/source-download-routing.mjs). No service credential is substituted.
+const oracleStorageSurfaceOverrides = {
+  'edge.rateware-api.get_upload_source_url': { handler: 'forwardSourceDownload', sourceFingerprint: '9a2597f0ed73bc228416433cec76bc0b84163341125c6b0352f9b82beda820eb' },
+  'edge.rateware-api.remove_upload': { sourceFingerprint: '9b772c50588df68658fa9b069cebd43113670425c9ea6cd22c72c0967b816510' },
+};
+const oracleStorageMetadataOverrides = {
+  'edge.rateware-api.get_upload_source_url': '7d5df914fc489e9a4a3d23b0254be9d0724ac50523b12396ab02208ae86ec868',
+};
+// _shared/auth.ts now also returns email_confirmed and rateware_organization_id,
+// read only by the reviewed source-file access check. quotedesk-api's handlers,
+// tenant scoping and permissions are unchanged.
+const quotedeskAuthEnvelope = '6fad025e03fb99aa36c18c88176d5a5bc71f07795446e88317937520b8460d69';
 
 const supabaseAuthMetadataOverrides = {
   'edge.google-chat-app.handle_chat_event': 'fd759bead6f0bfed76d9f70c962399ba7d815ef30f7a85491d68c4d5b088accf',
@@ -324,8 +343,8 @@ export const ACTION_CONTRACT = {
   contractVersion,
   methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award+website-intake+quotedesk+us-diesel`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable + objectStorageExtension.expectedCountsDelta.governable,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge + objectStorageExtension.expectedCountsDelta.edge,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres + rfxAtomicAwardExtension.expectedCountsDelta.postgres + websiteIntakeExtension.expectedCountsDelta.postgres + quotedeskExtension.expectedCountsDelta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi,
   },
@@ -341,7 +360,9 @@ export const ACTION_CONTRACT = {
     ...quotedeskExtension.reviewedMetadataFingerprints,
     ...usDieselExtension.reviewedMetadataFingerprints,
     ...fcmSyncExtension.reviewedMetadataFingerprints,
+    ...objectStorageExtension.reviewedMetadataFingerprints,
     ...supabaseAuthMetadataOverrides,
+    ...oracleStorageMetadataOverrides,
   },
   reviewedAuthorizationFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedAuthorizationFingerprints,
@@ -356,10 +377,14 @@ export const ACTION_CONTRACT = {
     ...quotedeskExtension.reviewedAuthorizationFingerprints,
     ...usDieselExtension.reviewedAuthorizationFingerprints,
     ...fcmSyncExtension.reviewedAuthorizationFingerprints,
+    ...objectStorageExtension.reviewedAuthorizationFingerprints,
     ...corsOnlyAuthorizationOverrides,
     ...supabaseAuthAuthorizationOverrides,
     ...ratewareApiAuthorizationOverrides,
     ...brandedDomainAuthorizationOverrides,
+    ...Object.fromEntries(quotedeskExtension.surfaces
+      .filter((entry) => entry.canonicalId.startsWith('edge.quotedesk-api.'))
+      .map((entry) => [entry.canonicalId, quotedeskAuthEnvelope])),
   },
   surfaces: [
     ...BASE_ACTION_CONTRACT.surfaces.map((entry) => ({
@@ -371,6 +396,7 @@ export const ACTION_CONTRACT = {
       ...(entry.canonicalId.startsWith('edge.google-chat-app.')
         ? { analysisCoverage: 'shared-observed', coverageSignals: ['shared_dependency_observed'] }
         : {}),
+      ...(oracleStorageSurfaceOverrides[entry.canonicalId] || {}),
     })),
     ...providerSurfaces,
     ...gmailSurfaces,
@@ -381,5 +407,6 @@ export const ACTION_CONTRACT = {
     ...quotedeskExtension.surfaces,
     ...usDieselExtension.surfaces,
     ...fcmSyncExtension.surfaces,
+    ...objectStorageExtension.surfaces,
   ],
 };

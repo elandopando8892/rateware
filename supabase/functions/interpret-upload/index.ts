@@ -5,9 +5,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "./vendor/xlsx-0.20.3.mjs";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
+import { resolveSourceFileUser, SOURCE_FILE_ACTIONS } from "../_shared/source-file-access.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import { decideServiceFromResolution, resolveServiceEvidence } from "../_shared/service-normalization.mjs";
 import { normalizedAllInFromFuel } from "../_shared/rate-normalization.mjs";
+import { downloadStorageObject } from "../_shared/object-storage.ts";
 
 const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
@@ -2444,7 +2446,7 @@ Deno.serve(async (request) => {
   const supabase = getClient();
   let user: RuntimeWorkspaceUser;
   try {
-    user = await resolveRuntimeWorkspaceUser(supabase, await requireRatewareUser(request));
+    user = await resolveSourceFileUser(supabase, await requireRatewareUser(request));
   } catch (error) {
     return jsonResponse({ error: interpretationErrorMessage(error, "Authentication required.") }, runtimeIdentityStatus(error) === 403 ? 403 : 401);
   }
@@ -2452,6 +2454,13 @@ Deno.serve(async (request) => {
   const { raw_upload_id, correction_note = "" } = await request.json();
   if (!raw_upload_id) return jsonResponse({ error: "raw_upload_id is required." }, 400);
   const correctionNote = cleanText(correction_note) || "";
+
+  const uploadResult = await supabase.from("raw_uploads").select("*")
+    .eq("id", raw_upload_id).eq("owner_email", user.owner_email).single();
+  if (uploadResult.error || !uploadResult.data) {
+    return jsonResponse({ error: "Source file unavailable." }, uploadResult.error?.code === "PGRST116" || !uploadResult.error ? 404 : 503);
+  }
+  const rawUpload = uploadResult.data;
 
   const job = await supabase.from("interpretation_jobs").insert({
     raw_upload_id,
@@ -2462,20 +2471,16 @@ Deno.serve(async (request) => {
   if (job.error) return jsonResponse({ error: interpretationErrorMessage(job.error, "Could not create interpretation job.") }, 500);
 
   try {
-    const uploadResult = await supabase
-      .from("raw_uploads")
-      .select("*")
-      .eq("id", raw_upload_id)
-      .eq("owner_email", user.owner_email)
-      .single();
-    if (uploadResult.error) throw uploadResult.error;
-
-    const rawUpload = uploadResult.data;
+    // Ownership was checked before creating the interpretation job.
     const memoryRules = await applicableInterpretationMemory(supabase, user, rawUpload);
-    const download = await supabase.storage.from(rawUpload.storage_bucket).download(rawUpload.storage_path);
-    if (download.error) throw download.error;
+    const sourceFile = await downloadStorageObject(
+      supabase,
+      rawUpload.storage_provider,
+      rawUpload.storage_bucket,
+      rawUpload.storage_path,
+    );
 
-    const interpretation = await interpretWithModel(rawUpload, download.data, correctionNote, memoryRules);
+    const interpretation = await interpretWithModel(rawUpload, sourceFile, correctionNote, memoryRules);
     let manualVendorQuery = rawUpload.vendor_id
       ? supabase
           .from("vendors")
