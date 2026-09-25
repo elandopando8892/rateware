@@ -6,11 +6,16 @@
 //   organization feeds that workspace's QuoteDesk);
 // - fcm_mex_lanes, fcm_usa_lanes, fcm_usa_market_conditions: the reference
 //   tables, rewritten only when their content changed.
-// Each run is recorded in fcm_sync_runs. Only the shared cron secret can call it.
+// Then it checks that QuoteDesk's copy of the FCM engine still calculates like
+// the FCM (./engine-check.mjs). Each run and its check are recorded in
+// fcm_sync_runs. Only the shared cron secret can call it.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import postgres from "https://deno.land/x/postgresjs@v3.4.5/mod.js";
 import { corsHeaders, jsonResponse } from "../_shared/kinde.ts";
 import { chunk, costBaseRows, workspacesByOrg } from "./fcm-sync.mjs";
+import {
+  engineCheck, FCM_HEALTH_URL, FCM_SOURCE_URL, FORMULA_DIR, FORMULA_FILES, formulaCheck, REPLAY_LIMIT
+} from "./engine-check.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("RATEWARE_SUPABASE_SERVICE_ROLE_KEY");
@@ -40,8 +45,9 @@ function secretMatches(supplied: string) {
   return diff === 0;
 }
 
-async function sha256Hex(value: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+async function sha256Hex(value: string | ArrayBuffer) {
+  const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
@@ -73,6 +79,66 @@ async function readFcm(): Promise<Record<string, Row[]>> {
     });
   } finally {
     await sql.end({ timeout: 5 });
+  }
+}
+
+/** The FCM's latest saved calculations of these organizations; the reader needs its grant on "Quote". */
+async function readSnapshots(orgIds: string[]): Promise<{ rows: Row[]; read: string; error: string | null }> {
+  if (!orgIds.length) return { rows: [], read: "ok", error: null };
+  const sql = postgres(FCM_DATABASE_URL, { ssl: "require", max: 1, prepare: false, connect_timeout: 15 });
+  try {
+    const rows = await sql.begin("read only", async (tx: SqlTag) => {
+      await tx`set local statement_timeout = '15s'`;
+      await tx`set local lock_timeout = '5s'`;
+      // The ids go as text: postgres.js would JSON-encode a jsonb parameter a second time.
+      return await tx`
+        select id, "createdAt" as created_at, explanation->'snapshot' as snapshot
+        from "Quote"
+        where "orgId" in (select jsonb_array_elements_text(${JSON.stringify(orgIds)}::text::jsonb))
+          and explanation ? 'snapshot'
+        order by "createdAt" desc
+        limit ${REPLAY_LIMIT}`;
+    });
+    return { rows, read: "ok", error: null };
+  } catch (error) {
+    // 42501 until the reader is granted "Quote" (tools/fcm-sync-reader-setup.ts --grants-only).
+    const code = String((error as Row)?.code || "") || null;
+    return { rows: [], read: code === "42501" ? "no_access" : "error", error: code };
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+}
+
+/**
+ * The FCM's live release (its /health) and its formula files at that release on
+ * GitHub, against the copy's. A release already read is compared again from its
+ * kept hashes, without GitHub; when the FCM or GitHub doesn't answer, the
+ * previous result carries over as stale.
+ */
+async function readFormula(previous: Row | null): Promise<Row> {
+  const carried = previous ? { ...previous, stale: true } : { read: "unavailable", release: null, changed: [] };
+  let release = "";
+  try {
+    const health = await fetch(FCM_HEALTH_URL, { signal: AbortSignal.timeout(10000) });
+    if (health.ok) release = String(((await health.json()) as Row).release || "");
+  } catch {
+    return carried;
+  }
+  if (!/^[0-9a-f]{7,40}$/.test(release)) return carried;
+  if (previous?.read === "ok" && previous.release === release && previous.hashes && typeof previous.hashes === "object") {
+    return formulaCheck(release, previous.hashes);
+  }
+  try {
+    const files = Object.keys(FORMULA_FILES);
+    const read = await Promise.all(files.map(async (file) => {
+      const response = await fetch(`${FCM_SOURCE_URL}/${release}/${FORMULA_DIR}/${file}`, { signal: AbortSignal.timeout(10000) });
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(`GitHub answered ${response.status}.`);
+      return await sha256Hex(await response.arrayBuffer());
+    }));
+    return formulaCheck(release, Object.fromEntries(files.map((file, index) => [file, read[index]])));
+  } catch {
+    return carried;
   }
 }
 
@@ -147,6 +213,27 @@ async function syncFcmBases(trigger: string) {
       }
     }
 
+    // Does QuoteDesk's copy of the engine still calculate like the FCM? A failing
+    // check is recorded, never a reason to fail the copy.
+    const lastCheck = await supabase.from("fcm_sync_runs").select("engine_check")
+      .eq("status", "succeeded").not("engine_check", "is", null)
+      .order("started_at", { ascending: false }).limit(1).maybeSingle();
+    const previousFormula = lastCheck.error ? null : ((lastCheck.data?.engine_check as Row | null)?.formula ?? null) as Row | null;
+    const [formula, snapshots] = await Promise.all([
+      readFormula(previousFormula),
+      readSnapshots([...byOrg.keys()].map(String))
+    ]);
+    let check: Row;
+    try {
+      check = engineCheck({
+        bases, formula, snapshots: snapshots.rows, snapshotsRead: snapshots.read, snapshotsError: snapshots.error,
+        checkedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      check = { status: "unverified", checked_at: new Date().toISOString(), reasons: [], formula, error: message.slice(0, 300) };
+    }
+
     const counts = {
       workspaces: byOrg.size,
       conflicting_organizations: conflicts.length,
@@ -159,12 +246,12 @@ async function syncFcmBases(trigger: string) {
       market_conditions: fcm.markets.length
     };
     const done = await supabase.from("fcm_sync_runs").update({
-      status: "succeeded", finished_at: new Date().toISOString(), counts, reference_checksum: checksum
+      status: "succeeded", finished_at: new Date().toISOString(), counts, reference_checksum: checksum, engine_check: check
     }).eq("id", runId);
     if (done.error) throw done.error;
     const cutoff = new Date(Date.now() - RUN_RETENTION_DAYS * 86400000).toISOString();
     await supabase.from("fcm_sync_runs").delete().lt("started_at", cutoff);
-    return { run_id: runId, ...counts };
+    return { run_id: runId, ...counts, engine_check: check.status };
   } catch (error) {
     const message = error instanceof Error ? error.message : String((error as Row)?.message || error);
     await supabase.from("fcm_sync_runs").update({
