@@ -608,15 +608,94 @@ export function customerService(service) {
 const TRUCK_TYPES = new Set(["Truck Trailer", "Thorton", "Rabon", "3.5 tons", "1.5 tons"]);
 const TRAILERS = new Set(["Dry Van", "Flatbed", "Reefer", "Hazmat", "Chassis", "Power Only", "Overdim"]);
 
-export function fcmEquipment({ equipment, trailer, config } = {}) {
-  const truck = String(equipment || "").trim();
-  const box = String(trailer || "").trim();
+export const TRUCK_LABEL = { "Truck Trailer": "Tractocamión", Thorton: "Torton", Rabon: "Rabón", "3.5 tons": "Camioneta 3.5 t", "1.5 tons": "Camioneta 1.5 t" };
+export const TRAILER_LABEL = { "Dry Van": "Caja seca", Reefer: "Refrigerado", Flatbed: "Plataforma", Hazmat: "Hazmat", Overdim: "Sobredimensionado", Chassis: "Chasis", "Power Only": "Sólo tracto" };
+export const CONFIG_LABEL = { Single: "Sencillo", Tandem: "Full" };
+
+// What people type in the Bid Room and QuoteDesk ("Reefer 53'", "Plataforma 48'",
+// "Rabón", "Camioneta 3.5", "Sprinter") read as the FCM's equipment. First match wins.
+const TRUCK_WORDS = [
+  ["1.5 tons", /\b1[.,]5\s*(?:t\b|ton)|cargo\s*van|sprinter|^\s*van\s*$|camioneta(?!\s*(?:de\s*)?3[.,]5)/i],
+  ["3.5 tons", /\b3[.,]5\s*(?:t\b|ton)|box\s*truck|camioneta\s*(?:de\s*)?3[.,]5/i],
+  ["Rabon", /rab[oó]n|straight\s*truck|\b(?:8|10)\s*(?:t\b|ton)/i],
+  ["Thorton", /th?orton|\b(?:12|14|15|16|18)\s*(?:t\b|ton)/i],
+  ["Truck Trailer", /truck\s*trailer|tract(?:o|or)|trailer|t3-?s[23]|\bfull\b|\bdv\s*53\b|\b(?:53|48)\s*(?:'|ft\b|pies\b)?/i]
+];
+// Highest FCM risk factor first, so "Reefer Hazmat" prices as Reefer.
+const TRAILER_WORDS = [
+  ["Overdim", /overdim|sobre\s*-?\s*dimension|lowboy|cama\s*baja|oversize/i],
+  ["Reefer", /reefer|refriger|\bthermo|\btermo|frigor|temperatura\s*controlada/i],
+  ["Flatbed", /flat\s*-?\s*bed|plataforma/i],
+  ["Hazmat", /hazmat|haz\s*mat|peligros|hazardous/i],
+  ["Chassis", /chass?is/i],
+  ["Power Only", /power\s*only|s[oó]lo\s*tracto/i],
+  ["Dry Van", /dry\s*van|caja\s*seca|\bseca\b|\bdv\b|\bdv\s*53\b|\bbox\b/i]
+];
+const TANDEM_WORDS = /tandem|\bfull\b|doble|double|t3-?s2-?r4/i;
+
+const firstMatch = (words, value) => (words.find(([, pattern]) => pattern.test(value)) || [null])[0];
+
+/** The FCM equipment for free-text lane fields, plus notes on anything guessed or unknown. */
+export function readEquipment({ equipment, trailer, config } = {}) {
+  const truckText = String(equipment || "").trim();
+  const boxText = String(trailer || "").trim();
+  const configText = String(config || "").trim();
+  const allText = [truckText, boxText, configText].filter(Boolean).join(" ");
+  const notes = [];
+  const truckType = TRUCK_TYPES.has(truckText) ? truckText
+    : firstMatch(TRUCK_WORDS, truckText) || firstMatch(TRUCK_WORDS.slice(0, 4), boxText) || "Truck Trailer"; // DV53 and blanks are a tractor-trailer
+  if (truckText && !TRUCK_TYPES.has(truckText) && !firstMatch(TRUCK_WORDS, truckText) && !firstMatch(TRAILER_WORDS, truckText)) {
+    notes.push(`No reconocí el equipo "${truckText}"; se calculó como ${TRUCK_LABEL[truckType].toLowerCase()}.`);
+  }
+  const tons = truckText.match(/\b(8|10|12|14|15|16|18)\s*(?:t\b|ton)/i)?.[1];
+  const guessed = tons ? `${tons} t` : /camioneta/i.test(truckText) && !/\d/.test(truckText) ? "Camioneta"
+    : /rab[oó]n/i.test(truckText) && /th?orton/i.test(truckText) ? truckText : null;
+  if (guessed && !TRUCK_TYPES.has(truckText)) {
+    notes.push(`Se interpretó "${guessed}" como ${TRUCK_LABEL[truckType].toLowerCase()}; corrígelo si es otra unidad.`);
+  }
+  const box = TRAILERS.has(boxText) ? boxText : firstMatch(TRAILER_WORDS, allText) || "Dry Van";
+  if (boxText && !TRAILERS.has(boxText) && !firstMatch(TRAILER_WORDS, allText) && !firstMatch(TRUCK_WORDS, boxText)) {
+    notes.push(`No reconocí el remolque "${boxText}"; se calculó como caja seca.`);
+  }
+  if (box !== "Hazmat" && TRAILER_WORDS.find(([name]) => name === "Hazmat")[1].test(allText)) {
+    notes.push(`El FCM no combina hazmat con ${TRAILER_LABEL[box].toLowerCase()}; se calculó como ${TRAILER_LABEL[box].toLowerCase()}, sin la prima de hazmat.`);
+  }
+  const tandem = /sencill|single/i.test(configText) ? false : TANDEM_WORDS.test(configText) || TANDEM_WORDS.test(truckText);
   return {
-    truckType: TRUCK_TYPES.has(truck) ? truck : "Truck Trailer", // DV53 and blanks are a tractor-trailer
-    trailer: TRAILERS.has(box) ? box : "Dry Van",
-    config: /tandem|full/i.test(String(config || "")) ? "Tandem" : "Single",
-    driver: "B1" // the FCM screen's default driver
+    equipment: {
+      truckType,
+      trailer: box,
+      config: tandem ? "Tandem" : "Single",
+      driver: "B1" // the FCM screen's default driver
+    },
+    notes
   };
+}
+
+export function fcmEquipment(input = {}) {
+  return readEquipment(input).equipment;
+}
+
+/** The FCM lane table keys most 1.5-ton routes as "< 1.5 tons"; look both up. */
+export function mexLaneUnits(truckType) {
+  return truckType === "1.5 tons" ? ["1.5 tons", "< 1.5 tons"] : [truckType];
+}
+
+export function equipmentLabel(equipment) {
+  return [TRUCK_LABEL[equipment.truckType], TRAILER_LABEL[equipment.trailer], CONFIG_LABEL[equipment.config]].filter(Boolean).join(" · ");
+}
+
+/** What the FCM does not model for this equipment, in the base's own factors. */
+export function equipmentCaveats(equipment, params = {}) {
+  const caveats = [];
+  if (equipment.truckType !== "Truck Trailer") {
+    caveats.push(`${TRUCK_LABEL[equipment.truckType]}: el FCM lo estima escalando el costo del tractocamión con factores fijos; aún no tiene costos propios de esa unidad.`);
+  }
+  if (["Reefer", "Flatbed", "Hazmat", "Overdim"].includes(equipment.trailer)) {
+    const pct = Math.round((trailerFactor(equipment.trailer, params) - 1) * 100);
+    caveats.push(`${TRAILER_LABEL[equipment.trailer]}: el FCM sólo suma un recargo de riesgo de ${pct} % al costo de caja seca; no costea el equipo especial.`);
+  }
+  return caveats;
 }
 
 const INTERCHANGE_MODELS = new Set(["transfer", "swap", "drayage"]);

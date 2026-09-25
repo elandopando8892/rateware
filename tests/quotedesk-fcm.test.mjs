@@ -6,8 +6,12 @@ import {
   calculate,
   crossingCarriesBorder,
   customerService,
+  equipmentCaveats,
+  equipmentLabel,
   estimateQuoteLane,
   fcmEquipment,
+  mexLaneUnits,
+  readEquipment,
   fcmOperation,
   fcmService,
   getParam,
@@ -82,6 +86,42 @@ test("QuoteDesk operations, services and equipment map onto the FCM's", () => {
 
   assert.deepEqual(fcmEquipment({ equipment: "DV53", trailer: "DV53", config: "53 ft" }), { truckType: "Truck Trailer", trailer: "Dry Van", config: "Single", driver: "B1" });
   assert.equal(fcmEquipment({ equipment: "Thorton", trailer: "Reefer", config: "Tandem" }).config, "Tandem");
+});
+
+test("the equipment people actually type is read as the FCM's", () => {
+  const read = (equipment, trailer = "", config = "") => {
+    const result = readEquipment({ equipment, trailer, config });
+    return [equipmentLabel(result.equipment), result.notes];
+  };
+  assert.deepEqual(read("Reefer 53'", "53'"), ["Tractocamión · Refrigerado · Sencillo", []], "a reefer typed in Equipo is not priced as dry van");
+  assert.deepEqual(read("Truck Trailer", "Plataforma 48'"), ["Tractocamión · Plataforma · Sencillo", []]);
+  assert.deepEqual(read("Rabón")[0], "Rabón · Caja seca · Sencillo");
+  assert.deepEqual(read("Straight Truck")[0], "Rabón · Caja seca · Sencillo");
+  assert.deepEqual(read("Torton", "Caja seca")[0], "Torton · Caja seca · Sencillo");
+  assert.deepEqual(read("Camioneta 3.5")[0], "Camioneta 3.5 t · Caja seca · Sencillo");
+  assert.deepEqual(read("Box Truck")[0], "Camioneta 3.5 t · Caja seca · Sencillo");
+  assert.deepEqual(read("Sprinter")[0], "Camioneta 1.5 t · Caja seca · Sencillo");
+  assert.deepEqual(read("Cargo Van")[0], "Camioneta 1.5 t · Caja seca · Sencillo");
+  assert.deepEqual(read("Dry Van")[0], "Tractocamión · Caja seca · Sencillo", "a dry van is a trailer, not a cargo van");
+  assert.deepEqual(read("T3-S2-R4")[0], "Tractocamión · Caja seca · Full");
+  assert.deepEqual(read("Truck Trailer", "Dry Van", "Full")[0], "Tractocamión · Caja seca · Full");
+
+  const [reeferHazmat, hazmatNotes] = read("Reefer Hazmat");
+  assert.equal(reeferHazmat, "Tractocamión · Refrigerado · Sencillo");
+  assert.match(hazmatNotes[0], /no combina hazmat con refrigerado/);
+  assert.match(read("Grúa")[1][0], /No reconocí el equipo "Grúa"; se calculó como tractocamión/);
+  assert.match(read("Camioneta")[1][0], /Se interpretó "Camioneta" como camioneta 1.5 t/);
+  assert.match(read("Reefer 12t")[1][0], /Se interpretó "12 t" como torton/);
+  assert.deepEqual(read("Rabon")[1], [], "exact FCM names need no note");
+});
+
+test("equipment caveats say what the FCM does not model, and 1.5 t lanes use both keys", () => {
+  const caveats = equipmentCaveats({ truckType: "Rabon", trailer: "Reefer", config: "Single", driver: "B1" }, {});
+  assert.match(caveats[0], /Rabón: el FCM lo estima escalando el costo del tractocamión con factores fijos/);
+  assert.match(caveats[1], /Refrigerado: el FCM sólo suma un recargo de riesgo de 50 %/);
+  assert.deepEqual(equipmentCaveats(fcmEquipment({ equipment: "Truck Trailer", trailer: "Dry Van" }), {}), []);
+  assert.deepEqual(mexLaneUnits("1.5 tons"), ["1.5 tons", "< 1.5 tons"]);
+  assert.deepEqual(mexLaneUnits("Rabon"), ["Rabon"]);
 });
 
 test("interchange carries the cruce and blue plates do not", () => {

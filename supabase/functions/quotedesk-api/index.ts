@@ -19,7 +19,10 @@ import {
   baseRefusal,
   customerService,
   estimateQuoteLane,
-  fcmEquipment,
+  equipmentCaveats,
+  equipmentLabel,
+  mexLaneUnits,
+  readEquipment,
   fcmOperation,
   fcmService,
   legsFor,
@@ -964,9 +967,10 @@ async function estimateLaneFcm(supabase: Db, workspace: Workspace, body: Row) {
   if (!origin.country || !destination.country) throw new HttpError(400, "Captura el origen y el destino de la ruta.");
   const operation = fcmOperation(text(body.operation, 80), origin.country, destination.country);
   const service = fcmService(text(body.service, 80), operation);
-  const equipment = fcmEquipment({ equipment: text(body.equipment, 80), trailer: text(body.trailer, 80), config: text(body.config, 80) });
+  const read = readEquipment({ equipment: text(body.equipment, 80), trailer: text(body.trailer, 80), config: text(body.config, 80) });
+  const equipment = read.equipment;
   const crossingModel = text(body.crossing_model, 40);
-  const warnings: string[] = [];
+  const warnings: string[] = [...read.notes];
 
   // The base: the one chosen, if it covers the route; else the base of the route's scope (as the FCM enforces).
   const baseId = text(body.cost_base_id, 80);
@@ -984,6 +988,7 @@ async function estimateLaneFcm(supabase: Db, workspace: Workspace, body: Row) {
       throw new HttpError(409, `Ninguna base del FCM cubre esta ruta. ${reasons.join(" ")}`.trim());
     }
   }
+  warnings.push(...equipmentCaveats(equipment, record(base.params)));
 
   // Legs, split at the crossing the same way suggest_lane_miles does.
   const legs = legsFor(operation);
@@ -1019,11 +1024,13 @@ async function estimateLaneFcm(supabase: Db, workspace: Workspace, body: Row) {
   let mex: Row | null = null;
   let mexInfo: Row | null = null;
   if (mxFrom && mxTo) {
-    const laneKey = `${mxLaneName(mxFrom)} - ${mxLaneName(mxTo)} ${equipment.truckType}`;
-    const found = await supabase.from("fcm_mex_lanes").select("lane_key,tolls_mxn,route_hours")
-      .eq("lane_key_norm", fcmKey(laneKey)).maybeSingle();
+    const laneKeys = mexLaneUnits(equipment.truckType)
+      .map((unit) => fcmKey(`${mxLaneName(mxFrom as Place)} - ${mxLaneName(mxTo as Place)} ${unit}`));
+    const found = await supabase.from("fcm_mex_lanes").select("lane_key,lane_key_norm,tolls_mxn,route_hours")
+      .in("lane_key_norm", laneKeys);
     if (found.error) throw found.error;
-    const row = found.data as Row | null;
+    const rows = (found.data || []) as Row[];
+    const row = laneKeys.map((key) => rows.find((entry) => entry.lane_key_norm === key)).find(Boolean) ?? null;
     const tollsInput = toNumber(body.tolls_mxn);
     let tolls = tollsInput !== null && tollsInput >= 0 ? tollsInput : row ? toNumber(row.tolls_mxn) : null;
     const tollsSource = tollsInput !== null && tollsInput >= 0 ? "manual" : row ? "fcm" : "none";
@@ -1104,6 +1111,7 @@ async function estimateLaneFcm(supabase: Db, workspace: Workspace, body: Row) {
     service,
     customer_service: customerService(service),
     equipment,
+    equipment_label: equipmentLabel(equipment),
     crossing_model: crossingModel,
     border: estimate.border,
     currency: quote.currency,
