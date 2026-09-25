@@ -109,13 +109,14 @@ export const KNOWN_PARAM_KEYS = new Set(
 
 /**
  * The live formula against the copy's. `hashes`: each formula file's sha256 at
- * `release`, or null where GitHub doesn't have it (none at all: the release was
- * never pushed; some: the FCM moved them).
+ * `release`, or null where GitHub doesn't have it (none at all: the release
+ * can't be read there; some: the FCM moved them). The hashes are kept so a
+ * release already read is compared again with FORMULA_FILES as they are now.
  */
 export function formulaCheck(release, hashes) {
   const files = Object.keys(FORMULA_FILES);
-  if (files.every((file) => hashes[file] == null)) return { read: "not_published", release, changed: [] };
-  return { read: "ok", release, changed: files.filter((file) => hashes[file] !== FORMULA_FILES[file]) };
+  if (files.every((file) => hashes[file] == null)) return { read: "not_published", release, changed: [], hashes };
+  return { read: "ok", release, changed: files.filter((file) => hashes[file] !== FORMULA_FILES[file]), hashes };
 }
 
 /** Parameters of a copied base that the copy doesn't know. */
@@ -179,18 +180,28 @@ const short = (release) => String(release || "").slice(0, 7);
  * GitHub didn't answer (a previous result carried over is marked `stale`);
  * `snapshots`: the FCM's latest saved calculations ({ id, created_at, snapshot })
  * and `snapshotsRead` how reading them went ("ok", "no_access" until the reader
- * is granted "Quote", or "error").
- * @param {{ bases: Record<string, any>[], formula: Record<string, any>, snapshots?: Record<string, any>[], snapshotsRead?: string, checkedAt: string }} input
+ * is granted "Quote", or "error" with `snapshotsError`, the Postgres code).
+ *
+ * `status` and `reasons` are the engine's, the same for every workspace. A base
+ * with parameters the copy doesn't know only concerns its workspace: those are
+ * listed per owner in `unknown_params`, each with its own reason.
+ * @param {{ bases: Record<string, any>[], formula: Record<string, any>, snapshots?: Record<string, any>[], snapshotsRead?: string, snapshotsError?: string | null, checkedAt: string }} input
  */
-export function engineCheck({ bases, formula, snapshots = [], snapshotsRead = "ok", checkedAt }) {
+export function engineCheck({ bases, formula, snapshots = [], snapshotsRead = "ok", snapshotsError = null, checkedAt }) {
   const unknown = bases
     .filter((base) => base.usable)
-    .map((base) => ({ base: base.name, keys: unknownParams(base.params) }))
-    .filter((entry) => entry.keys.length);
+    .map((base) => ({ owner_email: base.owner_email, base: base.name, keys: unknownParams(base.params) }))
+    .filter((entry) => entry.keys.length)
+    .map((entry) => {
+      const shown = entry.keys.slice(0, 3).map((key) => key.replace("__", " · ")).join(", ");
+      const more = entry.keys.length > 3 ? ` y ${entry.keys.length - 3} más` : "";
+      return { ...entry, reason: `La base «${entry.base}» trae valores que QuoteDesk no sabe usar: ${shown}${more}.` };
+    });
   const replays = snapshots.map((row) => ({ quote_id: row.id, created_at: row.created_at, ...replaySnapshot(row.snapshot) }));
   const count = (outcome) => replays.filter((replay) => replay.outcome === outcome).length;
   const replay = {
     read: snapshotsRead,
+    ...(snapshotsError ? { error_code: snapshotsError } : {}),
     checked: replays.length,
     same: count("same"),
     different: count("different"),
@@ -206,12 +217,7 @@ export function engineCheck({ bases, formula, snapshots = [], snapshotsRead = "o
     reasons.push(`El FCM publicó cambios en su fórmula (versión ${short(formula.release)}: ${files}); QuoteDesk sigue con la anterior.`);
   }
   if (formula.read === "not_published") {
-    reasons.push(`La versión publicada del FCM (${short(formula.release)}) no está en GitHub, así que no se puede revisar su fórmula.`);
-  }
-  for (const entry of unknown) {
-    const shown = entry.keys.slice(0, 3).map((key) => key.replace("__", " · ")).join(", ");
-    const more = entry.keys.length > 3 ? ` y ${entry.keys.length - 3} más` : "";
-    reasons.push(`La base «${entry.base}» trae valores que QuoteDesk no sabe usar: ${shown}${more}.`);
+    reasons.push(`No se pudo leer en GitHub la fórmula de la versión publicada del FCM (${short(formula.release)}), así que no se puede comparar.`);
   }
   if (replay.new_engine) {
     const versions = [...new Set(replay.findings.filter((item) => item.outcome === "new_engine").map((item) => item.engine_version))];

@@ -28,7 +28,7 @@ function fcmSnapshot(scenario, overrides = {}) {
 }
 
 const sameFormula = formulaCheck("3414f95f5ec377d077b5f0b876a993b63c581cb0", { ...FORMULA_FILES });
-const base = (params, usable = true) => ({ name: "FTL Intra-México Estándar", usable, params });
+const base = (params, usable = true) => ({ owner_email: "org:one", name: "FTL Intra-México Estándar", usable, params });
 
 test("the copy knows every parameter it reads", () => {
   const source = readFileSync(new URL("../supabase/functions/quotedesk-api/fcm.mjs", import.meta.url), "utf8");
@@ -38,13 +38,17 @@ test("the copy knows every parameter it reads", () => {
   assert.deepEqual(read.filter((key) => !KNOWN_PARAM_KEYS.has(key)), []);
 });
 
-test("a parameter the copy doesn't know is flagged, only on usable bases", () => {
+test("a parameter the copy doesn't know is flagged for its workspace only, on usable bases", () => {
   assert.deepEqual(unknownParams({ "FUEL__Diesel MX": 26.7, "VEHICLE__Rabon Capital": 90000 }), ["VEHICLE__Rabon Capital"]);
   const flagged = engineCheck({ bases: [base({ "VEHICLE__Rabon Capital": 90000 })], formula: sameFormula, checkedAt: "t" });
-  assert.equal(flagged.status, "review");
-  assert.match(flagged.reasons[0], /no sabe usar: VEHICLE · Rabon Capital/);
+  // The engine itself is fine; only that workspace's base needs review, and its reason stays with it.
+  assert.equal(flagged.status, "ok");
+  assert.deepEqual(flagged.reasons, []);
+  assert.equal(flagged.unknown_params.length, 1);
+  assert.equal(flagged.unknown_params[0].owner_email, "org:one");
+  assert.match(flagged.unknown_params[0].reason, /no sabe usar: VEHICLE · Rabon Capital/);
   const draft = engineCheck({ bases: [base({ "VEHICLE__Rabon Capital": 90000 }, false)], formula: sameFormula, checkedAt: "t" });
-  assert.equal(draft.status, "ok");
+  assert.deepEqual(draft.unknown_params, []);
 });
 
 test("the FCM's own calculations replay the same through the copy", () => {
@@ -89,8 +93,11 @@ test("a new engine version or snapshot format is a change; drayage is skipped", 
 
 test("the formula check compares the live release's files with the ported ones", () => {
   assert.deepEqual(sameFormula.changed, []);
-  const changed = formulaCheck("abcdef1234", { ...FORMULA_FILES, "engine.mex.ts": "0".repeat(64) });
-  assert.deepEqual(changed, { read: "ok", release: "abcdef1234", changed: ["engine.mex.ts"] });
+  const hashes = { ...FORMULA_FILES, "engine.mex.ts": "0".repeat(64) };
+  const changed = formulaCheck("abcdef1234", hashes);
+  assert.deepEqual(changed, { read: "ok", release: "abcdef1234", changed: ["engine.mex.ts"], hashes });
+  // The kept hashes are compared again with FORMULA_FILES as they are, so refreshing them clears the review.
+  assert.deepEqual(formulaCheck(changed.release, { ...FORMULA_FILES }).changed, []);
   const moved = formulaCheck("abcdef1234", { ...FORMULA_FILES, "engine.usa.ts": null });
   assert.deepEqual(moved.changed, ["engine.usa.ts"]);
   const unpublished = formulaCheck("abcdef1234", Object.fromEntries(Object.keys(FORMULA_FILES).map((file) => [file, null])));
@@ -99,7 +106,14 @@ test("the formula check compares the live release's files with the ported ones",
   const review = engineCheck({ bases: [], formula: changed, checkedAt: "t" });
   assert.equal(review.status, "review");
   assert.match(review.reasons[0], /publicó cambios en su fórmula \(versión abcdef1: mex\)/);
-  assert.match(engineCheck({ bases: [], formula: unpublished, checkedAt: "t" }).reasons[0], /no está en GitHub/);
+  assert.match(engineCheck({ bases: [], formula: unpublished, checkedAt: "t" }).reasons[0], /No se pudo leer en GitHub/);
+});
+
+test("a replay that couldn't be read keeps its Postgres code and is not a change", () => {
+  const check = engineCheck({ bases: [], formula: sameFormula, snapshotsRead: "error", snapshotsError: "22023", checkedAt: "t" });
+  assert.equal(check.status, "ok");
+  assert.equal(check.replay.read, "error");
+  assert.equal(check.replay.error_code, "22023");
 });
 
 test("nothing to compare against is unverified, not ok", () => {

@@ -1,5 +1,5 @@
 /** Reviewed hourly FCM bases sync surface (supabase/functions/sync-fcm-bases). Static reviewed fingerprints. */
-const authorizationFingerprint = "dcd627ff319c0e5643e3ad31f62c5b53e63c269d67aa06702273c2e671563bf1";
+const authorizationFingerprint = "2db52b0b5644461cfe41b97a715befe27f6478ae62e37f255218cc60655b0e7a";
 const surfaces = [{
   "contractVersion": "1.3.0",
   "canonicalId": "edge.sync-fcm-bases.sync_fcm_bases",
@@ -20,7 +20,7 @@ const surfaces = [{
   "decisionStatus": "internal_only",
   "lifecycle": "active",
   "replacementAction": null,
-  "sourceFingerprint": "4872da11e69d6aa383d634ee567cd93fbb257768d9a0b5bf3a52a834e254a524",
+  "sourceFingerprint": "21b0fb24cc93dcbf4c8118b8e5eccfd43e7bca06d28afaac953b800541d3484f",
   "notes": "Hourly pg_cron job with the shared SYNC_CRON_SECRET; reads the FCM database through a read-only role (FCM_DATABASE_URL) and writes fcm_cost_bases (per workspace, mapped by the FCM users' emails through workspace_identity_aliases) plus the fcm_* reference tables; then checks that QuoteDesk's copy of the FCM engine still matches the FCM (the live release's formula files, read through the public FCM /health and GitHub raw, the parameters of the copied bases, and a replay of the FCM's latest saved calculations) and logs the run with that check in fcm_sync_runs.",
   "analysisCoverage": "shared-observed",
   "dependencyFiles": [
