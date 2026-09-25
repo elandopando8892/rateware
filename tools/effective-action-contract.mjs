@@ -50,7 +50,7 @@ const legacyAuthorizationOverrides = Object.fromEntries([
 // P3 implementation-ready concurrency guard adds a reviewed local dependency
 // to the shared rateware-api authorization envelope without changing tenant or
 // permission semantics.
-const ratewareApiEnvelope = 'c7ca7c2f9c33ca0363ac1cbd4b571fb6f4c15208b54bc960f09e72d96017791f';
+const ratewareApiEnvelope = 'bcc403457b3f6486794748fecf79c69b352470272ceb8453ce50000eacf5d1ee';
 const ratewareApiAuthorizationOverrides = Object.fromEntries([
   ...BASE_ACTION_CONTRACT.surfaces,
   ...carrierTemplateExtension.surfaces,
@@ -94,8 +94,10 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // (#119/#120), carrier-profile #114/#117/#119, rfx-bid #112/#124, SheetJS
 // 0.20.3 and a constant Oracle config error. None weakens authentication,
 // tenant or owner scoping.
+// 2026-09-25 (later): the Chat relay shows people's text as text (no mentions
+// or links) and carriers can't write the platform's profile_data keys.
 const brandedDomainAuthorizationEnvelopes = {
-  'edge.carrier-profile-api.': 'e9e185b8f5eb1635bad26bea09b476b88b932318a6b2dac3948cc3a4a76ab91f',
+  'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': 'a73818db2343742d058c7c758055e320d3f86b364e38a8f2335bb9bc95497784',
   'edge.gmail-oauth-callback.': '9cd3a3329bdb82d139b988dc7503fc3676b744157bd9a1063ce579fa4c8b178c',
   'edge.google-chat-app.': '0d81b2db1ca1d0442814d2e07264c967b1a1999a70be60bd1ed641fbe675475b',
@@ -104,8 +106,8 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': 'c7ca7c2f9c33ca0363ac1cbd4b571fb6f4c15208b54bc960f09e72d96017791f',
-  'edge.rfx-bid-api.': '2c49bd23bb1f3169b53436f9267b35191096339897dc35432f69477c0c0d1a82',
+  'edge.rateware-api.': 'bcc403457b3f6486794748fecf79c69b352470272ceb8453ce50000eacf5d1ee',
+  'edge.rfx-bid-api.': '970cdeb1b519d1d6eb2db842a309b8fe9ef18ae61e0bfb8be01fa7d89907fbfe',
   'edge.shipper-directory-api.': '216a3724c8455875c18dc3bf8966f2e8f33e8bfef5dee2fd2a9503d0f3d7e53e',
   'edge.shipper-profile-api.': '501f2bec390dab9ecce5b9e6aac016683fb51d2c9f8afc0217b097912fe36949',
   'edge.sync-banxico-fx.': '0bb53f48177955f59c0fbb2747094883d6680455900dab99c4f87d92490934fc',

@@ -31,6 +31,7 @@ const stripTypes = (code) =>
     .replace(/:\s*Record<string, Record<string, unknown>>/g, "")
     .replace(/:\s*Record<string, unknown>/g, "")
     .replace(/\b([a-zA-Z]+): unknown\b/g, "$1")
+    .replace(/\b(sectionKey|fieldKey): string\b/g, "$1")
     .replace(/\s+as\s+string\[\]/g, "")
     .replace(/\s+as\s+Record<string, unknown>/g, "");
 
@@ -40,6 +41,7 @@ const helpers = [
   "normalizeArray",
   "normalizeProfileData",
   "clearedProfileFields",
+  "carrierMayWrite",
   "mergeProfileData",
   "carrierNotes",
   "withCarrierNotes",
@@ -49,6 +51,8 @@ const helpers = [
 const api = Function(`
   ${stripTypes(extractConst("CARRIER_NOTES_SECTION"))}
   ${stripTypes(extractConst("CARRIER_NOTES_FIELD"))}
+  ${extractConst("INTERNAL_PROFILE_KEYS")}
+  ${extractConst("CARRIER_META_FIELDS")}
   ${helpers.join("\n")}
   return { mergeProfileData, withCarrierNotes, publicVendor };
 `)();
@@ -108,4 +112,31 @@ const api = Function(`
   });
 }
 
-console.log("Carrier profile privacy tests passed (internal notes, name/email guard, explicit clears).");
+// 5. What the platform keeps in profile_data is not the carrier's to write:
+// bounce history, merge lineage, anything stored as a list or a single value,
+// and every _meta field except the response language.
+{
+  const base = {
+    bounced_emails: [{ email: "old@carrier.mx", bounced_at: "2026-09-01" }],
+    merged_vendor_ids: ["v-old"],
+    last_duplicate_consolidation_at: "2026-09-02T00:00:00Z",
+    _meta: { response_language: "en", imported_from: "apollo" },
+    identity: { rfc: "AAA010101AAA" }
+  };
+  const merged = api.mergeProfileData(base, {
+    bounced_emails: { note: "none" },
+    merged_vendor_ids: { 0: "" },
+    last_duplicate_consolidation_at: { at: "never" },
+    _meta: { response_language: "es", imported_from: "carrier" },
+    identity: { usdot_number: "123" }
+  });
+  assert.deepEqual(merged, {
+    ...base,
+    _meta: { response_language: "es", imported_from: "apollo" },
+    identity: { rfc: "AAA010101AAA", usdot_number: "123" }
+  });
+  // Nor can the carrier clear them.
+  assert.deepEqual(api.mergeProfileData(base, { _meta: { imported_from: "" }, bounced_emails: { 0: "" } }), base);
+}
+
+console.log("Carrier profile privacy tests passed (internal notes, name/email guard, explicit clears, platform keys).");
