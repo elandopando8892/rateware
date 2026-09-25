@@ -29,9 +29,10 @@ test("source reads and Oracle removals route through the provider-neutral storag
   assert.match(storageApi, /\.eq\("owner_email", user\.owner_email\)/);
   assert.match(storageApi, /body\.confirmed !== true/);
   assert.match(storageApi, /confirmation_action !== "remove_upload"/);
-  assert.match(ratewareApi, /forwardSourceDownload\(request, body, SUPABASE_URL\)/);
-  assert.match(ratewareApi, /storage_provider !== "supabase"[\s\S]{0,200}forwardSourceRemoval\(request, body, SUPABASE_URL\)/);
-  assert.doesNotMatch(ratewareApi, /body\.action === "get_upload_source_url"[\s\S]{0,1200}createSignedUrl/);
+  // Only files kept outside Supabase Storage go through the storage service.
+  assert.match(ratewareApi, /storage_provider !== "supabase"\) \{\s*const forwarded = await forwardSourceDownload\(request, body, SUPABASE_URL\)/);
+  assert.match(ratewareApi, /storage_provider !== "supabase"\) \{\s*const forwarded = await forwardSourceRemoval\(request, body, SUPABASE_URL\)/);
+  assert.match(routing, /confirmed: body\.confirmed, confirmation_action: body\.confirmation_action/);
   assert.match(routing, /functions\/v1\/rateware-storage-api/);
   assert.match(routing, /Authorization: authorization/);
   assert.doesNotMatch(routing, /SERVICE_ROLE|OCI_S3_|oraclecloud\.com/);

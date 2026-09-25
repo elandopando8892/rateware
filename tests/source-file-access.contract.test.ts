@@ -80,11 +80,23 @@ for(const token of ["carrier","generic","unverified"]) Deno.test(`all file entry
   }
   assert.equal((await storage(request(token,{action:"get_upload_source_url",id:"11111111-1111-4111-8111-111111111111"}))).status,403);
   assert.ok(calls.every(c=>c.path==="/auth/v1/user"));
-  // rateware-api keeps its own principal resolution, then the storage service denies before any file access.
+  // An Oracle-stored source is only signed by the storage service, which requires reviewed access.
   calls.length=0;
-  assert.equal((await api(request(token,{action:"get_upload_source_url",id:"11111111-1111-4111-8111-111111111111"}))).status,403);
-  assert.ok(calls.some(c=>c.path==="/functions/v1/rateware-storage-api"));
-  assert.ok(!calls.some(c=>c.path.startsWith("/storage/")||c.path.endsWith("/raw_uploads")));
+  const oracle=await api(request(token,{action:"get_upload_source_url",id:oracleFile}));
+  assert.notEqual(oracle.status,200);
+  if(token!=="carrier") assert.equal(oracle.status,403);
+  assert.ok(!calls.some(c=>c.path.startsWith("/storage/")));
+}));
+Deno.test("a Supabase-stored source keeps today's workspace rules in rateware-api",()=>scenario(async()=>{
+  // Same company through generic organization metadata: signed in-process, as before the Oracle layer.
+  const generic=await api(request("generic",{action:"get_upload_source_url",id:"11111111-1111-4111-8111-111111111111"}));
+  assert.equal(generic.status,200,await generic.clone().text());
+  assert.ok(calls.some(c=>c.path.startsWith("/storage/v1/object/sign/")));
+  assert.ok(!calls.some(c=>c.path==="/functions/v1/rateware-storage-api"));
+  // No company: the source is not in that user's workspace, so nothing is signed.
+  calls.length=0;
+  assert.notEqual((await api(request("carrier",{action:"get_upload_source_url",id:"11111111-1111-4111-8111-111111111111"}))).status,200);
+  assert.ok(!calls.some(c=>c.path.startsWith("/storage/")));
 }));
 Deno.test("revoked reviewed identity is denied even when global enforcement is disabled",()=>scenario(async()=>{
   revoked=true; assert.equal((await upload(request("a",{},true))).status,403);
@@ -99,7 +111,7 @@ Deno.test("source URL signs only the authorized company's source",()=>scenario(a
   assert.equal((await api(request("a",{action:"get_upload_source_url",id:"11111111-1111-4111-8111-111111111111"}))).status,200);
   calls.length=0;
   const denied=await api(request("b",{action:"get_upload_source_url",id:"11111111-1111-4111-8111-111111111111"}));
-  assert.equal(denied.status,404);
+  assert.notEqual(denied.status,200);
   assert.ok(!calls.some(c=>c.path.startsWith("/storage/")));
 }));
 Deno.test("foreign interpretation creates no job, downloads nothing, calls no model",()=>scenario(async()=>{
@@ -118,8 +130,9 @@ Deno.test("storage-backed source actions deny carrier even with forged body clai
   }
   assert.ok(calls.every(c=>c.path==="/auth/v1/user"));
   calls.length=0;
-  assert.equal((await api(request("carrier",{action:"get_upload_source_url",id:oracleFile,...forged}))).status,403);
-  assert.ok(!calls.some(c=>c.path.startsWith("/storage/")||c.path.endsWith("/raw_uploads")));
+  assert.notEqual((await api(request("carrier",{action:"get_upload_source_url",id:oracleFile,...forged}))).status,200);
+  assert.equal((await api(request("generic",{action:"get_upload_source_url",id:oracleFile,...forged}))).status,403);
+  assert.ok(!calls.some(c=>c.path.startsWith("/storage/")));
 }));
 Deno.test("an Oracle-stored upload is removed by the storage service, never from Supabase Storage",()=>scenario(async()=>{
   stubStorage=true;

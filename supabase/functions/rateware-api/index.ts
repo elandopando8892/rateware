@@ -32207,10 +32207,36 @@ export function createRatewareApiHandler(
 
     if (body.action === "get_upload_source_url") {
       if (!body.id) return jsonResponse({ error: "Upload id is required." }, 400);
-      // Source files can live in Supabase Storage or Oracle; rateware-storage-api
-      // signs the download for either after checking reviewed file access.
-      const forwarded = await forwardSourceDownload(request, body, SUPABASE_URL);
-      return jsonResponse(forwarded.payload, forwarded.status);
+      const upload = await supabase
+        .from("raw_uploads")
+        .select("id,original_filename,storage_provider,storage_bucket,storage_path,mime_type")
+        .eq("id", body.id)
+        .eq("owner_email", user.owner_email)
+        .single();
+      if (upload.error) throw upload.error;
+      if (!upload.data?.storage_bucket || !upload.data?.storage_path) {
+        return jsonResponse({ error: "Source file is missing from storage." }, 404);
+      }
+
+      // Files kept in Oracle are signed by rateware-storage-api, which holds the
+      // Oracle credentials and checks reviewed file access.
+      if (upload.data.storage_provider && upload.data.storage_provider !== "supabase") {
+        const forwarded = await forwardSourceDownload(request, body, SUPABASE_URL);
+        return jsonResponse(forwarded.payload, forwarded.status);
+      }
+
+      const signed = await supabase.storage
+        .from(upload.data.storage_bucket)
+        .createSignedUrl(upload.data.storage_path, 60 * 10, {
+          download: upload.data.original_filename || undefined
+        });
+      if (signed.error) throw signed.error;
+      return jsonResponse({
+        url: signed.data.signedUrl,
+        expires_in_seconds: 600,
+        filename: upload.data.original_filename,
+        mime_type: upload.data.mime_type
+      });
     }
 
     if (body.action === "remove_upload") {

@@ -141,15 +141,13 @@ const portableRfxBidSourceFingerprintOverrides = {
   'edge.rfx-bid-api.withdraw_bid': '6ec9d89d98ca2bbcceed7b697fa1acd22929d29d4519c4f31e5ffc7d72fd28c0',
 };
 
-// rateware-api forwards get_upload_source_url, and remove_upload for files kept
-// outside Supabase Storage, to rateware-storage-api with the caller's own bearer
-// (_shared/source-download-routing.mjs). No service credential is substituted.
+// For files kept outside Supabase Storage, rateware-api forwards
+// get_upload_source_url and remove_upload to rateware-storage-api with the
+// caller's own bearer (_shared/source-download-routing.mjs); Supabase-stored
+// files keep the in-process path. No service credential is substituted.
 const oracleStorageSurfaceOverrides = {
-  'edge.rateware-api.get_upload_source_url': { handler: 'forwardSourceDownload', sourceFingerprint: '9a2597f0ed73bc228416433cec76bc0b84163341125c6b0352f9b82beda820eb' },
+  'edge.rateware-api.get_upload_source_url': { sourceFingerprint: '35ec7b2a0469f28567702178cf05fcb0ead07d9ef5aea2a0b2d05aa619bf4830' },
   'edge.rateware-api.remove_upload': { sourceFingerprint: '9b772c50588df68658fa9b069cebd43113670425c9ea6cd22c72c0967b816510' },
-};
-const oracleStorageMetadataOverrides = {
-  'edge.rateware-api.get_upload_source_url': '7d5df914fc489e9a4a3d23b0254be9d0724ac50523b12396ab02208ae86ec868',
 };
 // _shared/auth.ts now also returns email_confirmed and rateware_organization_id,
 // read only by the reviewed source-file access check. quotedesk-api's handlers,
@@ -362,7 +360,6 @@ export const ACTION_CONTRACT = {
     ...fcmSyncExtension.reviewedMetadataFingerprints,
     ...objectStorageExtension.reviewedMetadataFingerprints,
     ...supabaseAuthMetadataOverrides,
-    ...oracleStorageMetadataOverrides,
   },
   reviewedAuthorizationFingerprints: {
     ...BASE_ACTION_CONTRACT.reviewedAuthorizationFingerprints,
