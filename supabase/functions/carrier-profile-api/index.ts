@@ -102,17 +102,34 @@ function clearedProfileFields(patchValue: unknown) {
   return cleared;
 }
 
+// profile_data also holds what the platform keeps about the carrier (bounce
+// history, merge lineage): the carrier's page writes answer sections only.
+// Anything already stored as a list or a single value is the platform's, and
+// in _meta the carrier sets just its response language.
+const INTERNAL_PROFILE_KEYS = new Set(["bounced_emails", "merged_vendor_ids", "last_duplicate_consolidation_at"]);
+const CARRIER_META_FIELDS = new Set(["response_language"]);
+
+function carrierMayWrite(base: Record<string, unknown>, sectionKey: string, fieldKey: string) {
+  if (INTERNAL_PROFILE_KEYS.has(sectionKey)) return false;
+  const current = base[sectionKey];
+  if (current !== undefined && (current === null || typeof current !== "object" || Array.isArray(current))) return false;
+  return sectionKey !== "_meta" || CARRIER_META_FIELDS.has(fieldKey);
+}
+
 function mergeProfileData(baseValue: unknown, patchValue: unknown) {
   const base = objectRecord(baseValue);
   const patch = normalizeProfileData(patchValue);
   const merged: Record<string, unknown> = { ...base };
   for (const [sectionKey, fields] of Object.entries(patch)) {
+    const allowed = Object.fromEntries(Object.entries(fields).filter(([fieldKey]) => carrierMayWrite(base, sectionKey, fieldKey)));
+    if (!Object.keys(allowed).length) continue;
     merged[sectionKey] = {
       ...objectRecord(merged[sectionKey]),
-      ...fields
+      ...allowed
     };
   }
   for (const [sectionKey, fieldKey] of clearedProfileFields(patchValue)) {
+    if (!carrierMayWrite(base, sectionKey, fieldKey)) continue;
     const section = { ...objectRecord(merged[sectionKey]) };
     if (!(fieldKey in section)) continue;
     delete section[fieldKey];

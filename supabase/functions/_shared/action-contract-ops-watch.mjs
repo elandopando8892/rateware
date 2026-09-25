@@ -1,5 +1,5 @@
 /** Reviewed daily operations watch surface (supabase/functions/ops-daily-watch). Static reviewed fingerprints. */
-const authorizationFingerprint = "47474d2c385feeec23e620eb0ec1a13853baa2664d777710f9eb9e587e37700a";
+const authorizationFingerprint = "4ecd1271e0bc527fbc040880ff06fa094037153df60ee1630f661a815b1d7b71";
 const surfaces = [{
   "contractVersion": "1.3.0",
   "canonicalId": "edge.ops-daily-watch.ops_daily_watch",

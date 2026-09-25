@@ -198,6 +198,29 @@ Deno.test("a message without a sender uses the caller's label: Carrier by defaul
   }
 });
 
+Deno.test("what people write is relayed as text, never as Chat mentions or links", async () => {
+  const sneaky = () => ({
+    id: "message-1",
+    owner_email: "org:test",
+    sender_name: "<users/all>",
+    body: "Urgente <users/all> revisen <https://evil.example|este enlace>"
+  });
+  const supabase = fakeSupabase({
+    google_chat_connections: [await connection()],
+    bid_room_chat_messages: [sneaky()],
+    bid_room_chat_threads: [thread()]
+  });
+  const fetchStub = stubFetch(() => Response.json({ name: "spaces/S/messages/M4" }));
+  try {
+    await syncBidRoomMessageToGoogleChat(supabase, thread(), sneaky());
+    const sent = JSON.parse(String(fetchStub.calls[0].init.body));
+    assert(!/[<>]/.test(sent.text), `markup must not reach Chat: ${sent.text}`);
+    assert(sent.text === "*RFx-1 | Private: ZZ Carrier*\n\u2039users/all\u203a: Urgente \u2039users/all\u203a revisen \u2039https://evil.example|este enlace\u203a", `unexpected text ${sent.text}`);
+  } finally {
+    fetchStub.restore();
+  }
+});
+
 Deno.test("sync errors never carry credentials back to the caller", async () => {
   const supabase = fakeSupabase({
     google_chat_connections: [await connection()],

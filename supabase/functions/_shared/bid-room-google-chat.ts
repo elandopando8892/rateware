@@ -111,6 +111,17 @@ function googleChatThreadTarget(thread: Record<string, unknown>, threadKey: stri
   };
 }
 
+// Google Chat reads <users/all>, <users/...> and <url|label> in message text as
+// mentions and links. What carriers and the team write is relayed as typed,
+// never as markup (a carrier could otherwise ping the whole space).
+function plainChatText(value: string) {
+  return value.replace(/</g, "\u2039").replace(/>/g, "\u203a");
+}
+
+function chatMessageText(title: string, sender: string, body: string) {
+  return `*${plainChatText(title)}*\n${plainChatText(sender)}: ${plainChatText(body)}`;
+}
+
 export async function googleChatAccessToken(supabase: ChatSupabaseClient, ownerEmail: string | null) {
   const result = await supabase
     .from("google_chat_connections")
@@ -190,7 +201,7 @@ async function syncBidRoomMessageToGoogleChatApi(
   const threadKey = cleanText(thread.google_chat_thread_key) || bidRoomGoogleThreadKey(thread.rfx_event_id, String(thread.thread_type || "event_group"), thread.rfx_lane_id, thread.vendor_id);
   const sender = cleanText(message.sender_name || message.sender_email) || defaultSender;
   const title = cleanText(thread.title) || cleanText(event.rfx_id || event.name) || "Bid Room";
-  const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;
+  const text = chatMessageText(title, sender, cleanText(message.body) || "");
   try {
     const accessToken = await googleChatAccessToken(supabase, ownerEmail);
     const target = googleChatThreadTarget(thread, threadKey);
@@ -250,7 +261,7 @@ export async function syncBidRoomMessageToGoogleChat(
   url.searchParams.set("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD");
   const sender = cleanText(message.sender_name || message.sender_email) || defaultSender;
   const title = cleanText(thread.title) || cleanText(event.rfx_id || event.name) || "Bid Room";
-  const text = `*${title}*\n${sender}: ${cleanText(message.body) || ""}`;
+  const text = chatMessageText(title, sender, cleanText(message.body) || "");
   try {
     const response = await fetch(url.toString(), {
       method: "POST",
