@@ -897,9 +897,35 @@ async function fcmCostBases(supabase: Db, workspace: Workspace) {
   return (result.data || []) as Row[];
 }
 
-async function listFcmCostBases(supabase: Db, workspace: Workspace) {
-  const bases = await fcmCostBases(supabase, workspace);
+// The copy checks itself against the FCM after every hourly sync
+// (sync-fcm-bases/engine-check.mjs): "ok", "review" (the FCM changed; estimates
+// are flagged) or "unverified" (nothing to compare against yet).
+const ENGINE_CHECK_STATUSES = ["ok", "review", "unverified"];
+
+/** The estimate's first warning while the check says the FCM moved on. */
+function engineReviewWarning(reasons: string[]) {
+  return `En revisión: ${reasons.join(" ") || "el FCM cambió."} Este precio puede no coincidir con el FCM hasta que QuoteDesk se ponga al día.`;
+}
+
+async function fcmEngineCheck(supabase: Db) {
+  const result = await supabase.from("fcm_sync_runs").select("engine_check")
+    .eq("status", "succeeded").not("engine_check", "is", null)
+    .order("started_at", { ascending: false }).limit(1).maybeSingle();
+  if (result.error) throw result.error;
+  const check = record(result.data?.engine_check);
+  const release = record(check.formula).release;
   return {
+    status: ENGINE_CHECK_STATUSES.includes(String(check.status)) ? String(check.status) : "unverified",
+    checked_at: typeof check.checked_at === "string" ? check.checked_at : null,
+    reasons: Array.isArray(check.reasons) ? check.reasons.map(String) : [],
+    fcm_release: typeof release === "string" ? release.slice(0, 7) : null
+  };
+}
+
+async function listFcmCostBases(supabase: Db, workspace: Workspace) {
+  const [bases, engineCheck] = await Promise.all([fcmCostBases(supabase, workspace), fcmEngineCheck(supabase)]);
+  return {
+    engine_check: engineCheck,
     bases: bases.map((base) => ({
       id: base.id,
       name: base.name,
@@ -1099,6 +1125,8 @@ async function estimateLaneFcm(supabase: Db, workspace: Workspace, body: Row) {
   if ((operation === "D2D Export" || operation === "D2D Import") && !estimate.border.known) {
     warnings.push("Sin modelo de cruce: se incluyó el cruce, como en el FCM. Elige intercambio o placas azules para confirmarlo.");
   }
+  const engineCheck = await fcmEngineCheck(supabase);
+  if (engineCheck.status === "review") warnings.unshift(engineReviewWarning(engineCheck.reasons));
   // Components in the quote's currency.
   const inQuote = (usd: number | null) => usd === null ? null : quote.currency === "MXN" ? round2(usd * (fx as number)) : usd;
   const components = estimate.components as Record<string, number | null>;
@@ -1127,6 +1155,7 @@ async function estimateLaneFcm(supabase: Db, workspace: Workspace, body: Row) {
     mx: estimate.mx ? { ...estimate.mx, ...mexInfo } : null,
     us: estimate.us ? { ...estimate.us, ...usaInfo } : null,
     engine: estimate.engine,
+    engine_check: engineCheck,
     warnings,
     estimated_at: nowIso()
   };
