@@ -10,6 +10,7 @@ import { FCM_SYNC_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_share
 import { OPS_WATCH_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-ops-watch.mjs';
 import { TEAM_MEMBERSHIP_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-team-membership.mjs';
 import { OBJECT_STORAGE_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-object-storage.mjs';
+import { CUSTOMER_RFI_LOOKUPS_ACTION_CONTRACT_EXTENSION } from '../supabase/functions/_shared/action-contract-customer-rfi-lookups.mjs';
 
 const extension = PROVIDER_SERVICE_ACTION_CONTRACT_EXTENSION;
 const carrierTemplateExtension = CARRIER_LIST_TEMPLATE_ACTION_CONTRACT_EXTENSION;
@@ -22,6 +23,7 @@ const fcmSyncExtension = FCM_SYNC_ACTION_CONTRACT_EXTENSION;
 const opsWatchExtension = OPS_WATCH_ACTION_CONTRACT_EXTENSION;
 const teamMembershipExtension = TEAM_MEMBERSHIP_ACTION_CONTRACT_EXTENSION;
 const objectStorageExtension = OBJECT_STORAGE_ACTION_CONTRACT_EXTENSION;
+const customerRfiLookupsExtension = CUSTOMER_RFI_LOOKUPS_ACTION_CONTRACT_EXTENSION;
 const contractVersion = extension.contractVersion;
 const delta = extension.expectedCountsDelta;
 const carrierTemplateDelta = carrierTemplateExtension.expectedCountsDelta;
@@ -98,6 +100,8 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // or links) and carriers can't write the platform's profile_data keys.
 // 2026-09-25 (evening): whatsapp-webhook links a reply to the "+52..." number it
 // was sent to; the verify token and signature checks are unchanged.
+// 2026-09-26: rfx-bid-api adds two read-only lookups behind the customer RFI
+// link (places and freight lists); its existing handlers are unchanged.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': 'a73818db2343742d058c7c758055e320d3f86b364e38a8f2335bb9bc95497784',
@@ -109,7 +113,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
   'edge.rateware-api.': 'bcc403457b3f6486794748fecf79c69b352470272ceb8453ce50000eacf5d1ee',
-  'edge.rfx-bid-api.': '970cdeb1b519d1d6eb2db842a309b8fe9ef18ae61e0bfb8be01fa7d89907fbfe',
+  'edge.rfx-bid-api.': '3a4394c4405cf9c4f1a3b60d2ac653a09c2492fcb3b54bf89bffa834a9c47c4e',
   'edge.shipper-directory-api.': '216a3724c8455875c18dc3bf8966f2e8f33e8bfef5dee2fd2a9503d0f3d7e53e',
   'edge.shipper-profile-api.': '501f2bec390dab9ecce5b9e6aac016683fb51d2c9f8afc0217b097912fe36949',
   'edge.sync-banxico-fx.': '0bb53f48177955f59c0fbb2747094883d6680455900dab99c4f87d92490934fc',
@@ -375,8 +379,8 @@ export const ACTION_CONTRACT = {
   contractVersion,
   methodVersion: `${BASE_ACTION_CONTRACT.methodVersion}+provider-service-convergence+provider-gmail-intake+provider-gmail-pubsub+carrier-list-templates+rfx-invitation-reviews+rfx-atomic-award+website-intake+quotedesk+us-diesel`,
   expectedCounts: {
-    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable + opsWatchExtension.expectedCountsDelta.governable + teamMembershipExtension.expectedCountsDelta.governable + objectStorageExtension.expectedCountsDelta.governable,
-    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge + opsWatchExtension.expectedCountsDelta.edge + objectStorageExtension.expectedCountsDelta.edge,
+    governable: BASE_ACTION_CONTRACT.expectedCounts.governable + delta.governable + 6 + carrierTemplateDelta.governable + rfxInvitationReviewDelta.governable + rfxAtomicAwardExtension.expectedCountsDelta.governable + websiteIntakeExtension.expectedCountsDelta.governable + quotedeskExtension.expectedCountsDelta.governable + usDieselExtension.expectedCountsDelta.governable + fcmSyncExtension.expectedCountsDelta.governable + opsWatchExtension.expectedCountsDelta.governable + teamMembershipExtension.expectedCountsDelta.governable + objectStorageExtension.expectedCountsDelta.governable + customerRfiLookupsExtension.expectedCountsDelta.governable,
+    edge: BASE_ACTION_CONTRACT.expectedCounts.edge + delta.edge + 6 + carrierTemplateDelta.edge + rfxInvitationReviewDelta.edge + websiteIntakeExtension.expectedCountsDelta.edge + quotedeskExtension.expectedCountsDelta.edge + usDieselExtension.expectedCountsDelta.edge + fcmSyncExtension.expectedCountsDelta.edge + opsWatchExtension.expectedCountsDelta.edge + objectStorageExtension.expectedCountsDelta.edge + customerRfiLookupsExtension.expectedCountsDelta.edge,
     postgres: BASE_ACTION_CONTRACT.expectedCounts.postgres + delta.postgres + carrierTemplateDelta.postgres + rfxAtomicAwardExtension.expectedCountsDelta.postgres + websiteIntakeExtension.expectedCountsDelta.postgres + quotedeskExtension.expectedCountsDelta.postgres + teamMembershipExtension.expectedCountsDelta.postgres,
     ratewareApi: BASE_ACTION_CONTRACT.expectedCounts.ratewareApi + delta.ratewareApi + carrierTemplateDelta.ratewareApi + rfxInvitationReviewDelta.ratewareApi,
   },
@@ -395,6 +399,7 @@ export const ACTION_CONTRACT = {
     ...opsWatchExtension.reviewedMetadataFingerprints,
     ...teamMembershipExtension.reviewedMetadataFingerprints,
     ...objectStorageExtension.reviewedMetadataFingerprints,
+    ...customerRfiLookupsExtension.reviewedMetadataFingerprints,
     ...supabaseAuthMetadataOverrides,
   },
   reviewedAuthorizationFingerprints: {
@@ -413,6 +418,7 @@ export const ACTION_CONTRACT = {
     ...opsWatchExtension.reviewedAuthorizationFingerprints,
     ...teamMembershipExtension.reviewedAuthorizationFingerprints,
     ...objectStorageExtension.reviewedAuthorizationFingerprints,
+    ...customerRfiLookupsExtension.reviewedAuthorizationFingerprints,
     ...corsOnlyAuthorizationOverrides,
     ...supabaseAuthAuthorizationOverrides,
     ...ratewareApiAuthorizationOverrides,
@@ -445,5 +451,6 @@ export const ACTION_CONTRACT = {
     ...opsWatchExtension.surfaces,
     ...teamMembershipExtension.surfaces,
     ...objectStorageExtension.surfaces,
+    ...customerRfiLookupsExtension.surfaces,
   ],
 };

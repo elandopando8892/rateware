@@ -4501,6 +4501,113 @@ async function getCustomerRfi(supabase: RfxBidSupabaseClient, token: unknown) {
   };
 }
 
+// The shipper's own form looks places and freight lists up behind its link:
+// the same catalogs QuoteDesk uses, read-only. Other workspaces' manual items
+// and internal service values (a backhaul is our cost assumption) stay out.
+const CUSTOMER_RFI_OPTION_CATEGORIES = ["equipment", "trailer", "config", "operation", "service"];
+const CUSTOMER_RFI_HIDDEN_OPTIONS: Record<string, Set<string>> = { service: new Set(["BACKHAUL"]) };
+
+function customerRfiLocationSearch(value: unknown) {
+  return (cleanText(value) || "").replace(/[(),%_"\\*]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+function customerRfiLocationOption(location: Record<string, unknown>) {
+  const value = cleanText(location.raw_value || location.metro_city || [location.city, location.state_code].filter(Boolean).join(", ")) || "";
+  const geography = [location.zip_prefix, location.market, location.region, location.country].filter(Boolean).join(" | ");
+  return {
+    id: location.id,
+    value,
+    label: [location.metro_city || value, geography].filter(Boolean).join(" | "),
+    zip_prefix: location.zip_prefix || null,
+    city: location.city || null,
+    state_code: location.state_code || null,
+    state_name: location.state_name || null,
+    country: location.country || null,
+    market: location.market || null,
+    region: location.region || null
+  };
+}
+
+function customerRfiCatalogOptions(rows: Record<string, unknown>[], ownerEmail: string | null) {
+  const categories: Record<string, string[]> = Object.fromEntries(CUSTOMER_RFI_OPTION_CATEGORIES.map((category) => [category, []]));
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const category = cleanText(row.category);
+    if (!category || !categories[category] || row.active === false) continue;
+    if (cleanText(row.source) === "rateware_manual_catalog") {
+      const owner = cleanText(objectRecord(row.metadata).owner_email);
+      if (owner && owner !== ownerEmail) continue;
+    }
+    const value = cleanText(row.normalized_value || row.raw_value || row.code);
+    const key = value?.toUpperCase();
+    if (!value || !key || seen.has(`${category}|${key}`) || CUSTOMER_RFI_HIDDEN_OPTIONS[category]?.has(key)) continue;
+    seen.add(`${category}|${key}`);
+    categories[category].push(value);
+  }
+  for (const values of Object.values(categories)) values.sort((a, b) => a.localeCompare(b));
+  return categories;
+}
+
+async function customerRfiSearchLocations(supabase: RfxBidSupabaseClient, input: Record<string, unknown>) {
+  await currentCustomerRfiContext(supabase, input.token);
+  const search = customerRfiLocationSearch(input.search);
+  if (search.length < 2) return { rows: [] };
+  const limit = Math.min(Math.max(Number(input.limit) || 12, 1), 20);
+  const country = cleanText(input.country)?.toUpperCase();
+  let query = supabase
+    .from("rateware_locations")
+    .select("id,raw_value,zip_prefix,metro_city,city,state_code,state_name,country,market,region")
+    .eq("active", true)
+    .or([
+      `raw_value.ilike.%${search}%`,
+      `zip_prefix.ilike.%${search}%`,
+      `city.ilike.%${search}%`,
+      `metro_city.ilike.%${search}%`,
+      `state_code.ilike.%${search}%`,
+      `state_name.ilike.%${search}%`
+    ].join(","))
+    .order("raw_value", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(limit * 4);
+  if (country && ["MX", "US", "CA"].includes(country)) query = query.eq("country", country);
+  const result = await query;
+  if (result.error) throw result.error;
+  const unique = new Map<string, ReturnType<typeof customerRfiLocationOption>>();
+  for (const location of (result.data || []) as Record<string, unknown>[]) {
+    const option = customerRfiLocationOption(location);
+    const key = [option.country, option.city, option.state_code, option.zip_prefix, option.market].map(cleanText).join("|");
+    if (!unique.has(key)) unique.set(key, option);
+    if (unique.size >= limit) break;
+  }
+  return { rows: [...unique.values()] };
+}
+
+async function customerRfiOptions(supabase: RfxBidSupabaseClient, input: Record<string, unknown>) {
+  const { project } = await currentCustomerRfiContext(supabase, input.token);
+  const [catalog, crossings] = await Promise.all([
+    supabase
+      .from("rateware_catalog_items")
+      .select("category,source,raw_value,normalized_value,code,metadata,active")
+      .in("category", CUSTOMER_RFI_OPTION_CATEGORIES)
+      .limit(2000),
+    supabase
+      .from("border_crossing_pairs")
+      .select("crossing_name,mx_city,us_city")
+      .eq("active", true)
+      .order("default_rank", { ascending: true })
+      .limit(50)
+  ]);
+  if (catalog.error) throw catalog.error;
+  if (crossings.error) throw crossings.error;
+  const borderCrossings = ((crossings.data || []) as Record<string, unknown>[])
+    .map((pair) => cleanText(pair.crossing_name) || [pair.mx_city, pair.us_city].map(cleanText).filter(Boolean).join(" / "))
+    .filter(Boolean);
+  return {
+    categories: customerRfiCatalogOptions((catalog.data || []) as Record<string, unknown>[], cleanText(project.owner_email)),
+    border_crossings: [...new Set(borderCrossings)]
+  };
+}
+
 async function saveCustomerRfi(supabase: RfxBidSupabaseClient, input: Record<string, unknown>, submitting = false) {
   const context = await currentCustomerRfiContext(supabase, input.token);
   const projectId = cleanText(context.project.id) || "";
@@ -4684,6 +4791,14 @@ Deno.serve(async (request) => {
 
     if (body.action === "submit_customer_rfi") {
       return jsonResponse(await saveCustomerRfi(supabase, body, true));
+    }
+
+    if (body.action === "customer_rfi_search_locations") {
+      return jsonResponse(await customerRfiSearchLocations(supabase, body));
+    }
+
+    if (body.action === "customer_rfi_options") {
+      return jsonResponse(await customerRfiOptions(supabase, body));
     }
 
     const token = cleanText(body.token);
