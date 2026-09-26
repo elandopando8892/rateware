@@ -75,11 +75,24 @@ test("QuoteDesk operations, services and equipment map onto the FCM's", () => {
   assert.equal(fcmOperation("", "US", "US"), "Intra-US");
   assert.equal(fcmOperation("MX Southbound", "MX", "MX"), "MX Southbound");
 
+  // The RFI template's names price as the FCM's own.
+  assert.equal(fcmOperation("Intra-MX", "MX", "MX"), "Intra-Mex");
+  assert.equal(fcmOperation("Local MX", "MX", "MX"), "Local");
+  assert.equal(fcmOperation("Local US/CA", "US", "US"), "Intra-US", "a US local lane uses the US engine, not the FCM's Mexican Local");
+  assert.equal(fcmOperation("Intra-US/CA", "US", "CA"), "Intra-US");
+  assert.equal(fcmOperation("US/CA Northbound", "US", "US"), "US Northbound");
+  assert.equal(fcmOperation("US/CA Southbound", "US", "US"), "US Southbound");
+  assert.equal(fcmOperation("Local US/CA", "MX", "MX"), "Intra-Mex", "the countries win over a mislabeled template name");
+  assert.equal(fcmOperation("Intra-MX", "MX", "US"), "D2D Export");
+  assert.equal(fcmOperation("MX Drayage", "MX", "MX"), "Intra-Mex", "the FCM's Drayage is the US leg; a Mexican one goes by the countries");
+
   assert.equal(fcmService("", "D2D Import"), "Backhaul", "imports default to the carrier's backhaul");
   assert.equal(fcmService("", "D2D Export"), "One Way");
   assert.equal(fcmService("Expedited", "D2D Import"), "Expedited", "an expedited load is never a backhaul");
   assert.equal(fcmService("RT", "Intra-Mex"), "Roundtrip");
   assert.equal(fcmService("OW Import", "D2D Import"), "One Way");
+  assert.equal(fcmService("Milkrun", "Intra-Mex"), "One Way", "the FCM prices a milk run's legs as one-way trips");
+  assert.equal(fcmService("Dedicated", "Intra-Mex"), "One Way");
 
   assert.equal(customerService("Backhaul"), "One Way", "the shipper always sees one-way");
   assert.equal(customerService("Roundtrip"), "Roundtrip");

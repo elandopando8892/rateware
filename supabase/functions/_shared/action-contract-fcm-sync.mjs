@@ -1,5 +1,5 @@
 /** Reviewed hourly FCM bases sync surface (supabase/functions/sync-fcm-bases). Static reviewed fingerprints. */
-const authorizationFingerprint = "2db52b0b5644461cfe41b97a715befe27f6478ae62e37f255218cc60655b0e7a";
+const authorizationFingerprint = "98607a3359c14271173133306ba6ef5812c1855f403a3ead285c69c6ed94845b";
 const surfaces = [{
   "contractVersion": "1.3.0",
   "canonicalId": "edge.sync-fcm-bases.sync_fcm_bases",
