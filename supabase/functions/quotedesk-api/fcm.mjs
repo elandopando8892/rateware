@@ -570,9 +570,25 @@ export function tierMargins(params) {
 
 const FCM_OPERATIONS = new Set(["D2D Export", "D2D Import", "Intra-Mex", "Local", "MX Northbound", "MX Southbound", "Intra-US", "US Northbound", "US Southbound"]);
 
+/**
+ * The RFI template's names (the shipper's form and the shared catalog use
+ * them) for operations the FCM models under its own name. MX Drayage isn't
+ * one: the FCM's Drayage is the US leg, so the countries decide.
+ */
+const TEMPLATE_OPERATIONS = {
+  "Intra-MX": "Intra-Mex",
+  "Local MX": "Local",
+  "Intra-US/CA": "Intra-US",
+  "Local US/CA": "Intra-US",
+  "US/CA Northbound": "US Northbound",
+  "US/CA Southbound": "US Southbound"
+};
+const MX_SIDE = new Set(["Intra-Mex", "Local"]);
+
 /** QuoteDesk's operation (rateware catalog) as an FCM operation; the countries decide when it is ambiguous. */
 export function fcmOperation(operation, originCountry, destinationCountry) {
-  const value = String(operation || "").trim();
+  const named = String(operation || "").trim();
+  const value = TEMPLATE_OPERATIONS[named] || named;
   const from = String(originCountry || "").toUpperCase();
   const to = String(destinationCountry || "").toUpperCase();
   const mx = (country) => country === "MX";
@@ -586,6 +602,8 @@ export function fcmOperation(operation, originCountry, destinationCountry) {
   // A cross-border operation needs one leg in each country, and a domestic one none.
   const crossBorder = value === "D2D Export" || value === "D2D Import";
   if (crossBorder !== (mx(from) !== mx(to))) return byCountries;
+  // A template name also says which country the lane runs in ("Local US/CA"); the countries must agree.
+  if (value !== named && MX_SIDE.has(value) !== (mx(from) && mx(to))) return byCountries;
   return value;
 }
 
