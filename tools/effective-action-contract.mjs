@@ -106,20 +106,20 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // onto the new event (a column it already writes elsewhere); no check changes.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
-  'edge.create-raw-upload.': 'a73818db2343742d058c7c758055e320d3f86b364e38a8f2335bb9bc95497784',
+  'edge.create-raw-upload.': '47344307ceef4b051008850e8211fad1e395c7fd5830e3a3f011a10d5a36ccf3',
   'edge.gmail-oauth-callback.': '9cd3a3329bdb82d139b988dc7503fc3676b744157bd9a1063ce579fa4c8b178c',
   'edge.google-chat-app.': '0d81b2db1ca1d0442814d2e07264c967b1a1999a70be60bd1ed641fbe675475b',
-  'edge.interpret-upload.': 'e6397a0717a033499d5a20802a6b18a8eed8a728e592a023957e6f352b0ccc4b',
-  'edge.provider-gmail-intake-api.': '28bfe3826a64022d33a47a1442c5180f94f0d8306911a60cb250dd5ab49771e1',
+  'edge.interpret-upload.': '304b078d1da33c906068d510767dc95cf6fe82c576e627b818d85d33229df0a4',
+  'edge.provider-gmail-intake-api.': '51f613ef43bb666a2bbe81fd09ab99af18315677a6210119bc105bafc7f5f9b6',
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': '3e5a57056017e24f6d73e0f26985d959185bdce2b0de98dc0d37f07a848d8c95',
+  'edge.rateware-api.': '7c86bb97b4df5f4a8a93278194b9cf80803ab1971f6b38d622ae5880390aaf26',
   'edge.rfx-bid-api.': '3a4394c4405cf9c4f1a3b60d2ac653a09c2492fcb3b54bf89bffa834a9c47c4e',
-  'edge.shipper-directory-api.': '216a3724c8455875c18dc3bf8966f2e8f33e8bfef5dee2fd2a9503d0f3d7e53e',
+  'edge.shipper-directory-api.': '529b561a078707872c24b999e1ed60c61ad2b024fcbfbdc4b9d3f121dca942cf',
   'edge.shipper-profile-api.': '501f2bec390dab9ecce5b9e6aac016683fb51d2c9f8afc0217b097912fe36949',
   'edge.sync-banxico-fx.': '0bb53f48177955f59c0fbb2747094883d6680455900dab99c4f87d92490934fc',
-  'edge.sync-rateware-catalog.': '227ee313ff58c30d3ddf907d2fa437c5d0e17d2d52d23d2d198e4a6de3608c98',
+  'edge.sync-rateware-catalog.': '3d0999b983698fe5157ad223da8772130d6c769c9e55e06ebb4efa8c92f1bd95',
   'edge.whatsapp-webhook.': '8b8236be223a75d8da2d109ed9a28b7ea6f4d6031f458051d0c5c49b203e5da1',
 };
 // These eight pre-existing actions share reviewed code segments with the newly
@@ -192,7 +192,7 @@ const oracleStorageSurfaceOverrides = {
 // read only by the reviewed source-file access check, and fcm.mjs reads free-text
 // equipment as the FCM's units. quotedesk-api's tenant scoping and permissions
 // are unchanged.
-const quotedeskAuthEnvelope = 'bdada8fab5916a957f7a93884cfefbc5a3004734c8468f2ed1180c1636ae1ad9';
+const quotedeskAuthEnvelope = '8cb354a744106c302e7c73bb988cfc5b6ae99aa22c85dce488d2bd4b6a62604a';
 
 const supabaseAuthMetadataOverrides = {
   'edge.google-chat-app.handle_chat_event': 'fd759bead6f0bfed76d9f70c962399ba7d815ef30f7a85491d68c4d5b088accf',

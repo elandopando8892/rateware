@@ -43,7 +43,7 @@ async function fakeFetch(input: string | URL | Request, init?: RequestInit): Pro
     const token=req.headers.get("authorization")?.replace("Bearer ","");
     if(token==="invalid") return json({},401);
     return json({id:token,email:`${token}@example.invalid`,email_confirmed_at:token==="unverified"?null:"2026-01-01",
-      app_metadata:token==="carrier"?{}:token==="generic"?{organization_id:"org-a"}:{rateware_organization_id:token==="b"?"org-b":"org-a"},
+      app_metadata:token==="carrier"?{}:token==="generic"?{organization_id:"org-a"}:{rateware_organization_id:token==="b"?"org-b":"org-a",roles:["operator"]},
       user_metadata:{rateware_organization_id:"org-a",organization_id:"org-a"}});
   }
   if(u.pathname.endsWith("/external_identities")) return json(missing?[]:[{id:identity,status:revoked?"revoked":"active"}]);
