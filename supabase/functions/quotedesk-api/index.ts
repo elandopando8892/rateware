@@ -9,6 +9,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse } from "../_shared/kinde.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
+import { teamRoleDenial } from "../_shared/team-roles.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus } from "../_shared/runtime-identity.ts";
 import { GMAIL_ALLOWED_SENDER, GmailSendError, gmailAccessToken, gmailRawMessage, sendGmailRaw, suppressedEmails } from "../_shared/gmail-send.ts";
 import { isEmail, renderQuoteEmail } from "./email.mjs";
@@ -174,7 +175,7 @@ async function audit(supabase: Db, workspace: Workspace, action: string, entityT
   if (result.error) console.warn("QUOTEDESK_AUDIT_FAILED", { action, entityId, error: result.error.message });
 }
 
-async function resolveWorkspace(request: Request, supabase: Db): Promise<Workspace> {
+async function resolveWorkspace(request: Request, supabase: Db): Promise<{ workspace: Workspace; claims: Row }> {
   let claims: Row;
   try {
     claims = await requireRatewareUser(request) as Row;
@@ -186,7 +187,10 @@ async function resolveWorkspace(request: Request, supabase: Db): Promise<Workspa
     const ownerEmail = text(user.owner_email, 320);
     const organizationId = text(user.organization_id, 200);
     if (!ownerEmail || !organizationId) throw new HttpError(403, "QuoteDesk requires an organization workspace.");
-    return { owner_user_id: text(user.owner_user_id, 200), owner_email: ownerEmail, organization_id: organizationId };
+    return {
+      workspace: { owner_user_id: text(user.owner_user_id, 200), owner_email: ownerEmail, organization_id: organizationId },
+      claims
+    };
   } catch (error) {
     if (error instanceof HttpError) throw error;
     throw new HttpError(runtimeIdentityStatus(error) === 403 ? 403 : 401, "Workspace could not be resolved.");
@@ -1507,13 +1511,16 @@ async function handle(request: Request) {
   if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, request);
   try {
     const supabase = db();
-    const workspace = await resolveWorkspace(request, supabase);
+    const { workspace, claims } = await resolveWorkspace(request, supabase);
     let body: Row;
     try {
       body = record(await request.json());
     } catch {
       throw new HttpError(400, "El cuerpo de la solicitud no es JSON válido.");
     }
+    // The team role gate: archiving and restoring quotes, and the accessorial catalog, are an Administrador's.
+    const roleDenial = teamRoleDenial("quotedesk-api", claims, body);
+    if (roleDenial) return jsonResponse(roleDenial, 403, request);
     switch (body.action) {
       case "get_context":
         return jsonResponse(await getContext(supabase, workspace), 200, request);

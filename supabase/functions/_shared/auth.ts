@@ -28,6 +28,12 @@ async function requireSupabaseUser(token: string) {
       ? appMetadata.permissions.filter((permission): permission is string =>
         typeof permission === "string" && permission.trim().length > 0
       ).map((permission) => permission.trim())
+      : [],
+    // The team role (admin | operator | viewer), server-managed too; see team-roles.ts.
+    roles: Array.isArray(appMetadata.roles)
+      ? appMetadata.roles.filter((role): role is string =>
+        typeof role === "string" && role.trim().length > 0
+      ).map((role) => role.trim().toLowerCase())
       : []
   };
 }

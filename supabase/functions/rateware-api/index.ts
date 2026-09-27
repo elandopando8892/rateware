@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders, jsonResponse as baseJsonResponse } from "../_shared/kinde.ts";
 import { bidRoomGoogleThreadKey, googleChatAccessToken, syncBidRoomMessageToGoogleChat } from "../_shared/bid-room-google-chat.ts";
 import { requireRatewareUser } from "../_shared/auth.ts";
+import { teamRoleDenial } from "../_shared/team-roles.ts";
 import { resolveRuntimeWorkspaceUser, runtimeIdentityStatus, type RuntimeWorkspaceUser } from "../_shared/runtime-identity.ts";
 import { forwardSourceDownload, forwardSourceRemoval } from "../_shared/source-download-routing.mjs";
 import type { WorkspaceUser } from "../_shared/workspace.ts";
@@ -25581,6 +25582,10 @@ export function createRatewareApiHandler(
     body = await request.json();
     operationId = ratewareOperationId(request, body);
     const bodyParsedAt = performance.now();
+
+    // The team role gate: awards, archiving and the shared catalog are an Administrador's.
+    const roleDenial = teamRoleDenial("rateware-api", claims as Record<string, unknown>, body);
+    if (roleDenial) return jsonResponse(roleDenial, 403);
 
     const growthAction = typeof body.action === "string" ? body.action : "";
     if (isGrowthAction(growthAction)) {
