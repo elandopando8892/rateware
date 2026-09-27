@@ -282,6 +282,14 @@ assert.match(shareRatebookSource, /carrier_links_rotated/);
 assert.match(shareRatebookSource, /ratebook-carrier\.html\?token=/);
 assert.match(shareRatebookSource, /vendor_id: vendor\.id/);
 assert.doesNotMatch(shareRatebookSource, /launchRfxProcessPackageToBidRoom/);
+
+// A Bid Room launched from an RFx Package keeps the project's CRM Shipper:
+// Shipper Ratebooks consolidate on rfx_events.customer_id, not on the name.
+const launchPackageSource = api.slice(
+  api.indexOf("async function launchRfxProcessPackageToBidRoom"),
+  api.indexOf("function ratebookOrigin")
+);
+assert.match(launchPackageSource, /normalizeRfxEvent\(\{[\s\S]+?customer_id: project\.customer_id,/, "A launched Bid Room event must carry the project's Shipper id");
 assert.doesNotMatch(shareRatebookSource, /rfx_lane_vendors/);
 assert.doesNotMatch(shareRatebookSource, /rfx-bid\.html/);
 assert.match(api, /access_token_hash: _accessTokenHash/);

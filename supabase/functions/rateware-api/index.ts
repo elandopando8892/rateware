@@ -23351,6 +23351,8 @@ async function launchRfxProcessPackageToBidRoom(supabase: RatewareSupabaseClient
       rfx_id: rfxId,
       name: cleanText(input.name) || project.title || pack.name,
       customer: project.customer_name,
+      // The CRM Shipper, not only its name: Shipper Ratebooks consolidate on this key.
+      customer_id: project.customer_id,
       event_type: "rfx",
       status: cleanText(input.open_now || input.status) === "open" || cleanOptionalBoolean(input.open_now) === true ? "open" : "draft",
       due_date: input.due_date || pack.bid_due_at || project.due_date,

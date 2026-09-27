@@ -102,6 +102,8 @@ const corsOnlyAuthorizationOverrides = Object.fromEntries(
 // was sent to; the verify token and signature checks are unchanged.
 // 2026-09-26: rfx-bid-api adds two read-only lookups behind the customer RFI
 // link (places and freight lists); its existing handlers are unchanged.
+// 2026-09-27: rateware-api's Bid Room launch copies the project's Shipper id
+// onto the new event (a column it already writes elsewhere); no check changes.
 const brandedDomainAuthorizationEnvelopes = {
   'edge.carrier-profile-api.': 'b03bbde80ff4b7f55be1d9dbf6aeaee0e29b942b59606a2ff51cab9407451dd4',
   'edge.create-raw-upload.': 'a73818db2343742d058c7c758055e320d3f86b364e38a8f2335bb9bc95497784',
@@ -112,7 +114,7 @@ const brandedDomainAuthorizationEnvelopes = {
   'edge.provider-gmail-oauth-callback.': 'cbecbbb73b557f7cec24f2ac30e5ee39fa5d6567422d37490a8d9ba04a2cdc9a',
   'edge.provider-gmail-push.': '2b47e44194a6ae218af455b227f5bce2a21dd4ff48690e46c67d9cd9b6bd3c2f',
   'edge.ratebook-carrier-api.': '10a589d0428b43071c325bd8c63c58d1f1f43636f91a04a5a3a0753d6a201d84',
-  'edge.rateware-api.': 'bcc403457b3f6486794748fecf79c69b352470272ceb8453ce50000eacf5d1ee',
+  'edge.rateware-api.': '3e5a57056017e24f6d73e0f26985d959185bdce2b0de98dc0d37f07a848d8c95',
   'edge.rfx-bid-api.': '3a4394c4405cf9c4f1a3b60d2ac653a09c2492fcb3b54bf89bffa834a9c47c4e',
   'edge.shipper-directory-api.': '216a3724c8455875c18dc3bf8966f2e8f33e8bfef5dee2fd2a9503d0f3d7e53e',
   'edge.shipper-profile-api.': '501f2bec390dab9ecce5b9e6aac016683fb51d2c9f8afc0217b097912fe36949',
